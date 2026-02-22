@@ -118,6 +118,7 @@ function createContext(overrides = {}) {
   return {
     sessionId: 'hook-test-session',
     userId:    1,
+    senderId:  1,  // User-originated — bypasses permission engine (these tests focus on hook mechanics)
     dataKey:   'test-key',
     ...overrides,
   };
@@ -1317,6 +1318,408 @@ describe('Frame creation with BEFORE_TOOL/AFTER_TOOL hooks', () => {
     let resFrame = resultFrames.find((f) => f.parentId === reqFrame.id);
     assert.ok(resFrame, 'RESULT frame should be child of REQUEST frame');
     assert.equal(resFrame.payload.status, 'completed');
+  });
+});
+
+// ============================================================================
+// SECURITY: Fail-Closed Permission Gate Tests
+// ============================================================================
+// The permission engine at Step 1.75 in detector.mjs MUST deny agent
+// interactions when it cannot evaluate permissions. These tests deliberately
+// break the security context and verify that the gate fails CLOSED (deny)
+// rather than OPEN (allow).
+//
+// This is critical: a security system that silently fails open is worse
+// than no security system at all, because it creates a false sense of safety.
+
+describe('Fail-Closed Permission Gate', () => {
+  beforeEach(() => {
+    clearRegisteredFunctions();
+    registerFunctionClass(EchoFunction);
+    initializeSystemFunction();
+  });
+
+  afterEach(() => {
+    clearRegisteredFunctions();
+  });
+
+  function createAgentBlock(overrides = {}) {
+    return {
+      mode:         'single',
+      interactions: [{
+        interaction_id:  overrides.interactionId || 'security-test',
+        target_id:       '@system',
+        target_property: 'echo',
+        payload:         { message: 'should be denied' },
+      }],
+    };
+  }
+
+  // =========================================================================
+  // SEC-001: Missing database denies agent interaction
+  // =========================================================================
+
+  it('SEC-001: agent interaction denied when context has no database', async () => {
+    let block = createAgentBlock({ interactionId: 'sec-001' });
+
+    // Agent context: has agentId but NO db
+    let context = {
+      sessionId: 'sec-001-session',
+      userId:    1,
+      agentId:   1,
+      dataKey:   'test-key',
+      // Deliberately omitting db
+    };
+
+    clearAgentMessages('sec-001-session');
+    let results = await executeInteractions(block, context);
+
+    assert.equal(results.results.length, 1);
+    assert.equal(results.results[0].status, 'denied',
+      'Must DENY when database is unavailable');
+    assert.ok(results.results[0].reason.includes('no database'),
+      'Reason should explain missing database');
+  });
+
+  // =========================================================================
+  // SEC-002: Missing agentId denies agent interaction
+  // =========================================================================
+
+  it('SEC-002: agent interaction denied when context has no agentId', async () => {
+    let testDb = new Database(':memory:');
+    testDb.exec('CREATE TABLE permission_rules (id INTEGER PRIMARY KEY)');
+
+    let block = createAgentBlock({ interactionId: 'sec-002' });
+
+    // Agent context: has db but NO agentId
+    let context = {
+      sessionId: 'sec-002-session',
+      userId:    1,
+      db:        testDb,
+      dataKey:   'test-key',
+      // Deliberately omitting agentId
+    };
+
+    clearAgentMessages('sec-002-session');
+    let results = await executeInteractions(block, context);
+
+    assert.equal(results.results[0].status, 'denied',
+      'Must DENY when agentId is unavailable');
+    assert.ok(results.results[0].reason.includes('no agent context'),
+      'Reason should explain missing agent context');
+
+    testDb.close();
+  });
+
+  // =========================================================================
+  // SEC-003: Missing both db and agentId denies agent interaction
+  // =========================================================================
+
+  it('SEC-003: agent interaction denied when context has neither db nor agentId', async () => {
+    let block = createAgentBlock({ interactionId: 'sec-003' });
+
+    // Agent context: missing BOTH db and agentId
+    let context = {
+      sessionId: 'sec-003-session',
+      userId:    1,
+      dataKey:   'test-key',
+      // Deliberately omitting both db and agentId
+    };
+
+    clearAgentMessages('sec-003-session');
+    let results = await executeInteractions(block, context);
+
+    assert.equal(results.results[0].status, 'denied',
+      'Must DENY when both db and agentId are unavailable');
+  });
+
+  // =========================================================================
+  // SEC-004: User-originated interactions bypass permission engine
+  // =========================================================================
+
+  it('SEC-004: user-originated interaction (with senderId) bypasses permission engine', async () => {
+    let block = createAgentBlock({ interactionId: 'sec-004' });
+
+    // User context: has senderId, no db or agentId needed
+    let context = {
+      sessionId: 'sec-004-session',
+      userId:    1,
+      senderId:  1,  // User-originated
+      dataKey:   'test-key',
+      // No db, no agentId — doesn't matter for user interactions
+    };
+
+    clearAgentMessages('sec-004-session');
+    let results = await executeInteractions(block, context);
+
+    assert.equal(results.results[0].status, 'completed',
+      'User-originated interactions should succeed without permission engine');
+    assert.equal(results.results[0].result.result.echoed, 'should be denied',
+      'Payload should pass through');
+  });
+
+  // =========================================================================
+  // SEC-005: Agent with proper context and explicit DENY rule is denied
+  // =========================================================================
+
+  it('SEC-005: agent interaction denied by explicit DENY permission rule', async () => {
+    let testDb = new Database(':memory:');
+    testDb.pragma('foreign_keys = ON');
+
+    testDb.exec(`
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL
+      );
+      CREATE TABLE agents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        name TEXT NOT NULL
+      );
+      CREATE TABLE sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        agent_id INTEGER REFERENCES agents(id),
+        name TEXT NOT NULL
+      );
+      CREATE TABLE permission_rules (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id      INTEGER,
+        session_id    INTEGER,
+        subject_type  TEXT NOT NULL DEFAULT '*',
+        subject_id    INTEGER,
+        resource_type TEXT NOT NULL DEFAULT '*',
+        resource_name TEXT,
+        action        TEXT NOT NULL DEFAULT 'prompt',
+        scope         TEXT NOT NULL DEFAULT 'permanent',
+        conditions    TEXT,
+        priority      INTEGER NOT NULL DEFAULT 0,
+        created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    testDb.prepare("INSERT INTO users (id, username) VALUES (1, 'testuser')").run();
+    testDb.prepare("INSERT INTO agents (id, user_id, name) VALUES (1, 1, 'test-agent')").run();
+    testDb.prepare("INSERT INTO sessions (id, user_id, agent_id, name) VALUES (1, 1, 1, 'Test')").run();
+
+    // Explicit DENY rule for echo tool
+    testDb.prepare(`
+      INSERT INTO permission_rules (owner_id, subject_type, subject_id, resource_type, resource_name, action, scope, priority)
+      VALUES (1, 'agent', 1, 'tool', 'echo', 'deny', 'permanent', 10)
+    `).run();
+
+    let block = createAgentBlock({ interactionId: 'sec-005' });
+
+    let context = {
+      sessionId: 1,
+      userId:    1,
+      agentId:   1,
+      db:        testDb,
+    };
+
+    clearAgentMessages(1);
+    let results = await executeInteractions(block, context);
+
+    assert.equal(results.results[0].status, 'denied',
+      'Explicit DENY rule should deny the interaction');
+    assert.ok(results.results[0].reason.includes('permission'),
+      'Reason should reference permission');
+
+    testDb.close();
+  });
+
+  // =========================================================================
+  // SEC-006: Agent with proper context and wildcard ALLOW passes
+  // =========================================================================
+
+  it('SEC-006: agent interaction allowed with proper context and wildcard allow rule', async () => {
+    let testDb = new Database(':memory:');
+    testDb.pragma('foreign_keys = ON');
+
+    testDb.exec(`
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL
+      );
+      CREATE TABLE agents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        name TEXT NOT NULL
+      );
+      CREATE TABLE sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        agent_id INTEGER REFERENCES agents(id),
+        name TEXT NOT NULL
+      );
+      CREATE TABLE permission_rules (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id      INTEGER,
+        session_id    INTEGER,
+        subject_type  TEXT NOT NULL DEFAULT '*',
+        subject_id    INTEGER,
+        resource_type TEXT NOT NULL DEFAULT '*',
+        resource_name TEXT,
+        action        TEXT NOT NULL DEFAULT 'prompt',
+        scope         TEXT NOT NULL DEFAULT 'permanent',
+        conditions    TEXT,
+        priority      INTEGER NOT NULL DEFAULT 0,
+        created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    testDb.prepare("INSERT INTO users (id, username) VALUES (1, 'testuser')").run();
+    testDb.prepare("INSERT INTO agents (id, user_id, name) VALUES (1, 1, 'test-agent')").run();
+    testDb.prepare("INSERT INTO sessions (id, user_id, agent_id, name) VALUES (1, 1, 1, 'Test')").run();
+
+    // Wildcard ALLOW rule
+    testDb.prepare(`
+      INSERT INTO permission_rules (owner_id, subject_type, resource_type, action, scope, priority)
+      VALUES (1, '*', '*', 'allow', 'permanent', 1)
+    `).run();
+
+    let block = createAgentBlock({ interactionId: 'sec-006' });
+
+    let context = {
+      sessionId: 1,
+      userId:    1,
+      agentId:   1,
+      db:        testDb,
+    };
+
+    clearAgentMessages(1);
+    let results = await executeInteractions(block, context);
+
+    assert.equal(results.results[0].status, 'completed',
+      'Agent with proper context and ALLOW rule should succeed');
+    assert.equal(results.results[0].result.result.echoed, 'should be denied',
+      'Payload should pass through');
+
+    testDb.close();
+  });
+
+  // =========================================================================
+  // SEC-007: Multiple interactions — each individually gated
+  // =========================================================================
+
+  it('SEC-007: each interaction in a batch is individually gated by permission engine', async () => {
+    // Agent context without db — ALL interactions should be denied, not just the first
+    let block = {
+      mode:         'sequential',
+      interactions: [
+        { interaction_id: 'sec-007-a', target_id: '@system', target_property: 'echo', payload: { message: 'first' } },
+        { interaction_id: 'sec-007-b', target_id: '@system', target_property: 'echo', payload: { message: 'second' } },
+        { interaction_id: 'sec-007-c', target_id: '@system', target_property: 'echo', payload: { message: 'third' } },
+      ],
+    };
+
+    let context = {
+      sessionId: 'sec-007-session',
+      userId:    1,
+      agentId:   1,
+      // Deliberately omitting db
+    };
+
+    clearAgentMessages('sec-007-session');
+    let results = await executeInteractions(block, context);
+
+    assert.equal(results.results.length, 3, 'All three interactions should be processed');
+    assert.equal(results.results[0].status, 'denied', 'First interaction must be denied');
+    assert.equal(results.results[1].status, 'denied', 'Second interaction must be denied');
+    assert.equal(results.results[2].status, 'denied', 'Third interaction must be denied');
+  });
+
+  // =========================================================================
+  // SEC-008: Agent messages queued for denied interactions
+  // =========================================================================
+
+  it('SEC-008: denied interactions queue status messages for the agent', async () => {
+    let block = createAgentBlock({ interactionId: 'sec-008' });
+
+    let context = {
+      sessionId: 'sec-008-session',
+      userId:    1,
+      agentId:   1,
+      // No db — will be denied
+    };
+
+    clearAgentMessages('sec-008-session');
+    await executeInteractions(block, context);
+
+    let messages = getAgentMessages('sec-008-session');
+    let deniedMessage = messages.find((m) => m.payload && m.payload.status === 'denied');
+    assert.ok(deniedMessage, 'Denied interaction should queue a status message');
+    assert.ok(deniedMessage.payload.reason.includes('no database'),
+      'Denial message should include reason');
+  });
+
+  // =========================================================================
+  // SEC-009: No permission rules defaults to PROMPT (not ALLOW)
+  // =========================================================================
+
+  it('SEC-009: agent with no permission rules denied (PROMPT has no user to ask)', async () => {
+    // When no permission rules match, the default action is PROMPT ("ask user").
+    // In a non-interactive context (no SSE connection, no user session),
+    // requestPermissionPrompt cannot deliver the prompt — so the permission
+    // error catch block fires and denies for safety. This is correct: if
+    // we can't ask the user, we don't silently allow.
+    let testDb = new Database(':memory:');
+    testDb.pragma('foreign_keys = ON');
+
+    testDb.exec(`
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL
+      );
+      CREATE TABLE agents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        name TEXT NOT NULL
+      );
+      CREATE TABLE sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        agent_id INTEGER REFERENCES agents(id),
+        name TEXT NOT NULL
+      );
+      CREATE TABLE permission_rules (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id      INTEGER,
+        session_id    INTEGER,
+        subject_type  TEXT NOT NULL DEFAULT '*',
+        subject_id    INTEGER,
+        resource_type TEXT NOT NULL DEFAULT '*',
+        resource_name TEXT,
+        action        TEXT NOT NULL DEFAULT 'prompt',
+        scope         TEXT NOT NULL DEFAULT 'permanent',
+        conditions    TEXT,
+        priority      INTEGER NOT NULL DEFAULT 0,
+        created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    testDb.prepare("INSERT INTO users (id, username) VALUES (1, 'testuser')").run();
+    testDb.prepare("INSERT INTO agents (id, user_id, name) VALUES (1, 1, 'test-agent')").run();
+    testDb.prepare("INSERT INTO sessions (id, user_id, agent_id, name) VALUES (1, 1, 1, 'Test')").run();
+    // NO permission rules — defaults to PROMPT
+
+    let block = createAgentBlock({ interactionId: 'sec-009' });
+
+    let context = {
+      sessionId: 1,
+      userId:    1,
+      agentId:   1,
+      db:        testDb,
+    };
+
+    clearAgentMessages(1);
+    let results = await executeInteractions(block, context);
+
+    // PROMPT tries to ask the user, but there's no SSE connection — fails closed
+    assert.equal(results.results[0].status, 'denied',
+      'PROMPT with no user connection should fail closed (deny)');
+
+    testDb.close();
   });
 });
 

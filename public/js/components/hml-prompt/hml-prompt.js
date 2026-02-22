@@ -655,6 +655,9 @@ class HmlPrompt extends MythixUIComponent {
 
     let input = this.shadowRoot.querySelector('.input-checkbox');
 
+    // Buffer default state immediately so untouched checkboxes are captured on Submit
+    this._bufferAnswer(input.checked ? 'yes' : 'no');
+
     // Buffer answer on change
     input.addEventListener('change', () => {
       this._bufferAnswer(input.checked ? 'yes' : 'no');

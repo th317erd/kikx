@@ -375,9 +375,35 @@ export async function executeInteractions(interactionBlock, context) {
     }
 
     // Step 1.75: Permission engine evaluation
-    // Only evaluate for agent-originated interactions (not user-originated)
-    // Requires context.db — when no database is available, skip permission check
-    if (context.agentId && !context.senderId && context.db) {
+    // User-originated interactions (senderId present) are pre-authorized.
+    // Agent-originated interactions MUST pass the permission engine.
+    // If the permission engine cannot run (missing db, missing agentId),
+    // the interaction is DENIED — security gates fail closed, never open.
+    if (!context.senderId) {
+      if (!context.agentId || !context.db) {
+        // Cannot evaluate permissions — deny for safety
+        let reason = !context.db
+          ? 'Permission check failed — no database available'
+          : 'Permission check failed — no agent context';
+
+        console.error(`[Security] ${reason} for '${interactionData.target_property}'`);
+
+        queueAgentMessage(context.sessionId, agentInteractionId, 'interaction_update', {
+          status: 'denied',
+          reason,
+        });
+
+        results.push({
+          interaction_id:  agentInteractionId,
+          target_id:       interactionData.target_id,
+          target_property: interactionData.target_property,
+          status:          'denied',
+          reason,
+        });
+
+        continue;
+      }
+
       let permSubject = {
         type: 'agent',
         id:   context.agentId,

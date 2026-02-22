@@ -168,6 +168,7 @@ function createContext(overrides = {}) {
   return {
     sessionId: 'test-session-123',
     userId:    1,
+    senderId:  1,  // User-originated — bypasses permission engine (these tests focus on mechanics)
     dataKey:   'test-key',
     ...overrides,
   };

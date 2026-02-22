@@ -907,6 +907,7 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
           userId:    req.user.id,
           agentId:   session.agent_id,
           dataKey:   dataKey,
+          db:        getDatabase(),
         };
 
         // Agentic loop - continue until no more interactions or max iterations
