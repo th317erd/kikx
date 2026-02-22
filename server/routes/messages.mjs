@@ -24,6 +24,9 @@ import { handleCommandInterception } from '../lib/messaging/command-handler.mjs'
 import { setupSessionAgent } from '../lib/messaging/session-setup.mjs';
 import { loadSessionWithAgent } from '../lib/participants/index.mjs';
 import { beforeUserMessage, afterAgentResponse } from '../lib/plugins/hooks.mjs';
+import { stripInteractionTags } from '../lib/messaging/content-utils.mjs';
+import { decomposeMessage } from '../lib/frames/decompose.mjs';
+import { getFrames, FrameType } from '../lib/frames/index.mjs';
 
 const router = Router();
 
@@ -235,58 +238,129 @@ router.post('/:sessionId/messages', async (req, res) => {
     // Add user message to history (with processes injected for AI)
     messages.push({ role: 'user', content: processedContent });
 
-    let response = await agent.sendMessage(messages);
+    // Wrap the agent response + interaction loop in a timeout.
+    // If a permission prompt blocks for >30s, return HTTP 202 so REST
+    // clients can poll frames and respond via POST /frames/:id/respond.
+    const RESPONSE_TIMEOUT = 30000;
+    const TIMEOUT_SENTINEL = Symbol('timeout');
 
-    // Interaction execution loop
-    let maxIterations = 10;
-    let iterations    = 0;
+    let agentWork = (async () => {
+      let response = await agent.sendMessage(messages);
 
-    while (iterations < maxIterations) {
-      iterations++;
+      // Interaction execution loop
+      let maxIterations = 10;
+      let iterations    = 0;
 
-      let interactionBlock = detectInteractions(response.content);
+      while (iterations < maxIterations) {
+        iterations++;
 
-      if (!interactionBlock)
-        break;
+        let interactionBlock = detectInteractions(response.content);
 
-      // Store the interaction request as hidden frame
-      createAgentMessageFrame({
-        sessionId: sessionId,
-        userId:    req.user.id,
-        agentId:   session.agent_id,
-        content:   response.content,
-        hidden:    true,
+        if (!interactionBlock)
+          break;
+
+        // Decompose intermediate agent response into content + interaction segments.
+        // Store each content segment as its own hidden frame.
+        let responseText = (typeof response.content === 'string')
+          ? response.content
+          : (Array.isArray(response.content)
+            ? response.content.filter((b) => b.type === 'text').map((b) => b.text).join('')
+            : String(response.content));
+
+        let segments     = decomposeMessage(responseText, 'assistant');
+        let firstFrameId = null;
+
+        for (let segment of segments) {
+          if (segment.type === 'content') {
+            let frame = createAgentMessageFrame({
+              sessionId: sessionId,
+              userId:    req.user.id,
+              agentId:   session.agent_id,
+              content:   segment.text,
+              hidden:    true,
+            });
+            if (!firstFrameId) firstFrameId = frame.id;
+          }
+        }
+
+        // Fallback: if no content frames, create a minimal hidden frame for parentFrameId
+        if (!firstFrameId) {
+          let fallbackFrame = createAgentMessageFrame({
+            sessionId: sessionId,
+            userId:    req.user.id,
+            agentId:   session.agent_id,
+            content:   stripInteractionTags(responseText) || '[interaction]',
+            hidden:    true,
+          });
+          firstFrameId = fallbackFrame.id;
+        }
+
+        // Build context for agent-originated interactions
+        // NOTE: No senderId — these are agent interactions, not user-authorized
+        // BUG FIX: Added db and parentFrameId so REQUEST/RESULT frames are created
+        let interactionContext = {
+          sessionId:     sessionId,
+          userId:        req.user.id,
+          agentId:       session.agent_id,
+          dataKey:       dataKey,
+          db:            db,
+          parentFrameId: firstFrameId,
+        };
+
+        let results = await executeInteractions(interactionBlock, interactionContext);
+
+        // Format results as feedback
+        let feedback = formatInteractionFeedback(results);
+
+        // Store feedback as hidden frame
+        createSystemMessageFrame({
+          sessionId: sessionId,
+          userId:    req.user.id,
+          content:   feedback,
+          hidden:    true,
+        });
+
+        // Add to message history and continue
+        messages.push({ role: 'assistant', content: response.content });
+        messages.push({ role: 'user', content: feedback });
+
+        // Get next response
+        response = await agent.sendMessage(messages);
+      }
+
+      return { response, iterations };
+    })();
+
+    let timeoutPromise = new Promise((resolve) => {
+      setTimeout(() => resolve(TIMEOUT_SENTINEL), RESPONSE_TIMEOUT);
+    });
+
+    let raceResult = await Promise.race([agentWork, timeoutPromise]);
+
+    // Timeout — check for pending permission request frames
+    if (raceResult === TIMEOUT_SENTINEL) {
+      let pendingRequestFrames = getFrames(sessionId, {
+        types: [FrameType.REQUEST],
+      }, db).filter((f) => {
+        let payload = (typeof f.payload === 'string') ? JSON.parse(f.payload) : f.payload;
+        return payload.action === 'permission_request' && payload.status === 'pending';
       });
 
-      // Build context for agent-originated interactions
-      // NOTE: No senderId — these are agent interactions, not user-authorized
-      let interactionContext = {
-        sessionId: sessionId,
-        userId:    req.user.id,
-        agentId:   session.agent_id,
-        dataKey:   dataKey,
-      };
+      if (pendingRequestFrames.length > 0) {
+        // There are pending permission requests — return 202 so the client
+        // can respond via POST /api/sessions/:id/frames/:frameId/respond
+        return res.status(202).json({
+          status:  'pending_permission',
+          frameId: pendingRequestFrames[0].id,
+          message: `Respond via POST /api/sessions/${sessionId}/frames/${pendingRequestFrames[0].id}/respond`,
+        });
+      }
 
-      let results = await executeInteractions(interactionBlock, interactionContext);
-
-      // Format results as feedback
-      let feedback = formatInteractionFeedback(results);
-
-      // Store feedback as hidden frame
-      createSystemMessageFrame({
-        sessionId: sessionId,
-        userId:    req.user.id,
-        content:   feedback,
-        hidden:    true,
-      });
-
-      // Add to message history and continue
-      messages.push({ role: 'assistant', content: response.content });
-      messages.push({ role: 'user', content: feedback });
-
-      // Get next response
-      response = await agent.sendMessage(messages);
+      // No pending permissions — genuine timeout
+      return res.status(504).json({ error: 'Agent response timed out' });
     }
+
+    let { response, iterations } = raceResult;
 
     // Extract text content from response (Claude API returns array of content blocks)
     let finalContent = response.content;
@@ -323,14 +397,33 @@ router.post('/:sessionId/messages', async (req, res) => {
       console.error('[Messages] afterAgentResponse hook error:', error.message);
     }
 
-    // Store final assistant response as frame
-    createAgentMessageFrame({
-      sessionId: sessionId,
-      userId:    req.user.id,
-      agentId:   session.agent_id,
-      content:   finalContent,
-      hidden:    false,
-    });
+    // Decompose and store final assistant response as visible frame(s)
+    let finalSegments = decomposeMessage(finalContent, 'assistant');
+    let storedAnyFinal = false;
+
+    for (let segment of finalSegments) {
+      if (segment.type === 'content') {
+        createAgentMessageFrame({
+          sessionId: sessionId,
+          userId:    req.user.id,
+          agentId:   session.agent_id,
+          content:   segment.text,
+          hidden:    false,
+        });
+        storedAnyFinal = true;
+      }
+    }
+
+    // Fallback: store full content if decomposition produced nothing
+    if (!storedAnyFinal) {
+      createAgentMessageFrame({
+        sessionId: sessionId,
+        userId:    req.user.id,
+        agentId:   session.agent_id,
+        content:   finalContent,
+        hidden:    false,
+      });
+    }
 
     return res.json({
       content:        finalContent,

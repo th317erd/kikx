@@ -44,6 +44,7 @@ import {
   getFunctionBannerConfig,
   elementToAssertion,
 } from '../lib/messaging/content-utils.mjs';
+import { decomposeMessage } from '../lib/frames/decompose.mjs';
 
 
 const router = Router();
@@ -952,18 +953,43 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
           res.write(':executing\n\n');
           if (res.flush) res.flush();
 
-          // Store the interaction request as HIDDEN frame (intermediate message)
-          let agentMessageFrame = createAgentMessageFrame({
-            sessionId:     parseInt(req.params.sessionId, 10),
-            userId:        req.user.id,
-            agentId:       session.agent_id,
-            content:       currentContent,
-            hidden:        true,
-            skipBroadcast: true,
-          });
+          // Decompose intermediate agent response into content + interaction segments.
+          // Store each content segment as its own hidden frame.
+          // Interaction segments are NOT stored here — they become REQUEST/RESULT
+          // frames when executeInteractions() runs.
+          let segments     = decomposeMessage(currentContent, 'assistant');
+          let firstFrameId = null;
+
+          for (let segment of segments) {
+            if (segment.type === 'content') {
+              let frame = createAgentMessageFrame({
+                sessionId:     parseInt(req.params.sessionId, 10),
+                userId:        req.user.id,
+                agentId:       session.agent_id,
+                content:       segment.text,
+                hidden:        true,
+                skipBroadcast: true,
+              });
+              if (!firstFrameId) firstFrameId = frame.id;
+            }
+          }
+
+          // Fallback: if decomposition produced no content frames (all interactions),
+          // create a minimal hidden frame so we still have a parentFrameId for REQUEST/RESULT linking
+          if (!firstFrameId) {
+            let fallbackFrame = createAgentMessageFrame({
+              sessionId:     parseInt(req.params.sessionId, 10),
+              userId:        req.user.id,
+              agentId:       session.agent_id,
+              content:       stripInteractionTags(currentContent) || '[interaction]',
+              hidden:        true,
+              skipBroadcast: true,
+            });
+            firstFrameId = fallbackFrame.id;
+          }
 
           // Execute interactions with parent frame ID for REQUEST/RESULT frame creation
-          interactionContext.parentFrameId = agentMessageFrame.id;
+          interactionContext.parentFrameId = firstFrameId;
           let results = await executeInteractions(currentBlock, interactionContext);
           debug('Interaction results', { count: results.results.length });
 
@@ -1078,17 +1104,35 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
         // Clean up extra whitespace
         cleanFinalContent = cleanFinalContent.replace(/\n{3,}/g, '\n\n').trim();
 
-        // Store the final clean response as VISIBLE frame
+        // Decompose the final clean response and store each content segment
+        // as a visible frame. This gives API consumers finer-grained frames.
         if (cleanFinalContent.trim()) {
-          let storedFrame = createAgentMessageFrame({
-            sessionId:     parseInt(req.params.sessionId, 10),
-            userId:        req.user.id,
-            agentId:       session.agent_id,
-            content:       cleanFinalContent,
-            hidden:        false,
-            // Broadcast via WebSocket so hero-chat receives the frame
-          });
-          persistedMessageID = storedFrame.id;
+          let finalSegments = decomposeMessage(cleanFinalContent, 'assistant');
+          for (let segment of finalSegments) {
+            if (segment.type === 'content') {
+              let storedFrame = createAgentMessageFrame({
+                sessionId:     parseInt(req.params.sessionId, 10),
+                userId:        req.user.id,
+                agentId:       session.agent_id,
+                content:       segment.text,
+                hidden:        false,
+              });
+              if (!persistedMessageID) persistedMessageID = storedFrame.id;
+            }
+          }
+
+          // Fallback: if no content segments (shouldn't happen after cleaning),
+          // store the full content as one frame
+          if (!persistedMessageID) {
+            let storedFrame = createAgentMessageFrame({
+              sessionId:     parseInt(req.params.sessionId, 10),
+              userId:        req.user.id,
+              agentId:       session.agent_id,
+              content:       cleanFinalContent,
+              hidden:        false,
+            });
+            persistedMessageID = storedFrame.id;
+          }
           debug('Stored interaction response with frame ID:', persistedMessageID);
         }
 

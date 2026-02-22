@@ -17,7 +17,8 @@
 //   6. Blocked action proceeds or is denied
 
 import { createHash } from 'node:crypto';
-import { createAgentMessageFrame } from '../frames/broadcast.mjs';
+import { createAgentMessageFrame, createAndBroadcastFrame } from '../frames/broadcast.mjs';
+import { FrameType, AuthorType } from '../frames/index.mjs';
 import { createRule, Action, Scope } from './index.mjs';
 
 // In-memory pending permission prompts (promptId → resolver + context)
@@ -71,7 +72,7 @@ export async function requestPermissionPrompt(subject, resource, context, timeou
   let description  = formatDescription(subject, resource);
   let promptMarkup = buildPromptMarkup(promptId, requestHash, description);
 
-  // Create system message frame with the hml-prompt
+  // Create system message frame with the hml-prompt (backward compat with frontend)
   let frame = createAgentMessageFrame({
     sessionId:    context.sessionId,
     userId:       context.userId,
@@ -81,6 +82,25 @@ export async function requestPermissionPrompt(subject, resource, context, timeou
     skipSanitize: true,
   });
 
+  // Also create a structured request frame (machine-readable for API consumers)
+  let requestFrame = createAndBroadcastFrame({
+    sessionId:  context.sessionId,
+    userId:     context.userId,
+    type:       FrameType.REQUEST,
+    authorType: AuthorType.SYSTEM,
+    payload: {
+      action:        'permission_request',
+      promptId:      promptId,
+      subject:       subject,
+      resource:      resource,
+      description:   description,
+      options:       ['allow_once', 'allow_session', 'allow_always', 'deny'],
+      defaultOption: 'deny',
+      status:        'pending',
+    },
+    targetIds: ['user:' + context.userId],
+  }, context.db);
+
   // Store pending prompt and return a Promise
   return new Promise((resolve) => {
     pendingPermissionPrompts.set(promptId, {
@@ -89,7 +109,8 @@ export async function requestPermissionPrompt(subject, resource, context, timeou
       resource,
       context,
       requestHash,
-      frameId: frame.id,
+      frameId:        frame.id,
+      requestFrameId: requestFrame.id,
     });
 
     if (effectiveTimeout > 0) {
@@ -141,6 +162,29 @@ export function handlePermissionResponse(promptId, answer) {
       }, pending.context.db);
     } catch (error) {
       console.error('[Permissions] Failed to create permission rule:', error.message);
+    }
+  }
+
+  // Create a structured result frame (machine-readable response)
+  if (pending.requestFrameId && pending.context) {
+    try {
+      createAndBroadcastFrame({
+        sessionId:  pending.context.sessionId,
+        userId:     pending.context.userId,
+        type:       FrameType.RESULT,
+        authorType: AuthorType.USER,
+        parentId:   pending.requestFrameId,
+        payload: {
+          action:         'permission_response',
+          promptId:       promptId,
+          answer:         answer,
+          resolvedAction: mapped.action,
+          resolvedScope:  mapped.scope,
+        },
+        targetIds: ['system:permission'],
+      }, pending.context.db);
+    } catch (error) {
+      console.error('[Permissions] Failed to create result frame:', error.message);
     }
   }
 

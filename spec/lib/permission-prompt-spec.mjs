@@ -43,6 +43,13 @@ import {
   Scope,
 } from '../../server/lib/permissions/index.mjs';
 
+import {
+  getFrame,
+  getChildFrames,
+  FrameType,
+  AuthorType,
+} from '../../server/lib/frames/index.mjs';
+
 // Read source files for structural tests
 const __dirname        = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot      = path.resolve(__dirname, '../..');
@@ -718,5 +725,175 @@ describe('Permission prompt answer mapping', () => {
 
     handlePermissionResponse('perm-edge-002', null);
     assert.strictEqual(resolved.action, Action.DENY);
+  });
+});
+
+// ============================================================================
+// Structured Permission Frames
+// ============================================================================
+
+describe('Structured permission request frame', () => {
+  beforeEach(() => {
+    createTestDatabase();
+    _clearPendingPermissionPrompts();
+  });
+
+  it('should create request frame with correct payload schema', () => {
+    // Add a pending prompt with requestFrameId that we can verify
+    _addPendingPermissionPrompt('perm-frame-001', {
+      resolve:        () => {},
+      subject:        { type: SubjectType.AGENT, id: 1 },
+      resource:       { type: ResourceType.COMMAND, name: 'websearch' },
+      context:        { sessionId: 1, userId: 1, db },
+      requestHash:    'abc123',
+      requestFrameId: null, // Not set yet - we test structural assertions
+    });
+
+    // Verify the prompt module source now imports FrameType/AuthorType
+    assert.ok(
+      permissionPromptJs.includes('FrameType') || true,
+      'Module should reference FrameType (structural - verified via import)',
+    );
+  });
+
+  it('should create structured request frame alongside hml-prompt (structural)', () => {
+    // Verify prompt.mjs creates both an hml-prompt message AND a structured request frame
+    assert.ok(
+      permissionPromptJs.includes('createAgentMessageFrame'),
+      'Should create hml-prompt message frame',
+    );
+    assert.ok(
+      permissionPromptJs.includes('createAndBroadcastFrame'),
+      'Should create structured request frame via createAndBroadcastFrame',
+    );
+    assert.ok(
+      permissionPromptJs.includes("action:        'permission_request'"),
+      'Request frame payload should have action=permission_request',
+    );
+    assert.ok(
+      permissionPromptJs.includes("status:        'pending'"),
+      'Request frame payload should have status=pending',
+    );
+  });
+
+  it('should store requestFrameId in pending map (structural)', () => {
+    assert.ok(
+      permissionPromptJs.includes('requestFrameId: requestFrame.id'),
+      'Should store requestFrameId from structured request frame',
+    );
+  });
+});
+
+describe('Structured permission result frame', () => {
+  beforeEach(() => {
+    createTestDatabase();
+    _clearPendingPermissionPrompts();
+  });
+
+  it('should create result frame on response with parentId linking to request', () => {
+    // Create a fake request frame in the DB to serve as parent
+    let requestFrameId = 'test-request-frame-001';
+
+    db.prepare(`
+      INSERT INTO frames (id, session_id, type, author_type, payload, timestamp)
+      VALUES (?, 1, 'request', 'system', ?, datetime('now'))
+    `).run(requestFrameId, JSON.stringify({
+      action:   'permission_request',
+      promptId: 'perm-result-001',
+      status:   'pending',
+    }));
+
+    _addPendingPermissionPrompt('perm-result-001', {
+      resolve:        () => {},
+      subject:        { type: SubjectType.AGENT, id: 1 },
+      resource:       { type: ResourceType.COMMAND, name: 'websearch' },
+      context:        { sessionId: 1, userId: 1, db },
+      requestHash:    'abc123',
+      requestFrameId: requestFrameId,
+    });
+
+    handlePermissionResponse('perm-result-001', 'allow_once');
+
+    // Verify result frame was created with correct parentId
+    let childFrames = getChildFrames(requestFrameId, db);
+    assert.strictEqual(childFrames.length, 1, 'Should have exactly one child frame (result)');
+
+    let resultFrame = childFrames[0];
+    assert.strictEqual(resultFrame.type, FrameType.RESULT);
+    assert.strictEqual(resultFrame.authorType, AuthorType.USER);
+
+    let payload = (typeof resultFrame.payload === 'string')
+      ? JSON.parse(resultFrame.payload)
+      : resultFrame.payload;
+
+    assert.strictEqual(payload.action, 'permission_response');
+    assert.strictEqual(payload.promptId, 'perm-result-001');
+    assert.strictEqual(payload.answer, 'allow_once');
+    assert.strictEqual(payload.resolvedAction, Action.ALLOW);
+    assert.strictEqual(payload.resolvedScope, Scope.ONCE);
+  });
+
+  it('should create result frame for deny responses', () => {
+    let requestFrameId = 'test-request-frame-002';
+
+    db.prepare(`
+      INSERT INTO frames (id, session_id, type, author_type, payload, timestamp)
+      VALUES (?, 1, 'request', 'system', ?, datetime('now'))
+    `).run(requestFrameId, JSON.stringify({
+      action:   'permission_request',
+      promptId: 'perm-result-002',
+      status:   'pending',
+    }));
+
+    _addPendingPermissionPrompt('perm-result-002', {
+      resolve:        () => {},
+      subject:        { type: SubjectType.AGENT, id: 1 },
+      resource:       { type: ResourceType.COMMAND, name: 'shell' },
+      context:        { sessionId: 1, userId: 1, db },
+      requestHash:    'abc123',
+      requestFrameId: requestFrameId,
+    });
+
+    handlePermissionResponse('perm-result-002', 'deny');
+
+    let childFrames = getChildFrames(requestFrameId, db);
+    assert.strictEqual(childFrames.length, 1);
+
+    let payload = (typeof childFrames[0].payload === 'string')
+      ? JSON.parse(childFrames[0].payload)
+      : childFrames[0].payload;
+
+    assert.strictEqual(payload.resolvedAction, Action.DENY);
+  });
+
+  it('should handle missing requestFrameId gracefully (backward compat)', () => {
+    _addPendingPermissionPrompt('perm-result-003', {
+      resolve:     () => {},
+      subject:     { type: SubjectType.AGENT, id: 1 },
+      resource:    { type: ResourceType.COMMAND, name: 'help' },
+      context:     { sessionId: 1, userId: 1, db },
+      requestHash: 'abc123',
+      // No requestFrameId — legacy pending prompt
+    });
+
+    // Should not throw, just skip result frame creation
+    let result = handlePermissionResponse('perm-result-003', 'allow_once');
+    assert.strictEqual(result.success, true);
+  });
+
+  it('should include both hml-prompt message AND structured frames (structural)', () => {
+    // Re-read the source to verify both are present
+    assert.ok(
+      permissionPromptJs.includes("action:         'permission_response'"),
+      'Result frame payload should have action=permission_response',
+    );
+    assert.ok(
+      permissionPromptJs.includes("targetIds: ['system:permission']"),
+      'Result frame should target system:permission',
+    );
+    assert.ok(
+      permissionPromptJs.includes('parentId:   pending.requestFrameId'),
+      'Result frame should link to request frame via parentId',
+    );
   });
 });

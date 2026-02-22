@@ -17,7 +17,9 @@ import {
   compileFrames,
   searchFrames,
   countSearchResults,
+  FrameType,
 } from '../lib/frames/index.mjs';
+import { handlePermissionResponse } from '../lib/permissions/prompt.mjs';
 
 const router = Router();
 
@@ -187,6 +189,73 @@ router.get('/:sessionId/frames/:frameId', (req, res) => {
   }
 
   res.json({ frame });
+});
+
+/**
+ * POST /api/sessions/:sessionId/frames/:frameId/respond
+ * Respond to an actionable frame (e.g., permission request).
+ *
+ * Body: { answer: string }
+ * Auth: Bearer token (session owner only)
+ *
+ * Supported actions:
+ *   - permission_request → calls handlePermissionResponse(promptId, answer)
+ */
+router.post('/:sessionId/frames/:frameId/respond', async (req, res) => {
+  const db        = getDatabase();
+  const sessionId = parseInt(req.params.sessionId, 10);
+  const frameId   = req.params.frameId;
+
+  // Verify session exists and belongs to user
+  const session = db.prepare(`
+    SELECT id FROM sessions WHERE id = ? AND user_id = ?
+  `).get(sessionId, req.user.id);
+
+  if (!session)
+    return res.status(404).json({ error: 'Session not found' });
+
+  // Load the frame
+  const frame = getFrame(frameId);
+
+  if (!frame || frame.sessionId !== sessionId)
+    return res.status(404).json({ error: 'Frame not found' });
+
+  // Must be a request frame
+  if (frame.type !== FrameType.REQUEST)
+    return res.status(400).json({ error: 'Frame is not a request type' });
+
+  // Validate answer
+  const { answer } = req.body;
+  if (!answer || typeof answer !== 'string')
+    return res.status(400).json({ error: 'Missing or invalid answer field' });
+
+  // Parse payload
+  let payload = frame.payload;
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return res.status(500).json({ error: 'Malformed frame payload' });
+    }
+  }
+
+  // Route by action type
+  if (payload.action === 'permission_request') {
+    let promptId = payload.promptId;
+
+    if (!promptId)
+      return res.status(400).json({ error: 'Frame has no promptId in payload' });
+
+    let result = handlePermissionResponse(promptId, answer);
+
+    if (!result.success)
+      return res.status(400).json({ error: result.error });
+
+    return res.json({ success: true });
+  }
+
+  // Unknown action type
+  return res.status(400).json({ error: `Unknown request action: ${payload.action}` });
 });
 
 export default router;
