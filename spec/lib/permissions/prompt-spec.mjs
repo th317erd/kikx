@@ -26,6 +26,9 @@ import {
   _addPendingPermissionPrompt,
   _clearPendingPermissionPrompts,
   PERMISSION_PROMPT_PREFIX,
+  createPermitBag,
+  checkPermitBag,
+  recordPermitBagGrant,
 } from '../../../server/lib/permissions/prompt.mjs';
 
 import {
@@ -579,5 +582,82 @@ describe('Cleanup utilities', () => {
     assert.strictEqual(getPendingPermissionPrompt('perm-a'), undefined);
     assert.strictEqual(getPendingPermissionPrompt('perm-b'), undefined);
     assert.strictEqual(getPendingPermissionPrompt('perm-c'), undefined);
+  });
+});
+
+// ============================================================================
+// Permit Bag Tests
+// ============================================================================
+
+describe('Permit bag: createPermitBag', () => {
+  it('should create an empty Map', () => {
+    let bag = createPermitBag();
+    assert.ok(bag instanceof Map);
+    assert.strictEqual(bag.size, 0);
+  });
+});
+
+describe('Permit bag: checkPermitBag', () => {
+  it('should return null when no grant exists', () => {
+    let bag = createPermitBag();
+    let result = checkPermitBag(bag, { type: 'agent', id: 1 }, { type: 'tool', name: 'websearch' });
+    assert.strictEqual(result, null);
+  });
+
+  it('should return null when permitBag is null', () => {
+    let result = checkPermitBag(null, { type: 'agent', id: 1 }, { type: 'tool', name: 'websearch' });
+    assert.strictEqual(result, null);
+  });
+
+  it('should return grant after recordPermitBagGrant', () => {
+    let bag = createPermitBag();
+    let subject  = { type: 'agent', id: 1 };
+    let resource = { type: 'tool', name: 'websearch' };
+
+    recordPermitBagGrant(bag, subject, resource);
+    let result = checkPermitBag(bag, subject, resource);
+
+    assert.ok(result);
+    assert.strictEqual(result.action, 'ALLOW');
+  });
+
+  it('should not match different resources', () => {
+    let bag = createPermitBag();
+    let subject = { type: 'agent', id: 1 };
+
+    recordPermitBagGrant(bag, subject, { type: 'tool', name: 'websearch' });
+
+    let result = checkPermitBag(bag, subject, { type: 'tool', name: 'shell' });
+    assert.strictEqual(result, null);
+  });
+
+  it('should not match different subjects', () => {
+    let bag = createPermitBag();
+    let resource = { type: 'tool', name: 'websearch' };
+
+    recordPermitBagGrant(bag, { type: 'agent', id: 1 }, resource);
+
+    let result = checkPermitBag(bag, { type: 'agent', id: 2 }, resource);
+    assert.strictEqual(result, null);
+  });
+});
+
+describe('Permit bag: recordPermitBagGrant', () => {
+  it('should no-op when permitBag is null', () => {
+    // Should not throw
+    recordPermitBagGrant(null, { type: 'agent', id: 1 }, { type: 'tool', name: 'websearch' });
+    assert.ok(true);
+  });
+
+  it('should allow multiple grants for different resources', () => {
+    let bag = createPermitBag();
+    let subject = { type: 'agent', id: 1 };
+
+    recordPermitBagGrant(bag, subject, { type: 'tool', name: 'websearch' });
+    recordPermitBagGrant(bag, subject, { type: 'tool', name: 'shell' });
+
+    assert.ok(checkPermitBag(bag, subject, { type: 'tool', name: 'websearch' }));
+    assert.ok(checkPermitBag(bag, subject, { type: 'tool', name: 'shell' }));
+    assert.strictEqual(bag.size, 2);
   });
 });

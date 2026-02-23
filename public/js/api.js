@@ -787,6 +787,9 @@ function framesToMessages(frames, compiled = null) {
         frameId:    frame.id,
       });
     } else if (frame.type === 'request') {
+      // Skip permission_request frames — the hml-prompt MESSAGE frame is the UI
+      if (payload.action === 'permission_request') continue;
+
       // Request frames (like websearch) can be rendered as special messages
       messages.push({
         id:         frame.id,
@@ -802,6 +805,9 @@ function framesToMessages(frames, compiled = null) {
         parentId:   frame.parentId,
       });
     } else if (frame.type === 'result') {
+      // Skip permission_response frames — handled internally
+      if (payload.action === 'permission_response') continue;
+
       // Result frames can be nested under their parent request
       messages.push({
         id:         frame.id,

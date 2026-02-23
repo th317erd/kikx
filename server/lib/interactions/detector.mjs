@@ -21,7 +21,7 @@ import { checkSystemMethodAllowed } from './functions/system.mjs';
 import { createRequestFrame, createResultFrame } from '../frames/broadcast.mjs';
 import { beforeTool, afterTool } from '../plugins/hooks.mjs';
 import { evaluate as evaluatePermission, Action as PermissionAction } from '../permissions/index.mjs';
-import { requestPermissionPrompt } from '../permissions/prompt.mjs';
+import { requestPermissionPrompt, checkPermitBag, recordPermitBagGrant } from '../permissions/prompt.mjs';
 
 // Regex to find <interaction> tag starts (with or without attributes)
 // Handles both <interaction> and <interaction type="...">, since LLMs sometimes
@@ -380,7 +380,21 @@ export async function executeInteractions(interactionBlock, context) {
     // If the permission engine cannot run (missing db, missing agentId),
     // the interaction is DENIED — security gates fail closed, never open.
     if (!context.senderId) {
-      if (!context.agentId || !context.db) {
+      // Check permit bag first — if already granted this request, skip permission engine
+      let permSubjectForBag = {
+        type: 'agent',
+        id:   context.agentId,
+      };
+      let permResourceForBag = {
+        type: interactionData.target_id === TARGETS.SYSTEM ? 'tool' : 'ability',
+        name: interactionData.target_property,
+      };
+      let bagGrant = checkPermitBag(context.permitBag, permSubjectForBag, permResourceForBag);
+
+      if (bagGrant) {
+        // Already granted this request — skip to execution
+        // Fall through to step 2+
+      } else if (!context.agentId || !context.db) {
         // Cannot evaluate permissions — deny for safety
         let reason = !context.db
           ? 'Permission check failed — no database available'
@@ -402,57 +416,28 @@ export async function executeInteractions(interactionBlock, context) {
         });
 
         continue;
-      }
+      } else {
+        let permSubject = {
+          type: 'agent',
+          id:   context.agentId,
+          name: context.agent?.name || `Agent #${context.agentId}`,
+        };
 
-      let permSubject = {
-        type: 'agent',
-        id:   context.agentId,
-        name: context.agent?.name || `Agent #${context.agentId}`,
-      };
+        let permResource = {
+          type: interactionData.target_id === TARGETS.SYSTEM ? 'tool' : 'ability',
+          name: interactionData.target_property,
+        };
 
-      let permResource = {
-        type: interactionData.target_id === TARGETS.SYSTEM ? 'tool' : 'ability',
-        name: interactionData.target_property,
-      };
+        let permContext = {
+          sessionId: context.sessionId ? parseInt(context.sessionId, 10) : null,
+          ownerId:   context.userId || null,
+        };
 
-      let permContext = {
-        sessionId: context.sessionId ? parseInt(context.sessionId, 10) : null,
-        ownerId:   context.userId || null,
-      };
+        try {
+          let permResult = evaluatePermission(permSubject, permResource, permContext, context.db);
 
-      try {
-        let permResult = evaluatePermission(permSubject, permResource, permContext, context.db);
-
-        if (permResult.action === PermissionAction.DENY) {
-          let denyReason = 'Denied by permission rule';
-
-          queueAgentMessage(context.sessionId, agentInteractionId, 'interaction_update', {
-            status: 'denied',
-            reason: denyReason,
-          });
-
-          results.push({
-            interaction_id:  agentInteractionId,
-            target_id:       interactionData.target_id,
-            target_property: interactionData.target_property,
-            status:          'denied',
-            reason:          denyReason,
-          });
-
-          continue;
-        }
-
-        if (permResult.action === PermissionAction.PROMPT) {
-          // requestPermissionPrompt creates the system message frame internally
-          // and returns a Promise that resolves when the user submits
-          let promptResult = await requestPermissionPrompt(permSubject, permResource, {
-            ...permContext,
-            userId: context.userId,
-            db:     context.db,
-          });
-
-          if (promptResult.action === PermissionAction.DENY) {
-            let denyReason = promptResult.reason || 'Denied by user';
+          if (permResult.action === PermissionAction.DENY) {
+            let denyReason = 'Denied by permission rule';
 
             queueAgentMessage(context.sessionId, agentInteractionId, 'interaction_update', {
               status: 'denied',
@@ -470,11 +455,42 @@ export async function executeInteractions(interactionBlock, context) {
             continue;
           }
 
-          // Permission granted — fall through to execution
-        }
+          if (permResult.action === PermissionAction.PROMPT) {
+            // requestPermissionPrompt creates the system message frame internally
+            // and returns a Promise that resolves when the user submits
+            let promptResult = await requestPermissionPrompt(permSubject, permResource, {
+              ...permContext,
+              userId: context.userId,
+              db:     context.db,
+            }, 0, interactionData.payload);
 
-        // action === 'allow' — fall through to execution
-      } catch (permError) {
+            if (promptResult.action === PermissionAction.DENY) {
+              let denyReason = promptResult.reason || 'Denied by user';
+
+              queueAgentMessage(context.sessionId, agentInteractionId, 'interaction_update', {
+                status: 'denied',
+                reason: denyReason,
+              });
+
+              results.push({
+                interaction_id:  agentInteractionId,
+                target_id:       interactionData.target_id,
+                target_property: interactionData.target_property,
+                status:          'denied',
+                reason:          denyReason,
+              });
+
+              continue;
+            }
+
+            // Record grant in permit bag so subsequent checks within this request skip
+            recordPermitBagGrant(context.permitBag, permSubjectForBag, permResourceForBag);
+
+            // Permission granted — fall through to execution
+          }
+
+          // action === 'allow' — fall through to execution
+        } catch (permError) {
         // Permission errors fail-safe to DENY — never allow on error
         console.error(`[Security] Permission evaluation error for '${interactionData.target_property}':`, permError.message);
 
@@ -492,6 +508,7 @@ export async function executeInteractions(interactionBlock, context) {
         });
 
         continue;
+      }
       }
     }
 

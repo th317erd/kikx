@@ -23,7 +23,7 @@ import { executePipeline } from '../lib/pipeline/index.mjs';
 import { getStartupAbilities } from '../lib/abilities/registry.mjs';
 import { checkConditionalAbilities, formatConditionalInstructions } from '../lib/abilities/index.mjs';
 import { evaluate as evaluatePermission, Action as PermissionAction } from '../lib/permissions/index.mjs';
-import { requestPermissionPrompt, isPermissionPrompt } from '../lib/permissions/prompt.mjs';
+import { requestPermissionPrompt, isPermissionPrompt, createPermitBag, checkPermitBag, recordPermitBagGrant } from '../lib/permissions/prompt.mjs';
 import { broadcastToSession } from '../lib/websocket.mjs';
 import { detectInteractions, executeInteractions, formatInteractionFeedback, searchWeb } from '../lib/interactions/index.mjs';
 import { checkCompaction } from '../lib/compaction.mjs';
@@ -564,6 +564,7 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
     let fullContent      = '';
     let executedElements = [];
     let chunkCount       = 0;
+    let permitBag        = createPermitBag();
 
     // Set up parser event handlers
     parser.on('text', (data) => {
@@ -660,49 +661,58 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
           let permContext   = { sessionId: sessionIdInt, ownerId: req.user.id };
           let db = getDatabase();
 
-          let permResult;
-          try {
-            permResult = evaluatePermission(permSubject, permResource, permContext, db);
-          } catch (permError) {
-            console.error('[Stream] Permission evaluation error for websearch:', permError.message);
-            permResult = { action: PermissionAction.DENY };
-          }
+          // Check permit bag first — if already granted this request, skip permission engine
+          let bagGrant = checkPermitBag(permitBag, permSubject, permResource);
+          if (bagGrant) {
+            console.log(`[Stream] T+${Date.now() - t0}ms: Websearch permitted by permit bag`);
+          } else {
+            let permResult;
+            try {
+              permResult = evaluatePermission(permSubject, permResource, permContext, db);
+            } catch (permError) {
+              console.error('[Stream] Permission evaluation error for websearch:', permError.message);
+              permResult = { action: PermissionAction.DENY };
+            }
 
-          console.log(`[Stream] T+${Date.now() - t0}ms: Permission check for websearch: ${permResult.action}`);
+            console.log(`[Stream] T+${Date.now() - t0}ms: Permission check for websearch: ${permResult.action}`);
 
-          if (permResult.action === PermissionAction.DENY) {
-            sendEvent('interaction_result', {
-              messageId,
-              interactionId:  pending.interactionId,
-              targetProperty: 'websearch',
-              status:         'denied',
-              result:         { error: 'Websearch denied by permission rule' },
-            });
-            pendingWebsearches.delete(data.id);
-            return;
-          }
-
-          if (permResult.action === PermissionAction.PROMPT) {
-            console.log(`[Stream] T+${Date.now() - t0}ms: Requesting permission for websearch`);
-            let promptResult = await requestPermissionPrompt(permSubject, permResource, {
-              sessionId: sessionIdInt,
-              userId:    req.user.id,
-              db:        db,
-            });
-
-            if (promptResult.action === PermissionAction.DENY) {
-              console.log(`[Stream] T+${Date.now() - t0}ms: Websearch denied by user`);
+            if (permResult.action === PermissionAction.DENY) {
               sendEvent('interaction_result', {
                 messageId,
                 interactionId:  pending.interactionId,
                 targetProperty: 'websearch',
                 status:         'denied',
-                result:         { error: `Websearch denied: ${promptResult.reason || 'User denied'}` },
+                result:         { error: 'Websearch denied by permission rule' },
               });
               pendingWebsearches.delete(data.id);
               return;
             }
-            console.log(`[Stream] T+${Date.now() - t0}ms: Websearch permitted by user`);
+
+            if (permResult.action === PermissionAction.PROMPT) {
+              console.log(`[Stream] T+${Date.now() - t0}ms: Requesting permission for websearch`);
+              let promptResult = await requestPermissionPrompt(permSubject, permResource, {
+                sessionId: sessionIdInt,
+                userId:    req.user.id,
+                db:        db,
+              }, 0, { query });
+
+              if (promptResult.action === PermissionAction.DENY) {
+                console.log(`[Stream] T+${Date.now() - t0}ms: Websearch denied by user`);
+                sendEvent('interaction_result', {
+                  messageId,
+                  interactionId:  pending.interactionId,
+                  targetProperty: 'websearch',
+                  status:         'denied',
+                  result:         { error: `Websearch denied: ${promptResult.reason || 'User denied'}` },
+                });
+                pendingWebsearches.delete(data.id);
+                return;
+              }
+              console.log(`[Stream] T+${Date.now() - t0}ms: Websearch permitted by user`);
+
+              // Record grant in permit bag so interaction loop doesn't re-prompt
+              recordPermitBagGrant(permitBag, permSubject, permResource);
+            }
           }
 
           // Permission granted (allow rule, or user approved) — execute websearch
@@ -969,6 +979,7 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
           agent:     { name: session.agent_name },
           dataKey:   dataKey,
           db:        getDatabase(),
+          permitBag: permitBag,
         };
 
         // Agentic loop - continue until no more interactions or max iterations
@@ -982,6 +993,31 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
 
         while (currentBlock && iteration < maxIterations) {
           iteration++;
+
+          // Filter out websearch interactions that were already executed by the stream parser
+          if (executedElements.length > 0) {
+            let executedQueries = new Set(
+              executedElements
+                .filter(e => e.element?.type === 'websearch')
+                .map(e => e.element?.content?.trim())
+            );
+
+            if (executedQueries.size > 0) {
+              currentBlock.interactions = currentBlock.interactions.filter(i => {
+                if (i.target_property === 'websearch' && executedQueries.has(i.payload?.query)) {
+                  console.log('[Stream] Skipping websearch interaction — already executed by stream parser');
+                  return false;
+                }
+                return true;
+              });
+
+              if (currentBlock.interactions.length === 0) {
+                currentBlock = null;
+                continue;
+              }
+            }
+          }
+
           debug(`Interaction loop iteration ${iteration}`, { count: currentBlock.interactions.length });
           debug(`Current content (first 200 chars):`, currentContent.slice(0, 200));
 

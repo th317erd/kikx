@@ -63,13 +63,13 @@ export function isPermissionPrompt(promptId) {
  * @param {number} [timeout]         - Timeout in ms (0 = default 5min)
  * @returns {Promise<{action: string, scope?: string, reason?: string}>}
  */
-export async function requestPermissionPrompt(subject, resource, context, timeout = 0) {
+export async function requestPermissionPrompt(subject, resource, context, timeout = 0, details = null) {
   let effectiveTimeout = timeout || DEFAULT_TIMEOUT;
   let promptId         = generatePromptId();
   let requestHash      = generatePermissionHash(subject, resource);
 
   // Build descriptive message
-  let description  = formatDescription(subject, resource);
+  let description  = formatDescription(subject, resource, details);
   let promptMarkup = buildPromptMarkup(promptId, requestHash, description);
 
   // Create system message frame with the hml-prompt.
@@ -93,6 +93,7 @@ export async function requestPermissionPrompt(subject, resource, context, timeou
       subject:       subject,
       resource:      resource,
       description:   description,
+      details:       details || null,
       options:       ['allow_once', 'allow_session', 'allow_always', 'deny'],
       defaultOption: 'deny',
       status:        'pending',
@@ -276,8 +277,18 @@ function generatePermissionHash(subject, resource) {
  * @param {Object} resource - { type, name }
  * @returns {string}
  */
-function formatDescription(subject, resource) {
+function formatDescription(subject, resource, details = null) {
   let subjectDesc = subject.name || `${subject.type} #${subject.id}`;
+
+  if (details) {
+    if (details.query)
+      return `**${subjectDesc}** wants to search the web for "${details.query}"`;
+    if (details.url)
+      return `**${subjectDesc}** wants to fetch \`${details.url}\``;
+    if (details.command)
+      return `**${subjectDesc}** wants to run command: \`${details.command}${details.args ? ' ' + details.args : ''}\``;
+  }
+
   let resourceDesc = (resource.name)
     ? `\`/${resource.name}\` (${resource.type})`
     : `all ${resource.type}s`;
@@ -328,6 +339,54 @@ function mapAnswerToActionScope(answer) {
   }
 }
 
+// ============================================================================
+// Permit Bag — request-scoped permission grants
+// ============================================================================
+// When a user grants "allow once", the grant only resolves the current prompt
+// but doesn't create a persistent rule. Within the same HTTP request, if
+// both the streaming parser path and the interaction loop path check
+// permissions for the same resource, the second check would prompt again.
+//
+// The permit bag is a request-local Map that records allow_once grants so
+// subsequent checks within the same request skip straight to execution.
+// It's created at the start of the SSE handler and garbage collected when
+// the response ends.
+
+/**
+ * Create a new permit bag (request-scoped permission cache).
+ * @returns {Map}
+ */
+export function createPermitBag() {
+  return new Map();
+}
+
+/**
+ * Check if a grant exists in the permit bag.
+ *
+ * @param {Map|null} permitBag - The permit bag (may be null)
+ * @param {Object} subject - { type, id }
+ * @param {Object} resource - { type, name }
+ * @returns {{ action: string }|null} Grant result or null if no grant
+ */
+export function checkPermitBag(permitBag, subject, resource) {
+  if (!permitBag) return null;
+  let key = `${subject.type}:${subject.id}:${resource.type}:${resource.name}`;
+  return permitBag.has(key) ? { action: 'ALLOW' } : null;
+}
+
+/**
+ * Record a grant in the permit bag.
+ *
+ * @param {Map|null} permitBag - The permit bag (may be null)
+ * @param {Object} subject - { type, id }
+ * @param {Object} resource - { type, name }
+ */
+export function recordPermitBagGrant(permitBag, subject, resource) {
+  if (!permitBag) return;
+  let key = `${subject.type}:${subject.id}:${resource.type}:${resource.name}`;
+  permitBag.set(key, 'ALLOW');
+}
+
 export { PERMISSION_PROMPT_PREFIX, generatePermissionHash };
 
 export default {
@@ -336,4 +395,7 @@ export default {
   handlePermissionResponse,
   cancelPermissionPrompt,
   getPendingPermissionPrompt,
+  createPermitBag,
+  checkPermitBag,
+  recordPermitBagGrant,
 };
