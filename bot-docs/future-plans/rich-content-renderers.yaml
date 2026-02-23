@@ -1,0 +1,48 @@
+# Rich Content Renderer Implementations
+# Deferred from: Phase 8 (File Uploads, Avatars, Rich Content)
+# Priority: Low
+# Complexity: Varies per renderer
+
+summary: >
+  Concrete renderer implementations for custom content types like maps,
+  charts, diagrams, etc. The extension point API exists — this is about
+  building actual renderers as plugins.
+
+current_state: >
+  The content type registry (server/lib/content/index.mjs) supports
+  registerContentType() with clientComponent/clientScript fields.
+  Built-in types: text, markdown, code, image, file. No custom
+  renderers exist yet.
+
+requirements:
+  - Each renderer is a plugin (not core)
+  - Plugin registers content type + provides client-side web component
+  - Server-side transformContent() for any preprocessing
+  - Fallback rendering for unknown types (show raw content as code block)
+  - Examples to build first:
+    - 'map' — renders lat/lng as an interactive map (Leaflet/Mapbox)
+    - 'chart' — renders data as Chart.js visualization
+    - 'diagram' — renders Mermaid or D3 diagrams
+    - 'table' — renders structured data as sortable table
+
+design_notes: >
+  Each renderer plugin would follow the pattern:
+    1. Register content type with registerContentType()
+    2. Provide a web component class (extends HTMLElement)
+    3. Optionally provide a server-side transform
+    4. Client loads component script via clientScript URL
+
+  Keep renderers lazy-loaded — only fetch the component JS when a frame
+  with that content type is actually rendered in the viewport.
+
+files:
+  - server/plugins/hero-plugin-map/          # Map renderer
+  - server/plugins/hero-plugin-chart/        # Chart renderer
+  - server/plugins/hero-plugin-diagram/      # Diagram renderer
+  - public/js/components/hero-content-*/     # Client web components
+
+tests:
+  - Plugin registers content type on load
+  - Unknown content type falls back to code block
+  - Client component renders from payload data
+  - Plugin unload deregisters content type

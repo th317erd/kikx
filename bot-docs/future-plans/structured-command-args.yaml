@@ -1,0 +1,41 @@
+# Structured Command Arguments
+# Deferred from: Phase 2 (Permissions System)
+# Priority: Medium
+# Complexity: Medium-High
+
+summary: >
+  All commands express operations as structured, parseable objects instead
+  of raw strings. Enables fine-grained permission matching on command
+  arguments rather than just command names.
+
+current_state: >
+  Commands are parsed as `/name arg1 arg2 ...` with args as raw strings.
+  Permission rules can only match on command name (resource_name), not
+  on specific arguments. A rule allowing /shell can't distinguish between
+  `ls` and `rm -rf /`.
+
+requirements:
+  - Define a structured schema for each command's arguments
+  - /shell example: [{ execute: 'cd', args: ['dir'] }, { op: '&&', execute: 'ls', args: ['-la'] }]
+  - Permission conditions can match on structured fields
+  - Backward compatible — raw string still works, structured is opt-in
+  - Each command registers its argument schema alongside its handler
+
+design_notes: >
+  The permission engine already supports JSON conditions matching via
+  matchConditions(). The missing piece is commands producing structured
+  payloads that conditions can match against. Start with /shell since
+  it's the highest-risk command, then expand to others.
+
+files:
+  - server/lib/commands/index.mjs        # Command schema registration
+  - server/lib/commands/shell.mjs        # Structured /shell parser
+  - server/lib/permissions/index.mjs     # Conditions matching on args
+  - server/lib/messaging/command-handler.mjs  # Pass structured args to evaluate()
+
+tests:
+  - /shell "ls -la" parses to structured form
+  - /shell "cd dir && rm -rf ." parses as 2-step chain
+  - Permission condition {execute: 'rm'} blocks rm commands
+  - Permission condition {execute: 'ls'} allows ls but not rm
+  - Raw string fallback works when no schema registered

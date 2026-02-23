@@ -1,0 +1,45 @@
+# Message Visibility / Screenshots
+# Deferred from: Phase 8 (File Uploads, Avatars, Rich Content)
+# Priority: Low
+# Complexity: High
+
+summary: >
+  Headless browser captures rendered message content as screenshots.
+  Screenshots encoded as base64 in image frames and passed to agent
+  vision APIs for visual understanding of rendered content.
+
+current_state: >
+  No screenshot capability exists. Agents receive text/HTML content
+  only. They cannot "see" how content renders in the browser.
+
+requirements:
+  - Puppeteer headless capture of rendered DOM elements
+  - Screenshot encoded as base64 in an image frame
+  - Image frame passed to agent vision API (multimodal)
+  - Configurable viewport size and element selector
+  - Rate limiting (screenshots are expensive)
+  - Should be a PLUGIN, not core — heavy dependency (headless browser)
+
+design_notes: >
+  Recommend implementing as a plugin that registers:
+  1. An ability: 'screenshot' — agent requests screenshot of current view
+  2. A content type: 'image/screenshot' — rendered in chat as image
+  3. A hook: afterAgentResponse — optionally auto-screenshot on certain triggers
+
+  The plugin would bundle Puppeteer as a dependency, keeping the core
+  app lightweight. Users who don't need screenshots don't pay the cost.
+
+  Alternative: use an external screenshot service API instead of
+  bundling Puppeteer. Simpler but adds external dependency.
+
+files:
+  - server/plugins/hero-plugin-screenshots/   # Plugin directory
+  - server/plugins/hero-plugin-screenshots/index.mjs
+  - server/plugins/hero-plugin-screenshots/capture.mjs
+
+tests:
+  - Screenshot capture of a rendered DOM element
+  - Base64 encoding produces valid image data
+  - Agent receives image in multimodal context
+  - Rate limiting prevents screenshot spam
+  - Plugin loads/unloads cleanly

@@ -1,0 +1,30 @@
+# Plugin Auto-Reload (fs.watch)
+# Deferred from: Phase 4 (Commands + Plugin Hardening)
+# Priority: Low
+# Complexity: Low
+
+summary: >
+  Wire the existing watchPluginsDirectory() function into server startup
+  so plugins auto-reload when files change on disk.
+
+current_state: >
+  The reloadPlugin() and watchPluginsDirectory() functions exist in the
+  plugin loader but are never called from the server startup path.
+  Hot-reload works if called manually but isn't automatic.
+
+requirements:
+  - Call watchPluginsDirectory() during server startup
+  - Debounce file change events (fs.watch fires multiple times)
+  - Only reload changed plugin, not all plugins
+  - Log reload events clearly
+  - Graceful shutdown of watcher on server stop
+  - Dependency-safe reload (if A depends on B, reload B first)
+
+files:
+  - server/index.mjs                     # Wire watcher on startup
+  - server/lib/plugins/loader.mjs        # Already has watchPluginsDirectory()
+
+tests:
+  - Modify plugin file on disk -> auto-reloaded within debounce window
+  - Watcher cleaned up on server shutdown
+  - Rapid file changes debounced to single reload

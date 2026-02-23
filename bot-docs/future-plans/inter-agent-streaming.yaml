@@ -1,0 +1,52 @@
+# Inter-Agent Streaming
+# Deferred from: Phase 3 (Agent Roles & Coordination)
+# Priority: Medium
+# Complexity: High
+
+summary: >
+  Member agent responses streamed back to the coordinator in real-time
+  instead of waiting for the full response. Enables coordinators to
+  react to partial responses and provides better UX for long delegations.
+
+current_state: >
+  DelegateFunction calls agent.sendMessage() which returns the complete
+  response. The coordinator blocks until the member finishes. For long
+  tasks (research, code generation), this means potentially 2+ minutes
+  of silence.
+
+requirements:
+  - Member agent responses stream as partial frames (type: 'update')
+  - Coordinator receives streaming updates via a callback or async iterator
+  - Coordinator can interrupt/cancel a member's response mid-stream
+  - Client shows member response building in real-time within the session
+  - Streaming frames attributed to the member agent (not coordinator)
+  - Timeout still applies (120s) but resets on each chunk received
+
+design_notes: >
+  The agent base class (server/lib/agents/base-agent.mjs) likely needs
+  a sendMessageStream() method that returns an async iterator. The
+  DelegateFunction would consume this iterator, creating update frames
+  as chunks arrive.
+
+  The existing streaming infrastructure in messages-stream.mjs (SSE)
+  handles user-to-agent streaming. This is agent-to-agent, which is
+  a different path — frames are the transport, not SSE.
+
+  Consider whether the coordinator should see raw streaming tokens or
+  only complete sentences/paragraphs. Raw tokens are noisy but fast;
+  buffered chunks are cleaner but add latency.
+
+dependencies:
+  - Agent base class streaming API
+  - Frame update broadcasting
+
+files:
+  - server/lib/agents/base-agent.mjs         # Add sendMessageStream()
+  - server/lib/interactions/functions/delegate.mjs  # Consume stream
+  - server/lib/frames/broadcast.mjs          # Streaming update frames
+
+tests:
+  - Member streams partial response -> coordinator receives chunks
+  - Coordinator cancels mid-stream -> member stops
+  - Timeout resets on chunk received (no false timeout on slow generation)
+  - Complete response assembled from chunks matches full response

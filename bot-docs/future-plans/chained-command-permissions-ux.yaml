@@ -1,0 +1,50 @@
+# Chained Command Permissions UX
+# Deferred from: Phase 7 (Server-Authoritative Hardening)
+# Priority: Medium
+# Complexity: High
+
+summary: >
+  Visual approval chain for multi-step commands. When an agent runs
+  `a | b && c | d`, show the full chain in the approval prompt with
+  per-step approve/deny toggles.
+
+current_state: >
+  Permission prompts show one command at a time. Chained commands
+  (piped, &&, ||) are treated as a single /shell invocation. Users
+  approve or deny the entire chain — no granularity.
+
+requirements:
+  - Parse command chains into individual steps (pipe, &&, ||, ;)
+  - Display each step as a row in the approval prompt
+  - Per-step approve/deny toggle (defaults from existing permission rules)
+  - Risk coloring: green (read-only like ls, cat), yellow (writes), red (deletes)
+  - "Approve All" / "Deny All" bulk buttons
+  - "Trust this pattern" option creates a permanent rule for recurring patterns
+  - Collapsible args for long command arguments
+  - Chain hash stored in approval frame for replay prevention
+  - Partial approval: approved steps execute, denied steps skipped
+
+design_notes: >
+  Requires the structured command arguments feature as a prerequisite.
+  The /shell parser needs to decompose chains into steps. Each step
+  gets its own permission evaluation. Risk classification can start
+  with a simple allowlist (read-only commands) and default to yellow.
+
+  The UX challenge is rendering this in hml-prompt. May need a new
+  prompt type ('chain') or a custom content type renderer.
+
+dependencies:
+  - structured-command-args.yaml
+
+files:
+  - server/lib/commands/shell.mjs        # Chain parser
+  - server/lib/permissions/chain.mjs     # Per-step evaluation
+  - server/lib/permissions/risk.mjs      # Risk classification
+  - public/js/components/hml-prompt/     # Chain approval UI
+
+tests:
+  - "ls | wc" parsed as 2 steps, both green
+  - "rm -rf / && echo done" parsed as 2 steps, first red, second green
+  - User approves step 1, denies step 2 -> only step 1 executes
+  - "Trust this pattern" creates permanent rule matching the pattern
+  - Chain hash prevents replay of approval for different chain

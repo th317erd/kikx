@@ -1,136 +1,25 @@
-# Hero Client Migration - Phase 1 Complete
-
-## Latest: Mobile UI Enhancements
-
-Added mobile-friendly UI with responsive design:
-
-### New Components
-- `<hero-status-bar>` - Fixed bottom bar showing connection status and spend tracking
-
-### Mobile Features (≤640px)
-- Hamburger menu replaces header action buttons
-- Centered logo/title in header
-- Mobile dropdown menu (Agents, Abilities, New Session, Logout)
-- FAB "+" button for New Session (sessions view)
-
-### Spend Display
-- 3-digit padding format: `$000.00`
-- Service/Session show "N/A" when not in session (grayed out)
-
-### Files Added
-- `public/js/components/hero-status-bar.js`
-- `public/css/status-bar.css`
-
-### Files Modified
-- `hero-header.js` - Added hamburger menu and mobile dropdown
-- `hero-sidebar.js` - Added FAB button
-- `layout.css` - Mobile responsive styles
-- `sessions.css` - FAB button styles
-- `base.css` - Status bar spacing
-- `index.html` - Added `<hero-status-bar>`
-
----
-
-## Summary
-
-Successfully migrated key UI components to Mythix-UI web components.
-
-### Components Replaced
-
-| Original | Component | Status |
-|----------|-----------|--------|
-| Sessions header | `<hero-header>` | Complete |
-| Chat header | `<hero-header>` | Complete |
-| Sessions list | `<hero-sidebar>` | Complete |
-| Message input | `<hero-input>` | Complete |
-| Messages container | `<hero-chat>` | Pending |
-| Modals | `<hero-modal-*>` | Pending |
-
-### Event Wiring Complete
-
-Component events wired to existing app.js handlers:
-- `navigate` → handleRoute
-- `logout` → handleLogout
-- `show-modal` → showAbilitiesModal, showAgentsModal, showNewSessionModal, showNewAgentModal
-- `clear-messages` → handleClearMessages
-- `toggle-hidden` → renderMessages
-- `send` → handleSendMessageContent
-- `command` → handleCommand
-- `clear` → handleClearMessages
-
----
-
-## Files Modified
-
-```
-public/index.html
-  - Wrapped with <hero-app>
-  - Added <hero-websocket>
-  - Replaced headers with <hero-header>
-  - Replaced sessions list with <hero-sidebar>
-  - Replaced message input with <hero-input>
-
-public/js/app.js
-  - Added component event listeners
-  - Added null checks for replaced elements
-  - Added handleSendMessageContent function
-
-public/js/components/hero-header.js
-  - Added newSession() method
-  - Added clearMessages() method
-  - Added show hidden toggle handler
-  - Added btn classes to buttons
-
-server/index.mjs
-  - Added /mythix-ui static route
-  - Added /hero/* static routes
-  - Added /components-test route
-
-package.json
-  - Added mythix-ui-core dependency
-```
-
----
-
-## Test Results
-**505 tests passing** (247 component + 258 server tests)
-
----
-
-## Remaining Work (Future)
-
-1. **Replace messages container** - Use `<hero-chat>` for message rendering
-   - Complex due to HML rendering, streaming, tool use display
-
-2. **Replace modals** - Use `<hero-modal-*>` components
-   - Session modal, Agent modal, Ability modal
-
-3. **Remove old code** - Clean up replaced vanilla JS after full migration
-
----
-
-## Architecture
-
-```
-<hero-app id="app">
-  <hero-websocket />
-
-  <!-- Login View -->
-  <div data-view="login">...</div>
-
-  <!-- Sessions View -->
-  <div data-view="sessions">
-    <hero-header />
-    <hero-sidebar />
-  </div>
-
-  <!-- Chat View -->
-  <div data-view="chat">
-    <hero-header />
-    <div id="messages">...</div>  <!-- Future: <hero-chat> -->
-    <hero-input />
-  </div>
-
-  <!-- Modals (existing HTML, future: <hero-modal-*>) -->
-</hero-app>
-```
+Problems (in order of priority):
+1. The "Settings" page has no "back" button in the header-bar (/home/wyatt/Pictures/Screenshots/Screenshot_20260221_172008.png)
+<!--
+Thoughts: We really must ALWAYS have a back button here. Please also implement "window.history", so pushing the back button in the browser is the same as pushing the "back" button in the header-bar.
+-->
+2. The "Settings" page is completely blank... it contains no content.
+<!--
+Thoughts: Maybe we should make an "tests.isVisible" helper method inside JSDOM, such that this method will scane the "cssStyles" compiled styles on each element to detect if it is actually visible or not? We could also make "existence" selectors a test, yes?
+-->
+3. I was unable to answer all hml-prompts... not for lack of trying (/home/wyatt/Pictures/Screenshots/Screenshot_20260221_171603.png). The number slider for interovert or extrovert (an hml-prompt number slider question) was a 5 in a range of 1-10. The problem is that I didn't touch it, and so 'Submit' skipped it. Any question that has a "default answer" like this should just submit the "default answer" if the user selects nothing.
+<!--
+Appeared to be working great. I used another number slider that changed color when I interacted with it (love that), and DID submit its answer. So, obviously submitting an answer works, you just have a bug somewhere where the default value isn't captured.
+-->
+4. The "time" field type for hml-prompts is broken (/home/wyatt/Pictures/Screenshots/Screenshot_20260221_171549.png). It has a pretty nifty selector, and I liked that, but even though I selected a specific time, and it selected it properly, it was not captured (and instead was reset to nothing).
+<!-- 
+It works great, up until I press 'Submit'. Then it was reset, and no answer was given to the agent.
+ -->
+5. The scrollbars in modals are styled wrong (/home/wyatt/Pictures/Screenshots/Screenshot_20260221_171517.png). They are the browser native style. They should be the same style as all other scrollbars in the app.
+<!-- 
+This was working before... now it isn't.
+-->
+6. The "Ignore" and "Submit" buttons should be the same size as the buttons in the header-bar.
+7. Color contrast is bad: (/home/wyatt/Pictures/Screenshots/Screenshot_20260221_171631.png) Let's make sure that we use WHITE text on all messages, unless a certain contrast ratio with the background says the text needs to flip/invert.
+8. The username text should also have the same ratio.
+9. Remove all default "system" "abilities" (the default entities themselves, only)... but do not remove the abilities system itself... We want abilities, and we will expand upon this system in the future. But all of these items/entities have always been commands or functions. Not abilities. This was a misunderstanding when we built the code at first. Let's leave the "system" tab, inside the modal, and all of that. "system" abilities will come from plugins.

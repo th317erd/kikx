@@ -1,0 +1,31 @@
+# Agent Avatar Picker UI
+# Deferred from: Phase 8 (File Uploads, Avatars, Rich Content)
+# Priority: Low
+# Complexity: Low
+
+summary: >
+  Avatar selection UI in the create/edit agent modal. Users can pick
+  from a gallery of preset avatars or upload a custom one.
+
+current_state: >
+  Agents get deterministic SVG avatars generated from their name hash
+  (initials + color). The avatar_url column exists on agents. Custom
+  avatars can be set via API but there's no UI for it.
+
+requirements:
+  - Avatar gallery in create-agent and edit-agent modals
+  - Preset options: generated SVG (current default), bundled icon set
+  - Upload option: crop/resize to square, store via uploads API
+  - Preview before save
+  - Avatar displayed in session participant list and message headers
+
+files:
+  - public/js/components/hero-modal-create-agent/   # Add avatar picker section
+  - public/js/components/hero-avatar-picker/         # New component (gallery + upload)
+  - server/lib/avatars.mjs                           # Already has generation logic
+
+tests:
+  - Gallery renders preset avatars
+  - Clicking preset updates agent avatar_url
+  - Upload flow: select file -> crop -> preview -> save
+  - Saved avatar appears in chat messages

@@ -1,0 +1,39 @@
+# Participant List Sidebar
+# Deferred from: Phase 1 (Multi-party Sessions) / Phase 3
+# Priority: Medium
+# Complexity: Low
+
+summary: >
+  Collapsible sidebar in the chat view showing all session participants
+  with their roles, aliases, online status, and quick actions.
+
+current_state: >
+  The /participants command shows participants as text output. There is
+  no persistent visual indicator of who is in the session. The session
+  header shows the session name but not the participant list.
+
+requirements:
+  - Sidebar panel (collapsible, right side or drawer)
+  - Show all participants: avatar, name, alias, role badge
+  - Online/offline indicator (from WebSocket connection status)
+  - Quick actions per participant:
+    - @mention (inserts @alias into input)
+    - Promote to coordinator (if user is session owner)
+    - Kick from session (if user is session owner)
+    - View profile/info
+  - Participant count badge on toggle button
+  - Updates in real-time via WebSocket (participant joins/leaves)
+
+files:
+  - public/js/components/hero-participants/hero-participants.js
+  - public/js/components/hero-participants/hero-participants.html
+  - public/js/components/hero-chat/hero-chat.js    # Toggle button + panel slot
+  - server/lib/websocket.mjs                       # participant_joined/left events
+
+tests:
+  - Sidebar renders all session participants
+  - Role badges display correctly (coordinator, member)
+  - Alias shown when set
+  - @mention click inserts into input
+  - Real-time update when participant joins/leaves
+  - Sidebar toggle preserves state across renders

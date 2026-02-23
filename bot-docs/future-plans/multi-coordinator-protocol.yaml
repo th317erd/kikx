@@ -1,0 +1,56 @@
+# Multiple Coordinator Discussion Protocol
+# Deferred from: Phase 3 (Agent Roles & Coordination)
+# Priority: Low
+# Complexity: Very High
+
+summary: >
+  When multiple agents have coordinator role in a session, they discuss
+  via frames before one responds to the user. Enables "panel discussion"
+  style interactions where multiple AI perspectives collaborate.
+
+current_state: >
+  Sessions support multiple coordinators via the role field on
+  session_participants. However, only the first coordinator found by
+  loadSessionWithAgent() actually responds. Additional coordinators
+  are effectively ignored.
+
+requirements:
+  - All coordinators receive unaddressed user messages
+  - Coordinators exchange frames (visible to user) to discuss approach
+  - One coordinator claims the response (or they synthesize jointly)
+  - Maximum exchange rounds configurable (default: 3 rounds)
+  - User can @mention a specific coordinator to bypass discussion
+  - Discussion frames visually distinct from direct responses
+  - Deadlock prevention: if no coordinator claims within timeout, first responds
+
+design_notes: >
+  This is architecturally complex. Options:
+
+  1. Sequential: Coordinator A responds first, B sees A's response and
+     adds/corrects. Simple but slow and doesn't feel like discussion.
+
+  2. Parallel + merge: Both respond simultaneously, system merges.
+     Fast but merge is AI-hard.
+
+  3. Turn-based discussion: A proposes, B critiques, A revises, then
+     final response. Most natural but requires orchestration logic.
+
+  Option 3 is recommended. The orchestrator would be a new system-level
+  function (like DelegateFunction) that manages the discussion rounds.
+
+  Key risk: token cost. Each discussion round is a full API call per
+  coordinator. A 3-round discussion with 2 coordinators = 6 API calls
+  per user message.
+
+files:
+  - server/lib/interactions/functions/discuss.mjs   # Discussion orchestrator
+  - server/lib/messaging/session-setup.mjs          # Multi-coordinator detection
+  - server/lib/pipeline/context.mjs                 # Discussion-aware context
+
+tests:
+  - Two coordinators receive same message
+  - Discussion round produces frames visible to user
+  - Final response attributed to claiming coordinator
+  - @mention bypasses discussion, routes directly
+  - Timeout triggers fallback to first coordinator
+  - Token cost tracked per discussion round
