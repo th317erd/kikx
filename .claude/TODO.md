@@ -41,6 +41,11 @@
 - [x] `allow_once` no longer creates persistent rule (was effectively "allow twice")
 - [x] Applied to both streaming and non-streaming endpoints
 
+## Phase 9: Submit Button Listener Accumulation Fix
+- [x] `_addPromptBatchButtons` in hero-chat.js added duplicate click listeners on re-renders
+- [x] Added `data-wired` guard to prevent duplicate listener registration
+- [x] Submit button now fires once (was firing 6579+ times causing runaway `updatePromptInState` loop)
+
 ## Verification
-- [x] `npm test` — 2349 tests, 0 failures
-- [ ] Browser smoke test (last)
+- [x] `npm test` — 2335 tests, 0 failures
+- [x] Browser smoke test: permission prompt → allow once → websearch → agent response with weather links

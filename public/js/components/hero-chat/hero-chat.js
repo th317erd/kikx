@@ -951,28 +951,34 @@ export class HeroChat extends HeroComponent {
 
     footerActions.style.display = 'flex';
 
-    // Wire click handlers on existing buttons
+    // Wire click handlers on existing buttons (only once — guard against re-renders)
     let submitBtn = footerActions.querySelector('.prompt-batch-submit');
     let ignoreBtn = footerActions.querySelector('.prompt-batch-ignore');
 
-    submitBtn.addEventListener('click', () => {
-      if (typeof window.submitPromptBatch === 'function')
-        window.submitPromptBatch(frameId);
+    if (!submitBtn.dataset.wired) {
+      submitBtn.dataset.wired = 'true';
+      submitBtn.addEventListener('click', () => {
+        if (typeof window.submitPromptBatch === 'function')
+          window.submitPromptBatch(frameId);
 
-      // Hide buttons after action
-      footerActions.style.display = 'none';
-    });
+        // Hide buttons after action
+        footerActions.style.display = 'none';
+      });
+    }
 
-    ignoreBtn.addEventListener('click', () => {
-      if (typeof window.ignorePromptBatch === 'function')
-        window.ignorePromptBatch(frameId);
+    if (!ignoreBtn.dataset.wired) {
+      ignoreBtn.dataset.wired = 'true';
+      ignoreBtn.addEventListener('click', () => {
+        if (typeof window.ignorePromptBatch === 'function')
+          window.ignorePromptBatch(frameId);
 
-      // Mark prompts as ignored visually
-      prompts.forEach((p) => p.setAttribute('ignored', ''));
+        // Mark prompts as ignored visually
+        prompts.forEach((p) => p.setAttribute('ignored', ''));
 
-      // Hide buttons after action
-      footerActions.style.display = 'none';
-    });
+        // Hide buttons after action
+        footerActions.style.display = 'none';
+      });
+    }
 
     // Setup Enter-to-tab-forward focus management
     this._setupPromptFocusChain(element, prompts, submitBtn);
