@@ -324,7 +324,7 @@ describe('PERMUI-003: Permission rule creation', () => {
     assert.strictEqual(rules[0].sessionId, 1);
   });
 
-  it('should create once-scoped rule for allow_once', () => {
+  it('should NOT create persistent rule for allow_once (prompt resolution is the grant)', () => {
     _addPendingPermissionPrompt('perm-rule-003', {
       resolve:     () => {},
       subject:     { type: SubjectType.AGENT, id: 1 },
@@ -335,9 +335,11 @@ describe('PERMUI-003: Permission rule creation', () => {
 
     handlePermissionResponse('perm-rule-003', 'allow_once');
 
+    // No persistent rule — the prompt resolution itself IS the one-time grant.
+    // Creating a persistent 'once' rule would be consumed by the NEXT evaluation,
+    // not the current one, effectively making "allow once" into "allow twice".
     let rules = listRules({ ownerId: 1 }, db);
-    assert.strictEqual(rules.length, 1);
-    assert.strictEqual(rules[0].scope, Scope.ONCE);
+    assert.strictEqual(rules.length, 0);
   });
 
   it('should NOT create rule for deny', () => {
@@ -408,7 +410,7 @@ describe('INT-003: Created permission rule integrates with evaluate()', () => {
     assert.strictEqual(result.action, Action.ALLOW);
   });
 
-  it('should consume once-scoped rule after first evaluation', () => {
+  it('should NOT create a once-scoped rule (no rule to evaluate)', () => {
     _addPendingPermissionPrompt('perm-eval-003', {
       resolve:     () => {},
       subject:     { type: SubjectType.AGENT, id: 1 },
@@ -418,6 +420,32 @@ describe('INT-003: Created permission rule integrates with evaluate()', () => {
     });
 
     handlePermissionResponse('perm-eval-003', 'allow_once');
+
+    // No rule was created — allow_once is a one-time prompt grant,
+    // not a persistent rule.  Subsequent evaluations should default to PROMPT.
+    let result = evaluate(
+      { type: SubjectType.AGENT, id: 1 },
+      { type: ResourceType.COMMAND, name: 'export' },
+      { sessionId: 1, ownerId: 1 },
+      db,
+    );
+    assert.strictEqual(result.action, Action.PROMPT);
+  });
+
+  it('should consume once-scoped rule after first evaluation (direct createRule)', () => {
+    // Test that the permission engine's ONCE consumption logic still works
+    // when rules are created directly (e.g., via admin API or import)
+    createRule({
+      ownerId:      1,
+      sessionId:    null,
+      subjectType:  SubjectType.AGENT,
+      subjectId:    1,
+      resourceType: ResourceType.COMMAND,
+      resourceName: 'export',
+      action:       Action.ALLOW,
+      scope:        Scope.ONCE,
+      priority:     0,
+    }, db);
 
     // First evaluation — should allow and consume the rule
     let result1 = evaluate(
@@ -531,10 +559,10 @@ describe('PERMUI-001: Permission prompt module structure', () => {
     assert.ok(permissionPromptJs.includes('value="deny"'), 'Should have deny option');
   });
 
-  it('should create system message frame via createAgentMessageFrame', () => {
+  it('should create system message frame via createSystemMessageFrame', () => {
     assert.ok(
-      permissionPromptJs.includes('createAgentMessageFrame'),
-      'Should use createAgentMessageFrame to broadcast'
+      permissionPromptJs.includes('createSystemMessageFrame'),
+      'Should use createSystemMessageFrame to broadcast'
     );
   });
 
@@ -759,8 +787,8 @@ describe('Structured permission request frame', () => {
   it('should create structured request frame alongside hml-prompt (structural)', () => {
     // Verify prompt.mjs creates both an hml-prompt message AND a structured request frame
     assert.ok(
-      permissionPromptJs.includes('createAgentMessageFrame'),
-      'Should create hml-prompt message frame',
+      permissionPromptJs.includes('createSystemMessageFrame'),
+      'Should create hml-prompt message frame (as system message)',
     );
     assert.ok(
       permissionPromptJs.includes('createAndBroadcastFrame'),

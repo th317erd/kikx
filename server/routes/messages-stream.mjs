@@ -20,9 +20,10 @@ import { requireAuth, getDataKey } from '../middleware/auth.mjs';
 import { buildContext } from '../lib/pipeline/context.mjs';
 import { createStreamParser } from '../lib/markup/stream-parser.mjs';
 import { executePipeline } from '../lib/pipeline/index.mjs';
-import { getStartupAbilities, getAbility } from '../lib/abilities/registry.mjs';
+import { getStartupAbilities } from '../lib/abilities/registry.mjs';
 import { checkConditionalAbilities, formatConditionalInstructions } from '../lib/abilities/index.mjs';
-import { checkApprovalRequired, requestApproval } from '../lib/abilities/approval.mjs';
+import { evaluate as evaluatePermission, Action as PermissionAction } from '../lib/permissions/index.mjs';
+import { requestPermissionPrompt, isPermissionPrompt } from '../lib/permissions/prompt.mjs';
 import { broadcastToSession } from '../lib/websocket.mjs';
 import { detectInteractions, executeInteractions, formatInteractionFeedback, searchWeb } from '../lib/interactions/index.mjs';
 import { checkCompaction } from '../lib/compaction.mjs';
@@ -427,6 +428,28 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
     // USER MESSAGE: Store and stream response
     // =========================================================================
 
+    // =========================================================================
+    // Detect if this is a permission prompt answer before storing/sending.
+    // Permission prompt answers are system interactions — they should be
+    // stored as hidden and should NOT trigger an agent response turn.
+    // =========================================================================
+    let isPermissionPromptAnswer = false;
+    let userInteractionBlock     = null;
+
+    if (content.includes('<interaction')) {
+      userInteractionBlock = detectInteractions(content);
+      if (userInteractionBlock && userInteractionBlock.interactions.length > 0) {
+        for (let interaction of userInteractionBlock.interactions) {
+          if (interaction.target_property === 'update_prompt' &&
+              interaction.payload?.promptId &&
+              isPermissionPrompt(interaction.payload.promptId)) {
+            isPermissionPromptAnswer = true;
+            break;
+          }
+        }
+      }
+    }
+
     // Store user message as frame (strip interaction tags for display - they're processed separately)
     // Keep raw content for interaction processing below
     let displayContent = stripInteractionTags(content);
@@ -435,7 +458,7 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
         sessionId: parseInt(req.params.sessionId, 10),
         userId:    req.user.id,
         content:   displayContent,
-        hidden:    false,
+        hidden:    isPermissionPromptAnswer,  // Hidden if it's a prompt answer
         targetIds: mentioned ? [`agent:${mentioned.agentId}`] : undefined,
       });
     } catch (frameError) {
@@ -453,26 +476,38 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
     // User interactions are "secure" because they come directly from an authenticated user
     console.log('[Stream] User message content preview:', content.substring(0, 200));
     console.log('[Stream] User message has <interaction>:', content.includes('<interaction'));
-    if (content.includes('<interaction')) {
-      let userInteractionBlock = detectInteractions(content);
-      console.log('[Stream] User interaction block:', userInteractionBlock ? `found ${userInteractionBlock.interactions.length}` : 'none');
-      if (userInteractionBlock && userInteractionBlock.interactions.length > 0) {
-        // Include senderId to mark these as authorized user interactions
-        // This is secure because:
-        // 1. This code path is only reached for user messages (not agent responses)
-        // 2. req.user.id comes from authenticated session middleware
-        // 3. detectInteractions() strips any sender_id that might have been in the message
-        let interactionContext = {
-          sessionId: req.params.sessionId,
-          userId:    req.user.id,
-          senderId:  req.user.id,  // Mark as authorized user interaction
-          agentId:   session.agent_id,
-          db,
-        };
-        console.log('[Stream] Executing user message interactions (authorized):', userInteractionBlock.interactions.length);
-        let results = await executeInteractions(userInteractionBlock, interactionContext);
-        console.log('[Stream] User interaction results:', JSON.stringify(results, null, 2));
-      }
+    if (userInteractionBlock && userInteractionBlock.interactions.length > 0) {
+      // Include senderId to mark these as authorized user interactions
+      // This is secure because:
+      // 1. This code path is only reached for user messages (not agent responses)
+      // 2. req.user.id comes from authenticated session middleware
+      // 3. detectInteractions() strips any sender_id that might have been in the message
+      let interactionContext = {
+        sessionId: req.params.sessionId,
+        userId:    req.user.id,
+        senderId:  req.user.id,  // Mark as authorized user interaction
+        agentId:   session.agent_id,
+        db,
+      };
+      console.log('[Stream] Executing user message interactions (authorized):', userInteractionBlock.interactions.length);
+      let results = await executeInteractions(userInteractionBlock, interactionContext);
+      console.log('[Stream] User interaction results:', JSON.stringify(results, null, 2));
+    }
+
+    // If this was a permission prompt answer, skip the agent turn entirely.
+    // The interaction has been processed (the pending promise resolved), and
+    // there's no need for the agent to respond to "Answering 1 prompt: allow_once".
+    if (isPermissionPromptAnswer) {
+      debug('Permission prompt answer — skipping agent turn');
+      clearInterval(keepAliveInterval);
+      sendEvent('message_complete', {
+        messageId:  randomUUID(),
+        sessionId:  req.params.sessionId,
+        skipped:    true,
+        reason:     'permission_prompt_answer',
+      });
+      res.end();
+      return;
     }
 
     // =========================================================================
@@ -616,38 +651,62 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
           await new Promise(resolve => setImmediate(resolve));
           console.log(`[Stream] T+${Date.now() - t0}ms: Yielded event loop`);
 
-          // Check if websearch requires approval
-          let websearchAbility = getAbility('websearch');
-          let needsApproval    = websearchAbility
-            ? await checkApprovalRequired(websearchAbility, { userId: req.user.id, sessionId: parseInt(req.params.sessionId, 10) })
-            : false;
+          // Permission gate: ALL execution flows through the permission engine.
+          // The permission might auto-grant (if a rule exists), but execution
+          // only happens AFTER the permission engine has decided.
+          let sessionIdInt = parseInt(req.params.sessionId, 10);
+          let permSubject  = { type: 'agent', id: session.agent_id, name: session.agent_name || `Agent #${session.agent_id}` };
+          let permResource = { type: 'tool', name: 'websearch' };
+          let permContext   = { sessionId: sessionIdInt, ownerId: req.user.id };
+          let db = getDatabase();
 
-          let result;
-          if (needsApproval) {
-            console.log(`[Stream] T+${Date.now() - t0}ms: Requesting approval for websearch`);
-            let approvalResult = await requestApproval(
-              websearchAbility,
-              { query },
-              { userId: req.user.id, sessionId: parseInt(req.params.sessionId, 10) },
-            );
+          let permResult;
+          try {
+            permResult = evaluatePermission(permSubject, permResource, permContext, db);
+          } catch (permError) {
+            console.error('[Stream] Permission evaluation error for websearch:', permError.message);
+            permResult = { action: PermissionAction.DENY };
+          }
 
-            if (approvalResult.status !== 'approved') {
-              console.log(`[Stream] T+${Date.now() - t0}ms: Websearch ${approvalResult.status}`);
+          console.log(`[Stream] T+${Date.now() - t0}ms: Permission check for websearch: ${permResult.action}`);
+
+          if (permResult.action === PermissionAction.DENY) {
+            sendEvent('interaction_result', {
+              messageId,
+              interactionId:  pending.interactionId,
+              targetProperty: 'websearch',
+              status:         'denied',
+              result:         { error: 'Websearch denied by permission rule' },
+            });
+            pendingWebsearches.delete(data.id);
+            return;
+          }
+
+          if (permResult.action === PermissionAction.PROMPT) {
+            console.log(`[Stream] T+${Date.now() - t0}ms: Requesting permission for websearch`);
+            let promptResult = await requestPermissionPrompt(permSubject, permResource, {
+              sessionId: sessionIdInt,
+              userId:    req.user.id,
+              db:        db,
+            });
+
+            if (promptResult.action === PermissionAction.DENY) {
+              console.log(`[Stream] T+${Date.now() - t0}ms: Websearch denied by user`);
               sendEvent('interaction_result', {
                 messageId,
                 interactionId:  pending.interactionId,
                 targetProperty: 'websearch',
                 status:         'denied',
-                result:         { error: `Websearch ${approvalResult.status}: ${approvalResult.reason || 'User denied'}` },
+                result:         { error: `Websearch denied: ${promptResult.reason || 'User denied'}` },
               });
               pendingWebsearches.delete(data.id);
               return;
             }
-            console.log(`[Stream] T+${Date.now() - t0}ms: Websearch approved`);
+            console.log(`[Stream] T+${Date.now() - t0}ms: Websearch permitted by user`);
           }
 
-          // Execute websearch
-          result = await searchWeb(query);
+          // Permission granted (allow rule, or user approved) — execute websearch
+          let result = await searchWeb(query);
           console.log(`[Stream] T+${Date.now() - t0}ms: searchWeb completed`);
 
           // Send interaction_result
@@ -907,6 +966,7 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
           sessionId: req.params.sessionId,
           userId:    req.user.id,
           agentId:   session.agent_id,
+          agent:     { name: session.agent_name },
           dataKey:   dataKey,
           db:        getDatabase(),
         };

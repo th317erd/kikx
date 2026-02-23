@@ -878,6 +878,7 @@ export class HeroChat extends HeroComponent {
       } else {
         // New element - create and insert
         element = this._createMessageElement(message, frameId);
+        if (!element) continue; // Skip if element creation failed (e.g. empty content)
         container.insertBefore(element, insertionPoint);
         insertionPoint = element.nextSibling;
       }
@@ -1160,9 +1161,9 @@ export class HeroChat extends HeroComponent {
         display: flex;
         align-items: center;
         gap: 8px;
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--text-muted, #6b7280);
+        font-size: 14px;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.85);
         margin-bottom: 8px;
         padding-bottom: 6px;
         border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -1278,8 +1279,9 @@ export class HeroChat extends HeroComponent {
       }
 
       .footer-meta {
-        font-size: 11px;
-        color: var(--text-muted, #6b7280);
+        font-size: 14px;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.7);
       }
 
       .footer-actions {
@@ -1613,8 +1615,9 @@ export class HeroChat extends HeroComponent {
       return this._renderResultFrame(message);
     }
 
+    const isPermissionPrompt = (message.content || '').includes('<hml-prompt');
     const roleClass   = (message.role === 'user') ? 'message-user' : 'message-assistant';
-    const roleLabel   = (message.role === 'user') ? 'You' : this.agentName;
+    const roleLabel   = (message.role === 'user') ? 'You' : (isPermissionPrompt ? '&#9889; Permission Request' : this.agentName);
     const messageId   = message.id || '';
     const frameId     = message.frameId || messageId;
     const queuedClass = (message.queued) ? ' message-queued' : '';
@@ -1631,9 +1634,11 @@ export class HeroChat extends HeroComponent {
 
     const queuedBadge = (message.queued) ? '<span class="queued-badge">Queued</span>' : '';
 
-    // Avatar for both user and assistant messages
+    // Avatar for both user and assistant messages (skip for permission prompts)
     let avatarUrl = '';
-    if (message.role === 'user') {
+    if (isPermissionPrompt) {
+      // No avatar for permission prompts — the lightning bolt in the label is enough
+    } else if (message.role === 'user') {
       avatarUrl = this.userAvatarUrl;
     } else if (this.agentAvatarUrl) {
       avatarUrl = this.agentAvatarUrl;

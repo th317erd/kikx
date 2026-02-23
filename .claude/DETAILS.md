@@ -378,9 +378,30 @@ All modal components migrated to split HTML/JS pattern:
 - 30 new tests in `spec/lib/interactions/before-tool-hook-spec.mjs`
 - Test IDs: PERM-001 through PERM-006, GUARD-001/005/006, PLUGIN-001 through PLUGIN-004, INT-001
 
+### API-First: Frame Decomposition (2026-02-22)
+- **Pure decompose function:** `server/lib/frames/decompose.mjs` — splits raw messages into content + interaction segments
+- **Pipeline integration:** Both `messages-stream.mjs` and `messages.mjs` use `decomposeMessage()` to store granular frames
+- **Structured permission frames:** `server/lib/permissions/prompt.mjs` emits REQUEST frame alongside hml-prompt, RESULT frame on response
+- **REST respond endpoint:** `POST /api/sessions/:id/frames/:frameId/respond` — routes `permission_request` to `handlePermissionResponse()`
+- **Bug fixes:** Added `db` + `parentFrameId` to non-streaming interaction context (was missing, so REQUEST/RESULT frames were never created)
+- **Timeout + 202:** Non-streaming endpoint wraps agent work in 30s `Promise.race`; returns HTTP 202 with frame ID if blocked on permission
+- Commit: b26ace6
+
+**New files:**
+- `server/lib/frames/decompose.mjs` — pure decomposition function
+- `spec/lib/frames/decompose-spec.mjs` — 30 tests
+- `spec/routes/frames-respond-spec.mjs` — 11 tests
+
+**Modified:**
+- `server/routes/messages-stream.mjs` — decompose intermediate + final frames
+- `server/routes/messages.mjs` — decompose, db fix, timeout/202
+- `server/lib/permissions/prompt.mjs` — structured request/result frames
+- `server/routes/frames.mjs` — POST respond endpoint
+- `spec/lib/permission-prompt-spec.mjs` — 7 new structured frame tests
+
 ### Test Suite
 - Runner: `find spec -name '*-spec.mjs' | xargs node --test --test-force-exit`
-- Current: **1772 tests, 0 failures**
+- Current: **~2275 tests, 0 failures**
 
 ### Pending (all phases complete — remaining deferred items)
 - Phase 1: Participant list sidebar, @mention autocomplete, WebSocket broadcast to all participants

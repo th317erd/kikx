@@ -505,7 +505,9 @@ export class SessionFramesProvider extends HeroComponent {
         });
       }
 
-      // Clear phantom frame if this is the real agent message (replaces the phantom)
+      // Clear phantom frame if this is the real agent message (replaces the phantom).
+      // System messages (e.g. permission prompts) don't clear the phantom — they
+      // appear alongside the streaming content.
       if (this._phantomFrame && frame.type === 'message' && frame.authorType === 'agent') {
         this.debug('Clearing phantom frame replaced by real agent message:', frame.id);
         this._phantomFrame = null;

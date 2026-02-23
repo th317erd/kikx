@@ -25,6 +25,7 @@ import { setupSessionAgent } from '../lib/messaging/session-setup.mjs';
 import { loadSessionWithAgent } from '../lib/participants/index.mjs';
 import { beforeUserMessage, afterAgentResponse } from '../lib/plugins/hooks.mjs';
 import { stripInteractionTags } from '../lib/messaging/content-utils.mjs';
+import { isPermissionPrompt } from '../lib/permissions/prompt.mjs';
 import { decomposeMessage } from '../lib/frames/decompose.mjs';
 import { getFrames, FrameType } from '../lib/frames/index.mjs';
 
@@ -224,16 +225,53 @@ router.post('/:sessionId/messages', async (req, res) => {
       messages = loadFramesForContext(sessionId, { maxRecentFrames: 20 });
     }
 
+    // Detect if this is a permission prompt answer
+    let isPermissionPromptAnswer = false;
+    let userInteractionBlock     = null;
+
+    if (content.includes('<interaction')) {
+      userInteractionBlock = detectInteractions(content);
+      if (userInteractionBlock && userInteractionBlock.interactions.length > 0) {
+        for (let interaction of userInteractionBlock.interactions) {
+          if (interaction.target_property === 'update_prompt' &&
+              interaction.payload?.promptId &&
+              isPermissionPrompt(interaction.payload.promptId)) {
+            isPermissionPromptAnswer = true;
+            break;
+          }
+        }
+
+        // Execute user interactions (authorized by authenticated user)
+        let interactionContext = {
+          sessionId: String(sessionId),
+          userId:    req.user.id,
+          senderId:  req.user.id,
+          agentId:   session.agent_id,
+          db,
+        };
+        await executeInteractions(userInteractionBlock, interactionContext);
+      }
+    }
+
     // Store user message as frame
     createUserMessageFrame({
       sessionId: sessionId,
       userId:    req.user.id,
-      content:   content,
-      hidden:    false,
+      content:   stripInteractionTags(content) || content,
+      hidden:    isPermissionPromptAnswer,
     });
 
     // Update session timestamp
     db.prepare('UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(sessionId);
+
+    // If this was a permission prompt answer, skip the agent turn
+    if (isPermissionPromptAnswer) {
+      return res.json({
+        success: true,
+        message: 'Permission prompt response processed',
+        skipped: true,
+      });
+    }
 
     // Add user message to history (with processes injected for AI)
     messages.push({ role: 'user', content: processedContent });
@@ -302,6 +340,7 @@ router.post('/:sessionId/messages', async (req, res) => {
           sessionId:     sessionId,
           userId:        req.user.id,
           agentId:       session.agent_id,
+          agent:         { name: session.agent_name },
           dataKey:       dataKey,
           db:            db,
           parentFrameId: firstFrameId,

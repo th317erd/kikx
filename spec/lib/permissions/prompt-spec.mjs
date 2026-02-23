@@ -206,7 +206,7 @@ describe('PERMUI-002: User submission creates permission rule', () => {
     assert.strictEqual(resolved.scope, 'session');
   });
 
-  it('should create a once-scoped allow rule for allow_once', async () => {
+  it('should NOT create a persistent rule for allow_once (prompt resolution is the grant)', async () => {
     let subject  = { type: 'agent', id: 1 };
     let resource = { type: 'tool', name: 'shell' };
 
@@ -224,10 +224,9 @@ describe('PERMUI-002: User submission creates permission rule', () => {
 
     handlePermissionResponse(promptId, 'allow_once');
 
+    // No persistent rule — the prompt resolution itself IS the one-time grant.
     let rules = db.prepare('SELECT * FROM permission_rules WHERE resource_name = ?').all('shell');
-    assert.strictEqual(rules.length, 1);
-    assert.strictEqual(rules[0].action, 'allow');
-    assert.strictEqual(rules[0].scope, 'once');
+    assert.strictEqual(rules.length, 0);
 
     let resolved = await promise;
     assert.strictEqual(resolved.scope, 'once');

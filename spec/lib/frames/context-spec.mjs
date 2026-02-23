@@ -16,6 +16,10 @@ import {
   buildConversationForCompaction,
   countMessagesSinceCompact,
 } from '../../../server/lib/frames/context.mjs';
+import {
+  registerAbility,
+  clearAbilitiesBySource,
+} from '../../../server/lib/abilities/registry.mjs';
 
 // ============================================================================
 // Test Database Setup
@@ -151,6 +155,173 @@ describe('Frame Context Builder', () => {
       assert.ok(messages[0].content.includes('RESTORED CONTEXT'));
       assert.ok(messages[0].content.includes('Previous conversation summary'));
       assert.equal(messages[1].content, 'New message');
+    });
+
+    it('should re-inject startup abilities after compaction', () => {
+      // Register a test startup ability
+      registerAbility({
+        id:          'startup-__onstart_',
+        name:        '__onstart_',
+        type:        'process',
+        source:      'startup',
+        description: 'Test startup instructions',
+        content:     'You must use <interaction> tags for tool calls.',
+        permissions: { autoApprove: true, autoApprovePolicy: 'always', dangerLevel: 'safe' },
+      });
+
+      try {
+        // Create compact frame + one new message
+        createFrame({
+          sessionId: 1,
+          type: 'compact',
+          authorType: 'system',
+          payload: { context: 'Summary of prior conversation' },
+        }, db);
+
+        createFrame({
+          sessionId: 1,
+          type: 'message',
+          authorType: 'user',
+          payload: { content: 'New user message' },
+        }, db);
+
+        const messages = loadFramesForContext(1, {}, db);
+
+        // Should have: restored context, startup user, startup ack, new message
+        assert.equal(messages.length, 4);
+        assert.ok(messages[0].content.includes('RESTORED CONTEXT'));
+        assert.equal(messages[1].role, 'user');
+        assert.ok(messages[1].content.includes('[System Initialization]'));
+        assert.ok(messages[1].content.includes('<interaction>'));
+        assert.equal(messages[2].role, 'assistant');
+        assert.ok(messages[2].content.includes('Understood'));
+        assert.equal(messages[3].content, 'New user message');
+      } finally {
+        clearAbilitiesBySource('startup');
+      }
+    });
+
+    it('should NOT inject startup abilities when no compact frame exists', () => {
+      // Register a test startup ability
+      registerAbility({
+        id:          'startup-__onstart_',
+        name:        '__onstart_',
+        type:        'process',
+        source:      'startup',
+        description: 'Test startup instructions',
+        content:     'You must use <interaction> tags.',
+        permissions: { autoApprove: true, autoApprovePolicy: 'always', dangerLevel: 'safe' },
+      });
+
+      try {
+        // Create frames WITHOUT a compact frame
+        createFrame({
+          sessionId: 1,
+          type: 'message',
+          authorType: 'user',
+          payload: { content: 'Hello' },
+        }, db);
+
+        createFrame({
+          sessionId: 1,
+          type: 'message',
+          authorType: 'agent',
+          payload: { content: 'Hi' },
+        }, db);
+
+        const messages = loadFramesForContext(1, {}, db);
+
+        // Should just have the two messages — no startup injection
+        assert.equal(messages.length, 2);
+        assert.equal(messages[0].content, 'Hello');
+        assert.equal(messages[1].content, 'Hi');
+      } finally {
+        clearAbilitiesBySource('startup');
+      }
+    });
+
+    it('should maintain role alternation with startup re-injection', () => {
+      registerAbility({
+        id:          'startup-__onstart_',
+        name:        '__onstart_',
+        type:        'process',
+        source:      'startup',
+        description: 'Test startup instructions',
+        content:     'Instructions here.',
+        permissions: { autoApprove: true, autoApprovePolicy: 'always', dangerLevel: 'safe' },
+      });
+
+      try {
+        createFrame({
+          sessionId: 1,
+          type: 'compact',
+          authorType: 'system',
+          payload: { context: 'Summary' },
+        }, db);
+
+        createFrame({
+          sessionId: 1,
+          type: 'message',
+          authorType: 'user',
+          payload: { content: 'User msg' },
+        }, db);
+
+        createFrame({
+          sessionId: 1,
+          type: 'message',
+          authorType: 'agent',
+          payload: { content: 'Agent msg' },
+        }, db);
+
+        const messages = loadFramesForContext(1, {}, db);
+
+        // Verify alternation: assistant, user, assistant, user, assistant
+        assert.equal(messages[0].role, 'assistant'); // compact context
+        assert.equal(messages[1].role, 'user');      // startup init
+        assert.equal(messages[2].role, 'assistant'); // startup ack
+        assert.equal(messages[3].role, 'user');      // user msg
+        assert.equal(messages[4].role, 'assistant'); // agent msg
+      } finally {
+        clearAbilitiesBySource('startup');
+      }
+    });
+
+    it('should only inject process-type startup abilities', () => {
+      // Register a function-type ability (should be skipped)
+      registerAbility({
+        id:          'startup-__onstart_func',
+        name:        '__onstart_func',
+        type:        'function',
+        source:      'startup',
+        description: 'Function ability',
+        execute:     () => {},
+        permissions: { autoApprove: true, autoApprovePolicy: 'always', dangerLevel: 'safe' },
+      });
+
+      try {
+        createFrame({
+          sessionId: 1,
+          type: 'compact',
+          authorType: 'system',
+          payload: { context: 'Summary' },
+        }, db);
+
+        createFrame({
+          sessionId: 1,
+          type: 'message',
+          authorType: 'user',
+          payload: { content: 'Hello' },
+        }, db);
+
+        const messages = loadFramesForContext(1, {}, db);
+
+        // No process-type startup ability, so no injection
+        assert.equal(messages.length, 2);
+        assert.ok(messages[0].content.includes('RESTORED CONTEXT'));
+        assert.equal(messages[1].content, 'Hello');
+      } finally {
+        clearAbilitiesBySource('startup');
+      }
     });
 
     it('should apply update frames correctly', () => {

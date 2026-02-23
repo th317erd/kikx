@@ -17,7 +17,7 @@
 //   6. Blocked action proceeds or is denied
 
 import { createHash } from 'node:crypto';
-import { createAgentMessageFrame, createAndBroadcastFrame } from '../frames/broadcast.mjs';
+import { createSystemMessageFrame, createAndBroadcastFrame } from '../frames/broadcast.mjs';
 import { FrameType, AuthorType } from '../frames/index.mjs';
 import { createRule, Action, Scope } from './index.mjs';
 
@@ -72,14 +72,13 @@ export async function requestPermissionPrompt(subject, resource, context, timeou
   let description  = formatDescription(subject, resource);
   let promptMarkup = buildPromptMarkup(promptId, requestHash, description);
 
-  // Create system message frame with the hml-prompt (backward compat with frontend)
-  let frame = createAgentMessageFrame({
+  // Create system message frame with the hml-prompt.
+  // Uses authorType: SYSTEM so the chat UI shows "System" instead of agent name.
+  let frame = createSystemMessageFrame({
     sessionId:    context.sessionId,
     userId:       context.userId,
-    agentId:      null,
     content:      promptMarkup,
     hidden:       false,
-    skipSanitize: true,
   });
 
   // Also create a structured request frame (machine-readable for API consumers)
@@ -146,8 +145,13 @@ export function handlePermissionResponse(promptId, answer) {
   // Map answer to action + scope
   let mapped = mapAnswerToActionScope(answer);
 
-  // Create permission rule if allowing
-  if (mapped.action === Action.ALLOW) {
+  // Create permission rule if allowing.
+  // For ONCE scope, do NOT create a persistent rule — the prompt resolution
+  // itself IS the one-time grant.  A persistent 'once' rule would be consumed
+  // by the NEXT evaluatePermission() call, not the current one (which already
+  // received the answer via the prompt), effectively making "allow once" into
+  // "allow twice".
+  if (mapped.action === Action.ALLOW && mapped.scope !== Scope.ONCE) {
     try {
       createRule({
         ownerId:      pending.context.userId,
@@ -273,7 +277,7 @@ function generatePermissionHash(subject, resource) {
  * @returns {string}
  */
 function formatDescription(subject, resource) {
-  let subjectDesc = `${subject.type} #${subject.id}`;
+  let subjectDesc = subject.name || `${subject.type} #${subject.id}`;
   let resourceDesc = (resource.name)
     ? `\`/${resource.name}\` (${resource.type})`
     : `all ${resource.type}s`;

@@ -13,6 +13,7 @@ import {
   FrameType,
   AuthorType,
 } from './index.mjs';
+import { getStartupAbilities } from '../abilities/registry.mjs';
 
 // Debug logging
 function debug(sessionId, ...args) {
@@ -73,6 +74,28 @@ export function loadFramesForContext(sessionId, options = {}, db = null) {
       role: 'assistant',
       content: `[RESTORED CONTEXT - Continue from here]\n\n${compactFrame.payload.context}\n\n[END RESTORED CONTEXT - Resume conversation below]`,
     });
+
+    // Re-inject startup abilities after compaction.
+    // The original hidden startup frames are behind the compact point and no
+    // longer loaded, so the agent loses its core instructions (e.g. the
+    // <interaction> tag format).  Re-inject them here so every post-compaction
+    // context includes the latest startup content.
+    let startupAbilities = getStartupAbilities();
+    let startupContent   = startupAbilities
+      .filter((a) => a.type === 'process' && a.content)
+      .map((a) => a.content)
+      .join('\n\n---\n\n');
+
+    if (startupContent) {
+      messages.push({
+        role:    'user',
+        content: `[System Initialization]\n\n${startupContent}`,
+      });
+      messages.push({
+        role:    'assistant',
+        content: 'Understood. I\'ve processed the initialization instructions. Ready to assist.',
+      });
+    }
   }
 
   // Process message frames in order
