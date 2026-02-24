@@ -8,5 +8,8 @@
   "dependencies": {
     "seqda": "^2.1.0",
     "xid-js": "^1.0.1"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
   }
 }

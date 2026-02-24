@@ -1,0 +1,163 @@
+'use strict';
+
+// REST API client for Hero V2.
+// Wraps fetch() with auth token handling, error normalization, and typed endpoint methods.
+
+let authToken = null;
+let onUnauthorized = null;
+
+const BASE_URL = '/hero/api/v1';
+
+export function setAuthToken(token) { authToken = token; }
+export function getAuthToken() { return authToken; }
+export function setOnUnauthorized(callback) { onUnauthorized = callback; }
+
+class ApiError extends Error {
+  constructor(status, message, body) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
+export { ApiError };
+
+async function request(method, path, body, options = {}) {
+  let headers = {
+    'Accept': 'application/json',
+    ...options.headers,
+  };
+
+  if (authToken)
+    headers['Authorization'] = `Bearer ${authToken}`;
+
+  if (body && typeof body === 'object') {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify(body);
+  }
+
+  let response = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers,
+    body: method === 'GET' ? undefined : body,
+    ...options.fetchOptions,
+  });
+
+  if (response.status === 401) {
+    if (typeof onUnauthorized === 'function')
+      onUnauthorized();
+
+    throw new ApiError(401, 'Unauthorized', null);
+  }
+
+  let responseBody;
+  let contentType = response.headers.get('Content-Type') || '';
+  if (contentType.includes('application/json'))
+    responseBody = await response.json();
+  else
+    responseBody = await response.text();
+
+  if (!response.ok)
+    throw new ApiError(response.status, responseBody?.message || response.statusText, responseBody);
+
+  return responseBody;
+}
+
+// Auth endpoints
+
+export function sendMagicLink(email) {
+  return request('POST', '/auth/login', { email });
+}
+
+export function verifyToken(token) {
+  return request('POST', '/auth/verify', { token });
+}
+
+export function logout() {
+  return request('GET', '/auth/logout');
+}
+
+export function registerUser({ email, firstName, lastName }) {
+  return request('POST', '/user', { email, firstName, lastName });
+}
+
+// Session endpoints
+
+export function getSessions() {
+  return request('GET', '/sessions');
+}
+
+export function getSession(sessionId) {
+  return request('GET', `/sessions/${sessionId}`);
+}
+
+export function createSession(data) {
+  return request('POST', '/sessions', data);
+}
+
+export function updateSession(sessionId, updates) {
+  return request('PATCH', `/sessions/${sessionId}`, updates);
+}
+
+export function deleteSession(sessionId) {
+  return request('DELETE', `/sessions/${sessionId}`);
+}
+
+export function addParticipant(sessionId, participantData) {
+  return request('POST', `/sessions/${sessionId}/participants`, participantData);
+}
+
+export function removeParticipant(sessionId, participantId) {
+  return request('DELETE', `/sessions/${sessionId}/participants/${participantId}`);
+}
+
+// Agent endpoints
+
+export function getAgents() {
+  return request('GET', '/agents');
+}
+
+export function getAgent(agentId) {
+  return request('GET', `/agents/${agentId}`);
+}
+
+export function createAgent(data) {
+  return request('POST', '/agents', data);
+}
+
+export function updateAgent(agentId, updates) {
+  return request('PATCH', `/agents/${agentId}`, updates);
+}
+
+export function deleteAgent(agentId) {
+  return request('DELETE', `/agents/${agentId}`);
+}
+
+// Ability endpoints
+
+export function getAbilities() {
+  return request('GET', '/abilities');
+}
+
+export function getAbility(abilityId) {
+  return request('GET', `/abilities/${abilityId}`);
+}
+
+export function createAbility(data) {
+  return request('POST', '/abilities', data);
+}
+
+export function updateAbility(abilityId, updates) {
+  return request('PATCH', `/abilities/${abilityId}`, updates);
+}
+
+export function deleteAbility(abilityId) {
+  return request('DELETE', `/abilities/${abilityId}`);
+}
+
+// Health endpoint
+
+export function healthCheck() {
+  return request('GET', '/health');
+}

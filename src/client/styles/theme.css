@@ -1,0 +1,258 @@
+/* Hero V2 Design System — Black Glass (default) */
+/* Glassy neon aesthetic with configurable accent colors */
+
+/* =========================================================================
+   BASE RESET
+   ========================================================================= */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+               Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+               sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--background-base);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* =========================================================================
+   THEME VARIABLES — BLACK GLASS (DEFAULT)
+   ========================================================================= */
+
+:root,
+[data-theme="black-glass"] {
+  /* Background */
+  --background-base: #0a0a1a;
+  --background-elevated: #12122a;
+  --background-surface: #1a1a2e;
+  --background-overlay: rgba(10, 10, 26, 0.85);
+
+  /* Glass */
+  --glass-background: rgba(255, 255, 255, 0.05);
+  --glass-background-hover: rgba(255, 255, 255, 0.08);
+  --glass-background-active: rgba(255, 255, 255, 0.10);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-blur: 12px;
+
+  /* Text */
+  --text-primary: #e8e8f0;
+  --text-secondary: #a0a0b8;
+  --text-muted: #606078;
+  --text-inverse: #0a0a1a;
+
+  /* Semantic */
+  --color-error: #ff1744;
+  --color-error-dim: rgba(255, 23, 68, 0.15);
+  --color-warning: #ffea00;
+  --color-warning-dim: rgba(255, 234, 0, 0.15);
+  --color-success: #00e676;
+  --color-success-dim: rgba(0, 230, 118, 0.15);
+
+  /* Accent (default: cyan — overridden by accent classes) */
+  --accent-primary: #00e5ff;
+  --accent-glow: rgba(0, 229, 255, 0.30);
+  --accent-dim: rgba(0, 229, 255, 0.10);
+  --accent-text: #00e5ff;
+
+  /* Borders & Corners */
+  --border-radius-small: 4px;
+  --border-radius-medium: 8px;
+  --border-radius-large: 12px;
+  --border-radius-pill: 9999px;
+
+  /* Shadows */
+  --shadow-glow: 0 0 12px var(--accent-glow);
+  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.4);
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* Scrollbar */
+  --scrollbar-width: 8px;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+
+  /* Chat — user messages */
+  --chat-user-background: rgba(255, 64, 129, 0.15);
+  --chat-user-border: rgba(255, 64, 129, 0.30);
+
+  /* Chat — agent messages */
+  --chat-agent-background: var(--glass-background);
+  --chat-agent-border: var(--glass-border);
+
+  /* Input */
+  --input-background: rgba(255, 255, 255, 0.05);
+  --input-border: rgba(255, 255, 255, 0.12);
+  --input-border-focus: var(--accent-primary);
+  --input-placeholder: var(--text-muted);
+}
+
+/* =========================================================================
+   THEME VARIABLES — LIGHT GLASS
+   ========================================================================= */
+
+[data-theme="light-glass"] {
+  /* Background */
+  --background-base: #e8e8f0;
+  --background-elevated: #f0f0f8;
+  --background-surface: #f5f5ff;
+  --background-overlay: rgba(232, 232, 240, 0.90);
+
+  /* Glass */
+  --glass-background: rgba(0, 0, 0, 0.03);
+  --glass-background-hover: rgba(0, 0, 0, 0.05);
+  --glass-background-active: rgba(0, 0, 0, 0.08);
+  --glass-border: rgba(0, 0, 0, 0.10);
+  --glass-blur: 12px;
+
+  /* Text */
+  --text-primary: #1a1a2e;
+  --text-secondary: #484860;
+  --text-muted: #888898;
+  --text-inverse: #f5f5ff;
+
+  /* Semantic (same hues, adjusted for light bg) */
+  --color-error: #d50000;
+  --color-error-dim: rgba(213, 0, 0, 0.10);
+  --color-warning: #f9a825;
+  --color-warning-dim: rgba(249, 168, 37, 0.12);
+  --color-success: #00c853;
+  --color-success-dim: rgba(0, 200, 83, 0.10);
+
+  /* Accent (default: cyan — dimmer for light) */
+  --accent-primary: #0097a7;
+  --accent-glow: rgba(0, 151, 167, 0.20);
+  --accent-dim: rgba(0, 151, 167, 0.08);
+  --accent-text: #00838f;
+
+  /* Shadows */
+  --shadow-glow: 0 0 12px var(--accent-glow);
+  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
+
+  /* Chat */
+  --chat-user-background: rgba(255, 64, 129, 0.10);
+  --chat-user-border: rgba(255, 64, 129, 0.25);
+  --chat-agent-background: var(--glass-background);
+  --chat-agent-border: var(--glass-border);
+
+  /* Input */
+  --input-background: rgba(0, 0, 0, 0.03);
+  --input-border: rgba(0, 0, 0, 0.12);
+  --input-border-focus: var(--accent-primary);
+  --input-placeholder: var(--text-muted);
+}
+
+/* =========================================================================
+   ACCENT COLOR OVERRIDES
+   ========================================================================= */
+
+[data-accent="pink"]   { --accent-primary: #ff4081; --accent-glow: rgba(255,64,129,0.30);  --accent-dim: rgba(255,64,129,0.10);  --accent-text: #ff4081; }
+[data-accent="purple"] { --accent-primary: #b040ff; --accent-glow: rgba(176,64,255,0.30);  --accent-dim: rgba(176,64,255,0.10);  --accent-text: #b040ff; }
+[data-accent="blue"]   { --accent-primary: #448aff; --accent-glow: rgba(68,138,255,0.30);  --accent-dim: rgba(68,138,255,0.10);  --accent-text: #448aff; }
+[data-accent="cyan"]   { --accent-primary: #00e5ff; --accent-glow: rgba(0,229,255,0.30);   --accent-dim: rgba(0,229,255,0.10);   --accent-text: #00e5ff; }
+[data-accent="green"]  { --accent-primary: #00e676; --accent-glow: rgba(0,230,118,0.30);   --accent-dim: rgba(0,230,118,0.10);   --accent-text: #00e676; }
+[data-accent="yellow"] { --accent-primary: #ffea00; --accent-glow: rgba(255,234,0,0.30);   --accent-dim: rgba(255,234,0,0.10);   --accent-text: #ffea00; }
+[data-accent="orange"] { --accent-primary: #ff9100; --accent-glow: rgba(255,145,0,0.30);   --accent-dim: rgba(255,145,0,0.10);   --accent-text: #ff9100; }
+[data-accent="red"]    { --accent-primary: #ff1744; --accent-glow: rgba(255,23,68,0.30);    --accent-dim: rgba(255,23,68,0.10);   --accent-text: #ff1744; }
+
+/* Light glass accent adjustments (dimmer for readability) */
+[data-theme="light-glass"][data-accent="pink"]   { --accent-primary: #c51162; --accent-text: #c51162; }
+[data-theme="light-glass"][data-accent="purple"] { --accent-primary: #8e24aa; --accent-text: #8e24aa; }
+[data-theme="light-glass"][data-accent="blue"]   { --accent-primary: #2962ff; --accent-text: #2962ff; }
+[data-theme="light-glass"][data-accent="cyan"]   { --accent-primary: #0097a7; --accent-text: #00838f; }
+[data-theme="light-glass"][data-accent="green"]  { --accent-primary: #00c853; --accent-text: #00a844; }
+[data-theme="light-glass"][data-accent="yellow"] { --accent-primary: #f9a825; --accent-text: #f57f17; }
+[data-theme="light-glass"][data-accent="orange"] { --accent-primary: #ef6c00; --accent-text: #e65100; }
+[data-theme="light-glass"][data-accent="red"]    { --accent-primary: #d50000; --accent-text: #b71c1c; }
+
+/* =========================================================================
+   CUSTOM SCROLLBARS
+   Consistent everywhere: document, Shadow DOM, modals.
+   Components using Shadow DOM should @import or adopt this stylesheet.
+   ========================================================================= */
+
+::-webkit-scrollbar {
+  width: var(--scrollbar-width);
+  height: var(--scrollbar-width);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--border-radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* =========================================================================
+   SHARED SCROLLBAR CSS (for Shadow DOM adoption)
+   Components can import this as a string for constructable stylesheets.
+   ========================================================================= */
+
+/* =========================================================================
+   GLASS PANEL UTILITY
+   ========================================================================= */
+
+.glass-panel {
+  background: var(--glass-background);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-medium);
+}
+
+.glass-panel:hover {
+  background: var(--glass-background-hover);
+}
+
+/* =========================================================================
+   FOCUS STYLES (Accessibility — Option A)
+   ========================================================================= */
+
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* =========================================================================
+   SELECTION
+   ========================================================================= */
+
+::selection {
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}

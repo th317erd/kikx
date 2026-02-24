@@ -1,6 +1,7 @@
 # Hero - /hero/ path (for multi-app deployment)
+# Static files served by nginx. API + WS proxied to Mythix server.
 
-# WebSocket endpoint
+# WebSocket endpoint → Mythix server
 location /hero/ws {
   rewrite ^/hero/ws$ /ws break;
   proxy_pass http://127.0.0.1:8089;
@@ -19,7 +20,7 @@ location /hero/ws {
   proxy_send_timeout 86400;
 }
 
-# API endpoints
+# API endpoints → Mythix server
 location /hero/api/ {
   rewrite ^/hero/api/(.*)$ /api/$1 break;
   proxy_pass http://127.0.0.1:8089;
@@ -49,16 +50,30 @@ location /hero/api/ {
   proxy_redirect / /hero/;
 }
 
-# Static files and pages
-location /hero/ {
-  rewrite ^/hero/(.*)$ /$1 break;
-  proxy_pass http://127.0.0.1:8089;
-  proxy_http_version 1.1;
-  proxy_set_header Host $host;
-  proxy_set_header X-Real-IP $remote_addr;
-  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  proxy_set_header X-Forwarded-Proto $scheme;
+# Shared libraries (frame-manager, etc.) — served from src/shared/
+location /hero/shared/ {
+  alias /home/wyatt/Projects/hero/src/shared/;
+  expires 1h;
+  add_header Cache-Control "public, no-transform";
 
-  # Rewrite Location headers to include /hero/ prefix
-  proxy_redirect / /hero/;
+  # Block spec/ directory from being served
+  location ~* /hero/shared/spec/ {
+    return 404;
+  }
+}
+
+# Static client files — served from src/client/
+# SPA fallback: try_files for history API routing
+location /hero/ {
+  alias /home/wyatt/Projects/hero/src/client/;
+  expires 1h;
+  add_header Cache-Control "public, no-transform";
+
+  # Block spec/ directory from being served
+  location ~* /hero/spec/ {
+    return 404;
+  }
+
+  # SPA history API fallback — unmatched paths serve index.html
+  try_files $uri $uri/ /home/wyatt/Projects/hero/src/client/index.html;
 }

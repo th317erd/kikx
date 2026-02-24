@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hero</title>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "seqda": "https://cdn.jsdelivr.net/npm/seqda@2/dist/index.js",
+      "hero/lib/": "./lib/",
+      "hero/components/": "./components/",
+      "hero/shared/": "../shared/"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="./styles/theme.css">
+</head>
+<body>
+  <hero-application></hero-application>
+  <script type="module" src="./components/hero-application/hero-application.mjs"></script>
+</body>
+</html>
