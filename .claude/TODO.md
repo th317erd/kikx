@@ -53,12 +53,12 @@
 - [x] 25. hero-modal: base modal overlay (backdrop, close, escape key) + tests (15 tests)
 
 ### Wave G: Interactive Content + More Modals (depends on Wave F)
-- [ ] 26. hero-websearch-result: search results display (status + formatted output)
-- [ ] 27. hero-hml-prompt: interactive form input (text, select, color, range, etc.)
-- [ ] 28. hero-hml-prompt-value: submitted answer display (read-only pill badges)
-- [ ] 29. hero-permission-request: permission prompt (lightning icon, radio options, submit)
-- [ ] 30. hero-agent-list-modal: agent cards list + New Agent action
-- [ ] 31. hero-agent-form-modal: create/edit agent form
+- [x] 26. hero-websearch-result: search results display (status + formatted output) + tests (12 tests)
+- [x] 27. hero-hml-prompt: interactive form input (text, select, color, range, etc.) + tests (15 tests)
+- [x] 28. hero-hml-prompt-value: submitted answer display (read-only pill badges) + tests (10 tests)
+- [x] 29. hero-permission-request: permission prompt (lightning icon, radio options, submit) + tests (12 tests)
+- [x] 30. hero-agent-list-modal: agent cards list + New Agent action + tests (12 tests)
+- [x] 31. hero-agent-form-modal: create/edit agent form + tests (12 tests)
 
 ### Wave H: Remaining Modals + Session Details (depends on Wave G)
 - [ ] 32. hero-ability-list-modal: abilities list (System/My Abilities tabs)
