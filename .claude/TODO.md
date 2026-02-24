@@ -24,3 +24,19 @@
 ### Wave C: Root Components (depends on Wave B)
 - [x] 11. hero-application: src/client/components/hero-application/hero-application.mjs + tests (10 tests)
 - [x] 12. hero-login-page: src/client/components/hero-login-page/hero-login-page.mjs + tests (15 tests)
+
+# Phase 5 — Layout Shell & Core Features (Wave 1)
+
+## Tasks
+
+### Wave D: Layout Shell (parallel — independent components)
+- [x] 13. hero-session-page: full layout container (top-bar + chat + sidebar + status-bar) + tests (12 tests)
+- [x] 14. hero-top-bar: top nav (back arrow, session name, action buttons) + tests (18 tests)
+- [x] 15. hero-sidebar: right panel (session list + participant list) + tests (12 tests)
+- [x] 16. hero-status-bar: bottom bar (connection status, cost tracking) + tests (10 tests)
+
+### Wave E: Session & Chat Core (depends on Wave D shell)
+- [ ] 17. hero-session-list: sidebar session list with categories, archive/revive
+- [ ] 18. hero-chat-view: interaction stream container + scroll management
+- [ ] 19. hero-message-input: compose area with send button
+- [ ] 20. hero-scroll-anchor: jump-to-bottom floating button

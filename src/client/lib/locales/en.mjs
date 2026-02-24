@@ -114,6 +114,14 @@ export default {
       session: 'Session',
     },
   },
+  statusBar: {
+    connected:    'Connected',
+    connecting:   'Connecting...',
+    disconnected: 'Disconnected',
+    globalCost:   'Global',
+    serviceCost:  'Service',
+    sessionCost:  'Session',
+  },
   settings: {
     title: 'Settings',
     tabs: {
@@ -123,6 +131,21 @@ export default {
       permissions: 'Permissions',
       appearance:  'Appearance',
     },
+  },
+  topBar: {
+    backButton: '\u2190',
+    agents:     'Agents',
+    abilities:  'Abilities',
+    newSession: 'New Session',
+    settings:   '\u2699',
+    logout:     'Logout',
+  },
+  sidebar: {
+    searchPlaceholder: 'Search sessions...',
+    sessions:          'Sessions',
+    participants:      'Participants',
+    archiveShow:       '\u{1F435}',
+    archiveHide:       '\u{1F648}',
   },
   common: {
     save:    'Save',
