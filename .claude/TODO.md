@@ -67,6 +67,6 @@
 - [x] 35. hero-participant-list: participant list in sidebar (avatars, names, roles)
 
 ### Wave I: Settings + System (parallel — independent)
-- [ ] 36. hero-settings-page: settings page with top-bar + tabbed content
-- [ ] 37. hero-settings-tabs: tabbed settings content (profile, account, API keys, theme)
-- [ ] 38. hero-websocket-manager: WebSocket connection manager (invisible, no UI)
+- [x] 36. hero-settings-page: settings page with top-bar + tabbed content
+- [x] 37. hero-settings-tabs: tabbed settings content (profile, account, API keys, theme)
+- [x] 38. hero-websocket-manager: WebSocket connection manager (invisible, no UI)
