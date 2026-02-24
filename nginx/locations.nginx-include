@@ -3,7 +3,7 @@
 # WebSocket endpoint
 location /hero/ws {
   rewrite ^/hero/ws$ /ws break;
-  proxy_pass http://127.0.0.1:8098;
+  proxy_pass http://127.0.0.1:8089;
   proxy_http_version 1.1;
   proxy_set_header Host $host;
   proxy_set_header X-Real-IP $remote_addr;
@@ -22,7 +22,7 @@ location /hero/ws {
 # API endpoints
 location /hero/api/ {
   rewrite ^/hero/api/(.*)$ /api/$1 break;
-  proxy_pass http://127.0.0.1:8098;
+  proxy_pass http://127.0.0.1:8089;
   proxy_http_version 1.1;
   proxy_set_header Host $host;
   proxy_set_header X-Real-IP $remote_addr;
@@ -52,7 +52,7 @@ location /hero/api/ {
 # Static files and pages
 location /hero/ {
   rewrite ^/hero/(.*)$ /$1 break;
-  proxy_pass http://127.0.0.1:8098;
+  proxy_pass http://127.0.0.1:8089;
   proxy_http_version 1.1;
   proxy_set_header Host $host;
   proxy_set_header X-Real-IP $remote_addr;

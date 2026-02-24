@@ -1,0 +1,59 @@
+{
+  "name": "hero",
+  "version": "3.0.0",
+  "description": "Hero",
+  "main": "app/index.mjs",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "coverage": "clear ; node ./node_modules/.bin/nyc ./node_modules/.bin/jasmine",
+    "migrate": "mythix-cli migrate",
+    "shell": "mythix-cli shell",
+    "start": "node --inspect app/index.mjs",
+    "test": "clear ; ./node_modules/.bin/jasmine"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/someuser/someproject.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/someuser/someproject/issues"
+  },
+  "homepage": "https://github.com/someuser/someproject#readme",
+  "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "luxon": "^3.3.0",
+    "mythix": "^4.1.0",
+    "mythix-orm": "^1.15.0",
+    "mythix-orm-sqlite": "^3.0.0",
+    "mythix-twt": "^1.0.1",
+    "nife": "^1.12.1",
+    "uuid": "^9.0.0",
+    "xid-js": "^1.0.1"
+  },
+  "devDependencies": {
+    "@spothero/eslint-plugin-spothero": "github:spothero/eslint-plugin-spothero",
+    "colors": "^1.4.0",
+    "diff": "^5.1.0",
+    "eslint": "^8.43.0",
+    "jasmine": "^5.0.2",
+    "nyc": "^15.1.0"
+  },
+  "nyc": {
+    "reporter": [
+      "text",
+      "html"
+    ],
+    "exclude": [
+      "spec/**",
+      "app/application.js",
+      "app/routes.js",
+      "app/config/**"
+    ]
+  }
+}

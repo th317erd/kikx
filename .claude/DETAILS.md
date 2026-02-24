@@ -4,6 +4,12 @@ Important details to remember across sessions.
 
 ---
 
+## Planning Workflow
+
+- **`.claude/conversation.md`** — Ephemeral Q&A scratchpad for planning rounds. OVERWRITE each time it's updated. User answers questions inline, then we start a new round.
+- **`bot-docs/`** — Persistent planning artifacts (docs/, plan/, test/). Accumulates across sessions.
+- **`.claude/TODO.md`** — Execution plan, updated as we go.
+
 ## Key File Locations
 
 - **Server entry:** `server/index.mjs`
@@ -410,6 +416,58 @@ All modal components migrated to split HTML/JS pattern:
 - Phase 6: User settings UI, API key scope enforcement
 - Phase 7: Self-approval prevention, cross-session nonce, chained command UX
 - Phase 8: Screenshots (plugin), avatar picker UI, rich content renderers (plugin territory)
+
+---
+
+## Mythix Server (v2 branch)
+
+**Location:** `src/server/`
+**Database:** SQLite at `/tmp/hero/hero.sqlite`
+**Port:** 8089 (localhost)
+**URL:** `https://wyatt-desktop.mythix.info/hero/` (via nginx reverse proxy)
+**nginx config:** `nginx/locations.nginx-include` (port 8089)
+
+### Routes
+- Health: `GET /api/v1/health`
+- Register: `POST /api/v1/auth/register-user`
+- Send magic link: `POST /api/v1/auth/send-magic-link`
+- Login (with token): `GET|POST /api/v1/auth/login` (requires `magicToken` param)
+- Logout: `POST /api/v1/auth/logout`
+
+### Dev Mode Behavior
+- `registerUser` returns session token directly in response (no email needed)
+- `sendMagicLink` returns session token + magic link URL in response (logs to console)
+- Tables auto-created on startup via `start()` override
+
+### Key Changes from Scaffold
+- PostgreSQL → SQLite (`mythix-orm-sqlite`)
+- Removed: `@aws-sdk/client-s3`, `gm`, `mjml`, `form-data`, `mythix-orm-postgresql`
+- Disabled modules: MailerModule, AWSModule (exports commented out in `modules/index.mjs`)
+- Email templates lazy-loaded in `model-base.mjs` to avoid mjml dependency
+
+---
+
+## V2 Client Planning (2026-02-23)
+
+**Status:** In AGIS planning mode (`::agis.plan`), designing V2 client.
+**Plan file:** `bot-docs/plan/hero/client-plan.yaml` — 10 feature areas (C1-C10)
+**FrameManager spec:** `bot-docs/plan/hero/frame-manager.yaml` — authoritative design doc
+
+### V1 Screenshots Reviewed
+- 32 screenshots at `/home/wyatt/Pictures/Hero/` (Feb 8 - Feb 22, 2026)
+- Key findings: HML-prompts were the star feature, all input types working
+- Permission system working end-to-end with websearch
+- Cost tracking in footer (Global/Service/Session)
+- Agents/Abilities as modals, not pages
+- Top nav bar with session name + action buttons
+
+### Key V2 Decisions
+- Keep V1's top nav bar layout (session name left, actions right)
+- Add left sidebar for session list (concept art direction)
+- FrameManager replaces ad-hoc message state (cross-platform, seqda-backed)
+- Glass-morphism styling evolves V1's flat dark theme
+- All HML-prompt types carry forward
+- Permission system UI carries forward
 
 ---
 
