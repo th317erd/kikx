@@ -61,10 +61,10 @@
 - [x] 31. hero-agent-form-modal: create/edit agent form + tests (12 tests)
 
 ### Wave H: Remaining Modals + Session Details (depends on Wave G)
-- [ ] 32. hero-ability-list-modal: abilities list (System/My Abilities tabs)
-- [ ] 33. hero-ability-wizard-modal: multi-step ability creation wizard
-- [ ] 34. hero-create-session-modal: new session dialog
-- [ ] 35. hero-participant-list: participant list in sidebar (avatars, names, roles)
+- [x] 32. hero-ability-list-modal: abilities list (System/My Abilities tabs)
+- [x] 33. hero-ability-wizard-modal: multi-step ability creation wizard
+- [x] 34. hero-create-session-modal: new session dialog
+- [x] 35. hero-participant-list: participant list in sidebar (avatars, names, roles)
 
 ### Wave I: Settings + System (parallel — independent)
 - [ ] 36. hero-settings-page: settings page with top-bar + tabbed content
