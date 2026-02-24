@@ -1,0 +1,1415 @@
+# frame-manager.yaml
+# Module: FrameManager — Core conversation state engine
+# Status: PLANNING (critical review incorporated)
+# Created: 2026-02-22
+# Updated: 2026-02-23 (critical review findings resolved)
+# ---
+# This is the authoritative design specification for the FrameManager module.
+# An implementation bot reads this and knows EXACTLY what to build.
+
+overview:
+  description: |
+    FrameManager is a pure data structure + event emitter that manages an ordered,
+    immutable, event-sourced stream of Frames. It is the backbone of all conversation
+    state. Analogy: a git commit log for chat channels.
+  platform: cross-platform (Node.js + browser)
+  dependencies:
+    - xid (ID generation, pre-database)
+    - seqda (immutable state store by th317erd — author-owned, extensible)
+  depended-on-by:
+    - permissions system (multi-target merge for permission prompts)
+    - chat UI (WebComponent subscriptions to frame IDs)
+    - server API (REST endpoints for frame history)
+    - streaming pipeline (live frames for real-time SSE)
+    - plugin system (custom frame types)
+
+# =============================================================================
+# FOUNDATION: SEQDA
+# =============================================================================
+
+seqda-foundation:
+  description: |
+    FrameManager is a LIGHT WRAPPER around a seqda store. Seqda provides:
+    - Object.freeze immutability on its INTERNAL state (the store)
+    - Batched microtask update events with previousStore snapshots
+    - Per-argument method caching (invalidated on any write)
+    - hydrate() for bulk state loading
+    - Cross-platform (Node + browser via `events` polyfill)
+    - Scope-based state organization with get/set/store context
+    - Deep path traversal: get('some.really[0].deep.key')
+  important-note: |
+    seqda freezes its INTERNAL store state, NOT the objects referenced by it.
+    Frames referenced within the store remain mutable JavaScript objects.
+    This means the linked-list pointer concern is a NON-ISSUE — Frame objects
+    and FramePointer objects can be mutated freely.
+  integration-model: |
+    Option A — seqda store IS the FrameManager's internal state container.
+    FrameManager creates a seqda store internally. Frame collections are
+    seqda scopes with methods. FrameManager class is a thin wrapper
+    providing the domain API.
+  event-strategy: |
+    seqda tracks changes and reports them via the update event:
+      emit('update', { store, previousStore, modified })
+    The `modified` array identifies which scopes changed. Combined with
+    seqda's deep path traversal, this provides the granularity needed.
+    FrameManager listens to seqda updates and re-emits as namespaced
+    frame events (e.g., 'frame:updated:{frameId}'). If seqda's granularity
+    is insufficient, update seqda itself (author-owned).
+  pre-implementation: |
+    BEFORE implementing FrameManager, write exploratory tests in
+    ~/Projects/seqda/ to verify seqda's event granularity, path traversal,
+    and freeze behavior with referenced objects. Understand seqda deeply
+    before building on top of it.
+  hydrate-cache-fix: |
+    The hydrate() cache bug has been FIXED in seqda (v2.1.0).
+    hydrate() now properly invalidates all scope method caches.
+    Both hydrate() and merge([...], { events: false }) are viable
+    options for bulk loading.
+  extensibility: |
+    seqda is author-owned. Can be updated for more granular events,
+    richer event system, or frame-type dispatch if needed.
+
+# =============================================================================
+# DATA MODEL
+# =============================================================================
+
+frame:
+  description: |
+    Value object representing a single unit of conversation state.
+    Frames are NOT frozen by seqda (seqda freezes its own internal state,
+    not referenced objects). Frame mutability is managed by convention
+    and FramePointer indirection.
+  shape:
+    id:
+      type: string (xid)
+      description: Globally unique ID, generated before database persistence.
+      mergeable: false
+    type:
+      type: string (free-form)
+      description: |
+        Frame type identifier. Determines content shape. Free-form string
+        to support plugin-defined frame types. No enum, no validation at
+        the FrameManager level.
+      examples: [interaction, message, reflection, hml-prompt, hml-prompt-value, image, command, shell, websearch, function]
+      mergeable: false
+    targets:
+      type: array of string (frame IDs)
+      description: |
+        Frames this frame merges into. Enables multi-target merge.
+        Critical for permissions system.
+        Empty array for frames that don't target anything.
+        Entire content merges into EACH target identically.
+      mergeable: false
+    phantom:
+      type: boolean
+      description: |
+        True for real-time streaming frames. Phantom frames are ephemeral.
+        With groupId: merge into group frame, then discard.
+        Without groupId: standalone ephemeral frame (e.g., typing indicator).
+        Legal without groupId — just means no collapse target.
+      mergeable: false
+    content:
+      type: object (opaque)
+      description: |
+        Type-dependent payload. No schema — shape determined by frame type.
+        Examples: shell → { command: "ls -la" }, message → { text: "hello" },
+        websearch → { url: "..." }.
+      mergeable: true
+    parentId:
+      type: string | null
+      description: |
+        Parent frame ID. Null for top-level Interaction frames.
+        Single parent only (tree, not DAG).
+      mergeable: false
+    groupId:
+      type: string | null
+      description: |
+        Group identifier for live-streaming frames. The first phantom creates
+        a persistent frame with this ID. Subsequent phantoms merge into it.
+        Optional — phantoms without groupId are standalone ephemeral frames.
+      mergeable: false
+    groupType:
+      type: string | null
+      description: |
+        The frame type assigned to the group's persistent frame.
+        Set by the first phantom. If a subsequent phantom has a different
+        groupType, REJECT it (this should never happen).
+      mergeable: false
+    order:
+      type: number
+      description: |
+        Ordering counter. In-memory: monotonic counter (mock/increment).
+        In database: database-assigned sequential value.
+        Required for global ordering across pods/regions at scale.
+        Separate from timestamp because wall-clocks drift across servers.
+      mergeable: false
+    timestamp:
+      type: number
+      description: |
+        Wall-clock time of frame creation (epoch ms).
+        Separate from order: timestamp is human-readable wall-clock,
+        order is the authoritative sort key that works at scale.
+      mergeable: false
+    hidden:
+      type: boolean
+      default: true
+      description: |
+        DEFAULT TRUE — whitelist approach. Frames are hidden unless
+        explicitly made visible. This is an internal mechanism allowing
+        clients/listeners to focus on "visible" content vs system-supporting
+        functionality.
+      mergeable: true
+    deleted:
+      type: boolean
+      default: false
+      description: |
+        Soft-deleted. When true, filtered from database queries:
+        WHERE 'deleted' IS NOT TRUE.
+        Frame remains in storage but invisible to consumers.
+        Can be un-deleted (merge deleted: false).
+      mergeable: true
+    updatedAt:
+      type: number (epoch ms)
+      description: Timestamp of last merge/update.
+      mergeable: true
+    createdAt:
+      type: number (epoch ms)
+      description: Timestamp of frame creation. Never changes.
+      mergeable: false
+    processed:
+      type: string | null
+      description: |
+        Server-set cryptographic fingerprint. NOT a simple boolean.
+        Indicates the frame has been processed and signed by the server.
+        Used for permission frames (nonce/replay prevention).
+        The server sets this value — FrameManager just stores it.
+      mergeable: false
+      notes: |
+        This is a HIGH-LEVEL UNMERGED property. It is not set via the
+        deep-merge pipeline. The server sets it directly on the frame.
+    processedAt:
+      type: number (epoch ms) | null
+      description: Timestamp of when the server processed and signed this frame.
+      mergeable: false
+
+  # --- Mergeable Properties ---
+  merge-rules: |
+    Only these properties propagate during merge:
+    MERGEABLE: hidden, deleted, updatedAt, content
+    NOT MERGED: id, type, targets, phantom, parentId, groupId, groupType,
+                order, timestamp, createdAt, processed, processedAt
+
+# =============================================================================
+# FRAME POINTER
+# =============================================================================
+
+frame-pointer:
+  description: |
+    Separate object that manages version history linking. Decouples the
+    linked-list concerns from Frame objects. Multiple FramePointers can
+    reference the same Frame independently.
+
+    This solves the multi-target version history problem: when Frame B
+    merges into [A1, A2, A3], each target has its own FramePointer.
+    All three point to B as HEAD. If A1 later gets merge C, only A1's
+    pointer updates — A2 and A3 still point to B.
+  shape:
+    frame:
+      type: Frame reference
+      description: The frame this pointer references.
+    previous:
+      type: FramePointer | null
+      description: Previous version in this chain.
+    next:
+      type: FramePointer | null
+      description: Next version in this chain.
+    head:
+      type: FramePointer
+      description: The HEAD (latest computed version) of this chain.
+    tail:
+      type: FramePointer
+      description: The original (first) version of this chain.
+  notes:
+    - FramePointers are IN-MEMORY ONLY. Not serialized.
+    - Multiple FramePointers can point to the same Frame.
+    - Each FramePointer chain is independent.
+    - When history:false, FramePointers still exist but only HEAD is kept.
+    - Order and parentId may also need to live on FramePointer for
+      correct ordering when frames are loaded partially/lazily.
+
+# =============================================================================
+# FRAME HIERARCHY
+# =============================================================================
+
+hierarchy:
+  description: |
+    Frames form a tree structure via parentId. Three levels observed:
+  levels:
+    - name: Interaction
+      parentId: null
+      description: Top-level "chat bubble" — a user or agent turn.
+    - name: Child frames
+      parentId: interaction ID
+      examples: [Reflection, Message, HMLPrompt, Image, Command]
+    - name: Grandchild frames
+      parentId: child frame ID
+      examples: [HMLPromptValue (child of HMLPrompt)]
+  example: |
+    Frame[Interaction](
+      Frame[Reflection](),
+      Frame[Message](),
+      Frame[HMLPrompt](
+        Frame[HMLPromptValue]()
+      ),
+      Frame[Message]()
+    )
+
+# =============================================================================
+# MERGE SEMANTICS
+# =============================================================================
+
+merge:
+  strategy: deep-merge
+  null-handling: |
+    If any key in the incoming content is null, that key is DELETED from
+    the target. Enables key removal and bulk-delete via multi-target merge.
+    Empty objects are valid: { a: {} } is NOT deleted, only explicitly
+    null values trigger deletion. To delete 'a' entirely, send { a: null }.
+  array-handling: |
+    Full replacement. Arrays are never element-merged. The incoming array
+    replaces the target array entirely.
+  deep-merge-rules: |
+    Ordered evaluation:
+    1. If incoming value is null → DELETE the key from target
+    2. If incoming value is an array → REPLACE target array entirely
+    3. If incoming value is a plain object → RECURSE into target's key
+    4. Otherwise → REPLACE the value
+
+    Nested example:
+    Target:  { a: { b: 1, c: 2 }, d: 3 }
+    Merge:   { a: { b: null } }
+    Result:  { a: { c: 2 }, d: 3 }       ← b deleted, c remains, a stays
+  property-scope: |
+    Only MERGEABLE properties are affected by merge:
+    hidden, deleted, updatedAt, content.
+    All other frame properties (id, type, parentId, etc.) belong to the
+    frame itself and do NOT propagate via merge.
+  multi-target:
+    description: |
+      A single frame can target multiple frames simultaneously.
+      The ENTIRE content is deep-merged into EACH target identically.
+    use-case: Permission response { allow: true } merging into multiple prompts.
+  post-merge:
+    - Source frame linked into target's FramePointer chain (when history enabled).
+    - HEAD FramePointer is updated for each target.
+    - Event frame:updated:{targetId} is emitted for each affected target.
+    - Phantom frames: update HEAD only, no FramePointer linking, no storage.
+
+# =============================================================================
+# LIVE FRAMES (formerly "PHANTOM FRAMES")
+# =============================================================================
+
+live-frames:
+  description: |
+    Live frames are the real-time streaming mechanism. Immediate collapse:
+
+    1. First phantom with groupId arrives → creates a persistent frame with:
+       - id = groupId
+       - type = groupType
+       - content = first phantom's content
+       - phantom = false (the GROUP frame is persistent)
+       - parentId = from phantom (all phantoms share same parentId)
+       - hidden = true (default)
+       - deleted = false (default)
+    2. Next phantom arrives → deep-merges into the persistent group frame.
+    3. Repeat. Group frame always has the current, up-to-date state.
+    4. Individual phantom frames are NOT stored. Fire-and-forget.
+    5. Phantom frames do NOT participate in version history.
+  standalone-phantoms: |
+    Phantoms WITHOUT groupId are legal. They are standalone ephemeral
+    frames — emitted to listeners but never stored. Use case: typing
+    indicators, presence updates, transient UI signals.
+  groupType-conflict: |
+    If a phantom in a group has a different groupType than the first
+    phantom that created the group, REJECT it. This should never happen
+    in practice.
+  events:
+    - "frame:added" when the group frame is first created (first phantom).
+    - "frame:updated:{groupId}" on each subsequent phantom merge.
+    - Standalone phantoms (no groupId) emit a transient event but nothing is stored.
+
+# =============================================================================
+# DELETION / VISIBILITY
+# =============================================================================
+
+deletion:
+  description: |
+    Append-only system. No hard deletes. Two independent boolean properties:
+  states:
+    hidden:
+      default: true
+      description: |
+        DEFAULT TRUE — whitelist model. Frames are hidden unless explicitly
+        set to visible. Clients/listeners use this to filter "visible" content
+        from system-supporting functionality.
+        Can be toggled via merge (hidden is a mergeable property).
+    deleted:
+      default: false
+      description: |
+        Soft-deleted. Database queries filter: WHERE 'deleted' IS NOT TRUE.
+        Server stops serving deleted frames entirely.
+        Can be un-deleted via merge (deleted is a mergeable property).
+  precedence: |
+    hidden and deleted are independent booleans. Both being true is valid
+    but redundant — deleted already excludes the frame from all queries.
+    No special precedence logic needed.
+
+# =============================================================================
+# FRAME MANAGER
+# =============================================================================
+
+frame-manager:
+  description: |
+    Light wrapper around a seqda store. Owns ordering, access, merge
+    execution, live frame tracking, event emission, and bulk loading.
+  validation-posture: |
+    SILENT REJECTION of invalid input. The FrameManager enforces its own
+    invariants defensively (defense in depth). Invalid frames (no id, no type)
+    are silently dropped. Non-mergeable properties in merge payloads are
+    silently ignored. The FrameManager never throws on bad input — it just
+    doesn't process it. This means:
+    - Frames without id: silently dropped
+    - Frames without type: silently dropped
+    - Non-mergeable properties in merge targets: silently stripped
+    - Client-side processed/processedAt: silently stripped
+    - Self-referencing targets: silently dropped
+    - Duplicate targets: deduplicated
+    - Non-array merge() argument: rejected with error (this IS a caller bug)
+    - groupType conflicts: rejected, warning emitted
+  constructor:
+    options:
+      history:
+        type: boolean
+        default: true
+        description: |
+          When true, full version history maintained via FramePointer chains.
+          When false, only HEAD is kept — merges update HEAD directly.
+          Useful for production (small memory) vs debug/test (full audit).
+
+  operations:
+    merge:
+      signature: merge(frames, options?) -> Array<Frame>
+      description: |
+        PRIMARY ENTRY POINT for all frame operations.
+        Accepts an ARRAY of frames (plurality — always an array, never single).
+        For each frame:
+          - If phantom with groupId → create/update group frame, discard phantom
+          - If phantom without groupId → emit transient event, discard
+          - If has targets → deep-merge into each target (mergeable props only)
+          - Otherwise → add as new frame
+        Returns array of affected/created frames.
+      options:
+        events:
+          type: boolean
+          default: true
+          description: |
+            When false, suppresses individual frame events.
+            Emits single 'frames:bulk-loaded' when done.
+            Used for history loading (bulkInsert pattern).
+      notes:
+        - Frames can arrive in any order. FrameManager maintains consistent
+          state regardless of insertion order.
+        - Duplicate IDs: always update. Could be frame correction.
+        - Targets non-existent frame: ignore/drop silently.
+    get:
+      signature: get(frameId) -> Frame | undefined
+      description: |
+        Retrieve frame by ID. When history:true, can retrieve any version.
+        When history:false, only HEAD frames exist — get() and getHead()
+        are functionally identical.
+        Returns undefined for non-existent IDs (not an error).
+    getHead:
+      signature: getHead(frameId) -> Frame | undefined
+      description: Retrieve HEAD (computed latest) for a frame's FramePointer chain.
+    getChildren:
+      signature: getChildren(parentId) -> Array<Frame>
+      description: Get child frames of a given parent, sorted by order.
+    iterate:
+      signature: "[Symbol.iterator]() / forEach() / toArray()"
+      description: Iterate HEAD frames in order.
+    getVersionHistory:
+      signature: getVersionHistory(frameId) -> Array<Frame>
+      description: |
+        Walk FramePointer chain from tail to head.
+        Returns all versions in order.
+        When history:false, returns only HEAD (single-element array).
+
+  events:
+    vocabulary:
+      - name: "frame:added"
+        payload: "{ frame }"
+        when: New frame created (not during events:false merge).
+      - name: "frame:added:{frameId}"
+        payload: "{ frame }"
+        when: Same as above, namespaced for ID-scoped subscription.
+      - name: "frame:updated"
+        payload: "{ frame, previousHead }"
+        when: Frame's HEAD recomputed after merge.
+      - name: "frame:updated:{frameId}"
+        payload: "{ frame, previousHead }"
+        when: Same, namespaced. WebComponents subscribe to their own frame.
+      - name: "frame:processed"
+        payload: "{ frame }"
+        when: Frame's processed property set by server (fingerprinted).
+      - name: "frame:processed:{frameId}"
+        payload: "{ frame }"
+        when: Same, namespaced.
+      - name: "frames:bulk-loaded"
+        payload: "{ count }"
+        when: merge([...], { events: false }) completes.
+    id-scoped-subscriptions:
+      description: |
+        Namespaced events via string interpolation.
+        'frame:updated:{frameId}' for ID-specific subscriptions.
+        FrameManager provides helper methods that translate three-argument
+        on(eventType, frameId, callback) to two-argument namespaced form.
+    removed:
+      - name: "frame:completed"
+        reason: Replaced by frame:processed (server-side fingerprint).
+      - name: "frame:collapsed"
+        reason: Collapse is continuous (immediate merge), not a discrete event.
+
+# =============================================================================
+# CONCURRENCY
+# =============================================================================
+
+concurrency:
+  model: last-write-wins
+  description: |
+    Server is the single coordinator and authority. Last-write-wins
+    based on order field. Concurrent multi-agent writes are uncommon
+    but possible. May revisit if needed.
+
+# =============================================================================
+# FILE LAYOUT
+# =============================================================================
+
+file-layout:
+  base: src/lib/frame-manager/
+  files:
+    - frame.mjs:          Frame class (value object)
+    - frame-pointer.mjs:  FramePointer class (version history linking)
+    - frame-manager.mjs:  FrameManager class (seqda wrapper, domain logic)
+    - deep-merge.mjs:     Deep merge utility (null-deletion, array replacement)
+    - index.mjs:          Public exports
+  notes:
+    - seqda is an npm dependency (author-owned, extensible)
+    - No separate event-emitter.mjs — seqda provides EventEmitter
+
+# =============================================================================
+# IMPLEMENTATION ORDER
+# =============================================================================
+
+implementation-order:
+  description: |
+    Layered build. Each layer is independently testable. TDD throughout.
+  pre-work:
+    - name: Seqda Exploration
+      description: |
+        Write exploratory tests in ~/Projects/seqda/ to verify:
+        - Event granularity (does modified tell us which specific paths changed?)
+        - Object.freeze behavior (confirm referenced objects are NOT frozen)
+        - Path traversal (get('some.deep[0].key'))
+        - Cache invalidation behavior under rapid writes
+        - Scope organization patterns for collections
+      independent: true
+      rationale: |
+        Must understand seqda's actual behavior before building on it.
+        Author says I'm misunderstanding it — verify by testing.
+  phases:
+    1:
+      name: Deep Merge Utility
+      description: |
+        Pure function. Rules:
+        1. null → delete key
+        2. array → replace entirely
+        3. plain object → recurse
+        4. otherwise → replace
+        Empty objects {} are valid (not deleted).
+      independent: true
+    2:
+      name: Frame + FramePointer Classes
+      description: |
+        Frame: value object with all properties defined above.
+        FramePointer: { frame, previous, next, head, tail }.
+        Multiple pointers can reference the same Frame.
+      independent: true
+    3:
+      name: FrameManager Core
+      description: |
+        merge([frames], options), get, getHead, getChildren, iterate.
+        Light wrapper around seqda store.
+        Constructor accepts { history: boolean }.
+        merge() always accepts arrays (plurality).
+      depends-on: [Frame, FramePointer]
+    4:
+      name: Merge Engine
+      description: |
+        Target-based deep merge. Only mergeable properties (hidden, deleted,
+        updatedAt, content). Multi-target: entire content to each target.
+        FramePointer chain linking (when history enabled).
+      depends-on: [FrameManager Core, Deep Merge]
+    5:
+      name: Live Frame System
+      description: |
+        Phantom with groupId: create/update group frame, discard phantom.
+        Phantom without groupId: emit transient event, discard.
+        Group frame: id=groupId, type=groupType, content from first phantom,
+        phantom=false, hidden=true, deleted=false.
+        Reject groupType conflicts.
+      depends-on: [Merge Engine]
+    6:
+      name: Bulk Loading
+      description: |
+        merge([frames], { events: false }). Suppresses per-frame events.
+        Emits single frames:bulk-loaded on completion.
+        Processes merge logic (not just raw insertion).
+        Handles any-order insertion with consistent final state.
+      depends-on: [Merge Engine]
+    7:
+      name: Event Subscriptions
+      description: |
+        Namespaced events: frame:updated:{frameId}.
+        Helper methods: on(eventType, frameId, callback) → translates
+        to on('eventType:frameId', callback) via string interpolation.
+      depends-on: [FrameManager Core]
+    8:
+      name: Test Utilities
+      description: |
+        EventRecorder, HistoryWalker, IntegrityChecker, ScenarioBuilder.
+        Built alongside implementation, not bolted on after.
+        See testing-architecture section for full specification.
+      depends-on: [FrameManager Core]
+      notes: |
+        Some utilities (EventRecorder, IntegrityChecker) should be built
+        early and used in ALL phase tests. Others (ScenarioBuilder) grow
+        as more features land.
+    9:
+      name: Composition Scenarios
+      description: |
+        Full multi-participant, multi-agent scenarios that verify the
+        system composes correctly — not just that functions work.
+        See testing-architecture.scenarios for the full list.
+      depends-on: [all above]
+
+# =============================================================================
+# TESTING ARCHITECTURE
+# =============================================================================
+
+testing-architecture:
+  philosophy: |
+    Testing has three tiers. Tier 1 proves the parts work. Tier 2 proves
+    the parts COMPOSE into the system we're actually engineering. Tier 3 is
+    the infrastructure that makes Tier 2 possible and readable.
+
+    A function passing its unit test doesn't mean the system works. The
+    system is the composition, and that's where the real bugs hide.
+
+  tiers:
+    1:
+      name: Unit Tests
+      description: |
+        Per-function, per-method tests. Deep merge rules, Frame construction,
+        FramePointer linking, individual FrameManager operations. Small, fast,
+        exhaustive. Built via TDD during each implementation phase.
+      scope: |
+        - deep-merge: null deletion, array replacement, object recursion,
+          nested nulls, empty objects, edge cases
+        - Frame: construction, property defaults, validation
+        - FramePointer: linking, chain walking, head/tail updates
+        - FrameManager methods: merge, get, getHead, getChildren, iterate,
+          getVersionHistory — each tested in isolation
+    2:
+      name: Composition Scenarios
+      description: |
+        Full conversations between multiple participants. Realistic frame
+        sequences fed to merge() in realistic patterns. These test how the
+        parts compose — ordering, event sequencing, history integrity,
+        interleaving, bulk loading, and recovery.
+      scope: See scenarios section below.
+    3:
+      name: Test Utilities
+      description: |
+        Infrastructure that makes Tier 2 and Tier 4 possible and readable.
+        Event recording, history walking, integrity validation, scenario
+        building. Built ALONGSIDE the FrameManager, not after. Some utilities
+        (EventRecorder, IntegrityChecker) are used in ALL tier tests.
+      scope: See utilities section below.
+    4:
+      name: Adversarial Tests (Hack Attempts)
+      description: |
+        Deliberate attempts to break invariants, corrupt state, bypass
+        property protections, and exploit edge cases. These tests TRY TO
+        SUCCEED at breaking the system. If a hack attempt succeeds, the
+        implementation is fixed — the test stays as a regression guard.
+
+        Defense in depth: even though the server is the primary security
+        boundary, the FrameManager should enforce its own invariants
+        defensively. A FrameManager that silently accepts garbage is a
+        FrameManager that hides bugs.
+      scope: See adversarial section below.
+
+  # ---------------------------------------------------------------------------
+  # TEST UTILITIES
+  # ---------------------------------------------------------------------------
+
+  utilities:
+    EventRecorder:
+      description: |
+        Attaches to a FrameManager and records every event: name, payload,
+        timestamp, order. Provides assertion methods for verifying event
+        sequences, counts, and content.
+      api:
+        - attach(frameManager): Start recording events.
+        - detach(): Stop recording, remove listeners.
+        - reset(): Clear recorded events.
+        - events: Array of { name, payload, timestamp, order }.
+        - assertFired(eventName): Assert event was emitted at least once.
+        - assertNotFired(eventName): Assert event was never emitted.
+        - assertFiredWith(eventName, predicateFn): Assert event fired with matching payload.
+        - assertOrder(eventNames[]): Assert events fired in this exact sequence.
+        - assertCount(eventName, n): Assert event fired exactly n times.
+        - getEvents(eventName?): Get all recorded events, optionally filtered by name.
+      notes: |
+        Should capture both generic events (frame:added) and namespaced
+        events (frame:added:f1). Should also capture seqda-level update
+        events for debugging.
+
+    HistoryWalker:
+      description: |
+        Given a frame ID, walks its FramePointer chain and returns a
+        structured audit trail. Verifies chain integrity.
+      api:
+        - walk(frameManager, frameId): Returns array of frames from tail to head.
+        - walkReverse(frameManager, frameId): Returns array from head to tail.
+        - assertChainLength(frameManager, frameId, n): Assert chain has n entries.
+        - assertChainIntegrity(frameManager, frameId): Verify no broken links,
+          head/tail consistent, every pointer's frame exists, no cycles.
+        - assertHeadContent(frameManager, frameId, expected): Assert HEAD frame's
+          content matches expected (deep equality or predicate).
+        - diff(frameManager, frameId, versionA, versionB): Show content diff
+          between two versions in the chain.
+      notes: |
+        When history:false, chain length should always be 1.
+        Should detect and report cycles (defensive, shouldn't happen).
+
+    IntegrityChecker:
+      description: |
+        Validates the entire FrameManager state. Run after EVERY scenario
+        to catch subtle composition bugs.
+      checks:
+        - All parentId references point to existing frames (or are null).
+        - Every FramePointer chain is valid (no broken links, consistent head/tail).
+        - No orphaned FramePointers (pointer exists but referenced frame doesn't).
+        - Order values are monotonically increasing for frames with same parentId.
+        - No duplicate IDs in the frame index.
+        - All group frames have phantom=false.
+        - No phantom frames are stored (they should be discarded after merge).
+        - Every frame in a FramePointer chain is reachable from both head and tail.
+        - Children lists are consistent with parentId references.
+      api:
+        - check(frameManager): Returns { valid: bool, errors: string[] }.
+        - assertValid(frameManager): Throws if any check fails.
+      notes: |
+        This is the MOST IMPORTANT test utility. Every composition scenario
+        should end with assertValid(). It catches the class of bugs that
+        only emerge from composition — the bugs that unit tests can't find.
+
+    ScenarioBuilder:
+      description: |
+        Fluent API for constructing multi-participant conversations.
+        Handles frame construction, ID generation, ordering, participant
+        tracking, and assertion setup.
+      design: |
+        The builder constructs realistic frame sequences and feeds them to
+        merge() in controllable patterns. It doesn't mock the FrameManager —
+        it drives it with realistic input and verifies realistic output.
+      api:
+        - scenario(options?): Create a new scenario. Options: { history: bool }.
+        - .participant(name, role): Register a participant (role: 'user' | 'agent').
+        - .interaction(participantName): Start a new top-level interaction frame.
+        - .send(participantName, frameData): Send a non-streaming frame as a child
+          of the current interaction. Returns the frame for reference.
+        - .stream(participantName, chunks[]): Send a sequence of phantom frames
+          that collapse into a group frame. Simulates real-time streaming.
+        - .target(sourceFrame, targetFrameIds[]): Create a targeting merge frame.
+        - .bulkLoad(frames[], options?): Load frames via merge with events:false.
+        - .tick(): Advance to the next microtask (flush seqda batched events).
+        - .assertState(fn): Run assertion function against current FrameManager state.
+        - .assertEvents(fn): Run assertion function against EventRecorder.
+        - .assertIntegrity(): Run IntegrityChecker.assertValid().
+        - .run(): Execute the scenario and return results.
+      participant-tracking: |
+        Each participant has a name and role. The builder tracks which
+        frames belong to which participant. Assertions can filter by
+        participant: "Alice's frames should be...", "Agent-1's group frame
+        should contain...".
+      notes: |
+        The builder should make tests READABLE. A test should read like
+        a story of what happened in a conversation, not like a wall of
+        merge() calls with raw frame objects.
+
+  # ---------------------------------------------------------------------------
+  # COMPOSITION SCENARIOS
+  # ---------------------------------------------------------------------------
+
+  scenarios:
+    description: |
+      Each scenario tests a realistic multi-participant interaction.
+      Every scenario ends with IntegrityChecker.assertValid().
+      Scenarios test the COMPOSITION of features, not individual features.
+
+    S1-basic-two-user:
+      name: Basic two-user conversation
+      description: |
+        Alice sends a message. Agent streams a response (5 phantoms
+        collapsing into a group frame). Alice sends a follow-up.
+        Agent streams again.
+      verifications:
+        - Frame order is correct (monotonically increasing).
+        - Parent-child hierarchy is intact (messages are children of interactions).
+        - Group frames contain the fully-merged content from all phantoms.
+        - No phantom frames remain in storage.
+        - Version history shows correct chain for each group frame.
+        - Events fired in correct order: frame:added for interactions,
+          frame:added then frame:updated for streamed groups.
+        - IntegrityChecker passes.
+
+    S2-multi-agent:
+      name: Multi-agent concurrent streaming
+      description: |
+        Alice sends a message. Agent-1 starts streaming a reflection.
+        Agent-2 starts streaming a message response. Phantoms from both
+        agents arrive interleaved (Agent-1 chunk, Agent-2 chunk,
+        Agent-1 chunk, Agent-2 chunk, ...).
+      verifications:
+        - Each group collapses independently — no cross-contamination.
+        - Both group frames exist with correct, separate content.
+        - Events for both streams fire correctly (namespaced by group ID).
+        - Children of the interaction are ordered correctly.
+        - IntegrityChecker passes.
+
+    S3-permission-flow:
+      name: Permission prompt and grant
+      description: |
+        Agent streams a response that includes a system-generated permission
+        prompt frame (type: permission-prompt). The permission prompt is
+        only visible to privileged users. A privileged user responds with
+        an "allow" frame (type: permission-grant) that targets the
+        permission prompt frame. The allow frame goes through authentication
+        before being accepted. The server then sets processed/processedAt
+        on the permission prompt frame.
+      important-context: |
+        Permission prompts come FROM the system, not from agents directly.
+        HML prompts are different — they are like <input> fields (select,
+        color, date, textarea, etc.) that solicit user feedback. Permission
+        prompts use HML prompt concepts for their UI, but the permission
+        grant flow is a separate, authenticated system concern.
+        Only users with sufficient privilege see the prompt and can respond.
+      verifications:
+        - Permission prompt frame is created with correct type and content.
+        - Allow frame merges into the permission prompt (mergeable props only).
+        - FramePointer chain for the prompt shows the merge history.
+        - processed/processedAt are set on the prompt frame (server-side, not via merge).
+        - Events: frame:added for prompt, frame:updated for the merge,
+          frame:processed for the server fingerprint.
+        - IntegrityChecker passes.
+
+    S4-hml-prompt-flow:
+      name: HML prompt user feedback
+      description: |
+        Agent sends a message containing an HML prompt (input fields for
+        user feedback — could be a select, textarea, date picker, etc.).
+        User responds with an HML prompt value frame targeting the prompt.
+        The prompt's content is updated with the user's response.
+      verifications:
+        - HML prompt frame created with correct type and content.
+        - HML prompt value frame targets the prompt.
+        - Merge updates the prompt's content with the user's input.
+        - FramePointer chain shows before/after.
+        - Events fire correctly.
+        - IntegrityChecker passes.
+
+    S5-bulk-load-then-live:
+      name: Bulk load history then continue live
+      description: |
+        Load 50 frames of conversation history via merge([...], { events: false }).
+        Then a new live message comes in. Then an agent streams a response.
+      verifications:
+        - frames:bulk-loaded event fires exactly once.
+        - No per-frame events during bulk load.
+        - Live frames merge correctly on top of history.
+        - FramePointer chains connect properly across the bulk/live boundary.
+        - Ordering is correct across the boundary.
+        - IntegrityChecker passes.
+
+    S5b-bulk-load-randomized-order:
+      name: Bulk load with randomized frame order
+      description: |
+        Same 50 frames as S5, but shuffle them into random order before
+        loading. Verify the FrameManager reconstructs the correct state
+        regardless of insertion order.
+      verifications:
+        - Final state is identical to S5 (ordered load).
+        - All frames sorted correctly by order field.
+        - Parent-child relationships intact despite random insertion.
+        - FramePointer chains assembled correctly.
+        - IntegrityChecker passes.
+      notes: |
+        Run this test multiple times with different random seeds to
+        increase confidence. The FrameManager must produce a deterministic
+        result regardless of insertion order.
+
+    S6-late-history-backfill:
+      name: Late history backfill (pagination)
+      description: |
+        Load the most recent 10 frames (page 1). User interacts live
+        (sends messages, agent streams). Then load the previous 10 frames
+        (page 2, older history).
+      verifications:
+        - Ordering is correct after backfill — older frames sort before newer.
+        - FramePointer chains reconnect across the page boundary.
+        - No duplicate frames.
+        - History walks correctly across the boundary.
+        - Live frames remain unaffected by backfill.
+        - IntegrityChecker passes.
+
+    S7-concurrent-users-same-channel:
+      name: Concurrent users in same channel
+      description: |
+        Alice and Bob are both active in the same channel. Alice sends
+        a message while Bob's agent is mid-stream (phantoms still arriving).
+        Bob sends a message while Alice's agent is mid-stream.
+      verifications:
+        - Interleaving doesn't corrupt state.
+        - Each participant's frames are independently ordered.
+        - Children are correctly attributed to their parent interactions.
+        - Both agents' streams collapse independently.
+        - IntegrityChecker passes.
+
+    S8-multi-target-merge:
+      name: Multi-target merge
+      description: |
+        Agent sends three separate frames (F1, F2, F3). A correction frame
+        arrives targeting all three with updated content. Each target
+        receives the merge independently.
+      verifications:
+        - All three targets have updated content.
+        - Each target has its own independent FramePointer chain.
+        - Updating one target further doesn't affect the others.
+        - Events fire for each target (frame:updated:{f1}, frame:updated:{f2},
+          frame:updated:{f3}).
+        - IntegrityChecker passes.
+
+    S9-deletion-and-visibility:
+      name: Deletion and visibility toggling
+      description: |
+        Create several frames. Hide some (merge hidden:true — though this
+        is the default). Unhide one (merge hidden:false). Soft-delete one
+        (merge deleted:true). Un-delete it (merge deleted:false).
+      verifications:
+        - Hidden frames are still retrievable by ID.
+        - Deleted frames are still retrievable by ID (soft delete).
+        - Version history shows the toggle progression.
+        - Events fire for each state change.
+        - IntegrityChecker passes.
+
+    S10-standalone-phantoms:
+      name: Standalone ephemeral phantoms
+      description: |
+        A typing indicator frame arrives as a phantom with no groupId.
+        Then another. Then the user sends a real message.
+      verifications:
+        - Standalone phantoms are NOT stored.
+        - Transient events fire for each phantom.
+        - No group frame is created.
+        - The real message frame is stored normally.
+        - IntegrityChecker passes.
+
+    S11-full-conversation:
+      name: Full realistic conversation (integration)
+      description: |
+        A complete, realistic conversation combining all features:
+        1. Bulk load 20 frames of history (randomized order).
+        2. Alice sends a message.
+        3. Agent-1 streams a reflection (3 phantoms).
+        4. Agent-1 streams a message response (5 phantoms).
+        5. Agent-1 sends an HML prompt (select field).
+        6. Alice responds to the HML prompt.
+        7. Bob joins and sends a message.
+        8. Agent-2 streams a response to Bob (4 phantoms).
+        9. System generates a permission prompt for Alice.
+        10. Alice grants the permission (allow frame targets the prompt).
+        11. Server sets processed/processedAt on the prompt.
+        12. Alice sends a follow-up message.
+        13. Agent-1 streams a final response.
+        14. Load 10 more frames of older history (backfill page 2).
+      verifications:
+        - ALL previous scenario verifications apply in composition.
+        - Full event timeline is correct and complete.
+        - All FramePointer chains are intact.
+        - Ordering is globally correct across bulk load, live, and backfill.
+        - IntegrityChecker passes.
+      notes: |
+        This is the "boss fight" test. If this passes, we have high
+        confidence the system composes correctly.
+
+  # ---------------------------------------------------------------------------
+  # ADVERSARIAL TESTS (HACK ATTEMPTS)
+  # ---------------------------------------------------------------------------
+
+  adversarial:
+    philosophy: |
+      These tests deliberately try to break the system. Every test here
+      represents an attack vector. If the attack succeeds, we fix the
+      implementation — the test stays forever as a regression guard.
+
+      The FrameManager enforces its OWN invariants (defense in depth).
+      Server-side concerns (authentication, authorization, rate limiting)
+      are documented in the deferred/future-plans section.
+
+    # --- Property Protection ---
+    property-attacks:
+      description: |
+        Attempts to overwrite non-mergeable properties via the merge pipeline.
+        The FrameManager must silently ignore these — only mergeable properties
+        (hidden, deleted, updatedAt, content) should propagate.
+
+      H1-overwrite-id:
+        name: Merge attempts to overwrite frame ID
+        attack: |
+          Create frame F1. Merge a frame targeting F1 with { id: 'hijacked' }
+          in the payload.
+        expected: F1 retains its original ID. The merge frame's id property
+          does not propagate. IntegrityChecker passes.
+
+      H2-overwrite-createdAt:
+        name: Merge attempts to backdate createdAt
+        attack: |
+          Create frame F1. Merge a frame targeting F1 with
+          { createdAt: 0 } (epoch zero — Jan 1970).
+        expected: F1 retains its original createdAt. Timestamp is not
+          mergeable.
+
+      H3-overwrite-type:
+        name: Merge attempts to change frame type
+        attack: |
+          Create frame F1 with type 'message'. Merge a frame targeting F1
+          with { type: 'permission-grant' }.
+        expected: F1 retains type 'message'. Type is not mergeable.
+
+      H4-overwrite-parentId:
+        name: Merge attempts to reparent a frame
+        attack: |
+          Create interaction I1 with child F1. Create interaction I2.
+          Merge a frame targeting F1 with { parentId: I2.id }.
+        expected: F1 remains a child of I1. parentId is not mergeable.
+          getChildren(I1) still includes F1. getChildren(I2) does not.
+
+      H5-client-sets-processed:
+        name: Client attempts to set processed/processedAt via merge
+        attack: |
+          Create frame F1. Merge a frame targeting F1 with
+          { processed: 'forged-fingerprint', processedAt: Date.now() }.
+        expected: F1's processed and processedAt remain null.
+          These are server-set only, not via merge pipeline.
+
+      H6-overwrite-order:
+        name: Merge attempts to change ordering
+        attack: |
+          Create frames F1 (order 1), F2 (order 2), F3 (order 3).
+          Merge a frame targeting F2 with { order: 999 }.
+        expected: F2 retains its original order. Iteration order unchanged.
+
+    # --- Structural Attacks ---
+    structural-attacks:
+      description: |
+        Attempts to corrupt the frame graph, create impossible states,
+        or exploit edge cases in merge/pointer logic.
+
+      H7-self-referencing-target:
+        name: Frame targets itself
+        attack: |
+          Create frame F1. Merge a frame with id=F1.id that targets [F1.id]
+          — a frame merging into itself.
+        expected: |
+          Silently ignored (self-target dropped). No infinite loop,
+          no corruption. IntegrityChecker passes.
+
+      H8-duplicate-targets:
+        name: Frame targets the same ID multiple times
+        attack: |
+          Create frame F1. Merge a frame with targets [F1.id, F1.id, F1.id].
+        expected: |
+          Merge applies once, not three times. Content doesn't stack.
+          FramePointer chain has one entry, not three.
+          IntegrityChecker passes.
+
+      H9-circular-pointer-chain:
+        name: Attempt to create circular FramePointer chain
+        attack: |
+          Create frames F1, F2, F3. Merge F2→F1, F3→F2, then try to
+          merge F1→F3 (creating a cycle: F1→F3→F2→F1).
+        expected: |
+          No cycle is created. HistoryWalker.assertChainIntegrity detects
+          no cycles. The merge either succeeds linearly or is rejected.
+          IntegrityChecker passes.
+
+      H10-phantom-hijack-existing-frame:
+        name: Phantom with groupId matching a non-phantom frame
+        attack: |
+          Create a normal (non-phantom) frame F1. Then send a phantom with
+          groupId=F1.id. The phantom tries to merge into a frame that
+          wasn't created by the phantom system.
+        expected: |
+          Merge succeeds — "just works" per CR-14. The frame with that ID
+          exists, the phantom merges content into it. This is consistent
+          with the bulk-load-then-live pattern and is not an attack vector
+          at the FrameManager level. IntegrityChecker passes.
+
+      H11-orphan-parentId:
+        name: Frame references non-existent parent
+        attack: |
+          Merge a frame with parentId='does-not-exist'.
+        expected: |
+          Frame is accepted (parentId might arrive later via bulk load).
+          IntegrityChecker should flag this as a warning, not an error,
+          since lazy loading means parents may arrive after children.
+
+      H12-phantom-groupType-conflict:
+        name: Phantom with conflicting groupType
+        attack: |
+          Send phantom P1 with groupId='g1', groupType='message'.
+          Send phantom P2 with groupId='g1', groupType='reflection'.
+        expected: P2 is rejected. Group frame retains type 'message'.
+          Error/warning emitted. IntegrityChecker passes.
+
+    # --- Content Attacks ---
+    content-attacks:
+      description: |
+        Attempts to exploit the deep merge logic with malicious or
+        pathological content payloads.
+
+      H13-deeply-nested-null-bomb:
+        name: Deeply nested content (100+ levels)
+        attack: |
+          Construct content with 100+ levels of nesting:
+          { a: { b: { c: { ... 100 levels ... { z: null } } } } }
+          Merge into a frame.
+        expected: |
+          Merge completes without stack overflow. Result is correct
+          (null at the deepest level deletes that key). Performance
+          is acceptable (not pathologically slow).
+
+      H14-enormous-content-payload:
+        name: Very large content object
+        attack: |
+          Merge a frame with a content object containing 10,000 keys
+          or a very large string value.
+        expected: |
+          Merge completes. No crash, no OOM at reasonable sizes.
+          This is a robustness test, not a security boundary —
+          actual size limits are a server concern.
+
+      H15-prototype-pollution:
+        name: Content with __proto__ or constructor keys
+        attack: |
+          Merge content containing:
+          { __proto__: { polluted: true } }
+          { constructor: { prototype: { polluted: true } } }
+        expected: |
+          Deep merge does NOT pollute Object.prototype.
+          ({}).polluted remains undefined after the merge.
+          This is a CRITICAL security test for any deep merge function.
+
+      H16-content-with-non-plain-objects:
+        name: Content containing Date, RegExp, Map, Set, etc.
+        attack: |
+          Merge content containing non-plain objects:
+          { date: new Date(), regex: /test/, map: new Map() }
+        expected: |
+          Deep merge rule 4 applies (not a plain object → replace value).
+          These are NOT recursed into. They're treated as atomic values.
+
+    # --- Merge Invariant Attacks ---
+    merge-invariant-attacks:
+      description: |
+        Attempts to break merge invariants through sequencing,
+        timing, or payload manipulation.
+
+      H17-merge-with-no-id:
+        name: Frame with missing ID
+        attack: |
+          Merge a frame with no id property (undefined or null).
+        expected: |
+          Silently rejected. Frame is not added to the index. Does NOT
+          create an entry keyed by 'undefined'. No crash, no event.
+          IntegrityChecker passes.
+
+      H18-merge-with-no-type:
+        name: Frame with missing type
+        attack: |
+          Merge a frame with no type property.
+        expected: |
+          Silently rejected. Frame is not added. No crash, no event.
+          IntegrityChecker passes.
+
+      H19-merge-non-array:
+        name: Calling merge() with a non-array argument
+        attack: |
+          Call merge(singleFrame) instead of merge([singleFrame]).
+          Call merge(null). Call merge("string"). Call merge(42).
+        expected: |
+          merge() enforces array input (plurality quirk). Non-array
+          arguments are rejected with a clear error. No silent corruption.
+
+      H20-merge-empty-array:
+        name: Calling merge with empty array
+        attack: |
+          Call merge([]).
+        expected: |
+          No-op. No events fired. No state change. No crash.
+          IntegrityChecker passes.
+
+      H21-rapid-fire-merge:
+        name: 1000 merges in a tight loop
+        attack: |
+          Call merge() 1000 times in a synchronous loop, each with
+          a new frame targeting the same existing frame.
+        expected: |
+          All 1000 merges apply correctly. Final HEAD has the last
+          merge's content. FramePointer chain has 1001 entries (when
+          history enabled). Events are batched appropriately.
+          No memory leak, no crash. IntegrityChecker passes.
+
+      H22-history-tampering-via-backfill:
+        name: Bulk load contradicts live state
+        attack: |
+          Create frame F1 with content { text: 'live version' }.
+          Bulk load a frame with the same ID but different content:
+          { text: 'historical version' }.
+        expected: |
+          Order-based resolution. The frame with the higher order value
+          becomes HEAD. If the bulk-loaded frame has a lower order, it
+          slots into history behind the live version. If higher order,
+          it becomes HEAD (server is authority — last-write-wins).
+          IntegrityChecker passes.
+
+# =============================================================================
+# ACCEPTANCE CRITERIA
+# =============================================================================
+
+acceptance-criteria:
+  - merge() accepts arrays of frames (always arrays, never single frame).
+  - Frames can be retrieved by ID via get().
+  - HEAD frames are retrievable via getHead().
+  - Frames are iterable in order (sorted by order field).
+  - Child frames are accessible by parentId.
+  - Deep merge works with null-deletion, array full-replacement, and recursion.
+  - Empty objects {} are valid merge results (not deleted).
+  - Only mergeable properties propagate (hidden, deleted, updatedAt, content).
+  - Multi-target merge applies entire content to each target identically.
+  - FramePointer chains track version history independently per target.
+  - Multiple FramePointers can reference the same Frame.
+  - history:false keeps only HEAD, getVersionHistory returns single element.
+  - history:false makes get() and getHead() functionally identical.
+  - Live frames — first phantom with groupId creates group frame (hidden:true, deleted:false, phantom:false).
+  - Subsequent phantoms merge into group frame, then are discarded.
+  - Phantoms without groupId are standalone ephemeral (event only, no storage).
+  - groupType conflict on phantom → reject.
+  - Default hidden:true on all frames (whitelist visibility).
+  - Default deleted:false on all frames.
+  - processed/processedAt are server-set (not via merge pipeline).
+  - Namespaced events for ID-scoped subscriptions.
+  - merge([...], { events: false }) suppresses per-frame events, emits bulk-loaded.
+  - Duplicate IDs always update (frame correction).
+  - Targets non-existent frame → ignore/drop silently.
+  - get() returns undefined for non-existent IDs (not an error).
+  - Works identically in Node.js and browser (via seqda).
+  - Built on seqda as a light wrapper.
+  # Validation (silent rejection posture)
+  - Frames without id are silently dropped (never stored).
+  - Frames without type are silently dropped (never stored).
+  - Non-mergeable properties are silently stripped from merge payloads.
+  - Client-set processed/processedAt are silently stripped.
+  - Self-referencing targets are silently dropped.
+  - Duplicate targets are deduplicated (merge applies once, not N times).
+  - Non-array merge() argument is rejected with error.
+  - Deep merge is safe against prototype pollution (__proto__, constructor.prototype).
+  - Non-plain objects in content (Date, RegExp, Map) are treated as atomic values (not recursed).
+  # Testing
+  - EventRecorder captures all events with correct name, payload, and order.
+  - HistoryWalker can traverse any FramePointer chain and detect broken links/cycles.
+  - IntegrityChecker validates full FrameManager state (parentId refs, ordering, no orphans).
+  - IntegrityChecker passes after every composition scenario.
+  - All 11 composition scenarios pass (S1-S11).
+  - S5b randomized bulk load produces identical state to ordered bulk load.
+  - S11 full conversation composes all features without regression.
+  - All 22 adversarial tests pass (H1-H22).
+
+# =============================================================================
+# RESOLVED QUESTIONS (all rounds + critical review)
+# =============================================================================
+
+resolved:
+  # Round 1
+  R1-Q1: "Multi-target YES. Critical for permissions."
+  R1-Q2: "Content is opaque, type-dependent, no schemas."
+  R1-Q3: "Single parent only (tree). parentId null for Interactions."
+  R1-Q4: "Version history: linked-list with previous/next, head/tail."
+  R1-Q5: "Version history: audit trail + debugging + API feature."
+  R1-Q6: "Deep merge. Null values delete keys."
+  R1-Q7: "Both frames remain. HEAD is computed/cached."
+  R1-Q8: "Collapsed frame takes groupId as its ID."
+  R1-Q9: "Phantom frames removed entirely."
+  R1-Q10: "Events: added, updated, processed, bulk-loaded."
+  R1-Q11: "ID-scoped subscriptions via namespaced events."
+  # Round 2
+  R2-Q1: "Arrays: full replacement."
+  R2-Q2: "Multi-target: entire content merges into each target."
+  R2-Q3: "Immediate collapse. Fire-and-forget phantoms."
+  R2-Q4: "hidden (served on request) vs deleted (not served). No hard deletes."
+  R2-Q5: "Linked-list pointers in-memory only."
+  R2-Q6: "seqda as foundation."
+  R2-Q7: "Last-write-wins. Server is authority."
+  # Round 3
+  R3-Q1: "Option A — seqda wrapper. Extend seqda if events insufficient."
+  R3-Q2: "processed/processedAt replace complete. Server-side fingerprint."
+  R3-Q3: "Phantoms fire-and-forget. history:boolean config."
+  R3-Q4: "MessageStore: pinned."
+  # Critical Review
+  CR-1: "seqda doesn't freeze referenced objects. Frame mutability is fine."
+  CR-2: "seqda tracks changes via modified array + deep path traversal."
+  CR-3: "Cache invalidation mitigated by disconnecting listeners when done."
+  CR-4: "merge() replaces add() for targeted/phantom operations."
+  CR-5: "Group frame: parentId from phantom, content from first phantom, phantom=false, hidden=true, deleted=false."
+  CR-6: "timestamp + order both needed. order is counter for scale. timestamp is wall-clock."
+  CR-7: "hidden + deleted independent booleans. Both true = valid but redundant."
+  CR-8: "Free-form type string intentional — plugin system needs custom types."
+  CR-9: "FramePointer object decouples version history from Frame."
+  CR-10: "Multi-target: each target gets independent FramePointer chain."
+  CR-11: "get() + getHead() identical when history:false."
+  CR-12: "Nested null: recurse into objects, null deletes only the specific key."
+  CR-13: "Merge scope: hidden, deleted, updatedAt, content only."
+  CR-14: "Phantom after bulk load: just works. Merge by matching IDs."
+  CR-15: "Phantom without groupId: legal. Standalone ephemeral frame."
+  CR-16: "bulkInsert = merge([...], { events: false }). Replays merge logic."
+  CR-17: "processed/processedAt: server-set fingerprint, replaces complete."
+  CR-18: "Namespaced events for ID-scoped subscriptions."
+  CR-19: "merge() mandatorily accepts arrays (plurality quirk)."
+  CR-20: "Error handling: add→always update, get→undefined, targets-missing→drop."
+
+# =============================================================================
+# DEFERRED DECISIONS
+# =============================================================================
+
+deferred:
+  - topic: MessageStore relationship
+    status: pinned
+    notes: May still be relevant as higher-level interface.
+  - topic: Consumption tracking
+    status: future
+    notes: Who has seen which frames. Separate table. Server concern.
+  - topic: Permission nonce enforcement
+    status: future
+    notes: processed/processedAt handles at FrameManager level. Server enforcement TBD.
+  - topic: Seqda extensions
+    status: evaluate-during-pre-work
+    notes: |
+      May need to extend seqda for more granular events or per-scope
+      cache invalidation. Evaluate during seqda exploration phase.
+      hydrate() cache bug has been fixed in v2.1.0.
+
+# =============================================================================
+# FUTURE PLANS: SERVER-SIDE SECURITY
+# =============================================================================
+# These are security concerns that live ABOVE the FrameManager, at the server
+# layer. The FrameManager is a pure data structure — it doesn't know about
+# users, sessions, or authentication. These items are documented here so they
+# aren't forgotten, but they are NOT part of the FrameManager implementation.
+
+future-server-security:
+  description: |
+    The FrameManager enforces data invariants (silent rejection of invalid
+    input). The SERVER enforces identity and authorization. These are the
+    server-side security concerns that must be addressed when the server
+    layer is built.
+
+  authentication:
+    - topic: Permission grant authentication
+      description: |
+        Allow frames (permission-grant type) must be authenticated before
+        the server passes them to FrameManager.merge(). The server must
+        verify: (1) the submitting user has sufficient privilege level,
+        (2) the permission prompt was actually issued to that user,
+        (3) the allow frame targets a real permission prompt frame.
+        The FrameManager just sees a valid merge — the server decides
+        whether to call merge() at all.
+    - topic: Agent identity verification
+      description: |
+        Frames submitted by agents must be verified as coming from a
+        legitimate agent session. Agents should not be able to forge
+        frames as other agents or as users.
+    - topic: User identity verification
+      description: |
+        Frames submitted by users must be tied to an authenticated session.
+        A user should not be able to submit frames as another user.
+
+  authorization:
+    - topic: Permission prompt visibility
+      description: |
+        Permission prompts should only be visible to users with sufficient
+        privilege level. The server filters which frames are sent to which
+        clients via SSE. The FrameManager doesn't filter — it stores
+        everything. Visibility filtering is a server/API concern.
+    - topic: Channel membership
+      description: |
+        Users should only be able to submit frames to channels they are
+        members of. The server validates channel membership before calling
+        FrameManager.merge().
+    - topic: Frame type authorization
+      description: |
+        Certain frame types may require specific roles or permissions.
+        For example, only system/server should be able to create
+        permission-prompt frames. Only authenticated users should be
+        able to create permission-grant frames. Agents should not be
+        able to emit permission-grant frames.
+
+  replay-prevention:
+    - topic: Permission grant replay attack
+      description: |
+        The same allow frame should not be accepted twice. The server uses
+        processed/processedAt to track which permission prompts have been
+        resolved. A second allow frame targeting an already-processed
+        prompt should be rejected by the server before reaching the
+        FrameManager.
+    - topic: Frame deduplication
+      description: |
+        The server should detect and reject duplicate frame submissions
+        (same frame ID submitted twice by a client). The FrameManager
+        treats duplicate IDs as updates (frame correction), so the server
+        must decide whether a duplicate is intentional correction or replay.
+
+  rate-limiting:
+    - topic: Merge rate limiting
+      description: |
+        Clients should be rate-limited on frame submissions to prevent
+        resource exhaustion. This is especially important for phantom
+        frames (streaming) where a malicious client could flood the
+        server with phantoms.
+    - topic: Content size limits
+      description: |
+        The server should enforce maximum content sizes before passing
+        frames to the FrameManager. The FrameManager itself doesn't
+        limit content size (it's a data structure), but the server
+        should reject oversized payloads at the API boundary.

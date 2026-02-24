@@ -1,0 +1,252 @@
+# meta.yaml
+# Plan tests — assertions that validate the PLAN ITSELF
+# Status: pass | fail | needs-clarification | blocked
+# Severity: blocker | high | medium | low
+# Updated: 2026-02-23 (testing architecture added)
+# ---
+
+frame-manager:
+
+  # --- Completeness ---
+  - assert: frame-manager has-complete-acceptance-criteria
+    severity: blocker
+    status: pass
+    notes: 44 concrete acceptance criteria defined (27 functional + 9 validation + 8 testing).
+
+  - assert: frame-manager has-test-strategy-defined
+    severity: blocker
+    status: pass
+    notes: |
+      Four-tier testing architecture: unit tests, composition scenarios,
+      test utilities, adversarial tests. 11 composition scenarios (S1-S11).
+      22 adversarial tests (H1-H22) covering property attacks, structural
+      attacks, content attacks, and merge invariant attacks. 4 test utilities
+      (EventRecorder, HistoryWalker, IntegrityChecker, ScenarioBuilder).
+      IntegrityChecker runs after every scenario and adversarial test.
+
+  - assert: frame-manager has-defined-boundaries
+    severity: high
+    status: pass
+    notes: |
+      Clear API: merge([frames], opts), get, getHead, getChildren,
+      iterate, getVersionHistory. FramePointer decouples version history.
+      Merge scope explicitly whitelisted (hidden, deleted, updatedAt, content).
+      processed/processedAt explicitly server-side-only.
+
+  - assert: frame-manager fits-architecture
+    severity: high
+    status: pass
+    notes: |
+      Replaces v1 frame system. Cross-platform via seqda. Plugin-friendly
+      (free-form type strings). FramePointer solves multi-target elegantly.
+
+  # --- Design Decisions ---
+  - assert: frame-manager merge-semantics-fully-specified
+    severity: blocker
+    status: pass
+    notes: |
+      Deep merge with explicit 4-rule priority order. Null deletion,
+      array replacement, object recursion, value replacement.
+      Mergeable property whitelist defined. Empty objects valid.
+
+  - assert: frame-manager live-frame-model-coherent
+    severity: blocker
+    status: pass
+    notes: |
+      Immediate collapse. Group frame creation fully specified:
+      id=groupId, type=groupType, content from first phantom,
+      phantom=false, hidden=true, deleted=false. groupType conflict=reject.
+      Standalone phantoms (no groupId) are legal ephemeral events.
+
+  - assert: frame-manager frame-pointer-design-coherent
+    severity: blocker
+    status: pass
+    notes: |
+      FramePointer decouples version history from Frame objects.
+      Multiple pointers can reference same Frame independently.
+      Solves multi-target version history without contradictions.
+
+  - assert: frame-manager seqda-integration-specified
+    severity: high
+    status: pass
+    notes: |
+      Option A: light wrapper. seqda doesn't freeze referenced objects
+      (confirmed by exploratory tests — 37 specs). Event strategy: seqda
+      modified array + previousStore diffing + custom synchronous events.
+      hydrate() cache bug identified — workaround: use merge() for bulk loading.
+
+  - assert: frame-manager event-system-specified
+    severity: high
+    status: pass
+    notes: |
+      Namespaced events: frame:updated:{frameId}. Helper methods for
+      three-arg to two-arg translation. frame:completed replaced by
+      frame:processed. frame:collapsed removed (continuous merge).
+
+  - assert: frame-manager deletion-model-specified
+    severity: medium
+    status: pass
+    notes: |
+      hidden (default true, whitelist) and deleted (default false).
+      Independent booleans. Both mergeable. Can be toggled via merge.
+
+  - assert: frame-manager concurrency-model-specified
+    severity: medium
+    status: pass
+    notes: Last-write-wins. Server is authority.
+
+  - assert: frame-manager error-handling-specified
+    severity: medium
+    status: pass
+    notes: |
+      Duplicate ID: always update. Non-existent get: undefined.
+      Missing merge target: drop silently. merge() always accepts arrays.
+
+  - assert: frame-manager processed-system-specified
+    severity: high
+    status: pass
+    notes: |
+      processed (string, server fingerprint) + processedAt (timestamp)
+      replace the old complete boolean. Server-set, not via merge pipeline.
+      Handles permission frame nonce/replay prevention.
+
+  # --- Testing Architecture ---
+  - assert: frame-manager test-utilities-specified
+    severity: high
+    status: pass
+    notes: |
+      4 utilities: EventRecorder (event capture + assertions),
+      HistoryWalker (chain traversal + integrity), IntegrityChecker
+      (full state validation), ScenarioBuilder (fluent conversation DSL).
+      APIs defined for each. IntegrityChecker runs after every scenario.
+
+  - assert: frame-manager composition-scenarios-defined
+    severity: blocker
+    status: pass
+    notes: |
+      11 scenarios: basic two-user (S1), multi-agent (S2), permission flow (S3),
+      HML prompt (S4), bulk load (S5), randomized bulk load (S5b), late backfill
+      (S6), concurrent users (S7), multi-target merge (S8), deletion/visibility
+      (S9), standalone phantoms (S10), full integration (S11). Each has explicit
+      verifications and ends with IntegrityChecker.assertValid().
+
+  - assert: frame-manager adversarial-tests-defined
+    severity: blocker
+    status: pass
+    notes: |
+      22 hack attempts: property attacks (H1-H6: overwrite id, createdAt,
+      type, parentId, processed, order), structural attacks (H7-H12: self-ref,
+      duplicate targets, circular chains, phantom hijack, orphan parent,
+      groupType conflict), content attacks (H13-H16: nested null bomb,
+      enormous payload, prototype pollution, non-plain objects), merge
+      invariant attacks (H17-H22: no id, no type, non-array arg, empty
+      array, rapid fire, history tampering). Prototype pollution (H15)
+      marked as CRITICAL security test.
+
+  - assert: frame-manager validation-posture-defined
+    severity: blocker
+    status: pass
+    notes: |
+      Silent rejection of invalid input. FrameManager enforces its own
+      invariants defensively (defense in depth). Frames without id/type
+      silently dropped. Non-mergeable properties silently stripped.
+      Self-referencing targets dropped. Duplicate targets deduplicated.
+      Non-array merge() rejected with error. Prototype pollution prevented.
+
+  - assert: frame-manager permission-vs-hml-distinction-clear
+    severity: high
+    status: pass
+    notes: |
+      HML prompts are input fields (select, textarea, date, etc.) for user
+      feedback. Permission prompts are system-generated, require authentication,
+      and only show to privileged users. Allow frames go through auth before
+      acceptance. Separate scenarios (S3 for permissions, S4 for HML prompts).
+
+  - assert: frame-manager server-security-documented
+    severity: high
+    status: pass
+    notes: |
+      Server-side security concerns documented in future-server-security
+      section: authentication (permission grants, agent identity, user
+      identity), authorization (prompt visibility, channel membership,
+      frame type auth), replay prevention (permission replay, frame dedup),
+      rate limiting (merge rate, content size). These are above the
+      FrameManager — server decides what reaches merge().
+
+  # --- Readiness ---
+  - assert: frame-manager is-implementation-ready
+    severity: blocker
+    status: pass
+    notes: |
+      All questions resolved across 3 rounds + critical review
+      (22 questions + 20 review findings). Pre-work completed
+      (seqda exploration — 37 tests pass). 9 implementation phases
+      with dependencies. Four-tier testing architecture with 11
+      scenarios + 22 adversarial tests. Validation posture defined.
+      Server-side security documented for future implementation.
+
+  - assert: frame-manager is-swarm-divisible
+    severity: medium
+    status: pass
+    notes: |
+      Pre-work (seqda tests) complete. Phases 1-2 parallelizable.
+      Test utilities (Phase 8) can start alongside Phase 3.
+      Each phase is a clean, isolated unit of work.
+
+  - assert: frame-manager dependencies-exist-in-plan
+    severity: high
+    status: pass
+    notes: xid (exists), seqda (exists, author-owned, explored). No blockers.
+
+  # --- Conflict Checks ---
+  - assert: frame-manager no-conflicts-with existing-frame-system
+    severity: high
+    status: pass
+    notes: v2 rewrite. v1 being replaced.
+
+  - assert: frame-manager no-conflicts-with message-store-plan
+    severity: medium
+    status: pass
+    notes: Pinned. Non-blocking for implementation.
+
+  # --- Safety ---
+  - assert: frame-manager rollback-safe
+    severity: medium
+    status: pass
+    notes: Pure data structure. No side effects. Revert files to rollback.
+
+  - assert: frame-manager open-questions-resolved
+    severity: blocker
+    status: pass
+    notes: |
+      All blocking questions resolved. 22 Q&A + 20 critical review
+      findings. Deferred items are explicitly non-blocking.
+
+# =============================================================================
+# CROSS-CUTTING
+# =============================================================================
+
+cross-cutting:
+  - assert: no-circular-dependencies in plan-dependency-graph
+    severity: blocker
+    status: pass
+
+  - assert: implementation-order-defined
+    severity: blocker
+    status: pass
+    notes: Pre-work + 9 phases with explicit dependencies.
+
+  - assert: all-plan-phases-documented
+    severity: high
+    status: pass
+
+# =============================================================================
+# SUMMARY
+# =============================================================================
+
+summary:
+  total: 28
+  pass: 28
+  needs-clarification: 0
+  fail: 0
+  blocked: 0
