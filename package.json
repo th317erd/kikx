@@ -1,49 +1,12 @@
 {
   "name": "hero",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "AI agent runner with web-based chat interface",
   "type": "module",
-  "main": "server/index.mjs",
-  "hero": {
-    "basePath": "/hero/"
-  },
-  "scripts": {
-    "start": "node server/index.mjs 2>&1 | tee /tmp/hero-server.log",
-    "start:bg": "node server/index.mjs > /tmp/hero-server.log 2>&1 &",
-    "stop": "pkill -f 'node.*server/index' || true",
-    "restart": "npm run stop && sleep 1 && npm run start:bg",
-    "add-user": "node server/cli/add-user.mjs",
-    "change-password": "node server/cli/change-password.mjs",
-    "update-user-encryption": "node server/cli/update-user-encryption.mjs",
-    "test": "node --test --test-force-exit --test-timeout=30000 'spec/**/*-spec.mjs'",
-    "test:interactions": "node --test --test-force-exit spec/lib/interactions/interactions-spec.mjs",
-    "agent-info": "node scripts/agent-info.mjs"
-  },
-  "keywords": [
-    "ai",
-    "agent",
-    "chat",
-    "claude",
-    "anthropic"
-  ],
-  "author": "",
   "license": "GPL-3.0",
+  "scripts": {},
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.52.0",
-    "better-sqlite3": "^11.0.0",
-    "cookie-parser": "^1.4.6",
-    "dotenv": "^16.4.0",
-    "express": "^4.18.2",
-    "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.2",
-    "mythix-ui-modal": "^1.0.8",
-    "puppeteer": "^22.0.0",
-    "turndown": "^7.2.2",
-    "uuid": "^13.0.0",
-    "ws": "^8.19.0"
-  },
-  "devDependencies": {
-    "jasmine": "^5.1.0",
-    "jsdom": "^28.1.0"
+    "seqda": "^2.1.0",
+    "xid-js": "^1.0.1"
   }
 }
