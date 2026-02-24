@@ -36,7 +36,7 @@
 - [x] 16. hero-status-bar: bottom bar (connection status, cost tracking) + tests (10 tests)
 
 ### Wave E: Session & Chat Core (depends on Wave D shell)
-- [ ] 17. hero-session-list: sidebar session list with categories, archive/revive
-- [ ] 18. hero-chat-view: interaction stream container + scroll management
-- [ ] 19. hero-message-input: compose area with send button
-- [ ] 20. hero-scroll-anchor: jump-to-bottom floating button
+- [x] 17. hero-session-list: sidebar session list with categories, archive/revive + tests (17 tests)
+- [x] 18. hero-chat-view: interaction stream container + scroll management + tests (17 tests)
+- [x] 19. hero-message-input: compose area with send button + tests (20 tests)
+- [x] 20. hero-scroll-anchor: jump-to-bottom floating button + tests (13 tests)
