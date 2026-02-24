@@ -22,5 +22,5 @@
 - [x] 10. nginx config: update for static file serving
 
 ### Wave C: Root Components (depends on Wave B)
-- [ ] 11. hero-application: src/client/components/hero-application/hero-application.mjs + tests
-- [ ] 12. hero-login-page: src/client/components/hero-login-page/hero-login-page.mjs + tests
+- [x] 11. hero-application: src/client/components/hero-application/hero-application.mjs + tests (10 tests)
+- [x] 12. hero-login-page: src/client/components/hero-login-page/hero-login-page.mjs + tests (15 tests)

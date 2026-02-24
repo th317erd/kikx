@@ -6,12 +6,20 @@ export default {
     loading: 'Loading...',
   },
   login: {
-    title:          'Sign In',
-    emailLabel:     'Email Address',
+    title:            'Sign In',
+    subtitle:         'AI-powered collaborative channels',
+    emailLabel:       'Email Address',
     emailPlaceholder: 'Enter your email',
-    submitButton:   'Send Magic Link',
-    successMessage: 'Check your email for a login link.',
-    errorMessage:   'Something went wrong. Please try again.',
+    submitButton:     'Send Magic Link',
+    loading:          'Sending...',
+    successMessage:   'Check your email for a login link.',
+    errorMessage:     'Something went wrong. Please try again.',
+    error: {
+      generic:      'Login failed. Please try again.',
+      emailRequired: 'Email is required.',
+      userNotFound: 'No account found for that email.',
+    },
+    success:          'Check your email for the magic link.',
   },
   session: {
     create: {
