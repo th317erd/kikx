@@ -40,3 +40,33 @@
 - [x] 18. hero-chat-view: interaction stream container + scroll management + tests (17 tests)
 - [x] 19. hero-message-input: compose area with send button + tests (20 tests)
 - [x] 20. hero-scroll-anchor: jump-to-bottom floating button + tests (13 tests)
+
+# Phase 6 — Interaction Rendering & Modals
+
+## Tasks
+
+### Wave F: Interaction Rendering + Base Modal (parallel — independent)
+- [x] 21. hero-interaction: chat bubble container (avatar, name, child frames, footer with timestamp/tokens) + tests (15 tests)
+- [x] 22. hero-message-content: HTML frame renderer (whitelisted tags, XSS-safe) + tests (17 tests)
+- [x] 23. hero-reflection-block: collapsible thinking block (brain emoji, toggle) + tests (13 tests)
+- [x] 24. hero-command-result: tool call + result display + tests (15 tests)
+- [x] 25. hero-modal: base modal overlay (backdrop, close, escape key) + tests (15 tests)
+
+### Wave G: Interactive Content + More Modals (depends on Wave F)
+- [ ] 26. hero-websearch-result: search results display (status + formatted output)
+- [ ] 27. hero-hml-prompt: interactive form input (text, select, color, range, etc.)
+- [ ] 28. hero-hml-prompt-value: submitted answer display (read-only pill badges)
+- [ ] 29. hero-permission-request: permission prompt (lightning icon, radio options, submit)
+- [ ] 30. hero-agent-list-modal: agent cards list + New Agent action
+- [ ] 31. hero-agent-form-modal: create/edit agent form
+
+### Wave H: Remaining Modals + Session Details (depends on Wave G)
+- [ ] 32. hero-ability-list-modal: abilities list (System/My Abilities tabs)
+- [ ] 33. hero-ability-wizard-modal: multi-step ability creation wizard
+- [ ] 34. hero-create-session-modal: new session dialog
+- [ ] 35. hero-participant-list: participant list in sidebar (avatars, names, roles)
+
+### Wave I: Settings + System (parallel — independent)
+- [ ] 36. hero-settings-page: settings page with top-bar + tabbed content
+- [ ] 37. hero-settings-tabs: tabbed settings content (profile, account, API keys, theme)
+- [ ] 38. hero-websocket-manager: WebSocket connection manager (invisible, no UI)
