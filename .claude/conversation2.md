@@ -233,4 +233,22 @@ Sound right?
 
 ---
 
+### Q6: Core Library Split (CRITICAL — from user, pre-Round 6)
+
+**User's note:** "We need to discuss splitting out all the core features into a 'lib' folder. I want the server wrapped around a 'lib'. The program we are building will be a core module, that could be imported and used in headless code / Node code. The server just wraps around this functionality. Most of what we have been discussing is currently 'lib'."
+
+**What this means:** The kernel components we've been designing (plugin loader, session manager, frame persistence, permissions, interaction loop, prepareMessage pipeline, cascading context, etc.) are NOT server code — they're a standalone library. The Mythix server is a thin shell that maps HTTP routes and WebSocket events onto this library.
+
+**Implications we need to discuss:**
+- Where does the lib live? `src/lib/`? `src/core/`? Alongside the existing `src/shared/frame-manager/`?
+- What's the boundary? Everything below the HTTP/WS layer goes in lib. Routes, controllers, SSE handlers stay in server.
+- Can the lib run without Mythix? (i.e., no Express dependency, no HTTP concepts)
+- Does this change where plugins live? (lib-level, not server-level?)
+- Testing: lib tests are pure unit/integration tests with no HTTP. Server tests are route-level.
+- The FrameManager at `src/shared/frame-manager/` is already this pattern. The lib would be the next layer up.
+
+**This needs to be a Round 6 topic before we write the formal plan.**
+
+---
+
 *Answer inline and we'll keep refining.*
