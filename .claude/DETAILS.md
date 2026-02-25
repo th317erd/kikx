@@ -447,6 +447,102 @@ All modal components migrated to split HTML/JS pattern:
 
 ---
 
+## V2 Server Planning (2026-02-25)
+
+**Status:** In AGIS planning mode (`::agis.plan`), Round 5 of Q&A
+**Scratchpad:** `.claude/conversation2.md` (ephemeral Q&A — DO NOT use conversation.md, other bot owns it)
+**Plan file:** TBD — will go to `bot-docs/plan/hero/server-plan.yaml`
+
+### Key Architectural Decisions (Rounds 1-4 resolved)
+
+**Kernel (10 non-plugin core components):**
+1. Mythix Application (HTTP, middleware, config, DB)
+2. Auth System (TWT tokens, magic links, cookies)
+3. Organization + User + Role models (multi-tenant)
+4. FrameManager (shared module, source of truth on server AND client)
+5. Plugin Loader (discovery, lifecycle, dependency resolution, registries)
+6. WebSocket Manager (connection, auth, message routing)
+7. SSE Manager (streaming connections)
+8. Session Manager (CRUD, participants, FrameManager instances per session)
+9. Frame Persistence (DB ↔ FrameManager sync)
+10. Permissions System (kernel-level, wraps around everything)
+
+**Plugin Architecture (the application IS plugins):**
+- Directory-based format: `plugins/name/index.mjs`
+- `setup(context)` / `teardown()` lifecycle
+- Context provides `registerCommand()`, `registerAgent()`, `registerTool()`, etc.
+- All registered interfaces are classes: constructor(sessionContext), execute(args)/_execute(args)
+- Base class from context provides logging, permissions, etc.
+- Registries: in-memory, rebuilt on session load. Plugin links to sessions persisted in DB.
+- Internal plugins: `src/server/app/plugins/`
+- Launch plugins: claude-agent, websearch, bash, hml, delegate, help, reload
+
+**Interaction Loop (async generator pattern — APPROVED):**
+- Agent plugin is async generator that yields blocks
+- Kernel iterates, reacts to each yielded block
+- Tool results passed back into generator via yield protocol
+- No explicit loop — event-driven via generator yields
+
+**Streaming Format:**
+- Type-specific HML tags: `<hml-websearch>`, `<hml-bash>`, `<hml-prompt>`, etc.
+- JSON payload in tag body. Text between tags streams as messages.
+- Plugin-registered tag types (parser discovers from registry)
+- Handles bot mistakes: mismatched close tags, attributes-as-fallback, malformed JSON
+
+**Agent Identity:**
+- Plugin = agent TYPE (ClaudeAgent, OpenAIAgent)
+- Agent = configured INSTANCE (org-level, with name, API key, instructions)
+- Participant = agent IN a session (with alias, session overrides)
+- REST CRUD for agents at org level
+- Session aliasing: `/invite @name as BobTheBurgerGuy`
+
+**Abilities Reimagined:**
+- DM/PM conversation with agent = agent's instruction set
+- Agent self-maintains instruction summary from DM history
+- Summary injected into primer for other sessions
+- No forms/wizards — natural language configuration
+
+**Primer System (__onstart):**
+- Small, dynamic: "HOW to be" not "HERE is everything"
+- Composed from: agent instructions + plugin __onstart exports + DM instruction summary
+- Agent can poll help system to discover available tools/commands
+- Plugins are queryable, write help manuals
+
+**prepareMessage Hook:**
+- Single interceptor for ALL message boundary crossings
+- `prepareMessage({ source, target, message, context })`
+- Can pass through, modify, block, or redirect
+- Plugins inspect payload to decide (no shortcut hooks)
+- Replaces BEFORE_TOOL/AFTER_TOOL etc.
+
+**Data Model:**
+- Cascading context via `Object.create()` prototype chain
+- Layers: plugin defaults → org config → session state → runtime state
+- `setProperty('org.name', value)` / `getProperty('session.name')` with dot/array notation
+
+**Frame Persistence:**
+- Denormalized `interaction_id` column for efficient loading
+- `order` column (monotonic counter per session)
+- `group_id` / `group_type` for phantom frames
+- Single-query loading: subquery for top-level IDs, then fetch all by interaction_id
+
+**Other Decisions:**
+- V1 is dead. No old code unless explicitly greenlighted.
+- Organizations = Discord Servers (full multi-tenant, single org for launch)
+- JSON interactions (not XML, not native tool_use). Pluggable parser per agent type.
+- SSE + WebSocket split (SSE for streaming, WS for events)
+- Tool requests are granular: `cd dir && ls` → individual command objects for per-command permissions
+- REST API: ~33 endpoints (kernel + sessions + participants + plugins + agents + user/org)
+
+### Open Threads (Round 5 — awaiting user response)
+- HML tag concrete proposal (bot mistake handling, plugin-registered types)
+- Abilities-as-DM mechanical design (instruction summary frames)
+- Plugin help system & queryability
+- Frame schema final validation
+- WebSocket events, permissions hook points, error handling philosophy
+
+---
+
 ## V2 Client Planning (2026-02-23)
 
 **Status:** In AGIS planning mode (`::agis.plan`), designing V2 client.
