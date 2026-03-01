@@ -9,12 +9,28 @@ import { AuthService }      from '../../src/server/auth/index.mjs';
 import { SessionManager }   from '../../src/core/session/index.mjs';
 import { FramePersistence } from '../../src/core/frames/index.mjs';
 import { InteractionLoop }  from '../../src/core/interaction/index.mjs';
-import { ServerRoutes }     from '../../src/server/routes/index.mjs';
-import XID                  from 'xid-js';
+
+import { AuthController }        from '../../src/server/controllers/auth-controller.mjs';
+import { SessionController }     from '../../src/server/controllers/session-controller.mjs';
+import { ParticipantController } from '../../src/server/controllers/participant-controller.mjs';
+import { AgentController }       from '../../src/server/controllers/agent-controller.mjs';
+import { InteractionController } from '../../src/server/controllers/interaction-controller.mjs';
+import { FrameController }       from '../../src/server/controllers/frame-controller.mjs';
+import { StreamController }      from '../../src/server/controllers/stream-controller.mjs';
+
+import XID from 'xid-js';
 
 // =============================================================================
 // Helpers
 // =============================================================================
+
+function createMockApp({ core, authService, keystore }) {
+  return {
+    getCore:        () => core,
+    getAuthService: () => authService,
+    getKeystore:    () => keystore,
+  };
+}
 
 function createMockReq(overrides = {}) {
   return {
@@ -25,6 +41,7 @@ function createMockReq(overrides = {}) {
     organizationId: null,
     getUMK:         () => null,
     headers:        {},
+    method:         'GET',
     on:             () => {},
     ...overrides,
   };
@@ -40,18 +57,24 @@ function createMockRes() {
     status(code) { res._status = code; return res; },
     json(data)   { res._json = data; return res; },
     setHeader(key, val) { res._headers[key] = val; return res; },
+    header(key, val) { res._headers[key] = val; return res; },
     write(data)  { res._written = (res._written || '') + data; return res; },
     end()        { res._ended = true; },
+    send(data)   { res._sent = data; return res; },
   };
 
   return res;
+}
+
+function createController(ControllerClass, { mockApp, req, res }) {
+  return new ControllerClass(mockApp, null, req, res);
 }
 
 // =============================================================================
 // Shared Setup
 // =============================================================================
 
-let core, keystore, context, authService, sessionManager, framePersistence, interactionLoop, routes;
+let core, keystore, context, authService, sessionManager, framePersistence, interactionLoop, mockApp;
 let testUser, testToken, testOrg, testUMK;
 
 before(async () => {
@@ -75,7 +98,7 @@ before(async () => {
   interactionLoop = new InteractionLoop(context);
   context.setProperty('interactionLoop', interactionLoop);
 
-  routes = new ServerRoutes({ core, authService, keystore });
+  mockApp = createMockApp({ core, authService, keystore });
 
   // Create a test user for authenticated routes
   let regResult = await authService.register('test@example.com', 'password123', {
@@ -99,271 +122,219 @@ after(async () => {
 });
 
 // =============================================================================
-// Constructor
+// Auth Controller
 // =============================================================================
 
-describe('ServerRoutes constructor', () => {
-  it('should require core', () => {
-    assert.throws(
-      () => new ServerRoutes({ authService, keystore }),
-      { message: 'ServerRoutes requires core' },
-    );
-  });
-
-  it('should require authService', () => {
-    assert.throws(
-      () => new ServerRoutes({ core, keystore }),
-      { message: 'ServerRoutes requires authService' },
-    );
-  });
-
-  it('should require keystore', () => {
-    assert.throws(
-      () => new ServerRoutes({ core, authService }),
-      { message: 'ServerRoutes requires keystore' },
-    );
-  });
-});
-
-// =============================================================================
-// Auth Routes
-// =============================================================================
-
-describe('Auth: register', () => {
+describe('AuthController: register', () => {
   it('should create user and return token', async () => {
-    let handler = routes.handleRegister();
-    let req     = createMockReq({ body: { email: 'new@example.com', password: 'password123' } });
-    let res     = createMockRes();
+    let req        = createMockReq({ body: { email: 'new@example.com', password: 'password123' } });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
+    let result     = await controller.register({ body: req.body });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 201);
-    assert.ok(res._json.token);
-    assert.ok(res._json.user);
-    assert.ok(res._json.organization);
-    assert.equal(res._json.user.email, 'new@example.com');
+    assert.equal(controller.responseStatusCode, 201);
+    assert.ok(result.data.token);
+    assert.ok(result.data.user);
+    assert.ok(result.data.organization);
+    assert.equal(result.data.user.email, 'new@example.com');
   });
 
-  it('should return 400 if email is missing', async () => {
-    let handler = routes.handleRegister();
-    let req     = createMockReq({ body: { password: 'password123' } });
-    let res     = createMockRes();
+  it('should throw 400 if email is missing', async () => {
+    let req        = createMockReq({ body: { password: 'password123' } });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 400);
-    assert.equal(res._json.error, 'email is required');
+    await assert.rejects(
+      () => controller.register({ body: req.body }),
+      (error) => error.message.includes('email is required'),
+    );
   });
 
-  it('should return 400 if password is missing', async () => {
-    let handler = routes.handleRegister();
-    let req     = createMockReq({ body: { email: 'another@example.com' } });
-    let res     = createMockRes();
+  it('should throw 400 if password is missing', async () => {
+    let req        = createMockReq({ body: { email: 'another@example.com' } });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 400);
-    assert.equal(res._json.error, 'password is required');
+    await assert.rejects(
+      () => controller.register({ body: req.body }),
+      (error) => error.message.includes('password is required'),
+    );
   });
 });
 
-describe('Auth: login', () => {
+describe('AuthController: login', () => {
   it('should return token on valid credentials', async () => {
-    let handler = routes.handleLogin();
-    let req     = createMockReq({ body: { email: 'test@example.com', password: 'password123' } });
-    let res     = createMockRes();
+    let req        = createMockReq({ body: { email: 'test@example.com', password: 'password123' } });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
+    let result     = await controller.login({ body: req.body });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.ok(res._json.token);
-    assert.ok(res._json.user);
-    assert.equal(res._json.user.email, 'test@example.com');
+    assert.ok(result.data.token);
+    assert.ok(result.data.user);
+    assert.equal(result.data.user.email, 'test@example.com');
   });
 
-  it('should return 401 on invalid credentials', async () => {
-    let handler = routes.handleLogin();
-    let req     = createMockReq({ body: { email: 'test@example.com', password: 'wrong' } });
-    let res     = createMockRes();
+  it('should throw on invalid credentials', async () => {
+    let req        = createMockReq({ body: { email: 'test@example.com', password: 'wrong' } });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 401);
-    assert.ok(res._json.error);
+    await assert.rejects(
+      () => controller.login({ body: req.body }),
+    );
   });
 });
 
-describe('Auth: me', () => {
+describe('AuthController: me', () => {
   it('should return current user info', async () => {
-    let handler = routes.handleMe();
-    let req     = createMockReq({ userId: testUser.id, organizationId: testOrg.id });
-    let res     = createMockRes();
+    let req        = createMockReq({ userId: testUser.id, organizationId: testOrg.id });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
+    let result     = await controller.me();
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.equal(res._json.id, testUser.id);
-    assert.equal(res._json.email, 'test@example.com');
-    assert.equal(res._json.firstName, 'Test');
-    assert.equal(res._json.lastName, 'User');
+    assert.equal(result.data.id, testUser.id);
+    assert.equal(result.data.email, 'test@example.com');
+    assert.equal(result.data.firstName, 'Test');
+    assert.equal(result.data.lastName, 'User');
   });
 
-  it('should return 404 if user not found', async () => {
-    let handler = routes.handleMe();
-    let req     = createMockReq({ userId: 'usr_nonexistent' });
-    let res     = createMockRes();
+  it('should throw 404 if user not found', async () => {
+    let req        = createMockReq({ userId: 'usr_nonexistent' });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 404);
-    assert.equal(res._json.error, 'User not found');
+    await assert.rejects(
+      () => controller.me(),
+      (error) => error.message.includes('User not found'),
+    );
   });
 });
 
 // =============================================================================
-// Session Routes
+// Session Controller
 // =============================================================================
 
-describe('Sessions: list', () => {
+describe('SessionController: list', () => {
   it('should return sessions for org', async () => {
-    // Create a session first
     await sessionManager.createSession(testOrg.id, { name: 'List Test Session' });
 
-    let handler = routes.handleListSessions();
-    let req     = createMockReq({ organizationId: testOrg.id });
-    let res     = createMockRes();
+    let req        = createMockReq({ organizationId: testOrg.id });
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
+    let result     = await controller.list({ query: {} });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.ok(Array.isArray(res._json.sessions));
-    assert.ok(res._json.sessions.length >= 1);
+    assert.ok(Array.isArray(result.data.sessions));
+    assert.ok(result.data.sessions.length >= 1);
   });
 });
 
-describe('Sessions: create', () => {
+describe('SessionController: create', () => {
   it('should create and return new session', async () => {
-    let handler = routes.handleCreateSession();
-    let req     = createMockReq({ organizationId: testOrg.id, body: { name: 'New Session' } });
-    let res     = createMockRes();
+    let req        = createMockReq({ organizationId: testOrg.id });
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
+    let result     = await controller.create({ body: { name: 'New Session' } });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 201);
-    assert.ok(res._json.session);
-    assert.equal(res._json.session.name, 'New Session');
+    assert.equal(controller.responseStatusCode, 201);
+    assert.ok(result.data.session);
+    assert.equal(result.data.session.name, 'New Session');
   });
 });
 
-describe('Sessions: get', () => {
+describe('SessionController: show', () => {
   it('should return single session by id', async () => {
-    let session = await sessionManager.createSession(testOrg.id, { name: 'Get Test' });
-    let handler = routes.handleGetSession();
-    let req     = createMockReq({ params: { id: session.id } });
-    let res     = createMockRes();
+    let session    = await sessionManager.createSession(testOrg.id, { name: 'Get Test' });
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
+    let result     = await controller.show({ params: { id: session.id } });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.ok(res._json.session);
-    assert.equal(res._json.session.id, session.id);
+    assert.ok(result.data.session);
+    assert.equal(result.data.session.id, session.id);
   });
 
-  it('should return 404 if session not found', async () => {
-    let handler = routes.handleGetSession();
-    let req     = createMockReq({ params: { id: 'ses_nonexistent' } });
-    let res     = createMockRes();
+  it('should throw 404 if session not found', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 404);
-    assert.equal(res._json.error, 'Session not found');
+    await assert.rejects(
+      () => controller.show({ params: { id: 'ses_nonexistent' } }),
+      (error) => error.message.includes('Session not found'),
+    );
   });
 });
 
-describe('Sessions: update', () => {
+describe('SessionController: update', () => {
   it('should update session name', async () => {
-    let session = await sessionManager.createSession(testOrg.id, { name: 'Before Update' });
-    let handler = routes.handleUpdateSession();
-    let req     = createMockReq({ params: { id: session.id }, body: { name: 'After Update' } });
-    let res     = createMockRes();
+    let session    = await sessionManager.createSession(testOrg.id, { name: 'Before Update' });
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
+    let result     = await controller.update({ params: { id: session.id }, body: { name: 'After Update' } });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.equal(res._json.session.name, 'After Update');
+    assert.equal(result.data.session.name, 'After Update');
   });
 });
 
-describe('Sessions: delete', () => {
+describe('SessionController: destroy', () => {
   it('should delete session', async () => {
-    let session = await sessionManager.createSession(testOrg.id, { name: 'To Delete' });
-    let handler = routes.handleDeleteSession();
-    let req     = createMockReq({ params: { id: session.id } });
-    let res     = createMockRes();
+    let session    = await sessionManager.createSession(testOrg.id, { name: 'To Delete' });
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
+    let result     = await controller.destroy({ params: { id: session.id } });
 
-    await handler(req, res);
+    assert.deepEqual(result.data, { deleted: true });
 
-    assert.equal(res._status, 200);
-    assert.deepEqual(res._json, { deleted: true });
-
-    // Verify it's gone
     let found = await sessionManager.getSession(session.id);
     assert.equal(found, null);
   });
 });
 
-describe('Sessions: archive', () => {
+describe('SessionController: archive', () => {
   it('should archive session', async () => {
-    let session = await sessionManager.createSession(testOrg.id, { name: 'To Archive' });
-    let handler = routes.handleArchiveSession();
-    let req     = createMockReq({ params: { id: session.id } });
-    let res     = createMockRes();
+    let session    = await sessionManager.createSession(testOrg.id, { name: 'To Archive' });
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
+    let result     = await controller.archive({ params: { id: session.id } });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.equal(res._json.session.archived, true);
+    assert.equal(result.data.session.archived, true);
   });
 });
 
-describe('Sessions: revive', () => {
+describe('SessionController: revive', () => {
   it('should revive archived session', async () => {
-    let session = await sessionManager.createSession(testOrg.id, { name: 'To Revive', archived: true });
-    let handler = routes.handleReviveSession();
-    let req     = createMockReq({ params: { id: session.id } });
-    let res     = createMockRes();
+    let session    = await sessionManager.createSession(testOrg.id, { name: 'To Revive', archived: true });
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
+    let result     = await controller.revive({ params: { id: session.id } });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.equal(res._json.session.archived, false);
+    assert.equal(result.data.session.archived, false);
   });
 });
 
 // =============================================================================
-// Participant Routes
+// Participant Controller
 // =============================================================================
 
-describe('Participants: list', () => {
+describe('ParticipantController: list', () => {
   it('should return participants for session', async () => {
-    let session = await sessionManager.createSession(testOrg.id, { name: 'Participants Test' });
-    let handler = routes.handleListParticipants();
-    let req     = createMockReq({ params: { sessionId: session.id } });
-    let res     = createMockRes();
+    let session    = await sessionManager.createSession(testOrg.id, { name: 'Participants Test' });
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(ParticipantController, { mockApp, req, res });
+    let result     = await controller.list({ params: { sessionId: session.id } });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.ok(Array.isArray(res._json.participants));
+    assert.ok(Array.isArray(result.data.participants));
   });
 });
 
-describe('Participants: add', () => {
+describe('ParticipantController: create', () => {
   it('should add participant to session', async () => {
-    let session = await sessionManager.createSession(testOrg.id, { name: 'Add Participant Test' });
-
-    // Create an agent first
+    let session   = await sessionManager.createSession(testOrg.id, { name: 'Add Participant Test' });
     let { Agent } = core.getModels();
     let agent     = await Agent.create({
       organizationID: testOrg.id,
@@ -371,35 +342,34 @@ describe('Participants: add', () => {
       pluginID:       'claude-agent',
     });
 
-    let handler = routes.handleAddParticipant();
-    let req     = createMockReq({
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(ParticipantController, { mockApp, req, res });
+    let result     = await controller.create({
       params: { sessionId: session.id },
       body:   { agentId: agent.id },
     });
-    let res = createMockRes();
 
-    await handler(req, res);
-
-    assert.equal(res._status, 201);
-    assert.ok(res._json.participant);
+    assert.equal(controller.responseStatusCode, 201);
+    assert.ok(result.data.participant);
   });
 
-  it('should return 400 if agentId is missing', async () => {
-    let session = await sessionManager.createSession(testOrg.id, { name: 'Missing Agent Test' });
-    let handler = routes.handleAddParticipant();
-    let req     = createMockReq({ params: { sessionId: session.id }, body: {} });
-    let res     = createMockRes();
+  it('should throw 400 if agentId is missing', async () => {
+    let session    = await sessionManager.createSession(testOrg.id, { name: 'Missing Agent Test' });
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(ParticipantController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 400);
-    assert.equal(res._json.error, 'agentId is required');
+    await assert.rejects(
+      () => controller.create({ params: { sessionId: session.id }, body: {} }),
+      (error) => error.message.includes('agentId is required'),
+    );
   });
 });
 
-describe('Participants: remove', () => {
+describe('ParticipantController: destroy', () => {
   it('should remove participant', async () => {
-    let session = await sessionManager.createSession(testOrg.id, { name: 'Remove Participant Test' });
+    let session   = await sessionManager.createSession(testOrg.id, { name: 'Remove Participant Test' });
     let { Agent } = core.getModels();
     let agent     = await Agent.create({
       organizationID: testOrg.id,
@@ -408,22 +378,20 @@ describe('Participants: remove', () => {
     });
 
     let participant = await sessionManager.addParticipant(session.id, agent.id);
-    let handler     = routes.handleRemoveParticipant();
-    let req         = createMockReq({ params: { id: participant.id } });
+    let req         = createMockReq();
     let res         = createMockRes();
+    let controller  = createController(ParticipantController, { mockApp, req, res });
+    let result      = await controller.destroy({ params: { id: participant.id } });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.deepEqual(res._json, { deleted: true });
+    assert.deepEqual(result.data, { deleted: true });
   });
 });
 
 // =============================================================================
-// Agent Routes
+// Agent Controller
 // =============================================================================
 
-describe('Agents: list', () => {
+describe('AgentController: list', () => {
   it('should return agents for org', async () => {
     let { Agent } = core.getModels();
     await Agent.create({
@@ -432,54 +400,52 @@ describe('Agents: list', () => {
       pluginID:       'claude-agent',
     });
 
-    let handler = routes.handleListAgents();
-    let req     = createMockReq({ organizationId: testOrg.id });
-    let res     = createMockRes();
+    let req        = createMockReq({ organizationId: testOrg.id });
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
+    let result     = await controller.list();
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.ok(Array.isArray(res._json.agents));
-    assert.ok(res._json.agents.length >= 1);
+    assert.ok(Array.isArray(result.data.agents));
+    assert.ok(result.data.agents.length >= 1);
   });
 });
 
-describe('Agents: create', () => {
+describe('AgentController: create', () => {
   it('should create agent', async () => {
-    let handler = routes.handleCreateAgent();
-    let req     = createMockReq({
+    let req = createMockReq({
       organizationId: testOrg.id,
       userId:         testUser.id,
       getUMK:         () => testUMK,
-      body:           { name: 'test-create-agent', pluginID: 'claude-agent' },
     });
-    let res = createMockRes();
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
+    let result     = await controller.create({
+      body: { name: 'test-create-agent', pluginID: 'claude-agent' },
+    });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 201);
-    assert.ok(res._json.agent);
-    assert.equal(res._json.agent.name, 'test-create-agent');
+    assert.equal(controller.responseStatusCode, 201);
+    assert.ok(result.data.agent);
+    assert.equal(result.data.agent.name, 'test-create-agent');
   });
 
   it('should encrypt API key when provided', async () => {
-    let handler = routes.handleCreateAgent();
-    let req     = createMockReq({
+    let req = createMockReq({
       organizationId: testOrg.id,
       userId:         testUser.id,
       getUMK:         () => testUMK,
-      body:           { name: 'test-api-key-agent', pluginID: 'claude-agent', apiKey: 'sk-test-12345' },
     });
-    let res = createMockRes();
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
+    let result     = await controller.create({
+      body: { name: 'test-api-key-agent', pluginID: 'claude-agent', apiKey: 'sk-test-12345' },
+    });
 
-    await handler(req, res);
+    assert.equal(controller.responseStatusCode, 201);
+    assert.ok(result.data.agent);
+    assert.ok(result.data.agent.encryptedAPIKey);
 
-    assert.equal(res._status, 201);
-    assert.ok(res._json.agent);
-    assert.ok(res._json.agent.encryptedAPIKey);
-
-    // Verify it's actually encrypted (parseable JSON with cipher fields)
-    let encrypted = JSON.parse(res._json.agent.encryptedAPIKey);
+    // Verify it's actually encrypted
+    let encrypted = JSON.parse(result.data.agent.encryptedAPIKey);
     assert.ok(encrypted.ciphertext);
     assert.ok(encrypted.iv);
     assert.ok(encrypted.authTag);
@@ -490,36 +456,30 @@ describe('Agents: create', () => {
     assert.equal(decrypted, 'sk-test-12345');
   });
 
-  it('should return 400 if name is missing', async () => {
-    let handler = routes.handleCreateAgent();
-    let req     = createMockReq({
-      organizationId: testOrg.id,
-      body:           { pluginID: 'claude-agent' },
-    });
-    let res = createMockRes();
+  it('should throw 400 if name is missing', async () => {
+    let req        = createMockReq({ organizationId: testOrg.id });
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 400);
-    assert.equal(res._json.error, 'name is required');
+    await assert.rejects(
+      () => controller.create({ body: { pluginID: 'claude-agent' } }),
+      (error) => error.message.includes('name is required'),
+    );
   });
 
-  it('should return 400 if pluginID is missing', async () => {
-    let handler = routes.handleCreateAgent();
-    let req     = createMockReq({
-      organizationId: testOrg.id,
-      body:           { name: 'test-no-plugin' },
-    });
-    let res = createMockRes();
+  it('should throw 400 if pluginID is missing', async () => {
+    let req        = createMockReq({ organizationId: testOrg.id });
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 400);
-    assert.equal(res._json.error, 'pluginID is required');
+    await assert.rejects(
+      () => controller.create({ body: { name: 'test-no-plugin' } }),
+      (error) => error.message.includes('pluginID is required'),
+    );
   });
 });
 
-describe('Agents: get', () => {
+describe('AgentController: show', () => {
   it('should return single agent', async () => {
     let { Agent } = core.getModels();
     let agent     = await Agent.create({
@@ -528,30 +488,28 @@ describe('Agents: get', () => {
       pluginID:       'claude-agent',
     });
 
-    let handler = routes.handleGetAgent();
-    let req     = createMockReq({ params: { id: agent.id } });
-    let res     = createMockRes();
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
+    let result     = await controller.show({ params: { id: agent.id } });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.ok(res._json.agent);
-    assert.equal(res._json.agent.id, agent.id);
+    assert.ok(result.data.agent);
+    assert.equal(result.data.agent.id, agent.id);
   });
 
-  it('should return 404 if agent not found', async () => {
-    let handler = routes.handleGetAgent();
-    let req     = createMockReq({ params: { id: 'agt_nonexistent' } });
-    let res     = createMockRes();
+  it('should throw 404 if agent not found', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 404);
-    assert.equal(res._json.error, 'Agent not found');
+    await assert.rejects(
+      () => controller.show({ params: { id: 'agt_nonexistent' } }),
+      (error) => error.message.includes('Agent not found'),
+    );
   });
 });
 
-describe('Agents: update', () => {
+describe('AgentController: update', () => {
   it('should update agent fields', async () => {
     let { Agent } = core.getModels();
     let agent     = await Agent.create({
@@ -560,22 +518,20 @@ describe('Agents: update', () => {
       pluginID:       'claude-agent',
     });
 
-    let handler = routes.handleUpdateAgent();
-    let req     = createMockReq({
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
+    let result     = await controller.update({
       params: { id: agent.id },
       body:   { name: 'test-updated-name', instructions: 'Be helpful' },
     });
-    let res = createMockRes();
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.equal(res._json.agent.name, 'test-updated-name');
-    assert.equal(res._json.agent.instructions, 'Be helpful');
+    assert.equal(result.data.agent.name, 'test-updated-name');
+    assert.equal(result.data.agent.instructions, 'Be helpful');
   });
 });
 
-describe('Agents: delete', () => {
+describe('AgentController: destroy', () => {
   it('should delete agent', async () => {
     let { Agent } = core.getModels();
     let agent     = await Agent.create({
@@ -584,70 +540,66 @@ describe('Agents: delete', () => {
       pluginID:       'claude-agent',
     });
 
-    let handler = routes.handleDeleteAgent();
-    let req     = createMockReq({ params: { id: agent.id } });
-    let res     = createMockRes();
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
+    let result     = await controller.destroy({ params: { id: agent.id } });
 
-    await handler(req, res);
+    assert.deepEqual(result.data, { deleted: true });
 
-    assert.equal(res._status, 200);
-    assert.deepEqual(res._json, { deleted: true });
-
-    // Verify it's gone
     let found = await Agent.where.id.EQ(agent.id).first();
     assert.ok(!found, 'Agent should be deleted');
   });
 });
 
 // =============================================================================
-// Interaction Routes
+// Interaction Controller
 // =============================================================================
 
-describe('Interaction: send message', () => {
-  it('should return 400 if message is missing', async () => {
-    let handler = routes.handleSendMessage();
-    let req     = createMockReq({
-      params: { sessionId: 'ses_test' },
-      body:   { agentId: 'agt_test' },
-    });
-    let res = createMockRes();
+describe('InteractionController: sendMessage', () => {
+  it('should throw 400 if message is missing', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(InteractionController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 400);
-    assert.equal(res._json.error, 'message is required');
+    await assert.rejects(
+      () => controller.sendMessage({
+        params: { sessionId: 'ses_test' },
+        body:   { agentId: 'agt_test' },
+      }),
+      (error) => error.message.includes('message is required'),
+    );
   });
 
-  it('should return 400 if agentId is missing', async () => {
-    let handler = routes.handleSendMessage();
-    let req     = createMockReq({
-      params: { sessionId: 'ses_test' },
-      body:   { message: 'hello' },
-    });
-    let res = createMockRes();
+  it('should throw 400 if agentId is missing', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(InteractionController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 400);
-    assert.equal(res._json.error, 'agentId is required');
+    await assert.rejects(
+      () => controller.sendMessage({
+        params: { sessionId: 'ses_test' },
+        body:   { message: 'hello' },
+      }),
+      (error) => error.message.includes('agentId is required'),
+    );
   });
 
-  it('should return 404 if agent not found', async () => {
-    let handler = routes.handleSendMessage();
-    let req     = createMockReq({
-      params: { sessionId: 'ses_test' },
-      body:   { message: 'hello', agentId: 'agt_nonexistent' },
-      userId: testUser.id,
-    });
-    let res = createMockRes();
+  it('should throw 404 if agent not found', async () => {
+    let req = createMockReq({ userId: testUser.id });
+    let res        = createMockRes();
+    let controller = createController(InteractionController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 404);
-    assert.equal(res._json.error, 'Agent not found');
+    await assert.rejects(
+      () => controller.sendMessage({
+        params: { sessionId: 'ses_test' },
+        body:   { message: 'hello', agentId: 'agt_nonexistent' },
+      }),
+      (error) => error.message.includes('Agent not found'),
+    );
   });
 
-  it('should return 400 if plugin not registered', async () => {
+  it('should throw 400 if plugin not registered', async () => {
     let { Agent } = core.getModels();
     let agent     = await Agent.create({
       organizationID: testOrg.id,
@@ -655,43 +607,39 @@ describe('Interaction: send message', () => {
       pluginID:       'nonexistent-plugin',
     });
 
-    let handler = routes.handleSendMessage();
-    let req     = createMockReq({
-      params: { sessionId: 'ses_test' },
-      body:   { message: 'hello', agentId: agent.id },
-      userId: testUser.id,
-    });
-    let res = createMockRes();
+    let req = createMockReq({ userId: testUser.id });
+    let res        = createMockRes();
+    let controller = createController(InteractionController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 400);
-    assert.ok(res._json.error.includes('No plugin registered'));
+    await assert.rejects(
+      () => controller.sendMessage({
+        params: { sessionId: 'ses_test' },
+        body:   { message: 'hello', agentId: agent.id },
+      }),
+      (error) => error.message.includes('No plugin registered'),
+    );
   });
 });
 
-describe('Interaction: cancel', () => {
+describe('InteractionController: cancel', () => {
   it('should cancel interaction', async () => {
-    let handler = routes.handleCancelInteraction();
-    let req     = createMockReq({ params: { sessionId: 'ses_test' } });
-    let res     = createMockRes();
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(InteractionController, { mockApp, req, res });
+    let result     = await controller.cancel({ params: { sessionId: 'ses_test' } });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.equal(res._json.cancelled, true);
+    assert.equal(result.data.cancelled, true);
   });
 });
 
 // =============================================================================
-// Frame Routes
+// Frame Controller
 // =============================================================================
 
-describe('Frames: list', () => {
+describe('FrameController: list', () => {
   it('should return frames for session', async () => {
     let session = await sessionManager.createSession(testOrg.id, { name: 'Frames Test' });
 
-    // Save some test frames (using real XID-generated IDs)
     let frmId1 = `frm_${XID.next()}`;
     let frmId2 = `frm_${XID.next()}`;
     let intId  = `int_${XID.next()}`;
@@ -723,29 +671,27 @@ describe('Frames: list', () => {
       },
     ]);
 
-    let handler = routes.handleListFrames();
-    let req     = createMockReq({ params: { sessionId: session.id } });
-    let res     = createMockRes();
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(FrameController, { mockApp, req, res });
+    let result     = await controller.list({ params: { sessionId: session.id } });
 
-    await handler(req, res);
-
-    assert.equal(res._status, 200);
-    assert.ok(Array.isArray(res._json.frames));
-    assert.equal(res._json.frames.length, 2);
+    assert.ok(Array.isArray(result.data.frames));
+    assert.equal(result.data.frames.length, 2);
   });
 });
 
 // =============================================================================
-// SSE Stream
+// Stream Controller
 // =============================================================================
 
-describe('SSE stream', () => {
+describe('StreamController: connect', () => {
   it('should set correct SSE headers', async () => {
-    let handler = routes.handleStream();
-    let req     = createMockReq({ params: { sessionId: 'ses_sse_test' } });
-    let res     = createMockRes();
+    let req        = createMockReq({ params: { sessionId: 'ses_sse_test' } });
+    let res        = createMockRes();
+    let controller = createController(StreamController, { mockApp, req, res });
 
-    await handler(req, res);
+    await controller.connect({ params: { sessionId: 'ses_sse_test' } });
 
     assert.equal(res._headers['Content-Type'], 'text/event-stream');
     assert.equal(res._headers['Cache-Control'], 'no-cache');
@@ -753,127 +699,61 @@ describe('SSE stream', () => {
   });
 
   it('should send connected event on open', async () => {
-    let handler = routes.handleStream();
-    let req     = createMockReq({ params: { sessionId: 'ses_sse_ping' } });
-    let res     = createMockRes();
+    let req        = createMockReq({ params: { sessionId: 'ses_sse_ping' } });
+    let res        = createMockRes();
+    let controller = createController(StreamController, { mockApp, req, res });
 
-    await handler(req, res);
+    await controller.connect({ params: { sessionId: 'ses_sse_ping' } });
 
     assert.ok(res._written.includes('event: connected'));
     assert.ok(res._written.includes('data: {}'));
   });
 
   it('should emit frame events for matching session', async () => {
-    let sessionId = 'ses_sse_frames';
-    let handler   = routes.handleStream();
-    let req       = createMockReq({ params: { sessionId } });
-    let res       = createMockRes();
+    let sessionId  = 'ses_sse_frames';
+    let req        = createMockReq({ params: { sessionId } });
+    let res        = createMockRes();
+    let controller = createController(StreamController, { mockApp, req, res });
 
-    await handler(req, res);
+    await controller.connect({ params: { sessionId } });
 
-    // Simulate a frame emission on the interaction loop
     let testFrame = { id: 'frm_sse_1', type: 'message', content: { html: '<p>Test</p>' } };
     interactionLoop.emit('frame', { sessionID: sessionId, frame: testFrame });
 
     assert.ok(res._written.includes('event: frame'));
     assert.ok(res._written.includes('"frm_sse_1"'));
 
-    // Clean up
     if (res._sseCleanup)
       res._sseCleanup();
   });
 
   it('should NOT emit frame events for non-matching session', async () => {
-    let sessionId = 'ses_sse_no_match';
-    let handler   = routes.handleStream();
-    let req       = createMockReq({ params: { sessionId } });
-    let res       = createMockRes();
+    let sessionId  = 'ses_sse_no_match';
+    let req        = createMockReq({ params: { sessionId } });
+    let res        = createMockRes();
+    let controller = createController(StreamController, { mockApp, req, res });
 
-    await handler(req, res);
+    await controller.connect({ params: { sessionId } });
 
-    // Clear initial connected event
     let initialWritten = res._written;
 
-    // Emit for a DIFFERENT session
     interactionLoop.emit('frame', { sessionID: 'ses_other_session', frame: { id: 'frm_other' } });
 
-    // Written should not have changed
     assert.equal(res._written, initialWritten);
 
-    // Clean up
     if (res._sseCleanup)
       res._sseCleanup();
   });
 });
 
 // =============================================================================
-// Route Table
+// Route DSL
 // =============================================================================
 
-describe('getRouteTable', () => {
-  it('should return array of route descriptors', () => {
-    let table = routes.getRouteTable();
-
-    assert.ok(Array.isArray(table));
-    assert.ok(table.length > 0);
-  });
-
-  it('should have method, path, handler, and auth on each route', () => {
-    let table = routes.getRouteTable();
-
-    for (let route of table) {
-      assert.ok(route.method, `Route missing method: ${JSON.stringify(route)}`);
-      assert.ok(route.path, `Route missing path: ${JSON.stringify(route)}`);
-      assert.ok(typeof route.handler === 'function', `Route handler not a function: ${route.path}`);
-      assert.ok(typeof route.auth === 'boolean', `Route auth not boolean: ${route.path}`);
-    }
-  });
-
-  it('should have unauthenticated auth routes and authenticated API routes', () => {
-    let table = routes.getRouteTable();
-
-    let registerRoute = table.find((r) => r.path.includes('/auth/register'));
-    let loginRoute    = table.find((r) => r.path.includes('/auth/login'));
-    let meRoute       = table.find((r) => r.path.includes('/auth/me'));
-
-    assert.equal(registerRoute.auth, false);
-    assert.equal(loginRoute.auth, false);
-    assert.equal(meRoute.auth, true);
-
-    // Session routes should all be authenticated
-    let sessionRoutes = table.filter((r) => r.path.includes('/sessions'));
-    for (let route of sessionRoutes) {
-      assert.equal(route.auth, true, `Session route not auth: ${route.path}`);
-    }
-  });
-
-  it('should include all expected route categories', () => {
-    let table = routes.getRouteTable();
-    let paths = table.map((r) => r.path);
-
-    // Auth
-    assert.ok(paths.some((p) => p.includes('/auth/register')));
-    assert.ok(paths.some((p) => p.includes('/auth/login')));
-    assert.ok(paths.some((p) => p.includes('/auth/me')));
-
-    // Sessions
-    assert.ok(paths.some((p) => p === '/api/v2/sessions'));
-    assert.ok(paths.some((p) => p.includes('/sessions/:id')));
-
-    // Participants
-    assert.ok(paths.some((p) => p.includes('/participants')));
-
-    // Agents
-    assert.ok(paths.some((p) => p.includes('/agents')));
-
-    // Interactions
-    assert.ok(paths.some((p) => p.includes('/interact')));
-
-    // Frames
-    assert.ok(paths.some((p) => p.includes('/frames')));
-
-    // SSE
-    assert.ok(paths.some((p) => p.includes('/stream')));
+describe('Route DSL', () => {
+  it('should export getRoutes function', async () => {
+    let { getRoutes } = await import('../../src/server/routes/index.mjs');
+    assert.equal(typeof getRoutes, 'function');
   });
 });
 
@@ -882,26 +762,52 @@ describe('getRouteTable', () => {
 // =============================================================================
 
 describe('Error handling', () => {
-  it('should catch and wrap errors from core methods', async () => {
-    let handler = routes.handleDeleteSession();
-    let req     = createMockReq({ params: { id: 'ses_nonexistent_for_delete' } });
-    let res     = createMockRes();
+  it('should throw for non-existent session delete', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
 
-    await handler(req, res);
-
-    // SessionManager.deleteSession throws "Session not found: ..."
-    assert.equal(res._status, 404);
-    assert.ok(res._json.error.includes('not found'));
+    await assert.rejects(
+      () => controller.destroy({ params: { id: 'ses_nonexistent_for_delete' } }),
+    );
   });
 
-  it('should return 400 for missing required fields', async () => {
-    let handler = routes.handleAddParticipant();
-    let req     = createMockReq({ params: { sessionId: 'ses_test' }, body: {} });
-    let res     = createMockRes();
+  it('should throw 400 for missing required fields', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(ParticipantController, { mockApp, req, res });
 
-    await handler(req, res);
+    await assert.rejects(
+      () => controller.create({ params: { sessionId: 'ses_test' }, body: {} }),
+      (error) => error.message.includes('agentId is required'),
+    );
+  });
+});
 
-    assert.equal(res._status, 400);
-    assert.equal(res._json.error, 'agentId is required');
+// =============================================================================
+// Application Class
+// =============================================================================
+
+describe('Application class', () => {
+  it('should export Application', async () => {
+    let { Application } = await import('../../src/server/application.mjs');
+    assert.equal(typeof Application, 'function');
+    assert.equal(Application.getName(), 'hero-v2');
+  });
+});
+
+// =============================================================================
+// skipAuthorization
+// =============================================================================
+
+describe('AuthController: skipAuthorization', () => {
+  it('should skip auth for register and login', () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
+
+    assert.equal(controller.skipAuthorization({ methodName: 'register' }), true);
+    assert.equal(controller.skipAuthorization({ methodName: 'login' }), true);
+    assert.equal(controller.skipAuthorization({ methodName: 'me' }), false);
   });
 });

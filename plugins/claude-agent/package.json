@@ -1,0 +1,10 @@
+{
+  "name": "hero-claude-agent",
+  "version": "2.0.0",
+  "description": "Claude agent plugin for Hero — uses @anthropic-ai/sdk",
+  "type": "module",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  }
+}

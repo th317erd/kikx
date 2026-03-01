@@ -1,10 +1,10 @@
 'use strict';
 
 // =============================================================================
-// ClaudeAgent — Anthropic Claude API integration
+// ClaudeAgent — Anthropic Claude API integration (SDK version)
 // =============================================================================
-// Implements AgentInterface using the Anthropic Messages API.
-// Uses raw fetch() for zero external dependencies.
+// Implements AgentInterface using the official @anthropic-ai/sdk.
+// Replaces raw fetch() + SSE parsing with SDK's streaming API.
 //
 // Yield protocol:
 //   { type: 'message',    content: { html } }
@@ -17,12 +17,11 @@
 //   2. Inline HTML           → user display (text blocks)
 // =============================================================================
 
-import { AgentInterface } from '../agent-interface.mjs';
+import Anthropic from '@anthropic-ai/sdk';
+import { AgentInterface } from '../../src/core/plugins/agent-interface.mjs';
 
 const DEFAULT_MODEL      = 'claude-sonnet-4-20250514';
 const DEFAULT_MAX_TOKENS = 4096;
-const API_URL            = 'https://api.anthropic.com/v1/messages';
-const API_VERSION        = '2023-06-01';
 
 const HTML_INSTRUCTION = [
   'Output your responses in HTML format.',
@@ -70,12 +69,6 @@ export class ClaudeAgent extends AgentInterface {
   // ---------------------------------------------------------------------------
   // Message assembly — convert internal frames to Anthropic format
   // ---------------------------------------------------------------------------
-  // Internal frame format:
-  //   { type, content, authorType, authorID }
-  //
-  // Anthropic format:
-  //   { role: 'user'|'assistant', content: string|array }
-  // ---------------------------------------------------------------------------
 
   assembleMessages(messages, _systemPrompt) {
     if (!messages || messages.length === 0)
@@ -91,7 +84,6 @@ export class ClaudeAgent extends AgentInterface {
     }
 
     // Anthropic requires alternating user/assistant roles.
-    // Merge consecutive same-role messages if necessary.
     return this._enforceAlternation(assembled);
   }
 
@@ -130,12 +122,10 @@ export class ClaudeAgent extends AgentInterface {
         };
 
       case 'reflection':
-        // Reflection/thinking blocks are not sent back to the API;
-        // they are internal-only. Skip them in assembled messages.
+        // Reflection/thinking blocks are internal-only, skip them.
         return null;
 
       default:
-        // Unknown type — skip
         return null;
     }
   }
@@ -155,7 +145,6 @@ export class ClaudeAgent extends AgentInterface {
         if (typeof previous.content === 'string' && typeof current.content === 'string') {
           previous.content = previous.content + '\n\n' + current.content;
         } else {
-          // Convert both to arrays and concatenate
           let prevArray = Array.isArray(previous.content)
             ? previous.content
             : [{ type: 'text', text: previous.content }];
@@ -196,14 +185,7 @@ export class ClaudeAgent extends AgentInterface {
   }
 
   // ---------------------------------------------------------------------------
-  // Generator — main workhorse
-  // ---------------------------------------------------------------------------
-  // Multi-turn loop:
-  //   1. Call API with current messages
-  //   2. Yield blocks from streaming response
-  //   3. If tool-call yielded, receive result via generator.next(result)
-  //   4. Append tool-call + result to messages, loop back to step 1
-  //   5. When no tool calls remain, yield done block
+  // Generator — main workhorse (SDK-based)
   // ---------------------------------------------------------------------------
 
   async *_createGenerator(params) {
@@ -241,41 +223,47 @@ export class ClaudeAgent extends AgentInterface {
     let model     = (agent && agent.model) || DEFAULT_MODEL;
     let maxTokens = (agent && agent.maxTokens) || DEFAULT_MAX_TOKENS;
 
+    // Create SDK client
+    let client = this._createClient(apiKey);
+
     // Multi-turn loop
     let totalInputTokens  = 0;
     let totalOutputTokens = 0;
 
     while (true) {
       let pendingToolCalls = [];
-      let usage            = { inputTokens: 0, outputTokens: 0 };
+      let hadToolCalls     = false;
 
-      // Stream the API response
-      let events = this._streamAPI(apiKey, systemPrompt, apiMessages, { model, maxTokens });
+      // Stream the API response using SDK
+      let stream = await this._createStream(client, systemPrompt, apiMessages, { model, maxTokens });
 
-      // State tracking for accumulating content blocks
-      let blocks          = new Map(); // index -> { type, data }
-      let hadToolCalls    = false;
+      // Process SDK stream events
+      let currentText    = '';
+      let currentBlocks  = new Map(); // index -> { type, data, id?, name? }
 
-      for await (let event of events) {
+      for await (let event of stream) {
         if (event.type === 'message_start') {
           if (event.message && event.message.usage)
-            usage.inputTokens = event.message.usage.input_tokens || 0;
+            totalInputTokens += event.message.usage.input_tokens || 0;
 
           continue;
         }
 
         if (event.type === 'content_block_start') {
           let block = event.content_block || {};
-          blocks.set(event.index, { type: block.type, data: '' });
+          let entry = { type: block.type, data: '' };
 
-          if (block.type === 'tool_use')
-            blocks.set(event.index, { type: 'tool_use', data: '', id: block.id, name: block.name });
+          if (block.type === 'tool_use') {
+            entry.id   = block.id;
+            entry.name = block.name;
+          }
 
+          currentBlocks.set(event.index, entry);
           continue;
         }
 
         if (event.type === 'content_block_delta') {
-          let block = blocks.get(event.index);
+          let block = currentBlocks.get(event.index);
 
           if (!block)
             continue;
@@ -293,7 +281,7 @@ export class ClaudeAgent extends AgentInterface {
         }
 
         if (event.type === 'content_block_stop') {
-          let block = blocks.get(event.index);
+          let block = currentBlocks.get(event.index);
 
           if (!block)
             continue;
@@ -314,7 +302,6 @@ export class ClaudeAgent extends AgentInterface {
               if (block.data)
                 toolArguments = JSON.parse(block.data);
             } catch (_e) {
-              // Malformed JSON — pass raw string
               toolArguments = { _raw: block.data };
             }
 
@@ -334,9 +321,8 @@ export class ClaudeAgent extends AgentInterface {
             // Yield the tool call and receive the result
             let result = yield toolCall;
 
-            if (result) {
+            if (result)
               pendingToolCalls[pendingToolCalls.length - 1].result = result;
-            }
           } else if (block.type === 'thinking') {
             yield {
               type:       'reflection',
@@ -347,27 +333,20 @@ export class ClaudeAgent extends AgentInterface {
             };
           }
 
-          blocks.delete(event.index);
+          currentBlocks.delete(event.index);
           continue;
         }
 
         if (event.type === 'message_delta') {
-          let delta = event.delta || {};
           if (event.usage)
-            usage.outputTokens = event.usage.output_tokens || 0;
+            totalOutputTokens += event.usage.output_tokens || 0;
 
           continue;
         }
-
-        // message_stop, ping — no action needed
       }
-
-      totalInputTokens  += usage.inputTokens;
-      totalOutputTokens += usage.outputTokens;
 
       // If we had tool calls, append them + results and loop
       if (hadToolCalls && pendingToolCalls.length > 0) {
-        // Add assistant message with tool_use blocks
         let toolUseBlocks = pendingToolCalls.map((tc) => ({
           type:  'tool_use',
           id:    tc.content.toolUseId,
@@ -377,7 +356,6 @@ export class ClaudeAgent extends AgentInterface {
 
         apiMessages.push({ role: 'assistant', content: toolUseBlocks });
 
-        // Add user message with tool_result blocks
         let toolResultBlocks = pendingToolCalls.map((tc) => ({
           type:        'tool_result',
           tool_use_id: tc.content.toolUseId,
@@ -386,11 +364,10 @@ export class ClaudeAgent extends AgentInterface {
 
         apiMessages.push({ role: 'user', content: toolResultBlocks });
 
-        // Continue the loop — make another API call
         continue;
       }
 
-      // No tool calls — we're done
+      // No tool calls — done
       break;
     }
 
@@ -406,124 +383,30 @@ export class ClaudeAgent extends AgentInterface {
   }
 
   // ---------------------------------------------------------------------------
-  // Anthropic API streaming — async generator of parsed SSE events
+  // SDK Client Factory (overridable for testing)
   // ---------------------------------------------------------------------------
 
-  async *_streamAPI(apiKey, systemPrompt, messages, options = {}) {
+  _createClient(apiKey) {
+    return new Anthropic({ apiKey });
+  }
+
+  // ---------------------------------------------------------------------------
+  // SDK Stream Factory (overridable for testing)
+  // ---------------------------------------------------------------------------
+
+  async *_createStream(client, systemPrompt, messages, options = {}) {
     let { model, maxTokens } = options;
 
-    let body = {
+    let stream = client.messages.stream({
       model:      model || DEFAULT_MODEL,
       max_tokens: maxTokens || DEFAULT_MAX_TOKENS,
       system:     systemPrompt,
       messages,
-      stream:     true,
-    };
-
-    let response = await fetch(API_URL, {
-      method:  'POST',
-      headers: {
-        'content-type':     'application/json',
-        'x-api-key':        apiKey,
-        'anthropic-version': API_VERSION,
-      },
-      body: JSON.stringify(body),
     });
 
-    if (!response.ok) {
-      let errorBody = await response.text();
-      throw new Error(`Anthropic API error ${response.status}: ${errorBody}`);
-    }
-
-    // Parse SSE stream
-    yield* this._parseSSEStream(response.body);
-  }
-
-  // ---------------------------------------------------------------------------
-  // SSE stream parser — converts ReadableStream to parsed JSON events
-  // ---------------------------------------------------------------------------
-
-  async *_parseSSEStream(readableStream) {
-    let reader  = readableStream.getReader();
-    let decoder = new TextDecoder();
-    let buffer  = '';
-
-    try {
-      while (true) {
-        let { done, value } = await reader.read();
-
-        if (done)
-          break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Process complete lines
-        let lines = buffer.split('\n');
-
-        // Keep the last (possibly incomplete) line in the buffer
-        buffer = lines.pop() || '';
-
-        let eventType = null;
-
-        for (let line of lines) {
-          if (line.startsWith('event: ')) {
-            eventType = line.slice(7).trim();
-            continue;
-          }
-
-          if (line.startsWith('data: ')) {
-            let jsonStr = line.slice(6);
-
-            try {
-              let parsed = JSON.parse(jsonStr);
-
-              // Attach event type if the parsed data doesn't already have 'type'
-              if (eventType && !parsed.type)
-                parsed.type = eventType;
-
-              yield parsed;
-            } catch (_e) {
-              // Malformed JSON line — skip
-            }
-
-            eventType = null;
-            continue;
-          }
-
-          // Empty line or other — reset event type
-          if (line.trim() === '')
-            eventType = null;
-        }
-      }
-
-      // Flush any remaining buffer
-      if (buffer.trim()) {
-        let lines = buffer.split('\n');
-        let eventType = null;
-
-        for (let line of lines) {
-          if (line.startsWith('event: ')) {
-            eventType = line.slice(7).trim();
-            continue;
-          }
-
-          if (line.startsWith('data: ')) {
-            try {
-              let parsed = JSON.parse(line.slice(6));
-
-              if (eventType && !parsed.type)
-                parsed.type = eventType;
-
-              yield parsed;
-            } catch (_e) {
-              // skip
-            }
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
+    // The SDK stream emits events. We iterate over them.
+    for await (let event of stream)
+      yield event;
   }
 }
 
@@ -534,7 +417,6 @@ export class ClaudeAgent extends AgentInterface {
 export function setup(pluginContext) {
   let { context } = pluginContext;
 
-  // Register the agent type on context so the interaction loop can find it
   let agentTypes = context.getProperty
     ? context.getProperty('agentTypes')
     : (context.agentTypes || null);

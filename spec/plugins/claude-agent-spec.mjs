@@ -3,7 +3,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert                           from 'node:assert/strict';
 
-import { ClaudeAgent, setup }   from '../../src/core/plugins/claude-agent/index.mjs';
+import { ClaudeAgent, setup }   from '../../plugins/claude-agent/index.mjs';
 import { AgentInterface }       from '../../src/core/plugins/agent-interface.mjs';
 import { PluginInterface }      from '../../src/core/plugin-loader/plugin-interface.mjs';
 
@@ -11,7 +11,7 @@ import { PluginInterface }      from '../../src/core/plugin-loader/plugin-interf
 // Helpers
 // =============================================================================
 
-// Create mock SSE events matching the Anthropic streaming format.
+// Create mock SDK stream events matching the Anthropic streaming format.
 // Each event is a parsed JSON object with a `type` field.
 function createMockEvents(overrides = {}) {
   let {
@@ -104,38 +104,33 @@ function createMockEvents(overrides = {}) {
   return events;
 }
 
-// Testable subclass that overrides _streamAPI to return mock events
+// Testable subclass that overrides _createStream to return mock events
+// (replaces the old TestableClaudeAgent that mocked _streamAPI)
 class TestableClaudeAgent extends ClaudeAgent {
   constructor(context, mockEvents) {
     super(context);
     this._mockEvents = mockEvents || [];
-    this._apiCalls   = []; // Track API calls for assertions
+    this._apiCalls   = [];
   }
 
-  async *_streamAPI(apiKey, systemPrompt, messages, options) {
-    // Record the call for assertion
-    this._apiCalls.push({ apiKey, systemPrompt, messages, options });
+  _createClient(_apiKey) {
+    // Return a mock client — we override _createStream so it's not used
+    return { messages: { stream: () => {} } };
+  }
 
-    // Determine which set of events to return
+  async *_createStream(_client, systemPrompt, messages, options) {
+    this._apiCalls.push({ systemPrompt, messages, options });
+
     let events = Array.isArray(this._mockEvents[0]) && Array.isArray(this._mockEvents[0])
       ? (this._mockEvents.shift() || [])
       : this._mockEvents;
 
-    // If _mockEvents is an array of arrays (multi-turn), shift the first set
     for (let event of events)
       yield event;
   }
-
-  // Multi-turn variant: accepts array of event arrays
-  static createMultiTurn(context, eventSets) {
-    let agent = new TestableClaudeAgent(context);
-    agent._eventSets = eventSets;
-    agent._callIndex = 0;
-    return agent;
-  }
 }
 
-// Multi-turn testable agent: each _streamAPI call returns the next event set
+// Multi-turn testable agent: each _createStream call returns the next event set
 class MultiTurnTestableAgent extends ClaudeAgent {
   constructor(context, eventSets) {
     super(context);
@@ -144,8 +139,12 @@ class MultiTurnTestableAgent extends ClaudeAgent {
     this._apiCalls  = [];
   }
 
-  async *_streamAPI(apiKey, systemPrompt, messages, options) {
-    this._apiCalls.push({ apiKey, systemPrompt, messages, options });
+  _createClient(_apiKey) {
+    return { messages: { stream: () => {} } };
+  }
+
+  async *_createStream(_client, systemPrompt, messages, options) {
+    this._apiCalls.push({ systemPrompt, messages, options });
     let events = this._eventSets[this._callIndex++] || [];
 
     for (let event of events)
@@ -272,7 +271,6 @@ describe('ClaudeAgent - getSystemPrompt()', () => {
   it('should not append instructions when agent has none', () => {
     let prompt = instance.getSystemPrompt({}, null);
     let parts  = prompt.split('\n\n');
-    // Should have base + HTML instruction, but no third part
     assert.equal(parts.length, 2);
   });
 
@@ -492,9 +490,7 @@ describe('ClaudeAgent - generator (text content)', () => {
       apiKey:   'sk-test-key',
     });
 
-    // text message
     await generator.next();
-    // done
     let done = await generator.next();
     assert.equal(done.value.type, 'done');
     assert.equal(done.value.content.usage.inputTokens, 200);
@@ -546,13 +542,11 @@ describe('ClaudeAgent - generator (tool calls)', () => {
   });
 
   it('should handle tool result passed back into generator', async () => {
-    // First call: returns tool_use
     let firstEvents = createMockEvents({
       text:      null,
       toolCalls: [{ id: 'toolu_001', name: 'bash', input: { command: 'ls' } }],
     });
 
-    // Second call: returns text (after tool result)
     let secondEvents = createMockEvents({
       text:      '<p>Here are your files.</p>',
       toolCalls: [],
@@ -567,21 +561,17 @@ describe('ClaudeAgent - generator (tool calls)', () => {
       apiKey:   'sk-test-key',
     });
 
-    // First: tool call
     let first = await generator.next();
     assert.equal(first.value.type, 'tool-call');
 
-    // Pass tool result back
     let second = await generator.next({
       type:    'tool-result',
       content: { output: 'file.txt\nREADME.md', toolUseId: 'toolu_001' },
     });
 
-    // Should get the message from the second API call
     assert.equal(second.value.type, 'message');
     assert.equal(second.value.content.html, '<p>Here are your files.</p>');
 
-    // Done block
     let done = await generator.next();
     assert.equal(done.value.type, 'done');
   });
@@ -592,7 +582,6 @@ describe('ClaudeAgent - generator (tool calls)', () => {
       toolCalls: [{ id: 'toolu_multi', name: 'search', input: { query: 'test' } }],
     });
 
-    // For multi-block, need a second event set for the continuation after tool result
     let secondEvents = createMockEvents({ text: '<p>Found it!</p>' });
     let agent        = new MultiTurnTestableAgent(null, [events, secondEvents]);
 
@@ -604,17 +593,14 @@ describe('ClaudeAgent - generator (tool calls)', () => {
       apiKey:   'sk-test-key',
     });
 
-    // First: text message
     let first = await generator.next();
     assert.equal(first.value.type, 'message');
     assert.equal(first.value.content.html, '<p>Let me check that for you.</p>');
 
-    // Second: tool call
     let second = await generator.next();
     assert.equal(second.value.type, 'tool-call');
     assert.equal(second.value.content.toolName, 'search');
 
-    // Pass tool result back, get continuation
     let third = await generator.next({
       type:    'tool-result',
       content: { output: 'result data', toolUseId: 'toolu_multi' },
@@ -669,7 +655,6 @@ describe('ClaudeAgent - generator (error handling)', () => {
       agent:    createMockAgent({ encryptedAPIKey: null }),
       session:  {},
       context:  null,
-      // No apiKey provided
     });
 
     await assert.rejects(
@@ -680,7 +665,8 @@ describe('ClaudeAgent - generator (error handling)', () => {
 
   it('should handle API error gracefully', async () => {
     class ErrorAgent extends ClaudeAgent {
-      async *_streamAPI() {
+      _createClient() { return {}; }
+      async *_createStream() {
         throw new Error('Anthropic API error 429: Rate limited');
       }
     }
@@ -706,26 +692,7 @@ describe('ClaudeAgent - generator (error handling)', () => {
 // =============================================================================
 
 describe('ClaudeAgent - API call format', () => {
-  it('should pass correct API key to _streamAPI', async () => {
-    let events = createMockEvents({ text: '<p>Hi</p>' });
-    let agent  = new TestableClaudeAgent(null, events);
-
-    let generator = await agent.execute({
-      messages: [],
-      agent:    createMockAgent(),
-      session:  {},
-      context:  null,
-      apiKey:   'sk-my-test-key',
-    });
-
-    // Consume the generator to trigger _streamAPI
-    for await (let _block of generator) { /* consume */ }
-
-    assert.equal(agent._apiCalls.length, 1);
-    assert.equal(agent._apiCalls[0].apiKey, 'sk-my-test-key');
-  });
-
-  it('should pass system prompt to _streamAPI', async () => {
+  it('should pass system prompt to _createStream', async () => {
     let events = createMockEvents({ text: '<p>Hi</p>' });
     let agent  = new TestableClaudeAgent(null, events);
 
@@ -866,65 +833,6 @@ describe('ClaudeAgent - setup() function', () => {
 
     teardown();
     assert.equal(agentTypes.has('claude'), false);
-  });
-});
-
-// =============================================================================
-// Index re-export
-// =============================================================================
-
-describe('ClaudeAgent - index re-export', () => {
-  it('should be importable from plugins/index.mjs', async () => {
-    let { ClaudeAgent: Imported } = await import('../../src/core/plugins/index.mjs');
-    assert.equal(Imported, ClaudeAgent);
-  });
-});
-
-// =============================================================================
-// SSE Parser (via _parseSSEStream)
-// =============================================================================
-
-describe('ClaudeAgent - _parseSSEStream()', () => {
-  it('should parse a well-formed SSE stream', async () => {
-    let instance = new ClaudeAgent(null);
-
-    let sseText = [
-      'event: message_start',
-      'data: {"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":10}}}',
-      '',
-      'event: content_block_start',
-      'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
-      '',
-      'event: content_block_delta',
-      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}',
-      '',
-      'event: content_block_stop',
-      'data: {"type":"content_block_stop","index":0}',
-      '',
-      'event: message_stop',
-      'data: {"type":"message_stop"}',
-      '',
-    ].join('\n');
-
-    // Create a ReadableStream from the text
-    let encoder = new TextEncoder();
-    let stream  = new ReadableStream({
-      start(controller) {
-        controller.enqueue(encoder.encode(sseText));
-        controller.close();
-      },
-    });
-
-    let events = [];
-
-    for await (let event of instance._parseSSEStream(stream))
-      events.push(event);
-
-    assert.ok(events.length >= 4); // message_start, block_start, block_delta, block_stop, message_stop
-    assert.equal(events[0].type, 'message_start');
-    assert.equal(events[1].type, 'content_block_start');
-    assert.equal(events[2].type, 'content_block_delta');
-    assert.equal(events[2].delta.text, 'Hello');
   });
 });
 

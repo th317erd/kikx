@@ -98,7 +98,7 @@ export class AuthError extends Error {
 
 const EMAIL_PATTERN      = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LEN   = 8;
-const DEFAULT_EXPIRY_SEC = 24 * 60 * 60; // 24 hours
+const DEFAULT_EXPIRY_SEC = 30 * 24 * 60 * 60; // 30 days
 
 function validateEmail(email) {
   if (!email || typeof email !== 'string')
