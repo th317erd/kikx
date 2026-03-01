@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { PluginInterface }          from './plugin-interface.mjs';
+import { AgentInterface }           from '../plugins/agent-interface.mjs';
 import { PluginRegistry }           from './registry.mjs';
 import { PluginProvider }           from './providers/plugin-provider.mjs';
 import { InMemoryPluginProvider }   from './providers/in-memory-provider.mjs';
@@ -114,6 +115,7 @@ export class PluginLoader {
       pluginName,
       context:              this._context,
       PluginInterface,
+      AgentInterface,
       registerTool:         (name, ToolClass) => registry.registerTool(name, ToolClass),
       registerCommand:      (name, handler)   => registry.registerCommand(name, handler),
       registerCustomElement: (tagName)         => registry.registerCustomElement(tagName),

@@ -1,45 +1,26 @@
-# Mythix Routes Refactoring + ClaudeAgent Plugin Extraction
+# Hero → Kikx Migration
 
-## Workstream A: Mythix Controllers + Routes
+## Phase 0: Pre-flight
+- [ ] 0.1 Set Node 24 as nvm default
+- [ ] 0.2 Change git remote to kikx
 
-### Step 1: Foundation
-- [ ] `src/server/controllers/controller-base.mjs` — Extends Mythix ControllerBase with core accessors
-- [ ] `src/server/controllers/controller-auth-base.mjs` — Extends V2 ControllerBase, adds getMiddleware()
-- [ ] `src/server/middleware/auth-middleware.mjs` — Mythix-compatible (request, response, next) middleware
-- [ ] `src/server/middleware/index.mjs` — Re-exports
+## Phase 1: Extract ClaudeAgent to Standalone Repo
+- [ ] 1.1 Add AgentInterface to plugin context in plugin-loader
+- [ ] 1.2 Refactor in-tree claude-agent to use injected AgentInterface
+- [ ] 1.3 Write standalone plugin into ~/Projects/kikx-workspace/kikx-plugin-claude/
+- [ ] 1.4 npm install + run tests in standalone repo
+- [ ] 1.5 Commit + push standalone repo
+- [ ] 1.6 Remove plugin from main project, verify tests, commit
 
-### Step 2: Controllers
-- [ ] `src/server/controllers/auth-controller.mjs` — register, login, me
-- [ ] `src/server/controllers/session-controller.mjs` — Session CRUD + archive/revive (7 methods)
-- [ ] `src/server/controllers/participant-controller.mjs` — Participant list/add/remove (3 methods)
-- [ ] `src/server/controllers/agent-controller.mjs` — Agent CRUD with API key encryption (5 methods)
-- [ ] `src/server/controllers/interaction-controller.mjs` — sendMessage, cancel, approve, deny (4 methods)
-- [ ] `src/server/controllers/frame-controller.mjs` — list (1 method)
-- [ ] `src/server/controllers/stream-controller.mjs` — SSE stream connect (1 method)
-- [ ] `src/server/controllers/index.mjs` — Re-exports all controllers
+## Phase 2: Move Project Directory
+- [ ] 2.1 mv ~/Projects/hero → ~/Projects/kikx-workspace/kikx
+- [ ] 2.2 Verify tests pass in new location
 
-### Step 3: Routes + Application
-- [ ] `src/server/routes/index.mjs` — Replace with Mythix DSL routes
-- [ ] `src/server/application.mjs` — V2 Application extending MythixApplication
-
-## Workstream B: ClaudeAgent Plugin Extraction
-
-### Step 4: Plugin Migration
-- [ ] `plugins/claude-agent/index.mjs` — ClaudeAgent class + setup(), using @anthropic-ai/sdk
-- [ ] `plugins/claude-agent/package.json` — Declares @anthropic-ai/sdk dependency
-- [ ] `src/core/plugins/index.mjs` — Remove ClaudeAgent re-export
-- [ ] Delete `src/core/plugins/claude-agent/` directory
-
-## Workstream C: Test Migration
-
-### Step 5: Tests
-- [ ] `spec/server/routes-spec.mjs` — Refactor to test controllers
-- [ ] `spec/server/integration-spec.mjs` — Adapt to controller-based testing
-- [ ] `spec/plugins/claude-agent-spec.mjs` — Move + update imports, mock SDK
-- [ ] `spec/server/auth-spec.mjs` — Add Mythix middleware tests
-
-### Step 6: Verification
-- [ ] All server tests pass
-- [ ] All plugin tests pass
-- [ ] All core tests pass (no regressions)
-- [ ] Commit
+## Phase 3: Rename hero → kikx
+- [ ] 3.1 Write rename script (scripts/rename.mjs)
+- [ ] 3.2 Dry-run rename script, review output
+- [ ] 3.3 Execute rename script
+- [ ] 3.4 Post-rename grep for stragglers, fix manually
+- [ ] 3.5 Update .claude/ meta files
+- [ ] 3.6 Run full test suite
+- [ ] 3.7 Commit (ask before push)
