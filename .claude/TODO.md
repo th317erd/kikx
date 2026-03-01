@@ -160,13 +160,16 @@ Step 1 (core entry) ────────────────────
   - Tests: spec/server/auth-spec.mjs (56 tests, 0 failures)
 
 ### Wave N: Server Integration (depends on everything above)
-- [ ] 51. Server routes: src/server/app/routes/
-  - REST endpoints for sessions, agents, frames, auth
-  - Thin adapters calling core methods
-  - Tests: spec/server/routes-spec.mjs
-- [ ] 52. Integration tests: end-to-end flow
+- [x] 51. Server routes: src/server/routes/index.mjs
+  - REST endpoints for sessions, agents, frames, auth, interactions, SSE
+  - Thin adapters calling core methods (ServerRoutes class)
+  - getRouteTable() returns { method, path, handler, auth } descriptors
+  - Tests: spec/server/routes-spec.mjs (47 tests, 25 suites, 0 failures)
+- [x] 52. Integration tests: end-to-end flow
   - Create session → send message → receive response → frames persisted
-  - Tests: spec/server/integration-spec.mjs
+  - 10 suites: registration/login, session lifecycle, simple interaction, multi-message,
+    tool calls, permission hard-break, message queue, API key encryption, content sanitization, events
+  - Tests: spec/server/integration-spec.mjs (37 tests, 10 suites, 0 failures)
 
 ## Decision Log
 (Decisions made during implementation without user input — review with user later)
