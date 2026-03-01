@@ -250,7 +250,7 @@ router.post('/auth/magic-link/request', magicLinkLimiter, (req, res) => {
 
     sendEmail(
       email,
-      'Hero — Magic Link Login',
+      'Kikx — Magic Link Login',
       `Click the link below to log in:\n\n${verifyUrl}\n\nThis link expires at ${expiresAt}.`,
     );
 

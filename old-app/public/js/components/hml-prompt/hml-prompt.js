@@ -810,7 +810,7 @@ class HmlPrompt extends MythixUIComponent {
 
   /**
    * Focus the primary input element inside this prompt's shadow DOM.
-   * Used by hero-chat's focus chain for Enter-to-advance behavior.
+   * Used by kikx-chat's focus chain for Enter-to-advance behavior.
    */
   focusInput() {
     if (!this.shadowRoot) return;
@@ -867,7 +867,7 @@ class HmlPrompt extends MythixUIComponent {
     this._isRendering = false;
     this.render();
 
-    // Dispatch tab-forward event for hero-chat to handle focus management
+    // Dispatch tab-forward event for kikx-chat to handle focus management
     queueMicrotask(() => {
       this.dispatchEvent(new CustomEvent('prompt-tab-forward', {
         bubbles:  true,

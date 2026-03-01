@@ -1,0 +1,41 @@
+<!-- Kikx App Component -->
+<!-- Root component handling routing, auth, and view management -->
+
+<!-- Document-scope styles -->
+<style data-for="kikx-app">
+  kikx-app {
+    display: block;
+    min-height: 100vh;
+  }
+</style>
+
+<!-- Shadow DOM template -->
+<template data-for="kikx-app">
+  <style>
+    :host {
+      display: block;
+      min-height: 100vh;
+    }
+
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* View containers */
+    ::slotted([data-view]) {
+      display: none;
+    }
+
+    ::slotted([data-view].active) {
+      display: block;
+    }
+  </style>
+
+  <div class="app-container">
+    <slot></slot>
+  </div>
+</template>
+
+<script type="module" src="./kikx-app.js"></script>

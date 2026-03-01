@@ -1,4 +1,4 @@
-# Hero Project Todo
+# Kikx Project Todo
 
 ## Completed
 [x] Markdown → HTML migration - Agent outputs HTML, server-side sanitization (105 tests)
@@ -108,11 +108,11 @@ All conversation activity becomes immutable "interaction frames" — like git co
 
 ## Recently Completed (2026-02-08)
 [x] Mythix-UI Component Refactoring - Phase 2 complete
-    - Created `hero-main-controls.js` - consolidates header action buttons (horizontal/vertical layouts)
-    - Created `HeroModalAbilities` - abilities list with System/User tabs
-    - Created `HeroModalAgents` - agents list with edit/delete
-    - Created `HeroModalAgentConfig` - JSON configuration editor for agents
-    - Updated `hero-header.js` to use `<hero-main-controls>` component
+    - Created `kikx-main-controls.js` - consolidates header action buttons (horizontal/vertical layouts)
+    - Created `KikxModalAbilities` - abilities list with System/User tabs
+    - Created `KikxModalAgents` - agents list with edit/delete
+    - Created `KikxModalAgentConfig` - JSON configuration editor for agents
+    - Updated `kikx-header.js` to use `<kikx-main-controls>` component
     - Removed ~235 lines of old modal HTML from index.html
     - Cleaned up state.js (~62 lines of modal element references removed)
     - Cleaned up app.js (~350 lines of modal functions removed)

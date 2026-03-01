@@ -4,7 +4,7 @@
 // ControllerBase — V2 base controller with core accessors
 // =============================================================================
 // Extends Mythix ControllerBase with convenience methods for accessing
-// HeroCore services. All V2 controllers inherit from this.
+// KikxCore services. All V2 controllers inherit from this.
 // =============================================================================
 
 import { ControllerBase as MythixControllerBase } from 'mythix';

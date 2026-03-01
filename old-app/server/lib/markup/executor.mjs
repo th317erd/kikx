@@ -1,7 +1,7 @@
 'use strict';
 
 // ============================================================================
-// Hero Markup Language (HML) - Executor
+// Kikx Markup Language (HML) - Executor
 // ============================================================================
 // Processes HML elements extracted from AI responses through the assertion pipeline.
 

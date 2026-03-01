@@ -12,7 +12,7 @@
  * - PARTY-002: /invite accepts as:alias syntax
  * - PARTY-003: /promote changes coordinator
  * - PARTY-004: /participants shows aliases
- * - RENDER-001: hero-participant-list component structure
+ * - RENDER-001: kikx-participant-list component structure
  * - RENDER-005: participant sidebar in index.html
  */
 
@@ -45,10 +45,10 @@ const indexHtml = fs.readFileSync(
   path.join(projectRoot, 'public/index.html'), 'utf-8'
 );
 const participantListJs = fs.readFileSync(
-  path.join(projectRoot, 'public/js/components/hero-participant-list/hero-participant-list.js'), 'utf-8'
+  path.join(projectRoot, 'public/js/components/kikx-participant-list/kikx-participant-list.js'), 'utf-8'
 );
 const participantListHtml = fs.readFileSync(
-  path.join(projectRoot, 'public/js/components/hero-participant-list/hero-participant-list.html'), 'utf-8'
+  path.join(projectRoot, 'public/js/components/kikx-participant-list/kikx-participant-list.html'), 'utf-8'
 );
 const layoutCss = fs.readFileSync(
   path.join(projectRoot, 'public/css/layout.css'), 'utf-8'
@@ -252,17 +252,17 @@ describe('RENDER-005: Participant sidebar in chat view', () => {
     );
   });
 
-  it('should have hero-participant-list component', () => {
+  it('should have kikx-participant-list component', () => {
     assert.ok(
-      indexHtml.includes('<hero-participant-list'),
-      'index.html should include hero-participant-list component'
+      indexHtml.includes('<kikx-participant-list'),
+      'index.html should include kikx-participant-list component'
     );
   });
 
-  it('should have mythix-require for hero-participant-list', () => {
+  it('should have mythix-require for kikx-participant-list', () => {
     assert.ok(
-      indexHtml.includes('hero-participant-list@1'),
-      'index.html should have mythix-require for hero-participant-list'
+      indexHtml.includes('kikx-participant-list@1'),
+      'index.html should have mythix-require for kikx-participant-list'
     );
   });
 
@@ -282,14 +282,14 @@ describe('RENDER-005: Participant sidebar in chat view', () => {
 });
 
 // =============================================================================
-// RENDER-001: hero-participant-list component structure
+// RENDER-001: kikx-participant-list component structure
 // =============================================================================
 
-describe('RENDER-001: hero-participant-list component', () => {
-  it('should extend HeroComponent', () => {
+describe('RENDER-001: kikx-participant-list component', () => {
+  it('should extend KikxComponent', () => {
     assert.ok(
-      participantListJs.includes('extends HeroComponent'),
-      'Should extend HeroComponent'
+      participantListJs.includes('extends KikxComponent'),
+      'Should extend KikxComponent'
     );
   });
 
@@ -357,18 +357,18 @@ describe('RENDER-001: hero-participant-list component', () => {
     // a race condition where the class is defined before the template
     // is injected by mythix-require.
     assert.ok(
-      !componentsIndex.includes("export { HeroParticipantList }"),
+      !componentsIndex.includes("export { KikxParticipantList }"),
       'Should NOT be exported from index.js (loaded via mythix-require)'
     );
   });
 
   it('should register as custom element', () => {
     assert.ok(
-      participantListJs.includes("static tagName = 'hero-participant-list'"),
-      'Should define hero-participant-list tag name'
+      participantListJs.includes("static tagName = 'kikx-participant-list'"),
+      'Should define kikx-participant-list tag name'
     );
     assert.ok(
-      participantListJs.includes('HeroParticipantList.register()'),
+      participantListJs.includes('KikxParticipantList.register()'),
       'Should call register()'
     );
   });

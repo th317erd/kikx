@@ -37,7 +37,7 @@ class TestAWSModule extends AWSModule {
 
   async uploadToS3(options) {
     // Pretend we uploaded and return the URL
-    return `https://hero.com/${options.folder}/${options.fileName}`;
+    return `https://kikx.com/${options.folder}/${options.fileName}`;
   }
 }
 
@@ -90,10 +90,10 @@ async function createTestApplication() {
     application: {
       test: {
         salt:               'eyJzZWNyZXRLZXkiOiJLdzFVN0RlNU5XZHJQTEhGV20xZEVYdFJubFRHWlFGLUZHWVk1bExPYnk0PSIsIml2IjoiY1k1ZEJKTk5QSjBxNlQ2UTJXUk5oZz09In0=',
-        domain:             'test.hero.com',
-        mfaPageURL:         'https://test.hero.com/pages/mfa',
-        afterLoginPageURL:  'https://test.hero.com/pages/home',
-        magicLinkURL:       'https://test.hero.com/api/v1/auth/login',
+        domain:             'test.kikx.com',
+        mfaPageURL:         'https://test.kikx.com/pages/mfa',
+        afterLoginPageURL:  'https://test.kikx.com/pages/home',
+        magicLinkURL:       'https://test.kikx.com/api/v1/auth/login',
       },
       smtp: {
         domain: 'example.com',

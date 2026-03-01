@@ -1,7 +1,7 @@
 'use strict';
 
 // =============================================================================
-// Hero V2 Models — Index
+// Kikx V2 Models — Index
 // =============================================================================
 // All models exported for registration with the ORM connection.
 // IMPORTANT: Never import models directly in application code.

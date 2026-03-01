@@ -3,16 +3,16 @@
 // =============================================================================
 // V2 Application — extends MythixApplication
 // =============================================================================
-// Creates HeroCore first, then starts Mythix HTTP server.
+// Creates KikxCore first, then starts Mythix HTTP server.
 // Exposes core services to controllers via getCore(), getAuthService(), etc.
-// Overrides createDatabaseConnection() to reuse HeroCore's connection.
+// Overrides createDatabaseConnection() to reuse KikxCore's connection.
 // =============================================================================
 
 import { Application as MythixApplication } from 'mythix';
 
 import { getRoutes }       from './routes/index.mjs';
 import * as Controllers    from './controllers/index.mjs';
-import { HeroCore }        from '../core/hero-core.mjs';
+import { KikxCore }        from '../core/kikx-core.mjs';
 import { Keystore }        from '../core/crypto/keystore.mjs';
 import { AuthService }     from './auth/index.mjs';
 import { SessionManager }  from '../core/session/index.mjs';
@@ -22,7 +22,7 @@ import { ContentSanitizer } from '../core/lib/content-sanitizer.mjs';
 
 export class Application extends MythixApplication {
   static getName() {
-    return 'hero-v2';
+    return 'kikx-v2';
   }
 
   constructor(_options) {
@@ -59,7 +59,7 @@ export class Application extends MythixApplication {
   // ---------------------------------------------------------------------------
 
   async start(options) {
-    // Initialize HeroCore before Mythix starts its HTTP server
+    // Initialize KikxCore before Mythix starts its HTTP server
     await this._initializeCore(options);
 
     // Now start Mythix (which starts the HTTP server)
@@ -70,7 +70,7 @@ export class Application extends MythixApplication {
     // Stop Mythix HTTP server first
     await super.stop();
 
-    // Then tear down HeroCore
+    // Then tear down KikxCore
     if (this._core) {
       await this._core.stop();
       this._core = null;
@@ -87,8 +87,8 @@ export class Application extends MythixApplication {
   async _initializeCore(options) {
     let coreConfig = (options && options.core) || this.getOptions().core || {};
 
-    // Create and start HeroCore
-    this._core = new HeroCore(coreConfig);
+    // Create and start KikxCore
+    this._core = new KikxCore(coreConfig);
     await this._core.start();
 
     let context = this._core.getContext();
@@ -115,11 +115,11 @@ export class Application extends MythixApplication {
   }
 
   // ---------------------------------------------------------------------------
-  // Override database connection to reuse HeroCore's
+  // Override database connection to reuse KikxCore's
   // ---------------------------------------------------------------------------
 
   async createDatabaseConnection() {
-    // HeroCore already owns the database connection.
+    // KikxCore already owns the database connection.
     // Return it so Mythix doesn't create a second one.
     if (this._core)
       return this._core.getConnection();

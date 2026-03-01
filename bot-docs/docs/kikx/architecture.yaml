@@ -1,0 +1,131 @@
+# Kikx App Architecture (compressed)
+# Keys: t=type, d=desc, f=flow, c=children, s=src, e=events, k=keys, v=values, p=path
+
+stack:
+  t: SPA
+  f: Browser -> nginx (reverse proxy, strips /kikx/) -> Node.js (Express)
+  layers:
+    - t: auth
+      d: JWT + API key middleware
+    - t: routes
+      d: REST API + SSE streaming
+    - t: websocket
+      d: bidirectional real-time events
+    - t: hml-pipeline
+      d: Text Stream -> Parser -> Element Events -> Execution
+    - t: interactions
+      d: Detector -> InteractionBus -> Function Handler -> Result
+    - t: agents
+      d: ClaudeAgent, OpenAIAgent abstraction
+      f: "-> External APIs (Claude, OpenAI)"
+
+concepts:
+  sessions:
+    d: named conversations
+    k: [persistent-sqlite, encrypted, user-scoped, archivable, multi-party]
+    f: session_participants table for multi-party
+
+  agents:
+    d: configured AI backends
+    k: [type, encrypted-api-key, config-json, default-abilities]
+
+  hml:
+    d: Kikx Markup Language - custom markup for rich agent responses
+    c:
+      executable: [websearch, bash, ask]
+      display: [thinking, todo, item, progress, link, copy, result]
+
+  abilities:
+    d: unified extensibility (processes + functions)
+    types: [function, process]
+    sources: [builtin, system, user, plugin]
+    permissions:
+      autoApprove: bool
+      dangerLevel: [safe, moderate, dangerous]
+    startup: "_onstart_* pattern, __ prefix = higher priority"
+
+  interactions:
+    d: agent<->system<->user communication
+    c:
+      bus: central pub/sub (InteractionBus)
+      detector: "parses <interaction> tags w/ JSON payload"
+      functions: [WebSearch, Help, PromptUpdate, Delegate, ExecuteCommand]
+      targets: ["@system", "@user", "@agent"]
+    security: sender_id stripped from agent output (anti-spoof)
+
+  conditional-abilities:
+    d: context-aware instruction injection
+    f: "runs EVERY interaction; matchCondition(ctx) -> inject if matched"
+    ex: prompt_response_handler (detects unanswered prompts)
+
+  frames:
+    d: event-sourced conversation backbone
+    types: [MESSAGE, REQUEST, RESULT, UPDATE, COMPACT]
+    k: [immutable, replayed-to-derive-state, compaction-for-context-window]
+
+  permissions:
+    d: default-deny engine
+    f: "evaluate(subject, resource, context) -> allow/deny/prompt"
+    resolution: specificity-based (most specific wins)
+
+  plugins:
+    d: hook-based extensibility
+    hooks: [BEFORE_USER_MESSAGE, AFTER_USER_MESSAGE, BEFORE_AGENT_RESPONSE, AFTER_AGENT_RESPONSE, BEFORE_COMMAND, AFTER_COMMAND]
+    discovery: [internal (server/plugins/), user (~/.config/kikx/plugins/)]
+    k: [hot-reload, dependency-resolution]
+
+data-flow:
+  streaming:
+    f: "User POST -> SSE conn -> context build -> Agent API (streaming) -> HML Pipeline (text chunks -> parser -> element events -> execution) -> SSE events -> Frontend"
+  sse-events: [message_start, text, element_start, element_update, element_complete, element_executing, element_result, element_error, tool_use_start, tool_use_result, message_complete, error]
+  ws-events:
+    server-to-client: [message_start, message_chunk, message_end, assertion_update, question_prompt, operation_start, operation_complete, operation_error, "stream_*"]
+    client-to-server: [abort, question_response, ability_approval_response]
+
+files:
+  server:
+    root: [server.mjs, database.mjs, encryption.mjs, config.mjs]
+    routes: [auth, sessions, messages, messages-stream, agents, abilities, frames, search, uploads, users, permissions]
+    middleware: "auth (JWT + API key)"
+    lib:
+      agents: [agent.mjs (base), claude-agent.mjs, index.mjs (registry)]
+      abilities:
+        p: [registry, executor, approval, conditional]
+        loaders: [builtin, system, user, plugin, startup, commands]
+      markup: [parser, stream-parser, executor]
+      interactions:
+        p: [bus, function-base, detector]
+        functions: [system, websearch, help, prompt-update, delegate, execute-command]
+      frames: [index (CRUD), broadcast, context, compilation]
+      permissions: "engine (evaluate, specificity)"
+      participants: "CRUD helpers, loadSessionWithAgent"
+      plugins: "loader (discovery, deps, hot-reload, hooks)"
+      auth: [magic-links, api-keys]
+      misc: [avatars.mjs, "content/ (registry)", html-sanitizer.mjs, compaction.mjs]
+      commands: "index (participants, invite, kick, history, export)"
+      websocket: websocket.mjs
+
+  public:
+    root: index.html
+    css: [base, chat, elements, content, components, layout]
+    js:
+      root: [app.js, markup.js, streaming.js, api.js, approvals.js]
+      components:
+        base: "kikx-base.js (GlobalState, KikxComponent)"
+        app: [kikx-app, kikx-sidebar, kikx-chat, kikx-input, kikx-header, kikx-websocket]
+        modals: [kikx-modal (base), kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-modal-configure-ability]
+        misc: [hml-prompt (inline prompts), session-frames-provider (frame store)]
+
+state:
+  global: [heroUser, heroSessions, heroAgents, heroAbilities, heroCurrentSession]
+  session: [frames, streamingFrame, isTyping]
+  component: [modal-states, form-values, scroll-position]
+
+framework:
+  t: "Mythix UI (Web Components)"
+  k:
+    - "split files: .html (templates/styles) + .js (logic)"
+    - "registration: MyComponent.register()"
+    - "reactive: DynamicProperty"
+    - "template: @@expression@@"
+    - "Shadow DOM default, Light DOM via createShadowDOM() { return null; }"

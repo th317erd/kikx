@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hero Component Demo</title>
+  <title>Kikx Component Demo</title>
   <base href="/">
 
   <!-- Theme Variables -->
@@ -129,20 +129,20 @@
     <label for="component-select">Component:</label>
     <select id="component-select">
       <option value="">-- Select Component --</option>
-      <option value="hero-status-bar">hero-status-bar</option>
-      <option value="hero-header">hero-header</option>
-      <option value="hero-main-controls">hero-main-controls</option>
-      <option value="hero-input">hero-input</option>
-      <option value="hero-app">hero-app</option>
-      <option value="hero-modal">hero-modal</option>
-      <option value="hero-modal-new-session">hero-modal-new-session</option>
-      <option value="hero-modal-abilities">hero-modal-abilities</option>
-      <option value="hero-modal-agents">hero-modal-agents</option>
-      <option value="hero-modal-agent-config">hero-modal-agent-config</option>
-      <option value="hero-modal-new-agent">hero-modal-new-agent</option>
+      <option value="kikx-status-bar">kikx-status-bar</option>
+      <option value="kikx-header">kikx-header</option>
+      <option value="kikx-main-controls">kikx-main-controls</option>
+      <option value="kikx-input">kikx-input</option>
+      <option value="kikx-app">kikx-app</option>
+      <option value="kikx-modal">kikx-modal</option>
+      <option value="kikx-modal-new-session">kikx-modal-new-session</option>
+      <option value="kikx-modal-abilities">kikx-modal-abilities</option>
+      <option value="kikx-modal-agents">kikx-modal-agents</option>
+      <option value="kikx-modal-agent-config">kikx-modal-agent-config</option>
+      <option value="kikx-modal-new-agent">kikx-modal-new-agent</option>
       <option value="hml-prompt">hml-prompt</option>
-      <option value="hero-chat">hero-chat</option>
-      <option value="hero-sessions-list">hero-sessions-list</option>
+      <option value="kikx-chat">kikx-chat</option>
+      <option value="kikx-sessions-list">kikx-sessions-list</option>
     </select>
     <button class="reload-button" onclick="loadComponent()">Reload</button>
   </div>
@@ -164,10 +164,10 @@
       "@cdn/mythix-ui-core@1": "/mythix-ui/mythix-ui-core/dist/index.js",
       "@cdn/mythix-ui-for-each@1": "/mythix-ui/mythix-ui-for-each/dist/mythix-ui-for-each.js",
       "@cdn/mythix-ui-modal@1": "/mythix-ui/mythix-ui-modal/dist/mythix-ui-modal.js",
-      "@hero/api": "/js/api.js",
-      "@hero/base": "/js/components/hero-base.js",
-      "@hero/state": "/js/state.js",
-      "@hero/utils": "/js/utils.js"
+      "@kikx/api": "/js/api.js",
+      "@kikx/base": "/js/components/kikx-base.js",
+      "@kikx/state": "/js/state.js",
+      "@kikx/utils": "/js/utils.js"
     }
   }
   </script>
@@ -182,8 +182,8 @@
 
         // Resolver for <mythix-require> component loading
         mythixUI.urlResolver = ({ src, path, fileName }) => {
-          // Handle @cdn/hero-* pattern for hero components
-          let heroMatch = src.match(/^@cdn\/(hero-[\w-]+)(@[\d.]+)?$/);
+          // Handle @cdn/kikx-* pattern for kikx components
+          let heroMatch = src.match(/^@cdn\/(kikx-[\w-]+)(@[\d.]+)?$/);
           if (heroMatch)
             return `/js/components/${heroMatch[1]}/${heroMatch[1]}.html`;
 
@@ -209,66 +209,66 @@
     // 'html' = uses <mythix-require> to load HTML (split-file pattern)
     // 'module' = direct JS import (single-file pattern, legacy)
     const componentInfo = {
-      'hero-status-bar': {
-        title: 'Hero Status Bar',
+      'kikx-status-bar': {
+        title: 'Kikx Status Bar',
         description: 'Bottom status bar showing connection status and spend tracking.',
         wrapper: 'status-bar-wrapper',
-        html: '/js/components/hero-status-bar/hero-status-bar.html',
+        html: '/js/components/kikx-status-bar/kikx-status-bar.html',
       },
-      'hero-header': {
-        title: 'Hero Header',
+      'kikx-header': {
+        title: 'Kikx Header',
         description: 'Top header bar with navigation and controls.',
         wrapper: 'header-wrapper',
-        html: '/js/components/hero-header/hero-header.html',
-        deps: ['/js/components/hero-main-controls/hero-main-controls.html'],
+        html: '/js/components/kikx-header/kikx-header.html',
+        deps: ['/js/components/kikx-main-controls/kikx-main-controls.html'],
       },
-      'hero-main-controls': {
-        title: 'Hero Main Controls',
+      'kikx-main-controls': {
+        title: 'Kikx Main Controls',
         description: 'Action buttons for header (Agents, Abilities, New Session, etc.).',
         wrapper: '',
-        html: '/js/components/hero-main-controls/hero-main-controls.html',
+        html: '/js/components/kikx-main-controls/kikx-main-controls.html',
       },
-      'hero-input': {
-        title: 'Hero Input',
+      'kikx-input': {
+        title: 'Kikx Input',
         description: 'Message input textarea with send/clear buttons.',
         wrapper: '',
-        html: '/js/components/hero-input/hero-input.html',
+        html: '/js/components/kikx-input/kikx-input.html',
       },
-      'hero-app': {
-        title: 'Hero App',
+      'kikx-app': {
+        title: 'Kikx App',
         description: 'Main app orchestrator component.',
         wrapper: 'no-padding',
-        html: '/js/components/hero-app/hero-app.html',
+        html: '/js/components/kikx-app/kikx-app.html',
       },
-      'hero-modal-session': {
-        title: 'Hero Modal: New Session',
+      'kikx-modal-session': {
+        title: 'Kikx Modal: New Session',
         description: 'Modal for creating a new session.',
         wrapper: '',
-        html: '/js/components/hero-modal/hero-modal.html',
+        html: '/js/components/kikx-modal/kikx-modal.html',
       },
-      'hero-modal-abilities': {
-        title: 'Hero Modal: Abilities',
+      'kikx-modal-abilities': {
+        title: 'Kikx Modal: Abilities',
         description: 'Modal showing system and user abilities.',
         wrapper: '',
-        html: '/js/components/hero-modal/hero-modal.html',
+        html: '/js/components/kikx-modal/kikx-modal.html',
       },
-      'hero-modal-agents': {
-        title: 'Hero Modal: Agents',
+      'kikx-modal-agents': {
+        title: 'Kikx Modal: Agents',
         description: 'Modal for managing agents.',
         wrapper: '',
-        html: '/js/components/hero-modal/hero-modal.html',
+        html: '/js/components/kikx-modal/kikx-modal.html',
       },
-      'hero-modal-agent-config': {
-        title: 'Hero Modal: Agent Config',
+      'kikx-modal-agent-config': {
+        title: 'Kikx Modal: Agent Config',
         description: 'Modal for editing agent configuration.',
         wrapper: '',
-        html: '/js/components/hero-modal/hero-modal.html',
+        html: '/js/components/kikx-modal/kikx-modal.html',
       },
-      'hero-modal-agent': {
-        title: 'Hero Modal: New Agent',
+      'kikx-modal-agent': {
+        title: 'Kikx Modal: New Agent',
         description: 'Modal for creating a new agent.',
         wrapper: '',
-        html: '/js/components/hero-modal/hero-modal.html',
+        html: '/js/components/kikx-modal/kikx-modal.html',
       },
       'hml-prompt': {
         title: 'HML Prompt',
@@ -276,23 +276,23 @@
         wrapper: '',
         html: '/js/components/hml-prompt/hml-prompt.html',
       },
-      'hero-chat': {
-        title: 'Hero Chat',
+      'kikx-chat': {
+        title: 'Kikx Chat',
         description: 'Chat view with message list and HML rendering.',
         wrapper: 'no-padding',
-        html: '/js/components/hero-chat/hero-chat.html',
+        html: '/js/components/kikx-chat/kikx-chat.html',
       },
-      'hero-sessions-list': {
-        title: 'Hero Sessions List',
+      'kikx-sessions-list': {
+        title: 'Kikx Sessions List',
         description: 'Sidebar list of sessions.',
         wrapper: '',
-        module: '/js/components/hero-sessions-list/hero-sessions-list.js',
+        module: '/js/components/kikx-sessions-list/kikx-sessions-list.js',
       },
     };
 
     // Setup mock GlobalState for testing
     async function setupMockState() {
-      const { GlobalState } = await import('/js/components/hero-base.js');
+      const { GlobalState } = await import('/js/components/kikx-base.js');
 
       // Set mock data
       GlobalState.user[DynamicProperty.set]({ id: 1, username: 'demo' });
@@ -398,7 +398,7 @@
         const element = document.createElement(name);
 
         // Special handling for modals - they need to be opened
-        if (name.startsWith('hero-modal')) {
+        if (name.startsWith('kikx-modal')) {
           wrapper.appendChild(element);
           // Give it a moment to mount, then open
           setTimeout(() => {

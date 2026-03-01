@@ -110,7 +110,7 @@ export class MasterEmailTemplate {
 
   getRootAppURL(path, queryParams) {
     let app         = this.getApplication();
-    let appRootURL  = app.getConfigValue('application.{environment}.appRootURL', 'https://Hero.com/');
+    let appRootURL  = app.getConfigValue('application.{environment}.appRootURL', 'https://Kikx.com/');
     let queryStr    = '';
 
     appRootURL = appRootURL.replace(/\/+$/, '');
@@ -123,7 +123,7 @@ export class MasterEmailTemplate {
 
   getHelpURL() {
     let app         = this.getApplication();
-    let getHelpURL  = app.getConfigValue('application.{environment}.getHelpURL', 'https://hero.com');
+    let getHelpURL  = app.getConfigValue('application.{environment}.getHelpURL', 'https://kikx.com');
 
     return getHelpURL;
   }
@@ -266,7 +266,7 @@ export class MasterEmailTemplate {
 
     let props     = _props || {};
     let classes   = props['css-class'] || '';
-    let classList = `hero-table${(classes) ? ` ${classes}` : ''}`;
+    let classList = `kikx-table${(classes) ? ` ${classes}` : ''}`;
     let style     = this.objectToStyleCSS({
       'border-spacing':   '0',
       'border-collapse':  'initial',
@@ -422,7 +422,7 @@ export class MasterEmailTemplate {
                 inline: 'inline',
               },
               content: `
-                .hero-group {
+                .kikx-group {
                   background-color: #F9FAFB;
                   border: 1px solid #EEF1F5;
                   border-radius: ${this.sizePX(16)};
@@ -518,7 +518,7 @@ export class MasterEmailTemplate {
                 },
               ),
               this.text(
-                this.langTerm('email.generic.copyright', 'Copyright © 2022 Hero™. All rights reserved.'),
+                this.langTerm('email.generic.copyright', 'Copyright © 2022 Kikx™. All rights reserved.'),
                 {
                   'font-size':    this.sizePX(14),
                   'line-height':  this.sizePX(22),

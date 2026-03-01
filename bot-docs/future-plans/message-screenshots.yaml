@@ -33,9 +33,9 @@ design_notes: >
   bundling Puppeteer. Simpler but adds external dependency.
 
 files:
-  - server/plugins/hero-plugin-screenshots/   # Plugin directory
-  - server/plugins/hero-plugin-screenshots/index.mjs
-  - server/plugins/hero-plugin-screenshots/capture.mjs
+  - server/plugins/kikx-plugin-screenshots/   # Plugin directory
+  - server/plugins/kikx-plugin-screenshots/index.mjs
+  - server/plugins/kikx-plugin-screenshots/capture.mjs
 
 tests:
   - Screenshot capture of a rendered DOM element

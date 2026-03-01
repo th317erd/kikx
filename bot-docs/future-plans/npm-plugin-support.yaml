@@ -5,7 +5,7 @@
 
 summary: >
   Resolve plugins from node_modules in addition to the plugins directory.
-  Users can `npm install hero-plugin-foo` and it auto-discovers on restart.
+  Users can `npm install kikx-plugin-foo` and it auto-discovers on restart.
 
 current_state: >
   Plugins are discovered from two directories: internal (server/plugins/)
@@ -13,7 +13,7 @@ current_state: >
   There is no node_modules resolution path.
 
 requirements:
-  - Scan package.json dependencies for packages with hero-plugin-* prefix
+  - Scan package.json dependencies for packages with kikx-plugin-* prefix
   - Resolve via require.resolve() / import.meta.resolve()
   - Same plugin API shape as filesystem plugins
   - Source tracking: 'npm' in addition to 'internal' and 'user'

@@ -26,7 +26,7 @@ import http from 'http';
 // Environment Setup (MUST precede all server module imports)
 // ============================================================================
 
-let testDir = mkdtempSync(join(tmpdir(), 'hero-stream-test-'));
+let testDir = mkdtempSync(join(tmpdir(), 'kikx-stream-test-'));
 
 process.env.HERO_JWT_SECRET     = 'test-secret-key-for-stream-testing';
 process.env.HERO_ENCRYPTION_KEY = 'test-encryption-key-32chars!!';

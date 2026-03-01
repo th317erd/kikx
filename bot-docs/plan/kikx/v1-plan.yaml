@@ -1,0 +1,706 @@
+# Kikx V1 — Revised Implementation Plan
+# Rewritten 2026-02-20 after critical audit + user vision clarification.
+# Revision 3: Incorporates product vision, active coordinator model,
+# agent aliasing, page routing system, permission-as-form design.
+#
+# Keys: t=title, d=description, s=status, ac=acceptance_criteria,
+#        dep=dependencies, f=files, ts=tests, sev=severity
+
+meta:
+  project: Kikx
+  revision: 4
+  current_tests: 1672
+  v1_scope: "All 18 items. No cutting. All items = V1."
+
+# =============================================================================
+# PRODUCT VISION
+# =============================================================================
+
+vision:
+  t: "Kikx is a channel-based chat platform where users and AI agents collaborate"
+  d: >
+    Kikx is a chat application that allows "users" to send each other messages.
+    Users can be in channels, and many users can be in these channels, all
+    talking at once. These "users" also just happen to be able to be agents.
+
+    The coordinating agent is chosen by the user. Bots join by invitation
+    (/invite {agent-name} as:alias), can be named per-session, and chosen
+    for specific tasks. The coordinator bot coordinates them, but the user
+    invites them.
+
+    Kikx is a bot playground — a super-charged Claude Code — a way to interact
+    with multiple bots and deliberately trigger them to have extra thoughts
+    and changed behavior through abilities (conditional input prompts).
+
+  core_concepts:
+    - "Sessions are channels. Many participants (users + agents) talk at once."
+    - "One active coordinator per session. User controls who via /promote."
+    - "Agents join by invitation: /invite {agent-name} as:alias"
+    - "Agents can be aliased per session (session-local display name)"
+    - "Abilities are conditional prompts — they steer bot behavior on specific conditions"
+    - "Abilities can suggest sub-agent selection (e.g. 'for coding tasks, invite CodingMaster')"
+    - "The user is always in control — bots are tools, not peers"
+
+# =============================================================================
+# WHAT WAS BUILT (reference only)
+# =============================================================================
+
+completed_work:
+  note: >
+    Working and tested pieces. Not re-doing these.
+
+  server:
+    - Frame system (types, CRUD, broadcast, compilation, compaction, pagination, search)
+    - session_participants table + CRUD helpers + loadSessionWithAgent
+    - Permission engine (evaluate, specificity resolution, CRUD routes)
+    - Delegation + execute_command interaction functions
+    - Commands (/participants, /invite, /kick, /history, /export)
+    - Plugin loader (dual discovery, dependency resolution, hot-reload)
+    - Magic link auth + API key auth + user profile API
+    - Approval hardening (hash, ownership, replay prevention)
+    - Bus hardening (sender_id enforcement, respond verification)
+    - File uploads (multer, ownership, CRUD)
+    - Avatar generation (deterministic SVG)
+    - Content type registry (extensible)
+    - Hook system (BEFORE_USER_MESSAGE, AFTER_AGENT_RESPONSE, BEFORE_COMMAND, AFTER_COMMAND)
+
+  client:
+    - Frame-based rendering (session-frames-provider → kikx-chat)
+    - Multi-agent session creation modal (coordinator + member selection)
+    - Infinite scroll (scroll-to-top pagination)
+    - File drag-drop + paste + preview chips
+    - Avatar display in message headers
+    - Optimistic user frames
+    - Streaming message display with typing indicator
+
+  tests: "1672 across 60 spec files, 0 failures"
+
+# =============================================================================
+# ACTIVE PLAN
+# =============================================================================
+#
+# S = Stabilization (fix broken foundations)
+# F = Feature (complete missing functionality)
+# X = Cross-cutting (security/ops, any time)
+
+# =============================================================================
+# S1: MessageStore — Kill the Root Bug
+# =============================================================================
+
+S1:
+  t: MessageStore — Single Source of Truth
+  sev: critical
+  s: COMPLETE
+  d: >
+    Eliminated dual-state rendering bug. session-frames-provider is now the
+    SINGLE SOURCE OF TRUTH for all rendering. SessionStore remains for prompt
+    operations (S3 dependency) and legacy WS handlers (S2 dependency).
+  dep: []
+
+  what_was_done:
+    - "Removed dual-write: streaming.js writes only to session-frames-provider (not SessionStore)"
+    - "Removed #messages fallback: kikx-chat.visibleMessages reads exclusively from provider"
+    - "Removed legacy setMessages/addMessage methods from kikx-chat"
+    - "Removed 3 layers of phantom frame fallbacks (kept only provider path)"
+    - "Simplified renderMessagesImpl to only sync streaming/show-hidden state"
+    - "16 integration tests written (spec/integration/state-flow-spec.mjs)"
+
+  what_remains_deferred:
+    - "SessionStore prompt operations → S3 (prompt form UX redesign)"
+    - "Legacy WS message handlers → S2 (broadcast refactoring)"
+    - "showSystemMessage SessionStore write → low priority"
+
+  ac:
+    - Single rendering path via session-frames-provider (no fallback)
+    - No dual-write in streaming path
+    - String/number ID coercion handled by SessionStore (for prompt ops)
+    - Subscribers notified on every state change
+    - All 1660 tests passing, 0 failures
+  blocks: [S3, F2, F5]
+  tests: [STATE-001, STATE-002, STATE-003, STATE-004, STATE-005, GUARD-003, RENDER-002]
+
+# =============================================================================
+# S2: WebSocket Broadcast — Make Channels Work
+# =============================================================================
+
+S2:
+  t: WebSocket Broadcast to All Channel Participants
+  sev: critical
+  s: NOT STARTED
+  d: >
+    22 broadcastToUser() call sites. Only originating user sees updates.
+    Channels are broken for real-time. Need broadcastToSession(sessionId).
+  dep: []
+
+  design_decision: >
+    ALL broadcasts go to the channel. No per-site evaluation needed.
+    Permission prompts are channel-wide (any user can respond).
+    Assertion events (thinking, progress, etc.) are channel-wide.
+    Approval prompts are channel-wide. This is the simple V1 approach.
+    Finer resolution (user-specific messages) comes later.
+
+  f:
+    - server/lib/websocket.mjs — add broadcastToSession, refactor clients map
+    - server/lib/frames/broadcast.mjs — switch ALL calls to broadcastToSession
+    - All 22 broadcastToUser call sites → broadcastToSession (blanket change)
+  ac:
+    - broadcastToSession(sessionId, message) exists and works
+    - ALL broadcasts go to ALL user participants in the session
+    - broadcastToUser still exists for future use but not called in V1
+    - Test: 2 users in session, frame created, both receive event
+  blocks: [F1, F3]
+  tests: [PARTY-005, BCAST-001, BCAST-002, INT-005]
+
+# =============================================================================
+# S3: Prompt Form UX — Replace Per-Prompt Submit Model
+# =============================================================================
+
+S3:
+  t: Prompt Form UX Redesign
+  sev: high
+  s: NOT STARTED
+  d: >
+    Every message with 1+ prompts is a FORM. No individual submit.
+    Ignore / Submit at message level. Enter = tab between prompts.
+  dep: [S1]
+
+  design:
+    principle: "Every message with 1+ prompts is a form"
+    rules:
+      - Remove ALL per-prompt OK buttons from hml-prompt
+      - ANY message with 1+ hml-prompt gets Ignore / Submit buttons (that order)
+      - No special casing for 1 vs N prompts
+      - Submit sends all answers as batch
+      - Ignore sends "user refused to respond" to agent
+    enter_key:
+      default: "Enter = Tab (advance to next hml-prompt)"
+      last_prompt: "Enter focuses Submit button"
+      on_submit: "Enter fires submit"
+    buttons: [Ignore, Submit]
+    placement: "Below all prompts at message level"
+
+  f:
+    - public/js/components/hml-prompt/hml-prompt.js — remove OK buttons, _submitAnswer, enter-submit
+    - public/js/components/kikx-chat/kikx-chat.js — rewrite _addPromptBatchButtons for 1+
+    - public/js/app.js — adapt submitPromptBatch / ignorePromptBatch
+  ac:
+    - Zero per-prompt submit buttons in DOM
+    - Single prompt message has Ignore / Submit
+    - Enter advances focus through prompts then to Submit
+    - Ignore sends refusal frame
+    - All prompt-related tests updated
+  tests: [PROMPT-001 thru PROMPT-007, SCROLL-003, RENDER-007, RENDER-009]
+
+# =============================================================================
+# S4: Wire BEFORE_TOOL + Unify Permission Gating
+# =============================================================================
+
+S4:
+  t: Close Permission Bypass — Wire BEFORE_TOOL Hook
+  sev: critical-security
+  s: NOT STARTED
+  d: >
+    Permission engine only gates COMMANDS. Interaction functions bypass
+    permissions. Need systematic gating for every executable action.
+  dep: []
+
+  approach:
+    - Wire BEFORE_TOOL hook into interaction function executor
+    - Every interaction function triggers permission evaluation
+    - Remove ad-hoc websearch approval hack from messages-stream.mjs
+    - Permission engine becomes the SOLE gating mechanism
+    - abilities/approval.mjs becomes the executor for action=prompt
+
+  f:
+    - server/lib/interactions/detector.mjs — call BEFORE_TOOL before function execution
+    - server/lib/plugins/hooks.mjs — ensure BEFORE_TOOL fires correctly
+    - server/routes/messages-stream.mjs — remove manual websearch approval
+    - server/lib/abilities/approval.mjs — becomes prompt executor for permission engine
+  ac:
+    - Every interaction function goes through permission evaluation
+    - No ad-hoc approval checks in route handlers
+    - New functions automatically gated
+    - Test: function without permission rule → prompt triggered
+  blocks: [S5, F2]
+  tests: [PERM-001, PERM-002, PERM-003, PERM-004, PERM-005, PERM-006, GUARD-001, GUARD-005, GUARD-006, PLUGIN-001, PLUGIN-002, PLUGIN-003, PLUGIN-004, INT-001]
+
+# =============================================================================
+# S5: Self-Approval Prevention
+# =============================================================================
+
+S5:
+  t: Agents Cannot Approve Their Own Actions
+  sev: high-security
+  s: NOT STARTED
+  d: >
+    Nothing prevents an agent from approving its own actions. Need
+    approver_id !== executor_id check.
+  dep: [S4]
+  f:
+    - server/lib/abilities/approval.mjs — agent self-approval check
+    - server/lib/interactions/bus.mjs — verify approval source
+  ac:
+    - Agent approves own action → rejected
+    - User approves agent action → accepted
+    - Tests for both paths
+  tests: [COORD-003, GUARD-007]
+
+# =============================================================================
+# S6: Test Infrastructure
+# =============================================================================
+
+S6:
+  t: Build Missing Test Helpers
+  sev: high
+  s: NOT STARTED
+  d: >
+    Three helpers needed to unlock comprehensive server-side testing.
+  dep: []
+  helpers:
+    - { id: "SSE Response Mock", f: spec/helpers/sse-mock.mjs, d: "~40 lines" }
+    - { id: "Route Test Harness", f: spec/helpers/route-helpers.mjs, d: "~50 lines" }
+    - { id: "Agent API Mock", f: spec/helpers/agent-mock.mjs, d: "~40 lines" }
+  ac:
+    - Can test messages-stream.mjs without real HTTP
+    - Can test messages.mjs without real HTTP
+    - Can mock agent API responses with configurable content/errors
+  blocks: [S7, S8]
+  tests: [INFRA-001, INFRA-002, INFRA-003]
+
+# =============================================================================
+# S7: Test the Spine — messages-stream.mjs
+# =============================================================================
+
+S7:
+  t: Test messages-stream.mjs (Zero → Comprehensive)
+  sev: critical
+  s: NOT STARTED
+  dep: [S6]
+  tests:
+    - "Basic round-trip: SSE emits message_start, chunks, message_complete"
+    - "Frame creation: user + agent MESSAGE frames in DB"
+    - "Interaction detection + execution"
+    - "Websearch approval gating"
+    - "Websearch denial handling"
+    - "HML element lifecycle events"
+    - "Agent API failure → clean error + close"
+    - "Plugin hooks fire in correct order"
+    - "Conditional abilities inject context"
+    - "Content accumulation across segments"
+  f: spec/routes/messages-stream-spec.mjs
+  tests: [STREAM-001 thru STREAM-010, MSG-001 thru MSG-003, FRAME-001, FRAME-002, FRAME-003, RENDER-003, RENDER-004, GUARD-002]
+
+# =============================================================================
+# S8: Test websocket.mjs
+# =============================================================================
+
+S8:
+  t: Test WebSocket Handler (Zero → Covered)
+  sev: high-security
+  s: NOT STARTED
+  dep: [S6]
+  tests:
+    - "Authenticated userId passed to approval handler"
+    - "Unauthenticated connection rejected"
+    - "Message targeting wrong session ignored"
+    - "Frame creation via WS rejected"
+    - "Session subscription creates correct membership"
+    - "Disconnect cleans up client tracking"
+  f: spec/lib/websocket-spec.mjs
+  tests: [SEC-001, SEC-002, SEC-003, SEC-004, GUARD-008]
+
+# =============================================================================
+# FEATURE COMPLETION
+# =============================================================================
+
+# =============================================================================
+# F1: Active Coordinator Model + /promote + /invite as:alias
+# =============================================================================
+
+F1:
+  t: Active Coordinator Model
+  sev: critical
+  s: NOT STARTED
+  d: >
+    One active coordinator per session. User controls who via /promote.
+    Agents join by invitation with per-session aliases. Create Session
+    modal updated: "Primary" agent + sub-agent multi-select.
+  dep: [S2]
+
+  design:
+    coordinator:
+      - One active coordinator per session at any time
+      - "/promote {agent-name}" changes active coordinator
+      - Unaddressed messages always route to active coordinator
+      - Other agents are members — only respond when @mentioned or delegated to
+      - Promoting a new coordinator automatically demotes the previous one
+
+    invite:
+      syntax: "/invite {agent-name} as:{alias}"
+      d: >
+        Invite agent by name (not ID). Optional alias gives the agent a
+        session-local display name. e.g. "/invite claude as:CodeReviewer"
+      examples:
+        - "/invite test-claude as:Coder"
+        - "/invite test-claude"  # uses agent's default name
+
+    alias:
+      d: >
+        Per-session display name for an agent. Stored on session_participants.
+        Used in chat messages, @mention autocomplete, participant list.
+        Does not change the agent's actual name.
+      storage: "ALTER TABLE session_participants ADD COLUMN alias TEXT"
+
+    create_session_modal:
+      d: >
+        Redesign: "Primary Agent" dropdown (becomes coordinator) +
+        "Sub-Agents" multi-select (become members). Replaces current
+        coordinator dropdown + member checkboxes.
+
+    ability_suggestions:
+      d: >
+        Abilities can suggest sub-agent selection for conditions.
+        e.g. "If doing coding tasks, invite CodingMasterAssassin"
+        This is instruction-level (in ability prompt text), not code-level.
+        The coordinator reads the ability instruction and acts on it.
+
+  execution_steps:
+    - t: "Step 1: DB migration + server-side alias/promote"
+      f: [server/database.mjs, server/lib/participants/index.mjs, server/lib/commands/index.mjs]
+      d: "Add alias column, promote helper, update /invite for name+alias, add /promote command"
+    - t: "Step 2: Route updates"
+      f: [server/routes/sessions.mjs]
+      d: "Return alias in participant data, support name-based lookups"
+    - t: "Step 3: Tests for server changes"
+      d: "COORD-004, ALIAS-001, ALIAS-003, PARTY-001 through PARTY-004"
+    - t: "Step 4: Create Session modal redesign"
+      f: [public/js/components/kikx-modal-create-session/]
+      d: "Primary Agent dropdown + Sub-Agents multi-select"
+    - t: "Step 5: Participant sidebar component"
+      f: [public/js/components/kikx-participant-list/]
+      d: "New component showing participants with roles, aliases, avatars"
+    - t: "Step 6: Chat integration"
+      f: [public/js/components/kikx-chat/]
+      d: "Show alias in message headers, integrate sidebar"
+
+  ac:
+    - /promote changes active coordinator, demotes previous
+    - /invite accepts agent name (not just ID) with optional as:alias
+    - Alias shown in chat messages and participant list
+    - Create Session modal has Primary Agent + Sub-Agents layout
+    - Participant sidebar shows all members with roles and aliases
+  tests: [PARTY-001, PARTY-002, PARTY-003, PARTY-004, COORD-004, ALIAS-001, ALIAS-002, ALIAS-003, RENDER-005, RENDER-001]
+
+# =============================================================================
+# F2: Permission Prompt as Form Submission
+# =============================================================================
+
+F2:
+  t: Permission Prompt — Channel-Wide Forms
+  sev: critical
+  s: NOT STARTED
+  d: >
+    Permission engine returns {action: 'prompt'} — currently dead end.
+    Solution: render permission decisions as hml-prompt forms sent to the
+    entire channel. ANY user in the channel can respond. Server intercepts
+    form submissions before forwarding. Bots cannot respond.
+  dep: [S1, S4, S3]
+  dep_reason: "S4 wires permissions, S1 fixes state, S3 fixes form UX"
+
+  design:
+    how_it_works:
+      - Permission engine returns prompt → server generates hml-prompt form
+      - Form broadcast to entire channel as a system message (via broadcastToSession)
+      - ALL users in the channel see the permission prompt
+      - ANY user can submit the form (V1 — finer resolution later)
+      - Server intercepts submission BEFORE forwarding to channel
+      - Server creates permission_rule from user's answer
+      - Action proceeds (or is denied via Ignore)
+
+    security:
+      - Server processes ALL form submissions before forwarding to channel
+      - Bot-originated form submissions that match permission format → REJECTED
+      - Only authenticated user submissions accepted
+      - "Bots cannot forge permission responses — server validates submission source"
+
+    v1_simplicity:
+      - "Any user in channel can answer any permission prompt"
+      - "No per-user permission delegation in V1"
+      - "Finer resolution (only certain users can approve certain actions) comes later"
+
+    form_content:
+      - "Agent '{name}' wants to: {action description}"
+      - "Command: {structured command display}"
+      - Options: Allow once / Allow for session / Allow always / Deny
+      - Risk indicator based on resource_type (read=green, write=yellow, delete=red)
+      - Uses standard Ignore/Submit form UX (S3)
+
+  f:
+    - server/lib/permissions/ — generate hml-prompt markup for prompt action
+    - server/lib/abilities/approval.mjs — connect to permission engine
+    - server/routes/messages-stream.mjs — intercept permission form submissions, reject bot submissions
+    - public/js/components/hml-prompt/ — no changes needed (reuses form system)
+  ac:
+    - Permission prompt renders as hml-prompt in channel (all users see it)
+    - Any user submits → permission rule created with correct scope
+    - Server rejects bot-originated permission form submissions
+    - Ignore → agent receives denial feedback
+    - Subsequent identical requests auto-resolved by new rule
+  tests: [PERMUI-001, PERMUI-002, PERMUI-003, PERMUI-004, PERMUI-005, INT-003]
+
+# =============================================================================
+# F3: @Mention Autocomplete + Routing
+# =============================================================================
+
+F3:
+  t: "@Mention Autocomplete and Message Routing"
+  sev: medium
+  s: NOT STARTED
+  d: >
+    In channels with multiple agents, users @mention to address specific
+    agents. Autocomplete from participant list (shows aliases).
+  dep: [F1]
+  dep_reason: "Needs participant list with aliases"
+
+  f:
+    - public/js/components/kikx-input/ — @ detection, autocomplete dropdown
+    - server/routes/messages-stream.mjs — detect @mention, route to specific agent
+    - server/lib/frames/index.mjs — targetIds on frames
+  ac:
+    - Typing @ shows autocomplete with participant aliases/names
+    - Selecting participant inserts @alias
+    - Message with @agent routes to that agent (not coordinator)
+    - Unaddressed messages go to active coordinator
+
+# =============================================================================
+# F4: Page Routing System + Settings + Login
+# =============================================================================
+
+F4:
+  t: Client Page Routing System
+  sev: high
+  s: NOT STARTED
+  d: >
+    Build a page system into the client. Use it for the settings page
+    and login page. Currently the app is single-page with modals for
+    everything — need proper page navigation.
+  dep: []
+
+  design:
+    pages:
+      - { route: "/",          component: "kikx-app (chat view)", d: "Main chat interface" }
+      - { route: "/login",     component: "kikx-login",           d: "Login page" }
+      - { route: "/settings",  component: "kikx-settings",        d: "User settings" }
+      - { route: "/settings/:tab", component: "kikx-settings",    d: "Settings with active tab" }
+
+    routing:
+      d: >
+        Client-side routing. URL changes update which page component is
+        rendered. Browser back/forward works. Auth guard redirects to
+        /login if not authenticated.
+      note: >
+        kikx-app already has routing logic (routing-spec has 22 tests).
+        Extend it to support page-level navigation, not just in-app state.
+
+    settings_tabs:
+      - { tab: profile,     d: "Display name, avatar, email" }
+      - { tab: account,     d: "Password change" }
+      - { tab: api-keys,    d: "Create, list, revoke" }
+      - { tab: permissions, d: "View personal rules, revoke grants", dep: [F2] }
+
+  f:
+    - public/js/lib/routing.js — extend for page-level routes
+    - public/js/components/kikx-login/ — NEW: login page component
+    - public/js/components/kikx-settings/ — NEW: settings page component
+    - public/js/components/kikx-app/ — page rendering based on route
+  ac:
+    - /login renders login form (currently inline in kikx-app)
+    - /settings renders settings page with tabs
+    - Browser back/forward works
+    - Unauthenticated users redirected to /login
+    - Settings: profile CRUD, API key management, password change all work
+
+# =============================================================================
+# F5: Active Coordinator Behavior
+# =============================================================================
+
+F5:
+  t: Active Coordinator Session Behavior
+  sev: medium
+  s: NOT STARTED
+  d: >
+    Define and implement how the single active coordinator model works
+    in the messaging pipeline. Only one coordinator responds to
+    unaddressed messages. Others are members.
+  dep: [S1, S2, F1]
+
+  design:
+    model: "Single active coordinator"
+    rules:
+      - One participant has role=coordinator at any time
+      - /promote changes who (F1 implements the command)
+      - Unaddressed messages → active coordinator's pipeline
+      - @mentioned members → that specific member's pipeline
+      - Coordinator can delegate to members (existing delegate function)
+      - If coordinator is removed, session has no coordinator → error on next message
+
+  f:
+    - server/lib/messaging/session-setup.mjs — enforce single coordinator routing
+    - server/lib/participants/index.mjs — promote helper (demote old, promote new)
+  ac:
+    - Only active coordinator responds to unaddressed messages
+    - /promote swaps coordinator atomically
+    - Delegated tasks still reach members
+    - Session with no coordinator → clear error message
+    - Tests for coordinator swap, routing, edge cases
+
+# =============================================================================
+# F6: API Key Scope Enforcement
+# =============================================================================
+
+F6:
+  t: API Key Scope Enforcement
+  sev: medium-security
+  s: NOT STARTED
+  d: >
+    Scopes stored but never validated. Bearer token accepted without
+    checking scopes.
+  dep: []
+  f:
+    - server/middleware/auth.mjs — check scopes against requested resource
+  ac:
+    - Key with "read:sessions" cannot POST to sessions
+    - Key with no scopes gets full access (backwards compat)
+    - Test: limited scope → 403 on out-of-scope request
+  tests: [GUARD-009]
+
+# =============================================================================
+# CROSS-CUTTING
+# =============================================================================
+
+X1:
+  t: Rate Limiting
+  sev: high-security
+  s: NOT STARTED
+  d: "No rate limiting anywhere."
+  dep: []
+  targets:
+    - "POST /auth/login — 10/min per IP"
+    - "POST /auth/magic-link/request — 5/hour per email"
+    - "POST /api/users/me/api-keys — 10/hour per user"
+    - "Global API — 100/min per user"
+
+X2:
+  t: Audit Logging
+  sev: medium-security
+  s: NOT STARTED
+  d: "No logging for security events."
+  dep: []
+  events:
+    - "login_success, login_failure"
+    - "permission_allow, permission_deny, permission_prompt"
+    - "api_key_create, api_key_revoke, api_key_use"
+    - "approval_grant, approval_deny"
+
+X3:
+  t: Health Check Endpoint
+  sev: low
+  s: NOT STARTED
+  d: "GET /health → { status, version, uptime, db }"
+  dep: []
+
+X4:
+  t: Error Handling End-to-End
+  sev: high
+  s: NOT DESIGNED
+  d: "No spec for what user sees on failures."
+  dep: []
+  cases:
+    - { trigger: "Agent API failure", need: "Consistent error frame + user message" }
+    - { trigger: "Delegation chain break", need: "Error result frame + cleanup" }
+    - { trigger: "Permission engine error", need: "Fallback to deny + log" }
+    - { trigger: "WebSocket disconnect mid-stream", need: "Reconnect + replay" }
+    - { trigger: "DB write failure", need: "Graceful message + retry guidance" }
+
+# =============================================================================
+# DEPENDENCY GRAPH
+# =============================================================================
+
+dependency_graph:
+  chains:
+    - "S6 → S7 (test helpers → streaming tests)"
+    - "S6 → S8 (test helpers → WS tests)"
+    - "S1 → S3 (MessageStore → prompt form UX)"
+    - "S1 → F2 (MessageStore → permission prompt)"
+    - "S1 → F5 (MessageStore → coordinator behavior)"
+    - "S2 → F1 (broadcast → active coordinator + sidebar)"
+    - "S4 → S5 (permission wiring → self-approval)"
+    - "S4 → F2 (permission wiring → permission prompt)"
+    - "S3 → F2 (form UX → permission forms use it)"
+    - "F1 → F3 (aliases + sidebar → @mention autocomplete)"
+    - "F1 → F5 (coordinator model → coordinator behavior)"
+  parallel:
+    - "[S1, S2, S4, S6] — wave 1, all independent"
+    - "[X1, X2, X3, F4, F6] — any time"
+
+# =============================================================================
+# EXECUTION ORDER
+# =============================================================================
+
+execution_order:
+  wave_1:
+    t: "Foundation (parallel)"
+    items: [S1, S2, S4, S6]
+    d: "MessageStore, WS broadcast, permission wiring, test helpers."
+
+  wave_2:
+    t: "Tests + Security (parallel)"
+    items: [S5, S7, S8, X1]
+    d: "Self-approval, streaming tests, WS tests, rate limiting."
+
+  wave_3:
+    t: "UX + Pages (parallel)"
+    items: [S3, F4]
+    d: "Prompt form UX redesign, page routing system + settings + login."
+
+  wave_4:
+    t: "Core Features (parallel where possible)"
+    items: [F1, F2, F5]
+    d: "Active coordinator model + sidebar, permission prompts as forms, coordinator behavior."
+
+  wave_5:
+    t: "Polish"
+    items: [F3, F6, X2, X3, X4]
+    d: "@mention, scope enforcement, audit logging, health check, error handling."
+
+# =============================================================================
+# STATUS
+# =============================================================================
+
+status:
+  overall: "~55% complete toward usable V1"
+  server: "~85% (solid, security gaps)"
+  client: "~35% (basic chat works, most features inaccessible)"
+  tests: "1672 passing, spine untested, 98 planned"
+  remaining_items: 18
+  v1_scope: "All 18 items. No cutting."
+
+# =============================================================================
+# DECISIONS LOG
+# =============================================================================
+
+decisions:
+  - dt: 2026-02-20
+    d: "S1 execution: write tests BEFORE migrating callers. Migrate one file at a time."
+  - dt: 2026-02-20
+    d: "S2 broadcast: ALL broadcasts go to channel. No per-site evaluation. Simple V1."
+  - dt: 2026-02-20
+    d: "F1 sub-steps: DB migration → server commands → tests → modal → sidebar → chat integration"
+  - dt: 2026-02-20
+    d: "F2 permissions: channel-wide. Any user can respond. Bots cannot. Finer resolution later."
+  - dt: 2026-02-20
+    d: "F4 settings: full page, not modal. Build page routing system (/login, /settings)."
+  - dt: 2026-02-20
+    d: "F5 coordinator: single active coordinator. /promote to swap. No multi-coordinator."
+  - dt: 2026-02-20
+    d: "V1 scope: all 18 items. No cutting."

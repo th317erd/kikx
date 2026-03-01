@@ -1,13 +1,13 @@
-# Hero - AI Agent Runner
+# Kikx - AI Agent Runner
 
-Hero is a web-based interface for running AI agents with a rich assertion-based operation system. It supports multiple agent types (Claude, OpenAI) with encrypted configuration, real-time streaming, and dynamic chat UI.
+Kikx is a web-based interface for running AI agents with a rich assertion-based operation system. It supports multiple agent types (Claude, OpenAI) with encrypted configuration, real-time streaming, and dynamic chat UI.
 
 ## Key Features
 
 - **Multi-agent support** - Claude and OpenAI with pluggable architecture
 - **Encrypted storage** - API keys, configs, and messages encrypted at rest
 - **Streaming responses** - Real-time SSE streaming with progressive HML parsing
-- **Hero Markup Language (HML)** - Rich elements for websearch, bash, questions, todos
+- **Kikx Markup Language (HML)** - Rich elements for websearch, bash, questions, todos
 - **Unified Abilities** - Processes and functions with permission system
 - **Assertion pipeline** - Typed operations (command, question, response, thinking)
 - **Question modes** - Demand (wait forever) and timeout (auto-proceed)
@@ -17,7 +17,7 @@ Hero is a web-based interface for running AI agents with a rich assertion-based 
 ## Project Structure
 
 ```
-hero/
+kikx/
 ├── server/
 │   ├── index.mjs            # Express entry point
 │   ├── database.mjs         # SQLite with migrations
@@ -62,11 +62,11 @@ hero/
 
 ## URLs
 
-- **Base**: `https://wyatt-desktop.mythix.info/hero/`
-- **Sessions**: `https://wyatt-desktop.mythix.info/hero/sessions/{id}`
-- **Login**: `https://wyatt-desktop.mythix.info/hero/login`
-- **API**: `https://wyatt-desktop.mythix.info/hero/api/...`
-- **WebSocket**: `wss://wyatt-desktop.mythix.info/hero/ws`
+- **Base**: `https://wyatt-desktop.mythix.info/kikx/`
+- **Sessions**: `https://wyatt-desktop.mythix.info/kikx/sessions/{id}`
+- **Login**: `https://wyatt-desktop.mythix.info/kikx/login`
+- **API**: `https://wyatt-desktop.mythix.info/kikx/api/...`
+- **WebSocket**: `wss://wyatt-desktop.mythix.info/kikx/ws`
 
 ## Quick Start
 
@@ -90,7 +90,7 @@ npm start
 
 ## Core Concepts
 
-### Hero Markup Language (HML)
+### Kikx Markup Language (HML)
 
 Rich markup elements for agent responses:
 
@@ -128,7 +128,7 @@ When answered, the prompt transforms to show the response:
 
 ### Streaming vs Batch Mode
 
-Hero supports two message processing modes:
+Kikx supports two message processing modes:
 
 - **Streaming (default)** - Real-time SSE with progressive HML parsing
 - **Batch** - Wait for complete response, then process

@@ -434,7 +434,7 @@ describe('Compact Frame to Message Format', () => {
       },
     };
 
-    // When hero-chat encounters a compact frame, it should produce a "divider" message
+    // When kikx-chat encounters a compact frame, it should produce a "divider" message
     const message = frameToMessage(frame);
 
     assert.equal(message.type, 'compact');
@@ -445,7 +445,7 @@ describe('Compact Frame to Message Format', () => {
 });
 
 /**
- * Convert a frame to message format (mirrors hero-chat._frameToMessage).
+ * Convert a frame to message format (mirrors kikx-chat._frameToMessage).
  * For compact frames, extracts context for display.
  */
 function frameToMessage(frame) {

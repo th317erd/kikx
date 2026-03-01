@@ -4,7 +4,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 
-import { HeroCore }  from '../../src/core/hero-core.mjs';
+import { KikxCore }  from '../../src/core/kikx-core.mjs';
 import { Keystore }  from '../../src/core/crypto/keystore.mjs';
 import {
   AuthService,
@@ -19,13 +19,13 @@ import {
 } from '../../src/server/auth/index.mjs';
 
 // =============================================================================
-// Shared setup: one HeroCore + Keystore for all tests
+// Shared setup: one KikxCore + Keystore for all tests
 // =============================================================================
 
 let core, keystore, context, authService;
 
 before(async () => {
-  core = new HeroCore({ database: { filename: ':memory:' } });
+  core = new KikxCore({ database: { filename: ':memory:' } });
   await core.start();
 
   keystore = new Keystore({ devMode: true, devSeed: 'test-auth-seed' });
@@ -84,7 +84,7 @@ describe('AuthService constructor', () => {
 describe('JWT secret derivation', () => {
   it('should derive JWT secret from REK using HMAC-SHA256', () => {
     // Manually compute expected secret
-    let expected = crypto.createHmac('sha256', keystore._rek).update('hero-jwt-secret').digest();
+    let expected = crypto.createHmac('sha256', keystore._rek).update('kikx-jwt-secret').digest();
     let actual   = authService.getJWTSecret();
 
     assert.deepEqual(actual, expected);
@@ -468,7 +468,7 @@ describe('createAuthMiddleware', () => {
   });
 
   it('should extract token from cookie header', () => {
-    let req = { headers: { cookie: `hero_token=${validToken}` } };
+    let req = { headers: { cookie: `kikx_token=${validToken}` } };
     middleware(req);
 
     assert.ok(req.userId);
@@ -484,12 +484,12 @@ describe('createAuthMiddleware', () => {
     assert.ok(req.organizationId);
   });
 
-  it('should prefer hero_token cookie over token cookie', () => {
+  it('should prefer kikx_token cookie over token cookie', () => {
     // Create a second user to distinguish tokens
-    let req = { headers: { cookie: `hero_token=${validToken}; token=garbage` } };
+    let req = { headers: { cookie: `kikx_token=${validToken}; token=garbage` } };
     middleware(req);
 
-    // Should succeed using hero_token, not crash on garbage token
+    // Should succeed using kikx_token, not crash on garbage token
     assert.ok(req.userId);
   });
 

@@ -356,7 +356,7 @@ function renderAssertionsForMessage(messageId) {
 }
 
 /**
- * Scroll to bottom of the chat. Delegates to hero-chat component.
+ * Scroll to bottom of the chat. Delegates to kikx-chat component.
  * Respects user scroll intent — if user scrolled up to read, this is a no-op.
  */
 function scrollToBottom() {
@@ -412,7 +412,7 @@ function hideTypingIndicator() {
 
 /**
  * Handle sending a message with content already extracted.
- * Used by hero-input component.
+ * Used by kikx-input component.
  */
 async function handleSendMessageContent(content, streaming = true) {
   if (!content || !state.currentSession)
@@ -490,8 +490,8 @@ async function processMessage(content) {
 
   state.isLoading = false;
 
-  // Focus input via hero-input component
-  let heroInputEl = document.querySelector('hero-input');
+  // Focus input via kikx-input component
+  let heroInputEl = document.querySelector('kikx-input');
   if (heroInputEl && typeof heroInputEl.focus === 'function')
     heroInputEl.focus();
 

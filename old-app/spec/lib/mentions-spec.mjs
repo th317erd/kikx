@@ -308,38 +308,38 @@ describe('F3: Client autocomplete structure', () => {
   it('should have mention-dropdown element in template', async () => {
     // Structural test — verify the HTML template has the dropdown element
     let fs = await import('node:fs');
-    let html = fs.readFileSync('public/js/components/hero-input/hero-input.html', 'utf8');
+    let html = fs.readFileSync('public/js/components/kikx-input/kikx-input.html', 'utf8');
     assert.ok(html.includes('mention-dropdown'), 'Template should contain mention-dropdown element');
   });
 
   it('should have mention CSS styles in template', async () => {
     let fs = await import('node:fs');
-    let html = fs.readFileSync('public/js/components/hero-input/hero-input.html', 'utf8');
+    let html = fs.readFileSync('public/js/components/kikx-input/kikx-input.html', 'utf8');
     assert.ok(html.includes('.mention-item'), 'Template should contain mention-item styles');
     assert.ok(html.includes('.mention-dropdown.active'), 'Template should contain active dropdown styles');
   });
 
   it('should have _checkMentionTrigger method', async () => {
     let fs = await import('node:fs');
-    let js = fs.readFileSync('public/js/components/hero-input/hero-input.js', 'utf8');
+    let js = fs.readFileSync('public/js/components/kikx-input/kikx-input.js', 'utf8');
     assert.ok(js.includes('_checkMentionTrigger'), 'JS should contain _checkMentionTrigger method');
   });
 
   it('should have _selectMention method', async () => {
     let fs = await import('node:fs');
-    let js = fs.readFileSync('public/js/components/hero-input/hero-input.js', 'utf8');
+    let js = fs.readFileSync('public/js/components/kikx-input/kikx-input.js', 'utf8');
     assert.ok(js.includes('_selectMention'), 'JS should contain _selectMention method');
   });
 
   it('should have _closeMentionDropdown method', async () => {
     let fs = await import('node:fs');
-    let js = fs.readFileSync('public/js/components/hero-input/hero-input.js', 'utf8');
+    let js = fs.readFileSync('public/js/components/kikx-input/kikx-input.js', 'utf8');
     assert.ok(js.includes('_closeMentionDropdown'), 'JS should contain _closeMentionDropdown method');
   });
 
   it('should handle ArrowDown/ArrowUp/Tab/Escape in handleKeydown', async () => {
     let fs = await import('node:fs');
-    let js = fs.readFileSync('public/js/components/hero-input/hero-input.js', 'utf8');
+    let js = fs.readFileSync('public/js/components/kikx-input/kikx-input.js', 'utf8');
     assert.ok(js.includes("e.key === 'ArrowDown'"), 'Should handle ArrowDown');
     assert.ok(js.includes("e.key === 'ArrowUp'"), 'Should handle ArrowUp');
     assert.ok(js.includes("e.key === 'Tab'"), 'Should handle Tab');

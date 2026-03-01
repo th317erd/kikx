@@ -22,7 +22,7 @@ async function loadSessions() {
 }
 
 function renderSessionsList() {
-  // Skip if using hero-sidebar component (no legacy element)
+  // Skip if using kikx-sidebar component (no legacy element)
   if (!elements.sessionsList) {
     return;
   }

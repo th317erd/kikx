@@ -13,7 +13,7 @@ describe('i18n', () => {
 
   describe('t()', () => {
     it('returns the translated string for a top-level dot-separated key', () => {
-      assert.equal(t('application.title'), 'Hero');
+      assert.equal(t('application.title'), 'Kikx');
     });
 
     it('falls back to the key string when the key does not exist', () => {

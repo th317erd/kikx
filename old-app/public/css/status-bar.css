@@ -1,7 +1,7 @@
-/* Hero - Status Bar Styles */
+/* Kikx - Status Bar Styles */
 /* Fixed bottom bar showing connection status and spend meters */
 
-hero-status-bar {
+kikx-status-bar {
   display: block;
   position: fixed;
   bottom: 0;
@@ -10,7 +10,7 @@ hero-status-bar {
   z-index: 800;
 }
 
-hero-status-bar.hidden {
+kikx-status-bar.hidden {
   display: none;
 }
 

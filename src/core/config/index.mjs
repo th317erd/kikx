@@ -3,8 +3,8 @@
 // =============================================================================
 // Configuration Defaults + Merging
 // =============================================================================
-// Default config values for Hero Core.
-// Embedders override via createHeroCore(config).
+// Default config values for Kikx Core.
+// Embedders override via createKikxCore(config).
 // =============================================================================
 
 import path from 'node:path';
@@ -12,7 +12,7 @@ import os   from 'node:os';
 
 export const DEFAULT_CONFIG = {
   // Core identification
-  name:         'hero',
+  name: 'kikx',
   version:      '2.0.0',
 
   // Environment
@@ -32,7 +32,7 @@ export const DEFAULT_CONFIG = {
   },
 
   // Data directory for persistent storage
-  dataDirectory: path.join(os.homedir(), '.config', 'hero'),
+  dataDirectory: path.join(os.homedir(), '.config', 'kikx'),
 
   // Dev mode: deterministic REK for session survival across restarts
   devMode: (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV),

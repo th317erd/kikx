@@ -4,8 +4,8 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  createHeroCore,
-  HeroCore,
+  createKikxCore,
+  KikxCore,
   CascadingContext,
   createContext,
   DEFAULT_CONFIG,
@@ -13,9 +13,9 @@ import {
 } from '../../src/core/index.mjs';
 
 // =============================================================================
-// createHeroCore + HeroCore
+// createKikxCore + KikxCore
 // =============================================================================
-describe('createHeroCore', () => {
+describe('createKikxCore', () => {
   let core;
 
   afterEach(async () => {
@@ -25,33 +25,33 @@ describe('createHeroCore', () => {
     core = null;
   });
 
-  it('should export createHeroCore function', () => {
-    assert.equal(typeof createHeroCore, 'function');
+  it('should export createKikxCore function', () => {
+    assert.equal(typeof createKikxCore, 'function');
   });
 
-  it('should export HeroCore class', () => {
-    assert.equal(typeof HeroCore, 'function');
+  it('should export KikxCore class', () => {
+    assert.equal(typeof KikxCore, 'function');
   });
 
-  it('should return a HeroCore instance', () => {
-    core = createHeroCore();
-    assert.ok(core instanceof HeroCore);
+  it('should return a KikxCore instance', () => {
+    core = createKikxCore();
+    assert.ok(core instanceof KikxCore);
   });
 
   it('should accept empty config', () => {
-    core = createHeroCore();
+    core = createKikxCore();
     assert.ok(core);
     assert.equal(core.isStarted(), false);
   });
 
   it('should accept config overrides', () => {
-    core = createHeroCore({ name: 'custom-hero' });
+    core = createKikxCore({ name: 'custom-kikx' });
     let config = core.getConfig();
-    assert.equal(config.name, 'custom-hero');
+    assert.equal(config.name, 'custom-kikx');
   });
 
   it('should merge config with defaults', () => {
-    core = createHeroCore({ name: 'custom' });
+    core = createKikxCore({ name: 'custom' });
     let config = core.getConfig();
     assert.equal(config.name, 'custom');
     assert.equal(config.version, DEFAULT_CONFIG.version);
@@ -60,7 +60,7 @@ describe('createHeroCore', () => {
   });
 
   it('should deep merge nested config', () => {
-    core = createHeroCore({
+    core = createKikxCore({
       database: { filename: '/tmp/test.db' },
     });
 
@@ -72,13 +72,13 @@ describe('createHeroCore', () => {
 });
 
 // =============================================================================
-// HeroCore lifecycle
+// KikxCore lifecycle
 // =============================================================================
-describe('HeroCore lifecycle', () => {
+describe('KikxCore lifecycle', () => {
   let core;
 
   beforeEach(() => {
-    core = createHeroCore();
+    core = createKikxCore();
   });
 
   afterEach(async () => {
@@ -100,7 +100,7 @@ describe('HeroCore lifecycle', () => {
     await core.start();
     await assert.rejects(
       () => core.start(),
-      { message: 'HeroCore is already started' },
+      { message: 'KikxCore is already started' },
     );
   });
 
@@ -137,9 +137,9 @@ describe('HeroCore lifecycle', () => {
 });
 
 // =============================================================================
-// HeroCore with custom models
+// KikxCore with custom models
 // =============================================================================
-describe('HeroCore with models', () => {
+describe('KikxCore with models', () => {
   let core;
 
   afterEach(async () => {
@@ -166,7 +166,7 @@ describe('HeroCore with models', () => {
       };
     }
 
-    core = createHeroCore({ models: [ TestEntity ] });
+    core = createKikxCore({ models: [ TestEntity ] });
     await core.start();
 
     let models = core.getModels();
@@ -192,7 +192,7 @@ describe('HeroCore with models', () => {
       };
     }
 
-    core = createHeroCore({ models: { Widget } });
+    core = createKikxCore({ models: { Widget } });
     await core.start();
 
     let models = core.getModels();
@@ -218,7 +218,7 @@ describe('HeroCore with models', () => {
       };
     }
 
-    core = createHeroCore({ models: [ Item ] });
+    core = createKikxCore({ models: [ Item ] });
     await core.start();
 
     let { Item: BoundItem } = core.getModels();
@@ -252,7 +252,7 @@ describe('HeroCore with models', () => {
       };
     }
 
-    core = createHeroCore({ models: [ Gadget ] });
+    core = createKikxCore({ models: [ Gadget ] });
     await core.start();
 
     assert.ok(core.getModel('Gadget'));
@@ -261,9 +261,9 @@ describe('HeroCore with models', () => {
 });
 
 // =============================================================================
-// HeroCore context
+// KikxCore context
 // =============================================================================
-describe('HeroCore context', () => {
+describe('KikxCore context', () => {
   let core;
 
   afterEach(async () => {
@@ -272,32 +272,32 @@ describe('HeroCore context', () => {
   });
 
   it('should provide a CascadingContext', () => {
-    core = createHeroCore();
+    core = createKikxCore();
     let context = core.getContext();
     assert.ok(context instanceof CascadingContext);
   });
 
   it('should store config values on context', () => {
-    core = createHeroCore({ name: 'test-hero' });
+    core = createKikxCore({ name: 'test-kikx' });
     let context = core.getContext();
-    assert.equal(context.getProperty('name'), 'test-hero');
+    assert.equal(context.getProperty('name'), 'test-kikx');
   });
 
   it('should store core reference on context', () => {
-    core = createHeroCore();
+    core = createKikxCore();
     let context = core.getContext();
     assert.equal(context.getProperty('core'), core);
   });
 
   it('should store models on context after start', async () => {
-    core = createHeroCore();
+    core = createKikxCore();
     await core.start();
     let context = core.getContext();
     assert.ok(context.getProperty('models'));
   });
 
   it('should store connection on context after start', async () => {
-    core = createHeroCore();
+    core = createKikxCore();
     await core.start();
     let context = core.getContext();
     assert.ok(context.getProperty('connection'));
@@ -305,13 +305,13 @@ describe('HeroCore context', () => {
 });
 
 // =============================================================================
-// HeroCore plugin management (skeleton)
+// KikxCore plugin management (skeleton)
 // =============================================================================
-describe('HeroCore plugin management', () => {
+describe('KikxCore plugin management', () => {
   let core;
 
   beforeEach(() => {
-    core = createHeroCore();
+    core = createKikxCore();
   });
 
   afterEach(async () => {
@@ -385,8 +385,8 @@ describe('HeroCore plugin management', () => {
 describe('CascadingContext', () => {
   it('should set and get simple properties', () => {
     let context = new CascadingContext();
-    context.setProperty('name', 'hero');
-    assert.equal(context.getProperty('name'), 'hero');
+    context.setProperty('name', 'kikx');
+    assert.equal(context.getProperty('name'), 'kikx');
   });
 
   it('should support dot-notation for nested properties', () => {
@@ -407,8 +407,8 @@ describe('CascadingContext', () => {
   });
 
   it('should accept initial data', () => {
-    let context = new CascadingContext({ name: 'hero', version: '2.0' });
-    assert.equal(context.getProperty('name'), 'hero');
+    let context = new CascadingContext({ name: 'kikx', version: '2.0' });
+    assert.equal(context.getProperty('name'), 'kikx');
     assert.equal(context.getProperty('version'), '2.0');
   });
 
@@ -569,7 +569,7 @@ describe('mergeConfig', () => {
 // =============================================================================
 describe('DEFAULT_CONFIG', () => {
   it('should have name and version', () => {
-    assert.equal(DEFAULT_CONFIG.name, 'hero');
+    assert.equal(DEFAULT_CONFIG.name, 'kikx');
     assert.ok(DEFAULT_CONFIG.version);
   });
 

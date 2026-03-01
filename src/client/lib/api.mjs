@@ -1,12 +1,12 @@
 'use strict';
 
-// REST API client for Hero V2.
+// REST API client for Kikx V2.
 // Wraps fetch() with auth token handling, error normalization, and typed endpoint methods.
 
 let authToken = null;
 let onUnauthorized = null;
 
-const BASE_URL = '/hero/api/v1';
+const BASE_URL = '/kikx/api/v1';
 
 export function setAuthToken(token) { authToken = token; }
 export function getAuthToken() { return authToken; }

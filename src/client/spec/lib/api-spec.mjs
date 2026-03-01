@@ -66,10 +66,10 @@ afterEach(() => {
 
 describe('api', () => {
   describe('healthCheck()', () => {
-    it('calls GET /hero/api/v1/health', async () => {
+    it('calls GET /kikx/api/v1/health', async () => {
       await healthCheck();
       assert.equal(fetchCalls.length, 1);
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/health');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/health');
       assert.equal(fetchCalls[0].options.method, 'GET');
     });
   });
@@ -89,35 +89,35 @@ describe('api', () => {
   });
 
   describe('sendMagicLink()', () => {
-    it('calls POST /hero/api/v1/auth/login with { email }', async () => {
+    it('calls POST /kikx/api/v1/auth/login with { email }', async () => {
       await sendMagicLink('user@example.com');
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/auth/login');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/auth/login');
       assert.equal(fetchCalls[0].options.method, 'POST');
       assert.equal(fetchCalls[0].options.body, JSON.stringify({ email: 'user@example.com' }));
     });
   });
 
   describe('verifyToken()', () => {
-    it('calls POST /hero/api/v1/auth/verify with { token }', async () => {
+    it('calls POST /kikx/api/v1/auth/verify with { token }', async () => {
       await verifyToken('abc123');
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/auth/verify');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/auth/verify');
       assert.equal(fetchCalls[0].options.method, 'POST');
       assert.equal(fetchCalls[0].options.body, JSON.stringify({ token: 'abc123' }));
     });
   });
 
   describe('logout()', () => {
-    it('calls GET /hero/api/v1/auth/logout', async () => {
+    it('calls GET /kikx/api/v1/auth/logout', async () => {
       await logout();
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/auth/logout');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/auth/logout');
       assert.equal(fetchCalls[0].options.method, 'GET');
     });
   });
 
   describe('registerUser()', () => {
-    it('calls POST /hero/api/v1/user with { email, firstName, lastName }', async () => {
+    it('calls POST /kikx/api/v1/user with { email, firstName, lastName }', async () => {
       await registerUser({ email: 'user@example.com', firstName: 'Jane', lastName: 'Doe' });
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/user');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/user');
       assert.equal(fetchCalls[0].options.method, 'POST');
       assert.equal(
         fetchCalls[0].options.body,
@@ -127,143 +127,143 @@ describe('api', () => {
   });
 
   describe('getSessions()', () => {
-    it('calls GET /hero/api/v1/sessions', async () => {
+    it('calls GET /kikx/api/v1/sessions', async () => {
       await getSessions();
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/sessions');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/sessions');
       assert.equal(fetchCalls[0].options.method, 'GET');
     });
   });
 
   describe('createSession()', () => {
-    it('calls POST /hero/api/v1/sessions with body', async () => {
+    it('calls POST /kikx/api/v1/sessions with body', async () => {
       let data = { name: 'My Session', agentId: 'agent-1' };
       await createSession(data);
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/sessions');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/sessions');
       assert.equal(fetchCalls[0].options.method, 'POST');
       assert.equal(fetchCalls[0].options.body, JSON.stringify(data));
     });
   });
 
   describe('updateSession()', () => {
-    it('calls PATCH /hero/api/v1/sessions/:id with updates', async () => {
+    it('calls PATCH /kikx/api/v1/sessions/:id with updates', async () => {
       let updates = { name: 'Renamed' };
       await updateSession('session-42', updates);
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/sessions/session-42');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/sessions/session-42');
       assert.equal(fetchCalls[0].options.method, 'PATCH');
       assert.equal(fetchCalls[0].options.body, JSON.stringify(updates));
     });
   });
 
   describe('deleteSession()', () => {
-    it('calls DELETE /hero/api/v1/sessions/:id', async () => {
+    it('calls DELETE /kikx/api/v1/sessions/:id', async () => {
       await deleteSession('session-42');
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/sessions/session-42');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/sessions/session-42');
       assert.equal(fetchCalls[0].options.method, 'DELETE');
     });
   });
 
   describe('getAgents()', () => {
-    it('calls GET /hero/api/v1/agents', async () => {
+    it('calls GET /kikx/api/v1/agents', async () => {
       await getAgents();
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/agents');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/agents');
       assert.equal(fetchCalls[0].options.method, 'GET');
     });
   });
 
   describe('getAgent()', () => {
-    it('calls GET /hero/api/v1/agents/:id', async () => {
+    it('calls GET /kikx/api/v1/agents/:id', async () => {
       await getAgent('agent-7');
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/agents/agent-7');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/agents/agent-7');
       assert.equal(fetchCalls[0].options.method, 'GET');
     });
   });
 
   describe('createAgent()', () => {
-    it('calls POST /hero/api/v1/agents with body', async () => {
+    it('calls POST /kikx/api/v1/agents with body', async () => {
       let data = { name: 'test-new', model: 'claude-opus-4-6' };
       await createAgent(data);
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/agents');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/agents');
       assert.equal(fetchCalls[0].options.method, 'POST');
       assert.equal(fetchCalls[0].options.body, JSON.stringify(data));
     });
   });
 
   describe('updateAgent()', () => {
-    it('calls PATCH /hero/api/v1/agents/:id with updates', async () => {
+    it('calls PATCH /kikx/api/v1/agents/:id with updates', async () => {
       let updates = { model: 'claude-sonnet-4-6' };
       await updateAgent('agent-7', updates);
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/agents/agent-7');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/agents/agent-7');
       assert.equal(fetchCalls[0].options.method, 'PATCH');
       assert.equal(fetchCalls[0].options.body, JSON.stringify(updates));
     });
   });
 
   describe('deleteAgent()', () => {
-    it('calls DELETE /hero/api/v1/agents/:id', async () => {
+    it('calls DELETE /kikx/api/v1/agents/:id', async () => {
       await deleteAgent('agent-7');
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/agents/agent-7');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/agents/agent-7');
       assert.equal(fetchCalls[0].options.method, 'DELETE');
     });
   });
 
   describe('getAbilities()', () => {
-    it('calls GET /hero/api/v1/abilities', async () => {
+    it('calls GET /kikx/api/v1/abilities', async () => {
       await getAbilities();
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/abilities');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/abilities');
       assert.equal(fetchCalls[0].options.method, 'GET');
     });
   });
 
   describe('getAbility()', () => {
-    it('calls GET /hero/api/v1/abilities/:id', async () => {
+    it('calls GET /kikx/api/v1/abilities/:id', async () => {
       await getAbility('ability-3');
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/abilities/ability-3');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/abilities/ability-3');
       assert.equal(fetchCalls[0].options.method, 'GET');
     });
   });
 
   describe('createAbility()', () => {
-    it('calls POST /hero/api/v1/abilities with body', async () => {
+    it('calls POST /kikx/api/v1/abilities with body', async () => {
       let data = { name: 'websearch', description: 'Search the web' };
       await createAbility(data);
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/abilities');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/abilities');
       assert.equal(fetchCalls[0].options.method, 'POST');
       assert.equal(fetchCalls[0].options.body, JSON.stringify(data));
     });
   });
 
   describe('updateAbility()', () => {
-    it('calls PATCH /hero/api/v1/abilities/:id with updates', async () => {
+    it('calls PATCH /kikx/api/v1/abilities/:id with updates', async () => {
       let updates = { description: 'Updated description' };
       await updateAbility('ability-3', updates);
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/abilities/ability-3');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/abilities/ability-3');
       assert.equal(fetchCalls[0].options.method, 'PATCH');
       assert.equal(fetchCalls[0].options.body, JSON.stringify(updates));
     });
   });
 
   describe('deleteAbility()', () => {
-    it('calls DELETE /hero/api/v1/abilities/:id', async () => {
+    it('calls DELETE /kikx/api/v1/abilities/:id', async () => {
       await deleteAbility('ability-3');
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/abilities/ability-3');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/abilities/ability-3');
       assert.equal(fetchCalls[0].options.method, 'DELETE');
     });
   });
 
   describe('addParticipant()', () => {
-    it('calls POST /hero/api/v1/sessions/:id/participants with body', async () => {
+    it('calls POST /kikx/api/v1/sessions/:id/participants with body', async () => {
       let participantData = { userId: 'user-9', role: 'observer' };
       await addParticipant('session-42', participantData);
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/sessions/session-42/participants');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/sessions/session-42/participants');
       assert.equal(fetchCalls[0].options.method, 'POST');
       assert.equal(fetchCalls[0].options.body, JSON.stringify(participantData));
     });
   });
 
   describe('removeParticipant()', () => {
-    it('calls DELETE /hero/api/v1/sessions/:id/participants/:id', async () => {
+    it('calls DELETE /kikx/api/v1/sessions/:id/participants/:id', async () => {
       await removeParticipant('session-42', 'participant-5');
-      assert.equal(fetchCalls[0].url, '/hero/api/v1/sessions/session-42/participants/participant-5');
+      assert.equal(fetchCalls[0].url, '/kikx/api/v1/sessions/session-42/participants/participant-5');
       assert.equal(fetchCalls[0].options.method, 'DELETE');
     });
   });

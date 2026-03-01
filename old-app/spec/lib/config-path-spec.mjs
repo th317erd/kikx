@@ -52,17 +52,17 @@ describe('Config path module', () => {
   });
 
   describe('getDatabasePath', () => {
-    it('should return path ending with hero.db', () => {
+    it('should return path ending with kikx.db', () => {
       let dbPath = getDatabasePath();
 
-      assert.match(dbPath, /hero\.db$/);
+      assert.match(dbPath, /kikx\.db$/);
     });
 
     it('should be inside config directory', () => {
       let configDir = getConfigDir();
       let dbPath    = getDatabasePath();
 
-      assert.equal(dbPath, join(configDir, 'hero.db'));
+      assert.equal(dbPath, join(configDir, 'kikx.db'));
     });
   });
 

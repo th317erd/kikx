@@ -20,8 +20,8 @@ requirements:
   - Avatar displayed in session participant list and message headers
 
 files:
-  - public/js/components/hero-modal-create-agent/   # Add avatar picker section
-  - public/js/components/hero-avatar-picker/         # New component (gallery + upload)
+  - public/js/components/kikx-modal-create-agent/   # Add avatar picker section
+  - public/js/components/kikx-avatar-picker/         # New component (gallery + upload)
   - server/lib/avatars.mjs                           # Already has generation logic
 
 tests:

@@ -25,9 +25,9 @@ requirements:
   - Updates in real-time via WebSocket (participant joins/leaves)
 
 files:
-  - public/js/components/hero-participants/hero-participants.js
-  - public/js/components/hero-participants/hero-participants.html
-  - public/js/components/hero-chat/hero-chat.js    # Toggle button + panel slot
+  - public/js/components/kikx-participants/kikx-participants.js
+  - public/js/components/kikx-participants/kikx-participants.html
+  - public/js/components/kikx-chat/kikx-chat.js    # Toggle button + panel slot
   - server/lib/websocket.mjs                       # participant_joined/left events
 
 tests:

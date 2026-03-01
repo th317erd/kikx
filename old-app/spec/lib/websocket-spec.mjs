@@ -28,7 +28,7 @@ import jwt from 'jsonwebtoken';
 
 const TEST_JWT_SECRET = 'test-websocket-spec-jwt-secret-32chars!';
 const TEST_ENCRYPTION_KEY = 'test-websocket-encryption-key32!';
-const testDir = mkdtempSync(join(tmpdir(), 'hero-websocket-spec-'));
+const testDir = mkdtempSync(join(tmpdir(), 'kikx-websocket-spec-'));
 
 process.env.HERO_JWT_SECRET = TEST_JWT_SECRET;
 process.env.HERO_ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;

@@ -235,7 +235,7 @@ describe('FilesystemPluginProvider', () => {
   let tempDirectory;
 
   beforeEach(async () => {
-    tempDirectory = join(tmpdir(), `hero-plugin-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    tempDirectory = join(tmpdir(), `kikx-plugin-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     await mkdir(tempDirectory, { recursive: true });
   });
 
@@ -314,7 +314,7 @@ describe('FilesystemPluginProvider', () => {
   });
 
   it('should handle non-existent directory gracefully', async () => {
-    let provider = new FilesystemPluginProvider(['/tmp/hero-nonexistent-dir-xyz123']);
+    let provider = new FilesystemPluginProvider(['/tmp/kikx-nonexistent-dir-xyz123']);
     let names    = await provider.discover();
     assert.deepEqual(names, []);
   });
@@ -530,14 +530,14 @@ describe('PluginRegistry', () => {
 
   describe('registerCustomElement', () => {
     it('should register a custom element tag name', () => {
-      registry.registerCustomElement('hero-hml-prompt');
+      registry.registerCustomElement('kikx-hml-prompt');
       let elements = registry.getCustomElements();
-      assert.ok(elements.has('hero-hml-prompt'));
+      assert.ok(elements.has('kikx-hml-prompt'));
     });
 
     it('should return a Set of registered elements', () => {
-      registry.registerCustomElement('hero-card');
-      registry.registerCustomElement('hero-chart');
+      registry.registerCustomElement('kikx-card');
+      registry.registerCustomElement('kikx-chart');
       let elements = registry.getCustomElements();
       assert.ok(elements instanceof Set);
       assert.equal(elements.size, 2);
@@ -551,19 +551,19 @@ describe('PluginRegistry', () => {
     });
 
     it('should not duplicate tags (Set behavior)', () => {
-      registry.registerCustomElement('hero-tag');
-      registry.registerCustomElement('hero-tag');
+      registry.registerCustomElement('kikx-tag');
+      registry.registerCustomElement('kikx-tag');
       let elements = registry.getCustomElements();
       assert.equal(elements.size, 1);
     });
 
     it('should return a copy from getCustomElements', () => {
-      registry.registerCustomElement('hero-test');
+      registry.registerCustomElement('kikx-test');
       let elements = registry.getCustomElements();
-      elements.delete('hero-test');
+      elements.delete('kikx-test');
 
       // Internal set should still have it
-      assert.ok(registry.getCustomElements().has('hero-test'));
+      assert.ok(registry.getCustomElements().has('kikx-test'));
     });
   });
 });
@@ -737,14 +737,14 @@ describe('PluginLoader', () => {
   it('should allow plugin to register custom elements via context', async () => {
     let module = {
       setup: (context) => {
-        context.registerCustomElement('hero-chart');
+        context.registerCustomElement('kikx-chart');
       },
     };
 
     await loader.loadPlugin('element-plugin', module);
 
     let registry = loader.getRegistry();
-    assert.ok(registry.getCustomElements().has('hero-chart'));
+    assert.ok(registry.getCustomElements().has('kikx-chart'));
   });
 
   it('should set pluginName on context passed to setup', async () => {
@@ -917,7 +917,7 @@ describe('PluginLoader', () => {
     let tempDirectory;
 
     beforeEach(async () => {
-      tempDirectory = join(tmpdir(), `hero-fs-plugin-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      tempDirectory = join(tmpdir(), `kikx-fs-plugin-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
       await mkdir(tempDirectory, { recursive: true });
     });
 

@@ -7,7 +7,7 @@ Last updated: 2026-02-15
 **Branch:** `feature/mythix-ui-migration`
 
 ### Overview
-Migrating the Hero frontend from vanilla JavaScript to the Mythix-UI Web Component framework for:
+Migrating the Kikx frontend from vanilla JavaScript to the Mythix-UI Web Component framework for:
 - Reactive state management (DynamicProperty)
 - Component-based architecture
 - Better separation of concerns
@@ -28,24 +28,24 @@ Migrating the Hero frontend from vanilla JavaScript to the Mythix-UI Web Compone
 
 ```
 public/js/components/
-├── hero-base.js           # ✅ GlobalState + HeroComponent base class
-├── hero-app.js            # ✅ Root shell, auth, routing
-├── hero-sidebar.js        # ✅ Session list, search, archive
-├── hero-chat.js           # ✅ Message area, streaming, scroll button
-├── hero-input.js          # ✅ Message input with send button
-├── hero-websocket.js      # ✅ Standalone WebSocket handler
-├── hero-header.js         # ✅ Top bar, cost display, agent dropdown
-└── hero-modal.js          # ✅ Session, agent, ability modals
+├── kikx-base.js           # ✅ GlobalState + KikxComponent base class
+├── kikx-app.js            # ✅ Root shell, auth, routing
+├── kikx-sidebar.js        # ✅ Session list, search, archive
+├── kikx-chat.js           # ✅ Message area, streaming, scroll button
+├── kikx-input.js          # ✅ Message input with send button
+├── kikx-websocket.js      # ✅ Standalone WebSocket handler
+├── kikx-header.js         # ✅ Top bar, cost display, agent dropdown
+└── kikx-modal.js          # ✅ Session, agent, ability modals
 
 spec/components/
-├── hero-base-spec.mjs     # ✅ 15 tests
-├── hero-app-spec.mjs      # ✅ 28 tests
-├── hero-sidebar-spec.mjs  # ✅ 31 tests
-├── hero-chat-spec.mjs     # ✅ 40 tests
-├── hero-input-spec.mjs    # ✅ 34 tests
-├── hero-websocket-spec.mjs # ✅ 32 tests
-├── hero-header-spec.mjs   # ✅ 32 tests
-└── hero-modal-spec.mjs    # ✅ 35 tests
+├── kikx-base-spec.mjs     # ✅ 15 tests
+├── kikx-app-spec.mjs      # ✅ 28 tests
+├── kikx-sidebar-spec.mjs  # ✅ 31 tests
+├── kikx-chat-spec.mjs     # ✅ 40 tests
+├── kikx-input-spec.mjs    # ✅ 34 tests
+├── kikx-websocket-spec.mjs # ✅ 32 tests
+├── kikx-header-spec.mjs   # ✅ 32 tests
+└── kikx-modal-spec.mjs    # ✅ 35 tests
 ```
 
 ### State Tiers
@@ -58,7 +58,7 @@ GlobalState (Utils.dynamicPropID)
 ├── heroAbilities      # System + user abilities
 └── heroCurrentSession # Currently selected session
 
-SessionState (DynamicProperty on hero-chat)
+SessionState (DynamicProperty on kikx-chat)
 ├── frames             # Compiled frames from server
 ├── streamingFrame     # Current streaming message
 └── isTyping           # Typing indicator state
@@ -70,31 +70,31 @@ ComponentState (local DynamicProperty)
 ```
 
 ### Build Order (Top-Down)
-1. ✅ `hero-base.js` - Infrastructure (GlobalState, HeroComponent base class)
-2. ✅ `hero-app.js` - Root shell with auth, routing
-3. ✅ `hero-sidebar.js` - Session list, search, archive
-4. ✅ `hero-header.js` - Top bar, cost display
-5. ✅ `hero-chat.js` - Chat view, message rendering, streaming
-6. ✅ `hero-input.js` - Message input, commands, queue
-7. ✅ `hero-websocket.js` - WebSocket handler
+1. ✅ `kikx-base.js` - Infrastructure (GlobalState, KikxComponent base class)
+2. ✅ `kikx-app.js` - Root shell with auth, routing
+3. ✅ `kikx-sidebar.js` - Session list, search, archive
+4. ✅ `kikx-header.js` - Top bar, cost display
+5. ✅ `kikx-chat.js` - Chat view, message rendering, streaming
+6. ✅ `kikx-input.js` - Message input, commands, queue
+7. ✅ `kikx-websocket.js` - WebSocket handler
 8. ✅ Modals (session, agent, ability)
 
 ### Completed Components
 
-**hero-base.js** - Core infrastructure
+**kikx-base.js** - Core infrastructure
 - `GlobalState` object with reactive DynamicProperty values
-- `HeroComponent` base class extending MythixUIComponent
+- `KikxComponent` base class extending MythixUIComponent
 - Convenience methods: `setGlobal()`, `subscribeGlobal()`, `debug()`
 - Light DOM by default (no Shadow DOM)
 
-**hero-app.js** - Root application shell
+**kikx-app.js** - Root application shell
 - Route parsing (`parseRoute()`) with base path support
 - View switching (login, sessions, chat)
 - Authentication state management
 - WebSocket connection lifecycle
 - Initial data loading (sessions, agents, abilities)
 
-**hero-sidebar.js** - Session list
+**kikx-sidebar.js** - Session list
 - Session filtering by search query
 - Visibility toggle (show/hide archived and agent sessions)
 - Empty states (no agents, no sessions, no results)
@@ -102,7 +102,7 @@ ComponentState (local DynamicProperty)
 - Archive/restore toggle
 - Global cost display
 
-**hero-chat.js** - Chat messages area
+**kikx-chat.js** - Chat messages area
 - Message list rendering with role classes
 - Hidden message filtering and type badges
 - Tool use and tool result rendering
@@ -111,7 +111,7 @@ ComponentState (local DynamicProperty)
 - Debounced rendering to prevent loops
 - Token estimation display
 
-**hero-input.js** - Message input
+**kikx-input.js** - Message input
 - Auto-resizing textarea
 - Command detection (/ prefix)
 - Message queue for busy state
@@ -120,14 +120,14 @@ ComponentState (local DynamicProperty)
 
 ### Tests
 All components have comprehensive test suites in `spec/components/`:
-- `hero-base-spec.mjs` - 15 tests
-- `hero-app-spec.mjs` - 28 tests
-- `hero-sidebar-spec.mjs` - 31 tests
-- `hero-chat-spec.mjs` - 40 tests
-- `hero-input-spec.mjs` - 34 tests
-- `hero-websocket-spec.mjs` - 32 tests
-- `hero-header-spec.mjs` - 32 tests
-- `hero-modal-spec.mjs` - 35 tests
+- `kikx-base-spec.mjs` - 15 tests
+- `kikx-app-spec.mjs` - 28 tests
+- `kikx-sidebar-spec.mjs` - 31 tests
+- `kikx-chat-spec.mjs` - 40 tests
+- `kikx-input-spec.mjs` - 34 tests
+- `kikx-websocket-spec.mjs` - 32 tests
+- `kikx-header-spec.mjs` - 32 tests
+- `kikx-modal-spec.mjs` - 35 tests
 
 Total: **930 tests passing**
 

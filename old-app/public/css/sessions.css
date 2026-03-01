@@ -1,4 +1,4 @@
-/* Hero - Sessions View Styles */
+/* Kikx - Sessions View Styles */
 /* Inbox-style sessions list */
 
 .sessions-main {
@@ -34,7 +34,7 @@
   gap: 12px;
 }
 
-/* Sidebar header (hero-sidebar component) */
+/* Sidebar header (kikx-sidebar component) */
 .sidebar-header {
   display: flex;
   align-items: center;

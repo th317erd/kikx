@@ -22,10 +22,10 @@
  */
 
 import {
-  HeroComponent,
+  KikxComponent,
   GlobalState,
   DynamicProperty,
-} from '../hero-base.js';
+} from '../kikx-base.js';
 
 // Frame types (matches server/lib/frames/index.mjs)
 // TODO: Move to shared/frames.mjs for server/client code sharing
@@ -96,7 +96,7 @@ function compileFrames(frames) {
   return compiled;
 }
 
-export class SessionFramesProvider extends HeroComponent {
+export class SessionFramesProvider extends KikxComponent {
   static tagName = 'session-frames-provider';
 
   // No shadow DOM - this is a structural/provider component
@@ -237,7 +237,7 @@ export class SessionFramesProvider extends HeroComponent {
     document.addEventListener('ws:new_frame', this._onNewFrame);
     document.addEventListener('ws:frame_update', this._onFrameUpdate);
 
-    // Subscribe to GlobalState.currentSession (follows hero-chat pattern)
+    // Subscribe to GlobalState.currentSession (follows kikx-chat pattern)
     this.#unsubscribers.push(
       this.subscribeGlobal('currentSession', ({ value }) => {
         if (value && value.id) {
@@ -539,7 +539,7 @@ export class SessionFramesProvider extends HeroComponent {
     this._phantomFrame = phantom;
 
     // Trigger reactive update by reassigning compiled
-    // hero-chat subscribes to compiled updates, not frames
+    // kikx-chat subscribes to compiled updates, not frames
     // We reassign compiled to same value to trigger the event
     this._recompile();
   }
@@ -559,7 +559,7 @@ export class SessionFramesProvider extends HeroComponent {
     this._phantomFrame = null;
 
     // Trigger reactive update by reassigning compiled
-    // hero-chat subscribes to compiled updates, not frames
+    // kikx-chat subscribes to compiled updates, not frames
     this._recompile();
   }
 
@@ -576,7 +576,7 @@ export class SessionFramesProvider extends HeroComponent {
       };
 
       // Trigger reactive update by reassigning compiled
-      // hero-chat subscribes to compiled updates, not frames
+      // kikx-chat subscribes to compiled updates, not frames
       this._recompile();
     }
   }

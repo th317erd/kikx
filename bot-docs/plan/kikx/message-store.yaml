@@ -1,0 +1,124 @@
+# MessageStore Interface Design — Compressed YAML
+# Unified state management for conversation data.
+# Source: .claude/designs/message-store.md
+
+version: 1
+dt: 2026-02-20
+s: pending  # Not yet implemented
+
+# =============================================================================
+# PROBLEM
+# =============================================================================
+
+problem:
+  t: Conversation state scattered across 4 locations
+  d: >
+    state.messages (app.js), GlobalState.heroFrames (DynamicProperty),
+    session-frames-provider.frames (component), DB frames table.
+    Changes in one don't propagate to others. Root cause of most UI bugs.
+  locations:
+    - { name: state.messages,                  type: legacy-array,    file: app.js }
+    - { name: GlobalState.heroFrames,          type: DynamicProperty, file: kikx-base.js }
+    - { name: session-frames-provider.frames,  type: component-state, file: session-frames-provider.js }
+    - { name: frames table,                    type: sqlite,          file: database.mjs }
+
+# =============================================================================
+# INTERFACE
+# =============================================================================
+
+interface:
+  class: MessageStore
+  singleton: true
+  export: "public/js/stores/message-store.js"
+
+  lifecycle:
+    - { m: init,  args: [sessionId, initialMessages], d: "Initialize for session" }
+    - { m: clear, args: [],                           d: "Clear all (session switch)" }
+
+  read:
+    - { m: getAll,   args: [{ includeHidden: bool }],  ret: "Message[]",    d: "All messages (respects hidden filter)" }
+    - { m: findById, args: [id],                       ret: "Message|null", d: "Find by ID (handles string/number coercion)" }
+    - { m: find,     args: [predicate],                ret: "Message|null", d: "Find by predicate" }
+    - { m: has,      args: [id],                       ret: bool,           d: "Check existence" }
+    - { m: count,    args: [],                         ret: number,         d: "Message count (getter)" }
+
+  write:
+    - { m: add,           args: [message],             ret: Message,        d: "Add new message" }
+    - { m: update,        args: [id, updates],         ret: "Message|null", d: "Partial update" }
+    - { m: updateContent, args: [id, contentUpdater],  ret: bool,           d: "Update content (handles string vs array)" }
+    - { m: remove,        args: [id],                  ret: bool,           d: "Remove message" }
+    - { m: replace,       args: [oldId, newMessage],   ret: bool,           d: "Replace (e.g. optimistic → real)" }
+
+  prompts:
+    - { m: answerPrompt,        args: [messageId, promptId, answer], ret: bool,    d: "Mark prompt answered" }
+    - { m: findUnansweredPrompts, args: [],                          ret: Array,   d: "All unanswered prompts" }
+
+  optimistic:
+    - { m: addOptimistic,     args: [message],               ret: string,  d: "Add optimistic, return temp ID" }
+    - { m: confirmOptimistic, args: [tempId, realMessage],   ret: void,    d: "Confirm with real ID" }
+    - { m: rejectOptimistic,  args: [tempId],                ret: void,    d: "Remove failed optimistic" }
+
+  observable:
+    - { m: subscribe, args: [callback], ret: "Function (unsubscribe)", d: "Subscribe to changes" }
+    - { m: _notify,   args: [event],    ret: void,                     d: "Internal: notify subscribers" }
+
+  events:
+    - INIT
+    - CLEAR
+    - ADD
+    - UPDATE
+    - REMOVE
+    - REPLACE
+    - BULK_UPDATE
+
+# =============================================================================
+# MESSAGE TYPE
+# =============================================================================
+
+message_type:
+  id:           "string|number"
+  role:         "user|assistant|system"
+  content:      "string|ContentBlock[]"
+  createdAt:    "ISO timestamp"
+  hidden:       "boolean (optional)"
+  optimistic:   "boolean (optional)"
+  optimisticId: "string (optional)"
+
+# =============================================================================
+# IMPLEMENTATION PHASES
+# =============================================================================
+
+phases:
+  - phase: 1
+    t: Create store with state.messages backend
+    d: >
+      MessageStore wraps state.messages internally. Callers use new API
+      but implementation still uses old storage. Allows gradual migration.
+    f: public/js/stores/message-store.js
+
+  - phase: 2
+    t: Migrate callers
+    d: >
+      Replace all 31 state.messages references with messageStore.* calls.
+      Files: app.js (14), streaming.js (5), commands.js (5), approvals.js (5),
+      kikx-app.js (1), kikx-chat.js (1).
+
+  - phase: 3
+    t: Switch to frames backend
+    d: >
+      Change internal implementation to read from session-frames-provider.
+      Write operations go through server API. Provider updates via WebSocket.
+      Remove state.messages entirely.
+
+# =============================================================================
+# MIGRATION CHECKLIST
+# =============================================================================
+
+checklist:
+  - { f: "public/js/stores/message-store.js",  s: pending, d: "Create MessageStore class" }
+  - { f: "spec/stores/message-store-spec.mjs",  s: pending, d: "Unit tests" }
+  - { f: "public/js/app.js",                    s: pending, d: "Migrate 14 usages" }
+  - { f: "public/js/streaming.js",              s: pending, d: "Migrate 5 usages" }
+  - { f: "public/js/approvals.js",              s: pending, d: "Migrate 5 usages" }
+  - { f: "public/js/components/kikx-chat/*",     s: pending, d: "Subscribe to store" }
+  - { f: "state.messages",                       s: pending, d: "Remove from state object" }

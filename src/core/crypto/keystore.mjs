@@ -19,7 +19,7 @@ export class Keystore {
 
     if (this._devMode && this._devSeed) {
       // Deterministic: HMAC-SHA256 of seed
-      this._rek = crypto.createHmac('sha256', 'hero-dev-rek').update(this._devSeed).digest();
+      this._rek = crypto.createHmac('sha256', 'kikx-dev-rek').update(this._devSeed).digest();
     } else {
       this._rek = crypto.randomBytes(32);
     }

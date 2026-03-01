@@ -1,0 +1,168 @@
+<!--
+  Kikx Modal Create Session
+  Modal for creating new chat sessions.
+-->
+
+<!-- Document-scope styles -->
+<style data-for="kikx-modal-create-session">
+  kikx-modal-create-session {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+  }
+
+  kikx-modal-create-session[open] {
+    display: flex;
+  }
+</style>
+
+<!-- Shadow DOM template -->
+<template data-for="kikx-modal-create-session">
+  <style>
+    /* Base dialog styles */
+    dialog[open], dialog > * {
+      position: relative;
+      display: flex;
+      box-sizing: border-box;
+    }
+
+    dialog > * {
+      padding: var(--theme-padding, 1rem);
+    }
+
+    dialog[open] {
+      flex-direction: column;
+      padding: 0;
+      align-items: stretch;
+      overflow: hidden;
+      min-width: min(400px, calc(100vw - 32px));
+      max-width: min(600px, calc(100vw - 32px));
+      max-height: 85vh;
+      border: 1px solid var(--border-color, #2d2d2d);
+      border-radius: var(--radius-lg, 8px);
+      background: var(--bg-secondary, #1a1a2e);
+      color: var(--text-primary, #e0e0e0);
+    }
+
+    dialog::backdrop {
+      background-color: rgba(0, 0, 0, 0.7);
+    }
+
+    dialog > header {
+      flex-direction: row;
+      flex-shrink: 0;
+      flex-grow: 0;
+      user-select: none;
+      border-bottom: 1px solid var(--border-color, #2d2d2d);
+      background: var(--bg-tertiary, #2a2a3e);
+    }
+
+    dialog > header .caption-container {
+      display: flex;
+      flex-grow: 1;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+    }
+
+    dialog > main {
+      flex-direction: column;
+      flex-shrink: 1;
+      flex-grow: 1;
+      padding-top: 0;
+      padding-bottom: 0;
+      overflow: auto;
+    }
+
+    dialog > footer {
+      flex-direction: row;
+      flex-shrink: 0;
+      flex-grow: 0;
+      user-select: none;
+      align-items: center;
+      justify-content: flex-end;
+      border-top: 1px solid var(--border-color, #2d2d2d);
+      background: var(--bg-tertiary, #2a2a3e);
+      gap: var(--theme-padding, 0.5em);
+    }
+
+    /* Form elements */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-color, #2d2d2d);
+      border-radius: var(--radius-sm, 4px);
+      background: var(--bg-tertiary, #2a2a3e);
+      color: var(--text-primary, #e0e0e0);
+      font-family: inherit;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent, #f472b6);
+    }
+
+    /* Error message */
+    .error-message {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: var(--radius-sm, 4px);
+      background: rgba(248, 113, 113, 0.1);
+      color: var(--error, #f87171);
+      font-size: 14px;
+    }
+
+    .error-message:empty {
+      display: none;
+    }
+
+    /* Slotted error message */
+    ::slotted(.error-message) {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: var(--radius-sm, 4px);
+      background: rgba(248, 113, 113, 0.1);
+      color: var(--error, #f87171);
+      font-size: 14px;
+    }
+
+    ::slotted(.error-message:empty) {
+      display: none;
+    }
+  </style>
+
+  <dialog class="root-container" part="dialog root">
+    <header part="header">
+      <div class="caption-container" part="caption-container">
+        <slot name="caption">
+          <span part="caption">New Session</span>
+        </slot>
+      </div>
+    </header>
+    <main part="main">
+      <slot></slot>
+    </main>
+    <footer part="footer">
+      <slot name="footer"></slot>
+    </footer>
+  </dialog>
+</template>
+
+<script type="module" src="./kikx-modal-create-session.js"></script>

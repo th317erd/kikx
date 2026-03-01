@@ -88,7 +88,7 @@ export class MailerModule extends ModuleBase {
     let mailerConfig  = this.getMailerConfig();
     let opts          = _opts || {};
     let options       = {
-      from:     opts.from || '"Hero" <noreply@hero.com>',
+      from:     opts.from || '"Kikx" <noreply@kikx.com>',
       to:       opts.to,
       subject:  opts.subject,
       html:     opts.message,

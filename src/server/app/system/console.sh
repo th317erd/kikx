@@ -1,6 +1,6 @@
 #!/bin/bash
 
 export NODE_ENV="development"
-cd /opt/hero/current
+cd /opt/kikx/current
 mythix-cli shell
 cd -

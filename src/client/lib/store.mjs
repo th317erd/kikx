@@ -1,6 +1,6 @@
 'use strict';
 
-// Global state store for Hero V2 client.
+// Global state store for Kikx V2 client.
 // Wraps a seqda store with typed scopes for each domain.
 // Components subscribe to update events for reactive re-rendering.
 

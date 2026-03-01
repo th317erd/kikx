@@ -44,7 +44,7 @@ export async function seedDB(app) {
   // Create our root user
   await createUser({
     data: {
-      email:      'root+user@hero.com',
+      email:      'root+user@kikx.com',
       firstName:  'Root',
       lastName:   'User',
     },

@@ -70,7 +70,7 @@ async function main() {
   let username = args[0];
   let password = args[1];
 
-  console.log('Hero - Add User\n');
+  console.log('Kikx - Add User\n');
 
   // Get username if not provided
   if (!username)

@@ -25,7 +25,7 @@ import { tmpdir } from 'os';
 // Environment Setup (must happen before any app module imports)
 // ============================================================================
 
-let testDir = mkdtempSync(join(tmpdir(), 'hero-f1-coordinator-test-'));
+let testDir = mkdtempSync(join(tmpdir(), 'kikx-f1-coordinator-test-'));
 
 process.env.HERO_JWT_SECRET     = 'test-secret-key-for-testing';
 process.env.HERO_ENCRYPTION_KEY = 'test-encryption-key-32chars!!';

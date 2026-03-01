@@ -1,7 +1,7 @@
 'use strict';
 
 // ============================================================================
-// Hero Markup Language (HML) - Frontend Parser & Renderer
+// Kikx Markup Language (HML) - Frontend Parser & Renderer
 // ============================================================================
 // Processes HTML content from the agent, sanitizes it, and renders custom
 // HML elements like <hml-prompt> and <hml-thinking>.
@@ -274,14 +274,14 @@ function escapeHtml(text) {
 }
 
 // =============================================================================
-// Hero Interaction WebComponent
+// Kikx Interaction WebComponent
 // =============================================================================
 
 /**
- * <hero-interaction> WebComponent
+ * <kikx-interaction> WebComponent
  * Displays a jiggling brain emoji while processing interactions.
  */
-class HeroInteraction extends HTMLElement {
+class KikxInteraction extends HTMLElement {
   constructor() {
     super();
     if (!this.shadowRoot)
@@ -357,7 +357,7 @@ class HeroInteraction extends HTMLElement {
 }
 
 // Register the WebComponent
-customElements.define('hero-interaction', HeroInteraction);
+customElements.define('kikx-interaction', KikxInteraction);
 
 // =============================================================================
 // Legacy Compatibility

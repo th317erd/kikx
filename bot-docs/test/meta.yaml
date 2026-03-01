@@ -1,6 +1,6 @@
 # =============================================================================
 # bot-docs/test/meta.yaml
-# AGIS Plan Test Assertions — Hero V2 Server Architecture
+# AGIS Plan Test Assertions — Kikx V2 Server Architecture
 # =============================================================================
 # These are assertions about the PLAN itself — not code tests.
 # They validate completeness, coherence, conflicts, and implementation readiness.
@@ -9,11 +9,11 @@
 # Status:   pending | pass | fail | needs-clarification | blocked
 #
 # Sources:
-#   - bot-docs/plan/hero/server-plan.yaml (Rounds 1-19)
+#   - bot-docs/plan/kikx/server-plan.yaml (Rounds 1-19)
 #   - .claude/DETAILS.md (Rounds 9-12 decisions)
 #   - .claude/conversation2.md (Rounds 13-19 decisions)
-#   - bot-docs/plan/hero/frame-manager.yaml
-#   - bot-docs/plan/hero/client-plan.yaml
+#   - bot-docs/plan/kikx/frame-manager.yaml
+#   - bot-docs/plan/kikx/client-plan.yaml
 #
 # Updated: 2026-02-28
 # Evaluated by: Claude Opus 4.6
@@ -39,11 +39,11 @@ core-architecture:
       server-plan.yaml section 1: "Thin Mythix wrapper that delegates everything
       to core. HTTP routes are just adapters that call core methods."
 
-  - assert: "createHeroCore(config) entry point is defined with return type"
+  - assert: "createKikxCore(config) entry point is defined with return type"
     severity: blocker
     status: pass
     notes: >
-      server-plan.yaml section 1: entry_point "createHeroCore(config)", returns
+      server-plan.yaml section 1: entry_point "createKikxCore(config)", returns
       "Core instance with full plugin/session/interaction capabilities".
       Config schema itself is not documented in detail but the entry point
       and return type are specified.
@@ -401,22 +401,22 @@ agent-output:
     severity: high
     status: pass
     notes: >
-      server-plan.yaml section 7 allowed_custom_elements: hero-hml-prompt,
-      hero-hml-option, and "Other registered custom elements from plugins".
+      server-plan.yaml section 7 allowed_custom_elements: kikx-hml-prompt,
+      kikx-hml-option, and "Other registered custom elements from plugins".
       plugin_extension: "Plugins can extend the allowlist."
 
 # =============================================================================
-# 7. PROMPTS (hero-hml-prompt)
+# 7. PROMPTS (kikx-hml-prompt)
 # =============================================================================
 
 prompts:
 
-  - assert: "Inline hero-hml-prompt WebComponents in agent HTML output are specified"
+  - assert: "Inline kikx-hml-prompt WebComponents in agent HTML output are specified"
     severity: blocker
     status: pass
     notes: >
-      server-plan.yaml section 13: "Agent outputs <hero-hml-prompt> elements in
-      its HTML text. Server sanitizes (hero-hml-prompt is on allowlist), stores
+      server-plan.yaml section 13: "Agent outputs <kikx-hml-prompt> elements in
+      its HTML text. Server sanitizes (kikx-hml-prompt is on allowlist), stores
       in message frame. Client renders WebComponents."
 
   - assert: "Prompt state tracked via FrameManager (targeting/merge)"
@@ -432,18 +432,18 @@ prompts:
     status: pass
     notes: >
       server-plan.yaml section 13 child_elements: approach "CHOICE between two
-      options (not both)". option_a: hero-hml-option child elements. option_b:
+      options (not both)". option_a: kikx-hml-option child elements. option_b:
       reuse radio/checkbox types for select rendering. note: "These are
       alternatives, NOT nested within each other."
 
-  - assert: "hero-hml-prompt-value is dropped (one component, two modes)"
+  - assert: "kikx-hml-prompt-value is dropped (one component, two modes)"
     severity: high
     status: pass
     notes: >
       server-plan.yaml section 13 reload_behavior: "Single component
-      (hero-hml-prompt) handles both interactive and read-only modes -- mode
+      (kikx-hml-prompt) handles both interactive and read-only modes -- mode
       determined by value presence in merged frame content." NOTE: client-plan.yaml
-      still lists hero-hml-prompt-value as a separate component -- client plan
+      still lists kikx-hml-prompt-value as a separate component -- client plan
       needs updating to match server plan.
 
   - assert: "Binary fields (checkbox) ALWAYS include their answer (true/false)"

@@ -5,11 +5,11 @@ import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
 
 /**
- * Get the OS-specific configuration directory for Hero.
+ * Get the OS-specific configuration directory for Kikx.
  *
- * - Linux: ~/.config/hero/
- * - macOS: ~/Library/Application Support/hero/
- * - Windows: %APPDATA%/hero/
+ * - Linux: ~/.config/kikx/
+ * - macOS: ~/Library/Application Support/kikx/
+ * - Windows: %APPDATA%/kikx/
  *
  * @returns {string} Absolute path to config directory
  */
@@ -52,10 +52,10 @@ export function ensureConfigDir() {
 /**
  * Get the path to the SQLite database.
  *
- * @returns {string} Absolute path to hero.db
+ * @returns {string} Absolute path to kikx.db
  */
 export function getDatabasePath() {
-  return join(getConfigDir(), 'hero.db');
+  return join(getConfigDir(), 'kikx.db');
 }
 
 /**

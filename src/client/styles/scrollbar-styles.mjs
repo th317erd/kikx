@@ -2,7 +2,7 @@
 
 // Shared scrollbar CSS for Shadow DOM adoption via constructable stylesheets.
 // Usage in a WebComponent:
-//   import { scrollbarStyleSheet } from 'hero/lib/../styles/scrollbar-styles.mjs';
+//   import { scrollbarStyleSheet } from 'kikx/lib/../styles/scrollbar-styles.mjs';
 //   this.shadowRoot.adoptedStyleSheets = [scrollbarStyleSheet, ...];
 
 export const scrollbarCSS = `

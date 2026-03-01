@@ -12,7 +12,7 @@ describe('Plugin loader module', () => {
   let tempPluginsDir;
 
   beforeEach(() => {
-    tempPluginsDir = join(tmpdir(), `hero-plugins-test-${randomBytes(8).toString('hex')}`);
+    tempPluginsDir = join(tmpdir(), `kikx-plugins-test-${randomBytes(8).toString('hex')}`);
     mkdirSync(tempPluginsDir, { recursive: true });
   });
 
@@ -29,7 +29,7 @@ describe('Plugin loader module', () => {
       name:    name,
       version: options.version || '1.0.0',
       main:    options.main || 'index.mjs',
-      hero:    {
+      kikx:    {
         agents: options.agents || ['*'],
       },
     };
@@ -86,7 +86,7 @@ describe('Plugin loader module', () => {
 
       assert.equal(packageContent.name, 'metadata-test');
       assert.equal(packageContent.version, '2.0.0');
-      assert.deepEqual(packageContent.hero.agents, ['claude']);
+      assert.deepEqual(packageContent.kikx.agents, ['claude']);
     });
   });
 
@@ -135,7 +135,7 @@ describe('Plugin loader module', () => {
       let packagePath = join(tempPluginsDir, 'wildcard-plugin', 'package.json');
       let pkg         = JSON.parse(readFileSync(packagePath, 'utf8'));
 
-      assert.ok(pkg.hero.agents.includes('*'));
+      assert.ok(pkg.kikx.agents.includes('*'));
     });
 
     it('should support specific agent compatibility', () => {
@@ -149,8 +149,8 @@ describe('Plugin loader module', () => {
         readFileSync(join(tempPluginsDir, 'multi-agent', 'package.json'), 'utf8')
       );
 
-      assert.deepEqual(claudePackage.hero.agents, ['claude']);
-      assert.deepEqual(multiPackage.hero.agents, ['claude', 'openai']);
+      assert.deepEqual(claudePackage.kikx.agents, ['claude']);
+      assert.deepEqual(multiPackage.kikx.agents, ['claude', 'openai']);
     });
   });
 

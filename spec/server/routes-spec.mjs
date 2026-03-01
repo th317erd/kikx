@@ -3,7 +3,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { HeroCore }         from '../../src/core/hero-core.mjs';
+import { KikxCore }         from '../../src/core/kikx-core.mjs';
 import { Keystore }         from '../../src/core/crypto/keystore.mjs';
 import { AuthService }      from '../../src/server/auth/index.mjs';
 import { SessionManager }   from '../../src/core/session/index.mjs';
@@ -78,7 +78,7 @@ let core, keystore, context, authService, sessionManager, framePersistence, inte
 let testUser, testToken, testOrg, testUMK;
 
 before(async () => {
-  core = new HeroCore({ database: { filename: ':memory:' } });
+  core = new KikxCore({ database: { filename: ':memory:' } });
   await core.start();
 
   keystore = new Keystore({ devMode: true, devSeed: 'test-routes-seed' });
@@ -792,7 +792,7 @@ describe('Application class', () => {
   it('should export Application', async () => {
     let { Application } = await import('../../src/server/application.mjs');
     assert.equal(typeof Application, 'function');
-    assert.equal(Application.getName(), 'hero-v2');
+    assert.equal(Application.getName(), 'kikx-v2');
   });
 });
 

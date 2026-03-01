@@ -107,7 +107,7 @@ async function handleHelpCommand(filterArg = '') {
       return;
     }
 
-    let text = '# Hero Help\n\n';
+    let text = '# Kikx Help\n\n';
 
     // Show filter if applied
     if (filterArg.trim()) {

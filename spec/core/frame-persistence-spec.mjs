@@ -24,8 +24,8 @@ describe('FramePersistence', () => {
   let models;
 
   beforeEach(async () => {
-    let { HeroCore } = await import('../../src/core/hero-core.mjs');
-    core = new HeroCore();
+    let { KikxCore } = await import('../../src/core/kikx-core.mjs');
+    core = new KikxCore();
     await core.start();
 
     let { FramePersistence } = await import('../../src/core/frames/index.mjs');

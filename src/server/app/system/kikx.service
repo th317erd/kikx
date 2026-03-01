@@ -1,0 +1,26 @@
+[Unit]
+Description=kikx
+After=network.target
+
+[Service]
+Type=exec
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/kikx/current
+ExecStart=/opt/kikx/kikx.sh
+PIDFile=/var/run/kikx.pid
+RemainAfterExit=no
+Restart=on-failure
+RestartSec=5s
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=kikx
+# file size
+LimitFSIZE=infinity
+# cpu time
+LimitCPU=infinity
+# virtual memory size
+LimitAS=infinity
+
+[Install]
+WantedBy=multi-user.target

@@ -38,12 +38,12 @@ function parseCookies(cookieString) {
 // --- Token Extraction ---
 
 function extractToken(request) {
-  // 1. Cookie: hero_token > token
+  // 1. Cookie: kikx_token > token
   let cookieHeader = request.headers && request.headers.cookie;
   if (cookieHeader) {
     let cookies = parseCookies(cookieHeader);
-    if (cookies.hero_token)
-      return cookies.hero_token;
+    if (cookies.kikx_token)
+      return cookies.kikx_token;
 
     if (cookies.token)
       return cookies.token;

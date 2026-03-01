@@ -14,7 +14,7 @@ import APP_CONFIG from './config/index.mjs';
 
 export class Application extends MythixApplication {
   static getName() {
-    return 'hero';
+    return 'kikx';
   }
 
   static getCommandList() {
@@ -122,6 +122,6 @@ export class Application extends MythixApplication {
       isSeedToken:  false,
     });
 
-    console.log(`https://${this.getConfigValue('application.{environment}.domain', 'wyatt-desktop.mythix.info')}/hero/?page=login&magicToken=${sessionToken}`);
+    console.log(`https://${this.getConfigValue('application.{environment}.domain', 'wyatt-desktop.mythix.info')}/kikx/?page=login&magicToken=${sessionToken}`);
   }
 }

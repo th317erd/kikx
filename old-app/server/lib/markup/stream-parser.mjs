@@ -1,7 +1,7 @@
 'use strict';
 
 // ============================================================================
-// Hero Markup Language (HML) - Streaming Parser
+// Kikx Markup Language (HML) - Streaming Parser
 // ============================================================================
 // Processes HML elements progressively as text streams in, emitting events
 // for element lifecycle: start, update, complete.

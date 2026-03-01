@@ -647,7 +647,7 @@ describe('OrganizationController', function() {
         expect(options.fileName).toMatch(new RegExp(`${fileName}-\\d+\\.png`));
         expect(options.contentType).toEqual('image/png');
 
-        return `https://hero.com/${options.folder}/${options.fileName}`;
+        return `https://kikx.com/${options.folder}/${options.fileName}`;
       });
 
       let fileContents = FileSystem.readFileSync(testFilePath).toString('base64');
@@ -660,7 +660,7 @@ describe('OrganizationController', function() {
 
       expect(result.statusCode).toEqual(200);
 
-      let correctURL = `https://hero.com/user-avatars/${fileName}`;
+      let correctURL = `https://kikx.com/user-avatars/${fileName}`;
       let data = result.body.data;
       expect(data.organizationID).toEqual(user.getCurrentOrganizationID());
       expect(data.baseURL).toEqual(correctURL);
@@ -692,7 +692,7 @@ describe('OrganizationController', function() {
         expect(options.fileName).toMatch(new RegExp(`${fileName}-\\d+\\.png`));
         expect(options.contentType).toEqual('image/png');
 
-        return `https://hero.com/${options.folder}/${options.fileName}`;
+        return `https://kikx.com/${options.folder}/${options.fileName}`;
       });
 
       let formData = new FormData();
@@ -705,7 +705,7 @@ describe('OrganizationController', function() {
 
       expect(result.statusCode).toEqual(200);
 
-      let correctURL = `https://hero.com/user-avatars/${fileName}`;
+      let correctURL = `https://kikx.com/user-avatars/${fileName}`;
       let data = result.body.data;
       expect(data.organizationID).toEqual(user.getCurrentOrganizationID());
       expect(data.baseURL).toEqual(correctURL);

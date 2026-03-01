@@ -74,7 +74,7 @@ async function processMessageStream(content) {
         }
 
         // The frames are already created by the server and will arrive via WebSocket
-        // Nothing more to do here - hero-chat will render them automatically
+        // Nothing more to do here - kikx-chat will render them automatically
       },
 
       onStart: (data) => {
@@ -358,8 +358,8 @@ async function processMessageStream(content) {
   debug('App', 'processMessageStream complete');
   state.isLoading = false;
 
-  // Focus input via hero-input component
-  let heroInputEl = document.querySelector('hero-input');
+  // Focus input via kikx-input component
+  let heroInputEl = document.querySelector('kikx-input');
   if (heroInputEl && typeof heroInputEl.focus === 'function')
     heroInputEl.focus();
 
@@ -408,7 +408,7 @@ function removeStreamingMessagePlaceholder() {
     provider.clearPhantomFrame();
   }
 
-  // Clear streaming state in hero-chat
+  // Clear streaming state in kikx-chat
   let heroChat = elements.heroChat;
   if (heroChat && typeof heroChat.setStreaming === 'function') {
     heroChat.setStreaming(null);
@@ -595,7 +595,7 @@ function finalizeStreamingMessage(data) {
     provider.finalizePhantomFrame();
   }
 
-  // Clear streaming state in hero-chat and re-render
+  // Clear streaming state in kikx-chat and re-render
   let heroChat = elements.heroChat;
   if (heroChat) {
     if (typeof heroChat.setStreaming === 'function')
@@ -695,7 +695,7 @@ function showStreamingError(errorMessage) {
     provider.clearPhantomFrame();
   }
 
-  // Sync streaming state to hero-chat
+  // Sync streaming state to kikx-chat
   let heroChat = elements.heroChat;
   if (heroChat && typeof heroChat.setStreaming === 'function') {
     heroChat.setStreaming(null);
@@ -707,7 +707,7 @@ function showStreamingError(errorMessage) {
 
 /**
  * Show a status message in the streaming message (for interactions).
- * Uses the <hero-interaction> WebComponent with jiggling brain emoji.
+ * Uses the <kikx-interaction> WebComponent with jiggling brain emoji.
  */
 function showStreamingStatus(message) {
   let streamingEl = document.getElementById('streaming-message');
@@ -720,12 +720,12 @@ function showStreamingStatus(message) {
     if (bubble) {
       bubble.insertAdjacentHTML('beforeend', `
         <div class="streaming-status">
-          <hero-interaction status="processing" message="${escapeHtml(message)}"></hero-interaction>
+          <kikx-interaction status="processing" message="${escapeHtml(message)}"></kikx-interaction>
         </div>
       `);
     }
   } else {
-    let interactionEl = statusEl.querySelector('hero-interaction');
+    let interactionEl = statusEl.querySelector('kikx-interaction');
     if (interactionEl) {
       interactionEl.setAttribute('message', message);
     }

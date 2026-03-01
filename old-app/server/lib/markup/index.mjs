@@ -1,7 +1,7 @@
 'use strict';
 
 // ============================================================================
-// Hero Markup Language (HML) - Module Exports
+// Kikx Markup Language (HML) - Module Exports
 // ============================================================================
 
 export {

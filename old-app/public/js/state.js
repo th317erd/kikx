@@ -67,15 +67,15 @@ const elements = {
   chatView:     document.getElementById('chat-view'),
   settingsView: document.getElementById('settings-view'),
 
-  // Login (hero-login component handles its own form)
+  // Login (kikx-login component handles its own form)
   loginComponent: document.getElementById('login-component'),
 
-  // Sessions (hero-sessions-list component handles its own DOM)
+  // Sessions (kikx-sessions-list component handles its own DOM)
   sessionsList: document.getElementById('sessions-list'),
 
   // Chat
-  messagesContainer: document.getElementById('chat'),  // hero-chat component
-  heroChat:          document.getElementById('chat'),  // hero-chat component reference
+  messagesContainer: document.getElementById('chat'),  // kikx-chat component
+  heroChat:          document.getElementById('chat'),  // kikx-chat component reference
   chatMain:          document.querySelector('.chat-main'),
 
   // Operations Panel
@@ -87,6 +87,6 @@ const elements = {
 // Read base path from <base> tag (set by server from package.json config)
 const BASE_PATH = document.querySelector('base')?.getAttribute('href')?.replace(/\/$/, '') || '';
 
-// Expose state globally for ES modules (hero-app, session-frames-provider, etc.)
+// Expose state globally for ES modules (kikx-app, session-frames-provider, etc.)
 window.state = state;
 window.elements = elements;

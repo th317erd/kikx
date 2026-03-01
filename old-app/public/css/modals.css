@@ -1,7 +1,7 @@
-/* Hero - Modal Styles */
+/* Kikx - Modal Styles */
 
 /* Native dialog element styles */
-dialog.hero-modal-dialog {
+dialog.kikx-modal-dialog {
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
@@ -24,26 +24,26 @@ dialog.hero-modal-dialog {
   margin: 0 !important;
 }
 
-dialog.hero-modal-dialog::backdrop {
+dialog.kikx-modal-dialog::backdrop {
   background: rgba(0, 0, 0, 0.7);
 }
 
 /* Modal header - fixed at top */
-dialog.hero-modal-dialog > .modal-header {
+dialog.kikx-modal-dialog > .modal-header {
   flex-shrink: 0;
   padding: 16px 24px;
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-tertiary);
 }
 
-dialog.hero-modal-dialog > .modal-header .modal-title {
+dialog.kikx-modal-dialog > .modal-header .modal-title {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
 }
 
 /* Modal main content - scrollable */
-dialog.hero-modal-dialog > .modal-main {
+dialog.kikx-modal-dialog > .modal-main {
   flex: 1;
   padding: 24px;
   overflow-y: auto;
@@ -51,8 +51,8 @@ dialog.hero-modal-dialog > .modal-main {
 }
 
 /* Modal footer - fixed at bottom */
-dialog.hero-modal-dialog > .modal-footer,
-dialog.hero-modal-dialog > footer {
+dialog.kikx-modal-dialog > .modal-footer,
+dialog.kikx-modal-dialog > footer {
   flex-shrink: 0;
   display: flex;
   justify-content: flex-end;
@@ -63,7 +63,7 @@ dialog.hero-modal-dialog > footer {
 }
 
 /* Legacy dialog styles for compatibility */
-dialog[open]:not(.hero-modal-dialog) {
+dialog[open]:not(.kikx-modal-dialog) {
   display: block;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);

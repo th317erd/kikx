@@ -68,13 +68,13 @@ export class OrgUserRolesUpdatedEmailTemplate extends OrgBaseTemplate {
         this.header(
           this.langTerm(
             'email.org.userRolesUpdated.header',
-            'Your user permissions have been updated for the {{name}} Hero organization:',
+            'Your user permissions have been updated for the {{name}} Kikx organization:',
             { params: { name: this.secondaryColor(organization.name) } },
           ),
         ),
       ),
       this.table(
-        { 'css-class': 'hero-group' },
+        { 'css-class': 'kikx-group' },
         {
           columns: [
             {
@@ -126,7 +126,7 @@ export class OrgUserRolesUpdatedEmailTemplate extends OrgBaseTemplate {
       ),
       this.section(
         this.text(
-          this.langTerm('email.org.userRolesUpdated.content', 'Click the button below to view the Hero web app.'),
+          this.langTerm('email.org.userRolesUpdated.content', 'Click the button below to view the Kikx web app.'),
           {
             'padding-top':    this.sizePX(16),
             'padding-bottom': this.sizePX(8),

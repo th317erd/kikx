@@ -328,7 +328,7 @@ When taking action, respond ONLY with the JSON block - no other text:
 
 ---
 
-# Hero Markup Language (HML)
+# Kikx Markup Language (HML)
 
 As an alternative to JSON assertion blocks, you can use **inline HML elements** directly in your prose. This allows for a more natural writing style while still executing operations.
 

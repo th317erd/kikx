@@ -16,10 +16,10 @@ const APP_CONFIG = Nife.extend(true, {
   application: {
     development: {
       domain:             'wyatt-desktop.mythix.info',
-      appRootURL:         'https://wyatt-desktop.mythix.info/hero/',
-      mfaPageURL:         'https://wyatt-desktop.mythix.info/hero/pages/mfa',
-      afterLoginPageURL:  'https://wyatt-desktop.mythix.info/hero/pages/home',
-      magicLinkURL:       'https://wyatt-desktop.mythix.info/hero/login',
+      appRootURL:         'https://wyatt-desktop.mythix.info/kikx/',
+      mfaPageURL:         'https://wyatt-desktop.mythix.info/kikx/pages/mfa',
+      afterLoginPageURL:  'https://wyatt-desktop.mythix.info/kikx/pages/home',
+      magicLinkURL:       'https://wyatt-desktop.mythix.info/kikx/login',
       getHelpURL:         'https://gethelp.com/',
     },
   },

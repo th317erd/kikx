@@ -10,7 +10,7 @@ import { tmpdir } from 'os';
 // Environment Setup
 // ============================================================================
 
-let testDir = mkdtempSync(join(tmpdir(), 'hero-content-registry-test-'));
+let testDir = mkdtempSync(join(tmpdir(), 'kikx-content-registry-test-'));
 
 process.env.HERO_JWT_SECRET     = 'test-secret-key-for-testing';
 process.env.HERO_ENCRYPTION_KEY = 'test-encryption-key-32chars!!';
@@ -103,13 +103,13 @@ describe('Content Type Registry', async () => {
       content.registerContentType('map-test', {
         description:     'Map view',
         source:          'map-plugin',
-        clientComponent: 'hero-map-view',
+        clientComponent: 'kikx-map-view',
       });
 
       let renderer = content.getContentRenderer('map-test');
       assert.ok(renderer);
       assert.strictEqual(renderer.description, 'Map view');
-      assert.strictEqual(renderer.clientComponent, 'hero-map-view');
+      assert.strictEqual(renderer.clientComponent, 'kikx-map-view');
     });
 
     it('should return null for unknown type', () => {

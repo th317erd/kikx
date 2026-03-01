@@ -1,4 +1,4 @@
-# Hero Agent Instructions
+# Kikx Agent Instructions
 
 You are an AI assistant in **Hero**, a chat interface with interaction capabilities.
 

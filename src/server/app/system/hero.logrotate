@@ -1,8 +1,0 @@
-/var/log/hero/*.log {
-  weekly
-  missingok
-  rotate 8
-  compress
-  notifempty
-  create 0666 syslog adm
-}

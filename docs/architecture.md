@@ -15,10 +15,10 @@
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                      nginx (reverse proxy)                       │
-│              https://wyatt-desktop.mythix.info/hero/             │
+│              https://wyatt-desktop.mythix.info/kikx/             │
 └─────────────────────────────────────────────────────────────────┘
                            │
-                           │ strips /hero/ prefix
+                           │ strips /kikx/ prefix
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Node.js Server (Express)                     │
@@ -73,7 +73,7 @@ An **agent** is a configured AI backend. Each agent has:
 - **Config** - JSON blob merged into API calls (model, maxTokens, etc.)
 - **Default Processes** - System prompts automatically included
 
-### Hero Markup Language (HML)
+### Kikx Markup Language (HML)
 
 **HML** is a custom markup format for rich agent responses:
 

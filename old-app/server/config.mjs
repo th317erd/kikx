@@ -45,7 +45,7 @@ export const config = Object.freeze({
   port:     parseInt(get('PORT', '8098'), 10),
   host:     get('HOST', '0.0.0.0'),
   baseUrl:  get('BASE_URL', `http://localhost:${get('PORT', '8098')}/`),
-  basePath: packageJson.hero?.basePath || '/',
+  basePath: packageJson.kikx?.basePath || '/',
 
   // Security
   jwtSecret:     requireEnv('JWT_SECRET'),

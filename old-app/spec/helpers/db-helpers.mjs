@@ -19,7 +19,7 @@
 import Database from 'better-sqlite3';
 
 /**
- * Create a fresh in-memory SQLite database with the full Hero schema.
+ * Create a fresh in-memory SQLite database with the full Kikx schema.
  *
  * Includes: users, agents, sessions, session_participants, frames,
  * abilities, ability_approvals, session_approvals, permission_rules,

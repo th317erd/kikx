@@ -1,6 +1,6 @@
 'use strict';
 
-// History API router for Hero V2.
+// History API router for Kikx V2.
 // Clean URLs, route matching with params, auth guard, navigation events.
 
 let routes                = [];
@@ -8,7 +8,7 @@ let currentRoute          = null;
 let currentParams         = {};
 let listeners             = [];
 let authCheckFunction     = null;
-let unauthorizedRedirect  = '/hero/login';
+let unauthorizedRedirect  = '/kikx/login';
 
 export function defineRoute(path, name, options = {}) {
   routes.push({ path, name, pattern: compilePattern(path), ...options });
@@ -124,5 +124,5 @@ export function reset() {
   currentParams        = {};
   listeners            = [];
   authCheckFunction    = null;
-  unauthorizedRedirect = '/hero/login';
+  unauthorizedRedirect = '/kikx/login';
 }

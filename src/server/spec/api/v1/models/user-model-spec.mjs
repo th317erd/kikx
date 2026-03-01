@@ -89,11 +89,11 @@ describe('UserModel', function() {
       let notification = await models.Notification.first();
       let emailBodyMatch;
 
-      notification.content.replace(/<a\s+href\s*=\s*"(https:\/\/test\.hero\.com\/api\/v1\/auth\/login[^"]+)/i, (m, href) => {
+      notification.content.replace(/<a\s+href\s*=\s*"(https:\/\/test\.kikx\.com\/api\/v1\/auth\/login[^"]+)/i, (m, href) => {
         emailBodyMatch = href;
       });
 
-      expect((/https:\/\/test\.hero\.com\/api\/v1\/auth\/login\?magicToken=[A-Za-z0-9_=-]+/).test(emailBodyMatch)).toEqual(true);
+      expect((/https:\/\/test\.kikx\.com\/api\/v1\/auth\/login\?magicToken=[A-Za-z0-9_=-]+/).test(emailBodyMatch)).toEqual(true);
     });
   });
 

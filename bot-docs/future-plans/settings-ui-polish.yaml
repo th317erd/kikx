@@ -4,11 +4,11 @@
 # Complexity: Low-Medium
 
 summary: >
-  Polish the hero-settings component with full tab functionality,
+  Polish the kikx-settings component with full tab functionality,
   form validation, and integration with all backend APIs.
 
 current_state: >
-  hero-settings component exists with tabs (Profile, Account, API Keys,
+  kikx-settings component exists with tabs (Profile, Account, API Keys,
   Permissions, Billing). Basic routing works (F4 complete). Profile and
   password forms are wired. API key management UI is stubbed.
   The backend APIs are fully functional.
@@ -23,8 +23,8 @@ requirements:
   - Toast/notification on save success/failure
 
 files:
-  - public/js/components/hero-settings/hero-settings.js
-  - public/js/components/hero-settings/hero-settings.html
+  - public/js/components/kikx-settings/kikx-settings.js
+  - public/js/components/kikx-settings/kikx-settings.html
   - public/js/api.js                     # API.user namespace (already exists)
 
 tests:

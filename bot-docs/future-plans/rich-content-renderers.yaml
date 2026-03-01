@@ -36,10 +36,10 @@ design_notes: >
   with that content type is actually rendered in the viewport.
 
 files:
-  - server/plugins/hero-plugin-map/          # Map renderer
-  - server/plugins/hero-plugin-chart/        # Chart renderer
-  - server/plugins/hero-plugin-diagram/      # Diagram renderer
-  - public/js/components/hero-content-*/     # Client web components
+  - server/plugins/kikx-plugin-map/          # Map renderer
+  - server/plugins/kikx-plugin-chart/        # Chart renderer
+  - server/plugins/kikx-plugin-diagram/      # Diagram renderer
+  - public/js/components/kikx-content-*/     # Client web components
 
 tests:
   - Plugin registers content type on load

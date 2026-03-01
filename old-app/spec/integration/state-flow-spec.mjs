@@ -3,7 +3,7 @@
 // ============================================================================
 // State Flow Integration Tests (S1)
 // ============================================================================
-// Tests single source of truth: session-frames-provider → hero-chat rendering.
+// Tests single source of truth: session-frames-provider → kikx-chat rendering.
 // Verifies that all state flows through one path, not dual stores.
 //
 // Planned tests: STATE-001 through STATE-005, GUARD-003, RENDER-002
@@ -77,7 +77,7 @@ describe('STATE-002: Frames added to provider → chat renders from provider', (
     assert.strictEqual(session.findById(1).content, 'SessionStore message');
     assert.strictEqual(compiled.get('frame-1').content, 'Frame message');
 
-    // The contract: hero-chat.visibleMessages reads from provider.frames, NOT from SessionStore
+    // The contract: kikx-chat.visibleMessages reads from provider.frames, NOT from SessionStore
     // This test verifies the data model separation
     assert.notStrictEqual(
       session.findById(1).content,
@@ -120,7 +120,7 @@ describe('STATE-002: Frames added to provider → chat renders from provider', (
       }),
     ];
 
-    // Filter displayable (same logic as hero-chat.visibleMessages)
+    // Filter displayable (same logic as kikx-chat.visibleMessages)
     const displayable = frames.filter((f) => f.type !== 'update');
 
     assert.strictEqual(displayable.length, 1);

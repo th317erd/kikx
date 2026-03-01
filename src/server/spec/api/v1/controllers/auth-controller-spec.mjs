@@ -57,7 +57,7 @@ describe('AuthController', function() {
 
         let result = await app.get(`/api/v1/auth/login?magicToken=${sessionToken}`, { followRedirect: false });
         expect(result.statusCode).toEqual(302);
-        expect(result.headers['location']).toEqual(`https://test.hero.com/pages/mfa?magicToken=${sessionToken}`);
+        expect(result.headers['location']).toEqual(`https://test.kikx.com/pages/mfa?magicToken=${sessionToken}`);
       });
 
       it('should fail if magicToken is invalid #1', async () => {
@@ -127,14 +127,14 @@ describe('AuthController', function() {
 
         let result = await app.get(`/api/v1/auth/login?magicToken=${sessionToken}`);
         expect(result.statusCode).toEqual(302);
-        expect(result.headers['location']).toEqual('https://test.hero.com/pages/home');
+        expect(result.headers['location']).toEqual('https://test.kikx.com/pages/home');
 
         expect(result.headers['x-session-token']).toMatch(URL_SAFE_BASE64_REGEXP);
 
         let cookie = result.headers['set-cookie'];
         expect((new RegExp(`^${app.getAuthTokenCookieName()}=[A-Za-z0-9_=-]+(%3D)*;`)).test(cookie)).toEqual(true);
         expect((/Max-Age=2592000;/).test(cookie)).toEqual(true);
-        expect((/Domain=test\.hero\.com;/).test(cookie)).toEqual(true);
+        expect((/Domain=test\.kikx\.com;/).test(cookie)).toEqual(true);
         expect((/Path=\/;/).test(cookie)).toEqual(true);
         expect((/HttpOnly;/).test(cookie)).toEqual(true);
         expect((/Secure;/).test(cookie)).toEqual(true);
@@ -168,7 +168,7 @@ describe('AuthController', function() {
         expect(result.statusCode).toEqual(200);
         expect(result.body.data).toEqual({
           needsMFA:     true,
-          redirectURL:  `https://test.hero.com/pages/mfa?magicToken=${sessionToken}`,
+          redirectURL:  `https://test.kikx.com/pages/mfa?magicToken=${sessionToken}`,
         });
       });
 
@@ -245,7 +245,7 @@ describe('AuthController', function() {
         let cookie = result.headers['set-cookie'];
         expect((new RegExp(`^${app.getAuthTokenCookieName()}=[A-Za-z0-9_=-]+(%3D)*;`)).test(cookie)).toEqual(true);
         expect((/Max-Age=2592000;/).test(cookie)).toEqual(true);
-        expect((/Domain=test\.hero\.com;/).test(cookie)).toEqual(true);
+        expect((/Domain=test\.kikx\.com;/).test(cookie)).toEqual(true);
         expect((/Path=\/;/).test(cookie)).toEqual(true);
         expect((/HttpOnly;/).test(cookie)).toEqual(true);
         expect((/Secure;/).test(cookie)).toEqual(true);
@@ -281,7 +281,7 @@ describe('AuthController', function() {
         let cookie = result.headers['set-cookie'];
         expect((new RegExp(`^${app.getAuthTokenCookieName()}=[A-Za-z0-9_=-]+(%3D)*;`)).test(cookie)).toEqual(true);
         expect((/Max-Age=0;/).test(cookie)).toEqual(true);
-        expect((/Domain=test\.hero\.com;/).test(cookie)).toEqual(true);
+        expect((/Domain=test\.kikx\.com;/).test(cookie)).toEqual(true);
         expect((/Path=\/;/).test(cookie)).toEqual(true);
         expect((/HttpOnly;/).test(cookie)).toEqual(true);
         expect((/Secure;/).test(cookie)).toEqual(true);
@@ -306,12 +306,12 @@ describe('AuthController', function() {
         expect(result.body).toEqual({ data: { success: true } });
 
         let notification = await models.Notification.first();
-        expect(notification.subject).toEqual('Hero Magic Login Link');
+        expect(notification.subject).toEqual('Kikx Magic Login Link');
 
-        let emailBodyMatch = notification.content.match(/<a\s+href\s*=\s*"(https:\/\/test\.hero\.com\/api\/v1\/auth\/login[^"]+)/i);
+        let emailBodyMatch = notification.content.match(/<a\s+href\s*=\s*"(https:\/\/test\.kikx\.com\/api\/v1\/auth\/login[^"]+)/i);
         expect(emailBodyMatch).toBeInstanceOf(Array);
         expect(emailBodyMatch.length).toEqual(2);
-        expect((/^https:\/\/test\.hero\.com\/api\/v1\/auth\/login\?magicToken=[A-Za-z0-9_=-]+$/).test(emailBodyMatch[1])).toEqual(true);
+        expect((/^https:\/\/test\.kikx\.com\/api\/v1\/auth\/login\?magicToken=[A-Za-z0-9_=-]+$/).test(emailBodyMatch[1])).toEqual(true);
       });
     });
   });
@@ -331,7 +331,7 @@ describe('AuthController', function() {
 
         // Capture the login link from the email arguments
         let notification    = await models.Notification.first();
-        let emailBodyMatch  = notification.content.match(/<a\s+href\s*=\s*"(https:\/\/test\.hero\.com\/api\/v1\/auth\/login[^"]+)/i);
+        let emailBodyMatch  = notification.content.match(/<a\s+href\s*=\s*"(https:\/\/test\.kikx\.com\/api\/v1\/auth\/login[^"]+)/i);
         let magicToken      = emailBodyMatch[1].match(/magicToken=([A-Za-z0-9_=-]+)$/)[1];
 
         expect(magicToken).toMatch(URL_SAFE_BASE64_REGEXP);
@@ -346,7 +346,7 @@ describe('AuthController', function() {
         expect(await models.InvalidToken.isInvalid(magicToken)).toEqual(true);
 
         // Now verify that the user has a session
-        expect(result.headers['location']).toEqual('https://test.hero.com/pages/home');
+        expect(result.headers['location']).toEqual('https://test.kikx.com/pages/home');
 
         let sessionToken = result.headers['x-session-token'];
         expect(sessionToken).toMatch(URL_SAFE_BASE64_REGEXP);
@@ -366,7 +366,7 @@ describe('AuthController', function() {
 
         // Capture the login link from the email arguments
         let notification    = await models.Notification.first();
-        let emailBodyMatch  = notification.content.match(/<a\s+href\s*=\s*"(https:\/\/test\.hero\.com\/api\/v1\/auth\/login[^"]+)/i);
+        let emailBodyMatch  = notification.content.match(/<a\s+href\s*=\s*"(https:\/\/test\.kikx\.com\/api\/v1\/auth\/login[^"]+)/i);
         let magicToken      = emailBodyMatch[1].match(/magicToken=([A-Za-z0-9_=-]+)$/)[1];
 
         expect(magicToken).toMatch(URL_SAFE_BASE64_REGEXP);

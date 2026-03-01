@@ -57,7 +57,7 @@ async function main() {
   let args     = process.argv.slice(2);
   let username = args[0];
 
-  console.log('Hero - Change Password\n');
+  console.log('Kikx - Change Password\n');
 
   // Get username if not provided
   if (!username)

@@ -8,7 +8,7 @@ let pushStateHistory  = [];
 let popstateListeners = [];
 
 globalThis.window = {
-  location: { pathname: '/hero/' },
+  location: { pathname: '/kikx/' },
   history:  {
     pushState: (state, title, url) => {
       pushStateHistory.push(url);
@@ -60,7 +60,7 @@ describe('router', () => {
     // Reset mock state.
     pushStateHistory.length  = 0;
     popstateListeners.length = 0;
-    globalThis.window.location.pathname = '/hero/';
+    globalThis.window.location.pathname = '/kikx/';
     cleanupFunctions.length = 0;
 
     // Reset all router module state so routes, listeners, and auth config
@@ -78,44 +78,44 @@ describe('router', () => {
   // ------------------------------------------------------------------ helpers
 
   function setupRoutes() {
-    defineRoute('/hero/login',        'login');
-    defineRoute('/hero/',             'home');
-    defineRoute('/hero/sessions/:id', 'session');
-    defineRoute('/hero/settings',     'settings');
+    defineRoute('/kikx/login',        'login');
+    defineRoute('/kikx/',             'home');
+    defineRoute('/kikx/sessions/:id', 'session');
+    defineRoute('/kikx/settings',     'settings');
   }
 
   // ------------------------------------------------------------------ tests
 
   it('defineRoute() registers a route that is matched when navigate() is called', () => {
-    defineRoute('/hero/', 'home');
-    navigate('/hero/');
+    defineRoute('/kikx/', 'home');
+    navigate('/kikx/');
     let { route } = getCurrentRoute();
     assert.equal(route.name, 'home');
   });
 
   it('navigate() pushes the path to history', () => {
-    defineRoute('/hero/', 'home');
-    navigate('/hero/');
-    assert.ok(pushStateHistory.includes('/hero/'));
+    defineRoute('/kikx/', 'home');
+    navigate('/kikx/');
+    assert.ok(pushStateHistory.includes('/kikx/'));
   });
 
   it('navigate() resolves to the correct route', () => {
     setupRoutes();
-    navigate('/hero/settings');
+    navigate('/kikx/settings');
     let { route } = getCurrentRoute();
     assert.equal(route.name, 'settings');
   });
 
   it('navigate() extracts named params from the URL', () => {
     setupRoutes();
-    navigate('/hero/sessions/abc123');
+    navigate('/kikx/sessions/abc123');
     let { params } = getCurrentRoute();
     assert.equal(params.id, 'abc123');
   });
 
   it('getCurrentRoute() returns current matched route and params together', () => {
     setupRoutes();
-    navigate('/hero/sessions/xyz');
+    navigate('/kikx/sessions/xyz');
     let { route, params } = getCurrentRoute();
     assert.equal(route.name, 'session');
     assert.equal(params.id, 'xyz');
@@ -123,7 +123,7 @@ describe('router', () => {
 
   it('getParams() returns a copy of the current params', () => {
     setupRoutes();
-    navigate('/hero/sessions/copy-test');
+    navigate('/kikx/sessions/copy-test');
     let params = getParams();
     assert.equal(params.id, 'copy-test');
 
@@ -141,7 +141,7 @@ describe('router', () => {
     });
     cleanupFunctions.push(unsubscribe);
 
-    navigate('/hero/settings');
+    navigate('/kikx/settings');
     assert.equal(callCount, 1);
   });
 
@@ -153,11 +153,11 @@ describe('router', () => {
       callCount++;
     });
 
-    navigate('/hero/settings');
+    navigate('/kikx/settings');
     assert.equal(callCount, 1);
 
     unsubscribe();
-    navigate('/hero/');
+    navigate('/kikx/');
     assert.equal(callCount, 1);
   });
 
@@ -173,33 +173,33 @@ describe('router', () => {
     let unsubscribeThird  = onRouteChange(() => { thirdCallCount++; });
     cleanupFunctions.push(unsubscribeFirst, unsubscribeSecond, unsubscribeThird);
 
-    navigate('/hero/settings');
+    navigate('/kikx/settings');
     assert.equal(firstCallCount, 1);
     assert.equal(secondCallCount, 1);
     assert.equal(thirdCallCount, 1);
   });
 
   it('auth guard redirects to login when route requiresAuthentication and user is not authenticated', () => {
-    defineRoute('/hero/login',        'login');
-    defineRoute('/hero/',             'home');
-    defineRoute('/hero/sessions/:id', 'session', { requiresAuthentication: true });
-    defineRoute('/hero/settings',     'settings');
+    defineRoute('/kikx/login',        'login');
+    defineRoute('/kikx/',             'home');
+    defineRoute('/kikx/sessions/:id', 'session', { requiresAuthentication: true });
+    defineRoute('/kikx/settings',     'settings');
 
     setAuthCheck(() => false);
 
-    navigate('/hero/sessions/secret');
+    navigate('/kikx/sessions/secret');
     let { route } = getCurrentRoute();
     assert.equal(route.name, 'login');
   });
 
   it('auth guard allows navigation when route requiresAuthentication and user is authenticated', () => {
-    defineRoute('/hero/login',        'login');
-    defineRoute('/hero/',             'home');
-    defineRoute('/hero/sessions/:id', 'session', { requiresAuthentication: true });
-    defineRoute('/hero/settings',     'settings');
+    defineRoute('/kikx/login',        'login');
+    defineRoute('/kikx/',             'home');
+    defineRoute('/kikx/sessions/:id', 'session', { requiresAuthentication: true });
+    defineRoute('/kikx/settings',     'settings');
 
     setAuthCheck(() => true);
-    navigate('/hero/sessions/permitted');
+    navigate('/kikx/sessions/permitted');
     let { route, params } = getCurrentRoute();
     assert.equal(route.name, 'session');
     assert.equal(params.id, 'permitted');
@@ -208,21 +208,21 @@ describe('router', () => {
   it('navigate() with replace:true uses replaceState instead of pushState', () => {
     setupRoutes();
     let beforeLength = pushStateHistory.length;
-    navigate('/hero/', { replace: true });
+    navigate('/kikx/', { replace: true });
     assert.equal(pushStateHistory.length, beforeLength);
-    assert.equal(globalThis.window.location.pathname, '/hero/');
+    assert.equal(globalThis.window.location.pathname, '/kikx/');
   });
 
   it('unmatched route sets currentRoute to null', () => {
     setupRoutes();
-    navigate('/hero/does-not-exist');
+    navigate('/kikx/does-not-exist');
     let { route } = getCurrentRoute();
     assert.equal(route, null);
   });
 
   it('start() resolves the initial URL immediately', () => {
     setupRoutes();
-    globalThis.window.location.pathname = '/hero/settings';
+    globalThis.window.location.pathname = '/kikx/settings';
     start();
     let { route } = getCurrentRoute();
     assert.equal(route.name, 'settings');
@@ -233,7 +233,7 @@ describe('router', () => {
     start();
 
     // Simulate the browser changing the URL and firing popstate.
-    globalThis.window.location.pathname = '/hero/sessions/back-nav';
+    globalThis.window.location.pathname = '/kikx/sessions/back-nav';
     firePopState();
 
     let { route, params } = getCurrentRoute();
@@ -252,17 +252,17 @@ describe('router', () => {
 
   it('route matching: more specific routes registered first match before less specific ones', () => {
     // Register a catch-all-like pattern last to confirm order matters.
-    defineRoute('/hero/sessions/new',  'new-session');
-    defineRoute('/hero/sessions/:id',  'session');
+    defineRoute('/kikx/sessions/new',  'new-session');
+    defineRoute('/kikx/sessions/:id',  'session');
 
-    navigate('/hero/sessions/new');
+    navigate('/kikx/sessions/new');
     let { route } = getCurrentRoute();
     assert.equal(route.name, 'new-session');
   });
 
   it('route without :params matches exactly (no partial matching)', () => {
-    defineRoute('/hero/', 'home');
-    navigate('/hero/');
+    defineRoute('/kikx/', 'home');
+    navigate('/kikx/');
     let { route, params } = getCurrentRoute();
     assert.equal(route.name, 'home');
     assert.deepEqual(params, {});

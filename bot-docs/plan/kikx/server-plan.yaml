@@ -1,0 +1,877 @@
+# =============================================================================
+# Kikx V2 Server Architecture Plan
+# =============================================================================
+# Captures ALL resolved decisions from Rounds 1-19 of design Q&A.
+# Status: All rounds complete. No open items.
+# =============================================================================
+
+meta:
+  title: "Kikx V2 Server Architecture Plan"
+  version: "0.2.0"
+  rounds_completed: 19
+  last_updated: "2026-02-28"
+
+# =============================================================================
+# 1. Architecture: Embeddable Core
+# =============================================================================
+# The fundamental split: core engine has ZERO HTTP dependencies.
+# It can run standalone in CLI, Discord bot, Electron, etc.
+
+architecture:
+  principle: "Embeddable Core + Thin Server Wrapper"
+  split:
+    core:
+      path: "src/core/"
+      description: >
+        Embeddable engine with zero HTTP dependencies. Can run without
+        Express/Mythix server. Suitable for CLI, Discord bot, Electron, etc.
+      entry_point: "createKikxCore(config)"
+      returns: "Core instance with full plugin/session/interaction capabilities"
+    server:
+      path: "src/server/"
+      description: >
+        Thin Mythix wrapper that delegates everything to core. HTTP routes
+        are just adapters that call core methods.
+
+  # FrameManager is shared between client and server from the same path
+  frame_manager:
+    location: "src/core/frame-manager/"
+    note: "Moved from src/shared/frame-manager/ -- single source of truth"
+    shared: true  # Client and server import from the same core path
+
+# =============================================================================
+# 2. Directory Structure
+# =============================================================================
+directory_structure:
+  src:
+    core:
+      description: "Embeddable engine -- zero HTTP dependencies"
+      children:
+        "index.mjs": "createKikxCore(config) entry point"
+        frame-manager: "Moved from src/shared/"
+        plugin-loader:
+          description: "Discovery, lifecycle, dependency resolution"
+          children:
+            "registry.mjs": "In-memory registries"
+            "help-index.mjs": "Grep-style help system"
+            providers: "PluginProvider implementations"
+            "plugin-interface.mjs": "Base class for plugins"
+        session: "Session manager -- CRUD, participants"
+        frames:
+          description: "Frame persistence -- DB sync"
+        permissions: "Policy engine (OOP, plugin-extensible)"
+        interaction:
+          description: "Async generator interaction loop"
+          children:
+            "pipeline.mjs": "prepareMessage hook chain"
+        auth: "Authentication (core-level, not HTTP-level)"
+        crypto:
+          description: "Keystore, encryption chain"
+          children:
+            "keystore.mjs": "Master key / per-user key management"
+        models: "Organization, User, Role, Agent, Session"
+        context: "Cascading context (Object.create chain)"
+        transport:
+          description: "Pluggable transport (SSE, WS, EventEmitter)"
+          children:
+            "interface.mjs": "Transport base class"
+        lib:
+          description: "Core library utilities"
+          children:
+            "content-sanitizer.mjs": "Server-side HTML allowlist sanitizer"
+        config: "Configuration loading, defaults"
+        plugins: "Internal/built-in plugins"
+
+    server:
+      description: "Thin Mythix wrapper"
+      children:
+        app:
+          "application.mjs": "Mythix Application subclass"
+        routes: "HTTP handlers -> core calls"
+        middleware: "Auth, CORS, etc."
+
+    client: "V2 client (existing)"
+    shared: "Cross-platform shared code (if anything remains after FrameManager move)"
+
+# =============================================================================
+# 3. Kernel Components (10 non-plugin core pieces)
+# =============================================================================
+kernel_components:
+  - name: "Mythix Application"
+    level: server
+    description: "HTTP, middleware, config, DB -- server-level only"
+
+  - name: "Auth System"
+    level: server
+    description: "JWT tokens, password auth, cookies"
+
+  - name: "Organization + User + Role Models"
+    level: core
+    description: "Multi-tenant data models"
+
+  - name: "FrameManager"
+    level: core
+    description: >
+      Shared module. Source of truth on server AND client.
+      Both import from src/core/frame-manager/.
+
+  - name: "Plugin Loader"
+    level: core
+    description: "Discovery, lifecycle, dependency resolution, registries"
+
+  - name: "WebSocket Manager"
+    level: core
+    description: "Connection, auth, message routing -- via Transport interface"
+
+  - name: "SSE Manager"
+    level: core
+    description: "Streaming connections -- via Transport interface"
+
+  - name: "Session Manager"
+    level: core
+    description: "CRUD, participants, FrameManager instances per session"
+
+  - name: "Frame Persistence"
+    level: core
+    description: "DB <-> FrameManager sync"
+
+  - name: "Permissions System"
+    level: core
+    description: "Kernel-level, OOP, wraps around everything"
+
+# =============================================================================
+# 4. Plugin Architecture
+# =============================================================================
+plugin_architecture:
+  format: "Directory-based: plugins/name/index.mjs"
+
+  lifecycle:
+    setup: "setup(context) -- entry point, receives context, returns teardown closure"
+    teardown: "Returned as a closure from setup() -- not a separate method"
+    note: "Both setup and teardown are scoped together because PluginInterface is provided via context"
+
+  exports:
+    setup: "Required -- the plugin entry point"
+    named: "Optional named exports alongside setup: constants, enums, help text"
+
+  classes:
+    note: "Classes defined INSIDE setup() since PluginInterface lives on context"
+
+  conflicts:
+    behavior: "Implicit override with warning (not error)"
+    rationale: "Allows plugins to upgrade/overload other plugins"
+
+  context_provides:
+    - "registerCommand()"
+    - "registerTool()"
+    - "PluginInterface"  # Base class for all tools
+
+  base_class:
+    name: "PluginInterface"
+    methods:
+      execute: "Wrapper method (public API)"
+      _execute: "Workhorse method (override this)"
+      getHelp: "Returns help text for help index registration"
+      getPermissionsClass: "Override point for advanced permission matching (receives context)"
+    constructor_behavior: "Auto-configured permissions"
+    umk_sandboxing: "UMK NEVER reaches plugin _execute() -- sandboxed from plugins"
+    static_metadata:
+      - pluginId
+      - featureName
+      - displayName
+      - description
+      - icon
+      - version
+
+  naming_convention: "{pluginId}:{featureName}"
+  naming_examples:
+    - "bash-plugin:bash"
+    - "claude-agent:claude"
+    - "websearch:websearch"
+
+  # All registered tools must extend context.PluginInterface
+  registration_rule: "All registered tools extend context.PluginInterface"
+
+# =============================================================================
+# 5. Plugin Loading -- Provider Interface
+# =============================================================================
+plugin_loading:
+  base_class: "PluginProvider"
+  methods:
+    - "discover()"
+    - "load()"
+    - "watch()"
+    - "unwatch()"
+
+  shipped_providers:
+    - name: "FilesystemPluginProvider"
+      description: "Scans directories for plugin folders"
+      phase: 1
+
+    - name: "NpmPluginProvider"
+      description: "Scans node_modules for kikx-plugin-* packages"
+      phase: 3
+
+    - name: "InMemoryPluginProvider"
+      description: "For testing and embedded use"
+      phase: 1
+
+  plugin_locations:
+    internal: "src/core/plugins/"
+    external:
+      - "~/.config/kikx/plugins/"
+      - "npm packages matching kikx-plugin-*"
+
+# =============================================================================
+# 6. Interaction Loop
+# =============================================================================
+interaction_loop:
+  pattern: "Async generator"
+  description: >
+    Agent plugin is an async generator that yields blocks. The kernel
+    iterates, reacting to each yielded block. Tool results are passed
+    back into the generator via the yield protocol.
+  design_note: "No explicit loop -- event-driven via generator yields"
+
+  flow:
+    - "Agent plugin yields a block (text, tool call, etc.)"
+    - "Kernel receives yielded block"
+    - "Kernel processes block (execute tool, create frame, etc.)"
+    - "Kernel sends result back into generator via next(result)"
+    - "Generator yields next block or returns"
+
+  # Permission Hard-Break (Round 13-14)
+  permission_hard_break:
+    description: >
+      When agent hits a tool that needs permission approval, the interaction
+      ENDS. No suspended generator state.
+    flow:
+      - "Agent yields tool call requiring permission"
+      - "Kernel detects permission needed"
+      - "Pending action persisted as a frame (tool name, arguments, context)"
+      - "Permission-request frame sent to user"
+      - "Generator destroyed -- no suspended state"
+      - "User approves permission"
+      - "Server executes the tool, stores result frame"
+      - "NEW interaction starts with full history"
+      - "Agent sees full conversation including tool result and continues naturally"
+    processed_flag: >
+      Frame 'processed' flag distinguishes 'already handled' frames from
+      'new' frames when replaying history into a fresh interaction.
+
+  # Queue + Cancel UX (Round 14-15)
+  queue_and_cancel:
+    description: "User messages while agent is busy"
+    queue_behavior:
+      - "User sends message while agent is busy -> goes to queue"
+      - "Multiple queued messages concatenate into one (separated by \\n\\n)"
+    on_natural_completion: "Queued message auto-sends immediately as new interaction"
+    on_cancel:
+      - "Current interaction cancelled (Esc)"
+      - "Queued message placed in input field"
+      - "If user was typing, their text is appended to the concatenated queue"
+      - "User can edit the combined text or resend as-is"
+
+# =============================================================================
+# 7. Agent Output Format
+# =============================================================================
+# REPLACES the former HML Streaming Format section.
+# HML as a server-side text parsing format is ELIMINATED.
+# No custom tokenizer, no streaming tag extraction.
+
+agent_output_format:
+  principle: "Agent outputs HTML, not HML"
+  description: >
+    Claude (and other agents) instructed to output HTML via system prompt.
+    No markdown-to-HTML conversion (tried in V1, <p> tag pollution broke
+    inline flow). Agent can embed custom WebComponent tags in HTML output.
+
+  # Two-Channel Architecture
+  two_channels:
+    structured_tool_calls:
+      description: "Claude API tool_use blocks"
+      purpose: "Tool execution, permissions -- anything needing server orchestration"
+    inline_html:
+      description: "HTML with custom elements in agent text output"
+      purpose: "Text formatting, prompts, read-only display elements"
+
+  dividing_line:
+    server_action: "Structured tool call"
+    user_display: "Inline HTML"
+
+  # HTML Sanitization
+  sanitization:
+    library: "sanitize-html or similar"
+    location: "src/core/lib/content-sanitizer.mjs"
+    allowed_html:
+      - "b, i, em, strong, code, pre"
+      - "h1, h2, h3, h4, h5, h6"
+      - "p, a, img"
+      - "ul, ol, li"
+      - "table, thead, tbody, tr, th, td"
+      - "br, hr, blockquote, span, div"
+    allowed_custom_elements:
+      - "kikx-hml-prompt"
+      - "kikx-hml-option"
+      - "Other registered custom elements from plugins"
+    stripped:
+      - "script, iframe, style, object, embed"
+      - "Event handlers (onclick, onload, etc.)"
+      - "javascript: URIs"
+    plugin_extension: "Plugins can extend the allowlist when they register custom elements"
+
+# =============================================================================
+# 8. Agent Identity
+# =============================================================================
+agent_identity:
+  plugin:
+    definition: "Agent TYPE"
+    examples:
+      - "ClaudeAgent"
+      - "OpenAIAgent"
+
+  agent:
+    definition: "Configured INSTANCE (org-level)"
+    properties:
+      - name
+      - api_key
+      - instructions
+
+  participant:
+    definition: "Agent IN a session"
+    properties:
+      - alias
+      - session_overrides
+
+  management:
+    crud: "REST CRUD for agents at org level"
+    session_aliasing:
+      command: "/invite @name as BobTheBurgerGuy"
+      description: "Rename agent within a session context"
+
+# =============================================================================
+# 9. Abilities as DM (Direct Message Configuration)
+# =============================================================================
+abilities_as_dm:
+  concept: "DM/PM conversation with agent = agent's instruction set"
+
+  behavior:
+    - "Agent self-maintains instruction summary from DM history"
+    - "Summary injected into primer for other sessions"
+    - "Natural language configuration -- no forms/wizards"
+    - "Character system could influence compliance style"
+
+  direct_access:
+    endpoints: "/agent/ endpoints"
+    note: "Not locked to chat only -- direct view/edit also available"
+
+# =============================================================================
+# 10. Primer System
+# =============================================================================
+primer_system:
+  philosophy: "Small, dynamic -- 'HOW to be' not 'HERE is everything'"
+
+  composition:
+    - "Agent instructions"
+    - "Plugin __onstart exports"
+    - "DM instruction summary"
+
+  discovery: "Agent can poll help system to discover available tools/commands"
+  plugin_help: "Plugins are queryable, write help manuals"
+
+# =============================================================================
+# 11. Help System
+# =============================================================================
+help_system:
+  type: "Grep-style regexp search"
+  storage: "Column-delimited in-memory index"
+  columns:
+    - name
+    - displayName
+    - description
+    - tags
+    - pluginId
+  separator: "::"
+
+  query_mechanism: "Tool call via structured tool interface (not inline tags)"
+  implementation: "Simple in-memory search, no database needed"
+  primer_instruction: "use help to discover what's available"
+
+# =============================================================================
+# 12. prepareMessage Hook
+# =============================================================================
+prepare_message_hook:
+  description: "Single interceptor for ALL message boundary crossings"
+
+  signature: "prepareMessage({ source, target, message, context })"
+
+  actions:
+    - "Pass through (no modification)"
+    - "Modify message"
+    - "Block message"
+    - "Redirect message"
+
+  design_note: >
+    Plugins inspect payload to decide action -- no shortcut hooks.
+    Replaces BEFORE_TOOL/AFTER_TOOL pattern with a single unified hook.
+
+# =============================================================================
+# 13. Inline WebComponent Prompts
+# =============================================================================
+prompts:
+  description: >
+    Agent outputs <kikx-hml-prompt> elements in its HTML text.
+    Server sanitizes (kikx-hml-prompt is on allowlist), stores in message frame.
+    Client renders WebComponents, shows interactive form fields inline.
+    No server-side prompt parsing or orchestration needed.
+
+  prompt_types:
+    - text
+    - textarea
+    - select
+    - checkbox
+    - radio
+    - color
+    - date
+    - time
+    - number
+    - range
+    - file
+
+  child_elements:
+    approach: "CHOICE between two options (not both)"
+    option_a: "<kikx-hml-option> child elements for defining choices"
+    option_b: >
+      Reuse <kikx-hml-prompt type="radio"> / <kikx-hml-prompt type="check">
+      for select rendering (single-choice = radio, multi-choice = checkbox,
+      rendered as inline popup).
+    note: "These are alternatives, NOT nested within each other."
+
+  # Prompt state management via FrameManager
+  state_management:
+    mechanism: "FrameManager deep-merge"
+    flow:
+      - "User fills in prompts, clicks Submit (interaction-level button)"
+      - "Client collects values (including defaults for binary fields, null for dismissed)"
+      - "Values sent to server"
+      - "Server creates prompt-response frame targeting the original message frame"
+      - "FrameManager deep-merges values into original frame content"
+      - "Server ALSO sends values as new user message to agent"
+      - "New interaction starts with answers in conversation history"
+
+    render_modes:
+      unanswered: "Interactive mode -- form fields shown"
+      answered: "Green-success, read-only pill badge"
+      dismissed: "Muted 'User refused to answer' (blank, no default)"
+
+    binary_fields: "Checkbox always has a default -- ALWAYS include the answer (true/false)"
+
+    reload_behavior: >
+      On reload/device switch: FrameManager loads from DB, WebComponents see values,
+      render in answered mode. Single component (kikx-hml-prompt) handles both
+      interactive and read-only modes -- mode determined by value presence in
+      merged frame content.
+
+# =============================================================================
+# 14. Frame Schema
+# =============================================================================
+frame_schema:
+  table: "frames"
+  columns:
+    id:
+      type: "TEXT PRIMARY KEY"
+    session_id:
+      type: "TEXT NOT NULL"
+    interaction_id:
+      type: "TEXT NOT NULL"
+      note: "Root ancestor (self if top-level). Denormalized for efficient loading."
+    parent_id:
+      type: "TEXT"
+      note: "Immediate parent (NULL if top-level)"
+    order:
+      type: "INTEGER NOT NULL"
+      note: "Server-side monotonic counter per session"
+    group_id:
+      type: "TEXT"
+      note: "Phantom frame grouping"
+    group_type:
+      type: "TEXT"
+      note: "Phantom group type"
+    type:
+      type: "TEXT NOT NULL"
+    content:
+      type: "TEXT"
+      note: "JSON payload"
+    targets:
+      type: "TEXT"
+      note: "JSON array of frame IDs"
+    author_type:
+      type: "TEXT"
+    author_id:
+      type: "TEXT"
+    hidden:
+      type: "INTEGER DEFAULT 1"
+    deleted:
+      type: "INTEGER DEFAULT 0"
+    processed:
+      type: "INTEGER DEFAULT 0"
+      note: "Distinguishes 'already handled' from 'new' frames during interaction replay"
+    processed_at:
+      type: "TEXT"
+    timestamp:
+      type: "INTEGER NOT NULL"
+    created_at:
+      type: "TEXT NOT NULL"
+    updated_at:
+      type: "TEXT"
+
+  loading_strategy: >
+    Single-query loading: subquery for top-level IDs, then all by interaction_id.
+    Denormalized interaction_id makes this efficient.
+
+# =============================================================================
+# 15. Transport Interface
+# =============================================================================
+transport:
+  base_class: "Transport"
+  methods:
+    - "send()"
+    - "onMessage()"
+    - "createStream()"
+    - "connect()"
+    - "disconnect()"
+
+  shipped_implementations:
+    - name: "SSETransport"
+      purpose: "Streaming responses"
+    - name: "WebSocketTransport"
+      purpose: "Real-time events + phantom events"
+    - name: "EventTransport"
+      purpose: "In-process EventEmitter (for embedded use)"
+
+  design:
+    - "Core yields frames, transport decides delivery mechanism"
+    - "Configurable -- embedder provides transport(s)"
+    - "SSE for streaming, WebSocket for real-time events + phantom events"
+
+# =============================================================================
+# 16. WebSocket Reconnection
+# =============================================================================
+websocket_reconnection:
+  mechanism: "lastSeenOrder counter"
+  flow:
+    - "Client maintains lastSeenOrder counter (highest frame order received)"
+    - "On reconnect: client sends lastSeenOrder in handshake"
+    - "Server replays frames with order > lastSeenOrder"
+    - "Frames persisted in DB -- nothing lost, just delayed"
+
+# =============================================================================
+# 17. Permissions System (OOP)
+# =============================================================================
+permissions:
+  base_class:
+    name: "Permissions"
+    location: "src/core/permissions/"
+    capabilities:
+      - "Scoping: global, session, frame"
+      - "Fingerprinting (HMAC from UMK-derived per-user secret)"
+      - "Rule matching"
+
+  extension_model:
+    method: "matchesRule(rule, metadata)"
+    description: "Plugins override for feature-specific logic"
+    simple_case: "await this.permissions.checkPermissions() -- one-liner"
+    advanced_case: "Subclass Permissions (e.g., bash: understand commands vs arguments)"
+
+  check_behavior:
+    on_deny: "Throws PermissionDeniedError (fail-fast)"
+
+  fingerprinting:
+    description: "HMAC from UMK-derived per-user secret"
+    storage: "Fingerprint stored on permission_rules records"
+    purpose: "Prevents permission manipulation by attackers without UMK"
+
+  rule_table:
+    name: "permission_rules"
+    columns:
+      - "id"
+      - "organization_id"
+      - "feature_name (plugin_id:name format)"
+      - "effect"
+      - "scope"
+      - "scope_id"
+      - "metadata (JSON -- plugin's playground, kernel doesn't interpret)"
+      - "priority"
+      - "created_by"
+      - "fingerprint"
+      - "created_at"
+      - "expires_at"
+
+  safety_net:
+    description: "Critical ops always prompt, only org-admin/super-admin can override"
+    critical_examples:
+      - "rm -rf /"
+      - "DROP TABLE"
+      - "Fork bombs"
+
+  risk_levels:
+    values:
+      - "low"
+      - "high"
+      - "critical"
+    note: "Nothing is 'none' -- every operation has a risk level"
+
+# =============================================================================
+# 18. Security: Zero-Knowledge JWT-as-Vault
+# =============================================================================
+encryption:
+  architecture: "Zero-knowledge JWT-as-Vault"
+  principle: "Server CANNOT decrypt user data at rest"
+
+  # Runtime Encryption Key (REK)
+  rek:
+    description: "Random 32-byte key, exists ONLY in process memory"
+    persistence: "Never on disk, never in database"
+    lifecycle: "Generated on server start, destroyed on server stop"
+    restart_behavior: "Server restart = all sessions die (by design in production)"
+    dev_mode:
+      description: "Deterministic REK derived from project path + fixed salt"
+      condition: "NODE_ENV=development only"
+      note: "Allows sessions to survive restarts during development"
+    deploy_handoff: "Deferred -- not in initial build phases"
+
+  # User Master Key (UMK)
+  umk:
+    description: "Per-user master key, wrapped by REK in JWT vault claim"
+    jwt_claim: "vault"
+    wrapping: "UMK wrapped by REK, stored in JWT"
+    access: "Lazy decryption via getUMK() accessor on request"
+    sandboxing: "UMK NEVER reaches plugin _execute() -- sandboxed from plugins"
+
+  # Vault Slots
+  vault_slots:
+    description: "Multiple slots can independently wrap the same UMK"
+    password_slot:
+      mechanism: "scrypt(password) -> slot key -> wraps UMK -> stored in DB"
+    future_slots:
+      - "Passphrase slot"
+      - "Device approval slot"
+    each_slot: "Independently wraps the same UMK"
+
+  # Per-User Keys
+  per_user_keys:
+    derivation: "HMAC from UMK + userId"
+    uses:
+      - "Permission fingerprints"
+      - "API key encryption"
+
+  module:
+    location: "src/core/crypto/keystore.mjs"
+    algorithms:
+      encryption: "AES-256-GCM"
+      fingerprinting: "HMAC-SHA256"
+      password_kdf: "scrypt"
+    methods:
+      destroy: "Zeros keys from memory"
+
+# =============================================================================
+# 19. Auth
+# =============================================================================
+auth:
+  type: "JWT-based"
+  level: server  # Auth is server-level, keystore is core-level
+
+  features:
+    - "JWT tokens with vault claim (REK-wrapped UMK)"
+    - "Password-only for now"
+    - "Cookie-based sessions"
+
+  not_supported:
+    - "Magic links (incompatible with zero-knowledge)"
+    - "Server slot (eliminated)"
+
+  deferred:
+    - "WebAuthn / passkeys"
+    - "Passphrase-based auth"
+    - "Device approval (cross-device JWT handoff)"
+
+  integration: "When user authenticates, UMK is unwrapped from vault slot and wrapped by REK into JWT"
+
+# =============================================================================
+# 20. Database / ORM
+# =============================================================================
+database:
+  orm: "Mythix ORM"
+  driver_model: "Configurable -- embedder supplies their own Mythix ORM driver"
+
+  default_driver:
+    package: "mythix-orm-sqlite"
+    mode: "In-memory by default"
+
+  no_storage_adapter:
+    description: >
+      NO StorageAdapter interface. Mythix ORM IS the abstraction layer.
+      Removed entirely from architecture.
+
+  models:
+    access: "NEVER import models directly -- always get from application context"
+    overridable: "Models exported and overridable via config"
+    versioning: "Models versioned as static property. Caller manages schema."
+    migrations: "No migration files in core -- external migration system"
+
+# =============================================================================
+# 21. Error Visibility
+# =============================================================================
+error_visibility:
+  granularity: "Frame-level visibility per participant"
+  values:
+    - all       # Visible to everyone
+    - user      # Visible to user only
+    - agent     # Visible to agent only
+    - system    # Log only -- not visible to participants
+  note: "Permission errors target specific participants"
+
+# =============================================================================
+# 22. Data Model
+# =============================================================================
+data_model:
+  entities:
+    organization:
+      description: "Top-level tenant (= Discord Server)"
+      note: "Full multi-tenant from day one"
+
+    user:
+      belongs_to: organization
+
+    role:
+      scope: "org-level"
+
+    agent:
+      scope: "org-level configured instance"
+      description: "Has name, API key, instructions"
+
+    session:
+      has: participants
+      description: "Contains FrameManager instance"
+
+  multi_org:
+    design: "Baked in from day one"
+    client_behavior: "Locked to single default org initially"
+
+# =============================================================================
+# 23. Cascading Context
+# =============================================================================
+cascading_context:
+  mechanism: "Object.create() prototype chain"
+
+  layers:
+    - "Plugin defaults"
+    - "Org config"
+    - "Session state"
+    - "Runtime state"
+
+  api:
+    set: "setProperty('org.name', value)"
+    get: "getProperty('session.name')"
+    notation: "Dot and array notation supported"
+
+# =============================================================================
+# 24. WebSocket Events
+# =============================================================================
+websocket_events:
+  events:
+    - event: "frame:new"
+      description: "New frame created"
+
+    - event: "frame:updated"
+      description: "Frame composed/updated"
+
+    - event: "typing:start"
+      description: "Typing indicator start"
+
+    - event: "typing:stop"
+      description: "Typing indicator stop"
+
+  note: "Phantom events are a client-only concern"
+
+# =============================================================================
+# 25. Testing Strategy
+# =============================================================================
+testing:
+  structure:
+    core_tests:
+      path: "spec/core/"
+      description: "Pure unit/integration tests (no HTTP)"
+    server_tests:
+      path: "spec/server/"
+      description: "Route-level tests"
+    bridging_tests:
+      description: "Server <-> core integration"
+
+  runner:
+    command: "node --test --test-force-exit --test-timeout=30000"
+    npm_script: "npm test"
+    note: "Features/agents stubbed, full coverage"
+
+# =============================================================================
+# 26. Launch Plugins (built-in)
+# =============================================================================
+launch_plugins:
+  - name: "claude-agent"
+    description: "Claude/Anthropic agent type"
+
+  - name: "websearch"
+    description: "Web search tool"
+
+  - name: "bash"
+    description: "Shell command execution"
+
+  - name: "delegate"
+    description: "Agent-to-agent delegation"
+
+  - name: "help"
+    description: "Help system access"
+
+  - name: "reload"
+    description: "Plugin hot-reload"
+
+# =============================================================================
+# 27. Build Phases
+# =============================================================================
+build_phases:
+  phase_1:
+    name: "MVP"
+    steps:
+      1: "Core entry point + config"
+      2: "Mythix ORM models + driver integration"
+      3: "Session manager"
+      4: "Frame persistence + FrameManager integration"
+      5: "Plugin loader (filesystem provider only)"
+      6: "Interaction loop (with permission hard-break)"
+      7: "Agent plugin interface (yield-based frame protocol)"
+      8: "Claude agent plugin"
+      9: "Auth (password only)"
+      10: "Vault (password slot only)"
+      11: "Transport (SSE only)"
+      12: "Server routes"
+      13: "Content sanitizer (server-side HTML allowlist)"
+
+  phase_2:
+    name: "V1 Parity"
+    steps:
+      14: "Permissions system (basic)"
+      15: "WebSocket transport"
+      16: "Websearch plugin"
+      17: "Bash plugin"
+      18: "Help system"
+      19: "Permission fingerprinting"
+
+  phase_3:
+    name: "V2 Differentiators"
+    steps:
+      20: "Abilities as DM"
+      21: "Device approval auth"
+      22: "Full permissions OOP"
+      23: "Interaction resumability enhancements"
+      24: "NPM plugin provider"
+      25: "prepareMessage hook"

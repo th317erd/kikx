@@ -44,8 +44,8 @@ const DEFAULT_ALLOWED_TAGS = {
   'td':         ['class', 'colspan', 'rowspan'],
 
   // Custom elements (base set)
-  'hero-hml-prompt':  ['type', 'name', 'label', 'placeholder', 'value', 'required', 'min', 'max', 'step', 'options', 'default', 'class', 'id'],
-  'hero-hml-option':  ['value', 'label', 'selected', 'class'],
+  'kikx-hml-prompt':  ['type', 'name', 'label', 'placeholder', 'value', 'required', 'min', 'max', 'step', 'options', 'default', 'class', 'id'],
+  'kikx-hml-option':  ['value', 'label', 'selected', 'class'],
 };
 
 // Tags that get completely removed (tag + content)

@@ -1,0 +1,333 @@
+<!-- Kikx Modal Components -->
+<!-- Based on MythixUIModal structure with Kikx theme styling -->
+<!-- Note: These templates use SKIP_TEMPLATE = true, so templates are built in JS -->
+
+<!-- Document-scope styles for all kikx-modal components -->
+<style data-auto-merge="kikx-modal">
+  kikx-modal,
+  kikx-modal-create-session,
+  kikx-modal-create-agent,
+  kikx-modal-configure-ability,
+  kikx-modal-abilities,
+  kikx-modal-agents,
+  kikx-modal-agent-settings,
+  kikx-step-modal {
+    display: flex;
+    position: relative;
+  }
+
+  kikx-step {
+    display: block;
+  }
+</style>
+
+<!-- Shared styles prepended to all kikx-modal templates in this file -->
+<template data-for="*|">
+  <style>
+    /* Base dialog styles from mythix-modal */
+    dialog[open],dialog > * {
+      position: relative;
+      display: flex;
+      box-sizing: border-box;
+    }
+
+    dialog > * {
+      padding: var(--theme-padding, 1rem);
+    }
+
+    dialog[open] {
+      flex-direction: column;
+      padding: 0;
+      align-items: stretch;
+      overflow: hidden;
+      /* Kikx theme overrides */
+      min-width: min(400px, calc(100vw - 32px));
+      max-width: min(600px, calc(100vw - 32px));
+      max-height: 85vh;
+      border: 1px solid var(--border-color, #2d2d2d);
+      border-radius: var(--radius-lg, 8px);
+      background: var(--bg-secondary, #1a1a2e);
+      color: var(--text-primary, #e0e0e0);
+    }
+
+    dialog::backdrop {
+      background-color: rgba(0, 0, 0, 0.7);
+    }
+
+    dialog > header {
+      flex-direction: row;
+      flex-shrink: 0;
+      flex-grow: 0;
+      user-select: none;
+      border-width: 0;
+      border-radius: 0;
+      border-bottom: 1px solid var(--border-color, #2d2d2d);
+      background: var(--bg-tertiary, #2a2a3e);
+    }
+
+    dialog > header .caption-container {
+      display: flex;
+      flex-grow: 1;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+    }
+
+    dialog > header .header-buttons-container {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    dialog > main {
+      flex-direction: column;
+      flex-shrink: 0;
+      flex-grow: 0;
+      user-select: none;
+      padding-top: 0;
+      padding-bottom: 0;
+      overflow: auto;
+    }
+
+    dialog > footer {
+      flex-direction: row;
+      flex-shrink: 0;
+      flex-grow: 0;
+      user-select: none;
+      align-items: center;
+      justify-content: flex-end;
+      border-width: 0;
+      border-radius: 0;
+      border-top: 1px solid var(--border-color, #2d2d2d);
+      background: var(--bg-tertiary, #2a2a3e);
+      gap: var(--theme-padding, 0.5em);
+    }
+
+    /* Error message styling */
+    .error-message {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: var(--radius-sm, 4px);
+      background: rgba(248, 113, 113, 0.1);
+      color: var(--error, #f87171);
+      font-size: 14px;
+    }
+
+    .error-message:empty {
+      display: none;
+    }
+
+    /* Form elements */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 16px;
+    }
+
+    .form-group-half {
+      flex: 1;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-color, #2d2d2d);
+      border-radius: var(--radius-sm, 4px);
+      background: var(--bg-tertiary, #2a2a3e);
+      color: var(--text-primary, #e0e0e0);
+      font-family: inherit;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent, #f472b6);
+    }
+
+    .form-hint {
+      display: block;
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--text-muted, #6b7280);
+    }
+
+    /* Checkbox list */
+    .checkbox-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .checkbox-item input {
+      width: auto;
+    }
+
+    /* Tab styles */
+    .modal-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 16px;
+    }
+
+    .tab-button {
+      padding: 10px 20px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary, #9ca3af);
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-button:hover {
+      color: var(--text-primary, #e0e0e0);
+    }
+
+    .tab-button.active {
+      color: var(--accent, #f472b6);
+      border-bottom-color: var(--accent, #f472b6);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* List items */
+    .ability-item,
+    .agent-item {
+      padding: 12px;
+      border: 1px solid var(--border-color, #2d2d2d);
+      border-radius: var(--radius-sm, 4px);
+      margin-bottom: 8px;
+      background: var(--bg-tertiary, #2a2a3e);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .ability-item:hover,
+    .agent-item:hover {
+      background: var(--hover-bg, #3a3a4e);
+      border-color: var(--accent, #f472b6);
+    }
+
+    .ability-info,
+    .agent-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .ability-category,
+    .agent-type,
+    .agent-model {
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: var(--bg-primary, #0f0f1a);
+      color: var(--text-muted, #6b7280);
+    }
+
+    .ability-description {
+      margin: 8px 0 0 0;
+      font-size: 13px;
+      color: var(--text-secondary, #9ca3af);
+    }
+
+    .ability-actions,
+    .agent-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 4px;
+    }
+
+    .empty-state {
+      color: var(--text-muted, #6b7280);
+      font-style: italic;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .button-icon-action {
+      padding: 4px 8px;
+      font-size: 14px;
+      min-width: auto;
+    }
+
+    .abilities-actions,
+    .agents-actions {
+      margin-bottom: 16px;
+    }
+
+    .abilities-list,
+    .agents-list {
+      /* No max-height/overflow - modal main handles scrolling */
+    }
+
+    /* Config editor */
+    .config-editor {
+      font-family: monospace;
+      font-size: 13px;
+      resize: vertical;
+    }
+
+    .config-description {
+      margin-top: 0;
+      color: var(--text-secondary, #9ca3af);
+      font-size: 14px;
+    }
+  </style>
+</template>
+
+<!-- kikx-modal base template -->
+<template data-for="kikx-modal">
+  <dialog class="root-container" part="dialog root">
+    <header part="header">
+      <div class="caption-container" part="caption-container">
+        <slot name="caption">
+          <span part="caption">@@attributes.title || 'Dialog'@@</span>
+        </slot>
+      </div>
+      <div class="header-buttons-container">
+        <slot name="header-buttons"></slot>
+      </div>
+    </header>
+    <main part="main">
+      <slot></slot>
+    </main>
+    <footer part="footer">
+      <slot name="footer"></slot>
+    </footer>
+  </dialog>
+</template>
+
+<script type="module" src="./kikx-modal.js"></script>

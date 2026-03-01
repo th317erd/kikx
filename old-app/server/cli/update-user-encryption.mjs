@@ -57,7 +57,7 @@ async function main() {
   let args     = process.argv.slice(2);
   let username = args[0];
 
-  console.log('Hero - Update User Encryption\n');
+  console.log('Kikx - Update User Encryption\n');
   console.log('This will generate new encryption keys and re-encrypt all user data.');
   console.log('Use this if you suspect your encryption keys have been compromised.\n');
 

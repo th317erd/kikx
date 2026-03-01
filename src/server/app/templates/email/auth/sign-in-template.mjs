@@ -4,7 +4,7 @@ import { MasterEmailTemplate } from '../master-template.mjs';
 
 export class AuthSignInEmailTemplate extends MasterEmailTemplate {
   generateSubject() {
-    return this.langTerm('email.auth.signIn.subject', 'Hero Magic Login Link');
+    return this.langTerm('email.auth.signIn.subject', 'Kikx Magic Login Link');
   }
 
   async render() {
@@ -12,7 +12,7 @@ export class AuthSignInEmailTemplate extends MasterEmailTemplate {
 
     return await super.render([
       this.section(
-        this.header(this.langTerm('email.auth.signIn.header', 'Hero Magic Link')),
+        this.header(this.langTerm('email.auth.signIn.header', 'Kikx Magic Link')),
       ),
       this.section(
         this.text(
@@ -24,7 +24,7 @@ export class AuthSignInEmailTemplate extends MasterEmailTemplate {
       ),
       this.section(
         this.button(
-          this.langTerm('email.auth.signIn.button', 'Sign in to Hero'),
+          this.langTerm('email.auth.signIn.button', 'Sign in to Kikx'),
           {
             href: magicLinkURL,
           },

@@ -4,7 +4,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  createHeroCore,
+  createKikxCore,
   DEFAULT_MODELS,
   Organization,
   User,
@@ -19,7 +19,7 @@ import {
 // Helper: create a started core with default models
 // =============================================================================
 async function createStartedCore() {
-  let core = createHeroCore();
+  let core = createKikxCore();
   await core.start();
   return core;
 }

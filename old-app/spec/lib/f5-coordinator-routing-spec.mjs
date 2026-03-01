@@ -23,7 +23,7 @@ import { tmpdir } from 'os';
 // Environment Setup
 // ============================================================================
 
-let testDir = mkdtempSync(join(tmpdir(), 'hero-f5-routing-test-'));
+let testDir = mkdtempSync(join(tmpdir(), 'kikx-f5-routing-test-'));
 
 process.env.HERO_JWT_SECRET     = 'test-secret-key-for-testing';
 process.env.HERO_ENCRYPTION_KEY = 'test-encryption-key-32chars!!';

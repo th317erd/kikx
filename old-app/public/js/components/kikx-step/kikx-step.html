@@ -1,0 +1,20 @@
+<!--
+  Kikx Step Component
+  Container for step content in multi-step modals.
+  Visibility is controlled by parent KikxStepModal via CSS.
+-->
+
+<!-- Document-scope styles -->
+<style data-for="kikx-step">
+  kikx-step {
+    display: block;
+    box-sizing: border-box;
+  }
+
+  /* Steps are hidden by default, parent modal controls visibility */
+  kikx-step {
+    visibility: hidden;
+  }
+</style>
+
+<script type="module" src="./kikx-step.js"></script>

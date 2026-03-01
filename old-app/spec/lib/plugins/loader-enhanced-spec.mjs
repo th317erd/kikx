@@ -10,7 +10,7 @@ import { tmpdir } from 'os';
 // Environment Setup
 // ============================================================================
 
-let testDir = mkdtempSync(join(tmpdir(), 'hero-loader-enhanced-test-'));
+let testDir = mkdtempSync(join(tmpdir(), 'kikx-loader-enhanced-test-'));
 
 process.env.HERO_JWT_SECRET     = 'test-secret-key-for-testing';
 process.env.HERO_ENCRYPTION_KEY = 'test-encryption-key-32chars!!';
@@ -34,7 +34,7 @@ function createFakePlugin(directory, name, options = {}) {
     name:    name,
     version: options.version || '1.0.0',
     main:    options.main || 'index.mjs',
-    hero:    {
+    kikx:    {
       agents:       options.agents || ['*'],
       dependencies: options.dependencies || [],
     },
@@ -61,7 +61,7 @@ describe('Plugin Loader (Enhanced)', async () => {
   let pluginsDir;
 
   beforeEach(() => {
-    pluginsDir = mkdtempSync(join(tmpdir(), 'hero-plugins-'));
+    pluginsDir = mkdtempSync(join(tmpdir(), 'kikx-plugins-'));
   });
 
   afterEach(async () => {

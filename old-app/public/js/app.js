@@ -128,8 +128,8 @@ async function loadSession(sessionId) {
     if (participantList && typeof participantList.setParticipants === 'function')
       participantList.setParticipants(session.participants, session.id);
 
-    // Focus input via hero-input component
-    let heroInputEl = document.querySelector('hero-input');
+    // Focus input via kikx-input component
+    let heroInputEl = document.querySelector('kikx-input');
     if (heroInputEl && typeof heroInputEl.focus === 'function')
       heroInputEl.focus();
   } catch (error) {
@@ -154,7 +154,7 @@ const RENDER_MAX_WAIT_MS = 100;  // Max time before forced render
  * The actual render implementation.
  * Session-frames-provider is the SINGLE SOURCE OF TRUTH for rendering.
  * This function only syncs ancillary state (streaming, show-hidden) and
- * triggers a re-render on hero-chat. It does NOT push messages to hero-chat.
+ * triggers a re-render on kikx-chat. It does NOT push messages to kikx-chat.
  * @private
  */
 function renderMessagesImpl() {
@@ -181,7 +181,7 @@ function renderMessagesImpl() {
   if (typeof elements.heroChat.setStreaming === 'function')
     elements.heroChat.setStreaming(state.streamingMessage);
 
-  // Trigger a re-render (hero-chat reads from session-frames-provider)
+  // Trigger a re-render (kikx-chat reads from session-frames-provider)
   if (typeof elements.heroChat.renderDebounced === 'function')
     elements.heroChat.renderDebounced();
 }
@@ -323,13 +323,13 @@ function renderResponseAssertion(assertion) {
 // Auth
 // ============================================================================
 
-// Login is handled by the hero-login component.
-// It dispatches hero:authenticated on success, which triggers navigation.
+// Login is handled by the kikx-login component.
+// It dispatches kikx:authenticated on success, which triggers navigation.
 
 async function handleLogout() {
   try {
     await logout();
-    document.dispatchEvent(new CustomEvent('hero:logout'));
+    document.dispatchEvent(new CustomEvent('kikx:logout'));
     disconnectWebSocket();
     state.user     = null;
     state.sessions = [];
@@ -931,7 +931,7 @@ function bufferPromptAnswer(messageId, promptId, question, answer, type) {
 
   _pendingPromptAnswers.get(messageId).set(promptId, { question, answer, type });
 
-  // Dispatch event so hero-chat can update Submit/Ignore button state
+  // Dispatch event so kikx-chat can update Submit/Ignore button state
   document.dispatchEvent(new CustomEvent('prompt-answer-buffered', {
     detail: { messageId, promptId, pendingCount: _pendingPromptAnswers.get(messageId).size },
   }));
@@ -947,8 +947,8 @@ function _collectUnbufferedAnswers(messageId) {
                   document.querySelector(`[data-frame-id="${messageId}"]`);
   if (!messageEl) return;
 
-  // Also check shadow DOMs (hero-chat renders in shadow DOM)
-  let chatEl = document.querySelector('hero-chat');
+  // Also check shadow DOMs (kikx-chat renders in shadow DOM)
+  let chatEl = document.querySelector('kikx-chat');
   if (chatEl && chatEl.shadowRoot) {
     messageEl = chatEl.shadowRoot.querySelector(`[data-message-id="${messageId}"]`) ||
                 chatEl.shadowRoot.querySelector(`[data-frame-id="${messageId}"]`) ||
@@ -1051,8 +1051,8 @@ function submitPromptBatch(messageId) {
 function _markPromptsAnswered(messageId, answers) {
   let messageEl = null;
 
-  // Check shadow DOM first (hero-chat renders in shadow DOM)
-  let chatEl = document.querySelector('hero-chat');
+  // Check shadow DOM first (kikx-chat renders in shadow DOM)
+  let chatEl = document.querySelector('kikx-chat');
   if (chatEl && chatEl.shadowRoot) {
     messageEl = chatEl.shadowRoot.querySelector(`[data-message-id="${messageId}"]`) ||
                 chatEl.shadowRoot.querySelector(`[data-frame-id="${messageId}"]`);
@@ -1128,7 +1128,7 @@ function _collectUnbufferedPromptIds(messageId) {
   let messageEl = document.querySelector(`[data-message-id="${messageId}"]`) ||
                   document.querySelector(`[data-frame-id="${messageId}"]`);
 
-  let chatEl = document.querySelector('hero-chat');
+  let chatEl = document.querySelector('kikx-chat');
   if (chatEl && chatEl.shadowRoot) {
     messageEl = chatEl.shadowRoot.querySelector(`[data-message-id="${messageId}"]`) ||
                 chatEl.shadowRoot.querySelector(`[data-frame-id="${messageId}"]`) ||
@@ -1244,14 +1244,14 @@ async function loadAbilities() {
   }
 }
 
-// Note: Modal functions (showAbilitiesModal, showAgentsModal, etc.) have been moved to hero-modal-* components
+// Note: Modal functions (showAbilitiesModal, showAgentsModal, etc.) have been moved to kikx-modal-* components
 
 // ============================================================================
 // Event Listeners
 // ============================================================================
 
-// Login — hero-login component dispatches hero:authenticated on success
-document.addEventListener('hero:authenticated', () => navigate('/'));
+// Login — kikx-login component dispatches kikx:authenticated on success
+document.addEventListener('kikx:authenticated', () => navigate('/'));
 
 // Operations panel toggle
 elements.toggleOperations.addEventListener('click', () => {
@@ -1270,7 +1270,7 @@ elements.toggleOperations.addEventListener('click', () => {
 window.addEventListener('popstate', handleRoute);
 
 // ============================================================================
-// Component Events (hero-header, etc.)
+// Component Events (kikx-header, etc.)
 // ============================================================================
 
 // Handle navigate events from components
@@ -1287,7 +1287,7 @@ document.addEventListener('logout', () => {
   handleLogout();
 });
 
-// Note: show-modal events are now handled by hero-modal-* components directly
+// Note: show-modal events are now handled by kikx-modal-* components directly
 // They listen for 'show-modal' and open themselves based on event.detail.modal
 
 // Handle clear-messages events from components
@@ -1301,8 +1301,8 @@ document.addEventListener('toggle-hidden', (e) => {
   renderMessages();
 });
 
-// Handle send events from hero-input
-document.addEventListener('hero:send-message', async (e) => {
+// Handle send events from kikx-input
+document.addEventListener('kikx:send-message', async (e) => {
   let { content, files, streaming, sessionId } = e.detail || {};
   if (content && sessionId) {
     // Upload files first if any
@@ -1321,18 +1321,18 @@ document.addEventListener('hero:send-message', async (e) => {
     }
 
     // Call the existing sendMessage logic
-    let inputEl = document.querySelector('hero-input');
+    let inputEl = document.querySelector('kikx-input');
     await handleSendMessageContent(content, streaming);
     if (inputEl) inputEl.loading = false;
   }
 });
 
 // Note: Commands are now handled server-side via the message POST endpoint.
-// The hero:command event is no longer used - commands are sent as regular messages
+// The kikx:command event is no longer used - commands are sent as regular messages
 // and the server intercepts them before involving the AI agent.
 
-// Handle clear events from hero-input
-document.addEventListener('hero:clear', () => {
+// Handle clear events from kikx-input
+document.addEventListener('kikx:clear', () => {
   handleClearMessages();
 });
 

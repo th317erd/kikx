@@ -1,0 +1,229 @@
+<!--
+  Kikx Step Modal Base Class
+  Multi-step modal with progress indicator and step navigation.
+-->
+
+<!-- Document-scope styles -->
+<style data-for="kikx-step-modal">
+  kikx-step-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+  }
+
+  kikx-step-modal[open] {
+    display: flex;
+  }
+</style>
+
+<!-- Shadow DOM template -->
+<template data-for="kikx-step-modal">
+  <style>
+    /* Base dialog styles */
+    dialog[open], dialog > * {
+      position: relative;
+      display: flex;
+      box-sizing: border-box;
+    }
+
+    dialog > * {
+      padding: var(--theme-padding, 1rem);
+    }
+
+    dialog[open] {
+      flex-direction: column;
+      padding: 0;
+      align-items: stretch;
+      overflow: hidden;
+      width: min(500px, calc(100vw - 32px));
+      min-width: min(400px, calc(100vw - 32px));
+      max-width: min(600px, calc(100vw - 32px));
+      max-height: 85vh;
+      border: 1px solid var(--border-color, #2d2d2d);
+      border-radius: var(--radius-lg, 8px);
+      background: var(--bg-secondary, #1a1a2e);
+      color: var(--text-primary, #e0e0e0);
+    }
+
+    dialog::backdrop {
+      background-color: rgba(0, 0, 0, 0.7);
+    }
+
+    dialog > header {
+      flex-direction: row;
+      flex-shrink: 0;
+      flex-grow: 0;
+      user-select: none;
+      border-bottom: 1px solid var(--border-color, #2d2d2d);
+      background: var(--bg-tertiary, #2a2a3e);
+    }
+
+    dialog > header .caption-container {
+      display: flex;
+      flex-grow: 1;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+    }
+
+    dialog > main {
+      display: grid;
+      overflow: hidden;
+    }
+
+    dialog > footer {
+      flex-direction: row;
+      flex-shrink: 0;
+      flex-grow: 0;
+      user-select: none;
+      align-items: center;
+      justify-content: flex-end;
+      border-top: 1px solid var(--border-color, #2d2d2d);
+      background: var(--bg-tertiary, #2a2a3e);
+      gap: var(--theme-padding, 0.5em);
+    }
+
+    /* Step container uses CSS Grid to stack all steps */
+    /* All steps occupy same grid cell, only active one visible */
+    /* Modal naturally sizes to largest step content */
+
+    /* All steps stack in the same grid cell */
+    ::slotted(kikx-step) {
+      grid-row: 1;
+      grid-column: 1;
+      box-sizing: border-box;
+    }
+
+    /* Step progress indicator in header */
+    .step-progress {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--text-muted, #6b7280);
+      margin-left: 8px;
+    }
+
+    .step-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border-color, #2d2d2d);
+      transition: background 0.2s;
+    }
+
+    .step-dot.active {
+      background: var(--accent, #f472b6);
+    }
+
+    .step-dot.completed {
+      background: var(--success);
+    }
+
+    /* Footer navigation buttons */
+    dialog > footer .step-nav {
+      display: flex;
+      gap: 8px;
+    }
+
+    dialog > footer .step-nav-left {
+      margin-right: auto;
+    }
+
+    /* Button styles for shadow DOM */
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      border: none;
+      border-radius: var(--radius-sm, 4px);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      background: var(--bg-tertiary, #2a2a3e);
+      color: var(--text-primary, #e0e0e0);
+    }
+
+    .button:hover {
+      transform: translateY(-1px);
+    }
+
+    .button:active {
+      transform: translateY(0);
+    }
+
+    .button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .button-primary {
+      background: var(--accent, #f472b6);
+      color: white;
+    }
+
+    .button-primary:hover:not(:disabled) {
+      background: var(--accent-hover, #f687bf);
+    }
+
+    .button-secondary {
+      background: var(--bg-tertiary, #2a2a3e);
+      color: var(--text-primary, #e0e0e0);
+    }
+
+    .button-secondary:hover:not(:disabled) {
+      background: #1a4a7a;
+    }
+
+    /* Consistent width for Next/Save buttons */
+    .btn-next,
+    .btn-submit {
+      min-width: 72px;
+    }
+
+    /* Error message */
+    ::slotted(.error-message) {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: var(--radius-sm, 4px);
+      background: rgba(248, 113, 113, 0.1);
+      color: var(--error, #f87171);
+      font-size: 14px;
+    }
+
+    ::slotted(.error-message:empty) {
+      display: none;
+    }
+  </style>
+
+  <dialog class="root-container" part="dialog root">
+    <header part="header">
+      <div class="caption-container" part="caption-container">
+        <slot name="caption">
+          <span part="caption">Step Modal</span>
+        </slot>
+        <div class="step-progress">
+          <!-- Step dots are populated dynamically -->
+        </div>
+      </div>
+    </header>
+    <main part="main">
+      <slot></slot>
+    </main>
+    <footer part="footer">
+      <div class="step-nav step-nav-left">
+        <button type="button" class="button button-secondary btn-cancel">Cancel</button>
+      </div>
+      <div class="step-nav">
+        <button type="button" class="button button-secondary btn-back">Back</button>
+        <button type="button" class="button button-primary btn-next">Next</button>
+        <button type="submit" class="button button-primary btn-submit" style="display: none;">Save</button>
+      </div>
+    </footer>
+  </dialog>
+</template>
+
+<script type="module" src="./kikx-step-modal.js"></script>

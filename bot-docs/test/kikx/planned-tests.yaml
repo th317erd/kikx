@@ -1,0 +1,597 @@
+# Planned Tests — What Needs to Be Written
+# s: pending = not started, planned = spec designed, pass = implemented+green
+# Every entry answers: "Given X, when Y, then Z" — expected RESULTS, not line coverage.
+# Each test assigned to a work item from v1-plan.yaml (S1-S8, F1-F6, X1-X4).
+
+dt: 2026-02-20
+revised: 2026-02-20
+s: pending
+
+# =============================================================================
+# INFRASTRUCTURE — S6: Build before writing tests
+# =============================================================================
+
+infrastructure:
+  work_item: S6
+  tests:
+    - id: INFRA-001
+      t: SSE Response Mock
+      s: pending
+      f: spec/helpers/sse-mock.mjs
+      d: >
+        Mock Express response for SSE. writeHead, write, end, flush,
+        getEvents(). ~40 lines.
+
+    - id: INFRA-002
+      t: Route Test Harness
+      s: pending
+      f: spec/helpers/route-helpers.mjs
+      d: >
+        mockReq(options), mockRes() with status/json/send/end spies.
+        ~50 lines.
+
+    - id: INFRA-003
+      t: Agent API Mock
+      s: pending
+      f: spec/helpers/agent-mock.mjs
+      d: >
+        Mock agent with canned streaming responses. Async iterable
+        of text chunks. Configurable delay/error/empty. ~40 lines.
+
+# =============================================================================
+# STREAMING PIPELINE — S7
+# =============================================================================
+
+streaming_pipeline:
+  work_item: S7
+  tests:
+    - id: STREAM-001
+      t: Basic message round-trip
+      s: pending
+      f: spec/routes/messages-stream-spec.mjs
+      d: "Given valid session+agent, when user sends message, then SSE emits message_start, text chunks, message_complete"
+
+    - id: STREAM-002
+      t: Frame creation on message
+      s: pending
+      f: spec/routes/messages-stream-spec.mjs
+      d: "Given message sent, when agent responds, then user + agent MESSAGE frames created in DB"
+
+    - id: STREAM-003
+      t: Interaction detection in stream
+      s: pending
+      f: spec/routes/messages-stream-spec.mjs
+      d: "Given agent response contains <interaction>, then interaction detected and executed"
+
+    - id: STREAM-004
+      t: Websearch approval gating
+      s: pending
+      f: spec/routes/messages-stream-spec.mjs
+      d: "Given websearch triggered, then searchWeb NOT called until approved"
+      regression: "websearch-bypass-2026-02-19"
+
+    - id: STREAM-005
+      t: Websearch denial handling
+      s: pending
+      f: spec/routes/messages-stream-spec.mjs
+      d: "Given websearch denied, then interaction_result with status 'denied'"
+
+    - id: STREAM-006
+      t: HML element lifecycle events
+      s: pending
+      f: spec/routes/messages-stream-spec.mjs
+      d: "Given <thinking> in output, then element_start, element_update(s), element_complete in order"
+
+    - id: STREAM-007
+      t: Agent API failure handling
+      s: pending
+      f: spec/routes/messages-stream-spec.mjs
+      d: "Given agent API throws, then SSE error event, clean close, no orphaned frames"
+
+    - id: STREAM-008
+      t: Plugin hooks fire in streaming route
+      s: pending
+      f: spec/routes/messages-stream-spec.mjs
+      d: "Given plugins registered, then BEFORE_USER_MESSAGE fires before agent, AFTER_AGENT_RESPONSE after"
+
+    - id: STREAM-009
+      t: Conditional abilities inject context
+      s: pending
+      f: spec/routes/messages-stream-spec.mjs
+      d: "Given unanswered prompts, then prompt_response_handler injected into agent context"
+
+    - id: STREAM-010
+      t: Content accumulation across segments
+      s: pending
+      f: spec/routes/messages-stream-spec.mjs
+      d: "Given text + interaction + follow-up, then final frame has all segments"
+
+    # Non-streaming route (also S7 scope)
+    - id: MSG-001
+      t: Non-streaming message round-trip
+      s: pending
+      f: spec/routes/messages-spec.mjs
+      d: "Given valid session+agent, when POST, then response includes reply and frames created"
+
+    - id: MSG-002
+      t: Interaction execution in non-streaming
+      s: pending
+      f: spec/routes/messages-spec.mjs
+      d: "Given agent response has interactions, then they execute and results included"
+
+    - id: MSG-003
+      t: Plugin hooks fire in non-streaming route
+      s: pending
+      f: spec/routes/messages-spec.mjs
+      d: "Given plugins registered, then BEFORE_USER_MESSAGE and AFTER_AGENT_RESPONSE fire"
+
+# =============================================================================
+# WebSocket — S8
+# =============================================================================
+
+websocket:
+  work_item: S8
+  tests:
+    - id: SEC-001
+      t: WS approval passes authenticated userId
+      s: pending
+      d: "Given WS for user 5, when approval response, then handler gets userId=5"
+
+    - id: SEC-002
+      t: Unauthenticated WS connection rejected
+      s: pending
+      d: "Given WS without valid token, then connection closed"
+
+    - id: SEC-003
+      t: WS message wrong session ignored
+      s: pending
+      d: "Given user in session 1, when WS references session 2, then no effect"
+
+    - id: SEC-004
+      t: Frame creation server-only
+      s: pending
+      d: "Given attempt to create frame via WS, then rejected"
+
+    - id: GUARD-008
+      t: Frame creation is server-only (guard)
+      s: pending
+      d: "Assert no code path allows client-submitted frame data to be stored directly"
+
+# =============================================================================
+# MessageStore — S1
+# =============================================================================
+
+message_store:
+  work_item: S1
+  tests:
+    - id: STATE-001
+      t: GlobalState.heroSessions → sidebar update
+      s: DONE
+      f: spec/integration/state-flow-spec.mjs
+      d: "Given kikx-sidebar mounted, when GlobalState.heroSessions changes, then sidebar re-renders"
+
+    - id: STATE-002
+      t: Frames added to provider → chat re-renders
+      s: DONE
+      f: spec/integration/state-flow-spec.mjs
+      d: "Given kikx-chat mounted, when provider receives new frame, then chat shows new message"
+
+    - id: STATE-003
+      t: GlobalState.user changes → avatar updates
+      s: DONE
+      f: spec/integration/state-flow-spec.mjs
+      d: "Given kikx-chat mounted, when user changes, then avatar reflects new name"
+
+    - id: STATE-004
+      t: Session switch clears and reloads state
+      s: DONE
+      f: spec/integration/state-flow-spec.mjs
+      d: "Given session A active, when switching to B, then frames reload, chat re-renders"
+
+    - id: STATE-005
+      t: Optimistic frame → real frame replacement
+      s: DONE
+      f: spec/integration/state-flow-spec.mjs
+      d: "Given optimistic frame, when real arrives via WS, then optimistic removed"
+
+# =============================================================================
+# WS Broadcast — S2
+# =============================================================================
+
+broadcast:
+  work_item: S2
+  tests:
+    - id: PARTY-005
+      t: WS broadcast targets all user participants
+      s: pending
+      d: "Given 2 users in session, when frame created, then both WS connections receive event"
+
+    - id: BCAST-001
+      t: Approval prompts broadcast to channel
+      s: pending
+      d: "Given permission prompt triggered, then ALL user participants see it (not just requester)"
+
+    - id: BCAST-002
+      t: Bot cannot respond to permission prompts
+      s: pending
+      d: "Given permission form submission from bot identity, then server rejects it"
+      type: security
+
+# =============================================================================
+# Prompt Form UX — S3
+# =============================================================================
+
+prompt_form:
+  work_item: S3
+  tests:
+    - id: PROMPT-001
+      t: Single prompt message gets Ignore / Submit buttons
+      s: pending
+      f: spec/components/hml-prompt-spec.mjs
+      d: "Given message with 1 hml-prompt, then Ignore and Submit rendered (no individual OK)"
+
+    - id: PROMPT-002
+      t: No individual submit/OK on any hml-prompt
+      s: pending
+      f: spec/components/hml-prompt-spec.mjs
+      d: "Given any hml-prompt, then no per-prompt submit button exists"
+
+    - id: PROMPT-003
+      t: Enter key advances to next prompt
+      s: pending
+      f: spec/components/hml-prompt-spec.mjs
+      d: "Given focus on prompt 1 of 3, when Enter, then focus moves to prompt 2"
+
+    - id: PROMPT-004
+      t: Enter on last prompt focuses Submit
+      s: pending
+      f: spec/components/hml-prompt-spec.mjs
+      d: "Given focus on last prompt, when Enter, then Submit button gets focus"
+
+    - id: PROMPT-005
+      t: Enter on Submit fires submit
+      s: pending
+      f: spec/components/hml-prompt-spec.mjs
+      d: "Given Submit focused, when Enter, then batch submission fires"
+
+    - id: PROMPT-006
+      t: Ignore sends refusal to agent
+      s: pending
+      f: spec/components/hml-prompt-spec.mjs
+      d: "When Ignore clicked, then result frame contains 'user refused to respond'"
+
+    - id: PROMPT-007
+      t: Button order is Ignore then Submit
+      s: pending
+      f: spec/components/hml-prompt-spec.mjs
+      d: "Ignore appears before Submit in DOM order"
+
+    - id: SCROLL-003
+      t: Batch prompt submission atomicity
+      s: pending
+      d: "Given 3 prompts, if 2nd fails, then no partial results persisted"
+
+    - id: RENDER-007
+      t: Kikx-input clears on send
+      s: pending
+      f: spec/components/kikx-input-spec.mjs
+      d: "Given text in input, when send triggered, then input value empty"
+
+    - id: RENDER-009
+      t: HML prompt renders all input types
+      s: pending
+      f: spec/components/hml-prompt-spec.mjs
+      d: "For each type (text, number, color, checkbox, checkboxes, radio, select, range), correct input rendered"
+
+# =============================================================================
+# Permission Wiring — S4
+# =============================================================================
+
+permission_wiring:
+  work_item: S4
+  tests:
+    - id: PERM-001
+      t: BEFORE_TOOL hook fires for interaction functions
+      s: pending
+      d: "Given interaction function, when executed, then BEFORE_TOOL fires"
+      type: security
+
+    - id: PERM-002
+      t: Direct function call without hook fails safely
+      s: pending
+      d: "Given function called bypassing hooks, then execution still gated"
+      type: security
+
+    - id: GUARD-001
+      t: Streaming route gates websearch through approval
+      s: pending
+      f: spec/routes/messages-stream-spec.mjs
+      d: "Assert checkApprovalRequired IS called between detection and execution"
+      regression: "websearch-bypass-2026-02-19"
+
+    - id: GUARD-005
+      t: Permission engine wired to command execution
+      s: pending
+      f: spec/lib/messaging/command-handler-spec.mjs
+      d: "Given command invoked, then evaluate() called before handler runs"
+
+    - id: GUARD-006
+      t: Interaction detector strips sender_id
+      s: pending
+      f: spec/lib/interactions/interactions-spec.mjs
+      d: "Given sender_id in interaction JSON, then stripped from detected interaction"
+
+    - id: PLUGIN-001
+      t: BEFORE_USER_MESSAGE fires before agent call
+      s: pending
+      d: "Given plugin, when message sent, then hook fires before agent.sendMessage()"
+
+    - id: PLUGIN-002
+      t: Hook throw doesn't block pipeline
+      s: pending
+      d: "Given hook that throws, then agent still receives message"
+
+    - id: PLUGIN-003
+      t: Hook can modify message content
+      s: pending
+      d: "Given BEFORE hook that transforms, then agent receives transformed content"
+
+# =============================================================================
+# Self-Approval — S5
+# =============================================================================
+
+self_approval:
+  work_item: S5
+  tests:
+    - id: COORD-003
+      t: Self-approval prevention
+      s: pending
+      d: "Given agent triggers action, when same agent approves, then rejected"
+      type: security
+
+    - id: GUARD-007
+      t: Approval responses verify user ownership
+      s: pending
+      d: "Given approval from wrong user, then rejected"
+
+# =============================================================================
+# Active Coordinator + Sidebar — F1
+# =============================================================================
+
+active_coordinator:
+  work_item: F1
+  tests:
+    - id: PARTY-001
+      t: loadSessionWithAgent returns active coordinator
+      s: pending
+      d: "Given session with coordinator + member, then loadSessionWithAgent returns coordinator"
+
+    - id: PARTY-002
+      t: No coordinator returns graceful error
+      s: pending
+      d: "Given session with only members, when message sent, then error"
+
+    - id: PARTY-003
+      t: Non-participant cannot access session
+      s: pending
+      d: "Given session owned by user A, when user B requests, then 403/404"
+      type: security
+
+    - id: PARTY-004
+      t: Removing coordinator prevents further messages
+      s: pending
+      d: "Given session, when coordinator removed, then next message errors"
+
+    - id: COORD-004
+      t: /promote swaps active coordinator
+      s: pending
+      d: "Given session with agent A as coordinator, when /promote B, then B is coordinator and A is member"
+
+    - id: ALIAS-001
+      t: /invite with alias stores alias on participant
+      s: pending
+      d: "Given /invite test-claude as:Coder, then participant has alias='Coder'"
+
+    - id: ALIAS-002
+      t: Alias shown in chat messages
+      s: pending
+      d: "Given agent with alias 'Coder', then messages show 'Coder' not agent name"
+
+    - id: ALIAS-003
+      t: /invite by agent name (not just ID)
+      s: pending
+      d: "Given /invite test-claude, then agent found by name and added to session"
+
+    - id: RENDER-005
+      t: Participant sidebar renders session members
+      s: pending
+      f: spec/components/kikx-participant-list-spec.mjs
+      d: "Given session with 3 participants, then sidebar shows 3 items with roles and aliases"
+
+# =============================================================================
+# Permission Prompts as Forms — F2
+# =============================================================================
+
+permission_forms:
+  work_item: F2
+  tests:
+    - id: PERMUI-001
+      t: Permission prompt renders as channel message
+      s: pending
+      d: "Given permission engine returns prompt, then hml-prompt form appears in channel for all users"
+
+    - id: PERMUI-002
+      t: Any user in channel can respond to permission prompt
+      s: pending
+      d: "Given permission prompt in channel, when user B submits, then permission rule created"
+
+    - id: PERMUI-003
+      t: Bot submission of permission form rejected
+      s: pending
+      d: "Given bot-originated form submission matching permission format, then server rejects"
+      type: security
+
+    - id: PERMUI-004
+      t: Permission response creates rule with correct scope
+      s: pending
+      d: "Given user selects 'allow for session', then rule created with scope=session"
+
+    - id: PERMUI-005
+      t: Subsequent identical request auto-resolved
+      s: pending
+      d: "Given 'allow always' rule created, when same action requested again, then no prompt shown"
+
+# =============================================================================
+# @Mention — F3
+# =============================================================================
+
+mention:
+  work_item: F3
+  tests:
+    - id: MENTION-001
+      t: "@mention routes to specific agent"
+      s: pending
+      d: "Given @Coder in message, then message routes to agent with alias 'Coder' (not coordinator)"
+
+    - id: MENTION-002
+      t: Unaddressed message goes to coordinator
+      s: pending
+      d: "Given message without @mention, then routed to active coordinator"
+
+# =============================================================================
+# Page Routing + Settings — F4
+# =============================================================================
+
+page_routing:
+  work_item: F4
+  tests:
+    - id: PAGE-001
+      t: /login renders login page
+      s: pending
+      d: "Given unauthenticated user, when navigating to /, then redirected to /login"
+
+    - id: PAGE-002
+      t: /settings renders settings page
+      s: pending
+      d: "Given authenticated user at /settings, then settings component rendered with tabs"
+
+    - id: PAGE-003
+      t: Settings profile CRUD works
+      s: pending
+      d: "Given settings profile tab, when updating name, then API called and UI reflects change"
+
+    - id: PAGE-004
+      t: Settings API key management works
+      s: pending
+      d: "Given API keys tab, then can create, see list (prefix+last used), and revoke"
+
+# =============================================================================
+# Coordinator Behavior — F5
+# =============================================================================
+
+coordinator_behavior:
+  work_item: F5
+  tests:
+    - id: COORD-005
+      t: Delegation context is bounded
+      s: pending
+      d: "Given deep history, when delegating, then member gets limited context"
+
+    - id: COORD-001
+      t: Delegation failure cleans up frames
+      s: pending
+      d: "Given delegation to member that throws, then error result frame, no orphans"
+
+    - id: COORD-002
+      t: Delegation result references request
+      s: pending
+      d: "Given successful delegation, then result.parent_id === request.id"
+
+# =============================================================================
+# Standalone / Cross-cutting tests
+# =============================================================================
+
+standalone:
+  tests:
+    # Frame integrity (verified during any wave)
+    - { id: FRAME-001, t: "No legacy message table exists", work_item: S7 }
+    - { id: FRAME-002, t: "Frame timestamps monotonically increasing", work_item: S7 }
+    - { id: FRAME-003, t: "Compaction context includes all post-compact frames", work_item: S7 }
+
+    # Permission edge cases (written with S4)
+    - { id: PERM-003, t: "'once' scope consumed after use", work_item: S4 }
+    - { id: PERM-004, t: "Session-scoped rules don't leak", work_item: S4 }
+    - { id: PERM-005, t: "Non-owner cannot create rules for others", work_item: S4, type: security }
+    - { id: PERM-006, t: "Concurrent evaluations deterministic", work_item: S4, type: property }
+
+    # Plugin edge cases (written with S4)
+    - { id: PLUGIN-004, t: "Hot-reload no stale state", work_item: S4 }
+
+    # Pagination edge cases (standalone)
+    - { id: SCROLL-001, t: "Same-timestamp frames paginate correctly", work_item: standalone }
+    - { id: SCROLL-002, t: "Search respects session ownership", work_item: standalone, type: security }
+
+    # Auth (standalone)
+    - { id: AUTH-001, t: "API key plaintext never in DB", work_item: standalone, type: security }
+    - { id: AUTH-002, t: "Magic link token entropy", work_item: standalone, type: security }
+    - { id: AUTH-003, t: "API key auth prevents agent decryption", work_item: standalone, type: security }
+    - { id: AUTH-004, t: "Expired cleanup concurrent safety", work_item: standalone }
+
+    # Upload security (standalone)
+    - { id: UPLOAD-001, t: "Path traversal sanitized", work_item: standalone, type: security }
+    - { id: UPLOAD-002, t: "MIME type spoofing rejected", work_item: standalone, type: security }
+    - { id: UPLOAD-003, t: "Cross-user upload access denied", work_item: standalone, type: security }
+    - { id: UPLOAD-004, t: "Upload exceeding size limit rejected", work_item: standalone }
+    - { id: UPLOAD-005, t: "Session deletion cascades to uploads", work_item: standalone }
+
+    # Render (written with relevant work item)
+    - { id: RENDER-001, t: "_renderMessage correct structure", work_item: F1 }
+    - { id: RENDER-002, t: "_renderStreamingMessage has typing indicator", work_item: S1, s: DONE }
+    - { id: RENDER-003, t: "_renderResultFrame hides success", work_item: S7, regression: "result-json-blob" }
+    - { id: RENDER-004, t: "_renderRequestFrame shows action label", work_item: S7 }
+    - { id: RENDER-006, t: "Kikx-sidebar filters by search", work_item: standalone }
+    - { id: RENDER-008, t: "Kikx-input restores draft on session switch", work_item: standalone }
+    - { id: RENDER-010, t: "Markup processor produces safe output", work_item: standalone }
+
+    # Existing guards (written with relevant work item)
+    - { id: GUARD-002, t: "Result frames hidden in render", work_item: S7, regression: true }
+    - { id: GUARD-003, t: "User avatar uses actual username", work_item: S1, regression: true, s: DONE }
+    - { id: GUARD-004, t: "Create agent no auto-open session modal", work_item: standalone, regression: true }
+    - { id: GUARD-009, t: "Encrypted fields never leak plaintext", work_item: F6 }
+
+    # Integration chains
+    - { id: INT-001, t: "Command execution full chain", work_item: S4 }
+    - { id: INT-002, t: "Agent delegation full chain", work_item: F5 }
+    - { id: INT-003, t: "Approval flow full chain", work_item: F2 }
+    - { id: INT-004, t: "Compaction full chain", work_item: standalone }
+    - { id: INT-005, t: "Multi-participant message visibility", work_item: S2 }
+
+# =============================================================================
+# SUMMARY
+# =============================================================================
+
+summary:
+  total: 98
+  by_work_item:
+    S1: 6   # MessageStore + state flow
+    S2: 4   # Broadcast + multi-party visibility
+    S3: 10  # Prompt form UX
+    S4: 12  # Permission wiring + guards + plugins + permission edge cases
+    S5: 2   # Self-approval
+    S6: 3   # Test helpers
+    S7: 17  # Streaming + non-streaming + frame integrity + render guards
+    S8: 5   # WebSocket security
+    F1: 9   # Coordinator + aliases + sidebar
+    F2: 5   # Permission forms
+    F3: 2   # @mention
+    F4: 4   # Page routing + settings
+    F5: 3   # Coordinator behavior + delegation
+    F6: 1   # Scope enforcement
+    standalone: 15  # Auth, uploads, pagination, render, guards
+  by_type:
+    functional: 62
+    security: 20
+    stability: 6
+    property: 3
+    edge_case: 5
+    regression: 2

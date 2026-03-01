@@ -1,4 +1,4 @@
-# Hero
+# Kikx
 
 A web-based AI agent runner with chat interface, plugin system, and multi-agent support.
 
@@ -41,7 +41,7 @@ JWT_SECRET=your-64-char-hex-secret
 ENCRYPTION_KEY=your-64-char-hex-key
 
 # Optional
-BASE_URL=https://example.com/hero/
+BASE_URL=https://example.com/kikx/
 PORT=8098
 HOST=0.0.0.0
 ```
@@ -50,12 +50,12 @@ HOST=0.0.0.0
 
 Data is stored in an OS-specific configuration directory:
 
-- **Linux**: `~/.config/hero/`
-- **macOS**: `~/Library/Application Support/hero/`
-- **Windows**: `%APPDATA%/hero/`
+- **Linux**: `~/.config/kikx/`
+- **macOS**: `~/Library/Application Support/kikx/`
+- **Windows**: `%APPDATA%/kikx/`
 
 Contents:
-- `hero.db` - SQLite database (users, agents, sessions, messages)
+- `kikx.db` - SQLite database (users, agents, sessions, messages)
 - `plugins/` - Installed plugins
 
 ## CLI Commands
@@ -196,11 +196,11 @@ nginx/
 
 ### Setup
 
-1. Deploy the project to `/var/www/hero/`
+1. Deploy the project to `/var/www/kikx/`
 
 2. Symlink the server config:
 ```bash
-sudo ln -s /var/www/hero/nginx/wyatt-desktop.mythix.info /etc/nginx/sites-enabled/
+sudo ln -s /var/www/kikx/nginx/wyatt-desktop.mythix.info /etc/nginx/sites-enabled/
 ```
 
 3. Test and reload nginx:

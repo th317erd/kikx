@@ -1,19 +1,19 @@
-/* Hero Components - Document-scope styles */
+/* Kikx Components - Document-scope styles */
 /* These styles apply to custom elements in the Light DOM */
 /* Generated from component HTML files' <style data-for="..."> blocks */
 
 /* ===========================================
-   hero-app
+   kikx-app
    =========================================== */
-hero-app {
+kikx-app {
   display: block;
   min-height: 100vh;
 }
 
 /* ===========================================
-   hero-header
+   kikx-header
    =========================================== */
-hero-header {
+kikx-header {
   display: block;
   position: sticky;
   top: 0;
@@ -21,9 +21,9 @@ hero-header {
 }
 
 /* ===========================================
-   hero-status-bar
+   kikx-status-bar
    =========================================== */
-hero-status-bar {
+kikx-status-bar {
   display: block;
   position: fixed;
   bottom: 0;
@@ -32,28 +32,28 @@ hero-status-bar {
   z-index: 800;
 }
 
-hero-status-bar.hidden {
+kikx-status-bar.hidden {
   display: none;
 }
 
 /* ===========================================
-   hero-main-controls
+   kikx-main-controls
    =========================================== */
-hero-main-controls {
+kikx-main-controls {
   display: contents;
 }
 
 /* ===========================================
-   hero-input
+   kikx-input
    =========================================== */
-hero-input {
+kikx-input {
   display: block;
 }
 
 /* ===========================================
-   hero-chat
+   kikx-chat
    =========================================== */
-hero-chat {
+kikx-chat {
   display: block;
   flex: 1;
   overflow-y: auto;
@@ -72,9 +72,9 @@ session-frames-provider {
 }
 
 /* ===========================================
-   hero-sessions-list
+   kikx-sessions-list
    =========================================== */
-hero-sessions-list {
+kikx-sessions-list {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -90,48 +90,48 @@ hml-prompt {
 }
 
 /* ===========================================
-   hero-step (declarative step container)
+   kikx-step (declarative step container)
    =========================================== */
-hero-step {
+kikx-step {
   display: block;
 }
 
 /* ===========================================
-   hero-modal (all variants)
+   kikx-modal (all variants)
    =========================================== */
 /* Hide modal components until opened */
-hero-modal,
-hero-modal-create-session,
-hero-modal-create-agent,
-hero-modal-configure-ability,
-hero-modal-abilities,
-hero-modal-agents,
-hero-modal-agent-settings,
-hero-step-modal {
+kikx-modal,
+kikx-modal-create-session,
+kikx-modal-create-agent,
+kikx-modal-configure-ability,
+kikx-modal-abilities,
+kikx-modal-agents,
+kikx-modal-agent-settings,
+kikx-step-modal {
   display: none;
 }
 
-/* Hero Modal styles using mythix-modal ::part() selectors */
-hero-modal,
-hero-modal-create-session,
-hero-modal-create-agent,
-hero-modal-configure-ability,
-hero-modal-abilities,
-hero-modal-agents,
-hero-modal-agent-settings,
-hero-step-modal {
+/* Kikx Modal styles using mythix-modal ::part() selectors */
+kikx-modal,
+kikx-modal-create-session,
+kikx-modal-create-agent,
+kikx-modal-configure-ability,
+kikx-modal-abilities,
+kikx-modal-agents,
+kikx-modal-agent-settings,
+kikx-step-modal {
   /* Component display */
 }
 
 /* Dialog styling via ::part() */
-hero-modal::part(dialog),
-hero-modal-create-session::part(dialog),
-hero-modal-create-agent::part(dialog),
-hero-modal-configure-ability::part(dialog),
-hero-modal-abilities::part(dialog),
-hero-modal-agents::part(dialog),
-hero-modal-agent-settings::part(dialog),
-hero-step-modal::part(dialog) {
+kikx-modal::part(dialog),
+kikx-modal-create-session::part(dialog),
+kikx-modal-create-agent::part(dialog),
+kikx-modal-configure-ability::part(dialog),
+kikx-modal-abilities::part(dialog),
+kikx-modal-agents::part(dialog),
+kikx-modal-agent-settings::part(dialog),
+kikx-step-modal::part(dialog) {
   max-width: min(90vw, calc(100vw - 32px));
   max-height: 90vh;
   border: 1px solid var(--border-color, #2d2d2d);
@@ -142,62 +142,62 @@ hero-step-modal::part(dialog) {
 }
 
 /* Header styling */
-hero-modal::part(header),
-hero-modal-create-session::part(header),
-hero-modal-create-agent::part(header),
-hero-modal-configure-ability::part(header),
-hero-modal-abilities::part(header),
-hero-modal-agents::part(header),
-hero-modal-agent-settings::part(header),
-hero-step-modal::part(header) {
+kikx-modal::part(header),
+kikx-modal-create-session::part(header),
+kikx-modal-create-agent::part(header),
+kikx-modal-configure-ability::part(header),
+kikx-modal-abilities::part(header),
+kikx-modal-agents::part(header),
+kikx-modal-agent-settings::part(header),
+kikx-step-modal::part(header) {
   padding: 16px 20px;
   border-bottom: 1px solid var(--border-color, #2d2d2d);
   background: var(--bg-tertiary, #2a2a3e);
 }
 
 /* Caption styling */
-hero-modal::part(caption),
-hero-modal-create-session::part(caption),
-hero-modal-create-agent::part(caption),
-hero-modal-configure-ability::part(caption),
-hero-modal-abilities::part(caption),
-hero-modal-agents::part(caption),
-hero-modal-agent-settings::part(caption),
-hero-step-modal::part(caption) {
+kikx-modal::part(caption),
+kikx-modal-create-session::part(caption),
+kikx-modal-create-agent::part(caption),
+kikx-modal-configure-ability::part(caption),
+kikx-modal-abilities::part(caption),
+kikx-modal-agents::part(caption),
+kikx-modal-agent-settings::part(caption),
+kikx-step-modal::part(caption) {
   font-size: 18px;
   font-weight: 600;
 }
 
 /* Main content styling */
-hero-modal::part(main),
-hero-modal-create-session::part(main),
-hero-modal-create-agent::part(main),
-hero-modal-configure-ability::part(main),
-hero-modal-abilities::part(main),
-hero-modal-agents::part(main),
-hero-modal-agent-settings::part(main),
-hero-step-modal::part(main) {
+kikx-modal::part(main),
+kikx-modal-create-session::part(main),
+kikx-modal-create-agent::part(main),
+kikx-modal-configure-ability::part(main),
+kikx-modal-abilities::part(main),
+kikx-modal-agents::part(main),
+kikx-modal-agent-settings::part(main),
+kikx-step-modal::part(main) {
   padding: 20px;
   flex: 1;
   min-height: 0;
 }
 
 /* Footer styling */
-hero-modal::part(footer),
-hero-modal-create-session::part(footer),
-hero-modal-create-agent::part(footer),
-hero-modal-configure-ability::part(footer),
-hero-modal-abilities::part(footer),
-hero-modal-agents::part(footer),
-hero-modal-agent-settings::part(footer),
-hero-step-modal::part(footer) {
+kikx-modal::part(footer),
+kikx-modal-create-session::part(footer),
+kikx-modal-create-agent::part(footer),
+kikx-modal-configure-ability::part(footer),
+kikx-modal-abilities::part(footer),
+kikx-modal-agents::part(footer),
+kikx-modal-agent-settings::part(footer),
+kikx-step-modal::part(footer) {
   padding: 16px 20px;
   border-top: 1px solid var(--border-color, #2d2d2d);
   background: var(--bg-tertiary, #2a2a3e);
 }
 
 /* Tab content areas - fill available space and enable scrolling */
-hero-modal-abilities .tab-content {
+kikx-modal-abilities .tab-content {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -205,26 +205,26 @@ hero-modal-abilities .tab-content {
   min-height: 0;
 }
 
-hero-modal-abilities .tab-content:not(.active) {
+kikx-modal-abilities .tab-content:not(.active) {
   display: none;
 }
 
 /* List containers - let modal main handle scrolling */
-hero-modal-abilities .abilities-list,
-hero-modal-agents .agents-list {
+kikx-modal-abilities .abilities-list,
+kikx-modal-agents .agents-list {
   flex: 1;
   min-height: 0;
   /* No max-height or overflow - modal main scrolls instead */
 }
 
 /* Agents content wrapper */
-hero-modal-agents .agents-content {
+kikx-modal-agents .agents-content {
   display: flex;
   flex-direction: column;
 }
 
 /* Shared modal styles using :is() selector */
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .error-message {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .error-message {
   margin-top: 12px;
   padding: 10px;
   border-radius: var(--radius-sm, 4px);
@@ -233,32 +233,32 @@ hero-modal-agents .agents-content {
   font-size: 14px;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .error-message:empty {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .error-message:empty {
   display: none;
 }
 
 /* Form elements */
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .form-group {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .form-group {
   margin-bottom: 16px;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .form-row {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .form-row {
   display: flex;
   gap: 16px;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .form-group-half {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .form-group-half {
   flex: 1;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) label {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) label {
   display: block;
   margin-bottom: 6px;
   font-weight: 500;
   font-size: 14px;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) :is(input, select, textarea) {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) :is(input, select, textarea) {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border-color, #2d2d2d);
@@ -270,12 +270,12 @@ hero-modal-agents .agents-content {
   box-sizing: border-box;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) :is(input, select, textarea):focus {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) :is(input, select, textarea):focus {
   outline: none;
   border-color: var(--accent, #f472b6);
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .form-hint {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .form-hint {
   display: block;
   margin-top: 4px;
   font-size: 12px;
@@ -283,13 +283,13 @@ hero-modal-agents .agents-content {
 }
 
 /* Checkbox list */
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .checkbox-list {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .checkbox-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .checkbox-item {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .checkbox-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -297,22 +297,22 @@ hero-modal-agents .agents-content {
   cursor: pointer;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .checkbox-item input {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .checkbox-item input {
   width: auto;
 }
 
 /* Tab styles */
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .modal-header-tabs {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .modal-header-tabs {
   flex-shrink: 0;
   margin-bottom: 16px;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .modal-tabs {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .modal-tabs {
   display: flex;
   gap: 0;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .tab-button {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .tab-button {
   padding: 10px 20px;
   background: transparent;
   border: none;
@@ -323,21 +323,21 @@ hero-modal-agents .agents-content {
   transition: all 0.2s;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .tab-button:hover {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .tab-button:hover {
   color: var(--text-primary, #e0e0e0);
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .tab-button.active {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .tab-button.active {
   background: transparent;
   color: var(--accent, #f472b6);
   border-bottom-color: var(--accent, #f472b6);
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .tab-content {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .tab-content {
   display: none;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .tab-content.active {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .tab-content.active {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -345,7 +345,7 @@ hero-modal-agents .agents-content {
 }
 
 /* List items - abilities (column layout: info on top, description below) */
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .ability-item {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .ability-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -359,7 +359,7 @@ hero-modal-agents .agents-content {
 }
 
 /* List items - agents (row layout: info and actions side by side) */
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .agent-item {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .agent-item {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -373,13 +373,13 @@ hero-modal-agents .agents-content {
   transition: background 0.15s, border-color 0.15s;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) :is(.ability-item, .agent-item):hover {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) :is(.ability-item, .agent-item):hover {
   background: var(--hover-bg, #3a3a4e);
   border-color: var(--accent, #f472b6);
 }
 
 /* Ability info row - contains name, category, and possibly actions */
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .ability-info {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .ability-info {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -388,7 +388,7 @@ hero-modal-agents .agents-content {
 }
 
 /* Agent info - left side with name, type, model */
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .agent-info {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .agent-info {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -398,7 +398,7 @@ hero-modal-agents .agents-content {
   overflow: hidden;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) :is(.ability-category, .agent-type, .agent-model) {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) :is(.ability-category, .agent-type, .agent-model) {
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 10px;
@@ -406,7 +406,7 @@ hero-modal-agents .agents-content {
   color: var(--text-muted, #6b7280);
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) :is(.ability-info, .agent-info) > strong {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) :is(.ability-info, .agent-info) > strong {
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -414,7 +414,7 @@ hero-modal-agents .agents-content {
   max-width: 250px;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .ability-description {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .ability-description {
   margin: 4px 0 0 0;
   font-size: 13px;
   color: var(--text-secondary, #9ca3af);
@@ -424,21 +424,21 @@ hero-modal-agents .agents-content {
   overflow: hidden;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) :is(.ability-actions, .agent-actions) {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) :is(.ability-actions, .agent-actions) {
   margin-left: auto;
   display: flex;
   gap: 4px;
   flex-shrink: 0;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .empty-state {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .empty-state {
   color: var(--text-muted, #6b7280);
   font-style: italic;
   text-align: center;
   padding: 20px;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .button-icon-action {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .button-icon-action {
   padding: 8px 12px;
   font-size: 18px;
   min-width: 44px;
@@ -452,19 +452,19 @@ hero-modal-agents .agents-content {
   transition: background 0.15s, border-color 0.15s;
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .button-icon-action:hover {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .button-icon-action:hover {
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(255, 255, 255, 0.2);
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) :is(.abilities-actions, .agents-actions) {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) :is(.abilities-actions, .agents-actions) {
   margin-top: 16px;
   margin-bottom: 16px;
   flex-shrink: 0;
 }
 
 /* Config editor */
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .config-editor {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .config-editor {
   font-family: monospace;
   font-size: 13px;
   resize: vertical;
@@ -476,7 +476,7 @@ body > dialog[data-modal-name="agent-settings"] {
   width: min(600px, calc(100vw - 32px));
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .config-description {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .config-description {
   margin-top: 0;
   color: var(--text-secondary, #9ca3af);
   font-size: 14px;
@@ -486,27 +486,27 @@ body > dialog[data-modal-name="agent-settings"] {
    Modal Scrollbar Styling
    =========================================== */
 /* Custom scrollbar for modal content */
-:is(hero-modal, hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) ::-webkit-scrollbar {
+:is(kikx-modal, kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:is(hero-modal, hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) ::-webkit-scrollbar-track {
+:is(kikx-modal, kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) ::-webkit-scrollbar-track {
   background: var(--bg-primary, #0f0f1a);
   border-radius: 4px;
 }
 
-:is(hero-modal, hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) ::-webkit-scrollbar-thumb {
+:is(kikx-modal, kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) ::-webkit-scrollbar-thumb {
   background: var(--border-color, #2d2d2d);
   border-radius: 4px;
 }
 
-:is(hero-modal, hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) ::-webkit-scrollbar-thumb:hover {
+:is(kikx-modal, kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted, #6b7280);
 }
 
 /* Firefox scrollbar styling */
-:is(hero-modal, hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) * {
+:is(kikx-modal, kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) * {
   scrollbar-width: thin;
   scrollbar-color: var(--border-color, #2d2d2d) var(--bg-primary, #0f0f1a);
 }
@@ -515,12 +515,12 @@ body > dialog[data-modal-name="agent-settings"] {
    Form Validation Styling
    =========================================== */
 /* Invalid field styling */
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .field-invalid {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .field-invalid {
   border-color: var(--error, #f87171) !important;
   box-shadow: 0 0 0 1px var(--error, #f87171);
 }
 
-:is(hero-modal-create-session, hero-modal-create-agent, hero-modal-configure-ability, hero-modal-abilities, hero-modal-agents, hero-modal-agent-settings, hero-step-modal) .field-invalid:focus {
+:is(kikx-modal-create-session, kikx-modal-create-agent, kikx-modal-configure-ability, kikx-modal-abilities, kikx-modal-agents, kikx-modal-agent-settings, kikx-step-modal) .field-invalid:focus {
   border-color: var(--error, #f87171) !important;
   box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.3);
 }
@@ -529,8 +529,8 @@ body > dialog[data-modal-name="agent-settings"] {
    Step Modal Styling
    =========================================== */
 /* Step progress dots in header */
-hero-step-modal .step-progress,
-hero-modal-configure-ability .step-progress {
+kikx-step-modal .step-progress,
+kikx-modal-configure-ability .step-progress {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -539,8 +539,8 @@ hero-modal-configure-ability .step-progress {
   margin-left: 8px;
 }
 
-hero-step-modal .step-dot,
-hero-modal-configure-ability .step-dot {
+kikx-step-modal .step-dot,
+kikx-modal-configure-ability .step-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -548,12 +548,12 @@ hero-modal-configure-ability .step-dot {
   transition: background 0.2s;
 }
 
-hero-step-modal .step-dot.active,
-hero-modal-configure-ability .step-dot.active {
+kikx-step-modal .step-dot.active,
+kikx-modal-configure-ability .step-dot.active {
   background: var(--accent, #f472b6);
 }
 
-hero-step-modal .step-dot.completed,
-hero-modal-configure-ability .step-dot.completed {
+kikx-step-modal .step-dot.completed,
+kikx-modal-configure-ability .step-dot.completed {
   background: var(--success, #4ade80);
 }

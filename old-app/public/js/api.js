@@ -229,7 +229,7 @@ const API = {
         formData.append('files', file);
       }
 
-      let basePath = window.__BASE_PATH || '/hero/';
+      let basePath = window.__BASE_PATH || '/kikx/';
       let response = await fetch(`${basePath}api/sessions/${sessionId}/uploads`, {
         method:      'POST',
         body:        formData,

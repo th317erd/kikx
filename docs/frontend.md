@@ -6,19 +6,19 @@ The frontend is a vanilla HTML/CSS/JavaScript SPA with no framework dependencies
 
 | URL | View |
 |-----|------|
-| `/hero/` | Sessions inbox (home) |
-| `/hero/sessions/{id}` | Chat view for specific session |
-| `/hero/login` | Login page |
+| `/kikx/` | Sessions inbox (home) |
+| `/kikx/sessions/{id}` | Chat view for specific session |
+| `/kikx/login` | Login page |
 
 ## Views
 
-### Sessions Inbox (`/hero/`)
+### Sessions Inbox (`/kikx/`)
 
 Inbox-style list with search and archive toggle:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Hero                      [Agents] [Processes] [New] [Logout]  │
+│  Kikx                      [Agents] [Processes] [New] [Logout]  │
 ├─────────────────────────────────────────────────────────────────┤
 │  Your Sessions                                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
@@ -44,7 +44,7 @@ Features:
 - **Alternating colors**: Odd/even row backgrounds
 - **Relative dates**: "2h ago", "yesterday", "3 days ago"
 
-### Chat View (`/hero/sessions/{id}`)
+### Chat View (`/kikx/sessions/{id}`)
 
 Full-screen chat with dynamic assertion rendering:
 
@@ -113,7 +113,7 @@ const state = {
 
 ## Message Modes
 
-Hero supports two message processing modes:
+Kikx supports two message processing modes:
 
 ### Streaming Mode (Default)
 
@@ -374,7 +374,7 @@ toggleArchived.addEventListener('click', () => {
 // Archive session
 async function toggleSessionArchive(sessionId, archived) {
   let endpoint = archived ? 'unarchive' : 'archive';
-  await fetch(`/hero/api/sessions/${sessionId}/${endpoint}`, { method: 'POST' });
+  await fetch(`/kikx/api/sessions/${sessionId}/${endpoint}`, { method: 'POST' });
   await fetchSessions();
 }
 ```
@@ -552,7 +552,7 @@ function handleStreamCommand(args) {
 
 ## Web Components
 
-Hero uses Mythix-UI as the base web component framework. Components extend `MythixUIComponent` or specialized base classes like `MythixUIModal`.
+Kikx uses Mythix-UI as the base web component framework. Components extend `MythixUIComponent` or specialized base classes like `MythixUIModal`.
 
 ### Import Maps
 
@@ -577,29 +577,29 @@ Mythix-UI uses `@cdn/` style imports that must be resolved via an import map. Th
 // Import from CDN-style path (resolved by import map)
 import { MythixUIModal } from '@cdn/mythix-ui-modal@1';
 
-export class HeroModal extends MythixUIModal {
+export class KikxModal extends MythixUIModal {
   // Component implementation
 }
 ```
 
 The import map maps `@cdn/` paths to local `/mythix-ui/` paths during development. For production, these could point to a CDN URL instead.
 
-### Hero Component Base Classes
+### Kikx Component Base Classes
 
-Hero provides base classes that extend Mythix-UI:
+Kikx provides base classes that extend Mythix-UI:
 
 | Class | Extends | Purpose |
 |-------|---------|---------|
-| `HeroComponent` | `MythixUIComponent` | Base for all Hero components |
-| `HeroModal` | `MythixUIModal` | Base for modal dialogs |
+| `KikxComponent` | `MythixUIComponent` | Base for all Kikx components |
+| `KikxModal` | `MythixUIModal` | Base for modal dialogs |
 
-**HeroComponent features:**
+**KikxComponent features:**
 - `GlobalState` integration for reactive state
 - `subscribeGlobal()` for state subscriptions
 - `setGlobal()` for updating global state
 - `processElements()` for event macro binding
 
-**HeroModal features:**
+**KikxModal features:**
 - Native `<dialog>` element
 - Auto-bound footer buttons via `slot="footer"`
 - Escape key and backdrop click handling
@@ -610,8 +610,8 @@ Hero provides base classes that extend Mythix-UI:
 Modals use the native `<dialog>` element via MythixUIModal:
 
 ```javascript
-export class HeroModalSession extends HeroModal {
-  static tagName = 'hero-modal-session';
+export class KikxModalSession extends KikxModal {
+  static tagName = 'kikx-modal-session';
 
   get modalName() { return 'new-session'; }
   get modalTitle() { return 'New Session'; }
@@ -779,26 +779,26 @@ async function fetchSessions() {
   if (state.showArchived) params.set('archived', 'true');
   if (state.searchQuery) params.set('search', state.searchQuery);
 
-  let response = await fetch(`/hero/api/sessions?${params}`);
+  let response = await fetch(`/kikx/api/sessions?${params}`);
   let data = await response.json();
   state.sessions = data.sessions;
   renderSessionsList();
 }
 
 async function fetchAgents() {
-  let response = await fetch('/hero/api/agents');
+  let response = await fetch('/kikx/api/agents');
   let data = await response.json();
   state.agents = data.agents;
 }
 
 async function fetchProcesses() {
-  let response = await fetch('/hero/api/processes');
+  let response = await fetch('/kikx/api/processes');
   let data = await response.json();
   state.processes = data;
 }
 
 async function updateAgentConfig(agentId, config) {
-  await fetch(`/hero/api/agents/${agentId}/config`, {
+  await fetch(`/kikx/api/agents/${agentId}/config`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ config }),

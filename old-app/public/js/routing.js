@@ -8,7 +8,7 @@
  * Wait for custom elements to be defined.
  */
 async function waitForComponents() {
-  let components = ['hero-header', 'hero-sessions-list', 'hero-input'];
+  let components = ['kikx-header', 'kikx-sessions-list', 'kikx-input'];
   await Promise.all(components.map((name) => customElements.whenDefined(name)));
 }
 
@@ -106,14 +106,14 @@ function showView(viewName, route) {
   if (elements.settingsView)
     elements.settingsView.style.display = (viewName === 'settings') ? 'flex' : 'none';
 
-  // Pass tab to hero-settings component when settings view is active
+  // Pass tab to kikx-settings component when settings view is active
   if (viewName === 'settings') {
     let settingsComponent = document.getElementById('settings');
     if (settingsComponent)
       settingsComponent.tab = route?.tab || 'profile';
   }
 
-  // Notify hero-header components of view change
+  // Notify kikx-header components of view change
   document.dispatchEvent(new CustomEvent('viewchange', {
     detail: { view: viewName, tab: route?.tab },
   }));

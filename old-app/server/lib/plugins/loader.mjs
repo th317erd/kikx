@@ -53,7 +53,7 @@ export function getInternalPluginsDir() {
  * Discover all plugins from internal and user directories.
  *
  * Internal plugins are found in server/plugins/.
- * User plugins are found in ~/.config/hero/plugins/.
+ * User plugins are found in ~/.config/kikx/plugins/.
  *
  * @returns {Promise<Array<PluginMetadata>>} Array of plugin metadata
  */
@@ -143,9 +143,9 @@ async function readPluginMetadata(pluginPath, source = 'user') {
       return null;
 
     let main         = packageJson.main || 'index.mjs';
-    let hero         = packageJson.hero || {};
-    let agents       = hero.agents || ['*'];
-    let dependencies = hero.dependencies || [];
+    let kikx         = packageJson.kikx || {};
+    let agents       = kikx.agents || ['*'];
+    let dependencies = kikx.dependencies || [];
 
     // Verify entry point exists
     let entryPath = join(pluginPath, main);

@@ -296,12 +296,12 @@ describe('ContentSanitizer', () => {
   // ===========================================================================
 
   describe('custom elements', () => {
-    it('should allow hero-hml-prompt with its attributes', () => {
+    it('should allow kikx-hml-prompt with its attributes', () => {
       let sanitizer = new ContentSanitizer();
-      let input     = '<hero-hml-prompt type="text" name="query" label="Search" placeholder="Type here" required="true"></hero-hml-prompt>';
+      let input     = '<kikx-hml-prompt type="text" name="query" label="Search" placeholder="Type here" required="true"></kikx-hml-prompt>';
       let result    = sanitizer.sanitize(input);
 
-      assert.ok(result.includes('<hero-hml-prompt'));
+      assert.ok(result.includes('<kikx-hml-prompt'));
       assert.ok(result.includes('type="text"'));
       assert.ok(result.includes('name="query"'));
       assert.ok(result.includes('label="Search"'));
@@ -309,12 +309,12 @@ describe('ContentSanitizer', () => {
       assert.ok(result.includes('required="true"'));
     });
 
-    it('should allow hero-hml-option with its attributes', () => {
+    it('should allow kikx-hml-option with its attributes', () => {
       let sanitizer = new ContentSanitizer();
-      let input     = '<hero-hml-option value="opt1" label="Option 1" selected="true"></hero-hml-option>';
+      let input     = '<kikx-hml-option value="opt1" label="Option 1" selected="true"></kikx-hml-option>';
       let result    = sanitizer.sanitize(input);
 
-      assert.ok(result.includes('<hero-hml-option'));
+      assert.ok(result.includes('<kikx-hml-option'));
       assert.ok(result.includes('value="opt1"'));
       assert.ok(result.includes('label="Option 1"'));
       assert.ok(result.includes('selected="true"'));
@@ -520,7 +520,7 @@ describe('ContentSanitizer', () => {
       assert.ok(DEFAULT_ALLOWED_TAGS['b'] !== undefined);
       assert.ok(DEFAULT_ALLOWED_TAGS['div'] !== undefined);
       assert.ok(DEFAULT_ALLOWED_TAGS['a'] !== undefined);
-      assert.ok(DEFAULT_ALLOWED_TAGS['hero-hml-prompt'] !== undefined);
+      assert.ok(DEFAULT_ALLOWED_TAGS['kikx-hml-prompt'] !== undefined);
     });
 
     it('should export DANGEROUS_TAGS as a Set with expected entries', () => {

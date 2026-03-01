@@ -1,0 +1,307 @@
+<!-- Kikx Input Component -->
+<!-- Message input textarea with send/clear buttons -->
+
+<!-- Document-scope styles -->
+<style data-for="kikx-input">
+  kikx-input {
+    display: block;
+  }
+</style>
+
+<!-- Shadow DOM template -->
+<template data-for="kikx-input">
+  <style>
+    :host {
+      display: block;
+    }
+
+    .input-container {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      padding: 8px;
+      border-top: 1px solid var(--border-color, #2d2d2d);
+      background: var(--bg-secondary, #1a1a2e);
+    }
+
+    textarea {
+      flex: 1;
+      resize: none;
+      min-height: 36px;
+      max-height: 150px;
+      padding: 8px 12px;
+      background: var(--bg-tertiary, #2a2a3e);
+      border: 1px solid var(--border-color, #2d2d2d);
+      border-radius: var(--radius-sm, 4px);
+      color: var(--text-primary, #e0e0e0);
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.4;
+      box-sizing: border-box;
+    }
+
+    /* Custom scrollbar for textarea - force classic scrollbar style */
+    textarea {
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-color, #2d2d2d) var(--bg-tertiary, #2a2a3e);
+    }
+
+    textarea::-webkit-scrollbar {
+      width: 8px;
+      background: var(--bg-tertiary, #2a2a3e);
+    }
+
+    textarea::-webkit-scrollbar-track {
+      background: var(--bg-tertiary, #2a2a3e);
+      border-radius: 4px;
+    }
+
+    textarea::-webkit-scrollbar-thumb {
+      background: var(--border-color, #4a4a5e);
+      border-radius: 4px;
+      min-height: 30px;
+    }
+
+    textarea::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted, #6b7280);
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent, #f472b6);
+    }
+
+    textarea:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    textarea::placeholder {
+      color: var(--text-muted, #6b7280);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 36px;
+      padding: 0 12px;
+      border: none;
+      border-radius: var(--radius-sm, 4px);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .button:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    .button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .send-button {
+      background: var(--accent, #f472b6);
+      color: white;
+    }
+
+    .send-button:hover:not(:disabled) {
+      background: var(--accent-hover, #ec4899);
+    }
+
+    .clear-button {
+      background: var(--bg-tertiary, #2a2a3e);
+      color: var(--text-primary, #e0e0e0);
+    }
+
+    .clear-button:hover:not(:disabled) {
+      background: var(--error, #f87171);
+      color: white;
+    }
+
+    /* Drop zone overlay */
+    .drop-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(244, 114, 182, 0.15);
+      border: 2px dashed var(--accent, #f472b6);
+      border-radius: var(--radius-sm, 4px);
+      z-index: 10;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .drop-overlay.active {
+      display: flex;
+    }
+
+    .drop-overlay span {
+      color: var(--accent, #f472b6);
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    /* File preview bar */
+    .file-preview-bar {
+      display: none;
+      gap: 6px;
+      padding: 6px 8px;
+      border-top: 1px solid var(--border-color, #2d2d2d);
+      background: var(--bg-secondary, #1a1a2e);
+      flex-wrap: wrap;
+    }
+
+    .file-preview-bar.has-files {
+      display: flex;
+    }
+
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      background: var(--bg-tertiary, #2a2a3e);
+      border: 1px solid var(--border-color, #2d2d2d);
+      border-radius: 12px;
+      font-size: 12px;
+      color: var(--text-secondary, #a0a0b0);
+    }
+
+    .file-chip img {
+      width: 16px;
+      height: 16px;
+      border-radius: 2px;
+      object-fit: cover;
+    }
+
+    .file-chip .remove {
+      cursor: pointer;
+      color: var(--text-muted, #6b7280);
+      font-size: 14px;
+      line-height: 1;
+      margin-left: 2px;
+    }
+
+    .file-chip .remove:hover {
+      color: var(--error, #f87171);
+    }
+
+    /* @Mention autocomplete dropdown */
+    .mention-dropdown {
+      display: none;
+      position: absolute;
+      bottom: 100%;
+      left: 8px;
+      right: 8px;
+      max-height: 180px;
+      overflow-y: auto;
+      background: var(--bg-tertiary, #2a2a3e);
+      border: 1px solid var(--border-color, #2d2d2d);
+      border-radius: var(--radius-sm, 4px);
+      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+      z-index: 20;
+    }
+
+    .mention-dropdown.active {
+      display: block;
+    }
+
+    .mention-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .mention-item:hover,
+    .mention-item.selected {
+      background: var(--accent, #f472b6);
+      color: white;
+    }
+
+    .mention-item .mention-name {
+      font-weight: 600;
+      color: var(--text-primary, #e0e0e0);
+    }
+
+    .mention-item.selected .mention-name,
+    .mention-item:hover .mention-name {
+      color: white;
+    }
+
+    .mention-item .mention-real {
+      color: var(--text-muted, #6b7280);
+      font-size: 12px;
+    }
+
+    .mention-item.selected .mention-real,
+    .mention-item:hover .mention-real {
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .mention-item .mention-role {
+      margin-left: auto;
+      color: var(--text-muted, #6b7280);
+      font-size: 11px;
+      text-transform: capitalize;
+    }
+
+    .mention-item.selected .mention-role,
+    .mention-item:hover .mention-role {
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Mobile */
+    @media (max-width: 640px) {
+      .input-container {
+        gap: 6px;
+        padding: 6px;
+      }
+
+      textarea {
+        min-height: 32px;
+        padding: 6px 10px;
+        font-size: 16px; /* Prevent zoom on iOS */
+        box-sizing: border-box;
+      }
+
+      .button {
+        height: 32px;
+        padding: 0 10px;
+        font-size: 13px;
+      }
+    }
+  </style>
+
+  <div class="input-container"
+       data-event-ondragover="handleDragOver"
+       data-event-ondragleave="handleDragLeave"
+       data-event-ondrop="handleDrop"
+       style="position: relative;"
+  >
+    <div class="mention-dropdown"></div>
+    <div class="drop-overlay"><span>Drop files here</span></div>
+    <textarea
+      class="message-input"
+      placeholder="@@placeholder@@"
+      rows="1"
+      data-event-onkeydown="handleKeydown"
+      data-event-oninput="autoResize"
+      data-event-onpaste="handlePaste"
+    ></textarea>
+    <button class="button send-button" data-event-onclick="handleSend">
+      Send
+    </button>
+  </div>
+  <div class="file-preview-bar"></div>
+</template>
+
+<script type="module" src="./kikx-input.js"></script>

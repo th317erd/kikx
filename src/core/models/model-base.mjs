@@ -7,7 +7,7 @@ const { Model, Types } = MythixORM;
 // =============================================================================
 // ModelBase
 // =============================================================================
-// Base model for all Hero V2 models.
+// Base model for all Kikx V2 models.
 // Provides createdAt/updatedAt timestamps and helper methods.
 // =============================================================================
 

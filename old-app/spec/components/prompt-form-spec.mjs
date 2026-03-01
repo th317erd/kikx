@@ -27,7 +27,7 @@ const hmlPromptSource = fs.readFileSync(
   'utf-8'
 );
 const heroChatSource = fs.readFileSync(
-  path.join(projectRoot, 'public/js/components/hero-chat/hero-chat.js'),
+  path.join(projectRoot, 'public/js/components/kikx-chat/kikx-chat.js'),
   'utf-8'
 );
 const appSource = fs.readFileSync(
@@ -132,18 +132,18 @@ describe('PROMPT-003: Enter advances focus through prompts', () => {
     );
   });
 
-  it('should have focus chain setup in hero-chat', () => {
+  it('should have focus chain setup in kikx-chat', () => {
     assert.ok(
       heroChatSource.includes('_setupPromptFocusChain'),
-      'hero-chat should have _setupPromptFocusChain method'
+      'kikx-chat should have _setupPromptFocusChain method'
     );
     assert.ok(
       heroChatSource.includes('_focusPromptInput'),
-      'hero-chat should have _focusPromptInput method'
+      'kikx-chat should have _focusPromptInput method'
     );
     assert.ok(
       heroChatSource.includes("'prompt-tab-forward'"),
-      'hero-chat should listen for prompt-tab-forward events'
+      'kikx-chat should listen for prompt-tab-forward events'
     );
   });
 

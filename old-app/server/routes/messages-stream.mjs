@@ -1263,7 +1263,7 @@ router.post('/:sessionId/messages/stream', async (req, res) => {
           agentId:       session.agent_id,
           content:       fullContent,
           hidden:        false,
-          // Broadcast via WebSocket so hero-chat receives the frame
+          // Broadcast via WebSocket so kikx-chat receives the frame
         });
         persistedMessageID = storedFrame.id;
         debug('Stored message with frame ID:', persistedMessageID);

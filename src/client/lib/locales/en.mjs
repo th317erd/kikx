@@ -2,7 +2,7 @@
 
 export default {
   application: {
-    title:   'Hero',
+    title:   'Kikx',
     loading: 'Loading...',
   },
   login: {

@@ -1,7 +1,7 @@
 'use strict';
 
 // ============================================================================
-// Hero Markup Language (HML) - Server-Side Parser
+// Kikx Markup Language (HML) - Server-Side Parser
 // ============================================================================
 // Extracts executable elements from AI response text for server-side processing.
 // Display elements are left in place for frontend rendering.

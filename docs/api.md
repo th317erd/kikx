@@ -1,6 +1,6 @@
 # API Reference
 
-All API endpoints are prefixed with `/hero/api/` (after nginx strips the `/hero` prefix, the server sees `/api/`).
+All API endpoints are prefixed with `/kikx/api/` (after nginx strips the `/hero` prefix, the server sees `/api/`).
 
 ## Authentication
 
@@ -816,7 +816,7 @@ Returns only functions with full schema and examples.
 
 ## WebSocket
 
-Connect to `/hero/ws` for real-time updates.
+Connect to `/kikx/ws` for real-time updates.
 
 ### Server → Client Messages
 

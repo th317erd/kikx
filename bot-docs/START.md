@@ -6,7 +6,7 @@
 
 ## What Is This?
 
-`bot-docs/` is a structured knowledge base designed for AI agents working on the Hero repository. All documentation here uses **compact YAML conventions** where appropriate to minimize token usage.
+`bot-docs/` is a structured knowledge base designed for AI agents working on the Kikx repository. All documentation here uses **compact YAML conventions** where appropriate to minimize token usage.
 
 ## Development Process
 
@@ -19,7 +19,7 @@ bot-docs/
   START.md              <- You are here. Read first.
 
   docs/                 <- Documentation of existing and planned systems
-    hero/
+    kikx/
       architecture.yaml <- System architecture, data flow, key abstractions
       status.yaml       <- Current implementation status, what's done, what's broken
       known-issues.yaml <- Current bugs, code smells, and gotchas
@@ -27,13 +27,13 @@ bot-docs/
       concept-art.yaml  <- Visual direction from concept art references
 
   plan/                 <- Architecture plans and design documents
-    hero/
+    kikx/
       v1-plan.yaml      <- Full V1 plan (8 phases) converted from master plan
       message-store.yaml <- MessageStore interface design (state unification)
       plan-updates.yaml <- Critical observations and plan drift analysis
 
   test/                 <- TDD plan tests — the tests ARE the plan
-    hero/
+    kikx/
       unit.yaml         <- Unit test specs per module
       coverage.yaml     <- Coverage requirements
 ```
@@ -50,10 +50,10 @@ bot-docs/
 
 | I need to... | Read this |
 |--------------|-----------|
-| Understand the system architecture | `docs/hero/architecture.yaml` |
-| Know what's done and what's pending | `docs/hero/status.yaml` |
-| Know what's broken or risky | `docs/hero/known-issues.yaml` |
-| See the V1 plan | `plan/hero/v1-plan.yaml` |
-| See critical plan observations | `plan/hero/plan-updates.yaml` |
-| See the MessageStore design | `plan/hero/message-store.yaml` |
-| See test requirements | `test/hero/unit.yaml` |
+| Understand the system architecture | `docs/kikx/architecture.yaml` |
+| Know what's done and what's pending | `docs/kikx/status.yaml` |
+| Know what's broken or risky | `docs/kikx/known-issues.yaml` |
+| See the V1 plan | `plan/kikx/v1-plan.yaml` |
+| See critical plan observations | `plan/kikx/plan-updates.yaml` |
+| See the MessageStore design | `plan/kikx/message-store.yaml` |
+| See test requirements | `test/kikx/unit.yaml` |

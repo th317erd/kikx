@@ -3,7 +3,7 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createHeroCore }     from '../../src/core/index.mjs';
+import { createKikxCore }     from '../../src/core/index.mjs';
 import { InteractionLoop }    from '../../src/core/interaction/index.mjs';
 import { SessionManager }     from '../../src/core/session/index.mjs';
 import { FramePersistence }   from '../../src/core/frames/index.mjs';
@@ -48,7 +48,7 @@ class MockAgent extends AgentInterface {
 // =============================================================================
 // InteractionLoop Tests
 // =============================================================================
-// One shared HeroCore instance for the entire suite.
+// One shared KikxCore instance for the entire suite.
 // Each test creates its own org + session for isolation.
 // =============================================================================
 
@@ -61,7 +61,7 @@ describe('InteractionLoop', () => {
   let sanitizer;
 
   before(async () => {
-    core    = createHeroCore();
+    core    = createKikxCore();
     await core.start();
     models  = core.getModels();
     context = core.getContext();

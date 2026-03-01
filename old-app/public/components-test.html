@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hero Components Test</title>
+  <title>Kikx Components Test</title>
   <base href="/">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/markdown.css">
@@ -58,8 +58,8 @@
     </div>
 
     <div class="test-section">
-      <h2>HeroHeader Test</h2>
-      <hero-header id="test-header"></hero-header>
+      <h2>KikxHeader Test</h2>
+      <kikx-header id="test-header"></kikx-header>
       <div class="test-controls">
         <button onclick="document.getElementById('test-header').view = 'sessions'">Sessions View</button>
         <button onclick="document.getElementById('test-header').view = 'chat'">Chat View</button>
@@ -67,23 +67,23 @@
     </div>
 
     <div class="test-section">
-      <h2>HeroSidebar Test</h2>
-      <hero-sidebar id="test-sidebar" style="height: 300px; overflow: auto;"></hero-sidebar>
+      <h2>KikxSidebar Test</h2>
+      <kikx-sidebar id="test-sidebar" style="height: 300px; overflow: auto;"></kikx-sidebar>
     </div>
 
     <div class="test-section">
-      <h2>HeroInput Test</h2>
-      <hero-input id="test-input"></hero-input>
+      <h2>KikxInput Test</h2>
+      <kikx-input id="test-input"></kikx-input>
     </div>
 
     <div class="test-section">
       <h2>Modal Test</h2>
       <div class="test-controls">
-        <button onclick="document.querySelector('hero-modal-session').open()">Open Session Modal</button>
-        <button onclick="document.querySelector('hero-modal-agent').open()">Open Agent Modal</button>
+        <button onclick="document.querySelector('kikx-modal-session').open()">Open Session Modal</button>
+        <button onclick="document.querySelector('kikx-modal-agent').open()">Open Agent Modal</button>
       </div>
-      <hero-modal-session style="display: none;"></hero-modal-session>
-      <hero-modal-agent style="display: none;"></hero-modal-agent>
+      <kikx-modal-session style="display: none;"></kikx-modal-session>
+      <kikx-modal-agent style="display: none;"></kikx-modal-agent>
     </div>
   </div>
 
@@ -93,9 +93,9 @@
     // Test registration
     const registrationStatus = document.getElementById('registration-status');
     const expectedComponents = [
-      'hero-app', 'hero-header', 'hero-sidebar', 'hero-chat',
-      'hero-input', 'hero-websocket', 'hero-modal',
-      'hero-modal-session', 'hero-modal-agent', 'hero-modal-ability'
+      'kikx-app', 'kikx-header', 'kikx-sidebar', 'kikx-chat',
+      'kikx-input', 'kikx-websocket', 'kikx-modal',
+      'kikx-modal-session', 'kikx-modal-agent', 'kikx-modal-ability'
     ];
 
     let allRegistered = true;

@@ -1,0 +1,1743 @@
+# client-plan.yaml
+# Kikx V2 Client Plan
+# Created: 2026-02-23
+# Updated: 2026-02-23 (V1 screenshot review + FrameManager integration)
+# Status: PLANNING (sections fleshed out, open questions remain)
+# ---
+# This is the client-side plan. Server API requirements are derived from
+# what the client needs — client drives the contract.
+# See also: frame-manager.yaml (core state engine design)
+
+meta:
+  project: Kikx V2
+  framework: "Vanilla WebComponents (Shadow DOM where it helps)"
+  server: Mythix (src/server/)
+  style: "Glassy neon — themable (black glass / light glass + configurable accent colors)"
+  frame-manager: frame-manager.yaml (authoritative spec for FrameManager)
+  build-system: "None. Vanilla browser ES modules (.mjs) with importmap. No bundler."
+  module-system: |
+    All client code uses .mjs files. An importmap in the HTML entry point
+    maps bare specifiers to paths. No bundler, no transpiler. The browser
+    resolves all imports natively.
+  hosting: |
+    Static files served by nginx directly from src/client/ at /kikx/.
+    Shared libs (frame-manager) served from src/lib/ at /kikx/lib/.
+    REST API proxied at /kikx/api/, WebSocket at /kikx/ws → Mythix server:8089.
+    src/server/ is NEVER exposed to nginx.
+  routing: "History API (clean URLs). nginx try_files fallback to index.html."
+  vendor-dependencies: |
+    seqda: Published npm module, loaded via CDN (script tag or importmap → CDN URL).
+    No local vendor copies needed.
+
+# =============================================================================
+# PRODUCT VISION (CLIENT PERSPECTIVE)
+# =============================================================================
+
+vision:
+  summary: |
+    Kikx is a channel-based chat platform where humans and AI agents collaborate
+    in real-time. Sessions are channels. Any number of humans or bots can
+    participate. One active coordinator bot per session. Users invite agents,
+    configure their abilities, and orchestrate multi-bot conversations.
+
+  core-principles:
+    - "Sessions are channels — many participants (humans + bots) talking at once"
+    - "Interactions are the unit of conversation — not 'messages'"
+    - "An Interaction is a grouping of content: message, reflection, prompt, tool result, etc."
+    - "FrameManager is the engine — all state flows through frames"
+    - "Interactive content: messages can contain forms (hml-prompt), be updated, evolve"
+    - "Bots can talk to bots, humans can talk to humans, everyone can @mention anyone"
+    - "The user is always in control — bots are tools, not peers"
+
+# =============================================================================
+# TERMINOLOGY
+# =============================================================================
+
+terminology:
+  session: |
+    A channel. Named conversation with multiple participants. Everything
+    is a channel — "Private" is just a channel with exactly 2 participants.
+    Channels are meeting spaces. Can be named, archived ("closed"), revived.
+  interaction: |
+    What most apps call a 'message'. A grouping of frames under one parent.
+    An interaction can contain: text, reflections, prompts, tool calls,
+    images, code blocks, etc. All in one logical unit.
+  frame: |
+    The atomic unit of state. Everything is a frame. Frames are event-sourced,
+    immutable (append-only), and managed by FrameManager. Frames form a tree:
+    Interaction -> [Message, Reflection, HMLPrompt, Command, ...]
+  agent: "A configured AI backend. Has a name, API key, model config, abilities."
+  ability: |
+    An injected prompt guide. Conditional instructions that steer bot behavior.
+    Can be always-on or condition-triggered.
+  hml-prompt: |
+    Interactive form element embedded in a message. Like an <input> inside the
+    <form> of the interaction itself. Types: text, textarea, select, color,
+    date, time, number, checkbox, radio, etc.
+  participant: "A human user or bot agent in a session."
+  coordinator: "The active bot that responds to unaddressed messages in a session."
+
+# =============================================================================
+# V1 LEARNINGS (from screenshot review 2026-02-23)
+# =============================================================================
+
+v1-learnings:
+  description: |
+    Reviewed 32 screenshots from V1 (Feb 8 - Feb 22, 2026). V1 was working
+    and the user "was rather liking the progress." These observations inform
+    V2 decisions — carry forward what worked, fix what didn't.
+
+  what-worked:
+    layout:
+      - "Top nav bar with session name + back arrow (left), action buttons (right)"
+      - "Agents and Abilities as MODALS over chat, not separate pages"
+      - "Right-side Participants panel (collapsible)"
+      - "Simple, flat layout — no left sidebar for sessions"
+      - "Back arrow (←) to exit a session"
+
+    hml-prompts:
+      description: "The star feature of V1. Incredibly rich."
+      types-working:
+        - "text (single-line input with placeholder text)"
+        - "textarea (multi-line, italic placeholder text)"
+        - "number (numeric input)"
+        - "select / multi-select (dropdown with pill badges for selections)"
+        - "time (native time picker)"
+        - "color (color picker, shows hex value as pill badge)"
+        - "range (slider with numeric value display)"
+        - "checkbox (for yes/no)"
+        - "radio (radio button groups)"
+      ui-patterns:
+        - "Grouped by categories with bold headings (e.g., 'Basic Questions', 'Fun Sliders')"
+        - "Pill badges for selected values (green-bordered, compact)"
+        - "Ignore / Submit buttons at interaction level (right-aligned)"
+        - "Token count shown per interaction ('~666 tokens')"
+        - "Read-only display after submission (shows answers as formatted text)"
+
+    permissions:
+      - "Inline permission prompts with lightning bolt icon + 'Permission Request' label"
+      - "Radio options: Allow this once / Allow for this session / Always allow / Deny"
+      - "Submit button on the prompt"
+      - "Worked end-to-end with websearch tool"
+      - "'Grant permission?' label above options"
+
+    chat-rendering:
+      - "Reflection blocks: brain emoji, 'Reflection' label, collapsible (▶ toggle)"
+      - "Rich HTML output: headings, bold, bullet lists, code blocks with syntax highlighting"
+      - "Websearch results: 'Completed' status block with JSON result, then formatted summary"
+      - "User messages: pink/red background, right-aligned"
+      - "Agent messages: dark background, left-aligned, with red avatar circle + initials"
+      - "Token count per message ('~5 tokens', '~666 tokens', '~793 tokens')"
+      - "Timestamp per message ('just now / ~666 tokens')"
+
+    cost-tracking:
+      - "Footer status bar: 'Connected | Global: $001.85 | Service: $000.92 | Session: $000.34'"
+      - "Per-session and global cost breakdowns"
+      - "Connection status indicator (green dot + 'Connected')"
+
+    agents-abilities:
+      - "System abilities had type badges: search, system, interaction, filesystem"
+      - "Abilities modal: System tab / My Abilities tab"
+      - "Agent cards with red avatar circle + initials + settings gear"
+      - "Multi-step ability creation wizard worked well"
+      - "'New Agent' / 'New Ability' primary action buttons"
+
+    streaming:
+      - "Real-time token streaming visible"
+      - "Reflection blocks appear during streaming"
+
+  what-to-fix:
+    - "[Inject Object] bug — raw object stringification when rendering certain content"
+    - "Connection errors visible in DevTools during some interactions"
+    - "Websearch interaction tag format was clunky (<interact type='websearch'>)"
+
+  v2-decisions-from-v1:
+    - "KEEP: Top nav bar layout (session name left, actions right)"
+    - "KEEP: Agents/Abilities as modals over chat"
+    - "KEEP: Right-side participants panel"
+    - "KEEP: All HML-prompt types — they all worked"
+    - "KEEP: Permission system UI (inline, radio buttons, submit)"
+    - "KEEP: Cost tracking in footer"
+    - "KEEP: Token count per interaction"
+    - "KEEP: Reflection blocks with brain emoji"
+    - "EVOLVE: Add left sidebar for session list (concept art direction)"
+    - "EVOLVE: Glass-morphism styling over the flat V1 dark theme"
+    - "EVOLVE: FrameManager replaces ad-hoc message state management"
+    - "FIX: Object rendering bug — proper content serialization"
+
+# =============================================================================
+# VISUAL DESIGN SYSTEM
+# =============================================================================
+
+design-system:
+  status: PLANNING
+  aesthetic:
+    description: |
+      "Glassy neon" — translucent glass panels with neon accent lighting.
+      Two base variants: "black glass" (dark) and "light glass" (light).
+      Neon accent colors are configurable independently of the base variant.
+    glass-morphism: "Translucent panels, backdrop-blur, subtle borders"
+    borders: "Glowing, subtle, 1px with neon color"
+    corners: "Rounded (8-12px)"
+    shadows: "Soft, colored glow matching accent"
+    typography: "Clean sans-serif, light weights for body, bold for headers"
+
+  theming:
+    description: |
+      Theme = base variant + accent colors. Both are independently configurable.
+      Implemented entirely via CSS custom properties on :root or a theme container.
+    base-variants:
+      black-glass:
+        description: "Dark mode. Deep dark backgrounds with glass transparency."
+        background-range: "#0a0a1a to #1a1a2e"
+        glass-opacity: "rgba(255,255,255,0.05) to rgba(255,255,255,0.10)"
+        text: "White/light gray"
+      light-glass:
+        description: "Light mode. Bright backgrounds with frosted glass transparency."
+        background-range: "#e8e8f0 to #f5f5ff"
+        glass-opacity: "rgba(0,0,0,0.03) to rgba(0,0,0,0.08)"
+        text: "Dark gray/black"
+    accent-colors:
+      description: |
+        Neon accent colors are independent of the base variant.
+        User can switch between black-glass and light-glass while keeping
+        the same accent colors. The accent color is the PRIMARY neon color
+        used throughout the UI for highlights, active states, borders, glows.
+      palette:
+        - { name: pink,    hex: "#ff4081" }
+        - { name: purple,  hex: "#b040ff" }
+        - { name: blue,    hex: "#448aff" }
+        - { name: cyan,    hex: "#00e5ff" }
+        - { name: green,   hex: "#00e676" }
+        - { name: yellow,  hex: "#ffea00" }
+        - { name: orange,  hex: "#ff9100" }
+        - { name: red,     hex: "#ff1744" }
+      usage:
+        - "Primary action buttons and highlights"
+        - "Active states, borders, neon glows"
+        - "Navigation active indicators"
+        - "Focus rings"
+      implementation: |
+        CSS custom properties:
+          --accent-primary: #00e5ff;       /* the chosen accent */
+          --accent-glow: rgba(0,229,255,0.3);
+          --accent-dim: rgba(0,229,255,0.1);
+          etc.
+        Changing the accent = swapping a few CSS variables.
+      participant-colors-are-separate: |
+        Participant colors (chat bubble borders, avatar rings) are
+        assigned per-participant from a fixed palette — NOT tied to
+        the user's chosen accent. This ensures participants are always
+        visually distinct regardless of the theme accent.
+
+  participant-colors:
+    description: |
+      Each participant gets a unique accent color. Used for:
+      - Chat bubble border/glow
+      - Avatar ring (colored circle + initials, V1 pattern)
+      - @mention highlight
+      - Typing indicator
+    assignment: "Deterministic from participant ID (hash to color palette)"
+
+  css-architecture:
+    description: |
+      CSS custom properties (variables) on :root or theme-provider element.
+      WebComponents use Shadow DOM for encapsulation where it helps — Shadow DOM
+      naturally inherits CSS custom properties from the document.
+    layers:
+      - "Theme variables (--background-*, --text-*, --accent-*, --glass-*)"
+      - "Component-scoped styles (inside Shadow DOM)"
+      - "Shared design tokens (imported as CSS custom properties)"
+
+  open-questions:
+    - "Exact color palette — how many participant colors? Collision handling for 10+ participants?"
+    - "Glass-morphism performance on lower-end devices — fallback or simpler variant?"
+    - "Theme persistence — localStorage? User preference on server?"
+    - "Transition animation between themes?"
+
+# =============================================================================
+# LAYOUT SHELL
+# =============================================================================
+
+layout:
+  status: PLANNING
+  description: |
+    Page-based app structure. Different pages show different layouts.
+    The login page is its own page — no status bar, no sidebar, no nav.
+    The sessions view has the full layout: top bar, chat, sidebar, status bar.
+
+  page-structure:
+    description: |
+      The app is structured as PAGES. Each page owns its full layout.
+      This prevents bugs like V1's status bar leaking onto the login page.
+      The root element (kikx-application) is a router that renders pages.
+    pages:
+      - name: login-page
+        path: "/kikx/login"
+        layout: "Centered card. No nav, no sidebar, no status bar."
+        components: ["kikx-login"]
+      - name: session-page
+        path: "/kikx/, /kikx/sessions/:id"
+        layout: "Full layout: top bar + chat + sidebar + status bar"
+        components: ["kikx-top-bar", "kikx-chat-view", "kikx-sidebar", "kikx-status-bar"]
+      - name: settings-page
+        path: "/kikx/settings"
+        layout: "Top bar + settings content. No sidebar, no status bar."
+        components: ["kikx-top-bar", "kikx-settings"]
+
+  panels:
+    top-bar:
+      position: top
+      from-v1: true
+      content:
+        - "← back arrow (mobile: collapses to session list)"
+        - "Session name"
+        - "Agents button (opens modal)"
+        - "Abilities button (opens modal)"
+        - "New Session button (red/accent, opens create dialog)"
+        - "Settings button"
+        - "Logout button"
+
+    chat-area:
+      position: center-left
+      content:
+        - "Interaction stream (FrameManager-driven)"
+        - "Typing indicators (per participant, phantom frames)"
+        - "Message input area with @mention, send button"
+        - "Jump-to-bottom indicator (when scrolled up)"
+      scrolling: "See scroll-behavior section below"
+      from-v1: |
+        V1's chat area worked well. User messages pink/red right-aligned,
+        agent messages dark left-aligned. Keep this pattern.
+
+    sidebar:
+      position: right
+      width: "~300px, collapsible"
+      from-v1: true
+      description: |
+        Right-side panel. V1 had the participants panel on the right
+        and the user liked it there. V2 keeps it on the right and expands
+        it to include session list + participants.
+      content:
+        - "Search bar at top (filters sessions by name)"
+        - "Archive toggle: monkey-see / monkey-no-see icon — shows/hides archived sessions"
+        - "Session categories: 'Channels' and 'Private' (expandable sections)"
+        - "Session list: name, last message preview, timestamp, unread badge"
+        - "Sessions can be children of other sessions (sub-agent sessions)"
+        - "Active session highlighting"
+        - "New Session quick action"
+        - "Archive session: trash icon on session row"
+        - "Revive archived session: recycle icon on archived session row"
+        - "Participant list with avatars, names, roles"
+        - "Session actions (invite, settings)"
+      notes: |
+        The sidebar is on the RIGHT. The user explicitly prefers this —
+        V1 had it on the right and it worked well.
+
+        Archive toggle uses playful "monkey-see" / "monkey-no-see" icons.
+        When "monkey-see" is active, archived sessions are visible in the list.
+        When "monkey-no-see" is active (default), archived sessions are hidden.
+
+    status-bar:
+      position: bottom
+      from-v1: true
+      shows-on: "session-page ONLY (not login, not settings)"
+      content:
+        - "Connection status indicator (green dot + 'Connected')"
+        - "Cost tracking: Global / Service / Session"
+      notes: |
+        V1's status bar was great but had a bug: it was visible on the login
+        page. V2 fixes this by making the status bar a child of session-page,
+        not the root app. It only renders in session context.
+
+  open-questions:
+    - "Mobile layout — sidebar becomes full-screen, chat becomes full-screen?"
+    - "Sidebar default open or closed? (V1 appeared to have it open)"
+    - "Sidebar collapse — icon-only or fully hidden?"
+
+# =============================================================================
+# SCROLL BEHAVIOR
+# =============================================================================
+
+scroll-behavior:
+  status: PLANNING
+  description: |
+    V1 struggled with chat scrolling. V2 solves this properly with an
+    explicit "sticky bottom" pattern driven by ResizeObserver — no debounces.
+
+  problem:
+    - "Chat should auto-scroll to bottom as new content arrives (streaming, new messages)"
+    - "But if the user scrolls UP to read history, scrolling must STOP — don't hijack the user"
+    - "When the user scrolls back to the bottom, auto-scroll resumes"
+    - "V1 used hacky approaches that jacked scrolling away or failed to stick"
+
+  solution:
+    name: "Anchored scroll with ResizeObserver"
+    description: |
+      A boolean flag `isAnchoredToBottom` tracks whether we should auto-scroll.
+      NO debounces. NO requestAnimationFrame hacks. Event-driven, explicit state.
+
+    state:
+      isAnchoredToBottom:
+        type: boolean
+        default: true
+        description: "True when the user is 'at the bottom' and expects auto-scroll."
+
+    detection:
+      description: |
+        On every scroll event, check if the user is within ANCHOR_THRESHOLD
+        pixels of the bottom. If yes, anchor. If no, un-anchor.
+      formula: |
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        isAnchoredToBottom = distanceFromBottom <= ANCHOR_THRESHOLD;
+      ANCHOR_THRESHOLD: "50px (adjustable)"
+      notes: |
+        A single scroll event listener. No debounce needed — just reading
+        scroll position and setting a boolean. This is cheap.
+
+    auto-scroll-trigger:
+      description: |
+        A ResizeObserver on the scroll container's CONTENT element (not the
+        container itself). When content height grows:
+        1. Check isAnchoredToBottom
+        2. If true: set scrollTop = scrollHeight - clientHeight
+        3. If false: do nothing (user is reading history)
+      why-resize-observer: |
+        ResizeObserver fires when the content element's dimensions change —
+        which happens when new messages are appended, when streaming text
+        grows, when images load, etc. This is more reliable than trying to
+        manually scroll after every DOM mutation. It catches ALL sources of
+        content growth.
+
+    jump-to-bottom:
+      description: |
+        When isAnchoredToBottom is false, show a centered-floating chevron-down
+        button near the bottom of the chat area (above the input). Clicking it
+        scrolls to bottom smoothly and sets isAnchoredToBottom = true.
+        Optionally shows unread count badge.
+      component: "kikx-scroll-anchor"
+      appearance: |
+        Centered horizontally, floating above the message input.
+        Chevron-down (▼) icon. Glass-morphism styled to match theme.
+        Appears when isAnchoredToBottom is false, hides when true.
+      triggers:
+        - "isAnchoredToBottom becomes false (user scrolled up)"
+      display: |
+        Centered floating button with chevron-down icon.
+        Shows unread count badge when new content arrives while un-anchored.
+        Clicking scrolls to bottom smoothly.
+
+    edge-cases:
+      - case: "Initial page load"
+        behavior: "Scroll to bottom after bulk load (isAnchoredToBottom starts true)"
+      - case: "Streaming response (growing content)"
+        behavior: "ResizeObserver fires as content grows, auto-scrolls if anchored"
+      - case: "Image loads after message render"
+        behavior: "ResizeObserver fires on height change, auto-scrolls if anchored"
+      - case: "User scrolls up, then types a new message"
+        behavior: "After sending, re-anchor to bottom (user expects to see their message)"
+      - case: "Bulk history load (infinite scroll up)"
+        behavior: |
+          When loading older messages, maintain scroll position. The new content
+          is prepended above the viewport. Save scrollHeight before load, restore
+          scrollTop = newScrollHeight - previousScrollHeight after load.
+
+  no-debounces: |
+    Per developer quirk: NO debounces anywhere in the scroll system.
+    The scroll event listener is a simple boolean check (cheap).
+    The ResizeObserver callback is a simple conditional scrollTop set (cheap).
+    Neither needs debouncing.
+
+# =============================================================================
+# GLOBAL STATE (SEQDA)
+# =============================================================================
+
+global-state:
+  status: PLANNING
+  description: |
+    seqda (~/Projects/seqda) is the SINGLE data store for all client state.
+    FrameManager already depends on seqda — it will be loaded in the browser
+    regardless. So we use it for EVERYTHING: sessions, agents, abilities,
+    user profile, theme preferences, connection status, cost tracking.
+    One store, many scopes. Components subscribe to scoped update events.
+
+  why-seqda:
+    - "Already a dependency (FrameManager wraps seqda)"
+    - "Author-owned — can extend if needed"
+    - "Scoped state with cached methods"
+    - "Batched microtask update events (efficient re-renders)"
+    - "Custom events (synchronous — for frame-level subscriptions)"
+    - "hydrate() for restoring state from server/localStorage"
+    - "Cross-platform (Node + browser via events polyfill)"
+
+  store-shape:
+    description: |
+      One seqda store with scopes for each domain. Components subscribe to
+      scoped update events. FrameManager is a separate seqda-backed instance
+      per session (not the global store).
+    scopes:
+      sessions:
+        default: "[]"
+        description: "List of sessions the user participates in"
+        methods: ["add", "remove", "update", "get", "getActive", "setActive"]
+      agents:
+        default: "[]"
+        description: "User's configured agents"
+        methods: ["add", "remove", "update", "get", "getAll"]
+      abilities:
+        default: "{ system: [], user: [] }"
+        description: "System abilities + user-created abilities"
+        methods: ["add", "remove", "update", "get", "getSystem", "getUser"]
+      profile:
+        default: "{ user: null, authenticated: false }"
+        description: "Current user profile and auth state"
+        methods: ["setUser", "getUser", "isAuthenticated", "logout"]
+      theme:
+        default: "{ base: 'black-glass', accent: 'cyan' }"
+        description: "Active theme variant and accent color"
+        methods: ["setBase", "setAccent", "getBase", "getAccent"]
+      connection:
+        default: "{ status: 'disconnected', costs: { global: 0, service: 0, session: 0 } }"
+        description: "WebSocket status and cost tracking"
+        methods: ["setStatus", "updateCosts", "getStatus", "getCosts"]
+    notes: |
+      FrameManager instances are NOT scopes in this store. Each session
+      has its own FrameManager (seqda store internally). The global store
+      tracks which session is active; the active session's FrameManager
+      drives the chat view.
+
+  component-integration:
+    description: |
+      Components subscribe to store.on('update', ...) and check the
+      'modified' array to see if their scope changed. seqda's batched
+      microtask events mean multiple rapid updates → single re-render.
+    pattern: |
+      // In a WebComponent:
+      connectedCallback() {
+        this._onStoreUpdate = ({ modified }) => {
+          if (modified.includes('sessions'))
+            this.render();
+        };
+        store.on('update', this._onStoreUpdate);
+      }
+
+      disconnectedCallback() {
+        store.off('update', this._onStoreUpdate);
+      }
+
+# =============================================================================
+# INTERNATIONALIZATION (i18n)
+# =============================================================================
+
+internationalization:
+  status: PLANNING
+  description: |
+    Design for i18n from day one, even though V2 launches with English only.
+    All user-facing strings go through a translation function. The backing
+    store starts as a simple English object but can be swapped for any locale.
+
+  approach:
+    description: |
+      A lightweight i18n module. No heavy framework (no i18next).
+      A function like t('session.create.title') that looks up a key
+      in the current locale's string table. Falls back to English
+      if a key is missing in the active locale.
+    string-table: |
+      A flat or nested object:
+        {
+          session: {
+            create: {
+              title: 'New Session',
+              placeholder: 'Session name...',
+            },
+          },
+          agent: {
+            list: { title: 'Agents' },
+          },
+          ...
+        }
+    locale-loading: |
+      For now: English strings are bundled inline (imported .mjs file).
+      Future: load locale JSON from server or static file.
+    seqda-integration: |
+      The active locale could be a seqda scope (i18n.locale).
+      When the locale changes, components re-render with new strings.
+      But for V2 launch, this is static — just English.
+
+  rules:
+    - "NO hardcoded user-facing strings in component templates"
+    - "All strings go through t() or equivalent lookup function"
+    - "Keys are dot-separated paths: 'feature.context.label'"
+    - "English strings file is the source of truth"
+    - "Pluralization: t('items.count', { count: n }) → 'N items' / '1 item'"
+
+  stub-for-v2: |
+    V2 ships with English only. The i18n module exists from the start,
+    but the only locale file is en.mjs. Adding a new language = adding
+    a new locale file and wiring it up. Zero code changes in components.
+
+# =============================================================================
+# C1: SESSION MANAGEMENT
+# =============================================================================
+
+C1:
+  title: Session Management
+  status: PLANNING
+  description: |
+    CRUD for sessions (channels). Users create sessions, name them,
+    invite participants (humans and bots), set a coordinator.
+
+  flows:
+    create-session:
+      steps:
+        - "Click 'New Session' in sidebar"
+        - "Enter session name"
+        - "Select primary agent (coordinator)"
+        - "Optionally invite additional agents/users"
+        - "Session created, opens in chat area"
+
+    session-list:
+      description: |
+        Sidebar shows all sessions the user participates in.
+        Sorted by last activity. Shows unread count badge.
+        Search/filter sessions by name.
+      categories:
+        description: |
+          Auto-categorized by participant count. Purely organizational —
+          no behavioral difference. Categories are expandable/collapsible
+          sections in the sidebar.
+        private:
+          description: "Exactly 2 participants (human-agent OR human-human). Auto-assigned."
+        channels:
+          description: "3+ participants. Any channel can have members added/removed."
+        notes: "Users can rename sessions. Category is auto-determined, not user-assigned."
+      sub-sessions:
+        description: |
+          Sessions MAY have a parentId (child of another session).
+          Flexible design — a sub-agent could eventually be its own session.
+          For now, keep it simple: sessions can have a parent, depth > 2 unlikely.
+        display: "Nested under parent within the category section."
+        navigation: |
+          Sub-session navigation (if implemented): swap chat window + breadcrumb
+          at top. Not the standard tab model. Mostly a debug/advanced feature.
+
+    invite-participant:
+      description: |
+        Within a session, invite additional agents or users.
+        /invite {agent-name} as:{alias} for bots.
+        Invite flow for humans TBD (email? link?).
+
+    archive-session:
+      description: |
+        Soft-delete. Trash icon on session row. Session moves to
+        archived state — hidden by default, visible when the
+        monkey-see toggle is active in the sidebar search bar.
+
+    revive-session:
+      description: |
+        Restore an archived session. Recycle icon on archived session row.
+        Session returns to active state in its original category.
+
+  server-api-needs:
+    - "POST /api/v1/sessions — create"
+    - "GET /api/v1/sessions — list user's sessions"
+    - "GET /api/v1/sessions/:id — get session detail"
+    - "PATCH /api/v1/sessions/:id — update (name, etc.)"
+    - "DELETE /api/v1/sessions/:id — archive"
+    - "POST /api/v1/sessions/:id/participants — invite"
+    - "DELETE /api/v1/sessions/:id/participants/:id — kick"
+    - "PATCH /api/v1/sessions/:id/participants/:id — change role"
+
+  open-questions:
+    - "How are human users invited? By email? By username? Link sharing?"
+    - "Session permissions — who can invite/kick?"
+    - "Session types — DM (1:1) vs channel (multi-party)?"
+    - "Max participants per session?"
+
+# =============================================================================
+# C2: INTERACTION RENDERING (CHAT)
+# =============================================================================
+
+C2:
+  title: Interaction Rendering
+  status: PLANNING
+  description: |
+    The heart of the UI. Renders the interaction stream from FrameManager.
+    Each Interaction is a top-level frame containing child frames
+    (message, reflection, prompt, tool result, etc.). The UI renders
+    the tree, not a flat list.
+
+  from-v1:
+    what-worked:
+      - "User messages: pink/red background, right-aligned"
+      - "Agent messages: dark background, left-aligned, red avatar circle + initials"
+      - "Timestamp + token count per interaction ('just now / ~666 tokens')"
+      - "Rich HTML rendering: headings, bold, bullets, code blocks"
+      - "Reflection blocks: ▶ brain emoji 'Reflection' label, collapsible"
+      - "Websearch results: 'Completed' status block, then formatted output"
+    what-to-fix:
+      - "[Inject Object] bug — raw object stringification"
+      - "Need proper content type dispatch (FrameManager solves this)"
+
+  interaction-anatomy:
+    description: |
+      An Interaction (top-level frame, parentId=null) renders as a "chat bubble".
+      FrameManager.getChildren(interactionId) returns child frames sorted by order.
+      Each child frame is rendered by type dispatch.
+    header:
+      - "Participant avatar (colored circle + initials, V1 style)"
+      - "Participant name / alias"
+    children: "Child frames rendered in order via getChildren(). Type dispatch to renderers."
+    footer:
+      description: |
+        Interaction footer row. Left side: timestamp + token count.
+        Right side: Ignore / Submit buttons (when interaction contains
+        prompts or permission requests that need user action).
+      layout: "timestamp + token count ───── (Ignore / Submit)"
+    alignment: |
+      User interactions: right-aligned, pink/red accent (V1 pattern).
+      Agent interactions: left-aligned, per-agent accent color.
+      System interactions: centered or left, distinct system accent.
+
+  frame-manager-integration:
+    description: |
+      The chat stream is driven entirely by FrameManager. On session load:
+      1. Bulk load history: fm.merge(frames, { events: false })
+      2. Subscribe to live events: fm.on('frame:added', renderNewInteraction)
+      3. Subscribe to updates: fm.on('frame:updated', frameId, updateComponent)
+      Streaming responses arrive as phantoms → merge into group frames.
+      UI components subscribe to specific frame IDs for targeted re-renders.
+    event-flow:
+      - "frame:added → new interaction appears in stream"
+      - "frame:updated:{frameId} → specific component re-renders"
+      - "frame:processed:{frameId} → permission prompt shows 'processed' state"
+      - "frames:bulk-loaded → initial render of history"
+
+  frame-types-to-render:
+    known:
+      - type: interaction
+        renders-as: "Chat bubble container"
+        notes: "Top-level frame. getChildren() for contents."
+      - type: message
+        renders-as: "Simple HTML content"
+        notes: |
+          Content arrives as HTML from the server. The server-side parser/sanitizer
+          handles format conversion — if the agent format changes, the parser changes.
+          Allowed tags: b, i, s, ol, ul, li, table, tr, td, th, etc. (simple formatting).
+          Client sanitizes with a whitelist — no XSS. No markdown rendering needed.
+          Plugin helpers (bash output, etc.) may also produce HTML via the same pipeline.
+      - type: reflection
+        renders-as: "Collapsible thinking block (▶ 🧠 Reflection)"
+        notes: "V1 pattern: brain emoji + label + toggle. Keep it."
+      - type: hml-prompt
+        renders-as: "Interactive form input (see C4)"
+        notes: "V1's star feature. All input types working."
+      - type: hml-prompt-value
+        renders-as: "Submitted answer display (read-only pill badges)"
+        notes: "V1 showed answers as formatted text in user bubble."
+      - type: command
+        renders-as: "Tool call/result display"
+      - type: websearch
+        renders-as: "Search results with status block"
+        notes: "V1 showed 'Completed' status + JSON, then agent summary."
+      - type: image
+        renders-as: "Inline image with lightbox"
+      - type: function
+        renders-as: "Function call/result"
+      - type: shell
+        renders-as: "Shell command + output"
+      - type: permission-prompt
+        renders-as: "Permission request form (see C7)"
+        notes: "System-level. Lightning bolt icon. Radio options."
+      - type: error
+        renders-as: "Red error frame"
+        notes: |
+          Two sub-styles: client-side errors are phantom frames (ephemeral,
+          different visual treatment) vs server-side errors are persisted
+          frames (visible to all participants, historical).
+      - type: warning
+        renders-as: "Yellow warning frame"
+        notes: "Same client/server distinction as error frames."
+    extensible: |
+      Frame types are free-form strings (per FrameManager spec).
+      Unknown types render as a generic block with raw content.
+      Plugins can register custom renderers via type→component registry.
+
+  open-questions:
+    - "Exact markdown/HTML renderer — which library? Custom sanitizer?"
+    - "Code block syntax highlighting — Prism? Highlight.js?"
+    - "How are multi-bot interactions visually distinguished beyond color?"
+    - "Thread/reply model? Or flat chronological only?"
+
+# =============================================================================
+# C3: MESSAGE INPUT
+# =============================================================================
+
+C3:
+  title: Message Input
+  status: PLANNING
+  description: |
+    The compose area at the bottom of the chat. Multi-line text input
+    with rich features.
+
+  features:
+    - "Multi-line text area (auto-growing)"
+    - "@mention autocomplete (participants)"
+    - "File attachment (drag-drop, paste, button)"
+    - "Send button + keyboard shortcut (Ctrl+Enter or Enter?)"
+    - "Slash commands (/invite, /kick, /promote, /history, /export)"
+    - "Draft persistence (per-session)"
+    - "Typing indicator broadcast"
+
+  mention-system:
+    description: |
+      Type @ to trigger autocomplete dropdown. Shows all session
+      participants (humans and bots) with avatar, name/alias.
+      @mention is a NOTIFICATION mechanism — not routing. The server
+      runs a pattern matcher and creates a child "mention" frame
+      under the interaction. The agent itself decides to respond based
+      on seeing the mention in the channel.
+    mechanics:
+      - "@mention creates a child frame (type: mention) under the interaction"
+      - "The mention frame targets the mentioned participant"
+      - "Agents see the mention and decide to respond (agent logic, not routing)"
+      - "Future: mentions drive notifications — sounds, alerts, phone push"
+      - "No @mention → coordinator still responds (normal flow)"
+    client-role:
+      - "Autocomplete dropdown in message input — that's it"
+      - "All routing/notification logic is server-side"
+
+  open-questions:
+    - "Enter to send vs Enter for newline? (Shift+Enter for the other)"
+    - "Slash command UI — inline autocomplete or command palette?"
+    - "File size limits? File type restrictions?"
+    - "Rich text editing or plain text + markdown?"
+
+# =============================================================================
+# C4: HML-PROMPT (INTERACTIVE CONTENT)
+# =============================================================================
+
+C4:
+  title: HML-Prompt System
+  status: PLANNING
+  description: |
+    Interactive form elements embedded inside interactions. An hml-prompt
+    is like an <input> for the <form> of the message. The message IS the
+    form. Multiple prompts in one interaction = multi-field form.
+    This was V1's star feature — all types were working.
+
+  from-v1:
+    description: |
+      V1 had ALL prompt types working and they looked great. Key patterns:
+    observed-in-screenshots:
+      - "Prompts grouped by bold category headings (e.g., 'Basic Questions', 'Fun Sliders')"
+      - "Selected values shown as green-bordered pill badges inline"
+      - "Multi-select showed comma-separated values in a single pill"
+      - "Range slider showed numeric value beside the slider"
+      - "Color showed hex value as pill badge"
+      - "Time used native browser time picker"
+      - "Textarea had italic placeholder text with dashed underline"
+      - "Ignore and Submit buttons right-aligned at bottom of interaction"
+      - "After submission: user bubble shows 'Answering N prompts:' + formatted answers"
+
+  prompt-types:
+    - type: text
+      renders-as: "Single-line text input with placeholder"
+      v1-status: working
+    - type: textarea
+      renders-as: "Multi-line text area with italic placeholder"
+      v1-status: working
+    - type: select
+      renders-as: "Dropdown select (single or multi-select)"
+      v1-status: working
+      notes: "Multi-select showed pill badges for each selection"
+    - type: checkbox
+      renders-as: "Checkbox for yes/no"
+      v1-status: working
+    - type: radio
+      renders-as: "Radio button group"
+      v1-status: working
+      notes: "Used for permission prompts too"
+    - type: color
+      renders-as: "Color picker, shows hex as pill badge"
+      v1-status: working
+    - type: date
+      renders-as: "Date picker"
+      v1-status: "assumed working (time picker was)"
+    - type: time
+      renders-as: "Native time picker"
+      v1-status: working
+    - type: number
+      renders-as: "Numeric input"
+      v1-status: working
+    - type: range
+      renders-as: "Slider with numeric value display"
+      v1-status: working
+    - type: file
+      renders-as: "File upload"
+      v1-status: "not observed in screenshots"
+
+  form-model:
+    description: |
+      Every interaction with 1+ hml-prompt is a form.
+      Form-level buttons: Ignore / Submit (at interaction level, not per-prompt).
+      Submit sends all answers as a batch. Ignore sends refusal signal.
+    v1-pattern: |
+      V1 had "Ignore" (text link) and "Submit" (red button) right-aligned
+      at the bottom of the interaction. This worked well — keep it.
+
+  lifecycle:
+    - "Agent sends interaction with hml-prompt child frames"
+    - "Client renders prompts as interactive inputs (grouped by category headings)"
+    - "User fills in values (pill badges appear for selections)"
+    - "User clicks Submit → batch submission of all prompt values"
+    - "Server creates hml-prompt-value frames targeting the hml-prompt frames"
+    - "FrameManager merges values into prompts (content update)"
+    - "Agent receives the answers and continues"
+    - "Prompts become read-only after submission (display answered values as pills)"
+
+  frame-manager-model:
+    description: |
+      In FrameManager terms:
+      - Agent interaction (parentId: null) contains hml-prompt child frames
+      - Each hml-prompt has type: 'hml-prompt', content: { inputType, label, options, ... }
+      - User submits → creates hml-prompt-value frames with targets: [promptFrameId]
+      - FrameManager deep-merges values into prompt content
+      - UI subscribes to frame:updated:{promptId} to switch to read-only display
+
+  open-questions:
+    - "Validation rules — defined by the agent? Client-side? Both?"
+    - "Can prompts have default values? (V1 appeared to support this)"
+    - "Prompt timeout — what happens if user never responds?"
+    - "Can the same prompt be answered by multiple users in a channel?"
+
+# =============================================================================
+# C5: AGENT MANAGEMENT
+# =============================================================================
+
+C5:
+  title: Agent Management
+  status: PLANNING
+  description: |
+    CRUD for agents. An agent is a configured AI backend (Claude, OpenAI, etc.)
+    with a name, API key, model settings, and default abilities.
+
+  from-v1:
+    modal-layout:
+      - "Agents modal triggered from top nav 'Agents' button"
+      - "Agent cards: red avatar circle + initials, name, settings gear icon"
+      - "'Add Agent' primary action (or 'New Agent' button)"
+    notes: "V1 agents were simple cards in a modal. Worked fine."
+
+  flows:
+    create-agent:
+      steps:
+        - "Open Agents modal from top nav"
+        - "Click 'Add Agent' / 'New Agent'"
+        - "Enter: name, provider (Claude/OpenAI/etc.), API key, model"
+        - "Select default abilities"
+        - "Configure system prompt / instructions"
+        - "Save"
+
+    edit-agent:
+      description: "Click settings gear on agent card. Modify settings. API key masked."
+
+    delete-agent:
+      description: "Remove agent. Warn if participating in active sessions."
+
+    agent-list:
+      description: |
+        Modal shows agent cards with: colored avatar circle + initials,
+        name, settings gear. V1 pattern — keep it.
+
+  server-api-needs:
+    - "POST /api/v1/agents — create"
+    - "GET /api/v1/agents — list"
+    - "GET /api/v1/agents/:id — get"
+    - "PATCH /api/v1/agents/:id — update"
+    - "DELETE /api/v1/agents/:id — delete"
+
+  open-questions:
+    - "Agent sharing — can one user's agent be invited to another user's session?"
+    - "Agent templates / presets?"
+    - "Agent avatar — upload or generated? (V1 used colored circles + initials)"
+    - "Agent status — how do we know if an agent's API key is valid?"
+
+# =============================================================================
+# C6: ABILITY MANAGEMENT
+# =============================================================================
+
+C6:
+  title: Ability Management
+  status: PLANNING
+  description: |
+    CRUD for abilities. An ability is an injected prompt guide — conditional
+    instructions that modify agent behavior. Abilities can be always-on
+    or triggered by specific conditions. V1 had a working multi-step wizard.
+
+  from-v1:
+    modal-layout:
+      - "Abilities modal: System tab / My Abilities tab"
+      - "System abilities: cards with type badges (search, system, interaction, filesystem)"
+      - "Abilities listed: websearch, bash, ask_user, read_file, write_file, prompt_response_handler"
+      - "Each ability card: name (bold), type badge (colored), description text"
+      - "Close button at bottom"
+    multi-step-wizard:
+      description: "V1's create ability form was a multi-step wizard. Worked well."
+      steps:
+        - "Step 1: Name — text input for ability name"
+        - "Step 2: Category — dropdown (search, system, interaction, filesystem, etc.)"
+        - "Step 3: Description — text input for short description"
+        - "Step 4: When to Use — text explaining trigger conditions"
+        - "Step 5: Content — markdown/text content for the prompt instructions"
+        - "Step 6: Permissions — auto-approve toggle + danger level dropdown"
+
+  flows:
+    create-ability:
+      steps:
+        - "Open Abilities modal from top nav"
+        - "Switch to 'My Abilities' tab"
+        - "Click 'New Ability' (or similar primary action)"
+        - "Multi-step wizard (V1 pattern): Name → Category → Description → When to Use → Content → Permissions"
+        - "Save"
+      persistence: |
+        sessionStorage saves in-progress wizard state. If the browser
+        reloads while the wizard is open, all populated fields are
+        restored on re-open. Cleared on successful save or explicit cancel.
+
+    # NOTE: V1 had a "System abilities" tab — this was a fluke of
+    # incomplete design. V2 does NOT have system abilities.
+
+    assign-abilities:
+      description: |
+        Abilities can be assigned to agents (default abilities) or
+        to sessions (session-specific behavior).
+
+  open-questions:
+    - "Ability marketplace / sharing?"
+    - "Ability versioning?"
+    - "Conditional trigger syntax — freeform or structured?"
+    - "Ability priority / ordering when multiple match?"
+    - "Danger level semantics — what do the levels mean for the permission system?"
+
+# =============================================================================
+# C7: PERMISSIONS UI
+# =============================================================================
+
+C7:
+  title: Permissions UI
+  status: PLANNING
+  description: |
+    When a bot wants to use a tool (websearch, file access, etc.),
+    the permission system may require user approval. Permission prompts
+    appear as interactive forms in the channel — any user can respond.
+    V1 had this working end-to-end with websearch.
+
+  from-v1:
+    what-worked:
+      - "Inline permission prompts with ⚡ lightning bolt icon"
+      - "'Permission Request' label + 'permission_request' badge"
+      - "Shows: '**Permission Required** **agent-name** wants to execute /tool (tool)'"
+      - "'Grant permission?' label above radio options"
+      - "Radio buttons: Allow this once / Allow for this session / Always allow / Deny"
+      - "Ignore and Submit buttons (same pattern as hml-prompts)"
+      - "After grant: agent proceeds immediately, shows results"
+    notes: |
+      V1's permission UI reused the hml-prompt radio pattern. This was
+      clean and consistent. The permission prompt is effectively a
+      specialized hml-prompt with radio options.
+
+  flow:
+    - "Agent attempts tool use (e.g., websearch)"
+    - "Permission engine evaluates: allow / deny / prompt"
+    - "If prompt: system creates permission-prompt frame in the channel"
+    - "Frame renders as: ⚡ Permission Request, agent name, tool name"
+    - "Radio options: Allow this once / Allow for session / Always allow / Deny"
+    - "User selects option and clicks Submit"
+    - "Permission-grant frame targets the permission-prompt frame"
+    - "FrameManager merges grant into prompt (content update)"
+    - "Server sets processed/processedAt on the prompt (server fingerprint)"
+    - "Agent proceeds or receives denial"
+
+  frame-manager-model:
+    description: |
+      Permission prompts are system-level frames (not from any participant).
+      - type: 'permission-prompt'
+      - content: { agent, tool, action, options: [...] }
+      - User response creates a targeting frame (type: 'permission-grant')
+      - Multi-target merge: one grant can target multiple prompts
+      - Server sets processed/processedAt after authentication
+      - frame:processed event signals UI to show 'granted'/'denied' state
+
+  display:
+    description: |
+      Distinct from regular interactions:
+      - Lightning bolt icon (⚡) instead of participant avatar
+      - 'Permission Request' label
+      - System accent color (not participant color)
+      - Same Ignore/Submit button pattern as hml-prompts
+      - After processing: shows granted/denied state, becomes read-only
+
+  open-questions:
+    - "Permission rule management UI — where to see/revoke existing grants?"
+    - "Notification for permission requests when user isn't active in session?"
+    - "Per-user vs per-session permissions? (V1 had per-session options)"
+
+# =============================================================================
+# C8: REAL-TIME / WEBSOCKET
+# =============================================================================
+
+C8:
+  title: Real-Time Communication
+  status: PLANNING
+  description: |
+    WebSocket connection for real-time updates. Frames arrive via WS
+    and are fed into FrameManager. SSE for streaming agent responses.
+
+  events:
+    server-to-client:
+      - "frame:new — new frame created"
+      - "frame:updated — frame modified (merge)"
+      - "typing:start / typing:stop — per participant"
+      - "participant:joined / participant:left"
+      - "session:updated — session metadata changed"
+
+    client-to-server:
+      - "typing:start / typing:stop"
+      - "frame:respond — submit hml-prompt answers"
+      - "abort — cancel in-progress agent response"
+
+  streaming:
+    description: |
+      Agent responses stream via SSE. Phantom frames arrive as chunks,
+      merge into group frames via FrameManager. UI updates reactively
+      per-frame — no full re-render.
+
+  open-questions:
+    - "Reconnection strategy — exponential backoff? Missed message replay?"
+    - "Presence system — online/offline/away status?"
+    - "SSE vs WebSocket for streaming — or both?"
+
+# =============================================================================
+# C9: NAVIGATION / ROUTING
+# =============================================================================
+
+C9:
+  title: Navigation & Routing
+  status: PLANNING
+  description: |
+    Client-side routing for page-level navigation. URL-driven.
+    Auth guard redirects unauthenticated users to login.
+    Agents/Abilities are MODALS (V1 pattern — worked well), not pages.
+
+  routes:
+    - { path: "/kikx/login",           page: "kikx-login-page (no nav, no sidebar, no status bar)" }
+    - { path: "/kikx/",                page: "kikx-session-page (full layout, default session)" }
+    - { path: "/kikx/sessions/:id",    page: "kikx-session-page (full layout, specific session)" }
+    - { path: "/kikx/settings",        page: "kikx-settings-page (top bar + settings content)" }
+
+  modals-not-pages:
+    description: |
+      Agents and Abilities are MODALS that overlay the chat, not separate pages.
+      V1 had this pattern and it worked well — you stay in context.
+    modals:
+      - "Agents modal (list + create/edit)"
+      - "Abilities modal (System tab + My Abilities tab + create/edit wizard)"
+      - "Create Session dialog"
+
+  implementation:
+    description: |
+      Simple hash or history-based routing in the root kikx-application component.
+      No router library needed. The root component listens to popstate/hashchange
+      and renders the appropriate page component. Each page is a WebComponent
+      that owns its full layout.
+
+  open-questions:
+    - "Deep linking to specific interactions within a session?"
+    - "Browser back/forward behavior for modals?"
+
+# =============================================================================
+# C10: SETTINGS / USER PROFILE
+# =============================================================================
+
+C10:
+  title: Settings & User Profile
+  status: PLANNING
+  description: |
+    User profile management, account settings, API key management.
+
+  tabs:
+    - { tab: profile, content: "Display name, avatar, email" }
+    - { tab: account, content: "Password change, MFA" }
+    - { tab: api-keys, content: "Create, list, revoke personal API keys" }
+    - { tab: permissions, content: "View and revoke permission grants" }
+    - { tab: appearance, content: "Theme preferences, accent color?" }
+
+# =============================================================================
+# COMPONENT ARCHITECTURE
+# =============================================================================
+
+component-architecture:
+  description: |
+    Vanilla WebComponents. All .mjs files. importmap for bare specifier resolution.
+    Shadow DOM where it provides encapsulation value (complex UI components).
+    Light DOM for simple containers or components that need document style access.
+    No framework. No bundler. Browser-native ES modules.
+
+  shadow-dom-guidelines:
+    use-shadow-dom:
+      - "Components with complex internal markup and styles (chat bubbles, modals, forms)"
+      - "Components that should NOT be affected by external CSS"
+      - "Reusable primitives (buttons, inputs, cards)"
+    use-light-dom:
+      - "Layout containers (pages, panels) that need to inherit document styles"
+      - "Components that are just thin wrappers or routers"
+    notes: |
+      Shadow DOM naturally inherits CSS custom properties (our theme system).
+      Use ::part() for targeted external styling of shadow internals where needed.
+    scrollbar-theming: |
+      V1 struggled with scrollbar theming across Shadow DOM boundaries.
+      V2 MUST ensure custom scrollbar styles are consistent everywhere:
+      inside Shadow DOM, inside modals, in the main document.
+      Strategy: define scrollbar CSS as a shared stylesheet string that
+      each Shadow DOM component adopts via constructable stylesheets
+      (adoptedStyleSheets) or via a shared CSS import.
+
+  dom-utilities:
+    description: |
+      Borrowed from mythix-ui-core and adapted for standalone use.
+      These are NOT a framework — they're thin utility layers.
+    source: "~/Projects/mythix-ecosystem/mythix-ui-core/lib/"
+    modules:
+      query-engine:
+        source-file: "query-engine.js"
+        docs: "~/Projects/mythix-ecosystem/mythix-ui-core/docs/query-engine.md"
+        description: |
+          jQuery-inspired DOM selector engine. Proxy-based, chainable.
+          Wraps element collections. Selection, manipulation, traversal, events.
+        api-highlights:
+          - "select(), from(), first(), last()"
+          - "addClass(), removeClass(), toggleClass()"
+          - "on(), off(), trigger()"
+          - "find(), closest(), parent(), children()"
+          - "slotted(), slot(name) — Shadow DOM helpers"
+        selector-pattern: |
+          $m for DOM selection, $$m for Shadow DOM selection.
+          The 'm' suffix avoids conflicts with jQuery/devtools $.
+        adaptation-needed:
+          - "Strip template engine coupling (@@expression@@ syntax)"
+          - "KEEP ElementGenerator callback integration (useful for building)"
+          - "Keep Proxy-based array delegation (elegant)"
+          - "Keep slot/Shadow DOM helpers"
+      elements:
+        source-file: "elements.js"
+        docs: "~/Projects/mythix-ecosystem/mythix-ui-core/docs/elements.md"
+        description: |
+          Declarative DOM builder. Proxy-based tag creation.
+          ElementGenerator.DIV.class('card')('content') → element definition.
+          Supports SVG, attributes, children, string rendering.
+        api-highlights:
+          - "ElementGenerator.TAG — any HTML tag as property"
+          - ".id(), .class(), .onClick() — attribute chaining"
+          - ".build(document) → actual DOM element"
+          - ".toString() → HTML string"
+          - "Term(value) — text node creation"
+        adaptation-needed:
+          - "Strip template expression processing"
+          - "Simplify event binding (remove data-event-on pattern)"
+          - "Remove DynamicProperty integration"
+          - "Keep Proxy builder pattern, SVG support"
+    shared-dependencies:
+      - "base-utils.js — type checking (isPlainObject, isType)"
+      - "constants.js — internal symbols (simplify or keep)"
+
+  session-chat-lifecycle:
+    description: |
+      Tab model, not cache/dispose. One FrameManager per session.
+      One chat window per loaded session. Hide/show on navigation.
+    behavior:
+      - "User selects session → create chat window + FrameManager (if not already loaded)"
+      - "User switches session → hide current chat window, show target"
+      - "Chat windows persist in DOM while loaded (hidden, not destroyed)"
+      - "Only sessions the user has actually selected get chat windows"
+      - "On reload: restore the previously active session"
+    why-hide-show: |
+      Hiding/showing is cheaper than destroying/rebuilding. Scroll position
+      is preserved. FrameManager state is preserved. No re-fetch needed.
+      This is the tab model — like browser tabs, not like page navigation.
+
+  naming-conventions:
+    description: |
+      Per quirks: fully named identifiers, no abbreviations. Components use
+      kebab-case with 'kikx-' prefix. Names should be descriptive and complete.
+    examples:
+      - "kikx-application (NOT kikx-app)"
+      - "kikx-interaction (NOT kikx-msg or kikx-bubble)"
+      - "kikx-message-input (NOT kikx-input)"
+      - "kikx-session-list (NOT kikx-sessions)"
+      - "kikx-status-bar (NOT kikx-footer)"
+      - "kikx-permission-request (NOT kikx-perm)"
+
+  file-structure:
+    description: |
+      Each component gets its own directory with .mjs file(s).
+      CSS lives in the .mjs file as template literals (for Shadow DOM)
+      or as separate .css files (for Light DOM / shared styles).
+    example: |
+      src/client/
+        index.html                    <- Entry point with importmap
+        components/
+          kikx-application/
+            kikx-application.mjs      <- Root router component
+          kikx-login-page/
+            kikx-login-page.mjs
+          kikx-session-page/
+            kikx-session-page.mjs
+          kikx-chat-view/
+            kikx-chat-view.mjs        <- Interaction stream + input
+          kikx-interaction/
+            kikx-interaction.mjs      <- Chat bubble (shadow DOM)
+          ...
+
+# =============================================================================
+# COMPONENT TREE
+# =============================================================================
+
+components:
+  description: |
+    WebComponents with kikx- prefix. Fully named identifiers.
+    Shadow DOM where it encapsulates; light DOM where it lays out.
+
+  pages:
+    - kikx-application:         "Root shell. Router. Auth guard. Renders active page."
+    - kikx-login-page:          "Login page (magic link flow). No nav, no sidebar."
+    - kikx-session-page:        "Full session layout: top-bar + chat + sidebar + status-bar."
+    - kikx-settings-page:       "Settings page with top-bar + tabbed content."
+
+  layout:
+    - kikx-top-bar:             "Top navigation: back arrow, session name, action buttons"
+    - kikx-sidebar:             "RIGHT panel: session list + participant list"
+    - kikx-status-bar:          "Bottom bar: connection status, cost tracking (session-page only)"
+
+  chat:
+    - kikx-chat-view:           "Interaction stream container (FrameManager subscriber) + scroll management"
+    - kikx-interaction:         "Single interaction (chat bubble). Renders child frames by type. Footer: timestamp+tokens | Ignore/Submit."
+    - kikx-message-content:     "HTML frame renderer (NOT markdown — content is HTML). Whitelisted tags. Possible JSON-to-HTML pipeline."
+    - kikx-reflection-block:    "Collapsible thinking block (brain emoji, toggle)"
+    - kikx-command-result:      "Tool call + result display"
+    - kikx-websearch-result:    "Search results display (status + formatted results)"
+    - kikx-message-input:       "Compose area: text input, @mention, send button"
+    - kikx-scroll-anchor:       "Centered-floating chevron-down button. Appears when isAnchoredToBottom=false. Clicks scroll to bottom."
+
+  prompts:
+    - kikx-hml-prompt:          "Interactive form input (all types: text, select, color, range, etc.)"
+    - kikx-hml-prompt-value:    "Submitted answer display (read-only pill badges)"
+    - kikx-permission-request:  "Permission prompt (⚡ icon, radio options, submit)"
+
+  modals:
+    - kikx-modal:               "Base modal component (overlay, close, escape)"
+    - kikx-agent-list-modal:    "Agent cards list + New Agent action"
+    - kikx-agent-form-modal:    "Create/edit agent form"
+    - kikx-ability-list-modal:  "Abilities list (System/My Abilities tabs)"
+    - kikx-ability-wizard-modal: "Multi-step ability creation wizard"
+    - kikx-create-session-modal: "New session dialog"
+
+  session:
+    - kikx-session-list:        "Session list in sidebar. Categories: Channels/Private. Archive/revive. Sub-sessions."
+    - kikx-session-search:      "Search bar with monkey-see/monkey-no-see archive toggle"
+    - kikx-participant-list:    "Participant list in sidebar (avatars, names, roles)"
+
+  settings:
+    - kikx-settings-tabs:       "Tabbed settings content (profile, account, API keys, theme)"
+
+  system:
+    - kikx-websocket-manager:   "WebSocket connection manager (invisible, no UI)"
+    - frame-manager:            "FrameManager (shared state, not a component — see frame-manager.yaml)"
+
+# =============================================================================
+# TESTING STRATEGY
+# =============================================================================
+
+testing:
+  status: PLANNING
+  philosophy: |
+    AMAZING test coverage. Never start a browser if you can help it.
+    Three tiers: unit tests (pure logic), jsdom (component behavior without
+    a real browser), Puppeteer (only when jsdom can't cut it).
+    Mock WebSocket connections and frames. Test thoroughly.
+
+  test-scripts:
+    description: |
+      Option C: npm test runs ALL tests (server + client).
+      Also provide shortcuts for isolation.
+    scripts:
+      - "npm test → runs everything (server + client)"
+      - "npm run test:server → server tests only"
+      - "npm run test:client → client tests only"
+
+  tiers:
+    unit:
+      description: |
+        Pure logic tests. No DOM, no browser, no jsdom. Node.js only.
+        No special framework needed — use Node's built-in test runner.
+      covers:
+        - "FrameManager (all 11 composition scenarios from frame-manager.yaml)"
+        - "Deep merge utility"
+        - "i18n t() function and locale loading"
+        - "Router logic (URL parsing, route matching)"
+        - "API client (mocked fetch)"
+        - "Store scope methods (seqda)"
+        - "Utility functions"
+        - "Elements .toString() (pure string output, no DOM needed)"
+      mocking:
+        - "WebSocket connections → mock frame delivery"
+        - "fetch/API calls → mock responses"
+        - "seqda store → real store with test data"
+
+    jsdom:
+      description: |
+        Component behavior tests using jsdom. Tests DOM rendering,
+        event handling, Shadow DOM, attribute changes — without a real
+        browser. Covers the VAST MAJORITY of UI testing — including
+        full flows (auth, chat, scroll) that don't need real CSS rendering.
+      covers:
+        - "Component rendering (does it produce the right DOM?)"
+        - "Event handling (click, input, submit)"
+        - "Store subscription (does it re-render when state changes?)"
+        - "Shadow DOM encapsulation"
+        - "i18n string rendering"
+        - "Theme CSS custom property inheritance"
+        - "Scroll behavior logic (mocked ResizeObserver)"
+        - "Auth flow: login → session → chat (mocked API, no real browser needed)"
+        - "Chat flow: send/receive messages, streaming phantom frames (mocked WS)"
+        - "Scroll behavior: anchoring, un-anchoring, jump-to-bottom (mocked ResizeObserver)"
+        - "Sidebar: session categories, archive/revive, search, monkey-see toggle"
+        - "Ability wizard: multi-step navigation, sessionStorage persistence"
+      notes: |
+        Push as much as possible into jsdom. Only fall through to Puppeteer
+        for things that genuinely need real CSS rendering (glass-morphism,
+        scrollbar theming, responsive layout, visual regression).
+
+    puppeteer:
+      description: |
+        Real browser tests. ONLY for things that need real CSS rendering
+        or real browser APIs that jsdom cannot simulate. Never start a
+        browser if you can help it.
+      covers:
+        - "Visual regression (screenshot comparison)"
+        - "Custom scrollbar rendering across Shadow DOM boundaries"
+        - "Glass-morphism / backdrop-filter rendering"
+        - "Mobile responsive layout verification (real viewport)"
+        - "Theme rendering verification (both variants, all accents)"
+        - "Component demo page validation (no JS errors, renders correctly)"
+      does-NOT-cover: |
+        Auth flow, chat flow, scroll behavior logic — these all run in jsdom.
+        Puppeteer is for VISUAL verification, not behavioral testing.
+      notes: |
+        Mock the server. Don't need a real Mythix server running for
+        Puppeteer tests — mock the API and WebSocket at the network level.
+
+  mock-websocket:
+    description: "Two-level mock strategy."
+    level-1-jsdom:
+      description: |
+        MockWebSocket class for unit/jsdom tests.
+        - Records send() calls for assertion
+        - Exposes trigger(event, data) to simulate incoming frames
+        - Simulates open/close/error lifecycle
+    level-2-puppeteer:
+      description: |
+        Lightweight mock HTTP+WS server for Puppeteer tests.
+        - Accepts real WebSocket connections
+        - Delivers frames on a script/schedule
+        - Responds to client-sent frames with mock responses
+        - Serves static files from src/client/
+        - Returns mock API responses (JSON)
+
+  component-demo-mode:
+    description: |
+      Each component has a showcase demo.html page — elaborate, not minimal.
+      Multiple variants, different states, edge cases, dark/light theme toggle.
+      Used for development, testing, AND showing off. Almost like Storybook.
+    scope: "Option B (showcase) for ALL components — not just complex ones."
+    implementation: |
+      Each component directory has a demo.html file:
+        components/kikx-interaction/
+          kikx-interaction.mjs
+          demo.html                <- Showcase demo page
+      The demo.html:
+        - Loads the component with mock data
+        - Shows multiple variants (different states, edge cases)
+        - Includes dark/light theme toggle
+        - Renders in isolation (no full app needed)
+    benefits:
+      - "Visual development without running the full app"
+      - "Puppeteer validates demo pages (no JS errors, renders correctly)"
+      - "Showcase for design review"
+      - "Quick iteration — no full app build needed"
+      - "Elaborate enough to have developed the whole thing"
+
+  test-helpers:
+    - "component-test-helper.mjs — jsdom setup, component registration, mock store, mock ResizeObserver"
+    - "mock-websocket.mjs — MockWebSocket class with send/trigger/close"
+    - "mock-fetch.mjs — Mock fetch with route matching and canned responses"
+    - "mock-frame-factory.mjs — Creates test frames (interaction, message, reflection, hml-prompt, etc.)"
+    - "mock-server.mjs — Lightweight HTTP + WS server for Puppeteer tests"
+    - "puppeteer-helper.mjs — Browser launch, page setup, screenshot utilities"
+
+# =============================================================================
+# MOBILE
+# =============================================================================
+
+mobile:
+  status: PLANNING
+  requirement: "Must work flawlessly on mobile. Not an afterthought."
+  approach:
+    - "Mobile-first responsive design (min-width breakpoints, not max-width)"
+    - "Touch targets: minimum 44px for interactive elements"
+    - "Sidebar collapses to full-screen overlay or off-canvas drawer on mobile"
+    - "Chat input stays fixed at bottom (no virtual keyboard issues)"
+    - "Swipe gestures: swipe right to show sidebar, swipe left to hide"
+    - "No hover-only interactions — everything works with touch"
+    - "Test on real devices via Puppeteer mobile emulation"
+
+# =============================================================================
+# CODE ORGANIZATION
+# =============================================================================
+
+code-organization:
+  status: PLANNING
+  principles:
+    - "One class per file. No exceptions."
+    - "API layer is its own layer (src/client/lib/api.mjs or api/ directory)"
+    - "UI framework utilities (query-engine, elements) in their own files"
+    - "Utility functions in common locations (src/client/lib/utilities/)"
+    - "Minimal code duplication — extract shared logic into utilities"
+    - "Separation of concerns: data (store), rendering (components), communication (API/WS)"
+
+  layers:
+    description: "Clean separation of concerns across layers."
+    data:
+      - "seqda store (src/client/lib/store.mjs) — global state"
+      - "FrameManager (src/lib/frame-manager/) — session state"
+    communication:
+      - "API client (src/client/lib/api.mjs) — REST API layer"
+      - "WebSocket manager (src/client/lib/websocket-manager.mjs) — WS connection"
+    rendering:
+      - "Components (src/client/components/) — WebComponents"
+      - "Query engine (src/client/lib/query-engine.mjs) — DOM selection"
+      - "Elements (src/client/lib/elements.mjs) — DOM building"
+    infrastructure:
+      - "Router (src/client/lib/router.mjs) — history-based navigation"
+      - "i18n (src/client/lib/i18n.mjs) — translation function"
+      - "Theme (src/client/lib/theme.mjs) — CSS variable management"
+
+# =============================================================================
+# DEPENDENCY GRAPH
+# =============================================================================
+
+dependencies:
+  description: |
+    Client features depend on server APIs. FrameManager is the
+    foundation — most features depend on it existing.
+
+  foundation:
+    - "DOM utilities: query-engine + elements (adapt from mythix-ui-core) — FIRST"
+    - "FrameManager (src/lib/frame-manager/) — cross-platform, build FIRST"
+    - "Design system (CSS custom properties, glassy neon, scrollbar theming) — FIRST"
+    - "i18n module (t() function, English locale stub) — FIRST"
+    - "API client layer (src/client/lib/api.mjs) — FIRST"
+    - "Global seqda store (src/client/lib/store.mjs) — FIRST"
+    - "Router (history API, auth guard) — FIRST"
+    - "Auth flow (kikx-login-page, token management) — FIRST"
+    - "kikx-application (root router component) — FIRST"
+
+  wave-1:
+    - "Layout shell (kikx-session-page, kikx-top-bar, kikx-sidebar)"
+    - "Agent CRUD (C5) — modal (must exist before sessions can be created)"
+    - "Session CRUD (C1) — create, list, select"
+    - "Basic interaction rendering (C2) — text messages only"
+    - "Message input (C3) — plain text, send"
+    - "Scroll behavior (sticky bottom + ResizeObserver)"
+    - "kikx-status-bar (connection + cost tracking)"
+    - "WebSocket connection (basic frame delivery)"
+
+  wave-2:
+    - "WebSocket / real-time polish (C8) — reconnection, presence"
+    - "Streaming agent responses (phantom frames -> FrameManager)"
+    - "Ability CRUD (C6) — modal with wizard"
+
+  wave-3:
+    - "HML-prompt system (C4) — all interactive form types"
+    - "Permission prompts (C7)"
+    - "@mention autocomplete (C3)"
+    - "Participant list in sidebar"
+
+  wave-4:
+    - "Settings page (C10) — including theme selection (black glass / light glass)"
+    - "Visual polish (both theme variants)"
+    - "Mobile responsive refinement"
+
+# =============================================================================
+# OPEN QUESTIONS (CROSS-CUTTING)
+# =============================================================================
+
+resolved-questions:
+  - question: "Client build system — bundler?"
+    answer: "No bundler. Vanilla browser ES modules (.mjs) with importmap."
+  - question: "Mythix UI — is it a dependency?"
+    answer: "No. Vanilla WebComponents. Shadow DOM where it helps. No UI framework."
+  - question: "Dark-only or light mode?"
+    answer: "Two base variants: 'black glass' (dark) and 'light glass' (light). Themable neon accent colors."
+  - question: "Are Agents/Abilities full pages or modals?"
+    answer: "Modals over the chat (V1 pattern — worked well)."
+  - question: "Sidebar on left or right?"
+    answer: "Right side. User explicitly prefers this."
+  - question: "Status bar visibility?"
+    answer: "Session page only. Not on login or settings."
+  - question: "State management — global state?"
+    answer: "seqda for everything. Already needed for FrameManager. Scopes for sessions, agents, abilities, profile, theme, connection."
+  - question: "Internationalization?"
+    answer: "Design for i18n from day one. t() function for all user-facing strings. English-only stub for V2 launch."
+  - question: "How does the client load?"
+    answer: "Static files served by nginx directly from src/client/. REST API + WebSocket proxied to Mythix server."
+  - question: "Where does FrameManager live?"
+    answer: "src/lib/frame-manager/ — shared between server and client. Client importmap maps bare specifier to path."
+  - question: "Error handling UX?"
+    answer: |
+      Connection status lives in the status bar (already designed).
+      All other errors/warnings: inject error/warning FRAMES into the chat.
+      Red 'error' frame style, yellow 'warning' frame style. No toasts.
+      Errors are frames — visible historically, not ephemeral.
+  - question: "Loading states?"
+    answer: "Skeleton screens for initial loads. Inline spinners for incremental loads (older messages, etc.)."
+  - question: "nginx static file serving?"
+    answer: |
+      nginx serves src/client/ at /kikx/, src/lib/ at /kikx/lib/.
+      /kikx/api/ and /kikx/ws proxy to Mythix server on 8089.
+      src/server/ is never exposed. try_files fallback for SPA routing.
+  - question: "seqda browser access?"
+    answer: "CDN. seqda is fully webpack-bundled (all deps included). Single script tag or importmap → CDN."
+  - question: "SPA routing?"
+    answer: "History API routing. Clean URLs. nginx try_files handles refresh."
+  - question: "Error/warning frame scope?"
+    answer: |
+      Client errors: phantom frames (ephemeral, not persisted). Different visual style.
+      Server errors: persisted frames via WebSocket/SSE, visible to all participants.
+      Two distinct looks — client-side errors vs server-side errors.
+
+  - question: "WebComponent base class / DOM utilities?"
+    answer: |
+      Borrow query-engine and elements from mythix-ui-core. Adapt for standalone use.
+      Query engine: $ for DOM, $$ for Shadow DOM (pattern TBD but establish one).
+      Elements: declarative DOM builder (Proxy-based tag creation).
+      After adapting these, evaluate if other small layers are needed.
+      Source: ~/Projects/mythix-ecosystem/mythix-ui-core/lib/query-engine.js, elements.js
+  - question: "Session ↔ FrameManager lifecycle?"
+    answer: |
+      One FrameManager per session. One chat window per loaded session.
+      Hide/show chat windows when navigating — don't detach/reattach.
+      Only create chat windows for sessions the user has actually selected.
+      Tab model, not cache/dispose model.
+  - question: "@mention autocomplete?"
+    answer: "Needed. Server runs pattern matcher and emits special 'mention' frame."
+  - question: "Multi-bot coordination UX?"
+    answer: "Public. Everything in-channel. Bots @mention each other. Everyone sees everything."
+  - question: "Multi-user in V2?"
+    answer: "Yes. Multi-user is core to FrameManager. Not optional. Build from day one."
+  - question: "File attachments?"
+    answer: "Deferred to future iteration."
+  - question: "System abilities tab?"
+    answer: "No. What was in V1 screenshots was a fluke of incomplete design. Removed from plan."
+  - question: "@mention frame mechanics?"
+    answer: |
+      @mention is a NOTIFICATION mechanism, not routing. The server pattern matcher creates
+      a child "mention" frame under the interaction. Agents see mentions and decide to respond.
+      Future: mentions drive notifications (sounds, alerts, phone push). Client only provides
+      autocomplete dropdown — all logic is server-side.
+  - question: "DOM utility selector naming?"
+    answer: "$m for DOM selection, $$m for Shadow DOM. Keep ElementGenerator callback integration."
+  - question: "ElementGenerator — global or imported?"
+    answer: "Import per-component. With ES module caching it gets reused regardless. Whichever is cleaner."
+  - question: "Agent CRUD in wave 1?"
+    answer: "Yes. Must create/edit agents before creating sessions. Moved from wave-2 to wave-1."
+  - question: "Message content rendering — markdown or HTML?"
+    answer: |
+      HTML, not markdown. Content arrives as HTML. No markdown rendering needed.
+      Possible future: agents send raw JSON frames that collapse to HTML on the client.
+      Sanitization: whitelisted tags only.
+  - question: "Interaction footer layout?"
+    answer: "Timestamp + token count on left, Ignore/Submit on right — same row."
+  - question: "Sidebar session categories?"
+    answer: |
+      Two categories for now: "Channels" and "Private". Archive with trash icon,
+      revive with recycle icon. Search bar with monkey-see/monkey-no-see toggle
+      for showing/hiding archived sessions. Sessions can be children (sub-agents).
+  - question: "Ability wizard persistence?"
+    answer: "sessionStorage saves in-progress wizard fields. Survives browser reload. Cleared on save or cancel."
+  - question: "Component demo pages — minimal or showcase?"
+    answer: "Option B (showcase) for ALL components. Used for development, testing, and show-off."
+  - question: "Test script organization?"
+    answer: "Option C. npm test runs all. npm run test:server and test:client for isolation."
+  - question: "WebSocket mock strategy?"
+    answer: "Two levels. Level 1: MockWebSocket class for unit/jsdom. Level 2: mock HTTP+WS server for Puppeteer."
+  - question: "Auth/chat/scroll in Puppeteer or jsdom?"
+    answer: |
+      jsdom for behavioral testing (auth flow, chat flow, scroll behavior logic).
+      Puppeteer ONLY for visual verification (theme rendering, scrollbar theming,
+      responsive layout, glass-morphism). Never start a browser if jsdom suffices.
+  - question: "Jump-to-bottom button design?"
+    answer: |
+      Centered-floating chevron-down button near bottom of chat area.
+      Appears when isAnchoredToBottom is false. Glass-morphism styled.
+      Optional unread count badge. Clicks scroll to bottom smoothly.
+
+  - question: "Message content HTML scope?"
+    answer: |
+      Simple HTML only (b, i, s, ol, ul, li, table, tr, td, th, etc.).
+      Applies to "message" frames + plugin helpers (bash output, etc.).
+      Server parser/sanitizer handles format. Client whitelists tags. Not a client arch concern.
+  - question: "Session categories — Channels vs Private?"
+    answer: |
+      Auto-categorized by participant count. Private = exactly 2. Channel = 3+.
+      Purely organizational (sidebar display). No behavioral difference.
+      Users can rename sessions. Categories are expandable/collapsible in sidebar.
+  - question: "Sub-sessions?"
+    answer: |
+      Sessions MAY have a parentId. Keep flexible — sub-agent could be its own session.
+      Depth > 2 unlikely for now. Navigation (if ever): swap chat + breadcrumb, not tabs.
+      Mostly debug/advanced feature.
+
+  - question: "Accessibility?"
+    answer: |
+      Option A for launch: semantic HTML, ARIA labels on interactive elements,
+      keyboard-navigable forms (tab order, Enter to submit). Full accessibility
+      (ARIA live regions, screen reader announcements, focus management) deferred
+      to future-plans.
+
+open-questions: []
+
+# =============================================================================
+# FUTURE PLANS (POST-V2 LAUNCH)
+# =============================================================================
+
+future-plans:
+  description: "Features and improvements deferred beyond V2 launch."
+  items:
+    - title: "Full Accessibility (WCAG)"
+      description: |
+        ARIA live regions for streaming content. Screen reader announcements
+        for new messages. Keyboard shortcuts for navigation. Focus management
+        for modals. Skip-to-content links. Full WCAG 2.1 AA compliance.
+      priority: high
+    - title: "File Attachments"
+      description: "Drag-drop, paste, file upload in messages."
+      priority: medium
+    - title: "Sub-session Navigation"
+      description: |
+        Navigate into sub-sessions (sub-agent sessions) with breadcrumb.
+        Mostly debug/advanced feature. Swap chat window + breadcrumb at top.
+      priority: low
+    - title: "Deep Linking"
+      description: "URL deep links to specific interactions within a session."
+      priority: low

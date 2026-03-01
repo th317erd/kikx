@@ -2,7 +2,7 @@ import { OrgBaseTemplate } from './org-template-base.mjs';
 
 export class OrgUserRemovedEmailTemplate extends OrgBaseTemplate {
   generateSubject() {
-    return this.langTerm('email.auth.signIn.subject', 'Hero Magic Login Link');
+    return this.langTerm('email.auth.signIn.subject', 'Kikx Magic Login Link');
   }
 
   async render() {
@@ -15,7 +15,7 @@ export class OrgUserRemovedEmailTemplate extends OrgBaseTemplate {
     return await super.render([
       this.text(
         // TODO: @I18N
-        `<b>${initiatingUser.email}</b> has removed you from the <b>${organization.name}</b> Hero Organization. You no longer have access to this organization or any of its content.`,
+        `<b>${initiatingUser.email}</b> has removed you from the <b>${organization.name}</b> Kikx Organization. You no longer have access to this organization or any of its content.`,
       ),
     ]);
   }

@@ -3,17 +3,17 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createHeroCore } from '../../src/core/index.mjs';
+import { createKikxCore } from '../../src/core/index.mjs';
 import { SessionManager } from '../../src/core/session/index.mjs';
 import { FrameManager }   from '../../src/shared/frame-manager/frame-manager.mjs';
 
 // =============================================================================
 // SessionManager Tests
 // =============================================================================
-// A single HeroCore instance for the entire suite (created once in `before`).
+// A single KikxCore instance for the entire suite (created once in `before`).
 // Each test creates its own org/session/agent to avoid cross-test interference.
 // This avoids the --test-force-exit race that occurs when creating many
-// HeroCore instances in rapid succession.
+// KikxCore instances in rapid succession.
 // =============================================================================
 
 describe('SessionManager', () => {
@@ -23,7 +23,7 @@ describe('SessionManager', () => {
   let org;
 
   before(async () => {
-    core   = createHeroCore();
+    core   = createKikxCore();
     await core.start();
     models = core.getModels();
   });

@@ -144,10 +144,10 @@ export class AuthService {
     if (!this._keystore.isInitialized())
       throw new Error('Keystore must be initialized before creating AuthService');
 
-    // HMAC-SHA256(REK, 'hero-jwt-secret')
+    // HMAC-SHA256(REK, 'kikx-jwt-secret')
     // We access _rek directly since there's no public accessor — acceptable
     // for this tightly coupled server component.
-    this._jwtSecret = crypto.createHmac('sha256', this._keystore._rek).update('hero-jwt-secret').digest();
+    this._jwtSecret = crypto.createHmac('sha256', this._keystore._rek).update('kikx-jwt-secret').digest();
   }
 
   // --- Models Accessor ---
@@ -286,12 +286,12 @@ export class AuthService {
 // --- Auth Middleware ---
 
 function extractToken(req) {
-  // 1. Cookie header: "token=xxx" or "hero_token=xxx"
+  // 1. Cookie header: "token=xxx" or "kikx_token=xxx"
   let cookieHeader = req.headers && req.headers.cookie;
   if (cookieHeader) {
     let cookies = parseCookies(cookieHeader);
-    if (cookies.hero_token)
-      return cookies.hero_token;
+    if (cookies.kikx_token)
+      return cookies.kikx_token;
 
     if (cookies.token)
       return cookies.token;

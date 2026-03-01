@@ -1,7 +1,7 @@
 {
-  "name": "hero",
+  "name": "kikx",
   "version": "3.0.0",
-  "description": "Hero",
+  "description": "Kikx",
   "main": "app/index.mjs",
   "type": "module",
   "engines": {

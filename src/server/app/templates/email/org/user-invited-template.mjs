@@ -8,7 +8,7 @@ export class OrgUserInvitationEmailTemplate extends OrgBaseTemplate {
 
     return this.langTerm(
       'email.org.userInvitation.subject',
-      'Invitation to join the {{name}} organization at Hero',
+      'Invitation to join the {{name}} organization at Kikx',
       {
         params: {
           name: organization.name,
@@ -32,7 +32,7 @@ export class OrgUserInvitationEmailTemplate extends OrgBaseTemplate {
     return await super.render([
       this.text(
         // TODO: @I18N
-        `<b>${initiatingUser.email}</b> has invited you to join the <b>${organization.name}</b> Hero Organization as ${this.formatSingularRoleName(roleName)}. To accept this invite and login, click <a href="${magicLinkURL}">${magicLinkCaption}</a>.<br><i>Note: This will expire in 24 hours.</i>`,
+        `<b>${initiatingUser.email}</b> has invited you to join the <b>${organization.name}</b> Kikx Organization as ${this.formatSingularRoleName(roleName)}. To accept this invite and login, click <a href="${magicLinkURL}">${magicLinkCaption}</a>.<br><i>Note: This will expire in 24 hours.</i>`,
       ),
     ]);
   }

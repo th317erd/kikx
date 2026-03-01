@@ -54,23 +54,23 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// API routes (serve at both /api and /hero/api for direct and proxied access)
+// API routes (serve at both /api and /kikx/api for direct and proxied access)
 app.use('/api', routes);
-app.use('/hero/api', routes);
+app.use('/kikx/api', routes);
 
-// Static files (serve at both /path and /hero/path for direct and proxied access)
+// Static files (serve at both /path and /kikx/path for direct and proxied access)
 app.use('/css', express.static(join(__dirname, '..', 'public', 'css')));
 app.use('/js', express.static(join(__dirname, '..', 'public', 'js')));
 app.use('/assets', express.static(join(__dirname, '..', 'public', 'assets')));
 app.use('/favicon.ico', express.static(join(__dirname, '..', 'public', 'favicon.ico')));
 app.use('/mythix-ui', express.static(join(__dirname, '..', 'node_modules')));
 
-// Also serve static files under /hero/ prefix for direct server access
-app.use('/hero/css', express.static(join(__dirname, '..', 'public', 'css')));
-app.use('/hero/js', express.static(join(__dirname, '..', 'public', 'js')));
-app.use('/hero/assets', express.static(join(__dirname, '..', 'public', 'assets')));
-app.use('/hero/favicon.ico', express.static(join(__dirname, '..', 'public', 'favicon.ico')));
-app.use('/hero/mythix-ui', express.static(join(__dirname, '..', 'node_modules')));
+// Also serve static files under /kikx/ prefix for direct server access
+app.use('/kikx/css', express.static(join(__dirname, '..', 'public', 'css')));
+app.use('/kikx/js', express.static(join(__dirname, '..', 'public', 'js')));
+app.use('/kikx/assets', express.static(join(__dirname, '..', 'public', 'assets')));
+app.use('/kikx/favicon.ico', express.static(join(__dirname, '..', 'public', 'favicon.ico')));
+app.use('/kikx/mythix-ui', express.static(join(__dirname, '..', 'node_modules')));
 
 // Login page - accessible without auth
 app.get('/login', optionalAuth, (req, res) => {
@@ -118,7 +118,7 @@ process.on('SIGTERM', shutdown);
 
 // Start server
 const server = app.listen(config.port, config.host, () => {
-  console.log(`Hero server running at http://${config.host}:${config.port}`);
+  console.log(`Kikx server running at http://${config.host}:${config.port}`);
   console.log(`Base URL: ${config.baseUrl}`);
 });
 

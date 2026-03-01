@@ -8,13 +8,13 @@
  * - ROUTE-002: /settings/:tab route parsed with tab name
  * - ROUTE-003: Settings view div exists in index.html
  * - ROUTE-004: Settings element in state.js elements cache
- * - SETTINGS-001: hero-settings component has required tabs
- * - SETTINGS-002: hero-settings has profile form fields
- * - SETTINGS-003: hero-settings has password change form
- * - SETTINGS-004: hero-settings has API key management
- * - SETTINGS-005: hero-settings has tab switching logic
- * - NAV-001: hero-main-controls has Settings button
- * - NAV-002: hero-main-controls has goToSettings method
+ * - SETTINGS-001: kikx-settings component has required tabs
+ * - SETTINGS-002: kikx-settings has profile form fields
+ * - SETTINGS-003: kikx-settings has password change form
+ * - SETTINGS-004: kikx-settings has API key management
+ * - SETTINGS-005: kikx-settings has tab switching logic
+ * - NAV-001: kikx-main-controls has Settings button
+ * - NAV-002: kikx-main-controls has goToSettings method
  * - API-001: API.user namespace has required methods
  */
 
@@ -38,19 +38,19 @@ const routingSource = fs.readFileSync(
   path.join(projectRoot, 'public/js/routing.js'), 'utf-8'
 );
 const heroAppSource = fs.readFileSync(
-  path.join(projectRoot, 'public/js/components/hero-app/hero-app.js'), 'utf-8'
+  path.join(projectRoot, 'public/js/components/kikx-app/kikx-app.js'), 'utf-8'
 );
 const settingsJsSource = fs.readFileSync(
-  path.join(projectRoot, 'public/js/components/hero-settings/hero-settings.js'), 'utf-8'
+  path.join(projectRoot, 'public/js/components/kikx-settings/kikx-settings.js'), 'utf-8'
 );
 const settingsHtmlSource = fs.readFileSync(
-  path.join(projectRoot, 'public/js/components/hero-settings/hero-settings.html'), 'utf-8'
+  path.join(projectRoot, 'public/js/components/kikx-settings/kikx-settings.html'), 'utf-8'
 );
 const mainControlsJsSource = fs.readFileSync(
-  path.join(projectRoot, 'public/js/components/hero-main-controls/hero-main-controls.js'), 'utf-8'
+  path.join(projectRoot, 'public/js/components/kikx-main-controls/kikx-main-controls.js'), 'utf-8'
 );
 const mainControlsHtmlSource = fs.readFileSync(
-  path.join(projectRoot, 'public/js/components/hero-main-controls/hero-main-controls.html'), 'utf-8'
+  path.join(projectRoot, 'public/js/components/kikx-main-controls/kikx-main-controls.html'), 'utf-8'
 );
 const apiSource = fs.readFileSync(
   path.join(projectRoot, 'public/js/api.js'), 'utf-8'
@@ -75,10 +75,10 @@ describe('ROUTE-001: /settings route parsing', () => {
     );
   });
 
-  it('should have /settings route in hero-app parseRoute', () => {
+  it('should have /settings route in kikx-app parseRoute', () => {
     assert.ok(
       heroAppSource.includes("path === '/settings'"),
-      'hero-app.js parseRoute should match /settings'
+      'kikx-app.js parseRoute should match /settings'
     );
   });
 
@@ -89,10 +89,10 @@ describe('ROUTE-001: /settings route parsing', () => {
     );
   });
 
-  it('should have settings case in hero-app handleRoute switch', () => {
+  it('should have settings case in kikx-app handleRoute switch', () => {
     assert.ok(
       heroAppSource.includes("case 'settings':"),
-      'hero-app.js handleRoute should have settings case'
+      'kikx-app.js handleRoute should have settings case'
     );
   });
 });
@@ -109,10 +109,10 @@ describe('ROUTE-002: /settings/:tab route parsing', () => {
     );
   });
 
-  it('should have settings tab regex in hero-app.js', () => {
+  it('should have settings tab regex in kikx-app.js', () => {
     assert.ok(
       heroAppSource.includes('settingsTabMatch'),
-      'hero-app.js should parse settings tab from URL'
+      'kikx-app.js should parse settings tab from URL'
     );
   });
 
@@ -123,7 +123,7 @@ describe('ROUTE-002: /settings/:tab route parsing', () => {
     );
     assert.ok(
       heroAppSource.includes('tab: settingsTabMatch[1]'),
-      'hero-app.js should include tab in route object'
+      'kikx-app.js should include tab in route object'
     );
   });
 });
@@ -147,17 +147,17 @@ describe('ROUTE-003: Settings view in index.html', () => {
     );
   });
 
-  it('should contain hero-settings component', () => {
+  it('should contain kikx-settings component', () => {
     assert.ok(
-      indexHtml.includes('<hero-settings'),
-      'settings-view should contain hero-settings component'
+      indexHtml.includes('<kikx-settings'),
+      'settings-view should contain kikx-settings component'
     );
   });
 
-  it('should have mythix-require for hero-settings', () => {
+  it('should have mythix-require for kikx-settings', () => {
     assert.ok(
-      indexHtml.includes('hero-settings@1'),
-      'index.html should have mythix-require for hero-settings'
+      indexHtml.includes('kikx-settings@1'),
+      'index.html should have mythix-require for kikx-settings'
     );
   });
 });
@@ -190,7 +190,7 @@ describe('ROUTE-004: Settings element in state.js', () => {
 // SETTINGS-001: Tab Structure
 // =============================================================================
 
-describe('SETTINGS-001: hero-settings tab structure', () => {
+describe('SETTINGS-001: kikx-settings tab structure', () => {
   it('should have profile tab button', () => {
     assert.ok(
       settingsHtmlSource.includes('data-tab="profile"'),
@@ -255,7 +255,7 @@ describe('SETTINGS-002: Profile form fields', () => {
   it('should have profile submit handler in JS', () => {
     assert.ok(
       settingsJsSource.includes('_handleProfileSubmit'),
-      'hero-settings.js should have _handleProfileSubmit method'
+      'kikx-settings.js should have _handleProfileSubmit method'
     );
   });
 
@@ -303,7 +303,7 @@ describe('SETTINGS-003: Password change form', () => {
   it('should have password submit handler in JS', () => {
     assert.ok(
       settingsJsSource.includes('_handlePasswordSubmit'),
-      'hero-settings.js should have _handlePasswordSubmit method'
+      'kikx-settings.js should have _handlePasswordSubmit method'
     );
   });
 
@@ -358,14 +358,14 @@ describe('SETTINGS-004: API key management', () => {
   it('should have API key submit handler', () => {
     assert.ok(
       settingsJsSource.includes('_handleApiKeySubmit'),
-      'hero-settings.js should have _handleApiKeySubmit method'
+      'kikx-settings.js should have _handleApiKeySubmit method'
     );
   });
 
   it('should have revoke API key method', () => {
     assert.ok(
       settingsJsSource.includes('_revokeApiKey('),
-      'hero-settings.js should have _revokeApiKey method'
+      'kikx-settings.js should have _revokeApiKey method'
     );
   });
 
@@ -392,7 +392,7 @@ describe('SETTINGS-005: Tab switching', () => {
   it('should have switchTab method', () => {
     assert.ok(
       settingsJsSource.includes('switchTab('),
-      'hero-settings.js should have switchTab method'
+      'kikx-settings.js should have switchTab method'
     );
   });
 
@@ -483,17 +483,17 @@ describe('NAV-002: goToSettings navigation method', () => {
   it('should have goToSettings method', () => {
     assert.ok(
       mainControlsJsSource.includes('goToSettings()'),
-      'hero-main-controls.js should have goToSettings method'
+      'kikx-main-controls.js should have goToSettings method'
     );
   });
 
-  it('should dispatch hero:navigate event with /settings path', () => {
+  it('should dispatch kikx:navigate event with /settings path', () => {
     let methodStart = mainControlsJsSource.indexOf('goToSettings()');
     let methodBody  = mainControlsJsSource.slice(methodStart, methodStart + 300);
 
     assert.ok(
-      methodBody.includes("hero:navigate"),
-      'goToSettings should dispatch hero:navigate event'
+      methodBody.includes("kikx:navigate"),
+      'goToSettings should dispatch kikx:navigate event'
     );
     assert.ok(
       methodBody.includes("path: '/settings'"),
@@ -562,13 +562,13 @@ describe('API-001: API.user namespace', () => {
 // =============================================================================
 
 describe('Component Registration', () => {
-  it('should register hero-settings as custom element', () => {
+  it('should register kikx-settings as custom element', () => {
     assert.ok(
-      settingsJsSource.includes("static tagName = 'hero-settings'"),
-      'Should define hero-settings tag name'
+      settingsJsSource.includes("static tagName = 'kikx-settings'"),
+      'Should define kikx-settings tag name'
     );
     assert.ok(
-      settingsJsSource.includes('HeroSettings.register()'),
+      settingsJsSource.includes('KikxSettings.register()'),
       'Should call register()'
     );
   });
@@ -578,15 +578,15 @@ describe('Component Registration', () => {
     // a race condition where the class is defined before the template
     // is injected by mythix-require.
     assert.ok(
-      !componentsIndexSource.includes("export { HeroSettings }"),
+      !componentsIndexSource.includes("export { KikxSettings }"),
       'Should NOT be exported from index.js (loaded via mythix-require)'
     );
   });
 
-  it('should extend HeroComponent', () => {
+  it('should extend KikxComponent', () => {
     assert.ok(
-      settingsJsSource.includes('extends HeroComponent'),
-      'HeroSettings should extend HeroComponent'
+      settingsJsSource.includes('extends KikxComponent'),
+      'KikxSettings should extend KikxComponent'
     );
   });
 
@@ -603,13 +603,13 @@ describe('Component Registration', () => {
 });
 
 // =============================================================================
-// hero-app.js Settings Integration
+// kikx-app.js Settings Integration
 // =============================================================================
 
-describe('hero-app.js settings integration', () => {
+describe('kikx-app.js settings integration', () => {
   it('should pass tab option to _showView for settings', () => {
     let settingsCase = heroAppSource.indexOf("case 'settings':");
-    assert.ok(settingsCase > 0, 'hero-app.js should have settings case');
+    assert.ok(settingsCase > 0, 'kikx-app.js should have settings case');
 
     let caseBody = heroAppSource.slice(settingsCase, settingsCase + 200);
     assert.ok(

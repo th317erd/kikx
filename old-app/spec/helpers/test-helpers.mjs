@@ -11,7 +11,7 @@ import { randomBytes } from 'crypto';
  * @returns {string} Path to temp directory
  */
 export function createTempDir() {
-  let tempDir = join(tmpdir(), `hero-test-${randomBytes(8).toString('hex')}`);
+  let tempDir = join(tmpdir(), `kikx-test-${randomBytes(8).toString('hex')}`);
   mkdirSync(tempDir, { recursive: true });
   return tempDir;
 }

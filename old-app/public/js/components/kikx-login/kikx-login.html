@@ -1,0 +1,146 @@
+<!-- Kikx Login Component -->
+<!-- Self-contained login page with form and error handling -->
+
+<!-- Document-scope styles -->
+<style data-for="kikx-login">
+  kikx-login {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+  }
+</style>
+
+<!-- Shadow DOM template -->
+<template data-for="kikx-login">
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+    }
+
+    .login-container {
+      max-width: 360px;
+      width: 100%;
+      padding: 40px 20px;
+    }
+
+    .login-title {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .login-title h1 {
+      font-size: 32px;
+      margin: 0;
+      color: var(--text-primary, #eaeaea);
+    }
+
+    .logo {
+      height: 48px;
+      width: 48px;
+    }
+
+    .login-subtitle {
+      text-align: center;
+      color: var(--text-secondary, #a0a0a0);
+      margin-bottom: 32px;
+    }
+
+    #login-form {
+      background: var(--bg-secondary, #16213e);
+      padding: 24px;
+      border-radius: var(--radius-md, 8px);
+      box-shadow: var(--shadow, 0 4px 6px rgba(0, 0, 0, 0.3));
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: var(--text-secondary, #a0a0a0);
+    }
+
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg-primary, #1a1a2e);
+      border: 1px solid var(--border-color, #2a2a4e);
+      border-radius: var(--radius-sm, 4px);
+      color: var(--text-primary, #eaeaea);
+      font-size: 14px;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--accent, #e94560);
+    }
+
+    .error-message {
+      color: var(--error, #ff6b6b);
+      font-size: 13px;
+      margin-top: 8px;
+      min-height: 20px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 10px 16px;
+      border: none;
+      border-radius: var(--radius-sm, 4px);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+      background: var(--accent, #e94560);
+      color: white;
+    }
+
+    .button:hover:not(:disabled) {
+      background: var(--accent-hover, #ff6b6b);
+    }
+
+    .button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+
+  <div class="login-container">
+    <div class="login-title">
+      <img src="assets/images/kikx-cape.svg?v=1" alt="Hero" class="logo">
+      <h1>Hero</h1>
+    </div>
+    <p class="login-subtitle">AI Agent Chat Interface</p>
+    <form id="login-form" autocomplete="off">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="off">
+      </div>
+      <div id="login-error" class="error-message"></div>
+      <button type="submit" class="button">Log In</button>
+    </form>
+  </div>
+</template>
+
+<script type="module" src="./kikx-login.js"></script>

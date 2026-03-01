@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hero</title>
-  <base href="/hero/">
+  <base href="/kikx/">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="stylesheet" href="css/styles.css?v=3">
   <link rel="stylesheet" href="css/buttons.css">
@@ -19,10 +19,10 @@
       "@cdn/mythix-ui-core@1": "/mythix-ui/mythix-ui-core/dist/index.js?v=3",
       "@cdn/mythix-ui-modal@1": "/mythix-ui/mythix-ui-modal/dist/mythix-ui-modal.js?v=3",
       "@cdn/mythix-ui-for-each@1": "/mythix-ui/mythix-ui-for-each/dist/mythix-ui-for-each.js",
-      "@hero/api": "/hero/js/api.js",
-      "@hero/base": "/hero/js/components/hero-base.js",
-      "@hero/state": "/hero/js/state.js",
-      "@hero/utils": "/hero/js/utils.js"
+      "@kikx/api": "/kikx/js/api.js",
+      "@kikx/base": "/kikx/js/components/kikx-base.js",
+      "@kikx/state": "/kikx/js/state.js",
+      "@kikx/utils": "/kikx/js/utils.js"
     }
   }
   </script>
@@ -36,21 +36,21 @@
 
     // Resolver for <mythix-require> component loading
     mythixUI.urlResolver = ({ src, path, fileName }) => {
-      // Handle @cdn/hero-* pattern for hero components
-      let heroMatch = src.match(/^@cdn\/(hero-[\w-]+)(@[\d.]+)?$/);
+      // Handle @cdn/kikx-* pattern for kikx components
+      let heroMatch = src.match(/^@cdn\/(kikx-[\w-]+)(@[\d.]+)?$/);
       if (heroMatch) {
-        return `/hero/js/components/${heroMatch[1]}/${heroMatch[1]}.html`;
+        return `/kikx/js/components/${heroMatch[1]}/${heroMatch[1]}.html`;
       }
 
       // Handle @cdn/hml-* pattern for HML components
       let hmlMatch = src.match(/^@cdn\/(hml-[\w-]+)(@[\d.]+)?$/);
       if (hmlMatch) {
-        return `/hero/js/components/${hmlMatch[1]}/${hmlMatch[1]}.html`;
+        return `/kikx/js/components/${hmlMatch[1]}/${hmlMatch[1]}.html`;
       }
 
       // Handle @cdn/session-frames-provider pattern
       if (src.match(/^@cdn\/session-frames-provider(@[\d.]+)?$/)) {
-        return `/hero/js/components/session-frames-provider/session-frames-provider.html`;
+        return `/kikx/js/components/session-frames-provider/session-frames-provider.html`;
       }
 
       // Handle @cdn/mythix-* pattern for mythix-ui components
@@ -73,69 +73,69 @@
   <!-- Shadow DOM components loaded via mythix-require (need HTML templates) -->
   <mythix-require src="@cdn/mythix-ui-for-each@1"></mythix-require>
   <mythix-require src="@cdn/mythix-ui-modal@1"></mythix-require>
-  <mythix-require src="@cdn/hero-modal@1" cache="no-store"></mythix-require>
-  <mythix-require src="@cdn/hero-header@1"></mythix-require>
-  <mythix-require src="@cdn/hero-status-bar@1" cache="no-store"></mythix-require>
-  <mythix-require src="@cdn/hero-main-controls@1"></mythix-require>
-  <mythix-require src="@cdn/hero-sessions-list@1"></mythix-require>
-  <mythix-require src="@cdn/hero-chat@1"></mythix-require>
-  <mythix-require src="@cdn/hero-input@1"></mythix-require>
+  <mythix-require src="@cdn/kikx-modal@1" cache="no-store"></mythix-require>
+  <mythix-require src="@cdn/kikx-header@1"></mythix-require>
+  <mythix-require src="@cdn/kikx-status-bar@1" cache="no-store"></mythix-require>
+  <mythix-require src="@cdn/kikx-main-controls@1"></mythix-require>
+  <mythix-require src="@cdn/kikx-sessions-list@1"></mythix-require>
+  <mythix-require src="@cdn/kikx-chat@1"></mythix-require>
+  <mythix-require src="@cdn/kikx-input@1"></mythix-require>
   <mythix-require src="@cdn/hml-prompt@1"></mythix-require>
   <mythix-require src="@cdn/session-frames-provider@1"></mythix-require>
-  <mythix-require src="@cdn/hero-login@1"></mythix-require>
-  <mythix-require src="@cdn/hero-settings@1"></mythix-require>
-  <mythix-require src="@cdn/hero-participant-list@1"></mythix-require>
+  <mythix-require src="@cdn/kikx-login@1"></mythix-require>
+  <mythix-require src="@cdn/kikx-settings@1"></mythix-require>
+  <mythix-require src="@cdn/kikx-participant-list@1"></mythix-require>
 
-  <hero-app id="app">
+  <kikx-app id="app">
     <!-- WebSocket handler -->
-    <hero-websocket></hero-websocket>
+    <kikx-websocket></kikx-websocket>
 
     <!-- Status bar (bottom) - starts hidden, revealed by JS when authenticated -->
-    <hero-status-bar id="status-bar" class="hidden"></hero-status-bar>
+    <kikx-status-bar id="status-bar" class="hidden"></kikx-status-bar>
 
     <!-- Modal components -->
-    <hero-modal-create-session id="new-session-component" style="display: none;"></hero-modal-create-session>
-    <hero-modal-create-agent id="new-agent-component" style="display: none;"></hero-modal-create-agent>
-    <hero-modal-configure-ability id="ability-component" style="display: none;"></hero-modal-configure-ability>
-    <hero-modal-abilities id="abilities-component" style="display: none;"></hero-modal-abilities>
-    <hero-modal-agents id="agents-component" style="display: none;"></hero-modal-agents>
-    <hero-modal-agent-settings id="agent-config-component" style="display: none;"></hero-modal-agent-settings>
+    <kikx-modal-create-session id="new-session-component" style="display: none;"></kikx-modal-create-session>
+    <kikx-modal-create-agent id="new-agent-component" style="display: none;"></kikx-modal-create-agent>
+    <kikx-modal-configure-ability id="ability-component" style="display: none;"></kikx-modal-configure-ability>
+    <kikx-modal-abilities id="abilities-component" style="display: none;"></kikx-modal-abilities>
+    <kikx-modal-agents id="agents-component" style="display: none;"></kikx-modal-agents>
+    <kikx-modal-agent-settings id="agent-config-component" style="display: none;"></kikx-modal-agent-settings>
 
     <!-- Login View -->
     <div id="login-view" class="view" data-view="login" style="display: none;">
-      <hero-login id="login-component"></hero-login>
+      <kikx-login id="login-component"></kikx-login>
     </div>
 
     <!-- Sessions List View -->
     <div id="sessions-view" class="view" data-view="sessions" style="display: none;">
-      <hero-header id="sessions-header"></hero-header>
+      <kikx-header id="sessions-header"></kikx-header>
       <main class="sessions-main">
-        <hero-sessions-list id="sessions-list"></hero-sessions-list>
+        <kikx-sessions-list id="sessions-list"></kikx-sessions-list>
       </main>
     </div>
 
     <!-- Chat View -->
     <div id="chat-view" class="view" data-view="chat" style="display: none;">
-      <hero-header id="chat-header"></hero-header>
+      <kikx-header id="chat-header"></kikx-header>
       <div class="chat-layout">
         <session-frames-provider id="session-frames">
           <main class="chat-main">
-            <hero-chat id="chat"></hero-chat>
+            <kikx-chat id="chat"></kikx-chat>
           </main>
           <footer class="chat-footer">
-            <hero-input id="chat-input"></hero-input>
+            <kikx-input id="chat-input"></kikx-input>
           </footer>
         </session-frames-provider>
         <aside id="participant-sidebar" class="participant-sidebar">
-          <hero-participant-list id="participant-list"></hero-participant-list>
+          <kikx-participant-list id="participant-list"></kikx-participant-list>
         </aside>
       </div>
     </div>
 
     <!-- Settings View -->
     <div id="settings-view" class="view" data-view="settings" style="display: none;">
-      <hero-header id="settings-header"></hero-header>
-      <hero-settings id="settings"></hero-settings>
+      <kikx-header id="settings-header"></kikx-header>
+      <kikx-settings id="settings"></kikx-settings>
     </div>
 
     <!-- Running Operations Panel -->
@@ -146,11 +146,11 @@
       </div>
       <div id="operations-list" class="operations-list"></div>
     </div>
-  </hero-app>
+  </kikx-app>
 
   <!-- Component imports (ES modules) -->
   <script type="module">
-    // Hero components (includes Mythix-UI dependency)
+    // Kikx components (includes Mythix-UI dependency)
     import './js/components/index.js?v=5';
   </script>
 
