@@ -70,3 +70,102 @@
 - [x] 36. hero-settings-page: settings page with top-bar + tabbed content
 - [x] 37. hero-settings-tabs: tabbed settings content (profile, account, API keys, theme)
 - [x] 38. hero-websocket-manager: WebSocket connection manager (invisible, no UI)
+
+---
+
+# Phase 7 — V2 Server Implementation (Phase 1 MVP)
+
+## Plan Reference
+- `bot-docs/plan/hero/server-plan.yaml` (874 lines, 27 sections)
+- Plan tests: `bot-docs/test/meta.yaml` (93 assertions, 83 pass)
+
+## Dependency Graph
+```
+Step 1 (core entry) ─────────────────────────────────────┐
+  ├── Step 2 (models) ──┬── Step 3 (session mgr) ──────┐ │
+  │                     └── Step 4 (frame persistence) ─┤ │
+  ├── Step 5 (plugin loader) ─┬── Step 7 (agent iface) ─┤ │
+  │                           │   └── Step 8 (claude)   │ │
+  │                           └── Step 6 (interaction)  │ │
+  ├── Step 10 (vault) ── Step 9 (auth) ────────────────┤ │
+  ├── Step 11 (transport SSE) ─────────────────────────┤ │
+  └── Step 13 (content sanitizer) ─────────────────────┤ │
+                                                       ▼ │
+                                              Step 12 (routes)
+```
+
+## Implementation Waves
+
+### Wave J: Foundation (sequential — everything depends on this)
+- [ ] 39. Core entry point + config: src/core/index.mjs, createHeroCore(config)
+  - Cascading context (Object.create chain)
+  - Config loading, defaults
+  - Core instance with start/stop lifecycle
+  - Tests: spec/core/core-entry-spec.mjs
+
+### Wave K: Data + Infrastructure (parallel — all depend only on Wave J)
+- [ ] 40. Mythix ORM models: Organization, User, Role, Agent, Session, Frame
+  - Models from context (never direct imports)
+  - Model versioning as static property
+  - Tests: spec/core/models-spec.mjs
+- [ ] 41. Plugin loader: registry, FilesystemPluginProvider, InMemoryPluginProvider
+  - PluginInterface base class (execute/_execute pattern)
+  - Plugin discovery, lifecycle, teardown-as-closure
+  - Tests: spec/core/plugin-loader-spec.mjs
+- [x] 42. Vault/Keystore: src/core/crypto/keystore.mjs
+  - AES-256-GCM encryption, HMAC-SHA256 fingerprinting, scrypt KDF
+  - REK lifecycle (random in prod, deterministic in dev)
+  - UMK wrapping, per-user key derivation
+  - Tests: spec/core/keystore-spec.mjs
+- [x] 43. Transport interface + SSE: src/core/transport/
+  - Transport base class (send, onMessage, createStream, connect, disconnect)
+  - SSETransport implementation
+  - EventTransport for embedded/testing
+  - Tests: spec/core/transport-spec.mjs
+- [x] 44. Content sanitizer: src/core/lib/content-sanitizer.mjs
+  - HTML allowlist (standard tags + custom elements)
+  - Strip script, iframe, event handlers, javascript: URIs
+  - Plugin-extensible allowlist
+  - Tests: spec/core/content-sanitizer-spec.mjs
+
+### Wave L: Core Services (depend on Wave K models + plugins)
+- [ ] 45. Session manager: src/core/session/
+  - CRUD, participant binding, FrameManager instances per session
+  - Tests: spec/core/session-manager-spec.mjs
+- [ ] 46. Frame persistence: src/core/frames/
+  - DB <-> FrameManager sync
+  - Frame schema (20 columns), loading strategy
+  - Tests: spec/core/frame-persistence-spec.mjs
+- [ ] 47. Agent plugin interface: src/core/plugins/ agent base
+  - Yield-based frame protocol
+  - Async generator pattern
+  - Tests: spec/core/agent-interface-spec.mjs
+
+### Wave M: Interaction + Auth (depend on Wave L)
+- [ ] 48. Interaction loop: src/core/interaction/
+  - Async generator kernel iteration
+  - Permission hard-break (generator destroyed, frame persisted)
+  - Queue + cancel UX
+  - Tests: spec/core/interaction-loop-spec.mjs
+- [ ] 49. Claude agent plugin: src/core/plugins/claude-agent/
+  - Anthropic API integration, yield-based streaming
+  - System prompt with HTML output instruction
+  - Tests: spec/core/claude-agent-spec.mjs
+- [ ] 50. Auth system: src/server/app/ auth routes + middleware
+  - Password-only JWT auth
+  - JWT-as-vault (UMK wrapped by REK in vault claim)
+  - Cookie-based sessions
+  - Tests: spec/server/auth-spec.mjs
+
+### Wave N: Server Integration (depends on everything above)
+- [ ] 51. Server routes: src/server/app/routes/
+  - REST endpoints for sessions, agents, frames, auth
+  - Thin adapters calling core methods
+  - Tests: spec/server/routes-spec.mjs
+- [ ] 52. Integration tests: end-to-end flow
+  - Create session → send message → receive response → frames persisted
+  - Tests: spec/server/integration-spec.mjs
+
+## Decision Log
+(Decisions made during implementation without user input — review with user later)
+
