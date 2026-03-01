@@ -129,14 +129,14 @@ Step 1 (core entry) ────────────────────
   - Tests: spec/core/content-sanitizer-spec.mjs
 
 ### Wave L: Core Services (depend on Wave K models + plugins)
-- [ ] 45. Session manager: src/core/session/
+- [x] 45. Session manager: src/core/session/
   - CRUD, participant binding, FrameManager instances per session
   - Tests: spec/core/session-manager-spec.mjs
-- [ ] 46. Frame persistence: src/core/frames/
+- [x] 46. Frame persistence: src/core/frames/
   - DB <-> FrameManager sync
   - Frame schema (20 columns), loading strategy
   - Tests: spec/core/frame-persistence-spec.mjs
-- [ ] 47. Agent plugin interface: src/core/plugins/ agent base
+- [x] 47. Agent plugin interface: src/core/plugins/ agent base
   - Yield-based frame protocol
   - Async generator pattern
   - Tests: spec/core/agent-interface-spec.mjs
