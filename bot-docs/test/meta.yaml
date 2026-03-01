@@ -1,252 +1,992 @@
-# meta.yaml
-# Plan tests — assertions that validate the PLAN ITSELF
-# Status: pass | fail | needs-clarification | blocked
+# =============================================================================
+# bot-docs/test/meta.yaml
+# AGIS Plan Test Assertions — Hero V2 Server Architecture
+# =============================================================================
+# These are assertions about the PLAN itself — not code tests.
+# They validate completeness, coherence, conflicts, and implementation readiness.
+#
 # Severity: blocker | high | medium | low
-# Updated: 2026-02-23 (testing architecture added)
-# ---
+# Status:   pending | pass | fail | needs-clarification | blocked
+#
+# Sources:
+#   - bot-docs/plan/hero/server-plan.yaml (Rounds 1-19)
+#   - .claude/DETAILS.md (Rounds 9-12 decisions)
+#   - .claude/conversation2.md (Rounds 13-19 decisions)
+#   - bot-docs/plan/hero/frame-manager.yaml
+#   - bot-docs/plan/hero/client-plan.yaml
+#
+# Updated: 2026-02-28
+# Evaluated by: Claude Opus 4.6
+# =============================================================================
+
+# =============================================================================
+# 1. CORE ARCHITECTURE
+# =============================================================================
+
+core-architecture:
+
+  - assert: "Embeddable core (src/core/) has zero HTTP dependencies"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 1: "Embeddable engine with zero HTTP dependencies.
+      Can run without Express/Mythix server."
+
+  - assert: "Thin Mythix server wrapper (src/server/) delegates everything to core"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 1: "Thin Mythix wrapper that delegates everything
+      to core. HTTP routes are just adapters that call core methods."
+
+  - assert: "createHeroCore(config) entry point is defined with return type"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 1: entry_point "createHeroCore(config)", returns
+      "Core instance with full plugin/session/interaction capabilities".
+      Config schema itself is not documented in detail but the entry point
+      and return type are specified.
+
+  - assert: "Directory structure is fully specified for src/core/ and src/server/"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 2 has complete directory tree for both src/core/
+      (with 13 subdirectories/files) and src/server/ (with app, routes, middleware).
+
+  - assert: "All 10 kernel components have assigned levels (core vs server)"
+    severity: high
+    status: needs-clarification
+    notes: >
+      All 10 components have explicit level assignments in section 3. HOWEVER,
+      Auth System is listed as level:server in kernel_components (section 3) and
+      section 19, but the directory structure (section 2) places 'auth' under
+      src/core/ with description "Authentication (core-level, not HTTP-level)".
+      This is contradictory — auth straddles both levels without a clear boundary.
+
+  - assert: "Cascading context mechanism (Object.create chain) is specified"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 23: Object.create() prototype chain with 4 layers
+      (Plugin defaults, Org config, Session state, Runtime state). API:
+      setProperty/getProperty with dot and array notation.
+
+  - assert: "FrameManager location resolved (src/core/frame-manager/)"
+    severity: medium
+    status: pass
+    notes: >
+      server-plan.yaml section 1 frame_manager: location "src/core/frame-manager/",
+      note "Moved from src/shared/frame-manager/ -- single source of truth",
+      shared: true.
+
+# =============================================================================
+# 2. DATA LAYER
+# =============================================================================
+
+data-layer:
+
+  - assert: "Mythix ORM is the sole data abstraction (no StorageAdapter)"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 20: "NO StorageAdapter interface. Mythix ORM IS
+      the abstraction layer. Removed entirely from architecture."
+
+  - assert: "Configurable ORM driver with default mythix-orm-sqlite in-memory"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 20: driver_model "Configurable", default_driver
+      package "mythix-orm-sqlite", mode "In-memory by default".
+
+  - assert: "Models are always accessed from context, never direct imports"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 20: access "NEVER import models directly --
+      always get from application context". overridable "Models exported and
+      overridable via config".
+
+  - assert: "Model versioning strategy is defined (static property, no migration files)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 20: versioning "Models versioned as static property.
+      Caller manages schema." migrations "No migration files in core -- external
+      migration system."
+
+  - assert: "Frame persistence and FrameManager integration are specified"
+    severity: blocker
+    status: pass
+    notes: >
+      Directory structure has src/core/frames/ for "Frame persistence -- DB sync".
+      Frame schema fully defined in section 14. FrameManager integration via
+      merge() API documented in frame-manager.yaml.
+
+  - assert: "Frame schema columns are fully specified with types and notes"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 14 defines 19 columns (not 18 as originally
+      counted): id, session_id, interaction_id, parent_id, order, group_id,
+      group_type, type, content, targets, author_type, author_id, hidden,
+      deleted, processed, processed_at, timestamp, created_at, updated_at.
+      All have types and relevant notes.
+
+  - assert: "Session manager CRUD + participant binding are specified"
+    severity: high
+    status: pass
+    notes: >
+      Kernel component #8: "CRUD, participants, FrameManager instances per
+      session." Data model section 22: session has participants. Client plan
+      specifies full session CRUD API endpoints.
+
+  - assert: "Data model entities are complete (org, user, role, agent, session)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 22: organization (top-level tenant), user
+      (belongs_to org), role (org-level), agent (org-level configured instance),
+      session (has participants, contains FrameManager instance). Multi-tenant
+      from day one.
+
+  - assert: "Loading strategy for frames is specified (denormalized interaction_id)"
+    severity: medium
+    status: pass
+    notes: >
+      server-plan.yaml section 14 loading_strategy: "Single-query loading:
+      subquery for top-level IDs, then all by interaction_id. Denormalized
+      interaction_id makes this efficient."
+
+# =============================================================================
+# 3. PLUGIN SYSTEM
+# =============================================================================
+
+plugin-system:
+
+  - assert: "PluginInterface base class with execute/_execute pattern is defined"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 4: execute (wrapper/public API), _execute
+      (workhorse/override), getHelp, getPermissionsClass. constructor_behavior:
+      "Auto-configured permissions". umk_sandboxing specified.
+
+  - assert: "Plugin setup(context) returns teardown closure"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 4: setup "setup(context) -- entry point, receives
+      context, returns teardown closure". teardown "Returned as a closure from
+      setup() -- not a separate method". Classes inside setup().
+
+  - assert: "PluginProvider interface with discover/load/watch/unwatch is defined"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 5: base_class PluginProvider, methods discover,
+      load, watch, unwatch. Three providers: FilesystemPluginProvider (phase 1),
+      NpmPluginProvider (phase 3), InMemoryPluginProvider (phase 1).
+
+  - assert: "Plugin conflict resolution is specified (implicit override + warning)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 4 conflicts: behavior "Implicit override with
+      warning (not error)", rationale "Allows plugins to upgrade/overload other
+      plugins". NOTE: assertion notes mention "error at registration" from Round
+      12 but the final plan says "implicit override with warning" -- the plan
+      is the source of truth and the assertion title matches the plan.
+
+  - assert: "Plugin naming convention is defined ({pluginId}:{featureName})"
+    severity: medium
+    status: pass
+    notes: >
+      server-plan.yaml section 4: naming_convention "{pluginId}:{featureName}"
+      with examples (bash-plugin:bash, claude-agent:claude, websearch:websearch).
+
+  - assert: "Context provides registerCommand(), registerTool(), PluginInterface"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 4 context_provides lists all three:
+      registerCommand(), registerTool(), PluginInterface.
+
+  - assert: "Static metadata fields are defined on PluginInterface"
+    severity: medium
+    status: pass
+    notes: >
+      server-plan.yaml section 4 static_metadata: pluginId, featureName,
+      displayName, description, icon, version.
+
+  - assert: "Launch plugins are enumerated (claude-agent, websearch, bash, delegate, help, reload)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 26 lists 6 launch plugins:
+      claude-agent, websearch, bash, delegate, help, reload. HML plugin
+      was dropped when HML parsing was eliminated (Round 15). The plan
+      correctly lists 6 plugins. Prompts are inline HTML in agent output,
+      not a separate plugin.
+
+# =============================================================================
+# 4. INTERACTION LOOP
+# =============================================================================
+
+interaction-loop:
+
+  - assert: "Async generator pattern for interaction loop is specified"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 6: pattern "Async generator", agent plugin is
+      async generator yielding blocks, kernel iterates, tool results passed
+      back via yield protocol.
+
+  - assert: "Interaction flow steps are defined (yield -> process -> next)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 6 flow: 5 steps (agent yields block, kernel
+      receives, kernel processes, kernel sends result via next(), generator
+      yields next or returns).
+
+  - assert: "Permission hard-break (deliberate gap at permission boundary) is specified"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 6 permission_hard_break: 9-step flow. Generator
+      destroyed (no suspended state). Pending action persisted as frame.
+      New interaction starts with full history after approval. processed_flag
+      distinguishes old from new frames.
+
+  - assert: "Queue + cancel UX for concurrent interactions is specified"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 6 queue_and_cancel: queue_behavior (messages
+      concatenate), on_natural_completion (auto-send), on_cancel (placed in
+      input field, user text appended, editable).
+
+  - assert: "Interaction resumability mechanism is specified (replay-from-frames)"
+    severity: blocker
+    status: fail
+    notes: >
+      FAIL: The plan addresses permission hard-break (generator destroyed, new
+      interaction with full history) which handles the permission case. But there
+      is NO explicit "replay-from-frames" or "resume mode" mechanism for general
+      server restart scenarios. Build phase 3 step 23 lists "Interaction
+      resumability enhancements" but provides zero detail on what this means or
+      how it works. The mechanism is deferred without specification. For a
+      blocker-severity item, this is insufficient.
+
+  - assert: "prepareMessage hook is specified as single interceptor"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 12: signature "prepareMessage({ source, target,
+      message, context })", actions (pass through, modify, block, redirect).
+      Replaces BEFORE_TOOL/AFTER_TOOL.
+
+# =============================================================================
+# 5. SECURITY (ZERO-KNOWLEDGE)
+# =============================================================================
+
+security-zero-knowledge:
+
+  - assert: "JWT-as-vault architecture is specified (UMK wrapped by REK)"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 18: architecture "Zero-knowledge JWT-as-Vault".
+      UMK wrapped by REK, stored in JWT vault claim. Per-user keys via HMAC.
+
+  - assert: "REK lifecycle is specified (random in prod, deterministic in dev)"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 18 rek: random 32-byte, process memory only,
+      never on disk. restart_behavior: all sessions die. dev_mode: deterministic
+      REK from project path + fixed salt.
+
+  - assert: "Password-only auth at launch (WebAuthn deferred)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 19: "Password-only for now". deferred list
+      includes WebAuthn/passkeys, passphrase-based auth, device approval.
+
+  - assert: "No magic links (incompatible with zero-knowledge)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 19 not_supported: "Magic links (incompatible
+      with zero-knowledge)" and "Server slot (eliminated)".
+
+  - assert: "Lazy decryption via getUMK() accessor is specified"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 18 umk: access "Lazy decryption via getUMK()
+      accessor on request", sandboxing "UMK NEVER reaches plugin _execute()".
+
+  - assert: "Permission fingerprinting via HMAC from UMK-derived secret is specified"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 17 fingerprinting and section 18 per_user_keys:
+      derivation "HMAC from UMK + userId", uses include "Permission fingerprints"
+      and "API key encryption".
+
+  - assert: "Encryption algorithms are specified (AES-256-GCM, HMAC-SHA256)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 18 module: algorithms encryption "AES-256-GCM",
+      fingerprinting "HMAC-SHA256", password_kdf "scrypt". destroy() method
+      specified.
+
+  - assert: "Multi-key vault (multiple master keys unlock same vault) is specified"
+    severity: medium
+    status: pass
+    notes: >
+      server-plan.yaml section 18 vault_slots: "Multiple slots can independently
+      wrap the same UMK". Password slot mechanism detailed. Future slots listed
+      (passphrase, device approval).
+
+  - assert: "Auth is server-level, keystore is core-level (boundary is clear)"
+    severity: high
+    status: fail
+    notes: >
+      FAIL: The plan contradicts itself. Section 19 says auth level: server.
+      Kernel component "Auth System" says level: server with description "JWT
+      tokens, password auth, cookies". BUT directory structure section 2 places
+      'auth' under src/core/ with description "Authentication (core-level, not
+      HTTP-level)". The boundary is NOT clear — the plan puts auth in two
+      different levels simultaneously.
+
+# =============================================================================
+# 6. AGENT OUTPUT
+# =============================================================================
+
+agent-output:
+
+  - assert: "Agents output HTML directly (no markdown-to-HTML conversion)"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 7: principle "Agent outputs HTML, not HML".
+      "No markdown-to-HTML conversion (tried in V1, <p> tag pollution broke
+      inline flow)."
+
+  - assert: "Two-channel output: structured tool calls + inline HTML"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 7 two_channels: structured_tool_calls (Claude
+      API tool_use blocks) and inline_html (HTML with custom elements in
+      agent text output).
+
+  - assert: "Server-side HTML sanitization with allowlist is specified"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 7 sanitization: library "sanitize-html or
+      similar", location "src/core/lib/content-sanitizer.mjs", allowed_html
+      list, allowed_custom_elements, stripped tags, plugin_extension.
+
+  - assert: "Custom WebComponent elements in agent output are specified"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 7 allowed_custom_elements: hero-hml-prompt,
+      hero-hml-option, and "Other registered custom elements from plugins".
+      plugin_extension: "Plugins can extend the allowlist."
+
+# =============================================================================
+# 7. PROMPTS (hero-hml-prompt)
+# =============================================================================
+
+prompts:
+
+  - assert: "Inline hero-hml-prompt WebComponents in agent HTML output are specified"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 13: "Agent outputs <hero-hml-prompt> elements in
+      its HTML text. Server sanitizes (hero-hml-prompt is on allowlist), stores
+      in message frame. Client renders WebComponents."
+
+  - assert: "Prompt state tracked via FrameManager (targeting/merge)"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 13 state_management: mechanism "FrameManager
+      deep-merge" with 7-step flow. Server creates prompt-response frame
+      targeting original. FrameManager deep-merges. Survives reload.
+
+  - assert: "Select child element approach is specified (choice between two options)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 13 child_elements: approach "CHOICE between two
+      options (not both)". option_a: hero-hml-option child elements. option_b:
+      reuse radio/checkbox types for select rendering. note: "These are
+      alternatives, NOT nested within each other."
+
+  - assert: "hero-hml-prompt-value is dropped (one component, two modes)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 13 reload_behavior: "Single component
+      (hero-hml-prompt) handles both interactive and read-only modes -- mode
+      determined by value presence in merged frame content." NOTE: client-plan.yaml
+      still lists hero-hml-prompt-value as a separate component -- client plan
+      needs updating to match server plan.
+
+  - assert: "Binary fields (checkbox) ALWAYS include their answer (true/false)"
+    severity: medium
+    status: pass
+    notes: >
+      server-plan.yaml section 13: binary_fields "Checkbox always has a default
+      -- ALWAYS include the answer (true/false)".
+
+  - assert: "Prompt submit flow is fully specified (7 steps)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 13 state_management flow has 7 steps: fill
+      prompts, click submit, collect values (with defaults/null), send to server,
+      server creates prompt-response frame, server sends values as new user
+      message to agent, new interaction starts.
+
+  - assert: "Three prompt render states are defined (unanswered, answered, dismissed)"
+    severity: medium
+    status: pass
+    notes: >
+      server-plan.yaml section 13 render_modes: unanswered (interactive form
+      fields), answered (green-success read-only pill badge), dismissed (muted
+      'User refused to answer').
+
+# =============================================================================
+# 8. HML STREAMING FORMAT — REMOVED
+# =============================================================================
+# HML as a server-side text parsing format was ELIMINATED in Round 15.
+# Agent outputs HTML directly. No custom tokenizer, no streaming tag extraction.
+# See agent-output section above for the replacement.
+
+# =============================================================================
+# 9. TRANSPORT
+# =============================================================================
+
+transport:
+
+  - assert: "Transport interface with send/onMessage/createStream/connect/disconnect is defined"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 15: base_class "Transport", methods: send(),
+      onMessage(), createStream(), connect(), disconnect(). "Core yields
+      frames, transport decides delivery mechanism."
+
+  - assert: "SSE, WebSocket, EventEmitter implementations are planned"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 15: SSETransport (streaming responses),
+      WebSocketTransport (real-time events + phantom events), EventTransport
+      (in-process EventEmitter for embedded use).
+
+  - assert: "WebSocket reconnection with lastSeenOrder replay is specified"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 16: mechanism "lastSeenOrder counter". Client
+      sends lastSeenOrder in handshake, server replays frames with order >
+      lastSeenOrder.
+
+  - assert: "WebSocket events are defined (frame:new, frame:updated, typing:start/stop)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 24: 4 events (frame:new, frame:updated,
+      typing:start, typing:stop). "Phantom events are a client-only concern."
+
+# =============================================================================
+# 10. PERMISSIONS SYSTEM
+# =============================================================================
+
+permissions:
+
+  - assert: "OOP permissions with base class + plugin override via matchesRule() is specified"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 17: base_class Permissions with capabilities.
+      extension_model: matchesRule(rule, metadata). Simple case: one-liner
+      checkPermissions(). Advanced case: subclass. on_deny: throws
+      PermissionDeniedError.
+
+  - assert: "Permission rule table schema is defined"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 17 rule_table: 12 columns (id, organization_id,
+      feature_name, effect, scope, scope_id, metadata, priority, created_by,
+      fingerprint, created_at, expires_at).
+
+  - assert: "Risk levels are defined (low, high, critical)"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 17 risk_levels: [low, high, critical]. "Nothing
+      is 'none' -- every operation has a risk level." safety_net for critical ops.
+
+  - assert: "Permission scoping (global, session, frame) is defined"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 17 capabilities: "Scoping: global, session,
+      frame". scope and scope_id columns in rule table.
+
+  - assert: "Error visibility per participant is specified"
+    severity: medium
+    status: pass
+    notes: >
+      server-plan.yaml section 21: 4 values (all, user, agent, system).
+      "Permission errors target specific participants."
+
+# =============================================================================
+# 11. AGENT IDENTITY
+# =============================================================================
+
+agent-identity:
+
+  - assert: "Plugin/Agent/Participant hierarchy is defined"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 8: plugin (agent TYPE, e.g. ClaudeAgent),
+      agent (configured INSTANCE, org-level, has name/api_key/instructions),
+      participant (agent IN a session, has alias/session_overrides).
+
+  - assert: "Abilities as DM (natural language config) are specified"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 9: concept "DM/PM conversation with agent =
+      agent's instruction set". Behavior: self-maintains summary, injected
+      into primer, natural language config. Direct access via /agent/ endpoints.
+
+  - assert: "Primer system is specified (small, dynamic, 'HOW to be')"
+    severity: medium
+    status: pass
+    notes: >
+      server-plan.yaml section 10: philosophy "Small, dynamic -- 'HOW to be'
+      not 'HERE is everything'". Composition: agent instructions, plugin
+      __onstart exports, DM instruction summary. Agent can poll help system.
+
+# =============================================================================
+# 12. HELP SYSTEM
+# =============================================================================
+
+help-system:
+
+  - assert: "Grep-style regexp search over column-delimited index is specified"
+    severity: medium
+    status: pass
+    notes: >
+      server-plan.yaml section 11: type "Grep-style regexp search", storage
+      "Column-delimited in-memory index", columns (name, displayName,
+      description, tags, pluginId), separator "::". query_mechanism is now
+      "Tool call via structured tool interface (not inline tags)" -- the
+      assertion notes mention <hml-help> but that was superseded.
+
+# =============================================================================
+# 13. BUILD PHASES
+# =============================================================================
+
+build-phases:
+
+  - assert: "Phase 1 (MVP) contains 13 items and is self-contained"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 27 phase_1: 13 steps (core entry, ORM models,
+      session manager, frame persistence, plugin loader, interaction loop,
+      agent plugin interface, claude-agent, auth, vault, SSE transport,
+      server routes, content sanitizer).
+
+  - assert: "Phase 2 (V1 parity) contains 6 items building on Phase 1"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 27 phase_2 has 6 items (steps 14-19):
+      Permissions system (basic), WebSocket transport, Websearch plugin, Bash
+      plugin, Help system, Permission fingerprinting. Prompts are inline
+      HTML (no plugin needed), so no "HML prompt plugin" in Phase 2.
+
+  - assert: "Phase 3 (V2 differentiators) contains 6 items building on Phase 2"
+    severity: high
+    status: pass
+    notes: >
+      server-plan.yaml section 27 phase_3: 6 items (steps 20-25): Abilities
+      as DM, Device approval auth, Full permissions OOP, Interaction
+      resumability enhancements, NPM plugin provider, prepareMessage hook.
+
+  - assert: "All features are assigned to exactly one phase"
+    severity: high
+    status: pass
+    notes: >
+      All 25 planned items are assigned to exactly one phase. Prompts (inline
+      HTML) are covered by content sanitizer in Phase 1 step 13 (no separate
+      plugin needed). Cascading context is part of core entry in step 1.
+
+  - assert: "Phase dependencies are acyclic (Phase 2 depends only on Phase 1, etc.)"
+    severity: blocker
+    status: pass
+    notes: >
+      Phase 2 items (permissions, WebSocket, plugins, help, fingerprinting)
+      all build on Phase 1 foundation. Phase 3 items build on Phase 2. No
+      backward dependencies detected.
+
+# =============================================================================
+# 14. FRAME MANAGER (from existing assertions)
+# =============================================================================
 
 frame-manager:
 
-  # --- Completeness ---
-  - assert: frame-manager has-complete-acceptance-criteria
+  - assert: "FrameManager has complete acceptance criteria"
     severity: blocker
     status: pass
-    notes: 44 concrete acceptance criteria defined (27 functional + 9 validation + 8 testing).
+    notes: >
+      frame-manager.yaml acceptance-criteria section: 27 functional + 9
+      validation + 8 testing = 44 concrete acceptance criteria.
 
-  - assert: frame-manager has-test-strategy-defined
+  - assert: "FrameManager has four-tier test strategy"
     severity: blocker
     status: pass
-    notes: |
-      Four-tier testing architecture: unit tests, composition scenarios,
-      test utilities, adversarial tests. 11 composition scenarios (S1-S11).
-      22 adversarial tests (H1-H22) covering property attacks, structural
-      attacks, content attacks, and merge invariant attacks. 4 test utilities
-      (EventRecorder, HistoryWalker, IntegrityChecker, ScenarioBuilder).
-      IntegrityChecker runs after every scenario and adversarial test.
+    notes: >
+      frame-manager.yaml testing-architecture: Tier 1 (unit tests), Tier 2
+      (composition scenarios S1-S11), Tier 3 (test utilities: EventRecorder,
+      HistoryWalker, IntegrityChecker, ScenarioBuilder), Tier 4 (adversarial
+      tests H1-H22). IntegrityChecker after every scenario.
 
-  - assert: frame-manager has-defined-boundaries
-    severity: high
-    status: pass
-    notes: |
-      Clear API: merge([frames], opts), get, getHead, getChildren,
-      iterate, getVersionHistory. FramePointer decouples version history.
-      Merge scope explicitly whitelisted (hidden, deleted, updatedAt, content).
-      processed/processedAt explicitly server-side-only.
-
-  - assert: frame-manager fits-architecture
-    severity: high
-    status: pass
-    notes: |
-      Replaces v1 frame system. Cross-platform via seqda. Plugin-friendly
-      (free-form type strings). FramePointer solves multi-target elegantly.
-
-  # --- Design Decisions ---
-  - assert: frame-manager merge-semantics-fully-specified
+  - assert: "Merge semantics are fully specified (4-rule deep merge)"
     severity: blocker
     status: pass
-    notes: |
-      Deep merge with explicit 4-rule priority order. Null deletion,
-      array replacement, object recursion, value replacement.
-      Mergeable property whitelist defined. Empty objects valid.
+    notes: >
+      frame-manager.yaml merge section: 4 ordered rules (null->delete,
+      array->replace, plain object->recurse, otherwise->replace). Mergeable
+      whitelist: hidden, deleted, updatedAt, content. Empty objects valid.
+      Nested example provided.
 
-  - assert: frame-manager live-frame-model-coherent
+  - assert: "Live frame (phantom) model is coherent"
     severity: blocker
     status: pass
-    notes: |
-      Immediate collapse. Group frame creation fully specified:
-      id=groupId, type=groupType, content from first phantom,
-      phantom=false, hidden=true, deleted=false. groupType conflict=reject.
-      Standalone phantoms (no groupId) are legal ephemeral events.
+    notes: >
+      frame-manager.yaml live-frames: immediate collapse. Group frame
+      id=groupId, type=groupType, content from first phantom, phantom=false,
+      hidden=true, deleted=false. groupType conflict = reject. Standalone
+      phantoms (no groupId) legal for typing indicators etc.
 
-  - assert: frame-manager frame-pointer-design-coherent
+  - assert: "FramePointer design decouples version history from Frame objects"
     severity: blocker
     status: pass
-    notes: |
-      FramePointer decouples version history from Frame objects.
-      Multiple pointers can reference same Frame independently.
-      Solves multi-target version history without contradictions.
+    notes: >
+      frame-manager.yaml frame-pointer: separate object with frame/previous/
+      next/head/tail. Multiple pointers reference same Frame independently.
+      In-memory only. Solves multi-target version history.
 
-  - assert: frame-manager seqda-integration-specified
+  - assert: "FrameManager seqda integration is specified"
     severity: high
     status: pass
-    notes: |
-      Option A: light wrapper. seqda doesn't freeze referenced objects
-      (confirmed by exploratory tests — 37 specs). Event strategy: seqda
-      modified array + previousStore diffing + custom synchronous events.
-      hydrate() cache bug identified — workaround: use merge() for bulk loading.
+    notes: >
+      frame-manager.yaml seqda-foundation: light wrapper around seqda store.
+      seqda doesn't freeze referenced objects. hydrate() cache bug fixed in
+      v2.1.0. Author-owned, extensible. Event strategy via seqda update events
+      re-emitted as namespaced frame events.
 
-  - assert: frame-manager event-system-specified
+  - assert: "FrameManager event system supports namespaced ID-scoped subscriptions"
     severity: high
     status: pass
-    notes: |
-      Namespaced events: frame:updated:{frameId}. Helper methods for
-      three-arg to two-arg translation. frame:completed replaced by
-      frame:processed. frame:collapsed removed (continuous merge).
+    notes: >
+      frame-manager.yaml events: frame:updated:{frameId} pattern. Helper
+      methods that translate three-arg on(eventType, frameId, callback) to
+      two-arg namespaced form. Event vocabulary: frame:added, frame:updated,
+      frame:processed, frames:bulk-loaded (all with namespaced variants).
 
-  - assert: frame-manager deletion-model-specified
-    severity: medium
-    status: pass
-    notes: |
-      hidden (default true, whitelist) and deleted (default false).
-      Independent booleans. Both mergeable. Can be toggled via merge.
-
-  - assert: frame-manager concurrency-model-specified
-    severity: medium
-    status: pass
-    notes: Last-write-wins. Server is authority.
-
-  - assert: frame-manager error-handling-specified
-    severity: medium
-    status: pass
-    notes: |
-      Duplicate ID: always update. Non-existent get: undefined.
-      Missing merge target: drop silently. merge() always accepts arrays.
-
-  - assert: frame-manager processed-system-specified
-    severity: high
-    status: pass
-    notes: |
-      processed (string, server fingerprint) + processedAt (timestamp)
-      replace the old complete boolean. Server-set, not via merge pipeline.
-      Handles permission frame nonce/replay prevention.
-
-  # --- Testing Architecture ---
-  - assert: frame-manager test-utilities-specified
-    severity: high
-    status: pass
-    notes: |
-      4 utilities: EventRecorder (event capture + assertions),
-      HistoryWalker (chain traversal + integrity), IntegrityChecker
-      (full state validation), ScenarioBuilder (fluent conversation DSL).
-      APIs defined for each. IntegrityChecker runs after every scenario.
-
-  - assert: frame-manager composition-scenarios-defined
+  - assert: "FrameManager validation posture is defined (silent rejection)"
     severity: blocker
     status: pass
-    notes: |
-      11 scenarios: basic two-user (S1), multi-agent (S2), permission flow (S3),
-      HML prompt (S4), bulk load (S5), randomized bulk load (S5b), late backfill
-      (S6), concurrent users (S7), multi-target merge (S8), deletion/visibility
-      (S9), standalone phantoms (S10), full integration (S11). Each has explicit
-      verifications and ends with IntegrityChecker.assertValid().
+    notes: >
+      frame-manager.yaml validation-posture: no id -> drop, no type -> drop,
+      non-mergeable -> strip, client processed/processedAt -> strip, self-ref
+      targets -> drop, duplicate targets -> dedup, non-array merge() -> error,
+      groupType conflicts -> reject with warning.
 
-  - assert: frame-manager adversarial-tests-defined
+  - assert: "FrameManager is implementation-ready"
     severity: blocker
     status: pass
-    notes: |
-      22 hack attempts: property attacks (H1-H6: overwrite id, createdAt,
-      type, parentId, processed, order), structural attacks (H7-H12: self-ref,
-      duplicate targets, circular chains, phantom hijack, orphan parent,
-      groupType conflict), content attacks (H13-H16: nested null bomb,
-      enormous payload, prototype pollution, non-plain objects), merge
-      invariant attacks (H17-H22: no id, no type, non-array arg, empty
-      array, rapid fire, history tampering). Prototype pollution (H15)
-      marked as CRITICAL security test.
+    notes: >
+      All questions resolved (20 resolved items + 20 critical review items).
+      Pre-work specified (seqda exploration). 9 implementation phases with
+      dependencies. Four-tier testing. Deferred items are explicitly non-blocking.
 
-  - assert: frame-manager validation-posture-defined
+  - assert: "FrameManager 11 composition scenarios are defined"
     severity: blocker
     status: pass
-    notes: |
-      Silent rejection of invalid input. FrameManager enforces its own
-      invariants defensively (defense in depth). Frames without id/type
-      silently dropped. Non-mergeable properties silently stripped.
-      Self-referencing targets dropped. Duplicate targets deduplicated.
-      Non-array merge() rejected with error. Prototype pollution prevented.
+    notes: >
+      frame-manager.yaml scenarios: S1 basic two-user, S2 multi-agent, S3
+      permission flow, S4 HML prompt, S5 bulk load, S5b randomized, S6 late
+      backfill, S7 concurrent users, S8 multi-target, S9 deletion/visibility,
+      S10 standalone phantoms, S11 full conversation. Each has description
+      and verification checklist.
 
-  - assert: frame-manager permission-vs-hml-distinction-clear
-    severity: high
-    status: pass
-    notes: |
-      HML prompts are input fields (select, textarea, date, etc.) for user
-      feedback. Permission prompts are system-generated, require authentication,
-      and only show to privileged users. Allow frames go through auth before
-      acceptance. Separate scenarios (S3 for permissions, S4 for HML prompts).
-
-  - assert: frame-manager server-security-documented
-    severity: high
-    status: pass
-    notes: |
-      Server-side security concerns documented in future-server-security
-      section: authentication (permission grants, agent identity, user
-      identity), authorization (prompt visibility, channel membership,
-      frame type auth), replay prevention (permission replay, frame dedup),
-      rate limiting (merge rate, content size). These are above the
-      FrameManager — server decides what reaches merge().
-
-  # --- Readiness ---
-  - assert: frame-manager is-implementation-ready
+  - assert: "FrameManager 22 adversarial tests are defined"
     severity: blocker
     status: pass
-    notes: |
-      All questions resolved across 3 rounds + critical review
-      (22 questions + 20 review findings). Pre-work completed
-      (seqda exploration — 37 tests pass). 9 implementation phases
-      with dependencies. Four-tier testing architecture with 11
-      scenarios + 22 adversarial tests. Validation posture defined.
-      Server-side security documented for future implementation.
-
-  - assert: frame-manager is-swarm-divisible
-    severity: medium
-    status: pass
-    notes: |
-      Pre-work (seqda tests) complete. Phases 1-2 parallelizable.
-      Test utilities (Phase 8) can start alongside Phase 3.
-      Each phase is a clean, isolated unit of work.
-
-  - assert: frame-manager dependencies-exist-in-plan
-    severity: high
-    status: pass
-    notes: xid (exists), seqda (exists, author-owned, explored). No blockers.
-
-  # --- Conflict Checks ---
-  - assert: frame-manager no-conflicts-with existing-frame-system
-    severity: high
-    status: pass
-    notes: v2 rewrite. v1 being replaced.
-
-  - assert: frame-manager no-conflicts-with message-store-plan
-    severity: medium
-    status: pass
-    notes: Pinned. Non-blocking for implementation.
-
-  # --- Safety ---
-  - assert: frame-manager rollback-safe
-    severity: medium
-    status: pass
-    notes: Pure data structure. No side effects. Revert files to rollback.
-
-  - assert: frame-manager open-questions-resolved
-    severity: blocker
-    status: pass
-    notes: |
-      All blocking questions resolved. 22 Q&A + 20 critical review
-      findings. Deferred items are explicitly non-blocking.
+    notes: >
+      frame-manager.yaml adversarial: H1-H6 property attacks, H7-H12
+      structural attacks, H13-H16 content attacks (incl. prototype pollution),
+      H17-H22 merge invariant attacks. Each has attack description and
+      expected behavior.
 
 # =============================================================================
-# CROSS-CUTTING
+# 15. CROSS-CUTTING ASSERTIONS
 # =============================================================================
 
 cross-cutting:
-  - assert: no-circular-dependencies in plan-dependency-graph
+
+  - assert: "No circular dependencies in plan dependency graph"
     severity: blocker
     status: pass
+    notes: >
+      Core has no deps on server. Plugins depend on core context. FrameManager
+      depends on seqda only. Transport is core-level. No circular deps detected.
+      The auth boundary confusion (core vs server) is a classification issue,
+      not a circular dependency.
 
-  - assert: implementation-order-defined
+  - assert: "All features have acceptance criteria"
     severity: blocker
-    status: pass
-    notes: Pre-work + 9 phases with explicit dependencies.
+    status: fail
+    notes: >
+      FAIL: Only FrameManager has formal acceptance criteria (44 items in
+      frame-manager.yaml). The plugin system, interaction loop, permissions,
+      auth/vault, transport, session manager, and content sanitizer do NOT
+      have explicit testable acceptance criteria lists. server-plan.yaml
+      describes these features but without formal "acceptance criteria"
+      sections comparable to FrameManager's.
 
-  - assert: all-plan-phases-documented
+  - assert: "All features have a test strategy"
+    severity: blocker
+    status: fail
+    notes: >
+      FAIL: server-plan.yaml section 25 (testing) provides only high-level
+      structure (core_tests path, server_tests path, bridging_tests description).
+      It does NOT specify what to test for each feature. FrameManager has a
+      detailed four-tier test strategy, but no other feature has specific test
+      plans (e.g., what interaction loop tests look like, what permission tests
+      cover, what transport tests verify).
+
+  - assert: "All features are implementation-ready (no ambiguous specs)"
+    severity: blocker
+    status: fail
+    notes: >
+      FAIL: Several Phase 1 features lack implementation-level detail. Examples:
+      (1) Frame persistence sync logic (how does DB <-> FrameManager sync work
+      exactly?). (2) Session manager internals (beyond "CRUD + participants").
+      (3) Content sanitizer (which library? exact config?). (4) Transport
+      implementations (SSE streaming mechanics). (5) Interaction loop generator
+      protocol (exact API for yield/next values). (6) Auth flow (exact JWT
+      structure, login endpoint behavior). FrameManager is implementation-ready;
+      other features are architecture-level specifications, not implementation
+      specs.
+
+  - assert: "Plan is swarm-ready (divisible into parallel tasks)"
     severity: high
     status: pass
+    notes: >
+      After Phase 1 steps 1-2 (core entry + ORM models), multiple streams
+      are possible: session manager, plugin loader, auth/vault, transport,
+      and content sanitizer can proceed in parallel. At least 4 concurrent
+      streams are viable.
+
+  - assert: "No unresolved questions remain for Phase 1"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml meta explicitly states "All rounds complete. No open
+      items." The plan no longer has an open items section. All Round 1-19
+      decisions are incorporated.
+
+  - assert: "No conflicting ownership (shared concerns owned by exactly one module)"
+    severity: high
+    status: pass
+    notes: >
+      Frame ordering: FrameManager. Permission checking: Permissions system.
+      HTML sanitization: src/core/lib/content-sanitizer.mjs. Plugin lifecycle:
+      Plugin Loader. Session state: Session Manager. No overlapping ownership
+      detected for major concerns.
+
+  - assert: "Implementation order is fully defined across all phases"
+    severity: blocker
+    status: pass
+    notes: >
+      server-plan.yaml section 27: Phase 1 steps 1-13, Phase 2 steps 14-19,
+      Phase 3 steps 20-25. Numbered ordering implies dependencies. Within
+      FrameManager, frame-manager.yaml has 9 explicit phases with depends-on.
+
+  - assert: "Server plan and client plan are consistent (frame types)"
+    severity: blocker
+    status: pass
+    notes: >
+      Frame types are free-form strings (FrameManager spec). server-plan.yaml
+      section 14 defines schema. frame-manager.yaml lists type examples
+      (interaction, message, reflection, hml-prompt, etc.). client-plan.yaml
+      C2 lists matching frame types to render. No conflicts in type names.
+
+  - assert: "Server plan and client plan are consistent (API endpoints)"
+    severity: blocker
+    status: fail
+    notes: >
+      FAIL: client-plan.yaml specifies needed REST API endpoints in detail
+      (C1 has 8 session endpoints, C5 has 5 agent endpoints). server-plan.yaml
+      does NOT enumerate REST API endpoints — section 27 step 12 says "Server
+      routes" but has no endpoint list. The server plan lacks an API
+      specification that matches the client's expectations.
+
+  - assert: "Server plan and client plan are consistent (WebSocket events)"
+    severity: high
+    status: fail
+    notes: >
+      FAIL: server-plan.yaml section 24 defines 4 server-to-client events
+      (frame:new, frame:updated, typing:start, typing:stop). client-plan.yaml
+      C8 expects additional events: participant:joined, participant:left,
+      session:updated (server-to-client), plus client-to-server events
+      (typing:start/stop, frame:respond, abort). These additional events are
+      NOT defined in the server plan.
+
+  - assert: "server-plan.yaml is updated to reflect Rounds 9-19 decisions"
+    severity: blocker
+    status: pass
+    notes: >
+      Verified: no StorageAdapter (section 20), no magic links (section 19),
+      agent output as HTML (section 7), prompt state via FrameManager (section
+      13), select child element choice (section 13), binary fields (section
+      13), queue+cancel UX (section 6), permission hard-break (section 6).
+      Meta says rounds_completed: 19.
+
+  - assert: "Open items in server-plan.yaml section 25 are resolved or explicitly deferred"
+    severity: high
+    status: needs-clarification
+    notes: >
+      The plan claims "No open items" and has no open items section. The
+      original 4 items: multi-key vault (addressed in section 18), StorageAdapter
+      (dropped in section 20), migration strategy (addressed in section 20).
+      HOWEVER, the auth boundary contradiction (server vs core) was originally
+      an open item and is NOT resolved — the plan simply dropped the open items
+      section while the contradiction persists in sections 2, 3, and 19.
+
+  - assert: "No stale/contradictory information in server-plan.yaml"
+    severity: high
+    status: fail
+    notes: >
+      FAIL: (1) Auth boundary contradiction: kernel_components section 3 says
+      "Auth System: level: server" and section 19 says "level: server", but
+      directory structure section 2 places 'auth' under src/core/ described as
+      "Authentication (core-level, not HTTP-level)". These are contradictory.
+      (2) No stale StorageAdapter, magic links, or HML parser references found
+      — those were properly cleaned up.
 
 # =============================================================================
 # SUMMARY
 # =============================================================================
 
 summary:
-  total: 28
-  pass: 28
-  needs-clarification: 0
-  fail: 0
+  total: 93
+  pass: 83
+  fail: 8
+  needs-clarification: 2
   blocked: 0
+  pending: 0
+  status: evaluated
+
+  failed-assertions:
+    - section: interaction-loop
+      assert: "Interaction resumability mechanism is specified"
+      severity: blocker
+      reason: "No explicit replay-from-frames mechanism. Phase 3 step 23 defers without detail."
+
+    - section: security-zero-knowledge
+      assert: "Auth is server-level, keystore is core-level (boundary is clear)"
+      severity: high
+      reason: "Auth contradictorily placed in both server (kernel_components, section 19) and core (directory structure section 2)."
+
+    - section: cross-cutting
+      assert: "All features have acceptance criteria"
+      severity: blocker
+      reason: "Only FrameManager has formal acceptance criteria. Other features lack them entirely."
+
+    - section: cross-cutting
+      assert: "All features have a test strategy"
+      severity: blocker
+      reason: "Testing section is high-level structure only. No feature-specific test plans beyond FrameManager."
+
+    - section: cross-cutting
+      assert: "All features are implementation-ready"
+      severity: blocker
+      reason: "Frame persistence, session manager, content sanitizer, transport, interaction loop, and auth lack implementation-level detail."
+
+    - section: cross-cutting
+      assert: "Server plan and client plan are consistent (API endpoints)"
+      severity: blocker
+      reason: "Server plan has no API endpoint specification. Client plan expects specific REST endpoints."
+
+    - section: cross-cutting
+      assert: "Server plan and client plan are consistent (WebSocket events)"
+      severity: high
+      reason: "Client expects participant:joined/left, session:updated, and client-to-server events not in server plan."
+
+    - section: cross-cutting
+      assert: "No stale/contradictory information in server-plan.yaml"
+      severity: high
+      reason: "Auth boundary contradiction between sections 2, 3, and 19."
+
+  needs-clarification-assertions:
+    - section: core-architecture
+      assert: "All 10 kernel components have assigned levels"
+      severity: high
+      reason: "Auth system contradictorily described as both server-level and core-level."
+
+    - section: cross-cutting
+      assert: "Open items in section 25 are resolved or deferred"
+      severity: high
+      reason: "Plan claims no open items but auth boundary contradiction persists unresolved."
+
+  blockers-that-failed:
+    count: 5
+    items:
+      - "Interaction resumability mechanism not specified (blocker)"
+      - "Not all features have acceptance criteria (blocker)"
+      - "Not all features have a test strategy (blocker)"
+      - "Not all features are implementation-ready (blocker)"
+      - "Server/client API endpoint inconsistency (blocker)"
+
+  sections:
+    core-architecture: { total: 7, pass: 6, fail: 0, needs-clarification: 1 }
+    data-layer: { total: 9, pass: 9, fail: 0, needs-clarification: 0 }
+    plugin-system: { total: 8, pass: 8, fail: 0, needs-clarification: 0 }
+    interaction-loop: { total: 6, pass: 5, fail: 1, needs-clarification: 0 }
+    security-zero-knowledge: { total: 9, pass: 8, fail: 1, needs-clarification: 0 }
+    agent-output: { total: 4, pass: 4, fail: 0, needs-clarification: 0 }
+    prompts: { total: 7, pass: 7, fail: 0, needs-clarification: 0 }
+    transport: { total: 4, pass: 4, fail: 0, needs-clarification: 0 }
+    permissions: { total: 5, pass: 5, fail: 0, needs-clarification: 0 }
+    agent-identity: { total: 3, pass: 3, fail: 0, needs-clarification: 0 }
+    help-system: { total: 1, pass: 1, fail: 0, needs-clarification: 0 }
+    build-phases: { total: 5, pass: 5, fail: 0, needs-clarification: 0 }
+    frame-manager: { total: 11, pass: 11, fail: 0, needs-clarification: 0 }
+    cross-cutting: { total: 14, pass: 7, fail: 6, needs-clarification: 1 }
