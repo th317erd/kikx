@@ -142,20 +142,22 @@ Step 1 (core entry) ────────────────────
   - Tests: spec/core/agent-interface-spec.mjs
 
 ### Wave M: Interaction + Auth (depend on Wave L)
-- [ ] 48. Interaction loop: src/core/interaction/
+- [x] 48. Interaction loop: src/core/interaction/
   - Async generator kernel iteration
   - Permission hard-break (generator destroyed, frame persisted)
   - Queue + cancel UX
-  - Tests: spec/core/interaction-loop-spec.mjs
-- [ ] 49. Claude agent plugin: src/core/plugins/claude-agent/
+  - Tests: spec/core/interaction-loop-spec.mjs (35 tests, 32 suites)
+- [x] 49. Claude agent plugin: src/core/plugins/claude-agent/
   - Anthropic API integration, yield-based streaming
   - System prompt with HTML output instruction
-  - Tests: spec/core/claude-agent-spec.mjs
-- [ ] 50. Auth system: src/server/app/ auth routes + middleware
-  - Password-only JWT auth
+  - Tests: spec/core/claude-agent-spec.mjs (52 tests, 16 suites)
+- [x] 50. Auth system: src/server/auth/index.mjs
+  - Password-only JWT auth (raw crypto, no external deps)
   - JWT-as-vault (UMK wrapped by REK in vault claim)
-  - Cookie-based sessions
-  - Tests: spec/server/auth-spec.mjs
+  - AuthService (register, login, verifyToken, getUMK, generateToken)
+  - createAuthMiddleware (cookie + Authorization header extraction)
+  - Cookie-based sessions (hero_token / token cookies)
+  - Tests: spec/server/auth-spec.mjs (56 tests, 0 failures)
 
 ### Wave N: Server Integration (depends on everything above)
 - [ ] 51. Server routes: src/server/app/routes/

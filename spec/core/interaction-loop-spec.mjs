@@ -1,0 +1,994 @@
+'use strict';
+
+import { describe, it, before, after, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { createHeroCore }     from '../../src/core/index.mjs';
+import { InteractionLoop }    from '../../src/core/interaction/index.mjs';
+import { SessionManager }     from '../../src/core/session/index.mjs';
+import { FramePersistence }   from '../../src/core/frames/index.mjs';
+import { ContentSanitizer }   from '../../src/core/lib/content-sanitizer.mjs';
+import { AgentInterface }     from '../../src/core/plugins/agent-interface.mjs';
+
+// =============================================================================
+// Mock Agent
+// =============================================================================
+// Configurable mock that extends AgentInterface. Accepts an array of blocks
+// to yield, supporting the full yield protocol (message, tool-call,
+// reflection, done).
+// =============================================================================
+
+class MockAgent extends AgentInterface {
+  static pluginId    = 'mock-agent';
+  static featureName = 'mock';
+  static displayName = 'Mock Agent';
+  static description = 'Mock agent for testing';
+  static agentType   = 'mock';
+
+  constructor(context, blocks) {
+    super(context);
+    this._blocks = blocks || [];
+  }
+
+  async *_createGenerator(_params) {
+    for (let block of this._blocks) {
+      if (block.type === 'tool-call') {
+        let result = yield block;
+        // Store result so tests can verify it was passed back
+        block._receivedResult = result;
+      } else {
+        yield block;
+      }
+    }
+
+    yield { type: 'done', content: {} };
+  }
+}
+
+// =============================================================================
+// InteractionLoop Tests
+// =============================================================================
+// One shared HeroCore instance for the entire suite.
+// Each test creates its own org + session for isolation.
+// =============================================================================
+
+describe('InteractionLoop', () => {
+  let core;
+  let models;
+  let context;
+  let sessionManager;
+  let framePersistence;
+  let sanitizer;
+
+  before(async () => {
+    core    = createHeroCore();
+    await core.start();
+    models  = core.getModels();
+    context = core.getContext();
+
+    sessionManager  = new SessionManager(context);
+    framePersistence = new FramePersistence(context);
+    sanitizer        = new ContentSanitizer();
+
+    // Put dependencies on context so InteractionLoop can find them
+    context.setProperty('sessionManager', sessionManager);
+    context.setProperty('framePersistence', framePersistence);
+    context.setProperty('contentSanitizer', sanitizer);
+  });
+
+  after(async () => {
+    if (core && core.isStarted())
+      await core.stop();
+  });
+
+  // Helpers
+  async function createTestSession() {
+    let org     = await models.Organization.create({ name: 'Test Org' });
+    let session = await sessionManager.createSession(org.id, { name: 'Test Session' });
+
+    return session;
+  }
+
+  function createLoop() {
+    return new InteractionLoop(context);
+  }
+
+  function defaultParams(agentPlugin, overrides = {}) {
+    return {
+      agentPlugin,
+      agent:       { name: 'test-mock', pluginID: 'mock-agent' },
+      userMessage: 'Hello, agent!',
+      authorType:  'user',
+      authorID:    'user_123',
+      ...overrides,
+    };
+  }
+
+  // ===========================================================================
+  // 1. Constructor requires context
+  // ===========================================================================
+
+  describe('construction', () => {
+    it('should create an instance with a valid context', () => {
+      let loop = createLoop();
+      assert.ok(loop);
+      assert.ok(loop instanceof InteractionLoop);
+    });
+
+    it('should throw without a context', () => {
+      assert.throws(() => new InteractionLoop(), {
+        message: /requires a CascadingContext/,
+      });
+    });
+
+    it('should throw with null context', () => {
+      assert.throws(() => new InteractionLoop(null), {
+        message: /requires a CascadingContext/,
+      });
+    });
+  });
+
+  // ===========================================================================
+  // 2. startInteraction creates user message frame
+  // ===========================================================================
+
+  describe('startInteraction — user message frame', () => {
+    it('should create a user-message frame', async () => {
+      let session = await createTestSession();
+      let agent   = new MockAgent(context, []);
+      let loop    = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      // Check that a user-message frame was persisted
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+      let userFrames = frames.filter((f) => f.type === 'user-message');
+
+      assert.equal(userFrames.length, 1);
+      assert.equal(userFrames[0].content.text, 'Hello, agent!');
+    });
+
+    it('should skip user-message frame when replayFromPermission is true', async () => {
+      let session = await createTestSession();
+      let agent   = new MockAgent(context, []);
+      let loop    = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        replayFromPermission: true,
+      }));
+
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+      let userFrames = frames.filter((f) => f.type === 'user-message');
+
+      assert.equal(userFrames.length, 0);
+    });
+  });
+
+  // ===========================================================================
+  // 3. Simple message interaction (agent yields message + done)
+  // ===========================================================================
+
+  describe('simple message interaction', () => {
+    it('should process a single message block', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'message', content: { html: '<p>Hello!</p>' }, authorType: 'agent', authorID: 'agent_1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+
+      // user-message + message + (done not persisted)
+      let messageFrames = frames.filter((f) => f.type === 'message');
+      assert.equal(messageFrames.length, 1);
+      assert.equal(messageFrames[0].content.html, '<p>Hello!</p>');
+    });
+  });
+
+  // ===========================================================================
+  // 4. Multiple message blocks in one interaction
+  // ===========================================================================
+
+  describe('multiple message blocks', () => {
+    it('should process multiple message blocks', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'message', content: { html: '<p>First</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'message', content: { html: '<p>Second</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'message', content: { html: '<p>Third</p>' }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+      let messageFrames = frames.filter((f) => f.type === 'message');
+
+      assert.equal(messageFrames.length, 3);
+      assert.equal(messageFrames[0].content.html, '<p>First</p>');
+      assert.equal(messageFrames[1].content.html, '<p>Second</p>');
+      assert.equal(messageFrames[2].content.html, '<p>Third</p>');
+    });
+  });
+
+  // ===========================================================================
+  // 5. Reflection blocks are hidden
+  // ===========================================================================
+
+  describe('reflection blocks', () => {
+    it('should create hidden reflection frames', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'reflection', content: { text: 'Thinking...' }, hidden: true, authorType: 'agent', authorID: 'a1' },
+        { type: 'message', content: { html: '<p>Answer</p>' }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+      let reflections = frames.filter((f) => f.type === 'reflection');
+
+      assert.equal(reflections.length, 1);
+      assert.equal(reflections[0].content.text, 'Thinking...');
+      assert.equal(reflections[0].hidden, true);
+    });
+  });
+
+  // ===========================================================================
+  // 6. Message content is sanitized
+  // ===========================================================================
+
+  describe('content sanitization', () => {
+    it('should sanitize HTML in message content', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'message', content: { html: '<p>Hello</p><script>alert("xss")</script>' }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+      let messageFrames = frames.filter((f) => f.type === 'message');
+
+      assert.equal(messageFrames.length, 1);
+      // Script tag should be stripped
+      assert.ok(!messageFrames[0].content.html.includes('script'));
+      assert.ok(messageFrames[0].content.html.includes('<p>Hello</p>'));
+    });
+  });
+
+  // ===========================================================================
+  // 7. Frames get monotonic order values
+  // ===========================================================================
+
+  describe('monotonic order', () => {
+    it('should assign monotonically increasing order values', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'message', content: { html: '<p>B</p>' }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+
+      // Frames should be in ascending order
+      for (let i = 1; i < frames.length; i++)
+        assert.ok(frames[i].order > frames[i - 1].order, `frame[${i}].order (${frames[i].order}) should be > frame[${i - 1}].order (${frames[i - 1].order})`);
+    });
+  });
+
+  // ===========================================================================
+  // 8. Frames get timestamps
+  // ===========================================================================
+
+  describe('timestamps', () => {
+    it('should assign timestamps to all frames', async () => {
+      let session = await createTestSession();
+      let before  = Date.now();
+      let blocks  = [
+        { type: 'message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+
+      for (let frame of frames) {
+        assert.ok(typeof frame.timestamp === 'number');
+        assert.ok(frame.timestamp >= before, `frame.timestamp (${frame.timestamp}) should be >= before (${before})`);
+      }
+    });
+  });
+
+  // ===========================================================================
+  // 9. Frames get interactionID
+  // ===========================================================================
+
+  describe('interactionID', () => {
+    it('should return an interactionID from startInteraction', async () => {
+      let session = await createTestSession();
+      let agent   = new MockAgent(context, []);
+      let loop    = createLoop();
+
+      let interactionID = await loop.startInteraction(session.id, defaultParams(agent));
+
+      assert.ok(interactionID);
+      assert.ok(interactionID.startsWith('int_'));
+    });
+  });
+
+  // ===========================================================================
+  // 10. Tool call without permission — execute and pass result back
+  // ===========================================================================
+
+  describe('tool call without permission', () => {
+    it('should execute the tool and persist tool-call + tool-result frames', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'tool-call', content: { toolName: 'echo', arguments: { text: 'hi' } }, authorType: 'agent', authorID: 'a1' },
+        { type: 'message', content: { html: '<p>Done</p>' }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      let executedTools = [];
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: () => false,
+        executeTool:     (name, args) => {
+          executedTools.push({ name, args });
+          return 'tool output';
+        },
+      }));
+
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+
+      let toolCallFrames  = frames.filter((f) => f.type === 'tool-call');
+      let toolResultFrames = frames.filter((f) => f.type === 'tool-result');
+
+      assert.equal(toolCallFrames.length, 1);
+      assert.equal(toolCallFrames[0].content.toolName, 'echo');
+      assert.equal(toolResultFrames.length, 1);
+      assert.equal(toolResultFrames[0].content.output, 'tool output');
+      assert.equal(executedTools.length, 1);
+      assert.equal(executedTools[0].name, 'echo');
+    });
+  });
+
+  // ===========================================================================
+  // 11. Tool call result is passed back to generator
+  // ===========================================================================
+
+  describe('tool result passed back to generator', () => {
+    it('should pass the tool result back via generator.next()', async () => {
+      let session = await createTestSession();
+      let receivedResult = null;
+
+      // Custom agent that captures the result
+      class ResultCapturingAgent extends AgentInterface {
+        static pluginId    = 'result-capturing';
+        static featureName = 'capture';
+        static agentType   = 'capture';
+
+        async *_createGenerator(_params) {
+          let result = yield { type: 'tool-call', content: { toolName: 'test', arguments: {} }, authorType: 'agent', authorID: 'a1' };
+          receivedResult = result;
+          yield { type: 'message', content: { html: `<p>Got: ${result.content.output}</p>` }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'done', content: {} };
+        }
+      }
+
+      let agent = new ResultCapturingAgent(context);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        agentPlugin: agent,
+        checkPermission: () => false,
+        executeTool:     () => 'the result',
+      }));
+
+      assert.ok(receivedResult);
+      assert.equal(receivedResult.type, 'tool-result');
+      assert.equal(receivedResult.content.output, 'the result');
+    });
+  });
+
+  // ===========================================================================
+  // 12. Permission hard-break flow
+  // ===========================================================================
+
+  describe('permission hard-break', () => {
+    it('should end interaction when permission is needed', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'tool-call', content: { toolName: 'dangerous-tool', arguments: { x: 1 } }, authorType: 'agent', authorID: 'a1' },
+        { type: 'message', content: { html: '<p>After tool</p>' }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: () => true,
+        executeTool:     () => 'should not run',
+      }));
+
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+
+      // Should NOT have a message frame (interaction ended before the message)
+      let messageFrames = frames.filter((f) => f.type === 'message');
+      assert.equal(messageFrames.length, 0);
+
+      // Should be waiting for permission
+      assert.ok(loop.isWaitingForPermission(session.id));
+    });
+  });
+
+  // ===========================================================================
+  // 13. Permission hard-break persists pending-action frame
+  // ===========================================================================
+
+  describe('permission hard-break — pending-action frame', () => {
+    it('should persist a pending-action frame', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'tool-call', content: { toolName: 'rm', arguments: { path: '/etc' } }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: () => true,
+      }));
+
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+      let pendingFrames = frames.filter((f) => f.type === 'pending-action');
+
+      assert.equal(pendingFrames.length, 1);
+      assert.equal(pendingFrames[0].content.toolName, 'rm');
+      assert.deepEqual(pendingFrames[0].content.arguments, { path: '/etc' });
+    });
+  });
+
+  // ===========================================================================
+  // 14. Permission hard-break creates permission-request frame
+  // ===========================================================================
+
+  describe('permission hard-break — permission-request frame', () => {
+    it('should create a permission-request frame', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'tool-call', content: { toolName: 'sudo', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: () => true,
+      }));
+
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+      let requestFrames = frames.filter((f) => f.type === 'permission-request');
+
+      assert.equal(requestFrames.length, 1);
+      assert.equal(requestFrames[0].content.toolName, 'sudo');
+    });
+  });
+
+  // ===========================================================================
+  // 15. Generator is destroyed on permission hard-break
+  // ===========================================================================
+
+  describe('permission hard-break — generator destroyed', () => {
+    it('should not be active after permission hard-break', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'tool-call', content: { toolName: 'exec', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: () => true,
+      }));
+
+      // Interaction should NOT be active (generator destroyed)
+      assert.equal(loop.isActive(session.id), false);
+    });
+  });
+
+  // ===========================================================================
+  // 16. cancelInteraction destroys generator
+  // ===========================================================================
+
+  describe('cancelInteraction', () => {
+    it('should cancel and return null when no queued messages', async () => {
+      let session = await createTestSession();
+
+      // Create an agent that yields a tool-call and blocks waiting for result
+      // We'll cancel while it's "running"
+      let cancelledResolve;
+      let cancelledPromise = new Promise((resolve) => { cancelledResolve = resolve; });
+
+      class SlowAgent extends AgentInterface {
+        static pluginId    = 'slow-agent';
+        static featureName = 'slow';
+        static agentType   = 'slow';
+
+        async *_createGenerator(_params) {
+          yield { type: 'message', content: { html: '<p>Starting...</p>' }, authorType: 'agent', authorID: 'a1' };
+          // This will block until generator.return() is called
+          try {
+            yield { type: 'tool-call', content: { toolName: 'long-running', arguments: {} }, authorType: 'agent', authorID: 'a1' };
+          } finally {
+            cancelledResolve(true);
+          }
+        }
+      }
+
+      let agent = new SlowAgent(context);
+      let loop  = createLoop();
+
+      // Start interaction but don't await — it will block on tool call
+      let interactionPromise = loop.startInteraction(session.id, defaultParams(agent, {
+        agentPlugin:     agent,
+        checkPermission: () => false,
+        executeTool:     async () => {
+          // Cancel while tool is "running"
+          let queued = await loop.cancelInteraction(session.id);
+          assert.equal(queued, null);
+          return 'cancelled';
+        },
+      }));
+
+      await interactionPromise;
+
+      // Generator should have been cleaned up
+      let cancelled = await cancelledPromise;
+      assert.ok(cancelled);
+    });
+  });
+
+  // ===========================================================================
+  // 17. Queue: message while busy goes to queue
+  // ===========================================================================
+
+  describe('message queue — enqueue while busy', () => {
+    it('should queue a message when interaction is active', async () => {
+      let session = await createTestSession();
+
+      class QueueTestAgent extends AgentInterface {
+        static pluginId    = 'queue-test';
+        static featureName = 'queue-test';
+        static agentType   = 'queue-test';
+
+        async *_createGenerator(_params) {
+          yield { type: 'message', content: { html: '<p>Working...</p>' }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'done', content: {} };
+        }
+      }
+
+      let agent = new QueueTestAgent(context);
+      let loop  = createLoop();
+
+      // Manually set up an active interaction so queueing can be tested
+      loop._active.set(session.id, { generator: null, interactionID: 'int_fake', params: {} });
+
+      // This should queue instead of starting a new interaction
+      let result = await loop.startInteraction(session.id, defaultParams(agent, {
+        agentPlugin: agent,
+        userMessage: 'Queued message',
+      }));
+
+      assert.equal(result, null);
+
+      let queued = loop.getQueuedMessages(session.id);
+      assert.equal(queued.length, 1);
+      assert.equal(queued[0], 'Queued message');
+
+      // Clean up
+      loop._active.delete(session.id);
+      loop._queues.delete(session.id);
+    });
+  });
+
+  // ===========================================================================
+  // 18. Queue: multiple queued messages concatenate
+  // ===========================================================================
+
+  describe('message queue — concatenation', () => {
+    it('should concatenate multiple queued messages', () => {
+      let loop = createLoop();
+
+      loop.queueMessage('ses_1', 'First message');
+      loop.queueMessage('ses_1', 'Second message');
+      loop.queueMessage('ses_1', 'Third message');
+
+      let queued = loop.getQueuedMessages('ses_1');
+      assert.equal(queued.length, 3);
+      assert.equal(queued[0], 'First message');
+      assert.equal(queued[1], 'Second message');
+      assert.equal(queued[2], 'Third message');
+    });
+  });
+
+  // ===========================================================================
+  // 19. Queue: drains after natural completion
+  // ===========================================================================
+
+  describe('message queue — auto-drain', () => {
+    it('should auto-send queued message after interaction completes', async () => {
+      let session = await createTestSession();
+      let interactionCount = 0;
+
+      class CountingAgent extends AgentInterface {
+        static pluginId    = 'counting';
+        static featureName = 'counting';
+        static agentType   = 'counting';
+
+        async *_createGenerator(params) {
+          interactionCount++;
+          yield { type: 'message', content: { html: `<p>Response ${interactionCount}</p>` }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'done', content: {} };
+        }
+      }
+
+      let agent = new CountingAgent(context);
+      let loop  = createLoop();
+
+      // Pre-queue a message
+      loop.queueMessage(session.id, 'Follow-up question');
+
+      await loop.startInteraction(session.id, defaultParams(agent, { agentPlugin: agent }));
+
+      // Should have run two interactions (original + queued)
+      assert.equal(interactionCount, 2);
+
+      // Queue should be drained
+      assert.equal(loop.getQueuedMessages(session.id).length, 0);
+    });
+  });
+
+  // ===========================================================================
+  // 20. approvePermission executes tool and starts new interaction
+  // ===========================================================================
+
+  describe('approvePermission', () => {
+    it('should execute tool and start a new interaction', async () => {
+      let session = await createTestSession();
+      let interactionCount = 0;
+      let toolExecuted = false;
+
+      class PermissionAgent extends AgentInterface {
+        static pluginId    = 'perm-agent';
+        static featureName = 'perm';
+        static agentType   = 'perm';
+
+        async *_createGenerator(params) {
+          interactionCount++;
+          if (interactionCount === 1) {
+            yield { type: 'tool-call', content: { toolName: 'rm', arguments: { path: '/' } }, authorType: 'agent', authorID: 'a1' };
+          }
+
+          yield { type: 'message', content: { html: '<p>Continued</p>' }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'done', content: {} };
+        }
+      }
+
+      let agent = new PermissionAgent(context);
+      let loop  = createLoop();
+
+      // First interaction — hits permission hard-break
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        agentPlugin:     agent,
+        checkPermission: (name) => name === 'rm',
+        executeTool:     (name, args) => {
+          toolExecuted = true;
+          return 'deleted';
+        },
+      }));
+
+      assert.equal(interactionCount, 1);
+      assert.ok(loop.isWaitingForPermission(session.id));
+
+      // Approve the permission
+      await loop.approvePermission(session.id);
+
+      // Should have started a new interaction
+      assert.equal(interactionCount, 2);
+      assert.ok(toolExecuted);
+      assert.equal(loop.isWaitingForPermission(session.id), false);
+    });
+  });
+
+  // ===========================================================================
+  // 21. denyPermission marks frame as processed
+  // ===========================================================================
+
+  describe('denyPermission', () => {
+    it('should mark pending-action frame as processed and store denial', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'tool-call', content: { toolName: 'sudo', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: () => true,
+      }));
+
+      assert.ok(loop.isWaitingForPermission(session.id));
+
+      await loop.denyPermission(session.id);
+
+      // Should no longer be waiting
+      assert.equal(loop.isWaitingForPermission(session.id), false);
+
+      // Check that denial frame was created
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+      let denialFrames = frames.filter((f) => f.type === 'permission-denied');
+
+      assert.equal(denialFrames.length, 1);
+
+      // Check that pending-action frame is processed
+      let { Frame } = models;
+      let pendingFrames = frames.filter((f) => f.type === 'pending-action');
+      assert.equal(pendingFrames.length, 1);
+
+      let pendingRecord = await Frame.where.id.EQ(pendingFrames[0].id).first();
+      assert.equal(pendingRecord.processed, true);
+      assert.ok(pendingRecord.processedAt);
+    });
+  });
+
+  // ===========================================================================
+  // 22. Event emission: frame event
+  // ===========================================================================
+
+  describe('event emission — frame', () => {
+    it('should emit frame events for each created frame', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'message', content: { html: '<p>Hello</p>' }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent  = new MockAgent(context, blocks);
+      let loop   = createLoop();
+      let events = [];
+
+      loop.on('frame', (event) => events.push(event));
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      // Should have at least 2 frame events: user-message + message
+      assert.ok(events.length >= 2, `Expected >= 2 frame events, got ${events.length}`);
+      assert.equal(events[0].frame.type, 'user-message');
+      assert.equal(events[1].frame.type, 'message');
+
+      // All events should have sessionID
+      for (let event of events)
+        assert.equal(event.sessionID, session.id);
+    });
+  });
+
+  // ===========================================================================
+  // 23. Event emission: interaction start/end
+  // ===========================================================================
+
+  describe('event emission — interaction lifecycle', () => {
+    it('should emit interaction:start and interaction:end', async () => {
+      let session    = await createTestSession();
+      let agent      = new MockAgent(context, []);
+      let loop       = createLoop();
+      let startEvents = [];
+      let endEvents   = [];
+
+      loop.on('interaction:start', (event) => startEvents.push(event));
+      loop.on('interaction:end', (event) => endEvents.push(event));
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      assert.equal(startEvents.length, 1);
+      assert.equal(endEvents.length, 1);
+      assert.equal(startEvents[0].sessionID, session.id);
+      assert.equal(endEvents[0].sessionID, session.id);
+      assert.ok(startEvents[0].interactionID);
+      assert.equal(startEvents[0].interactionID, endEvents[0].interactionID);
+    });
+  });
+
+  // ===========================================================================
+  // 24. Interaction with no blocks (just done)
+  // ===========================================================================
+
+  describe('empty interaction', () => {
+    it('should complete cleanly when agent yields only done', async () => {
+      let session = await createTestSession();
+      let agent   = new MockAgent(context, []);
+      let loop    = createLoop();
+
+      let interactionID = await loop.startInteraction(session.id, defaultParams(agent));
+
+      assert.ok(interactionID);
+      assert.equal(loop.isActive(session.id), false);
+
+      // Only user-message frame should exist
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+      let userFrames = frames.filter((f) => f.type === 'user-message');
+
+      assert.equal(userFrames.length, 1);
+      assert.equal(frames.filter((f) => f.type === 'message').length, 0);
+    });
+  });
+
+  // ===========================================================================
+  // 25. Multiple sequential interactions on same session
+  // ===========================================================================
+
+  describe('multiple sequential interactions', () => {
+    it('should support multiple interactions on the same session', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'message', content: { html: '<p>Response</p>' }, authorType: 'agent', authorID: 'a1' },
+      ];
+
+      let loop = createLoop();
+
+      // First interaction
+      let agent1 = new MockAgent(context, blocks);
+      let id1    = await loop.startInteraction(session.id, defaultParams(agent1, { agentPlugin: agent1, userMessage: 'First' }));
+
+      // Second interaction
+      let agent2 = new MockAgent(context, blocks);
+      let id2    = await loop.startInteraction(session.id, defaultParams(agent2, { agentPlugin: agent2, userMessage: 'Second' }));
+
+      assert.ok(id1);
+      assert.ok(id2);
+      assert.notEqual(id1, id2);
+
+      // Both interactions' frames should be persisted
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+      let userFrames    = frames.filter((f) => f.type === 'user-message');
+      let messageFrames = frames.filter((f) => f.type === 'message');
+
+      assert.equal(userFrames.length, 2);
+      assert.equal(messageFrames.length, 2);
+    });
+  });
+
+  // ===========================================================================
+  // 26. isActive returns correct state
+  // ===========================================================================
+
+  describe('state queries', () => {
+    it('should report not active when no interaction running', () => {
+      let loop = createLoop();
+      assert.equal(loop.isActive('ses_nonexistent'), false);
+    });
+
+    it('should report not waiting for permission when none pending', () => {
+      let loop = createLoop();
+      assert.equal(loop.isWaitingForPermission('ses_nonexistent'), false);
+    });
+  });
+
+  // ===========================================================================
+  // 27. sessionID is required for startInteraction
+  // ===========================================================================
+
+  describe('validation', () => {
+    it('should throw when sessionID is missing', async () => {
+      let loop = createLoop();
+      await assert.rejects(
+        () => loop.startInteraction(null, {}),
+        { message: /sessionID is required/ },
+      );
+    });
+  });
+
+  // ===========================================================================
+  // 28. Permission events are emitted
+  // ===========================================================================
+
+  describe('permission:request event', () => {
+    it('should emit permission:request when hard-break occurs', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'tool-call', content: { toolName: 'nuclear', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent  = new MockAgent(context, blocks);
+      let loop   = createLoop();
+      let events = [];
+
+      loop.on('permission:request', (event) => events.push(event));
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: () => true,
+      }));
+
+      assert.equal(events.length, 1);
+      assert.equal(events[0].sessionID, session.id);
+      assert.equal(events[0].toolName, 'nuclear');
+      assert.ok(events[0].frameID);
+      assert.ok(events[0].requestFrameID);
+    });
+  });
+
+  // ===========================================================================
+  // 29. No checkPermission callback means no permission needed
+  // ===========================================================================
+
+  describe('no checkPermission callback', () => {
+    it('should execute tool directly when no checkPermission provided', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'tool-call', content: { toolName: 'test', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+      let toolRan = false;
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        executeTool: () => { toolRan = true; return 'ok'; },
+      }));
+
+      assert.ok(toolRan);
+    });
+  });
+
+  // ===========================================================================
+  // 30. denyPermission throws when no pending permission
+  // ===========================================================================
+
+  describe('denyPermission — no pending permission', () => {
+    it('should throw when no pending permission exists', async () => {
+      let loop = createLoop();
+      await assert.rejects(
+        () => loop.denyPermission('ses_fake'),
+        { message: /No pending permission/ },
+      );
+    });
+  });
+
+  // ===========================================================================
+  // 31. approvePermission throws when no pending permission
+  // ===========================================================================
+
+  describe('approvePermission — no pending permission', () => {
+    it('should throw when no pending permission exists', async () => {
+      let loop = createLoop();
+      await assert.rejects(
+        () => loop.approvePermission('ses_fake'),
+        { message: /No pending permission/ },
+      );
+    });
+  });
+});

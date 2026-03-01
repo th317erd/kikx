@@ -66,6 +66,8 @@ All 19 rounds of design Q&A are complete and captured in `bot-docs/plan/hero/ser
 ## V2 Key File Locations
 
 - **Server scaffold:** `src/server/app/application.mjs`
+- **Auth system:** `src/server/auth/index.mjs` (AuthService, JWT helpers, middleware)
+- **Auth tests:** `spec/server/auth-spec.mjs` (56 tests)
 - **FrameManager:** `src/shared/frame-manager/` (will move to `src/core/frame-manager/`)
 - **V2 Client:** `src/client/` (Waves A-I complete, 38 components)
 - **Plan YAML:** `bot-docs/plan/hero/server-plan.yaml`
