@@ -47,6 +47,11 @@ export class Agent extends ModelBase {
       type:      Types.TEXT('long'),
       allowNull: true,
     },
+    // DM-derived summary (auto-generated from DM sessions)
+    dmSummary: {
+      type:      Types.TEXT('long'),
+      allowNull: true,
+    },
     // Virtual relationships
     organization: {
       type: Types.Model('Organization', ({ self }, { Organization }, userQuery) => {

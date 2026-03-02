@@ -1,45 +1,58 @@
-# Phase 2 — V1 Parity (Steps 14-19) — COMPLETE
+# Phase 3 — V2 Differentiators (Steps 20-25) ✅ COMPLETE
 
-Build order: 14 → 19 → 17 → 16 → 18 → 15
+Build order: 21 → 24r → 25 → 22 → 23 → 20
 
-## Step 14 — Permissions System (Basic)
-- [x] 14a: PermissionRule Model (`src/core/models/permission-rule-model.mjs`)
-- [x] 14b: PermissionEngine (`src/core/permissions/permission-engine.mjs` + index)
-- [x] 14c: Wire tool execution into InteractionController
-- [x] 14d: Wire PermissionEngine into KikxCore.start()
-- [x] 14e: Tests — permission-engine-spec.mjs (30 tests), core-entry updated (+2)
+## Step 21 — Future-Plan File (Housekeeping)
+- [x] Create `bot-docs/future-plans/device-approval-auth.yaml`
 
-## Step 19 — Permission Fingerprinting
-- [x] 19a: Fingerprint in createRule() + checkPermission() validation
-- [x] 19b: Tests — fingerprint-spec.mjs (8 tests)
+## Step 24r — Plugin Path Configuration
+- [x] 24r-a: Plugin loader resilience (try/catch in loadAll, `_failed` Map, `getFailedPlugins()`)
+- [x] 24r-b: `KIKX_PLUGIN_PATHS` env var support in `kikx-core.mjs`
+- [x] Tests: `spec/core/plugin-loader-spec.mjs` additions (~4 tests)
+- [x] Tests: `spec/core/core-entry-spec.mjs` additions (~3 tests)
 
-## Step 17 — Shell Plugin
-- [x] 17a: Shell Tool Class (`src/core/internal-plugins/shell/index.mjs`)
-- [x] 17b: Command Parser (`src/core/internal-plugins/shell/command-parser.mjs`)
-- [x] 17c: ShellPermissions (`src/core/internal-plugins/shell/shell-permissions.mjs`)
-- [x] 17d: Add `shell-quote` dependency
-- [x] 17e: Tests — command-parser-spec.mjs (14 pass) + shell-tool-spec.mjs (10 total, 3 mock pass)
+## Step 25 — prepareMessage Hook
+- [x] 25a: Hook registry (`_hooks` Map, `registerHook`, `getHookHandlers`, `getHooks`)
+- [x] 25b: Plugin context (`registerHook` in `_buildPluginContext()`)
+- [x] 25c: HookRunner (`src/core/hooks/hook-runner.mjs` + `src/core/hooks/index.mjs`)
+- [x] 25d: Wire into KikxCore (`_loadPlugins()`)
+- [x] 25e: Hook execution in InteractionLoop (4 hook points)
+- [x] Tests: `spec/core/hooks/hook-runner-spec.mjs` (~20 tests)
+- [x] Tests: `spec/core/plugin-loader-spec.mjs` additions (~8 tests)
+- [x] Tests: `spec/core/interaction-loop-spec.mjs` additions (~12 tests)
 
-## Step 16 — Websearch Plugin
-- [x] 16a: Websearch Tool Class (`src/core/internal-plugins/websearch/index.mjs`)
-- [x] 16b: HTML to Markdown (`src/core/internal-plugins/websearch/html-to-markdown.mjs`)
-- [x] 16c: Add `puppeteer`, `turndown` dependencies
-- [x] 16d: Tests — websearch-spec.mjs (15 total, 12 pass)
+## Step 22 — Full Permissions OOP
+- [x] 22a: Permissions base class (`src/core/permissions/permissions-base.mjs`)
+- [x] 22b: PermissionDeniedError (`src/core/permissions/permission-denied-error.mjs`)
+- [x] 22c: PermissionEngine enhancements (toolClass, deny=throw, safety net, custom matching)
+- [x] 22d: `riskLevel` on PluginInterface
+- [x] 22e: Refactor ShellPermissions to extend Permissions
+- [x] 22f: Wire `toolClass` into InteractionController
+- [x] 22g: Catch PermissionDeniedError in InteractionLoop
+- [x] 22h: Update permissions/index.mjs exports
+- [x] Tests: `spec/core/permissions/permissions-base-spec.mjs` (~8 tests)
+- [x] Tests: `spec/core/permissions/permission-engine-spec.mjs` additions (~15 tests)
+- [x] Tests: `spec/core/internal-plugins/shell/shell-tool-spec.mjs` additions (~5 tests)
+- [x] Tests: `spec/core/interaction-loop-spec.mjs` additions (~5 tests)
 
-## Step 18 — Help System
-- [x] 18a: HelpIndex (`src/core/help/help-index.mjs`)
-- [x] 18b: HelpTool plugin (`src/core/internal-plugins/help/index.mjs`)
-- [x] 18c: Tests — help-index-spec.mjs (15 total, 12 mock pass)
+## Step 23 — Interaction Resumability Enhancements
+- [x] 23a: Tool execution error recovery in `_iterateGenerator()`
+- [x] 23b: Processed flag defense-in-depth in `_buildMessages()`
+- [x] 23c: WebSocket ping/pong (30s interval)
+- [x] Tests: `spec/core/interaction-loop-spec.mjs` additions (~14 tests)
+- [x] Tests: `spec/server/transport/websocket-spec.mjs` additions (~4 tests)
 
-## Step 15 — WebSocket Transport
-- [x] 15a: WebSocketTransport (`src/server/transport/websocket-transport.mjs`)
-- [x] 15b: Reconnection protocol (lastSeenOrder replay)
-- [x] 15c: Add `ws` dependency
-- [x] 15d: Tests — websocket-spec.mjs (15 pass)
+## Step 20 — Abilities as DM
+- [x] 20a: Model changes (Agent.dmSummary, Session.type + Session.dmAgentID)
+- [x] 20b: DmSummarizer (`src/core/dm/dm-summarizer.mjs` + index.mjs)
+- [x] 20c: System prompt injection in AgentInterface.getSystemPrompt()
+- [x] 20d: Session manager `createSession()` update for type/dmAgentID
+- [x] 20e: DM controller + routes
+- [x] Tests: `spec/core/dm/dm-summarizer-spec.mjs` (~12 tests)
+- [x] Tests: `spec/core/agent-interface-spec.mjs` additions (~4 tests)
+- [x] Tests: `spec/core/core-entry-spec.mjs` model additions (~4 tests)
+- [x] Tests: `spec/server/routes-spec.mjs` additions (~6 tests)
 
-## Results
-- **New tests:** ~95 across 7 new spec files
-- **Non-DB tests pass:** 101/117 (16 fail = all node:sqlite pre-existing)
-- **Full suite:** 604 total, 279 pass, all failures = node:sqlite (Node 20 vs Node 22+)
-- **Dependencies added:** shell-quote, turndown, puppeteer, ws
-- **New files:** 15 source files, 7 test files
+## Final
+- [x] Run full test suite (`npm test`) — all non-DB tests pass (DB tests require Node 22.5+)
+- [ ] Git commit

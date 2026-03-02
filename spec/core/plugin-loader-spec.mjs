@@ -66,6 +66,10 @@ describe('PluginInterface', () => {
     assert.equal(PluginInterface.version, '1.0.0');
   });
 
+  it('should have default riskLevel of high', () => {
+    assert.equal(PluginInterface.riskLevel, 'high');
+  });
+
   it('should store context on construction', () => {
     let context  = { foo: 'bar' };
     let instance = new PluginInterface(context);
@@ -600,6 +604,73 @@ describe('PluginRegistry', () => {
     });
   });
 
+  // ---- Hooks ----
+
+  describe('registerHook', () => {
+    it('should register a hook handler', () => {
+      let handler = () => {};
+      registry.registerHook('prepareMessage', handler);
+      let handlers = registry.getHookHandlers('prepareMessage');
+      assert.equal(handlers.length, 1);
+      assert.equal(handlers[0], handler);
+    });
+
+    it('should allow multiple handlers per hook', () => {
+      let handlerA = () => 'a';
+      let handlerB = () => 'b';
+      registry.registerHook('prepareMessage', handlerA);
+      registry.registerHook('prepareMessage', handlerB);
+      let handlers = registry.getHookHandlers('prepareMessage');
+      assert.equal(handlers.length, 2);
+      assert.equal(handlers[0], handlerA);
+      assert.equal(handlers[1], handlerB);
+    });
+
+    it('should throw if hook name is empty', () => {
+      assert.throws(
+        () => registry.registerHook('', () => {}),
+        { message: 'Hook name must be a non-empty string' },
+      );
+    });
+
+    it('should throw if hook name is not a string', () => {
+      assert.throws(
+        () => registry.registerHook(123, () => {}),
+        { message: 'Hook name must be a non-empty string' },
+      );
+    });
+
+    it('should throw if handler is not a function', () => {
+      assert.throws(
+        () => registry.registerHook('prepareMessage', 'not-a-function'),
+        { message: 'Hook "prepareMessage" handler must be a function' },
+      );
+    });
+
+    it('should return empty array for unregistered hook', () => {
+      let handlers = registry.getHookHandlers('unknown');
+      assert.deepEqual(handlers, []);
+    });
+
+    it('should return a defensive copy from getHooks()', () => {
+      registry.registerHook('test-hook', () => {});
+      let hooks = registry.getHooks();
+      hooks.delete('test-hook');
+      // Internal map should still have it
+      assert.equal(registry.getHookHandlers('test-hook').length, 1);
+    });
+
+    it('should return all hooks via getHooks()', () => {
+      registry.registerHook('hookA', () => {});
+      registry.registerHook('hookB', () => {});
+      let hooks = registry.getHooks();
+      assert.ok(hooks instanceof Map);
+      assert.equal(hooks.size, 2);
+      assert.ok(hooks.has('hookA'));
+      assert.ok(hooks.has('hookB'));
+    });
+  });
+
   // ---- Custom Elements ----
 
   describe('registerCustomElement', () => {
@@ -923,7 +994,125 @@ describe('PluginLoader', () => {
     }
   });
 
-  // ---- loadAll ----
+  // ---- registerHook via context ----
+
+  it('should allow plugin to register hooks via context', async () => {
+    let handler = () => ({ action: 'pass' });
+
+    let module = {
+      setup: (context) => {
+        context.registerHook('prepareMessage', handler);
+      },
+    };
+
+    await loader.loadPlugin('hook-plugin', module);
+
+    let registry = loader.getRegistry();
+    let handlers = registry.getHookHandlers('prepareMessage');
+    assert.equal(handlers.length, 1);
+    assert.equal(handlers[0], handler);
+  });
+
+  it('should expose registerHook in plugin context', async () => {
+    let receivedContext = null;
+
+    let module = {
+      setup: (context) => {
+        receivedContext = context;
+      },
+    };
+
+    await loader.loadPlugin('ctx-hook-test', module);
+    assert.ok(typeof receivedContext.registerHook === 'function');
+  });
+
+  // ---- loadAll resilience ----
+
+  it('should continue loading after one plugin fails', async () => {
+    let errors  = [];
+    let original = console.error;
+    console.error = (...args) => errors.push(args.join(' '));
+
+    try {
+      let provider = new InMemoryPluginProvider({
+        'good-plugin': { setup: () => {} },
+        'bad-plugin': { setup: () => { throw new Error('setup boom'); } },
+        'another-good': { setup: () => {} },
+      });
+
+      loader.addProvider(provider);
+      let loaded = await loader.loadAll();
+
+      // The good plugins should load
+      assert.ok(loaded.includes('good-plugin'));
+      assert.ok(loaded.includes('another-good'));
+      assert.ok(!loaded.includes('bad-plugin'));
+
+      assert.ok(loader.isLoaded('good-plugin'));
+      assert.ok(loader.isLoaded('another-good'));
+      assert.ok(!loader.isLoaded('bad-plugin'));
+    } finally {
+      console.error = original;
+    }
+  });
+
+  it('should record failed plugins in getFailedPlugins()', async () => {
+    let errors  = [];
+    let original = console.error;
+    console.error = (...args) => errors.push(args.join(' '));
+
+    try {
+      let provider = new InMemoryPluginProvider({
+        'ok-plugin': { setup: () => {} },
+        'fail-plugin': { setup: () => { throw new Error('kaboom'); } },
+      });
+
+      loader.addProvider(provider);
+      await loader.loadAll();
+
+      let failed = loader.getFailedPlugins();
+      assert.ok(failed instanceof Map);
+      assert.equal(failed.size, 1);
+      assert.ok(failed.has('fail-plugin'));
+      assert.equal(failed.get('fail-plugin').message, 'kaboom');
+    } finally {
+      console.error = original;
+    }
+  });
+
+  it('should not include failed plugins in loaded set', async () => {
+    let errors  = [];
+    let original = console.error;
+    console.error = (...args) => errors.push(args.join(' '));
+
+    try {
+      let provider = new InMemoryPluginProvider({
+        'fail-plugin': { setup: () => { throw new Error('fail'); } },
+      });
+
+      loader.addProvider(provider);
+      let loaded = await loader.loadAll();
+
+      assert.deepEqual(loaded, []);
+      assert.equal(loader.getLoadedPlugins().size, 0);
+    } finally {
+      console.error = original;
+    }
+  });
+
+  it('should return empty map from getFailedPlugins when all succeed', async () => {
+    let provider = new InMemoryPluginProvider({
+      'plugin-a': { setup: () => {} },
+    });
+
+    loader.addProvider(provider);
+    await loader.loadAll();
+
+    let failed = loader.getFailedPlugins();
+    assert.equal(failed.size, 0);
+  });
+
+  // ---- loadAll (original tests) ----
 
   it('should load all plugins from all providers', async () => {
     let setupOrder = [];

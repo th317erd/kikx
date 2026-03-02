@@ -71,6 +71,9 @@ export class AgentInterface extends PluginInterface {
     if (agent && agent.instructions)
       parts.push(agent.instructions);
 
+    if (agent && agent.dmSummary)
+      parts.push('--- Configuration from DM ---\n' + agent.dmSummary);
+
     return parts.join('\n\n');
   }
 

@@ -33,6 +33,7 @@ export class WebSocketTransport {
     this._frameHandler            = null;
     this._interactionStartHandler = null;
     this._interactionEndHandler   = null;
+    this._pingInterval            = null;
   }
 
   // ---------------------------------------------------------------------------
@@ -49,6 +50,19 @@ export class WebSocketTransport {
     });
 
     this._wss.on('connection', (ws, req) => this._handleConnection(ws, req));
+
+    // Start ping/pong interval (30 seconds)
+    this._pingInterval = setInterval(() => {
+      for (let ws of this._wss.clients) {
+        if (ws._isAlive === false) {
+          ws.terminate();
+          continue;
+        }
+
+        ws._isAlive = false;
+        ws.ping();
+      }
+    }, 30000);
 
     // Subscribe to InteractionLoop events
     let interactionLoop = this._context.getProperty('interactionLoop');
@@ -76,6 +90,12 @@ export class WebSocketTransport {
   // ---------------------------------------------------------------------------
 
   stop() {
+    // Clean up ping interval
+    if (this._pingInterval) {
+      clearInterval(this._pingInterval);
+      this._pingInterval = null;
+    }
+
     // Unsubscribe from InteractionLoop events
     let interactionLoop = this._context.getProperty('interactionLoop');
     if (interactionLoop) {
@@ -141,6 +161,10 @@ export class WebSocketTransport {
     // Attach user info to the websocket
     ws._userId         = decoded.sub;
     ws._organizationId = decoded.org;
+    ws._isAlive        = true;
+
+    // Track pong responses for keep-alive
+    ws.on('pong', () => { ws._isAlive = true; });
 
     // Handle messages
     ws.on('message', (data) => this._handleMessage(ws, data));

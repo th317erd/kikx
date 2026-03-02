@@ -561,4 +561,222 @@ describe('PermissionEngine', () => {
       assert.equal(rules[0].featureName, 'shell:execute');
     });
   });
+
+  // ===========================================================================
+  // Phase 3: PermissionDeniedError on deny rules
+  // ===========================================================================
+
+  describe('deny rules — PermissionDeniedError', () => {
+    it('should throw PermissionDeniedError when deny rule matches', async () => {
+      let { PermissionDeniedError } = await import('../../../src/core/permissions/permission-denied-error.mjs');
+      let { Organization } = core.getModels();
+      await Organization.create({ id: 'org_deny_throw', name: 'Deny Org' });
+
+      await engine.createRule({
+        organizationID: 'org_deny_throw',
+        featureName:    'shell:rm',
+        effect:         'deny',
+        createdBy:      'usr_test',
+      });
+
+      await assert.rejects(
+        () => engine.checkPermission('shell:rm', {}, { organizationID: 'org_deny_throw' }),
+        (error) => {
+          assert.equal(error.name, 'PermissionDeniedError');
+          assert.equal(error.featureName, 'shell:rm');
+          return true;
+        },
+      );
+    });
+
+    it('should throw PermissionDeniedError before checking allow rules', async () => {
+      let { Organization } = core.getModels();
+      await Organization.create({ id: 'org_deny_first', name: 'Deny First Org' });
+
+      // Higher priority deny
+      await engine.createRule({
+        organizationID: 'org_deny_first',
+        featureName:    'shell:execute',
+        effect:         'deny',
+        priority:       100,
+        createdBy:      'usr_test',
+      });
+
+      // Lower priority allow
+      await engine.createRule({
+        organizationID: 'org_deny_first',
+        featureName:    'shell:execute',
+        effect:         'allow',
+        priority:       50,
+        createdBy:      'usr_test',
+      });
+
+      await assert.rejects(
+        () => engine.checkPermission('shell:execute', {}, { organizationID: 'org_deny_first' }),
+        (error) => error.name === 'PermissionDeniedError',
+      );
+    });
+  });
+
+  // ===========================================================================
+  // Phase 3: Safety net for critical risk level
+  // ===========================================================================
+
+  describe('safety net — critical riskLevel', () => {
+    it('should always require approval when toolClass.riskLevel is critical', async () => {
+      let { Organization } = core.getModels();
+      await Organization.create({ id: 'org_critical', name: 'Critical Org' });
+
+      await engine.createRule({
+        organizationID: 'org_critical',
+        featureName:    'nuclear:launch',
+        effect:         'allow',
+        createdBy:      'usr_test',
+      });
+
+      let { PluginInterface } = await import('../../../src/core/plugin-loader/plugin-interface.mjs');
+
+      class CriticalTool extends PluginInterface {
+        static riskLevel = 'critical';
+        async _execute() { return 'boom'; }
+      }
+
+      let result = await engine.checkPermission('nuclear:launch', {}, {
+        organizationID: 'org_critical',
+        toolClass:      CriticalTool,
+      });
+
+      assert.equal(result, true); // Needs approval despite allow rule
+    });
+
+    it('should respect allow rules when riskLevel is low', async () => {
+      let { Organization } = core.getModels();
+      await Organization.create({ id: 'org_low_risk', name: 'Low Risk Org' });
+
+      await engine.createRule({
+        organizationID: 'org_low_risk',
+        featureName:    'help:search',
+        effect:         'allow',
+        createdBy:      'usr_test',
+      });
+
+      let { PluginInterface } = await import('../../../src/core/plugin-loader/plugin-interface.mjs');
+
+      class LowRiskTool extends PluginInterface {
+        static riskLevel = 'low';
+        async _execute() { return 'safe'; }
+      }
+
+      let result = await engine.checkPermission('help:search', {}, {
+        organizationID: 'org_low_risk',
+        toolClass:      LowRiskTool,
+      });
+
+      assert.equal(result, false); // Allow rule respected
+    });
+
+    it('should respect allow rules when riskLevel is high (default)', async () => {
+      let { Organization } = core.getModels();
+      await Organization.create({ id: 'org_high_risk', name: 'High Risk Org' });
+
+      await engine.createRule({
+        organizationID: 'org_high_risk',
+        featureName:    'shell:execute',
+        effect:         'allow',
+        createdBy:      'usr_test',
+      });
+
+      let { PluginInterface } = await import('../../../src/core/plugin-loader/plugin-interface.mjs');
+
+      class HighRiskTool extends PluginInterface {
+        static riskLevel = 'high';
+        async _execute() { return 'ok'; }
+      }
+
+      let result = await engine.checkPermission('shell:execute', {}, {
+        organizationID: 'org_high_risk',
+        toolClass:      HighRiskTool,
+      });
+
+      assert.equal(result, false); // Allow rule respected
+    });
+  });
+
+  // ===========================================================================
+  // Phase 3: Custom Permissions class matching
+  // ===========================================================================
+
+  describe('custom Permissions class matching', () => {
+    it('should skip rule when custom matchesRule returns false', async () => {
+      let { Permissions }   = await import('../../../src/core/permissions/permissions-base.mjs');
+      let { PluginInterface } = await import('../../../src/core/plugin-loader/plugin-interface.mjs');
+
+      class SelectivePermissions extends Permissions {
+        matchesRule(_rule, args, metadata) {
+          if (metadata && metadata.allowedCommands && args && args.command) {
+            let baseCommand = args.command.split(/\s+/)[0];
+            return { matches: metadata.allowedCommands.includes(baseCommand) };
+          }
+          return { matches: true };
+        }
+      }
+
+      class ToolWithPerms extends PluginInterface {
+        async _execute() { return 'ok'; }
+        getPermissionsClass() { return SelectivePermissions; }
+      }
+
+      let { Organization } = core.getModels();
+      await Organization.create({ id: 'org_custom_match', name: 'Custom Match Org' });
+
+      // Create allow rule that only matches 'ls' command
+      await engine.createRule({
+        organizationID: 'org_custom_match',
+        featureName:    'shell:execute',
+        effect:         'allow',
+        metadata:       { allowedCommands: ['ls'] },
+        createdBy:      'usr_test',
+      });
+
+      // Check with 'ls' command — should match allow rule
+      let result = await engine.checkPermission('shell:execute', { command: 'ls -la' }, {
+        organizationID: 'org_custom_match',
+        toolClass:      ToolWithPerms,
+      });
+      assert.equal(result, false); // Allowed
+
+      // Check with 'rm' command — should NOT match allow rule, default deny
+      result = await engine.checkPermission('shell:execute', { command: 'rm -rf /' }, {
+        organizationID: 'org_custom_match',
+        toolClass:      ToolWithPerms,
+      });
+      assert.equal(result, true); // Needs approval
+    });
+
+    it('should work normally when toolClass has no Permissions class', async () => {
+      let { Organization } = core.getModels();
+      await Organization.create({ id: 'org_no_perms', name: 'No Perms Org' });
+
+      await engine.createRule({
+        organizationID: 'org_no_perms',
+        featureName:    'test:feature',
+        effect:         'allow',
+        createdBy:      'usr_test',
+      });
+
+      let { PluginInterface } = await import('../../../src/core/plugin-loader/plugin-interface.mjs');
+
+      class SimpleTool extends PluginInterface {
+        async _execute() { return 'ok'; }
+        // getPermissionsClass returns null by default
+      }
+
+      let result = await engine.checkPermission('test:feature', {}, {
+        organizationID: 'org_no_perms',
+        toolClass:      SimpleTool,
+      });
+
+      assert.equal(result, false); // Allow rule works
+    });
+  });
 });

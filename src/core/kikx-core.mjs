@@ -12,6 +12,7 @@ import { DEFAULT_CONFIG, mergeConfig } from './config/index.mjs';
 import { DEFAULT_MODELS }              from './models/index.mjs';
 import { PluginLoader, FilesystemPluginProvider, InMemoryPluginProvider } from './plugin-loader/index.mjs';
 import { PermissionEngine } from './permissions/index.mjs';
+import { HookRunner }       from './hooks/index.mjs';
 import { mkdir }            from 'node:fs/promises';
 import { join }             from 'node:path';
 import { fileURLToPath }    from 'node:url';
@@ -227,6 +228,13 @@ export class KikxCore {
     for (let p of additionalPaths)
       pluginDirs.push(p);
 
+    // 4. Additional paths from KIKX_PLUGIN_PATHS environment variable
+    let envPaths = process.env.KIKX_PLUGIN_PATHS;
+    if (envPaths) {
+      for (let p of envPaths.split(':').filter(Boolean))
+        pluginDirs.push(p);
+    }
+
     // Build disabled set
     let disabled = new Set((config.plugins && config.plugins.disabled) || []);
 
@@ -243,6 +251,10 @@ export class KikxCore {
     }
 
     await loader.loadAll();
+
+    // Create hook runner from the registry
+    let hookRunner = new HookRunner(loader.getRegistry());
+    this._context.setProperty('hookRunner', hookRunner);
 
     this._pluginLoader = loader;
     this._context.setProperty('pluginLoader', loader);

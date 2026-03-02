@@ -17,6 +17,7 @@ import { AgentController }       from '../../src/server/controllers/agent-contro
 import { InteractionController } from '../../src/server/controllers/interaction-controller.mjs';
 import { FrameController }       from '../../src/server/controllers/frame-controller.mjs';
 import { StreamController }      from '../../src/server/controllers/stream-controller.mjs';
+import { DmController }          from '../../src/server/controllers/dm-controller.mjs';
 
 import XID from 'xid-js';
 
@@ -809,5 +810,122 @@ describe('AuthController: skipAuthorization', () => {
     assert.equal(controller.skipAuthorization({ methodName: 'register' }), true);
     assert.equal(controller.skipAuthorization({ methodName: 'login' }), true);
     assert.equal(controller.skipAuthorization({ methodName: 'me' }), false);
+  });
+});
+
+// =============================================================================
+// Phase 3: DmController
+// =============================================================================
+
+describe('DmController', () => {
+  it('should create a DM session via getOrCreate', async () => {
+    let { Agent, Organization } = core.getModels();
+
+    // Create test org and agent
+    let org   = await Organization.create({ name: 'DM Test Org' });
+    let agent = await Agent.create({
+      organizationID: org.id,
+      name:           'test-dm-ctrl-agent',
+      pluginID:       'test-agent',
+    });
+
+    let req = createMockReq({ params: { id: agent.id } });
+    let res = createMockRes();
+    let controller = createController(DmController, { mockApp, req, res });
+
+    let result = await controller.getOrCreate({ params: { id: agent.id } });
+    assert.ok(result.data.session);
+    assert.equal(result.data.session.type, 'dm');
+    assert.equal(result.data.session.dmAgentID, agent.id);
+  });
+
+  it('should reuse existing DM session', async () => {
+    let { Agent, Organization } = core.getModels();
+
+    let org   = await Organization.create({ name: 'DM Reuse Org' });
+    let agent = await Agent.create({
+      organizationID: org.id,
+      name:           'test-dm-reuse-agent',
+      pluginID:       'test-agent',
+    });
+
+    let req = createMockReq({ params: { id: agent.id } });
+    let res = createMockRes();
+
+    let controller1 = createController(DmController, { mockApp, req, res });
+    let result1     = await controller1.getOrCreate({ params: { id: agent.id } });
+    let sessionID1  = result1.data.session.id;
+
+    let controller2 = createController(DmController, { mockApp, req, res: createMockRes() });
+    let result2     = await controller2.getOrCreate({ params: { id: agent.id } });
+    let sessionID2  = result2.data.session.id;
+
+    assert.equal(sessionID1, sessionID2);
+  });
+
+  it('should get null summary when none exists', async () => {
+    let { Agent, Organization } = core.getModels();
+
+    let org   = await Organization.create({ name: 'DM Summary Org' });
+    let agent = await Agent.create({
+      organizationID: org.id,
+      name:           'test-dm-summary-agent',
+      pluginID:       'test-agent',
+    });
+
+    let req = createMockReq({ params: { id: agent.id } });
+    let res = createMockRes();
+    let controller = createController(DmController, { mockApp, req, res });
+
+    let result = await controller.getSummary({ params: { id: agent.id } });
+    assert.equal(result.data.summary, null);
+  });
+
+  it('should update DM summary via PUT', async () => {
+    let { Agent, Organization } = core.getModels();
+
+    let org   = await Organization.create({ name: 'DM Update Org' });
+    let agent = await Agent.create({
+      organizationID: org.id,
+      name:           'test-dm-update-agent',
+      pluginID:       'test-agent',
+    });
+
+    let req = createMockReq({ params: { id: agent.id } });
+    let res = createMockRes();
+    let controller = createController(DmController, { mockApp, req, res });
+
+    let result = await controller.updateSummary({
+      params: { id: agent.id },
+      body:   { summary: 'Always respond in bullet points' },
+    });
+
+    assert.equal(result.data.summary, 'Always respond in bullet points');
+
+    // Verify persisted
+    let found = await Agent.where.id.EQ(agent.id).first();
+    assert.equal(found.dmSummary, 'Always respond in bullet points');
+  });
+
+  it('should return 404 for non-existent agent on getSummary', async () => {
+    let req = createMockReq({ params: { id: 'agt_nonexistent' } });
+    let res = createMockRes();
+    let controller = createController(DmController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.getSummary({ params: { id: 'agt_nonexistent' } }),
+      (error) => error.message.includes('not found') || error.statusCode === 404,
+    );
+  });
+
+  it('should return 404 for non-existent agent on getOrCreate', async () => {
+    let req = createMockReq({ params: { id: 'agt_ghost' } });
+    let res = createMockRes();
+    let controller = createController(DmController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.getOrCreate({ params: { id: 'agt_ghost' } }),
+      (error) => error.message.includes('not found') || error.statusCode === 404,
+    );
   });
 });

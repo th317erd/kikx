@@ -236,4 +236,39 @@ describe('ShellPermissions', () => {
 
     assert.equal(result, true); // Blocked because sudo needs permission
   });
+
+  // ---- Phase 3: Permissions base class integration ----
+
+  it('should extend the Permissions base class', async () => {
+    let { Permissions } = await import('../../../../src/core/permissions/permissions-base.mjs');
+    let perms = new ShellPermissions({});
+    assert.ok(perms instanceof Permissions);
+  });
+
+  it('should match rule with no metadata (matchesRule)', () => {
+    let perms  = new ShellPermissions({});
+    let result = perms.matchesRule({}, { command: 'ls' }, {});
+    assert.deepEqual(result, { matches: true });
+  });
+
+  it('should match rule when command is in allowedCommands', () => {
+    let perms    = new ShellPermissions({});
+    let metadata = { allowedCommands: ['ls', 'cat', 'echo'] };
+    let result   = perms.matchesRule({}, { command: 'cat /etc/passwd' }, metadata);
+    assert.deepEqual(result, { matches: true });
+  });
+
+  it('should not match rule when command is not in allowedCommands', () => {
+    let perms    = new ShellPermissions({});
+    let metadata = { allowedCommands: ['ls', 'cat'] };
+    let result   = perms.matchesRule({}, { command: 'rm -rf /' }, metadata);
+    assert.deepEqual(result, { matches: false });
+  });
+
+  it('should match rule when args has no command', () => {
+    let perms    = new ShellPermissions({});
+    let metadata = { allowedCommands: ['ls'] };
+    let result   = perms.matchesRule({}, {}, metadata);
+    assert.deepEqual(result, { matches: true });
+  });
 });

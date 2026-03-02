@@ -1,7 +1,8 @@
 'use strict';
 
-import { EventEmitter } from 'node:events';
-import XID               from 'xid-js';
+import { EventEmitter }        from 'node:events';
+import XID                      from 'xid-js';
+import { PermissionDeniedError } from '../permissions/permission-denied-error.mjs';
 
 // =============================================================================
 // InteractionLoop
@@ -60,6 +61,10 @@ export class InteractionLoop extends EventEmitter {
     return this._context.getProperty('contentSanitizer');
   }
 
+  _getHookRunner() {
+    return this._context.getProperty('hookRunner');
+  }
+
   // ---------------------------------------------------------------------------
   // startInteraction
   // ---------------------------------------------------------------------------
@@ -89,9 +94,44 @@ export class InteractionLoop extends EventEmitter {
     }
 
     let framePersistence = this._getFramePersistence();
+    let hookRunner       = this._getHookRunner();
     let interactionID    = generateID('int_');
     let startOrder       = await framePersistence.getNextOrder(sessionID);
     let order            = startOrder;
+
+    // Hook: user → agent (before agent execution)
+    if (hookRunner && params.userMessage && !params.replayFromPermission) {
+      let hookResult = await hookRunner.run('prepareMessage', {
+        source:  'user',
+        target:  'agent',
+        message: params.userMessage,
+        context: { sessionID },
+      });
+
+      if (hookResult.action === 'block') {
+        // Create block frame and end interaction early
+        let blockFrame = {
+          id:            generateID('frm_'),
+          type:          'hook-blocked',
+          content:       { reason: hookResult.reason || 'Message blocked by hook' },
+          order:         order++,
+          timestamp:     Date.now(),
+          interactionID,
+          authorType:    'system',
+          authorID:      null,
+          hidden:        false,
+          deleted:       false,
+          processed:     false,
+        };
+
+        await framePersistence.saveFrames(sessionID, [blockFrame]);
+        this.emit('frame', { sessionID, frame: blockFrame });
+
+        return interactionID;
+      }
+
+      params = { ...params, userMessage: hookResult.message };
+    }
 
     // Create user message frame (unless replaying from permission approval)
     if (params.userMessage && !params.replayFromPermission) {
@@ -157,6 +197,7 @@ export class InteractionLoop extends EventEmitter {
   async _iterateGenerator(sessionID, generator, interactionID, startOrder, params) {
     let framePersistence = this._getFramePersistence();
     let sanitizer        = this._getContentSanitizer();
+    let hookRunner       = this._getHookRunner();
     let order            = startOrder;
     let result;
 
@@ -176,8 +217,23 @@ export class InteractionLoop extends EventEmitter {
         let timestamp = Date.now();
 
         if (block.type === 'message') {
-          // Sanitize HTML content
+          // Hook: agent → user (before message frame emission)
           let html = block.content && block.content.html;
+          if (hookRunner) {
+            let hookResult = await hookRunner.run('prepareMessage', {
+              source:  'agent',
+              target:  'user',
+              message: html,
+              context: { sessionID, interactionID },
+            });
+
+            if (hookResult.action === 'block')
+              continue; // Skip frame creation
+
+            html = hookResult.message;
+          }
+
+          // Sanitize HTML content
           if (html && sanitizer)
             html = sanitizer.sanitize(html);
 
@@ -198,12 +254,56 @@ export class InteractionLoop extends EventEmitter {
           await framePersistence.saveFrames(sessionID, [frame]);
           this.emit('frame', { sessionID, frame });
         } else if (block.type === 'tool-call') {
+          // Hook: agent → tool (before tool execution)
+          if (hookRunner) {
+            let hookResult = await hookRunner.run('prepareMessage', {
+              source:  'agent',
+              target:  'tool',
+              message: block.content,
+              context: { sessionID, interactionID, toolName: block.content.toolName },
+            });
+
+            if (hookResult.action === 'block') {
+              // Return blocked result to generator
+              result = { type: 'tool-result', content: { output: `Blocked: ${hookResult.reason || 'hook blocked tool execution'}` } };
+              continue;
+            }
+          }
+
           // Check if permission is needed
           let checkPermission = params.checkPermission;
           let needsPermission = false;
 
-          if (typeof checkPermission === 'function')
-            needsPermission = await checkPermission(block.content.toolName, block.content.arguments);
+          if (typeof checkPermission === 'function') {
+            try {
+              needsPermission = await checkPermission(block.content.toolName, block.content.arguments);
+            } catch (permError) {
+              if (permError.name === 'PermissionDeniedError') {
+                // Create denied frame, pass error to generator as tool result
+                let deniedFrame = {
+                  id:            generateID('frm_'),
+                  type:          'permission-denied',
+                  content:       { toolName: block.content.toolName, reason: permError.reason },
+                  order:         order++,
+                  timestamp:     Date.now(),
+                  interactionID,
+                  authorType:    'system',
+                  authorID:      null,
+                  hidden:        false,
+                  deleted:       false,
+                  processed:     false,
+                };
+
+                await framePersistence.saveFrames(sessionID, [deniedFrame]);
+                this.emit('frame', { sessionID, frame: deniedFrame });
+
+                result = { type: 'tool-result', content: { output: `Error: ${permError.message}` } };
+                continue;
+              }
+
+              throw permError;
+            }
+          }
 
           if (needsPermission) {
             // Permission hard-break
@@ -232,8 +332,43 @@ export class InteractionLoop extends EventEmitter {
           let executeTool = params.executeTool;
           let toolOutput  = '';
 
-          if (typeof executeTool === 'function')
-            toolOutput = await executeTool(block.content.toolName, block.content.arguments);
+          if (typeof executeTool === 'function') {
+            try {
+              toolOutput = await executeTool(block.content.toolName, block.content.arguments);
+            } catch (toolError) {
+              toolOutput = `Error executing tool: ${toolError.message}`;
+
+              // Create tool-error frame (informational, visible to user)
+              let toolErrorFrame = {
+                id:            generateID('frm_'),
+                type:          'tool-error',
+                content:       { toolName: block.content.toolName, message: toolError.message },
+                order:         order++,
+                timestamp:     Date.now(),
+                interactionID,
+                authorType:    'system',
+                authorID:      null,
+                hidden:        false,
+                deleted:       false,
+                processed:     false,
+              };
+
+              await framePersistence.saveFrames(sessionID, [toolErrorFrame]);
+              this.emit('frame', { sessionID, frame: toolErrorFrame });
+            }
+          }
+
+          // Hook: tool → agent (before result passed to generator)
+          if (hookRunner) {
+            let hookResult = await hookRunner.run('prepareMessage', {
+              source:  'tool',
+              target:  'agent',
+              message: toolOutput,
+              context: { sessionID, interactionID, toolName: block.content.toolName },
+            });
+
+            toolOutput = hookResult.message;
+          }
 
           // Save tool-result frame
           let resultFrameID = generateID('frm_');
@@ -558,10 +693,29 @@ export class InteractionLoop extends EventEmitter {
   // ---------------------------------------------------------------------------
 
   _buildMessages(frames) {
+    // Frame types explicitly excluded from message history
+    let excludedTypes = new Set([
+      'pending-action',
+      'permission-request',
+      'permission-denied',
+      'hook-blocked',
+      'tool-error',
+      'error',
+      'reflection',
+    ]);
+
     let messages = [];
 
     for (let frame of frames) {
+      // Defense-in-depth: skip deleted frames
+      if (frame.deleted)
+        continue;
+
       let type = frame.type;
+
+      // Skip excluded frame types explicitly
+      if (excludedTypes.has(type))
+        continue;
 
       if (type === 'user-message') {
         let content = frame.content || {};
@@ -576,7 +730,6 @@ export class InteractionLoop extends EventEmitter {
         let content = frame.content || {};
         messages.push({ role: 'tool', content: content.output || '' });
       }
-      // Skip reflection, pending-action, permission-request, etc.
     }
 
     return messages;

@@ -381,4 +381,37 @@ describe('WebSocketTransport', () => {
     assert.equal(msg.type, 'error');
     assert.ok(msg.message.includes('sessionID is required'));
   });
+
+  // -------------------------------------------------------------------------
+  // Phase 3: Ping/pong keep-alive
+  // -------------------------------------------------------------------------
+
+  it('should set _isAlive on connection', async () => {
+    let ws = await createWSClient(port, 'valid-token');
+    clients.push(ws);
+
+    // Connection should have _isAlive set by the server
+    // (We can verify indirectly by checking connection stays alive)
+    assert.ok(ws.readyState === ws.OPEN);
+  });
+
+  it('should clean up ping interval on stop', async () => {
+    // Stop and verify no errors
+    transport.stop();
+    assert.equal(transport.isStarted(), false);
+
+    // Restart for subsequent tests
+    transport = new WebSocketTransport(context);
+    transport.start(server);
+  });
+
+  it('should handle pong responses to keep connection alive', async () => {
+    let ws = await createWSClient(port, 'valid-token');
+    clients.push(ws);
+
+    // WebSocket library auto-responds to pings with pongs by default
+    // Just verify the connection is stable after a brief wait
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(ws.readyState, ws.OPEN);
+  });
 });

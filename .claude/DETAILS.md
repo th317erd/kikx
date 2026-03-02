@@ -71,14 +71,35 @@ All 19 rounds of design Q&A are complete and captured in `bot-docs/plan/kikx/ser
 - **V1 Frames:** `server/lib/frames/`
 - **V1 Test count:** ~2275 tests, 0 failures
 
+## V2 Build Status (as of 2026-03-02)
+
+- **Phase 1 (MVP, Steps 1-13):** COMPLETE
+- **Phase 2 (V1 Parity, Steps 14-19):** COMPLETE
+  - Step 14: Permissions System (PermissionRule model + PermissionEngine)
+  - Step 19: Permission Fingerprinting (HMAC-SHA256 via Keystore)
+  - Step 17: Shell Plugin (shell-quote command parser + per-command permissions)
+  - Step 16: Websearch Plugin (Puppeteer + Turndown html-to-markdown)
+  - Step 18: Help System (HelpIndex aggregator + HelpTool plugin)
+  - Step 15: WebSocket Transport (ws, reconnection via lastSeenOrder)
+- **Phase 3 (V2 Differentiators):** NOT STARTED
+
 ## V2 Key File Locations
 
 - **Server scaffold:** `src/server/app/application.mjs`
 - **Auth system:** `src/server/auth/index.mjs` (AuthService, JWT helpers, middleware)
 - **Auth tests:** `spec/server/auth-spec.mjs` (56 tests)
+- **Permissions:** `src/core/permissions/permission-engine.mjs` (PermissionEngine)
+- **Permission model:** `src/core/models/permission-rule-model.mjs` (PermissionRule)
+- **Internal plugins:** `src/core/internal-plugins/` (shell, websearch, help)
+- **Help index:** `src/core/help/help-index.mjs`
+- **WebSocket transport:** `src/server/transport/websocket-transport.mjs`
 - **FrameManager:** `src/shared/frame-manager/` (will move to `src/core/frame-manager/`)
 - **V2 Client:** `src/client/` (Waves A-I complete, 38 components)
 - **Plan YAML:** `bot-docs/plan/kikx/server-plan.yaml`
+
+## Known Issue: node:sqlite
+
+Node 20 does not have the built-in `node:sqlite` module (requires Node 22.5+). All DB-dependent tests fail with `ERR_UNKNOWN_BUILTIN_MODULE`. This is a `mythix-orm-sqlite` requirement, not a code bug. Non-DB tests all pass.
 
 ---
 

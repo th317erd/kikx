@@ -165,7 +165,7 @@ export function getRoutes({ path }) {
         sessionRoutes(context);
       });
 
-      path('agents', ({ endpoint, capture }) => {
+      path('agents', ({ path, endpoint, capture }) => {
         endpoint('', {
           methods:    [ 'GET' ],
           controller: 'AgentController.list',
@@ -191,6 +191,31 @@ export function getRoutes({ path }) {
         endpoint(agentId, {
           methods:    [ 'DELETE' ],
           controller: 'AgentController.destroy',
+        });
+
+        // DM routes nested under agent
+        path(agentId, ({ path, endpoint }) => {
+          endpoint('dm', {
+            methods:    [ 'POST' ],
+            controller: 'DmController.getOrCreate',
+          });
+
+          path('dm', ({ endpoint }) => {
+            endpoint('summary', {
+              methods:    [ 'GET' ],
+              controller: 'DmController.getSummary',
+            });
+
+            endpoint('summary', {
+              methods:    [ 'PUT' ],
+              controller: 'DmController.updateSummary',
+            });
+
+            endpoint('summarize', {
+              methods:    [ 'POST' ],
+              controller: 'DmController.summarize',
+            });
+          });
         });
       });
     });

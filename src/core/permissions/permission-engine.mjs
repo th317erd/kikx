@@ -1,5 +1,7 @@
 'use strict';
 
+import { PermissionDeniedError } from './permission-denied-error.mjs';
+
 // =============================================================================
 // PermissionEngine
 // =============================================================================
@@ -10,8 +12,14 @@
 //   1. Load matching PermissionRule records for the feature
 //   2. Filter by scope hierarchy (global -> session -> frame)
 //   3. Sort by priority (descending)
-//   4. First match wins: 'allow' = no approval needed, 'deny' = needs approval
-//   5. No match = needs approval (default deny)
+//   4. Custom matching via toolClass.getPermissionsClass() if available
+//   5. First match wins:
+//      - 'deny'  = throw PermissionDeniedError (fail-fast, no approval)
+//      - 'allow' = no approval needed (unless safety net applies)
+//   6. No match = needs approval (default deny)
+//
+// Safety net: If toolClass.riskLevel === 'critical', allow rules are
+// ignored — the tool always needs manual approval.
 // =============================================================================
 
 const SCOPE_HIERARCHY = ['frame', 'session', 'global'];
@@ -39,8 +47,12 @@ export class PermissionEngine {
   // ---------------------------------------------------------------------------
 
   async checkPermission(featureName, args, options = {}) {
-    let { organizationID, scope, scopeID, verifyFingerprint, userKey } = options;
+    let { organizationID, scope, scopeID, verifyFingerprint, userKey, toolClass } = options;
     let { PermissionRule } = this._getModels();
+
+    // Safety net: critical tools always need approval regardless of rules
+    if (toolClass && toolClass.riskLevel === 'critical')
+      return true;
 
     // Build query: match feature name AND organization
     let query = PermissionRule.where
@@ -50,7 +62,7 @@ export class PermissionEngine {
     let rules = await query.all();
 
     // Filter out expired rules
-    let now          = new Date();
+    let now         = new Date();
     let activeRules = rules.filter((rule) => {
       if (rule.expiresAt && new Date(rule.expiresAt) <= now)
         return false;
@@ -68,13 +80,30 @@ export class PermissionEngine {
     // Sort by priority descending (higher priority = first evaluated)
     activeRules.sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
+    // Custom matching via Permissions subclass if toolClass provides one
+    let permissionsInstance = null;
+    if (toolClass && typeof toolClass.prototype.getPermissionsClass === 'function') {
+      let PermissionsClass = new toolClass(this._context).getPermissionsClass();
+      if (PermissionsClass)
+        permissionsInstance = new PermissionsClass(this._context);
+    }
+
     // First match wins
     for (let rule of activeRules) {
-      if (rule.effect === 'allow')
-        return false; // No permission needed
+      // Custom matching: if tool has a Permissions class, check matchesRule
+      if (permissionsInstance) {
+        let metadata    = permissionsInstance._parseMetadata(rule);
+        let matchResult = permissionsInstance.matchesRule(rule, args, metadata);
+
+        if (matchResult && matchResult.matches === false)
+          continue; // Rule doesn't match per custom logic, skip
+      }
 
       if (rule.effect === 'deny')
-        return true; // Permission needed
+        throw new PermissionDeniedError(featureName, 'explicit deny rule');
+
+      if (rule.effect === 'allow')
+        return false; // No permission needed
     }
 
     // No match = default deny (needs permission)

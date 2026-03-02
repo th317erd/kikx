@@ -41,6 +41,12 @@ export class SessionManager {
     if (options.archived !== undefined)
       sessionData.archived = options.archived;
 
+    if (options.type !== undefined)
+      sessionData.type = options.type;
+
+    if (options.dmAgentID !== undefined)
+      sessionData.dmAgentID = options.dmAgentID;
+
     let session = await Session.create(sessionData);
     return session;
   }

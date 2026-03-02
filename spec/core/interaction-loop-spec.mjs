@@ -991,4 +991,406 @@ describe('InteractionLoop', () => {
       );
     });
   });
+
+  // ===========================================================================
+  // Phase 3: Hook integration
+  // ===========================================================================
+
+  describe('hook integration — prepareMessage', () => {
+    it('should fire user→agent hook and block message', async () => {
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      // Register a blocking hook
+      let registry = context.getProperty('pluginRegistry');
+      registry.registerHook('prepareMessage', (payload) => {
+        if (payload.source === 'user' && payload.target === 'agent')
+          return { action: 'block', reason: 'filtered' };
+
+        return null;
+      });
+
+      let blocks = [
+        { type: 'message', content: { html: '<p>Should not run</p>' }, authorType: 'agent' },
+      ];
+      let agent = new MockAgent(context, blocks);
+
+      let emittedFrames = [];
+      loop.on('frame', ({ frame }) => emittedFrames.push(frame));
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      // Should have a hook-blocked frame
+      let blockedFrames = emittedFrames.filter((f) => f.type === 'hook-blocked');
+      assert.ok(blockedFrames.length >= 1);
+      assert.ok(blockedFrames[0].content.reason.includes('filtered'));
+
+      // Should NOT have agent message frames
+      let messageFrames = emittedFrames.filter((f) => f.type === 'message');
+      assert.equal(messageFrames.length, 0);
+    });
+
+    it('should fire agent→user hook and modify message', async () => {
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      let registry = context.getProperty('pluginRegistry');
+      registry.registerHook('prepareMessage', (payload) => {
+        if (payload.source === 'agent' && payload.target === 'user')
+          return { action: 'modify', message: payload.message + ' [hooked]' };
+
+        return null;
+      });
+
+      let blocks = [
+        { type: 'message', content: { html: '<p>Hello</p>' }, authorType: 'agent' },
+      ];
+      let agent = new MockAgent(context, blocks);
+
+      let emittedFrames = [];
+      loop.on('frame', ({ frame }) => emittedFrames.push(frame));
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      let messageFrames = emittedFrames.filter((f) => f.type === 'message');
+      assert.ok(messageFrames.length >= 1);
+      assert.ok(messageFrames[0].content.html.includes('[hooked]'));
+    });
+
+    it('should fire agent→tool hook and block tool execution', async () => {
+      let session = await createTestSession();
+      let loop    = createLoop();
+      let toolRan = false;
+
+      let registry = context.getProperty('pluginRegistry');
+      registry.registerHook('prepareMessage', (payload) => {
+        if (payload.source === 'agent' && payload.target === 'tool')
+          return { action: 'block', reason: 'tool blocked' };
+
+        return null;
+      });
+
+      let blocks = [
+        { type: 'tool-call', content: { toolName: 'shell:execute', arguments: { command: 'ls' } }, authorType: 'agent' },
+      ];
+      let agent = new MockAgent(context, blocks);
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        executeTool: () => { toolRan = true; return 'output'; },
+        checkPermission: async () => false,
+      }));
+
+      assert.equal(toolRan, false);
+    });
+
+    it('should fire tool→agent hook and modify tool output', async () => {
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      let registry = context.getProperty('pluginRegistry');
+      registry.registerHook('prepareMessage', (payload) => {
+        if (payload.source === 'tool' && payload.target === 'agent')
+          return { action: 'modify', message: payload.message + ' [filtered]' };
+
+        return null;
+      });
+
+      let blocks = [
+        { type: 'tool-call', content: { toolName: 'shell:execute', arguments: { command: 'ls' } }, authorType: 'agent' },
+      ];
+      let agent = new MockAgent(context, blocks);
+
+      let emittedFrames = [];
+      loop.on('frame', ({ frame }) => emittedFrames.push(frame));
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        executeTool: () => 'file1.txt',
+        checkPermission: async () => false,
+      }));
+
+      let resultFrames = emittedFrames.filter((f) => f.type === 'tool-result');
+      assert.ok(resultFrames.length >= 1);
+      assert.ok(resultFrames[0].content.output.includes('[filtered]'));
+    });
+
+    it('should work normally when no hooks registered', async () => {
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      let blocks = [
+        { type: 'message', content: { html: '<p>Hello</p>' }, authorType: 'agent' },
+      ];
+      let agent = new MockAgent(context, blocks);
+
+      let emittedFrames = [];
+      loop.on('frame', ({ frame }) => emittedFrames.push(frame));
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      let messageFrames = emittedFrames.filter((f) => f.type === 'message');
+      assert.ok(messageFrames.length >= 1);
+    });
+  });
+
+  // ===========================================================================
+  // Phase 3: PermissionDeniedError handling
+  // ===========================================================================
+
+  describe('PermissionDeniedError handling', () => {
+    it('should create permission-denied frame when checkPermission throws PermissionDeniedError', async () => {
+      let { PermissionDeniedError } = await import('../../src/core/permissions/permission-denied-error.mjs');
+
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      let blocks = [
+        { type: 'tool-call', content: { toolName: 'dangerous:tool', arguments: {} }, authorType: 'agent' },
+      ];
+      let agent = new MockAgent(context, blocks);
+
+      let emittedFrames = [];
+      loop.on('frame', ({ frame }) => emittedFrames.push(frame));
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: async () => {
+          throw new PermissionDeniedError('dangerous:tool', 'explicit deny');
+        },
+        executeTool: () => 'should not run',
+      }));
+
+      let deniedFrames = emittedFrames.filter((f) => f.type === 'permission-denied');
+      assert.ok(deniedFrames.length >= 1);
+      assert.equal(deniedFrames[0].content.toolName, 'dangerous:tool');
+    });
+
+    it('should pass error result to generator on PermissionDeniedError', async () => {
+      let { PermissionDeniedError } = await import('../../src/core/permissions/permission-denied-error.mjs');
+
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      let blocks = [
+        { type: 'tool-call', content: { toolName: 'blocked:tool', arguments: {} }, authorType: 'agent' },
+      ];
+      let agent = new MockAgent(context, blocks);
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: async () => {
+          throw new PermissionDeniedError('blocked:tool', 'deny rule');
+        },
+        executeTool: () => 'unreachable',
+      }));
+
+      // The tool-call block should have received the error result
+      let toolBlock = blocks[0];
+      assert.ok(toolBlock._receivedResult);
+      assert.ok(toolBlock._receivedResult.content.output.includes('Permission denied'));
+    });
+
+    it('should propagate non-PermissionDeniedError from checkPermission', async () => {
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      let blocks = [
+        { type: 'tool-call', content: { toolName: 'test:tool', arguments: {} }, authorType: 'agent' },
+      ];
+      let agent = new MockAgent(context, blocks);
+
+      let emittedFrames = [];
+      loop.on('frame', ({ frame }) => emittedFrames.push(frame));
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: async () => { throw new Error('DB connection lost'); },
+        executeTool: () => 'unreachable',
+      }));
+
+      // Should produce an error frame (from the catch block)
+      let errorFrames = emittedFrames.filter((f) => f.type === 'error');
+      assert.ok(errorFrames.length >= 1);
+      assert.ok(errorFrames[0].content.message.includes('DB connection lost'));
+    });
+  });
+
+  // ===========================================================================
+  // Phase 3: Tool execution error recovery
+  // ===========================================================================
+
+  describe('tool execution error recovery', () => {
+    it('should create tool-error frame when executeTool throws', async () => {
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      let blocks = [
+        { type: 'tool-call', content: { toolName: 'shell:execute', arguments: { command: 'ls' } }, authorType: 'agent' },
+      ];
+      let agent = new MockAgent(context, blocks);
+
+      let emittedFrames = [];
+      loop.on('frame', ({ frame }) => emittedFrames.push(frame));
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: async () => false,
+        executeTool: () => { throw new Error('command not found'); },
+      }));
+
+      let errorFrames = emittedFrames.filter((f) => f.type === 'tool-error');
+      assert.ok(errorFrames.length >= 1);
+      assert.equal(errorFrames[0].content.toolName, 'shell:execute');
+      assert.ok(errorFrames[0].content.message.includes('command not found'));
+    });
+
+    it('should pass error text to generator instead of killing interaction', async () => {
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      let blocks = [
+        { type: 'tool-call', content: { toolName: 'shell:execute', arguments: { command: 'bad' } }, authorType: 'agent' },
+      ];
+      let agent = new MockAgent(context, blocks);
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: async () => false,
+        executeTool: () => { throw new Error('exec failed'); },
+      }));
+
+      let toolBlock = blocks[0];
+      assert.ok(toolBlock._receivedResult);
+      assert.ok(toolBlock._receivedResult.content.output.includes('Error executing tool'));
+    });
+
+    it('should NOT create interaction-level error frame on tool error', async () => {
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      let blocks = [
+        { type: 'tool-call', content: { toolName: 'shell:execute', arguments: { command: 'x' } }, authorType: 'agent' },
+      ];
+      let agent = new MockAgent(context, blocks);
+
+      let emittedFrames = [];
+      loop.on('frame', ({ frame }) => emittedFrames.push(frame));
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: async () => false,
+        executeTool: () => { throw new Error('tool fail'); },
+      }));
+
+      // Should have tool-error but NOT interaction-level error
+      let toolErrors = emittedFrames.filter((f) => f.type === 'tool-error');
+      let errors     = emittedFrames.filter((f) => f.type === 'error');
+      assert.ok(toolErrors.length >= 1);
+      assert.equal(errors.length, 0);
+    });
+  });
+
+  // ===========================================================================
+  // Phase 3: _buildMessages defense-in-depth
+  // ===========================================================================
+
+  describe('_buildMessages defense-in-depth', () => {
+    it('should skip deleted frames', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'user-message', content: { text: 'hello' }, deleted: false },
+        { type: 'message', content: { html: '<p>hi</p>' }, deleted: true },
+        { type: 'user-message', content: { text: 'world' }, deleted: false },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 2);
+      assert.equal(messages[0].content, 'hello');
+      assert.equal(messages[1].content, 'world');
+    });
+
+    it('should skip pending-action frames', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'user-message', content: { text: 'hello' } },
+        { type: 'pending-action', content: { toolName: 'shell' } },
+        { type: 'message', content: { html: '<p>hi</p>' } },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 2);
+    });
+
+    it('should skip permission-request frames', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'user-message', content: { text: 'hello' } },
+        { type: 'permission-request', content: { toolName: 'shell' } },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 1);
+    });
+
+    it('should skip permission-denied frames', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'user-message', content: { text: 'hello' } },
+        { type: 'permission-denied', content: { pendingFrameID: 'frm_123' } },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 1);
+    });
+
+    it('should skip hook-blocked frames', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'user-message', content: { text: 'hello' } },
+        { type: 'hook-blocked', content: { reason: 'test' } },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 1);
+    });
+
+    it('should skip tool-error frames', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'user-message', content: { text: 'hello' } },
+        { type: 'tool-error', content: { message: 'fail' } },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 1);
+    });
+
+    it('should include tool-call and tool-result frames', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'tool-call', content: { toolName: 'shell', arguments: {} } },
+        { type: 'tool-result', content: { output: 'result' } },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 2);
+      assert.equal(messages[0].type, 'tool-call');
+      assert.equal(messages[1].role, 'tool');
+    });
+
+    it('should skip error frames', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'user-message', content: { text: 'hello' } },
+        { type: 'error', content: { message: 'oops' } },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 1);
+    });
+
+    it('should skip reflection frames', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'user-message', content: { text: 'hello' } },
+        { type: 'reflection', content: { text: 'thinking' } },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 1);
+    });
+  });
 });

@@ -23,6 +23,7 @@ export class PluginLoader {
     this._registry  = new PluginRegistry();
     this._teardowns = new Map(); // pluginName -> teardown closure
     this._loaded    = new Set(); // track loaded plugin names
+    this._failed    = new Map(); // pluginName -> error
   }
 
   // ---------------------------------------------------------------------------
@@ -50,9 +51,14 @@ export class PluginLoader {
         if (this._options.disabled && this._options.disabled.has(name))
           continue;
 
-        let module = await provider.load(name);
-        await this.loadPlugin(name, module);
-        results.push(name);
+        try {
+          let module = await provider.load(name);
+          await this.loadPlugin(name, module);
+          results.push(name);
+        } catch (error) {
+          console.error(`Failed to load plugin "${name}":`, error.message);
+          this._failed.set(name, error);
+        }
       }
     }
 
@@ -123,6 +129,7 @@ export class PluginLoader {
       registerCommand:       (name, handler)   => registry.registerCommand(name, handler),
       registerCustomElement: (tagName)         => registry.registerCustomElement(tagName),
       registerAgentType:     (id, AgentClass)  => registry.registerAgentType(id, AgentClass),
+      registerHook:          (hookName, handler) => registry.registerHook(hookName, handler),
     };
   }
 
@@ -136,6 +143,10 @@ export class PluginLoader {
 
   getLoadedPlugins() {
     return new Set(this._loaded);
+  }
+
+  getFailedPlugins() {
+    return new Map(this._failed);
   }
 
   isLoaded(name) {

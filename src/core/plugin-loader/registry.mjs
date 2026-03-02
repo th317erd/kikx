@@ -15,6 +15,7 @@ export class PluginRegistry {
     this._commands       = new Map();
     this._customElements = new Set();
     this._agentTypes     = new Map();
+    this._hooks          = new Map(); // hookName -> handler[]
   }
 
   // ---------------------------------------------------------------------------
@@ -90,6 +91,31 @@ export class PluginRegistry {
 
   getAgentTypes() {
     return new Map(this._agentTypes);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Hooks
+  // ---------------------------------------------------------------------------
+
+  registerHook(hookName, handler) {
+    if (!hookName || typeof hookName !== 'string')
+      throw new Error('Hook name must be a non-empty string');
+
+    if (typeof handler !== 'function')
+      throw new Error(`Hook "${hookName}" handler must be a function`);
+
+    if (!this._hooks.has(hookName))
+      this._hooks.set(hookName, []);
+
+    this._hooks.get(hookName).push(handler);
+  }
+
+  getHookHandlers(hookName) {
+    return this._hooks.get(hookName) || [];
+  }
+
+  getHooks() {
+    return new Map(this._hooks);
   }
 
   // ---------------------------------------------------------------------------

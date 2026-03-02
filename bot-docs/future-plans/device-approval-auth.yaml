@@ -1,0 +1,55 @@
+# Device Approval Authentication
+# Deferred from: Phase 3, Step 21 (V2 Differentiators)
+# Priority: Medium
+# Complexity: High
+
+summary: >
+  Cross-device authentication via device approval flow. A trusted device
+  approves login requests from untrusted devices without transmitting
+  credentials. JWT handoff enables session continuity across devices.
+
+current_state: >
+  V2 auth is password-only. UMK is unwrapped from vault slot and wrapped
+  by REK into JWT on login. No magic links (incompatible with zero-knowledge).
+  No server slot. WebAuthn/passkeys also deferred.
+
+requirements:
+  - Trusted device receives push/WebSocket notification of login request
+  - Trusted device displays request details (IP, user-agent, timestamp)
+  - User approves or denies on trusted device
+  - On approval, JWT issued for untrusted device via secure handoff
+  - UMK transfer without server visibility (zero-knowledge preserved)
+  - Request expiration (configurable, default 5 minutes)
+  - Rate limiting on approval requests per account
+  - Audit trail for all approval/denial events
+
+design_notes: >
+  The zero-knowledge constraint makes this non-trivial. The server cannot
+  simply issue a JWT because it doesn't have the UMK. The trusted device
+  must re-wrap the UMK for the new session. This likely requires a
+  temporary encrypted channel between devices, mediated by the server
+  but opaque to it. Consider using ephemeral Diffie-Hellman key exchange
+  over WebSocket for the UMK transfer.
+
+  Related deferred features: WebAuthn/passkeys, passphrase-based auth.
+
+plan_reference:
+  yaml_section: "18 (encryption.deferred)"
+  related_sections:
+    - "18 (encryption.integration)"
+    - "15 (WebSocket transport)"
+
+files:
+  - src/core/auth/device-approval.mjs       # Core approval logic
+  - src/server/controllers/device-controller.mjs  # API endpoints
+  - src/server/routes/index.mjs              # Route additions
+
+tests:
+  - Approval request created with correct metadata
+  - Trusted device receives WebSocket notification
+  - Approved request issues JWT for untrusted device
+  - Denied request logged and rejected
+  - Expired request auto-rejected
+  - Rate limiting enforced
+  - UMK transfer preserves zero-knowledge (server never sees plaintext)
+  - Concurrent approval requests handled correctly

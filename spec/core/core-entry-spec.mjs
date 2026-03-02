@@ -443,6 +443,144 @@ describe('KikxCore plugin loading', () => {
     assert.ok(core.getPermissionEngine());
     assert.equal(typeof core.getPermissionEngine().checkPermission, 'function');
   });
+
+  it('should set hookRunner on context after start', async () => {
+    core = createKikxCore();
+    await core.start();
+    let context = core.getContext();
+    let hookRunner = context.getProperty('hookRunner');
+    assert.ok(hookRunner);
+    assert.equal(typeof hookRunner.run, 'function');
+  });
+
+  it('should add plugin directories from KIKX_PLUGIN_PATHS env var', async () => {
+    let originalEnv = process.env.KIKX_PLUGIN_PATHS;
+
+    try {
+      process.env.KIKX_PLUGIN_PATHS = '/tmp/nonexistent-plugins-a:/tmp/nonexistent-plugins-b';
+
+      core = createKikxCore();
+      await core.start();
+
+      // Should not throw even though paths don't exist
+      assert.ok(core.isStarted());
+    } finally {
+      if (originalEnv === undefined)
+        delete process.env.KIKX_PLUGIN_PATHS;
+      else
+        process.env.KIKX_PLUGIN_PATHS = originalEnv;
+    }
+  });
+
+  it('should combine config paths and env var paths', async () => {
+    let originalEnv = process.env.KIKX_PLUGIN_PATHS;
+
+    try {
+      process.env.KIKX_PLUGIN_PATHS = '/tmp/env-plugin-path';
+
+      core = createKikxCore({
+        plugins: {
+          paths: ['/tmp/config-plugin-path'],
+        },
+      });
+
+      await core.start();
+      assert.ok(core.isStarted());
+    } finally {
+      if (originalEnv === undefined)
+        delete process.env.KIKX_PLUGIN_PATHS;
+      else
+        process.env.KIKX_PLUGIN_PATHS = originalEnv;
+    }
+  });
+
+  it('should handle empty KIKX_PLUGIN_PATHS gracefully', async () => {
+    let originalEnv = process.env.KIKX_PLUGIN_PATHS;
+
+    try {
+      process.env.KIKX_PLUGIN_PATHS = '';
+
+      core = createKikxCore();
+      await core.start();
+      assert.ok(core.isStarted());
+    } finally {
+      if (originalEnv === undefined)
+        delete process.env.KIKX_PLUGIN_PATHS;
+      else
+        process.env.KIKX_PLUGIN_PATHS = originalEnv;
+    }
+  });
+});
+
+// =============================================================================
+// KikxCore V2 model fields (Phase 3 additions)
+// =============================================================================
+describe('KikxCore V2 model fields', () => {
+  let core;
+
+  afterEach(async () => {
+    if (core && core.isStarted())
+      await core.stop();
+  });
+
+  it('should have dmSummary field on Agent model', async () => {
+    core = createKikxCore();
+    await core.start();
+
+    let { Organization, Agent } = core.getModels();
+    let org   = await Organization.create({ name: 'Test Org' });
+    let agent = await Agent.create({
+      organizationID: org.id,
+      name:           'test-dm-agent',
+      pluginID:       'test-agent',
+      dmSummary:      'Always respond in JSON',
+    });
+
+    let found = await Agent.where.id.EQ(agent.id).first();
+    assert.equal(found.dmSummary, 'Always respond in JSON');
+  });
+
+  it('should have type field on Session model with default value', async () => {
+    core = createKikxCore();
+    await core.start();
+
+    let { Organization, Session } = core.getModels();
+    let org     = await Organization.create({ name: 'Test Org' });
+    let session = await Session.create({ organizationID: org.id, name: 'Test Session' });
+
+    assert.equal(session.type, 'chat');
+  });
+
+  it('should support dm type on Session model', async () => {
+    core = createKikxCore();
+    await core.start();
+
+    let { Organization, Agent, Session } = core.getModels();
+    let org   = await Organization.create({ name: 'Test Org' });
+    let agent = await Agent.create({ organizationID: org.id, name: 'test-agent', pluginID: 'test' });
+
+    let session = await Session.create({
+      organizationID: org.id,
+      name:           'DM: test-agent',
+      type:           'dm',
+      dmAgentID:      agent.id,
+    });
+
+    let found = await Session.where.id.EQ(session.id).first();
+    assert.equal(found.type, 'dm');
+    assert.equal(found.dmAgentID, agent.id);
+  });
+
+  it('should allow null dmAgentID on Session model', async () => {
+    core = createKikxCore();
+    await core.start();
+
+    let { Organization, Session } = core.getModels();
+    let org     = await Organization.create({ name: 'Test Org' });
+    let session = await Session.create({ organizationID: org.id, name: 'Regular' });
+
+    assert.equal(session.dmAgentID, null);
+  });
 });
 
 // =============================================================================

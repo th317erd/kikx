@@ -30,6 +30,19 @@ export class Session extends ModelBase {
       allowNull:    false,
       defaultValue: 'New Session',
     },
+    // Session type: 'chat' (default) or 'dm' (direct message for agent config)
+    type: {
+      type:         Types.STRING(32),
+      allowNull:    false,
+      defaultValue: 'chat',
+      index:        true,
+    },
+    // For DM sessions: the agent this DM configures
+    dmAgentID: {
+      type:      Types.STRING(128),
+      allowNull: true,
+      index:     true,
+    },
     archived: {
       type:         Types.BOOLEAN,
       allowNull:    false,

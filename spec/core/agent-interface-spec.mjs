@@ -504,6 +504,52 @@ describe('AgentInterface — generator cleanup', () => {
 });
 
 // =============================================================================
+// Phase 3: DM summary in system prompt
+// =============================================================================
+
+describe('AgentInterface — DM summary in system prompt', () => {
+  it('should include dmSummary in system prompt when present', () => {
+    let agent       = new TestAgent(null);
+    let mockAgent   = createMockAgent();
+    mockAgent.dmSummary = 'Always respond in JSON format';
+
+    let prompt = agent.getSystemPrompt(mockAgent, null);
+    assert.ok(prompt.includes('Configuration from DM'));
+    assert.ok(prompt.includes('Always respond in JSON format'));
+  });
+
+  it('should not include DM section when dmSummary is null', () => {
+    let agent       = new TestAgent(null);
+    let mockAgent   = createMockAgent();
+    mockAgent.dmSummary = null;
+
+    let prompt = agent.getSystemPrompt(mockAgent, null);
+    assert.ok(!prompt.includes('Configuration from DM'));
+  });
+
+  it('should not include DM section when dmSummary is undefined', () => {
+    let agent       = new TestAgent(null);
+    let mockAgent   = createMockAgent();
+    // dmSummary not set = undefined
+
+    let prompt = agent.getSystemPrompt(mockAgent, null);
+    assert.ok(!prompt.includes('Configuration from DM'));
+  });
+
+  it('should include both instructions and dmSummary when both present', () => {
+    let agent       = new TestAgent(null);
+    let mockAgent   = createMockAgent();
+    mockAgent.instructions = 'Be helpful and kind';
+    mockAgent.dmSummary    = 'Use bullet points';
+
+    let prompt = agent.getSystemPrompt(mockAgent, null);
+    assert.ok(prompt.includes('Be helpful and kind'));
+    assert.ok(prompt.includes('Use bullet points'));
+    assert.ok(prompt.includes('Configuration from DM'));
+  });
+});
+
+// =============================================================================
 // Index re-export
 // =============================================================================
 

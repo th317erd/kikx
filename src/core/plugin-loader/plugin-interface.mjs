@@ -16,6 +16,7 @@ export class PluginInterface {
   static description  = null;
   static icon         = null;
   static version      = '1.0.0';
+  static riskLevel    = 'high'; // 'low', 'high', or 'critical'
 
   constructor(context) {
     this._context = context;

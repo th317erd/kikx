@@ -59,10 +59,13 @@ export class InteractionController extends ControllerAuthBase {
       if (!permissionEngine)
         return true; // No engine = needs approval
 
+      let ToolClass = pluginRegistry.getTool(toolName);
+
       return permissionEngine.checkPermission(toolName, toolArgs, {
         organizationID: agent.organizationID,
         scope:          'session',
         scopeID:        params.sessionId,
+        toolClass:      ToolClass,
       });
     };
 
