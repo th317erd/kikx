@@ -23,10 +23,20 @@ export function setup({ registerTool, PluginInterface }) {
       if (!command || typeof command !== 'string')
         throw new Error('command is required');
 
-      let cwd = workingDirectory || process.cwd();
+      let cwd   = workingDirectory || process.cwd();
+      let shell = process.env.SHELL || '/bin/bash';
 
-      return new Promise((resolve, reject) => {
-        execFile('/bin/sh', ['-c', command], { cwd, timeout: 30000 }, (error, stdout, stderr) => {
+      // Login shell (-l) sources the user's profile chain
+      // (~/.bash_profile, ~/.profile, etc.) so PATH, nvm, pyenv,
+      // aliases, and other environment customizations are available.
+      let env = {
+        ...process.env,
+        HISTFILE:  '/dev/null',  // Never read or write shell history
+        HISTSIZE:  '0',          // Belt-and-suspenders: zero history entries
+      };
+
+      return new Promise((resolve) => {
+        execFile(shell, ['-l', '-c', command], { cwd, env, timeout: 30000 }, (error, stdout, stderr) => {
           if (error && error.killed) {
             resolve({
               stdout:   stdout || '',
