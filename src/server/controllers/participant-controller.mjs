@@ -47,7 +47,7 @@ export class ParticipantController extends ControllerAuthBase {
   async destroy({ params }) {
     let sessionManager = this.getSessionManager();
 
-    await sessionManager.removeParticipant(params.id);
+    await sessionManager.removeParticipant(params.participantId);
 
     return { data: { deleted: true } };
   }

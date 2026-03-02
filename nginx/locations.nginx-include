@@ -56,6 +56,13 @@ location /kikx/shared/ {
   expires 1h;
   add_header Cache-Control "public, no-transform";
 
+  # Serve .mjs files with correct MIME type
+  location ~* \.mjs$ {
+    alias /home/wyatt/Projects/kikx-workspace/kikx/src/shared/;
+    types { application/javascript mjs; }
+    add_header Cache-Control "public, no-transform";
+  }
+
   # Block spec/ directory from being served
   location ~* /kikx/shared/spec/ {
     return 404;
@@ -68,6 +75,22 @@ location /kikx/ {
   alias /home/wyatt/Projects/kikx-workspace/kikx/src/client/;
   expires 1h;
   add_header Cache-Control "public, no-transform";
+
+  # Serve .mjs files with correct MIME type
+  types {
+    text/html                             html htm;
+    text/css                              css;
+    application/javascript                js mjs;
+    application/json                      json;
+    image/svg+xml                         svg;
+    image/png                             png;
+    image/jpeg                            jpg jpeg;
+    image/gif                             gif;
+    image/x-icon                          ico;
+    font/woff2                            woff2;
+    font/woff                             woff;
+    application/octet-stream              bin;
+  }
 
   # Block spec/ directory from being served
   location ~* /kikx/spec/ {

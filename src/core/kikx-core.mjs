@@ -120,7 +120,7 @@ export class KikxCore {
     let models = this._connection.getModels();
     for (let Model of Object.values(models)) {
       if (typeof Model.getTableName === 'function')
-        await this._connection.createTable(Model);
+        await this._connection.createTable(Model, { ifNotExists: true });
     }
 
     // Store on context

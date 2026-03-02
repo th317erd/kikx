@@ -24,13 +24,18 @@ Important details to remember across sessions.
 
 ## Credentials & Config
 
-- Test login: `claude` / `claude123`
-- Test agent: `test-claude` (has valid Anthropic API key)
+- Test login: `test-bot@kikx.com` / `securePass123` (V2 database)
+- Test login (V1/browser): `claude` / `claude123`
+- Test agent: `test-claude` (agt_d6k1n1wpe7dy5tq17hcg, pluginID: `claude`, has valid Anthropic API key)
+- Test session: `Test Session` (ses_d6k1npepe7dy5tq17hd0)
 - Config directory: `~/.config/kikx/`
-- V2 database: `/tmp/kikx/kikx.sqlite`
+- V2 database: `~/.config/kikx/kikx.db`
 - V2 server port: 8089
+- V2 server entry: `src/server/index.mjs`
 - V2 URL: `https://wyatt-desktop.mythix.info/kikx/`
-- nginx config: `nginx/locations.nginx-include`
+- nginx master config: `~/www/sites/wyatt-desktop.mythix.info.conf`
+- nginx include: `nginx/locations.nginx-include`
+- **Start server:** `KIKX_PLUGIN_PATHS=~/Projects/kikx-workspace node src/server/index.mjs` (requires Node 22)
 
 ## Current Branch
 
@@ -82,9 +87,28 @@ All 19 rounds of design Q&A are complete and captured in `bot-docs/plan/kikx/ser
   - Step 18: Help System (HelpIndex aggregator + HelpTool plugin)
   - Step 15: WebSocket Transport (ws, reconnection via lastSeenOrder)
 - **Phase 3 (V2 Differentiators):** NOT STARTED
+- **E2E Integration:** VERIFIED (2026-03-02)
+  - V2 server running on port 8089 with Mythix framework
+  - Auth (login/register) working with password-based JWT
+  - Agent plugin loading via KIKX_PLUGIN_PATHS env var
+  - API key encryption/decryption via JWT vault (UMK → user key → AES-GCM)
+  - Full interaction loop: user message → Claude API → HTML response → frames persisted
+  - Multi-turn conversation verified (context preserved across turns)
+  - Browser login + session page rendering via Puppeteer
+
+## Bugs Fixed During E2E Testing
+
+1. **Route param names:** Routes used `capture('id')` but controllers expected `params.sessionId`, `params.agentId`. Fixed to use descriptive capture names (`capture('sessionId')`, `capture('agentId')`, `capture('participantId')`).
+2. **Agent pluginID mismatch:** Agent created with `pluginID: 'claude-agent'` but plugin registers as `'claude'`. Fixed agent record.
+3. **Plugin API key resolution:** `kikx-plugin-claude` tried to re-decrypt `agent.encryptedAPIKey` inside generator instead of reading pre-decrypted `agent.apiKey`. Fixed to check `agent.apiKey` first.
+4. **KikxCore table creation:** `createTable(Model)` failed if table existed. Fixed with `{ ifNotExists: true }`.
+5. **Auth middleware:** Mythix sets `request.mythixApplication`, not `request.application`. Fixed.
+6. **skipAuthorization:** Mythix passes `context.controllerMethod`, not `context.methodName`. Fixed.
+7. **Mythix route DSL:** `endpoint('')` (empty string) adds extra path segment. Rewrote routes with non-empty endpoint names.
 
 ## V2 Key File Locations
 
+- **V2 server entry:** `src/server/index.mjs`
 - **Server scaffold:** `src/server/app/application.mjs`
 - **Auth system:** `src/server/auth/index.mjs` (AuthService, JWT helpers, middleware)
 - **Auth tests:** `spec/server/auth-spec.mjs` (56 tests)

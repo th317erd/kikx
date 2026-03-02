@@ -63,7 +63,7 @@ export class AgentController extends ControllerAuthBase {
 
   async show({ params }) {
     let { Agent } = this.getCoreModels();
-    let agent     = await Agent.where.id.EQ(params.id).first();
+    let agent     = await Agent.where.id.EQ(params.agentId).first();
 
     if (!agent)
       this.throwNotFoundError('Agent not found');
@@ -77,7 +77,7 @@ export class AgentController extends ControllerAuthBase {
 
   async update({ params, body }) {
     let { Agent } = this.getCoreModels();
-    let agent     = await Agent.where.id.EQ(params.id).first();
+    let agent     = await Agent.where.id.EQ(params.agentId).first();
 
     if (!agent)
       this.throwNotFoundError('Agent not found');
@@ -118,7 +118,7 @@ export class AgentController extends ControllerAuthBase {
 
   async destroy({ params }) {
     let { Agent } = this.getCoreModels();
-    let agent     = await Agent.where.id.EQ(params.id).first();
+    let agent     = await Agent.where.id.EQ(params.agentId).first();
 
     if (!agent)
       this.throwNotFoundError('Agent not found');

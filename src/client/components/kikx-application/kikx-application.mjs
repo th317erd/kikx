@@ -10,6 +10,11 @@ import {
 } from '../../lib/router.mjs';
 
 import { profile } from '../../lib/store.mjs';
+import { setLocale } from '../../lib/i18n.mjs';
+import en from '../../lib/locales/en.mjs';
+
+// Pre-import all custom element components
+import '../registry.mjs';
 
 const PAGE_ELEMENTS = {
   login:    'kikx-login-page',
@@ -25,6 +30,8 @@ class KikxApplication extends HTMLElement {
   }
 
   connectedCallback() {
+    setLocale(en, 'en');
+
     defineRoute('/kikx/login',        'login');
     defineRoute('/kikx/',             'sessions', { requiresAuthentication: true });
     defineRoute('/kikx/sessions/:id', 'session',  { requiresAuthentication: true });

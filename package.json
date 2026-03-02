@@ -9,6 +9,7 @@
     "add-user": "node scripts/add-user.mjs"
   },
   "dependencies": {
+    "mythix": "^4.1.0",
     "mythix-orm": "^1.15.0",
     "mythix-orm-sqlite": "^3.0.0",
     "puppeteer": "^24.37.5",

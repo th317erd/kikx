@@ -3,7 +3,7 @@
 import { t } from '../../lib/i18n.mjs';
 import { profile } from '../../lib/store.mjs';
 import { navigate } from '../../lib/router.mjs';
-import { sendMagicLink, setAuthToken } from '../../lib/api.mjs';
+import { login, setAuthToken } from '../../lib/api.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -50,7 +50,7 @@ const TEMPLATE_HTML = `
       gap: var(--spacing-md, 16px);
     }
 
-    .email-input {
+    .form-input {
       width: 100%;
       padding: 12px 16px;
       background: var(--input-background, rgba(255, 255, 255, 0.05));
@@ -62,11 +62,11 @@ const TEMPLATE_HTML = `
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
-    .email-input::placeholder {
+    .form-input::placeholder {
       color: var(--input-placeholder, var(--text-muted, #606078));
     }
 
-    .email-input:focus {
+    .form-input:focus {
       border-color: var(--accent-primary, #00e5ff);
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
@@ -117,7 +117,8 @@ const TEMPLATE_HTML = `
     <div class="title"></div>
     <div class="subtitle"></div>
     <form>
-      <input class="email-input" type="email" autocomplete="email" />
+      <input class="form-input email-input" type="email" autocomplete="email" />
+      <input class="form-input password-input" type="password" autocomplete="current-password" />
       <button class="submit-button" type="submit"></button>
     </form>
     <div class="status-message"></div>
@@ -142,6 +143,7 @@ class KikxLoginPage extends HTMLElement {
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
 
     this._emailInput      = this.shadowRoot.querySelector('.email-input');
+    this._passwordInput   = this.shadowRoot.querySelector('.password-input');
     this._submitButton    = this.shadowRoot.querySelector('.submit-button');
     this._statusMessage   = this.shadowRoot.querySelector('.status-message');
     this._titleElement    = this.shadowRoot.querySelector('.title');
@@ -164,7 +166,8 @@ class KikxLoginPage extends HTMLElement {
     this._titleElement.textContent    = t('application.title');
     this._subtitleElement.textContent = t('login.subtitle');
     this._emailInput.placeholder      = t('login.emailPlaceholder');
-    this._submitButton.textContent    = t('login.submitButton');
+    this._passwordInput.placeholder   = 'Password';
+    this._submitButton.textContent    = 'Sign In';
   }
 
   _showError(message) {
@@ -191,21 +194,27 @@ class KikxLoginPage extends HTMLElement {
     event.preventDefault();
     this._hideStatus();
 
-    let email = this._emailInput.value.trim();
+    let email    = this._emailInput.value.trim();
+    let password = this._passwordInput.value;
 
     if (!email) {
       this._showError(t('login.error.emailRequired'));
       return;
     }
 
+    if (!password) {
+      this._showError('Password is required.');
+      return;
+    }
+
     this._setLoading(true);
 
     try {
-      let result       = await sendMagicLink(email);
-      let sessionToken = result.data.sessionToken;
+      let result = await login(email, password);
+      let token  = result.data.token;
 
-      setAuthToken(sessionToken);
-      profile.setUser({ email }, sessionToken);
+      setAuthToken(token);
+      profile.setUser(result.data.user, token);
       navigate('/kikx/', { replace: true });
     } catch (error) {
       let message = (error && error.body && error.body.message)

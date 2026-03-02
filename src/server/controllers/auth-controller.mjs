@@ -9,7 +9,7 @@ import { ControllerAuthBase } from './controller-auth-base.mjs';
 export class AuthController extends ControllerAuthBase {
   // Register and login are unauthenticated
   skipAuthorization(context) {
-    let methodName = context && context.methodName;
+    let methodName = context && (context.controllerMethod || context.methodName);
     return (methodName === 'register' || methodName === 'login');
   }
 

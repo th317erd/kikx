@@ -248,7 +248,7 @@ describe('SessionController: show', () => {
     let req        = createMockReq();
     let res        = createMockRes();
     let controller = createController(SessionController, { mockApp, req, res });
-    let result     = await controller.show({ params: { id: session.id } });
+    let result     = await controller.show({ params: { sessionId: session.id } });
 
     assert.ok(result.data.session);
     assert.equal(result.data.session.id, session.id);
@@ -260,7 +260,7 @@ describe('SessionController: show', () => {
     let controller = createController(SessionController, { mockApp, req, res });
 
     await assert.rejects(
-      () => controller.show({ params: { id: 'ses_nonexistent' } }),
+      () => controller.show({ params: { sessionId: 'ses_nonexistent' } }),
       (error) => error.message.includes('Session not found'),
     );
   });
@@ -272,7 +272,7 @@ describe('SessionController: update', () => {
     let req        = createMockReq();
     let res        = createMockRes();
     let controller = createController(SessionController, { mockApp, req, res });
-    let result     = await controller.update({ params: { id: session.id }, body: { name: 'After Update' } });
+    let result     = await controller.update({ params: { sessionId: session.id }, body: { name: 'After Update' } });
 
     assert.equal(result.data.session.name, 'After Update');
   });
@@ -284,7 +284,7 @@ describe('SessionController: destroy', () => {
     let req        = createMockReq();
     let res        = createMockRes();
     let controller = createController(SessionController, { mockApp, req, res });
-    let result     = await controller.destroy({ params: { id: session.id } });
+    let result     = await controller.destroy({ params: { sessionId: session.id } });
 
     assert.deepEqual(result.data, { deleted: true });
 
@@ -299,7 +299,7 @@ describe('SessionController: archive', () => {
     let req        = createMockReq();
     let res        = createMockRes();
     let controller = createController(SessionController, { mockApp, req, res });
-    let result     = await controller.archive({ params: { id: session.id } });
+    let result     = await controller.archive({ params: { sessionId: session.id } });
 
     assert.equal(result.data.session.archived, true);
   });
@@ -311,7 +311,7 @@ describe('SessionController: revive', () => {
     let req        = createMockReq();
     let res        = createMockRes();
     let controller = createController(SessionController, { mockApp, req, res });
-    let result     = await controller.revive({ params: { id: session.id } });
+    let result     = await controller.revive({ params: { sessionId: session.id } });
 
     assert.equal(result.data.session.archived, false);
   });
@@ -382,7 +382,7 @@ describe('ParticipantController: destroy', () => {
     let req         = createMockReq();
     let res         = createMockRes();
     let controller  = createController(ParticipantController, { mockApp, req, res });
-    let result      = await controller.destroy({ params: { id: participant.id } });
+    let result      = await controller.destroy({ params: { participantId: participant.id } });
 
     assert.deepEqual(result.data, { deleted: true });
   });
@@ -492,7 +492,7 @@ describe('AgentController: show', () => {
     let req        = createMockReq();
     let res        = createMockRes();
     let controller = createController(AgentController, { mockApp, req, res });
-    let result     = await controller.show({ params: { id: agent.id } });
+    let result     = await controller.show({ params: { agentId: agent.id } });
 
     assert.ok(result.data.agent);
     assert.equal(result.data.agent.id, agent.id);
@@ -504,7 +504,7 @@ describe('AgentController: show', () => {
     let controller = createController(AgentController, { mockApp, req, res });
 
     await assert.rejects(
-      () => controller.show({ params: { id: 'agt_nonexistent' } }),
+      () => controller.show({ params: { agentId: 'agt_nonexistent' } }),
       (error) => error.message.includes('Agent not found'),
     );
   });
@@ -523,7 +523,7 @@ describe('AgentController: update', () => {
     let res        = createMockRes();
     let controller = createController(AgentController, { mockApp, req, res });
     let result     = await controller.update({
-      params: { id: agent.id },
+      params: { agentId: agent.id },
       body:   { name: 'test-updated-name', instructions: 'Be helpful' },
     });
 
@@ -544,7 +544,7 @@ describe('AgentController: destroy', () => {
     let req        = createMockReq();
     let res        = createMockRes();
     let controller = createController(AgentController, { mockApp, req, res });
-    let result     = await controller.destroy({ params: { id: agent.id } });
+    let result     = await controller.destroy({ params: { agentId: agent.id } });
 
     assert.deepEqual(result.data, { deleted: true });
 
@@ -769,7 +769,7 @@ describe('Error handling', () => {
     let controller = createController(SessionController, { mockApp, req, res });
 
     await assert.rejects(
-      () => controller.destroy({ params: { id: 'ses_nonexistent_for_delete' } }),
+      () => controller.destroy({ params: { sessionId: 'ses_nonexistent_for_delete' } }),
     );
   });
 
@@ -829,11 +829,11 @@ describe('DmController', () => {
       pluginID:       'test-agent',
     });
 
-    let req = createMockReq({ params: { id: agent.id } });
+    let req = createMockReq({ params: { agentId: agent.id } });
     let res = createMockRes();
     let controller = createController(DmController, { mockApp, req, res });
 
-    let result = await controller.getOrCreate({ params: { id: agent.id } });
+    let result = await controller.getOrCreate({ params: { agentId: agent.id } });
     assert.ok(result.data.session);
     assert.equal(result.data.session.type, 'dm');
     assert.equal(result.data.session.dmAgentID, agent.id);
@@ -849,15 +849,15 @@ describe('DmController', () => {
       pluginID:       'test-agent',
     });
 
-    let req = createMockReq({ params: { id: agent.id } });
+    let req = createMockReq({ params: { agentId: agent.id } });
     let res = createMockRes();
 
     let controller1 = createController(DmController, { mockApp, req, res });
-    let result1     = await controller1.getOrCreate({ params: { id: agent.id } });
+    let result1     = await controller1.getOrCreate({ params: { agentId: agent.id } });
     let sessionID1  = result1.data.session.id;
 
     let controller2 = createController(DmController, { mockApp, req, res: createMockRes() });
-    let result2     = await controller2.getOrCreate({ params: { id: agent.id } });
+    let result2     = await controller2.getOrCreate({ params: { agentId: agent.id } });
     let sessionID2  = result2.data.session.id;
 
     assert.equal(sessionID1, sessionID2);
@@ -873,11 +873,11 @@ describe('DmController', () => {
       pluginID:       'test-agent',
     });
 
-    let req = createMockReq({ params: { id: agent.id } });
+    let req = createMockReq({ params: { agentId: agent.id } });
     let res = createMockRes();
     let controller = createController(DmController, { mockApp, req, res });
 
-    let result = await controller.getSummary({ params: { id: agent.id } });
+    let result = await controller.getSummary({ params: { agentId: agent.id } });
     assert.equal(result.data.summary, null);
   });
 
@@ -891,12 +891,12 @@ describe('DmController', () => {
       pluginID:       'test-agent',
     });
 
-    let req = createMockReq({ params: { id: agent.id } });
+    let req = createMockReq({ params: { agentId: agent.id } });
     let res = createMockRes();
     let controller = createController(DmController, { mockApp, req, res });
 
     let result = await controller.updateSummary({
-      params: { id: agent.id },
+      params: { agentId: agent.id },
       body:   { summary: 'Always respond in bullet points' },
     });
 
@@ -908,23 +908,23 @@ describe('DmController', () => {
   });
 
   it('should return 404 for non-existent agent on getSummary', async () => {
-    let req = createMockReq({ params: { id: 'agt_nonexistent' } });
+    let req = createMockReq({ params: { agentId: 'agt_nonexistent' } });
     let res = createMockRes();
     let controller = createController(DmController, { mockApp, req, res });
 
     await assert.rejects(
-      () => controller.getSummary({ params: { id: 'agt_nonexistent' } }),
+      () => controller.getSummary({ params: { agentId: 'agt_nonexistent' } }),
       (error) => error.message.includes('not found') || error.statusCode === 404,
     );
   });
 
   it('should return 404 for non-existent agent on getOrCreate', async () => {
-    let req = createMockReq({ params: { id: 'agt_ghost' } });
+    let req = createMockReq({ params: { agentId: 'agt_ghost' } });
     let res = createMockRes();
     let controller = createController(DmController, { mockApp, req, res });
 
     await assert.rejects(
-      () => controller.getOrCreate({ params: { id: 'agt_ghost' } }),
+      () => controller.getOrCreate({ params: { agentId: 'agt_ghost' } }),
       (error) => error.message.includes('not found') || error.statusCode === 404,
     );
   });

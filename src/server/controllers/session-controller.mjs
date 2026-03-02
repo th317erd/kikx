@@ -43,7 +43,7 @@ export class SessionController extends ControllerAuthBase {
 
   async show({ params }) {
     let sessionManager = this.getSessionManager();
-    let session        = await sessionManager.getSession(params.id);
+    let session        = await sessionManager.getSession(params.sessionId);
 
     if (!session)
       this.throwNotFoundError('Session not found');
@@ -57,7 +57,7 @@ export class SessionController extends ControllerAuthBase {
 
   async update({ params, body }) {
     let sessionManager = this.getSessionManager();
-    let session        = await sessionManager.updateSession(params.id, body || {});
+    let session        = await sessionManager.updateSession(params.sessionId, body || {});
 
     return { data: { session } };
   }
@@ -69,7 +69,7 @@ export class SessionController extends ControllerAuthBase {
   async destroy({ params }) {
     let sessionManager = this.getSessionManager();
 
-    await sessionManager.deleteSession(params.id);
+    await sessionManager.deleteSession(params.sessionId);
 
     return { data: { deleted: true } };
   }
@@ -80,7 +80,7 @@ export class SessionController extends ControllerAuthBase {
 
   async archive({ params }) {
     let sessionManager = this.getSessionManager();
-    let session        = await sessionManager.archiveSession(params.id);
+    let session        = await sessionManager.archiveSession(params.sessionId);
 
     return { data: { session } };
   }
@@ -91,7 +91,7 @@ export class SessionController extends ControllerAuthBase {
 
   async revive({ params }) {
     let sessionManager = this.getSessionManager();
-    let session        = await sessionManager.reviveSession(params.id);
+    let session        = await sessionManager.reviveSession(params.sessionId);
 
     return { data: { session } };
   }

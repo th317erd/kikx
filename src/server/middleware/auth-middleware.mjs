@@ -63,7 +63,7 @@ function extractToken(request) {
 // --- Middleware ---
 
 export async function authMiddleware(request, response, next) {
-  let application = request.application || (response && response.application);
+  let application = request.mythixApplication || request.application || (response && response.application);
 
   if (!application)
     throw new AuthError('Application not available in middleware', 'AUTH_ERROR');

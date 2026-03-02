@@ -6,7 +6,7 @@
 let authToken = null;
 let onUnauthorized = null;
 
-const BASE_URL = '/kikx/api/v1';
+const BASE_URL = '/kikx/api/v2';
 
 export function setAuthToken(token) { authToken = token; }
 export function getAuthToken() { return authToken; }
@@ -66,20 +66,16 @@ async function request(method, path, body, options = {}) {
 
 // Auth endpoints
 
-export function sendMagicLink(email) {
-  return request('POST', '/auth/login', { email });
+export function login(email, password) {
+  return request('POST', '/auth/login', { email, password });
 }
 
-export function verifyToken(token) {
-  return request('POST', '/auth/verify', { token });
+export function registerUser({ email, password, firstName, lastName, organizationName }) {
+  return request('POST', '/auth/register', { email, password, firstName, lastName, organizationName });
 }
 
-export function logout() {
-  return request('GET', '/auth/logout');
-}
-
-export function registerUser({ email, firstName, lastName }) {
-  return request('POST', '/user', { email, firstName, lastName });
+export function getMe() {
+  return request('GET', '/auth/me');
 }
 
 // Session endpoints

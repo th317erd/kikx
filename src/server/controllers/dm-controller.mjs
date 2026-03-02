@@ -17,7 +17,7 @@ export class DmController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async getOrCreate({ params }) {
-    let agentId        = params.id;
+    let agentId        = params.agentId;
     let { Agent }      = this.getCoreModels();
     let sessionManager = this.getSessionManager();
 
@@ -54,7 +54,7 @@ export class DmController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async getSummary({ params }) {
-    let agentId   = params.id;
+    let agentId   = params.agentId;
     let { Agent } = this.getCoreModels();
 
     let agent = await Agent.where.id.EQ(agentId).first();
@@ -69,7 +69,7 @@ export class DmController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async updateSummary({ params, body }) {
-    let agentId   = params.id;
+    let agentId   = params.agentId;
     let { Agent } = this.getCoreModels();
 
     let agent = await Agent.where.id.EQ(agentId).first();
@@ -88,7 +88,7 @@ export class DmController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async summarize({ params }) {
-    let agentId   = params.id;
+    let agentId   = params.agentId;
     let core      = this.getCore();
     let { Agent } = this.getCoreModels();
 
