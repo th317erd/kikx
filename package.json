@@ -5,7 +5,8 @@
   "type": "module",
   "license": "GPL-3.0",
   "scripts": {
-    "test": "node --test --test-force-exit --test-timeout=30000 spec/**/*-spec.mjs"
+    "test": "node --test --test-force-exit --test-timeout=30000 spec/**/*-spec.mjs",
+    "add-user": "node scripts/add-user.mjs"
   },
   "dependencies": {
     "mythix-orm": "^1.15.0",

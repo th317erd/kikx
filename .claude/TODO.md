@@ -55,4 +55,4 @@ Build order: 21 → 24r → 25 → 22 → 23 → 20
 
 ## Final
 - [x] Run full test suite (`npm test`) — all non-DB tests pass (DB tests require Node 22.5+)
-- [ ] Git commit
+- [x] Git commit (4b626a6)
