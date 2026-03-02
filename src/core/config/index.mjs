@@ -29,6 +29,7 @@ export const DEFAULT_CONFIG = {
   plugins: {
     paths:    [],       // Additional plugin directories
     disabled: [],       // Plugin names to skip
+    modules:  null,     // Map of { name: module } for in-memory loading (testing)
   },
 
   // Data directory for persistent storage

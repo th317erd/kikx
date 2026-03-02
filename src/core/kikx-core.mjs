@@ -10,15 +10,21 @@
 import { CascadingContext }             from './context/index.mjs';
 import { DEFAULT_CONFIG, mergeConfig } from './config/index.mjs';
 import { DEFAULT_MODELS }              from './models/index.mjs';
+import { PluginLoader, FilesystemPluginProvider, InMemoryPluginProvider } from './plugin-loader/index.mjs';
+import { PermissionEngine } from './permissions/index.mjs';
+import { mkdir }            from 'node:fs/promises';
+import { join }             from 'node:path';
+import { fileURLToPath }    from 'node:url';
 
 export class KikxCore {
   constructor(config) {
     this._config     = mergeConfig(DEFAULT_CONFIG, config);
     this._context    = new CascadingContext(this._config);
-    this._connection = null;
-    this._models     = null;
-    this._started    = false;
-    this._plugins    = new Map();
+    this._connection       = null;
+    this._models           = null;
+    this._started          = false;
+    this._pluginLoader     = null;
+    this._permissionEngine = null;
 
     // Store core reference on context
     this._context.setProperty('core', this);
@@ -35,6 +41,13 @@ export class KikxCore {
     // Initialize database connection
     await this._initializeDatabase();
 
+    // Initialize permission engine (after DB, before plugins)
+    this._permissionEngine = new PermissionEngine(this._context);
+    this._context.setProperty('permissionEngine', this._permissionEngine);
+
+    // Load plugins
+    await this._loadPlugins();
+
     this._started = true;
   }
 
@@ -42,21 +55,14 @@ export class KikxCore {
     if (!this._started)
       return;
 
-    // Teardown plugins (call teardown closures in reverse order)
-    let pluginNames = Array.from(this._plugins.keys()).reverse();
-    for (let name of pluginNames) {
-      let plugin = this._plugins.get(name);
-      if (typeof plugin.teardown === 'function') {
-        try {
-          await plugin.teardown();
-        } catch (error) {
-          // Log but don't throw during teardown
-          console.error(`Plugin teardown error (${name}):`, error);
-        }
-      }
-    }
+    // Teardown plugins (reverse order)
+    if (this._pluginLoader) {
+      let loaded = this._pluginLoader.getLoadedPlugins();
+      for (let name of [...loaded].reverse())
+        await this._pluginLoader.unloadPlugin(name);
 
-    this._plugins.clear();
+      this._pluginLoader = null;
+    }
 
     // Close database connection
     if (this._connection) {
@@ -191,22 +197,77 @@ export class KikxCore {
     return this._started;
   }
 
-  // ---------------------------------------------------------------------------
-  // Plugin Management (skeleton — full implementation in Wave K, Step 41)
-  // ---------------------------------------------------------------------------
-
-  registerPlugin(name, plugin) {
-    if (this._plugins.has(name))
-      console.warn(`Plugin "${name}" is being overridden`);
-
-    this._plugins.set(name, plugin);
+  getPermissionEngine() {
+    return this._permissionEngine;
   }
 
-  getPlugin(name) {
-    return this._plugins.get(name) || null;
+  // ---------------------------------------------------------------------------
+  // Plugin Loading
+  // ---------------------------------------------------------------------------
+
+  async _loadPlugins() {
+    let config     = this._config;
+    let pluginDirs = [];
+
+    // 1. Internal plugins — relative to this source file
+    let coreDir             = fileURLToPath(new URL('.', import.meta.url));
+    let internalPluginsPath = join(coreDir, 'internal-plugins');
+    pluginDirs.push(internalPluginsPath);
+
+    // 2. External plugins from dataDirectory
+    let dataDir = config.dataDirectory;
+    if (dataDir) {
+      let externalPluginsPath = join(dataDir, 'plugins');
+      await mkdir(externalPluginsPath, { recursive: true });
+      pluginDirs.push(externalPluginsPath);
+    }
+
+    // 3. Additional paths from config.plugins.paths
+    let additionalPaths = (config.plugins && config.plugins.paths) || [];
+    for (let p of additionalPaths)
+      pluginDirs.push(p);
+
+    // Build disabled set
+    let disabled = new Set((config.plugins && config.plugins.disabled) || []);
+
+    // Create loader
+    let loader   = new PluginLoader(this._context, { disabled });
+    let provider = new FilesystemPluginProvider(pluginDirs);
+    loader.addProvider(provider);
+
+    // In-memory plugins (for testing)
+    let modules = config.plugins && config.plugins.modules;
+    if (modules) {
+      let memProvider = new InMemoryPluginProvider(modules);
+      loader.addProvider(memProvider);
+    }
+
+    await loader.loadAll();
+
+    this._pluginLoader = loader;
+    this._context.setProperty('pluginLoader', loader);
+    this._context.setProperty('pluginRegistry', loader.getRegistry());
   }
 
-  getPlugins() {
-    return new Map(this._plugins);
+  // ---------------------------------------------------------------------------
+  // Plugin Accessors
+  // ---------------------------------------------------------------------------
+
+  getAgentType(pluginID) {
+    if (!this._pluginLoader)
+      return null;
+
+    return this._pluginLoader.getRegistry().getAgentType(pluginID);
+  }
+
+  getPluginRegistry() {
+    if (!this._pluginLoader)
+      return null;
+
+    return this._pluginLoader.getRegistry();
+  }
+
+  getPluginLoader() {
+    return this._pluginLoader;
   }
 }

@@ -30,10 +30,12 @@ export class InteractionController extends ControllerAuthBase {
     if (!agent)
       this.throwNotFoundError('Agent not found');
 
-    // Get agent plugin
-    let agentPlugin = core.getPlugin(agent.pluginID);
-    if (!agentPlugin)
-      this.throwBadRequestError(`No plugin registered for: ${agent.pluginID}`);
+    // Get agent plugin class and instantiate
+    let AgentClass = core.getAgentType(agent.pluginID);
+    if (!AgentClass)
+      this.throwBadRequestError(`No agent plugin registered for: ${agent.pluginID}`);
+
+    let agentPlugin = new AgentClass(core.getContext());
 
     // Resolve API key if encrypted
     let resolvedAgent = { ...agent.toJSON ? agent.toJSON() : agent };
@@ -49,6 +51,31 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
+    // Build permission + tool execution callbacks
+    let permissionEngine = core.getPermissionEngine();
+    let pluginRegistry   = core.getPluginRegistry();
+
+    let checkPermission = async (toolName, toolArgs) => {
+      if (!permissionEngine)
+        return true; // No engine = needs approval
+
+      return permissionEngine.checkPermission(toolName, toolArgs, {
+        organizationID: agent.organizationID,
+        scope:          'session',
+        scopeID:        params.sessionId,
+      });
+    };
+
+    let executeTool = async (toolName, toolArgs) => {
+      let ToolClass = pluginRegistry.getTool(toolName);
+      if (!ToolClass)
+        throw new Error(`Unknown tool: ${toolName}`);
+
+      let toolInstance = new ToolClass(core.getContext());
+
+      return toolInstance.execute(toolArgs);
+    };
+
     // Start interaction (non-blocking — frames emitted via SSE)
     let interactionID = await interactionLoop.startInteraction(params.sessionId, {
       agentPlugin,
@@ -56,6 +83,8 @@ export class InteractionController extends ControllerAuthBase {
       userMessage: message,
       authorType:  'user',
       authorID:    this.request.userId,
+      checkPermission,
+      executeTool,
     });
 
     this.setStatusCode(202);

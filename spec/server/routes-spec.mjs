@@ -616,7 +616,7 @@ describe('InteractionController: sendMessage', () => {
         params: { sessionId: 'ses_test' },
         body:   { message: 'hello', agentId: agent.id },
       }),
-      (error) => error.message.includes('No plugin registered'),
+      (error) => error.message.includes('No agent plugin registered'),
     );
   });
 });

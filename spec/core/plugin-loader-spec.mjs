@@ -15,6 +15,8 @@ import {
   FilesystemPluginProvider,
 } from '../../src/core/plugin-loader/index.mjs';
 
+import { AgentInterface } from '../../src/core/plugins/agent-interface.mjs';
+
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -526,6 +528,78 @@ describe('PluginRegistry', () => {
     });
   });
 
+  // ---- Agent Types ----
+
+  describe('registerAgentType', () => {
+    it('should register and retrieve an agent type class', () => {
+      class TestAgent extends AgentInterface {
+        static pluginId = 'test-agent';
+      }
+
+      registry.registerAgentType('test', TestAgent);
+      assert.equal(registry.getAgentType('test'), TestAgent);
+    });
+
+    it('should warn on override (not throw)', () => {
+      let warnings = [];
+      let original = console.warn;
+      console.warn = (...args) => warnings.push(args.join(' '));
+
+      try {
+        class AgentA extends AgentInterface {}
+        class AgentB extends AgentInterface {}
+
+        registry.registerAgentType('dup', AgentA);
+        registry.registerAgentType('dup', AgentB);
+
+        assert.equal(registry.getAgentType('dup'), AgentB);
+        assert.equal(warnings.length, 1);
+        assert.ok(warnings[0].includes('dup'));
+        assert.ok(warnings[0].includes('overridden'));
+      } finally {
+        console.warn = original;
+      }
+    });
+
+    it('should throw if id is not a non-empty string', () => {
+      class TestAgent extends AgentInterface {}
+
+      assert.throws(
+        () => registry.registerAgentType('', TestAgent),
+        { message: 'Agent type id must be a non-empty string' },
+      );
+
+      assert.throws(
+        () => registry.registerAgentType(123, TestAgent),
+        { message: 'Agent type id must be a non-empty string' },
+      );
+    });
+
+    it('should throw if class does not extend PluginInterface', () => {
+      class NotAnAgent {}
+
+      assert.throws(
+        () => registry.registerAgentType('bad', NotAnAgent),
+        { message: 'Agent type "bad" must extend PluginInterface' },
+      );
+    });
+
+    it('should return null for unknown id', () => {
+      assert.equal(registry.getAgentType('unknown'), null);
+    });
+
+    it('should return a defensive copy from getAgentTypes()', () => {
+      class TestAgent extends AgentInterface {}
+
+      registry.registerAgentType('copy-test', TestAgent);
+      let types = registry.getAgentTypes();
+      types.delete('copy-test');
+
+      // Internal map should still have it
+      assert.equal(registry.getAgentType('copy-test'), TestAgent);
+    });
+  });
+
   // ---- Custom Elements ----
 
   describe('registerCustomElement', () => {
@@ -631,6 +705,7 @@ describe('PluginLoader', () => {
         assert.ok(context.registerTool);
         assert.ok(context.registerCommand);
         assert.ok(context.registerCustomElement);
+        assert.ok(context.registerAgentType);
         assert.equal(context.PluginInterface, PluginInterface);
       },
     };
@@ -745,6 +820,23 @@ describe('PluginLoader', () => {
 
     let registry = loader.getRegistry();
     assert.ok(registry.getCustomElements().has('kikx-chart'));
+  });
+
+  it('should allow plugin to register agent types via context', async () => {
+    class TestAgent extends AgentInterface {
+      static pluginId = 'test-agent';
+    }
+
+    let module = {
+      setup: (context) => {
+        context.registerAgentType('test', TestAgent);
+      },
+    };
+
+    await loader.loadPlugin('agent-plugin', module);
+
+    let registry = loader.getRegistry();
+    assert.equal(registry.getAgentType('test'), TestAgent);
   });
 
   it('should set pluginName on context passed to setup', async () => {
@@ -879,6 +971,36 @@ describe('PluginLoader', () => {
   it('should return empty array when no providers', async () => {
     let loaded = await loader.loadAll();
     assert.deepEqual(loaded, []);
+  });
+
+  it('should skip plugins in disabled set during loadAll', async () => {
+    let disabledLoader = new PluginLoader(null, { disabled: new Set(['skip-me']) });
+    let provider       = new InMemoryPluginProvider({
+      'skip-me':  { setup: () => {} },
+      'load-me':  { setup: () => {} },
+    });
+
+    disabledLoader.addProvider(provider);
+    let loaded = await disabledLoader.loadAll();
+
+    assert.deepEqual(loaded, ['load-me']);
+    assert.ok(!disabledLoader.isLoaded('skip-me'));
+    assert.ok(disabledLoader.isLoaded('load-me'));
+  });
+
+  it('should load all plugins when disabled set is empty', async () => {
+    let disabledLoader = new PluginLoader(null, { disabled: new Set() });
+    let provider       = new InMemoryPluginProvider({
+      'alpha': { setup: () => {} },
+      'beta':  { setup: () => {} },
+    });
+
+    disabledLoader.addProvider(provider);
+    let loaded = await disabledLoader.loadAll();
+
+    assert.equal(loaded.length, 2);
+    assert.ok(disabledLoader.isLoaded('alpha'));
+    assert.ok(disabledLoader.isLoaded('beta'));
   });
 
   // ---- getLoadedPlugins ----

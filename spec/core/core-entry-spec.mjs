@@ -12,6 +12,9 @@ import {
   mergeConfig,
 } from '../../src/core/index.mjs';
 
+import { AgentInterface }  from '../../src/core/plugins/agent-interface.mjs';
+import { PluginInterface } from '../../src/core/plugin-loader/plugin-interface.mjs';
+
 // =============================================================================
 // createKikxCore + KikxCore
 // =============================================================================
@@ -305,77 +308,140 @@ describe('KikxCore context', () => {
 });
 
 // =============================================================================
-// KikxCore plugin management (skeleton)
+// KikxCore plugin loading (via PluginLoader)
 // =============================================================================
-describe('KikxCore plugin management', () => {
+describe('KikxCore plugin loading', () => {
   let core;
-
-  beforeEach(() => {
-    core = createKikxCore();
-  });
 
   afterEach(async () => {
     if (core && core.isStarted())
       await core.stop();
   });
 
-  it('should register a plugin', () => {
-    let teardown = () => {};
-    core.registerPlugin('test-plugin', { teardown });
-    assert.ok(core.getPlugin('test-plugin'));
-    assert.equal(core.getPlugin('test-plugin').teardown, teardown);
-  });
-
-  it('should return null for unknown plugin', () => {
-    assert.equal(core.getPlugin('nonexistent'), null);
-  });
-
-  it('should override plugin with warning', () => {
-    let warnings = [];
-    let originalWarn = console.warn;
-    console.warn = (...args) => warnings.push(args.join(' '));
-
-    try {
-      core.registerPlugin('dupe', { teardown: () => {} });
-      core.registerPlugin('dupe', { teardown: () => {} });
-      assert.ok(warnings.some((w) => w.includes('overridden')));
-    } finally {
-      console.warn = originalWarn;
+  it('should load plugins from config.plugins.modules on start', async () => {
+    class TestAgent extends AgentInterface {
+      static pluginId = 'test-agent';
     }
+
+    core = createKikxCore({
+      plugins: {
+        modules: {
+          'test-agent-plugin': {
+            setup: (ctx) => {
+              ctx.registerAgentType('test-agent', TestAgent);
+            },
+          },
+        },
+      },
+    });
+
+    await core.start();
+    assert.equal(core.getAgentType('test-agent'), TestAgent);
+  });
+
+  it('should return null for unregistered agent type', async () => {
+    core = createKikxCore();
+    await core.start();
+    assert.equal(core.getAgentType('nonexistent'), null);
+  });
+
+  it('should return null for getAgentType before start', () => {
+    core = createKikxCore();
+    assert.equal(core.getAgentType('anything'), null);
   });
 
   it('should call teardown on stop', async () => {
     let tornDown = false;
 
-    await core.start();
-    core.registerPlugin('lifecycle-test', {
-      teardown: () => { tornDown = true; },
+    core = createKikxCore({
+      plugins: {
+        modules: {
+          'teardown-plugin': {
+            setup: () => () => { tornDown = true; },
+          },
+        },
+      },
     });
 
+    await core.start();
     await core.stop();
     assert.equal(tornDown, true);
   });
 
-  it('should teardown plugins in reverse registration order', async () => {
-    let order = [];
+  it('should skip disabled plugins', async () => {
+    class TestAgent extends AgentInterface {
+      static pluginId = 'disabled-agent';
+    }
+
+    core = createKikxCore({
+      plugins: {
+        disabled: ['skip-plugin'],
+        modules: {
+          'skip-plugin': {
+            setup: (ctx) => {
+              ctx.registerAgentType('skip-agent', TestAgent);
+            },
+          },
+          'keep-plugin': {
+            setup: () => {},
+          },
+        },
+      },
+    });
 
     await core.start();
-    core.registerPlugin('first', { teardown: () => order.push('first') });
-    core.registerPlugin('second', { teardown: () => order.push('second') });
-    core.registerPlugin('third', { teardown: () => order.push('third') });
-
-    await core.stop();
-    assert.deepEqual(order, [ 'third', 'second', 'first' ]);
+    assert.equal(core.getAgentType('skip-agent'), null);
+    assert.ok(core.getPluginLoader().isLoaded('keep-plugin'));
+    assert.ok(!core.getPluginLoader().isLoaded('skip-plugin'));
   });
 
-  it('should return all plugins via getPlugins()', () => {
-    core.registerPlugin('a', { teardown: () => {} });
-    core.registerPlugin('b', { teardown: () => {} });
+  it('should expose plugin registry via getPluginRegistry()', async () => {
+    core = createKikxCore();
+    await core.start();
+    let registry = core.getPluginRegistry();
+    assert.ok(registry);
+    assert.equal(typeof registry.getAgentType, 'function');
+  });
 
-    let plugins = core.getPlugins();
-    assert.equal(plugins.size, 2);
-    assert.ok(plugins.has('a'));
-    assert.ok(plugins.has('b'));
+  it('should return null for getPluginRegistry before start', () => {
+    core = createKikxCore();
+    assert.equal(core.getPluginRegistry(), null);
+  });
+
+  it('should expose plugin loader via getPluginLoader()', async () => {
+    core = createKikxCore();
+    await core.start();
+    assert.ok(core.getPluginLoader());
+    assert.equal(typeof core.getPluginLoader().isLoaded, 'function');
+  });
+
+  it('should not have old skeleton methods (registerPlugin, getPlugin, getPlugins)', () => {
+    core = createKikxCore();
+    assert.equal(typeof core.registerPlugin, 'undefined');
+    assert.equal(typeof core.getPlugin, 'undefined');
+    assert.equal(typeof core.getPlugins, 'undefined');
+  });
+
+  it('should set pluginLoader and pluginRegistry on context', async () => {
+    core = createKikxCore();
+    await core.start();
+    let context = core.getContext();
+    assert.ok(context.getProperty('pluginLoader'));
+    assert.ok(context.getProperty('pluginRegistry'));
+  });
+
+  it('should set permissionEngine on context after start', async () => {
+    core = createKikxCore();
+    await core.start();
+    let context = core.getContext();
+    assert.ok(context.getProperty('permissionEngine'));
+  });
+
+  it('should expose permissionEngine via getPermissionEngine()', async () => {
+    core = createKikxCore();
+    await core.start();
+    assert.ok(core.getPermissionEngine());
+    assert.equal(typeof core.getPermissionEngine().checkPermission, 'function');
   });
 });
 

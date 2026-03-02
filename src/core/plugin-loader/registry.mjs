@@ -14,6 +14,7 @@ export class PluginRegistry {
     this._tools          = new Map();
     this._commands       = new Map();
     this._customElements = new Set();
+    this._agentTypes     = new Map();
   }
 
   // ---------------------------------------------------------------------------
@@ -64,6 +65,31 @@ export class PluginRegistry {
 
   getCommands() {
     return new Map(this._commands);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Agent Types
+  // ---------------------------------------------------------------------------
+
+  registerAgentType(id, AgentClass) {
+    if (!id || typeof id !== 'string')
+      throw new Error('Agent type id must be a non-empty string');
+
+    if (!AgentClass || !(AgentClass.prototype instanceof PluginInterface))
+      throw new Error(`Agent type "${id}" must extend PluginInterface`);
+
+    if (this._agentTypes.has(id))
+      console.warn(`Agent type "${id}" is being overridden`);
+
+    this._agentTypes.set(id, AgentClass);
+  }
+
+  getAgentType(id) {
+    return this._agentTypes.get(id) || null;
+  }
+
+  getAgentTypes() {
+    return new Map(this._agentTypes);
   }
 
   // ---------------------------------------------------------------------------

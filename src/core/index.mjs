@@ -20,7 +20,9 @@ export {
   Session,
   Participant,
   Frame,
+  PermissionRule,
 }  from './models/index.mjs';
+export { PermissionEngine } from './permissions/index.mjs';
 
 import { KikxCore } from './kikx-core.mjs';
 

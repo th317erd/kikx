@@ -1,9 +1,9 @@
-# Hero - /hero/ path (for multi-app deployment)
+# Kikx - /kikx/ path (for multi-app deployment)
 # Static files served by nginx. API + WS proxied to Mythix server.
 
 # WebSocket endpoint → Mythix server
-location /hero/ws {
-  rewrite ^/hero/ws$ /ws break;
+location /kikx/ws {
+  rewrite ^/kikx/ws$ /ws break;
   proxy_pass http://127.0.0.1:8089;
   proxy_http_version 1.1;
   proxy_set_header Host $host;
@@ -21,8 +21,8 @@ location /hero/ws {
 }
 
 # API endpoints → Mythix server
-location /hero/api/ {
-  rewrite ^/hero/api/(.*)$ /api/$1 break;
+location /kikx/api/ {
+  rewrite ^/kikx/api/(.*)$ /api/$1 break;
   proxy_pass http://127.0.0.1:8089;
   proxy_http_version 1.1;
   proxy_set_header Host $host;
@@ -46,34 +46,34 @@ location /hero/api/ {
   # Disable gzip for streaming (causes buffering)
   gzip off;
 
-  # Rewrite Location headers to include /hero/ prefix
-  proxy_redirect / /hero/;
+  # Rewrite Location headers to include /kikx/ prefix
+  proxy_redirect / /kikx/;
 }
 
 # Shared libraries (frame-manager, etc.) — served from src/shared/
-location /hero/shared/ {
-  alias /home/wyatt/Projects/hero/src/shared/;
+location /kikx/shared/ {
+  alias /home/wyatt/Projects/kikx-workspace/kikx/src/shared/;
   expires 1h;
   add_header Cache-Control "public, no-transform";
 
   # Block spec/ directory from being served
-  location ~* /hero/shared/spec/ {
+  location ~* /kikx/shared/spec/ {
     return 404;
   }
 }
 
 # Static client files — served from src/client/
 # SPA fallback: try_files for history API routing
-location /hero/ {
-  alias /home/wyatt/Projects/hero/src/client/;
+location /kikx/ {
+  alias /home/wyatt/Projects/kikx-workspace/kikx/src/client/;
   expires 1h;
   add_header Cache-Control "public, no-transform";
 
   # Block spec/ directory from being served
-  location ~* /hero/spec/ {
+  location ~* /kikx/spec/ {
     return 404;
   }
 
   # SPA history API fallback — unmatched paths serve index.html
-  try_files $uri $uri/ /home/wyatt/Projects/hero/src/client/index.html;
+  try_files $uri $uri/ /home/wyatt/Projects/kikx-workspace/kikx/src/client/index.html;
 }

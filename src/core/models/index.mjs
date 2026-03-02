@@ -16,14 +16,16 @@ export { Agent }                   from './agent-model.mjs';
 export { Session }                 from './session-model.mjs';
 export { Participant }             from './participant-model.mjs';
 export { Frame }                   from './frame-model.mjs';
+export { PermissionRule }          from './permission-rule-model.mjs';
 
-import { Organization } from './organization-model.mjs';
-import { User }         from './user-model.mjs';
-import { Role }         from './role-model.mjs';
-import { Agent }        from './agent-model.mjs';
-import { Session }      from './session-model.mjs';
-import { Participant }  from './participant-model.mjs';
-import { Frame }        from './frame-model.mjs';
+import { Organization }   from './organization-model.mjs';
+import { User }           from './user-model.mjs';
+import { Role }           from './role-model.mjs';
+import { Agent }          from './agent-model.mjs';
+import { Session }        from './session-model.mjs';
+import { Participant }    from './participant-model.mjs';
+import { Frame }          from './frame-model.mjs';
+import { PermissionRule } from './permission-rule-model.mjs';
 
 // Default model set for core
 export const DEFAULT_MODELS = [
@@ -34,4 +36,5 @@ export const DEFAULT_MODELS = [
   Session,
   Participant,
   Frame,
+  PermissionRule,
 ];

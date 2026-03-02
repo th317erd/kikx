@@ -47,6 +47,9 @@ export class PluginLoader {
       let names = await provider.discover();
 
       for (let name of names) {
+        if (this._options.disabled && this._options.disabled.has(name))
+          continue;
+
         let module = await provider.load(name);
         await this.loadPlugin(name, module);
         results.push(name);
@@ -116,9 +119,10 @@ export class PluginLoader {
       context:              this._context,
       PluginInterface,
       AgentInterface,
-      registerTool:         (name, ToolClass) => registry.registerTool(name, ToolClass),
-      registerCommand:      (name, handler)   => registry.registerCommand(name, handler),
+      registerTool:          (name, ToolClass) => registry.registerTool(name, ToolClass),
+      registerCommand:       (name, handler)   => registry.registerCommand(name, handler),
       registerCustomElement: (tagName)         => registry.registerCustomElement(tagName),
+      registerAgentType:     (id, AgentClass)  => registry.registerAgentType(id, AgentClass),
     };
   }
 
