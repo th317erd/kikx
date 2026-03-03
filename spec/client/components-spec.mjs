@@ -354,7 +354,7 @@ describe('KikxUserAvatar', () => {
 
     let img = avatar.shadowRoot.querySelector('.avatar-image');
     assert.ok(img.src.includes('gravatar.com/avatar/'), 'Should use gravatar URL');
-    assert.ok(img.src.includes('d=blank'), 'Should use blank fallback');
+    assert.ok(img.src.includes('d=404'), 'Should use 404 fallback');
   });
 
   it('should fall back to initials on image error', () => {

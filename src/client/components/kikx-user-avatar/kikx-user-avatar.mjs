@@ -287,7 +287,7 @@ class KikxUserAvatar extends HTMLElement {
       this._initials.style.display = 'none';
     } else if (email) {
       let hash = md5(email.trim().toLowerCase());
-      this._image.src = `https://gravatar.com/avatar/${hash}?d=blank&s=${size}`;
+      this._image.src = `https://gravatar.com/avatar/${hash}?d=404&s=${size}`;
       this._image.style.display = 'block';
       this._initials.style.display = 'none';
     } else {

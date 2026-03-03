@@ -84,20 +84,21 @@ const TEMPLATE_HTML = `
     }
 
     .section-add-button {
-      background: none;
-      border: none;
+      background: var(--glass-background, rgba(255, 255, 255, 0.05));
+      border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       color: var(--accent-primary, #00e5ff);
-      font-size: 1rem;
+      font-size: 0.85rem;
       font-weight: 700;
       cursor: pointer;
-      padding: 0 4px;
-      line-height: 1;
-      border-radius: var(--border-radius-small, 4px);
-      transition: background 0.15s ease;
+      padding: 4px 12px;
+      line-height: 1.2;
+      border-radius: var(--border-radius-medium, 8px);
+      transition: background 0.2s ease, box-shadow 0.2s ease;
     }
 
     .section-add-button:hover {
-      background: var(--glass-hover, rgba(255, 255, 255, 0.08));
+      background: rgba(255, 255, 255, 0.10);
+      box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.20));
     }
 
     .friends-area {
