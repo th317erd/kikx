@@ -29,7 +29,7 @@ async function createStartedCore() {
 // =============================================================================
 describe('Model definitions', () => {
   it('should export all 7 default models', () => {
-    assert.equal(DEFAULT_MODELS.length, 7);
+    assert.equal(DEFAULT_MODELS.length, 8);
   });
 
   it('should include all expected model classes', () => {
@@ -41,6 +41,7 @@ describe('Model definitions', () => {
     assert.ok(names.includes('Session'));
     assert.ok(names.includes('Participant'));
     assert.ok(names.includes('Frame'));
+    assert.ok(names.includes('PermissionRule'));
   });
 
   it('should have version on all models', () => {
@@ -594,5 +595,332 @@ describe('Models from context', () => {
 
     let UserModel = org.getModel('User');
     assert.ok(UserModel);
+  });
+});
+
+// =============================================================================
+// Failure Tests — Frame edge cases
+// =============================================================================
+describe('Frame model — failure paths', () => {
+  let core;
+  let models;
+  let org;
+  let session;
+
+  beforeEach(async () => {
+    core    = await createStartedCore();
+    models  = core.getModels();
+    org     = await models.Organization.create({ name: 'Fail Test Org' });
+    session = await models.Session.create({ organizationID: org.id });
+  });
+
+  afterEach(async () => {
+    await core.stop();
+  });
+
+  it('should return null for getContent() with null content', async () => {
+    let frame = await models.Frame.create({
+      sessionID:     session.id,
+      interactionID: 'int_001',
+      order:         1,
+      type:          'message',
+      content:       null,
+      timestamp:     Date.now(),
+    });
+
+    let content = frame.getContent();
+    assert.equal(content, null);
+  });
+
+  it('should return raw string for getContent() with malformed JSON', async () => {
+    let frame = await models.Frame.create({
+      sessionID:     session.id,
+      interactionID: 'int_001',
+      order:         1,
+      type:          'message',
+      content:       '{bad json!!!',
+      timestamp:     Date.now(),
+    });
+
+    let found   = await models.Frame.where.id.EQ(frame.id).first();
+    let content = found.getContent();
+    // Malformed JSON falls through to catch block, which returns the raw string
+    assert.equal(content, '{bad json!!!');
+  });
+
+  it('should return empty array for getTargets() with malformed JSON', async () => {
+    let frame = await models.Frame.create({
+      sessionID:     session.id,
+      interactionID: 'int_001',
+      order:         1,
+      type:          'message',
+      targets:       'not-json[[[',
+      timestamp:     Date.now(),
+    });
+
+    let found   = await models.Frame.where.id.EQ(frame.id).first();
+    let targets = found.getTargets();
+    assert.deepEqual(targets, []);
+  });
+
+  it('should return null for getContent() when content is empty string', async () => {
+    let frame = await models.Frame.create({
+      sessionID:     session.id,
+      interactionID: 'int_001',
+      order:         1,
+      type:          'message',
+      content:       '',
+      timestamp:     Date.now(),
+    });
+
+    let found   = await models.Frame.where.id.EQ(frame.id).first();
+    let content = found.getContent();
+    // Empty string is falsy, so getContent() returns null
+    assert.equal(content, null);
+  });
+
+  it('should handle very long content without error', async () => {
+    let longText = 'x'.repeat(100000);
+    let frame = await models.Frame.create({
+      sessionID:     session.id,
+      interactionID: 'int_001',
+      order:         1,
+      type:          'message',
+      content:       JSON.stringify({ text: longText }),
+      timestamp:     Date.now(),
+    });
+
+    let found   = await models.Frame.where.id.EQ(frame.id).first();
+    let content = found.getContent();
+    assert.equal(content.text.length, 100000);
+  });
+
+  it('should default hidden to true', async () => {
+    let frame = await models.Frame.create({
+      sessionID:     session.id,
+      interactionID: 'int_001',
+      order:         1,
+      type:          'message',
+      timestamp:     Date.now(),
+    });
+
+    assert.equal(frame.hidden, true);
+  });
+
+  it('should default deleted to false', async () => {
+    let frame = await models.Frame.create({
+      sessionID:     session.id,
+      interactionID: 'int_001',
+      order:         1,
+      type:          'message',
+      timestamp:     Date.now(),
+    });
+
+    assert.equal(frame.deleted, false);
+  });
+
+  it('should default processed to false', async () => {
+    let frame = await models.Frame.create({
+      sessionID:     session.id,
+      interactionID: 'int_001',
+      order:         1,
+      type:          'message',
+      timestamp:     Date.now(),
+    });
+
+    assert.equal(frame.processed, false);
+  });
+});
+
+// =============================================================================
+// Failure Tests — User edge cases
+// =============================================================================
+describe('User model — failure paths', () => {
+  let core;
+  let models;
+  let org;
+
+  beforeEach(async () => {
+    core   = await createStartedCore();
+    models = core.getModels();
+    org    = await models.Organization.create({ name: 'User Fail Org' });
+  });
+
+  afterEach(async () => {
+    await core.stop();
+  });
+
+  it('should return email as displayName when only firstName is set', async () => {
+    let user = await models.User.create({
+      organizationID: org.id,
+      email:          'partial@example.com',
+      firstName:      '',
+      lastName:       '',
+    });
+
+    let display = user.getDisplayName();
+    // Empty strings should fall back to email
+    assert.equal(display, 'partial@example.com');
+  });
+
+  it('should handle null firstName and lastName in getDisplayName', async () => {
+    let user = await models.User.create({
+      organizationID: org.id,
+      email:          'nullname@example.com',
+    });
+
+    // firstName/lastName are null by default
+    let display = user.getDisplayName();
+    assert.equal(display, 'nullname@example.com');
+  });
+
+  it('should trim whitespace from email', async () => {
+    let user = await models.User.create({
+      organizationID: org.id,
+      email:          '   spaces@example.com   ',
+    });
+
+    assert.equal(user.email, 'spaces@example.com');
+  });
+});
+
+// =============================================================================
+// Failure Tests — Agent edge cases
+// =============================================================================
+describe('Agent model — failure paths', () => {
+  let core;
+  let models;
+  let org;
+
+  beforeEach(async () => {
+    core   = await createStartedCore();
+    models = core.getModels();
+    org    = await models.Organization.create({ name: 'Agent Fail Org' });
+  });
+
+  afterEach(async () => {
+    await core.stop();
+  });
+
+  it('should create agent with unset instructions', async () => {
+    let agent = await models.Agent.create({
+      organizationID: org.id,
+      name:           'test-null-instructions',
+      pluginID:       'test-plugin',
+    });
+
+    // Nullable fields not explicitly set are undefined in Mythix ORM
+    assert.equal(agent.instructions == null, true);
+  });
+
+  it('should create agent with unset encryptedAPIKey', async () => {
+    let agent = await models.Agent.create({
+      organizationID: org.id,
+      name:           'test-null-key',
+      pluginID:       'test-plugin',
+    });
+
+    assert.equal(agent.encryptedAPIKey == null, true);
+  });
+
+  it('should create agent with unset dmSummary', async () => {
+    let agent = await models.Agent.create({
+      organizationID: org.id,
+      name:           'test-null-dm',
+      pluginID:       'test-plugin',
+    });
+
+    assert.equal(agent.dmSummary == null, true);
+  });
+
+  it('should update dmSummary on existing agent', async () => {
+    let agent = await models.Agent.create({
+      organizationID: org.id,
+      name:           'test-dm-update',
+      pluginID:       'test-plugin',
+    });
+
+    agent.dmSummary = 'Test DM instructions';
+    await agent.save();
+
+    let found = await models.Agent.where.id.EQ(agent.id).first();
+    assert.equal(found.dmSummary, 'Test DM instructions');
+  });
+});
+
+// =============================================================================
+// Failure Tests — Session edge cases
+// =============================================================================
+describe('Session model — failure paths', () => {
+  let core;
+  let models;
+  let org;
+
+  beforeEach(async () => {
+    core   = await createStartedCore();
+    models = core.getModels();
+    org    = await models.Organization.create({ name: 'Session Fail Org' });
+  });
+
+  afterEach(async () => {
+    await core.stop();
+  });
+
+  it('should default type to "chat"', async () => {
+    let session = await models.Session.create({ organizationID: org.id });
+    assert.equal(session.type, 'chat');
+  });
+
+  it('should create DM session with type and dmAgentID', async () => {
+    let agent = await models.Agent.create({
+      organizationID: org.id,
+      name:           'test-dm-agent',
+      pluginID:       'test',
+    });
+
+    let session = await models.Session.create({
+      organizationID: org.id,
+      type:           'dm',
+      dmAgentID:      agent.id,
+    });
+
+    assert.equal(session.type, 'dm');
+    assert.equal(session.dmAgentID, agent.id);
+  });
+
+  it('should query by type', async () => {
+    await models.Session.create({ organizationID: org.id, type: 'chat' });
+    await models.Session.create({ organizationID: org.id, type: 'dm' });
+    await models.Session.create({ organizationID: org.id, type: 'chat' });
+
+    let dmSessions = await models.Session.where.type.EQ('dm').all();
+    assert.equal(dmSessions.length, 1);
+  });
+});
+
+// =============================================================================
+// Failure Tests — getModel edge cases
+// =============================================================================
+describe('Core getModel — failure paths', () => {
+  let core;
+
+  beforeEach(async () => {
+    core = await createStartedCore();
+  });
+
+  afterEach(async () => {
+    await core.stop();
+  });
+
+  it('should return null for non-existent model name', () => {
+    assert.equal(core.getModel('FakeModel'), null);
+  });
+
+  it('should return null for empty string model name', () => {
+    assert.equal(core.getModel(''), null);
+  });
+
+  it('should return null for null model name', () => {
+    assert.equal(core.getModel(null), null);
   });
 });

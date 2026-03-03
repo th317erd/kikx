@@ -18,7 +18,7 @@ describe('Permission Fingerprinting', () => {
   let engine;
   let keystore;
   let userKey;
-  let orgID = 'org_fp_test';
+  let orgID;
 
   beforeEach(async () => {
     core = createKikxCore();
@@ -35,9 +35,10 @@ describe('Permission Fingerprinting', () => {
     let umk = keystore.generateUMK();
     userKey = keystore.deriveUserKey(umk, 'usr_fp_test');
 
-    // Create org
+    // Create org (let ORM generate valid XID)
     let { Organization } = core.getModels();
-    await Organization.create({ id: orgID, name: 'Fingerprint Org' });
+    let org = await Organization.create({ name: 'Fingerprint Org' });
+    orgID = org.id;
   });
 
   afterEach(async () => {
@@ -68,7 +69,8 @@ describe('Permission Fingerprinting', () => {
       createdBy:      'usr_fp_test',
     });
 
-    assert.equal(rule.fingerprint, null);
+    // Nullable fields not explicitly set are undefined in Mythix ORM
+    assert.equal(rule.fingerprint == null, true);
   });
 
   it('should trust rule with valid fingerprint when verification enabled', async () => {

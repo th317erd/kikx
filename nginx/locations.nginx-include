@@ -98,5 +98,6 @@ location /kikx/ {
   }
 
   # SPA history API fallback — unmatched paths serve index.html
-  try_files $uri $uri/ /home/wyatt/Projects/kikx-workspace/kikx/src/client/index.html;
+  # Last arg must be a URI (not filesystem path) — nginx does an internal redirect
+  try_files $uri $uri/ /kikx/index.html;
 }

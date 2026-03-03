@@ -993,10 +993,193 @@ describe('InteractionLoop', () => {
   });
 
   // ===========================================================================
+  // Failure & adversarial tests
+  // ===========================================================================
+
+  describe('agent generator throws', () => {
+    it('should emit error frame when generator throws during iteration', async () => {
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      class ThrowingAgent extends AgentInterface {
+        static pluginId    = 'throwing';
+        static featureName = 'throwing';
+        static agentType   = 'throwing';
+
+        async *_createGenerator(_params) {
+          yield { type: 'message', content: { html: '<p>Starting</p>' }, authorType: 'agent', authorID: 'a1' };
+          throw new Error('generator exploded');
+        }
+      }
+
+      let agent         = new ThrowingAgent(context);
+      let emittedFrames = [];
+      loop.on('frame', ({ frame }) => emittedFrames.push(frame));
+
+      await loop.startInteraction(session.id, defaultParams(agent, { agentPlugin: agent }));
+
+      let errorFrames = emittedFrames.filter((f) => f.type === 'error');
+      assert.ok(errorFrames.length >= 1);
+      assert.ok(errorFrames[0].content.message.includes('generator exploded'));
+    });
+
+    it('should end interaction cleanly after generator error', async () => {
+      let session = await createTestSession();
+      let loop    = createLoop();
+
+      class FailAgent extends AgentInterface {
+        static pluginId    = 'fail';
+        static featureName = 'fail';
+        static agentType   = 'fail';
+
+        async *_createGenerator(_params) {
+          throw new Error('immediate failure');
+        }
+      }
+
+      let agent     = new FailAgent(context);
+      let endEvents = [];
+      loop.on('interaction:end', (ev) => endEvents.push(ev));
+
+      await loop.startInteraction(session.id, defaultParams(agent, { agentPlugin: agent }));
+
+      assert.equal(loop.isActive(session.id), false);
+      assert.equal(endEvents.length, 1);
+    });
+  });
+
+  describe('unknown block type from generator', () => {
+    it('should handle unknown block types without crashing', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'unknown-type', content: { data: 'mystery' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'message', content: { html: '<p>After unknown</p>' }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      let emittedFrames = [];
+      loop.on('frame', ({ frame }) => emittedFrames.push(frame));
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      // Should still process the message after the unknown type
+      let messageFrames = emittedFrames.filter((f) => f.type === 'message');
+      assert.ok(messageFrames.length >= 1);
+      assert.ok(messageFrames[0].content.html.includes('After unknown'));
+    });
+  });
+
+  describe('cancelInteraction on non-active session', () => {
+    it('should return null when cancelling a session with no active interaction', async () => {
+      let loop   = createLoop();
+      let result = await loop.cancelInteraction('ses_does_not_exist');
+      assert.equal(result, null);
+    });
+  });
+
+  describe('startInteraction with empty string message', () => {
+    it('should handle empty string userMessage', async () => {
+      let session = await createTestSession();
+      let agent   = new MockAgent(context, []);
+      let loop    = createLoop();
+
+      // Should not crash — empty messages are valid (might be used for replays)
+      let interactionID = await loop.startInteraction(session.id, defaultParams(agent, {
+        userMessage: '',
+      }));
+
+      assert.ok(interactionID);
+    });
+  });
+
+  describe('tool returns null/undefined', () => {
+    it('should handle executeTool returning null', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'tool-call', content: { toolName: 'null-tool', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      let emittedFrames = [];
+      loop.on('frame', ({ frame }) => emittedFrames.push(frame));
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: () => false,
+        executeTool: () => null,
+      }));
+
+      let resultFrames = emittedFrames.filter((f) => f.type === 'tool-result');
+      assert.ok(resultFrames.length >= 1);
+      // null should be converted to something passable to generator
+      assert.equal(resultFrames[0].content.output, null);
+    });
+
+    it('should handle executeTool returning undefined', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'tool-call', content: { toolName: 'void-tool', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: () => false,
+        executeTool: () => undefined,
+      }));
+
+      // Should complete without error
+      assert.equal(loop.isActive(session.id), false);
+    });
+  });
+
+  describe('getQueuedMessages on empty queue', () => {
+    it('should return empty array for session with no queued messages', () => {
+      let loop   = createLoop();
+      let queued = loop.getQueuedMessages('ses_no_queue');
+      assert.deepEqual(queued, []);
+    });
+  });
+
+  describe('double denyPermission', () => {
+    it('should throw on second deny after first already cleared the state', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'tool-call', content: { toolName: 'exec', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+      ];
+      let agent = new MockAgent(context, blocks);
+      let loop  = createLoop();
+
+      await loop.startInteraction(session.id, defaultParams(agent, {
+        checkPermission: () => true,
+      }));
+
+      assert.ok(loop.isWaitingForPermission(session.id));
+
+      await loop.denyPermission(session.id);
+      assert.equal(loop.isWaitingForPermission(session.id), false);
+
+      // Second deny should throw
+      await assert.rejects(
+        () => loop.denyPermission(session.id),
+        { message: /No pending permission/ },
+      );
+    });
+  });
+
+  // ===========================================================================
   // Phase 3: Hook integration
   // ===========================================================================
 
   describe('hook integration — prepareMessage', () => {
+    beforeEach(() => {
+      // Clear all registered hooks between tests to prevent leakage
+      let registry = context.getProperty('pluginRegistry');
+      if (registry && registry._hooks)
+        registry._hooks.clear();
+    });
+
     it('should fire user→agent hook and block message', async () => {
       let session = await createTestSession();
       let loop    = createLoop();
@@ -1137,6 +1320,12 @@ describe('InteractionLoop', () => {
   // ===========================================================================
 
   describe('PermissionDeniedError handling', () => {
+    beforeEach(() => {
+      let registry = context.getProperty('pluginRegistry');
+      if (registry && registry._hooks)
+        registry._hooks.clear();
+    });
+
     it('should create permission-denied frame when checkPermission throws PermissionDeniedError', async () => {
       let { PermissionDeniedError } = await import('../../src/core/permissions/permission-denied-error.mjs');
 
@@ -1216,6 +1405,12 @@ describe('InteractionLoop', () => {
   // ===========================================================================
 
   describe('tool execution error recovery', () => {
+    beforeEach(() => {
+      let registry = context.getProperty('pluginRegistry');
+      if (registry && registry._hooks)
+        registry._hooks.clear();
+    });
+
     it('should create tool-error frame when executeTool throws', async () => {
       let session = await createTestSession();
       let loop    = createLoop();
@@ -1392,5 +1587,28 @@ describe('InteractionLoop', () => {
       let messages = loop._buildMessages(frames);
       assert.equal(messages.length, 1);
     });
+
+    it('should return empty array for empty frames', () => {
+      let loop     = createLoop();
+      let messages = loop._buildMessages([]);
+      assert.deepEqual(messages, []);
+    });
+
+    it('should return empty array when all frames are excluded types', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'pending-action', content: { toolName: 'shell' } },
+        { type: 'permission-request', content: { toolName: 'shell' } },
+        { type: 'permission-denied', content: {} },
+        { type: 'hook-blocked', content: { reason: 'test' } },
+        { type: 'tool-error', content: { message: 'fail' } },
+        { type: 'error', content: { message: 'oops' } },
+        { type: 'reflection', content: { text: 'thinking' } },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 0);
+    });
   });
+
 });

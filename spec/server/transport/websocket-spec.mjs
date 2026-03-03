@@ -414,4 +414,115 @@ describe('WebSocketTransport', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.equal(ws.readyState, ws.OPEN);
   });
+
+  // -------------------------------------------------------------------------
+  // Failure & adversarial tests
+  // -------------------------------------------------------------------------
+
+  it('should silently ignore unknown message type', async () => {
+    let ws = await createWSClient(port, 'valid-token');
+    clients.push(ws);
+
+    // Unknown type is silently ignored (no response)
+    ws.send(JSON.stringify({ type: 'bogus-action', data: 'test' }));
+
+    // Now send a subscribe to verify the connection is still healthy
+    ws.send(JSON.stringify({ type: 'subscribe', sessionID: 'ses_after_bogus' }));
+    let msg = await waitForMessage(ws);
+    assert.equal(msg.type, 'subscribed');
+    assert.equal(msg.sessionID, 'ses_after_bogus');
+  });
+
+  it('should silently ignore empty JSON object (no type)', async () => {
+    let ws = await createWSClient(port, 'valid-token');
+    clients.push(ws);
+
+    // No type field — silently ignored
+    ws.send(JSON.stringify({}));
+
+    // Verify connection still works
+    ws.send(JSON.stringify({ type: 'subscribe', sessionID: 'ses_after_empty' }));
+    let msg = await waitForMessage(ws);
+    assert.equal(msg.type, 'subscribed');
+  });
+
+  it('should handle subscribe then re-subscribe to different session', async () => {
+    let ws = await createWSClient(port, 'valid-token');
+    clients.push(ws);
+
+    // Subscribe to first session
+    ws.send(JSON.stringify({ type: 'subscribe', sessionID: 'ses_first' }));
+    let sub1 = await waitForMessage(ws);
+    assert.equal(sub1.type, 'subscribed');
+    assert.equal(sub1.sessionID, 'ses_first');
+
+    // Subscribe to second session (should replace first)
+    ws.send(JSON.stringify({ type: 'subscribe', sessionID: 'ses_second' }));
+    let sub2 = await waitForMessage(ws);
+    assert.equal(sub2.type, 'subscribed');
+    assert.equal(sub2.sessionID, 'ses_second');
+
+    // Emit frame for first session — should NOT be received
+    interactionLoop.emit('frame', { sessionID: 'ses_first', frame: { id: 'frm_old', type: 'message' } });
+
+    // Emit frame for second session — should be received
+    interactionLoop.emit('frame', { sessionID: 'ses_second', frame: { id: 'frm_new', type: 'message' } });
+
+    let msg = await waitForMessage(ws);
+    assert.equal(msg.frame.id, 'frm_new');
+  });
+
+  it('should handle double stop without error', () => {
+    transport.stop();
+    assert.equal(transport.isStarted(), false);
+
+    // Second stop should not throw
+    transport.stop();
+    assert.equal(transport.isStarted(), false);
+
+    // Restart for subsequent tests
+    transport = new WebSocketTransport(context);
+    transport.start(server);
+  });
+
+  it('should return 0 connected peers for non-existent session', () => {
+    assert.equal(transport.getConnectedPeers('ses_nonexistent'), 0);
+  });
+
+  it('should handle rapid subscribe/unsubscribe cycles', async () => {
+    let ws = await createWSClient(port, 'valid-token');
+    clients.push(ws);
+
+    // Rapid subscribe/unsubscribe
+    ws.send(JSON.stringify({ type: 'subscribe', sessionID: 'ses_rapid1' }));
+    ws.send(JSON.stringify({ type: 'subscribe', sessionID: 'ses_rapid2' }));
+    ws.send(JSON.stringify({ type: 'subscribe', sessionID: 'ses_rapid3' }));
+
+    // Should eventually settle on last subscription
+    let messages = await waitForMessages(ws, 3);
+    let lastSub  = messages[messages.length - 1];
+    assert.equal(lastSub.type, 'subscribed');
+    assert.equal(lastSub.sessionID, 'ses_rapid3');
+  });
+
+  it('should handle message sent to closed connection', async () => {
+    let ws = await createWSClient(port, 'valid-token');
+    clients.push(ws);
+
+    ws.send(JSON.stringify({ type: 'subscribe', sessionID: 'ses_close_test' }));
+    await waitForMessage(ws); // subscribed
+
+    // Close the connection
+    ws.close();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Emit frame — should not throw, just silently fail
+    interactionLoop.emit('frame', {
+      sessionID: 'ses_close_test',
+      frame:     { id: 'frm_orphan', type: 'message', content: {} },
+    });
+
+    // No error thrown is success
+    assert.equal(transport.getConnectedPeers('ses_close_test'), 0);
+  });
 });

@@ -579,7 +579,8 @@ describe('KikxCore V2 model fields', () => {
     let org     = await Organization.create({ name: 'Test Org' });
     let session = await Session.create({ organizationID: org.id, name: 'Regular' });
 
-    assert.equal(session.dmAgentID, null);
+    // Nullable fields not explicitly set may be undefined in Mythix ORM
+    assert.equal(session.dmAgentID == null, true);
   });
 });
 

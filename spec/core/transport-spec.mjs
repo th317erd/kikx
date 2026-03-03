@@ -535,3 +535,282 @@ describe('SSETransport', () => {
     assert.equal(transport.getConnectionCount(), 0);
   });
 });
+
+// =============================================================================
+// Failure Tests — Transport (base class)
+// =============================================================================
+
+describe('Transport — failure paths', () => {
+  let transport;
+
+  beforeEach(() => {
+    transport = new Transport();
+  });
+
+  afterEach(async () => {
+    if (transport && transport.isConnected())
+      await transport.disconnect();
+
+    transport = null;
+  });
+
+  it('should allow double connect without error', async () => {
+    await transport.connect();
+    assert.equal(transport.isConnected(), true);
+
+    await transport.connect();
+    assert.equal(transport.isConnected(), true);
+  });
+
+  it('should allow disconnect without connecting first', async () => {
+    assert.equal(transport.isConnected(), false);
+    await transport.disconnect();
+    assert.equal(transport.isConnected(), false);
+  });
+
+  it('should allow reconnect after disconnect', async () => {
+    await transport.connect();
+    assert.equal(transport.isConnected(), true);
+
+    await transport.disconnect();
+    assert.equal(transport.isConnected(), false);
+
+    await transport.connect();
+    assert.equal(transport.isConnected(), true);
+  });
+
+  it('should emit events on reconnect cycle', async () => {
+    let events = [];
+    transport.on('connected', () => events.push('connected'));
+    transport.on('disconnected', () => events.push('disconnected'));
+
+    await transport.connect();
+    await transport.disconnect();
+    await transport.connect();
+
+    assert.deepStrictEqual(events, ['connected', 'disconnected', 'connected']);
+  });
+
+  it('should handle unsubscribe called multiple times', () => {
+    let handler     = () => {};
+    let unsubscribe = transport.onMessage(handler);
+
+    unsubscribe();
+    // Second call should not throw
+    unsubscribe();
+  });
+});
+
+// =============================================================================
+// Failure Tests — EventTransport
+// =============================================================================
+
+describe('EventTransport — failure paths', () => {
+  let transport;
+
+  beforeEach(async () => {
+    transport = new EventTransport();
+    await transport.connect();
+  });
+
+  afterEach(async () => {
+    if (transport && transport.isConnected())
+      await transport.disconnect();
+
+    transport = null;
+  });
+
+  it('should overwrite stream when creating duplicate ID', () => {
+    let stream1 = transport.createStream('dup-id');
+    let stream2 = transport.createStream('dup-id');
+
+    // Should not increase count — overwrites
+    assert.equal(transport.getStreamCount(), 1);
+    assert.equal(stream2.id, 'dup-id');
+  });
+
+  it('should handle send to stream after disconnect', async () => {
+    transport.createStream('stream-1');
+    await transport.disconnect();
+
+    // Should not throw after disconnect
+    await transport.send('stream-1', 'data');
+  });
+
+  it('should return zero stream count after disconnect', async () => {
+    transport.createStream('a');
+    transport.createStream('b');
+    assert.equal(transport.getStreamCount(), 2);
+
+    await transport.disconnect();
+    assert.equal(transport.getStreamCount(), 0);
+  });
+
+  it('should handle broadcast with no streams', async () => {
+    // No streams registered — should not throw
+    await transport.broadcast({ event: 'lonely' });
+  });
+
+  it('should handle simulateMessage with null data', () => {
+    let received = [];
+    transport.onMessage((event) => received.push(event));
+
+    transport.simulateMessage('client-1', null);
+
+    assert.equal(received.length, 1);
+    assert.equal(received[0].data, null);
+  });
+});
+
+// =============================================================================
+// Failure Tests — SSETransport
+// =============================================================================
+
+describe('SSETransport — failure paths', () => {
+  let transport;
+
+  function createMockWriter() {
+    let written = [];
+    let closed  = false;
+    return {
+      write(data)         { written.push(data); },
+      close()             { closed = true; },
+      setHeaders(headers) { /* noop */ },
+      getWritten()        { return written; },
+      isClosed()          { return closed; },
+    };
+  }
+
+  beforeEach(async () => {
+    transport = new SSETransport();
+    await transport.connect();
+  });
+
+  afterEach(async () => {
+    if (transport && transport.isConnected())
+      await transport.disconnect();
+
+    transport = null;
+  });
+
+  it('should overwrite existing connection on duplicate registerConnection', () => {
+    let writer1 = createMockWriter();
+    let writer2 = createMockWriter();
+
+    transport.registerConnection('conn-1', writer1);
+    transport.registerConnection('conn-1', writer2);
+
+    assert.equal(transport.getConnectionCount(), 1);
+
+    // Sending should go to writer2, not writer1
+    transport.send('conn-1', 'test');
+    assert.equal(writer2.getWritten().length, 1);
+    assert.equal(writer1.getWritten().length, 0);
+  });
+
+  it('should handle removeConnection called twice for same ID', () => {
+    let writer = createMockWriter();
+    transport.registerConnection('conn-1', writer);
+
+    transport.removeConnection('conn-1');
+    assert.equal(transport.getConnectionCount(), 0);
+
+    // Second removal should not throw
+    transport.removeConnection('conn-1');
+    assert.equal(transport.getConnectionCount(), 0);
+  });
+
+  it('should handle send when write throws', async () => {
+    let failWriter = {
+      write()       { throw new Error('write failed'); },
+      close()       {},
+      setHeaders()  {},
+    };
+
+    transport.registerConnection('conn-fail', failWriter);
+
+    // send() should throw since it's not wrapped in try/catch
+    // (unlike broadcast which removes failed connections)
+    await assert.rejects(
+      () => transport.send('conn-fail', 'data'),
+      { message: 'write failed' },
+    );
+  });
+
+  it('should handle broadcast where all writers fail', async () => {
+    let failWriter1 = {
+      write() { throw new Error('fail 1'); },
+      close() {},
+      setHeaders() {},
+    };
+    let failWriter2 = {
+      write() { throw new Error('fail 2'); },
+      close() {},
+      setHeaders() {},
+    };
+
+    transport.registerConnection('conn-1', failWriter1);
+    transport.registerConnection('conn-2', failWriter2);
+
+    await transport.broadcast('test');
+
+    // Both should be removed
+    assert.equal(transport.getConnectionCount(), 0);
+  });
+
+  it('should format null as "null" in SSE', () => {
+    let result = transport._formatSSE(null);
+    assert.equal(result, 'data: null\n\n');
+  });
+
+  it('should throw on undefined input to _formatSSE', () => {
+    // undefined is not a string and JSON.stringify(undefined) returns undefined (not a string)
+    // so .split() fails — this documents the edge case
+    assert.throws(
+      () => transport._formatSSE(undefined),
+      { name: 'TypeError' },
+    );
+  });
+
+  it('should format empty string in SSE', () => {
+    let result = transport._formatSSE('');
+    assert.equal(result, 'data: \n\n');
+  });
+
+  it('should format empty object in SSE', () => {
+    let result = transport._formatSSE({});
+    assert.equal(result, 'data: {}\n\n');
+  });
+
+  it('should handle createStream for nonexistent connection', async () => {
+    let stream = transport.createStream('ghost');
+
+    assert.equal(stream.id, 'ghost');
+    // send should silently no-op (no connection to write to)
+    await stream.send('data');
+  });
+
+  it('should handle disconnect with no connections', async () => {
+    assert.equal(transport.getConnectionCount(), 0);
+    await transport.disconnect();
+    assert.equal(transport.isConnected(), false);
+  });
+
+  it('should handle disconnect when close() throws on some connections', async () => {
+    let goodWriter = createMockWriter();
+    let badWriter  = {
+      write()       {},
+      close()       { throw new Error('close exploded'); },
+      setHeaders()  {},
+    };
+
+    transport.registerConnection('good', goodWriter);
+    transport.registerConnection('bad', badWriter);
+
+    // disconnect should not throw
+    await transport.disconnect();
+
+    assert.equal(transport.getConnectionCount(), 0);
+    assert.equal(goodWriter.isClosed(), true);
+  });
+});

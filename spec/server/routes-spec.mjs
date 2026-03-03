@@ -798,6 +798,202 @@ describe('Application class', () => {
 });
 
 // =============================================================================
+// Failure & adversarial tests
+// =============================================================================
+
+describe('AuthController: register — adversarial', () => {
+  it('should throw 400 if email AND password are both missing', async () => {
+    let req        = createMockReq({ body: {} });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.register({ body: req.body }),
+    );
+  });
+
+  it('should throw on duplicate email registration', async () => {
+    let req        = createMockReq({ body: { email: 'test@example.com', password: 'password123' } });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.register({ body: req.body }),
+    );
+  });
+});
+
+describe('AuthController: login — adversarial', () => {
+  it('should throw on non-existent email', async () => {
+    let req        = createMockReq({ body: { email: 'ghost@nowhere.com', password: 'pass' } });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.login({ body: req.body }),
+    );
+  });
+
+  it('should throw when email is missing', async () => {
+    let req        = createMockReq({ body: { password: 'pass' } });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.login({ body: req.body }),
+    );
+  });
+
+  it('should throw when password is missing', async () => {
+    let req        = createMockReq({ body: { email: 'test@example.com' } });
+    let res        = createMockRes();
+    let controller = createController(AuthController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.login({ body: req.body }),
+    );
+  });
+});
+
+describe('SessionController: update — non-existent session', () => {
+  it('should throw 404 when updating non-existent session', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.update({ params: { sessionId: 'ses_ghost' }, body: { name: 'Updated' } }),
+    );
+  });
+});
+
+describe('SessionController: archive — non-existent session', () => {
+  it('should throw 404 when archiving non-existent session', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.archive({ params: { sessionId: 'ses_gone' } }),
+    );
+  });
+});
+
+describe('SessionController: revive — non-existent session', () => {
+  it('should throw 404 when reviving non-existent session', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(SessionController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.revive({ params: { sessionId: 'ses_gone' } }),
+    );
+  });
+});
+
+describe('AgentController: update — non-existent agent', () => {
+  it('should throw 404 when updating non-existent agent', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.update({ params: { agentId: 'agt_ghost' }, body: { name: 'test-ghost-update' } }),
+    );
+  });
+});
+
+describe('AgentController: destroy — non-existent agent', () => {
+  it('should throw 404 when deleting non-existent agent', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.destroy({ params: { agentId: 'agt_ghost' } }),
+    );
+  });
+});
+
+describe('ParticipantController: destroy — non-existent participant', () => {
+  it('should throw 404 when removing non-existent participant', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(ParticipantController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.destroy({ params: { participantId: 'prt_ghost' } }),
+    );
+  });
+});
+
+describe('ParticipantController: create — non-existent session', () => {
+  it('should throw when adding participant to non-existent session', async () => {
+    let { Agent } = core.getModels();
+    let agent     = await Agent.create({
+      organizationID: testOrg.id,
+      name:           'test-prt-fail-agent',
+      pluginID:       'claude-agent',
+    });
+
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(ParticipantController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.create({
+        params: { sessionId: 'ses_nonexistent' },
+        body:   { agentId: agent.id },
+      }),
+    );
+  });
+});
+
+describe('DmController: updateSummary — non-existent agent', () => {
+  it('should throw 404 when updating summary for non-existent agent', async () => {
+    let req = createMockReq({ params: { agentId: 'agt_nowhere' } });
+    let res = createMockRes();
+    let controller = createController(DmController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.updateSummary({
+        params: { agentId: 'agt_nowhere' },
+        body:   { summary: 'Should fail' },
+      }),
+    );
+  });
+});
+
+describe('FrameController: list — empty session', () => {
+  it('should return empty array for session with no frames', async () => {
+    let session    = await sessionManager.createSession(testOrg.id, { name: 'Empty Frames' });
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(FrameController, { mockApp, req, res });
+    let result     = await controller.list({ params: { sessionId: session.id } });
+
+    assert.ok(Array.isArray(result.data.frames));
+    assert.equal(result.data.frames.length, 0);
+  });
+});
+
+describe('InteractionController: sendMessage — empty message', () => {
+  it('should throw 400 when message is empty string', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(InteractionController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.sendMessage({
+        params: { sessionId: 'ses_test' },
+        body:   { message: '', agentId: 'agt_test' },
+      }),
+      (error) => error.message.includes('message is required'),
+    );
+  });
+});
+
+// =============================================================================
 // skipAuthorization
 // =============================================================================
 

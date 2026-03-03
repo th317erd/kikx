@@ -227,4 +227,113 @@ describe('HookRunner', () => {
 
     assert.equal(original.message, 'original');
   });
+
+  // ---- failure & edge case tests ----
+
+  it('should propagate async handler rejection', async () => {
+    registry.registerHook('prepareMessage', async () => {
+      throw new Error('async handler boom');
+    });
+
+    await assert.rejects(
+      () => runner.run('prepareMessage', { message: 'test' }),
+      { message: 'async handler boom' },
+    );
+  });
+
+  it('should treat unknown action as pass-through', async () => {
+    registry.registerHook('prepareMessage', () => ({
+      action: 'bogus-action',
+    }));
+
+    let result = await runner.run('prepareMessage', { message: 'hello' });
+    // Unknown actions are not block or redirect, so pipeline continues
+    assert.equal(result.action, 'pass');
+    assert.equal(result.message, 'hello');
+  });
+
+  it('should handle handler that returns empty object as pass-through', async () => {
+    registry.registerHook('prepareMessage', () => ({}));
+
+    let result = await runner.run('prepareMessage', { message: 'test' });
+    assert.equal(result.action, 'pass');
+    assert.equal(result.message, 'test');
+  });
+
+  it('should reject empty string hook name on registerHook', () => {
+    assert.throws(
+      () => registry.registerHook('', () => {}),
+      { message: /non-empty string/ },
+    );
+  });
+
+  it('should handle payload with no message property', async () => {
+    registry.registerHook('prepareMessage', (payload) => {
+      return { action: 'modify', message: payload.message || 'default' };
+    });
+
+    let result = await runner.run('prepareMessage', { source: 'user' });
+    assert.equal(result.message, 'default');
+  });
+
+  it('should throw on null payload (spread fails)', async () => {
+    // null payload causes TypeError when HookRunner tries { ...payload }
+    await assert.rejects(
+      () => runner.run('prepareMessage', null),
+      { name: 'TypeError' },
+    );
+  });
+
+  it('should block after modify if next handler blocks', async () => {
+    registry.registerHook('prepareMessage', (payload) => ({
+      action:  'modify',
+      message: payload.message + ' [modified]',
+    }));
+
+    registry.registerHook('prepareMessage', () => ({
+      action: 'block',
+      reason: 'blocked after modify',
+    }));
+
+    let result = await runner.run('prepareMessage', { message: 'start' });
+    assert.equal(result.action, 'block');
+    assert.equal(result.reason, 'blocked after modify');
+  });
+
+  it('should pass modified message to block handler', async () => {
+    let receivedMessage = null;
+
+    registry.registerHook('prepareMessage', (payload) => ({
+      action:  'modify',
+      message: 'transformed',
+    }));
+
+    registry.registerHook('prepareMessage', (payload) => {
+      receivedMessage = payload.message;
+      return null;
+    });
+
+    await runner.run('prepareMessage', { message: 'original' });
+    assert.equal(receivedMessage, 'transformed');
+  });
+
+  it('should handle first handler throwing — second never called', async () => {
+    let secondCalled = false;
+
+    registry.registerHook('prepareMessage', () => {
+      throw new Error('first handler failed');
+    });
+
+    registry.registerHook('prepareMessage', () => {
+      secondCalled = true;
+      return null;
+    });
+
+    await assert.rejects(
+      () => runner.run('prepareMessage', { message: 'test' }),
+      { message: 'first handler failed' },
+    );
+
+    assert.equal(secondCalled, false);
+  });
 });
