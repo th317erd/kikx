@@ -29,6 +29,11 @@ export function getRoutes({ path }) {
           methods:    [ 'GET' ],
           controller: 'AuthController.me',
         });
+
+        endpoint('me', {
+          methods:    [ 'PUT' ],
+          controller: 'AuthController.updateProfile',
+        });
       });
 
       // --- Agent Routes ---

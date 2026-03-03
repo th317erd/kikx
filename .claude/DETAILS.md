@@ -35,7 +35,7 @@ Important details to remember across sessions.
 - V2 URL: `https://wyatt-desktop.mythix.info/kikx/`
 - nginx master config: `~/www/sites/wyatt-desktop.mythix.info.conf`
 - nginx include: `nginx/locations.nginx-include`
-- **Start server:** `KIKX_PLUGIN_PATHS=~/Projects/kikx-workspace node src/server/index.mjs` (requires Node 22)
+- **Start server:** `KIKX_PLUGIN_PATHS=~/Projects/kikx-workspace node src/server/index.mjs` (requires Node 24)
 
 ## Current Branch
 
@@ -121,9 +121,43 @@ All 19 rounds of design Q&A are complete and captured in `bot-docs/plan/kikx/ser
 - **V2 Client:** `src/client/` (Waves A-I complete, 38 components)
 - **Plan YAML:** `bot-docs/plan/kikx/server-plan.yaml`
 
+## UI Redesign: Friends, Avatar, Sidebar, Settings (2026-03-02)
+
+### New Components
+- `kikx-user-avatar` — Circular avatar: base64 → Gravatar → initials fallback, inline MD5
+- `kikx-friends-list` — Flat list of friends (agents + users) with avatar, name, AI badge
+- `kikx-add-friend-modal` — Multi-step wizard: type selection → agent config / user invite
+
+### Redesigned Components
+- **Top bar:** Removed agents/new-session/logout buttons. Added avatar button (navigates to settings). `hide-back` attribute.
+- **Sidebar:** Replaced Participants with Friends section. Added "+" buttons for add-friend and add-session events.
+- **Settings page:** 6 tabs (added Logout). Profile tab has avatar upload/remove, editable email with verification stub.
+- **Session page:** Event wiring for add-friend/add-session modals, agent loading → friends list
+
+### Server Changes
+- `User` model: added `avatar` field (TEXT long)
+- `AuthController`: added `updateProfile` (PUT /auth/me), `me()` now returns avatar
+- Routes: added PUT /auth/me
+- Client API: added `updateProfile()`, Store: added `profile.updateUser()`
+
+### Test Count
+- Client tests: 102 (was 61)
+- Total: 855 tests, 445 pass (was 395)
+
+## Client UI Fixes (2026-03-02)
+
+- **Login page:** Fixed CSS box-sizing on inputs/button, "Sign In" label (was "Send Magic Link"), password placeholder
+- **Status bar:** Fixed `connection.subscribe()` → `store.on('update')` (seqda pattern)
+- **Auth persistence:** Added localStorage save/load/clear for JWT token + user
+- **Settings page:** Fixed back button (uses `navigate()` directly, was custom event), real form layouts in all 5 tabs
+- **Top bar:** Removed Abilities button (user request), Agents button dispatches `open-agents-modal` event
+- **Locale:** Updated `en.mjs` with all settings form strings, removed "Magic Link" references
+- **Client tests:** 61 jsdom unit tests in `spec/client/` (api-spec.mjs + components-spec.mjs)
+- **Test count:** 742 total (731 pass, 11 pre-existing Phase 3 failures)
+
 ## Known Issue: node:sqlite
 
-Node 20 does not have the built-in `node:sqlite` module (requires Node 22.5+). All DB-dependent tests fail with `ERR_UNKNOWN_BUILTIN_MODULE`. This is a `mythix-orm-sqlite` requirement, not a code bug. Non-DB tests all pass.
+Node 24 is required for the built-in `node:sqlite` module (used by mythix-orm-sqlite).
 
 ---
 

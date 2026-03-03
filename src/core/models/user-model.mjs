@@ -38,6 +38,11 @@ export class User extends ModelBase {
       type:      Types.STRING(64),
       allowNull: true,
     },
+    // Base64-encoded avatar image (resized to 128x128 max)
+    avatar: {
+      type:      Types.TEXT('long'),
+      allowNull: true,
+    },
     // Password slot: JSON blob { ciphertext, iv, authTag, salt }
     // Stores UMK encrypted with scrypt-derived key from password
     passwordSlot: {

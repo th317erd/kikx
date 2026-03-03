@@ -3,7 +3,7 @@
 import { t } from '../../lib/i18n.mjs';
 import { profile } from '../../lib/store.mjs';
 import { navigate } from '../../lib/router.mjs';
-import { login, setAuthToken } from '../../lib/api.mjs';
+import { login, setAuthToken, persistAuth } from '../../lib/api.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -53,6 +53,7 @@ const TEMPLATE_HTML = `
     .form-input {
       width: 100%;
       padding: 12px 16px;
+      box-sizing: border-box;
       background: var(--input-background, rgba(255, 255, 255, 0.05));
       border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
       border-radius: var(--border-radius-medium, 8px);
@@ -74,6 +75,7 @@ const TEMPLATE_HTML = `
     .submit-button {
       width: 100%;
       padding: 12px 16px;
+      box-sizing: border-box;
       background: var(--accent-primary, #00e5ff);
       color: var(--text-inverse, #0a0a1a);
       border: none;
@@ -166,8 +168,8 @@ class KikxLoginPage extends HTMLElement {
     this._titleElement.textContent    = t('application.title');
     this._subtitleElement.textContent = t('login.subtitle');
     this._emailInput.placeholder      = t('login.emailPlaceholder');
-    this._passwordInput.placeholder   = 'Password';
-    this._submitButton.textContent    = 'Sign In';
+    this._passwordInput.placeholder   = t('login.passwordPlaceholder') || 'Password';
+    this._submitButton.textContent    = t('login.submitButton');
   }
 
   _showError(message) {
@@ -214,6 +216,7 @@ class KikxLoginPage extends HTMLElement {
       let token  = result.data.token;
 
       setAuthToken(token);
+      persistAuth(token, result.data.user);
       profile.setUser(result.data.user, token);
       navigate('/kikx/', { replace: true });
     } catch (error) {

@@ -68,13 +68,49 @@ const TEMPLATE_HTML = `
     }
 
     .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
+      flex-shrink: 0;
+    }
+
+    .section-label {
       font-size: 0.75rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: var(--text-secondary, #a0a0b8);
+    }
+
+    .section-add-button {
+      background: none;
+      border: none;
+      color: var(--accent-primary, #00e5ff);
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+      border-radius: var(--border-radius-small, 4px);
+      transition: background 0.15s ease;
+    }
+
+    .section-add-button:hover {
+      background: var(--glass-hover, rgba(255, 255, 255, 0.08));
+    }
+
+    .friends-area {
       flex-shrink: 0;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .friends-area::-webkit-scrollbar { width: 6px; }
+    .friends-area::-webkit-scrollbar-track { background: transparent; }
+    .friends-area::-webkit-scrollbar-thumb {
+      background: var(--glass-border, rgba(255, 255, 255, 0.10));
+      border-radius: 3px;
     }
 
     .session-list {
@@ -83,28 +119,14 @@ const TEMPLATE_HTML = `
       min-height: 0;
     }
 
-    .session-list::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    .session-list::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
+    .session-list::-webkit-scrollbar { width: 6px; }
+    .session-list::-webkit-scrollbar-track { background: transparent; }
     .session-list::-webkit-scrollbar-thumb {
       background: var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: 3px;
     }
-
     .session-list::-webkit-scrollbar-thumb:hover {
       background: var(--text-muted, #606078);
-    }
-
-    .participant-list {
-      flex-shrink: 0;
-      border-top: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
-      max-height: 200px;
-      overflow-y: auto;
     }
   </style>
 
@@ -112,10 +134,18 @@ const TEMPLATE_HTML = `
     <input class="search-input" type="text" />
     <button class="archive-toggle"></button>
   </div>
-  <div class="section-header sessions-header"></div>
+  <div class="section-header friends-header">
+    <span class="section-label friends-label"></span>
+    <button class="section-add-button add-friend-button"></button>
+  </div>
+  <div class="friends-area">
+    <kikx-friends-list></kikx-friends-list>
+  </div>
+  <div class="section-header sessions-header">
+    <span class="section-label sessions-label"></span>
+    <button class="section-add-button add-session-button"></button>
+  </div>
   <div class="session-list"></div>
-  <div class="section-header participants-header"></div>
-  <div class="participant-list"></div>
 `;
 
 let cachedTemplate = null;
@@ -135,30 +165,50 @@ class KikxSidebar extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
 
-    this._searchInput        = this.shadowRoot.querySelector('.search-input');
-    this._archiveToggle      = this.shadowRoot.querySelector('.archive-toggle');
-    this._sessionsHeader     = this.shadowRoot.querySelector('.sessions-header');
-    this._participantsHeader = this.shadowRoot.querySelector('.participants-header');
+    this._searchInput       = this.shadowRoot.querySelector('.search-input');
+    this._archiveToggle     = this.shadowRoot.querySelector('.archive-toggle');
+    this._friendsLabel      = this.shadowRoot.querySelector('.friends-label');
+    this._sessionsLabel     = this.shadowRoot.querySelector('.sessions-label');
+    this._addFriendButton   = this.shadowRoot.querySelector('.add-friend-button');
+    this._addSessionButton  = this.shadowRoot.querySelector('.add-session-button');
+    this._friendsList       = this.shadowRoot.querySelector('kikx-friends-list');
 
     this._archiveVisible = false;
 
-    this._onArchiveToggle = this._onArchiveToggle.bind(this);
+    this._onArchiveToggle    = this._onArchiveToggle.bind(this);
+    this._onAddFriendClick   = this._onAddFriendClick.bind(this);
+    this._onAddSessionClick  = this._onAddSessionClick.bind(this);
   }
 
   connectedCallback() {
     this._render();
     this._archiveToggle.addEventListener('click', this._onArchiveToggle);
+    this._addFriendButton.addEventListener('click', this._onAddFriendClick);
+    this._addSessionButton.addEventListener('click', this._onAddSessionClick);
   }
 
   disconnectedCallback() {
     this._archiveToggle.removeEventListener('click', this._onArchiveToggle);
+    this._addFriendButton.removeEventListener('click', this._onAddFriendClick);
+    this._addSessionButton.removeEventListener('click', this._onAddSessionClick);
+  }
+
+  set friends(value) {
+    if (this._friendsList)
+      this._friendsList.friends = value;
+  }
+
+  get friends() {
+    return (this._friendsList) ? this._friendsList.friends : [];
   }
 
   _render() {
-    this._searchInput.placeholder        = t('sidebar.searchPlaceholder');
-    this._sessionsHeader.textContent     = t('sidebar.sessions');
-    this._participantsHeader.textContent = t('sidebar.participants');
-    this._archiveToggle.textContent      = t('sidebar.archiveHide');
+    this._searchInput.placeholder       = t('sidebar.searchPlaceholder');
+    this._friendsLabel.textContent      = t('sidebar.friends');
+    this._sessionsLabel.textContent     = t('sidebar.sessions');
+    this._addFriendButton.textContent   = t('sidebar.addFriend');
+    this._addSessionButton.textContent  = t('sidebar.addSession');
+    this._archiveToggle.textContent     = t('sidebar.archiveHide');
   }
 
   _onArchiveToggle() {
@@ -172,6 +222,20 @@ class KikxSidebar extends HTMLElement {
       bubbles:  true,
       composed: true,
       detail:   { visible: this._archiveVisible },
+    }));
+  }
+
+  _onAddFriendClick() {
+    this.dispatchEvent(new CustomEvent('add-friend', {
+      bubbles:  true,
+      composed: true,
+    }));
+  }
+
+  _onAddSessionClick() {
+    this.dispatchEvent(new CustomEvent('add-session', {
+      bubbles:  true,
+      composed: true,
     }));
   }
 }

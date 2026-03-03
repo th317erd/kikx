@@ -3,14 +3,45 @@
 // REST API client for Kikx V2.
 // Wraps fetch() with auth token handling, error normalization, and typed endpoint methods.
 
+const STORAGE_KEY = 'kikx_auth';
 let authToken = null;
 let onUnauthorized = null;
 
 const BASE_URL = '/kikx/api/v2';
 
-export function setAuthToken(token) { authToken = token; }
+export function setAuthToken(token) {
+  authToken = token;
+}
+
 export function getAuthToken() { return authToken; }
 export function setOnUnauthorized(callback) { onUnauthorized = callback; }
+
+// Persist auth state to localStorage
+export function persistAuth(token, user) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, user }));
+  } catch (_e) { /* storage unavailable */ }
+}
+
+// Load auth state from localStorage. Returns { token, user } or null.
+export function loadPersistedAuth() {
+  try {
+    let raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+
+    let parsed = JSON.parse(raw);
+    if (parsed && parsed.token) return parsed;
+  } catch (_e) { /* corrupt or unavailable */ }
+
+  return null;
+}
+
+// Clear persisted auth
+export function clearPersistedAuth() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (_e) { /* storage unavailable */ }
+}
 
 class ApiError extends Error {
   constructor(status, message, body) {
@@ -76,6 +107,10 @@ export function registerUser({ email, password, firstName, lastName, organizatio
 
 export function getMe() {
   return request('GET', '/auth/me');
+}
+
+export function updateProfile(updates) {
+  return request('PUT', '/auth/me', updates);
 }
 
 // Session endpoints

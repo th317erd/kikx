@@ -11,6 +11,7 @@ import {
 
 import { profile } from '../../lib/store.mjs';
 import { setLocale } from '../../lib/i18n.mjs';
+import { setAuthToken, loadPersistedAuth, clearPersistedAuth, setOnUnauthorized } from '../../lib/api.mjs';
 import en from '../../lib/locales/en.mjs';
 
 // Pre-import all custom element components
@@ -31,6 +32,19 @@ class KikxApplication extends HTMLElement {
 
   connectedCallback() {
     setLocale(en, 'en');
+
+    // Restore auth from localStorage
+    let saved = loadPersistedAuth();
+    if (saved) {
+      setAuthToken(saved.token);
+      profile.setUser(saved.user, saved.token);
+    }
+
+    // On 401, clear persisted auth and redirect to login
+    setOnUnauthorized(() => {
+      clearPersistedAuth();
+      profile.logout();
+    });
 
     defineRoute('/kikx/login',        'login');
     defineRoute('/kikx/',             'sessions', { requiresAuthentication: true });

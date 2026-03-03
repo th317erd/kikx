@@ -14,6 +14,46 @@ export class AuthController extends ControllerAuthBase {
   }
 
   // ---------------------------------------------------------------------------
+  // PUT /api/v2/auth/me — update profile
+  // ---------------------------------------------------------------------------
+
+  async updateProfile({ body }) {
+    let { User } = this.getCoreModels();
+    let user     = await User.where.id.EQ(this.request.userId).first();
+
+    if (!user)
+      this.throwNotFoundError('User not found');
+
+    let { firstName, lastName, email, avatar } = body || {};
+
+    if (firstName !== undefined)
+      user.firstName = firstName;
+
+    if (lastName !== undefined)
+      user.lastName = lastName;
+
+    if (avatar !== undefined)
+      user.avatar = avatar;
+
+    // Email change: store directly for now (verification stub)
+    if (email !== undefined && email !== user.email)
+      user.email = email;
+
+    await user.save();
+
+    return {
+      data: {
+        id:             user.id,
+        email:          user.email,
+        firstName:      user.firstName,
+        lastName:       user.lastName,
+        organizationID: user.organizationID,
+        avatar:         user.avatar ? true : false,
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // POST /api/v2/auth/register
   // ---------------------------------------------------------------------------
 
@@ -86,6 +126,7 @@ export class AuthController extends ControllerAuthBase {
         firstName:      user.firstName,
         lastName:       user.lastName,
         organizationID: user.organizationID,
+        avatar:         user.avatar || null,
       },
     };
   }

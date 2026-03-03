@@ -1,7 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
-import { connection } from '../../lib/store.mjs';
+import store, { connection } from '../../lib/store.mjs';
 
 const STATUS_COLORS = {
   connected:    '#00ff88',
@@ -99,15 +99,18 @@ class KikxStatusBar extends HTMLElement {
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
     this.update();
 
-    this._unsubscribe = connection.subscribe(() => {
-      this.update();
-    });
+    this._onStoreUpdate = ({ modified }) => {
+      if (!modified || modified.includes('connection'))
+        this.update();
+    };
+
+    store.on('update', this._onStoreUpdate);
   }
 
   disconnectedCallback() {
-    if (this._unsubscribe) {
-      this._unsubscribe();
-      this._unsubscribe = null;
+    if (this._onStoreUpdate) {
+      store.off('update', this._onStoreUpdate);
+      this._onStoreUpdate = null;
     }
   }
 

@@ -155,6 +155,14 @@ const store = createStore({
       return get().user;
     },
 
+    updateUser({ get, set }, updates) {
+      let current = get();
+      if (!current.user)
+        return;
+
+      set({ ...current, user: { ...current.user, ...updates } });
+    },
+
     isAuthenticated({ get }) {
       return get().authenticated;
     },
