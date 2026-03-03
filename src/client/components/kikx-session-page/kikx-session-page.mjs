@@ -132,7 +132,8 @@ class KikxSessionPage extends HTMLElement {
   async _loadAgents() {
     try {
       let result    = await getAgents();
-      let agentList = (result && result.data) ? result.data : [];
+      let data      = (result && result.data) || {};
+      let agentList = Array.isArray(data) ? data : (data.agents || []);
 
       // Store agents
       for (let agent of agentList)
@@ -182,7 +183,8 @@ class KikxSessionPage extends HTMLElement {
           model:    detail.model,
         });
 
-        let newAgent = (result && result.data) ? result.data : result;
+        let data     = (result && result.data) || result;
+        let newAgent = data.agent || data;
         agents.addAgent(newAgent);
 
         let allAgents = agents.getAllAgents();
@@ -205,7 +207,8 @@ class KikxSessionPage extends HTMLElement {
 
     try {
       let result = await createSession({ name: detail.name });
-      let newSession = (result && result.data) ? result.data : result;
+      let data       = (result && result.data) || result;
+      let newSession = data.session || data;
 
       let { sessions } = await import('../../lib/store.mjs');
       sessions.addSession(newSession);
