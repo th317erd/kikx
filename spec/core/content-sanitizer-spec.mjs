@@ -309,6 +309,15 @@ describe('ContentSanitizer', () => {
       assert.ok(result.includes('required="true"'));
     });
 
+    it('should preserve readonly and value on answered kikx-hml-prompt', () => {
+      let sanitizer = new ContentSanitizer();
+      let input     = '<kikx-hml-prompt type="text" name="city" label="City" value="Portland" readonly=""></kikx-hml-prompt>';
+      let result    = sanitizer.sanitize(input);
+
+      assert.ok(result.includes('value="Portland"'), 'should preserve value');
+      assert.ok(result.includes('readonly=""'), 'should preserve readonly');
+    });
+
     it('should allow kikx-hml-option with its attributes', () => {
       let sanitizer = new ContentSanitizer();
       let input     = '<kikx-hml-option value="opt1" label="Option 1" selected="true"></kikx-hml-option>';
@@ -529,6 +538,51 @@ describe('ContentSanitizer', () => {
       assert.ok(DANGEROUS_TAGS.has('iframe'));
       assert.ok(DANGEROUS_TAGS.has('style'));
       assert.ok(DANGEROUS_TAGS.has('form'));
+    });
+  });
+
+  // ===========================================================================
+  // Double-encoding prevention
+  // ===========================================================================
+
+  describe('double-encoding prevention', () => {
+    it('should not double-encode &quot; entities in attribute values', () => {
+      let sanitizer = new ContentSanitizer();
+      let html      = '<kikx-hml-prompt type="textarea" label="Thoughts" value="Why does the &quot;Productivity Today&quot; not have a &quot;1000%&quot; option?"></kikx-hml-prompt>';
+      let result    = sanitizer.sanitize(html);
+
+      // Should contain &quot; (single-encoded), NOT &amp;quot; (double-encoded)
+      assert.ok(result.includes('&quot;Productivity Today&quot;'), `Expected &quot; but got: ${result}`);
+      assert.ok(!result.includes('&amp;quot;'), `Found double-encoded &amp;quot; in: ${result}`);
+    });
+
+    it('should not double-encode &amp; entities in attribute values', () => {
+      let sanitizer = new ContentSanitizer();
+      let html      = '<a href="https://example.com?x=1&amp;y=2">link</a>';
+      let result    = sanitizer.sanitize(html);
+
+      assert.ok(result.includes('x=1&amp;y=2'));
+      assert.ok(!result.includes('&amp;amp;'));
+    });
+
+    it('should not double-encode &lt; and &gt; entities in attribute values', () => {
+      let sanitizer = new ContentSanitizer();
+      let html      = '<kikx-hml-prompt type="text" label="Code" value="x &lt; 10 &amp;&amp; y &gt; 5"></kikx-hml-prompt>';
+      let result    = sanitizer.sanitize(html);
+
+      assert.ok(result.includes('&lt;'));
+      assert.ok(result.includes('&gt;'));
+      assert.ok(!result.includes('&amp;lt;'));
+      assert.ok(!result.includes('&amp;gt;'));
+    });
+
+    it('should still encode raw special characters in attribute values', () => {
+      let sanitizer = new ContentSanitizer();
+      // Raw & (not an entity) should still be encoded
+      let html   = '<div class="a&b">text</div>';
+      let result = sanitizer.sanitize(html);
+
+      assert.ok(result.includes('class="a&amp;b"'));
     });
   });
 });

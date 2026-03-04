@@ -44,7 +44,7 @@ const DEFAULT_ALLOWED_TAGS = {
   'td':         ['class', 'colspan', 'rowspan'],
 
   // Custom elements (base set)
-  'kikx-hml-prompt':  ['type', 'name', 'label', 'placeholder', 'value', 'required', 'min', 'max', 'step', 'options', 'default', 'class', 'id'],
+  'kikx-hml-prompt':  ['type', 'name', 'label', 'placeholder', 'value', 'required', 'readonly', 'min', 'max', 'step', 'options', 'default', 'prompt-id', 'class', 'id'],
   'kikx-hml-option':  ['value', 'label', 'selected', 'class'],
 };
 
@@ -181,8 +181,17 @@ export class ContentSanitizer {
       if (URI_ATTRIBUTES.has(attributeName) && JAVASCRIPT_URI_PATTERN.test(attributeValue))
         continue;
 
-      // Escape the attribute value
-      let escapedValue = attributeValue
+      // Decode any existing HTML entities first to avoid double-encoding,
+      // then re-encode for safe attribute output.
+      let decoded = attributeValue
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#x27;/g, "'")
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+
+      let escapedValue = decoded
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#x27;')
