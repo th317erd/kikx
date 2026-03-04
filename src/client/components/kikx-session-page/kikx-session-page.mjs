@@ -1,19 +1,23 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
-import { getAgents, createAgent, createSession } from '../../lib/api.mjs';
-import { agents } from '../../lib/store.mjs';
+import { navigate } from '../../lib/router.mjs';
+import { getAgents, createAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken } from '../../lib/api.mjs';
+import { agents, profile, connection } from '../../lib/store.mjs';
+import { estimateCost } from '../../lib/cost.mjs';
+import * as debug from '../../lib/debug.mjs';
 
 const TEMPLATE_HTML = `
   <style>
     :host {
       display: grid;
       grid-template-areas:
-        "topbar topbar"
-        "chat sidebar"
+        "topbar  topbar"
+        "chat    sidebar"
+        "input   sidebar"
         "statusbar statusbar";
       grid-template-columns: 1fr auto;
-      grid-template-rows: auto 1fr auto;
+      grid-template-rows: auto 1fr auto auto;
       height: 100vh;
       overflow: hidden;
       background: var(--background-base, #0a0a1a);
@@ -24,9 +28,24 @@ const TEMPLATE_HTML = `
       grid-area: topbar;
     }
 
-    kikx-chat-view {
+    .chat-area {
       grid-area: chat;
+      position: relative;
       overflow: hidden;
+    }
+
+    kikx-chat-view {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    kikx-message-input {
+      grid-area: input;
+    }
+
+    kikx-message-input.hidden {
+      display: none;
     }
 
     kikx-sidebar {
@@ -37,10 +56,36 @@ const TEMPLATE_HTML = `
     kikx-status-bar {
       grid-area: statusbar;
     }
+
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      padding: 8px 4px;
+    }
+
+    .typing-indicator span {
+      width: 6px;
+      height: 6px;
+      background: var(--text-muted, #606078);
+      border-radius: 50%;
+      animation: typing 1.4s infinite ease-in-out;
+    }
+
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes typing {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-4px); }
+    }
   </style>
 
   <kikx-top-bar></kikx-top-bar>
-  <kikx-chat-view></kikx-chat-view>
+  <div class="chat-area">
+    <kikx-chat-view></kikx-chat-view>
+    <kikx-scroll-anchor hidden></kikx-scroll-anchor>
+  </div>
+  <kikx-message-input class="hidden"></kikx-message-input>
   <kikx-sidebar></kikx-sidebar>
   <kikx-status-bar></kikx-status-bar>
 
@@ -63,24 +108,82 @@ function getTemplate() {
   return cachedTemplate;
 }
 
+function formatTimestamp(isoStringOrEpoch) {
+  if (!isoStringOrEpoch && isoStringOrEpoch !== 0)
+    return '';
+
+  let date = (typeof isoStringOrEpoch === 'number')
+    ? new Date(isoStringOrEpoch)
+    : new Date(isoStringOrEpoch);
+
+  if (isNaN(date.getTime()))
+    return '';
+
+  let now  = Date.now();
+  let diff = now - date.getTime();
+
+  if (diff < 60_000)
+    return t('chat.timestamp.justNow') || 'just now';
+
+  if (diff < 3_600_000)
+    return (t('chat.timestamp.minutesAgo') || '{n}m ago').replace('{n}', String(Math.floor(diff / 60_000)));
+
+  if (diff < 86_400_000)
+    return (t('chat.timestamp.hoursAgo') || '{n}h ago').replace('{n}', String(Math.floor(diff / 3_600_000)));
+
+  if (diff < 604_800_000)
+    return (t('chat.timestamp.daysAgo') || '{n}d ago').replace('{n}', String(Math.floor(diff / 86_400_000)));
+
+  // Fallback to absolute date for older messages
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function getInitials(name) {
+  if (!name)
+    return '?';
+
+  // Split on whitespace, hyphens, or underscores to handle names like "test-claude"
+  let parts = name.trim().split(/[\s_-]+/).filter(Boolean);
+  if (parts.length >= 2)
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+
+  return parts[0].substring(0, 2).toUpperCase();
+}
+
 class KikxSessionPage extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
+
+    this._currentSession = null;
+    this._eventSource    = null;
 
     this._onAddFriend       = this._onAddFriend.bind(this);
     this._onAddSession      = this._onAddSession.bind(this);
     this._onFriendSave      = this._onFriendSave.bind(this);
     this._onFriendCancel    = this._onFriendCancel.bind(this);
     this._onSessionCreate   = this._onSessionCreate.bind(this);
+    this._onSessionCancel   = this._onSessionCancel.bind(this);
     this._onModalClose      = this._onModalClose.bind(this);
+    this._onSelectFriend    = this._onSelectFriend.bind(this);
+    this._onSendMessage     = this._onSendMessage.bind(this);
+    this._onAnchoredChange  = this._onAnchoredChange.bind(this);
+    this._onJumpToBottom    = this._onJumpToBottom.bind(this);
+    this._onQueueChange          = this._onQueueChange.bind(this);
+    this._onPermissionResponse   = this._onPermissionResponse.bind(this);
+    this._onCancelInteraction    = this._onCancelInteraction.bind(this);
+    this._onInteractionSubmit    = this._onInteractionSubmit.bind(this);
+    this._onInteractionIgnore    = this._onInteractionIgnore.bind(this);
   }
 
   connectedCallback() {
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
 
     this._topBar             = this.shadowRoot.querySelector('kikx-top-bar');
+    this._chatView           = this.shadowRoot.querySelector('kikx-chat-view');
+    this._messageInput       = this.shadowRoot.querySelector('kikx-message-input');
     this._sidebar            = this.shadowRoot.querySelector('kikx-sidebar');
+    this._scrollAnchor       = this.shadowRoot.querySelector('kikx-scroll-anchor');
     this._friendModal        = this.shadowRoot.querySelector('.friend-modal');
     this._sessionModal       = this.shadowRoot.querySelector('.session-modal');
     this._addFriendWizard    = this.shadowRoot.querySelector('kikx-add-friend-modal');
@@ -90,8 +193,8 @@ class KikxSessionPage extends HTMLElement {
     this._friendModal.setAttribute('modal-title', t('friends.wizard.title'));
     this._sessionModal.setAttribute('modal-title', t('session.create.title'));
 
-    // Set hide-back when no session active
-    this._updateTopBar();
+    // Update view based on session presence
+    this._updateSessionView();
 
     // Event listeners
     this.shadowRoot.addEventListener('add-friend', this._onAddFriend);
@@ -99,9 +202,19 @@ class KikxSessionPage extends HTMLElement {
     this.shadowRoot.addEventListener('friend-save', this._onFriendSave);
     this.shadowRoot.addEventListener('friend-cancel', this._onFriendCancel);
     this.shadowRoot.addEventListener('session-create', this._onSessionCreate);
+    this.shadowRoot.addEventListener('session-cancel', this._onSessionCancel);
     this.shadowRoot.addEventListener('modal-close', this._onModalClose);
+    this.shadowRoot.addEventListener('select-friend', this._onSelectFriend);
+    this.shadowRoot.addEventListener('send-message', this._onSendMessage);
+    this.shadowRoot.addEventListener('anchored-change', this._onAnchoredChange);
+    this.shadowRoot.addEventListener('jump-to-bottom', this._onJumpToBottom);
+    this.shadowRoot.addEventListener('queue-change', this._onQueueChange);
+    this.shadowRoot.addEventListener('permission-response', this._onPermissionResponse);
+    this.shadowRoot.addEventListener('cancel-interaction', this._onCancelInteraction);
+    this.shadowRoot.addEventListener('interaction-submit', this._onInteractionSubmit);
+    this.shadowRoot.addEventListener('interaction-ignore', this._onInteractionIgnore);
 
-    this._loadAgents();
+    this._loadInitialData();
   }
 
   disconnectedCallback() {
@@ -110,36 +223,607 @@ class KikxSessionPage extends HTMLElement {
     this.shadowRoot.removeEventListener('friend-save', this._onFriendSave);
     this.shadowRoot.removeEventListener('friend-cancel', this._onFriendCancel);
     this.shadowRoot.removeEventListener('session-create', this._onSessionCreate);
+    this.shadowRoot.removeEventListener('session-cancel', this._onSessionCancel);
     this.shadowRoot.removeEventListener('modal-close', this._onModalClose);
+    this.shadowRoot.removeEventListener('select-friend', this._onSelectFriend);
+    this.shadowRoot.removeEventListener('send-message', this._onSendMessage);
+    this.shadowRoot.removeEventListener('anchored-change', this._onAnchoredChange);
+    this.shadowRoot.removeEventListener('jump-to-bottom', this._onJumpToBottom);
+    this.shadowRoot.removeEventListener('queue-change', this._onQueueChange);
+    this.shadowRoot.removeEventListener('permission-response', this._onPermissionResponse);
+    this.shadowRoot.removeEventListener('cancel-interaction', this._onCancelInteraction);
+    this.shadowRoot.removeEventListener('interaction-submit', this._onInteractionSubmit);
+    this.shadowRoot.removeEventListener('interaction-ignore', this._onInteractionIgnore);
+
+    this._disconnectStream();
   }
 
   get sessionId() {
     return this.getAttribute('data-id');
   }
 
-  _updateTopBar() {
+  // ---------------------------------------------------------------------------
+  // Session view update (top bar + input visibility + session fetch + SSE)
+  // ---------------------------------------------------------------------------
+
+  _updateSessionView() {
     let sessionId = this.sessionId;
 
     if (sessionId) {
       this._topBar.removeAttribute('hide-back');
       this._topBar.setAttribute('session-name', sessionId);
+      this._messageInput.classList.remove('hidden');
+      this._messageInput.sessionId = sessionId;
+
+      // Reset session cost when navigating to a new session
+      let currentCosts = connection.getCosts();
+      connection.updateCosts({ global: currentCosts.global, service: currentCosts.service, session: 0 });
+
+      this._fetchSessionDetails(sessionId);
+      this._loadFrames(sessionId).then(() => this._connectStream(sessionId));
     } else {
       this._topBar.setAttribute('hide-back', '');
       this._topBar.removeAttribute('session-name');
+      this._messageInput.classList.add('hidden');
+
+      this._disconnectStream();
+      this._currentSession = null;
     }
   }
 
-  async _loadAgents() {
+  async _fetchSessionDetails(sessionId) {
+    try {
+      let result  = await getSession(sessionId);
+      let session = (result && result.data) ? result.data : result;
+
+      if (session && session.session)
+        session = session.session;
+
+      this._currentSession = session;
+
+      let displayName = session.name || sessionId;
+
+      // For DM sessions, show the agent name without "DM: " prefix
+      if (displayName.startsWith('DM: '))
+        displayName = displayName.slice(4);
+
+      this._topBar.setAttribute('session-name', displayName);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to fetch session details:', error);
+    }
+  }
+
+  async _loadFrames(sessionId) {
+    try {
+      let result = await getFrames(sessionId);
+      let data   = (result && result.data) || {};
+      let frames = Array.isArray(data) ? data : (data.frames || []);
+
+      for (let frame of frames)
+        this._renderFrame(frame, { fromHistory: true });
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to load frames:', error);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // SSE Stream
+  // ---------------------------------------------------------------------------
+
+  _connectStream(sessionId) {
+    this._disconnectStream();
+
+    let token = getAuthToken();
+    if (!token)
+      return;
+
+    let url    = `/kikx/api/v2/sessions/${sessionId}/stream`;
+    let abort  = new AbortController();
+    this._streamAbort = abort;
+
+    connection.setStatus('connecting');
+
+    fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'text/event-stream' },
+      signal:  abort.signal,
+    }).then((response) => {
+      if (!response.ok) {
+        // eslint-disable-next-line no-console
+        console.error('SSE stream failed:', response.status, response.statusText);
+        connection.setStatus('disconnected');
+        return;
+      }
+
+      this._readSSEStream(response.body);
+    }).catch((error) => {
+      if (error.name === 'AbortError')
+        return;
+
+      // eslint-disable-next-line no-console
+      console.error('SSE connection error:', error);
+      connection.setStatus('disconnected');
+    });
+  }
+
+  async _readSSEStream(body) {
+    let reader  = body.getReader();
+    let decoder = new TextDecoder();
+    let buffer  = '';
+
+    try {
+      while (true) {
+        let { done, value } = await reader.read();
+        if (done)
+          break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        let lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep incomplete line in buffer
+
+        let eventType = null;
+        let eventData = null;
+
+        for (let line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.substring(7).trim();
+          } else if (line.startsWith('data: ')) {
+            eventData = line.substring(6);
+          } else if (line === '') {
+            // Empty line = end of event
+            if (eventType)
+              this._handleSSEEvent(eventType, eventData);
+
+            eventType = null;
+            eventData = null;
+          }
+        }
+      }
+    } catch (error) {
+      if (error.name === 'AbortError')
+        return;
+
+      // eslint-disable-next-line no-console
+      console.error('SSE read error:', error);
+    }
+
+    connection.setStatus('disconnected');
+  }
+
+  _handleSSEEvent(eventType, data) {
+    switch (eventType) {
+      case 'connected':
+        connection.setStatus('connected');
+        break;
+
+      case 'frame': {
+        let frame;
+
+        try {
+          frame = JSON.parse(data);
+        } catch (_error) {
+          return;
+        }
+
+        this._renderFrame(frame);
+        break;
+      }
+
+      case 'delta': {
+        let parsed;
+
+        try {
+          parsed = JSON.parse(data);
+        } catch (_error) {
+          return;
+        }
+
+        this._handleStreamDelta(parsed);
+        break;
+      }
+
+      case 'reflection-delta': {
+        let parsed;
+
+        try {
+          parsed = JSON.parse(data);
+        } catch (_error) {
+          return;
+        }
+
+        this._handleReflectionDelta(parsed);
+        break;
+      }
+
+      case 'usage': {
+        let parsed;
+
+        try {
+          parsed = JSON.parse(data);
+        } catch (_error) {
+          return;
+        }
+
+        this._handleUsage(parsed);
+        break;
+      }
+
+      case 'interaction:start': {
+        this._messageInput.setInteracting(true);
+        this._showTypingIndicator();
+        let startStatusBar = this.shadowRoot.querySelector('kikx-status-bar');
+        if (startStatusBar)
+          startStatusBar.setInteracting(true);
+        break;
+      }
+
+      case 'interaction:end': {
+        if (debug.isEnabled() && this._streamingInteraction) {
+          let endData;
+          try { endData = JSON.parse(data); } catch (_error) { endData = {}; }
+
+          let interactionID = endData.interactionID || this._streamingInteraction.getAttribute('data-interaction-id');
+          if (interactionID)
+            debug.snapshotComposed(interactionID);
+        }
+
+        this._removeTypingIndicator();
+        this._clearStreamingState();
+        this._messageInput.setInteracting(false);
+        let endStatusBar = this.shadowRoot.querySelector('kikx-status-bar');
+        if (endStatusBar)
+          endStatusBar.setInteracting(false);
+        break;
+      }
+    }
+  }
+
+  _disconnectStream() {
+    if (this._streamAbort) {
+      this._streamAbort.abort();
+      this._streamAbort = null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Frame rendering
+  // ---------------------------------------------------------------------------
+
+  _renderFrame(frame, options = {}) {
+    // Skip user-message frames from SSE — they're already rendered optimistically.
+    // When loading history, we must render them.
+    if (frame.type === 'user-message' && !options.fromHistory)
+      return;
+
+    // Skip non-renderable frame types (internal plumbing, not user-facing)
+    let hiddenTypes = new Set([
+      'pending-action',
+      'tool-call',
+      'tool-result',
+      'tool-error',
+      'hook-blocked',
+      'permission-denied',
+    ]);
+
+    if (hiddenTypes.has(frame.type))
+      return;
+
+    // Permission request — render approval UI
+    if (frame.type === 'permission-request') {
+      let name = this._getAgentDisplayName();
+
+      let interaction = document.createElement('kikx-interaction');
+      interaction.setAttribute('alignment', 'agent');
+      interaction.setAttribute('participant-name', name);
+      interaction.setAttribute('participant-initials', getInitials(name));
+      interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
+      interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
+      interaction.setAttribute('data-frame-id', frame.id);
+
+      let permRequest = document.createElement('kikx-permission-request');
+      permRequest.setAttribute('permission-id', frame.id);
+
+      let toolName = (frame.content && frame.content.toolName) || 'unknown';
+      permRequest.description = `${name} wants to use: ${toolName}`;
+
+      if (frame.processed)
+        permRequest.setAttribute('processed', '');
+
+      interaction.appendChild(permRequest);
+      this._chatView.appendInteraction(interaction);
+
+      if (debug.isEnabled()) {
+        debug.trackElement(frame.interactionID || frame.id, interaction);
+        debug.pushFrame(frame.interactionID || frame.id, frame);
+      }
+
+      return;
+    }
+
+    // Command result — render as system message
+    if (frame.type === 'command-result') {
+      let interaction = document.createElement('kikx-interaction');
+      interaction.setAttribute('alignment', 'agent');
+      interaction.setAttribute('participant-name', 'System');
+      interaction.setAttribute('participant-initials', 'S');
+      interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
+      interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
+      interaction.setAttribute('data-frame-id', frame.id);
+
+      let messageContent = document.createElement('kikx-message-content');
+      messageContent.content = (frame.content && frame.content.html) || '';
+
+      interaction.appendChild(messageContent);
+      this._chatView.appendInteraction(interaction);
+
+      if (debug.isEnabled()) {
+        debug.trackElement(frame.interactionID || frame.id, interaction);
+        debug.pushFrame(frame.interactionID || frame.id, frame);
+      }
+
+      return;
+    }
+
+    // Error frames — render as error messages
+    if (frame.type === 'error') {
+      let interaction = document.createElement('kikx-interaction');
+      interaction.setAttribute('alignment', 'agent');
+      interaction.setAttribute('participant-name', 'System');
+      interaction.setAttribute('participant-initials', '!');
+      interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
+      interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
+      interaction.setAttribute('data-frame-id', frame.id);
+
+      let messageContent = document.createElement('kikx-message-content');
+      let errorMsg = (frame.content && frame.content.message) || 'An error occurred';
+      messageContent.content = `<p style="color: var(--error-color, #ff4444);">Error: ${errorMsg}</p>`;
+
+      interaction.appendChild(messageContent);
+      this._chatView.appendInteraction(interaction);
+
+      if (debug.isEnabled()) {
+        debug.trackElement(frame.interactionID || frame.id, interaction);
+        debug.pushFrame(frame.interactionID || frame.id, frame);
+      }
+
+      return;
+    }
+
+    // Reflection frames
+    if (frame.type === 'reflection') {
+      // If we're streaming and have a live reflection block, finalize it
+      if (this._streamingReflection) {
+        this._streamingReflection.content = (frame.content && frame.content.text) || '';
+        this._streamingReflection = null;
+        this._reflectionText      = '';
+
+        return;
+      }
+
+      // From history or non-streaming: render as standalone collapsible block
+      if (options.fromHistory) {
+        let name = this._getAgentDisplayName();
+
+        let interaction = document.createElement('kikx-interaction');
+        interaction.setAttribute('alignment', 'agent');
+        interaction.setAttribute('participant-name', name);
+        interaction.setAttribute('participant-initials', getInitials(name));
+        interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
+        interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
+        interaction.setAttribute('data-frame-id', frame.id);
+
+        let reflectionBlock = document.createElement('kikx-reflection-block');
+        reflectionBlock.content = (frame.content && frame.content.text) || '';
+
+        interaction.appendChild(reflectionBlock);
+        this._chatView.appendInteraction(interaction);
+
+        if (debug.isEnabled()) {
+          debug.trackElement(frame.interactionID || frame.id, interaction);
+          debug.pushFrame(frame.interactionID || frame.id, frame);
+        }
+      }
+
+      return;
+    }
+
+    // Message frames: finalize streaming bubble if active
+    if (frame.type === 'message' && this._streamingInteraction) {
+      let content = frame.content;
+      let html    = '';
+
+      if (content && typeof content === 'object') {
+        if (content.html)
+          html = content.html;
+        else if (content.text)
+          html = `<p>${this._escapeHTML(content.text)}</p>`;
+      } else if (typeof content === 'string') {
+        html = content;
+      }
+
+      // Update the existing streaming content with the finalized (sanitized) HTML
+      if (this._streamingContent)
+        this._streamingContent.content = html;
+
+      // Set data-frame-id so persistence can find this frame later
+      this._streamingInteraction.setAttribute('data-frame-id', frame.id);
+
+      if (debug.isEnabled() && frame.interactionID) {
+        debug.pushFrame(frame.interactionID, frame);
+        debug.snapshotComposed(frame.interactionID);
+      }
+
+      this._streamingInteraction = null;
+      this._streamingContent     = null;
+      this._streamingHTML        = '';
+
+      return;
+    }
+
+    let isUser    = (frame.type === 'user-message') || (frame.authorType === 'user');
+    let alignment = (isUser) ? 'user' : 'agent';
+    let name      = frame.authorName || ((isUser) ? this._getUserDisplayName() : this._getAgentDisplayName());
+
+    let interaction = document.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', alignment);
+    interaction.setAttribute('participant-name', name);
+    interaction.setAttribute('participant-initials', getInitials(name));
+    interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
+    interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
+    interaction.setAttribute('data-frame-id', frame.id);
+
+    // frame.content is an object: { html: "..." } or { text: "..." }
+    let content = frame.content;
+    let html    = '';
+
+    if (content && typeof content === 'object') {
+      if (content.html) {
+        html = content.html;
+      } else if (content.text) {
+        // Plain text (e.g. user-message frames) — escape for safe HTML rendering
+        html = `<p>${this._escapeHTML(content.text)}</p>`;
+      }
+    } else if (typeof content === 'string') {
+      html = content;
+    }
+
+    let messageContent = document.createElement('kikx-message-content');
+    messageContent.content = html;
+
+    interaction.appendChild(messageContent);
+    this._chatView.appendInteraction(interaction);
+
+    if (debug.isEnabled()) {
+      debug.trackElement(frame.interactionID || frame.id, interaction);
+      debug.pushFrame(frame.interactionID || frame.id, frame);
+    }
+  }
+
+  _renderUserMessage(text) {
+    let name = this._getUserDisplayName();
+
+    let interaction = document.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'user');
+    interaction.setAttribute('participant-name', name);
+    interaction.setAttribute('participant-initials', getInitials(name));
+    interaction.setAttribute('timestamp', formatTimestamp(new Date().toISOString()));
+
+    let messageContent = document.createElement('kikx-message-content');
+    messageContent.content = `<p>${this._escapeHTML(text)}</p>`;
+
+    interaction.appendChild(messageContent);
+    this._chatView.appendInteraction(interaction);
+  }
+
+  _escapeHTML(text) {
+    let div = document.createElement('div');
+    div.textContent = text;
+
+    return div.innerHTML;
+  }
+
+  _getUserDisplayName() {
+    let user = profile.getUser();
+    if (!user)
+      return 'You';
+
+    if (user.firstName)
+      return user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName;
+
+    return user.email || 'You';
+  }
+
+  _getAgentDisplayName() {
+    if (this._currentSession && this._currentSession.dmAgentName)
+      return this._currentSession.dmAgentName;
+
+    // Look up agent name from store via dmAgentID
+    if (this._currentSession && this._currentSession.dmAgentID) {
+      let agent = agents.getAgent(this._currentSession.dmAgentID);
+      if (agent && agent.name)
+        return agent.name;
+    }
+
+    // Strip "DM: " prefix from session name if present
+    if (this._currentSession && this._currentSession.name) {
+      let name = this._currentSession.name;
+      if (name.startsWith('DM: '))
+        return name.slice(4);
+
+      return name;
+    }
+
+    return 'Agent';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Send message
+  // ---------------------------------------------------------------------------
+
+  async _onSendMessage(event) {
+    let { text } = event.detail || {};
+    if (!text)
+      return;
+
+    let sessionId = this.sessionId;
+    if (!sessionId)
+      return;
+
+    // Determine agent ID from session data
+    let agentId = null;
+    if (this._currentSession)
+      agentId = this._currentSession.dmAgentID || this._currentSession.agentId || this._currentSession.agentID;
+
+    if (!agentId) {
+      // eslint-disable-next-line no-console
+      console.error('No agent ID available for this session');
+      return;
+    }
+
+    // Render user message immediately
+    this._renderUserMessage(text);
+
+    try {
+      await sendMessage(sessionId, text, agentId);
+      this._messageInput.clearDraft();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to send message:', error);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Initial data loading
+  // ---------------------------------------------------------------------------
+
+  async _loadInitialData() {
+    // Fetch fresh profile so settings page has current data
+    try {
+      let meResult  = await getMe();
+      let freshUser = (meResult && meResult.data) ? meResult.data : null;
+
+      if (freshUser) {
+        let currentUser = profile.getUser() || {};
+        let merged = { ...currentUser, ...freshUser };
+        profile.setUser(merged, getAuthToken());
+        persistAuth(getAuthToken(), merged);
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to load profile:', error);
+    }
+
+    // Fetch agents
     try {
       let result    = await getAgents();
       let data      = (result && result.data) || {};
       let agentList = Array.isArray(data) ? data : (data.agents || []);
 
-      // Store agents
       for (let agent of agentList)
         agents.addAgent(agent);
 
-      // Map agents to friends format for the sidebar
       this._updateFriendsList(agentList);
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -159,6 +843,161 @@ class KikxSessionPage extends HTMLElement {
 
     this._sidebar.friends = friends;
   }
+
+  // ---------------------------------------------------------------------------
+  // Typing indicator
+  // ---------------------------------------------------------------------------
+
+  _showTypingIndicator() {
+    this._removeTypingIndicator();
+
+    let name = this._getAgentDisplayName();
+
+    let interaction = document.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'agent');
+    interaction.setAttribute('participant-name', name);
+    interaction.setAttribute('participant-initials', getInitials(name));
+    interaction.setAttribute('timestamp', formatTimestamp(new Date().toISOString()));
+
+    let dots = document.createElement('div');
+    dots.className = 'typing-indicator';
+    dots.innerHTML = '<span></span><span></span><span></span>';
+
+    interaction.appendChild(dots);
+    this._chatView.appendInteraction(interaction);
+
+    this._typingIndicator     = interaction;
+    this._typingDots          = dots;
+    this._streamingHTML       = '';
+    this._streamingInteraction = null;
+    this._streamingContent    = null;
+    this._streamingReflection = null;
+    this._reflectionText      = '';
+  }
+
+  _removeTypingIndicator() {
+    if (this._typingIndicator) {
+      this._typingIndicator.remove();
+      this._typingIndicator = null;
+      this._typingDots      = null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Streaming display
+  // ---------------------------------------------------------------------------
+
+  _handleStreamDelta(parsed) {
+    let text = (parsed.content && parsed.content.text) || '';
+
+    // First delta: promote typing indicator to streaming bubble
+    if (this._typingIndicator && !this._streamingContent) {
+      // Remove typing dots
+      if (this._typingDots) {
+        this._typingDots.remove();
+        this._typingDots = null;
+      }
+
+      // Create message-content inside the existing interaction bubble
+      let messageContent = document.createElement('kikx-message-content');
+      this._typingIndicator.appendChild(messageContent);
+
+      this._streamingInteraction = this._typingIndicator;
+      this._streamingContent     = messageContent;
+      this._typingIndicator      = null;
+      this._streamingHTML        = '';
+
+      if (parsed.interactionID)
+        this._streamingInteraction.setAttribute('data-interaction-id', parsed.interactionID);
+
+      if (debug.isEnabled() && parsed.interactionID)
+        debug.trackElement(parsed.interactionID, this._streamingInteraction);
+    }
+
+    if (!this._streamingContent)
+      return;
+
+    this._streamingHTML += text;
+    this._streamingContent.content = this._streamingHTML;
+
+    if (debug.isEnabled() && parsed.interactionID)
+      debug.setStreamDelta(parsed.interactionID, this._streamingHTML);
+  }
+
+  _handleReflectionDelta(parsed) {
+    let text = (parsed.content && parsed.content.text) || '';
+
+    // First reflection delta: create reflection block inside streaming interaction
+    if (!this._streamingReflection) {
+      // Ensure we have a streaming interaction (promote typing indicator if needed)
+      if (this._typingIndicator && !this._streamingInteraction) {
+        if (this._typingDots) {
+          this._typingDots.remove();
+          this._typingDots = null;
+        }
+
+        this._streamingInteraction = this._typingIndicator;
+        this._typingIndicator      = null;
+      }
+
+      if (!this._streamingInteraction)
+        return;
+
+      let reflectionBlock = document.createElement('kikx-reflection-block');
+      // Insert reflection before any message content
+      if (this._streamingContent)
+        this._streamingInteraction.insertBefore(reflectionBlock, this._streamingContent);
+      else
+        this._streamingInteraction.appendChild(reflectionBlock);
+
+      this._streamingReflection = reflectionBlock;
+      this._reflectionText      = '';
+    }
+
+    this._reflectionText += text;
+    this._streamingReflection.content = this._reflectionText;
+
+    if (debug.isEnabled() && parsed.interactionID)
+      debug.setReflectionDelta(parsed.interactionID, this._reflectionText);
+  }
+
+  _clearStreamingState() {
+    this._streamingInteraction = null;
+    this._streamingContent     = null;
+    this._streamingHTML        = '';
+    this._streamingReflection  = null;
+    this._reflectionText       = '';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Usage / cost tracking
+  // ---------------------------------------------------------------------------
+
+  _handleUsage({ interactionID, usage }) {
+    if (!usage)
+      return;
+
+    // Set token-count on the matching interaction element
+    let totalTokens = (usage.inputTokens || 0) + (usage.outputTokens || 0);
+    let interaction = this._chatView.querySelector(`kikx-interaction[data-interaction-id="${interactionID}"]`);
+
+    if (interaction)
+      interaction.setAttribute('token-count', String(totalTokens));
+
+    // Update costs in the store
+    let cost         = estimateCost(usage);
+    let currentCosts = connection.getCosts();
+
+    connection.updateCosts({
+      global:  currentCosts.global + cost,
+      service: currentCosts.service + cost,
+      session: currentCosts.session + cost,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Modal / friend / session handlers
+  // ---------------------------------------------------------------------------
 
   _onAddFriend() {
     if (this._addFriendWizard && this._addFriendWizard.reset)
@@ -202,6 +1041,12 @@ class KikxSessionPage extends HTMLElement {
     this._friendModal.close();
   }
 
+  _onSessionCancel() {
+    this._sessionModal.close();
+    if (this._createSessionModal && this._createSessionModal.reset)
+      this._createSessionModal.reset();
+  }
+
   async _onSessionCreate(event) {
     let detail = event.detail || {};
 
@@ -218,6 +1063,270 @@ class KikxSessionPage extends HTMLElement {
     }
 
     this._sessionModal.close();
+  }
+
+  async _onSelectFriend(event) {
+    let { id, type } = event.detail || {};
+
+    if (type === 'agent' && id) {
+      try {
+        let result  = await getOrCreateDm(id);
+        let data    = (result && result.data) || {};
+        let session = data.session || data;
+
+        if (session && session.id)
+          navigate(`/kikx/sessions/${session.id}`);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to open DM session:', error);
+      }
+    }
+  }
+
+  _onAnchoredChange(event) {
+    let { anchored } = event.detail || {};
+
+    if (anchored)
+      this._scrollAnchor.hide();
+    else
+      this._scrollAnchor.show();
+  }
+
+  _onJumpToBottom() {
+    this._chatView.scrollToBottom();
+  }
+
+  _onQueueChange(event) {
+    let { count } = event.detail || {};
+    let statusBar = this.shadowRoot.querySelector('kikx-status-bar');
+
+    if (statusBar)
+      statusBar.setQueueCount(count || 0);
+  }
+
+  async _onPermissionResponse(event) {
+    let { permissionId, decision } = event.detail || {};
+
+    if (!permissionId || !decision)
+      return;
+
+    let sessionId = this.sessionId;
+    if (!sessionId)
+      return;
+
+    // Mark the permission UI as processed
+    let permEl = event.target.closest('kikx-permission-request') || event.target;
+    if (permEl && permEl.setAttribute)
+      permEl.setAttribute('processed', '');
+
+    try {
+      if (decision === 'deny') {
+        // TODO: implement deny endpoint
+        return;
+      }
+
+      // For allow-once, allow-session, allow-always — all approve for now
+      await approvePermission(sessionId, permissionId);
+    } catch (error) {
+      console.error('Permission approval failed:', error);
+    }
+  }
+
+  async _onCancelInteraction() {
+    let sessionId = this.sessionId;
+    if (!sessionId)
+      return;
+
+    try {
+      await cancelInteraction(sessionId);
+    } catch (error) {
+      console.error('Cancel interaction failed:', error);
+    }
+  }
+
+  _collectPromptValues(interaction) {
+    // Prompts live inside kikx-message-content's shadow DOM
+    let messageContents = interaction.querySelectorAll('kikx-message-content');
+    let answers         = {};
+
+    for (let messageContent of messageContents) {
+      let shadow = messageContent.shadowRoot;
+      if (!shadow)
+        continue;
+
+      let prompts = shadow.querySelectorAll('kikx-hml-prompt');
+      for (let prompt of prompts) {
+        let name  = prompt.getName();
+        let value = prompt.getValue();
+
+        if (name)
+          answers[name] = value;
+      }
+    }
+
+    return answers;
+  }
+
+  _disableInteractionPrompts(interaction, answers = {}) {
+    interaction.removeAttribute('show-actions');
+
+    let messageContents = interaction.querySelectorAll('kikx-message-content');
+    for (let messageContent of messageContents) {
+      let shadow = messageContent.shadowRoot;
+      if (!shadow)
+        continue;
+
+      let prompts = shadow.querySelectorAll('kikx-hml-prompt');
+      for (let prompt of prompts) {
+        // Set value attribute BEFORE readonly — readonly triggers _renderControl()
+        // which rebuilds from getAttribute('value'), so the value must be set first.
+        let name = prompt.getName();
+        if (name && answers.hasOwnProperty(name))
+          prompt.setAttribute('value', String(answers[name]));
+
+        prompt.setAttribute('readonly', '');
+      }
+    }
+  }
+
+  // Build updated HTML with prompt values baked in and readonly set.
+  // This is what gets persisted back to the frame in the DB.
+  _buildUpdatedFrameHTML(interaction, answers) {
+    let messageContent = interaction.querySelector('kikx-message-content');
+    if (!messageContent)
+      return null;
+
+    let rawHTML = messageContent.content;
+    if (!rawHTML)
+      return null;
+
+    // Parse into a template fragment so we can manipulate the prompt elements
+    let template = document.createElement('template');
+    template.innerHTML = rawHTML;
+
+    let prompts = template.content.querySelectorAll('kikx-hml-prompt');
+    for (let prompt of prompts) {
+      let name = prompt.getAttribute('name') || prompt.getAttribute('prompt-id') || '';
+
+      // Mirror getName() label-derived fallback for prompts without explicit name
+      if (!name) {
+        let label = prompt.getAttribute('label');
+        if (label)
+          name = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      }
+
+      if (name && answers.hasOwnProperty(name))
+        prompt.setAttribute('value', String(answers[name]));
+
+      prompt.setAttribute('readonly', '');
+    }
+
+    return template.innerHTML;
+  }
+
+  async _persistFrameContent(sessionId, interaction, answers) {
+    let frameId = interaction.getAttribute('data-frame-id');
+    if (!frameId)
+      return;
+
+    let updatedHTML = this._buildUpdatedFrameHTML(interaction, answers);
+    if (!updatedHTML)
+      return;
+
+    try {
+      await updateFrameContent(sessionId, frameId, { html: updatedHTML });
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to persist frame content:', error);
+    }
+  }
+
+  _findInteractionFromEvent(event) {
+    for (let node of event.composedPath()) {
+      if (node.tagName && node.tagName.toLowerCase() === 'kikx-interaction')
+        return node;
+    }
+
+    return null;
+  }
+
+  async _onInteractionSubmit(event) {
+    let interaction = this._findInteractionFromEvent(event);
+    if (!interaction)
+      return;
+
+    let answers   = this._collectPromptValues(interaction);
+    let sessionId = this.sessionId;
+
+    if (!sessionId)
+      return;
+
+    let agentId = null;
+    if (this._currentSession)
+      agentId = this._currentSession.dmAgentID || this._currentSession.agentId || this._currentSession.agentID;
+
+    if (!agentId)
+      return;
+
+    // Format answers as a readable message for the agent
+    let lines = [];
+    for (let [name, value] of Object.entries(answers))
+      lines.push(`${name}: ${value}`);
+
+    let text = lines.join('\n');
+    if (!text)
+      return;
+
+    this._disableInteractionPrompts(interaction, answers);
+    this._renderUserMessage(text);
+
+    // Persist the answered values back into the frame content
+    await this._persistFrameContent(sessionId, interaction, answers);
+
+    try {
+      await sendMessage(sessionId, text, agentId);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to submit prompt answers:', error);
+    }
+  }
+
+  async _onInteractionIgnore(event) {
+    let interaction = this._findInteractionFromEvent(event);
+    if (!interaction)
+      return;
+
+    let answers   = this._collectPromptValues(interaction);
+    let sessionId = this.sessionId;
+
+    if (!sessionId)
+      return;
+
+    let agentId = null;
+    if (this._currentSession)
+      agentId = this._currentSession.dmAgentID || this._currentSession.agentId || this._currentSession.agentID;
+
+    if (!agentId)
+      return;
+
+    // Build refusal message listing each prompt
+    let names = Object.keys(answers);
+    let text  = (names.length > 0)
+      ? `User refused to answer: ${names.join(', ')}`
+      : 'User refused to answer';
+
+    this._disableInteractionPrompts(interaction, {});
+    this._renderUserMessage(text);
+
+    // Persist readonly state (no answer values) back into the frame content
+    await this._persistFrameContent(sessionId, interaction, {});
+
+    try {
+      await sendMessage(sessionId, text, agentId);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to send ignore response:', error);
+    }
   }
 
   _onModalClose() {

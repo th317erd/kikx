@@ -1482,6 +1482,65 @@ describe('InteractionLoop', () => {
   // Phase 3: _buildMessages defense-in-depth
   // ===========================================================================
 
+  // ===========================================================================
+  // interaction:usage event on done block
+  // ===========================================================================
+
+  describe('interaction:usage event', () => {
+    it('should emit interaction:usage when done block has usage data', async () => {
+      let session = await createTestSession();
+      let blocks  = [
+        { type: 'message', content: { html: '<p>Hello!</p>' }, authorType: 'agent', authorID: 'agent_1' },
+        { type: 'done', content: { usage: { inputTokens: 100, outputTokens: 50 } } },
+      ];
+
+      // Override MockAgent to yield done with usage instead of default empty done
+      class UsageAgent extends AgentInterface {
+        static pluginId    = 'usage-agent';
+        static featureName = 'mock';
+        static displayName = 'Usage Agent';
+        static description = 'Mock agent with usage';
+        static agentType   = 'mock';
+
+        async *_createGenerator(_params) {
+          yield { type: 'message', content: { html: '<p>Hello!</p>' }, authorType: 'agent', authorID: 'agent_1' };
+          yield { type: 'done', content: { usage: { inputTokens: 100, outputTokens: 50, cacheReadInputTokens: 80, cacheCreationInputTokens: 20 } } };
+        }
+      }
+
+      let agent = new UsageAgent(context);
+      let loop  = createLoop();
+
+      let usageEvents = [];
+      loop.on('interaction:usage', (event) => usageEvents.push(event));
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      assert.equal(usageEvents.length, 1);
+      assert.equal(usageEvents[0].sessionID, session.id);
+      assert.ok(usageEvents[0].interactionID);
+      assert.equal(usageEvents[0].usage.inputTokens, 100);
+      assert.equal(usageEvents[0].usage.outputTokens, 50);
+      assert.equal(usageEvents[0].usage.cacheReadInputTokens, 80);
+      assert.equal(usageEvents[0].usage.cacheCreationInputTokens, 20);
+    });
+
+    it('should NOT emit interaction:usage when done block has no usage', async () => {
+      let session = await createTestSession();
+      let agent   = new MockAgent(context, [
+        { type: 'message', content: { html: '<p>Hi</p>' }, authorType: 'agent' },
+      ]);
+      let loop = createLoop();
+
+      let usageEvents = [];
+      loop.on('interaction:usage', (event) => usageEvents.push(event));
+
+      await loop.startInteraction(session.id, defaultParams(agent));
+
+      assert.equal(usageEvents.length, 0);
+    });
+  });
+
   describe('_buildMessages defense-in-depth', () => {
     it('should skip deleted frames', () => {
       let loop   = createLoop();
@@ -1497,16 +1556,35 @@ describe('InteractionLoop', () => {
       assert.equal(messages[1].content, 'world');
     });
 
-    it('should skip pending-action frames', () => {
+    it('should include pending-action frames as tool-call messages when resolved', () => {
       let loop   = createLoop();
       let frames = [
         { type: 'user-message', content: { text: 'hello' } },
-        { type: 'pending-action', content: { toolName: 'shell' } },
+        { type: 'pending-action', content: { toolName: 'shell', arguments: {}, toolUseId: 'toolu_123' } },
+        { type: 'tool-result', content: { output: 'done', toolUseId: 'toolu_123' } },
+        { type: 'message', content: { html: '<p>hi</p>' } },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 4);
+      assert.equal(messages[1].type, 'tool-call');
+      assert.equal(messages[1].content.toolName, 'shell');
+      assert.equal(messages[1].content.toolUseId, 'toolu_123');
+      assert.equal(messages[2].type, 'tool-result');
+    });
+
+    it('should skip pending-action frames without matching tool-result', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'user-message', content: { text: 'hello' } },
+        { type: 'pending-action', content: { toolName: 'shell', arguments: {}, toolUseId: 'toolu_orphan' } },
         { type: 'message', content: { html: '<p>hi</p>' } },
       ];
 
       let messages = loop._buildMessages(frames);
       assert.equal(messages.length, 2);
+      assert.equal(messages[0].role, 'user');
+      assert.equal(messages[1].role, 'assistant');
     });
 
     it('should skip permission-request frames', () => {
@@ -1563,7 +1641,7 @@ describe('InteractionLoop', () => {
       let messages = loop._buildMessages(frames);
       assert.equal(messages.length, 2);
       assert.equal(messages[0].type, 'tool-call');
-      assert.equal(messages[1].role, 'tool');
+      assert.equal(messages[1].type, 'tool-result');
     });
 
     it('should skip error frames', () => {
@@ -1597,7 +1675,6 @@ describe('InteractionLoop', () => {
     it('should return empty array when all frames are excluded types', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'pending-action', content: { toolName: 'shell' } },
         { type: 'permission-request', content: { toolName: 'shell' } },
         { type: 'permission-denied', content: {} },
         { type: 'hook-blocked', content: { reason: 'test' } },

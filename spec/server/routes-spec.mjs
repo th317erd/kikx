@@ -687,36 +687,64 @@ describe('FrameController: list', () => {
 // =============================================================================
 
 describe('StreamController: connect', () => {
+  // Helper: create an SSE mock request that stores the 'close' callback
+  // so we can trigger it to resolve the connect() promise.
+  function createSSEReq(overrides = {}) {
+    let closeCallback = null;
+    let req = createMockReq({
+      ...overrides,
+      on(event, cb) {
+        if (event === 'close')
+          closeCallback = cb;
+      },
+    });
+
+    req._triggerClose = () => {
+      if (closeCallback)
+        closeCallback();
+    };
+
+    return req;
+  }
+
   it('should set correct SSE headers', async () => {
-    let req        = createMockReq({ params: { sessionId: 'ses_sse_test' } });
+    let req        = createSSEReq({ params: { sessionId: 'ses_sse_test' } });
     let res        = createMockRes();
     let controller = createController(StreamController, { mockApp, req, res });
 
-    await controller.connect({ params: { sessionId: 'ses_sse_test' } });
+    // Don't await — connect() blocks until client disconnects
+    let connectPromise = controller.connect({ params: { sessionId: 'ses_sse_test' } });
 
+    // Headers are set synchronously before the promise blocks
     assert.equal(res._headers['Content-Type'], 'text/event-stream');
     assert.equal(res._headers['Cache-Control'], 'no-cache');
     assert.equal(res._headers['Connection'], 'keep-alive');
+
+    req._triggerClose();
+    await connectPromise;
   });
 
   it('should send connected event on open', async () => {
-    let req        = createMockReq({ params: { sessionId: 'ses_sse_ping' } });
+    let req        = createSSEReq({ params: { sessionId: 'ses_sse_ping' } });
     let res        = createMockRes();
     let controller = createController(StreamController, { mockApp, req, res });
 
-    await controller.connect({ params: { sessionId: 'ses_sse_ping' } });
+    let connectPromise = controller.connect({ params: { sessionId: 'ses_sse_ping' } });
 
     assert.ok(res._written.includes('event: connected'));
     assert.ok(res._written.includes('data: {}'));
+
+    req._triggerClose();
+    await connectPromise;
   });
 
   it('should emit frame events for matching session', async () => {
     let sessionId  = 'ses_sse_frames';
-    let req        = createMockReq({ params: { sessionId } });
+    let req        = createSSEReq({ params: { sessionId } });
     let res        = createMockRes();
     let controller = createController(StreamController, { mockApp, req, res });
 
-    await controller.connect({ params: { sessionId } });
+    let connectPromise = controller.connect({ params: { sessionId } });
 
     let testFrame = { id: 'frm_sse_1', type: 'message', content: { html: '<p>Test</p>' } };
     interactionLoop.emit('frame', { sessionID: sessionId, frame: testFrame });
@@ -724,17 +752,17 @@ describe('StreamController: connect', () => {
     assert.ok(res._written.includes('event: frame'));
     assert.ok(res._written.includes('"frm_sse_1"'));
 
-    if (res._sseCleanup)
-      res._sseCleanup();
+    req._triggerClose();
+    await connectPromise;
   });
 
   it('should NOT emit frame events for non-matching session', async () => {
     let sessionId  = 'ses_sse_no_match';
-    let req        = createMockReq({ params: { sessionId } });
+    let req        = createSSEReq({ params: { sessionId } });
     let res        = createMockRes();
     let controller = createController(StreamController, { mockApp, req, res });
 
-    await controller.connect({ params: { sessionId } });
+    let connectPromise = controller.connect({ params: { sessionId } });
 
     let initialWritten = res._written;
 
@@ -742,8 +770,45 @@ describe('StreamController: connect', () => {
 
     assert.equal(res._written, initialWritten);
 
-    if (res._sseCleanup)
-      res._sseCleanup();
+    req._triggerClose();
+    await connectPromise;
+  });
+
+  it('should emit usage events for matching session', async () => {
+    let sessionId  = 'ses_sse_usage';
+    let req        = createSSEReq({ params: { sessionId } });
+    let res        = createMockRes();
+    let controller = createController(StreamController, { mockApp, req, res });
+
+    let connectPromise = controller.connect({ params: { sessionId } });
+
+    let usage = { inputTokens: 500, outputTokens: 200, cacheReadInputTokens: 400 };
+    interactionLoop.emit('interaction:usage', { sessionID: sessionId, interactionID: 'int_usage_1', usage });
+
+    assert.ok(res._written.includes('event: usage'));
+    assert.ok(res._written.includes('"inputTokens":500'));
+    assert.ok(res._written.includes('"int_usage_1"'));
+
+    req._triggerClose();
+    await connectPromise;
+  });
+
+  it('should NOT emit usage events for non-matching session', async () => {
+    let sessionId  = 'ses_sse_usage_no';
+    let req        = createSSEReq({ params: { sessionId } });
+    let res        = createMockRes();
+    let controller = createController(StreamController, { mockApp, req, res });
+
+    let connectPromise = controller.connect({ params: { sessionId } });
+
+    let initialWritten = res._written;
+
+    interactionLoop.emit('interaction:usage', { sessionID: 'ses_other', interactionID: 'int_x', usage: { inputTokens: 1 } });
+
+    assert.equal(res._written, initialWritten);
+
+    req._triggerClose();
+    await connectPromise;
   });
 });
 
@@ -974,6 +1039,109 @@ describe('FrameController: list — empty session', () => {
 
     assert.ok(Array.isArray(result.data.frames));
     assert.equal(result.data.frames.length, 0);
+  });
+});
+
+describe('FrameController: update', () => {
+  it('should update frame content', async () => {
+    let session = await sessionManager.createSession(testOrg.id, { name: 'Update Frame Test' });
+    let frameId = `frm_${XID.next()}`;
+    let intId   = `int_${XID.next()}`;
+
+    await framePersistence.saveFrames(session.id, [
+      {
+        id:            frameId,
+        type:          'message',
+        content:       { html: '<p>Original</p><kikx-hml-prompt name="color" type="text" label="Color"></kikx-hml-prompt>' },
+        order:         1,
+        timestamp:     Date.now(),
+        interactionID: intId,
+        authorType:    'agent',
+        hidden:        false,
+        deleted:       false,
+        processed:     false,
+      },
+    ]);
+
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(FrameController, { mockApp, req, res });
+
+    let updatedHTML = '<p>Original</p><kikx-hml-prompt name="color" type="text" label="Color" value="blue" readonly></kikx-hml-prompt>';
+    let result = await controller.update({
+      params: { sessionId: session.id, frameId },
+      body:   { content: { html: updatedHTML } },
+    });
+
+    assert.ok(result.data.frame);
+    assert.equal(result.data.frame.id, frameId);
+
+    // Verify persisted by reloading
+    let reloaded    = await framePersistence.loadFrames(session.id);
+    let frames      = reloaded.toArray();
+    let updatedFrame = frames.find((f) => f.id === frameId);
+
+    assert.ok(updatedFrame);
+    assert.ok(updatedFrame.content.html.includes('value="blue"'));
+    assert.ok(updatedFrame.content.html.includes('readonly'));
+  });
+
+  it('should reject update with missing content', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(FrameController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.update({
+        params: { sessionId: 'ses_any', frameId: 'frm_any' },
+        body:   {},
+      }),
+    );
+  });
+
+  it('should reject update for non-existent frame', async () => {
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(FrameController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.update({
+        params: { sessionId: 'ses_any', frameId: 'frm_nonexistent' },
+        body:   { content: { html: '<p>Updated</p>' } },
+      }),
+    );
+  });
+
+  it('should reject update when frame belongs to different session', async () => {
+    let session1 = await sessionManager.createSession(testOrg.id, { name: 'Session 1' });
+    let session2 = await sessionManager.createSession(testOrg.id, { name: 'Session 2' });
+    let frameId  = `frm_${XID.next()}`;
+
+    await framePersistence.saveFrames(session1.id, [
+      {
+        id:            frameId,
+        type:          'message',
+        content:       { html: '<p>Mine</p>' },
+        order:         1,
+        timestamp:     Date.now(),
+        interactionID: `int_${XID.next()}`,
+        authorType:    'agent',
+        hidden:        false,
+        deleted:       false,
+        processed:     false,
+      },
+    ]);
+
+    let req        = createMockReq();
+    let res        = createMockRes();
+    let controller = createController(FrameController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.update({
+        params: { sessionId: session2.id, frameId },
+        body:   { content: { html: '<p>Hacked</p>' } },
+      }),
+    );
   });
 });
 

@@ -43,6 +43,9 @@ export class InteractionLoop extends EventEmitter {
 
     // Permission waiting: sessionID -> { frameID, params }
     this._permissionWaiting = new Map();
+
+    // Sessions needing primer on next interaction (set by /reload command)
+    this._primerNeeded = new Set();
   }
 
   // ---------------------------------------------------------------------------
@@ -92,6 +95,11 @@ export class InteractionLoop extends EventEmitter {
 
       return null;
     }
+
+    // Command dispatch: intercept /command messages
+    let commandMatch = this._parseCommand(params.userMessage);
+    if (commandMatch)
+      return this._executeCommand(sessionID, params, commandMatch);
 
     let framePersistence = this._getFramePersistence();
     let hookRunner       = this._getHookRunner();
@@ -164,6 +172,20 @@ export class InteractionLoop extends EventEmitter {
     let allFrames = frameManager.toArray();
     let messages  = this._buildMessages(allFrames);
 
+    // Inject primer into messages for first message (or when explicitly requested).
+    // Evaluate delete() before the || chain to avoid short-circuit skipping the side-effect.
+    let primerRequested = this._primerNeeded.delete(sessionID);
+    let needsPrimer     = params.injectPrimer || this._isFirstMessage(allFrames) || primerRequested;
+
+    if (needsPrimer) {
+      let primerAssembler = this._context.getProperty('primerAssembler');
+      if (primerAssembler) {
+        let primer = primerAssembler.assemble(params.agent);
+        if (primer)
+          messages = this._injectPrimer(messages, primer);
+      }
+    }
+
     // Get session record
     let session = await sessionManager.getSession(sessionID);
 
@@ -209,8 +231,42 @@ export class InteractionLoop extends EventEmitter {
         if (done || !block)
           break;
 
-        if (block.type === 'done')
+        if (block.type === 'done') {
+          if (block.content && block.content.usage) {
+            this.emit('interaction:usage', {
+              sessionID,
+              interactionID,
+              usage: block.content.usage,
+            });
+          }
+
           break;
+        }
+
+        // Transient streaming events — not persisted, just forwarded
+        if (block.type === 'delta') {
+          this.emit('delta', {
+            sessionID,
+            interactionID,
+            content:    block.content,
+            authorType: block.authorType,
+            authorID:   block.authorID,
+          });
+
+          continue;
+        }
+
+        if (block.type === 'reflection-delta') {
+          this.emit('reflection-delta', {
+            sessionID,
+            interactionID,
+            content:    block.content,
+            authorType: block.authorType,
+            authorID:   block.authorID,
+          });
+
+          continue;
+        }
 
         // Assign metadata to the block
         let frameID   = generateID('frm_');
@@ -315,7 +371,7 @@ export class InteractionLoop extends EventEmitter {
           let toolCallFrame = {
             id:            frameID,
             type:          'tool-call',
-            content:       { toolName: block.content.toolName, arguments: block.content.arguments },
+            content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseId: block.content.toolUseId },
             order:         order++,
             timestamp,
             interactionID,
@@ -375,7 +431,7 @@ export class InteractionLoop extends EventEmitter {
           let toolResultFrame = {
             id:            resultFrameID,
             type:          'tool-result',
-            content:       { output: toolOutput },
+            content:       { output: toolOutput, toolUseId: block.content.toolUseId },
             order:         order++,
             timestamp:     Date.now(),
             interactionID,
@@ -456,7 +512,7 @@ export class InteractionLoop extends EventEmitter {
     let pendingFrame   = {
       id:            pendingFrameID,
       type:          'pending-action',
-      content:       { toolName: block.content.toolName, arguments: block.content.arguments },
+      content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseId: block.content.toolUseId },
       order:         order++,
       timestamp:     Date.now(),
       interactionID,
@@ -551,8 +607,9 @@ export class InteractionLoop extends EventEmitter {
     let framePersistence = this._getFramePersistence();
     let { Frame }        = this._context.getProperty('models');
 
-    // Load the pending-action frame
-    let pendingRecord = await Frame.where.id.EQ(frameID || waiting.pendingFrameID).first();
+    // Load the pending-action frame (always use the stored pending frame ID,
+    // not the frameID parameter which may be the permission-request frame)
+    let pendingRecord = await Frame.where.id.EQ(waiting.pendingFrameID).first();
     if (!pendingRecord)
       throw new Error(`Pending action frame not found: ${frameID || waiting.pendingFrameID}`);
 
@@ -571,7 +628,7 @@ export class InteractionLoop extends EventEmitter {
     let resultFrame   = {
       id:            resultFrameID,
       type:          'tool-result',
-      content:       { output: toolOutput },
+      content:       { output: toolOutput, toolUseId: content.toolUseId },
       order:         nextOrder,
       timestamp:     Date.now(),
       interactionID: waiting.interactionID,
@@ -692,23 +749,220 @@ export class InteractionLoop extends EventEmitter {
   // Helpers
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Command Dispatch
+  // ---------------------------------------------------------------------------
+
+  _parseCommand(message) {
+    if (!message || typeof message !== 'string')
+      return null;
+
+    let match = message.match(/^\s*\/([\w_-]+)(.*)$/);
+    if (!match)
+      return null;
+
+    return {
+      commandName: match[1].toLowerCase(),
+      arguments:   (match[2] || '').trim(),
+    };
+  }
+
+  _resolveCommand(commandName) {
+    let registry = this._context.getProperty('pluginRegistry');
+    if (!registry)
+      return null;
+
+    return registry.getCommand(commandName);
+  }
+
+  async _executeCommand(sessionID, params, commandMatch) {
+    let framePersistence = this._getFramePersistence();
+    let interactionID    = generateID('int_');
+    let order            = await framePersistence.getNextOrder(sessionID);
+
+    this.emit('interaction:start', { sessionID, interactionID });
+
+    // Create user-message frame so the command shows in chat history.
+    // Hidden: command inputs are visible in the UI but excluded from
+    // the agent's message history (the agent should never see "/reload" etc.)
+    let userFrame = {
+      id:            generateID('frm_'),
+      type:          'user-message',
+      content:       { text: params.userMessage },
+      order:         order++,
+      timestamp:     Date.now(),
+      interactionID,
+      authorType:    params.authorType || 'user',
+      authorID:      params.authorID || null,
+      hidden:        true,
+      deleted:       false,
+      processed:     false,
+    };
+
+    await framePersistence.saveFrames(sessionID, [userFrame]);
+    this.emit('frame', { sessionID, frame: userFrame });
+
+    // Resolve the command handler
+    let handler = this._resolveCommand(commandMatch.commandName);
+
+    let resultContent;
+    let resultFlags = {};
+
+    // Check command permission if callback is available
+    if (handler && typeof params.checkPermission === 'function') {
+      let featureName = `command:${commandMatch.commandName}`;
+
+      try {
+        let needsPermission = await params.checkPermission(featureName, {
+          command:    commandMatch.commandName,
+          args:       commandMatch.arguments,
+          authorType: params.authorType || 'user',
+        });
+
+        if (needsPermission) {
+          // Permission hard-break for commands
+          let framePersistence2 = this._getFramePersistence();
+          let requestFrame = {
+            id:            generateID('frm_'),
+            type:          'permission-request',
+            content:       { commandName: commandMatch.commandName, arguments: commandMatch.arguments, featureName },
+            order:         order++,
+            timestamp:     Date.now(),
+            interactionID,
+            authorType:    'system',
+            authorID:      null,
+            hidden:        false,
+            deleted:       false,
+            processed:     false,
+          };
+
+          await framePersistence2.saveFrames(sessionID, [requestFrame]);
+          this.emit('frame', { sessionID, frame: requestFrame });
+          this.emit('permission:request', { sessionID, frameID: requestFrame.id, commandName: commandMatch.commandName });
+          this.emit('interaction:end', { sessionID, interactionID });
+
+          return interactionID;
+        }
+      } catch (permError) {
+        if (permError.name === 'PermissionDeniedError') {
+          resultContent = { html: `<p>Permission denied: <code>/${commandMatch.commandName}</code></p>` };
+          // Skip handler execution, fall through to create command-result frame
+        } else {
+          throw permError;
+        }
+      }
+    }
+
+    if (!resultContent) {
+      if (!handler) {
+        resultContent = { html: `<p>Unknown command: <code>/${commandMatch.commandName}</code></p>` };
+      } else {
+        try {
+          let result = await handler({
+            sessionID,
+            arguments:  commandMatch.arguments,
+            context:    this._context,
+            authorType: params.authorType || 'user',
+            authorID:   params.authorID || null,
+            agent:      params.agent,
+          });
+
+          resultContent = (result && result.content) || { html: '<p>Command executed.</p>' };
+          resultFlags   = result || {};
+        } catch (error) {
+          resultContent = { html: `<p>Command error: ${error.message}</p>` };
+        }
+      }
+    }
+
+    // Create command-result frame
+    let resultFrame = {
+      id:            generateID('frm_'),
+      type:          'command-result',
+      content:       resultContent,
+      order:         order++,
+      timestamp:     Date.now(),
+      interactionID,
+      authorType:    'system',
+      authorID:      null,
+      hidden:        false,
+      deleted:       false,
+      processed:     false,
+    };
+
+    await framePersistence.saveFrames(sessionID, [resultFrame]);
+    this.emit('frame', { sessionID, frame: resultFrame });
+
+    // Handle flags from command result
+    if (resultFlags.injectPrimer)
+      this._primerNeeded.add(sessionID);
+
+    this.emit('interaction:end', { sessionID, interactionID });
+
+    return interactionID;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  _isFirstMessage(frames) {
+    let userMessageCount    = 0;
+    let hasAssistantMessage = false;
+
+    for (let frame of frames) {
+      if (frame.deleted || frame.hidden)
+        continue;
+
+      if (frame.type === 'user-message')
+        userMessageCount++;
+
+      if (frame.type === 'message')
+        hasAssistantMessage = true;
+    }
+
+    return userMessageCount <= 1 && !hasAssistantMessage;
+  }
+
+  _injectPrimer(messages, primer) {
+    if (!messages || messages.length === 0)
+      return [{ role: 'user', content: primer }];
+
+    let result = [...messages];
+    for (let i = 0; i < result.length; i++) {
+      if (result[i].role === 'user') {
+        result[i] = { ...result[i], content: primer + '\n\n' + (result[i].content || '') };
+        break;
+      }
+    }
+
+    return result;
+  }
+
   _buildMessages(frames) {
     // Frame types explicitly excluded from message history
     let excludedTypes = new Set([
-      'pending-action',
       'permission-request',
       'permission-denied',
       'hook-blocked',
       'tool-error',
       'error',
       'reflection',
+      'command-result',
     ]);
+
+    // Collect toolUseIds that have results — used to filter orphaned pending-actions
+    let resolvedToolIds = new Set();
+    for (let frame of frames) {
+      if (frame.type === 'tool-result' && frame.content && frame.content.toolUseId)
+        resolvedToolIds.add(frame.content.toolUseId);
+    }
 
     let messages = [];
 
     for (let frame of frames) {
-      // Defense-in-depth: skip deleted frames
-      if (frame.deleted)
+      // Skip deleted and hidden frames (hidden = visible in UI but not in agent context)
+      if (frame.deleted || frame.hidden)
         continue;
 
       let type = frame.type;
@@ -725,10 +979,15 @@ export class InteractionLoop extends EventEmitter {
         messages.push({ role: 'assistant', content: content.html || '' });
       } else if (type === 'tool-call') {
         let content = frame.content || {};
-        messages.push({ role: 'assistant', type: 'tool-call', content });
+        messages.push({ type: 'tool-call', content, authorType: 'agent' });
+      } else if (type === 'pending-action') {
+        // Only include pending-actions that were approved (have a matching tool-result)
+        let content = frame.content || {};
+        if (content.toolUseId && resolvedToolIds.has(content.toolUseId))
+          messages.push({ type: 'tool-call', content, authorType: 'agent' });
       } else if (type === 'tool-result') {
         let content = frame.content || {};
-        messages.push({ role: 'tool', content: content.output || '' });
+        messages.push({ type: 'tool-result', content });
       }
     }
 
@@ -749,5 +1008,9 @@ export class InteractionLoop extends EventEmitter {
 
   getQueuedMessages(sessionID) {
     return this._queues.get(sessionID) || [];
+  }
+
+  requestPrimerRefresh(sessionID) {
+    this._primerNeeded.add(sessionID);
   }
 }

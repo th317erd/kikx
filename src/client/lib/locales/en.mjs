@@ -105,6 +105,12 @@ export default {
     scrollAnchor: {
       jumpToBottom: 'Jump to bottom',
     },
+    timestamp: {
+      justNow:    'just now',
+      minutesAgo: '{n}m ago',
+      hoursAgo:   '{n}h ago',
+      daysAgo:    '{n}d ago',
+    },
     interaction: {
       ignoreButton: 'Ignore',
       submitButton: 'Submit',
