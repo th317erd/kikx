@@ -1,8 +1,8 @@
 'use strict';
 
-import { createStore } from 'seqda';
-import { deepMerge } from './deep-merge.mjs';
-import { Frame } from './frame.mjs';
+import { EventEmitter } from 'node:events';
+import { deepMerge }    from './deep-merge.mjs';
+import { Frame }        from './frame.mjs';
 import { FramePointer } from './frame-pointer.mjs';
 
 export class FrameManager {
@@ -10,69 +10,12 @@ export class FrameManager {
     this.history       = options.history !== false;
     this._orderCounter = 0;
 
-    this._store = createStore({
-      frames: {
-        _: {},
-        put({ get, set }, frame) {
-          let current = get();
-          let updated = Object.assign({}, current);
+    this._frames   = new Map();   // frameId → Frame
+    this._pointers = new Map();   // frameId → FramePointer
+    this._children = new Map();   // parentId → [childIds]
+    this._emitter  = new EventEmitter();
 
-          updated[frame.id] = frame;
-          set(updated);
-        },
-        get({ get }, id) {
-          let current = get();
-
-          if (id === undefined)
-            return current;
-
-          return current[id];
-        },
-        remove({ get, set }, id) {
-          let current = get();
-
-          if (!Object.prototype.hasOwnProperty.call(current, id))
-            return;
-
-          let updated = Object.assign({}, current);
-          delete updated[id];
-          set(updated);
-        },
-      },
-      pointers: {
-        _: {},
-        put({ get, set }, frameId, pointer) {
-          let current = get();
-          let updated = Object.assign({}, current);
-
-          updated[frameId] = pointer;
-          set(updated);
-        },
-        get({ get }, frameId) {
-          let current = get();
-          return current[frameId];
-        },
-      },
-      children: {
-        _: {},
-        add({ get, set }, parentId, frameId) {
-          let current  = get();
-          let updated  = Object.assign({}, current);
-          let existing = updated[parentId];
-
-          if (existing)
-            updated[parentId] = [ ...existing, frameId ];
-          else
-            updated[parentId] = [ frameId ];
-
-          set(updated);
-        },
-        get({ get }, parentId) {
-          let current = get();
-          return current[parentId] || [];
-        },
-      },
-    });
+    this._emitter.setMaxListeners(Infinity);
   }
 
   merge(frames, options = {}) {
@@ -124,10 +67,10 @@ export class FrameManager {
               updatedAt: Date.now(),
             });
 
-            this._store.frames.put(mergedGroup);
+            this._frames.set(mergedGroup.id, mergedGroup);
 
             if (this.history) {
-              let existingPointer = this._store.pointers.get(frame.groupId);
+              let existingPointer = this._pointers.get(frame.groupId);
               let currentHead     = existingPointer ? existingPointer.head : null;
               let newPointer      = new FramePointer(mergedGroup, currentHead);
 
@@ -143,17 +86,17 @@ export class FrameManager {
                 walker      = walker.next;
               }
 
-              this._store.pointers.put(frame.groupId, existingPointer);
+              this._pointers.set(frame.groupId, existingPointer);
             } else {
-              let existingPointer = this._store.pointers.get(frame.groupId);
+              let existingPointer = this._pointers.get(frame.groupId);
 
               if (existingPointer)
                 existingPointer.frame = mergedGroup;
             }
 
             if (!suppressEvents) {
-              this._store.emit('frame:updated', { frame: mergedGroup, previousHead });
-              this._store.emit(`frame:updated:${frame.groupId}`, { frame: mergedGroup, previousHead });
+              this._emitter.emit('frame:updated', { frame: mergedGroup, previousHead });
+              this._emitter.emit(`frame:updated:${frame.groupId}`, { frame: mergedGroup, previousHead });
             }
 
             results.push(mergedGroup);
@@ -173,15 +116,21 @@ export class FrameManager {
 
             let groupPointer = new FramePointer(groupFrame);
 
-            this._store.frames.put(groupFrame);
-            this._store.pointers.put(groupFrame.id, groupPointer);
+            this._frames.set(groupFrame.id, groupFrame);
+            this._pointers.set(groupFrame.id, groupPointer);
 
-            if (groupFrame.parentId)
-              this._store.children.add(groupFrame.parentId, groupFrame.id);
+            if (groupFrame.parentId) {
+              let children = this._children.get(groupFrame.parentId);
+
+              if (children)
+                children.push(groupFrame.id);
+              else
+                this._children.set(groupFrame.parentId, [groupFrame.id]);
+            }
 
             if (!suppressEvents) {
-              this._store.emit('frame:added', { frame: groupFrame });
-              this._store.emit(`frame:added:${groupFrame.id}`, { frame: groupFrame });
+              this._emitter.emit('frame:added', { frame: groupFrame });
+              this._emitter.emit(`frame:added:${groupFrame.id}`, { frame: groupFrame });
             }
 
             results.push(groupFrame);
@@ -189,8 +138,8 @@ export class FrameManager {
         } else {
           // Phantom WITHOUT groupId → standalone ephemeral, transient event only
           if (!suppressEvents) {
-            this._store.emit('frame:phantom', { frame });
-            this._store.emit(`frame:phantom:${frame.id}`, { frame });
+            this._emitter.emit('frame:phantom', { frame });
+            this._emitter.emit(`frame:phantom:${frame.id}`, { frame });
           }
         }
 
@@ -201,11 +150,17 @@ export class FrameManager {
       let pointer = new FramePointer(frame);
 
       // Always store the source frame in the index
-      this._store.frames.put(frame);
-      this._store.pointers.put(frame.id, pointer);
+      this._frames.set(frame.id, frame);
+      this._pointers.set(frame.id, pointer);
 
-      if (frame.parentId)
-        this._store.children.add(frame.parentId, frame.id);
+      if (frame.parentId) {
+        let children = this._children.get(frame.parentId);
+
+        if (children)
+          children.push(frame.id);
+        else
+          this._children.set(frame.parentId, [frame.id]);
+      }
 
       results.push(frame);
 
@@ -242,10 +197,10 @@ export class FrameManager {
             updatedAt: frame.updatedAt,
           });
 
-          this._store.frames.put(mergedFrame);
+          this._frames.set(mergedFrame.id, mergedFrame);
 
           if (this.history) {
-            let existingPointer = this._store.pointers.get(targetId);
+            let existingPointer = this._pointers.get(targetId);
             let currentHead     = existingPointer ? existingPointer.head : null;
             let newPointer      = new FramePointer(mergedFrame, currentHead);
 
@@ -263,17 +218,17 @@ export class FrameManager {
               walker      = walker.next;
             }
 
-            this._store.pointers.put(targetId, existingPointer);
+            this._pointers.set(targetId, existingPointer);
           } else {
-            let existingPointer = this._store.pointers.get(targetId);
+            let existingPointer = this._pointers.get(targetId);
 
             if (existingPointer)
               existingPointer.frame = mergedFrame;
           }
 
           if (!suppressEvents) {
-            this._store.emit('frame:updated', { frame: mergedFrame, previousHead });
-            this._store.emit(`frame:updated:${targetId}`, { frame: mergedFrame, previousHead });
+            this._emitter.emit('frame:updated', { frame: mergedFrame, previousHead });
+            this._emitter.emit(`frame:updated:${targetId}`, { frame: mergedFrame, previousHead });
           }
 
           results.push(mergedFrame);
@@ -282,27 +237,26 @@ export class FrameManager {
         // Frame with targets is not a new addition; skip frame:added
       } else if (!suppressEvents && !frame.phantom) {
         // New frame (no targets, not phantom): emit frame:added
-        this._store.emit('frame:added', { frame });
-        this._store.emit(`frame:added:${frame.id}`, { frame });
+        this._emitter.emit('frame:added', { frame });
+        this._emitter.emit(`frame:added:${frame.id}`, { frame });
       }
     }
 
-    if (suppressEvents) {
-      this._store.emit('frames:bulk-loaded', { count: results.length });
-    }
+    if (suppressEvents)
+      this._emitter.emit('frames:bulk-loaded', { count: results.length });
 
     return results;
   }
 
   get(frameId) {
-    return this._store.frames.get(frameId);
+    return this._frames.get(frameId);
   }
 
   getHead(frameId) {
     if (!this.history)
       return this.get(frameId);
 
-    let pointer = this._store.pointers.get(frameId);
+    let pointer = this._pointers.get(frameId);
 
     if (!pointer)
       return undefined;
@@ -311,7 +265,7 @@ export class FrameManager {
   }
 
   getChildren(parentId) {
-    let childIds = this._store.children.get(parentId);
+    let childIds = this._children.get(parentId) || [];
 
     if (childIds.length === 0)
       return [];
@@ -329,14 +283,11 @@ export class FrameManager {
   }
 
   toArray() {
-    let allFrames = this._store.frames.get();
-    let keys      = Object.keys(allFrames);
-    let heads     = [];
-    let seen      = new Set();
+    let heads = [];
+    let seen  = new Set();
 
-    for (let i = 0; i < keys.length; i++) {
-      let frameId = keys[i];
-      let head    = this.getHead(frameId);
+    for (let [frameId] of this._frames) {
+      let head = this.getHead(frameId);
 
       if (head && !seen.has(head.id)) {
         seen.add(head.id);
@@ -375,10 +326,10 @@ export class FrameManager {
       processedAt: Date.now(),
     });
 
-    this._store.frames.put(updatedFrame);
+    this._frames.set(frameId, updatedFrame);
 
     // Update the pointer's frame reference
-    let pointer = this._store.pointers.get(frameId);
+    let pointer = this._pointers.get(frameId);
     if (pointer) {
       if (this.history)
         pointer.head.frame = updatedFrame;
@@ -386,41 +337,41 @@ export class FrameManager {
         pointer.frame = updatedFrame;
     }
 
-    this._store.emit('frame:processed', { frame: updatedFrame });
-    this._store.emit(`frame:processed:${frameId}`, { frame: updatedFrame });
+    this._emitter.emit('frame:processed', { frame: updatedFrame });
+    this._emitter.emit(`frame:processed:${frameId}`, { frame: updatedFrame });
   }
 
   onFrameEvent(eventType, frameId, callback) {
-    this._store.on(`${eventType}:${frameId}`, callback);
+    this._emitter.on(`${eventType}:${frameId}`, callback);
   }
 
   offFrameEvent(eventType, frameId, callback) {
-    this._store.off(`${eventType}:${frameId}`, callback);
+    this._emitter.removeListener(`${eventType}:${frameId}`, callback);
   }
 
   on(event, listener) {
-    this._store.on(event, listener);
+    this._emitter.on(event, listener);
     return this;
   }
 
   off(event, listener) {
-    this._store.off(event, listener);
+    this._emitter.removeListener(event, listener);
     return this;
   }
 
   emit(event, data) {
-    this._store.emit(event, data);
+    this._emitter.emit(event, data);
     return this;
   }
 
   getVersionHistory(frameId) {
-    let pointer = this._store.pointers.get(frameId);
+    let pointer = this._pointers.get(frameId);
 
     if (!pointer)
       return [];
 
     if (!this.history)
-      return [ pointer.frame ];
+      return [pointer.frame];
 
     // Walk from tail to head
     let history = [];

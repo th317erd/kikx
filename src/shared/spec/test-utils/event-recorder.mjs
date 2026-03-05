@@ -2,10 +2,10 @@
 
 export class EventRecorder {
   constructor() {
-    this._events   = [];
-    this._listeners = new Map();
-    this._manager  = null;
-    this._counter  = 0;
+    this._events       = [];
+    this._listeners    = new Map();
+    this._manager      = null;
+    this._counter      = 0;
     this._originalEmit = null;
   }
 
@@ -15,22 +15,19 @@ export class EventRecorder {
 
     this._manager = frameManager;
 
-    // Override the store's emit to capture ALL events (including namespaced)
-    let store = frameManager._store;
-    this._originalEmit = store.emit.bind(store);
+    // Override the emitter's emit to capture ALL events (including namespaced)
+    let emitter = frameManager._emitter;
+    this._originalEmit = emitter.emit.bind(emitter);
 
     let self = this;
 
-    store.emit = function(eventName, ...args) {
-      // Skip internal seqda events
-      if (eventName !== 'update' && eventName !== 'fetchScope') {
-        self._events.push({
-          name:      eventName,
-          payload:   args[0],
-          order:     self._counter++,
-          timestamp: Date.now(),
-        });
-      }
+    emitter.emit = function(eventName, ...args) {
+      self._events.push({
+        name:      eventName,
+        payload:   args[0],
+        order:     self._counter++,
+        timestamp: Date.now(),
+      });
 
       return self._originalEmit(eventName, ...args);
     };
@@ -42,7 +39,7 @@ export class EventRecorder {
 
     // Restore original emit
     if (this._originalEmit)
-      this._manager._store.emit = this._originalEmit;
+      this._manager._emitter.emit = this._originalEmit;
 
     this._originalEmit = null;
     this._manager      = null;

@@ -15,7 +15,6 @@
     "mythix-orm": "^1.15.0",
     "mythix-orm-sqlite": "^3.0.0",
     "puppeteer": "^24.37.5",
-    "seqda": "^2.1.0",
     "shell-quote": "^1.8.3",
     "turndown": "^7.2.2",
     "ws": "^8.19.0",

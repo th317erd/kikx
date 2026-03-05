@@ -1,10 +1,10 @@
 'use strict';
 
 // Global state store for Kikx V2 client.
-// Wraps a seqda store with typed scopes for each domain.
+// Wraps a lightweight store with typed scopes for each domain.
 // Components subscribe to update events for reactive re-rendering.
 
-import { createStore } from 'seqda';
+import { createStore } from '../../shared/lib/create-store.mjs';
 
 // Default values for each scope, kept as constants so resetStore() can
 // reproduce fresh copies without mutation.

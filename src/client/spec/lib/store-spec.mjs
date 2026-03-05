@@ -3,10 +3,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-// Import the store module under test.  The spec runner executes under Node.js
-// where the browser importmap is not available, but seqda is installed in the
-// project's node_modules so the bare-specifier import inside store.mjs will
-// resolve correctly via Node's normal module resolution.
+// Import the store module under test.
 import store, {
   resetStore,
   sessions,
@@ -22,7 +19,7 @@ import store, {
 // ---------------------------------------------------------------------------
 
 function waitForUpdate() {
-  // seqda batches update events on the next microtask; returning a resolved
+  // Store batches update events on the next microtask; returning a resolved
   // promise lets callers await that tick before asserting.
   return Promise.resolve();
 }
@@ -419,7 +416,7 @@ describe('store', () => {
 
       store.on('update', handler);
 
-      // Two writes in the same synchronous block — seqda should batch them.
+      // Two writes in the same synchronous block — store should batch them.
       sessions.addSession({ id: 'batch-1' });
       agents.addAgent({ id: 'batch-agent-1' });
 

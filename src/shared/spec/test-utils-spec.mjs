@@ -438,7 +438,7 @@ describe('HistoryWalker', () => {
       ]);
 
       // Corrupt the chain: break the next link so forward walk cannot reach head
-      let pointer = manager._store.pointers.get('f1');
+      let pointer = manager._pointers.get('f1');
       pointer.next = null;
 
       assert.throws(
@@ -459,7 +459,7 @@ describe('HistoryWalker', () => {
       ]);
 
       // Create a cycle: make head.next point back to head
-      let pointer      = manager._store.pointers.get('f1');
+      let pointer      = manager._pointers.get('f1');
       let headPointer  = pointer.head;
       headPointer.next = pointer;
 
@@ -588,7 +588,7 @@ describe('IntegrityChecker', () => {
       ]);
 
       // Corrupt: remove child-1 from frames but leave it in children index
-      manager._store.frames.remove('child-1');
+      manager._frames.delete('child-1');
 
       let result = IntegrityChecker.check(manager);
       assert.equal(result.valid, false);
@@ -627,7 +627,7 @@ describe('IntegrityChecker', () => {
       ]);
 
       // Corrupt: remove frame but leave pointer
-      manager._store.frames.remove('f1');
+      manager._frames.delete('f1');
 
       let result = IntegrityChecker.check(manager);
       assert.equal(result.valid, false);

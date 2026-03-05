@@ -25,13 +25,8 @@ export class IntegrityChecker {
    * All parentId references point to existing frames (or are null)
    */
   static _checkParentReferences(frameManager, errors) {
-    let allFrames = frameManager._store.frames.get();
-    let frameIds  = Object.keys(allFrames);
-
-    for (let i = 0; i < frameIds.length; i++) {
-      let frame = allFrames[frameIds[i]];
-
-      if (frame.parentId && !allFrames[frame.parentId])
+    for (let [, frame] of frameManager._frames) {
+      if (frame.parentId && !frameManager._frames.has(frame.parentId))
         errors.push(`Frame "${frame.id}" has parentId "${frame.parentId}" which does not exist in the frame index`);
     }
   }
@@ -40,14 +35,7 @@ export class IntegrityChecker {
    * Every FramePointer chain is valid (no broken links, no cycles, consistent head/tail)
    */
   static _checkPointerChains(frameManager, errors) {
-    let state    = frameManager._store.getState();
-    let pointers = state.pointers;
-    let frameIds = Object.keys(pointers);
-
-    for (let i = 0; i < frameIds.length; i++) {
-      let frameId = frameIds[i];
-      let pointer = pointers[frameId];
-
+    for (let [frameId, pointer] of frameManager._pointers) {
       if (!pointer) {
         errors.push(`Pointer for frame "${frameId}" is null/undefined`);
         continue;
@@ -103,15 +91,8 @@ export class IntegrityChecker {
    * No orphaned FramePointers (pointer exists but referenced frame doesn't exist in frame index)
    */
   static _checkOrphanedPointers(frameManager, errors) {
-    let state     = frameManager._store.getState();
-    let pointers  = state.pointers;
-    let allFrames = state.frames;
-    let frameIds  = Object.keys(pointers);
-
-    for (let i = 0; i < frameIds.length; i++) {
-      let frameId = frameIds[i];
-
-      if (!allFrames[frameId])
+    for (let [frameId] of frameManager._pointers) {
+      if (!frameManager._frames.has(frameId))
         errors.push(`Pointer exists for frame "${frameId}" but no corresponding frame in the index`);
     }
   }
@@ -120,22 +101,14 @@ export class IntegrityChecker {
    * Order values are monotonically increasing for frames with same parentId
    */
   static _checkOrderMonotonicity(frameManager, errors) {
-    let state       = frameManager._store.getState();
-    let childrenMap = state.children;
-    let allFrames   = state.frames;
-    let parentIds   = Object.keys(childrenMap);
-
-    for (let i = 0; i < parentIds.length; i++) {
-      let parentId = parentIds[i];
-      let childIds = childrenMap[parentId];
-
+    for (let [parentId, childIds] of frameManager._children) {
       if (!childIds || childIds.length < 2)
         continue;
 
       let lastOrder = -Infinity;
 
       for (let j = 0; j < childIds.length; j++) {
-        let childFrame = allFrames[childIds[j]];
+        let childFrame = frameManager._frames.get(childIds[j]);
 
         if (!childFrame)
           continue;
@@ -150,24 +123,11 @@ export class IntegrityChecker {
 
   /**
    * No duplicate IDs in the frame index
-   * (Object keys are unique by nature, but we verify the frames store is consistent)
+   * (Map keys are unique by nature, but we verify the frames store is consistent)
    */
   static _checkDuplicateIds(frameManager, errors) {
-    let allFrames = frameManager._store.frames.get();
-    let frameIds  = Object.keys(allFrames);
-    let seen      = new Set();
-
-    for (let i = 0; i < frameIds.length; i++) {
-      let id = frameIds[i];
-
-      if (seen.has(id))
-        errors.push(`Duplicate frame ID detected: "${id}"`);
-
-      seen.add(id);
-
-      // Also verify the key matches the frame's actual id
-      let frame = allFrames[id];
-
+    for (let [id, frame] of frameManager._frames) {
+      // Verify the key matches the frame's actual id
       if (frame && frame.id !== id)
         errors.push(`Frame stored under key "${id}" has mismatched id "${frame.id}"`);
     }
@@ -177,27 +137,16 @@ export class IntegrityChecker {
    * Children lists are consistent with parentId references
    */
   static _checkChildrenConsistency(frameManager, errors) {
-    let state       = frameManager._store.getState();
-    let allFrames   = state.frames;
-    let childrenMap = state.children;
-    let frameIds    = Object.keys(allFrames);
-
     // Build a set of all child relationships from the children index
     let indexedChildren = new Map();
-    let parentIds       = Object.keys(childrenMap);
 
-    for (let i = 0; i < parentIds.length; i++) {
-      let parentId = parentIds[i];
-      let childIds = childrenMap[parentId];
-
+    for (let [parentId, childIds] of frameManager._children) {
       for (let j = 0; j < childIds.length; j++)
         indexedChildren.set(childIds[j], parentId);
     }
 
     // Every frame with a parentId should appear in the children index
-    for (let i = 0; i < frameIds.length; i++) {
-      let frame = allFrames[frameIds[i]];
-
+    for (let [, frame] of frameManager._frames) {
       if (frame.parentId) {
         let indexedParent = indexedChildren.get(frame.id);
 
@@ -209,14 +158,11 @@ export class IntegrityChecker {
     }
 
     // Every entry in the children index should reference an existing frame
-    for (let i = 0; i < parentIds.length; i++) {
-      let parentId = parentIds[i];
-      let childIds = childrenMap[parentId];
-
+    for (let [parentId, childIds] of frameManager._children) {
       for (let j = 0; j < childIds.length; j++) {
         let childId = childIds[j];
 
-        if (!allFrames[childId])
+        if (!frameManager._frames.has(childId))
           errors.push(`Children index for "${parentId}" references frame "${childId}" which does not exist`);
       }
     }

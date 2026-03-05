@@ -6,7 +6,7 @@ export class HistoryWalker {
    * Returns an array of Frame objects in chronological order.
    */
   static walk(frameManager, frameId) {
-    let pointer = frameManager._store.pointers.get(frameId);
+    let pointer = frameManager._pointers.get(frameId);
 
     if (!pointer)
       return [];
@@ -29,7 +29,7 @@ export class HistoryWalker {
    * Returns an array of Frame objects in reverse chronological order.
    */
   static walkReverse(frameManager, frameId) {
-    let pointer = frameManager._store.pointers.get(frameId);
+    let pointer = frameManager._pointers.get(frameId);
 
     if (!pointer)
       return [];
@@ -61,7 +61,7 @@ export class HistoryWalker {
    * - Every pointer node has a non-null frame
    */
   static assertChainIntegrity(frameManager, frameId) {
-    let pointer = frameManager._store.pointers.get(frameId);
+    let pointer = frameManager._pointers.get(frameId);
 
     if (!pointer)
       throw new Error(`No pointer found for frame "${frameId}"`);
@@ -120,7 +120,7 @@ export class HistoryWalker {
    * Every key in `expected` must exist and match in the head frame's content.
    */
   static assertHeadContent(frameManager, frameId, expected) {
-    let pointer = frameManager._store.pointers.get(frameId);
+    let pointer = frameManager._pointers.get(frameId);
 
     if (!pointer)
       throw new Error(`No pointer found for frame "${frameId}"`);
