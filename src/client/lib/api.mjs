@@ -89,8 +89,13 @@ async function request(method, path, body, options = {}) {
   else
     responseBody = await response.text();
 
-  if (!response.ok)
-    throw new ApiError(response.status, responseBody?.message || response.statusText, responseBody);
+  if (!response.ok) {
+    let errorMessage = (typeof responseBody === 'string')
+      ? responseBody
+      : (responseBody?.message || response.statusText);
+
+    throw new ApiError(response.status, errorMessage, responseBody);
+  }
 
   return responseBody;
 }
@@ -111,6 +116,12 @@ export function getMe() {
 
 export function updateProfile(updates) {
   return request('PUT', '/auth/me', updates);
+}
+
+// DM endpoints
+
+export function getOrCreateDm(agentId) {
+  return request('POST', `/agents/${agentId}/dm`);
 }
 
 // Session endpoints
@@ -185,6 +196,30 @@ export function updateAbility(abilityId, updates) {
 
 export function deleteAbility(abilityId) {
   return request('DELETE', `/abilities/${abilityId}`);
+}
+
+// Frame endpoints
+
+export function getFrames(sessionId) {
+  return request('GET', `/sessions/${sessionId}/frames`);
+}
+
+export function updateFrameContent(sessionId, frameId, content) {
+  return request('PATCH', `/sessions/${sessionId}/frames/${frameId}`, { content });
+}
+
+// Interaction endpoints
+
+export function sendMessage(sessionId, message, agentId) {
+  return request('POST', `/sessions/${sessionId}/interact/send`, { message, agentId });
+}
+
+export function approvePermission(sessionId, frameId, body) {
+  return request('POST', `/sessions/${sessionId}/interact/${frameId}`, body);
+}
+
+export function cancelInteraction(sessionId) {
+  return request('POST', `/sessions/${sessionId}/interact/cancel`);
 }
 
 // Health endpoint

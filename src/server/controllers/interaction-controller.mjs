@@ -4,7 +4,8 @@
 // InteractionController — sendMessage, cancel, approve, deny
 // =============================================================================
 
-import { ControllerAuthBase } from './controller-auth-base.mjs';
+import { ControllerAuthBase }   from './controller-auth-base.mjs';
+import { parseShellCommands }   from '../../core/internal-plugins/shell/command-parser.mjs';
 
 export class InteractionController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
@@ -55,13 +56,67 @@ export class InteractionController extends ControllerAuthBase {
     let permissionEngine = core.getPermissionEngine();
     let pluginRegistry   = core.getPluginRegistry();
 
-    let checkPermission = async (toolName, toolArgs) => {
+    let checkPermission = async (featureName, toolArgs) => {
+      // Translate system:command tool calls to per-command feature names
+      if (featureName === 'system:command' && toolArgs && toolArgs.command)
+        featureName = `command:${toolArgs.command.toLowerCase().trim()}`;
+
+      // For now: authenticated users are always permitted for commands
+      if (featureName.startsWith('command:') && toolArgs && toolArgs.authorType === 'user')
+        return false; // allowed
+
       if (!permissionEngine)
         return true; // No engine = needs approval
 
-      let ToolClass = pluginRegistry.getTool(toolName);
+      // Per-command permission evaluation for shell:execute
+      if (featureName === 'shell:execute' && toolArgs && toolArgs.command) {
+        let parsed = parseShellCommands(toolArgs.command);
 
-      return permissionEngine.checkPermission(toolName, toolArgs, {
+        if (parsed.length > 0) {
+          let permissionOptions = {
+            organizationID: agent.organizationID,
+            scope:          'session',
+            scopeID:        params.sessionId,
+          };
+
+          let anyNeedsApproval = false;
+          let commandStatuses  = [];
+
+          for (let cmd of parsed) {
+            let perCommandFeature = `shell:${cmd.command}`;
+            let status            = 'needs-approval';
+
+            try {
+              let needsPermission = await permissionEngine.checkPermission(perCommandFeature, cmd, permissionOptions);
+
+              if (!needsPermission)
+                status = 'allowed';
+              else
+                anyNeedsApproval = true;
+            } catch (permError) {
+              if (permError.name === 'PermissionDeniedError')
+                throw permError; // Deny-forever rule — block entire pipeline
+
+              throw permError;
+            }
+
+            commandStatuses.push({ command: cmd.command, arguments: cmd.arguments, status });
+          }
+
+          // Attach parsed commands with statuses for frame enrichment
+          toolArgs._parsedCommands = commandStatuses;
+
+          // If all commands are allowed, no approval needed
+          if (!anyNeedsApproval)
+            return false;
+
+          return true;
+        }
+      }
+
+      let ToolClass = pluginRegistry.getTool(featureName);
+
+      return permissionEngine.checkPermission(featureName, toolArgs, {
         organizationID: agent.organizationID,
         scope:          'session',
         scopeID:        params.sessionId,
@@ -75,6 +130,23 @@ export class InteractionController extends ControllerAuthBase {
         throw new Error(`Unknown tool: ${toolName}`);
 
       let toolInstance = new ToolClass(core.getContext());
+
+      // Inject session context for system:command
+      if (toolName === 'system:command') {
+        let augmentedArgs = {
+          ...toolArgs,
+          _sessionID: params.sessionId,
+          _authorID:  this.request.userId,
+          _agent:     resolvedAgent,
+        };
+
+        let result = await toolInstance.execute(augmentedArgs);
+
+        if (result && result.injectPrimer)
+          interactionLoop.requestPrimerRefresh(params.sessionId);
+
+        return result;
+      }
 
       return toolInstance.execute(toolArgs);
     };
@@ -109,9 +181,68 @@ export class InteractionController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
   // POST /api/v2/sessions/:sessionId/interact/approve/:frameId
   // ---------------------------------------------------------------------------
+  // Unified approve/deny endpoint. Accepts optional { decisions } body:
+  //   decisions: [{ command: 'ls', decision: 'allow-forever' }, ...]
+  //
+  // Decision values: 'allow-once', 'allow-forever', 'deny-once', 'deny-forever'
+  //
+  // If any decision is deny-once or deny-forever → denyPermission()
+  // Otherwise → approvePermission() (existing flow)
+  // Forever decisions create session-scoped permission rules.
+  // No body / empty decisions → approve-all (backward compat)
+  // ---------------------------------------------------------------------------
 
-  async approve({ params }) {
-    let interactionLoop = this.getInteractionLoop();
+  async approve({ params, body }) {
+    let interactionLoop  = this.getInteractionLoop();
+    let decisions        = (body && Array.isArray(body.decisions)) ? body.decisions : [];
+    let hasDeny          = decisions.some((d) => d.decision === 'deny-once' || d.decision === 'deny-forever');
+
+    // Create persistent rules for "forever" decisions
+    if (decisions.length > 0) {
+      let core             = this.getCore();
+      let permissionEngine = core.getPermissionEngine();
+
+      if (permissionEngine) {
+        let { Agent } = this.getCoreModels();
+
+        // Resolve organizationID — look up from permission-waiting state or agent
+        let organizationID = null;
+
+        // Try to get from waiting state's agent params
+        let waiting = interactionLoop._permissionWaiting.get(params.sessionId);
+        if (waiting && waiting.params && waiting.params.agent)
+          organizationID = waiting.params.agent.organizationID;
+
+        for (let decision of decisions) {
+          if (!decision.command || !decision.decision)
+            continue;
+
+          let effect = null;
+          if (decision.decision === 'allow-forever')
+            effect = 'allow';
+          else if (decision.decision === 'deny-forever')
+            effect = 'deny';
+
+          if (!effect)
+            continue; // allow-once / deny-once create no rules
+
+          await permissionEngine.createRule({
+            organizationID,
+            featureName: `shell:${decision.command}`,
+            effect,
+            scope:       'session',
+            scopeID:     params.sessionId,
+            createdBy:   this.request.userId,
+          });
+        }
+      }
+    }
+
+    if (hasDeny) {
+      await interactionLoop.denyPermission(params.sessionId, params.frameId);
+
+      return { data: { denied: true } };
+    }
 
     let interactionID = await interactionLoop.approvePermission(
       params.sessionId,

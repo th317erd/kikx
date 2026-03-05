@@ -3,24 +3,17 @@
 // ---------------------------------------------------------------------------
 // Sanitization constants
 // ---------------------------------------------------------------------------
+// Defense-in-depth: the server's ContentSanitizer is the primary gate.
+// This client-side pass uses a denylist so plugin-provided custom elements
+// (e.g. <kikx-hml-prompt>) pass through without needing registration here.
+// ---------------------------------------------------------------------------
 
-const ALLOWED_TAGS = new Set([
-  'b', 'i', 'em', 'strong', 's', 'strike', 'u',
-  'ol', 'ul', 'li',
-  'table', 'tr', 'td', 'th', 'thead', 'tbody',
-  'p', 'br', 'hr',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'pre', 'code', 'blockquote',
-  'a', 'span', 'div', 'img',
+const DANGEROUS_TAGS = new Set([
+  'script', 'iframe', 'object', 'embed', 'applet',
+  'form', 'input', 'textarea', 'select', 'button',
+  'style', 'link', 'meta', 'base',
+  'kikx-permission-request',
 ]);
-
-const ALLOWED_ATTRIBUTES = {
-  'a':    ['href', 'title', 'target', 'rel'],
-  'img':  ['src', 'alt', 'width', 'height'],
-  'td':   ['colspan', 'rowspan'],
-  'th':   ['colspan', 'rowspan'],
-  'code': ['class'],
-};
 
 const DANGEROUS_URL = /^\s*javascript\s*:/i;
 
@@ -39,20 +32,21 @@ function sanitizeNode(node) {
 
     let tagName = child.tagName.toLowerCase();
 
-    if (!ALLOWED_TAGS.has(tagName)) {
-      let text = child.ownerDocument.createTextNode(child.textContent);
-      child.parentNode.replaceChild(text, child);
+    // Remove dangerous tags and all their content
+    if (DANGEROUS_TAGS.has(tagName)) {
+      child.remove();
       continue;
     }
 
-    // Remove disallowed attributes
-    let allowedAttrs = ALLOWED_ATTRIBUTES[tagName] || [];
+    // Strip event handler attributes and javascript: URIs on all elements
     for (let attr of Array.from(child.attributes)) {
-      if (attr.name.startsWith('on')) { child.removeAttribute(attr.name); continue; }
-      if (!allowedAttrs.includes(attr.name)) { child.removeAttribute(attr.name); continue; }
-      if ((attr.name === 'href' || attr.name === 'src') && DANGEROUS_URL.test(attr.value)) {
+      if (attr.name.startsWith('on')) {
         child.removeAttribute(attr.name);
+        continue;
       }
+
+      if ((attr.name === 'href' || attr.name === 'src') && DANGEROUS_URL.test(attr.value))
+        child.removeAttribute(attr.name);
     }
 
     // Add safety attributes to links
@@ -87,7 +81,7 @@ const TEMPLATE_HTML = `
     }
 
     .message-body {
-      font-size: 0.9375rem;
+      font-size: 1rem;
     }
 
     .message-body h1, .message-body h2, .message-body h3,
@@ -113,7 +107,7 @@ const TEMPLATE_HTML = `
       padding: 2px 6px;
       border-radius: 4px;
       font-family: 'Fira Code', 'Cascadia Code', monospace;
-      font-size: 0.85em;
+      font-size: 1rem;
     }
 
     .message-body pre {
@@ -123,7 +117,7 @@ const TEMPLATE_HTML = `
       padding: var(--spacing-sm, 8px);
       overflow-x: auto;
       font-family: 'Fira Code', 'Cascadia Code', monospace;
-      font-size: 0.85em;
+      font-size: 1rem;
       line-height: 1.4;
     }
 

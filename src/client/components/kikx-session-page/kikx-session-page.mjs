@@ -540,8 +540,16 @@ class KikxSessionPage extends HTMLElement {
       let permRequest = document.createElement('kikx-permission-request');
       permRequest.setAttribute('permission-id', frame.id);
 
-      let toolName = (frame.content && frame.content.toolName) || 'unknown';
-      permRequest.description = `${name} wants to use: ${toolName}`;
+      // Set per-command data if available (shell:execute with parsed commands)
+      let parsedCommands = frame.content && frame.content.parsedCommands;
+      if (parsedCommands && parsedCommands.length > 0) {
+        let descriptionTemplate = t('permission.wantsToExecute') || '{name} wants to execute:';
+        permRequest.description = descriptionTemplate.replace('{name}', name);
+        permRequest.commands    = parsedCommands;
+      } else {
+        let toolName = (frame.content && frame.content.toolName) || 'unknown';
+        permRequest.description = `${name} wants to use: ${toolName}`;
+      }
 
       if (frame.processed)
         permRequest.setAttribute('processed', '');
@@ -1124,9 +1132,9 @@ class KikxSessionPage extends HTMLElement {
   }
 
   async _onPermissionResponse(event) {
-    let { permissionId, decision } = event.detail || {};
+    let { permissionId, decisions } = event.detail || {};
 
-    if (!permissionId || !decision)
+    if (!permissionId)
       return;
 
     let sessionId = this.sessionId;
@@ -1139,13 +1147,9 @@ class KikxSessionPage extends HTMLElement {
       permEl.setAttribute('processed', '');
 
     try {
-      if (decision === 'deny') {
-        // TODO: implement deny endpoint
-        return;
-      }
-
-      // For allow-once, allow-session, allow-always — all approve for now
-      await approvePermission(sessionId, permissionId);
+      // Pass decisions array as body to the unified endpoint
+      let body = (Array.isArray(decisions) && decisions.length > 0) ? { decisions } : undefined;
+      await approvePermission(sessionId, permissionId, body);
     } catch (error) {
       console.error('Permission approval failed:', error);
     }

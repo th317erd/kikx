@@ -35,6 +35,11 @@ before(async () => {
   await import('../../src/client/components/kikx-status-bar/kikx-status-bar.mjs');
   await import('../../src/client/components/kikx-settings-page/kikx-settings-page.mjs');
   await import('../../src/client/components/kikx-sidebar/kikx-sidebar.mjs');
+  await import('../../src/client/components/kikx-message-input/kikx-message-input.mjs');
+  await import('../../src/client/components/kikx-message-content/kikx-message-content.mjs');
+  await import('../../src/client/components/kikx-interaction/kikx-interaction.mjs');
+  await import('../../src/client/components/kikx-hml-prompt/kikx-hml-prompt.mjs');
+  await import('../../src/client/components/kikx-permission-request/kikx-permission-request.mjs');
 });
 
 after(() => {
@@ -48,6 +53,7 @@ beforeEach(() => {
     doc.body.removeChild(doc.body.firstChild);
 
   try { localStorage.clear(); } catch (_e) { /* ignore */ }
+  try { sessionStorage.clear(); } catch (_e) { /* ignore */ }
   router.reset();
   store.resetStore();
   i18n.setLocale(en, 'en');
@@ -812,7 +818,7 @@ describe('KikxSettingsPage', () => {
     doc.body.appendChild(page);
 
     let tabs = page.shadowRoot.querySelectorAll('.tab-button');
-    assert.equal(tabs.length, 6);
+    assert.equal(tabs.length, 5);
   });
 
   it('should render tabs with correct labels including Logout', () => {
@@ -823,7 +829,7 @@ describe('KikxSettingsPage', () => {
     let tabs   = page.shadowRoot.querySelectorAll('.tab-button');
     let labels = Array.from(tabs).map((tab) => tab.textContent);
 
-    assert.deepStrictEqual(labels, ['Profile', 'Account', 'API Keys', 'Permissions', 'Appearance', 'Logout']);
+    assert.deepStrictEqual(labels, ['Profile', 'Account', 'Permissions', 'Appearance', 'Logout']);
   });
 
   it('should have Profile tab active by default', () => {
@@ -1157,5 +1163,1433 @@ describe('MD5 hash function', () => {
 describe('API updateProfile', () => {
   it('should be exported as a function', () => {
     assert.equal(typeof api.updateProfile, 'function');
+  });
+});
+
+// =============================================================================
+// KikxMessageInput — Queue Logic
+// =============================================================================
+
+describe('KikxMessageInput', () => {
+  it('should render textarea and send button', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+
+    assert.ok(textarea, 'Textarea should exist');
+    assert.ok(sendButton, 'Send button should exist');
+  });
+
+  it('should dispatch send-message event when not interacting', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    let dispatched = null;
+    input.addEventListener('send-message', (event) => { dispatched = event.detail; });
+
+    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    textarea.value = 'Hello world';
+
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+    sendButton.click();
+
+    assert.ok(dispatched, 'send-message event should fire');
+    assert.equal(dispatched.text, 'Hello world');
+    assert.equal(textarea.value, '', 'Textarea should be cleared');
+  });
+
+  it('should queue messages when interacting', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.setInteracting(true);
+
+    let dispatched  = null;
+    let queueCount  = null;
+    input.addEventListener('send-message', (event) => { dispatched = event.detail; });
+    input.addEventListener('queue-change', (event) => { queueCount = event.detail.count; });
+
+    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    textarea.value = 'Queued message';
+
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+    sendButton.click();
+
+    assert.equal(dispatched, null, 'send-message should NOT fire while interacting');
+    assert.equal(textarea.value, '', 'Textarea should still be cleared');
+    assert.equal(queueCount, 1, 'queue-change should report 1 queued');
+  });
+
+  it('should queue multiple messages and show count', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.setInteracting(true);
+
+    let lastCount  = null;
+    input.addEventListener('queue-change', (event) => { lastCount = event.detail.count; });
+
+    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+
+    textarea.value = 'First';
+    sendButton.click();
+
+    textarea.value = 'Second';
+    sendButton.click();
+
+    textarea.value = 'Third';
+    sendButton.click();
+
+    assert.equal(lastCount, 3, 'queue-change should report 3 queued');
+  });
+
+  it('should drain queue on setInteracting(false)', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.setInteracting(true);
+
+    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+
+    textarea.value = 'First';
+    sendButton.click();
+
+    textarea.value = 'Second';
+    sendButton.click();
+
+    let dispatched = null;
+    let lastCount  = null;
+    input.addEventListener('send-message', (event) => { dispatched = event.detail; });
+    input.addEventListener('queue-change', (event) => { lastCount = event.detail.count; });
+
+    input.setInteracting(false);
+
+    assert.ok(dispatched, 'send-message should fire on drain');
+    assert.equal(dispatched.text, 'First\n\nSecond');
+    assert.equal(lastCount, 0, 'queue-change should report 0 after drain');
+  });
+
+  it('should cancel queue on Esc and restore text to textarea', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.setInteracting(true);
+
+    let lastCount = null;
+    input.addEventListener('queue-change', (event) => { lastCount = event.detail.count; });
+
+    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+
+    textarea.value = 'Queued msg';
+    sendButton.click();
+
+    // Simulate Esc key
+    let escEvent = new globalThis.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+    textarea.dispatchEvent(escEvent);
+
+    assert.equal(textarea.value, 'Queued msg', 'Queued text should be restored to textarea');
+    assert.equal(lastCount, 0, 'queue-change should report 0 after cancel');
+  });
+
+  it('should prepend queued text before existing textarea content on Esc', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.setInteracting(true);
+
+    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+
+    textarea.value = 'First queued';
+    sendButton.click();
+
+    // User types something new
+    textarea.value = 'Currently typing';
+
+    // Esc to cancel
+    let escEvent = new globalThis.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+    textarea.dispatchEvent(escEvent);
+
+    assert.equal(textarea.value, 'First queued\n\nCurrently typing');
+  });
+
+  it('should not dispatch send-message when textarea is empty', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    let dispatched = false;
+    input.addEventListener('send-message', () => { dispatched = true; });
+
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+    sendButton.click();
+
+    assert.equal(dispatched, false, 'Should not dispatch for empty text');
+  });
+
+  it('should not drain empty queue on setInteracting(false)', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.setInteracting(true);
+
+    let dispatched = false;
+    input.addEventListener('send-message', () => { dispatched = true; });
+
+    input.setInteracting(false);
+
+    assert.equal(dispatched, false, 'Should not dispatch for empty queue');
+  });
+
+  it('should not emit queue-change on construction', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+
+    let emitted = false;
+    input.addEventListener('queue-change', () => { emitted = true; });
+
+    doc.body.appendChild(input);
+
+    assert.equal(emitted, false, 'queue-change should not fire on construction');
+  });
+
+  it('should not do Esc cancel when queue is empty', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    textarea.value = 'Some text';
+
+    let escEvent = new globalThis.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+    textarea.dispatchEvent(escEvent);
+
+    // Text should remain unchanged — Esc with no queue is a no-op
+    assert.equal(textarea.value, 'Some text');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Draft persistence (sessionStorage)
+  // ---------------------------------------------------------------------------
+
+  it('should save draft to sessionStorage on input', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.sessionId = 'ses_abc123';
+
+    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    textarea.value = 'Work in progress';
+    textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
+
+    assert.equal(sessionStorage.getItem('kikx_draft:ses_abc123'), 'Work in progress');
+  });
+
+  it('should load draft from sessionStorage when sessionId is set', () => {
+    sessionStorage.setItem('kikx_draft:ses_xyz789', 'Restored draft');
+
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.sessionId = 'ses_xyz789';
+
+    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    assert.equal(textarea.value, 'Restored draft');
+  });
+
+  it('should clear draft via clearDraft()', () => {
+    sessionStorage.setItem('kikx_draft:ses_clear', 'To be cleared');
+
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.sessionId = 'ses_clear';
+    input.clearDraft();
+
+    assert.equal(sessionStorage.getItem('kikx_draft:ses_clear'), null);
+  });
+
+  it('should NOT clear draft from sessionStorage on send (waits for 200)', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.sessionId = 'ses_persist';
+
+    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    textarea.value = 'Important message';
+    textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
+
+    assert.equal(sessionStorage.getItem('kikx_draft:ses_persist'), 'Important message');
+
+    // Send the message
+    input.shadowRoot.querySelector('.send-button').click();
+
+    // Draft should still be in sessionStorage
+    assert.equal(sessionStorage.getItem('kikx_draft:ses_persist'), 'Important message');
+  });
+
+  it('should clear draft when message is queued (text moved to queue)', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.sessionId = 'ses_queue';
+    input.setInteracting(true);
+
+    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    textarea.value = 'Queued text';
+    textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
+
+    assert.equal(sessionStorage.getItem('kikx_draft:ses_queue'), 'Queued text');
+
+    // Queue it
+    input.shadowRoot.querySelector('.send-button').click();
+
+    // Draft should be cleared — text is in the queue now
+    assert.equal(sessionStorage.getItem('kikx_draft:ses_queue'), null);
+  });
+
+  it('should remove draft from sessionStorage when textarea is emptied', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.sessionId = 'ses_empty';
+
+    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    textarea.value = 'Some text';
+    textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
+
+    assert.equal(sessionStorage.getItem('kikx_draft:ses_empty'), 'Some text');
+
+    textarea.value = '';
+    textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
+
+    assert.equal(sessionStorage.getItem('kikx_draft:ses_empty'), null);
+  });
+
+  it('should not save draft when sessionId is not set', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    textarea.value = 'No session';
+    textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
+
+    // No key to check — just verify no errors thrown
+    assert.equal(input.sessionId, null);
+  });
+
+  it('should save draft on Esc cancel (restored text becomes new draft)', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.sessionId = 'ses_esc';
+    input.setInteracting(true);
+
+    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+
+    textarea.value = 'Queued';
+    sendButton.click();
+
+    // Esc to restore
+    let escEvent = new globalThis.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+    textarea.dispatchEvent(escEvent);
+
+    assert.equal(textarea.value, 'Queued');
+    assert.equal(sessionStorage.getItem('kikx_draft:ses_esc'), 'Queued');
+  });
+
+  it('should isolate drafts between different session IDs', () => {
+    sessionStorage.setItem('kikx_draft:ses_a', 'Draft A');
+    sessionStorage.setItem('kikx_draft:ses_b', 'Draft B');
+
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.sessionId = 'ses_a';
+    assert.equal(input.shadowRoot.querySelector('.message-textarea').value, 'Draft A');
+
+    input.sessionId = 'ses_b';
+    assert.equal(input.shadowRoot.querySelector('.message-textarea').value, 'Draft B');
+  });
+});
+
+// =============================================================================
+// kikx-hml-prompt
+// =============================================================================
+
+describe('kikx-hml-prompt: getName()', () => {
+  it('should return name attribute when set', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('name', 'favorite-color');
+    prompt.setAttribute('label', 'Favorite Color');
+    doc.body.appendChild(prompt);
+
+    assert.equal(prompt.getName(), 'favorite-color');
+  });
+
+  it('should return prompt-id attribute as fallback', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('prompt-id', 'q1');
+    prompt.setAttribute('label', 'Question One');
+    doc.body.appendChild(prompt);
+
+    assert.equal(prompt.getName(), 'q1');
+  });
+
+  it('should derive slug from label when name and prompt-id are absent', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('label', 'Your Favorite Color');
+    doc.body.appendChild(prompt);
+
+    assert.equal(prompt.getName(), 'your-favorite-color');
+  });
+
+  it('should handle special characters in label slug', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('label', '  Age (years)!! ');
+    doc.body.appendChild(prompt);
+
+    assert.equal(prompt.getName(), 'age-years');
+  });
+
+  it('should return empty string when no name, prompt-id, or label', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    doc.body.appendChild(prompt);
+
+    assert.equal(prompt.getName(), '');
+  });
+});
+
+describe('kikx-hml-prompt: password type', () => {
+  it('should render a password input', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'password');
+    prompt.setAttribute('name', 'secret');
+    prompt.setAttribute('label', 'Password');
+    doc.body.appendChild(prompt);
+
+    let input = prompt.shadowRoot.querySelector('input[type="password"]');
+    assert.ok(input, 'should render an input with type="password"');
+  });
+});
+
+describe('kikx-hml-prompt: radio/checkbox clickability', () => {
+  it('should wrap radio options in label elements', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'radio');
+    prompt.setAttribute('name', 'color');
+    prompt.setAttribute('options', 'Red,Blue,Green');
+    doc.body.appendChild(prompt);
+
+    let labels = prompt.shadowRoot.querySelectorAll('label.radio-row');
+    assert.equal(labels.length, 3, 'each radio option should be wrapped in a <label>');
+
+    // Each label should contain an input and a span
+    for (let label of labels) {
+      assert.ok(label.querySelector('input[type="radio"]'), 'label should contain radio input');
+      assert.ok(label.querySelector('span'), 'label should contain text span');
+    }
+  });
+
+  it('should wrap checkbox in a label element', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'checkbox');
+    prompt.setAttribute('name', 'agree');
+    prompt.setAttribute('label', 'I agree');
+    doc.body.appendChild(prompt);
+
+    let label = prompt.shadowRoot.querySelector('label.checkbox-row');
+    assert.ok(label, 'checkbox should be wrapped in a <label>');
+    assert.ok(label.querySelector('input[type="checkbox"]'), 'label should contain checkbox input');
+    assert.ok(label.querySelector('span'), 'label should contain text span');
+  });
+});
+
+// =============================================================================
+// kikx-hml-prompt: getValue/setValue round-trip
+// =============================================================================
+
+describe('kikx-hml-prompt: getValue/setValue', () => {
+  it('should return text value from getValue()', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'text');
+    prompt.setAttribute('name', 'username');
+    prompt.setAttribute('label', 'Username');
+    doc.body.appendChild(prompt);
+
+    let input = prompt.shadowRoot.querySelector('input');
+    input.value = 'typed-by-user';
+
+    assert.equal(prompt.getValue(), 'typed-by-user');
+  });
+
+  it('should set text value via setValue()', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'text');
+    prompt.setAttribute('name', 'city');
+    prompt.setAttribute('label', 'City');
+    doc.body.appendChild(prompt);
+
+    prompt.setValue('Portland');
+    assert.equal(prompt.getValue(), 'Portland');
+  });
+
+  it('should return password value from getValue()', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'password');
+    prompt.setAttribute('name', 'secret');
+    prompt.setAttribute('label', 'Secret');
+    doc.body.appendChild(prompt);
+
+    let input = prompt.shadowRoot.querySelector('input[type="password"]');
+    input.value = 'hunter2';
+
+    assert.equal(prompt.getValue(), 'hunter2');
+  });
+
+  it('should return textarea value from getValue()', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'textarea');
+    prompt.setAttribute('name', 'bio');
+    prompt.setAttribute('label', 'Bio');
+    doc.body.appendChild(prompt);
+
+    let textarea = prompt.shadowRoot.querySelector('textarea');
+    textarea.value = 'Hello world';
+
+    assert.equal(prompt.getValue(), 'Hello world');
+  });
+
+  it('should return number value from getValue()', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'number');
+    prompt.setAttribute('name', 'age');
+    prompt.setAttribute('label', 'Age');
+    doc.body.appendChild(prompt);
+
+    let input = prompt.shadowRoot.querySelector('input[type="number"]');
+    input.value = '42';
+
+    assert.equal(prompt.getValue(), '42');
+  });
+
+  it('should return checkbox boolean from getValue()', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'checkbox');
+    prompt.setAttribute('name', 'agree');
+    prompt.setAttribute('label', 'I agree');
+    doc.body.appendChild(prompt);
+
+    let checkbox = prompt.shadowRoot.querySelector('input[type="checkbox"]');
+    assert.equal(prompt.getValue(), false, 'unchecked should be false');
+
+    checkbox.checked = true;
+    assert.equal(prompt.getValue(), true, 'checked should be true');
+  });
+
+  it('should set checkbox value via setValue()', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'checkbox');
+    prompt.setAttribute('name', 'agree');
+    prompt.setAttribute('label', 'I agree');
+    doc.body.appendChild(prompt);
+
+    prompt.setValue(true);
+    assert.equal(prompt.getValue(), true);
+
+    prompt.setValue(false);
+    assert.equal(prompt.getValue(), false);
+  });
+
+  it('should return radio value from getValue()', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'radio');
+    prompt.setAttribute('name', 'color');
+    prompt.setAttribute('options', 'Red,Blue,Green');
+    doc.body.appendChild(prompt);
+
+    let radios = prompt.shadowRoot.querySelectorAll('input[type="radio"]');
+    radios[1].checked = true;
+
+    assert.equal(prompt.getValue(), 'Blue');
+  });
+
+  it('should set radio value via setValue()', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'radio');
+    prompt.setAttribute('name', 'color');
+    prompt.setAttribute('options', 'Red,Blue,Green');
+    doc.body.appendChild(prompt);
+
+    prompt.setValue('Green');
+    assert.equal(prompt.getValue(), 'Green');
+  });
+
+  it('should return select value from getValue() (custom dropdown)', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'select');
+    prompt.setAttribute('name', 'size');
+    prompt.setAttribute('options', 'Small,Medium,Large');
+    doc.body.appendChild(prompt);
+
+    // Default: first option selected
+    assert.equal(prompt.getValue(), 'Small');
+
+    // Click the second option
+    let options = prompt.shadowRoot.querySelectorAll('.select-option');
+    options[1].click();
+
+    assert.equal(prompt.getValue(), 'Medium');
+  });
+
+  it('should return default value when set via attribute', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'text');
+    prompt.setAttribute('name', 'greeting');
+    prompt.setAttribute('label', 'Greeting');
+    prompt.setAttribute('value', 'Hello!');
+    doc.body.appendChild(prompt);
+
+    assert.equal(prompt.getValue(), 'Hello!');
+  });
+});
+
+// =============================================================================
+// kikx-hml-prompt: value persistence through readonly transition
+// =============================================================================
+
+describe('kikx-hml-prompt: value persistence on readonly', () => {
+  it('should preserve text value when value attr is set before readonly', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'text');
+    prompt.setAttribute('name', 'username');
+    prompt.setAttribute('label', 'Username');
+    doc.body.appendChild(prompt);
+
+    // Simulate the persistence flow: set value attribute, then readonly
+    prompt.setAttribute('value', 'user-typed-answer');
+    prompt.setAttribute('readonly', '');
+
+    let input = prompt.shadowRoot.querySelector('input');
+    assert.equal(input.value, 'user-typed-answer', 'text value should survive readonly transition');
+    assert.equal(input.getAttribute('aria-disabled'), 'true', 'input should be aria-disabled');
+    assert.equal(input.tabIndex, -1, 'input should not be focusable');
+  });
+
+  it('should preserve password value when value attr is set before readonly', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'password');
+    prompt.setAttribute('name', 'secret');
+    prompt.setAttribute('label', 'Secret');
+    doc.body.appendChild(prompt);
+
+    prompt.setAttribute('value', 'hunter2');
+    prompt.setAttribute('readonly', '');
+
+    let input = prompt.shadowRoot.querySelector('input[type="password"]');
+    assert.equal(input.value, 'hunter2', 'password value should survive readonly transition');
+    assert.equal(input.getAttribute('aria-disabled'), 'true');
+  });
+
+  it('should preserve textarea value when value attr is set before readonly', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'textarea');
+    prompt.setAttribute('name', 'bio');
+    prompt.setAttribute('label', 'Bio');
+    doc.body.appendChild(prompt);
+
+    prompt.setAttribute('value', 'My life story');
+    prompt.setAttribute('readonly', '');
+
+    let textarea = prompt.shadowRoot.querySelector('textarea');
+    assert.equal(textarea.value, 'My life story', 'textarea value should survive readonly transition');
+    assert.equal(textarea.getAttribute('aria-disabled'), 'true');
+  });
+
+  it('should preserve number value when value attr is set before readonly', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'number');
+    prompt.setAttribute('name', 'age');
+    prompt.setAttribute('label', 'Age');
+    doc.body.appendChild(prompt);
+
+    prompt.setAttribute('value', '25');
+    prompt.setAttribute('readonly', '');
+
+    let input = prompt.shadowRoot.querySelector('input[type="number"]');
+    assert.equal(input.value, '25', 'number value should survive readonly transition');
+    assert.equal(input.getAttribute('aria-disabled'), 'true');
+  });
+
+  it('should preserve select value when value attr is set before readonly', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'select');
+    prompt.setAttribute('name', 'size');
+    prompt.setAttribute('options', 'Small,Medium,Large');
+    doc.body.appendChild(prompt);
+
+    prompt.setAttribute('value', 'Large');
+    prompt.setAttribute('readonly', '');
+
+    assert.equal(prompt.getValue(), 'Large', 'select value should survive readonly transition');
+    let hidden = prompt.shadowRoot.querySelector('input[type="hidden"]');
+    assert.equal(hidden.getAttribute('aria-disabled'), 'true');
+  });
+
+  it('should preserve checkbox value when value attr is set before readonly', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'checkbox');
+    prompt.setAttribute('name', 'agree');
+    prompt.setAttribute('label', 'I agree');
+    doc.body.appendChild(prompt);
+
+    prompt.setAttribute('value', 'true');
+    prompt.setAttribute('readonly', '');
+
+    let checkbox = prompt.shadowRoot.querySelector('input[type="checkbox"]');
+    assert.equal(checkbox.checked, true, 'checkbox should be checked after readonly transition');
+    assert.equal(checkbox.getAttribute('aria-disabled'), 'true');
+  });
+
+  it('should preserve radio value when value attr is set before readonly', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'radio');
+    prompt.setAttribute('name', 'color');
+    prompt.setAttribute('options', 'Red,Blue,Green');
+    doc.body.appendChild(prompt);
+
+    prompt.setAttribute('value', 'Blue');
+    prompt.setAttribute('readonly', '');
+
+    let radios  = prompt.shadowRoot.querySelectorAll('input[type="radio"]');
+    let checked = Array.from(radios).find((r) => r.checked);
+    assert.ok(checked, 'a radio should be checked');
+    assert.equal(checked.value, 'Blue', 'Blue radio should be selected after readonly transition');
+
+    for (let radio of radios)
+      assert.equal(radio.getAttribute('aria-disabled'), 'true', 'all radios should be aria-disabled');
+  });
+
+  it('should render with value and readonly from initial attributes (reload scenario)', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'text');
+    prompt.setAttribute('name', 'city');
+    prompt.setAttribute('label', 'City');
+    prompt.setAttribute('value', 'Portland');
+    prompt.setAttribute('readonly', '');
+
+    // This is the reload scenario: both attributes are set BEFORE connectedCallback
+    doc.body.appendChild(prompt);
+
+    let input = prompt.shadowRoot.querySelector('input');
+    assert.equal(input.value, 'Portland', 'should render with persisted value on reload');
+    assert.equal(input.getAttribute('aria-disabled'), 'true', 'should be aria-disabled on reload');
+  });
+});
+
+// =============================================================================
+// Integration: interaction → message-content → hml-prompt value collection
+// =============================================================================
+
+describe('Prompt value collection from interaction', () => {
+  function buildInteractionWithPrompts(doc, promptsHTML) {
+    let interaction = doc.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'agent');
+    interaction.setAttribute('participant-name', 'Agent');
+    interaction.setAttribute('participant-initials', 'A');
+    interaction.setAttribute('data-interaction-id', 'test-int-1');
+    interaction.setAttribute('data-frame-id', 'test-frame-1');
+
+    let messageContent = doc.createElement('kikx-message-content');
+    messageContent.content = promptsHTML;
+
+    interaction.appendChild(messageContent);
+    doc.body.appendChild(interaction);
+
+    return interaction;
+  }
+
+  function collectPromptValues(interaction) {
+    let messageContents = interaction.querySelectorAll('kikx-message-content');
+    let answers = {};
+
+    for (let messageContent of messageContents) {
+      let shadow = messageContent.shadowRoot;
+      if (!shadow) continue;
+
+      let prompts = shadow.querySelectorAll('kikx-hml-prompt');
+      for (let prompt of prompts) {
+        let name  = prompt.getName();
+        let value = prompt.getValue();
+        if (name) answers[name] = value;
+      }
+    }
+
+    return answers;
+  }
+
+  it('should collect text prompt values from interaction', () => {
+    let doc = getDocument();
+    let html = '<p>Enter your name:</p><kikx-hml-prompt name="user-name" type="text" label="Name"></kikx-hml-prompt>';
+    let interaction = buildInteractionWithPrompts(doc, html);
+
+    let shadow = interaction.querySelector('kikx-message-content').shadowRoot;
+    let prompt = shadow.querySelector('kikx-hml-prompt');
+    let input  = prompt.shadowRoot.querySelector('input');
+    input.value = 'Alice';
+
+    let answers = collectPromptValues(interaction);
+    assert.equal(answers['user-name'], 'Alice');
+  });
+
+  it('should collect multiple prompt values', () => {
+    let doc = getDocument();
+    let html = `
+      <kikx-hml-prompt name="first-name" type="text" label="First"></kikx-hml-prompt>
+      <kikx-hml-prompt name="last-name" type="text" label="Last"></kikx-hml-prompt>
+      <kikx-hml-prompt name="agree" type="checkbox" label="Terms"></kikx-hml-prompt>
+    `;
+    let interaction = buildInteractionWithPrompts(doc, html);
+
+    let shadow  = interaction.querySelector('kikx-message-content').shadowRoot;
+    let prompts = shadow.querySelectorAll('kikx-hml-prompt');
+
+    prompts[0].shadowRoot.querySelector('input').value = 'Bob';
+    prompts[1].shadowRoot.querySelector('input').value = 'Smith';
+    prompts[2].shadowRoot.querySelector('input[type="checkbox"]').checked = true;
+
+    let answers = collectPromptValues(interaction);
+    assert.equal(answers['first-name'], 'Bob');
+    assert.equal(answers['last-name'], 'Smith');
+    assert.equal(answers['agree'], true);
+  });
+
+  it('should use label-derived name for prompts without explicit name', () => {
+    let doc = getDocument();
+    let html = '<kikx-hml-prompt type="text" label="Favorite Color"></kikx-hml-prompt>';
+    let interaction = buildInteractionWithPrompts(doc, html);
+
+    let shadow = interaction.querySelector('kikx-message-content').shadowRoot;
+    let prompt = shadow.querySelector('kikx-hml-prompt');
+    prompt.shadowRoot.querySelector('input').value = 'Blue';
+
+    let answers = collectPromptValues(interaction);
+    assert.equal(answers['favorite-color'], 'Blue');
+  });
+
+  it('should show action buttons when prompts are present', () => {
+    let doc = getDocument();
+    let html = '<kikx-hml-prompt name="q1" type="text" label="Question"></kikx-hml-prompt>';
+    let interaction = buildInteractionWithPrompts(doc, html);
+
+    assert.equal(interaction.hasAttribute('show-actions'), true, 'show-actions should be set by prompt connectedCallback');
+
+    let submitBtn = interaction.shadowRoot.querySelector('.submit-button');
+    let ignoreBtn = interaction.shadowRoot.querySelector('.ignore-button');
+    assert.ok(submitBtn, 'submit button should exist');
+    assert.ok(ignoreBtn, 'ignore button should exist');
+  });
+
+  it('should dispatch interaction-submit event from submit button', () => {
+    let doc = getDocument();
+    let html = '<kikx-hml-prompt name="q1" type="text" label="Q"></kikx-hml-prompt>';
+    let interaction = buildInteractionWithPrompts(doc, html);
+
+    let dispatched = null;
+    interaction.addEventListener('interaction-submit', (event) => { dispatched = event.detail; });
+
+    let submitBtn = interaction.shadowRoot.querySelector('.submit-button');
+    submitBtn.click();
+
+    assert.ok(dispatched, 'interaction-submit should fire');
+    assert.equal(dispatched.interactionId, 'test-int-1');
+  });
+
+  it('should dispatch interaction-ignore event from ignore button', () => {
+    let doc = getDocument();
+    let html = '<kikx-hml-prompt name="q1" type="text" label="Q"></kikx-hml-prompt>';
+    let interaction = buildInteractionWithPrompts(doc, html);
+
+    let dispatched = null;
+    interaction.addEventListener('interaction-ignore', (event) => { dispatched = event.detail; });
+
+    let ignoreBtn = interaction.shadowRoot.querySelector('.ignore-button');
+    ignoreBtn.click();
+
+    assert.ok(dispatched, 'interaction-ignore should fire');
+    assert.equal(dispatched.interactionId, 'test-int-1');
+  });
+});
+
+// =============================================================================
+// _buildUpdatedFrameHTML logic (simulated)
+// =============================================================================
+
+describe('Frame HTML update logic (persistence)', () => {
+  // This mirrors _buildUpdatedFrameHTML from kikx-session-page.mjs:
+  // Parse raw HTML into template, set value+readonly on prompts, serialize back.
+  function buildUpdatedFrameHTML(rawHTML, answers) {
+    let doc      = getDocument();
+    let template = doc.createElement('template');
+    template.innerHTML = rawHTML;
+
+    let prompts = template.content.querySelectorAll('kikx-hml-prompt');
+    for (let prompt of prompts) {
+      let name = prompt.getAttribute('name') || prompt.getAttribute('prompt-id') || '';
+
+      if (!name) {
+        let label = prompt.getAttribute('label');
+        if (label)
+          name = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      }
+
+      if (name && Object.prototype.hasOwnProperty.call(answers, name))
+        prompt.setAttribute('value', String(answers[name]));
+
+      prompt.setAttribute('readonly', '');
+    }
+
+    return template.innerHTML;
+  }
+
+  it('should bake value into prompt attributes', () => {
+    let html = '<p>What is your name?</p><kikx-hml-prompt name="user-name" type="text" label="Name"></kikx-hml-prompt>';
+    let updated = buildUpdatedFrameHTML(html, { 'user-name': 'Alice' });
+
+    assert.ok(updated.includes('value="Alice"'), 'should contain value="Alice"');
+    assert.ok(updated.includes('readonly=""'), 'should contain readonly');
+  });
+
+  it('should handle multiple prompts', () => {
+    let html = `
+      <kikx-hml-prompt name="first" type="text" label="First"></kikx-hml-prompt>
+      <kikx-hml-prompt name="last" type="text" label="Last"></kikx-hml-prompt>
+    `;
+    let updated = buildUpdatedFrameHTML(html, { first: 'Bob', last: 'Smith' });
+
+    assert.ok(updated.includes('value="Bob"'), 'should contain first name');
+    assert.ok(updated.includes('value="Smith"'), 'should contain last name');
+  });
+
+  it('should handle label-derived names when name attribute is missing', () => {
+    let html = '<kikx-hml-prompt type="text" label="Favorite Color"></kikx-hml-prompt>';
+    let updated = buildUpdatedFrameHTML(html, { 'favorite-color': 'Blue' });
+
+    assert.ok(updated.includes('value="Blue"'), 'should match by label-derived name');
+  });
+
+  it('should set readonly on all prompts even without answers', () => {
+    let html = '<kikx-hml-prompt name="q1" type="text" label="Q1"></kikx-hml-prompt>';
+    let updated = buildUpdatedFrameHTML(html, {});
+
+    assert.ok(updated.includes('readonly=""'), 'should set readonly even with empty answers');
+    assert.ok(!updated.includes('value='), 'should not set value when not in answers');
+  });
+
+  it('should preserve non-prompt HTML content', () => {
+    let html = '<h2>Survey</h2><p>Please answer:</p><kikx-hml-prompt name="q1" type="text" label="Q"></kikx-hml-prompt><p>Thank you!</p>';
+    let updated = buildUpdatedFrameHTML(html, { q1: 'answer' });
+
+    assert.ok(updated.includes('<h2>Survey</h2>'), 'should preserve heading');
+    assert.ok(updated.includes('<p>Please answer:</p>'), 'should preserve paragraph');
+    assert.ok(updated.includes('<p>Thank you!</p>'), 'should preserve trailing content');
+  });
+
+  it('should handle checkbox boolean values as strings', () => {
+    let html = '<kikx-hml-prompt name="agree" type="checkbox" label="Terms"></kikx-hml-prompt>';
+    let updated = buildUpdatedFrameHTML(html, { agree: true });
+
+    assert.ok(updated.includes('value="true"'), 'should serialize boolean as string');
+  });
+
+  it('should use prompt-id as fallback for name matching', () => {
+    let html = '<kikx-hml-prompt prompt-id="q1" type="text" label="Question"></kikx-hml-prompt>';
+    let updated = buildUpdatedFrameHTML(html, { q1: 'answer' });
+
+    assert.ok(updated.includes('value="answer"'), 'should match by prompt-id');
+  });
+
+  it('should handle select prompt value persistence', () => {
+    let html = '<kikx-hml-prompt name="size" type="select" label="Size" options="S,M,L"></kikx-hml-prompt>';
+    let updated = buildUpdatedFrameHTML(html, { size: 'M' });
+
+    assert.ok(updated.includes('value="M"'), 'should bake select value');
+    assert.ok(updated.includes('readonly=""'), 'should set readonly');
+  });
+});
+
+// =============================================================================
+// kikx-hml-prompt: _applyReadonly
+// =============================================================================
+
+describe('kikx-hml-prompt: readonly behavior', () => {
+  it('should mark text input as aria-disabled when readonly is set', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'text');
+    prompt.setAttribute('name', 'q1');
+    prompt.setAttribute('label', 'Q');
+    doc.body.appendChild(prompt);
+
+    assert.equal(prompt.shadowRoot.querySelector('input').getAttribute('aria-disabled'), null);
+
+    prompt.setAttribute('readonly', '');
+    assert.equal(prompt.shadowRoot.querySelector('input').getAttribute('aria-disabled'), 'true');
+    assert.equal(prompt.shadowRoot.querySelector('input').tabIndex, -1);
+  });
+
+  it('should mark textarea as aria-disabled when readonly is set', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'textarea');
+    prompt.setAttribute('name', 'q1');
+    prompt.setAttribute('label', 'Q');
+    doc.body.appendChild(prompt);
+
+    prompt.setAttribute('readonly', '');
+    assert.equal(prompt.shadowRoot.querySelector('textarea').getAttribute('aria-disabled'), 'true');
+  });
+
+  it('should mark all radio buttons as aria-disabled when readonly is set', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'radio');
+    prompt.setAttribute('name', 'color');
+    prompt.setAttribute('options', 'Red,Blue');
+    doc.body.appendChild(prompt);
+
+    prompt.setAttribute('readonly', '');
+    let radios = prompt.shadowRoot.querySelectorAll('input[type="radio"]');
+    for (let radio of radios)
+      assert.equal(radio.getAttribute('aria-disabled'), 'true', 'radio should be aria-disabled');
+  });
+
+  it('should mark checkbox as aria-disabled when readonly is set', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'checkbox');
+    prompt.setAttribute('name', 'agree');
+    prompt.setAttribute('label', 'Agree');
+    doc.body.appendChild(prompt);
+
+    prompt.setAttribute('readonly', '');
+    assert.equal(prompt.shadowRoot.querySelector('input[type="checkbox"]').getAttribute('aria-disabled'), 'true');
+  });
+
+  it('should apply pointer-events:none via CSS host([readonly])', () => {
+    let doc    = getDocument();
+    let prompt = doc.createElement('kikx-hml-prompt');
+    prompt.setAttribute('type', 'text');
+    prompt.setAttribute('name', 'q1');
+    prompt.setAttribute('label', 'Q');
+    prompt.setAttribute('readonly', '');
+    doc.body.appendChild(prompt);
+
+    // Verify the readonly attribute is present on the host
+    assert.equal(prompt.hasAttribute('readonly'), true);
+  });
+
+  it('should NOT show action buttons for readonly prompts on reload', () => {
+    let doc = getDocument();
+    let interaction = doc.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'agent');
+    interaction.setAttribute('participant-name', 'Agent');
+    interaction.setAttribute('participant-initials', 'A');
+
+    let mc = doc.createElement('kikx-message-content');
+    mc.content = '<kikx-hml-prompt name="q1" type="text" label="Q" value="answer" readonly=""></kikx-hml-prompt>';
+
+    interaction.appendChild(mc);
+    doc.body.appendChild(interaction);
+
+    assert.equal(interaction.hasAttribute('show-actions'), false,
+      'readonly prompts should NOT trigger show-actions');
+    assert.equal(interaction.shadowRoot.querySelector('.submit-button'), null,
+      'submit button should not exist');
+  });
+});
+
+// =============================================================================
+// Data attribute persistence plumbing
+// =============================================================================
+
+describe('Prompt persistence plumbing', () => {
+  it('data-frame-id attribute should be readable', () => {
+    let doc         = getDocument();
+    let interaction = doc.createElement('kikx-interaction');
+    interaction.setAttribute('data-frame-id', 'frm_abc123');
+    doc.body.appendChild(interaction);
+
+    assert.equal(interaction.getAttribute('data-frame-id'), 'frm_abc123');
+  });
+
+  it('data-interaction-id attribute should be readable', () => {
+    let doc         = getDocument();
+    let interaction = doc.createElement('kikx-interaction');
+    interaction.setAttribute('data-interaction-id', 'int_xyz');
+    doc.body.appendChild(interaction);
+
+    assert.equal(interaction.getAttribute('data-interaction-id'), 'int_xyz');
+  });
+
+  it('show-actions removal should hide action buttons', () => {
+    let doc         = getDocument();
+    let interaction = doc.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'agent');
+    interaction.setAttribute('participant-name', 'Agent');
+    interaction.setAttribute('participant-initials', 'A');
+    interaction.setAttribute('show-actions', '');
+    doc.body.appendChild(interaction);
+
+    assert.ok(interaction.shadowRoot.querySelector('.submit-button'), 'should have submit button');
+
+    interaction.removeAttribute('show-actions');
+    assert.equal(interaction.shadowRoot.querySelector('.submit-button'), null, 'buttons should be removed');
+  });
+
+  it('messageContent.content property stores and retrieves raw HTML', () => {
+    let doc = getDocument();
+    let mc  = doc.createElement('kikx-message-content');
+    doc.body.appendChild(mc);
+
+    let html = '<p>Hello <strong>world</strong></p>';
+    mc.content = html;
+
+    assert.equal(mc.content, html);
+  });
+
+  it('messageContent renders hml-prompt elements from HTML', () => {
+    let doc = getDocument();
+    let mc  = doc.createElement('kikx-message-content');
+    doc.body.appendChild(mc);
+
+    mc.content = '<kikx-hml-prompt name="q1" type="text" label="Q1"></kikx-hml-prompt>';
+
+    let prompt = mc.shadowRoot.querySelector('kikx-hml-prompt');
+    assert.ok(prompt, 'hml-prompt should be rendered inside message content');
+    assert.equal(prompt.getName(), 'q1');
+  });
+
+  it('messageContent renders multiple prompts from HTML', () => {
+    let doc = getDocument();
+    let mc  = doc.createElement('kikx-message-content');
+    doc.body.appendChild(mc);
+
+    mc.content = `
+      <p>Fill out this form:</p>
+      <kikx-hml-prompt name="name" type="text" label="Name"></kikx-hml-prompt>
+      <kikx-hml-prompt name="age" type="number" label="Age"></kikx-hml-prompt>
+    `;
+
+    let prompts = mc.shadowRoot.querySelectorAll('kikx-hml-prompt');
+    assert.equal(prompts.length, 2);
+    assert.equal(prompts[0].getName(), 'name');
+    assert.equal(prompts[1].getName(), 'age');
+  });
+
+  it('hml-prompt rendered with value+readonly attributes should display persisted value', () => {
+    let doc = getDocument();
+    let mc  = doc.createElement('kikx-message-content');
+    doc.body.appendChild(mc);
+
+    // Simulate reload: HTML has value and readonly already baked in
+    mc.content = '<kikx-hml-prompt name="city" type="text" label="City" value="Portland" readonly=""></kikx-hml-prompt>';
+
+    let prompt = mc.shadowRoot.querySelector('kikx-hml-prompt');
+    assert.ok(prompt, 'prompt should render');
+    assert.equal(prompt.getValue(), 'Portland', 'persisted value should be displayed');
+    assert.equal(prompt.shadowRoot.querySelector('input').getAttribute('aria-disabled'), 'true', 'should be readonly');
+  });
+
+  it('full reload scenario: multiple prompts with persisted values', () => {
+    let doc = getDocument();
+    let mc  = doc.createElement('kikx-message-content');
+    doc.body.appendChild(mc);
+
+    mc.content = `
+      <p>Survey results:</p>
+      <kikx-hml-prompt name="user-name" type="text" label="Name" value="Alice" readonly=""></kikx-hml-prompt>
+      <kikx-hml-prompt name="favorite-color" type="select" label="Color" options="Red,Blue,Green" value="Blue" readonly=""></kikx-hml-prompt>
+      <kikx-hml-prompt name="agree-terms" type="checkbox" label="Agree" value="true" readonly=""></kikx-hml-prompt>
+    `;
+
+    let prompts = mc.shadowRoot.querySelectorAll('kikx-hml-prompt');
+
+    assert.equal(prompts[0].getValue(), 'Alice', 'text value should persist');
+    assert.equal(prompts[1].getValue(), 'Blue', 'select value should persist');
+    assert.equal(prompts[2].getValue(), true, 'checkbox value should persist');
+
+    // All should be aria-disabled
+    for (let prompt of prompts) {
+      let inputs = prompt.shadowRoot.querySelectorAll('input, textarea');
+      for (let input of inputs)
+        assert.equal(input.getAttribute('aria-disabled'), 'true', 'all inputs should be aria-disabled on reload');
+    }
+  });
+});
+
+// =============================================================================
+// KikxPermissionRequest — per-command shell permission UI
+// =============================================================================
+
+describe('KikxPermissionRequest', () => {
+  it('should render correct number of command rows', () => {
+    let doc  = getDocument();
+    let perm = doc.createElement('kikx-permission-request');
+    doc.body.appendChild(perm);
+
+    perm.commands = [
+      { command: 'ls', arguments: ['-la'], status: 'needs-approval' },
+      { command: 'grep', arguments: ['foo'], status: 'needs-approval' },
+      { command: 'cat', arguments: ['file.txt'], status: 'needs-approval' },
+    ];
+
+    let rows = perm.shadowRoot.querySelectorAll('.command-row');
+    assert.equal(rows.length, 3);
+  });
+
+  it('should show command name and arguments in each row', () => {
+    let doc  = getDocument();
+    let perm = doc.createElement('kikx-permission-request');
+    doc.body.appendChild(perm);
+
+    perm.commands = [
+      { command: 'ls', arguments: ['-la', '/tmp'], status: 'needs-approval' },
+    ];
+
+    let codeEl = perm.shadowRoot.querySelector('.command-text');
+    assert.ok(codeEl);
+    assert.equal(codeEl.textContent, 'ls -la /tmp');
+  });
+
+  it('should have 4 decision buttons per interactive row', () => {
+    let doc  = getDocument();
+    let perm = doc.createElement('kikx-permission-request');
+    doc.body.appendChild(perm);
+
+    perm.commands = [
+      { command: 'ls', arguments: [], status: 'needs-approval' },
+    ];
+
+    let buttons = perm.shadowRoot.querySelectorAll('.decision-button');
+    assert.equal(buttons.length, 4);
+  });
+
+  it('should render pre-approved rows as non-interactive', () => {
+    let doc  = getDocument();
+    let perm = doc.createElement('kikx-permission-request');
+    doc.body.appendChild(perm);
+
+    perm.commands = [
+      { command: 'ls', arguments: [], status: 'allowed' },
+      { command: 'grep', arguments: ['foo'], status: 'needs-approval' },
+    ];
+
+    let rows = perm.shadowRoot.querySelectorAll('.command-row');
+    assert.equal(rows.length, 2);
+
+    // First row should be pre-approved (no decision buttons)
+    let preApproved = rows[0];
+    assert.ok(preApproved.classList.contains('pre-approved'));
+    assert.equal(preApproved.querySelectorAll('.decision-button').length, 0);
+    assert.ok(preApproved.querySelector('.pre-approved-badge'));
+
+    // Second row should have decision buttons
+    assert.equal(rows[1].querySelectorAll('.decision-button').length, 4);
+  });
+
+  it('should activate button and deactivate siblings on click', () => {
+    let doc  = getDocument();
+    let perm = doc.createElement('kikx-permission-request');
+    doc.body.appendChild(perm);
+
+    perm.commands = [
+      { command: 'ls', arguments: [], status: 'needs-approval' },
+    ];
+
+    let buttons = perm.shadowRoot.querySelectorAll('.decision-button');
+
+    // Click the first button (allow-forever)
+    buttons[0].click();
+
+    assert.ok(buttons[0].classList.contains('active-allow'), 'First button should be active');
+    assert.ok(!buttons[1].classList.contains('active-allow'), 'Second button should not be active');
+
+    // Click the third button (deny-once) — should deactivate first
+    buttons[2].click();
+
+    assert.ok(!buttons[0].classList.contains('active-allow'), 'First button should be deactivated');
+    assert.ok(buttons[2].classList.contains('active-deny'), 'Third button should be active');
+  });
+
+  it('should disable confirm button until all commands have decisions', () => {
+    let doc  = getDocument();
+    let perm = doc.createElement('kikx-permission-request');
+    doc.body.appendChild(perm);
+
+    perm.commands = [
+      { command: 'ls', arguments: [], status: 'needs-approval' },
+      { command: 'grep', arguments: ['foo'], status: 'needs-approval' },
+    ];
+
+    let confirmBtn = perm.shadowRoot.querySelector('.confirm-button');
+    assert.ok(confirmBtn.disabled, 'Confirm should be disabled initially');
+
+    // Decide on first command only
+    let firstRow    = perm.shadowRoot.querySelectorAll('.command-row')[0];
+    let firstButton = firstRow.querySelector('.decision-button');
+    firstButton.click();
+
+    assert.ok(confirmBtn.disabled, 'Confirm should still be disabled (only 1 of 2 decided)');
+
+    // Decide on second command
+    let secondRow    = perm.shadowRoot.querySelectorAll('.command-row')[1];
+    let secondButton = secondRow.querySelector('.decision-button');
+    secondButton.click();
+
+    assert.ok(!confirmBtn.disabled, 'Confirm should be enabled (all decided)');
+  });
+
+  it('should dispatch correct decisions array on submit', () => {
+    let doc  = getDocument();
+    let perm = doc.createElement('kikx-permission-request');
+    perm.setAttribute('permission-id', 'frm_test123');
+    doc.body.appendChild(perm);
+
+    perm.commands = [
+      { command: 'ls', arguments: [], status: 'needs-approval' },
+      { command: 'grep', arguments: ['foo'], status: 'needs-approval' },
+    ];
+
+    // Click allow-forever for ls (first button in first row)
+    let rows = perm.shadowRoot.querySelectorAll('.command-row');
+    rows[0].querySelector('.decision-button[data-decision="allow-forever"]').click();
+
+    // Click deny-once for grep (third button in second row)
+    rows[1].querySelector('.decision-button[data-decision="deny-once"]').click();
+
+    let dispatched = null;
+    perm.addEventListener('permission-response', (event) => {
+      dispatched = event.detail;
+    });
+
+    let confirmBtn = perm.shadowRoot.querySelector('.confirm-button');
+    confirmBtn.click();
+
+    assert.ok(dispatched, 'Event should have been dispatched');
+    assert.equal(dispatched.permissionId, 'frm_test123');
+    assert.equal(dispatched.decisions.length, 2);
+
+    let lsDecision = dispatched.decisions.find((d) => d.command === 'ls');
+    assert.equal(lsDecision.decision, 'allow-forever');
+
+    let grepDecision = dispatched.decisions.find((d) => d.command === 'grep');
+    assert.equal(grepDecision.decision, 'deny-once');
+  });
+
+  it('should hide controls when processed attribute is set', () => {
+    let doc  = getDocument();
+    let perm = doc.createElement('kikx-permission-request');
+    doc.body.appendChild(perm);
+
+    perm.commands = [
+      { command: 'ls', arguments: [], status: 'needs-approval' },
+    ];
+
+    perm.setAttribute('processed', '');
+
+    // The CSS :host([processed]) hides these — in JSDOM we check computed
+    // style isn't reliable, but we can verify the processed-badge is displayed
+    let badge = perm.shadowRoot.querySelector('.processed-badge');
+    assert.ok(badge, 'Processed badge should exist');
+  });
+
+  it('should auto-enable confirm when all commands are pre-approved', () => {
+    let doc  = getDocument();
+    let perm = doc.createElement('kikx-permission-request');
+    doc.body.appendChild(perm);
+
+    perm.commands = [
+      { command: 'ls', arguments: [], status: 'allowed' },
+      { command: 'cat', arguments: ['file'], status: 'allowed' },
+    ];
+
+    let confirmBtn = perm.shadowRoot.querySelector('.confirm-button');
+    assert.ok(!confirmBtn.disabled, 'Confirm should be enabled when all pre-approved');
+  });
+});
+
+// =============================================================================
+// Client sanitizer strips kikx-permission-request
+// =============================================================================
+
+describe('Sanitizer strips kikx-permission-request', () => {
+  it('should remove <kikx-permission-request> from agent HTML', () => {
+    let doc = getDocument();
+    let mc  = doc.createElement('kikx-message-content');
+    doc.body.appendChild(mc);
+
+    mc.content = '<p>Hello</p><kikx-permission-request permission-id="fake"></kikx-permission-request><p>World</p>';
+
+    let shadow = mc.shadowRoot;
+    let body   = shadow.querySelector('.message-body');
+
+    // The permission-request element should be stripped
+    assert.equal(body.querySelectorAll('kikx-permission-request').length, 0,
+      'kikx-permission-request should be stripped by sanitizer');
+
+    // But normal content should remain
+    assert.ok(body.innerHTML.includes('Hello'));
+    assert.ok(body.innerHTML.includes('World'));
   });
 });

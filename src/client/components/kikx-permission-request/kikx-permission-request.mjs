@@ -2,11 +2,26 @@
 
 import { t } from '../../lib/i18n.mjs';
 
-const OPTIONS = [
-  { value: 'allow-once',    labelKey: 'permission.allowOnce' },
-  { value: 'allow-session', labelKey: 'permission.allowSession' },
-  { value: 'allow-always',  labelKey: 'permission.allowAlways' },
-  { value: 'deny',          labelKey: 'permission.deny' },
+// =============================================================================
+// KikxPermissionRequest — per-command shell permission UI
+// =============================================================================
+// Renders a table of parsed shell commands with per-command decision buttons.
+// Each command row has 4 mutually exclusive icon buttons:
+//   Allow forever | Allow once | Deny once | Deny forever
+//
+// Properties:
+//   commands  — array of { command, arguments, status }
+//   (status: 'needs-approval' | 'allowed')
+//
+// Dispatches 'permission-response' event on submit with:
+//   detail: { permissionId, decisions: [{ command, decision }] }
+// =============================================================================
+
+const DECISION_BUTTONS = [
+  { decision: 'allow-forever', icon: '\uD83D\uDC4D\uD83D\uDD12', tooltipKey: 'permission.allowForever',   activeClass: 'active-allow' },
+  { decision: 'allow-once',    icon: '\uD83D\uDC4D',             tooltipKey: 'permission.allowOnceShort', activeClass: 'active-allow' },
+  { decision: 'deny-once',     icon: '\uD83D\uDC4E',             tooltipKey: 'permission.denyOnce',       activeClass: 'active-deny' },
+  { decision: 'deny-forever',  icon: '\uD83D\uDC4E\uD83D\uDD12', tooltipKey: 'permission.denyForever',    activeClass: 'active-deny' },
 ];
 
 const TEMPLATE_HTML = `
@@ -16,45 +31,98 @@ const TEMPLATE_HTML = `
     .permission-header {
       display: flex; align-items: center; gap: var(--spacing-xs, 4px);
       margin-bottom: var(--spacing-sm, 8px);
-      font-weight: 600; font-size: 0.9375rem;
+      font-weight: 600; font-size: 1rem;
       color: var(--text-primary, #e8e8f0);
     }
 
     .lightning-icon { font-size: 1.125rem; }
 
     .permission-description {
-      font-size: 0.875rem; color: var(--text-secondary, #a0a0b8);
+      font-size: 1rem; color: var(--text-secondary, #a0a0b8);
       margin-bottom: var(--spacing-sm, 8px); line-height: 1.4;
     }
 
-    .options-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--spacing-sm, 8px); }
-
-    .option-row {
-      display: flex; align-items: center; gap: var(--spacing-xs, 4px);
-      padding: 6px 8px; border-radius: var(--border-radius-small, 4px);
-      cursor: pointer; font-size: 0.875rem; color: var(--text-primary, #e8e8f0);
-      transition: background 0.2s ease;
+    .command-table {
+      display: flex; flex-direction: column; gap: 6px;
+      margin-bottom: var(--spacing-sm, 8px);
     }
 
-    .option-row:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }
+    .command-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px;
+      border-radius: var(--border-radius-small, 4px);
+      background: rgba(255, 255, 255, 0.04);
+    }
 
-    .option-row input[type="radio"] { accent-color: var(--accent-primary, #00e5ff); }
+    .command-row.pre-approved {
+      opacity: 0.6;
+    }
 
-    .submit-button {
-      background: var(--accent-primary, #00e5ff); color: var(--bg-primary, #0a0a12);
+    .command-text {
+      flex: 1;
+      font-family: 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.9rem;
+      color: var(--text-primary, #e8e8f0);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pre-approved-badge {
+      font-size: 0.75rem;
+      color: #66bb6a;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .decision-buttons {
+      display: flex; gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .decision-button {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--border-radius-small, 4px);
+      padding: 4px 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      line-height: 1;
+      transition: background 0.15s ease, border-color 0.15s ease;
+      color: var(--text-secondary, #a0a0b8);
+    }
+
+    .decision-button:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .decision-button.active-allow {
+      background: rgba(102, 187, 106, 0.20);
+      border-color: #66bb6a;
+      color: #66bb6a;
+    }
+
+    .decision-button.active-deny {
+      background: rgba(255, 68, 68, 0.20);
+      border-color: #ff4444;
+      color: #ff4444;
+    }
+
+    .confirm-button {
+      background: var(--accent-primary, #00e5ff); color: #ffffff;
       border: none; border-radius: var(--border-radius-small, 4px);
-      padding: 8px 16px; font-weight: 600; font-size: 0.875rem;
+      padding: 8px 16px; font-weight: 600; font-size: 1rem;
       cursor: pointer; transition: box-shadow 0.2s ease;
     }
 
-    .submit-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
-    .submit-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .confirm-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
+    .confirm-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    :host([processed]) .options-list,
-    :host([processed]) .submit-button { display: none; }
+    :host([processed]) .command-table,
+    :host([processed]) .confirm-button { display: none; }
 
     .processed-badge {
-      display: none; font-size: 0.8125rem; font-weight: 600;
+      display: none; font-size: 1rem; font-weight: 600;
       color: #66bb6a; padding: 4px 0;
     }
 
@@ -66,8 +134,8 @@ const TEMPLATE_HTML = `
     <span class="title-text"></span>
   </div>
   <div class="permission-description"></div>
-  <div class="options-list"></div>
-  <button class="submit-button" disabled></button>
+  <div class="command-table"></div>
+  <button class="confirm-button" disabled></button>
   <div class="processed-badge">\u2713 Processed</div>
 `;
 
@@ -92,26 +160,30 @@ class KikxPermissionRequest extends HTMLElement {
 
     this._titleText      = this.shadowRoot.querySelector('.title-text');
     this._descriptionEl  = this.shadowRoot.querySelector('.permission-description');
-    this._optionsList    = this.shadowRoot.querySelector('.options-list');
-    this._submitButton   = this.shadowRoot.querySelector('.submit-button');
+    this._commandTable   = this.shadowRoot.querySelector('.command-table');
+    this._confirmButton  = this.shadowRoot.querySelector('.confirm-button');
     this._processedBadge = this.shadowRoot.querySelector('.processed-badge');
-    this._selectedValue  = null;
 
-    this._onSubmitClick  = this._onSubmitClick.bind(this);
-    this._onOptionChange = this._onOptionChange.bind(this);
+    this._decisions = new Map();
+    this._commands  = [];
+
+    this._onConfirmClick    = this._onConfirmClick.bind(this);
+    this._onDecisionClick   = this._onDecisionClick.bind(this);
   }
 
   connectedCallback() {
     this._titleText.textContent    = t('permission.title');
-    this._submitButton.textContent = t('chat.interaction.submitButton');
+    this._confirmButton.textContent = t('permission.confirmButton') || 'Confirm';
 
-    this._renderOptions();
-    this._submitButton.addEventListener('click', this._onSubmitClick);
+    this._confirmButton.addEventListener('click', this._onConfirmClick);
+    this._commandTable.addEventListener('click', this._onDecisionClick);
+
+    this._render();
   }
 
   disconnectedCallback() {
-    this._submitButton.removeEventListener('click', this._onSubmitClick);
-    this._optionsList.removeEventListener('change', this._onOptionChange);
+    this._confirmButton.removeEventListener('click', this._onConfirmClick);
+    this._commandTable.removeEventListener('click', this._onDecisionClick);
   }
 
   // ---------------------------------------------------------------------------
@@ -126,47 +198,135 @@ class KikxPermissionRequest extends HTMLElement {
     this._descriptionEl.textContent = value || '';
   }
 
-  // ---------------------------------------------------------------------------
-  // Private methods
-  // ---------------------------------------------------------------------------
+  get commands() {
+    return this._commands;
+  }
 
-  _renderOptions() {
-    this._optionsList.innerHTML = '';
+  set commands(value) {
+    this._commands = Array.isArray(value) ? value : [];
+    this._decisions.clear();
 
-    for (let option of OPTIONS) {
-      let row   = document.createElement('label');
-      let radio = document.createElement('input');
-      let span  = document.createElement('span');
-
-      row.className  = 'option-row';
-      radio.type     = 'radio';
-      radio.name     = 'permission-decision';
-      radio.value    = option.value;
-      span.textContent = t(option.labelKey);
-
-      row.appendChild(radio);
-      row.appendChild(span);
-      this._optionsList.appendChild(row);
+    // Pre-populate decisions for already-allowed commands
+    for (let cmd of this._commands) {
+      if (cmd.status === 'allowed')
+        this._decisions.set(cmd.command, 'allow-once');
     }
 
-    this._optionsList.addEventListener('change', this._onOptionChange);
+    this._render();
   }
 
-  _onOptionChange(event) {
-    this._selectedValue = event.target.value;
-    this._submitButton.disabled = false;
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
+  _render() {
+    this._commandTable.innerHTML = '';
+
+    for (let cmd of this._commands) {
+      let row = document.createElement('div');
+      row.className = 'command-row';
+      row.setAttribute('data-command', cmd.command);
+
+      // Command text (command + arguments)
+      let textEl   = document.createElement('code');
+      textEl.className = 'command-text';
+      let fullCmd  = cmd.command;
+      if (cmd.arguments && cmd.arguments.length > 0)
+        fullCmd += ' ' + cmd.arguments.join(' ');
+
+      textEl.textContent = fullCmd;
+      row.appendChild(textEl);
+
+      if (cmd.status === 'allowed') {
+        // Pre-approved: show badge, no buttons
+        row.classList.add('pre-approved');
+
+        let badge = document.createElement('span');
+        badge.className    = 'pre-approved-badge';
+        badge.textContent  = t('permission.preApproved') || 'Pre-approved';
+        row.appendChild(badge);
+      } else {
+        // Decision buttons
+        let buttonsContainer = document.createElement('div');
+        buttonsContainer.className = 'decision-buttons';
+
+        for (let btn of DECISION_BUTTONS) {
+          let button = document.createElement('button');
+          button.className = 'decision-button';
+          button.textContent = btn.icon;
+          button.title = t(btn.tooltipKey) || btn.decision;
+          button.setAttribute('data-decision', btn.decision);
+          button.setAttribute('data-active-class', btn.activeClass);
+
+          // Restore active state if decision already selected
+          let currentDecision = this._decisions.get(cmd.command);
+          if (currentDecision === btn.decision)
+            button.classList.add(btn.activeClass);
+
+          buttonsContainer.appendChild(button);
+        }
+
+        row.appendChild(buttonsContainer);
+      }
+
+      this._commandTable.appendChild(row);
+    }
+
+    this._updateConfirmState();
   }
 
-  _onSubmitClick() {
-    if (!this._selectedValue)
+  // ---------------------------------------------------------------------------
+  // Event handlers
+  // ---------------------------------------------------------------------------
+
+  _onDecisionClick(event) {
+    let button = event.target.closest('.decision-button');
+    if (!button)
       return;
+
+    let row     = button.closest('.command-row');
+    let command = row && row.getAttribute('data-command');
+    if (!command)
+      return;
+
+    let decision    = button.getAttribute('data-decision');
+    let activeClass = button.getAttribute('data-active-class');
+
+    // Deactivate all siblings
+    let siblings = row.querySelectorAll('.decision-button');
+    for (let sibling of siblings) {
+      sibling.classList.remove('active-allow', 'active-deny');
+    }
+
+    // Activate clicked button
+    button.classList.add(activeClass);
+
+    // Store decision
+    this._decisions.set(command, decision);
+    this._updateConfirmState();
+  }
+
+  _updateConfirmState() {
+    // Confirm is enabled when ALL commands have a decision
+    let allDecided = this._commands.length > 0 && this._commands.every(
+      (cmd) => this._decisions.has(cmd.command),
+    );
+
+    this._confirmButton.disabled = !allDecided;
+  }
+
+  _onConfirmClick() {
+    let decisions = [];
+
+    for (let [command, decision] of this._decisions.entries())
+      decisions.push({ command, decision });
 
     this.dispatchEvent(new CustomEvent('permission-response', {
       bubbles:  true,
       composed: true,
       detail: {
         permissionId: this.getAttribute('permission-id') || '',
-        decision:     this._selectedValue,
+        decisions,
       },
     }));
   }

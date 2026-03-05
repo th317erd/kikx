@@ -747,24 +747,26 @@ describe('InteractionLoop', () => {
 
       await loop.denyPermission(session.id);
 
-      // Should no longer be waiting
-      assert.equal(loop.isWaitingForPermission(session.id), false);
+      // Deny triggers a replay — mock agent re-yields same tool-call,
+      // so permission-waiting returns to true after the replay.
+      assert.equal(loop.isWaitingForPermission(session.id), true);
 
       // Check that denial frame was created
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
       let denialFrames = frames.filter((f) => f.type === 'permission-denied');
 
-      assert.equal(denialFrames.length, 1);
+      assert.ok(denialFrames.length >= 1, 'should have at least one permission-denied frame');
 
-      // Check that pending-action frame is processed
+      // The first pending-action frame should be processed (from the original deny).
+      // The replay creates a second pending-action (mock agent re-yields).
       let { Frame } = models;
       let pendingFrames = frames.filter((f) => f.type === 'pending-action');
-      assert.equal(pendingFrames.length, 1);
+      assert.ok(pendingFrames.length >= 1, 'should have at least one pending-action frame');
 
-      let pendingRecord = await Frame.where.id.EQ(pendingFrames[0].id).first();
-      assert.equal(pendingRecord.processed, true);
-      assert.ok(pendingRecord.processedAt);
+      let firstPendingRecord = await Frame.where.id.EQ(pendingFrames[0].id).first();
+      assert.equal(firstPendingRecord.processed, true);
+      assert.ok(firstPendingRecord.processedAt);
     });
   });
 
@@ -1143,7 +1145,7 @@ describe('InteractionLoop', () => {
   });
 
   describe('double denyPermission', () => {
-    it('should throw on second deny after first already cleared the state', async () => {
+    it('should handle sequential denials via replay', async () => {
       let session = await createTestSession();
       let blocks  = [
         { type: 'tool-call', content: { toolName: 'exec', arguments: {} }, authorType: 'agent', authorID: 'a1' },
@@ -1157,14 +1159,13 @@ describe('InteractionLoop', () => {
 
       assert.ok(loop.isWaitingForPermission(session.id));
 
+      // First deny — triggers replay; mock agent re-yields tool-call -> permission-waiting
       await loop.denyPermission(session.id);
-      assert.equal(loop.isWaitingForPermission(session.id), false);
+      assert.equal(loop.isWaitingForPermission(session.id), true, 'replay puts session back in permission-waiting');
 
-      // Second deny should throw
-      await assert.rejects(
-        () => loop.denyPermission(session.id),
-        { message: /No pending permission/ },
-      );
+      // Second deny — also triggers replay
+      await loop.denyPermission(session.id);
+      assert.equal(loop.isWaitingForPermission(session.id), true, 'second replay also results in permission-waiting');
     });
   });
 

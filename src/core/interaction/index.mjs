@@ -1,8 +1,9 @@
 'use strict';
 
-import { EventEmitter }        from 'node:events';
-import XID                      from 'xid-js';
+import { EventEmitter }          from 'node:events';
+import XID                       from 'xid-js';
 import { PermissionDeniedError } from '../permissions/permission-denied-error.mjs';
+import { parseShellCommands }    from '../internal-plugins/shell/command-parser.mjs';
 
 // =============================================================================
 // InteractionLoop
@@ -533,11 +534,25 @@ export class InteractionLoop extends EventEmitter {
     this.emit('frame', { sessionID, frame: pendingFrame });
 
     // 2. Create permission-request frame
+    // For shell:execute, include per-command data for the permission UI.
+    // Prefer _parsedCommands (enriched with status by checkPermission callback),
+    // fall back to fresh parse for contexts without per-command checking.
+    let toolArgs       = block.content.arguments || {};
+    let parsedCommands = toolArgs._parsedCommands || null;
+
+    if (!parsedCommands && block.content.toolName === 'shell:execute' && toolArgs.command)
+      parsedCommands = parseShellCommands(toolArgs.command);
+
     let requestFrameID = generateID('frm_');
-    let requestFrame   = {
+    let requestContent = { toolName: block.content.toolName, arguments: block.content.arguments, pendingFrameID };
+
+    if (parsedCommands && parsedCommands.length > 0)
+      requestContent.parsedCommands = parsedCommands;
+
+    let requestFrame = {
       id:            requestFrameID,
       type:          'permission-request',
-      content:       { toolName: block.content.toolName, arguments: block.content.arguments, pendingFrameID },
+      content:       requestContent,
       order:         order++,
       timestamp:     Date.now(),
       interactionID,
@@ -698,6 +713,16 @@ export class InteractionLoop extends EventEmitter {
       await pendingRecord.save();
     }
 
+    // Mark permission-request frame as processed
+    if (waiting.requestFrameID) {
+      let requestRecord = await Frame.where.id.EQ(waiting.requestFrameID).first();
+      if (requestRecord) {
+        requestRecord.processed   = true;
+        requestRecord.processedAt = Date.now();
+        await requestRecord.save();
+      }
+    }
+
     // Store denial frame
     let nextOrder   = await framePersistence.getNextOrder(sessionID);
     let denialFrame = {
@@ -719,6 +744,14 @@ export class InteractionLoop extends EventEmitter {
 
     // Clear permission-waiting state
     this._permissionWaiting.delete(sessionID);
+
+    // Start NEW interaction with replay flag so the agent sees the denial
+    let newParams = {
+      ...waiting.params,
+      replayFromPermission: true,
+    };
+
+    return await this.startInteraction(sessionID, newParams);
   }
 
   // ---------------------------------------------------------------------------

@@ -657,7 +657,7 @@ describe('Integration: Permission Hard-Break Flow', () => {
     assert.ok(toolResult, 'should have a tool-result frame after approval');
   });
 
-  it('should create permission-denied frame on denial', async () => {
+  it('should create permission-denied frame on denial and replay', async () => {
     let testUser = await createTestUser('perm-deny@example.com');
     let setup    = await setupInteraction(testUser.organization.id);
 
@@ -673,7 +673,7 @@ describe('Integration: Permission Hard-Break Flow', () => {
       executeTool:     async () => 'boom',
     });
 
-    // Deny
+    // Deny — now triggers a replay interaction
     await interactionLoop.denyPermission(setup.session.id);
 
     let frameManager = await framePersistence.loadFrames(setup.session.id);
@@ -681,7 +681,13 @@ describe('Integration: Permission Hard-Break Flow', () => {
     let denialFrame  = frames.find((f) => f.type === 'permission-denied');
 
     assert.ok(denialFrame, 'should have a permission-denied frame');
-    assert.equal(interactionLoop.isWaitingForPermission(setup.session.id), false, 'should no longer be waiting');
+
+    // After deny-with-replay, the mock agent re-yields the same tool-call
+    // and hits permission-waiting again. In production the agent sees the
+    // denial in history and adjusts; mock agents don't, so permission-waiting
+    // returns to true.
+    assert.equal(interactionLoop.isWaitingForPermission(setup.session.id), true,
+      'replay agent re-yields tool-call, so permission-waiting again');
   });
 
   it('should mark pending-action and permission-request as processed on approval', async () => {
