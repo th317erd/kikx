@@ -23,7 +23,7 @@ const TEMPLATE_HTML = `
       justify-content: space-between;
       height: 30px;
       padding: 0 12px;
-      font-size: 12px;
+      font-size: 1rem;
       font-family: var(--font-family, system-ui, sans-serif);
       color: var(--text-secondary, #a0a0b8);
       background: var(--glass-background, rgba(10, 10, 30, 0.7));
@@ -53,11 +53,25 @@ const TEMPLATE_HTML = `
       color: var(--text-secondary, #a0a0b8);
     }
 
+    .queue-hint {
+      color: var(--accent-primary, #00e5ff);
+      font-style: italic;
+      margin-left: 4px;
+    }
+
+    .queue-hint:empty {
+      display: none;
+    }
+
     .cost-display {
       display: flex;
       align-items: center;
       gap: 4px;
       color: var(--text-secondary, #a0a0b8);
+    }
+
+    .cost-value {
+      color: var(--accent-text, var(--accent-primary, #00e5ff));
     }
 
     .cost-separator {
@@ -69,6 +83,7 @@ const TEMPLATE_HTML = `
   <div class="connection-status">
     <span class="status-dot"></span>
     <span class="status-text"></span>
+    <span class="queue-hint"></span>
   </div>
   <div class="cost-display"></div>
 `;
@@ -145,11 +160,34 @@ class KikxStatusBar extends HTMLElement {
     let sessionLabel = t('statusBar.sessionCost');
 
     costDisplay.innerHTML =
-      `<span>${globalLabel}: ${formatCost(costs.global)}</span>` +
+      `<span>${globalLabel}: <span class="cost-value">${formatCost(costs.global)}</span></span>` +
       `<span class="cost-separator">|</span>` +
-      `<span>${serviceLabel}: ${formatCost(costs.service)}</span>` +
+      `<span>${serviceLabel}: <span class="cost-value">${formatCost(costs.service)}</span></span>` +
       `<span class="cost-separator">|</span>` +
-      `<span>${sessionLabel}: ${formatCost(costs.session)}</span>`;
+      `<span>${sessionLabel}: <span class="cost-value">${formatCost(costs.session)}</span></span>`;
+  }
+
+  setInteracting(isInteracting) {
+    this._isInteracting = isInteracting;
+    this._updateHint();
+  }
+
+  setQueueCount(count) {
+    this._queueCount = count || 0;
+    this._updateHint();
+  }
+
+  _updateHint() {
+    let hint = this.shadowRoot.querySelector('.queue-hint');
+    if (!hint)
+      return;
+
+    if (this._queueCount > 0)
+      hint.textContent = `${this._queueCount} queued (Esc to cancel)`;
+    else if (this._isInteracting)
+      hint.textContent = '(Esc to cancel)';
+    else
+      hint.textContent = '';
   }
 }
 

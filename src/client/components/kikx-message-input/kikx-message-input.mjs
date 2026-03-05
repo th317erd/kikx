@@ -6,7 +6,7 @@ const TEMPLATE_HTML = `
   <style>
     :host {
       display: block;
-      padding: var(--spacing-sm, 8px);
+      padding: var(--spacing-sm, 8px) var(--spacing-md, 16px);
       flex-shrink: 0;
     }
 
@@ -19,7 +19,7 @@ const TEMPLATE_HTML = `
       -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: var(--border-radius-medium, 8px);
-      padding: var(--spacing-xs, 4px);
+      padding: var(--spacing-xs, 4px) var(--spacing-md, 16px);
     }
 
     .message-textarea {

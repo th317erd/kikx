@@ -5,8 +5,7 @@ import { t } from '../../lib/i18n.mjs';
 const TEMPLATE_HTML = `
   <style>
     :host {
-      display: flex;
-      gap: var(--spacing-sm, 8px);
+      display: block;
       padding: var(--spacing-sm, 8px);
       max-width: 85%;
       align-self: flex-start;
@@ -14,7 +13,6 @@ const TEMPLATE_HTML = `
 
     :host([alignment="user"]) {
       align-self: flex-end;
-      flex-direction: row-reverse;
     }
 
     :host([alignment="system"]) {
@@ -22,35 +20,7 @@ const TEMPLATE_HTML = `
       max-width: 100%;
     }
 
-    .avatar {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 0.8rem;
-      flex-shrink: 0;
-      color: #fff;
-      background: var(--interaction-avatar-color, #e53935);
-    }
-
-    .body {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-xs, 4px);
-    }
-
-    .header {
-      font-size: 0.8125rem;
-      font-weight: 600;
-      color: var(--text-secondary, #a0a0b8);
-    }
-
-    .content {
+    .bubble {
       display: flex;
       flex-direction: column;
       gap: var(--spacing-xs, 4px);
@@ -58,23 +28,65 @@ const TEMPLATE_HTML = `
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
-      border-radius: var(--border-radius-medium, 8px);
-      padding: var(--spacing-sm, 8px) 12px;
+      border-radius: var(--border-radius-large, 12px);
+      padding: 12px 14px;
       color: var(--text-primary, #e8e8f0);
     }
 
-    :host([alignment="user"]) .content {
-      background: var(--user-bubble-background, rgba(229, 57, 53, 0.15));
-      border-color: var(--user-bubble-border, rgba(229, 57, 53, 0.30));
+    :host([alignment="user"]) .bubble {
+      background: var(--chat-user-background, var(--accent-dim, rgba(0, 229, 255, 0.10)));
+      border-color: var(--chat-user-border, var(--accent-glow, rgba(0, 229, 255, 0.30)));
+    }
+
+    .bubble-header {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm, 8px);
+    }
+
+    .avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1rem;
+      flex-shrink: 0;
+      color: #fff;
+      background: var(--interaction-avatar-color, #e53935);
+    }
+
+    .header-text {
+      display: flex;
+      align-items: baseline;
+      gap: var(--spacing-sm, 8px);
+      flex: 1;
+      min-width: 0;
+    }
+
+    .header-name {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary, #e8e8f0);
+    }
+
+    .content {
+      padding: 2px 0;
     }
 
     .footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: 0.75rem;
+      font-size: 1rem;
       color: var(--text-muted, #606078);
       padding-top: 2px;
+    }
+
+    .footer:empty {
+      display: none;
     }
 
     .footer-left {
@@ -90,42 +102,47 @@ const TEMPLATE_HTML = `
     }
 
     .action-button {
-      background: none;
-      border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
+      border: none;
       border-radius: var(--border-radius-small, 4px);
-      color: var(--text-secondary, #a0a0b8);
-      padding: 4px 10px;
-      font-size: 0.75rem;
+      padding: 8px 20px;
+      font-size: 1rem;
+      font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s ease;
+      transition: box-shadow 0.2s ease;
     }
 
-    .action-button:hover {
-      background: var(--glass-hover, rgba(255, 255, 255, 0.08));
+    .ignore-button {
+      background: var(--glass-background, rgba(255, 255, 255, 0.05));
+      color: var(--text-primary, #e8e8f0);
+    }
+
+    .ignore-button:hover {
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.12);
     }
 
     .submit-button {
       background: var(--accent-primary, #00e5ff);
-      color: var(--bg-primary, #0a0a12);
-      border-color: transparent;
-      font-weight: 600;
+      color: #fff;
     }
 
     .submit-button:hover {
-      box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
+      box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40));
     }
   </style>
 
-  <div class="avatar"></div>
-  <div class="body">
-    <div class="header"></div>
+  <div class="bubble">
+    <div class="bubble-header">
+      <div class="avatar"></div>
+      <div class="header-text">
+        <span class="header-name"></span>
+      </div>
+    </div>
     <div class="content">
       <slot></slot>
     </div>
     <div class="footer">
       <div class="footer-left">
-        <span class="timestamp"></span>
-        <span class="token-count"></span>
+        <span class="footer-meta"></span>
       </div>
       <div class="footer-right"></div>
     </div>
@@ -164,7 +181,7 @@ class KikxInteraction extends HTMLElement {
       'timestamp',
       'token-count',
       'show-actions',
-      'interaction-id',
+      'data-interaction-id',
     ];
   }
 
@@ -174,9 +191,8 @@ class KikxInteraction extends HTMLElement {
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
 
     this._avatar      = this.shadowRoot.querySelector('.avatar');
-    this._header      = this.shadowRoot.querySelector('.header');
-    this._timestamp   = this.shadowRoot.querySelector('.timestamp');
-    this._tokenCount  = this.shadowRoot.querySelector('.token-count');
+    this._headerName  = this.shadowRoot.querySelector('.header-name');
+    this._footerMeta  = this.shadowRoot.querySelector('.footer-meta');
     this._footerRight = this.shadowRoot.querySelector('.footer-right');
 
     this._onIgnoreClick = this._onIgnoreClick.bind(this);
@@ -197,9 +213,8 @@ class KikxInteraction extends HTMLElement {
   }
 
   _render() {
-    this._header.textContent    = this.getAttribute('participant-name') || '';
-    this._avatar.textContent    = this.getAttribute('participant-initials') || '';
-    this._timestamp.textContent = this.getAttribute('timestamp') || '';
+    this._headerName.textContent = this.getAttribute('participant-name') || '';
+    this._avatar.textContent     = this.getAttribute('participant-initials') || '';
 
     let avatarColor = this.getAttribute('avatar-color');
     if (avatarColor) {
@@ -208,8 +223,19 @@ class KikxInteraction extends HTMLElement {
       this._avatar.style.removeProperty('--interaction-avatar-color');
     }
 
+    // Build footer meta: "timestamp / ~N tokens" or just "timestamp"
+    let timestamp      = this.getAttribute('timestamp') || '';
     let tokenCountAttr = this.getAttribute('token-count');
-    this._tokenCount.textContent = tokenCountAttr ? formatTokenCount(tokenCountAttr) : '';
+    let tokenStr       = tokenCountAttr ? formatTokenCount(tokenCountAttr) : '';
+    let parts          = [];
+
+    if (timestamp)
+      parts.push(timestamp);
+
+    if (tokenStr)
+      parts.push(tokenStr);
+
+    this._footerMeta.textContent = parts.join(' / ');
 
     this._renderActions();
   }
@@ -257,7 +283,7 @@ class KikxInteraction extends HTMLElement {
     this.dispatchEvent(new CustomEvent('interaction-ignore', {
       bubbles:  true,
       composed: true,
-      detail:   { interactionId: this.getAttribute('interaction-id') },
+      detail:   { interactionId: this.getAttribute('data-interaction-id') },
     }));
   }
 
@@ -265,7 +291,7 @@ class KikxInteraction extends HTMLElement {
     this.dispatchEvent(new CustomEvent('interaction-submit', {
       bubbles:  true,
       composed: true,
-      detail:   { interactionId: this.getAttribute('interaction-id') },
+      detail:   { interactionId: this.getAttribute('data-interaction-id') },
     }));
   }
 }

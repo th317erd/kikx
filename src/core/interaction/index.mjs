@@ -143,11 +143,17 @@ export class InteractionLoop extends EventEmitter {
 
     // Create user message frame (unless replaying from permission approval)
     if (params.userMessage && !params.replayFromPermission) {
+      // Estimate token count for the user's message text (~4 chars per token).
+      // Multiply by agentCount so the user sees total cost across all agents
+      // that received this message.
+      let agentCount      = params.agentCount || 1;
+      let estimatedTokens = Math.ceil(params.userMessage.length / 4) * agentCount;
+
       let userFrameID = generateID('frm_');
       let userFrame   = {
         id:            userFrameID,
         type:          'user-message',
-        content:       { text: params.userMessage },
+        content:       { text: params.userMessage, estimatedTokens },
         order:         order++,
         timestamp:     Date.now(),
         interactionID,

@@ -492,10 +492,25 @@ class KikxSessionPage extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   _renderFrame(frame, options = {}) {
-    // Skip user-message frames from SSE — they're already rendered optimistically.
-    // When loading history, we must render them.
-    if (frame.type === 'user-message' && !options.fromHistory)
+    // User-message frames from SSE: don't re-render (already shown optimistically),
+    // but update the optimistic element with server-provided metadata (token count, frame ID).
+    if (frame.type === 'user-message' && !options.fromHistory) {
+      let estimatedTokens = frame.content && frame.content.estimatedTokens;
+
+      if (estimatedTokens) {
+        // Find the most recent user bubble without a data-frame-id (the optimistic one)
+        let allInteractions = this._chatView.shadowRoot.querySelectorAll('kikx-interaction[alignment="user"]:not([data-frame-id])');
+        let optimistic = allInteractions.length > 0 ? allInteractions[allInteractions.length - 1] : null;
+
+        if (optimistic) {
+          optimistic.setAttribute('data-frame-id', frame.id);
+          optimistic.setAttribute('data-interaction-id', frame.interactionID || frame.id);
+          optimistic.setAttribute('token-count', String(estimatedTokens));
+        }
+      }
+
       return;
+    }
 
     // Skip non-renderable frame types (internal plumbing, not user-facing)
     let hiddenTypes = new Set([
@@ -673,6 +688,10 @@ class KikxSessionPage extends HTMLElement {
     interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
     interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
     interaction.setAttribute('data-frame-id', frame.id);
+
+    // Set server-estimated token count for user messages
+    if (isUser && frame.content && frame.content.estimatedTokens)
+      interaction.setAttribute('token-count', String(frame.content.estimatedTokens));
 
     // frame.content is an object: { html: "..." } or { text: "..." }
     let content = frame.content;
@@ -977,12 +996,12 @@ class KikxSessionPage extends HTMLElement {
     if (!usage)
       return;
 
-    // Set token-count on the matching interaction element
-    let totalTokens = (usage.inputTokens || 0) + (usage.outputTokens || 0);
-    let interaction = this._chatView.querySelector(`kikx-interaction[data-interaction-id="${interactionID}"]`);
+    // Set output tokens on the agent's interaction element (not the user's)
+    let outputTokens = usage.outputTokens || 0;
+    let agentInteraction = this._chatView.shadowRoot.querySelector(`kikx-interaction[alignment="agent"][data-interaction-id="${interactionID}"]`);
 
-    if (interaction)
-      interaction.setAttribute('token-count', String(totalTokens));
+    if (agentInteraction && outputTokens > 0)
+      agentInteraction.setAttribute('token-count', String(outputTokens));
 
     // Update costs in the store
     let cost         = estimateCost(usage);
