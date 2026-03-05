@@ -214,7 +214,7 @@ export class SessionManager {
   // FrameManager Integration
   // ---------------------------------------------------------------------------
 
-  getFrameManager(sessionID) {
+  getFrameManager(sessionID, options = {}) {
     if (!sessionID)
       throw new Error('sessionID is required');
 
@@ -222,7 +222,12 @@ export class SessionManager {
     if (frameManager)
       return frameManager;
 
-    frameManager = new FrameManager({ history: true });
+    let managerOptions = { history: true };
+
+    if (options.commitValidator)
+      managerOptions.commitValidator = options.commitValidator;
+
+    frameManager = new FrameManager(managerOptions);
     this._frameManagers.set(sessionID, frameManager);
     return frameManager;
   }

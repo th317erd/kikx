@@ -1,27 +1,49 @@
-# TODO: Prompt Caching, Token Tracking & Per-Message Metadata
+# Phase B: Multi-Actor — Reactive Frame Engine
 
-## Task 1: Enable Anthropic Prompt Caching
-- [x] Add `cache_control` to system prompt in `_createStream()` requestParams in plugin
-- [x] Capture `cache_read_input_tokens` and `cache_creation_input_tokens` in `message_start` handler
-- [x] Include cache stats in final `done` yield usage object
+**Baseline:** 1303 tests, all passing
 
-## Task 2: Token Tracking & Spend Calculators
-- [x] Capture `done` block in `_iterateGenerator()` — emit `interaction:usage` event
-- [x] Add `usage` SSE event listener in StreamController
-- [x] Handle `usage` SSE event in session page client
-- [x] Create `src/client/lib/cost.mjs` — cost estimation from token counts
-- [x] Update store costs on each usage event (global, service, session)
-- [x] Set `token-count` attribute on interaction elements from usage data
-- [x] Reset session cost on session navigation
+## Step B1: Add Author Fields to Frame Value Object
+- [ ] Add `authorType` and `authorID` to Frame constructor (default `null`)
+- [ ] Write tests in `src/shared/spec/frame-author-spec.mjs`
+- [ ] Verify all 1303+ tests pass
 
-## Task 3: Human-Friendly Timestamps
-- [x] Replace `formatTimestamp()` with relative time formatter ("just now", "Xm ago")
-- [x] Add timestamp locale strings to `en.mjs`
-- [x] Fix frame timestamp — accept epoch ms numbers and ISO strings
+## Step B2: Structural ACL Commit Validator
+- [ ] Create `src/core/permissions/structural-acl-validator.mjs`
+- [ ] Write tests in `spec/core/permissions/structural-acl-validator-spec.mjs`
+- [ ] Verify all tests pass
 
-## Tests
-- [x] Interaction loop `done` handling / `interaction:usage` event test (2 tests)
-- [x] Stream controller `usage` SSE test (2 tests — matching + non-matching session)
-- [x] Cost calculation unit tests (8 tests)
-- [x] Relative timestamp formatting tests (9 tests)
-- [x] All 1059 tests pass (Node 24) — 0 failures
+## Step B3: Frame Creation Through FrameManager (The Pivot)
+- [ ] Add `_createFrame()` helper to InteractionLoop
+- [ ] Update `getFrameManager()` on SessionManager to accept commitValidator
+- [ ] Refactor all frame creation sites to use `_createFrame()`
+- [ ] Write tests in `spec/core/interaction-frame-commits-spec.mjs`
+- [ ] Verify all tests pass
+
+## Step B4: Per-Agent Refs
+- [ ] Add ref management in startInteraction/iterateGenerator
+- [ ] Write tests in `spec/core/agent-ref-spec.mjs`
+- [ ] Verify all tests pass
+
+## Step B5: Session Scheduler
+- [ ] Create `src/core/scheduling/session-scheduler.mjs`
+- [ ] Create `src/core/scheduling/agent-resolver.mjs`
+- [ ] Write tests in `spec/core/scheduling/session-scheduler-spec.mjs`
+- [ ] Verify all tests pass
+
+## Step B6: Message Assembly v2
+- [ ] Update `_buildMessages()` with `forAgentID` parameter
+- [ ] Add multi-agent primer additions
+- [ ] Write tests in `spec/core/message-assembly-v2-spec.mjs`
+- [ ] Verify all tests pass
+
+## Step B7: Controller + Transport Integration
+- [ ] Wire SessionScheduler into InteractionController
+- [ ] Update WebSocket transport for scheduler events
+- [ ] Extend integration specs
+- [ ] Verify all tests pass
+
+## Step B8: Stop/Interrupt as Commit
+- [ ] Add `stop` frame type
+- [ ] Update cancelInteraction to create stop frame via FrameManager
+- [ ] Write tests in `spec/core/stop-as-commit-spec.mjs`
+- [ ] Verify all tests pass

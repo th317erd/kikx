@@ -70,6 +70,41 @@ export class InteractionLoop extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
+  // _createFrame — routes frame creation through FrameManager for commits
+  // ---------------------------------------------------------------------------
+  // When frameManager is provided:
+  //   1. merge([frameData]) → creates a commit, assigns order
+  //   2. saveFrames() → persists to DB
+  //   3. emit('frame') → notifies transport
+  //
+  // When frameManager is null (command dispatch, legacy paths):
+  //   Falls back to direct persist + emit.
+  // ---------------------------------------------------------------------------
+
+  async _createFrame(sessionID, frameData, frameManager, mergeOptions = {}) {
+    let framePersistence = this._getFramePersistence();
+
+    if (frameManager) {
+      let results = frameManager.merge([frameData], mergeOptions);
+
+      if (results.length === 0)
+        return null; // Commit validator rejected
+
+      // merge() mutates frameData.order — use it for persistence
+      await framePersistence.saveFrames(sessionID, [frameData]);
+      this.emit('frame', { sessionID, frame: frameData });
+
+      return frameData;
+    }
+
+    // Fallback: direct persist (for contexts without a loaded FrameManager)
+    await framePersistence.saveFrames(sessionID, [frameData]);
+    this.emit('frame', { sessionID, frame: frameData });
+
+    return frameData;
+  }
+
+  // ---------------------------------------------------------------------------
   // startInteraction
   // ---------------------------------------------------------------------------
   // Main entry point. Starts a new interaction for a session.
@@ -104,9 +139,17 @@ export class InteractionLoop extends EventEmitter {
 
     let framePersistence = this._getFramePersistence();
     let hookRunner       = this._getHookRunner();
+    let sessionManager   = this._getSessionManager();
     let interactionID    = generateID('int_');
-    let startOrder       = await framePersistence.getNextOrder(sessionID);
-    let order            = startOrder;
+
+    // Load FrameManager BEFORE creating any frames — this way hook-blocked,
+    // user-message, and all subsequent frames produce commits.
+    let frameManager = sessionManager.getFrameManager(sessionID);
+    await framePersistence.loadFramesInto(frameManager, sessionID);
+
+    // Sync order counter with DB max to avoid order collisions
+    let nextDbOrder = await framePersistence.getNextOrder(sessionID);
+    frameManager.syncOrderCounter(nextDbOrder - 1);
 
     // Hook: user → agent (before agent execution)
     if (hookRunner && params.userMessage && !params.replayFromPermission) {
@@ -119,11 +162,10 @@ export class InteractionLoop extends EventEmitter {
 
       if (hookResult.action === 'block') {
         // Create block frame and end interaction early
-        let blockFrame = {
+        await this._createFrame(sessionID, {
           id:            generateID('frm_'),
           type:          'hook-blocked',
           content:       { reason: hookResult.reason || 'Message blocked by hook' },
-          order:         order++,
           timestamp:     Date.now(),
           interactionID,
           authorType:    'system',
@@ -131,10 +173,7 @@ export class InteractionLoop extends EventEmitter {
           hidden:        false,
           deleted:       false,
           processed:     false,
-        };
-
-        await framePersistence.saveFrames(sessionID, [blockFrame]);
-        this.emit('frame', { sessionID, frame: blockFrame });
+        }, frameManager, { authorType: 'system' });
 
         return interactionID;
       }
@@ -150,12 +189,10 @@ export class InteractionLoop extends EventEmitter {
       let agentCount      = params.agentCount || 1;
       let estimatedTokens = Math.ceil(params.userMessage.length / 4) * agentCount;
 
-      let userFrameID = generateID('frm_');
-      let userFrame   = {
-        id:            userFrameID,
+      await this._createFrame(sessionID, {
+        id:            generateID('frm_'),
         type:          'user-message',
         content:       { text: params.userMessage, estimatedTokens },
-        order:         order++,
         timestamp:     Date.now(),
         interactionID,
         authorType:    params.authorType || 'user',
@@ -163,19 +200,10 @@ export class InteractionLoop extends EventEmitter {
         hidden:        false,
         deleted:       false,
         processed:     false,
-      };
-
-      await framePersistence.saveFrames(sessionID, [userFrame]);
-      this.emit('frame', { sessionID, frame: userFrame });
+      }, frameManager, { authorType: params.authorType || 'user', authorId: params.authorID || null });
     }
 
-    // Build message history from existing frames for the agent
-    let sessionManager = this._getSessionManager();
-    let frameManager   = sessionManager.getFrameManager(sessionID);
-
-    // Load persisted frames into the frame manager
-    await framePersistence.loadFramesInto(frameManager, sessionID);
-
+    // Build message history from existing frames (FrameManager now includes user-message)
     let allFrames = frameManager.toArray();
     let messages  = this._buildMessages(allFrames);
 
@@ -204,17 +232,18 @@ export class InteractionLoop extends EventEmitter {
       context: this._context,
     });
 
-    // Track the active interaction
+    // Track the active interaction (includes frameManager for permission/cancel paths)
     this._active.set(sessionID, {
       generator,
       interactionID,
       params,
+      frameManager,
     });
 
     this.emit('interaction:start', { sessionID, interactionID });
 
     // Iterate the generator
-    await this._iterateGenerator(sessionID, generator, interactionID, order, params);
+    await this._iterateGenerator(sessionID, generator, interactionID, params, frameManager);
 
     return interactionID;
   }
@@ -223,11 +252,9 @@ export class InteractionLoop extends EventEmitter {
   // _iterateGenerator — the kernel loop
   // ---------------------------------------------------------------------------
 
-  async _iterateGenerator(sessionID, generator, interactionID, startOrder, params) {
-    let framePersistence = this._getFramePersistence();
-    let sanitizer        = this._getContentSanitizer();
-    let hookRunner       = this._getHookRunner();
-    let order            = startOrder;
+  async _iterateGenerator(sessionID, generator, interactionID, params, frameManager) {
+    let sanitizer  = this._getContentSanitizer();
+    let hookRunner = this._getHookRunner();
     let result;
 
     try {
@@ -314,11 +341,10 @@ export class InteractionLoop extends EventEmitter {
           if (html && sanitizer)
             html = sanitizer.sanitize(html);
 
-          let frame = {
+          await this._createFrame(sessionID, {
             id:            frameID,
             type:          'message',
             content:       { html },
-            order:         order++,
             timestamp,
             interactionID,
             authorType:    block.authorType || 'agent',
@@ -326,10 +352,7 @@ export class InteractionLoop extends EventEmitter {
             hidden:        false,
             deleted:       false,
             processed:     false,
-          };
-
-          await framePersistence.saveFrames(sessionID, [frame]);
-          this.emit('frame', { sessionID, frame });
+          }, frameManager, { authorType: block.authorType || 'agent', authorId: block.authorID || null });
         } else if (block.type === 'tool-call') {
           // Hook: agent → tool (before tool execution)
           if (hookRunner) {
@@ -357,11 +380,10 @@ export class InteractionLoop extends EventEmitter {
             } catch (permError) {
               if (permError.name === 'PermissionDeniedError') {
                 // Create denied frame, pass error to generator as tool result
-                let deniedFrame = {
+                await this._createFrame(sessionID, {
                   id:            generateID('frm_'),
                   type:          'permission-denied',
                   content:       { toolName: block.content.toolName, reason: permError.reason },
-                  order:         order++,
                   timestamp:     Date.now(),
                   interactionID,
                   authorType:    'system',
@@ -369,10 +391,7 @@ export class InteractionLoop extends EventEmitter {
                   hidden:        false,
                   deleted:       false,
                   processed:     false,
-                };
-
-                await framePersistence.saveFrames(sessionID, [deniedFrame]);
-                this.emit('frame', { sessionID, frame: deniedFrame });
+                }, frameManager, { authorType: 'system' });
 
                 result = { type: 'tool-result', content: { output: `Error: ${permError.message}` } };
                 continue;
@@ -384,16 +403,15 @@ export class InteractionLoop extends EventEmitter {
 
           if (needsPermission) {
             // Permission hard-break
-            await this._permissionHardBreak(sessionID, generator, block, interactionID, order, params);
+            await this._permissionHardBreak(sessionID, generator, block, interactionID, params, frameManager);
             return; // interaction ends here
           }
 
           // No permission needed — execute the tool
-          let toolCallFrame = {
+          await this._createFrame(sessionID, {
             id:            frameID,
             type:          'tool-call',
             content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseId: block.content.toolUseId },
-            order:         order++,
             timestamp,
             interactionID,
             authorType:    block.authorType || 'agent',
@@ -401,10 +419,7 @@ export class InteractionLoop extends EventEmitter {
             hidden:        false,
             deleted:       false,
             processed:     false,
-          };
-
-          await framePersistence.saveFrames(sessionID, [toolCallFrame]);
-          this.emit('frame', { sessionID, frame: toolCallFrame });
+          }, frameManager, { authorType: block.authorType || 'agent', authorId: block.authorID || null });
 
           let executeTool = params.executeTool;
           let toolOutput  = '';
@@ -416,11 +431,10 @@ export class InteractionLoop extends EventEmitter {
               toolOutput = `Error executing tool: ${toolError.message}`;
 
               // Create tool-error frame (informational, visible to user)
-              let toolErrorFrame = {
+              await this._createFrame(sessionID, {
                 id:            generateID('frm_'),
                 type:          'tool-error',
                 content:       { toolName: block.content.toolName, message: toolError.message },
-                order:         order++,
                 timestamp:     Date.now(),
                 interactionID,
                 authorType:    'system',
@@ -428,10 +442,7 @@ export class InteractionLoop extends EventEmitter {
                 hidden:        false,
                 deleted:       false,
                 processed:     false,
-              };
-
-              await framePersistence.saveFrames(sessionID, [toolErrorFrame]);
-              this.emit('frame', { sessionID, frame: toolErrorFrame });
+              }, frameManager, { authorType: 'system' });
             }
           }
 
@@ -448,12 +459,10 @@ export class InteractionLoop extends EventEmitter {
           }
 
           // Save tool-result frame
-          let resultFrameID = generateID('frm_');
-          let toolResultFrame = {
-            id:            resultFrameID,
+          await this._createFrame(sessionID, {
+            id:            generateID('frm_'),
             type:          'tool-result',
             content:       { output: toolOutput, toolUseId: block.content.toolUseId },
-            order:         order++,
             timestamp:     Date.now(),
             interactionID,
             authorType:    'system',
@@ -461,19 +470,15 @@ export class InteractionLoop extends EventEmitter {
             hidden:        false,
             deleted:       false,
             processed:     false,
-          };
-
-          await framePersistence.saveFrames(sessionID, [toolResultFrame]);
-          this.emit('frame', { sessionID, frame: toolResultFrame });
+          }, frameManager, { authorType: 'system' });
 
           // Pass result back to generator
           result = { type: 'tool-result', content: { output: toolOutput } };
         } else if (block.type === 'reflection') {
-          let frame = {
+          await this._createFrame(sessionID, {
             id:            frameID,
             type:          'reflection',
             content:       block.content,
-            order:         order++,
             timestamp,
             interactionID,
             authorType:    block.authorType || 'agent',
@@ -481,19 +486,15 @@ export class InteractionLoop extends EventEmitter {
             hidden:        true,
             deleted:       false,
             processed:     false,
-          };
-
-          await framePersistence.saveFrames(sessionID, [frame]);
-          this.emit('frame', { sessionID, frame });
+          }, frameManager, { authorType: block.authorType || 'agent', authorId: block.authorID || null });
         }
       }
     } catch (error) {
       // Store error frame
-      let errorFrame = {
+      await this._createFrame(sessionID, {
         id:            generateID('frm_'),
         type:          'error',
         content:       { message: error.message },
-        order:         order++,
         timestamp:     Date.now(),
         interactionID,
         authorType:    'system',
@@ -501,10 +502,7 @@ export class InteractionLoop extends EventEmitter {
         hidden:        false,
         deleted:       false,
         processed:     false,
-      };
-
-      await framePersistence.saveFrames(sessionID, [errorFrame]);
-      this.emit('frame', { sessionID, frame: errorFrame });
+      }, frameManager, { authorType: 'system' });
     } finally {
       // Clean up active interaction
       this._active.delete(sessionID);
@@ -525,16 +523,13 @@ export class InteractionLoop extends EventEmitter {
   //   4. Mark interaction as waiting for permission
   // ---------------------------------------------------------------------------
 
-  async _permissionHardBreak(sessionID, generator, block, interactionID, order, params) {
-    let framePersistence = this._getFramePersistence();
-
+  async _permissionHardBreak(sessionID, generator, block, interactionID, params, frameManager) {
     // 1. Persist pending-action frame
     let pendingFrameID = generateID('frm_');
     let pendingFrame   = {
       id:            pendingFrameID,
       type:          'pending-action',
       content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseId: block.content.toolUseId },
-      order:         order++,
       timestamp:     Date.now(),
       interactionID,
       authorType:    block.authorType || 'agent',
@@ -544,8 +539,10 @@ export class InteractionLoop extends EventEmitter {
       processed:     false,
     };
 
-    await framePersistence.saveFrames(sessionID, [pendingFrame]);
-    this.emit('frame', { sessionID, frame: pendingFrame });
+    await this._createFrame(sessionID, pendingFrame, frameManager, {
+      authorType: block.authorType || 'agent',
+      authorId:   block.authorID || null,
+    });
 
     // 2. Create permission-request frame
     // For shell:execute, include per-command data for the permission UI.
@@ -567,7 +564,6 @@ export class InteractionLoop extends EventEmitter {
       id:            requestFrameID,
       type:          'permission-request',
       content:       requestContent,
-      order:         order++,
       timestamp:     Date.now(),
       interactionID,
       authorType:    'system',
@@ -577,19 +573,19 @@ export class InteractionLoop extends EventEmitter {
       processed:     false,
     };
 
-    await framePersistence.saveFrames(sessionID, [requestFrame]);
-    this.emit('frame', { sessionID, frame: requestFrame });
+    await this._createFrame(sessionID, requestFrame, frameManager, { authorType: 'system' });
     this.emit('permission:request', { sessionID, frameID: pendingFrameID, requestFrameID, toolName: block.content.toolName });
 
     // 3. Destroy the generator
     await generator.return();
 
-    // 4. Store permission-waiting state
+    // 4. Store permission-waiting state (includes frameManager for approve/deny)
     this._permissionWaiting.set(sessionID, {
       pendingFrameID,
       requestFrameID,
       interactionID,
       params,
+      frameManager,
     });
 
     // Clean up active interaction
@@ -657,14 +653,14 @@ export class InteractionLoop extends EventEmitter {
     if (typeof executeTool === 'function')
       toolOutput = await executeTool(content.toolName, content.arguments);
 
-    // Store tool-result frame
-    let nextOrder     = await framePersistence.getNextOrder(sessionID);
-    let resultFrameID = generateID('frm_');
-    let resultFrame   = {
+    // Store tool-result frame via FrameManager (use waiting.frameManager if available)
+    let approveFrameManager = waiting.frameManager || null;
+    let resultFrameID       = generateID('frm_');
+
+    await this._createFrame(sessionID, {
       id:            resultFrameID,
       type:          'tool-result',
       content:       { output: toolOutput, toolUseId: content.toolUseId },
-      order:         nextOrder,
       timestamp:     Date.now(),
       interactionID: waiting.interactionID,
       authorType:    'system',
@@ -672,10 +668,7 @@ export class InteractionLoop extends EventEmitter {
       hidden:        false,
       deleted:       false,
       processed:     false,
-    };
-
-    await framePersistence.saveFrames(sessionID, [resultFrame]);
-    this.emit('frame', { sessionID, frame: resultFrame });
+    }, approveFrameManager, { authorType: 'system' });
 
     // Mark pending-action and permission-request as processed
     pendingRecord.processed   = true;
@@ -737,13 +730,13 @@ export class InteractionLoop extends EventEmitter {
       }
     }
 
-    // Store denial frame
-    let nextOrder   = await framePersistence.getNextOrder(sessionID);
-    let denialFrame = {
+    // Store denial frame via FrameManager (use waiting.frameManager if available)
+    let denyFrameManager = waiting.frameManager || null;
+
+    await this._createFrame(sessionID, {
       id:            generateID('frm_'),
       type:          'permission-denied',
       content:       { pendingFrameID: frameID || waiting.pendingFrameID },
-      order:         nextOrder,
       timestamp:     Date.now(),
       interactionID: waiting.interactionID,
       authorType:    'user',
@@ -751,10 +744,7 @@ export class InteractionLoop extends EventEmitter {
       hidden:        false,
       deleted:       false,
       processed:     false,
-    };
-
-    await framePersistence.saveFrames(sessionID, [denialFrame]);
-    this.emit('frame', { sessionID, frame: denialFrame });
+    }, denyFrameManager, { authorType: 'user' });
 
     // Clear permission-waiting state
     this._permissionWaiting.delete(sessionID);

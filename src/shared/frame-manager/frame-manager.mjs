@@ -539,6 +539,20 @@ export class FrameManager {
   }
 
   // ---------------------------------------------------------------------------
+  // Order counter synchronization
+  // ---------------------------------------------------------------------------
+  // After loading frames from a database, the FrameManager's _orderCounter may
+  // be lower than the max order in the DB (due to merge reassigning orders
+  // sequentially). Call this to ensure new frames get orders above existing DB
+  // entries.
+  // ---------------------------------------------------------------------------
+
+  syncOrderCounter(minOrder) {
+    if (minOrder > this._orderCounter)
+      this._orderCounter = minOrder;
+  }
+
+  // ---------------------------------------------------------------------------
   // Commit log operations
   // ---------------------------------------------------------------------------
 

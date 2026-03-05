@@ -18,6 +18,8 @@ export class Frame {
     this.deleted     = (data.deleted !== undefined) ? data.deleted : false;
     this.updatedAt   = (data.updatedAt !== undefined) ? data.updatedAt : now;
     this.createdAt   = (data.createdAt !== undefined) ? data.createdAt : now;
+    this.authorType  = (data.authorType !== undefined) ? data.authorType : null;
+    this.authorID    = (data.authorID !== undefined) ? data.authorID : null;
     this.processed   = (data.processed !== undefined) ? data.processed : null;
     this.processedAt = (data.processedAt !== undefined) ? data.processedAt : null;
   }
