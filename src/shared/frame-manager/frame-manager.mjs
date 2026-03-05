@@ -7,12 +7,16 @@ import { FramePointer } from './frame-pointer.mjs';
 
 export class FrameManager {
   constructor(options = {}) {
-    this.history       = options.history !== false;
-    this._orderCounter = 0;
+    this.history          = options.history !== false;
+    this._orderCounter    = 0;
+    this._commitCounter   = 0;
+    this._commitValidator = options.commitValidator || null;
 
     this._frames   = new Map();   // frameId → Frame
     this._pointers = new Map();   // frameId → FramePointer
     this._children = new Map();   // parentId → [childIds]
+    this._commits  = [];          // Ordered commit log (append-only)
+    this._refs     = new Map();   // refName → commitOrder
     this._emitter  = new EventEmitter();
 
     this._emitter.setMaxListeners(Infinity);
@@ -25,8 +29,29 @@ export class FrameManager {
     if (frames.length === 0)
       return [];
 
-    let suppressEvents = options.events === false;
-    let results        = [];
+    let suppressEvents  = options.events === false;
+    let hasValidator     = !!this._commitValidator;
+    let results          = [];
+    let changes          = [];
+
+    // ── Event buffering ──
+    // When a commit validator is present, buffer events so they can be
+    // suppressed on rejection. Otherwise emit directly (or swallow if
+    // suppressEvents is true).
+    let pendingEvents = [];
+    let emit;
+
+    if (hasValidator)
+      emit = (event, data) => pendingEvents.push([event, data]);
+    else if (suppressEvents)
+      emit = () => {};
+    else
+      emit = (event, data) => this._emitter.emit(event, data);
+
+    // ── Rollback snapshot ──
+    // Only captured when a validator is present so the common path has
+    // zero overhead. Saves enough state to fully undo the merge loop.
+    let snapshot = hasValidator ? this._takeSnapshot() : null;
 
     for (let i = 0; i < frames.length; i++) {
       let frameData = frames[i];
@@ -68,6 +93,7 @@ export class FrameManager {
             });
 
             this._frames.set(mergedGroup.id, mergedGroup);
+            changes.push({ frameId: frame.groupId, operation: 'update' });
 
             if (this.history) {
               let existingPointer = this._pointers.get(frame.groupId);
@@ -94,10 +120,8 @@ export class FrameManager {
                 existingPointer.frame = mergedGroup;
             }
 
-            if (!suppressEvents) {
-              this._emitter.emit('frame:updated', { frame: mergedGroup, previousHead });
-              this._emitter.emit(`frame:updated:${frame.groupId}`, { frame: mergedGroup, previousHead });
-            }
+            emit('frame:updated', { frame: mergedGroup, previousHead });
+            emit(`frame:updated:${frame.groupId}`, { frame: mergedGroup, previousHead });
 
             results.push(mergedGroup);
           } else {
@@ -118,6 +142,7 @@ export class FrameManager {
 
             this._frames.set(groupFrame.id, groupFrame);
             this._pointers.set(groupFrame.id, groupPointer);
+            changes.push({ frameId: groupFrame.id, operation: 'create' });
 
             if (groupFrame.parentId) {
               let children = this._children.get(groupFrame.parentId);
@@ -128,19 +153,15 @@ export class FrameManager {
                 this._children.set(groupFrame.parentId, [groupFrame.id]);
             }
 
-            if (!suppressEvents) {
-              this._emitter.emit('frame:added', { frame: groupFrame });
-              this._emitter.emit(`frame:added:${groupFrame.id}`, { frame: groupFrame });
-            }
+            emit('frame:added', { frame: groupFrame });
+            emit(`frame:added:${groupFrame.id}`, { frame: groupFrame });
 
             results.push(groupFrame);
           }
         } else {
           // Phantom WITHOUT groupId → standalone ephemeral, transient event only
-          if (!suppressEvents) {
-            this._emitter.emit('frame:phantom', { frame });
-            this._emitter.emit(`frame:phantom:${frame.id}`, { frame });
-          }
+          emit('frame:phantom', { frame });
+          emit(`frame:phantom:${frame.id}`, { frame });
         }
 
         continue;
@@ -152,6 +173,7 @@ export class FrameManager {
       // Always store the source frame in the index
       this._frames.set(frame.id, frame);
       this._pointers.set(frame.id, pointer);
+      changes.push({ frameId: frame.id, operation: 'create' });
 
       if (frame.parentId) {
         let children = this._children.get(frame.parentId);
@@ -198,6 +220,7 @@ export class FrameManager {
           });
 
           this._frames.set(mergedFrame.id, mergedFrame);
+          changes.push({ frameId: targetId, operation: 'update' });
 
           if (this.history) {
             let existingPointer = this._pointers.get(targetId);
@@ -226,19 +249,79 @@ export class FrameManager {
               existingPointer.frame = mergedFrame;
           }
 
-          if (!suppressEvents) {
-            this._emitter.emit('frame:updated', { frame: mergedFrame, previousHead });
-            this._emitter.emit(`frame:updated:${targetId}`, { frame: mergedFrame, previousHead });
-          }
+          emit('frame:updated', { frame: mergedFrame, previousHead });
+          emit(`frame:updated:${targetId}`, { frame: mergedFrame, previousHead });
 
           results.push(mergedFrame);
         }
 
         // Frame with targets is not a new addition; skip frame:added
-      } else if (!suppressEvents && !frame.phantom) {
+      } else if (!frame.phantom) {
         // New frame (no targets, not phantom): emit frame:added
-        this._emitter.emit('frame:added', { frame });
-        this._emitter.emit(`frame:added:${frame.id}`, { frame });
+        emit('frame:added', { frame });
+        emit(`frame:added:${frame.id}`, { frame });
+      }
+    }
+
+    // Create commit if any frames were affected
+    if (changes.length > 0) {
+      let previousCommit = this._commits.length > 0
+        ? this._commits[this._commits.length - 1]
+        : null;
+
+      let commit = {
+        order:       ++this._commitCounter,
+        changes,
+        authorType:  options.authorType || 'system',
+        authorId:    (options.authorId !== undefined) ? options.authorId : null,
+        timestamp:   Date.now(),
+        parentOrder: previousCommit ? previousCommit.order : null,
+      };
+
+      // ── Commit validator gate ──
+      if (hasValidator) {
+        let actorContext = {
+          authorType: commit.authorType,
+          authorId:   commit.authorId,
+        };
+
+        let validation = this._commitValidator(commit, results, actorContext);
+
+        if (!validation.allowed) {
+          this._restoreSnapshot(snapshot);
+          this._emitter.emit('commit:rejected', {
+            reason: validation.reason,
+            commit,
+          });
+          return [];
+        }
+      }
+
+      this._commits.push(commit);
+      this._emitter.emit('commit', { commit });
+
+      // Auto-advance heads/main
+      let previousMain = this._refs.get('heads/main');
+
+      if (previousMain !== undefined) {
+        this._refs.set('heads/main', commit.order);
+        this._emitter.emit('ref:updated', {
+          name:          'heads/main',
+          previousOrder: previousMain,
+          newOrder:       commit.order,
+        });
+      } else {
+        this._refs.set('heads/main', commit.order);
+        this._emitter.emit('ref:created', {
+          name:        'heads/main',
+          commitOrder: commit.order,
+        });
+      }
+
+      // Flush buffered events (validator path)
+      if (hasValidator && !suppressEvents) {
+        for (let j = 0; j < pendingEvents.length; j++)
+          this._emitter.emit(pendingEvents[j][0], pendingEvents[j][1]);
       }
     }
 
@@ -383,5 +466,266 @@ export class FrameManager {
     }
 
     return history;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Snapshot / rollback (used by commit validator)
+  // ---------------------------------------------------------------------------
+
+  _takeSnapshot() {
+    let snap = {
+      orderCounter:  this._orderCounter,
+      commitCounter: this._commitCounter,
+      frames:        new Map(this._frames),
+      pointerKeys:   new Set(this._pointers.keys()),
+      pointerChains: new Map(),
+      children:      new Map(),
+    };
+
+    // Deep-copy children arrays (they get mutated via push())
+    for (let [k, v] of this._children)
+      snap.children.set(k, [...v]);
+
+    // Save pointer chain state for existing pointers (nodes get mutated in-place)
+    for (let [id, ptr] of this._pointers) {
+      let chain = [];
+      let node  = ptr;
+
+      // Walk to tail
+      while (node.previous)
+        node = node.previous;
+
+      // Walk from tail to head, saving each node's link properties
+      while (node) {
+        chain.push({
+          node,
+          frame:    node.frame,
+          head:     node.head,
+          tail:     node.tail,
+          next:     node.next,
+          previous: node.previous,
+        });
+        node = node.next;
+      }
+
+      snap.pointerChains.set(id, chain);
+    }
+
+    return snap;
+  }
+
+  _restoreSnapshot(snap) {
+    this._orderCounter  = snap.orderCounter;
+    this._commitCounter = snap.commitCounter;
+    this._frames        = snap.frames;
+    this._children      = snap.children;
+
+    // Delete pointer entries that were added during the merge
+    for (let id of this._pointers.keys()) {
+      if (!snap.pointerKeys.has(id))
+        this._pointers.delete(id);
+    }
+
+    // Restore pointer chain node state for pre-existing pointers
+    for (let [, chain] of snap.pointerChains) {
+      for (let entry of chain) {
+        entry.node.frame    = entry.frame;
+        entry.node.head     = entry.head;
+        entry.node.tail     = entry.tail;
+        entry.node.next     = entry.next;
+        entry.node.previous = entry.previous;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Commit log operations
+  // ---------------------------------------------------------------------------
+
+  getCommit(order) {
+    return this._commits.find((c) => c.order === order);
+  }
+
+  getCommits(fromOrder, toOrder) {
+    let results = [];
+
+    for (let i = 0; i < this._commits.length; i++) {
+      let commit = this._commits[i];
+
+      if (commit.order <= fromOrder)
+        continue;
+
+      if (commit.order > toOrder)
+        break;
+
+      results.push(commit);
+    }
+
+    return results;
+  }
+
+  getLatestCommit() {
+    return (this._commits.length > 0)
+      ? this._commits[this._commits.length - 1]
+      : undefined;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ref operations
+  // ---------------------------------------------------------------------------
+
+  getRef(name) {
+    return this._refs.get(name);
+  }
+
+  createRef(name, commitOrder) {
+    let commit = this.getCommit(commitOrder);
+
+    if (!commit)
+      throw new Error(`Commit order ${commitOrder} does not exist`);
+
+    this._refs.set(name, commitOrder);
+
+    this._emitter.emit('ref:created', { name, commitOrder });
+
+    return commitOrder;
+  }
+
+  updateRef(name, commitOrder) {
+    let previousOrder = this._refs.get(name);
+
+    if (previousOrder === undefined)
+      throw new Error(`Ref "${name}" does not exist`);
+
+    let commit = this.getCommit(commitOrder);
+
+    if (!commit)
+      throw new Error(`Commit order ${commitOrder} does not exist`);
+
+    this._refs.set(name, commitOrder);
+
+    this._emitter.emit('ref:updated', { name, previousOrder, newOrder: commitOrder });
+
+    return commitOrder;
+  }
+
+  deleteRef(name) {
+    let existed = this._refs.delete(name);
+
+    if (existed)
+      this._emitter.emit('ref:deleted', { name });
+
+    return existed;
+  }
+
+  listRefs(prefix) {
+    if (!prefix)
+      return new Map(this._refs);
+
+    let filtered = new Map();
+
+    for (let [name, order] of this._refs) {
+      if (name.startsWith(prefix))
+        filtered.set(name, order);
+    }
+
+    return filtered;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Diff operations
+  // ---------------------------------------------------------------------------
+
+  _resolveOrder(orderOrRef) {
+    if (typeof orderOrRef === 'number')
+      return orderOrRef;
+
+    let order = this._refs.get(orderOrRef);
+
+    if (order === undefined)
+      throw new Error(`Ref "${orderOrRef}" not found`);
+
+    return order;
+  }
+
+  diff(fromOrder, toOrder) {
+    fromOrder = this._resolveOrder(fromOrder);
+    toOrder   = this._resolveOrder(toOrder);
+
+    if (fromOrder === toOrder)
+      return [];
+
+    let commits = this.getCommits(fromOrder, toOrder);
+
+    if (commits.length === 0)
+      return [];
+
+    // Collect changes, deduplicating by frameId (first operation wins)
+    let seen    = new Map();  // frameId → { operation }
+
+    for (let i = 0; i < commits.length; i++) {
+      let commit = commits[i];
+
+      for (let j = 0; j < commit.changes.length; j++) {
+        let change = commit.changes[j];
+
+        if (!seen.has(change.frameId))
+          seen.set(change.frameId, change.operation);
+      }
+    }
+
+    let results = [];
+
+    for (let [frameId, operation] of seen) {
+      let frame = this.getHead(frameId);
+
+      if (frame)
+        results.push({ frameId, operation, frame });
+    }
+
+    return results;
+  }
+
+  diffFrames(fromOrder, toOrder) {
+    let changes = this.diff(fromOrder, toOrder);
+    return changes.map((c) => c.frame);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Window operations
+  // ---------------------------------------------------------------------------
+
+  loadWindow(frames) {
+    return this.merge(frames, { events: false });
+  }
+
+  evict(belowOrder) {
+    let count = 0;
+
+    for (let [frameId, frame] of this._frames) {
+      if (frame.order < belowOrder) {
+        this._frames.delete(frameId);
+        this._pointers.delete(frameId);
+        this._children.delete(frameId);
+        count++;
+      }
+    }
+
+    return count;
+  }
+
+  getWindowBounds() {
+    if (this._frames.size === 0)
+      return { from: 0, to: 0 };
+
+    let min = Infinity;
+    let max = -Infinity;
+
+    for (let [, frame] of this._frames) {
+      if (frame.order < min) min = frame.order;
+      if (frame.order > max) max = frame.order;
+    }
+
+    return { from: min, to: max };
   }
 }
