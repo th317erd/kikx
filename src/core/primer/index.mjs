@@ -46,13 +46,29 @@ export class PrimerAssembler {
     this._context = context;
   }
 
-  assemble(agent) {
+  assemble(agent, options = {}) {
     let sections = [];
 
     // 1. Core instructions (always present)
     sections.push(CORE_INSTRUCTIONS);
 
-    // 2. Plugin-registered instructions (sorted by priority)
+    // 2. Multi-agent context (when >1 participant)
+    if (options.participants && options.participants.length > 1) {
+      let otherAgents = options.participants
+        .filter((p) => p.agentID !== (agent && agent.id))
+        .map((p) => p.alias || p.agentID)
+        .join(', ');
+
+      sections.push(
+        `MULTI-AGENT SESSION:\n` +
+        `- You are in a session with other agents: ${otherAgents}\n` +
+        `- Messages from other agents appear wrapped in <agent-message source="..." name="...">...</agent-message> tags.\n` +
+        `- You can reference other agents by name when collaborating.\n` +
+        `- Your messages are your own — do not impersonate other agents.`,
+      );
+    }
+
+    // 3. Plugin-registered instructions (sorted by priority)
     let registry = this._context.getProperty('pluginRegistry');
     if (registry) {
       let instructions = registry.getInstructions();
@@ -60,11 +76,11 @@ export class PrimerAssembler {
         sections.push(entry.content);
     }
 
-    // 3. Agent-specific instructions
+    // 4. Agent-specific instructions
     if (agent && agent.instructions)
       sections.push(agent.instructions);
 
-    // 4. Agent DM summary (personality/context)
+    // 5. Agent DM summary (personality/context)
     if (agent && agent.dmSummary)
       sections.push(agent.dmSummary);
 

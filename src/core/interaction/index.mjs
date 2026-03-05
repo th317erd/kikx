@@ -204,8 +204,9 @@ export class InteractionLoop extends EventEmitter {
     }
 
     // Build message history from existing frames (FrameManager now includes user-message)
-    let allFrames = frameManager.toArray();
-    let messages  = this._buildMessages(allFrames);
+    let allFrames  = frameManager.toArray();
+    let forAgentID = params.agent && params.agent.id;
+    let messages   = this._buildMessages(allFrames, forAgentID);
 
     // Inject primer into messages for first message (or when explicitly requested).
     // Evaluate delete() before the || chain to avoid short-circuit skipping the side-effect.
@@ -220,6 +221,11 @@ export class InteractionLoop extends EventEmitter {
           messages = this._injectPrimer(messages, primer);
       }
     }
+
+    // Ensure per-agent ref exists for scheduling/diff
+    let agentID = params.agent && params.agent.id;
+    if (agentID)
+      this._ensureAgentRef(frameManager, agentID);
 
     // Get session record
     let session = await sessionManager.getSession(sessionID);
@@ -504,6 +510,11 @@ export class InteractionLoop extends EventEmitter {
         processed:     false,
       }, frameManager, { authorType: 'system' });
     } finally {
+      // Advance per-agent ref to heads/main (agent "saw" everything including errors)
+      let agentID = params.agent && params.agent.id;
+      if (agentID)
+        this._advanceAgentRef(frameManager, agentID);
+
       // Clean up active interaction
       this._active.delete(sessionID);
       this.emit('interaction:end', { sessionID, interactionID });
@@ -982,7 +993,7 @@ export class InteractionLoop extends EventEmitter {
     return result;
   }
 
-  _buildMessages(frames) {
+  _buildMessages(frames, forAgentID) {
     // Frame types explicitly excluded from message history
     let excludedTypes = new Set([
       'permission-request',
@@ -992,6 +1003,7 @@ export class InteractionLoop extends EventEmitter {
       'error',
       'reflection',
       'command-result',
+      'stop',
     ]);
 
     // Collect toolUseIds that have results — used to filter orphaned pending-actions
@@ -1016,21 +1028,34 @@ export class InteractionLoop extends EventEmitter {
 
       if (type === 'user-message') {
         let content = frame.content || {};
-        messages.push({ role: 'user', content: content.text || '' });
+        messages.push({ role: 'user', content: content.text || '', frameId: frame.id });
       } else if (type === 'message') {
         let content = frame.content || {};
-        messages.push({ role: 'assistant', content: content.html || '' });
+        let html    = content.html || '';
+
+        // Multi-agent attribution: if forAgentID is set, determine whether this
+        // message is from the target agent (role:assistant) or another agent
+        // (role:user with XML wrapper).
+        if (forAgentID && frame.authorID && frame.authorID !== forAgentID) {
+          // Other agent's message → wrap in attribution tag, present as user role
+          let agentName = frame.authorID;
+          let wrapped   = `<agent-message source="${frame.authorID}" name="${agentName}">${html}</agent-message>`;
+          messages.push({ role: 'user', content: wrapped, frameId: frame.id, sourceAgentID: frame.authorID });
+        } else {
+          // Own message or single-agent → standard assistant role
+          messages.push({ role: 'assistant', content: html, frameId: frame.id });
+        }
       } else if (type === 'tool-call') {
         let content = frame.content || {};
-        messages.push({ type: 'tool-call', content, authorType: 'agent' });
+        messages.push({ type: 'tool-call', content, authorType: 'agent', frameId: frame.id });
       } else if (type === 'pending-action') {
         // Only include pending-actions that were approved (have a matching tool-result)
         let content = frame.content || {};
         if (content.toolUseId && resolvedToolIds.has(content.toolUseId))
-          messages.push({ type: 'tool-call', content, authorType: 'agent' });
+          messages.push({ type: 'tool-call', content, authorType: 'agent', frameId: frame.id });
       } else if (type === 'tool-result') {
         let content = frame.content || {};
-        messages.push({ type: 'tool-result', content });
+        messages.push({ type: 'tool-result', content, frameId: frame.id });
       }
     }
 
@@ -1055,5 +1080,49 @@ export class InteractionLoop extends EventEmitter {
 
   requestPrimerRefresh(sessionID) {
     this._primerNeeded.add(sessionID);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Per-agent ref management
+  // ---------------------------------------------------------------------------
+  // Each agent gets a `processed/agent-{agentID}` ref tracking the last commit
+  // it has seen. The scheduler uses diff(ref, heads/main) to detect new frames.
+  // ---------------------------------------------------------------------------
+
+  _ensureAgentRef(frameManager, agentID) {
+    let refName = `processed/agent-${agentID}`;
+    let existing = frameManager.getRef(refName);
+
+    if (existing !== undefined)
+      return; // Ref already exists
+
+    // Create ref at current heads/main (or at first commit if no main ref yet)
+    let headsMain = frameManager.getRef('heads/main');
+    if (headsMain !== undefined) {
+      frameManager.createRef(refName, headsMain);
+    } else {
+      // No commits yet — ref will be created after first commit
+      let latest = frameManager.getLatestCommit();
+      if (latest)
+        frameManager.createRef(refName, latest.order);
+    }
+  }
+
+  _advanceAgentRef(frameManager, agentID) {
+    let refName   = `processed/agent-${agentID}`;
+    let headsMain = frameManager.getRef('heads/main');
+
+    if (headsMain === undefined)
+      return; // No commits to advance to
+
+    let existing = frameManager.getRef(refName);
+
+    if (existing === undefined) {
+      // Create ref if it doesn't exist yet (first interaction)
+      frameManager.createRef(refName, headsMain);
+    } else if (existing !== headsMain) {
+      // Advance to current heads/main
+      frameManager.updateRef(refName, headsMain);
+    }
   }
 }
