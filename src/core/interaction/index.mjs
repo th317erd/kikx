@@ -611,13 +611,28 @@ export class InteractionLoop extends EventEmitter {
   // Returns queued messages (if any) so the caller can place them in the input.
   // ---------------------------------------------------------------------------
 
-  async cancelInteraction(sessionID) {
-    let active = this._active.get(sessionID);
+  async cancelInteraction(sessionID, options = {}) {
+    let targetAgentID = options.targetAgentID || null;
+    let authorType    = options.authorType || 'system';
+    let authorID      = options.authorID || null;
+    let active        = this._active.get(sessionID);
+
     if (!active)
       return null;
 
     // Destroy the generator
     await active.generator.return();
+
+    // Create stop frame via FrameManager (if available)
+    let frameManager = active.frameManager || null;
+
+    await this._createFrame(sessionID, {
+      id:         generateID('frm_'),
+      type:       'stop',
+      content:    { targetAgentID },
+      authorType,
+      authorID,
+    }, frameManager, { authorType, authorId: authorID });
 
     // Clean up
     this._active.delete(sessionID);

@@ -38,6 +38,10 @@ export class ControllerBase extends MythixControllerBase {
     return this.getCore().getContext().getProperty('framePersistence');
   }
 
+  getSessionScheduler() {
+    return this.getCore().getContext().getProperty('sessionScheduler');
+  }
+
   getCoreModels() {
     return this.getCore().getModels();
   }

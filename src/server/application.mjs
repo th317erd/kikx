@@ -17,8 +17,9 @@ import { Keystore }        from '../core/crypto/keystore.mjs';
 import { AuthService }     from './auth/index.mjs';
 import { SessionManager }  from '../core/session/index.mjs';
 import { FramePersistence } from '../core/frames/index.mjs';
-import { InteractionLoop } from '../core/interaction/index.mjs';
+import { InteractionLoop }  from '../core/interaction/index.mjs';
 import { ContentSanitizer } from '../core/lib/content-sanitizer.mjs';
+import { SessionScheduler } from '../core/scheduling/session-scheduler.mjs';
 
 export class Application extends MythixApplication {
   static getName() {
@@ -115,10 +116,17 @@ export class Application extends MythixApplication {
     let sanitizer       = new ContentSanitizer();
     let interactionLoop = new InteractionLoop(context);
 
+    // Initialize scheduler for multi-agent coordination
+    let sessionScheduler = new SessionScheduler({
+      sessionManager,
+      interactionLoop,
+    });
+
     context.setProperty('sessionManager', sessionManager);
     context.setProperty('framePersistence', framePersistence);
     context.setProperty('contentSanitizer', sanitizer);
     context.setProperty('interactionLoop', interactionLoop);
+    context.setProperty('sessionScheduler', sessionScheduler);
   }
 
   // ---------------------------------------------------------------------------

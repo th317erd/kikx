@@ -46,12 +46,27 @@ export class SessionScheduler extends EventEmitter {
     if (!sessionID || !commit)
       return [];
 
+    // Check if the commit contains a stop frame — handle cancellation
+    // commit.changes are { frameId, operation } records; resolve to actual frames
+    let frameManager = this._sessionManager.getFrameManager(sessionID);
+    let stopFrames   = [];
+
+    for (let change of (commit.changes || [])) {
+      let frame = frameManager.getHead(change.frameId);
+      if (frame && frame.type === 'stop')
+        stopFrames.push(frame);
+    }
+
+    if (stopFrames.length > 0) {
+      await this._handleStopFrames(sessionID, stopFrames);
+      return [];
+    }
+
     let participants = await this._sessionManager.getParticipants(sessionID);
     if (!participants || participants.length === 0)
       return [];
 
-    let frameManager = this._sessionManager.getFrameManager(sessionID);
-    let headsMain    = frameManager.getRef('heads/main');
+    let headsMain = frameManager.getRef('heads/main');
 
     if (headsMain === undefined)
       return [];
@@ -108,6 +123,43 @@ export class SessionScheduler extends EventEmitter {
     }
 
     return scheduled;
+  }
+
+  // ---------------------------------------------------------------------------
+  // _handleStopFrames
+  // ---------------------------------------------------------------------------
+  // Processes stop frames from a commit. If targetAgentID is set, cancels that
+  // specific agent. If null, cancels ALL active agents in the session.
+  // ---------------------------------------------------------------------------
+
+  async _handleStopFrames(sessionID, stopFrames) {
+    for (let frame of stopFrames) {
+      let targetAgentID = frame.content && frame.content.targetAgentID;
+
+      if (targetAgentID) {
+        // Cancel a specific agent
+        await this._cancelAgent(sessionID, targetAgentID);
+      } else {
+        // Cancel all active agents in this session
+        let activeAgents = this.getActiveAgents(sessionID);
+        for (let agentID of activeAgents)
+          await this._cancelAgent(sessionID, agentID);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // _cancelAgent
+  // ---------------------------------------------------------------------------
+
+  async _cancelAgent(sessionID, agentID) {
+    let activeKey = `${sessionID}:${agentID}`;
+
+    if (!this._activeAgents.get(activeKey))
+      return;
+
+    this._activeAgents.delete(activeKey);
+    this.emit('schedule:cancel', { sessionID, agentID });
   }
 
   // ---------------------------------------------------------------------------
