@@ -5,7 +5,7 @@ const TEMPLATE_HTML = `
     :host { display: block; padding: 4px 0; }
 
     .value-label {
-      font-size: 0.75rem; font-weight: 600;
+      font-size: 1rem; font-weight: 600;
       color: var(--text-muted, #606078); margin-bottom: 2px;
     }
 
@@ -19,7 +19,7 @@ const TEMPLATE_HTML = `
       background: rgba(76, 175, 80, 0.15);
       border: 1px solid rgba(76, 175, 80, 0.40);
       border-radius: 12px;
-      font-size: 0.8125rem; font-weight: 500;
+      font-size: 1rem; font-weight: 500;
       color: #81c784;
       white-space: nowrap;
     }

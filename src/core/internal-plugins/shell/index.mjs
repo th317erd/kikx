@@ -18,6 +18,14 @@ export function setup({ registerTool, PluginInterface }) {
     static featureName = 'execute';
     static displayName = 'Shell';
     static description = 'Execute shell commands';
+    static inputSchema = {
+      type:       'object',
+      properties: {
+        command:          { type: 'string', description: 'The shell command to execute' },
+        workingDirectory: { type: 'string', description: 'Working directory for the command (optional)' },
+      },
+      required: ['command'],
+    };
 
     async _execute({ command, workingDirectory }) {
       if (!command || typeof command !== 'string')
@@ -63,8 +71,9 @@ export function setup({ registerTool, PluginInterface }) {
     getHelp() {
       return {
         ...super.getHelp(),
-        usage:   'shell:execute { command: "ls -la", workingDirectory: "/tmp" }',
-        examples: [
+        inputSchema: ShellTool.inputSchema,
+        usage:       'shell:execute { command: "ls -la", workingDirectory: "/tmp" }',
+        examples:    [
           { command: 'ls -la',             description: 'List files in detail' },
           { command: 'cat /etc/hostname',  description: 'Read a file' },
           { command: 'echo hello && ls',   description: 'Chain commands' },

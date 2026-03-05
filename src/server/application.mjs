@@ -95,6 +95,13 @@ export class Application extends MythixApplication {
 
     // Initialize keystore
     let keystoreConfig = (options && options.keystore) || this.getOptions().keystore || {};
+
+    // In development, use a deterministic REK so JWTs survive server restarts
+    let environment = this.getOptions().environment || 'development';
+    if (environment === 'development' && !keystoreConfig.devMode) {
+      keystoreConfig = { ...keystoreConfig, devMode: true, devSeed: 'kikx-development-seed' };
+    }
+
     this._keystore = new Keystore(keystoreConfig);
     this._keystore.initialize();
     context.setProperty('keystore', this._keystore);

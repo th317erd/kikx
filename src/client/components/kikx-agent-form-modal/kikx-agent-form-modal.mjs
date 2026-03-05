@@ -9,13 +9,13 @@ const TEMPLATE_HTML = `
     .form-group { margin-bottom: 12px; }
 
     .form-label {
-      display: block; font-size: 0.8125rem; font-weight: 600;
+      display: block; font-size: 1rem; font-weight: 600;
       color: var(--text-secondary, #a0a0b8); margin-bottom: 4px;
     }
 
     .form-input {
       width: 100%; box-sizing: border-box;
-      padding: 8px 12px; font-size: 0.875rem;
+      padding: 8px 12px; font-size: 1rem;
       background: var(--input-background, rgba(255, 255, 255, 0.05));
       border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
       border-radius: var(--border-radius-small, 4px);
@@ -36,9 +36,9 @@ const TEMPLATE_HTML = `
     }
 
     .save-button {
-      background: var(--accent-primary, #00e5ff); color: var(--bg-primary, #0a0a12);
+      background: var(--accent-primary, #00e5ff); color: #fff;
       border: none; border-radius: var(--border-radius-small, 4px);
-      padding: 8px 20px; font-weight: 600; font-size: 0.875rem; cursor: pointer;
+      padding: 8px 20px; font-weight: 600; font-size: 1rem; cursor: pointer;
     }
 
     .save-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
@@ -47,7 +47,7 @@ const TEMPLATE_HTML = `
       background: rgba(229, 57, 53, 0.15); color: #ef5350;
       border: 1px solid rgba(229, 57, 53, 0.30);
       border-radius: var(--border-radius-small, 4px);
-      padding: 8px 16px; font-size: 0.875rem; cursor: pointer;
+      padding: 8px 16px; font-size: 1rem; cursor: pointer;
     }
 
     .delete-button:hover { background: rgba(229, 57, 53, 0.25); }
@@ -56,7 +56,7 @@ const TEMPLATE_HTML = `
       background: none; border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       color: var(--text-secondary, #a0a0b8);
       border-radius: var(--border-radius-small, 4px);
-      padding: 8px 16px; font-size: 0.875rem; cursor: pointer;
+      padding: 8px 16px; font-size: 1rem; cursor: pointer;
     }
 
     .cancel-button:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }

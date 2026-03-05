@@ -22,10 +22,10 @@ const TEMPLATE_HTML = `
     .agent-avatar {
       width: 36px; height: 36px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 0.8rem; color: #fff; flex-shrink: 0;
+      font-weight: 700; font-size: 1rem; color: #fff; flex-shrink: 0;
     }
 
-    .agent-name { flex: 1; font-weight: 500; font-size: 0.9375rem; color: var(--text-primary, #e8e8f0); }
+    .agent-name { flex: 1; font-weight: 500; font-size: 1rem; color: var(--text-primary, #e8e8f0); }
 
     .settings-button {
       background: none; border: none; font-size: 1.125rem;
@@ -36,14 +36,14 @@ const TEMPLATE_HTML = `
 
     .settings-button:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); color: var(--text-primary, #e8e8f0); }
 
-    .empty-state { text-align: center; padding: 20px; color: var(--text-muted, #606078); font-size: 0.875rem; }
+    .empty-state { text-align: center; padding: 20px; color: var(--text-muted, #606078); font-size: 1rem; }
 
     .add-button {
       width: 100%; margin-top: var(--spacing-sm, 8px);
       padding: 10px; background: var(--accent-primary, #00e5ff);
-      color: var(--bg-primary, #0a0a12); border: none;
+      color: #fff; border: none;
       border-radius: var(--border-radius-small, 4px);
-      font-weight: 600; font-size: 0.875rem; cursor: pointer;
+      font-weight: 600; font-size: 1rem; cursor: pointer;
       transition: box-shadow 0.2s ease;
     }
 

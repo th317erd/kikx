@@ -36,7 +36,7 @@ const TEMPLATE_HTML = `
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: var(--border-radius-large, 12px);
       color: var(--text-primary, #e8e8f0);
-      font-size: 0.95rem;
+      font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
       transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
@@ -53,7 +53,7 @@ const TEMPLATE_HTML = `
     }
 
     .step-title {
-      font-size: 0.9rem;
+      font-size: 1rem;
       color: var(--text-secondary, #a0a0b8);
       margin-bottom: var(--spacing-md, 16px);
     }
@@ -64,7 +64,7 @@ const TEMPLATE_HTML = `
 
     .form-label {
       display: block;
-      font-size: 0.85rem;
+      font-size: 1rem;
       color: var(--text-secondary, #a0a0b8);
       margin-bottom: var(--spacing-xs, 4px);
     }
@@ -77,7 +77,7 @@ const TEMPLATE_HTML = `
       border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
       border-radius: var(--border-radius-medium, 8px);
       color: var(--text-primary, #e8e8f0);
-      font-size: 0.9rem;
+      font-size: 1rem;
       outline: none;
       transition: border-color 0.2s ease;
     }
@@ -106,10 +106,10 @@ const TEMPLATE_HTML = `
     .form-button {
       padding: 8px 20px;
       background: var(--accent-primary, #00e5ff);
-      color: var(--text-inverse, #0a0a1a);
+      color: #fff;
       border: none;
       border-radius: var(--border-radius-medium, 8px);
-      font-size: 0.9rem;
+      font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
       transition: box-shadow 0.2s ease;
@@ -143,13 +143,16 @@ const TEMPLATE_HTML = `
         <span class="type-label user-type-label"></span>
       </button>
     </div>
+    <div class="button-row">
+      <button class="form-button secondary type-cancel-button" type="button"></button>
+    </div>
   </div>
 
   <div class="wizard-step step-agent" data-step="agent">
     <div class="form-group">
       <label class="form-label plugin-label"></label>
       <select class="form-select plugin-select">
-        <option value="claude">claude</option>
+        <option value="claude">Claude</option>
       </select>
     </div>
     <div class="form-group">
@@ -162,7 +165,11 @@ const TEMPLATE_HTML = `
     </div>
     <div class="form-group">
       <label class="form-label model-label"></label>
-      <input class="form-input model-input" type="text" value="claude-sonnet-4-6" />
+      <select class="form-select model-select">
+        <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+        <option value="claude-opus-4-6">Claude Opus 4.6</option>
+        <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+      </select>
     </div>
     <div class="button-row">
       <button class="form-button secondary back-button" type="button"></button>
@@ -226,6 +233,7 @@ class KikxAddFriendModal extends HTMLElement {
 
     this.shadowRoot.querySelector('.agent-type-button').addEventListener('click', this._onAgentTypeClick);
     this.shadowRoot.querySelector('.user-type-button').addEventListener('click', this._onUserTypeClick);
+    this.shadowRoot.querySelector('.type-cancel-button').addEventListener('click', this._onCancelClick);
 
     for (let button of this.shadowRoot.querySelectorAll('.back-button'))
       button.addEventListener('click', this._onBackClick);
@@ -240,6 +248,7 @@ class KikxAddFriendModal extends HTMLElement {
   disconnectedCallback() {
     this.shadowRoot.querySelector('.agent-type-button').removeEventListener('click', this._onAgentTypeClick);
     this.shadowRoot.querySelector('.user-type-button').removeEventListener('click', this._onUserTypeClick);
+    this.shadowRoot.querySelector('.type-cancel-button').removeEventListener('click', this._onCancelClick);
 
     for (let button of this.shadowRoot.querySelectorAll('.back-button'))
       button.removeEventListener('click', this._onBackClick);
@@ -255,20 +264,25 @@ class KikxAddFriendModal extends HTMLElement {
     this._showStep('type');
 
     let inputs = this.shadowRoot.querySelectorAll('.form-input');
-    for (let input of inputs) {
-      if (input.classList.contains('model-input'))
-        input.value = 'claude-sonnet-4-6';
-      else
-        input.value = '';
-    }
+    for (let input of inputs)
+      input.value = '';
+
+    let modelSelect = this.shadowRoot.querySelector('.model-select');
+    if (modelSelect)
+      modelSelect.value = 'claude-sonnet-4-6';
+
+    let pluginSelect = this.shadowRoot.querySelector('.plugin-select');
+    if (pluginSelect)
+      pluginSelect.value = 'claude';
   }
 
   _render() {
     let stepTitle = this.shadowRoot.querySelector('.step-title');
     stepTitle.textContent = t('friends.wizard.typeStep');
 
-    this.shadowRoot.querySelector('.agent-type-label').textContent = t('friends.wizard.agentButton');
-    this.shadowRoot.querySelector('.user-type-label').textContent  = t('friends.wizard.userButton');
+    this.shadowRoot.querySelector('.agent-type-label').textContent    = t('friends.wizard.agentButton');
+    this.shadowRoot.querySelector('.user-type-label').textContent     = t('friends.wizard.userButton');
+    this.shadowRoot.querySelector('.type-cancel-button').textContent  = t('friends.wizard.cancelButton');
 
     // Agent step labels
     this.shadowRoot.querySelector('.plugin-label').textContent   = t('friends.wizard.pluginLabel');
@@ -321,7 +335,7 @@ class KikxAddFriendModal extends HTMLElement {
     let pluginID = this.shadowRoot.querySelector('.plugin-select').value;
     let apiKey   = this.shadowRoot.querySelector('.api-key-input').value.trim();
     let name     = this.shadowRoot.querySelector('.name-input').value.trim();
-    let model    = this.shadowRoot.querySelector('.model-input').value.trim();
+    let model    = this.shadowRoot.querySelector('.model-select').value;
 
     this.dispatchEvent(new CustomEvent('friend-save', {
       bubbles:  true,

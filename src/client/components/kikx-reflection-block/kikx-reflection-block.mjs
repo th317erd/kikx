@@ -20,7 +20,7 @@ const TEMPLATE_HTML = `
       border-radius: var(--border-radius-small, 4px);
       cursor: pointer;
       user-select: none;
-      font-size: 0.8125rem;
+      font-size: 1rem;
       color: var(--text-secondary, #a0a0b8);
       transition: background 0.2s ease;
       width: 100%;
@@ -33,7 +33,7 @@ const TEMPLATE_HTML = `
 
     .collapse-indicator {
       display: inline-block;
-      font-size: 0.625rem;
+      font-size: 1rem;
       transition: transform 0.2s ease;
     }
 
@@ -52,7 +52,7 @@ const TEMPLATE_HTML = `
     .reflection-content {
       display: none;
       padding: var(--spacing-sm, 8px);
-      font-size: 0.875rem;
+      font-size: 1rem;
       line-height: 1.5;
       color: var(--text-secondary, #a0a0b8);
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));

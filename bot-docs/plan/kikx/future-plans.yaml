@@ -1,0 +1,18 @@
+# Future Plans
+# Items to revisit in subsequent development cycles.
+
+items:
+  - id: checkPermission-api-naming
+    title: "Rename checkPermission() API for clarity"
+    priority: low
+    description: |
+      Currently checkPermission() returns true = "needs permission" / false = "allowed",
+      which is counter-intuitive. A future refactor should rename to something clearer
+      (e.g. requiresApproval() or invert to isAllowed()).
+    affected_files:
+      - src/core/permissions/permission-engine.mjs
+      - src/core/interaction/index.mjs
+      - src/server/controllers/interaction-controller.mjs
+      - spec/core/command-permission-spec.mjs
+      - spec/core/interaction-loop-spec.mjs
+    added: "2026-03-03"

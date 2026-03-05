@@ -45,7 +45,7 @@ const TEMPLATE_HTML = `
 
     .step-input {
       width: 100%; box-sizing: border-box;
-      padding: 8px 12px; font-size: 0.875rem;
+      padding: 8px 12px; font-size: 1rem;
       background: var(--input-background, rgba(255, 255, 255, 0.05));
       border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
       border-radius: var(--border-radius-small, 4px);
@@ -61,7 +61,7 @@ const TEMPLATE_HTML = `
 
     .checkbox-row {
       display: flex; align-items: center; gap: 8px;
-      font-size: 0.875rem; color: var(--text-primary, #e8e8f0); cursor: pointer;
+      font-size: 1rem; color: var(--text-primary, #e8e8f0); cursor: pointer;
     }
 
     .nav-buttons {
@@ -75,14 +75,14 @@ const TEMPLATE_HTML = `
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       color: var(--text-secondary, #a0a0b8);
       border-radius: var(--border-radius-small, 4px);
-      padding: 8px 16px; font-size: 0.875rem; cursor: pointer;
+      padding: 8px 16px; font-size: 1rem; cursor: pointer;
     }
 
     .next-button, .save-button {
       background: var(--accent-primary, #00e5ff);
-      color: var(--bg-primary, #0a0a12);
+      color: #fff;
       border: none; border-radius: var(--border-radius-small, 4px);
-      padding: 8px 20px; font-weight: 600; font-size: 0.875rem; cursor: pointer;
+      padding: 8px 20px; font-weight: 600; font-size: 1rem; cursor: pointer;
     }
   </style>
 

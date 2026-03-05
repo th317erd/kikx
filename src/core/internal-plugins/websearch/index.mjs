@@ -15,6 +15,13 @@ export function setup({ registerTool, PluginInterface }) {
     static featureName = 'fetch';
     static displayName = 'Web Search';
     static description = 'Fetch and render web pages as markdown';
+    static inputSchema = {
+      type:       'object',
+      properties: {
+        url: { type: 'string', description: 'The URL to fetch and render' },
+      },
+      required: ['url'],
+    };
 
     async _execute({ url }) {
       if (!url || typeof url !== 'string')
@@ -59,9 +66,11 @@ export function setup({ registerTool, PluginInterface }) {
     getHelp() {
       return {
         ...super.getHelp(),
-        usage:   'websearch:fetch { url: "https://example.com" }',
-        examples: [
-          { url: 'https://example.com', description: 'Fetch and render a web page' },
+        inputSchema: WebsearchTool.inputSchema,
+        usage:       'websearch:fetch { url: "https://example.com" }',
+        examples:    [
+          { url: 'https://example.com',         description: 'Fetch and render a web page as markdown' },
+          { url: 'https://docs.example.com/api', description: 'Fetch API documentation for reference' },
         ],
       };
     }

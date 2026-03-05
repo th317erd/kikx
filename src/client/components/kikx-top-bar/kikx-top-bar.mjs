@@ -37,14 +37,20 @@ const TEMPLATE_HTML = `
       gap: var(--spacing-xs, 4px);
     }
 
+    .app-logo {
+      height: 28px;
+      width: auto;
+      display: none;
+    }
+
+    .app-logo.visible {
+      display: block;
+    }
+
     .session-name {
       font-size: 1rem;
       font-weight: 600;
       color: var(--text-primary, #e8e8f0);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 300px;
     }
 
     button {
@@ -53,7 +59,7 @@ const TEMPLATE_HTML = `
       border-radius: var(--border-radius-medium, 8px);
       color: var(--text-primary, #e8e8f0);
       padding: 6px 12px;
-      font-size: 0.85rem;
+      font-size: 1rem;
       cursor: pointer;
       transition: background 0.2s ease, box-shadow 0.2s ease;
     }
@@ -91,6 +97,7 @@ const TEMPLATE_HTML = `
   <div class="bar">
     <div class="left-group">
       <button class="back-button" type="button"></button>
+      <img class="app-logo" src="/kikx/assets/images/kikx-cape.svg" alt="Kikx" />
       <span class="session-name"></span>
     </div>
     <div class="right-group">
@@ -123,6 +130,7 @@ class KikxTopBar extends HTMLElement {
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
 
     this._backButton   = this.shadowRoot.querySelector('.back-button');
+    this._appLogo      = this.shadowRoot.querySelector('.app-logo');
     this._sessionName  = this.shadowRoot.querySelector('.session-name');
     this._avatarButton = this.shadowRoot.querySelector('.avatar-button');
     this._avatar       = this.shadowRoot.querySelector('kikx-user-avatar');
@@ -138,17 +146,13 @@ class KikxTopBar extends HTMLElement {
     this._backButton.addEventListener('click', this._onBackClick);
     this._avatarButton.addEventListener('click', this._onAvatarClick);
 
-    this._removeStoreListener = store.on('update', this._onStoreUpdate);
+    store.on('update', this._onStoreUpdate);
   }
 
   disconnectedCallback() {
     this._backButton.removeEventListener('click', this._onBackClick);
     this._avatarButton.removeEventListener('click', this._onAvatarClick);
-
-    if (this._removeStoreListener) {
-      this._removeStoreListener();
-      this._removeStoreListener = null;
-    }
+    store.off('update', this._onStoreUpdate);
   }
 
   attributeChangedCallback() {
@@ -164,10 +168,13 @@ class KikxTopBar extends HTMLElement {
   _updateSessionName() {
     let name = this.getAttribute('session-name');
 
-    if (name)
+    if (name) {
       this._sessionName.textContent = name;
-    else
+      this._appLogo.classList.remove('visible');
+    } else {
       this._sessionName.textContent = t('application.title');
+      this._appLogo.classList.add('visible');
+    }
   }
 
   _updateAvatar() {

@@ -6,7 +6,7 @@ const TEMPLATE_HTML = `
       display: block;
       border-radius: var(--border-radius-small, 4px);
       overflow: hidden;
-      font-size: 0.875rem;
+      font-size: 1rem;
     }
 
     .command-header {
@@ -31,7 +31,7 @@ const TEMPLATE_HTML = `
 
     .collapse-indicator {
       display: inline-block;
-      font-size: 0.625rem;
+      font-size: 1rem;
       transition: transform 0.2s ease;
     }
 
@@ -52,7 +52,7 @@ const TEMPLATE_HTML = `
       margin-left: auto;
       padding: 1px 6px;
       border-radius: 3px;
-      font-size: 0.7rem;
+      font-size: 1rem;
       font-weight: 600;
       text-transform: uppercase;
     }
@@ -84,7 +84,7 @@ const TEMPLATE_HTML = `
     }
 
     .section-label {
-      font-size: 0.75rem;
+      font-size: 1rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -95,7 +95,7 @@ const TEMPLATE_HTML = `
     .section-content {
       padding: 4px 8px 8px;
       font-family: 'Fira Code', 'Cascadia Code', monospace;
-      font-size: 0.8rem;
+      font-size: 1rem;
       line-height: 1.4;
       white-space: pre-wrap;
       color: var(--text-primary, #e8e8f0);

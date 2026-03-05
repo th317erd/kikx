@@ -18,10 +18,10 @@ import { t } from '../../lib/i18n.mjs';
 // =============================================================================
 
 const DECISION_BUTTONS = [
-  { decision: 'allow-forever', icon: '\uD83D\uDC4D\uD83D\uDD12', tooltipKey: 'permission.allowForever',   activeClass: 'active-allow' },
+  { decision: 'allow-forever', icon: '\uD83D\uDCAF',             tooltipKey: 'permission.allowForever',   activeClass: 'active-allow' },
   { decision: 'allow-once',    icon: '\uD83D\uDC4D',             tooltipKey: 'permission.allowOnceShort', activeClass: 'active-allow' },
   { decision: 'deny-once',     icon: '\uD83D\uDC4E',             tooltipKey: 'permission.denyOnce',       activeClass: 'active-deny' },
-  { decision: 'deny-forever',  icon: '\uD83D\uDC4E\uD83D\uDD12', tooltipKey: 'permission.denyForever',    activeClass: 'active-deny' },
+  { decision: 'deny-forever',  icon: '\uD83D\uDEAB',             tooltipKey: 'permission.denyForever',    activeClass: 'active-deny' },
 ];
 
 const TEMPLATE_HTML = `
@@ -318,8 +318,13 @@ class KikxPermissionRequest extends HTMLElement {
   _onConfirmClick() {
     let decisions = [];
 
-    for (let [command, decision] of this._decisions.entries())
-      decisions.push({ command, decision });
+    for (let [command, decision] of this._decisions.entries()) {
+      // Look up arguments from the original commands data
+      let cmdData   = this._commands.find((c) => c.command === command);
+      let args      = (cmdData && cmdData.arguments) || [];
+
+      decisions.push({ command, arguments: args, decision });
+    }
 
     this.dispatchEvent(new CustomEvent('permission-response', {
       bubbles:  true,

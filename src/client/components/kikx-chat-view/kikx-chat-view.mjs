@@ -18,7 +18,6 @@ const TEMPLATE_HTML = `
       flex: 1;
       overflow-y: auto;
       padding: var(--spacing-sm, 8px);
-      scroll-behavior: smooth;
     }
 
     .chat-container::-webkit-scrollbar { width: 6px; }
@@ -27,6 +26,7 @@ const TEMPLATE_HTML = `
       background: var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: 3px;
     }
+    .chat-container::-webkit-scrollbar-button { display: none; }
 
     .interaction-stream {
       display: flex;
@@ -112,7 +112,10 @@ class KikxChatView extends HTMLElement {
 
   scrollToBottom() {
     this._isAnchoredToBottom = true;
-    this._chatContainer.scrollTop = this._chatContainer.scrollHeight - this._chatContainer.clientHeight;
+    this._chatContainer.scrollTo({
+      top:      this._chatContainer.scrollHeight - this._chatContainer.clientHeight,
+      behavior: 'smooth',
+    });
 
     this.dispatchEvent(new CustomEvent('anchored-change', {
       bubbles:  true,
@@ -123,6 +126,9 @@ class KikxChatView extends HTMLElement {
 
   appendInteraction(element) {
     this._interactionStream.appendChild(element);
+
+    if (this._isAnchoredToBottom)
+      this._scrollToBottomImmediate();
   }
 }
 

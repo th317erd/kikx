@@ -1,0 +1,610 @@
+# =============================================================================
+# Reactive Frame Engine — Git-Inspired FrameManager Evolution
+# =============================================================================
+# Evolves the existing FrameManager into a git-inspired reactive frame engine
+# with commit log, refs, diff, windowed loading, and per-file permissions.
+#
+# This is NOT a rewrite. It is an incremental evolution that preserves the
+# existing API surface and all 257 existing tests.
+#
+# Status: PLANNING
+# Created: 2026-03-05
+# =============================================================================
+
+meta:
+  title: "Reactive Frame Engine"
+  parent_plan: "frame-manager.yaml"
+  parent_server_plan: "server-plan.yaml (Phase 3, Steps 22-23)"
+  version: "0.1.0"
+
+# =============================================================================
+# 1. MOTIVATION
+# =============================================================================
+
+motivation:
+  problem: |
+    The current interaction loop is a synchronous coroutine — one agent, one
+    generator, one queue. This doesn't support:
+    - Multiple agents processing frames independently
+    - Async tool execution (fire and forget, result arrives later)
+    - Sub-agent delegation (parent continues while child works)
+    - User interrupts during long operations
+    - Efficient streaming (loads entire conversation into memory)
+
+  solution: |
+    Evolve the FrameManager to use git's conceptual model:
+    - Immutable commit log (every change is a commit)
+    - Named refs (per-consumer cursors into the commit log)
+    - Diff between refs (what's new for this consumer?)
+    - Windowed loading (only hold a slice in memory)
+    - Pluggable commit validator (per-file permissions)
+
+    The FrameManager becomes the backbone of a multi-actor, event-driven
+    system where any source can push frames at any time, and each consumer
+    processes at its own pace.
+
+  principles:
+    - "The database is the source of truth. The FrameManager is a materialized view."
+    - "Identity is kernel-set, not actor-set."
+    - "Every change is a commit. Every commit is immutable."
+    - "Consumers track their own position via refs."
+    - "Frames are virtual files. Deep merge is tree merge."
+    - "Multi-actor by default. Single-actor is just the degenerate case."
+
+# =============================================================================
+# 2. IMPLEMENTATION DECISION
+# =============================================================================
+
+implementation:
+  language: "Pure JavaScript"
+  rationale:
+    - "We own the code (GPL 3 clean). No license compatibility issues."
+    - "Zero added bundle weight (no WASM binary, no external dependency)."
+    - "Same test runner, same assertions, same CI as existing tests."
+    - "Hybrid storage: SQL for frames/commits, git-model for change tracking."
+    - "Evolution, not revolution: existing FrameManager + 257 tests as baseline."
+    - "JS is fast enough for a chat app. Network latency dominates, not frame ops."
+  rejected_alternatives:
+    rust_wasm:
+      reason: |
+        Overkill for 500-800 lines of logic. Adds Rust toolchain dependency,
+        cross-language testing friction, and WASM compilation pipeline.
+        Revisit if performance becomes critical at scale.
+    isomorphic_git:
+      reason: |
+        Filesystem abstraction mismatch (BYOFS assumes file I/O patterns).
+        72KB added bundle. External dependency with someone else's decisions.
+    libgit2_wasm:
+      reason: |
+        2.7MB bundle size. Semi-abandoned WASM wrapper. GPL 2 licensing
+        (no upgrade path to GPL 3). Not designed for structured data.
+  seqda:
+    decision: "Drop seqda dependency"
+    rationale: |
+      seqda provided: Object.freeze immutability, batched microtask events,
+      per-argument method caching. With the git-model evolution:
+      - Immutability is by convention (commits are append-only, frames treated as immutable)
+      - Events fire per-operation via plain EventEmitter (no microtask batching needed)
+      - Caching is handled by the storage adapter, not the data structure
+      seqda's value was in its reactive state model. The git-model replaces that
+      with commits + refs + diff — a more powerful reactive primitive.
+
+# =============================================================================
+# 3. DATA MODEL
+# =============================================================================
+
+data_model:
+
+  # --- Frame (unchanged from frame-manager.yaml) ---
+  frame:
+    description: |
+      Value object representing a single unit of conversation state.
+      Unchanged from existing Frame class. All existing properties preserved.
+      See frame-manager.yaml for full specification.
+    additions:
+      - name: "commitOrder"
+        type: "number"
+        description: |
+          The commit order at which this frame was created or last modified.
+          Set by the FrameManager when the frame is merged. Links the frame
+          to its creating/modifying commit. Not writable by external actors.
+
+  # --- Commit ---
+  commit:
+    description: |
+      Immutable record of a state transition. Every merge() call that modifies
+      state creates exactly one commit. Analogous to a git commit.
+    shape:
+      order:
+        type: "number"
+        description: |
+          Monotonic counter. Serves as the commit identifier. Database-assigned
+          on the server, in-memory counter in the browser. The authoritative
+          ordering key — no vector clocks needed because the server is the
+          single coordinator.
+      changes:
+        type: "Array<{ frameId, operation, fields? }>"
+        description: |
+          List of frames affected by this commit.
+          operation: 'create' | 'update' | 'delete'
+          fields: optional array of changed field names (for updates)
+      authorType:
+        type: "string"
+        description: "Who created this commit: 'user', 'agent', 'tool', 'system'"
+      authorId:
+        type: "string | null"
+        description: "Specific actor ID. Null for system commits."
+      timestamp:
+        type: "number (epoch ms)"
+        description: "Wall-clock time of commit creation."
+      parentOrder:
+        type: "number | null"
+        description: |
+          The order of the previous commit. Null for the first commit.
+          Forms the commit chain (linked list). In practice, parentOrder
+          is always order - 1 since we use monotonic ordering, but we store
+          it explicitly for integrity verification.
+    notes:
+      - "Commits are APPEND-ONLY. Never modified after creation."
+      - "An empty merge (no state change) creates no commit."
+      - "Multiple frames in one merge = one atomic commit."
+      - "Phantom updates that merge into group frames are commits too."
+      - "Bulk loading (events:false) can create one commit per frame or batch."
+
+  # --- Ref ---
+  ref:
+    description: |
+      Named pointer to a commit order. Analogous to a git ref (branch, tag).
+      Used to track per-consumer state: where has this consumer read up to?
+    shape:
+      name:
+        type: "string"
+        description: |
+          Hierarchical name. Convention:
+          - 'heads/main' — latest commit (auto-advanced on every commit)
+          - 'processed/<actorId>' — where an actor has processed up to
+          - 'seen/<clientId>' — where a UI client has rendered up to
+      commitOrder:
+        type: "number"
+        description: "The commit order this ref points to."
+    notes:
+      - "Refs are mutable pointers. Only the commitOrder changes."
+      - "'heads/main' is automatically advanced on every commit."
+      - "All other refs are manually advanced by their owner."
+      - "Ref names are hierarchical strings — no enforcement on structure."
+
+# =============================================================================
+# 4. OPERATIONS
+# =============================================================================
+
+operations:
+
+  # --- merge() (evolved) ---
+  merge:
+    signature: "merge(frames, options?) -> Array<Frame>"
+    description: |
+      PRIMARY ENTRY POINT — unchanged API signature. Still accepts an array
+      of frames. Still returns array of affected/created frames. Still
+      performs deep-merge, phantom handling, multi-target, etc.
+
+      NEW BEHAVIOR: Also creates a commit record for the operation.
+      The commit records which frames were created/updated/deleted.
+    options:
+      events:
+        type: boolean
+        default: true
+        description: "Same as before — suppress per-frame events for bulk loading."
+      authorType:
+        type: string
+        description: "Author of this commit. Default: 'system'."
+      authorId:
+        type: "string | null"
+        description: "Actor ID for this commit. Default: null."
+    backward_compat: |
+      Callers that don't pass authorType/authorId get system commits.
+      This preserves backward compatibility with all 257 existing tests.
+
+  # --- Commit operations (new) ---
+  getCommit:
+    signature: "getCommit(order) -> Commit | undefined"
+    description: "Retrieve a specific commit by its order."
+
+  getCommits:
+    signature: "getCommits(fromOrder, toOrder) -> Array<Commit>"
+    description: "Retrieve commits in a range (exclusive fromOrder, inclusive toOrder)."
+
+  getLatestCommit:
+    signature: "getLatestCommit() -> Commit | undefined"
+    description: "Return the HEAD commit (highest order)."
+
+  # --- Ref operations (new) ---
+  createRef:
+    signature: "createRef(name, commitOrder) -> void"
+    description: "Create a named ref pointing to a commit order."
+
+  getRef:
+    signature: "getRef(name) -> number | undefined"
+    description: "Get the commit order a ref points to."
+
+  updateRef:
+    signature: "updateRef(name, commitOrder) -> void"
+    description: |
+      Move a ref to a new commit order. The commit must exist.
+      Emits 'ref:updated' event.
+
+  deleteRef:
+    signature: "deleteRef(name) -> void"
+    description: "Remove a ref."
+
+  listRefs:
+    signature: "listRefs(prefix?) -> Map<string, number>"
+    description: "List all refs, optionally filtered by prefix (e.g. 'processed/')."
+
+  # --- Diff operations (new) ---
+  diff:
+    signature: "diff(fromOrder, toOrder) -> Array<{ frameId, operation, frame }>"
+    description: |
+      Return all frame changes between two commit orders. Each entry
+      includes the frameId, the operation (create/update/delete), and
+      the frame's current state (HEAD after all changes applied).
+    notes:
+      - "fromOrder is exclusive, toOrder is inclusive."
+      - "diff(0, HEAD) returns all frames (full history)."
+      - "diff(same, same) returns empty array."
+      - "Can accept ref names instead of numbers: diff('processed/agent-1', 'heads/main')."
+
+  diffFrames:
+    signature: "diffFrames(fromOrder, toOrder) -> Array<Frame>"
+    description: |
+      Convenience method. Returns just the frames (current HEAD state)
+      that changed between two commits. No operation metadata.
+      Most common use case: 'what frames are new for this consumer?'
+
+  # --- Window operations (new) ---
+  loadWindow:
+    signature: "loadWindow(frames, fromOrder, toOrder) -> void"
+    description: |
+      Load a slice of frames into memory. Frames outside this range
+      are not held. Used for initial page load and backfill.
+      Internally calls merge() with events:false.
+
+  evict:
+    signature: "evict(belowOrder) -> number"
+    description: |
+      Remove frames with order below the threshold from memory.
+      Returns count of evicted frames. Used for memory pressure relief.
+      Does NOT delete from database — just releases from in-memory maps.
+
+  getWindowBounds:
+    signature: "getWindowBounds() -> { from: number, to: number }"
+    description: "Return the current loaded window range."
+
+  # --- Commit Validator (new) ---
+  commit_validator:
+    description: |
+      Pluggable validation function injected via constructor. Called before
+      every merge() commits changes. Can reject the entire commit.
+    constructor_option:
+      name: "commitValidator"
+      type: "function | null"
+      signature: "(commit, frames, actorContext) -> { allowed: boolean, reason?: string }"
+      default: "null (no validation — everything allowed)"
+    behavior:
+      - "Called AFTER merge logic computes changes, BEFORE commit is recorded."
+      - "If rejected: changes are rolled back, commit is not created."
+      - "Rejection emits 'commit:rejected' event with reason."
+      - "Consistent with FrameManager's silent-rejection posture."
+    actor_context:
+      description: |
+        Passed through from merge() options. Contains identity information
+        set by the kernel. The validator uses this to check ACLs.
+      shape:
+        authorType: "string — 'user' | 'agent' | 'tool' | 'system'"
+        authorId: "string | null"
+
+# =============================================================================
+# 5. PERMISSION MODEL (Commit Validator Rules)
+# =============================================================================
+
+permissions:
+  description: |
+    Three-tier permission architecture. Tiers 1 and 3 are external to the
+    FrameManager. Tier 2 is the commit validator.
+
+  tier_1_authentication:
+    description: "Server/Kernel sets authorType and authorId. External."
+    location: "src/server/ (middleware, controllers)"
+
+  tier_2_structural_acls:
+    description: "Commit validator enforces structural rules."
+    location: "Pluggable function injected into FrameManager"
+    rules:
+      type_restrictions:
+        description: "Which frame types each actor type can create."
+        rules:
+          system: "Can create ANY frame type"
+          user: "Can create: user-message, hml-prompt-value, permission-grant"
+          agent: "Can create: message, tool-call, reflection, sub-agent-call"
+          tool: "Can create: tool-result, tool-error"
+
+      ownership_enforcement:
+        description: "Who can modify existing frames."
+        rules:
+          system: "Can modify ANY frame"
+          others: "Can only modify frames where authorId matches"
+
+      property_protection:
+        description: "Which properties are writable."
+        rules:
+          system: "Can set ALL properties including processed, processedAt"
+          others: "Can set ONLY mergeable properties (content, hidden, deleted, updatedAt)"
+          immutable: "type, authorType, authorId — never changeable after creation by anyone"
+
+      ref_ownership:
+        description: "Who can move which refs."
+        rules:
+          system: "Can update ANY ref"
+          actor: "Can only update refs under their own namespace (processed/<ownId>)"
+
+  tier_3_policy:
+    description: "User-configurable tool policies. External."
+    location: "src/core/permissions/permission-engine.mjs"
+    note: "Unchanged. Orthogonal to structural ACLs."
+
+# =============================================================================
+# 6. EVENTS
+# =============================================================================
+
+events:
+  existing_preserved:
+    - "frame:added"
+    - "frame:added:{frameId}"
+    - "frame:updated"
+    - "frame:updated:{frameId}"
+    - "frame:processed"
+    - "frame:processed:{frameId}"
+    - "frames:bulk-loaded"
+    - "frame:phantom"
+
+  new_events:
+    - name: "commit"
+      payload: "{ commit }"
+      when: "A new commit is created (every successful merge)."
+    - name: "ref:updated"
+      payload: "{ name, previousOrder, newOrder }"
+      when: "A ref is moved to a new commit order."
+    - name: "ref:created"
+      payload: "{ name, commitOrder }"
+      when: "A new ref is created."
+    - name: "ref:deleted"
+      payload: "{ name }"
+      when: "A ref is removed."
+    - name: "commit:rejected"
+      payload: "{ reason, authorType, authorId, frames }"
+      when: "Commit validator rejects a merge."
+
+# =============================================================================
+# 7. INTERNAL STRUCTURE (replacing seqda)
+# =============================================================================
+
+internals:
+  description: |
+    Plain Maps and EventEmitter replace seqda. The FrameManager owns its
+    own state directly. No external state management library.
+  data_structures:
+    _frames:
+      type: "Map<string, Frame>"
+      description: "frameId → Frame (HEAD version)"
+    _pointers:
+      type: "Map<string, FramePointer>"
+      description: "frameId → FramePointer (HEAD pointer)"
+    _children:
+      type: "Map<string, Set<string>>"
+      description: "parentId → Set of child frameIds"
+    _commits:
+      type: "Array<Commit>"
+      description: "Ordered commit log (append-only)"
+    _refs:
+      type: "Map<string, number>"
+      description: "refName → commitOrder"
+    _orderCounter:
+      type: "number"
+      description: "Monotonic counter for commit/frame ordering"
+  event_emitter:
+    source: "node:events (Node.js) or compatible polyfill (browser)"
+    note: |
+      No microtask batching (unlike seqda). Events fire synchronously
+      during merge(). This is simpler and more predictable. If batching
+      is needed later, it can be added as an opt-in wrapper.
+
+# =============================================================================
+# 8. STORAGE ADAPTER (future — Phase C)
+# =============================================================================
+
+storage_adapter:
+  description: |
+    Pluggable storage backend for persisting frames and commits.
+    Phase A/B use in-memory only. Phase C adds persistent backends.
+  interface:
+    loadFrames: "(fromOrder, toOrder) -> Array<Frame>"
+    loadCommits: "(fromOrder, toOrder) -> Array<Commit>"
+    saveCommit: "(commit, frames) -> void"
+    loadRefs: "() -> Map<string, number>"
+    saveRef: "(name, commitOrder) -> void"
+  implementations:
+    memory:
+      description: "In-memory Maps. Default. Used in browser and tests."
+    sqlite:
+      description: "SQLite via Mythix ORM. Server-side. Phase C."
+    indexeddb:
+      description: "Browser persistence. Future consideration."
+  query_patterns:
+    note: |
+      Frames are stored as rows with JSON content — NOT as many small
+      files (which would create pathological query patterns). The hybrid
+      model: SQL for frames, git-model for commits/refs/diff.
+    common_queries:
+      - "SELECT * FROM frames WHERE session_id = ? AND order BETWEEN ? AND ? ORDER BY order"
+      - "SELECT * FROM commits WHERE session_id = ? AND order > ? ORDER BY order"
+      - "SELECT name, commit_order FROM refs WHERE session_id = ?"
+
+# =============================================================================
+# 9. PHASED BUILD
+# =============================================================================
+
+phases:
+
+  A:
+    name: "Foundation"
+    description: |
+      Evolve FrameManager internals. Drop seqda. Add commit log, refs, diff.
+      All 257 existing tests MUST pass (adapted to new internals).
+    deliverables:
+      - "Drop seqda dependency, replace with plain Maps + EventEmitter"
+      - "Commit log: every merge() creates a Commit record"
+      - "Refs: create, get, update, delete, list"
+      - "Diff: between any two commit orders or ref names"
+      - "Window: loadWindow(), evict(), getWindowBounds()"
+      - "Commit validator: pluggable, optional"
+    test_count_target: "~320 tests (257 existing + ~60 new)"
+    dependencies: "None — starts from current codebase"
+
+  B:
+    name: "Multi-Actor"
+    description: |
+      Evolve InteractionLoop to use ref-based scheduling. Multiple agents
+      per session. Async tool execution. Commit validator with full ACLs.
+    deliverables:
+      - "Session scheduler: watches commits, triggers agent interactions"
+      - "Per-agent refs: each agent tracks its own processed position"
+      - "Async tool execution: tool calls become commits, results arrive later"
+      - "Commit validator with full structural ACL rules"
+      - "Message assembly v2: frame IDs, source attribution, XML-like tags"
+    test_count_target: "~400 tests"
+    dependencies: ["Phase A"]
+
+  C:
+    name: "Streaming"
+    description: |
+      Windowed loading with persistent storage adapter. Client-side
+      FrameManager with WebSocket live updates. Viewport management.
+    deliverables:
+      - "Storage adapter interface + SQLite implementation"
+      - "Client-side FrameManager with WebSocket commit streaming"
+      - "Viewport management: lazy load, backfill, eviction"
+      - "Memory-bounded operation (configurable window size)"
+    test_count_target: "~450 tests"
+    dependencies: ["Phase B"]
+
+# =============================================================================
+# 10. PHASE A — DETAILED IMPLEMENTATION ORDER
+# =============================================================================
+
+phase_a_implementation:
+  description: |
+    TDD throughout. Tests written BEFORE implementation.
+    Each step is independently testable.
+
+  steps:
+    1:
+      name: "Regression adapter"
+      description: |
+        Adapt all 257 existing tests to work without seqda.
+        Replace seqda store access with direct Map access.
+        Tests MUST FAIL initially (seqda is still present).
+        Then swap internals. Tests pass.
+      files:
+        - "src/shared/frame-manager/frame-manager.mjs (modify)"
+
+    2:
+      name: "Commit log"
+      description: |
+        Every successful merge() creates a Commit record.
+        New internal: this._commits array.
+        New methods: getCommit(), getCommits(), getLatestCommit().
+        New event: 'commit'.
+      files:
+        - "src/shared/frame-manager/frame-manager.mjs (modify)"
+        - "src/shared/frame-manager/commit.mjs (new)"
+      tests: "~15 tests"
+
+    3:
+      name: "Refs"
+      description: |
+        Named pointers to commit orders.
+        New internal: this._refs Map.
+        New methods: createRef(), getRef(), updateRef(), deleteRef(), listRefs().
+        Auto-advancing 'heads/main' ref on every commit.
+        New events: ref:created, ref:updated, ref:deleted.
+      files:
+        - "src/shared/frame-manager/frame-manager.mjs (modify)"
+      tests: "~12 tests"
+
+    4:
+      name: "Diff"
+      description: |
+        Compare two commit orders and return changed frames.
+        New methods: diff(), diffFrames().
+        Supports ref names as arguments (resolved to commit orders).
+      files:
+        - "src/shared/frame-manager/frame-manager.mjs (modify)"
+      tests: "~15 tests"
+
+    5:
+      name: "Windowed loading"
+      description: |
+        loadWindow(), evict(), getWindowBounds().
+        FrameManager can hold a subset of frames.
+        Backfill extends the window backward.
+      files:
+        - "src/shared/frame-manager/frame-manager.mjs (modify)"
+      tests: "~10 tests"
+
+    6:
+      name: "Commit validator"
+      description: |
+        Pluggable validation function in constructor.
+        Called before commit is recorded. Can reject.
+        Emits commit:rejected event on rejection.
+      files:
+        - "src/shared/frame-manager/frame-manager.mjs (modify)"
+      tests: "~20 tests (P1-P15 + edge cases)"
+
+# =============================================================================
+# 11. ACCEPTANCE CRITERIA
+# =============================================================================
+
+acceptance_criteria:
+  phase_a:
+    - "All 257 existing FrameManager tests pass (adapted, no seqda)"
+    - "Every merge() creates a commit record (unless no state changed)"
+    - "Commits are monotonically ordered"
+    - "Multiple frames in one merge = one atomic commit"
+    - "Refs can be created, read, updated, deleted"
+    - "'heads/main' ref auto-advances on every commit"
+    - "diff() returns exactly the frames changed between two commit orders"
+    - "diff() accepts ref names and resolves to commit orders"
+    - "diff(0, HEAD) returns all frames"
+    - "diff(same, same) returns empty"
+    - "loadWindow() loads a slice without loading everything"
+    - "Backfill extends the window without duplicates"
+    - "evict() releases frames below a threshold"
+    - "Commit validator can reject unauthorized merges"
+    - "Rejected merges emit commit:rejected event"
+    - "No seqda dependency in package.json"
+    - "Works in both Node.js and browser (EventEmitter polyfill)"
+
+  phase_b:
+    - "Multiple agents per session with independent refs"
+    - "Scheduler triggers interactions on new commits"
+    - "Tool calls execute async, results land as commits"
+    - "Message assembly includes frame IDs and source attribution"
+    - "Commit validator enforces full structural ACL rules"
+    - "User interrupt (stop) is processed as a high-priority commit"
+
+  phase_c:
+    - "Storage adapter loads frames from SQLite on demand"
+    - "Client FrameManager receives commits via WebSocket"
+    - "Viewport management: lazy load, backfill, eviction"
+    - "Memory usage bounded by configurable window size"
+    - "Full E2E: user message → agent response → tool call → async result → agent processes"

@@ -11,8 +11,9 @@ import { CascadingContext }             from './context/index.mjs';
 import { DEFAULT_CONFIG, mergeConfig } from './config/index.mjs';
 import { DEFAULT_MODELS }              from './models/index.mjs';
 import { PluginLoader, FilesystemPluginProvider, InMemoryPluginProvider } from './plugin-loader/index.mjs';
-import { PermissionEngine } from './permissions/index.mjs';
-import { HookRunner }       from './hooks/index.mjs';
+import { PermissionEngine }  from './permissions/index.mjs';
+import { HookRunner }        from './hooks/index.mjs';
+import { PrimerAssembler }   from './primer/index.mjs';
 import { mkdir }            from 'node:fs/promises';
 import { join }             from 'node:path';
 import { fileURLToPath }    from 'node:url';
@@ -48,6 +49,10 @@ export class KikxCore {
 
     // Load plugins
     await this._loadPlugins();
+
+    // Initialize primer assembler (after plugins, so plugin instructions are registered)
+    let primerAssembler = new PrimerAssembler(this._context);
+    this._context.setProperty('primerAssembler', primerAssembler);
 
     this._started = true;
   }

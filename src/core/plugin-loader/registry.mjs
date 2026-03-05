@@ -16,6 +16,7 @@ export class PluginRegistry {
     this._customElements = new Set();
     this._agentTypes     = new Map();
     this._hooks          = new Map(); // hookName -> handler[]
+    this._instructions   = [];        // { pluginName, content, priority }
   }
 
   // ---------------------------------------------------------------------------
@@ -47,7 +48,7 @@ export class PluginRegistry {
   // Commands
   // ---------------------------------------------------------------------------
 
-  registerCommand(name, handler) {
+  registerCommand(name, handler, help) {
     if (!name || typeof name !== 'string')
       throw new Error('Command name must be a non-empty string');
 
@@ -57,11 +58,17 @@ export class PluginRegistry {
     if (this._commands.has(name))
       console.warn(`Command "${name}" is being overridden`);
 
-    this._commands.set(name, handler);
+    this._commands.set(name, { handler, help: help || null });
   }
 
   getCommand(name) {
-    return this._commands.get(name) || null;
+    let entry = this._commands.get(name);
+    return (entry) ? entry.handler : null;
+  }
+
+  getCommandHelp(name) {
+    let entry = this._commands.get(name);
+    return (entry) ? entry.help : null;
   }
 
   getCommands() {
@@ -131,5 +138,21 @@ export class PluginRegistry {
 
   getCustomElements() {
     return new Set(this._customElements);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Instructions
+  // ---------------------------------------------------------------------------
+
+  registerInstructions(pluginName, content, options = {}) {
+    if (!content || typeof content !== 'string')
+      throw new Error('Instruction content must be a non-empty string');
+
+    let priority = (options.priority !== undefined) ? options.priority : 100;
+    this._instructions.push({ pluginName, content, priority });
+  }
+
+  getInstructions() {
+    return [...this._instructions].sort((a, b) => a.priority - b.priority);
   }
 }

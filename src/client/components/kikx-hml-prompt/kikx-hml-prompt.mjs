@@ -5,13 +5,13 @@ const TEMPLATE_HTML = `
     :host { display: block; padding: 4px 0; }
 
     .prompt-label {
-      font-size: 0.8125rem; font-weight: 600;
+      font-size: 1rem; font-weight: 600;
       color: var(--text-secondary, #a0a0b8); margin-bottom: 4px;
     }
 
     .prompt-input {
       width: 100%; box-sizing: border-box;
-      padding: 6px 10px; font-size: 0.875rem;
+      padding: 6px 10px; font-size: 1rem;
       background: var(--input-background, rgba(255, 255, 255, 0.05));
       border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
       border-radius: var(--border-radius-small, 4px);
@@ -27,12 +27,87 @@ const TEMPLATE_HTML = `
 
     textarea.prompt-input { resize: vertical; min-height: 60px; }
 
-    select.prompt-input { cursor: pointer; }
+    /* Custom select dropdown — native <select> options can't be styled */
+    .custom-select {
+      position: relative;
+      width: 100%;
+    }
+
+    .select-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 10px;
+      font-size: 1rem;
+      background: var(--input-background, rgba(255, 255, 255, 0.05));
+      border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
+      border-radius: var(--border-radius-small, 4px);
+      color: var(--text-primary, #e8e8f0);
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s ease;
+      font-family: inherit;
+    }
+
+    .select-trigger:focus {
+      border-color: var(--accent-primary, #00e5ff);
+      box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
+    }
+
+    .select-trigger .arrow {
+      font-size: 0.65rem;
+      margin-left: 8px;
+      opacity: 0.6;
+    }
+
+    .select-options {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      margin-top: 2px;
+      max-height: 200px;
+      overflow-y: auto;
+      background: var(--surface-elevated, #1a1a2e);
+      border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
+      border-radius: var(--border-radius-small, 4px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .custom-select.open .select-options {
+      display: block;
+    }
+
+    .select-option {
+      padding: 6px 10px;
+      font-size: 1rem;
+      color: var(--text-primary, #e8e8f0);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .select-option:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .select-option.selected {
+      background: var(--accent-primary, #00e5ff);
+      color: var(--background-base, #0a0a1a);
+    }
 
     .checkbox-row, .radio-row {
       display: flex; align-items: center; gap: var(--spacing-xs, 4px);
-      padding: 2px 0; font-size: 0.875rem; cursor: pointer;
+      padding: 2px 0; font-size: 1rem; cursor: pointer;
       color: var(--text-primary, #e8e8f0);
+    }
+
+    .checkbox-row label, .radio-row label {
+      cursor: pointer;
+      user-select: none;
     }
 
     .range-row {
@@ -40,12 +115,35 @@ const TEMPLATE_HTML = `
     }
 
     .range-value {
-      font-size: 0.8125rem; font-weight: 600; min-width: 40px; text-align: right;
+      font-size: 1rem; font-weight: 600; min-width: 40px; text-align: right;
       color: var(--accent-primary, #00e5ff);
     }
 
     input[type="range"] {
       flex: 1; accent-color: var(--accent-primary, #00e5ff);
+    }
+
+    /* Number spinner: hide default browser arrows, add custom styling */
+    input[type="number"] {
+      -moz-appearance: textfield;
+    }
+
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    /* Date/time picker: dark theme for picker indicator */
+    input[type="date"],
+    input[type="time"] {
+      color-scheme: dark;
+    }
+
+    input[type="date"]::-webkit-calendar-picker-indicator,
+    input[type="time"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.7);
+      cursor: pointer;
     }
 
     input[type="color"] {
@@ -55,8 +153,75 @@ const TEMPLATE_HTML = `
       background: transparent;
     }
 
-    :host([readonly]) .prompt-input,
-    :host([readonly]) input { pointer-events: none; opacity: 0.7; }
+    /* Scrollbar for select dropdown */
+    .select-options::-webkit-scrollbar { width: 6px; }
+    .select-options::-webkit-scrollbar-track { background: transparent; }
+    .select-options::-webkit-scrollbar-thumb {
+      background: var(--glass-border, rgba(255, 255, 255, 0.10));
+      border-radius: 3px;
+    }
+    .select-options::-webkit-scrollbar-button { display: none; }
+
+    /* ===== Answered/readonly: success green ===== */
+    :host([readonly]) {
+      pointer-events: none;
+    }
+
+    :host([readonly]) .prompt-label {
+      color: #4caf50;
+    }
+
+    :host([readonly]) .prompt-input {
+      color: #81c784;
+      border-color: rgba(76, 175, 80, 0.40);
+      background: rgba(76, 175, 80, 0.08);
+      box-shadow: 0 0 6px rgba(76, 175, 80, 0.15);
+    }
+
+    :host([readonly]) textarea.prompt-input {
+      color: #81c784;
+    }
+
+    :host([readonly]) .select-trigger {
+      color: #81c784;
+      border-color: rgba(76, 175, 80, 0.40);
+      background: rgba(76, 175, 80, 0.08);
+      box-shadow: 0 0 6px rgba(76, 175, 80, 0.15);
+      cursor: default;
+    }
+
+    :host([readonly]) .select-trigger .arrow {
+      color: #4caf50;
+    }
+
+    :host([readonly]) .checkbox-row,
+    :host([readonly]) .radio-row {
+      color: #81c784;
+      cursor: default;
+    }
+
+    :host([readonly]) input[type="checkbox"],
+    :host([readonly]) input[type="radio"] {
+      accent-color: #4caf50;
+    }
+
+    :host([readonly]) input[type="range"] {
+      accent-color: #4caf50;
+    }
+
+    :host([readonly]) .range-value {
+      color: #4caf50;
+    }
+
+    :host([readonly]) input[type="color"] {
+      border-color: rgba(76, 175, 80, 0.40);
+      box-shadow: 0 0 6px rgba(76, 175, 80, 0.15);
+    }
+
+    :host([readonly]) input[type="date"]::-webkit-calendar-picker-indicator,
+    :host([readonly]) input[type="time"]::-webkit-calendar-picker-indicator {
+      display: none;
+    }
   </style>
 
   <div class="prompt-container">
@@ -76,9 +241,16 @@ function getTemplate() {
   return cachedTemplate;
 }
 
+// Attributes that drive rendering — changes to any of these re-render the control
+const RENDER_ATTRIBUTES = [
+  'type', 'name', 'label', 'placeholder', 'value',
+  'min', 'max', 'step', 'options', 'required', 'readonly',
+  'prompt-id',
+];
+
 class KikxHmlPrompt extends HTMLElement {
   static get observedAttributes() {
-    return ['readonly', 'prompt-id'];
+    return RENDER_ATTRIBUTES;
   }
 
   constructor() {
@@ -86,34 +258,103 @@ class KikxHmlPrompt extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
 
-    this._label   = this.shadowRoot.querySelector('.prompt-label');
-    this._control = this.shadowRoot.querySelector('.prompt-control');
-    this._config  = null;
+    this._labelElement   = this.shadowRoot.querySelector('.prompt-label');
+    this._control        = this.shadowRoot.querySelector('.prompt-control');
 
     this._onInputChange = this._onInputChange.bind(this);
   }
 
-  get config() {
-    return this._config;
-  }
-
-  set config(value) {
-    this._config = value;
-    this._renderControl();
-  }
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
 
   connectedCallback() {
-    if (this._config)
-      this._renderControl();
+    this._renderControl();
+    this._notifyInteractionAncestor();
   }
 
   disconnectedCallback() {
     this._removeListeners();
+
+    if (this._selectCloseHandler) {
+      document.removeEventListener('click', this._selectCloseHandler);
+      this._selectCloseHandler = null;
+    }
   }
 
-  attributeChangedCallback(name) {
-    if (name === 'readonly')
-      this._applyReadonly();
+  attributeChangedCallback() {
+    if (this.isConnected)
+      this._renderControl();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Backward-compat: config property setter
+  // Converts a config object into individual attributes.
+  // ---------------------------------------------------------------------------
+
+  get config() {
+    return this._readConfig();
+  }
+
+  set config(value) {
+    if (!value)
+      return;
+
+    // Map config keys to attribute names
+    if (value.inputType)
+      this.setAttribute('type', value.inputType);
+
+    if (value.label)
+      this.setAttribute('label', value.label);
+
+    if (value.placeholder)
+      this.setAttribute('placeholder', value.placeholder);
+
+    if (value.defaultValue !== undefined)
+      this.setAttribute('value', String(value.defaultValue));
+
+    if (value.min !== undefined)
+      this.setAttribute('min', String(value.min));
+
+    if (value.max !== undefined)
+      this.setAttribute('max', String(value.max));
+
+    if (value.step !== undefined)
+      this.setAttribute('step', String(value.step));
+
+    if (value.required)
+      this.setAttribute('required', '');
+
+    // Options: array → comma-separated string (for simple values)
+    // or store as child <kikx-hml-option> elements
+    if (value.options && Array.isArray(value.options)) {
+      let hasObjects = value.options.some((opt) => typeof opt === 'object');
+      if (hasObjects) {
+        // Complex options: create child elements
+        this._setChildOptions(value.options);
+      } else {
+        // Simple strings: comma-separated attribute
+        this.setAttribute('options', value.options.join(','));
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
+  getName() {
+    let name = this.getAttribute('name') || this.getAttribute('prompt-id');
+    if (name)
+      return name;
+
+    // Fallback: derive a slug from the label so prompts without explicit
+    // names still produce meaningful keys in the answers map.
+    let label = this.getAttribute('label');
+    if (label)
+      return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    return '';
   }
 
   getValue() {
@@ -121,12 +362,14 @@ class KikxHmlPrompt extends HTMLElement {
     if (!input)
       return undefined;
 
-    if (input.type === 'checkbox')
+    let inputType = this._getInputType();
+
+    if (inputType === 'checkbox')
       return input.checked;
 
-    if (this._config && this._config.inputType === 'radio') {
+    if (inputType === 'radio') {
       let checked = this._control.querySelector('input[type="radio"]:checked');
-      return checked ? checked.value : '';
+      return (checked) ? checked.value : '';
     }
 
     return input.value;
@@ -137,9 +380,11 @@ class KikxHmlPrompt extends HTMLElement {
     if (!input)
       return;
 
-    if (input.type === 'checkbox') {
+    let inputType = this._getInputType();
+
+    if (inputType === 'checkbox') {
       input.checked = !!value;
-    } else if (this._config && this._config.inputType === 'radio') {
+    } else if (inputType === 'radio') {
       let radios = this._control.querySelectorAll('input[type="radio"]');
       for (let radio of radios)
         radio.checked = (radio.value === value);
@@ -148,12 +393,76 @@ class KikxHmlPrompt extends HTMLElement {
     }
 
     // Update range display if applicable
-    if (this._config && this._config.inputType === 'range') {
+    if (inputType === 'range') {
       let display = this._control.querySelector('.range-value');
       if (display)
         display.textContent = value;
     }
+
+    // Update custom select display if applicable
+    if (inputType === 'select') {
+      let labelSpan = this._control.querySelector('.select-label');
+      let options   = this._control.querySelectorAll('.select-option');
+
+      for (let option of options) {
+        if (option.dataset.value === String(value)) {
+          option.classList.add('selected');
+          if (labelSpan)
+            labelSpan.textContent = option.textContent;
+        } else {
+          option.classList.remove('selected');
+        }
+      }
+    }
   }
+
+  // ---------------------------------------------------------------------------
+  // Internal: read config from attributes
+  // ---------------------------------------------------------------------------
+
+  _getInputType() {
+    return this.getAttribute('type') || 'text';
+  }
+
+  _readConfig() {
+    return {
+      inputType:    this._getInputType(),
+      label:        this.getAttribute('label') || '',
+      placeholder:  this.getAttribute('placeholder') || '',
+      defaultValue: this.getAttribute('value') ?? undefined,
+      min:          this.getAttribute('min') ?? undefined,
+      max:          this.getAttribute('max') ?? undefined,
+      step:         this.getAttribute('step') ?? undefined,
+      required:     this.hasAttribute('required'),
+      options:      this._getOptions(),
+    };
+  }
+
+  _getOptions() {
+    // First: check for child <kikx-hml-option> elements
+    let childOptions = this.querySelectorAll('kikx-hml-option');
+    if (childOptions.length > 0) {
+      let result = [];
+      for (let child of childOptions) {
+        let value = child.getAttribute('value') || child.textContent.trim();
+        let label = child.getAttribute('label') || child.textContent.trim() || value;
+        result.push({ label, value });
+      }
+
+      return result;
+    }
+
+    // Second: parse comma-separated options attribute
+    let optionsAttribute = this.getAttribute('options');
+    if (optionsAttribute)
+      return optionsAttribute.split(',').map((option) => option.trim()).filter(Boolean);
+
+    return [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal: render
+  // ---------------------------------------------------------------------------
 
   _getInputElement() {
     if (!this._control)
@@ -175,19 +484,16 @@ class KikxHmlPrompt extends HTMLElement {
     this._removeListeners();
     this._control.innerHTML = '';
 
-    if (!this._config)
-      return;
-
-    let cfg  = this._config;
-    let name = this.getAttribute('prompt-id') || '';
+    let cfg       = this._readConfig();
+    let name      = this.getName();
+    let inputType = cfg.inputType;
 
     // Label
-    this._label.textContent = cfg.label || '';
-
-    let inputType = cfg.inputType || 'text';
+    this._labelElement.textContent = cfg.label || '';
 
     switch (inputType) {
       case 'text':
+      case 'password':
       case 'date':
       case 'time':
       case 'number':
@@ -255,54 +561,134 @@ class KikxHmlPrompt extends HTMLElement {
   }
 
   _renderSelect(cfg, name) {
-    let select       = document.createElement('select');
-    select.className = 'prompt-input';
-    select.name      = name;
+    let wrapper       = document.createElement('div');
+    wrapper.className = 'custom-select';
 
-    let options = cfg.options || [];
+    // Hidden input holds the actual value for getValue()
+    let hidden  = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = name;
+
+    let trigger       = document.createElement('div');
+    trigger.className = 'select-trigger';
+    trigger.tabIndex  = 0;
+
+    let labelSpan       = document.createElement('span');
+    labelSpan.className = 'select-label';
+
+    let arrow       = document.createElement('span');
+    arrow.className = 'arrow';
+    arrow.textContent = '\u25BC';
+
+    trigger.appendChild(labelSpan);
+    trigger.appendChild(arrow);
+
+    let optionsList       = document.createElement('div');
+    optionsList.className = 'select-options';
+
+    let options      = cfg.options || [];
+    let initialValue = cfg.defaultValue;
+    let initialLabel = '';
+
     for (let opt of options) {
-      let option       = document.createElement('option');
-      let label        = (typeof opt === 'string') ? opt : (opt.label || opt.value);
-      let value        = (typeof opt === 'string') ? opt : opt.value;
-      option.value     = value;
-      option.textContent = label;
-      select.appendChild(option);
+      let label = (typeof opt === 'string') ? opt : (opt.label || opt.value);
+      let value = (typeof opt === 'string') ? opt : opt.value;
+
+      let optionElement       = document.createElement('div');
+      optionElement.className = 'select-option';
+      optionElement.textContent = label;
+      optionElement.dataset.value = value;
+
+      if (initialValue !== undefined && value === initialValue) {
+        optionElement.classList.add('selected');
+        initialLabel = label;
+      }
+
+      optionElement.addEventListener('click', () => {
+        // Deselect previous
+        let previous = optionsList.querySelector('.selected');
+        if (previous)
+          previous.classList.remove('selected');
+
+        optionElement.classList.add('selected');
+        hidden.value = value;
+        labelSpan.textContent = label;
+        wrapper.classList.remove('open');
+        this._onInputChange();
+      });
+
+      optionsList.appendChild(optionElement);
     }
 
-    if (cfg.defaultValue !== undefined)
-      select.value = cfg.defaultValue;
+    // Set initial state
+    if (initialValue !== undefined) {
+      hidden.value = initialValue;
+      labelSpan.textContent = initialLabel || initialValue;
+    } else if (options.length > 0) {
+      let firstOption = options[0];
+      let firstValue  = (typeof firstOption === 'string') ? firstOption : firstOption.value;
+      let firstLabel  = (typeof firstOption === 'string') ? firstOption : (firstOption.label || firstOption.value);
+      hidden.value = firstValue;
+      labelSpan.textContent = firstLabel;
 
-    select.addEventListener('change', this._onInputChange);
-    this._control.appendChild(select);
+      let firstElement = optionsList.querySelector('.select-option');
+      if (firstElement)
+        firstElement.classList.add('selected');
+    }
+
+    // Toggle open/close on trigger click
+    trigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      wrapper.classList.toggle('open');
+    });
+
+    // Close on Escape
+    trigger.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape')
+        wrapper.classList.remove('open');
+    });
+
+    // Close when clicking outside — use composedPath to cross shadow boundaries
+    this._selectCloseHandler = (event) => {
+      if (!event.composedPath().includes(wrapper))
+        wrapper.classList.remove('open');
+    };
+
+    document.addEventListener('click', this._selectCloseHandler);
+
+    wrapper.appendChild(hidden);
+    wrapper.appendChild(trigger);
+    wrapper.appendChild(optionsList);
+    this._control.appendChild(wrapper);
   }
 
   _renderCheckbox(cfg, name) {
-    let row       = document.createElement('div');
-    row.className = 'checkbox-row';
+    let label       = document.createElement('label');
+    label.className = 'checkbox-row';
 
     let checkbox  = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.name = name;
 
-    if (cfg.defaultValue)
+    if (cfg.defaultValue === 'true' || cfg.defaultValue === true)
       checkbox.checked = true;
 
-    let label         = document.createElement('label');
-    label.textContent = cfg.label || '';
+    let labelText         = document.createElement('span');
+    labelText.textContent = cfg.label || '';
 
     checkbox.addEventListener('change', this._onInputChange);
 
-    row.appendChild(checkbox);
-    row.appendChild(label);
-    this._control.appendChild(row);
+    label.appendChild(checkbox);
+    label.appendChild(labelText);
+    this._control.appendChild(label);
   }
 
   _renderRadio(cfg, name) {
     let options = cfg.options || [];
 
     for (let opt of options) {
-      let row       = document.createElement('div');
-      row.className = 'radio-row';
+      let labelWrapper       = document.createElement('label');
+      labelWrapper.className = 'radio-row';
 
       let radio  = document.createElement('input');
       radio.type = 'radio';
@@ -315,14 +701,14 @@ class KikxHmlPrompt extends HTMLElement {
       if (cfg.defaultValue === value)
         radio.checked = true;
 
-      let labelEl         = document.createElement('label');
-      labelEl.textContent = label;
+      let labelText         = document.createElement('span');
+      labelText.textContent = label;
 
       radio.addEventListener('change', this._onInputChange);
 
-      row.appendChild(radio);
-      row.appendChild(labelEl);
-      this._control.appendChild(row);
+      labelWrapper.appendChild(radio);
+      labelWrapper.appendChild(labelText);
+      this._control.appendChild(labelWrapper);
     }
   }
 
@@ -374,18 +760,72 @@ class KikxHmlPrompt extends HTMLElement {
     let isReadonly = this.hasAttribute('readonly');
     let inputs     = this._control.querySelectorAll('input, textarea, select');
 
-    for (let input of inputs)
-      input.disabled = isReadonly;
+    for (let input of inputs) {
+      if (isReadonly) {
+        // Don't use disabled — it applies browser-level grey styling that
+        // can't be overridden by CSS (especially radio/checkbox).
+        // pointer-events:none on :host([readonly]) blocks mouse interaction;
+        // tabIndex=-1 blocks keyboard navigation.
+        input.tabIndex = -1;
+        input.setAttribute('aria-disabled', 'true');
+      } else {
+        input.removeAttribute('tabindex');
+        input.removeAttribute('aria-disabled');
+      }
+    }
   }
 
-  _onInputChange(event) {
-    let promptId = this.getAttribute('prompt-id') || '';
-    let value    = this.getValue();
+  _setChildOptions(options) {
+    // Remove existing child options
+    let existing = this.querySelectorAll('kikx-hml-option');
+    for (let child of existing)
+      child.remove();
+
+    // Create new child option elements
+    for (let opt of options) {
+      let child = document.createElement('kikx-hml-option');
+      let label = (typeof opt === 'string') ? opt : (opt.label || opt.value);
+      let value = (typeof opt === 'string') ? opt : opt.value;
+
+      child.setAttribute('value', value);
+      child.setAttribute('label', label);
+      this.appendChild(child);
+    }
+  }
+
+  _notifyInteractionAncestor() {
+    // Already-answered prompts (readonly) should NOT show action buttons
+    if (this.hasAttribute('readonly'))
+      return;
+
+    // Walk up through shadow DOM boundaries to find the hosting kikx-interaction
+    let node = this;
+
+    while (node) {
+      if (node.tagName && node.tagName.toLowerCase() === 'kikx-interaction') {
+        node.setAttribute('show-actions', '');
+        return;
+      }
+
+      // Cross shadow boundary: if we hit a shadow root, jump to its host
+      if (node.parentNode) {
+        node = node.parentNode;
+      } else if (node.host) {
+        node = node.host;
+      } else {
+        break;
+      }
+    }
+  }
+
+  _onInputChange() {
+    let name  = this.getName();
+    let value = this.getValue();
 
     this.dispatchEvent(new CustomEvent('prompt-change', {
       bubbles:  true,
       composed: true,
-      detail:   { promptId, value },
+      detail:   { promptId: name, name, value },
     }));
   }
 }

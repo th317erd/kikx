@@ -24,6 +24,10 @@ export const scrollbarCSS = `
   background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.25));
 }
 
+::-webkit-scrollbar-button {
+  display: none;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb, rgba(255, 255, 255, 0.15)) var(--scrollbar-track, transparent);

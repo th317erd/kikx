@@ -141,8 +141,8 @@ All 19 rounds of design Q&A are complete and captured in `bot-docs/plan/kikx/ser
 - Client API: added `updateProfile()`, Store: added `profile.updateUser()`
 
 ### Test Count
-- Client tests: 102 (was 61)
-- Total: 855 tests, 445 pass (was 395)
+- Client tests: 91
+- Total: 852 tests, all pass
 
 ## Client UI Fixes (2026-03-02)
 
@@ -154,6 +154,16 @@ All 19 rounds of design Q&A are complete and captured in `bot-docs/plan/kikx/ser
 - **Locale:** Updated `en.mjs` with all settings form strings, removed "Magic Link" references
 - **Client tests:** 61 jsdom unit tests in `spec/client/` (api-spec.mjs + components-spec.mjs)
 - **Test count:** 742 total (731 pass, 11 pre-existing Phase 3 failures)
+
+## Bug Fix: AuthError returning 500 instead of 401 (2026-03-02)
+
+`AuthError` class in `src/server/auth/index.mjs` was missing `statusCode` property. Mythix's error handler defaults to 500 when `error.statusCode` is undefined. Fix:
+- `AuthError` now accepts optional `statusCode` parameter (default: 401)
+- Validation errors (`INVALID_EMAIL`, `INVALID_PASSWORD`) return 400
+- `DUPLICATE_EMAIL` returns 409
+- Auth failures (missing token, invalid signature, expired) return 401
+
+This also fixes the client-side unauthorized flow — `onUnauthorized()` in api.mjs only triggers on 401, so stale tokens now properly redirect to login instead of silently failing with 500.
 
 ## Known Issue: node:sqlite
 

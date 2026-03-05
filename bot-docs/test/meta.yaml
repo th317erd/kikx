@@ -990,3 +990,189 @@ summary:
     build-phases: { total: 5, pass: 5, fail: 0, needs-clarification: 0 }
     frame-manager: { total: 11, pass: 11, fail: 0, needs-clarification: 0 }
     cross-cutting: { total: 14, pass: 7, fail: 6, needs-clarification: 1 }
+    reactive-frame-engine: { total: 20, pass: 18, fail: 0, needs-clarification: 2 }
+
+# =============================================================================
+# 16. REACTIVE FRAME ENGINE (new — 2026-03-05)
+# =============================================================================
+# Plan: bot-docs/plan/kikx/reactive-frame-engine.yaml
+# Evolves FrameManager with git-inspired commit log, refs, diff, windowed
+# loading, and per-file permissions.
+
+reactive-frame-engine:
+
+  # --- Completeness ---
+
+  - assert: "Reactive Frame Engine has complete data model (Frame, Commit, Ref)"
+    severity: blocker
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 3: Frame (preserved + commitOrder addition),
+      Commit (order, changes, authorType, authorId, timestamp, parentOrder),
+      Ref (name, commitOrder). All shapes fully specified.
+
+  - assert: "Reactive Frame Engine has complete operations API"
+    severity: blocker
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 4: merge (evolved), getCommit, getCommits,
+      getLatestCommit, createRef, getRef, updateRef, deleteRef, listRefs, diff,
+      diffFrames, loadWindow, evict, getWindowBounds. All with signatures and descriptions.
+
+  - assert: "Implementation decision is justified (Pure JS, not Rust/WASM/isomorphic-git)"
+    severity: high
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 2: Pure JS chosen. Rejected alternatives
+      documented with reasons. Rust WASM (overkill for 500-800 lines), isomorphic-git
+      (filesystem mismatch, 72KB), libgit2 WASM (2.7MB, GPL 2, semi-abandoned).
+
+  - assert: "seqda removal decision is documented with rationale"
+    severity: high
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 2 seqda: "Drop seqda dependency". Rationale:
+      git-model replaces seqda's reactive state with commits + refs + diff. Events
+      via plain EventEmitter. Immutability by convention.
+
+  # --- Backward Compatibility ---
+
+  - assert: "merge() API is backward compatible (same signature, return type)"
+    severity: blocker
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 4 merge: "unchanged API signature. Still
+      accepts array of frames. Still returns array of affected/created frames."
+      New options (authorType, authorId) are optional with defaults.
+
+  - assert: "All 257 existing tests must pass after Phase A"
+    severity: blocker
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml Phase A step 1: "Adapt all 257 existing tests to
+      work without seqda." Phase A acceptance criteria: "All 257 existing FrameManager
+      tests pass (adapted, no seqda)."
+
+  # --- Permission Model ---
+
+  - assert: "Three-tier permission architecture is defined (auth, structural ACLs, policy)"
+    severity: blocker
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 5: Tier 1 (server authentication — external),
+      Tier 2 (commit validator — pluggable in FrameManager), Tier 3 (policy engine —
+      existing PermissionEngine, external). Tiers are orthogonal.
+
+  - assert: "Type restrictions per actor type are specified"
+    severity: high
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 5 type_restrictions: system (any type),
+      user (user-message, hml-prompt-value, permission-grant), agent (message,
+      tool-call, reflection, sub-agent-call), tool (tool-result, tool-error).
+
+  - assert: "Property protection rules are specified (immutable fields, system-only fields)"
+    severity: high
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 5 property_protection: immutable after
+      creation (type, authorType, authorId — nobody can change). System-only
+      (processed, processedAt). Others: mergeable properties only.
+
+  - assert: "Commit validator is pluggable and optional"
+    severity: high
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 4 commit_validator: constructor option,
+      type function|null, default null. "Omit for pure data tests." Consistent
+      with silent-rejection posture.
+
+  # --- Phased Build ---
+
+  - assert: "Three-phase build plan is defined (A: Foundation, B: Multi-Actor, C: Streaming)"
+    severity: blocker
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 9: Phase A (drop seqda, add commits/refs/diff),
+      Phase B (scheduler, multi-agent, async tools), Phase C (storage adapter, WebSocket,
+      viewport). Dependencies: A → B → C.
+
+  - assert: "Phase A has detailed implementation steps"
+    severity: blocker
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 10: 6 steps (regression adapter, commit log,
+      refs, diff, windowed loading, commit validator). Each step has description,
+      files, and test count targets.
+
+  - assert: "Phase A acceptance criteria are concrete and testable"
+    severity: blocker
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 11 phase_a: 17 concrete acceptance criteria
+      covering regression, commits, refs, diff, windowing, validator, and seqda removal.
+
+  # --- Events ---
+
+  - assert: "New events are defined alongside preserved existing events"
+    severity: high
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 6: 8 existing events preserved. 5 new events
+      (commit, ref:updated, ref:created, ref:deleted, commit:rejected).
+
+  # --- Storage ---
+
+  - assert: "Storage adapter interface is defined for future phases"
+    severity: medium
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 8: interface with loadFrames, loadCommits,
+      saveCommit, loadRefs, saveRef. Three implementations planned (memory, sqlite,
+      indexeddb). SQL query patterns documented.
+
+  - assert: "Database query patterns avoid pathological 'many small files' problem"
+    severity: high
+    status: pass
+    notes: >
+      reactive-frame-engine.yaml section 8 query_patterns: "Frames stored as rows
+      with JSON content — NOT as many small files." Common queries use range-based
+      ORDER BY order. Hybrid model: SQL for frames, git-model for commits/refs/diff.
+
+  # --- Needs Clarification ---
+
+  - assert: "Interaction between reactive-frame-engine and existing InteractionLoop is specified"
+    severity: blocker
+    status: needs-clarification
+    notes: >
+      Phase B lists "Evolve InteractionLoop to use ref-based scheduling" but the
+      reactive-frame-engine.yaml does not detail HOW the InteractionLoop changes.
+      The scheduler is described conceptually but not formally specified. This is
+      acceptable for Phase A (which doesn't touch InteractionLoop) but must be
+      resolved before Phase B.
+
+  - assert: "Message assembly v2 format (frame IDs, XML tags) is specified"
+    severity: high
+    status: needs-clarification
+    notes: >
+      Phase B lists "Message assembly v2: frame IDs, source attribution, XML-like
+      tags" but the exact format is not formally specified in the plan. The
+      conversation contains examples but the plan YAML should capture the agreed
+      format. Acceptable to defer to Phase B planning.
+
+  - assert: "Reactive Frame Engine fits architecture (src/core, no HTTP dependencies)"
+    severity: blocker
+    status: pass
+    notes: >
+      The FrameManager lives in src/shared/frame-manager/ (or src/core/frame-manager/).
+      The evolution adds pure data structures (commits, refs) and pure logic (diff,
+      windowing). No HTTP dependencies. Browser compatible via EventEmitter polyfill.
+
+  - assert: "Reactive Frame Engine has no conflicts with existing plan"
+    severity: blocker
+    status: pass
+    notes: >
+      The evolution REPLACES Phase 3 Step 23 ("Interaction resumability enhancements")
+      with a more comprehensive solution. It SUPERSEDES seqda dependency (dropped).
+      It EXTENDS the permission system (Tier 2 structural ACLs complement existing
+      Tier 3 policy engine). No conflicts detected.

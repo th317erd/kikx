@@ -73,10 +73,13 @@ export class InteractionController extends ControllerAuthBase {
         let parsed = parseShellCommands(toolArgs.command);
 
         if (parsed.length > 0) {
+          // Look up ShellTool class so the engine can use ShellPermissions.matchesRule()
+          let ShellToolClass  = pluginRegistry.getTool('shell:execute');
           let permissionOptions = {
             organizationID: agent.organizationID,
             scope:          'session',
             scopeID:        params.sessionId,
+            toolClass:      ShellToolClass,
           };
 
           let anyNeedsApproval = false;
@@ -233,6 +236,10 @@ export class InteractionController extends ControllerAuthBase {
             scope:       'session',
             scopeID:     params.sessionId,
             createdBy:   this.request.userId,
+            metadata:    {
+              command:   decision.command,
+              arguments: decision.arguments || [],
+            },
           });
         }
       }

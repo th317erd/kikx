@@ -5,13 +5,15 @@ import {
   setAuthCheck,
   setUnauthorizedRedirect,
   onRouteChange,
+  navigate,
   start,
   stop,
 } from '../../lib/router.mjs';
 
-import { profile } from '../../lib/store.mjs';
+import { profile, theme } from '../../lib/store.mjs';
 import { setLocale } from '../../lib/i18n.mjs';
 import { setAuthToken, loadPersistedAuth, clearPersistedAuth, setOnUnauthorized } from '../../lib/api.mjs';
+import { init as initDebug } from '../../lib/debug.mjs';
 import en from '../../lib/locales/en.mjs';
 
 // Pre-import all custom element components
@@ -32,6 +34,7 @@ class KikxApplication extends HTMLElement {
 
   connectedCallback() {
     setLocale(en, 'en');
+    initDebug();
 
     // Restore auth from localStorage
     let saved = loadPersistedAuth();
@@ -40,10 +43,20 @@ class KikxApplication extends HTMLElement {
       profile.setUser(saved.user, saved.token);
     }
 
-    // On 401, clear persisted auth and redirect to login
+    // Restore accent color from localStorage
+    try {
+      let savedAccent = localStorage.getItem('kikx_accent');
+      if (savedAccent) {
+        theme.setAccent(savedAccent);
+        document.documentElement.setAttribute('data-accent', savedAccent);
+      }
+    } catch (_e) { /* storage unavailable */ }
+
+    // On 401, clear persisted auth and redirect to login immediately
     setOnUnauthorized(() => {
       clearPersistedAuth();
       profile.logout();
+      navigate('/kikx/login', { replace: true });
     });
 
     defineRoute('/kikx/login',        'login');

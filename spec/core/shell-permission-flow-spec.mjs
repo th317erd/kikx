@@ -351,6 +351,144 @@ describe('Shell Permission Flow (per-command)', () => {
   });
 
   // ===========================================================================
+  // 4b. Argument-level matching (ShellPermissions.matchesRule)
+  // ===========================================================================
+
+  describe('argument-level matching via ShellPermissions', () => {
+    let ShellToolClass;
+
+    before(() => {
+      let pluginRegistry = context.getProperty('pluginRegistry');
+      ShellToolClass     = pluginRegistry.getTool('shell:execute');
+    });
+
+    it('should auto-allow when command AND arguments match exactly', async () => {
+      let { session, organizationID } = await createTestSession();
+
+      await permissionEngine.createRule({
+        organizationID,
+        featureName: 'shell:ls',
+        effect:      'allow',
+        scope:       'session',
+        scopeID:     session.id,
+        createdBy:   'user_test',
+        metadata:    { command: 'ls', arguments: ['-la', '/tmp/'] },
+      });
+
+      let options = { organizationID, scope: 'session', scopeID: session.id, toolClass: ShellToolClass };
+      let needs   = await permissionEngine.checkPermission('shell:ls', { command: 'ls', arguments: ['-la', '/tmp/'] }, options);
+
+      assert.equal(needs, false, 'Exact match should be auto-allowed');
+    });
+
+    it('should NOT auto-allow when arguments differ', async () => {
+      let { session, organizationID } = await createTestSession();
+
+      await permissionEngine.createRule({
+        organizationID,
+        featureName: 'shell:ls',
+        effect:      'allow',
+        scope:       'session',
+        scopeID:     session.id,
+        createdBy:   'user_test',
+        metadata:    { command: 'ls', arguments: ['-la', '/tmp/'] },
+      });
+
+      let options = { organizationID, scope: 'session', scopeID: session.id, toolClass: ShellToolClass };
+      let needs   = await permissionEngine.checkPermission('shell:ls', { command: 'ls', arguments: ['/etc/shadow'] }, options);
+
+      assert.equal(needs, true, 'Different arguments should still need approval');
+    });
+
+    it('should NOT auto-allow when argument count differs', async () => {
+      let { session, organizationID } = await createTestSession();
+
+      await permissionEngine.createRule({
+        organizationID,
+        featureName: 'shell:ls',
+        effect:      'allow',
+        scope:       'session',
+        scopeID:     session.id,
+        createdBy:   'user_test',
+        metadata:    { command: 'ls', arguments: ['-la', '/tmp/'] },
+      });
+
+      let options = { organizationID, scope: 'session', scopeID: session.id, toolClass: ShellToolClass };
+      let needs   = await permissionEngine.checkPermission('shell:ls', { command: 'ls', arguments: [] }, options);
+
+      assert.equal(needs, true, 'No-argument ls should not be covered by ls -la /tmp/ rule');
+    });
+
+    it('should deny-forever with argument matching', async () => {
+      let { session, organizationID } = await createTestSession();
+
+      await permissionEngine.createRule({
+        organizationID,
+        featureName: 'shell:rm',
+        effect:      'deny',
+        scope:       'session',
+        scopeID:     session.id,
+        createdBy:   'user_test',
+        metadata:    { command: 'rm', arguments: ['-rf', '/'] },
+      });
+
+      let options = { organizationID, scope: 'session', scopeID: session.id, toolClass: ShellToolClass };
+
+      // Exact match should be denied
+      await assert.rejects(
+        () => permissionEngine.checkPermission('shell:rm', { command: 'rm', arguments: ['-rf', '/'] }, options),
+        (error) => {
+          assert.equal(error.name, 'PermissionDeniedError');
+          return true;
+        },
+      );
+
+      // Different arguments should NOT be denied by this rule
+      let needs = await permissionEngine.checkPermission('shell:rm', { command: 'rm', arguments: ['file.txt'] }, options);
+      assert.equal(needs, true, 'rm file.txt should need approval (not auto-denied by rm -rf / rule)');
+    });
+
+    it('should NOT match when arguments are in different order', async () => {
+      let { session, organizationID } = await createTestSession();
+
+      await permissionEngine.createRule({
+        organizationID,
+        featureName: 'shell:ls',
+        effect:      'allow',
+        scope:       'session',
+        scopeID:     session.id,
+        createdBy:   'user_test',
+        metadata:    { command: 'ls', arguments: ['-la', '/tmp/'] },
+      });
+
+      let options = { organizationID, scope: 'session', scopeID: session.id, toolClass: ShellToolClass };
+
+      // Same args, different order — should NOT match (argument order is semantically meaningful)
+      let needs = await permissionEngine.checkPermission('shell:ls', { command: 'ls', arguments: ['/tmp/', '-la'] }, options);
+      assert.equal(needs, true, 'Different argument order should require fresh approval');
+    });
+
+    it('should fall through to default when no metadata rules match', async () => {
+      let { session, organizationID } = await createTestSession();
+
+      // Rule WITHOUT metadata (legacy style) — matches everything
+      await permissionEngine.createRule({
+        organizationID,
+        featureName: 'shell:cat',
+        effect:      'allow',
+        scope:       'session',
+        scopeID:     session.id,
+        createdBy:   'user_test',
+      });
+
+      let options = { organizationID, scope: 'session', scopeID: session.id, toolClass: ShellToolClass };
+      let needs   = await permissionEngine.checkPermission('shell:cat', { command: 'cat', arguments: ['/etc/passwd'] }, options);
+
+      assert.equal(needs, false, 'Rule without metadata should match any arguments (legacy compat)');
+    });
+  });
+
+  // ===========================================================================
   // 5. Deny with replay
   // ===========================================================================
 

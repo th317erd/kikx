@@ -87,10 +87,11 @@ function verifyJWT(token, secret) {
 // --- Errors ---
 
 export class AuthError extends Error {
-  constructor(message, code) {
+  constructor(message, code, statusCode) {
     super(message);
-    this.name = 'AuthError';
-    this.code = code || 'AUTH_ERROR';
+    this.name       = 'AuthError';
+    this.code       = code || 'AUTH_ERROR';
+    this.statusCode = statusCode || 401;
   }
 }
 
@@ -102,21 +103,21 @@ const DEFAULT_EXPIRY_SEC = 30 * 24 * 60 * 60; // 30 days
 
 function validateEmail(email) {
   if (!email || typeof email !== 'string')
-    throw new AuthError('Email is required', 'INVALID_EMAIL');
+    throw new AuthError('Email is required', 'INVALID_EMAIL', 400);
 
   let trimmed = email.trim().toLowerCase();
   if (!EMAIL_PATTERN.test(trimmed))
-    throw new AuthError('Invalid email format', 'INVALID_EMAIL');
+    throw new AuthError('Invalid email format', 'INVALID_EMAIL', 400);
 
   return trimmed;
 }
 
 function validatePassword(password) {
   if (!password || typeof password !== 'string')
-    throw new AuthError('Password is required', 'INVALID_PASSWORD');
+    throw new AuthError('Password is required', 'INVALID_PASSWORD', 400);
 
   if (password.length < MIN_PASSWORD_LEN)
-    throw new AuthError(`Password must be at least ${MIN_PASSWORD_LEN} characters`, 'INVALID_PASSWORD');
+    throw new AuthError(`Password must be at least ${MIN_PASSWORD_LEN} characters`, 'INVALID_PASSWORD', 400);
 }
 
 // --- AuthService ---
@@ -172,7 +173,7 @@ export class AuthService {
     // Check for existing user
     let existing = await User.where.email.EQ(normalizedEmail).first();
     if (existing)
-      throw new AuthError('Email already registered', 'DUPLICATE_EMAIL');
+      throw new AuthError('Email already registered', 'DUPLICATE_EMAIL', 409);
 
     // Create organization
     let orgName      = options.organizationName || `${normalizedEmail}'s Organization`;
@@ -303,6 +304,16 @@ function extractToken(req) {
     let parts = authHeader.split(' ');
     if (parts.length === 2 && parts[0].toLowerCase() === 'bearer')
       return parts[1];
+  }
+
+  // 3. Query parameter: ?token=xxx (for EventSource/SSE which can't set headers)
+  let url  = req.url || '';
+  let qIdx = url.indexOf('?');
+  if (qIdx >= 0) {
+    let params = new URLSearchParams(url.substring(qIdx));
+    let qToken = params.get('token');
+    if (qToken)
+      return qToken;
   }
 
   return null;

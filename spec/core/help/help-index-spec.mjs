@@ -26,7 +26,7 @@ describe('HelpIndex', () => {
     );
   });
 
-  it('should return empty entries when no tools registered', () => {
+  it('should return empty entries when no tools or commands registered', () => {
     let index   = new HelpIndex(registry);
     let entries = index.getEntries();
     assert.ok(Array.isArray(entries));
@@ -53,10 +53,45 @@ describe('HelpIndex', () => {
 
     let index   = new HelpIndex(registry);
     let entries = index.getEntries();
+    let tools   = entries.filter((e) => e.category === 'tool');
+
+    assert.equal(tools.length, 2);
+    assert.ok(tools.some((e) => e.name === 'toolA:run'));
+    assert.ok(tools.some((e) => e.name === 'toolB:execute'));
+  });
+
+  it('should enumerate registered commands', () => {
+    registry.registerCommand('reload', () => {}, {
+      description: 'Reload instructions',
+      usage:       '/reload',
+    });
+
+    let index    = new HelpIndex(registry);
+    let entries  = index.getEntries();
+    let commands = entries.filter((e) => e.category === 'command');
+
+    assert.equal(commands.length, 1);
+    assert.equal(commands[0].name, '/reload');
+    assert.equal(commands[0].description, 'Reload instructions');
+  });
+
+  it('should include both tools and commands in entries', () => {
+    class ToolA extends PluginInterface {
+      static pluginId    = 'toolA';
+      static featureName = 'run';
+      static displayName = 'Tool A';
+      static description = 'A tool';
+    }
+
+    registry.registerTool('toolA:run', ToolA);
+    registry.registerCommand('help', () => {}, { description: 'Show help' });
+
+    let index   = new HelpIndex(registry);
+    let entries = index.getEntries();
 
     assert.equal(entries.length, 2);
-    assert.ok(entries.some((e) => e.toolName === 'toolA:run'));
-    assert.ok(entries.some((e) => e.toolName === 'toolB:execute'));
+    assert.ok(entries.some((e) => e.category === 'tool' && e.name === 'toolA:run'));
+    assert.ok(entries.some((e) => e.category === 'command' && e.name === '/help'));
   });
 
   it('should include help metadata from getHelp()', () => {
@@ -72,11 +107,12 @@ describe('HelpIndex', () => {
 
     let index   = new HelpIndex(registry);
     let entries = index.getEntries();
+    let tools   = entries.filter((e) => e.category === 'tool');
 
-    assert.equal(entries.length, 1);
-    assert.equal(entries[0].displayName, 'Tool C');
-    assert.equal(entries[0].description, 'A test tool');
-    assert.equal(entries[0].icon, 'wrench');
+    assert.equal(tools.length, 1);
+    assert.equal(tools[0].displayName, 'Tool C');
+    assert.equal(tools[0].description, 'A test tool');
+    assert.equal(tools[0].icon, 'wrench');
   });
 
   // -------------------------------------------------------------------------
@@ -116,7 +152,7 @@ describe('HelpIndex', () => {
       let results = index.search('shell');
 
       assert.equal(results.length, 1);
-      assert.equal(results[0].toolName, 'shell:execute');
+      assert.equal(results[0].name, 'shell:execute');
     });
 
     it('should search by display name', () => {
@@ -124,7 +160,7 @@ describe('HelpIndex', () => {
       let results = index.search('Web Search');
 
       assert.equal(results.length, 1);
-      assert.equal(results[0].toolName, 'websearch:fetch');
+      assert.equal(results[0].name, 'websearch:fetch');
     });
 
     it('should search by description', () => {
@@ -132,7 +168,7 @@ describe('HelpIndex', () => {
       let results = index.search('web pages');
 
       assert.equal(results.length, 1);
-      assert.equal(results[0].toolName, 'websearch:fetch');
+      assert.equal(results[0].name, 'websearch:fetch');
     });
 
     it('should be case-insensitive', () => {
@@ -140,7 +176,7 @@ describe('HelpIndex', () => {
       let results = index.search('SHELL');
 
       assert.equal(results.length, 1);
-      assert.equal(results[0].toolName, 'shell:execute');
+      assert.equal(results[0].name, 'shell:execute');
     });
 
     it('should return all entries for empty query', () => {
@@ -169,7 +205,33 @@ describe('HelpIndex', () => {
       let results = index.search('execute');
 
       assert.ok(results.length >= 1);
-      assert.ok(results.some((e) => e.toolName === 'shell:execute'));
+      assert.ok(results.some((e) => e.name === 'shell:execute'));
+    });
+
+    it('should search across commands too', () => {
+      registry.registerCommand('reload', () => {}, {
+        description: 'Reload the agent instructions',
+      });
+
+      let index   = new HelpIndex(registry);
+      let results = index.search('reload');
+
+      assert.ok(results.length >= 1);
+      assert.ok(results.some((e) => e.name === '/reload' && e.category === 'command'));
+    });
+
+    it('should search by category', () => {
+      registry.registerCommand('mytest', () => {}, {
+        description: 'A test action',
+      });
+
+      let index   = new HelpIndex(registry);
+      let results = index.search('command');
+
+      // "command" matches the category field of commands, and also
+      // tool descriptions containing "command" (e.g., "Execute shell commands")
+      assert.ok(results.length >= 1);
+      assert.ok(results.some((e) => e.category === 'command'));
     });
   });
 });
@@ -197,7 +259,7 @@ describe('HelpTool integration', () => {
     assert.ok(ToolClass, 'help:search should be registered');
   });
 
-  it('should return all tools when no query', async () => {
+  it('should return all tools and commands when no query', async () => {
     let registry  = core.getPluginRegistry();
     let ToolClass = registry.getTool('help:search');
     let tool      = new ToolClass(core.getContext());
@@ -216,6 +278,6 @@ describe('HelpTool integration', () => {
 
     assert.ok(result.entries);
     assert.ok(result.entries.length >= 1);
-    assert.ok(result.entries.some((e) => e.toolName === 'shell:execute'));
+    assert.ok(result.entries.some((e) => e.name === 'shell:execute'));
   });
 });

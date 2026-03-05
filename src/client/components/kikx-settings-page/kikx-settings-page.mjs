@@ -3,9 +3,10 @@
 import { t } from '../../lib/i18n.mjs';
 import { navigate } from '../../lib/router.mjs';
 import { profile } from '../../lib/store.mjs';
-import { clearPersistedAuth, updateProfile } from '../../lib/api.mjs';
+import { clearPersistedAuth, updateProfile, getMe, persistAuth, getAuthToken } from '../../lib/api.mjs';
+import { theme } from '../../lib/store.mjs';
 
-const TAB_KEYS = ['profile', 'account', 'apiKeys', 'permissions', 'appearance', 'logout'];
+const TAB_KEYS = ['profile', 'account', 'permissions', 'appearance', 'logout'];
 
 const TEMPLATE_HTML = `
   <style>
@@ -62,7 +63,7 @@ const TEMPLATE_HTML = `
       color: var(--text-secondary, #a0a0b8);
       padding: var(--spacing-sm, 8px) var(--spacing-sm, 8px);
       cursor: pointer;
-      font-size: 0.9rem;
+      font-size: 1rem;
       border-bottom: 2px solid transparent;
       border-radius: var(--border-radius-small, 4px) var(--border-radius-small, 4px) 0 0;
       transition: color 0.2s ease, border-color 0.2s ease;
@@ -101,7 +102,7 @@ const TEMPLATE_HTML = `
 
     .form-label {
       display: block;
-      font-size: 0.85rem;
+      font-size: 1rem;
       color: var(--text-secondary, #a0a0b8);
       margin-bottom: var(--spacing-xs, 4px);
     }
@@ -114,7 +115,7 @@ const TEMPLATE_HTML = `
       border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
       border-radius: var(--border-radius-medium, 8px);
       color: var(--text-primary, #e8e8f0);
-      font-size: 0.9rem;
+      font-size: 1rem;
       outline: none;
       transition: border-color 0.2s ease;
     }
@@ -131,10 +132,10 @@ const TEMPLATE_HTML = `
     .form-button {
       padding: 8px 20px;
       background: var(--accent-primary, #00e5ff);
-      color: var(--text-inverse, #0a0a1a);
+      color: #fff;
       border: none;
       border-radius: var(--border-radius-medium, 8px);
-      font-size: 0.9rem;
+      font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
       transition: box-shadow 0.2s ease;
@@ -165,7 +166,7 @@ const TEMPLATE_HTML = `
     }
 
     .form-hint {
-      font-size: 0.8rem;
+      font-size: 1rem;
       color: var(--text-muted, #606078);
       margin-top: 2px;
     }
@@ -180,7 +181,7 @@ const TEMPLATE_HTML = `
       border-radius: var(--border-radius-medium, 8px);
       color: var(--text-primary, #e8e8f0);
       cursor: pointer;
-      font-size: 0.85rem;
+      font-size: 1rem;
     }
 
     .theme-option.selected {
@@ -209,7 +210,7 @@ const TEMPLATE_HTML = `
       border: 1px solid rgba(255, 193, 7, 0.3);
       border-radius: var(--border-radius-medium, 8px);
       color: #ffc107;
-      font-size: 0.8rem;
+      font-size: 1rem;
     }
 
     .email-pending.visible {
@@ -218,7 +219,7 @@ const TEMPLATE_HTML = `
 
     .logout-description {
       color: var(--text-secondary, #a0a0b8);
-      font-size: 0.9rem;
+      font-size: 1rem;
       margin-bottom: var(--spacing-md, 16px);
     }
   </style>
@@ -306,7 +307,6 @@ class KikxSettingsPage extends HTMLElement {
     return {
       profile:     this._buildProfileTab,
       account:     this._buildAccountTab,
-      apiKeys:     this._buildApiKeysTab,
       permissions: this._buildPermissionsTab,
       appearance:  this._buildAppearanceTab,
       logout:      this._buildLogoutTab,
@@ -397,13 +397,18 @@ class KikxSettingsPage extends HTMLElement {
       }
 
       try {
-        let result = await updateProfile(updates);
-        let userData = (result && result.data) ? result.data : updates;
+        await updateProfile(updates);
 
-        profile.setUser(
-          { ...profile.getUser(), ...userData },
-          profile.getUser()?.token,
-        );
+        // Re-fetch full profile from server (includes avatar data)
+        let meResult = await getMe();
+        let freshUser = (meResult && meResult.data) ? meResult.data : null;
+
+        if (freshUser) {
+          let currentUser = profile.getUser() || {};
+          let merged = { ...currentUser, ...freshUser };
+          profile.setUser(merged, getAuthToken());
+          persistAuth(getAuthToken(), merged);
+        }
 
         this._pendingAvatar = null;
       } catch (error) {
@@ -462,14 +467,6 @@ class KikxSettingsPage extends HTMLElement {
     `;
   }
 
-  _buildApiKeysTab(panel) {
-    panel.innerHTML = `
-      <div class="section-heading">${t('settings.apiKeys.heading')}</div>
-      <div class="empty-state">${t('settings.apiKeys.empty')}</div>
-      <button class="form-button" type="button">${t('settings.apiKeys.createButton')}</button>
-    `;
-  }
-
   _buildPermissionsTab(panel) {
     panel.innerHTML = `
       <div class="section-heading">${t('settings.permissions.heading')}</div>
@@ -478,18 +475,48 @@ class KikxSettingsPage extends HTMLElement {
   }
 
   _buildAppearanceTab(panel) {
+    let currentAccent = theme.getAccent() || 'cyan';
+
+    let accents = [
+      { key: 'cyan',   label: 'Cyan',   color: '#00e5ff' },
+      { key: 'purple', label: 'Purple', color: '#b040ff' },
+      { key: 'green',  label: 'Green',  color: '#00e676' },
+      { key: 'blue',   label: 'Blue',   color: '#448aff' },
+      { key: 'pink',   label: 'Pink',   color: '#ff4081' },
+      { key: 'orange', label: 'Orange', color: '#ff9100' },
+      { key: 'red',    label: 'Red',    color: '#ff1744' },
+      { key: 'yellow', label: 'Yellow', color: '#ffea00' },
+    ];
+
     panel.innerHTML = `
       <div class="section-heading">${t('settings.appearance.themeHeading')}</div>
       <div>
         <span class="theme-option selected">Black Glass</span>
       </div>
       <div class="section-heading">${t('settings.appearance.accentHeading')}</div>
-      <div>
-        <span class="theme-option selected" style="color: #00e5ff;">Cyan</span>
-        <span class="theme-option" style="color: #e040fb;">Purple</span>
-        <span class="theme-option" style="color: #00e676;">Green</span>
+      <div class="accent-options">
+        ${accents.map((a) => `<span class="theme-option${a.key === currentAccent ? ' selected' : ''}" data-accent="${a.key}" style="color: ${a.color};">${a.label}</span>`).join('\n        ')}
       </div>
     `;
+
+    panel.querySelector('.accent-options').addEventListener('click', (event) => {
+      let option = event.target.closest('.theme-option[data-accent]');
+      if (!option)
+        return;
+
+      let accent = option.dataset.accent;
+      theme.setAccent(accent);
+      document.documentElement.setAttribute('data-accent', accent);
+
+      // Persist to localStorage
+      try {
+        localStorage.setItem('kikx_accent', accent);
+      } catch (_e) { /* storage unavailable */ }
+
+      // Update selected state
+      for (let opt of panel.querySelectorAll('.accent-options .theme-option'))
+        opt.classList.toggle('selected', opt.dataset.accent === accent);
+    });
   }
 
   _buildLogoutTab(panel) {

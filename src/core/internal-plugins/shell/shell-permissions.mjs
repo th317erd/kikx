@@ -17,13 +17,37 @@ import { Permissions } from '../../permissions/permissions-base.mjs';
 
 export class ShellPermissions extends Permissions {
   matchesRule(rule, args, metadata) {
+    // If the rule has stored command + arguments, require exact argument match.
+    // This prevents "allow forever ls -la /tmp/" from auto-allowing "ls /etc/shadow".
+    if (metadata && metadata.command && args) {
+      // Command name must match
+      if (args.command !== metadata.command)
+        return { matches: false };
+
+      // Arguments must match positionally — argument order is semantically meaningful
+      // in shell commands (e.g. mv src dest vs mv dest src).
+      let ruleArgs    = metadata.arguments || [];
+      let currentArgs = args.arguments || [];
+
+      if (ruleArgs.length !== currentArgs.length)
+        return { matches: false };
+
+      for (let i = 0; i < ruleArgs.length; i++) {
+        if (ruleArgs[i] !== currentArgs[i])
+          return { matches: false };
+      }
+
+      return { matches: true };
+    }
+
+    // Legacy: allowedCommands array (command-name-only matching)
     if (metadata && metadata.allowedCommands && args && args.command) {
       let baseCommand = args.command.split(/\s+/)[0];
 
       return { matches: metadata.allowedCommands.includes(baseCommand) };
     }
 
-    return { matches: true }; // no command filter = rule matches
+    return { matches: true }; // no metadata filter = rule matches
   }
 
   // Legacy static method (backward compat with existing tests)

@@ -97,7 +97,8 @@ location /kikx/ {
     return 404;
   }
 
-  # SPA history API fallback — unmatched paths serve index.html
-  # Last arg must be a URI (not filesystem path) — nginx does an internal redirect
-  try_files $uri $uri/ /kikx/index.html;
+  # SPA history API fallback
+  # Note: try_files with alias is buggy in nginx, so we use error_page instead.
+  # When a file isn't found, internally redirect to index.html for client-side routing.
+  error_page 404 = /kikx/index.html;
 }

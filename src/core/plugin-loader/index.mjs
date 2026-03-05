@@ -130,6 +130,7 @@ export class PluginLoader {
       registerCustomElement: (tagName)         => registry.registerCustomElement(tagName),
       registerAgentType:     (id, AgentClass)  => registry.registerAgentType(id, AgentClass),
       registerHook:          (hookName, handler) => registry.registerHook(hookName, handler),
+      registerInstructions:  (content, options) => registry.registerInstructions(pluginName, content, options),
     };
   }
 

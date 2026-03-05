@@ -33,7 +33,7 @@ const TEMPLATE_HTML = `
     .panel p {
       margin: 0;
       color: var(--text-secondary, #a0a0b8);
-      font-size: 0.875rem;
+      font-size: 1rem;
       line-height: 1.5;
     }
   </style>

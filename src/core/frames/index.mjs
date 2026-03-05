@@ -261,21 +261,23 @@ export class FramePersistence {
     }
 
     return {
-      id:          record.id,
-      type:        record.type,
-      content:     (content !== undefined && content !== null) ? content : {},
-      targets:     (targets !== undefined && targets !== null) ? targets : [],
-      parentId:    record.parentID || null,
-      groupId:     record.groupID || null,
-      groupType:   record.groupType || null,
-      order:       record.order,
-      timestamp:   record.timestamp,
-      hidden:      record.hidden,
-      deleted:     record.deleted,
-      processed:   record.processed,
-      processedAt: record.processedAt,
-      authorType:  record.authorType || null,
-      authorID:    record.authorID || null,
+      id:            record.id,
+      interactionID: record.interactionID || null,
+      type:          record.type,
+      content:       (content !== undefined && content !== null) ? content : {},
+      targets:       (targets !== undefined && targets !== null) ? targets : [],
+      parentId:      record.parentID || null,
+      groupId:       record.groupID || null,
+      groupType:     record.groupType || null,
+      order:         record.order,
+      timestamp:     record.timestamp,
+      hidden:        record.hidden,
+      deleted:       record.deleted,
+      processed:     record.processed,
+      processedAt:   record.processedAt,
+      authorType:    record.authorType || null,
+      authorID:      record.authorID || null,
+      createdAt:     record.createdAt || null,
     };
   }
 }

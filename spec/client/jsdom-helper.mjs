@@ -28,7 +28,8 @@ export function setupDOM(options = {}) {
     HTMLElement:     window.HTMLElement,
     CustomEvent:    window.CustomEvent,
     customElements: window.customElements,
-    localStorage:   window.localStorage,
+    localStorage:    window.localStorage,
+    sessionStorage:  window.sessionStorage,
     history:        window.history,
     location:       window.location,
     Event:          window.Event,
@@ -58,6 +59,7 @@ export function teardownDOM() {
   delete globalThis.CustomEvent;
   delete globalThis.customElements;
   delete globalThis.localStorage;
+  delete globalThis.sessionStorage;
   delete globalThis.history;
   delete globalThis.location;
   delete globalThis.Event;

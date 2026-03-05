@@ -6,14 +6,14 @@ const TEMPLATE_HTML = `
   <style>
     :host { display: block; }
     .form-group { margin-bottom: 16px; }
-    .form-label { display: block; font-size: 0.875rem; font-weight: 600; color: var(--text-secondary, #a0a0b8); margin-bottom: 6px; }
+    .form-label { display: block; font-size: 1rem; font-weight: 600; color: var(--text-secondary, #a0a0b8); margin-bottom: 6px; }
     .session-name-input { width: 100%; box-sizing: border-box; padding: 10px 14px; font-size: 1rem; background: var(--input-background, rgba(255,255,255,0.05)); border: 1px solid var(--input-border, rgba(255,255,255,0.12)); border-radius: var(--border-radius-medium, 8px); color: var(--text-primary, #e8e8f0); outline: none; font-family: inherit; }
     .session-name-input:focus { border-color: var(--accent-primary, #00e5ff); box-shadow: 0 0 8px var(--accent-glow, rgba(0,229,255,0.30)); }
     .button-row { display: flex; gap: var(--spacing-sm, 8px); justify-content: flex-end; }
-    .create-button { background: var(--accent-primary, #00e5ff); color: var(--bg-primary, #0a0a12); border: none; border-radius: var(--border-radius-small, 4px); padding: 10px 24px; font-weight: 600; font-size: 0.875rem; cursor: pointer; }
+    .create-button { background: var(--accent-primary, #00e5ff); color: #fff; border: none; border-radius: var(--border-radius-small, 4px); padding: 10px 24px; font-weight: 600; font-size: 1rem; cursor: pointer; }
     .create-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0,229,255,0.40)); }
     .create-button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .cancel-button { background: none; border: 1px solid var(--glass-border, rgba(255,255,255,0.10)); color: var(--text-secondary, #a0a0b8); border-radius: var(--border-radius-small, 4px); padding: 10px 20px; font-size: 0.875rem; cursor: pointer; }
+    .cancel-button { background: none; border: 1px solid var(--glass-border, rgba(255,255,255,0.10)); color: var(--text-secondary, #a0a0b8); border-radius: var(--border-radius-small, 4px); padding: 10px 20px; font-size: 1rem; cursor: pointer; }
     .cancel-button:hover { background: var(--glass-hover, rgba(255,255,255,0.08)); }
   </style>
 

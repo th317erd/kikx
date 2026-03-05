@@ -50,6 +50,10 @@ export class PermissionEngine {
     let { organizationID, scope, scopeID, verifyFingerprint, userKey, toolClass } = options;
     let { PermissionRule } = this._getModels();
 
+    // Auto-allow tools with no risk (e.g. help:search)
+    if (toolClass && toolClass.riskLevel === 'none')
+      return false;
+
     // Safety net: critical tools always need approval regardless of rules
     if (toolClass && toolClass.riskLevel === 'critical')
       return true;

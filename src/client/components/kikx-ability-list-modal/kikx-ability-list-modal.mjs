@@ -14,7 +14,7 @@ const TEMPLATE_HTML = `
 
     .tab-button {
       background: none; border: none;
-      padding: 8px 16px; font-size: 0.875rem;
+      padding: 8px 16px; font-size: 1rem;
       color: var(--text-muted, #606078);
       cursor: pointer;
       border-bottom: 2px solid transparent;
@@ -41,13 +41,13 @@ const TEMPLATE_HTML = `
     .ability-card:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }
 
     .ability-name {
-      font-weight: 600; font-size: 0.9375rem;
+      font-weight: 600; font-size: 1rem;
       color: var(--text-primary, #e8e8f0);
     }
 
     .category-badge {
       display: inline-block; padding: 1px 8px;
-      border-radius: 3px; font-size: 0.7rem;
+      border-radius: 3px; font-size: 1rem;
       font-weight: 600; text-transform: uppercase;
       background: rgba(0, 229, 255, 0.15);
       color: var(--accent-primary, #00e5ff);
@@ -55,7 +55,7 @@ const TEMPLATE_HTML = `
     }
 
     .ability-description {
-      font-size: 0.8125rem;
+      font-size: 1rem;
       color: var(--text-secondary, #a0a0b8);
       margin-top: 4px; line-height: 1.4;
     }
@@ -63,15 +63,15 @@ const TEMPLATE_HTML = `
     .empty-state {
       text-align: center; padding: 20px;
       color: var(--text-muted, #606078);
-      font-size: 0.875rem;
+      font-size: 1rem;
     }
 
     .add-button {
       width: 100%; margin-top: var(--spacing-sm, 8px);
       padding: 10px; background: var(--accent-primary, #00e5ff);
-      color: var(--bg-primary, #0a0a12); border: none;
+      color: #fff; border: none;
       border-radius: var(--border-radius-small, 4px);
-      font-weight: 600; font-size: 0.875rem; cursor: pointer;
+      font-weight: 600; font-size: 1rem; cursor: pointer;
     }
 
     .add-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }

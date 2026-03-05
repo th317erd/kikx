@@ -5,11 +5,11 @@ const TEMPLATE_HTML = `
     :host { display: block; padding: var(--spacing-xs, 4px) 0; }
     .participant-row { display: flex; align-items: center; gap: 8px; padding: 6px var(--spacing-sm, 8px); border-radius: var(--border-radius-small, 4px); transition: background 0.2s ease; cursor: pointer; }
     .participant-row:hover { background: var(--glass-hover, rgba(255,255,255,0.08)); }
-    .participant-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.7rem; color: #fff; flex-shrink: 0; }
-    .participant-name { flex: 1; font-size: 0.8125rem; color: var(--text-primary, #e8e8f0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .participant-role { font-size: 0.7rem; color: var(--text-muted, #606078); text-transform: uppercase; letter-spacing: 0.05em; flex-shrink: 0; }
+    .participant-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1rem; color: #fff; flex-shrink: 0; }
+    .participant-name { flex: 1; font-size: 1rem; color: var(--text-primary, #e8e8f0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .participant-role { font-size: 1rem; color: var(--text-muted, #606078); text-transform: uppercase; letter-spacing: 0.05em; flex-shrink: 0; }
     .coordinator-badge { color: var(--accent-primary, #00e5ff); }
-    .empty-state { text-align: center; padding: 12px; color: var(--text-muted, #606078); font-size: 0.8125rem; }
+    .empty-state { text-align: center; padding: 12px; color: var(--text-muted, #606078); font-size: 1rem; }
   </style>
 
   <div class="list-container"></div>

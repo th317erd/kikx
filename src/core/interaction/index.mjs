@@ -275,6 +275,20 @@ export class InteractionLoop extends EventEmitter {
           continue;
         }
 
+        // Partial usage updates — emitted mid-stream so interrupted interactions
+        // (e.g. permission hard-breaks) still report token counts.
+        if (block.type === 'usage') {
+          if (block.content && block.content.usage) {
+            this.emit('interaction:usage', {
+              sessionID,
+              interactionID,
+              usage: block.content.usage,
+            });
+          }
+
+          continue;
+        }
+
         // Assign metadata to the block
         let frameID   = generateID('frm_');
         let timestamp = Date.now();

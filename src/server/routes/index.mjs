@@ -182,6 +182,15 @@ export function getRoutes({ path }) {
             controller: 'FrameController.list',
           });
 
+          nestedPath('frames', ({ endpoint, capture }) => {
+            let frameId = capture('frameId');
+
+            endpoint(frameId, {
+              methods:    [ 'PATCH' ],
+              controller: 'FrameController.update',
+            });
+          });
+
           // Stream
           endpoint('stream', {
             methods:    [ 'GET' ],

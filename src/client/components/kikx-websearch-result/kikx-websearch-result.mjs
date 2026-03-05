@@ -10,7 +10,7 @@ const TEMPLATE_HTML = `
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: var(--border-radius-small, 4px);
-      font-size: 0.8125rem; color: var(--text-secondary, #a0a0b8);
+      font-size: 1rem; color: var(--text-secondary, #a0a0b8);
     }
 
     .search-icon { font-size: 1rem; }
@@ -35,7 +35,7 @@ const TEMPLATE_HTML = `
     .result-entry:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }
 
     .result-title {
-      font-weight: 600; font-size: 0.875rem;
+      font-weight: 600; font-size: 1rem;
       color: var(--accent-primary, #00e5ff);
       text-decoration: none; display: block;
     }
@@ -43,12 +43,12 @@ const TEMPLATE_HTML = `
     .result-title:hover { text-decoration: underline; }
 
     .result-url {
-      font-size: 0.75rem; color: var(--text-muted, #606078);
+      font-size: 1rem; color: var(--text-muted, #606078);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
 
     .result-snippet {
-      font-size: 0.8125rem; color: var(--text-secondary, #a0a0b8);
+      font-size: 1rem; color: var(--text-secondary, #a0a0b8);
       line-height: 1.4; margin-top: 2px;
     }
   </style>

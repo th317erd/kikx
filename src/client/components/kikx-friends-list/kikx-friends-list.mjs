@@ -18,6 +18,7 @@ const TEMPLATE_HTML = `
     :host::-webkit-scrollbar-thumb:hover {
       background: var(--text-muted, #606078);
     }
+    :host::-webkit-scrollbar-button { display: none; }
 
     .friend-row {
       display: flex;
@@ -35,7 +36,7 @@ const TEMPLATE_HTML = `
 
     .friend-name {
       flex: 1;
-      font-size: 0.875rem;
+      font-size: 1rem;
       color: var(--text-primary, #e8e8f0);
       white-space: nowrap;
       overflow: hidden;
@@ -46,7 +47,7 @@ const TEMPLATE_HTML = `
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.65rem;
+      font-size: 1rem;
       font-weight: 700;
       padding: 1px 6px;
       border-radius: 9999px;
@@ -67,7 +68,7 @@ const TEMPLATE_HTML = `
 
     .empty-message {
       padding: var(--spacing-sm, 8px);
-      font-size: 0.8rem;
+      font-size: 1rem;
       color: var(--text-muted, #606078);
       font-style: italic;
     }

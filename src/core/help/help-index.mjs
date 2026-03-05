@@ -4,7 +4,8 @@
 // HelpIndex
 // =============================================================================
 // Aggregates help entries from all registered plugins in the PluginRegistry.
-// Provides grep-style search across tool names, display names, descriptions.
+// Includes both tools (for agent use) and commands (for user slash commands).
+// Provides grep-style search across names, display names, descriptions.
 // =============================================================================
 
 export class HelpIndex {
@@ -16,27 +17,24 @@ export class HelpIndex {
   }
 
   // ---------------------------------------------------------------------------
-  // getEntries — build help entries from all registered tools
+  // getEntries — build help entries from all registered tools and commands
   // ---------------------------------------------------------------------------
 
   getEntries() {
     let entries = [];
-    let tools   = this._registry.getTools();
 
+    // --- Tools ---
+    let tools = this._registry.getTools();
     for (let [name, ToolClass] of tools) {
-      if (typeof ToolClass.prototype.getHelp === 'function') {
-        let helpData = ToolClass.prototype.getHelp.call({ constructor: ToolClass });
-        entries.push({ toolName: name, ...helpData });
-      } else {
-        // Fallback: build entry from static metadata
-        entries.push({
-          toolName:    name,
-          name:        `${ToolClass.pluginId}:${ToolClass.featureName}`,
-          displayName: ToolClass.displayName || name,
-          description: ToolClass.description || null,
-          icon:        ToolClass.icon || null,
-        });
-      }
+      let entry = this._buildToolEntry(name, ToolClass);
+      entries.push(entry);
+    }
+
+    // --- Commands ---
+    let commands = this._registry.getCommands();
+    for (let [name, commandEntry] of commands) {
+      let entry = this._buildCommandEntry(name, commandEntry);
+      entries.push(entry);
     }
 
     return entries;
@@ -55,10 +53,49 @@ export class HelpIndex {
     let lower = query.toLowerCase();
 
     return entries.filter((entry) => {
-      return (entry.toolName && entry.toolName.toLowerCase().includes(lower))
-        || (entry.name && entry.name.toLowerCase().includes(lower))
+      return (entry.name && entry.name.toLowerCase().includes(lower))
         || (entry.displayName && entry.displayName.toLowerCase().includes(lower))
-        || (entry.description && entry.description.toLowerCase().includes(lower));
+        || (entry.description && entry.description.toLowerCase().includes(lower))
+        || (entry.usage && entry.usage.toLowerCase().includes(lower))
+        || (entry.category && entry.category.toLowerCase().includes(lower));
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal: build entries
+  // ---------------------------------------------------------------------------
+
+  _buildToolEntry(name, ToolClass) {
+    let base = {
+      category:    'tool',
+      name,
+      displayName: ToolClass.displayName || name,
+      description: ToolClass.description || null,
+      icon:        ToolClass.icon || null,
+      riskLevel:   ToolClass.riskLevel || 'high',
+      inputSchema: ToolClass.inputSchema || null,
+    };
+
+    // Merge data from getHelp() if available
+    if (typeof ToolClass.prototype.getHelp === 'function') {
+      let helpData = ToolClass.prototype.getHelp.call({ constructor: ToolClass });
+      return { ...base, ...helpData, category: 'tool', name };
+    }
+
+    return base;
+  }
+
+  _buildCommandEntry(name, commandEntry) {
+    let help = commandEntry.help || {};
+
+    return {
+      category:    'command',
+      name:        `/${name}`,
+      displayName: help.displayName || `/${name}`,
+      description: help.description || null,
+      usage:       help.usage || `/${name}`,
+      parameters:  help.parameters || null,
+      examples:    help.examples || null,
+    };
   }
 }

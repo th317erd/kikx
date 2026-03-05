@@ -88,6 +88,7 @@ const TEMPLATE_HTML = `
       background: var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: 3px;
     }
+    .panel::-webkit-scrollbar-button { display: none; }
   </style>
 
   <div class="backdrop"></div>

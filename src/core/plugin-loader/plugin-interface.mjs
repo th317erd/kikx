@@ -17,6 +17,7 @@ export class PluginInterface {
   static icon         = null;
   static version      = '1.0.0';
   static riskLevel    = 'high'; // 'low', 'high', or 'critical'
+  static inputSchema  = null;   // JSON Schema for tool input parameters
 
   constructor(context) {
     this._context = context;

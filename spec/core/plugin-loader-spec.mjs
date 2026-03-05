@@ -522,13 +522,23 @@ describe('PluginRegistry', () => {
       let handlerB = () => 'b';
 
       registry.registerCommand('cmd-a', handlerA);
-      registry.registerCommand('cmd-b', handlerB);
+      registry.registerCommand('cmd-b', handlerB, { description: 'Command B' });
 
       let commands = registry.getCommands();
       assert.ok(commands instanceof Map);
       assert.equal(commands.size, 2);
-      assert.equal(commands.get('cmd-a'), handlerA);
-      assert.equal(commands.get('cmd-b'), handlerB);
+      assert.equal(commands.get('cmd-a').handler, handlerA);
+      assert.equal(commands.get('cmd-a').help, null);
+      assert.equal(commands.get('cmd-b').handler, handlerB);
+      assert.equal(commands.get('cmd-b').help.description, 'Command B');
+    });
+
+    it('should return command help via getCommandHelp', () => {
+      let help = { description: 'Test command', usage: '/test' };
+      registry.registerCommand('test-cmd', () => {}, help);
+
+      assert.deepStrictEqual(registry.getCommandHelp('test-cmd'), help);
+      assert.equal(registry.getCommandHelp('missing'), null);
     });
   });
 

@@ -39,7 +39,7 @@ const TEMPLATE_HTML = `
     }
 
     .subtitle {
-      font-size: 0.95rem;
+      font-size: 1rem;
       color: var(--text-secondary, #a0a0b8);
       margin-bottom: var(--spacing-xl, 32px);
     }
@@ -58,7 +58,7 @@ const TEMPLATE_HTML = `
       border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
       border-radius: var(--border-radius-medium, 8px);
       color: var(--text-primary, #e8e8f0);
-      font-size: 0.95rem;
+      font-size: 1rem;
       outline: none;
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
@@ -77,7 +77,7 @@ const TEMPLATE_HTML = `
       padding: 12px 16px;
       box-sizing: border-box;
       background: var(--accent-primary, #00e5ff);
-      color: var(--text-inverse, #0a0a1a);
+      color: #fff;
       border: none;
       border-radius: var(--border-radius-medium, 8px);
       font-size: 1rem;
@@ -97,7 +97,7 @@ const TEMPLATE_HTML = `
 
     .status-message {
       display: none;
-      font-size: 0.875rem;
+      font-size: 1rem;
       margin-top: var(--spacing-sm, 8px);
       min-height: 1.25em;
     }
@@ -220,8 +220,8 @@ class KikxLoginPage extends HTMLElement {
       profile.setUser(result.data.user, token);
       navigate('/kikx/', { replace: true });
     } catch (error) {
-      let message = (error && error.body && error.body.message)
-        ? error.body.message
+      let message = (error && error.message)
+        ? error.message
         : t('login.error.generic');
 
       this._showError(message);

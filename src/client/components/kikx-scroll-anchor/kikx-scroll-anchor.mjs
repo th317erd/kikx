@@ -31,7 +31,7 @@ const TEMPLATE_HTML = `
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: var(--border-radius-medium, 8px);
       color: var(--text-primary, #e8e8f0);
-      font-size: 0.875rem;
+      font-size: 1rem;
       cursor: pointer;
       transition: background 0.2s ease, box-shadow 0.2s ease;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
@@ -54,7 +54,7 @@ const TEMPLATE_HTML = `
       border-radius: 50%;
       min-width: 20px;
       height: 20px;
-      font-size: 0.75rem;
+      font-size: 1rem;
       font-weight: 700;
       text-align: center;
       line-height: 20px;

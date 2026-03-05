@@ -39,7 +39,7 @@ const TEMPLATE_HTML = `
       border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
       border-radius: var(--border-radius-medium, 8px);
       color: var(--text-primary, #e8e8f0);
-      font-size: 0.875rem;
+      font-size: 1rem;
       outline: none;
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
@@ -76,7 +76,7 @@ const TEMPLATE_HTML = `
     }
 
     .section-label {
-      font-size: 0.75rem;
+      font-size: 1rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -87,7 +87,7 @@ const TEMPLATE_HTML = `
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       color: var(--accent-primary, #00e5ff);
-      font-size: 0.85rem;
+      font-size: 1rem;
       font-weight: 700;
       cursor: pointer;
       padding: 4px 12px;
@@ -113,6 +113,7 @@ const TEMPLATE_HTML = `
       background: var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: 3px;
     }
+    .friends-area::-webkit-scrollbar-button { display: none; }
 
     .session-list {
       flex: 1;
@@ -129,6 +130,7 @@ const TEMPLATE_HTML = `
     .session-list::-webkit-scrollbar-thumb:hover {
       background: var(--text-muted, #606078);
     }
+    .session-list::-webkit-scrollbar-button { display: none; }
   </style>
 
   <div class="search-area">

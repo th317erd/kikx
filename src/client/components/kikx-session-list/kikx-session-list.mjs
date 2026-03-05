@@ -14,7 +14,7 @@ const TEMPLATE_HTML = `
       padding: var(--spacing-sm, 8px);
       text-align: center;
       color: var(--text-muted, #606078);
-      font-size: 0.875rem;
+      font-size: 1rem;
     }
 
     .category {
@@ -26,7 +26,7 @@ const TEMPLATE_HTML = `
       align-items: center;
       gap: var(--spacing-xs, 4px);
       padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
-      font-size: 0.75rem;
+      font-size: 1rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -46,7 +46,7 @@ const TEMPLATE_HTML = `
     .collapse-indicator {
       display: inline-block;
       transition: transform 0.2s ease;
-      font-size: 0.625rem;
+      font-size: 1rem;
     }
 
     .collapse-indicator.collapsed {
@@ -88,7 +88,7 @@ const TEMPLATE_HTML = `
 
     .session-name {
       flex: 1;
-      font-size: 0.875rem;
+      font-size: 1rem;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -102,7 +102,7 @@ const TEMPLATE_HTML = `
       border-radius: 9px;
       background: var(--accent-primary, #00e5ff);
       color: var(--text-inverse, #0a0a1a);
-      font-size: 0.7rem;
+      font-size: 1rem;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -115,7 +115,7 @@ const TEMPLATE_HTML = `
       border: none;
       cursor: pointer;
       padding: 2px 6px;
-      font-size: 0.75rem;
+      font-size: 1rem;
       border-radius: var(--border-radius-small, 4px);
       color: var(--text-muted, #606078);
       opacity: 0;
