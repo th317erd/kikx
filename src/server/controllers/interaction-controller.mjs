@@ -154,6 +154,22 @@ export class InteractionController extends ControllerAuthBase {
       return toolInstance.execute(toolArgs);
     };
 
+    // If session has multiple participants, stash resolve context on the
+    // scheduler so the orchestrator can decrypt API keys for secondary agents.
+    let sessionManager   = this.getSessionManager();
+    let sessionScheduler = this.getSessionScheduler();
+    let participants     = await sessionManager.getParticipants(params.sessionId);
+    let agentCount       = (participants && participants.length > 0) ? participants.length : 1;
+
+    if (agentCount > 1 && sessionScheduler) {
+      let umk = this.request.getUMK();
+      sessionScheduler.setResolveContext(params.sessionId, {
+        keystore,
+        umk,
+        userId: this.request.userId,
+      });
+    }
+
     // Start interaction (non-blocking — frames emitted via SSE)
     let interactionID = await interactionLoop.startInteraction(params.sessionId, {
       agentPlugin,
@@ -161,6 +177,7 @@ export class InteractionController extends ControllerAuthBase {
       userMessage: message,
       authorType:  'user',
       authorID:    this.request.userId,
+      agentCount,
       checkPermission,
       executeTool,
     });

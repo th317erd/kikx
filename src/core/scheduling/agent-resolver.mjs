@@ -1,5 +1,7 @@
 'use strict';
 
+import { parseShellCommands } from '../internal-plugins/shell/command-parser.mjs';
+
 // =============================================================================
 // Agent Resolver
 // =============================================================================
@@ -64,5 +66,115 @@ export class AgentResolver {
     }
 
     return { agentPlugin, resolvedAgent };
+  }
+
+  // ---------------------------------------------------------------------------
+  // buildCallbacks
+  // ---------------------------------------------------------------------------
+  // Constructs checkPermission and executeTool callbacks for an agent, usable
+  // outside of HTTP context (e.g., SchedulerOrchestrator triggering secondary
+  // agents). Mirrors the callback logic in InteractionController.sendMessage().
+  //
+  // Returns: { checkPermission, executeTool }
+  // ---------------------------------------------------------------------------
+
+  buildCallbacks(resolvedAgent, sessionID) {
+    let core             = this._core;
+    let permissionEngine = core.getPermissionEngine();
+    let pluginRegistry   = core.getPluginRegistry();
+    let interactionLoop  = core.getContext().getProperty('interactionLoop');
+
+    let checkPermission = async (featureName, toolArgs) => {
+      if (featureName === 'system:command' && toolArgs && toolArgs.command)
+        featureName = `command:${toolArgs.command.toLowerCase().trim()}`;
+
+      if (featureName.startsWith('command:') && toolArgs && toolArgs.authorType === 'user')
+        return false;
+
+      if (!permissionEngine)
+        return true;
+
+      // Per-command permission evaluation for shell:execute
+      if (featureName === 'shell:execute' && toolArgs && toolArgs.command) {
+        let parsed = parseShellCommands(toolArgs.command);
+
+        if (parsed.length > 0) {
+          let ShellToolClass    = pluginRegistry.getTool('shell:execute');
+          let permissionOptions = {
+            organizationID: resolvedAgent.organizationID,
+            scope:          'session',
+            scopeID:        sessionID,
+            toolClass:      ShellToolClass,
+          };
+
+          let anyNeedsApproval = false;
+          let commandStatuses  = [];
+
+          for (let cmd of parsed) {
+            let perCommandFeature = `shell:${cmd.command}`;
+            let status            = 'needs-approval';
+
+            try {
+              let needsPermission = await permissionEngine.checkPermission(perCommandFeature, cmd, permissionOptions);
+
+              if (!needsPermission)
+                status = 'allowed';
+              else
+                anyNeedsApproval = true;
+            } catch (permError) {
+              if (permError.name === 'PermissionDeniedError')
+                throw permError;
+
+              throw permError;
+            }
+
+            commandStatuses.push({ command: cmd.command, arguments: cmd.arguments, status });
+          }
+
+          toolArgs._parsedCommands = commandStatuses;
+
+          if (!anyNeedsApproval)
+            return false;
+
+          return true;
+        }
+      }
+
+      let ToolClass = pluginRegistry.getTool(featureName);
+
+      return permissionEngine.checkPermission(featureName, toolArgs, {
+        organizationID: resolvedAgent.organizationID,
+        scope:          'session',
+        scopeID:        sessionID,
+        toolClass:      ToolClass,
+      });
+    };
+
+    let executeTool = async (toolName, toolArgs) => {
+      let ToolClass = pluginRegistry.getTool(toolName);
+      if (!ToolClass)
+        throw new Error(`Unknown tool: ${toolName}`);
+
+      let toolInstance = new ToolClass(core.getContext());
+
+      if (toolName === 'system:command') {
+        let augmentedArgs = {
+          ...toolArgs,
+          _sessionID: sessionID,
+          _agent:     resolvedAgent,
+        };
+
+        let result = await toolInstance.execute(augmentedArgs);
+
+        if (result && result.injectPrimer && interactionLoop)
+          interactionLoop.requestPrimerRefresh(sessionID);
+
+        return result;
+      }
+
+      return toolInstance.execute(toolArgs);
+    };
+
+    return { checkPermission, executeTool };
   }
 }

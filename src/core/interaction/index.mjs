@@ -94,6 +94,11 @@ export class InteractionLoop extends EventEmitter {
       await framePersistence.saveFrames(sessionID, [frameData]);
       this.emit('frame', { sessionID, frame: frameData });
 
+      // Emit commit so the orchestrator can react
+      let latestCommit = frameManager.getLatestCommit();
+      if (latestCommit)
+        this.emit('commit', { sessionID, commit: latestCommit });
+
       return frameData;
     }
 
@@ -210,8 +215,10 @@ export class InteractionLoop extends EventEmitter {
 
     // Inject primer into messages for first message (or when explicitly requested).
     // Evaluate delete() before the || chain to avoid short-circuit skipping the side-effect.
+    // Also inject primer for agents entering the session for the first time (no existing ref).
     let primerRequested = this._primerNeeded.delete(sessionID);
-    let needsPrimer     = params.injectPrimer || this._isFirstMessage(allFrames) || primerRequested;
+    let agentRefExists  = forAgentID && frameManager.getRef(`processed/agent-${forAgentID}`) !== undefined;
+    let needsPrimer     = params.injectPrimer || this._isFirstMessage(allFrames) || primerRequested || (forAgentID && !agentRefExists);
 
     if (needsPrimer) {
       let primerAssembler = this._context.getProperty('primerAssembler');
@@ -517,7 +524,7 @@ export class InteractionLoop extends EventEmitter {
 
       // Clean up active interaction
       this._active.delete(sessionID);
-      this.emit('interaction:end', { sessionID, interactionID });
+      this.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
 
       // Drain queue if there are pending messages
       await this._drainQueue(sessionID, params);
@@ -601,7 +608,7 @@ export class InteractionLoop extends EventEmitter {
 
     // Clean up active interaction
     this._active.delete(sessionID);
-    this.emit('interaction:end', { sessionID, interactionID });
+    this.emit('interaction:end', { sessionID, interactionID, agentID: null });
   }
 
   // ---------------------------------------------------------------------------
@@ -636,7 +643,7 @@ export class InteractionLoop extends EventEmitter {
 
     // Clean up
     this._active.delete(sessionID);
-    this.emit('interaction:end', { sessionID, interactionID: active.interactionID });
+    this.emit('interaction:end', { sessionID, interactionID: active.interactionID, agentID: null });
 
     // Return and clear queued messages
     let queued = this._queues.get(sessionID) || [];

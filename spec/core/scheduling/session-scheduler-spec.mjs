@@ -335,6 +335,64 @@ describe('SessionScheduler (B5)', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Resolve Context
+  // ---------------------------------------------------------------------------
+
+  describe('resolve context', () => {
+    it('should store and retrieve resolve context', () => {
+      let scheduler = createScheduler();
+      let ctx       = { keystore: 'ks', umk: 'umk', userId: 'usr_1' };
+
+      scheduler.setResolveContext('ses_1', ctx);
+
+      let retrieved = scheduler.getResolveContext('ses_1');
+      assert.deepEqual(retrieved, ctx);
+    });
+
+    it('should return null for unknown session', () => {
+      let scheduler = createScheduler();
+      assert.equal(scheduler.getResolveContext('ses_unknown'), null);
+    });
+
+    it('should clear resolve context explicitly', () => {
+      let scheduler = createScheduler();
+      scheduler.setResolveContext('ses_1', { keystore: 'ks' });
+      scheduler.clearResolveContext('ses_1');
+
+      assert.equal(scheduler.getResolveContext('ses_1'), null);
+    });
+
+    it('should auto-clear resolve context when last agent completes', () => {
+      let scheduler = createScheduler();
+      scheduler.setResolveContext('ses_1', { keystore: 'ks' });
+
+      // Simulate an active agent
+      scheduler._activeAgents.set('ses_1:agt_1', true);
+      assert.ok(scheduler.getResolveContext('ses_1'));
+
+      // Mark complete — should auto-clear since no more active agents
+      scheduler.markComplete('ses_1', 'agt_1');
+      assert.equal(scheduler.getResolveContext('ses_1'), null);
+    });
+
+    it('should NOT clear resolve context when other agents still active', () => {
+      let scheduler = createScheduler();
+      scheduler.setResolveContext('ses_1', { keystore: 'ks' });
+
+      scheduler._activeAgents.set('ses_1:agt_1', true);
+      scheduler._activeAgents.set('ses_1:agt_2', true);
+
+      scheduler.markComplete('ses_1', 'agt_1');
+
+      // agt_2 still active, context should remain
+      assert.ok(scheduler.getResolveContext('ses_1'));
+
+      scheduler.markComplete('ses_1', 'agt_2');
+      assert.equal(scheduler.getResolveContext('ses_1'), null);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // AgentResolver
   // ---------------------------------------------------------------------------
 

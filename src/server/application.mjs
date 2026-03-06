@@ -19,7 +19,9 @@ import { SessionManager }  from '../core/session/index.mjs';
 import { FramePersistence } from '../core/frames/index.mjs';
 import { InteractionLoop }  from '../core/interaction/index.mjs';
 import { ContentSanitizer } from '../core/lib/content-sanitizer.mjs';
-import { SessionScheduler } from '../core/scheduling/session-scheduler.mjs';
+import { SessionScheduler }      from '../core/scheduling/session-scheduler.mjs';
+import { AgentResolver }         from '../core/scheduling/agent-resolver.mjs';
+import { SchedulerOrchestrator } from '../core/scheduling/scheduler-orchestrator.mjs';
 
 export class Application extends MythixApplication {
   static getName() {
@@ -68,6 +70,13 @@ export class Application extends MythixApplication {
   }
 
   async stop() {
+    // Stop orchestrator before tearing down core
+    if (this._core) {
+      let orchestrator = this._core.getContext().getProperty('schedulerOrchestrator');
+      if (orchestrator)
+        orchestrator.stop();
+    }
+
     // Stop Mythix HTTP server first
     await super.stop();
 
@@ -122,11 +131,23 @@ export class Application extends MythixApplication {
       interactionLoop,
     });
 
+    // Initialize agent resolver and scheduler orchestrator
+    let agentResolver = new AgentResolver(this._core);
+    let orchestrator  = new SchedulerOrchestrator({
+      scheduler:       sessionScheduler,
+      agentResolver,
+      interactionLoop,
+    });
+
+    orchestrator.start();
+
     context.setProperty('sessionManager', sessionManager);
     context.setProperty('framePersistence', framePersistence);
     context.setProperty('contentSanitizer', sanitizer);
     context.setProperty('interactionLoop', interactionLoop);
     context.setProperty('sessionScheduler', sessionScheduler);
+    context.setProperty('agentResolver', agentResolver);
+    context.setProperty('schedulerOrchestrator', orchestrator);
   }
 
   // ---------------------------------------------------------------------------

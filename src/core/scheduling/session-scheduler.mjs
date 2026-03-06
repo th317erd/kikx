@@ -31,6 +31,25 @@ export class SessionScheduler extends EventEmitter {
 
     // agentID → true while agent is running
     this._activeAgents = new Map();
+
+    // sessionID → { keystore, umk, userId } for secondary agent resolution
+    this._resolveContexts = new Map();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Resolve Context — stores decryption context for secondary agents
+  // ---------------------------------------------------------------------------
+
+  setResolveContext(sessionID, context) {
+    this._resolveContexts.set(sessionID, context);
+  }
+
+  getResolveContext(sessionID) {
+    return this._resolveContexts.get(sessionID) || null;
+  }
+
+  clearResolveContext(sessionID) {
+    this._resolveContexts.delete(sessionID);
   }
 
   // ---------------------------------------------------------------------------
@@ -171,6 +190,10 @@ export class SessionScheduler extends EventEmitter {
   markComplete(sessionID, agentID) {
     let activeKey = `${sessionID}:${agentID}`;
     this._activeAgents.delete(activeKey);
+
+    // Clear resolve context when no agents remain active for this session
+    if (this.getActiveAgents(sessionID).length === 0)
+      this.clearResolveContext(sessionID);
   }
 
   isAgentActive(sessionID, agentID) {
