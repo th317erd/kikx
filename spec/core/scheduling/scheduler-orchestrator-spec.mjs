@@ -148,6 +148,46 @@ describe('SchedulerOrchestrator', () => {
       orchestrator.stop();
     });
 
+    it('should ignore system-authored commits (no error cascades)', async () => {
+      let org     = await createTestOrg();
+      let agentA  = await createTestAgent(org, 'test-orch-sys-a');
+      let agentB  = await createTestAgent(org, 'test-orch-sys-b');
+      let session = await sessionManager.createSession(org.id, { name: 'Orch System Test' });
+
+      await sessionManager.addParticipant(session.id, agentA.id);
+      await sessionManager.addParticipant(session.id, agentB.id);
+
+      let scheduler     = createScheduler();
+      let agentResolver = new AgentResolver(core);
+      let orchestrator  = new SchedulerOrchestrator({ scheduler, agentResolver, interactionLoop });
+
+      orchestrator.start();
+
+      let frameManager = sessionManager.getFrameManager(session.id);
+
+      // Create a system-authored commit (e.g. error frame)
+      frameManager.merge([{
+        id:         'frm_orch_sys_1',
+        type:       'error',
+        content:    { text: 'Something went wrong' },
+        authorType: 'system',
+        authorID:   null,
+      }], { authorType: 'system', authorId: null });
+
+      let commit = frameManager.getLatestCommit();
+
+      interactionLoop.emit('commit', { sessionID: session.id, commit });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Neither agent should have been scheduled
+      assert.equal(scheduler.isAgentActive(session.id, agentA.id), false);
+      assert.equal(scheduler.isAgentActive(session.id, agentB.id), false);
+      assert.equal(orchestrator.hasPendingTriggers(session.id), false);
+
+      orchestrator.stop();
+    });
+
     it('should ignore agent-authored commits (no ping-pong)', async () => {
       let org     = await createTestOrg();
       let agentA  = await createTestAgent(org, 'test-orch-a');

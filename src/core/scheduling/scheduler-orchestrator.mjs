@@ -13,8 +13,16 @@ import { EventEmitter } from 'node:events';
 //   interaction:end → calls scheduler.markComplete(), triggers next agent
 //   schedule:cancel → clears pending triggers for session
 //
-// Infinite loop prevention: only schedules agents on non-agent commits (user
-// messages, system events). Agent-authored commits are ignored.
+// Infinite loop prevention: only schedules agents on user-authored commits.
+// Agent and system commits are ignored to prevent ping-pong loops and
+// error-triggered cascades.
+//
+// Race condition prevention: commit events fire synchronously from _createFrame
+// inside startInteraction, but _handleCommit is async (calls DB). The
+// interaction:end event can fire before _handleCommit finishes, so
+// _handleInteractionEnd would see an empty queue. We solve this with a
+// per-session commit barrier: a promise that _handleInteractionEnd awaits
+// before checking the queue.
 // =============================================================================
 
 export class SchedulerOrchestrator extends EventEmitter {
@@ -37,6 +45,9 @@ export class SchedulerOrchestrator extends EventEmitter {
     // sessionID → [{ agentID }] — agents queued to trigger
     this._pendingTriggers = new Map();
 
+    // sessionID → Promise — in-flight commit handling (race condition barrier)
+    this._commitBarriers = new Map();
+
     // Bound handlers for cleanup
     this._onCommit          = this._handleCommit.bind(this);
     this._onInteractionEnd  = this._handleInteractionEnd.bind(this);
@@ -58,21 +69,35 @@ export class SchedulerOrchestrator extends EventEmitter {
     this._interactionLoop.removeListener('interaction:end', this._onInteractionEnd);
     this._scheduler.removeListener('schedule:cancel', this._onScheduleCancel);
     this._pendingTriggers.clear();
+    this._commitBarriers.clear();
   }
 
   // ---------------------------------------------------------------------------
   // Event Handlers
   // ---------------------------------------------------------------------------
 
-  async _handleCommit({ sessionID, commit }) {
+  _handleCommit({ sessionID, commit }) {
     if (!sessionID || !commit)
       return;
 
-    // Only schedule agents on non-agent commits (user messages, system events).
-    // Agent-authored commits must be ignored to prevent A→B→A→B ping-pong.
-    if (commit.authorType === 'agent')
+    // Only schedule agents on user-authored commits. Agent and system commits
+    // must be ignored to prevent ping-pong loops and error-triggered cascades.
+    if (commit.authorType !== 'user')
       return;
 
+    // Store the commit processing promise as a barrier so interaction:end
+    // can await it before checking the queue.
+    let barrier = this._processCommit(sessionID, commit);
+    this._commitBarriers.set(sessionID, barrier);
+
+    // Clean up barrier when done (don't leave stale promises)
+    barrier.then(() => {
+      if (this._commitBarriers.get(sessionID) === barrier)
+        this._commitBarriers.delete(sessionID);
+    });
+  }
+
+  async _processCommit(sessionID, commit) {
     let scheduled = await this._scheduler.onCommit(sessionID, commit);
 
     if (!scheduled || scheduled.length === 0)
@@ -95,6 +120,13 @@ export class SchedulerOrchestrator extends EventEmitter {
   async _handleInteractionEnd({ sessionID, agentID }) {
     if (!sessionID)
       return;
+
+    // Wait for any in-flight commit handling to finish before checking the
+    // queue. This prevents the race where interaction:end fires before
+    // _handleCommit has finished populating _pendingTriggers.
+    let barrier = this._commitBarriers.get(sessionID);
+    if (barrier)
+      await barrier;
 
     // Mark agent as complete in the scheduler
     if (agentID)
@@ -120,14 +152,11 @@ export class SchedulerOrchestrator extends EventEmitter {
       return;
     }
 
-    // Skip agents that are already active (e.g., the primary agent from controller)
     while (queue.length > 0) {
       let entry = queue.shift();
 
-      if (this._scheduler.isAgentActive(sessionID, entry.agentID))
-        continue;
-
-      // Also skip if the interaction loop already has an active interaction
+      // Skip if the interaction loop already has an active interaction for
+      // this session — only one interaction runs at a time per session.
       if (this._interactionLoop.isActive(sessionID)) {
         // Put it back and wait — it will be retried on next interaction:end
         queue.unshift(entry);

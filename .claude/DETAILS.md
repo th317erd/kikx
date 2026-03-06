@@ -27,6 +27,7 @@ Important details to remember across sessions.
 - Test login: `test-bot@kikx.com` / `securePass123` (V2 database)
 - Test login (V1/browser): `claude` / `claude123`
 - Test agent: `test-claude` (agt_d6k1n1wpe7dy5tq17hcg, pluginID: `claude`, has valid Anthropic API key)
+- Test agent: `test-claude-2` (agt_d6n3g30pe7dwfan9erdg, pluginID: `claude`, same API key as test-claude)
 - Test session: `Test Session` (ses_d6k1npepe7dy5tq17hd0)
 - Config directory: `~/.config/kikx/`
 - V2 database: `~/.config/kikx/kikx.db`
