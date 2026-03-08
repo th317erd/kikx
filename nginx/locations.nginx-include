@@ -50,6 +50,13 @@ location /kikx/api/ {
   proxy_redirect / /kikx/;
 }
 
+# Redirect /shared/ → /kikx/shared/ for relative imports.
+# Client files at /kikx/lib/store.mjs import ../../shared/lib/create-store.mjs
+# which resolves to /shared/lib/... (exits the /kikx/ prefix).
+location /shared/ {
+  rewrite ^/shared/(.*)$ /kikx/shared/$1 last;
+}
+
 # Shared libraries (frame-manager, etc.) — served from src/shared/
 location /kikx/shared/ {
   alias /home/wyatt/Projects/kikx-workspace/kikx/src/shared/;
