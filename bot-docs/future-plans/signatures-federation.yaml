@@ -1,0 +1,66 @@
+# Signatures & Federation
+# Deferred from: Phase C (Event Routing Layer)
+# Priority: Low
+# Complexity: Very High
+
+summary: >
+  Public/private key pairs for identity and authority. Every frame
+  mutation is signed by its author, enabling cryptographic verification
+  of identity without trusting the server. Foundation for multi-server
+  federation where frames can be verified across trust boundaries.
+
+current_state: >
+  Identity is server-controlled. The server authenticates users via
+  session tokens and stamps authorType/authorID on frames. There is
+  no cryptographic proof that a frame was authored by a specific
+  entity — you trust the server to be honest about attribution.
+
+  This works for a single-server deployment but doesn't scale to
+  federation or trust-minimized architectures.
+
+requirements:
+  - Each user/agent has a key pair (generated or imported)
+  - Frame mutations are signed with the author's private key
+  - Other parties can verify frame authorship with the public key
+  - Server validates signatures before accepting frame mutations
+  - Frame schema includes a signature field
+  - Federated frames: frames from remote servers can be verified
+    using the author's public key without trusting the remote server
+  - Key rotation without breaking verification of old frames
+
+design_notes: >
+  The important near-term action is ensuring the frame schema has a
+  signature field ready to be populated. This is a schema concern,
+  not an implementation concern.
+
+  For federation, a universal frame merging system that is security-
+  aware will be needed — certain "federated fields" must not be
+  modified by remote servers (e.g. authorType, authorID, signature).
+  This hints at a frame field ACL system.
+
+  Key pair management is a significant UX challenge. Users shouldn't
+  need to understand PKI to use the system. Options:
+  - Server generates and manages keys (convenient but centralized)
+  - Client generates keys, server stores public key (more secure)
+  - External key provider (e.g. hardware tokens, OS keychain)
+
+  Deferral reason: single server, single database. The crypto adds
+  complexity without solving a real problem yet. Design for it (schema
+  field), don't implement until federation is on the roadmap.
+
+dependencies:
+  - Frame schema supports signature field
+  - Key management infrastructure
+  - Federation protocol design
+
+files:
+  - src/shared/frame-manager/frame-manager.mjs  # Signature field in schema
+  - src/core/auth/                               # Key management (NEW)
+  - src/core/federation/                         # Federation protocol (NEW)
+
+tests:
+  - Frame signed by author -> signature verifies with public key
+  - Tampered frame -> signature verification fails
+  - Key rotation -> old frames still verify with old public key
+  - Federated frame from remote server -> verified without trusting server
+  - Unsigned frame rejected (when signatures required)

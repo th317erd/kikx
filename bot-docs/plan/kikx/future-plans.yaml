@@ -16,3 +16,73 @@ items:
       - spec/core/command-permission-spec.mjs
       - spec/core/interaction-loop-spec.mjs
     added: "2026-03-03"
+
+  - id: sessions-as-frames
+    title: "Sessions-as-Frames Unification"
+    priority: medium
+    description: |
+      Unify sessions and frames into a single data model. Sessions become
+      top-level frames with no parent. DMs = 2 participants. Self channels = 1.
+      Eliminates SessionManager abstraction, gives fractal nesting for free.
+    see_also: bot-docs/future-plans/sessions-as-frames.yaml
+    added: "2026-03-06"
+
+  - id: generator-suspension
+    title: "Generator Suspension (Replace Hard-Break)"
+    priority: medium
+    description: |
+      Replace permission hard-break with true generator suspension. Generator
+      suspends (not destroyed) on permission request, resumes on approval.
+      No replay needed. Requires generator lifecycle manager and crash recovery.
+    see_also: bot-docs/future-plans/generator-suspension.yaml
+    added: "2026-03-06"
+
+  - id: general-re-feed-recovery
+    title: "General Re-feed Recovery"
+    priority: low
+    description: |
+      On session load, feed loaded frames through the router for self-healing.
+      Plugins detect and recover stuck-in-progress work. Requires handler
+      idempotency guarantees. Does NOT auto-recover pending permissions.
+    see_also: bot-docs/future-plans/general-re-feed-recovery.yaml
+    added: "2026-03-06"
+
+  - id: configurable-plugin-ordering
+    title: "Configurable Plugin Ordering"
+    priority: low
+    description: |
+      Allow org owners to configure plugin evaluation order for frame routing.
+      Default: installation order (internal first). Includes "handled" flag
+      system to stop further routing. Deferred until third-party plugins exist.
+    see_also: bot-docs/future-plans/configurable-plugin-ordering.yaml
+    added: "2026-03-06"
+
+  - id: abilities-system
+    title: "Abilities System via DM Sessions"
+    priority: medium
+    description: |
+      Users customize agent behavior through DM conversations. Agent
+      summarizes instructions into "Abilities" injected into future contexts.
+      Replaces configuration forms with conversational customization.
+    see_also: bot-docs/future-plans/abilities-system.yaml
+    added: "2026-03-06"
+
+  - id: signatures-federation
+    title: "Signatures & Federation"
+    priority: low
+    description: |
+      Public/private key pairs for identity and authority. Cryptographic
+      verification of frame authorship. Foundation for multi-server federation.
+      Near-term: ensure frame schema has signature field ready.
+    see_also: bot-docs/future-plans/signatures-federation.yaml
+    added: "2026-03-06"
+
+  - id: key-rotation
+    title: "System Key Rotation"
+    priority: medium
+    description: |
+      Versioned system key pairs with rotation support. Each key has a
+      validity window. Compromised keys can be invalidated. Old approvals
+      verify against their original key version.
+    see_also: bot-docs/future-plans/key-rotation.yaml
+    added: "2026-03-07"

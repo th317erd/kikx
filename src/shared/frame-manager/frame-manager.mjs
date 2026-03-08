@@ -276,6 +276,7 @@ export class FrameManager {
         authorId:    (options.authorId !== undefined) ? options.authorId : null,
         timestamp:   Date.now(),
         parentOrder: previousCommit ? previousCommit.order : null,
+        silent:      !!options.silent,
       };
 
       // ── Commit validator gate ──

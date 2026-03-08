@@ -14,6 +14,7 @@ import { PluginLoader, FilesystemPluginProvider, InMemoryPluginProvider } from '
 import { PermissionEngine }  from './permissions/index.mjs';
 import { HookRunner }        from './hooks/index.mjs';
 import { PrimerAssembler }   from './primer/index.mjs';
+import { FrameRouter }      from './routing/frame-router.mjs';
 import { mkdir }            from 'node:fs/promises';
 import { join }             from 'node:path';
 import { fileURLToPath }    from 'node:url';
@@ -27,6 +28,7 @@ export class KikxCore {
     this._started          = false;
     this._pluginLoader     = null;
     this._permissionEngine = null;
+    this._frameRouter      = null;
 
     // Store core reference on context
     this._context.setProperty('core', this);
@@ -49,6 +51,9 @@ export class KikxCore {
 
     // Load plugins
     await this._loadPlugins();
+
+    // Initialize frame router (after plugins, so selectors are registered)
+    this._initializeFrameRouter();
 
     // Initialize primer assembler (after plugins, so plugin instructions are registered)
     let primerAssembler = new PrimerAssembler(this._context);
@@ -264,6 +269,27 @@ export class KikxCore {
     this._pluginLoader = loader;
     this._context.setProperty('pluginLoader', loader);
     this._context.setProperty('pluginRegistry', loader.getRegistry());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Frame Router
+  // ---------------------------------------------------------------------------
+
+  _initializeFrameRouter() {
+    let router = new FrameRouter({
+      logger: this._config.logger || console,
+    });
+
+    // Load selectors registered by plugins during setup()
+    let registry = this._pluginLoader.getRegistry();
+    router.loadFromRegistry(registry);
+
+    this._frameRouter = router;
+    this._context.setProperty('frameRouter', router);
+  }
+
+  getFrameRouter() {
+    return this._frameRouter || null;
   }
 
   // ---------------------------------------------------------------------------

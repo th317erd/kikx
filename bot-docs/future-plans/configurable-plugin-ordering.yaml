@@ -1,0 +1,63 @@
+# Configurable Plugin Ordering
+# Deferred from: Phase C (Event Routing Layer)
+# Priority: Low
+# Complexity: Low
+
+summary: >
+  Allow organization owners to configure the order in which plugins
+  are evaluated during frame routing. Default ordering is installation
+  order (internal plugins first, then external). This enables fine-
+  grained control over plugin priority when multiple plugins match
+  the same frame mutation.
+
+current_state: >
+  Plugin execution order is implicit — plugins are loaded in a fixed
+  order (internal first, then external by registration time). There is
+  no user-facing configuration for ordering. Within a plugin, handler
+  registration order determines evaluation sequence.
+
+  Phase C introduces a command dispatch routing plugin with "zero"
+  priority (always first), and a "handled" flag system where a plugin
+  can stop further routing for a frame without explicitly calling next().
+
+requirements:
+  - Org owners can reorder plugins via settings
+  - Internal plugins maintain their relative ordering (not user-configurable)
+  - External plugins can be reordered relative to each other
+  - Default order is installation order
+  - Priority numbers or explicit ordering (not CSS specificity)
+  - "Handled" flag: when a plugin sets handled=true, no further plugins
+    are evaluated for that frame mutation
+
+design_notes: >
+  The "handled" system (mentioned in Open Question 7 of the architecture
+  plan) is separate from ordering but related. A plugin at position 1
+  that sets handled=true prevents plugins at positions 2+ from seeing
+  the frame. This is most useful for command dispatch — the command
+  plugin should run first ("zero" priority), and if it handles a
+  /command, other plugins don't need to see it.
+
+  Implementation is straightforward once the router supports ordered
+  plugin evaluation. Store plugin order as a JSON array on the
+  Organization model. Router reads this at startup and evaluates
+  matched handlers in the specified order.
+
+  Deferral reason: no third-party plugins exist yet. Internal plugins
+  have well-defined ordering needs that are hardcoded. This becomes
+  valuable when external plugins can be installed.
+
+dependencies:
+  - Phase C (Frame Event Router) must be stable
+  - Third-party plugin ecosystem exists
+
+files:
+  - src/core/routing/frame-router.mjs     # Ordered handler evaluation
+  - src/core/models/organization.mjs      # Plugin order setting
+  - src/core/plugin-loader/registry.mjs   # Order-aware registration
+
+tests:
+  - Plugins fire in configured order
+  - "Handled" flag stops further plugin evaluation
+  - Default order matches installation order
+  - Internal plugins always run before external
+  - Org owner can reorder external plugins

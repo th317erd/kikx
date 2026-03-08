@@ -1,0 +1,64 @@
+# Sessions-as-Frames Unification
+# Deferred from: Phase C (Event Routing Layer)
+# Priority: Medium
+# Complexity: High
+
+summary: >
+  Unify sessions and frames into a single data model. Sessions become
+  top-level frames with no parent. Messages become child frames. Sub-
+  conversations (e.g. agent-to-agent side-channels) become child frames
+  of the session frame. This eliminates the separate SessionManager
+  abstraction and gives fractal nesting for free.
+
+current_state: >
+  Sessions and frames are managed by separate subsystems (SessionManager
+  and FrameManager). Sessions live in a sessions table with their own
+  CRUD operations. FrameManagers are created per-session. The two are
+  coupled but distinct — SessionManager owns lifecycle, FrameManager
+  owns content.
+
+requirements:
+  - Sessions are root frames (no parent_id)
+  - Messages are child frames of the session frame
+  - DMs are sessions with exactly 2 participants
+  - Self channels are sessions with 1 participant
+  - Sub-conversations nest as child frames of their parent session
+  - SessionManager and FrameManager merge into a single system
+  - Existing session APIs remain backward-compatible during migration
+  - Participant list stored as a property of the session frame
+
+design_notes: >
+  This is deferred until the Frame Event Router (Phase C) is stable.
+  The router must be validated independently before coupling it with
+  a session model change.
+
+  Bridge option (if needed sooner): add sessionFrameId to Session model.
+  On session creation, also create a type: 'session' frame. Messages
+  reference parentId: sessionFrameId. This gets the data model right
+  without requiring full SessionManager removal.
+
+  DM identity: A DM is a top-level frame with participants.length === 2.
+  Not all sessions with the same participants are the same DM — users
+  may want multiple conversations with the same parties. DMs are a
+  special case where participants.ids define the channel identity.
+
+  Self channels: A top-level frame with 1 participant. Could serve as
+  a personal scratchpad, or as an agent playground for experimentation.
+
+dependencies:
+  - Phase C (Frame Event Router) must be stable
+  - FrameManager must handle root frames (no parent)
+  - Participant management must work as frame properties
+
+files:
+  - src/core/session/index.mjs          # Merge into frame system
+  - src/shared/frame-manager/frame-manager.mjs  # Support root frames
+  - src/core/models/session.mjs         # Bridge or deprecate
+
+tests:
+  - Create session = create root frame with no parent
+  - DM identified by 2 participants
+  - Self channel identified by 1 participant
+  - Nested sub-conversations create child frames correctly
+  - Existing session APIs continue to work during bridge period
+  - Fractal nesting: session within a message within a session

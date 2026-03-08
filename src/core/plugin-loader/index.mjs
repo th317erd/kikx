@@ -131,6 +131,7 @@ export class PluginLoader {
       registerAgentType:     (id, AgentClass)  => registry.registerAgentType(id, AgentClass),
       registerHook:          (hookName, handler) => registry.registerHook(hookName, handler),
       registerInstructions:  (content, options) => registry.registerInstructions(pluginName, content, options),
+      registerSelector:      (selector, PluginClass) => registry.registerSelector(selector, PluginClass, pluginName),
     };
   }
 
@@ -164,3 +165,4 @@ export { PluginRegistry }           from './registry.mjs';
 export { PluginProvider }           from './providers/plugin-provider.mjs';
 export { InMemoryPluginProvider }   from './providers/in-memory-provider.mjs';
 export { FilesystemPluginProvider } from './providers/filesystem-provider.mjs';
+export { BasePluginClass }         from '../routing/base-plugin-class.mjs';

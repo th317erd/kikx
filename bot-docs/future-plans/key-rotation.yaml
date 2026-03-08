@@ -1,0 +1,56 @@
+# System Key Rotation
+# Deferred from: Phase C (Event Routing Layer) — Signing Model
+# Priority: Medium
+# Complexity: Medium
+
+summary: >
+  Versioned system key pairs with rotation support. Each key pair has
+  a validity window. New approvals use the current key. Old approvals
+  verify against their original key version. Compromised keys can be
+  invalidated to revoke all approvals signed with them.
+
+current_state: >
+  Phase C implements system signing with a single key pair. No rotation,
+  no versioning. If the key is compromised, all approvals are suspect
+  and there is no way to rotate without invalidating everything.
+
+requirements:
+  - System key pairs are versioned (incrementing integer)
+  - Each key has validFrom / validUntil timestamps
+  - Signing uses the current (latest) key and stamps keyVersion
+  - Verification looks up key by version, checks timestamp validity
+  - Admin can rotate keys (generates new pair, sets validUntil on old)
+  - Admin can invalidate a compromised key (compromised: true)
+  - Invalidated keys reject all verification attempts
+  - Old, non-compromised keys still verify old approvals
+
+design_notes: >
+  The key store is a small table or config:
+    { version, publicKey, privateKey, validFrom, validUntil, compromised }
+
+  Signing adds keyVersion to the approval record. Verification does
+  one extra lookup by version.
+
+  On compromise:
+  - Rotate: new key, validUntil on old key
+  - Nuclear: set compromised=true on old key, invalidating all approvals
+    signed with it. Users must re-approve standing approvals.
+
+  Key rotation should be rare (quarterly, or on-demand). The mechanism
+  is simple but the operational procedures (when to rotate, how to
+  communicate, what to do on compromise) need documentation.
+
+dependencies:
+  - Phase C signing model implemented
+  - System key pair generation and storage
+
+files:
+  - src/core/auth/key-store.mjs          # Key versioning and rotation
+  - src/core/auth/signing.mjs            # Version-aware sign/verify
+
+tests:
+  - Sign with current key, verify with same key version
+  - Rotate key, old approvals still verify with old key
+  - Rotate key, new approvals use new key
+  - Invalidate compromised key, old approvals reject
+  - Signing after rotation uses new key automatically

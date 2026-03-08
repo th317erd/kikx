@@ -1,0 +1,69 @@
+# General Re-feed Recovery
+# Deferred from: Phase C (Event Routing Layer)
+# Priority: Low
+# Complexity: Medium
+
+summary: >
+  On session load, feed loaded frames back through the router so that
+  plugins can detect and recover stuck-in-progress work. A general-
+  purpose mechanism for self-healing sessions after crashes, restarts,
+  or interrupted operations.
+
+current_state: >
+  No recovery mechanism exists. If the server crashes mid-interaction,
+  the agent's work is lost. The user must manually re-send their message.
+  Phase B's stop-as-commit creates a frame on cancellation, but crash
+  recovery is not addressed.
+
+  Phase C takes a targeted approach: on session load, query for specific
+  known stuck states (e.g. tool-call frames without matching tool-result
+  frames). This is NOT general re-feed — it's targeted recovery for
+  known patterns.
+
+requirements:
+  - On session load, loaded frames pass through the router
+  - Frames marked "done" are short-circuited at the router level
+  - Stuck-in-progress frames are picked up by their matching plugin
+  - Plugins can store mid-flight state on frames for recovery
+  - Re-feeding is cheap — most frames are "done" and skip quickly
+  - Re-feed does NOT re-pop pending permissions in users' faces
+  - If a permission needs to be asked again, the same tool call can
+    be invoked again by the agent (not auto-recovered)
+
+design_notes: >
+  Deferred until handlers have proven idempotency in production.
+  General re-feed requires that every handler can safely process a
+  frame it has already processed. Without this guarantee, re-feed
+  could cause duplicate actions (double tool execution, double API
+  calls, etc.).
+
+  The user specifically rejected the approach of auto-recovering
+  pending permission requests: "I don't like that idea. Let's not.
+  If a question (or permission) needs to be asked again, the same
+  tool call can always be invoked again."
+
+  This means recovery is plugin-driven, not system-driven. Each
+  plugin decides what to do with a stuck frame. The system just
+  ensures stuck frames reach their matching plugin.
+
+  A "done" property on frames acts as a short-circuit. Plugins set
+  done: true when they complete their work. The router checks this
+  first and skips done frames during re-feed. This makes re-feed
+  O(N-stuck-frames) not O(N-all-frames) in practice.
+
+dependencies:
+  - Phase C (Frame Event Router) must be stable
+  - Handler idempotency verified in production
+  - Silent commit mode available (for progress state storage)
+
+files:
+  - src/core/routing/frame-router.mjs     # Re-feed on session load
+  - src/shared/frame-manager/frame-manager.mjs  # "done" property support
+
+tests:
+  - Re-feed skips done frames (short-circuit)
+  - Re-feed triggers plugin for stuck-in-progress frame
+  - Plugin recovers stuck tool execution
+  - Re-feed does NOT auto-recover pending permissions
+  - Re-feed after crash restores session to working state
+  - Idempotent handler called twice produces same result

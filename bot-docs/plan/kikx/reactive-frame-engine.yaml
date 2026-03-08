@@ -2,20 +2,21 @@
 # Reactive Frame Engine — Git-Inspired FrameManager Evolution
 # =============================================================================
 # Evolves the existing FrameManager into a git-inspired reactive frame engine
-# with commit log, refs, diff, windowed loading, and per-file permissions.
+# with commit log, refs, diff, windowed loading, event routing, and signing.
 #
 # This is NOT a rewrite. It is an incremental evolution that preserves the
-# existing API surface and all 257 existing tests.
+# existing API surface and all existing tests.
 #
-# Status: PLANNING
+# Status: Phase C (Event Routing Layer) — PLANNING
 # Created: 2026-03-05
+# Updated: 2026-03-07
 # =============================================================================
 
 meta:
   title: "Reactive Frame Engine"
   parent_plan: "frame-manager.yaml"
   parent_server_plan: "server-plan.yaml (Phase 3, Steps 22-23)"
-  version: "0.1.0"
+  version: "0.2.0"
 
 # =============================================================================
 # 1. MOTIVATION
@@ -30,6 +31,7 @@ motivation:
     - Sub-agent delegation (parent continues while child works)
     - User interrupts during long operations
     - Efficient streaming (loads entire conversation into memory)
+    - Event-driven plugin architecture (frame mutations as events)
 
   solution: |
     Evolve the FrameManager to use git's conceptual model:
@@ -38,6 +40,9 @@ motivation:
     - Diff between refs (what's new for this consumer?)
     - Windowed loading (only hold a slice in memory)
     - Pluggable commit validator (per-file permissions)
+    - Frame event router (frame mutations trigger plugin handlers)
+    - Silent commits (persist without triggering routing)
+    - System envelope signing (cryptographic approval verification)
 
     The FrameManager becomes the backbone of a multi-actor, event-driven
     system where any source can push frames at any time, and each consumer
@@ -50,6 +55,8 @@ motivation:
     - "Consumers track their own position via refs."
     - "Frames are virtual files. Deep merge is tree merge."
     - "Multi-actor by default. Single-actor is just the degenerate case."
+    - "Frame mutations are the universal event primitive."
+    - "Plugins react to frame state changes, not procedure calls."
 
 # =============================================================================
 # 2. IMPLEMENTATION DECISION
@@ -62,8 +69,9 @@ implementation:
     - "Zero added bundle weight (no WASM binary, no external dependency)."
     - "Same test runner, same assertions, same CI as existing tests."
     - "Hybrid storage: SQL for frames/commits, git-model for change tracking."
-    - "Evolution, not revolution: existing FrameManager + 257 tests as baseline."
+    - "Evolution, not revolution: existing FrameManager + tests as baseline."
     - "JS is fast enough for a chat app. Network latency dominates, not frame ops."
+    - "Ed25519 signing via node:crypto — no external dependency."
   rejected_alternatives:
     rust_wasm:
       reason: |
@@ -144,6 +152,14 @@ data_model:
           Forms the commit chain (linked list). In practice, parentOrder
           is always order - 1 since we use monotonic ordering, but we store
           it explicitly for integrity verification.
+      silent:
+        type: "boolean"
+        default: false
+        description: |
+          If true, this commit does NOT trigger event routing. Used for
+          progress updates, agent ref advances, error frames, bookkeeping.
+          Silent commits are real commits — they appear in the commit log
+          and are persisted — they just don't fire plugin handlers.
     notes:
       - "Commits are APPEND-ONLY. Never modified after creation."
       - "An empty merge (no state change) creates no commit."
@@ -200,11 +216,17 @@ operations:
       authorId:
         type: "string | null"
         description: "Actor ID for this commit. Default: null."
+      silent:
+        type: boolean
+        default: false
+        description: |
+          If true, commit is created but event routing is NOT triggered.
+          Used for progress updates, bookkeeping, error frames.
     backward_compat: |
       Callers that don't pass authorType/authorId get system commits.
-      This preserves backward compatibility with all 257 existing tests.
+      This preserves backward compatibility with all existing tests.
 
-  # --- Commit operations (new) ---
+  # --- Commit operations ---
   getCommit:
     signature: "getCommit(order) -> Commit | undefined"
     description: "Retrieve a specific commit by its order."
@@ -217,7 +239,7 @@ operations:
     signature: "getLatestCommit() -> Commit | undefined"
     description: "Return the HEAD commit (highest order)."
 
-  # --- Ref operations (new) ---
+  # --- Ref operations ---
   createRef:
     signature: "createRef(name, commitOrder) -> void"
     description: "Create a named ref pointing to a commit order."
@@ -240,7 +262,7 @@ operations:
     signature: "listRefs(prefix?) -> Map<string, number>"
     description: "List all refs, optionally filtered by prefix (e.g. 'processed/')."
 
-  # --- Diff operations (new) ---
+  # --- Diff operations ---
   diff:
     signature: "diff(fromOrder, toOrder) -> Array<{ frameId, operation, frame }>"
     description: |
@@ -260,7 +282,7 @@ operations:
       that changed between two commits. No operation metadata.
       Most common use case: 'what frames are new for this consumer?'
 
-  # --- Window operations (new) ---
+  # --- Window operations ---
   loadWindow:
     signature: "loadWindow(frames, fromOrder, toOrder) -> void"
     description: |
@@ -279,7 +301,7 @@ operations:
     signature: "getWindowBounds() -> { from: number, to: number }"
     description: "Return the current loaded window range."
 
-  # --- Commit Validator (new) ---
+  # --- Commit Validator ---
   commit_validator:
     description: |
       Pluggable validation function injected via constructor. Called before
@@ -303,13 +325,13 @@ operations:
         authorId: "string | null"
 
 # =============================================================================
-# 5. PERMISSION MODEL (Commit Validator Rules)
+# 5. PERMISSION MODEL
 # =============================================================================
 
 permissions:
   description: |
-    Three-tier permission architecture. Tiers 1 and 3 are external to the
-    FrameManager. Tier 2 is the commit validator.
+    Multi-tier permission architecture combining structural ACLs (commit
+    validator) with cryptographic approval signing (envelope signatures).
 
   tier_1_authentication:
     description: "Server/Kernel sets authorType and authorId. External."
@@ -346,13 +368,187 @@ permissions:
           system: "Can update ANY ref"
           actor: "Can only update refs under their own namespace (processed/<ownId>)"
 
-  tier_3_policy:
+  tier_3_approval_signing:
+    description: |
+      Cryptographic approval verification via envelope signing. The system
+      always signs on behalf of an authenticated user. Security comes from
+      signature verification, not from protected properties on frames.
+    location: "src/core/auth/signing.mjs"
+    model:
+      per_request:
+        description: |
+          User clicks "Approve" for a specific tool call.
+          Deterministic blob: authUserID:frameID:timestamp
+          User signs blob with private key.
+          System signs user's signature with system key.
+          Both signatures stored on approval frame.
+      standing_approval:
+        description: |
+          User creates a standing rule (e.g. "allow all shell commands in this session").
+          Deterministic blob: authUserID:pattern:type:scope:timestamp
+          User signs blob with private key (one-time delegation).
+          System references standing approval for future auto-approvals.
+          System signs on behalf of user for matching tool calls.
+      verification:
+        description: |
+          1. Reconstruct deterministic blob from stored fields
+          2. Verify user signature with user's public key
+          3. Verify system signature (of user's signature) with system public key
+          Both must pass. Tampered fields → reconstructed blob differs → verification fails.
+      dangerous_mode:
+        description: |
+          Standing approval with pattern '*', per-session scope by default.
+          Global scope available via user preferences (with warning).
+          Same signing. Same verification. Same audit trail.
+    future:
+      - "Key rotation with versioned key pairs (see future-plans/key-rotation.yaml)"
+      - "Per-user key pairs for federation (see future-plans/signatures-federation.yaml)"
+
+  tier_4_policy:
     description: "User-configurable tool policies. External."
     location: "src/core/permissions/permission-engine.mjs"
-    note: "Unchanged. Orthogonal to structural ACLs."
+    note: "Unchanged. Orthogonal to structural ACLs and signing."
 
 # =============================================================================
-# 6. EVENTS
+# 6. EVENT ROUTING
+# =============================================================================
+
+event_routing:
+  description: |
+    The core innovation of Phase C. Frame mutations become events.
+    When FrameManager.merge() creates or modifies frames (non-silent),
+    the Frame Router determines which plugins care about that frame
+    and invokes their process() handler via a middleware chain.
+
+  frame_router:
+    description: |
+      The routing engine. Receives non-silent commits from FrameManager,
+      computes diffs, matches registered selectors, and dispatches to
+      plugin handlers via next()/done() middleware chain.
+    behavior:
+      - "Routing happens per-commit, not per-frame"
+      - "Synchronous matching (selector evaluation), async handling (plugin process)"
+      - "Handler isolation: one handler's failure does not prevent others from firing"
+      - "Re-entrant safety: handlers that create frames add commits to a queue processed iteratively"
+      - "Router computes context.changes (property diffs) before dispatching"
+
+  plugin_lifecycle:
+    description: |
+      Plugins register selectors at setup() time. The router instantiates
+      a fresh plugin class per routing cycle. No long-lived instances.
+    registration: |
+      registerSelector(selector, PluginClass) — class, not instance.
+      Selectors compiled once at registration time.
+      Alongside existing registerTool and registerCommand (not a replacement).
+    instantiation: |
+      Per routing cycle: new PluginClass(context).
+      Context stored on this.context (available in process() and onChange()).
+      Instance GC'd after routing cycle completes.
+    context:
+      frames: "Full frame stack (for lookups)"
+      previousFrame: "Frame before this commit (null for creation)"
+      newFrame: "Frame after this commit (null for deletion)"
+      changes: "Array<{ propName, previousValue, newValue }> — pre-computed diff"
+      commit: "The commit that triggered this routing cycle"
+      engine: "Frame engine / manager — query frames, create commits"
+      session: "Session context (participants, settings)"
+      logger: "Scoped logger for this plugin (also available as this.logger)"
+
+  plugin_interface:
+    process:
+      signature: "async process(next, done)"
+      description: |
+        Primary entry point. Called when the plugin's selector matches a frame.
+        Plugin MUST call either next(context) or done(context).
+        next(context): continue chain, optionally with modified context.
+        done(context): stop chain intentionally.
+    onChange:
+      signature: "onChange(propName, previousValue, newValue)"
+      description: |
+        Convenience helper called by processChanges().
+        Iterates context.changes and calls onChange() per changed property.
+        Optional — plugins can work directly with context.newFrame instead.
+    checkPermission:
+      signature: "async checkPermission(toolName, params)"
+      description: |
+        BasePluginClass method. Checks for valid signed approval.
+        If approved: returns immediately.
+        If denied: creates permission-request frame, returns denied.
+        Caller (the plugin) should call done() on denial.
+        This is a SERVICE on BasePluginClass, not a separate plugin.
+
+  middleware_chain:
+    description: |
+      Plugins execute as an ordered middleware chain via next()/done().
+    error_handling:
+      missing_next_done: |
+        Plugin returns without calling next() or done().
+        Logged as error. Router calls next(context) automatically.
+        Chain continues. Future: evict plugin after N consecutive failures.
+      plugin_throws: |
+        Plugin throws an exception during process().
+        Logged as error. Router calls next(context) automatically.
+        Chain continues. One plugin crash never breaks the chain.
+      plugin_calls_done: "Chain stops intentionally. No error."
+      plugin_calls_next: "Chain continues with (potentially modified) context."
+
+  selector_syntax:
+    description: |
+      CSS-selector-inspired syntax for matching frames.
+      Compiled once at registration time into matcher functions.
+    examples:
+      - "type:user-message — match frame.type === 'user-message'"
+      - "type:* — catch-all matcher"
+      - "author:agent — match frame.authorType === 'agent'"
+      - "type:tool-call[toolName=shell:execute] — type + content property match"
+    supports:
+      - "Type selectors (type:foo)"
+      - "Author selectors (author:agent)"
+      - "Property selectors ([propName=value])"
+      - "Wildcard (type:*)"
+      - "Function predicates (passed through as-is)"
+
+  silent_commits:
+    description: |
+      merge([frames], { silent: true }) persists without triggering routing.
+    use_cases:
+      - "Progress updates during tool execution"
+      - "Agent ref advances"
+      - "Error frames (prevents error cascades)"
+      - "Internal bookkeeping"
+    behavior:
+      - "Silent commits are real commits — they appear in the commit log"
+      - "Silent commits do NOT trigger the frame router"
+      - "Default merge (no options) triggers routing"
+
+  tool_call_lifecycle:
+    description: |
+      Tool-call frames have a state lifecycle, each transition visible
+      in the commit log:
+    states:
+      - pending: "Tool call created by agent"
+      - approved: "Signed approval from user/system (via checkPermission)"
+      - denied: "User denied the tool call"
+      - executing: "Tool is running"
+      - complete: "Tool result available"
+    flow:
+      standard: |
+        1. Agent yields tool-call → frame created (pending)
+        2. Tool plugin calls checkPermission() → needs approval
+        3. checkPermission creates permission-request frame, returns denied
+        4. Tool plugin calls done()
+        5. User approves → signed approval frame created
+        6. Approval routes to permission system → original tool-call frame gets signed commit
+        7. Tool-call frame update re-routes to tool plugin
+        8. Tool plugin calls checkPermission() again → approved (valid signature)
+        9. Tool executes → frame updated (executing → complete)
+      pre_approved: |
+        1. Agent yields tool-call → frame created (pending)
+        2. Tool plugin calls checkPermission() → standing approval exists → auto-approved
+        3. Tool executes immediately
+
+# =============================================================================
+# 7. EVENTS
 # =============================================================================
 
 events:
@@ -384,7 +580,7 @@ events:
       when: "Commit validator rejects a merge."
 
 # =============================================================================
-# 7. INTERNAL STRUCTURE (replacing seqda)
+# 8. INTERNAL STRUCTURE
 # =============================================================================
 
 internals:
@@ -418,13 +614,13 @@ internals:
       is needed later, it can be added as an opt-in wrapper.
 
 # =============================================================================
-# 8. STORAGE ADAPTER (future — Phase C)
+# 9. STORAGE ADAPTER (Phase D)
 # =============================================================================
 
 storage_adapter:
   description: |
     Pluggable storage backend for persisting frames and commits.
-    Phase A/B use in-memory only. Phase C adds persistent backends.
+    Phase A/B use in-memory only. Phase D adds persistent backends.
   interface:
     loadFrames: "(fromOrder, toOrder) -> Array<Frame>"
     loadCommits: "(fromOrder, toOrder) -> Array<Commit>"
@@ -435,7 +631,7 @@ storage_adapter:
     memory:
       description: "In-memory Maps. Default. Used in browser and tests."
     sqlite:
-      description: "SQLite via Mythix ORM. Server-side. Phase C."
+      description: "SQLite via Mythix ORM. Server-side. Phase D."
     indexeddb:
       description: "Browser persistence. Future consideration."
   query_patterns:
@@ -449,16 +645,17 @@ storage_adapter:
       - "SELECT name, commit_order FROM refs WHERE session_id = ?"
 
 # =============================================================================
-# 9. PHASED BUILD
+# 10. PHASED BUILD
 # =============================================================================
 
 phases:
 
   A:
     name: "Foundation"
+    status: COMPLETE
     description: |
       Evolve FrameManager internals. Drop seqda. Add commit log, refs, diff.
-      All 257 existing tests MUST pass (adapted to new internals).
+      All 257 existing tests adapted and passing.
     deliverables:
       - "Drop seqda dependency, replace with plain Maps + EventEmitter"
       - "Commit log: every merge() creates a Commit record"
@@ -466,25 +663,166 @@ phases:
       - "Diff: between any two commit orders or ref names"
       - "Window: loadWindow(), evict(), getWindowBounds()"
       - "Commit validator: pluggable, optional"
-    test_count_target: "~320 tests (257 existing + ~60 new)"
-    dependencies: "None — starts from current codebase"
+    test_count: "~320 tests"
 
   B:
     name: "Multi-Actor"
+    status: COMPLETE
     description: |
       Evolve InteractionLoop to use ref-based scheduling. Multiple agents
-      per session. Async tool execution. Commit validator with full ACLs.
+      per session. Commit validator with full ACLs. Message assembly v2.
     deliverables:
-      - "Session scheduler: watches commits, triggers agent interactions"
+      - "Author fields on frames and commits"
+      - "Structural ACL commit validator"
+      - "Frame creation pivot (InteractionLoop creates frames)"
       - "Per-agent refs: each agent tracks its own processed position"
-      - "Async tool execution: tool calls become commits, results arrive later"
-      - "Commit validator with full structural ACL rules"
-      - "Message assembly v2: frame IDs, source attribution, XML-like tags"
-    test_count_target: "~400 tests"
-    dependencies: ["Phase A"]
+      - "Session scheduler: watches commits, triggers agent interactions"
+      - "Message assembly v2: frame IDs, source attribution"
+      - "Controller integration and stop-as-commit"
+      - "Scheduler orchestrator for multi-agent coordination"
+    test_count: "~1411 tests"
 
   C:
+    name: "Event Routing Layer"
+    status: PLANNING
+    description: |
+      Transform Kikx from a procedurally-orchestrated interaction system
+      into a declarative, event-driven architecture where frame mutations
+      are the universal event primitive. The InteractionLoop, permission
+      system, and multi-agent scheduler become plugins reacting to frame
+      mutations rather than hardwired kernel logic.
+    sub_phases:
+
+      C1:
+        name: "Frame Event Router Foundation"
+        description: |
+          Build the core routing engine, selector compiler, silent commit
+          mode, BasePluginClass with middleware chain, and wire into KikxCore.
+        deliverables:
+          - "SelectorCompiler: parse selector strings into matcher functions"
+          - "FrameRouter: match commits to selectors, dispatch via middleware chain"
+          - "BasePluginClass: context, processChanges(), onChange(), checkPermission()"
+          - "next(ctx)/done(ctx) middleware chain with safety net"
+          - "Silent commit flag on merge() options"
+          - "registerSelector() on PluginContext and PluginRegistry"
+          - "Router wired into KikxCore"
+        files:
+          new:
+            - "src/core/routing/frame-router.mjs"
+            - "src/core/routing/selector-compiler.mjs"
+            - "src/core/routing/base-plugin-class.mjs"
+            - "spec/core/routing/frame-router-spec.mjs"
+            - "spec/core/routing/selector-compiler-spec.mjs"
+            - "spec/core/routing/base-plugin-class-spec.mjs"
+          modified:
+            - "src/shared/frame-manager/frame-manager.mjs — add silent flag"
+            - "src/core/plugin-loader/index.mjs — add registerSelector to context"
+            - "src/core/plugin-loader/registry.mjs — add _selectors registry"
+            - "src/core/kikx-core.mjs — wire router"
+        tests:
+          selector_compiler:
+            - "Parse type:user-message → matcher function"
+            - "Parse type:tool-call[toolName=shell:execute] → property matcher"
+            - "Parse type:* → catch-all"
+            - "Parse author:agent → authorType matcher"
+            - "Invalid selector → throws at registration time"
+            - "Function predicate passed through unchanged"
+          frame_router:
+            - "Frame creation triggers matched handlers"
+            - "Frame update triggers matched handlers"
+            - "Silent commits do NOT trigger routing"
+            - "Handler errors caught, chain continues (next called)"
+            - "Missing next/done → logged, next called automatically"
+            - "done() stops chain intentionally"
+            - "next(ctx) passes modified context to next plugin"
+            - "Re-entrant frame creation processed iteratively (no stack overflow)"
+            - "Multiple plugins match same frame → all invoked in order"
+            - "No matched plugins → no error, commit still persists"
+            - "context.changes correctly computed before dispatch"
+          base_plugin_class:
+            - "Constructor stores context on this.context"
+            - "this.logger available via context"
+            - "processChanges() iterates context.changes, calls onChange() per entry"
+            - "checkPermission() creates permission-request frame on denial"
+            - "checkPermission() returns approved when valid signature exists"
+          silent_commits:
+            - "merge([frames], { silent: true }) creates commit with silent: true"
+            - "Silent commits in commit log (real commits)"
+            - "Silent commits do NOT trigger router"
+            - "Default merge triggers router"
+          integration:
+            - "Full round-trip: frame → selector match → process() → new frame → second routing"
+            - "Permission flow end-to-end (tool-call → request → approve → execute)"
+        done_criteria:
+          - "All new tests pass"
+          - "All existing tests still pass (1411+)"
+          - "Router wired into KikxCore, fires on non-silent merges"
+          - "At least one plugin registered via registerSelector() and triggered"
+          - "Silent commits proven: merge with { silent: true } does NOT trigger routing"
+
+      C2:
+        name: "Migrate Scheduling to Router"
+        description: |
+          Convert SchedulerOrchestrator logic into a routing plugin.
+          The scheduling plugin registers for user-message frames and
+          triggers agent interactions via the middleware chain.
+        deliverables:
+          - "Scheduling routing plugin"
+          - "SchedulerOrchestrator deprecated"
+        done_criteria:
+          - "Multi-agent scheduling works via routing plugin"
+          - "SchedulerOrchestrator no longer needed"
+          - "All existing scheduling tests pass (adapted)"
+
+      C3:
+        name: "Migrate Permission Flow to Router"
+        description: |
+          Move permission checking from InteractionLoop into checkPermission()
+          on BasePluginClass. Permission verification via envelope signing.
+          System key pair generation and signing infrastructure.
+        deliverables:
+          - "System key pair generation and storage"
+          - "Envelope signing: sign/verify deterministic blobs"
+          - "checkPermission() with signature verification"
+          - "Standing approval frames"
+          - "Permission-request/response frame flow"
+        done_criteria:
+          - "Tool calls require signed approval"
+          - "Standing approvals auto-approve matching tool calls"
+          - "Permission hard-break logic removed from InteractionLoop"
+          - "All existing permission tests pass (adapted)"
+
+      C4:
+        name: "Migrate Hook System to Router"
+        description: |
+          Replace HookRunner with routing-based message interception.
+          Hooks become routing plugins that match specific frame types.
+        deliverables:
+          - "Hook routing plugins"
+          - "HookRunner deprecated"
+        done_criteria:
+          - "All existing hooks work via routing plugins"
+          - "HookRunner no longer needed"
+          - "All existing hook tests pass (adapted)"
+
+      C5:
+        name: "Slim Down InteractionLoop"
+        description: |
+          Remove migrated logic from InteractionLoop. Target: under 500
+          lines (from ~1150). InteractionLoop becomes a thin wrapper that
+          runs the agent generator and creates frames from its output.
+        deliverables:
+          - "InteractionLoop under 500 lines"
+          - "All scheduling/permission/hook logic removed"
+          - "Command dispatch via routing plugin (zero priority, handled flag)"
+        done_criteria:
+          - "InteractionLoop under 500 lines"
+          - "All tests pass"
+          - "E2E: user message → agent response → tool call → permission → result"
+
+  D:
     name: "Streaming"
+    status: PLANNED
     description: |
       Windowed loading with persistent storage adapter. Client-side
       FrameManager with WebSocket live updates. Viewport management.
@@ -493,82 +831,7 @@ phases:
       - "Client-side FrameManager with WebSocket commit streaming"
       - "Viewport management: lazy load, backfill, eviction"
       - "Memory-bounded operation (configurable window size)"
-    test_count_target: "~450 tests"
-    dependencies: ["Phase B"]
-
-# =============================================================================
-# 10. PHASE A — DETAILED IMPLEMENTATION ORDER
-# =============================================================================
-
-phase_a_implementation:
-  description: |
-    TDD throughout. Tests written BEFORE implementation.
-    Each step is independently testable.
-
-  steps:
-    1:
-      name: "Regression adapter"
-      description: |
-        Adapt all 257 existing tests to work without seqda.
-        Replace seqda store access with direct Map access.
-        Tests MUST FAIL initially (seqda is still present).
-        Then swap internals. Tests pass.
-      files:
-        - "src/shared/frame-manager/frame-manager.mjs (modify)"
-
-    2:
-      name: "Commit log"
-      description: |
-        Every successful merge() creates a Commit record.
-        New internal: this._commits array.
-        New methods: getCommit(), getCommits(), getLatestCommit().
-        New event: 'commit'.
-      files:
-        - "src/shared/frame-manager/frame-manager.mjs (modify)"
-        - "src/shared/frame-manager/commit.mjs (new)"
-      tests: "~15 tests"
-
-    3:
-      name: "Refs"
-      description: |
-        Named pointers to commit orders.
-        New internal: this._refs Map.
-        New methods: createRef(), getRef(), updateRef(), deleteRef(), listRefs().
-        Auto-advancing 'heads/main' ref on every commit.
-        New events: ref:created, ref:updated, ref:deleted.
-      files:
-        - "src/shared/frame-manager/frame-manager.mjs (modify)"
-      tests: "~12 tests"
-
-    4:
-      name: "Diff"
-      description: |
-        Compare two commit orders and return changed frames.
-        New methods: diff(), diffFrames().
-        Supports ref names as arguments (resolved to commit orders).
-      files:
-        - "src/shared/frame-manager/frame-manager.mjs (modify)"
-      tests: "~15 tests"
-
-    5:
-      name: "Windowed loading"
-      description: |
-        loadWindow(), evict(), getWindowBounds().
-        FrameManager can hold a subset of frames.
-        Backfill extends the window backward.
-      files:
-        - "src/shared/frame-manager/frame-manager.mjs (modify)"
-      tests: "~10 tests"
-
-    6:
-      name: "Commit validator"
-      description: |
-        Pluggable validation function in constructor.
-        Called before commit is recorded. Can reject.
-        Emits commit:rejected event on rejection.
-      files:
-        - "src/shared/frame-manager/frame-manager.mjs (modify)"
-      tests: "~20 tests (P1-P15 + edge cases)"
+    dependencies: ["Phase C"]
 
 # =============================================================================
 # 11. ACCEPTANCE CRITERIA
@@ -576,35 +839,92 @@ phase_a_implementation:
 
 acceptance_criteria:
   phase_a:
-    - "All 257 existing FrameManager tests pass (adapted, no seqda)"
-    - "Every merge() creates a commit record (unless no state changed)"
-    - "Commits are monotonically ordered"
-    - "Multiple frames in one merge = one atomic commit"
-    - "Refs can be created, read, updated, deleted"
-    - "'heads/main' ref auto-advances on every commit"
-    - "diff() returns exactly the frames changed between two commit orders"
-    - "diff() accepts ref names and resolves to commit orders"
-    - "diff(0, HEAD) returns all frames"
-    - "diff(same, same) returns empty"
-    - "loadWindow() loads a slice without loading everything"
-    - "Backfill extends the window without duplicates"
-    - "evict() releases frames below a threshold"
-    - "Commit validator can reject unauthorized merges"
-    - "Rejected merges emit commit:rejected event"
-    - "No seqda dependency in package.json"
-    - "Works in both Node.js and browser (EventEmitter polyfill)"
+    status: COMPLETE
 
   phase_b:
-    - "Multiple agents per session with independent refs"
-    - "Scheduler triggers interactions on new commits"
-    - "Tool calls execute async, results land as commits"
-    - "Message assembly includes frame IDs and source attribution"
-    - "Commit validator enforces full structural ACL rules"
-    - "User interrupt (stop) is processed as a high-priority commit"
+    status: COMPLETE
 
   phase_c:
+    - "Frame mutations trigger matched plugin handlers via routing"
+    - "CSS-selector-like syntax matches frames by type, author, properties"
+    - "next()/done() middleware chain with error safety net"
+    - "Silent commits persist without triggering routing"
+    - "checkPermission() on BasePluginClass with envelope signing"
+    - "Scheduling, permissions, hooks all expressed as routing plugins"
+    - "InteractionLoop under 500 lines"
+    - "All existing tests pass at every sub-phase"
+    - "Tool-call frame lifecycle: pending → approved → executing → complete"
+    - "System envelope signing with deterministic blobs"
+    - "Standing approvals with per-session scope"
+
+  phase_d:
     - "Storage adapter loads frames from SQLite on demand"
     - "Client FrameManager receives commits via WebSocket"
     - "Viewport management: lazy load, backfill, eviction"
     - "Memory usage bounded by configurable window size"
     - "Full E2E: user message → agent response → tool call → async result → agent processes"
+
+# =============================================================================
+# 12. DESIGN DECISIONS LOG
+# =============================================================================
+
+design_decisions:
+  description: |
+    Key decisions made during conversation.md dialog (2026-03-06 to 2026-03-07).
+    Preserved here for future reference.
+
+  decisions:
+    - topic: "onChange signature"
+      decision: "onChange(propName, previousValue, newValue)"
+      rationale: "Plugin can dispatch per-property. Router does the diff, plugin gets granularity."
+
+    - topic: "Routing model"
+      decision: "next(ctx)/done(ctx) middleware chain"
+      rationale: |
+        Plugins can modify context for downstream plugins. Single system
+        instead of separate middleware + broadcast. Plugin authors are
+        competent engineers — missing next/done is their bug to fix.
+
+    - topic: "Plugin lifecycle"
+      decision: "Class registration, fresh instance per routing cycle"
+      rationale: |
+        No long-lived state, no cross-contamination, no memory leaks.
+        Context on constructor since instance is short-lived.
+
+    - topic: "Permission architecture"
+      decision: "checkPermission() as a service on BasePluginClass"
+      rationale: |
+        Not a separate middleware plugin. Any plugin can call it. The
+        permission system is baked into the system, not a plugin.
+
+    - topic: "Permission approval flow"
+      decision: "Permission system stamps the frame, frame re-routes to tool plugin"
+      rationale: |
+        Separation of concerns. Permission plugin is a gatekeeper that
+        stamps frames, not a dispatcher that executes tools.
+
+    - topic: "Protected properties"
+      decision: "Not needed — security via signature verification"
+      rationale: |
+        Anyone can write any property. checkPermission() verifies
+        cryptographic signatures, not boolean flags.
+
+    - topic: "Signing model"
+      decision: "System envelope signing with deterministic blobs"
+      rationale: |
+        System always signs on behalf of authenticated user. Per-user
+        key pairs deferred to federation. System key for now.
+
+    - topic: "Plugin storage"
+      decision: "Plugin JIT-loads its own data during async process()"
+      rationale: "Router/engine not aware of plugin storage. Lazy loading."
+
+    - topic: "Dangerous mode"
+      decision: "Standing approval with pattern '*', per-session default"
+      rationale: "Same signing, same audit trail. Not a special system."
+
+    - topic: "Error handling"
+      decision: "Never break the chain"
+      rationale: |
+        Missing next/done → log + call next. Throw → log + call next.
+        A broken plugin should never halt all downstream processing.

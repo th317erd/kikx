@@ -1,0 +1,67 @@
+# Abilities System
+# Deferred from: Phase C (Event Routing Layer)
+# Priority: Medium
+# Complexity: Medium
+
+summary: >
+  A system where users customize agent behavior through natural language
+  conversations in DM sessions. The agent summarizes user instructions
+  into an "Abilities" list that gets injected into future conversations.
+  This replaces configuration forms with conversational customization.
+
+current_state: >
+  Agents have a dmSummary field and an instructions field on the Agent
+  model. The dmSummary is generated from DM conversations and injected
+  into the agent's system prompt. The instructions field provides
+  static per-agent guidance. These are the building blocks of the
+  Abilities system but are not formalized as such.
+
+requirements:
+  - Users converse with agents in DM sessions to define abilities
+  - Agent summarizes abilities from conversation history
+  - Abilities are injected into the agent's context in other sessions
+  - Abilities are scoped: per-user, per-org, or global to the agent
+  - Users can review, edit, or remove abilities
+  - Abilities can include conditional triggers (e.g. "when asked about
+    code, consider unit testing")
+  - Agent confirms ability changes ("Got it! Updated my abilities.")
+
+design_notes: >
+  With sessions-as-frames, DM sessions become natural containers for
+  ability configuration. Each ability could be stored as a frame with
+  type: 'ability' within the DM session.
+
+  The injection point is message assembly — when building the context
+  for an interaction, the Abilities for that user+agent pair are
+  appended to the user's message (or system prompt, depending on
+  the agent plugin's preference).
+
+  Example flow:
+  1. User DMs agent: "When I ask about code, always consider testing"
+  2. Agent creates ability frame: { type: 'ability', content: { trigger: 'code', instruction: 'consider testing' } }
+  3. Agent confirms: "Added! I'll consider testing for code questions."
+  4. In a group session, user asks about code
+  5. Message assembly pulls user's abilities for this agent
+  6. Abilities text appended to the message context
+  7. Agent naturally follows the ability instructions
+
+  This is deferred to Phase E because it depends on the DM system
+  being stable and potentially on sessions-as-frames for clean
+  ability storage.
+
+dependencies:
+  - DM session system stable
+  - Message assembly supports ability injection
+  - Potentially sessions-as-frames (for ability storage as frames)
+
+files:
+  - src/core/interaction/message-builder.mjs  # Ability injection
+  - src/core/models/agent.mjs                 # Ability query API
+
+tests:
+  - User creates ability via DM conversation
+  - Ability injected into agent context in other sessions
+  - Ability scoping: per-user vs per-org
+  - User removes ability -> no longer injected
+  - Agent confirms ability changes in DM
+  - Conditional ability triggers only when condition matches

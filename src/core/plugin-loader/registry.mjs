@@ -17,6 +17,7 @@ export class PluginRegistry {
     this._agentTypes     = new Map();
     this._hooks          = new Map(); // hookName -> handler[]
     this._instructions   = [];        // { pluginName, content, priority }
+    this._selectors      = [];        // { selector, PluginClass, pluginName }
   }
 
   // ---------------------------------------------------------------------------
@@ -154,5 +155,23 @@ export class PluginRegistry {
 
   getInstructions() {
     return [...this._instructions].sort((a, b) => a.priority - b.priority);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Selectors (Frame Event Router)
+  // ---------------------------------------------------------------------------
+
+  registerSelector(selector, PluginClass, pluginName) {
+    if (!selector)
+      throw new Error('Selector must be a non-empty string or function');
+
+    if (!PluginClass || typeof PluginClass !== 'function')
+      throw new Error('PluginClass must be a constructor function');
+
+    this._selectors.push({ selector, PluginClass, pluginName: pluginName || null });
+  }
+
+  getSelectors() {
+    return [...this._selectors];
   }
 }

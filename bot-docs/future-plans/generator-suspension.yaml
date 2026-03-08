@@ -1,0 +1,71 @@
+# Generator Suspension (Replace Hard-Break)
+# Deferred from: Phase C (Event Routing Layer)
+# Priority: Medium
+# Complexity: High
+
+summary: >
+  Replace the current "hard-break" permission mechanism with true
+  generator suspension. When an agent needs permission for a tool call,
+  the generator is suspended (not destroyed), permission is requested
+  via frame mutation, and when approved the generator resumes exactly
+  where it left off — no replay needed.
+
+current_state: >
+  The InteractionLoop uses a "permission hard-break" mechanism: when a
+  tool call requires user approval, the generator is destroyed via
+  return(), a permission-request frame is created, and when the user
+  approves, the entire interaction is replayed from scratch with the
+  pre-approved permission. This works but is wasteful (replays all
+  previous tool calls) and fragile (replay must produce identical
+  generator state).
+
+  Phase C keeps this mechanism but moves the permission check into a
+  routing plugin. The hard-break still happens, but it's triggered by
+  the plugin rather than hardwired into InteractionLoop.
+
+requirements:
+  - Generator is suspended, not destroyed, when awaiting permission
+  - On approval, generator resumes with the tool result
+  - On denial, generator receives a denial response and continues
+  - Generator state must survive server restarts (serialization)
+  - Crash recovery: if server dies during suspension, re-create the
+    generator and replay (fallback to current behavior)
+  - No token waste from replaying the entire conversation
+
+design_notes: >
+  This requires a generator lifecycle manager that can:
+  1. Suspend a running generator (hold reference, don't call next())
+  2. Persist enough state to re-create the generator on restart
+  3. Resume the generator with a tool result when permission is granted
+  4. Handle timeouts (generator suspended too long)
+
+  The main challenge is crash recovery. JavaScript generators are not
+  serializable — you can't save a generator's internal state to disk.
+  The fallback is always replay: re-create the generator, feed it all
+  previous tool results, and it reaches the same suspension point.
+
+  Phase D prerequisite: the routing plugin system must be stable, and
+  handler idempotency must be proven in production before removing the
+  replay safety net.
+
+  User note: "All events are hard breaks in this new design" — the
+  event-driven architecture naturally suspends between events. The
+  generator only needs to survive the gap between yielding a tool-call
+  frame and receiving the tool-result frame. This gap is already
+  implicit in the event routing model.
+
+dependencies:
+  - Phase C (Frame Event Router) must be stable
+  - Permission routing plugin must be working
+  - Handler idempotency verified in production
+
+files:
+  - src/core/interaction/index.mjs       # Generator lifecycle manager
+  - src/core/internal-plugins/permissions/index.mjs  # Suspend instead of break
+
+tests:
+  - Generator suspended on permission request, resumed on approval
+  - Generator suspended on permission request, receives denial
+  - Server restart during suspension -> replay fallback works
+  - Timeout on suspended generator -> cleanup and error frame
+  - No token waste: resumed generator does not replay previous calls

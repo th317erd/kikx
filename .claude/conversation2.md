@@ -1,3 +1,0 @@
-<!-- 
-Okay, I want you to now implement this "server" plan. I want you to be the Coordinator agent, and I want you to use sub-agents to get the tasks done. You use your AGIS skills to get things done, and do a good job coordinating the sub-agents. Please make CERTAIN that you put a timeout on tasks and unit tests. Last time you waited for over 10 hours for a failed test to finish. Please please do not repeat such mistakes. Keep going, answer your own questions if needed (making a log to talk to me about those decisions later on), and just plug along until all unit tests pass, and the plan is fully implemented.
- -->
