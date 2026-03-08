@@ -12,7 +12,7 @@ import { DEFAULT_CONFIG, mergeConfig } from './config/index.mjs';
 import { DEFAULT_MODELS }              from './models/index.mjs';
 import { PluginLoader, FilesystemPluginProvider, InMemoryPluginProvider } from './plugin-loader/index.mjs';
 import { PermissionEngine }  from './permissions/index.mjs';
-import { HookRunner }        from './hooks/index.mjs';
+import { HookRunner, HookService } from './hooks/index.mjs';
 import { PrimerAssembler }   from './primer/index.mjs';
 import { FrameRouter }      from './routing/frame-router.mjs';
 import { mkdir }            from 'node:fs/promises';
@@ -262,9 +262,11 @@ export class KikxCore {
 
     await loader.loadAll();
 
-    // Create hook runner from the registry
-    let hookRunner = new HookRunner(loader.getRegistry());
+    // Create hook runner and service from the registry
+    let hookRunner  = new HookRunner(loader.getRegistry());
+    let hookService = new HookService(loader.getRegistry());
     this._context.setProperty('hookRunner', hookRunner);
+    this._context.setProperty('hookService', hookService);
 
     this._pluginLoader = loader;
     this._context.setProperty('pluginLoader', loader);

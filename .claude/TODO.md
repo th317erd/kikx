@@ -1,48 +1,39 @@
-# Phase C3: Migrate Permission Flow to Router
+# Phase C4: Migrate Hook System to Router
 
 ## Status: COMPLETE
 
 ## Overview
-System envelope signing (HMAC-SHA256 on deterministic blobs) on Keystore.
-PermissionService wrapping PermissionEngine + signing with standing approval support.
-BasePluginClass.checkPermission() wired to real permission system.
-Permission routing plugin observes tool-call frames and verifies signatures.
+Replace HookRunner with routing-plugin-based HookService. Hook handlers
+become BasePluginClass subclasses registered via registerSelector() with
+hook:* selectors. HookService runs legacy handlers and routing plugins
+in a combined pipeline with block/modify/redirect/pass semantics.
 
 ## Steps
 
-### Step 1: Envelope signing on Keystore
-- [x] Add `canonicalize(data)` — deterministic JSON (sorted keys, recursive)
-- [x] Add `sign(data)` — HMAC-SHA256 with REK
-- [x] Add `verify(data, signature)` — timing-safe HMAC verification
-- [x] 19 tests
+### Step 1: Create HookService
+- [x] `src/core/hooks/hook-service.mjs` — routing-plugin-based replacement
+- [x] Same `run(hookName, payload)` interface as HookRunner
+- [x] Supports legacy function handlers (backward compat)
+- [x] Supports routing plugin handlers (BasePluginClass)
+- [x] Selector mapping: `hook:user-to-agent`, `hook:agent-to-user`, etc.
+- [x] Pipeline semantics: block/modify/redirect/pass
+- [x] Mixed handler chains (legacy first, then plugins)
 
-### Step 2: PermissionService
-- [x] Create `src/core/permissions/permission-service.mjs`
-- [x] `check(featureName, args, options)` — evaluate + sign if allowed
-- [x] `createStandingApproval(options)` — session-scoped signed allow rules
-- [x] `revokeStandingApproval(sessionID, options)` — remove standing approvals
-- [x] `signApproval(featureName, args, sessionID)` — envelope signing
-- [x] `verifyApproval(featureName, args, signature, sessionID)` — verification
-- [x] 18 tests
+### Step 2: Create hook infrastructure plugin
+- [x] `src/core/internal-plugins/hooks/index.mjs` — documents pattern
+- [x] Hook selector conventions defined
 
-### Step 3: Wire BasePluginClass.checkPermission()
-- [x] Accesses PermissionService from context
-- [x] Returns { approved: true, signature } or { approved: false, reason }
-- [x] Graceful fallback when no PermissionService available
-- [x] Handles PermissionDeniedError
-- [x] 6 tests
+### Step 3: Wire into InteractionLoop
+- [x] InteractionLoop prefers HookService over HookRunner
+- [x] Backward compatible (falls back to HookRunner)
 
-### Step 4: Create permission internal plugin
-- [x] `src/core/internal-plugins/permissions/index.mjs`
-- [x] Registers for `type:tool-call` via routing
-- [x] Verifies signatures on tool-call frames
-- [x] Warns on invalid signatures
-- [x] 7 tests
+### Step 4: Wire into KikxCore
+- [x] HookService created alongside HookRunner
+- [x] Stored on context as 'hookService'
 
-### Step 5: Wire into Application
-- [x] PermissionService created after Keystore initialization
-- [x] Stored on context as 'permissionService'
+### Step 5: Tests
+- [x] 21 tests for HookService
+- [x] All 1595 tests pass (0 failures)
 
-### Step 6: Full test suite verification
-- [x] All 1587 tests pass (0 failures)
-- [x] Commit
+### Step 6: Commit
+- [x] Committed

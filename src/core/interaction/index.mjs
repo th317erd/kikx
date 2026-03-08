@@ -66,7 +66,8 @@ export class InteractionLoop extends EventEmitter {
   }
 
   _getHookRunner() {
-    return this._context.getProperty('hookRunner');
+    // Prefer HookService (C4) over legacy HookRunner
+    return this._context.getProperty('hookService') || this._context.getProperty('hookRunner');
   }
 
   // ---------------------------------------------------------------------------
