@@ -21,7 +21,6 @@ import { InteractionLoop }  from '../core/interaction/index.mjs';
 import { ContentSanitizer } from '../core/lib/content-sanitizer.mjs';
 import { SessionScheduler }      from '../core/scheduling/session-scheduler.mjs';
 import { AgentResolver }         from '../core/scheduling/agent-resolver.mjs';
-import { SchedulerOrchestrator } from '../core/scheduling/scheduler-orchestrator.mjs';
 
 export class Application extends MythixApplication {
   static getName() {
@@ -70,11 +69,11 @@ export class Application extends MythixApplication {
   }
 
   async stop() {
-    // Stop orchestrator before tearing down core
+    // Disconnect scheduler from interaction loop before tearing down core
     if (this._core) {
-      let orchestrator = this._core.getContext().getProperty('schedulerOrchestrator');
-      if (orchestrator)
-        orchestrator.stop();
+      let scheduler = this._core.getContext().getProperty('sessionScheduler');
+      if (scheduler)
+        scheduler.disconnectFromInteractionLoop();
     }
 
     // Stop Mythix HTTP server first
@@ -131,15 +130,9 @@ export class Application extends MythixApplication {
       interactionLoop,
     });
 
-    // Initialize agent resolver and scheduler orchestrator
+    // Initialize agent resolver and connect scheduler to interaction loop
     let agentResolver = new AgentResolver(this._core);
-    let orchestrator  = new SchedulerOrchestrator({
-      scheduler:       sessionScheduler,
-      agentResolver,
-      interactionLoop,
-    });
-
-    orchestrator.start();
+    sessionScheduler.connectToInteractionLoop(interactionLoop, agentResolver);
 
     context.setProperty('sessionManager', sessionManager);
     context.setProperty('framePersistence', framePersistence);
@@ -147,7 +140,6 @@ export class Application extends MythixApplication {
     context.setProperty('interactionLoop', interactionLoop);
     context.setProperty('sessionScheduler', sessionScheduler);
     context.setProperty('agentResolver', agentResolver);
-    context.setProperty('schedulerOrchestrator', orchestrator);
   }
 
   // ---------------------------------------------------------------------------

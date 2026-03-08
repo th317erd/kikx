@@ -34,6 +34,14 @@ export class SessionScheduler extends EventEmitter {
 
     // sessionID → { keystore, umk, userId } for secondary agent resolution
     this._resolveContexts = new Map();
+
+    // sessionID → [{ agentID }] — agents queued to trigger
+    this._pendingTriggers = new Map();
+
+    // References set by connectToInteractionLoop()
+    this._agentResolver = null;
+    this._onInteractionEnd = null;
+    this._onScheduleCancel = null;
   }
 
   // ---------------------------------------------------------------------------
@@ -209,5 +217,138 @@ export class SessionScheduler extends EventEmitter {
     }
 
     return agents;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pending Trigger Queue
+  // ---------------------------------------------------------------------------
+  // Replaces SchedulerOrchestrator._pendingTriggers. Stores agents queued
+  // to trigger after the current interaction completes.
+  // ---------------------------------------------------------------------------
+
+  queueTrigger(sessionID, agentID) {
+    if (!this._pendingTriggers.has(sessionID))
+      this._pendingTriggers.set(sessionID, []);
+
+    this._pendingTriggers.get(sessionID).push({ agentID });
+  }
+
+  dequeueTrigger(sessionID) {
+    let queue = this._pendingTriggers.get(sessionID);
+    if (!queue || queue.length === 0) {
+      this._pendingTriggers.delete(sessionID);
+      return null;
+    }
+
+    let entry = queue.shift();
+
+    if (queue.length === 0)
+      this._pendingTriggers.delete(sessionID);
+
+    return entry;
+  }
+
+  clearTriggers(sessionID) {
+    this._pendingTriggers.delete(sessionID);
+  }
+
+  hasPendingTriggers(sessionID) {
+    let queue = this._pendingTriggers.get(sessionID);
+    return !!queue && queue.length > 0;
+  }
+
+  getPendingTriggers(sessionID) {
+    return this._pendingTriggers.get(sessionID) || [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // connectToInteractionLoop
+  // ---------------------------------------------------------------------------
+  // Replaces SchedulerOrchestrator's interaction:end handling. Subscribes to
+  // InteractionLoop events and triggers the next queued agent when an
+  // interaction completes.
+  // ---------------------------------------------------------------------------
+
+  connectToInteractionLoop(interactionLoop, agentResolver) {
+    this._agentResolver = agentResolver;
+
+    this._onInteractionEnd = async ({ sessionID, agentID }) => {
+      if (!sessionID)
+        return;
+
+      if (agentID)
+        this.markComplete(sessionID, agentID);
+
+      await this._triggerNext(sessionID);
+    };
+
+    this._onScheduleCancel = ({ sessionID }) => {
+      if (sessionID)
+        this.clearTriggers(sessionID);
+    };
+
+    interactionLoop.on('interaction:end', this._onInteractionEnd);
+    this.on('schedule:cancel', this._onScheduleCancel);
+  }
+
+  disconnectFromInteractionLoop() {
+    if (this._onInteractionEnd) {
+      this._interactionLoop.removeListener('interaction:end', this._onInteractionEnd);
+      this._onInteractionEnd = null;
+    }
+
+    if (this._onScheduleCancel) {
+      this.removeListener('schedule:cancel', this._onScheduleCancel);
+      this._onScheduleCancel = null;
+    }
+
+    this._agentResolver = null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // _triggerNext — pop next pending agent and start interaction
+  // ---------------------------------------------------------------------------
+
+  async _triggerNext(sessionID) {
+    let entry = this.dequeueTrigger(sessionID);
+    if (!entry)
+      return;
+
+    // Skip if the interaction loop already has an active interaction
+    if (this._interactionLoop.isActive(sessionID)) {
+      // Put it back and wait — retried on next interaction:end
+      this.queueTrigger(sessionID, entry.agentID);
+      return;
+    }
+
+    try {
+      await this._triggerAgent(sessionID, entry.agentID);
+    } catch (error) {
+      this.emit('trigger:error', { sessionID, agentID: entry.agentID, error });
+      this.markComplete(sessionID, entry.agentID);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // _triggerAgent — resolve and start interaction for a secondary agent
+  // ---------------------------------------------------------------------------
+
+  async _triggerAgent(sessionID, agentID) {
+    if (!this._agentResolver)
+      throw new Error('SessionScheduler not connected to InteractionLoop');
+
+    let resolveContext = this.getResolveContext(sessionID) || {};
+    let { agentPlugin, resolvedAgent } = await this._agentResolver.resolve(agentID, resolveContext);
+    let { checkPermission, executeTool } = this._agentResolver.buildCallbacks(resolvedAgent, sessionID);
+
+    await this._interactionLoop.startInteraction(sessionID, {
+      agentPlugin,
+      agent:          resolvedAgent,
+      userMessage:    null,
+      authorType:     'agent',
+      authorID:       agentID,
+      checkPermission,
+      executeTool,
+    });
   }
 }

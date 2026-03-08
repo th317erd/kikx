@@ -228,6 +228,12 @@ export class SessionManager {
       managerOptions.commitValidator = options.commitValidator;
 
     frameManager = new FrameManager(managerOptions);
+
+    // Auto-connect FrameRouter if available on context
+    let frameRouter = this._context.getProperty('frameRouter');
+    if (frameRouter)
+      frameRouter.connectTo(frameManager, { id: sessionID });
+
     this._frameManagers.set(sessionID, frameManager);
     return frameManager;
   }
