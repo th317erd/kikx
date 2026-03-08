@@ -3,7 +3,9 @@
 import { EventEmitter }          from 'node:events';
 import XID                       from 'xid-js';
 import { PermissionDeniedError } from '../permissions/permission-denied-error.mjs';
-import { parseShellCommands }    from '../internal-plugins/shell/command-parser.mjs';
+import { PermissionHandler }     from './permission-handler.mjs';
+import { CommandHandler }        from './command-handler.mjs';
+import { isFirstMessage, injectPrimer, buildMessages } from './message-history.mjs';
 
 // =============================================================================
 // InteractionLoop
@@ -13,14 +15,10 @@ import { parseShellCommands }    from '../internal-plugins/shell/command-parser.
 // agent blocks, handling tool calls, permission hard-breaks, message
 // queuing, and cancellation.
 //
-// Dependencies are obtained from the CascadingContext:
-//   - SessionManager, FramePersistence, ContentSanitizer
-//
-// Event emission:
-//   - 'frame'              — new frame created (for transport)
-//   - 'interaction:start'  — interaction started
-//   - 'interaction:end'    — interaction ended
-//   - 'permission:request' — permission approval needed
+// Heavy subsystems are delegated to:
+//   - PermissionHandler  (permission-handler.mjs)
+//   - CommandHandler      (command-handler.mjs)
+//   - message-history.mjs (buildMessages, isFirstMessage, injectPrimer)
 // =============================================================================
 
 function generateID(prefix) {
@@ -47,6 +45,10 @@ export class InteractionLoop extends EventEmitter {
 
     // Sessions needing primer on next interaction (set by /reload command)
     this._primerNeeded = new Set();
+
+    // Delegated subsystems
+    this._permissionHandler = new PermissionHandler(this);
+    this._commandHandler    = new CommandHandler(this);
   }
 
   // ---------------------------------------------------------------------------
@@ -73,14 +75,6 @@ export class InteractionLoop extends EventEmitter {
   // ---------------------------------------------------------------------------
   // _createFrame — routes frame creation through FrameManager for commits
   // ---------------------------------------------------------------------------
-  // When frameManager is provided:
-  //   1. merge([frameData]) → creates a commit, assigns order
-  //   2. saveFrames() → persists to DB
-  //   3. emit('frame') → notifies transport
-  //
-  // When frameManager is null (command dispatch, legacy paths):
-  //   Falls back to direct persist + emit.
-  // ---------------------------------------------------------------------------
 
   async _createFrame(sessionID, frameData, frameManager, mergeOptions = {}) {
     let framePersistence = this._getFramePersistence();
@@ -91,11 +85,9 @@ export class InteractionLoop extends EventEmitter {
       if (results.length === 0)
         return null; // Commit validator rejected
 
-      // merge() mutates frameData.order — use it for persistence
       await framePersistence.saveFrames(sessionID, [frameData]);
       this.emit('frame', { sessionID, frame: frameData });
 
-      // Emit commit so the orchestrator can react
       let latestCommit = frameManager.getLatestCommit();
       if (latestCommit)
         this.emit('commit', { sessionID, commit: latestCommit });
@@ -113,18 +105,6 @@ export class InteractionLoop extends EventEmitter {
   // ---------------------------------------------------------------------------
   // startInteraction
   // ---------------------------------------------------------------------------
-  // Main entry point. Starts a new interaction for a session.
-  //
-  // params:
-  //   agentPlugin          — AgentInterface instance
-  //   agent                — agent record (name, instructions, etc.)
-  //   userMessage          — the user's text input
-  //   replayFromPermission — if true, skip creating a user-message frame
-  //   checkPermission      — async (toolName, args) => boolean
-  //   executeTool          — async (toolName, args) => result
-  //   authorType           — author type for user message frame (default 'user')
-  //   authorID             — author ID for user message frame
-  // ---------------------------------------------------------------------------
 
   async startInteraction(sessionID, params = {}) {
     if (!sessionID)
@@ -139,17 +119,16 @@ export class InteractionLoop extends EventEmitter {
     }
 
     // Command dispatch: intercept /command messages
-    let commandMatch = this._parseCommand(params.userMessage);
+    let commandMatch = this._commandHandler.parse(params.userMessage);
     if (commandMatch)
-      return this._executeCommand(sessionID, params, commandMatch);
+      return this._commandHandler.execute(sessionID, params, commandMatch);
 
     let framePersistence = this._getFramePersistence();
     let hookRunner       = this._getHookRunner();
     let sessionManager   = this._getSessionManager();
     let interactionID    = generateID('int_');
 
-    // Load FrameManager BEFORE creating any frames — this way hook-blocked,
-    // user-message, and all subsequent frames produce commits.
+    // Load FrameManager BEFORE creating any frames
     let frameManager = sessionManager.getFrameManager(sessionID);
     await framePersistence.loadFramesInto(frameManager, sessionID);
 
@@ -167,7 +146,6 @@ export class InteractionLoop extends EventEmitter {
       });
 
       if (hookResult.action === 'block') {
-        // Create block frame and end interaction early
         await this._createFrame(sessionID, {
           id:            generateID('frm_'),
           type:          'hook-blocked',
@@ -189,9 +167,6 @@ export class InteractionLoop extends EventEmitter {
 
     // Create user message frame (unless replaying from permission approval)
     if (params.userMessage && !params.replayFromPermission) {
-      // Estimate token count for the user's message text (~4 chars per token).
-      // Multiply by agentCount so the user sees total cost across all agents
-      // that received this message.
       let agentCount      = params.agentCount || 1;
       let estimatedTokens = Math.ceil(params.userMessage.length / 4) * agentCount;
 
@@ -209,24 +184,22 @@ export class InteractionLoop extends EventEmitter {
       }, frameManager, { authorType: params.authorType || 'user', authorId: params.authorID || null });
     }
 
-    // Build message history from existing frames (FrameManager now includes user-message)
+    // Build message history from existing frames
     let allFrames  = frameManager.toArray();
     let forAgentID = params.agent && params.agent.id;
-    let messages   = this._buildMessages(allFrames, forAgentID);
+    let messages   = buildMessages(allFrames, forAgentID);
 
-    // Inject primer into messages for first message (or when explicitly requested).
-    // Evaluate delete() before the || chain to avoid short-circuit skipping the side-effect.
-    // Also inject primer for agents entering the session for the first time (no existing ref).
+    // Inject primer for first message, explicit request, or new agent
     let primerRequested = this._primerNeeded.delete(sessionID);
     let agentRefExists  = forAgentID && frameManager.getRef(`processed/agent-${forAgentID}`) !== undefined;
-    let needsPrimer     = params.injectPrimer || this._isFirstMessage(allFrames) || primerRequested || (forAgentID && !agentRefExists);
+    let needsPrimer     = params.injectPrimer || isFirstMessage(allFrames) || primerRequested || (forAgentID && !agentRefExists);
 
     if (needsPrimer) {
       let primerAssembler = this._context.getProperty('primerAssembler');
       if (primerAssembler) {
         let primer = primerAssembler.assemble(params.agent);
         if (primer)
-          messages = this._injectPrimer(messages, primer);
+          messages = injectPrimer(messages, primer);
       }
     }
 
@@ -235,10 +208,8 @@ export class InteractionLoop extends EventEmitter {
     if (agentID)
       this._ensureAgentRef(frameManager, agentID);
 
-    // Get session record
-    let session = await sessionManager.getSession(sessionID);
-
-    // Execute the agent
+    // Get session record and execute the agent
+    let session   = await sessionManager.getSession(sessionID);
     let generator = await params.agentPlugin.execute({
       messages,
       agent:   params.agent,
@@ -246,7 +217,7 @@ export class InteractionLoop extends EventEmitter {
       context: this._context,
     });
 
-    // Track the active interaction (includes frameManager for permission/cancel paths)
+    // Track the active interaction
     this._active.set(sessionID, {
       generator,
       interactionID,
@@ -255,8 +226,6 @@ export class InteractionLoop extends EventEmitter {
     });
 
     this.emit('interaction:start', { sessionID, interactionID });
-
-    // Iterate the generator
     await this._iterateGenerator(sessionID, generator, interactionID, params, frameManager);
 
     return interactionID;
@@ -282,8 +251,7 @@ export class InteractionLoop extends EventEmitter {
         if (block.type === 'done') {
           if (block.content && block.content.usage) {
             this.emit('interaction:usage', {
-              sessionID,
-              interactionID,
+              sessionID, interactionID,
               usage: block.content.usage,
             });
           }
@@ -294,39 +262,24 @@ export class InteractionLoop extends EventEmitter {
         // Transient streaming events — not persisted, just forwarded
         if (block.type === 'delta') {
           this.emit('delta', {
-            sessionID,
-            interactionID,
-            content:    block.content,
-            authorType: block.authorType,
-            authorID:   block.authorID,
+            sessionID, interactionID,
+            content: block.content, authorType: block.authorType, authorID: block.authorID,
           });
-
           continue;
         }
 
         if (block.type === 'reflection-delta') {
           this.emit('reflection-delta', {
-            sessionID,
-            interactionID,
-            content:    block.content,
-            authorType: block.authorType,
-            authorID:   block.authorID,
+            sessionID, interactionID,
+            content: block.content, authorType: block.authorType, authorID: block.authorID,
           });
-
           continue;
         }
 
-        // Partial usage updates — emitted mid-stream so interrupted interactions
-        // (e.g. permission hard-breaks) still report token counts.
+        // Partial usage updates
         if (block.type === 'usage') {
-          if (block.content && block.content.usage) {
-            this.emit('interaction:usage', {
-              sessionID,
-              interactionID,
-              usage: block.content.usage,
-            });
-          }
-
+          if (block.content && block.content.usage)
+            this.emit('interaction:usage', { sessionID, interactionID, usage: block.content.usage });
           continue;
         }
 
@@ -335,56 +288,40 @@ export class InteractionLoop extends EventEmitter {
         let timestamp = Date.now();
 
         if (block.type === 'message') {
-          // Hook: agent → user (before message frame emission)
           let html = block.content && block.content.html;
+
+          // Hook: agent → user
           if (hookRunner) {
             let hookResult = await hookRunner.run('prepareMessage', {
-              source:  'agent',
-              target:  'user',
-              message: html,
+              source: 'agent', target: 'user', message: html,
               context: { sessionID, interactionID },
             });
-
-            if (hookResult.action === 'block')
-              continue; // Skip frame creation
-
+            if (hookResult.action === 'block') continue;
             html = hookResult.message;
           }
 
-          // Sanitize HTML content
           if (html && sanitizer)
             html = sanitizer.sanitize(html);
 
           await this._createFrame(sessionID, {
-            id:            frameID,
-            type:          'message',
-            content:       { html },
-            timestamp,
-            interactionID,
-            authorType:    block.authorType || 'agent',
-            authorID:      block.authorID || null,
-            hidden:        false,
-            deleted:       false,
-            processed:     false,
+            id: frameID, type: 'message', content: { html }, timestamp, interactionID,
+            authorType: block.authorType || 'agent', authorID: block.authorID || null,
+            hidden: false, deleted: false, processed: false,
           }, frameManager, { authorType: block.authorType || 'agent', authorId: block.authorID || null });
         } else if (block.type === 'tool-call') {
-          // Hook: agent → tool (before tool execution)
+          // Hook: agent → tool
           if (hookRunner) {
             let hookResult = await hookRunner.run('prepareMessage', {
-              source:  'agent',
-              target:  'tool',
-              message: block.content,
+              source: 'agent', target: 'tool', message: block.content,
               context: { sessionID, interactionID, toolName: block.content.toolName },
             });
-
             if (hookResult.action === 'block') {
-              // Return blocked result to generator
               result = { type: 'tool-result', content: { output: `Blocked: ${hookResult.reason || 'hook blocked tool execution'}` } };
               continue;
             }
           }
 
-          // Check if permission is needed
+          // Check permission
           let checkPermission = params.checkPermission;
           let needsPermission = false;
 
@@ -393,46 +330,32 @@ export class InteractionLoop extends EventEmitter {
               needsPermission = await checkPermission(block.content.toolName, block.content.arguments);
             } catch (permError) {
               if (permError.name === 'PermissionDeniedError') {
-                // Create denied frame, pass error to generator as tool result
                 await this._createFrame(sessionID, {
-                  id:            generateID('frm_'),
-                  type:          'permission-denied',
-                  content:       { toolName: block.content.toolName, reason: permError.reason },
-                  timestamp:     Date.now(),
-                  interactionID,
-                  authorType:    'system',
-                  authorID:      null,
-                  hidden:        false,
-                  deleted:       false,
-                  processed:     false,
+                  id: generateID('frm_'), type: 'permission-denied',
+                  content: { toolName: block.content.toolName, reason: permError.reason },
+                  timestamp: Date.now(), interactionID,
+                  authorType: 'system', authorID: null,
+                  hidden: false, deleted: false, processed: false,
                 }, frameManager, { authorType: 'system' });
-
                 result = { type: 'tool-result', content: { output: `Error: ${permError.message}` } };
                 continue;
               }
-
               throw permError;
             }
           }
 
           if (needsPermission) {
-            // Permission hard-break
-            await this._permissionHardBreak(sessionID, generator, block, interactionID, params, frameManager);
-            return; // interaction ends here
+            await this._permissionHandler.hardBreak(sessionID, generator, block, interactionID, params, frameManager);
+            return;
           }
 
-          // No permission needed — execute the tool
+          // Execute tool
           await this._createFrame(sessionID, {
-            id:            frameID,
-            type:          'tool-call',
-            content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseId: block.content.toolUseId },
-            timestamp,
-            interactionID,
-            authorType:    block.authorType || 'agent',
-            authorID:      block.authorID || null,
-            hidden:        false,
-            deleted:       false,
-            processed:     false,
+            id: frameID, type: 'tool-call',
+            content: { toolName: block.content.toolName, arguments: block.content.arguments, toolUseId: block.content.toolUseId },
+            timestamp, interactionID,
+            authorType: block.authorType || 'agent', authorID: block.authorID || null,
+            hidden: false, deleted: false, processed: false,
           }, frameManager, { authorType: block.authorType || 'agent', authorId: block.authorID || null });
 
           let executeTool = params.executeTool;
@@ -443,180 +366,63 @@ export class InteractionLoop extends EventEmitter {
               toolOutput = await executeTool(block.content.toolName, block.content.arguments);
             } catch (toolError) {
               toolOutput = `Error executing tool: ${toolError.message}`;
-
-              // Create tool-error frame (informational, visible to user)
               await this._createFrame(sessionID, {
-                id:            generateID('frm_'),
-                type:          'tool-error',
-                content:       { toolName: block.content.toolName, message: toolError.message },
-                timestamp:     Date.now(),
-                interactionID,
-                authorType:    'system',
-                authorID:      null,
-                hidden:        false,
-                deleted:       false,
-                processed:     false,
+                id: generateID('frm_'), type: 'tool-error',
+                content: { toolName: block.content.toolName, message: toolError.message },
+                timestamp: Date.now(), interactionID,
+                authorType: 'system', authorID: null,
+                hidden: false, deleted: false, processed: false,
               }, frameManager, { authorType: 'system' });
             }
           }
 
-          // Hook: tool → agent (before result passed to generator)
+          // Hook: tool → agent
           if (hookRunner) {
             let hookResult = await hookRunner.run('prepareMessage', {
-              source:  'tool',
-              target:  'agent',
-              message: toolOutput,
+              source: 'tool', target: 'agent', message: toolOutput,
               context: { sessionID, interactionID, toolName: block.content.toolName },
             });
-
             toolOutput = hookResult.message;
           }
 
-          // Save tool-result frame
           await this._createFrame(sessionID, {
-            id:            generateID('frm_'),
-            type:          'tool-result',
-            content:       { output: toolOutput, toolUseId: block.content.toolUseId },
-            timestamp:     Date.now(),
-            interactionID,
-            authorType:    'system',
-            authorID:      null,
-            hidden:        false,
-            deleted:       false,
-            processed:     false,
+            id: generateID('frm_'), type: 'tool-result',
+            content: { output: toolOutput, toolUseId: block.content.toolUseId },
+            timestamp: Date.now(), interactionID,
+            authorType: 'system', authorID: null,
+            hidden: false, deleted: false, processed: false,
           }, frameManager, { authorType: 'system' });
 
-          // Pass result back to generator
           result = { type: 'tool-result', content: { output: toolOutput } };
         } else if (block.type === 'reflection') {
           await this._createFrame(sessionID, {
-            id:            frameID,
-            type:          'reflection',
-            content:       block.content,
-            timestamp,
-            interactionID,
-            authorType:    block.authorType || 'agent',
-            authorID:      block.authorID || null,
-            hidden:        true,
-            deleted:       false,
-            processed:     false,
+            id: frameID, type: 'reflection', content: block.content, timestamp, interactionID,
+            authorType: block.authorType || 'agent', authorID: block.authorID || null,
+            hidden: true, deleted: false, processed: false,
           }, frameManager, { authorType: block.authorType || 'agent', authorId: block.authorID || null });
         }
       }
     } catch (error) {
-      // Store error frame
       await this._createFrame(sessionID, {
-        id:            generateID('frm_'),
-        type:          'error',
-        content:       { message: error.message },
-        timestamp:     Date.now(),
-        interactionID,
-        authorType:    'system',
-        authorID:      null,
-        hidden:        false,
-        deleted:       false,
-        processed:     false,
+        id: generateID('frm_'), type: 'error', content: { message: error.message },
+        timestamp: Date.now(), interactionID,
+        authorType: 'system', authorID: null,
+        hidden: false, deleted: false, processed: false,
       }, frameManager, { authorType: 'system' });
     } finally {
-      // Advance per-agent ref to heads/main (agent "saw" everything including errors)
       let agentID = params.agent && params.agent.id;
       if (agentID)
         this._advanceAgentRef(frameManager, agentID);
 
-      // Clean up active interaction
       this._active.delete(sessionID);
       this.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
 
-      // Drain queue if there are pending messages
       await this._drainQueue(sessionID, params);
     }
   }
 
   // ---------------------------------------------------------------------------
-  // _permissionHardBreak
-  // ---------------------------------------------------------------------------
-  // When an agent hits a tool that needs permission approval:
-  //   1. Persist pending-action frame (tool name, arguments, context)
-  //   2. Create permission-request frame
-  //   3. Destroy the generator
-  //   4. Mark interaction as waiting for permission
-  // ---------------------------------------------------------------------------
-
-  async _permissionHardBreak(sessionID, generator, block, interactionID, params, frameManager) {
-    // 1. Persist pending-action frame
-    let pendingFrameID = generateID('frm_');
-    let pendingFrame   = {
-      id:            pendingFrameID,
-      type:          'pending-action',
-      content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseId: block.content.toolUseId },
-      timestamp:     Date.now(),
-      interactionID,
-      authorType:    block.authorType || 'agent',
-      authorID:      block.authorID || null,
-      hidden:        false,
-      deleted:       false,
-      processed:     false,
-    };
-
-    await this._createFrame(sessionID, pendingFrame, frameManager, {
-      authorType: block.authorType || 'agent',
-      authorId:   block.authorID || null,
-    });
-
-    // 2. Create permission-request frame
-    // For shell:execute, include per-command data for the permission UI.
-    // Prefer _parsedCommands (enriched with status by checkPermission callback),
-    // fall back to fresh parse for contexts without per-command checking.
-    let toolArgs       = block.content.arguments || {};
-    let parsedCommands = toolArgs._parsedCommands || null;
-
-    if (!parsedCommands && block.content.toolName === 'shell:execute' && toolArgs.command)
-      parsedCommands = parseShellCommands(toolArgs.command);
-
-    let requestFrameID = generateID('frm_');
-    let requestContent = { toolName: block.content.toolName, arguments: block.content.arguments, pendingFrameID };
-
-    if (parsedCommands && parsedCommands.length > 0)
-      requestContent.parsedCommands = parsedCommands;
-
-    let requestFrame = {
-      id:            requestFrameID,
-      type:          'permission-request',
-      content:       requestContent,
-      timestamp:     Date.now(),
-      interactionID,
-      authorType:    'system',
-      authorID:      null,
-      hidden:        false,
-      deleted:       false,
-      processed:     false,
-    };
-
-    await this._createFrame(sessionID, requestFrame, frameManager, { authorType: 'system' });
-    this.emit('permission:request', { sessionID, frameID: pendingFrameID, requestFrameID, toolName: block.content.toolName });
-
-    // 3. Destroy the generator
-    await generator.return();
-
-    // 4. Store permission-waiting state (includes frameManager for approve/deny)
-    this._permissionWaiting.set(sessionID, {
-      pendingFrameID,
-      requestFrameID,
-      interactionID,
-      params,
-      frameManager,
-    });
-
-    // Clean up active interaction
-    this._active.delete(sessionID);
-    this.emit('interaction:end', { sessionID, interactionID, agentID: null });
-  }
-
-  // ---------------------------------------------------------------------------
   // cancelInteraction
-  // ---------------------------------------------------------------------------
-  // Cancels the currently running interaction for a session.
-  // Returns queued messages (if any) so the caller can place them in the input.
   // ---------------------------------------------------------------------------
 
   async cancelInteraction(sessionID, options = {}) {
@@ -628,25 +434,17 @@ export class InteractionLoop extends EventEmitter {
     if (!active)
       return null;
 
-    // Destroy the generator
     await active.generator.return();
 
-    // Create stop frame via FrameManager (if available)
     let frameManager = active.frameManager || null;
-
     await this._createFrame(sessionID, {
-      id:         generateID('frm_'),
-      type:       'stop',
-      content:    { targetAgentID },
-      authorType,
-      authorID,
+      id: generateID('frm_'), type: 'stop',
+      content: { targetAgentID }, authorType, authorID,
     }, frameManager, { authorType, authorId: authorID });
 
-    // Clean up
     this._active.delete(sessionID);
     this.emit('interaction:end', { sessionID, interactionID: active.interactionID, agentID: null });
 
-    // Return and clear queued messages
     let queued = this._queues.get(sessionID) || [];
     this._queues.delete(sessionID);
 
@@ -654,142 +452,15 @@ export class InteractionLoop extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
-  // approvePermission
-  // ---------------------------------------------------------------------------
-  // After the user approves a permission request:
-  //   1. Load the pending-action frame
-  //   2. Execute the tool
-  //   3. Store result frame
-  //   4. Mark frames as processed
-  //   5. Start NEW interaction with replayFromPermission flag
+  // Permission Delegation
   // ---------------------------------------------------------------------------
 
   async approvePermission(sessionID, frameID) {
-    let waiting = this._permissionWaiting.get(sessionID);
-    if (!waiting)
-      throw new Error(`No pending permission for session: ${sessionID}`);
-
-    let framePersistence = this._getFramePersistence();
-    let { Frame }        = this._context.getProperty('models');
-
-    // Load the pending-action frame (always use the stored pending frame ID,
-    // not the frameID parameter which may be the permission-request frame)
-    let pendingRecord = await Frame.where.id.EQ(waiting.pendingFrameID).first();
-    if (!pendingRecord)
-      throw new Error(`Pending action frame not found: ${frameID || waiting.pendingFrameID}`);
-
-    let content = pendingRecord.getContent();
-
-    // Execute the tool
-    let executeTool = waiting.params.executeTool;
-    let toolOutput  = '';
-
-    if (typeof executeTool === 'function')
-      toolOutput = await executeTool(content.toolName, content.arguments);
-
-    // Store tool-result frame via FrameManager (use waiting.frameManager if available)
-    let approveFrameManager = waiting.frameManager || null;
-    let resultFrameID       = generateID('frm_');
-
-    await this._createFrame(sessionID, {
-      id:            resultFrameID,
-      type:          'tool-result',
-      content:       { output: toolOutput, toolUseId: content.toolUseId },
-      timestamp:     Date.now(),
-      interactionID: waiting.interactionID,
-      authorType:    'system',
-      authorID:      null,
-      hidden:        false,
-      deleted:       false,
-      processed:     false,
-    }, approveFrameManager, { authorType: 'system' });
-
-    // Mark pending-action and permission-request as processed
-    pendingRecord.processed   = true;
-    pendingRecord.processedAt = Date.now();
-    await pendingRecord.save();
-
-    if (waiting.requestFrameID) {
-      let requestRecord = await Frame.where.id.EQ(waiting.requestFrameID).first();
-      if (requestRecord) {
-        requestRecord.processed   = true;
-        requestRecord.processedAt = Date.now();
-        await requestRecord.save();
-      }
-    }
-
-    // Clear permission-waiting state
-    this._permissionWaiting.delete(sessionID);
-
-    // Start NEW interaction with replay flag
-    let newParams = {
-      ...waiting.params,
-      replayFromPermission: true,
-    };
-
-    return await this.startInteraction(sessionID, newParams);
+    return this._permissionHandler.approve(sessionID, frameID);
   }
 
-  // ---------------------------------------------------------------------------
-  // denyPermission
-  // ---------------------------------------------------------------------------
-  // User denies a permission request:
-  //   1. Mark pending-action frame as processed
-  //   2. Store denial frame
-  // ---------------------------------------------------------------------------
-
   async denyPermission(sessionID, frameID) {
-    let waiting = this._permissionWaiting.get(sessionID);
-    if (!waiting)
-      throw new Error(`No pending permission for session: ${sessionID}`);
-
-    let framePersistence = this._getFramePersistence();
-    let { Frame }        = this._context.getProperty('models');
-
-    // Mark pending-action frame as processed
-    let pendingRecord = await Frame.where.id.EQ(frameID || waiting.pendingFrameID).first();
-    if (pendingRecord) {
-      pendingRecord.processed   = true;
-      pendingRecord.processedAt = Date.now();
-      await pendingRecord.save();
-    }
-
-    // Mark permission-request frame as processed
-    if (waiting.requestFrameID) {
-      let requestRecord = await Frame.where.id.EQ(waiting.requestFrameID).first();
-      if (requestRecord) {
-        requestRecord.processed   = true;
-        requestRecord.processedAt = Date.now();
-        await requestRecord.save();
-      }
-    }
-
-    // Store denial frame via FrameManager (use waiting.frameManager if available)
-    let denyFrameManager = waiting.frameManager || null;
-
-    await this._createFrame(sessionID, {
-      id:            generateID('frm_'),
-      type:          'permission-denied',
-      content:       { pendingFrameID: frameID || waiting.pendingFrameID },
-      timestamp:     Date.now(),
-      interactionID: waiting.interactionID,
-      authorType:    'user',
-      authorID:      null,
-      hidden:        false,
-      deleted:       false,
-      processed:     false,
-    }, denyFrameManager, { authorType: 'user' });
-
-    // Clear permission-waiting state
-    this._permissionWaiting.delete(sessionID);
-
-    // Start NEW interaction with replay flag so the agent sees the denial
-    let newParams = {
-      ...waiting.params,
-      replayFromPermission: true,
-    };
-
-    return await this.startInteraction(sessionID, newParams);
+    return this._permissionHandler.deny(sessionID, frameID);
   }
 
   // ---------------------------------------------------------------------------
@@ -808,281 +479,14 @@ export class InteractionLoop extends EventEmitter {
     if (!queue || queue.length === 0)
       return;
 
-    // Concatenate all queued messages
     let combinedMessage = queue.join('\n\n');
     this._queues.delete(sessionID);
 
-    // Start a new interaction with the combined message
-    let newParams = {
+    await this.startInteraction(sessionID, {
       ...params,
       userMessage:          combinedMessage,
       replayFromPermission: false,
-    };
-
-    await this.startInteraction(sessionID, newParams);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
-
-  // ---------------------------------------------------------------------------
-  // Command Dispatch
-  // ---------------------------------------------------------------------------
-
-  _parseCommand(message) {
-    if (!message || typeof message !== 'string')
-      return null;
-
-    let match = message.match(/^\s*\/([\w_-]+)(.*)$/);
-    if (!match)
-      return null;
-
-    return {
-      commandName: match[1].toLowerCase(),
-      arguments:   (match[2] || '').trim(),
-    };
-  }
-
-  _resolveCommand(commandName) {
-    let registry = this._context.getProperty('pluginRegistry');
-    if (!registry)
-      return null;
-
-    return registry.getCommand(commandName);
-  }
-
-  async _executeCommand(sessionID, params, commandMatch) {
-    let framePersistence = this._getFramePersistence();
-    let interactionID    = generateID('int_');
-    let order            = await framePersistence.getNextOrder(sessionID);
-
-    this.emit('interaction:start', { sessionID, interactionID });
-
-    // Create user-message frame so the command shows in chat history.
-    // Hidden: command inputs are visible in the UI but excluded from
-    // the agent's message history (the agent should never see "/reload" etc.)
-    let userFrame = {
-      id:            generateID('frm_'),
-      type:          'user-message',
-      content:       { text: params.userMessage },
-      order:         order++,
-      timestamp:     Date.now(),
-      interactionID,
-      authorType:    params.authorType || 'user',
-      authorID:      params.authorID || null,
-      hidden:        true,
-      deleted:       false,
-      processed:     false,
-    };
-
-    await framePersistence.saveFrames(sessionID, [userFrame]);
-    this.emit('frame', { sessionID, frame: userFrame });
-
-    // Resolve the command handler
-    let handler = this._resolveCommand(commandMatch.commandName);
-
-    let resultContent;
-    let resultFlags = {};
-
-    // Check command permission if callback is available
-    if (handler && typeof params.checkPermission === 'function') {
-      let featureName = `command:${commandMatch.commandName}`;
-
-      try {
-        let needsPermission = await params.checkPermission(featureName, {
-          command:    commandMatch.commandName,
-          args:       commandMatch.arguments,
-          authorType: params.authorType || 'user',
-        });
-
-        if (needsPermission) {
-          // Permission hard-break for commands
-          let framePersistence2 = this._getFramePersistence();
-          let requestFrame = {
-            id:            generateID('frm_'),
-            type:          'permission-request',
-            content:       { commandName: commandMatch.commandName, arguments: commandMatch.arguments, featureName },
-            order:         order++,
-            timestamp:     Date.now(),
-            interactionID,
-            authorType:    'system',
-            authorID:      null,
-            hidden:        false,
-            deleted:       false,
-            processed:     false,
-          };
-
-          await framePersistence2.saveFrames(sessionID, [requestFrame]);
-          this.emit('frame', { sessionID, frame: requestFrame });
-          this.emit('permission:request', { sessionID, frameID: requestFrame.id, commandName: commandMatch.commandName });
-          this.emit('interaction:end', { sessionID, interactionID });
-
-          return interactionID;
-        }
-      } catch (permError) {
-        if (permError.name === 'PermissionDeniedError') {
-          resultContent = { html: `<p>Permission denied: <code>/${commandMatch.commandName}</code></p>` };
-          // Skip handler execution, fall through to create command-result frame
-        } else {
-          throw permError;
-        }
-      }
-    }
-
-    if (!resultContent) {
-      if (!handler) {
-        resultContent = { html: `<p>Unknown command: <code>/${commandMatch.commandName}</code></p>` };
-      } else {
-        try {
-          let result = await handler({
-            sessionID,
-            arguments:  commandMatch.arguments,
-            context:    this._context,
-            authorType: params.authorType || 'user',
-            authorID:   params.authorID || null,
-            agent:      params.agent,
-          });
-
-          resultContent = (result && result.content) || { html: '<p>Command executed.</p>' };
-          resultFlags   = result || {};
-        } catch (error) {
-          resultContent = { html: `<p>Command error: ${error.message}</p>` };
-        }
-      }
-    }
-
-    // Create command-result frame
-    let resultFrame = {
-      id:            generateID('frm_'),
-      type:          'command-result',
-      content:       resultContent,
-      order:         order++,
-      timestamp:     Date.now(),
-      interactionID,
-      authorType:    'system',
-      authorID:      null,
-      hidden:        false,
-      deleted:       false,
-      processed:     false,
-    };
-
-    await framePersistence.saveFrames(sessionID, [resultFrame]);
-    this.emit('frame', { sessionID, frame: resultFrame });
-
-    // Handle flags from command result
-    if (resultFlags.injectPrimer)
-      this._primerNeeded.add(sessionID);
-
-    this.emit('interaction:end', { sessionID, interactionID });
-
-    return interactionID;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
-
-  _isFirstMessage(frames) {
-    let userMessageCount    = 0;
-    let hasAssistantMessage = false;
-
-    for (let frame of frames) {
-      if (frame.deleted || frame.hidden)
-        continue;
-
-      if (frame.type === 'user-message')
-        userMessageCount++;
-
-      if (frame.type === 'message')
-        hasAssistantMessage = true;
-    }
-
-    return userMessageCount <= 1 && !hasAssistantMessage;
-  }
-
-  _injectPrimer(messages, primer) {
-    if (!messages || messages.length === 0)
-      return [{ role: 'user', content: primer }];
-
-    let result = [...messages];
-    for (let i = 0; i < result.length; i++) {
-      if (result[i].role === 'user') {
-        result[i] = { ...result[i], content: primer + '\n\n' + (result[i].content || '') };
-        break;
-      }
-    }
-
-    return result;
-  }
-
-  _buildMessages(frames, forAgentID) {
-    // Frame types explicitly excluded from message history
-    let excludedTypes = new Set([
-      'permission-request',
-      'permission-denied',
-      'hook-blocked',
-      'tool-error',
-      'error',
-      'reflection',
-      'command-result',
-      'stop',
-    ]);
-
-    // Collect toolUseIds that have results — used to filter orphaned pending-actions
-    let resolvedToolIds = new Set();
-    for (let frame of frames) {
-      if (frame.type === 'tool-result' && frame.content && frame.content.toolUseId)
-        resolvedToolIds.add(frame.content.toolUseId);
-    }
-
-    let messages = [];
-
-    for (let frame of frames) {
-      // Skip deleted and hidden frames (hidden = visible in UI but not in agent context)
-      if (frame.deleted || frame.hidden)
-        continue;
-
-      let type = frame.type;
-
-      // Skip excluded frame types explicitly
-      if (excludedTypes.has(type))
-        continue;
-
-      if (type === 'user-message') {
-        let content = frame.content || {};
-        messages.push({ role: 'user', content: content.text || '', frameId: frame.id });
-      } else if (type === 'message') {
-        let content = frame.content || {};
-        let html    = content.html || '';
-
-        // Multi-agent attribution: if forAgentID is set, determine whether this
-        // message is from the target agent (role:assistant) or another agent
-        // (role:user with XML wrapper).
-        if (forAgentID && frame.authorID && frame.authorID !== forAgentID) {
-          // Other agent's message → wrap in attribution tag, present as user role
-          let agentName = frame.authorID;
-          let wrapped   = `<agent-message source="${frame.authorID}" name="${agentName}">${html}</agent-message>`;
-          messages.push({ role: 'user', content: wrapped, frameId: frame.id, sourceAgentID: frame.authorID });
-        } else {
-          // Own message or single-agent → standard assistant role
-          messages.push({ role: 'assistant', content: html, frameId: frame.id });
-        }
-      } else if (type === 'tool-call') {
-        let content = frame.content || {};
-        messages.push({ type: 'tool-call', content, authorType: 'agent', frameId: frame.id });
-      } else if (type === 'pending-action') {
-        // Only include pending-actions that were approved (have a matching tool-result)
-        let content = frame.content || {};
-        if (content.toolUseId && resolvedToolIds.has(content.toolUseId))
-          messages.push({ type: 'tool-call', content, authorType: 'agent', frameId: frame.id });
-      } else if (type === 'tool-result') {
-        let content = frame.content || {};
-        messages.push({ type: 'tool-result', content, frameId: frame.id });
-      }
-    }
-
-    return messages;
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1108,23 +512,16 @@ export class InteractionLoop extends EventEmitter {
   // ---------------------------------------------------------------------------
   // Per-agent ref management
   // ---------------------------------------------------------------------------
-  // Each agent gets a `processed/agent-{agentID}` ref tracking the last commit
-  // it has seen. The scheduler uses diff(ref, heads/main) to detect new frames.
-  // ---------------------------------------------------------------------------
 
   _ensureAgentRef(frameManager, agentID) {
-    let refName = `processed/agent-${agentID}`;
+    let refName  = `processed/agent-${agentID}`;
     let existing = frameManager.getRef(refName);
+    if (existing !== undefined) return;
 
-    if (existing !== undefined)
-      return; // Ref already exists
-
-    // Create ref at current heads/main (or at first commit if no main ref yet)
     let headsMain = frameManager.getRef('heads/main');
     if (headsMain !== undefined) {
       frameManager.createRef(refName, headsMain);
     } else {
-      // No commits yet — ref will be created after first commit
       let latest = frameManager.getLatestCommit();
       if (latest)
         frameManager.createRef(refName, latest.order);
@@ -1134,18 +531,36 @@ export class InteractionLoop extends EventEmitter {
   _advanceAgentRef(frameManager, agentID) {
     let refName   = `processed/agent-${agentID}`;
     let headsMain = frameManager.getRef('heads/main');
-
-    if (headsMain === undefined)
-      return; // No commits to advance to
+    if (headsMain === undefined) return;
 
     let existing = frameManager.getRef(refName);
-
-    if (existing === undefined) {
-      // Create ref if it doesn't exist yet (first interaction)
+    if (existing === undefined)
       frameManager.createRef(refName, headsMain);
-    } else if (existing !== headsMain) {
-      // Advance to current heads/main
+    else if (existing !== headsMain)
       frameManager.updateRef(refName, headsMain);
-    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Delegation wrappers — keep backward compat for tests/external callers
+  // ---------------------------------------------------------------------------
+
+  _parseCommand(message) {
+    return this._commandHandler.parse(message);
+  }
+
+  _resolveCommand(commandName) {
+    return this._commandHandler.resolve(commandName);
+  }
+
+  _isFirstMessage(frames) {
+    return isFirstMessage(frames);
+  }
+
+  _injectPrimer(messages, primer) {
+    return injectPrimer(messages, primer);
+  }
+
+  _buildMessages(frames, forAgentID) {
+    return buildMessages(frames, forAgentID);
   }
 }

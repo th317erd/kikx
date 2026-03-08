@@ -1,39 +1,41 @@
-# Phase C4: Migrate Hook System to Router
+# Phase C5: Slim Down InteractionLoop
 
 ## Status: COMPLETE
 
 ## Overview
-Replace HookRunner with routing-plugin-based HookService. Hook handlers
-become BasePluginClass subclasses registered via registerSelector() with
-hook:* selectors. HookService runs legacy handlers and routing plugins
-in a combined pipeline with block/modify/redirect/pass semantics.
+Extract large subsystems from InteractionLoop (1151 lines → 566 lines) into
+dedicated modules. The loop retains the kernel (startInteraction,
+_iterateGenerator) and delegates permission handling, command dispatch,
+and message history to extracted modules.
 
 ## Steps
 
-### Step 1: Create HookService
-- [x] `src/core/hooks/hook-service.mjs` — routing-plugin-based replacement
-- [x] Same `run(hookName, payload)` interface as HookRunner
-- [x] Supports legacy function handlers (backward compat)
-- [x] Supports routing plugin handlers (BasePluginClass)
-- [x] Selector mapping: `hook:user-to-agent`, `hook:agent-to-user`, etc.
-- [x] Pipeline semantics: block/modify/redirect/pass
-- [x] Mixed handler chains (legacy first, then plugins)
+### Step 1: Extract PermissionHandler
+- [x] `src/core/interaction/permission-handler.mjs`
+- [x] `hardBreak()` — pause interaction for user approval
+- [x] `approve()` — execute approved tool, replay interaction
+- [x] `deny()` — store denial, replay interaction
 
-### Step 2: Create hook infrastructure plugin
-- [x] `src/core/internal-plugins/hooks/index.mjs` — documents pattern
-- [x] Hook selector conventions defined
+### Step 2: Extract CommandHandler
+- [x] `src/core/interaction/command-handler.mjs`
+- [x] `parse()` — /command detection
+- [x] `resolve()` — plugin registry lookup
+- [x] `execute()` — full command lifecycle with permission checks
 
-### Step 3: Wire into InteractionLoop
-- [x] InteractionLoop prefers HookService over HookRunner
-- [x] Backward compatible (falls back to HookRunner)
+### Step 3: Extract message-history utilities
+- [x] `src/core/interaction/message-history.mjs`
+- [x] `isFirstMessage()` — detect first message in session
+- [x] `injectPrimer()` — prepend primer to first user message
+- [x] `buildMessages()` — frame array → agent message history
 
-### Step 4: Wire into KikxCore
-- [x] HookService created alongside HookRunner
-- [x] Stored on context as 'hookService'
+### Step 4: Update InteractionLoop
+- [x] Import and delegate to extracted modules
+- [x] Backward-compat delegation wrappers for _parseCommand, _resolveCommand, etc.
+- [x] 1151 → 566 lines (51% reduction)
 
 ### Step 5: Tests
-- [x] 21 tests for HookService
-- [x] All 1595 tests pass (0 failures)
+- [x] 55 new unit tests across 3 test files
+- [x] All 1659 tests pass (0 failures)
 
 ### Step 6: Commit
 - [x] Committed
