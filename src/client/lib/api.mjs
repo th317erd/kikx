@@ -200,8 +200,22 @@ export function deleteAbility(abilityId) {
 
 // Frame endpoints
 
-export function getFrames(sessionId) {
-  return request('GET', `/sessions/${sessionId}/frames`);
+export function getFrames(sessionId, options = {}) {
+  let params = new URLSearchParams();
+
+  if (options.beforeOrder !== undefined)
+    params.set('beforeOrder', String(options.beforeOrder));
+
+  if (options.afterOrder !== undefined)
+    params.set('afterOrder', String(options.afterOrder));
+
+  if (options.limit !== undefined)
+    params.set('limit', String(options.limit));
+
+  let query = params.toString();
+  let url   = `/sessions/${sessionId}/frames${(query) ? `?${query}` : ''}`;
+
+  return request('GET', url);
 }
 
 export function updateFrameContent(sessionId, frameId, content) {

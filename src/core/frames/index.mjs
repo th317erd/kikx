@@ -112,12 +112,20 @@ export class FramePersistence {
     if (options.afterOrder !== undefined)
       query = query.AND.order.GT(options.afterOrder);
 
+    if (options.beforeOrder !== undefined)
+      query = query.AND.order.LT(options.beforeOrder);
+
     query = query.ORDER('+Frame:order');
 
     if (options.limit !== undefined)
       query = query.LIMIT(options.limit);
 
-    let records    = await query.all();
+    let records = await query.all();
+
+    // Safety: enforce limit client-side (some ORM versions ignore LIMIT with .all())
+    if (options.limit !== undefined && records.length > options.limit)
+      records = records.slice(0, options.limit);
+
     let frameDataArray = records.map((record) => this._recordToFrame(record));
 
     frameManager.merge(frameDataArray, { events: false });

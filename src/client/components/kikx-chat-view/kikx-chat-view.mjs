@@ -3,6 +3,7 @@
 import { t } from '../../lib/i18n.mjs';
 
 const ANCHOR_THRESHOLD = 50;
+const TOP_THRESHOLD    = 50;
 
 const TEMPLATE_HTML = `
   <style>
@@ -86,9 +87,9 @@ class KikxChatView extends HTMLElement {
   }
 
   _onScroll() {
-    let container        = this._chatContainer;
+    let container          = this._chatContainer;
     let distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    let anchored         = distanceFromBottom <= ANCHOR_THRESHOLD;
+    let anchored           = distanceFromBottom <= ANCHOR_THRESHOLD;
 
     if (anchored !== this._isAnchoredToBottom) {
       this._isAnchoredToBottom = anchored;
@@ -96,6 +97,14 @@ class KikxChatView extends HTMLElement {
         bubbles:  true,
         composed: true,
         detail:   { anchored },
+      }));
+    }
+
+    // Near top → request older frames
+    if (container.scrollTop <= TOP_THRESHOLD) {
+      this.dispatchEvent(new CustomEvent('near-top', {
+        bubbles:  true,
+        composed: true,
       }));
     }
   }
@@ -129,6 +138,17 @@ class KikxChatView extends HTMLElement {
 
     if (this._isAnchoredToBottom)
       this._scrollToBottomImmediate();
+  }
+
+  prependInteraction(element) {
+    let container       = this._chatContainer;
+    let previousHeight  = container.scrollHeight;
+
+    this._interactionStream.insertBefore(element, this._interactionStream.firstChild);
+
+    // Maintain scroll position after prepend
+    let newHeight       = container.scrollHeight;
+    container.scrollTop += (newHeight - previousHeight);
   }
 }
 

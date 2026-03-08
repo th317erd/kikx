@@ -156,11 +156,14 @@ class KikxSessionPage extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' });
 
-    this._currentSession = null;
-    this._eventSource    = null;
-    this._frameManager   = null;
+    this._currentSession    = null;
+    this._eventSource       = null;
+    this._frameManager      = null;
+    this._oldestLoadedOrder = 0;
+    this._loadingOlder      = false;
 
     this._onAddFriend       = this._onAddFriend.bind(this);
+    this._onNearTop         = this._onNearTop.bind(this);
     this._onAddSession      = this._onAddSession.bind(this);
     this._onFriendSave      = this._onFriendSave.bind(this);
     this._onFriendCancel    = this._onFriendCancel.bind(this);
@@ -210,6 +213,7 @@ class KikxSessionPage extends HTMLElement {
     this.shadowRoot.addEventListener('send-message', this._onSendMessage);
     this.shadowRoot.addEventListener('anchored-change', this._onAnchoredChange);
     this.shadowRoot.addEventListener('jump-to-bottom', this._onJumpToBottom);
+    this.shadowRoot.addEventListener('near-top', this._onNearTop);
     this.shadowRoot.addEventListener('queue-change', this._onQueueChange);
     this.shadowRoot.addEventListener('permission-response', this._onPermissionResponse);
     this.shadowRoot.addEventListener('cancel-interaction', this._onCancelInteraction);
@@ -231,6 +235,7 @@ class KikxSessionPage extends HTMLElement {
     this.shadowRoot.removeEventListener('send-message', this._onSendMessage);
     this.shadowRoot.removeEventListener('anchored-change', this._onAnchoredChange);
     this.shadowRoot.removeEventListener('jump-to-bottom', this._onJumpToBottom);
+    this.shadowRoot.removeEventListener('near-top', this._onNearTop);
     this.shadowRoot.removeEventListener('queue-change', this._onQueueChange);
     this.shadowRoot.removeEventListener('permission-response', this._onPermissionResponse);
     this.shadowRoot.removeEventListener('cancel-interaction', this._onCancelInteraction);
@@ -334,6 +339,18 @@ class KikxSessionPage extends HTMLElement {
         this._frameManager.merge(frames, { events: false });
         this._frameManager.syncOrderCounter(this._frameManager.getWindowBounds().to);
 
+        // Track oldest DB-level order for scroll-up pagination
+        // (FrameManager reassigns orders internally, so use raw API data)
+        if (frames.length > 0) {
+          let minOrder = Infinity;
+          for (let i = 0; i < frames.length; i++) {
+            if (frames[i].order < minOrder)
+              minOrder = frames[i].order;
+          }
+
+          this._oldestLoadedOrder = minOrder;
+        }
+
         // Render all frames from FrameManager's sorted state
         for (let frame of this._frameManager)
           this._renderFrame(frame, { fromHistory: true });
@@ -345,6 +362,61 @@ class KikxSessionPage extends HTMLElement {
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to load frames:', error);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Viewport management — scroll-up pagination
+  // ---------------------------------------------------------------------------
+
+  _onNearTop() {
+    if (!this._loadingOlder && this._oldestLoadedOrder > 0)
+      this._loadOlderFrames();
+  }
+
+  async _loadOlderFrames() {
+    let sessionId = this.sessionId;
+    if (!sessionId || !this._frameManager)
+      return;
+
+    this._loadingOlder = true;
+
+    try {
+      let result = await getFrames(sessionId, {
+        beforeOrder: this._oldestLoadedOrder,
+        limit:       50,
+      });
+
+      let data   = (result && result.data) || {};
+      let frames = Array.isArray(data) ? data : (data.frames || []);
+
+      if (frames.length === 0) {
+        // No more older frames — stop requesting
+        this._oldestLoadedOrder = 0;
+        return;
+      }
+
+      // Load into FrameManager without events (we render manually in order)
+      this._frameManager.loadWindow(frames);
+
+      // Update oldest DB-level order from raw API data
+      let minOrder = Infinity;
+      for (let i = 0; i < frames.length; i++) {
+        if (frames[i].order < minOrder)
+          minOrder = frames[i].order;
+      }
+
+      this._oldestLoadedOrder = minOrder;
+
+      // Prepend rendered frames (oldest first, so they stack correctly)
+      let sorted = [...frames].sort((a, b) => a.order - b.order);
+      for (let frame of sorted)
+        this._renderFrame(frame, { fromHistory: true, prepend: true });
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to load older frames:', error);
+    } finally {
+      this._loadingOlder = false;
     }
   }
 
@@ -552,6 +624,13 @@ class KikxSessionPage extends HTMLElement {
   // Frame rendering
   // ---------------------------------------------------------------------------
 
+  _placeInteraction(interaction, options) {
+    if (options && options.prepend)
+      this._chatView.prependInteraction(interaction);
+    else
+      this._chatView.appendInteraction(interaction);
+  }
+
   _renderFrame(frame, options = {}) {
     // User-message frames from SSE: don't re-render (already shown optimistically),
     // but update the optimistic element with server-provided metadata (token count, frame ID).
@@ -616,7 +695,7 @@ class KikxSessionPage extends HTMLElement {
         permRequest.setAttribute('processed', '');
 
       interaction.appendChild(permRequest);
-      this._chatView.appendInteraction(interaction);
+      this._placeInteraction(interaction, options);
 
       if (debug.isEnabled()) {
         debug.trackElement(frame.interactionID || frame.id, interaction);
@@ -640,7 +719,7 @@ class KikxSessionPage extends HTMLElement {
       messageContent.content = (frame.content && frame.content.html) || '';
 
       interaction.appendChild(messageContent);
-      this._chatView.appendInteraction(interaction);
+      this._placeInteraction(interaction, options);
 
       if (debug.isEnabled()) {
         debug.trackElement(frame.interactionID || frame.id, interaction);
@@ -665,7 +744,7 @@ class KikxSessionPage extends HTMLElement {
       messageContent.content = `<p style="color: var(--error-color, #ff4444);">Error: ${errorMsg}</p>`;
 
       interaction.appendChild(messageContent);
-      this._chatView.appendInteraction(interaction);
+      this._placeInteraction(interaction, options);
 
       if (debug.isEnabled()) {
         debug.trackElement(frame.interactionID || frame.id, interaction);
@@ -702,7 +781,7 @@ class KikxSessionPage extends HTMLElement {
         reflectionBlock.content = (frame.content && frame.content.text) || '';
 
         interaction.appendChild(reflectionBlock);
-        this._chatView.appendInteraction(interaction);
+        this._placeInteraction(interaction, options);
 
         if (debug.isEnabled()) {
           debug.trackElement(frame.interactionID || frame.id, interaction);
@@ -781,7 +860,7 @@ class KikxSessionPage extends HTMLElement {
     messageContent.content = html;
 
     interaction.appendChild(messageContent);
-    this._chatView.appendInteraction(interaction);
+    this._placeInteraction(interaction, options);
 
     if (debug.isEnabled()) {
       debug.trackElement(frame.interactionID || frame.id, interaction);
