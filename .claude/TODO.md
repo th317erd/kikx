@@ -1,41 +1,69 @@
-# Phase C5: Slim Down InteractionLoop
+# Reactive Frame Engine — Status
 
-## Status: COMPLETE
+## Completed Phases
 
-## Overview
-Extract large subsystems from InteractionLoop (1151 lines → 566 lines) into
-dedicated modules. The loop retains the kernel (startInteraction,
-_iterateGenerator) and delegates permission handling, command dispatch,
-and message history to extracted modules.
+### Phase A: Commit Log, Refs, Diff, Windowed Loading (COMPLETE)
+### Phase B: Multi-Agent Infrastructure (COMPLETE)
+### Phase C: Event Routing Layer (COMPLETE)
 
-## Steps
+| Sub-phase | Description | Commit | Tests |
+|-----------|-------------|--------|-------|
+| C1 | Frame Event Router Foundation | `e2da672` | 99 new (1530 total) |
+| C2 | Migrate scheduling to router | `29b670c` | 36 new (1566 total) |
+| C3 | Permission service + envelope signing | `9cc8f9d` | 50 new (1587 total) |
+| C4 | Hook system → routing plugins | `f9f82d9` | 21 new (1595 total) |
+| C5 | Slim InteractionLoop (1151→566 lines) | `482683d` | 55 new (1659 total) |
 
-### Step 1: Extract PermissionHandler
-- [x] `src/core/interaction/permission-handler.mjs`
-- [x] `hardBreak()` — pause interaction for user approval
-- [x] `approve()` — execute approved tool, replay interaction
-- [x] `deny()` — store denial, replay interaction
+### E2E Verification (API-level)
+- Login → create session → add agent → send message → agent responds with tool use → frames persisted ✅
+- All frame types correct, order sequential, author attribution correct ✅
+- Puppeteer test blocked by pre-existing nginx config issue (see below)
 
-### Step 2: Extract CommandHandler
-- [x] `src/core/interaction/command-handler.mjs`
-- [x] `parse()` — /command detection
-- [x] `resolve()` — plugin registry lookup
-- [x] `execute()` — full command lifecycle with permission checks
+---
 
-### Step 3: Extract message-history utilities
-- [x] `src/core/interaction/message-history.mjs`
-- [x] `isFirstMessage()` — detect first message in session
-- [x] `injectPrimer()` — prepend primer to first user message
-- [x] `buildMessages()` — frame array → agent message history
+## Next: Phase D (Streaming) — NEEDS DISCUSSION
 
-### Step 4: Update InteractionLoop
-- [x] Import and delegate to extracted modules
-- [x] Backward-compat delegation wrappers for _parseCommand, _resolveCommand, etc.
-- [x] 1151 → 566 lines (51% reduction)
+Phase D requires design decisions the user should weigh in on:
 
-### Step 5: Tests
-- [x] 55 new unit tests across 3 test files
-- [x] All 1659 tests pass (0 failures)
+1. **Browser EventEmitter**: Shared FrameManager uses `node:events`.
+   Client needs either a polyfill (importmap) or adapter pattern.
 
-### Step 6: Commit
-- [x] Committed
+2. **Wire protocol**: Current WS sends `{ type: 'frame', frame }`.
+   Phase D implies commit streaming. Format needs agreement.
+
+3. **Storage adapter**: Interface designed but not implemented.
+   SQLite via Mythix ORM is the planned implementation.
+
+4. **Client FrameManager ↔ DOM wiring**: Which component owns the
+   FrameManager? How do commits drive re-renders?
+
+---
+
+## Nginx Fix (needs sudo reload)
+
+Fixed `/kikx/shared/` location block in `nginx/locations.nginx-include`.
+The nested `location ~* \.mjs$` inside an `alias` block caused path
+resolution failure (nginx alias + nested regex = broken). Replaced with
+a `types` directive in the parent block. Needs `sudo nginx -s reload`.
+
+---
+
+## Future Plans Assessment
+
+After reviewing all items in `bot-docs/plan/kikx/future-plans.yaml`:
+
+| Plan | Priority | Ready Now? | Notes |
+|------|----------|------------|-------|
+| `checkPermission-api-naming` | Low | Yes | Simple rename, good cleanup |
+| `sessions-as-frames` | Medium | No | Major architecture change |
+| `generator-suspension` | Medium | Not yet | Needs Phase D streaming first |
+| `general-re-feed-recovery` | Low | After D | Needs router + frame load patterns |
+| `configurable-plugin-ordering` | Low | No | Wait for third-party plugins |
+| `abilities-system` | Medium | Partial | DM sessions exist, needs DM summary wiring |
+| `signatures-federation` | Low | No | Post-launch |
+| `key-rotation` | Medium | Yes | Natural extension of C3 signing work |
+
+**Recommendation**: `key-rotation` is the most valuable to implement soon —
+it extends the envelope signing from C3 and hardens the crypto foundation
+before Phase D adds streaming. `checkPermission-api-naming` is a quick win
+for code clarity.

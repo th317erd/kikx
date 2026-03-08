@@ -56,11 +56,13 @@ location /kikx/shared/ {
   expires 1h;
   add_header Cache-Control "public, no-transform";
 
-  # Serve .mjs files with correct MIME type
-  location ~* \.mjs$ {
-    alias /home/wyatt/Projects/kikx-workspace/kikx/src/shared/;
-    types { application/javascript mjs; }
-    add_header Cache-Control "public, no-transform";
+  # MIME types — must be declared here since alias blocks inherit
+  # the server-level types. The nested regex location was removed
+  # because nginx alias + nested regex = broken path resolution.
+  types {
+    application/javascript  js mjs;
+    application/json        json;
+    text/plain              txt;
   }
 
   # Block spec/ directory from being served
