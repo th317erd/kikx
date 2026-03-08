@@ -21,6 +21,7 @@ import { InteractionLoop }  from '../core/interaction/index.mjs';
 import { ContentSanitizer } from '../core/lib/content-sanitizer.mjs';
 import { SessionScheduler }      from '../core/scheduling/session-scheduler.mjs';
 import { AgentResolver }         from '../core/scheduling/agent-resolver.mjs';
+import { PermissionService }     from '../core/permissions/permission-service.mjs';
 
 export class Application extends MythixApplication {
   static getName() {
@@ -117,6 +118,16 @@ export class Application extends MythixApplication {
 
     // Initialize auth service
     this._authService = new AuthService({ context, keystore: this._keystore });
+
+    // Initialize permission service (wraps PermissionEngine + signing)
+    let permissionEngine  = context.getProperty('permissionEngine');
+    let permissionService = new PermissionService({
+      context,
+      permissionEngine,
+      keystore: this._keystore,
+    });
+
+    context.setProperty('permissionService', permissionService);
 
     // Initialize core services
     let sessionManager  = new SessionManager(context);

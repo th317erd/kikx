@@ -74,13 +74,33 @@ export class BasePluginClass {
   }
 
   // ---------------------------------------------------------------------------
-  // Permission check stub (full implementation in Phase C3)
+  // Permission check — delegates to PermissionService
   // ---------------------------------------------------------------------------
 
-  // Returns: { approved: boolean, reason?: string }
-  // Phase C1 stub: always approves. Full ACL checking added in Phase C3.
-  // eslint-disable-next-line no-unused-vars
+  // Returns: { approved: true, signature } or { approved: false, reason }
+  // If no PermissionService is available on context, defaults to approved.
   async checkPermission(toolName, params) {
-    return { approved: true };
+    let permissionService = this._context.permissionService || null;
+    if (!permissionService)
+      return { approved: true };
+
+    let options = {
+      organizationID: this._context.organizationID || null,
+      sessionID:      (this._context.session && this._context.session.id) || null,
+    };
+
+    try {
+      let result = await permissionService.check(toolName, params, options);
+
+      if (result.decision === 'allow')
+        return { approved: true, signature: result.signature };
+
+      return { approved: false, reason: 'needs-approval' };
+    } catch (error) {
+      if (error.name === 'PermissionDeniedError')
+        return { approved: false, reason: error.reason || 'denied' };
+
+      throw error;
+    }
   }
 }

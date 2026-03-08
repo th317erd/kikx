@@ -154,4 +154,42 @@ export class Keystore {
 
     return crypto.createHmac('sha256', userKey).update(data).digest('hex');
   }
+
+  // --- Envelope Signing ---
+
+  // Canonicalize data into a deterministic JSON string.
+  // Sorts object keys recursively, handles nested objects and arrays.
+  canonicalize(data) {
+    return JSON.stringify(data, (_key, value) => {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        let sorted = {};
+        let keys   = Object.keys(value).sort();
+
+        for (let i = 0; i < keys.length; i++)
+          sorted[keys[i]] = value[keys[i]];
+
+        return sorted;
+      }
+
+      return value;
+    });
+  }
+
+  // Sign data with the system key (REK). Returns hex HMAC-SHA256.
+  sign(data) {
+    if (!this._rek)
+      throw new Error('Keystore not initialized');
+
+    let blob = (typeof data === 'string') ? data : this.canonicalize(data);
+    return crypto.createHmac('sha256', this._rek).update(blob).digest('hex');
+  }
+
+  // Verify a signature against data using the system key (REK).
+  verify(data, signature) {
+    if (!this._rek)
+      throw new Error('Keystore not initialized');
+
+    let expected = this.sign(data);
+    return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(signature, 'hex'));
+  }
 }
