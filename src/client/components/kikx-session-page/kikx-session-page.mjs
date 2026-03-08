@@ -5,6 +5,7 @@ import { navigate } from '../../lib/router.mjs';
 import { getAgents, createAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken } from '../../lib/api.mjs';
 import { agents, profile, connection } from '../../lib/store.mjs';
 import { estimateCost } from '../../lib/cost.mjs';
+import { FrameManager } from '../../../shared/frame-manager/frame-manager.mjs';
 import * as debug from '../../lib/debug.mjs';
 
 const TEMPLATE_HTML = `
@@ -157,6 +158,7 @@ class KikxSessionPage extends HTMLElement {
 
     this._currentSession = null;
     this._eventSource    = null;
+    this._frameManager   = null;
 
     this._onAddFriend       = this._onAddFriend.bind(this);
     this._onAddSession      = this._onAddSession.bind(this);
@@ -236,6 +238,7 @@ class KikxSessionPage extends HTMLElement {
     this.shadowRoot.removeEventListener('interaction-ignore', this._onInteractionIgnore);
 
     this._disconnectStream();
+    this._destroyFrameManager();
   }
 
   get sessionId() {
@@ -259,6 +262,9 @@ class KikxSessionPage extends HTMLElement {
       let currentCosts = connection.getCosts();
       connection.updateCosts({ global: currentCosts.global, service: currentCosts.service, session: 0 });
 
+      // Create client-side FrameManager for this session
+      this._initFrameManager();
+
       this._fetchSessionDetails(sessionId);
       this._loadFrames(sessionId).then(() => this._connectStream(sessionId));
     } else {
@@ -267,7 +273,30 @@ class KikxSessionPage extends HTMLElement {
       this._messageInput.classList.add('hidden');
 
       this._disconnectStream();
+      this._destroyFrameManager();
       this._currentSession = null;
+    }
+  }
+
+  _initFrameManager() {
+    this._destroyFrameManager();
+
+    this._frameManager = new FrameManager({ history: false });
+
+    // Event-driven rendering: FrameManager emits when frames are added/updated
+    this._frameManager.on('frame:added', ({ frame }) => {
+      this._renderFrame(frame);
+    });
+
+    this._frameManager.on('frame:updated', ({ frame }) => {
+      this._updateRenderedFrame(frame);
+    });
+  }
+
+  _destroyFrameManager() {
+    if (this._frameManager) {
+      this._frameManager.removeAllListeners();
+      this._frameManager = null;
     }
   }
 
@@ -300,8 +329,19 @@ class KikxSessionPage extends HTMLElement {
       let data   = (result && result.data) || {};
       let frames = Array.isArray(data) ? data : (data.frames || []);
 
-      for (let frame of frames)
-        this._renderFrame(frame, { fromHistory: true });
+      if (this._frameManager) {
+        // Bulk load into FrameManager — suppress per-frame events
+        this._frameManager.merge(frames, { events: false });
+        this._frameManager.syncOrderCounter(this._frameManager.getWindowBounds().to);
+
+        // Render all frames from FrameManager's sorted state
+        for (let frame of this._frameManager)
+          this._renderFrame(frame, { fromHistory: true });
+      } else {
+        // Fallback: direct render (no FrameManager)
+        for (let frame of frames)
+          this._renderFrame(frame, { fromHistory: true });
+      }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to load frames:', error);
@@ -398,6 +438,22 @@ class KikxSessionPage extends HTMLElement {
         connection.setStatus('connected');
         break;
 
+      case 'commit': {
+        let commit;
+
+        try {
+          commit = JSON.parse(data);
+        } catch (_error) {
+          return;
+        }
+
+        // Merge commit frames into FrameManager — event listeners handle rendering
+        if (this._frameManager && Array.isArray(commit.frames))
+          this._frameManager.merge(commit.frames);
+
+        break;
+      }
+
       case 'frame': {
         let frame;
 
@@ -407,7 +463,12 @@ class KikxSessionPage extends HTMLElement {
           return;
         }
 
-        this._renderFrame(frame);
+        // Merge through FrameManager if available (emits frame:added → _renderFrame)
+        if (this._frameManager)
+          this._frameManager.merge([frame]);
+        else
+          this._renderFrame(frame);
+
         break;
       }
 
@@ -725,6 +786,32 @@ class KikxSessionPage extends HTMLElement {
     if (debug.isEnabled()) {
       debug.trackElement(frame.interactionID || frame.id, interaction);
       debug.pushFrame(frame.interactionID || frame.id, frame);
+    }
+  }
+
+  _updateRenderedFrame(frame) {
+    if (!this._chatView || !this._chatView.shadowRoot)
+      return;
+
+    let existing = this._chatView.shadowRoot.querySelector(
+      `kikx-interaction[data-frame-id="${frame.id}"]`,
+    );
+
+    if (!existing)
+      return;
+
+    // Update content for message-type frames
+    let messageContent = existing.querySelector('kikx-message-content');
+    if (messageContent && frame.content) {
+      let html = '';
+
+      if (frame.content.html)
+        html = frame.content.html;
+      else if (frame.content.text)
+        html = `<p>${this._escapeHTML(frame.content.text)}</p>`;
+
+      if (html)
+        messageContent.content = html;
     }
   }
 

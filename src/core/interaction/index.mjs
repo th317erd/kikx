@@ -89,8 +89,15 @@ export class InteractionLoop extends EventEmitter {
       this.emit('frame', { sessionID, frame: frameData });
 
       let latestCommit = frameManager.getLatestCommit();
-      if (latestCommit)
-        this.emit('commit', { sessionID, commit: latestCommit });
+      if (latestCommit) {
+        // Enrich with frame data for wire transmission — client can merge() directly
+        let enrichedCommit = {
+          ...latestCommit,
+          frames: [frameData],
+        };
+
+        this.emit('commit', { sessionID, commit: enrichedCommit });
+      }
 
       return frameData;
     }

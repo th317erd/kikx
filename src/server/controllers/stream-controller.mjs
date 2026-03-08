@@ -83,8 +83,17 @@ export class StreamController extends ControllerAuthBase {
       response.write(`event: usage\ndata: ${JSON.stringify({ interactionID: iid, usage })}\n\n`);
     };
 
+    // Commit listener — enriched commits for client-side FrameManager
+    let onCommit = ({ sessionID: sid, commit }) => {
+      if (sid !== sessionId)
+        return;
+
+      response.write(`event: commit\ndata: ${JSON.stringify(commit)}\n\n`);
+    };
+
     // Attach listeners
     interactionLoop.on('frame', onFrame);
+    interactionLoop.on('commit', onCommit);
     interactionLoop.on('interaction:start', onInteractionStart);
     interactionLoop.on('interaction:end', onInteractionEnd);
     interactionLoop.on('permission:request', onPermissionRequest);
@@ -95,6 +104,7 @@ export class StreamController extends ControllerAuthBase {
     // Clean up on disconnect
     let cleanup = () => {
       interactionLoop.off('frame', onFrame);
+      interactionLoop.off('commit', onCommit);
       interactionLoop.off('interaction:start', onInteractionStart);
       interactionLoop.off('interaction:end', onInteractionEnd);
       interactionLoop.off('permission:request', onPermissionRequest);
