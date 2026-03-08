@@ -1,6 +1,6 @@
 'use strict';
 
-import { EventEmitter } from 'node:events';
+import { EventEmitter } from '../lib/event-emitter.mjs';
 import { deepMerge }    from './deep-merge.mjs';
 import { Frame }        from './frame.mjs';
 import { FramePointer } from './frame-pointer.mjs';
