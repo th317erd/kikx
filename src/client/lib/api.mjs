@@ -225,7 +225,11 @@ export function updateFrameContent(sessionId, frameId, content) {
 // Interaction endpoints
 
 export function sendMessage(sessionId, message, agentId) {
-  return request('POST', `/sessions/${sessionId}/interact/send`, { message, agentId });
+  let body = { message };
+  if (agentId)
+    body.agentId = agentId;
+
+  return request('POST', `/sessions/${sessionId}/interact/send`, body);
 }
 
 export function approvePermission(sessionId, frameId, body) {

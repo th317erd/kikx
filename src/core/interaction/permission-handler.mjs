@@ -183,8 +183,9 @@ export class PermissionHandler {
 
     let { Frame } = loop._context.getProperty('models');
 
-    // Mark pending-action frame as processed
-    let pendingRecord = await Frame.where.id.EQ(frameID || waiting.pendingFrameID).first();
+    // Mark pending-action frame as processed (always use stored ID, not the
+    // frameID parameter which may be the permission-request frame)
+    let pendingRecord = await Frame.where.id.EQ(waiting.pendingFrameID).first();
     if (pendingRecord) {
       pendingRecord.processed   = true;
       pendingRecord.processedAt = Date.now();
@@ -207,7 +208,7 @@ export class PermissionHandler {
     await loop._createFrame(sessionID, {
       id:            generateID('frm_'),
       type:          'permission-denied',
-      content:       { pendingFrameID: frameID || waiting.pendingFrameID },
+      content:       { pendingFrameID: waiting.pendingFrameID },
       timestamp:     Date.now(),
       interactionID: waiting.interactionID,
       authorType:    'user',
@@ -216,6 +217,37 @@ export class PermissionHandler {
       deleted:       false,
       processed:     false,
     }, denyFrameManager, { authorType: 'user' });
+
+    // Create a tool-result frame so the agent sees the denial in its context.
+    // Without this, the pending-action has no matching tool-result, so
+    // buildMessages() excludes both — the agent has no idea the permission
+    // was denied and blindly retries the same command.
+    let pendingContent = pendingRecord
+      ? (typeof pendingRecord.getContent === 'function' ? pendingRecord.getContent() : pendingRecord.content)
+      : {};
+
+    if (pendingContent && typeof pendingContent === 'string') {
+      try { pendingContent = JSON.parse(pendingContent); }
+      catch (_error) { pendingContent = {}; }
+    }
+
+    let toolUseId = (pendingContent && pendingContent.toolUseId) || null;
+    let toolName  = (pendingContent && pendingContent.toolName) || 'unknown';
+
+    if (toolUseId) {
+      await loop._createFrame(sessionID, {
+        id:            generateID('frm_'),
+        type:          'tool-result',
+        content:       { output: `Permission denied: the user denied execution of "${toolName}". Do not retry this exact command unless the user explicitly asks you to.`, toolUseId },
+        timestamp:     Date.now(),
+        interactionID: waiting.interactionID,
+        authorType:    'system',
+        authorID:      null,
+        hidden:        false,
+        deleted:       false,
+        processed:     false,
+      }, denyFrameManager, { authorType: 'system' });
+    }
 
     // Clear permission-waiting state
     loop._permissionWaiting.delete(sessionID);

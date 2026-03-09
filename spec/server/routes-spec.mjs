@@ -572,18 +572,24 @@ describe('InteractionController: sendMessage', () => {
     );
   });
 
-  it('should throw 400 if agentId is missing', async () => {
-    let req        = createMockReq();
+  it('should post message without agent when agentId is missing', async () => {
+    // Create a real session so postMessage can persist the frame
+    let session = await sessionManager.createSession(testOrg.id, { name: 'No Agent Session' });
+
+    let req        = createMockReq({ userId: testUser.id });
     let res        = createMockRes();
     let controller = createController(InteractionController, { mockApp, req, res });
 
-    await assert.rejects(
-      () => controller.sendMessage({
-        params: { sessionId: 'ses_test' },
-        body:   { message: 'hello' },
-      }),
-      (error) => error.message.includes('agentId is required'),
-    );
+    let result = await controller.sendMessage({
+      params: { sessionId: session.id },
+      body:   { message: 'hello without agent' },
+    });
+
+    assert.ok(result);
+    assert.ok(result.data);
+    assert.ok(result.data.interactionID);
+    assert.ok(result.data.frameID);
+    assert.equal(controller.responseStatusCode, 201);
   });
 
   it('should throw 404 if agent not found', async () => {

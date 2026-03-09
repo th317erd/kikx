@@ -131,6 +131,46 @@ const TEMPLATE_HTML = `
       background: var(--text-muted, #606078);
     }
     .session-list::-webkit-scrollbar-button { display: none; }
+
+    .session-row {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm, 8px);
+      padding: 6px var(--spacing-sm, 8px);
+      cursor: pointer;
+      border-radius: var(--border-radius-small, 4px);
+      transition: background 0.15s ease;
+    }
+
+    .session-row:hover {
+      background: var(--glass-hover, rgba(255, 255, 255, 0.08));
+    }
+
+    .session-row.active {
+      background: rgba(0, 229, 255, 0.10);
+    }
+
+    .session-icon {
+      font-size: 1rem;
+      flex-shrink: 0;
+      opacity: 0.6;
+    }
+
+    .session-name {
+      flex: 1;
+      font-size: 1rem;
+      color: var(--text-primary, #e8e8f0);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sessions-empty {
+      padding: var(--spacing-sm, 8px);
+      font-size: 1rem;
+      color: var(--text-muted, #606078);
+      font-style: italic;
+    }
   </style>
 
   <div class="search-area">
@@ -175,12 +215,15 @@ class KikxSidebar extends HTMLElement {
     this._addFriendButton   = this.shadowRoot.querySelector('.add-friend-button');
     this._addSessionButton  = this.shadowRoot.querySelector('.add-session-button');
     this._friendsList       = this.shadowRoot.querySelector('kikx-friends-list');
+    this._sessionList       = this.shadowRoot.querySelector('.session-list');
 
+    this._sessions       = [];
     this._archiveVisible = false;
 
     this._onArchiveToggle    = this._onArchiveToggle.bind(this);
     this._onAddFriendClick   = this._onAddFriendClick.bind(this);
     this._onAddSessionClick  = this._onAddSessionClick.bind(this);
+    this._onSessionClick     = this._onSessionClick.bind(this);
   }
 
   connectedCallback() {
@@ -188,12 +231,14 @@ class KikxSidebar extends HTMLElement {
     this._archiveToggle.addEventListener('click', this._onArchiveToggle);
     this._addFriendButton.addEventListener('click', this._onAddFriendClick);
     this._addSessionButton.addEventListener('click', this._onAddSessionClick);
+    this._sessionList.addEventListener('click', this._onSessionClick);
   }
 
   disconnectedCallback() {
     this._archiveToggle.removeEventListener('click', this._onArchiveToggle);
     this._addFriendButton.removeEventListener('click', this._onAddFriendClick);
     this._addSessionButton.removeEventListener('click', this._onAddSessionClick);
+    this._sessionList.removeEventListener('click', this._onSessionClick);
   }
 
   set friends(value) {
@@ -203,6 +248,55 @@ class KikxSidebar extends HTMLElement {
 
   get friends() {
     return (this._friendsList) ? this._friendsList.friends : [];
+  }
+
+  set sessions(value) {
+    this._sessions = Array.isArray(value) ? value : [];
+    this._renderSessions();
+  }
+
+  get sessions() {
+    return this._sessions;
+  }
+
+  _renderSessions() {
+    if (!this._sessionList)
+      return;
+
+    this._sessionList.innerHTML = '';
+
+    let visibleSessions = this._sessions.filter((s) => !s.archived);
+
+    if (visibleSessions.length === 0) {
+      let empty = document.createElement('div');
+      empty.className   = 'sessions-empty';
+      empty.textContent = t('sidebar.noSessions') || 'No sessions yet.';
+      this._sessionList.appendChild(empty);
+      return;
+    }
+
+    for (let session of visibleSessions) {
+      let row = document.createElement('div');
+      row.className  = 'session-row';
+      row.dataset.id = session.id;
+
+      let icon = document.createElement('span');
+      icon.className   = 'session-icon';
+      icon.textContent = (session.type === 'dm') ? '\uD83D\uDCAC' : '\uD83D\uDCC1';
+      row.appendChild(icon);
+
+      let nameSpan = document.createElement('span');
+      nameSpan.className   = 'session-name';
+
+      let displayName = session.name || session.id;
+      if (displayName.startsWith('DM: '))
+        displayName = displayName.slice(4);
+
+      nameSpan.textContent = displayName;
+      row.appendChild(nameSpan);
+
+      this._sessionList.appendChild(row);
+    }
   }
 
   _render() {
@@ -239,6 +333,18 @@ class KikxSidebar extends HTMLElement {
     this.dispatchEvent(new CustomEvent('add-session', {
       bubbles:  true,
       composed: true,
+    }));
+  }
+
+  _onSessionClick(event) {
+    let row = event.target.closest('.session-row');
+    if (!row)
+      return;
+
+    this.dispatchEvent(new CustomEvent('select-session', {
+      bubbles:  true,
+      composed: true,
+      detail:   { id: row.dataset.id },
     }));
   }
 }

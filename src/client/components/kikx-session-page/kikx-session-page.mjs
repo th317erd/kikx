@@ -2,8 +2,8 @@
 
 import { t } from '../../lib/i18n.mjs';
 import { navigate } from '../../lib/router.mjs';
-import { getAgents, createAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken } from '../../lib/api.mjs';
-import { agents, profile, connection } from '../../lib/store.mjs';
+import { getAgents, createAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, getSessions, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken } from '../../lib/api.mjs';
+import { agents, sessions, profile, connection } from '../../lib/store.mjs';
 import { estimateCost } from '../../lib/cost.mjs';
 import { FrameManager } from '../../../shared/frame-manager/frame-manager.mjs';
 import * as debug from '../../lib/debug.mjs';
@@ -179,6 +179,7 @@ class KikxSessionPage extends HTMLElement {
     this._onCancelInteraction    = this._onCancelInteraction.bind(this);
     this._onInteractionSubmit    = this._onInteractionSubmit.bind(this);
     this._onInteractionIgnore    = this._onInteractionIgnore.bind(this);
+    this._onSelectSession        = this._onSelectSession.bind(this);
   }
 
   connectedCallback() {
@@ -219,6 +220,7 @@ class KikxSessionPage extends HTMLElement {
     this.shadowRoot.addEventListener('cancel-interaction', this._onCancelInteraction);
     this.shadowRoot.addEventListener('interaction-submit', this._onInteractionSubmit);
     this.shadowRoot.addEventListener('interaction-ignore', this._onInteractionIgnore);
+    this.shadowRoot.addEventListener('select-session', this._onSelectSession);
 
     this._loadInitialData();
   }
@@ -241,6 +243,7 @@ class KikxSessionPage extends HTMLElement {
     this.shadowRoot.removeEventListener('cancel-interaction', this._onCancelInteraction);
     this.shadowRoot.removeEventListener('interaction-submit', this._onInteractionSubmit);
     this.shadowRoot.removeEventListener('interaction-ignore', this._onInteractionIgnore);
+    this.shadowRoot.removeEventListener('select-session', this._onSelectSession);
 
     this._disconnectStream();
     this._destroyFrameManager();
@@ -527,6 +530,12 @@ class KikxSessionPage extends HTMLElement {
       }
 
       case 'frame': {
+        // When FrameManager is present, frames arrive via 'commit' events
+        // (which already contain the frame data). Skip raw 'frame' events
+        // to avoid rendering the same frame twice.
+        if (this._frameManager)
+          break;
+
         let frame;
 
         try {
@@ -535,12 +544,7 @@ class KikxSessionPage extends HTMLElement {
           return;
         }
 
-        // Merge through FrameManager if available (emits frame:added → _renderFrame)
-        if (this._frameManager)
-          this._frameManager.merge([frame]);
-        else
-          this._renderFrame(frame);
-
+        this._renderFrame(frame);
         break;
       }
 
@@ -685,7 +689,13 @@ class KikxSessionPage extends HTMLElement {
       if (parsedCommands && parsedCommands.length > 0) {
         let descriptionTemplate = t('permission.wantsToExecute') || '{name} wants to execute:';
         permRequest.description = descriptionTemplate.replace('{name}', name);
-        permRequest.commands    = parsedCommands;
+
+        // Show the full original command string at the top
+        let fullCommandString = frame.content && frame.content.arguments && frame.content.arguments.command;
+        if (fullCommandString)
+          permRequest.fullCommand = fullCommandString;
+
+        permRequest.commands = parsedCommands;
       } else {
         let toolName = (frame.content && frame.content.toolName) || 'unknown';
         permRequest.description = `${name} wants to use: ${toolName}`;
@@ -910,6 +920,20 @@ class KikxSessionPage extends HTMLElement {
     this._chatView.appendInteraction(interaction);
   }
 
+  _renderSystemError(message) {
+    let interaction = document.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'agent');
+    interaction.setAttribute('participant-name', 'System');
+    interaction.setAttribute('participant-initials', '!');
+    interaction.setAttribute('timestamp', formatTimestamp(new Date().toISOString()));
+
+    let messageContent = document.createElement('kikx-message-content');
+    messageContent.content = `<p style="color: var(--error-color, #ff4444);">${this._escapeHTML(message)}</p>`;
+
+    interaction.appendChild(messageContent);
+    this._chatView.appendInteraction(interaction);
+  }
+
   _escapeHTML(text) {
     let div = document.createElement('div');
     div.textContent = text;
@@ -964,22 +988,16 @@ class KikxSessionPage extends HTMLElement {
     if (!sessionId)
       return;
 
-    // Determine agent ID from session data
+    // Determine agent ID from session data (may be null for agent-less sessions)
     let agentId = null;
     if (this._currentSession)
       agentId = this._currentSession.dmAgentID || this._currentSession.agentId || this._currentSession.agentID;
 
-    if (!agentId) {
-      // eslint-disable-next-line no-console
-      console.error('No agent ID available for this session');
-      return;
-    }
-
-    // Render user message immediately
+    // Render user message immediately (optimistic)
     this._renderUserMessage(text);
 
     try {
-      await sendMessage(sessionId, text, agentId);
+      await sendMessage(sessionId, text, agentId || undefined);
       this._messageInput.clearDraft();
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -1022,6 +1040,27 @@ class KikxSessionPage extends HTMLElement {
       // eslint-disable-next-line no-console
       console.error('Failed to load agents:', error);
     }
+
+    // Fetch sessions
+    try {
+      let result      = await getSessions();
+      let data        = (result && result.data) || {};
+      let sessionList = Array.isArray(data) ? data : (data.sessions || []);
+
+      // Replace store contents to avoid duplicates on re-navigation
+      let existing = sessions.getAllSessions();
+      let existingIds = new Set(existing.map((s) => s.id));
+
+      for (let session of sessionList) {
+        if (!existingIds.has(session.id))
+          sessions.addSession(session);
+      }
+
+      this._updateSessionsList();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to load sessions:', error);
+    }
   }
 
   _updateFriendsList(agentList) {
@@ -1035,6 +1074,13 @@ class KikxSessionPage extends HTMLElement {
     }));
 
     this._sidebar.friends = friends;
+  }
+
+  _updateSessionsList() {
+    if (!this._sidebar)
+      return;
+
+    this._sidebar.sessions = sessions.getAllSessions();
   }
 
   // ---------------------------------------------------------------------------
@@ -1200,7 +1246,17 @@ class KikxSessionPage extends HTMLElement {
   }
 
   _onAddSession() {
+    if (this._createSessionModal) {
+      this._createSessionModal.agents = agents.getAllAgents();
+      this._createSessionModal.reset();
+    }
+
     this._sessionModal.open();
+
+    requestAnimationFrame(() => {
+      if (this._createSessionModal && this._createSessionModal.focus)
+        this._createSessionModal.focus();
+    });
   }
 
   async _onFriendSave(event) {
@@ -1244,18 +1300,42 @@ class KikxSessionPage extends HTMLElement {
     let detail = event.detail || {};
 
     try {
-      let result = await createSession({ name: detail.name });
-      let data       = (result && result.data) || result;
-      let newSession = data.session || data;
+      let result;
+      let newSession;
 
-      let { sessions } = await import('../../lib/store.mjs');
-      sessions.addSession(newSession);
+      if (detail.agentId) {
+        // Create (or reuse) a DM session with the selected agent
+        result     = await getOrCreateDm(detail.agentId);
+        let data   = (result && result.data) || result;
+        newSession = data.session || data;
+
+        // Override name if the user provided one
+        if (detail.name && newSession && newSession.id) {
+          let { updateSession } = await import('../../lib/api.mjs');
+          await updateSession(newSession.id, { name: detail.name });
+          newSession.name = detail.name;
+        }
+      } else {
+        result     = await createSession({ name: detail.name });
+        let data   = (result && result.data) || result;
+        newSession = data.session || data;
+      }
+
+      // Add to store if not already present
+      let existing = sessions.getAllSessions();
+      if (!existing.some((s) => s.id === newSession.id))
+        sessions.addSession(newSession);
+
+      this._updateSessionsList();
+      this._sessionModal.close();
+
+      if (newSession && newSession.id)
+        navigate(`/kikx/sessions/${newSession.id}`);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to create session:', error);
+      this._sessionModal.close();
     }
-
-    this._sessionModal.close();
   }
 
   async _onSelectFriend(event) {
@@ -1274,6 +1354,13 @@ class KikxSessionPage extends HTMLElement {
         console.error('Failed to open DM session:', error);
       }
     }
+  }
+
+  _onSelectSession(event) {
+    let { id } = event.detail || {};
+
+    if (id)
+      navigate(`/kikx/sessions/${id}`);
   }
 
   _onAnchoredChange(event) {
@@ -1319,6 +1406,8 @@ class KikxSessionPage extends HTMLElement {
     } catch (error) {
       console.error('Permission approval failed:', error);
     }
+
+    this._messageInput.focus();
   }
 
   async _onCancelInteraction() {
@@ -1478,6 +1567,8 @@ class KikxSessionPage extends HTMLElement {
       // eslint-disable-next-line no-console
       console.error('Failed to submit prompt answers:', error);
     }
+
+    this._messageInput.focus();
   }
 
   async _onInteractionIgnore(event) {
@@ -1516,6 +1607,8 @@ class KikxSessionPage extends HTMLElement {
       // eslint-disable-next-line no-console
       console.error('Failed to send ignore response:', error);
     }
+
+    this._messageInput.focus();
   }
 
   _onModalClose() {

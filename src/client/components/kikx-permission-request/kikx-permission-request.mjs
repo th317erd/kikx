@@ -42,6 +42,21 @@ const TEMPLATE_HTML = `
       margin-bottom: var(--spacing-sm, 8px); line-height: 1.4;
     }
 
+    .full-command {
+      display: block;
+      padding: 8px 10px;
+      margin-bottom: var(--spacing-sm, 8px);
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--border-radius-small, 4px);
+      font-family: 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.9rem;
+      color: var(--text-primary, #e8e8f0);
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.5;
+    }
+
     .command-table {
       display: flex; flex-direction: column; gap: 6px;
       margin-bottom: var(--spacing-sm, 8px);
@@ -134,6 +149,7 @@ const TEMPLATE_HTML = `
     <span class="title-text"></span>
   </div>
   <div class="permission-description"></div>
+  <code class="full-command" style="display:none;"></code>
   <div class="command-table"></div>
   <button class="confirm-button" disabled></button>
   <div class="processed-badge">\u2713 Processed</div>
@@ -160,6 +176,7 @@ class KikxPermissionRequest extends HTMLElement {
 
     this._titleText      = this.shadowRoot.querySelector('.title-text');
     this._descriptionEl  = this.shadowRoot.querySelector('.permission-description');
+    this._fullCommandEl  = this.shadowRoot.querySelector('.full-command');
     this._commandTable   = this.shadowRoot.querySelector('.command-table');
     this._confirmButton  = this.shadowRoot.querySelector('.confirm-button');
     this._processedBadge = this.shadowRoot.querySelector('.processed-badge');
@@ -196,6 +213,20 @@ class KikxPermissionRequest extends HTMLElement {
 
   set description(value) {
     this._descriptionEl.textContent = value || '';
+  }
+
+  get fullCommand() {
+    return this._fullCommandEl.textContent;
+  }
+
+  set fullCommand(value) {
+    if (value) {
+      this._fullCommandEl.textContent  = value;
+      this._fullCommandEl.style.display = '';
+    } else {
+      this._fullCommandEl.textContent  = '';
+      this._fullCommandEl.style.display = 'none';
+    }
   }
 
   get commands() {

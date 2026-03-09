@@ -251,6 +251,7 @@ describe('PermissionHandler (C5)', () => {
               EQ: () => ({
                 first: async () => ({
                   processed: false,
+                  content:   { toolName: 'shell:execute', toolUseId: 'tu_1' },
                   save: async function() { savedRecords.push(this); },
                 }),
               }),
@@ -262,6 +263,8 @@ describe('PermissionHandler (C5)', () => {
       await handler.deny('ses_1', 'frm_pending');
 
       assert.ok(createdFrames.some((f) => f.type === 'permission-denied'));
+      assert.ok(createdFrames.some((f) => f.type === 'tool-result' && f.content.toolUseId === 'tu_1'));
+      assert.ok(createdFrames.some((f) => f.type === 'tool-result' && f.content.output.includes('Permission denied')));
       assert.ok(!mockLoop._permissionWaiting.has('ses_1'));
     });
 
@@ -281,6 +284,7 @@ describe('PermissionHandler (C5)', () => {
               EQ: () => ({
                 first: async () => ({
                   processed: false,
+                  content:   { toolName: 'shell:execute', toolUseId: 'tu_2' },
                   save: async () => {},
                 }),
               }),

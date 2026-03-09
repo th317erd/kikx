@@ -6,6 +6,7 @@ import { PermissionDeniedError } from '../permissions/permission-denied-error.mj
 import { PermissionHandler }     from './permission-handler.mjs';
 import { CommandHandler }        from './command-handler.mjs';
 import { isFirstMessage, injectPrimer, buildMessages } from './message-history.mjs';
+import { truncateContent, truncateConversation }       from './context-truncation.mjs';
 
 // =============================================================================
 // InteractionLoop
@@ -195,6 +196,8 @@ export class InteractionLoop extends EventEmitter {
     let allFrames  = frameManager.toArray();
     let forAgentID = params.agent && params.agent.id;
     let messages   = buildMessages(allFrames, forAgentID);
+    messages       = truncateContent(messages);
+    messages       = truncateConversation(messages);
 
     // Inject primer for first message, explicit request, or new agent
     let primerRequested = this._primerNeeded.delete(sessionID);
@@ -494,6 +497,63 @@ export class InteractionLoop extends EventEmitter {
       userMessage:          combinedMessage,
       replayFromPermission: false,
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // postMessage — persist a user message without starting an agent interaction
+  // ---------------------------------------------------------------------------
+  // Used when a user sends a message in a session with no agent, or when
+  // simply recording a message without triggering AI. The frame is persisted
+  // and broadcast via SSE so all connected clients see it.
+  // ---------------------------------------------------------------------------
+
+  async postMessage(sessionID, { text, authorType, authorID }) {
+    if (!sessionID)
+      throw new Error('sessionID is required');
+
+    if (!text)
+      throw new Error('text is required');
+
+    // Check for slash commands before persisting as a plain message
+    let commandMatch = this._commandHandler.parse(text);
+    if (commandMatch) {
+      let interactionID = await this._commandHandler.execute(sessionID, {
+        userMessage: text,
+        authorType:  authorType || 'user',
+        authorID:    authorID || null,
+      }, commandMatch);
+
+      return { interactionID, frameID: null };
+    }
+
+    let framePersistence = this._getFramePersistence();
+    let sessionManager   = this._getSessionManager();
+
+    // Load FrameManager for commit-based broadcasting
+    let frameManager = sessionManager.getFrameManager(sessionID);
+    await framePersistence.loadFramesInto(frameManager, sessionID);
+
+    // Sync order counter with DB max to avoid order collisions
+    let nextDbOrder = await framePersistence.getNextOrder(sessionID);
+    frameManager.syncOrderCounter(nextDbOrder - 1);
+
+    let frameID       = generateID('frm_');
+    let interactionID = generateID('int_');
+
+    await this._createFrame(sessionID, {
+      id:            frameID,
+      type:          'user-message',
+      content:       { text, estimatedTokens: Math.ceil(text.length / 4) },
+      timestamp:     Date.now(),
+      interactionID,
+      authorType:    authorType || 'user',
+      authorID:      authorID || null,
+      hidden:        false,
+      deleted:       false,
+      processed:     false,
+    }, frameManager, { authorType: authorType || 'user', authorId: authorID || null });
+
+    return { interactionID, frameID };
   }
 
   // ---------------------------------------------------------------------------

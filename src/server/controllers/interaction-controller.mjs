@@ -18,13 +18,25 @@ export class InteractionController extends ControllerAuthBase {
     if (!message)
       this.throwBadRequestError('message is required');
 
-    if (!agentId)
-      this.throwBadRequestError('agentId is required');
+    let interactionLoop = this.getInteractionLoop();
+
+    // When no agent is specified, just persist the message and broadcast.
+    // This supports sessions with no agents, or users chatting to each other.
+    if (!agentId) {
+      let result = await interactionLoop.postMessage(params.sessionId, {
+        text:       message,
+        authorType: 'user',
+        authorID:   this.request.userId,
+      });
+
+      this.setStatusCode(201);
+
+      return { data: { interactionID: result.interactionID, frameID: result.frameID } };
+    }
 
     let { Agent }       = this.getCoreModels();
     let core            = this.getCore();
     let keystore        = this.getKeystore();
-    let interactionLoop = this.getInteractionLoop();
 
     // Look up agent
     let agent = await Agent.where.id.EQ(agentId).first();

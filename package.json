@@ -6,6 +6,9 @@
   "license": "GPL-3.0",
   "scripts": {
     "test": "node --test --test-force-exit --test-timeout=30000 'spec/**/*-spec.mjs'",
+    "start": "KIKX_PLUGIN_PATHS=/home/wyatt/Projects/kikx-workspace node src/server/index.mjs",
+    "stop": "fuser -k 8089/tcp 2>/dev/null || echo 'No server running on port 8089'",
+    "restart": "npm run stop && sleep 2 && npm start",
     "add-user": "node scripts/add-user.mjs",
     "reset-password": "node scripts/reset-password.mjs",
     "migrate": "node scripts/migrate.mjs"
