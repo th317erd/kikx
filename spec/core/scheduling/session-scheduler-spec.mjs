@@ -104,7 +104,7 @@ describe('SessionScheduler (B5)', () => {
         content: { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       let commit    = frameManager.getLatestCommit();
       let scheduled = await scheduler.onCommit(session.id, commit);
@@ -130,7 +130,7 @@ describe('SessionScheduler (B5)', () => {
       frameManager.merge([{
         id: 'frm_ev_1', type: 'user-message', content: { text: 'Hi' },
         authorType: 'user', authorID: 'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       await scheduler.onCommit(session.id, frameManager.getLatestCommit());
 
@@ -159,7 +159,7 @@ describe('SessionScheduler (B5)', () => {
       frameManager.merge([{
         id: 'frm_multi_1', type: 'user-message', content: { text: 'Hello both' },
         authorType: 'user', authorID: 'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       let scheduled = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
 
@@ -190,7 +190,7 @@ describe('SessionScheduler (B5)', () => {
       frameManager.merge([{
         id: 'frm_self_1', type: 'user-message', content: { text: 'Hi' },
         authorType: 'user', authorID: 'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       let scheduled1 = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
       assert.equal(scheduled1.length, 1);
@@ -200,7 +200,7 @@ describe('SessionScheduler (B5)', () => {
       frameManager.merge([{
         id: 'frm_self_2', type: 'message', content: { html: '<p>Reply</p>' },
         authorType: 'agent', authorID: agent.id,
-      }], { authorType: 'agent', authorId: agent.id });
+      }], { authorType: 'agent', authorID: agent.id });
 
       let scheduled2 = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
       assert.equal(scheduled2.length, 0);
@@ -222,7 +222,7 @@ describe('SessionScheduler (B5)', () => {
       frameManager.merge([{
         id: 'frm_ss_1', type: 'message', content: { html: '<p>Self</p>' },
         authorType: 'agent', authorID: agent.id,
-      }], { authorType: 'agent', authorId: agent.id });
+      }], { authorType: 'agent', authorID: agent.id });
 
       await scheduler.onCommit(session.id, frameManager.getLatestCommit());
 
@@ -248,7 +248,7 @@ describe('SessionScheduler (B5)', () => {
       frameManager.merge([{
         id: 'frm_act_1', type: 'user-message', content: { text: 'Hello' },
         authorType: 'user', authorID: 'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       // First trigger — should schedule
       let scheduled1 = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
@@ -258,7 +258,7 @@ describe('SessionScheduler (B5)', () => {
       frameManager.merge([{
         id: 'frm_act_2', type: 'user-message', content: { text: 'Another' },
         authorType: 'user', authorID: 'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       let scheduled2 = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
       assert.equal(scheduled2.length, 0);
@@ -287,7 +287,7 @@ describe('SessionScheduler (B5)', () => {
       frameManager.merge([{
         id: 'frm_cu_1', type: 'user-message', content: { text: 'Hi' },
         authorType: 'user', authorID: 'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       let headsMain = frameManager.getRef('heads/main');
 
@@ -314,7 +314,7 @@ describe('SessionScheduler (B5)', () => {
       frameManager.merge([{
         id: 'frm_np_1', type: 'user-message', content: { text: 'Hello?' },
         authorType: 'user', authorID: 'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       let scheduled = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
       assert.equal(scheduled.length, 0);
@@ -341,7 +341,7 @@ describe('SessionScheduler (B5)', () => {
   describe('resolve context', () => {
     it('should store and retrieve resolve context', () => {
       let scheduler = createScheduler();
-      let ctx       = { keystore: 'ks', umk: 'umk', userId: 'usr_1' };
+      let ctx       = { keystore: 'ks', umk: 'umk', userID: 'usr_1' };
 
       scheduler.setResolveContext('ses_1', ctx);
 

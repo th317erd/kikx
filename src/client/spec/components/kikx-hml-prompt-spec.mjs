@@ -404,13 +404,13 @@ function registerComponent() {
     }
 
     _onInputChange(_event) {
-      let promptId = this.getAttribute('prompt-id') || '';
+      let promptID = this.getAttribute('prompt-id') || '';
       let value    = this.getValue();
 
       this.dispatchEvent(new JsdomCustomEvent('prompt-change', {
         bubbles:  true,
         composed: true,
-        detail:   { promptId, value },
+        detail:   { promptID, value },
       }));
     }
   }
@@ -648,7 +648,7 @@ describe('kikx-hml-prompt', () => {
     input.dispatchEvent(inputEvent);
 
     assert.ok(receivedEvent, 'prompt-change event should have been dispatched');
-    assert.equal(receivedEvent.detail.promptId, 'user-name');
+    assert.equal(receivedEvent.detail.promptID, 'user-name');
     assert.equal(receivedEvent.detail.value, 'Charlie');
   });
 });

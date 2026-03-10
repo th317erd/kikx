@@ -95,12 +95,12 @@ function registerComponent() {
       let row = event.target.closest('.participant-row');
       if (!row) return;
 
-      let participantId = row.dataset.participantId;
+      let participantID = row.dataset.participantID;
 
       this.dispatchEvent(new dom.window.CustomEvent('select-participant', {
         bubbles:  true,
         composed: true,
-        detail:   { participantId },
+        detail:   { participantID },
       }));
     }
 
@@ -262,7 +262,7 @@ describe('kikx-participant-list', () => {
     row.click();
 
     assert.ok(eventFired, 'select-participant event should be dispatched');
-    assert.deepEqual(eventDetail, { participantId: 'p2' });
+    assert.deepEqual(eventDetail, { participantID: 'p2' });
   });
 
   // -------------------------------------------------------------------------

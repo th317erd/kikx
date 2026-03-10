@@ -5,43 +5,38 @@ import assert              from 'node:assert/strict';
 import { Frame }           from '../../../src/shared/frame-manager/frame.mjs';
 
 describe('Frame', () => {
-  it('should accept parentId (camelCase)', () => {
-    let frame = new Frame({ id: 'f1', type: 'user-message', parentId: 'f0' });
-    assert.equal(frame.parentId, 'f0');
-  });
-
-  it('should accept parentID (uppercase D) and normalize to parentId', () => {
+  it('should set parentID from data', () => {
     let frame = new Frame({ id: 'f1', type: 'user-message', parentID: 'f0' });
-    assert.equal(frame.parentId, 'f0');
+    assert.equal(frame.parentID, 'f0');
   });
 
-  it('should prefer parentId over parentID when both are present', () => {
-    let frame = new Frame({ id: 'f1', type: 'user-message', parentId: 'from-camel', parentID: 'from-upper' });
-    assert.equal(frame.parentId, 'from-camel');
-  });
-
-  it('should default parentId to null when neither casing is provided', () => {
+  it('should default parentID to null when not provided', () => {
     let frame = new Frame({ id: 'f1', type: 'user-message' });
-    assert.equal(frame.parentId, null);
+    assert.equal(frame.parentID, null);
   });
 
-  it('should accept groupId (camelCase)', () => {
-    let frame = new Frame({ id: 'f1', type: 'delta', groupId: 'g1' });
-    assert.equal(frame.groupId, 'g1');
-  });
-
-  it('should accept groupID (uppercase D) and normalize to groupId', () => {
+  it('should set groupID from data', () => {
     let frame = new Frame({ id: 'f1', type: 'delta', groupID: 'g1' });
-    assert.equal(frame.groupId, 'g1');
+    assert.equal(frame.groupID, 'g1');
   });
 
-  it('should prefer groupId over groupID when both are present', () => {
-    let frame = new Frame({ id: 'f1', type: 'delta', groupId: 'from-camel', groupID: 'from-upper' });
-    assert.equal(frame.groupId, 'from-camel');
-  });
-
-  it('should default groupId to null when neither casing is provided', () => {
+  it('should default groupID to null when not provided', () => {
     let frame = new Frame({ id: 'f1', type: 'delta' });
-    assert.equal(frame.groupId, null);
+    assert.equal(frame.groupID, null);
+  });
+
+  it('should set all default values', () => {
+    let frame = new Frame({ id: 'f1', type: 'user-message' });
+    assert.deepEqual(frame.targets, []);
+    assert.equal(frame.phantom, false);
+    assert.deepEqual(frame.content, {});
+    assert.equal(frame.groupType, null);
+    assert.equal(frame.order, 0);
+    assert.equal(frame.hidden, true);
+    assert.equal(frame.deleted, false);
+    assert.equal(frame.authorType, null);
+    assert.equal(frame.authorID, null);
+    assert.equal(frame.processed, null);
+    assert.equal(frame.processedAt, null);
   });
 });

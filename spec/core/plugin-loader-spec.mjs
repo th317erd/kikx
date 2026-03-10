@@ -23,7 +23,7 @@ import { AgentInterface } from '../../src/core/plugins/agent-interface.mjs';
 
 function createTestToolClass(overrides) {
   let defaults = {
-    pluginId:    'test-plugin',
+    pluginID:    'test-plugin',
     featureName: 'test-feature',
     displayName: 'Test Feature',
     description: 'A test tool',
@@ -34,7 +34,7 @@ function createTestToolClass(overrides) {
   let merged = { ...defaults, ...overrides };
 
   class TestTool extends PluginInterface {
-    static pluginId    = merged.pluginId;
+    static pluginID    = merged.pluginID;
     static featureName = merged.featureName;
     static displayName = merged.displayName;
     static description = merged.description;
@@ -55,7 +55,7 @@ function createTestToolClass(overrides) {
 
 describe('PluginInterface', () => {
   it('should have null static metadata by default', () => {
-    assert.equal(PluginInterface.pluginId, null);
+    assert.equal(PluginInterface.pluginID, null);
     assert.equal(PluginInterface.featureName, null);
     assert.equal(PluginInterface.displayName, null);
     assert.equal(PluginInterface.description, null);
@@ -93,7 +93,7 @@ describe('PluginInterface', () => {
 
   it('should return help object from getHelp', () => {
     let TestTool = createTestToolClass({
-      pluginId:    'my-plugin',
+      pluginID:    'my-plugin',
       featureName: 'search',
       displayName: 'Web Search',
       description: 'Searches the web',
@@ -116,9 +116,9 @@ describe('PluginInterface', () => {
     assert.equal(instance.getPermissionsClass(), null);
   });
 
-  it('should format help name as pluginId:featureName', () => {
+  it('should format help name as pluginID:featureName', () => {
     let TestTool = createTestToolClass({
-      pluginId:    'alpha',
+      pluginID:    'alpha',
       featureName: 'beta',
     });
 
@@ -138,12 +138,12 @@ describe('PluginInterface', () => {
 
   it('should allow subclasses to override static metadata', () => {
     let TestTool = createTestToolClass({
-      pluginId:    'custom',
+      pluginID:    'custom',
       featureName: 'custom-feature',
       version:     '2.5.0',
     });
 
-    assert.equal(TestTool.pluginId, 'custom');
+    assert.equal(TestTool.pluginID, 'custom');
     assert.equal(TestTool.featureName, 'custom-feature');
     assert.equal(TestTool.version, '2.5.0');
   });
@@ -547,7 +547,7 @@ describe('PluginRegistry', () => {
   describe('registerAgentType', () => {
     it('should register and retrieve an agent type class', () => {
       class TestAgent extends AgentInterface {
-        static pluginId = 'test-agent';
+        static pluginID = 'test-agent';
       }
 
       registry.registerAgentType('test', TestAgent);
@@ -1056,7 +1056,7 @@ describe('PluginLoader', () => {
 
   it('should allow plugin to register agent types via context', async () => {
     class TestAgent extends AgentInterface {
-      static pluginId = 'test-agent';
+      static pluginID = 'test-agent';
     }
 
     let module = {

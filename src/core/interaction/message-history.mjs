@@ -70,8 +70,8 @@ export function buildMessages(frames, forAgentID) {
   // Collect toolUseIds that have results — used to filter orphaned pending-actions
   let resolvedToolIds = new Set();
   for (let frame of frames) {
-    if (frame.type === 'tool-result' && frame.content && frame.content.toolUseId)
-      resolvedToolIds.add(frame.content.toolUseId);
+    if (frame.type === 'tool-result' && frame.content && frame.content.toolUseID)
+      resolvedToolIds.add(frame.content.toolUseID);
   }
 
   let messages = [];
@@ -89,7 +89,7 @@ export function buildMessages(frames, forAgentID) {
 
     if (type === 'user-message') {
       let content = frame.content || {};
-      messages.push({ role: 'user', content: content.text || '', frameId: frame.id });
+      messages.push({ role: 'user', content: content.text || '', frameID: frame.id });
     } else if (type === 'message') {
       let content = frame.content || {};
       let html    = content.html || '';
@@ -101,22 +101,22 @@ export function buildMessages(frames, forAgentID) {
         // Other agent's message → wrap in attribution tag, present as user role
         let agentName = frame.authorID;
         let wrapped   = `<agent-message source="${frame.authorID}" name="${agentName}">${html}</agent-message>`;
-        messages.push({ role: 'user', content: wrapped, frameId: frame.id, sourceAgentID: frame.authorID });
+        messages.push({ role: 'user', content: wrapped, frameID: frame.id, sourceAgentID: frame.authorID });
       } else {
         // Own message or single-agent → standard assistant role
-        messages.push({ role: 'assistant', content: html, frameId: frame.id });
+        messages.push({ role: 'assistant', content: html, frameID: frame.id });
       }
     } else if (type === 'tool-call') {
       let content = frame.content || {};
-      messages.push({ type: 'tool-call', content, authorType: 'agent', frameId: frame.id });
+      messages.push({ type: 'tool-call', content, authorType: 'agent', frameID: frame.id });
     } else if (type === 'pending-action') {
       // Only include pending-actions that were approved (have a matching tool-result)
       let content = frame.content || {};
-      if (content.toolUseId && resolvedToolIds.has(content.toolUseId))
-        messages.push({ type: 'tool-call', content, authorType: 'agent', frameId: frame.id });
+      if (content.toolUseID && resolvedToolIds.has(content.toolUseID))
+        messages.push({ type: 'tool-call', content, authorType: 'agent', frameID: frame.id });
     } else if (type === 'tool-result') {
       let content = frame.content || {};
-      messages.push({ type: 'tool-result', content, frameId: frame.id });
+      messages.push({ type: 'tool-result', content, frameID: frame.id });
     }
   }
 

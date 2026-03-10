@@ -155,8 +155,8 @@ class KikxMessageInput extends HTMLElement {
 
     this._queue         = [];
     this._isInteracting = false;
-    this._sessionId     = null;
-    this._replyToFrameId = null;
+    this._sessionID     = null;
+    this._replyToFrameID = null;
 
     this._onKeyDown      = this._onKeyDown.bind(this);
     this._onSendClick    = this._onSendClick.bind(this);
@@ -188,20 +188,20 @@ class KikxMessageInput extends HTMLElement {
   // Draft persistence (sessionStorage, partitioned by session ID)
   // ---------------------------------------------------------------------------
 
-  get sessionId() {
-    return this._sessionId;
+  get sessionID() {
+    return this._sessionID;
   }
 
-  set sessionId(value) {
-    this._sessionId = value;
+  set sessionID(value) {
+    this._sessionID = value;
     this._loadDraft();
   }
 
   _getDraftKey() {
-    if (!this._sessionId)
+    if (!this._sessionID)
       return null;
 
-    return `kikx_draft:${this._sessionId}`;
+    return `kikx_draft:${this._sessionID}`;
   }
 
   _onInput() {
@@ -257,7 +257,7 @@ class KikxMessageInput extends HTMLElement {
   _onKeyDown(event) {
     if (event.key === 'Escape') {
       // Cancel reply mode first
-      if (this._replyToFrameId) {
+      if (this._replyToFrameID) {
         event.preventDefault();
         this.clearReplyMode();
 
@@ -319,8 +319,8 @@ class KikxMessageInput extends HTMLElement {
     // Draft stays in sessionStorage until session-page calls clearDraft()
     // after a successful 200 from the API.
     let detail = { text };
-    if (this._replyToFrameId)
-      detail.parentId = this._replyToFrameId;
+    if (this._replyToFrameID)
+      detail.parentID = this._replyToFrameID;
 
     this.dispatchEvent(new CustomEvent('send-message', {
       bubbles:  true,
@@ -370,15 +370,15 @@ class KikxMessageInput extends HTMLElement {
   // Reply mode
   // ---------------------------------------------------------------------------
 
-  setReplyMode(frameId, participantName) {
-    this._replyToFrameId = frameId;
+  setReplyMode(frameID, participantName) {
+    this._replyToFrameID = frameID;
     this._replyBannerName.textContent = participantName || 'message';
     this._replyBanner.classList.add('visible');
     this._textarea.focus();
   }
 
   clearReplyMode() {
-    this._replyToFrameId = null;
+    this._replyToFrameID = null;
     this._replyBanner.classList.remove('visible');
     this._replyBannerName.textContent = '';
   }

@@ -19,7 +19,7 @@ import { FrameManager }       from '../../src/shared/frame-manager/frame-manager
 // =============================================================================
 
 class MockAgent extends AgentInterface {
-  static pluginId    = 'mock-streaming';
+  static pluginID    = 'mock-streaming';
   static featureName = 'mock';
   static displayName = 'Mock Streaming Agent';
   static description = 'Mock agent for streaming integration tests';

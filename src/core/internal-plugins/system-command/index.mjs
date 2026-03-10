@@ -13,7 +13,7 @@
 
 export function setup({ registerTool, registerInstructions, PluginInterface, context }) {
   class SystemCommandTool extends PluginInterface {
-    static pluginId    = 'system';
+    static pluginID    = 'system';
     static featureName = 'command';
     static displayName = 'System Command';
     static description = 'Execute slash commands on behalf of the agent';

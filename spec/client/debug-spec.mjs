@@ -209,7 +209,7 @@ describe('debug module', () => {
     assert.equal(typeof global.disable, 'function');
     assert.equal(typeof global.isEnabled, 'function');
     assert.equal(typeof global.get, 'function');
-    assert.equal(typeof global.getById, 'function');
+    assert.equal(typeof global.getByID, 'function');
     assert.equal(typeof global.list, 'function');
   });
 

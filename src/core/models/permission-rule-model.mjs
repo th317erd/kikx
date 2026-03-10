@@ -6,7 +6,7 @@ import { ModelBase, Types } from './model-base.mjs';
 // PermissionRule
 // =============================================================================
 // Permission rules that control whether tool calls need approval.
-// Feature names use pluginId:toolName format (e.g. 'shell:execute').
+// Feature names use pluginID:toolName format (e.g. 'shell:execute').
 // Rules are evaluated by priority (descending), first match wins.
 // =============================================================================
 
@@ -26,7 +26,7 @@ export class PermissionRule extends ModelBase {
       allowNull: false,
       index:     true,
     },
-    // pluginId:toolName format, e.g. 'shell:execute', 'websearch:fetch'
+    // pluginID:toolName format, e.g. 'shell:execute', 'websearch:fetch'
     featureName: {
       type:      Types.STRING(256),
       allowNull: false,

@@ -59,13 +59,13 @@ describe('Message Assembly v2 (B6)', () => {
       assert.equal(messages[1].content, '<p>Hi</p>');
     });
 
-    it('should include frameId on messages', () => {
+    it('should include frameID on messages', () => {
       let frames = [
         { id: 'f1', type: 'user-message', content: { text: 'Hi' }, hidden: false, deleted: false },
       ];
 
       let messages = loop._buildMessages(frames);
-      assert.equal(messages[0].frameId, 'f1');
+      assert.equal(messages[0].frameID, 'f1');
     });
 
     it('should skip hidden/deleted/excluded frames', () => {
@@ -167,17 +167,17 @@ describe('Message Assembly v2 (B6)', () => {
       assert.equal(messages[0].role, 'assistant');
     });
 
-    it('should include tool-call and tool-result with frameId', () => {
+    it('should include tool-call and tool-result with frameID', () => {
       let frames = [
-        { id: 'f1', type: 'tool-call', content: { toolName: 'test', toolUseId: 'tu_1' }, hidden: false, deleted: false },
-        { id: 'f2', type: 'tool-result', content: { output: 'done', toolUseId: 'tu_1' }, hidden: false, deleted: false },
+        { id: 'f1', type: 'tool-call', content: { toolName: 'test', toolUseID: 'tu_1' }, hidden: false, deleted: false },
+        { id: 'f2', type: 'tool-result', content: { output: 'done', toolUseID: 'tu_1' }, hidden: false, deleted: false },
       ];
 
       let messages = loop._buildMessages(frames, 'agt_me');
 
       assert.equal(messages.length, 2);
-      assert.equal(messages[0].frameId, 'f1');
-      assert.equal(messages[1].frameId, 'f2');
+      assert.equal(messages[0].frameID, 'f1');
+      assert.equal(messages[1].frameID, 'f2');
     });
   });
 

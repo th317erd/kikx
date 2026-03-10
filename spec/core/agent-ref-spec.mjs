@@ -15,7 +15,7 @@ import { AgentInterface }     from '../../src/core/plugins/agent-interface.mjs';
 // =============================================================================
 
 class MockAgent extends AgentInterface {
-  static pluginId    = 'mock-agent';
+  static pluginID    = 'mock-agent';
   static featureName = 'mock';
   static displayName = 'Mock Agent';
   static description = 'Mock agent for testing';
@@ -212,7 +212,7 @@ describe('Per-agent refs (B4)', () => {
       content:    { text: 'Second message' },
       authorType: 'user',
       authorID:   'usr_1',
-    }], { authorType: 'user', authorId: 'usr_1' });
+    }], { authorType: 'user', authorID: 'usr_1' });
 
     // diff from agent's ref to heads/main should show the new user message
     let changes = frameManager.diff(`processed/agent-agt_diff`, 'heads/main');

@@ -35,14 +35,14 @@ describe('HelpIndex', () => {
 
   it('should enumerate all registered tools', () => {
     class ToolA extends PluginInterface {
-      static pluginId    = 'toolA';
+      static pluginID    = 'toolA';
       static featureName = 'run';
       static displayName = 'Tool A';
       static description = 'First tool';
     }
 
     class ToolB extends PluginInterface {
-      static pluginId    = 'toolB';
+      static pluginID    = 'toolB';
       static featureName = 'execute';
       static displayName = 'Tool B';
       static description = 'Second tool';
@@ -77,7 +77,7 @@ describe('HelpIndex', () => {
 
   it('should include both tools and commands in entries', () => {
     class ToolA extends PluginInterface {
-      static pluginId    = 'toolA';
+      static pluginID    = 'toolA';
       static featureName = 'run';
       static displayName = 'Tool A';
       static description = 'A tool';
@@ -96,7 +96,7 @@ describe('HelpIndex', () => {
 
   it('should include help metadata from getHelp()', () => {
     class ToolC extends PluginInterface {
-      static pluginId    = 'toolC';
+      static pluginID    = 'toolC';
       static featureName = 'action';
       static displayName = 'Tool C';
       static description = 'A test tool';
@@ -144,7 +144,7 @@ describe('HelpIndex', () => {
 
   it('should include capabilities alongside tools and commands', () => {
     class ToolA extends PluginInterface {
-      static pluginId    = 'toolA';
+      static pluginID    = 'toolA';
       static featureName = 'run';
       static displayName = 'Tool A';
       static description = 'A tool';
@@ -188,21 +188,21 @@ describe('HelpIndex', () => {
   describe('search', () => {
     beforeEach(() => {
       class ShellTool extends PluginInterface {
-        static pluginId    = 'shell';
+        static pluginID    = 'shell';
         static featureName = 'execute';
         static displayName = 'Shell';
         static description = 'Execute shell commands';
       }
 
       class WebTool extends PluginInterface {
-        static pluginId    = 'websearch';
+        static pluginID    = 'websearch';
         static featureName = 'fetch';
         static displayName = 'Web Search';
         static description = 'Fetch and render web pages';
       }
 
       class HelpToolClass extends PluginInterface {
-        static pluginId    = 'help';
+        static pluginID    = 'help';
         static featureName = 'search';
         static displayName = 'Help';
         static description = 'Search available tools';

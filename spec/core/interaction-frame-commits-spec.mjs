@@ -14,11 +14,11 @@ import { AgentInterface }     from '../../src/core/plugins/agent-interface.mjs';
 // Phase B3 — Frame Creation Through FrameManager
 // =============================================================================
 // Verifies that every frame created during an interaction produces a commit
-// in the FrameManager, with proper authorType/authorId metadata.
+// in the FrameManager, with proper authorType/authorID metadata.
 // =============================================================================
 
 class MockAgent extends AgentInterface {
-  static pluginId    = 'mock-agent';
+  static pluginID    = 'mock-agent';
   static featureName = 'mock';
   static displayName = 'Mock Agent';
   static description = 'Mock agent for testing';
@@ -145,7 +145,7 @@ describe('Frame creation through FrameManager (B3)', () => {
     let agent   = new MockAgent(context, [
       {
         type:    'tool-call',
-        content: { toolName: 'test:echo', arguments: { text: 'hello' }, toolUseId: 'tu_1' },
+        content: { toolName: 'test:echo', arguments: { text: 'hello' }, toolUseID: 'tu_1' },
         authorType: 'agent',
         authorID:   'agt_1',
       },

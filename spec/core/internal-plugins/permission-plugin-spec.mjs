@@ -94,7 +94,7 @@ describe('PermissionPlugin (C3)', () => {
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
         authorType: 'agent',
         authorID:   'agt_1',
-      }], { authorType: 'agent', authorId: 'agt_1' });
+      }], { authorType: 'agent', authorID: 'agt_1' });
 
       let commit = frameManager.getLatestCommit();
 
@@ -127,7 +127,7 @@ describe('PermissionPlugin (C3)', () => {
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' }, _signature: signature },
         authorType: 'agent',
         authorID:   'agt_1',
-      }], { authorType: 'agent', authorId: 'agt_1' });
+      }], { authorType: 'agent', authorID: 'agt_1' });
 
       let commit = frameManager.getLatestCommit();
 
@@ -160,7 +160,7 @@ describe('PermissionPlugin (C3)', () => {
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' }, _signature: 'a'.repeat(64) },
         authorType: 'agent',
         authorID:   'agt_1',
-      }], { authorType: 'agent', authorId: 'agt_1' });
+      }], { authorType: 'agent', authorID: 'agt_1' });
 
       let commit = frameManager.getLatestCommit();
 

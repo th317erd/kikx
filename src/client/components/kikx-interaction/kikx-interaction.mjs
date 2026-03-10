@@ -379,7 +379,7 @@ class KikxInteraction extends HTMLElement {
     this.dispatchEvent(new CustomEvent('interaction-ignore', {
       bubbles:  true,
       composed: true,
-      detail:   { interactionId: this.getAttribute('data-interaction-id') },
+      detail:   { interactionID: this.getAttribute('data-interaction-id') },
     }));
   }
 
@@ -387,12 +387,12 @@ class KikxInteraction extends HTMLElement {
     this.dispatchEvent(new CustomEvent('interaction-submit', {
       bubbles:  true,
       composed: true,
-      detail:   { interactionId: this.getAttribute('data-interaction-id') },
+      detail:   { interactionID: this.getAttribute('data-interaction-id') },
     }));
   }
 
   _onReplyClick() {
-    let frameId   = this.getAttribute('data-frame-id');
+    let frameID   = this.getAttribute('data-frame-id');
     let name      = this.getAttribute('participant-name') || '';
     let alignment = this.getAttribute('alignment') || '';
 
@@ -408,7 +408,7 @@ class KikxInteraction extends HTMLElement {
     this.dispatchEvent(new CustomEvent('reply-to-message', {
       bubbles:  true,
       composed: true,
-      detail:   { frameId, participantName: name, preview, alignment },
+      detail:   { frameID, participantName: name, preview, alignment },
     }));
   }
 }

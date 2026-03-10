@@ -11,11 +11,11 @@ import { ControllerAuthBase } from './controller-auth-base.mjs';
 
 export class StreamController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
-  // GET /api/v2/sessions/:sessionId/stream
+  // GET /api/v2/sessions/:sessionID/stream
   // ---------------------------------------------------------------------------
 
   async connect({ params }) {
-    let sessionId       = params.sessionId;
+    let sessionID       = params.sessionID;
     let interactionLoop = this.getInteractionLoop();
     let response        = this.response;
     let request         = this.request;
@@ -32,30 +32,30 @@ export class StreamController extends ControllerAuthBase {
     response.write('event: connected\ndata: {}\n\n');
 
     // Frame listener
-    let onFrame = ({ sessionID, frame }) => {
-      if (sessionID !== sessionId)
+    let onFrame = ({ sessionID: sid, frame }) => {
+      if (sid !== sessionID)
         return;
 
       response.write(`event: frame\ndata: ${JSON.stringify(frame)}\n\n`);
     };
 
     // Interaction lifecycle
-    let onInteractionStart = ({ sessionID, interactionID }) => {
-      if (sessionID !== sessionId)
+    let onInteractionStart = ({ sessionID: sid, interactionID }) => {
+      if (sid !== sessionID)
         return;
 
       response.write(`event: interaction:start\ndata: ${JSON.stringify({ interactionID })}\n\n`);
     };
 
-    let onInteractionEnd = ({ sessionID, interactionID }) => {
-      if (sessionID !== sessionId)
+    let onInteractionEnd = ({ sessionID: sid, interactionID }) => {
+      if (sid !== sessionID)
         return;
 
       response.write(`event: interaction:end\ndata: ${JSON.stringify({ interactionID })}\n\n`);
     };
 
-    let onPermissionRequest = ({ sessionID, frameID, toolName }) => {
-      if (sessionID !== sessionId)
+    let onPermissionRequest = ({ sessionID: sid, frameID, toolName }) => {
+      if (sid !== sessionID)
         return;
 
       response.write(`event: permission:request\ndata: ${JSON.stringify({ frameID, toolName })}\n\n`);
@@ -63,21 +63,21 @@ export class StreamController extends ControllerAuthBase {
 
     // Streaming deltas (transient, not persisted)
     let onDelta = ({ sessionID: sid, interactionID: iid, content }) => {
-      if (sid !== sessionId)
+      if (sid !== sessionID)
         return;
 
       response.write(`event: delta\ndata: ${JSON.stringify({ interactionID: iid, content })}\n\n`);
     };
 
     let onReflectionDelta = ({ sessionID: sid, interactionID: iid, content }) => {
-      if (sid !== sessionId)
+      if (sid !== sessionID)
         return;
 
       response.write(`event: reflection-delta\ndata: ${JSON.stringify({ interactionID: iid, content })}\n\n`);
     };
 
     let onUsage = ({ sessionID: sid, interactionID: iid, usage }) => {
-      if (sid !== sessionId)
+      if (sid !== sessionID)
         return;
 
       response.write(`event: usage\ndata: ${JSON.stringify({ interactionID: iid, usage })}\n\n`);
@@ -85,7 +85,7 @@ export class StreamController extends ControllerAuthBase {
 
     // Commit listener — enriched commits for client-side FrameManager
     let onCommit = ({ sessionID: sid, commit }) => {
-      if (sid !== sessionId)
+      if (sid !== sessionID)
         return;
 
       response.write(`event: commit\ndata: ${JSON.stringify(commit)}\n\n`);

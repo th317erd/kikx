@@ -107,7 +107,7 @@ describe('SessionManager FrameRouter auto-connection (C2)', () => {
       content:    { text: 'Test routing' },
       authorType: 'user',
       authorID:   'usr_1',
-    }], { authorType: 'user', authorId: 'usr_1' });
+    }], { authorType: 'user', authorID: 'usr_1' });
 
     // Give async routing time to complete
     await new Promise((resolve) => setTimeout(resolve, 50));

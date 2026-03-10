@@ -87,7 +87,7 @@ function registerComponent() {
       `;
     }
 
-    get sessionId() {
+    get sessionID() {
       return this.getAttribute('data-id');
     }
   }
@@ -193,11 +193,11 @@ describe('kikx-session-page', () => {
 
   it('reads data-id attribute for session context', () => {
     element.setAttribute('data-id', 'session-456');
-    assert.equal(element.sessionId, 'session-456', 'sessionId getter should return data-id attribute value');
+    assert.equal(element.sessionID, 'session-456', 'sessionID getter should return data-id attribute value');
   });
 
   it('returns null when data-id is not set', () => {
-    assert.equal(element.sessionId, null, 'sessionId should be null when data-id is absent');
+    assert.equal(element.sessionID, null, 'sessionID should be null when data-id is absent');
   });
 
   // -----------------------------------------------------------------------

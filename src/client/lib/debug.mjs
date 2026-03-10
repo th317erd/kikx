@@ -180,7 +180,7 @@ if (typeof window !== 'undefined') {
     disable,
     isEnabled,
     get:     getMetadata,
-    getById: getByInteractionID,
+    getByID: getByInteractionID,
     list:    getAllTracked,
   };
 }

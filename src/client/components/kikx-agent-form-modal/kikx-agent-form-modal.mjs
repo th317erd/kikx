@@ -189,7 +189,7 @@ class KikxAgentFormModal extends HTMLElement {
     this.dispatchEvent(new CustomEvent('agent-save', {
       bubbles:  true,
       composed: true,
-      detail:   { agentId: this._agent?.id, values: this.getValues() },
+      detail:   { agentID: this._agent?.id, values: this.getValues() },
     }));
   }
 
@@ -197,7 +197,7 @@ class KikxAgentFormModal extends HTMLElement {
     this.dispatchEvent(new CustomEvent('agent-delete', {
       bubbles:  true,
       composed: true,
-      detail:   { agentId: this._agent?.id },
+      detail:   { agentID: this._agent?.id },
     }));
   }
 

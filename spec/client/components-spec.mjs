@@ -1391,7 +1391,7 @@ describe('KikxMessageInput', () => {
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    input.sessionId = 'ses_abc123';
+    input.sessionID = 'ses_abc123';
 
     let textarea = input.shadowRoot.querySelector('.message-textarea');
     textarea.value = 'Work in progress';
@@ -1400,14 +1400,14 @@ describe('KikxMessageInput', () => {
     assert.equal(sessionStorage.getItem('kikx_draft:ses_abc123'), 'Work in progress');
   });
 
-  it('should load draft from sessionStorage when sessionId is set', () => {
+  it('should load draft from sessionStorage when sessionID is set', () => {
     sessionStorage.setItem('kikx_draft:ses_xyz789', 'Restored draft');
 
     let doc   = getDocument();
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    input.sessionId = 'ses_xyz789';
+    input.sessionID = 'ses_xyz789';
 
     let textarea = input.shadowRoot.querySelector('.message-textarea');
     assert.equal(textarea.value, 'Restored draft');
@@ -1420,7 +1420,7 @@ describe('KikxMessageInput', () => {
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    input.sessionId = 'ses_clear';
+    input.sessionID = 'ses_clear';
     input.clearDraft();
 
     assert.equal(sessionStorage.getItem('kikx_draft:ses_clear'), null);
@@ -1431,7 +1431,7 @@ describe('KikxMessageInput', () => {
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    input.sessionId = 'ses_persist';
+    input.sessionID = 'ses_persist';
 
     let textarea = input.shadowRoot.querySelector('.message-textarea');
     textarea.value = 'Important message';
@@ -1451,7 +1451,7 @@ describe('KikxMessageInput', () => {
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    input.sessionId = 'ses_queue';
+    input.sessionID = 'ses_queue';
     input.setInteracting(true);
 
     let textarea = input.shadowRoot.querySelector('.message-textarea');
@@ -1472,7 +1472,7 @@ describe('KikxMessageInput', () => {
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    input.sessionId = 'ses_empty';
+    input.sessionID = 'ses_empty';
 
     let textarea = input.shadowRoot.querySelector('.message-textarea');
     textarea.value = 'Some text';
@@ -1486,7 +1486,7 @@ describe('KikxMessageInput', () => {
     assert.equal(sessionStorage.getItem('kikx_draft:ses_empty'), null);
   });
 
-  it('should not save draft when sessionId is not set', () => {
+  it('should not save draft when sessionID is not set', () => {
     let doc   = getDocument();
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
@@ -1496,7 +1496,7 @@ describe('KikxMessageInput', () => {
     textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
 
     // No key to check — just verify no errors thrown
-    assert.equal(input.sessionId, null);
+    assert.equal(input.sessionID, null);
   });
 
   it('should save draft on Esc cancel (restored text becomes new draft)', () => {
@@ -1504,7 +1504,7 @@ describe('KikxMessageInput', () => {
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    input.sessionId = 'ses_esc';
+    input.sessionID = 'ses_esc';
     input.setInteracting(true);
 
     let textarea   = input.shadowRoot.querySelector('.message-textarea');
@@ -1529,10 +1529,10 @@ describe('KikxMessageInput', () => {
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    input.sessionId = 'ses_a';
+    input.sessionID = 'ses_a';
     assert.equal(input.shadowRoot.querySelector('.message-textarea').value, 'Draft A');
 
-    input.sessionId = 'ses_b';
+    input.sessionID = 'ses_b';
     assert.equal(input.shadowRoot.querySelector('.message-textarea').value, 'Draft B');
   });
 });
@@ -2053,7 +2053,7 @@ describe('Prompt value collection from interaction', () => {
     submitBtn.click();
 
     assert.ok(dispatched, 'interaction-submit should fire');
-    assert.equal(dispatched.interactionId, 'test-int-1');
+    assert.equal(dispatched.interactionID, 'test-int-1');
   });
 
   it('should dispatch interaction-ignore event from ignore button', () => {
@@ -2068,7 +2068,7 @@ describe('Prompt value collection from interaction', () => {
     ignoreBtn.click();
 
     assert.ok(dispatched, 'interaction-ignore should fire');
-    assert.equal(dispatched.interactionId, 'test-int-1');
+    assert.equal(dispatched.interactionID, 'test-int-1');
   });
 });
 
@@ -2528,7 +2528,7 @@ describe('KikxPermissionRequest', () => {
     confirmBtn.click();
 
     assert.ok(dispatched, 'Event should have been dispatched');
-    assert.equal(dispatched.permissionId, 'frm_test123');
+    assert.equal(dispatched.permissionID, 'frm_test123');
     assert.equal(dispatched.decisions.length, 2);
 
     let lsDecision = dispatched.decisions.find((d) => d.command === 'ls');
@@ -2729,7 +2729,7 @@ describe('KikxInteraction reply features', () => {
     replyButton.click();
 
     assert.ok(dispatched, 'reply-to-message event should fire');
-    assert.equal(dispatched.frameId, 'frm_reply');
+    assert.equal(dispatched.frameID, 'frm_reply');
     assert.equal(dispatched.participantName, 'Bot');
   });
 
@@ -2813,7 +2813,7 @@ describe('KikxMessageInput reply mode', () => {
     assert.ok(!banner.classList.contains('visible'), 'Reply banner should be hidden after clear');
   });
 
-  it('should include parentId in send-message event when in reply mode', () => {
+  it('should include parentID in send-message event when in reply mode', () => {
     let doc   = getDocument();
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
@@ -2831,7 +2831,7 @@ describe('KikxMessageInput reply mode', () => {
 
     assert.ok(dispatched, 'send-message event should fire');
     assert.equal(dispatched.text, 'My reply');
-    assert.equal(dispatched.parentId, 'frm_parent123');
+    assert.equal(dispatched.parentID, 'frm_parent123');
   });
 
   it('should clear reply mode after sending', () => {
@@ -2851,7 +2851,7 @@ describe('KikxMessageInput reply mode', () => {
     assert.ok(!banner.classList.contains('visible'), 'Reply banner should be hidden after send');
   });
 
-  it('should not include parentId when not in reply mode', () => {
+  it('should not include parentID when not in reply mode', () => {
     let doc   = getDocument();
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
@@ -2867,7 +2867,7 @@ describe('KikxMessageInput reply mode', () => {
 
     assert.ok(dispatched, 'send-message event should fire');
     assert.equal(dispatched.text, 'Normal message');
-    assert.equal(dispatched.parentId, undefined, 'No parentId for non-reply messages');
+    assert.equal(dispatched.parentID, undefined, 'No parentID for non-reply messages');
   });
 
   it('should clear reply mode on cancel button click', () => {

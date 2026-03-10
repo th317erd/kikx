@@ -91,7 +91,7 @@ describe('FrameManager', () => {
     it('should create Frame instances from raw data', () => {
       let manager = new FrameManager();
       let results = manager.merge([
-        { id: 'f1', type: 'message', content: { text: 'hello' }, parentId: 'p1' },
+        { id: 'f1', type: 'message', content: { text: 'hello' }, parentID: 'p1' },
       ]);
 
       let frame = results[0];
@@ -99,7 +99,7 @@ describe('FrameManager', () => {
       assert.equal(frame.id, 'f1');
       assert.equal(frame.type, 'message');
       assert.deepEqual(frame.content, { text: 'hello' });
-      assert.equal(frame.parentId, 'p1');
+      assert.equal(frame.parentID, 'p1');
     });
 
     it('should assign timestamp if not set', () => {
@@ -178,9 +178,9 @@ describe('FrameManager', () => {
       let manager = new FrameManager();
       manager.merge([
         { id: 'parent', type: 'thread' },
-        { id: 'child-1', type: 'message', parentId: 'parent' },
-        { id: 'child-2', type: 'message', parentId: 'parent' },
-        { id: 'child-3', type: 'message', parentId: 'parent' },
+        { id: 'child-1', type: 'message', parentID: 'parent' },
+        { id: 'child-2', type: 'message', parentID: 'parent' },
+        { id: 'child-3', type: 'message', parentID: 'parent' },
       ]);
 
       let children = manager.getChildren('parent');
@@ -329,11 +329,11 @@ describe('FrameManager', () => {
 
       manager.merge([
         { id: 'parent', type: 'thread' },
-        { id: 'child-1', type: 'message', parentId: 'parent' },
+        { id: 'child-1', type: 'message', parentID: 'parent' },
       ]);
 
       manager.merge([
-        { id: 'child-2', type: 'message', parentId: 'parent' },
+        { id: 'child-2', type: 'message', parentID: 'parent' },
       ]);
 
       let children = manager.getChildren('parent');

@@ -315,7 +315,7 @@ describe('Cross-Session Plugin', () => {
       let fm = sessionManager.getFrameManager(session.id);
       fm.merge([
         { id: 'frm_search1', type: 'message', content: { text: 'The quick brown fox' }, authorType: 'agent', authorID: agent.id },
-      ], { authorType: 'agent', authorId: agent.id });
+      ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ListSessionsTool);
       let result = await tool.execute({ agentID: agent.id, search: 'brown fox' });
@@ -332,7 +332,7 @@ describe('Cross-Session Plugin', () => {
       let fm = sessionManager.getFrameManager(session.id);
       fm.merge([
         { id: 'frm_search2', type: 'message', content: { text: 'Hello world' }, authorType: 'agent', authorID: agent.id },
-      ], { authorType: 'agent', authorId: agent.id });
+      ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ListSessionsTool);
       let result = await tool.execute({ agentID: agent.id, search: 'nonexistent term' });
@@ -353,7 +353,7 @@ describe('Cross-Session Plugin', () => {
       let fm = sessionManager.getFrameManager(sessionB.id);
       fm.merge([
         { id: 'frm_search3', type: 'message', content: { text: 'Discussion about Project Alpha requirements' }, authorType: 'agent', authorID: agent.id },
-      ], { authorType: 'agent', authorId: agent.id });
+      ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ListSessionsTool);
       let result = await tool.execute({ agentID: agent.id, search: 'Project Alpha' });
@@ -674,7 +674,7 @@ describe('Cross-Session Plugin', () => {
       fm.merge([
         { id: 'frm_r1', type: 'message', content: { text: 'First message' }, authorType: 'agent', authorID: agent.id },
         { id: 'frm_r2', type: 'message', content: { text: 'Second message' }, authorType: 'agent', authorID: agent.id },
-      ], { authorType: 'agent', authorId: agent.id });
+      ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ReadFromSessionTool);
       let result = await tool.execute({
@@ -695,7 +695,7 @@ describe('Cross-Session Plugin', () => {
       fm.merge([
         { id: 'frm_k1', type: 'message', content: { text: 'The deployment was successful' }, authorType: 'agent', authorID: agent.id },
         { id: 'frm_k2', type: 'message', content: { text: 'Let us discuss testing' }, authorType: 'agent', authorID: agent.id },
-      ], { authorType: 'agent', authorId: agent.id });
+      ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ReadFromSessionTool);
       let result = await tool.execute({
@@ -719,7 +719,7 @@ describe('Cross-Session Plugin', () => {
       fm.merge([
         { id: 'frm_t1', type: 'message', content: { text: 'Chat text' }, authorType: 'agent', authorID: agent.id },
         { id: 'frm_t2', type: 'tool-call', content: { toolName: 'shell:execute', arguments: {} }, authorType: 'agent', authorID: agent.id },
-      ], { authorType: 'agent', authorId: agent.id });
+      ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ReadFromSessionTool);
       let result = await tool.execute({
@@ -741,7 +741,7 @@ describe('Cross-Session Plugin', () => {
       let frameBatch = [];
       for (let i = 0; i < 8; i++)
         frameBatch.push({ id: `frm_p${i}`, type: 'message', content: { text: `Message ${i}` }, authorType: 'agent', authorID: agent.id });
-      fm.merge(frameBatch, { authorType: 'agent', authorId: agent.id });
+      fm.merge(frameBatch, { authorType: 'agent', authorID: agent.id });
 
       let tool  = instantiateTool(ReadFromSessionTool);
       let page1 = await tool.execute({ agentID: agent.id, sessionID: session.id, limit: 3, offset: 0 });
@@ -776,7 +776,7 @@ describe('Cross-Session Plugin', () => {
       let fm = sessionManager.getFrameManager(session.id);
       fm.merge([
         { id: 'frm_nm1', type: 'message', content: { text: 'Hello world' }, authorType: 'agent', authorID: agent.id },
-      ], { authorType: 'agent', authorId: agent.id });
+      ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ReadFromSessionTool);
       let result = await tool.execute({
@@ -812,7 +812,7 @@ describe('Cross-Session Plugin', () => {
       let fm = sessionManager.getFrameManager(session.id);
       fm.merge([
         { id: 'frm_j1', type: 'tool-result', content: { exitCode: 0, stdout: 'ok' }, authorType: 'agent', authorID: agent.id },
-      ], { authorType: 'agent', authorId: agent.id });
+      ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ReadFromSessionTool);
       let result = await tool.execute({

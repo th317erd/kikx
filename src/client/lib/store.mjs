@@ -26,13 +26,13 @@ const store = createStore({
       set([...get(), session]);
     },
 
-    removeSession({ get, set }, sessionId) {
-      set(get().filter((session) => session.id !== sessionId));
+    removeSession({ get, set }, sessionID) {
+      set(get().filter((session) => session.id !== sessionID));
     },
 
-    updateSession({ get, set }, sessionId, updates) {
+    updateSession({ get, set }, sessionID, updates) {
       const sessions = get();
-      const index = sessions.findIndex((session) => session.id === sessionId);
+      const index = sessions.findIndex((session) => session.id === sessionID);
       if (index < 0) return;
 
       const updated = sessions.slice();
@@ -40,18 +40,18 @@ const store = createStore({
       set(updated);
     },
 
-    getSession({ get }, sessionId) {
-      return get().find((session) => session.id === sessionId) ?? null;
+    getSession({ get }, sessionID) {
+      return get().find((session) => session.id === sessionID) ?? null;
     },
 
     getActiveSession({ get }) {
       return get().find((session) => session.active === true) ?? null;
     },
 
-    setActiveSession({ get, set }, sessionId) {
+    setActiveSession({ get, set }, sessionID) {
       const sessions = get().map((session) => ({
         ...session,
-        active: session.id === sessionId,
+        active: session.id === sessionID,
       }));
       set(sessions);
     },
@@ -69,13 +69,13 @@ const store = createStore({
       set([...get(), agent]);
     },
 
-    removeAgent({ get, set }, agentId) {
-      set(get().filter((agent) => agent.id !== agentId));
+    removeAgent({ get, set }, agentID) {
+      set(get().filter((agent) => agent.id !== agentID));
     },
 
-    updateAgent({ get, set }, agentId, updates) {
+    updateAgent({ get, set }, agentID, updates) {
       const agents = get();
-      const index = agents.findIndex((agent) => agent.id === agentId);
+      const index = agents.findIndex((agent) => agent.id === agentID);
       if (index < 0) return;
 
       const updated = agents.slice();
@@ -83,8 +83,8 @@ const store = createStore({
       set(updated);
     },
 
-    getAgent({ get }, agentId) {
-      return get().find((agent) => agent.id === agentId) ?? null;
+    getAgent({ get }, agentID) {
+      return get().find((agent) => agent.id === agentID) ?? null;
     },
 
     getAllAgents({ get }) {
@@ -102,18 +102,18 @@ const store = createStore({
       set({ ...current, [category]: [...categoryList, ability] });
     },
 
-    removeAbility({ get, set }, abilityId) {
+    removeAbility({ get, set }, abilityID) {
       const current = get();
       set({
-        system: current.system.filter((ability) => ability.id !== abilityId),
-        user:   current.user.filter((ability) => ability.id !== abilityId),
+        system: current.system.filter((ability) => ability.id !== abilityID),
+        user:   current.user.filter((ability) => ability.id !== abilityID),
       });
     },
 
-    updateAbility({ get, set }, abilityId, updates) {
+    updateAbility({ get, set }, abilityID, updates) {
       const current = get();
       const updateInList = (list) => {
-        const index = list.findIndex((ability) => ability.id === abilityId);
+        const index = list.findIndex((ability) => ability.id === abilityID);
         if (index < 0) return list;
         const updated = list.slice();
         updated[index] = { ...list[index], ...updates };
@@ -125,11 +125,11 @@ const store = createStore({
       });
     },
 
-    getAbility({ get }, abilityId) {
+    getAbility({ get }, abilityID) {
       const current = get();
       return (
-        current.system.find((ability) => ability.id === abilityId) ??
-        current.user.find((ability) => ability.id === abilityId) ??
+        current.system.find((ability) => ability.id === abilityID) ??
+        current.user.find((ability) => ability.id === abilityID) ??
         null
       );
     },

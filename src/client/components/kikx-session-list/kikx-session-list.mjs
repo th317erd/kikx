@@ -230,13 +230,13 @@ class KikxSessionList extends HTMLElement {
     // Archive / Revive button
     let actionButton = target.closest('.action-button');
     if (actionButton) {
-      let sessionId = actionButton.dataset.sessionId;
+      let sessionID = actionButton.dataset.sessionID;
       let action    = actionButton.dataset.action;
 
       this.dispatchEvent(new CustomEvent(action, {
         bubbles:  true,
         composed: true,
-        detail:   { sessionId },
+        detail:   { sessionID },
       }));
 
       return;
@@ -245,12 +245,12 @@ class KikxSessionList extends HTMLElement {
     // Session row select
     let row = target.closest('.session-row');
     if (row) {
-      let sessionId = row.dataset.sessionId;
+      let sessionID = row.dataset.sessionID;
 
       this.dispatchEvent(new CustomEvent('select-session', {
         bubbles:  true,
         composed: true,
-        detail:   { sessionId },
+        detail:   { sessionID },
       }));
     }
   }

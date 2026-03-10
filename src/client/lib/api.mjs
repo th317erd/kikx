@@ -120,8 +120,8 @@ export function updateProfile(updates) {
 
 // DM endpoints
 
-export function getOrCreateDm(agentId) {
-  return request('POST', `/agents/${agentId}/dm`);
+export function getOrCreateDm(agentID) {
+  return request('POST', `/agents/${agentID}/dm`);
 }
 
 // Session endpoints
@@ -130,28 +130,28 @@ export function getSessions() {
   return request('GET', '/sessions');
 }
 
-export function getSession(sessionId) {
-  return request('GET', `/sessions/${sessionId}`);
+export function getSession(sessionID) {
+  return request('GET', `/sessions/${sessionID}`);
 }
 
 export function createSession(data) {
   return request('POST', '/sessions', data);
 }
 
-export function updateSession(sessionId, updates) {
-  return request('PATCH', `/sessions/${sessionId}`, updates);
+export function updateSession(sessionID, updates) {
+  return request('PATCH', `/sessions/${sessionID}`, updates);
 }
 
-export function deleteSession(sessionId) {
-  return request('DELETE', `/sessions/${sessionId}`);
+export function deleteSession(sessionID) {
+  return request('DELETE', `/sessions/${sessionID}`);
 }
 
-export function addParticipant(sessionId, participantData) {
-  return request('POST', `/sessions/${sessionId}/participants`, participantData);
+export function addParticipant(sessionID, participantData) {
+  return request('POST', `/sessions/${sessionID}/participants`, participantData);
 }
 
-export function removeParticipant(sessionId, participantId) {
-  return request('DELETE', `/sessions/${sessionId}/participants/${participantId}`);
+export function removeParticipant(sessionID, participantID) {
+  return request('DELETE', `/sessions/${sessionID}/participants/${participantID}`);
 }
 
 // Agent endpoints
@@ -160,20 +160,20 @@ export function getAgents() {
   return request('GET', '/agents');
 }
 
-export function getAgent(agentId) {
-  return request('GET', `/agents/${agentId}`);
+export function getAgent(agentID) {
+  return request('GET', `/agents/${agentID}`);
 }
 
 export function createAgent(data) {
   return request('POST', '/agents', data);
 }
 
-export function updateAgent(agentId, updates) {
-  return request('PATCH', `/agents/${agentId}`, updates);
+export function updateAgent(agentID, updates) {
+  return request('PATCH', `/agents/${agentID}`, updates);
 }
 
-export function deleteAgent(agentId) {
-  return request('DELETE', `/agents/${agentId}`);
+export function deleteAgent(agentID) {
+  return request('DELETE', `/agents/${agentID}`);
 }
 
 // Ability endpoints
@@ -182,25 +182,25 @@ export function getAbilities() {
   return request('GET', '/abilities');
 }
 
-export function getAbility(abilityId) {
-  return request('GET', `/abilities/${abilityId}`);
+export function getAbility(abilityID) {
+  return request('GET', `/abilities/${abilityID}`);
 }
 
 export function createAbility(data) {
   return request('POST', '/abilities', data);
 }
 
-export function updateAbility(abilityId, updates) {
-  return request('PATCH', `/abilities/${abilityId}`, updates);
+export function updateAbility(abilityID, updates) {
+  return request('PATCH', `/abilities/${abilityID}`, updates);
 }
 
-export function deleteAbility(abilityId) {
-  return request('DELETE', `/abilities/${abilityId}`);
+export function deleteAbility(abilityID) {
+  return request('DELETE', `/abilities/${abilityID}`);
 }
 
 // Frame endpoints
 
-export function getFrames(sessionId, options = {}) {
+export function getFrames(sessionID, options = {}) {
   let params = new URLSearchParams();
 
   if (options.beforeOrder !== undefined)
@@ -213,34 +213,34 @@ export function getFrames(sessionId, options = {}) {
     params.set('limit', String(options.limit));
 
   let query = params.toString();
-  let url   = `/sessions/${sessionId}/frames${(query) ? `?${query}` : ''}`;
+  let url   = `/sessions/${sessionID}/frames${(query) ? `?${query}` : ''}`;
 
   return request('GET', url);
 }
 
-export function updateFrameContent(sessionId, frameId, content) {
-  return request('PATCH', `/sessions/${sessionId}/frames/${frameId}`, { content });
+export function updateFrameContent(sessionID, frameID, content) {
+  return request('PATCH', `/sessions/${sessionID}/frames/${frameID}`, { content });
 }
 
 // Interaction endpoints
 
-export function sendMessage(sessionId, message, agentId, parentId) {
+export function sendMessage(sessionID, message, agentID, parentID) {
   let body = { message };
-  if (agentId)
-    body.agentId = agentId;
+  if (agentID)
+    body.agentID = agentID;
 
-  if (parentId)
-    body.parentId = parentId;
+  if (parentID)
+    body.parentID = parentID;
 
-  return request('POST', `/sessions/${sessionId}/interact/send`, body);
+  return request('POST', `/sessions/${sessionID}/interact/send`, body);
 }
 
-export function approvePermission(sessionId, frameId, body) {
-  return request('POST', `/sessions/${sessionId}/interact/${frameId}`, body);
+export function approvePermission(sessionID, frameID, body) {
+  return request('POST', `/sessions/${sessionID}/interact/${frameID}`, body);
 }
 
-export function cancelInteraction(sessionId) {
-  return request('POST', `/sessions/${sessionId}/interact/cancel`);
+export function cancelInteraction(sessionID) {
+  return request('POST', `/sessions/${sessionID}/interact/cancel`);
 }
 
 // Health endpoint

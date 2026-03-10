@@ -130,18 +130,18 @@ describe('Commit Validator', () => {
 
     manager.merge(
       [{ id: 'f1', type: 'message', content: { text: 'hello' } }],
-      { authorType: 'user', authorId: 'alice' },
+      { authorType: 'user', authorID: 'alice' },
     );
 
     assert.ok(received);
     assert.ok(received.commit);
     assert.ok(received.commit.changes);
     assert.equal(received.commit.authorType, 'user');
-    assert.equal(received.commit.authorId, 'alice');
+    assert.equal(received.commit.authorID, 'alice');
     assert.ok(Array.isArray(received.frames));
     assert.equal(received.frames.length, 1);
     assert.equal(received.frames[0].id, 'f1');
-    assert.deepEqual(received.actorContext, { authorType: 'user', authorId: 'alice' });
+    assert.deepEqual(received.actorContext, { authorType: 'user', authorID: 'alice' });
   });
 
   // ---------------------------------------------------------------------------

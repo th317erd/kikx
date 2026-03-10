@@ -105,7 +105,7 @@ export class FrameRouter {
       let change = changes[i];
 
       // Get the current frame
-      let frame = frameManager.getHead(change.frameId) || frameManager.get(change.frameId);
+      let frame = frameManager.getHead(change.frameID) || frameManager.get(change.frameID);
 
       if (!frame)
         continue;
@@ -143,7 +143,7 @@ export class FrameRouter {
     let previousFrame = null;
 
     if (change.operation === 'update') {
-      let history = frameManager.getVersionHistory(change.frameId);
+      let history = frameManager.getVersionHistory(change.frameID);
 
       if (history.length >= 2)
         previousFrame = history[history.length - 2];

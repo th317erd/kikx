@@ -260,7 +260,7 @@ describe('Frame Event Router Integration', () => {
         async process(next, done) {
           instances.push(this);
           contexts.push({
-            newFrameId:    this.context.newFrame.id,
+            newFrameID:    this.context.newFrame.id,
             hasEngine:     !!this.context.engine,
             hasCommit:     !!this.context.commit,
             hasLogger:     !!this.context.logger,
@@ -280,8 +280,8 @@ describe('Frame Event Router Integration', () => {
 
       assert.strictEqual(contexts.length, 2);
       assert.notStrictEqual(instances[0], instances[1]);
-      assert.strictEqual(contexts[0].newFrameId, 'f1');
-      assert.strictEqual(contexts[1].newFrameId, 'f2');
+      assert.strictEqual(contexts[0].newFrameID, 'f1');
+      assert.strictEqual(contexts[1].newFrameID, 'f2');
       assert.strictEqual(contexts[0].hasEngine, true);
       assert.strictEqual(contexts[0].hasCommit, true);
       assert.strictEqual(contexts[0].hasLogger, true);

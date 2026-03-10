@@ -140,9 +140,9 @@ export class Keystore {
 
   // --- Per-User Key Derivation ---
 
-  // Derive a per-user key from UMK + userId (HMAC-SHA256)
-  deriveUserKey(umk, userId) {
-    return crypto.createHmac('sha256', umk).update(userId).digest();
+  // Derive a per-user key from UMK + userID (HMAC-SHA256)
+  deriveUserKey(umk, userID) {
+    return crypto.createHmac('sha256', umk).update(userID).digest();
   }
 
   // --- Fingerprinting ---

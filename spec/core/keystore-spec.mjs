@@ -411,7 +411,7 @@ describe('Keystore', () => {
       keystore.destroy();
     });
 
-    it('should produce consistent results for the same UMK and userId', () => {
+    it('should produce consistent results for the same UMK and userID', () => {
       let umk  = keystore.generateUMK();
       let key1 = keystore.deriveUserKey(umk, 'user-42');
       let key2 = keystore.deriveUserKey(umk, 'user-42');

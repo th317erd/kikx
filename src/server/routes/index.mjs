@@ -48,27 +48,27 @@ export function getRoutes({ path }) {
         controller: 'AgentController.create',
       });
 
-      // Single agent: /api/v2/agents/:agentId
+      // Single agent: /api/v2/agents/:agentID
       path('agents', ({ endpoint, capture, path: agentPath }) => {
-        let agentId = capture('agentId');
+        let agentID = capture('agentID');
 
-        endpoint(agentId, {
+        endpoint(agentID, {
           methods:    [ 'GET' ],
           controller: 'AgentController.show',
         });
 
-        endpoint(agentId, {
+        endpoint(agentID, {
           methods:    [ 'PUT' ],
           controller: 'AgentController.update',
         });
 
-        endpoint(agentId, {
+        endpoint(agentID, {
           methods:    [ 'DELETE' ],
           controller: 'AgentController.destroy',
         });
 
         // DM routes nested under agent
-        agentPath(agentId, ({ endpoint, path: dmPath }) => {
+        agentPath(agentID, ({ endpoint, path: dmPath }) => {
           endpoint('dm', {
             methods:    [ 'POST' ],
             controller: 'DmController.getOrCreate',
@@ -105,27 +105,27 @@ export function getRoutes({ path }) {
         controller: 'SessionController.create',
       });
 
-      // Single session: /api/v2/sessions/:sessionId
+      // Single session: /api/v2/sessions/:sessionID
       path('sessions', ({ endpoint, capture, path: sessionPath }) => {
-        let sessionId = capture('sessionId');
+        let sessionID = capture('sessionID');
 
-        endpoint(sessionId, {
+        endpoint(sessionID, {
           methods:    [ 'GET' ],
           controller: 'SessionController.show',
         });
 
-        endpoint(sessionId, {
+        endpoint(sessionID, {
           methods:    [ 'PUT' ],
           controller: 'SessionController.update',
         });
 
-        endpoint(sessionId, {
+        endpoint(sessionID, {
           methods:    [ 'DELETE' ],
           controller: 'SessionController.destroy',
         });
 
         // Archive/revive
-        sessionPath(sessionId, ({ endpoint, path: nestedPath }) => {
+        sessionPath(sessionID, ({ endpoint, path: nestedPath }) => {
           endpoint('archive', {
             methods:    [ 'POST' ],
             controller: 'SessionController.archive',
@@ -148,9 +148,9 @@ export function getRoutes({ path }) {
               controller: 'ParticipantController.create',
             });
 
-            let participantId = capture('participantId');
+            let participantID = capture('participantID');
 
-            endpoint(participantId, {
+            endpoint(participantID, {
               methods:    [ 'DELETE' ],
               controller: 'ParticipantController.destroy',
             });
@@ -168,9 +168,9 @@ export function getRoutes({ path }) {
               controller: 'InteractionController.cancel',
             });
 
-            let frameId = capture('frameId');
+            let frameID = capture('frameID');
 
-            endpoint(frameId, {
+            endpoint(frameID, {
               methods:    [ 'POST' ],
               controller: 'InteractionController.approve',
             });
@@ -183,9 +183,9 @@ export function getRoutes({ path }) {
           });
 
           nestedPath('frames', ({ endpoint, capture }) => {
-            let frameId = capture('frameId');
+            let frameID = capture('frameID');
 
-            endpoint(frameId, {
+            endpoint(frameID, {
               methods:    [ 'PATCH' ],
               controller: 'FrameController.update',
             });

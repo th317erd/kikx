@@ -9,11 +9,11 @@ import { parseShellCommands }   from '../../core/internal-plugins/shell/command-
 
 export class InteractionController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
-  // POST /api/v2/sessions/:sessionId/interact
+  // POST /api/v2/sessions/:sessionID/interact
   // ---------------------------------------------------------------------------
 
   async sendMessage({ params, body }) {
-    let { message, agentId, parentId } = body || {};
+    let { message, agentID, parentID } = body || {};
 
     if (!message)
       this.throwBadRequestError('message is required');
@@ -22,12 +22,12 @@ export class InteractionController extends ControllerAuthBase {
 
     // When no agent is specified, just persist the message and broadcast.
     // This supports sessions with no agents, or users chatting to each other.
-    if (!agentId) {
-      let result = await interactionLoop.postMessage(params.sessionId, {
+    if (!agentID) {
+      let result = await interactionLoop.postMessage(params.sessionID, {
         text:       message,
         authorType: 'user',
-        authorID:   this.request.userId,
-        parentId,
+        authorID:   this.request.userID,
+        parentID,
       });
 
       this.setStatusCode(201);
@@ -40,7 +40,7 @@ export class InteractionController extends ControllerAuthBase {
     let keystore        = this.getKeystore();
 
     // Look up agent
-    let agent = await Agent.where.id.EQ(agentId).first();
+    let agent = await Agent.where.id.EQ(agentID).first();
     if (!agent)
       this.throwNotFoundError('Agent not found');
 
@@ -56,7 +56,7 @@ export class InteractionController extends ControllerAuthBase {
     if (agent.encryptedAPIKey) {
       try {
         let umk       = this.request.getUMK();
-        let userKey   = keystore.deriveUserKey(umk, this.request.userId);
+        let userKey   = keystore.deriveUserKey(umk, this.request.userID);
         let encrypted = JSON.parse(agent.encryptedAPIKey);
 
         resolvedAgent.apiKey = keystore.decrypt(encrypted, userKey).toString('utf8');
@@ -91,7 +91,7 @@ export class InteractionController extends ControllerAuthBase {
           let permissionOptions = {
             organizationID: agent.organizationID,
             scope:          'session',
-            scopeID:        params.sessionId,
+            scopeID:        params.sessionID,
             toolClass:      ShellToolClass,
           };
 
@@ -142,7 +142,7 @@ export class InteractionController extends ControllerAuthBase {
       return permissionEngine.checkPermission(featureName, toolArgs, {
         organizationID: agent.organizationID,
         scope:          'session',
-        scopeID:        params.sessionId,
+        scopeID:        params.sessionID,
         toolClass:      ToolClass,
       });
     };
@@ -156,15 +156,15 @@ export class InteractionController extends ControllerAuthBase {
         if (capability) {
           let result = await capability.handler({
             params:     toolArgs,
-            sessionID:  params.sessionId,
+            sessionID:  params.sessionID,
             context:    core.getContext(),
             authorType: 'agent',
-            authorID:   this.request.userId,
+            authorID:   this.request.userID,
             agent:      resolvedAgent,
           });
 
           if (result && result.injectPrimer)
-            interactionLoop.requestPrimerRefresh(params.sessionId);
+            interactionLoop.requestPrimerRefresh(params.sessionID);
 
           return (result && result.content) || result;
         }
@@ -178,15 +178,15 @@ export class InteractionController extends ControllerAuthBase {
       if (toolName === 'system:command') {
         let augmentedArgs = {
           ...toolArgs,
-          _sessionID: params.sessionId,
-          _authorID:  this.request.userId,
+          _sessionID: params.sessionID,
+          _authorID:  this.request.userID,
           _agent:     resolvedAgent,
         };
 
         let result = await toolInstance.execute(augmentedArgs);
 
         if (result && result.injectPrimer)
-          interactionLoop.requestPrimerRefresh(params.sessionId);
+          interactionLoop.requestPrimerRefresh(params.sessionID);
 
         return result;
       }
@@ -198,27 +198,27 @@ export class InteractionController extends ControllerAuthBase {
     // scheduler so the orchestrator can decrypt API keys for secondary agents.
     let sessionManager   = this.getSessionManager();
     let sessionScheduler = this.getSessionScheduler();
-    let participants     = await sessionManager.getParticipants(params.sessionId);
+    let participants     = await sessionManager.getParticipants(params.sessionID);
     let agentCount       = (participants && participants.length > 0) ? participants.length : 1;
 
     if (agentCount > 1 && sessionScheduler) {
       let umk = this.request.getUMK();
-      sessionScheduler.setResolveContext(params.sessionId, {
+      sessionScheduler.setResolveContext(params.sessionID, {
         keystore,
         umk,
-        userId: this.request.userId,
+        userID: this.request.userID,
       });
     }
 
     // Start interaction (non-blocking — frames emitted via SSE)
-    let interactionID = await interactionLoop.startInteraction(params.sessionId, {
+    let interactionID = await interactionLoop.startInteraction(params.sessionID, {
       agentPlugin,
       agent:       resolvedAgent,
       userMessage: message,
       authorType:  'user',
-      authorID:    this.request.userId,
+      authorID:    this.request.userID,
       agentCount,
-      parentId,
+      parentID,
       checkPermission,
       executeTool,
     });
@@ -229,18 +229,18 @@ export class InteractionController extends ControllerAuthBase {
   }
 
   // ---------------------------------------------------------------------------
-  // POST /api/v2/sessions/:sessionId/interact/cancel
+  // POST /api/v2/sessions/:sessionID/interact/cancel
   // ---------------------------------------------------------------------------
 
   async cancel({ params }) {
     let interactionLoop = this.getInteractionLoop();
-    let queued          = await interactionLoop.cancelInteraction(params.sessionId);
+    let queued          = await interactionLoop.cancelInteraction(params.sessionID);
 
     return { data: { cancelled: true, queuedMessages: queued } };
   }
 
   // ---------------------------------------------------------------------------
-  // POST /api/v2/sessions/:sessionId/interact/approve/:frameId
+  // POST /api/v2/sessions/:sessionID/interact/approve/:frameID
   // ---------------------------------------------------------------------------
   // Unified approve/deny endpoint. Accepts optional { decisions } body:
   //   decisions: [{ command: 'ls', decision: 'allow-forever' }, ...]
@@ -270,7 +270,7 @@ export class InteractionController extends ControllerAuthBase {
         let organizationID = null;
 
         // Try to get from waiting state's agent params
-        let waiting = interactionLoop._permissionWaiting.get(params.sessionId);
+        let waiting = interactionLoop._permissionWaiting.get(params.sessionID);
         if (waiting && waiting.params && waiting.params.agent)
           organizationID = waiting.params.agent.organizationID;
 
@@ -292,8 +292,8 @@ export class InteractionController extends ControllerAuthBase {
             featureName: `shell:${decision.command}`,
             effect,
             scope:       'session',
-            scopeID:     params.sessionId,
-            createdBy:   this.request.userId,
+            scopeID:     params.sessionID,
+            createdBy:   this.request.userID,
             metadata:    {
               command:   decision.command,
               arguments: decision.arguments || [],
@@ -304,29 +304,29 @@ export class InteractionController extends ControllerAuthBase {
     }
 
     if (hasDeny) {
-      await interactionLoop.denyPermission(params.sessionId, params.frameId);
+      await interactionLoop.denyPermission(params.sessionID, params.frameID);
 
       return { data: { denied: true } };
     }
 
     let interactionID = await interactionLoop.approvePermission(
-      params.sessionId,
-      params.frameId,
+      params.sessionID,
+      params.frameID,
     );
 
     return { data: { approved: true, interactionID } };
   }
 
   // ---------------------------------------------------------------------------
-  // POST /api/v2/sessions/:sessionId/interact/deny/:frameId
+  // POST /api/v2/sessions/:sessionID/interact/deny/:frameID
   // ---------------------------------------------------------------------------
 
   async deny({ params }) {
     let interactionLoop = this.getInteractionLoop();
 
     await interactionLoop.denyPermission(
-      params.sessionId,
-      params.frameId,
+      params.sessionID,
+      params.frameID,
     );
 
     return { data: { denied: true } };

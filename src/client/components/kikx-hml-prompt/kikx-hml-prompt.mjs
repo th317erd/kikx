@@ -825,7 +825,7 @@ class KikxHmlPrompt extends HTMLElement {
     this.dispatchEvent(new CustomEvent('prompt-change', {
       bubbles:  true,
       composed: true,
-      detail:   { promptId: name, name, value },
+      detail:   { promptID: name, name, value },
     }));
   }
 }

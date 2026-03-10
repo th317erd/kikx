@@ -136,7 +136,7 @@ describe('api', () => {
 
   describe('createSession()', () => {
     it('calls POST /kikx/api/v1/sessions with body', async () => {
-      let data = { name: 'My Session', agentId: 'agent-1' };
+      let data = { name: 'My Session', agentID: 'agent-1' };
       await createSession(data);
       assert.equal(fetchCalls[0].url, '/kikx/api/v1/sessions');
       assert.equal(fetchCalls[0].options.method, 'POST');
@@ -252,7 +252,7 @@ describe('api', () => {
 
   describe('addParticipant()', () => {
     it('calls POST /kikx/api/v1/sessions/:id/participants with body', async () => {
-      let participantData = { userId: 'user-9', role: 'observer' };
+      let participantData = { userID: 'user-9', role: 'observer' };
       await addParticipant('session-42', participantData);
       assert.equal(fetchCalls[0].url, '/kikx/api/v1/sessions/session-42/participants');
       assert.equal(fetchCalls[0].options.method, 'POST');

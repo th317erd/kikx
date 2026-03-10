@@ -5,8 +5,8 @@ export class HistoryWalker {
    * Walk from the first version (oldest) to the most recent (head).
    * Returns an array of Frame objects in chronological order.
    */
-  static walk(frameManager, frameId) {
-    let pointer = frameManager._pointers.get(frameId);
+  static walk(frameManager, frameID) {
+    let pointer = frameManager._pointers.get(frameID);
 
     if (!pointer)
       return [];
@@ -28,8 +28,8 @@ export class HistoryWalker {
    * Walk from head (most recent) to the first version (oldest).
    * Returns an array of Frame objects in reverse chronological order.
    */
-  static walkReverse(frameManager, frameId) {
-    let pointer = frameManager._pointers.get(frameId);
+  static walkReverse(frameManager, frameID) {
+    let pointer = frameManager._pointers.get(frameID);
 
     if (!pointer)
       return [];
@@ -46,11 +46,11 @@ export class HistoryWalker {
     return frames;
   }
 
-  static assertChainLength(frameManager, frameId, n) {
-    let frames = HistoryWalker.walk(frameManager, frameId);
+  static assertChainLength(frameManager, frameID, n) {
+    let frames = HistoryWalker.walk(frameManager, frameID);
 
     if (frames.length !== n)
-      throw new Error(`Expected chain length ${n} for frame "${frameId}", but got ${frames.length}`);
+      throw new Error(`Expected chain length ${n} for frame "${frameID}", but got ${frames.length}`);
   }
 
   /**
@@ -60,11 +60,11 @@ export class HistoryWalker {
    * - No cycles (via visited set)
    * - Every pointer node has a non-null frame
    */
-  static assertChainIntegrity(frameManager, frameId) {
-    let pointer = frameManager._pointers.get(frameId);
+  static assertChainIntegrity(frameManager, frameID) {
+    let pointer = frameManager._pointers.get(frameID);
 
     if (!pointer)
-      throw new Error(`No pointer found for frame "${frameId}"`);
+      throw new Error(`No pointer found for frame "${frameID}"`);
 
     // Walk forward from stored pointer (first node)
     let visited = new Set();
@@ -73,12 +73,12 @@ export class HistoryWalker {
 
     while (current) {
       if (visited.has(current))
-        throw new Error(`Cycle detected in chain for frame "${frameId}" (forward walk)`);
+        throw new Error(`Cycle detected in chain for frame "${frameID}" (forward walk)`);
 
       visited.add(current);
 
       if (!current.frame)
-        throw new Error(`Pointer node in chain for frame "${frameId}" has null frame`);
+        throw new Error(`Pointer node in chain for frame "${frameID}" has null frame`);
 
       last    = current;
       current = current.next;
@@ -86,7 +86,7 @@ export class HistoryWalker {
 
     // last should be the head
     if (last !== pointer.head)
-      throw new Error(`Forward walk did not reach head for frame "${frameId}"`);
+      throw new Error(`Forward walk did not reach head for frame "${frameID}"`);
 
     // Walk backward from head
     let visitedReverse = new Set();
@@ -95,12 +95,12 @@ export class HistoryWalker {
 
     while (current) {
       if (visitedReverse.has(current))
-        throw new Error(`Cycle detected in chain for frame "${frameId}" (backward walk)`);
+        throw new Error(`Cycle detected in chain for frame "${frameID}" (backward walk)`);
 
       visitedReverse.add(current);
 
       if (!current.frame)
-        throw new Error(`Pointer node in chain for frame "${frameId}" has null frame (backward walk)`);
+        throw new Error(`Pointer node in chain for frame "${frameID}" has null frame (backward walk)`);
 
       first   = current;
       current = current.previous;
@@ -108,27 +108,27 @@ export class HistoryWalker {
 
     // first should be the stored pointer (original node)
     if (first !== pointer)
-      throw new Error(`Backward walk did not reach stored pointer for frame "${frameId}"`);
+      throw new Error(`Backward walk did not reach stored pointer for frame "${frameID}"`);
 
     // Both walks should visit the same number of nodes
     if (visited.size !== visitedReverse.size)
-      throw new Error(`Forward walk visited ${visited.size} nodes but backward walk visited ${visitedReverse.size} for frame "${frameId}"`);
+      throw new Error(`Forward walk visited ${visited.size} nodes but backward walk visited ${visitedReverse.size} for frame "${frameID}"`);
   }
 
   /**
    * Deep-check that HEAD frame's content matches expected (subset match).
    * Every key in `expected` must exist and match in the head frame's content.
    */
-  static assertHeadContent(frameManager, frameId, expected) {
-    let pointer = frameManager._pointers.get(frameId);
+  static assertHeadContent(frameManager, frameID, expected) {
+    let pointer = frameManager._pointers.get(frameID);
 
     if (!pointer)
-      throw new Error(`No pointer found for frame "${frameId}"`);
+      throw new Error(`No pointer found for frame "${frameID}"`);
 
     let headFrame = pointer.head.frame;
     let content   = headFrame.content;
 
-    HistoryWalker._assertSubset(content, expected, `frame "${frameId}" head content`);
+    HistoryWalker._assertSubset(content, expected, `frame "${frameID}" head content`);
   }
 
   static _assertSubset(actual, expected, path) {
@@ -162,8 +162,8 @@ export class HistoryWalker {
    * Returns { added, removed, changed } between two versions in the chain.
    * indexA and indexB are 0-based indices in the forward walk order (oldest first).
    */
-  static diff(frameManager, frameId, indexA, indexB) {
-    let frames = HistoryWalker.walk(frameManager, frameId);
+  static diff(frameManager, frameID, indexA, indexB) {
+    let frames = HistoryWalker.walk(frameManager, frameID);
 
     if (indexA < 0 || indexA >= frames.length)
       throw new RangeError(`indexA (${indexA}) out of range [0, ${frames.length - 1}]`);

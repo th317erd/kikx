@@ -5,7 +5,7 @@
 // =============================================================================
 // Adapts the existing V2 auth logic (cookie + Authorization header token
 // extraction, JWT verification, UMK lazy accessor) into Mythix middleware
-// format. Attaches userId, organizationId, and getUMK() to the request.
+// format. Attaches userID, organizationID, and getUMK() to the request.
 // =============================================================================
 
 import { AuthError } from '../auth/index.mjs';
@@ -87,8 +87,8 @@ export async function authMiddleware(request, response, next) {
   let decoded = authService.verifyToken(token);
 
   // Attach to request
-  request.userId         = decoded.sub;
-  request.organizationId = decoded.org;
+  request.userID         = decoded.sub;
+  request.organizationID = decoded.org;
   request.getUMK         = () => authService.getUMK(decoded);
 
   next();

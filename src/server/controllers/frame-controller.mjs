@@ -8,19 +8,19 @@ import { ControllerAuthBase } from './controller-auth-base.mjs';
 
 export class FrameController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
-  // GET /api/v2/sessions/:sessionId/frames
+  // GET /api/v2/sessions/:sessionID/frames
   // ---------------------------------------------------------------------------
 
   async list({ params, query }) {
     let framePersistence = this.getFramePersistence();
-    let frameManager     = await framePersistence.loadFrames(params.sessionId, query || {});
+    let frameManager     = await framePersistence.loadFrames(params.sessionID, query || {});
     let frames           = frameManager.toArray();
 
     return { data: { frames } };
   }
 
   // ---------------------------------------------------------------------------
-  // PATCH /api/v2/sessions/:sessionId/frames/:frameId
+  // PATCH /api/v2/sessions/:sessionID/frames/:frameID
   // ---------------------------------------------------------------------------
   // Updates a frame's content (e.g., persisting prompt answers).
   // Accepts { content } where content is the frame content object
@@ -37,12 +37,12 @@ export class FrameController extends ControllerAuthBase {
     let framePersistence = this.getFramePersistence();
 
     // Look up the frame
-    let frame = await Frame.where.id.EQ(params.frameId).first();
+    let frame = await Frame.where.id.EQ(params.frameID).first();
     if (!frame)
       this.throwNotFoundError('Frame not found');
 
     // Verify session ownership
-    if (frame.sessionID !== params.sessionId)
+    if (frame.sessionID !== params.sessionID)
       this.throwNotFoundError('Frame not found in this session');
 
     // Re-sanitize HTML content before storing

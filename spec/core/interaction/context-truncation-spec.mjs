@@ -30,7 +30,7 @@ describe('Context Truncation', () => {
     it('should truncate long tool-result string with marker', () => {
       let longOutput = 'x'.repeat(10000);
       let messages   = [
-        { type: 'tool-result', content: { output: longOutput, toolUseId: 'tu_1' } },
+        { type: 'tool-result', content: { output: longOutput, toolUseID: 'tu_1' } },
       ];
       let result = truncateContent(messages);
       assert.ok(result[0].content.output.length < longOutput.length);
@@ -41,7 +41,7 @@ describe('Context Truncation', () => {
     it('should truncate long tool-result object (JSON) with marker', () => {
       let largeObject = { data: 'y'.repeat(10000) };
       let messages    = [
-        { type: 'tool-result', content: { output: largeObject, toolUseId: 'tu_1' } },
+        { type: 'tool-result', content: { output: largeObject, toolUseID: 'tu_1' } },
       ];
       let result         = truncateContent(messages);
       let expectedLength = JSON.stringify(largeObject).length;
@@ -140,7 +140,7 @@ describe('Context Truncation', () => {
 
     it('should not mutate original tool-result content object', () => {
       let longOutput = 'h'.repeat(10000);
-      let original   = { output: longOutput, toolUseId: 'tu_1' };
+      let original   = { output: longOutput, toolUseID: 'tu_1' };
       let messages   = [{ type: 'tool-result', content: original }];
       truncateContent(messages);
       assert.equal(original.output, longOutput);
@@ -158,31 +158,31 @@ describe('Context Truncation', () => {
       assert.deepEqual(truncateContent(undefined), []);
     });
 
-    it('should preserve toolUseId on truncated tool-result', () => {
+    it('should preserve toolUseID on truncated tool-result', () => {
       let longOutput = 'i'.repeat(10000);
       let messages   = [
-        { type: 'tool-result', content: { output: longOutput, toolUseId: 'tu_42' } },
+        { type: 'tool-result', content: { output: longOutput, toolUseID: 'tu_42' } },
       ];
       let result = truncateContent(messages);
-      assert.equal(result[0].content.toolUseId, 'tu_42');
+      assert.equal(result[0].content.toolUseID, 'tu_42');
     });
 
     it('should not truncate tool-call messages', () => {
       let largeArguments = { data: 'j'.repeat(10000) };
       let messages       = [
-        { type: 'tool-call', content: { toolName: 'test', arguments: largeArguments, toolUseId: 'tu_1' } },
+        { type: 'tool-call', content: { toolName: 'test', arguments: largeArguments, toolUseID: 'tu_1' } },
       ];
       let result = truncateContent(messages);
       assert.deepEqual(result[0], messages[0]);
     });
 
-    it('should preserve frameId and other metadata on truncated messages', () => {
+    it('should preserve frameID and other metadata on truncated messages', () => {
       let longText = 'k'.repeat(10000);
       let messages = [
-        { role: 'user', content: longText, frameId: 'frm_123', sourceAgentID: 'agent-A' },
+        { role: 'user', content: longText, frameID: 'frm_123', sourceAgentID: 'agent-A' },
       ];
       let result = truncateContent(messages);
-      assert.equal(result[0].frameId, 'frm_123');
+      assert.equal(result[0].frameID, 'frm_123');
       assert.equal(result[0].sourceAgentID, 'agent-A');
     });
 
@@ -194,8 +194,8 @@ describe('Context Truncation', () => {
       let messages = [
         { role: 'user', content: longText },
         { role: 'assistant', content: shortText },
-        { type: 'tool-call', content: { toolName: 'test', arguments: {}, toolUseId: 'tu_1' } },
-        { type: 'tool-result', content: { output: longOutput, toolUseId: 'tu_1' } },
+        { type: 'tool-call', content: { toolName: 'test', arguments: {}, toolUseID: 'tu_1' } },
+        { type: 'tool-result', content: { output: longOutput, toolUseID: 'tu_1' } },
       ];
 
       let result = truncateContent(messages);
@@ -266,8 +266,8 @@ describe('Context Truncation', () => {
     it('should keep tool-call + tool-result pairs together', () => {
       let messages = [
         { role: 'user', content: 'a'.repeat(200) },
-        { type: 'tool-call', content: { toolName: 'test', toolUseId: 'tu_1' } },
-        { type: 'tool-result', content: { output: 'b'.repeat(200), toolUseId: 'tu_1' } },
+        { type: 'tool-call', content: { toolName: 'test', toolUseID: 'tu_1' } },
+        { type: 'tool-result', content: { output: 'b'.repeat(200), toolUseID: 'tu_1' } },
         { role: 'assistant', content: 'c'.repeat(200) },
         { role: 'user', content: 'latest' },
       ];
@@ -352,8 +352,8 @@ describe('Context Truncation', () => {
 
     it('should handle conversation with only tool messages', () => {
       let messages = [
-        { type: 'tool-call', content: { toolName: 'test', toolUseId: 'tu_1' } },
-        { type: 'tool-result', content: { output: 'a'.repeat(10000), toolUseId: 'tu_1' } },
+        { type: 'tool-call', content: { toolName: 'test', toolUseID: 'tu_1' } },
+        { type: 'tool-result', content: { output: 'a'.repeat(10000), toolUseID: 'tu_1' } },
       ];
 
       // Should not crash — even though there's no "last user message"
@@ -364,10 +364,10 @@ describe('Context Truncation', () => {
     it('should handle multiple tool pairs where some must be dropped', () => {
       let messages = [
         { role: 'user', content: 'start' },
-        { type: 'tool-call', content: { toolName: 'tool1', toolUseId: 'tu_1' } },
-        { type: 'tool-result', content: { output: 'a'.repeat(300), toolUseId: 'tu_1' } },
-        { type: 'tool-call', content: { toolName: 'tool2', toolUseId: 'tu_2' } },
-        { type: 'tool-result', content: { output: 'b'.repeat(300), toolUseId: 'tu_2' } },
+        { type: 'tool-call', content: { toolName: 'tool1', toolUseID: 'tu_1' } },
+        { type: 'tool-result', content: { output: 'a'.repeat(300), toolUseID: 'tu_1' } },
+        { type: 'tool-call', content: { toolName: 'tool2', toolUseID: 'tu_2' } },
+        { type: 'tool-result', content: { output: 'b'.repeat(300), toolUseID: 'tu_2' } },
         { role: 'assistant', content: 'response' },
         { role: 'user', content: 'followup' },
       ];
@@ -377,8 +377,8 @@ describe('Context Truncation', () => {
       let toolCalls   = result.filter((message) => message.type === 'tool-call');
       let toolResults = result.filter((message) => message.type === 'tool-result');
 
-      let callIds   = new Set(toolCalls.map((message) => message.content.toolUseId));
-      let resultIds = new Set(toolResults.map((message) => message.content.toolUseId));
+      let callIds   = new Set(toolCalls.map((message) => message.content.toolUseID));
+      let resultIds = new Set(toolResults.map((message) => message.content.toolUseID));
 
       // Every remaining tool-call should have a matching tool-result and vice versa
       for (let identifier of callIds)
@@ -419,8 +419,8 @@ describe('Context Truncation', () => {
       let frames = [
         { id: 'f1', type: 'user-message', content: { text: 'hello' }, deleted: false, hidden: false },
         { id: 'f2', type: 'message', content: { html: 'response' }, deleted: false, hidden: false },
-        { id: 'f3', type: 'tool-call', content: { toolName: 'test', arguments: {}, toolUseId: 'tu_1' }, deleted: false, hidden: false },
-        { id: 'f4', type: 'tool-result', content: { output: 'result', toolUseId: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f3', type: 'tool-call', content: { toolName: 'test', arguments: {}, toolUseID: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f4', type: 'tool-result', content: { output: 'result', toolUseID: 'tu_1' }, deleted: false, hidden: false },
         { id: 'f5', type: 'user-message', content: { text: 'followup' }, deleted: false, hidden: false },
       ];
 
@@ -437,8 +437,8 @@ describe('Context Truncation', () => {
       let frames     = [
         { id: 'f1', type: 'user-message', content: { text: 'start' }, deleted: false, hidden: false },
         { id: 'f2', type: 'message', content: { html: 'ok' }, deleted: false, hidden: false },
-        { id: 'f3', type: 'tool-call', content: { toolName: 'shell', arguments: { command: 'ls /tmp/' }, toolUseId: 'tu_1' }, deleted: false, hidden: false },
-        { id: 'f4', type: 'tool-result', content: { output: hugeOutput, toolUseId: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f3', type: 'tool-call', content: { toolName: 'shell', arguments: { command: 'ls /tmp/' }, toolUseID: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f4', type: 'tool-result', content: { output: hugeOutput, toolUseID: 'tu_1' }, deleted: false, hidden: false },
         { id: 'f5', type: 'message', content: { html: 'done' }, deleted: false, hidden: false },
         { id: 'f6', type: 'user-message', content: { text: 'what happened?' }, deleted: false, hidden: false },
       ];

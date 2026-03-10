@@ -59,21 +59,21 @@ describe('Merge Engine', () => {
   });
 
   describe('target merge: non-mergeable properties', () => {
-    it('should NOT propagate id, type, parentId from source', () => {
+    it('should NOT propagate id, type, parentID from source', () => {
       let manager = new FrameManager();
 
       manager.merge([
-        { id: 'target-1', type: 'message', parentId: 'parent-1', content: { text: 'hello' } },
+        { id: 'target-1', type: 'message', parentID: 'parent-1', content: { text: 'hello' } },
       ]);
 
       manager.merge([
-        { id: 'merge-1', type: 'merge-op', parentId: 'parent-2', targets: ['target-1'], content: { extra: 'data' } },
+        { id: 'merge-1', type: 'merge-op', parentID: 'parent-2', targets: ['target-1'], content: { extra: 'data' } },
       ]);
 
       let head = manager.getHead('target-1');
       assert.equal(head.id, 'target-1');
       assert.equal(head.type, 'message');
-      assert.equal(head.parentId, 'parent-1');
+      assert.equal(head.parentID, 'parent-1');
     });
   });
 

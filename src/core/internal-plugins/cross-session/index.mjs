@@ -23,7 +23,7 @@ export function setup({ registerTool, PluginInterface }) {
   // ---------------------------------------------------------------------------
 
   class ListSessionsTool extends PluginInterface {
-    static pluginId    = 'cross-session';
+    static pluginID    = 'cross-session';
     static featureName = 'listSessions';
     static displayName = 'List Sessions';
     static description = 'List sessions the agent has access to';
@@ -132,7 +132,7 @@ export function setup({ registerTool, PluginInterface }) {
   // ---------------------------------------------------------------------------
 
   class CreateSessionTool extends PluginInterface {
-    static pluginId    = 'cross-session';
+    static pluginID    = 'cross-session';
     static featureName = 'createSession';
     static displayName = 'Create Session';
     static description = 'Create a top-level or sub-session';
@@ -236,7 +236,7 @@ export function setup({ registerTool, PluginInterface }) {
   // ---------------------------------------------------------------------------
 
   class PostToSessionTool extends PluginInterface {
-    static pluginId    = 'cross-session';
+    static pluginID    = 'cross-session';
     static featureName = 'postToSession';
     static displayName = 'Post to Session';
     static description = 'Post a message to another session';
@@ -280,7 +280,7 @@ export function setup({ registerTool, PluginInterface }) {
         deleted:    false,
         processed:  false,
       };
-      frameManager.merge([frameData], { authorType: 'agent', authorId: agentID });
+      frameManager.merge([frameData], { authorType: 'agent', authorID: agentID });
 
       let framePersistence = this._context.getProperty('framePersistence');
       if (framePersistence)
@@ -295,7 +295,7 @@ export function setup({ registerTool, PluginInterface }) {
   // ---------------------------------------------------------------------------
 
   class ReadFromSessionTool extends PluginInterface {
-    static pluginId    = 'cross-session';
+    static pluginID    = 'cross-session';
     static featureName = 'readFromSession';
     static displayName = 'Read from Session';
     static description = 'Read frames from another session with filtering';
@@ -369,7 +369,7 @@ export function setup({ registerTool, PluginInterface }) {
   // ---------------------------------------------------------------------------
 
   class InviteParticipantTool extends PluginInterface {
-    static pluginId    = 'cross-session';
+    static pluginID    = 'cross-session';
     static featureName = 'inviteParticipant';
     static displayName = 'Invite Participant';
     static description = 'Invite an agent to a session';

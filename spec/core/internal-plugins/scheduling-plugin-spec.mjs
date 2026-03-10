@@ -124,7 +124,7 @@ describe('SchedulingPlugin (C2)', () => {
         content:    { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       let commit = frameManager.getLatestCommit();
 
@@ -167,7 +167,7 @@ describe('SchedulingPlugin (C2)', () => {
         content:    { html: '<p>Reply</p>' },
         authorType: 'agent',
         authorID:   agent.id,
-      }], { authorType: 'agent', authorId: agent.id });
+      }], { authorType: 'agent', authorID: agent.id });
 
       let commit = frameManager.getLatestCommit();
 

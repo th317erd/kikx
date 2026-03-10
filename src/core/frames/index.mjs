@@ -8,7 +8,7 @@ import { FrameManager } from '../../shared/frame-manager/frame-manager.mjs';
 // Syncs between the database (Frame model records) and the in-memory
 // FrameManager. Handles serialization of content/targets (JSON objects
 // in FrameManager, TEXT strings in the DB) and field name mapping
-// (parentId ↔ parentID, groupId ↔ groupID).
+// (parentID ↔ parentID, groupID ↔ groupID).
 // =============================================================================
 
 export class FramePersistence {
@@ -115,8 +115,8 @@ export class FramePersistence {
     if (options.beforeOrder !== undefined)
       query = query.AND.order.LT(options.beforeOrder);
 
-    if (options.parentId !== undefined)
-      query = query.AND.parentID.EQ(options.parentId);
+    if (options.parentID !== undefined)
+      query = query.AND.parentID.EQ(options.parentID);
 
     query = query.ORDER('+Frame:order');
 
@@ -202,7 +202,7 @@ export class FramePersistence {
   // _frameToRecord
   // ---------------------------------------------------------------------------
   // Converts a FrameManager-style frame data object to a DB record.
-  // Handles field mapping (parentId → parentID, groupId → groupID)
+  // Handles field mapping (parentID → parentID, groupID → groupID)
   // and JSON serialization (content/targets objects → strings).
   // ---------------------------------------------------------------------------
 
@@ -227,8 +227,8 @@ export class FramePersistence {
       timestamp:     frameData.timestamp || Date.now(),
       content:       (content !== undefined) ? content : null,
       targets:       (targets !== undefined) ? targets : null,
-      parentID:      (frameData.parentId !== undefined) ? frameData.parentId : (frameData.parentID !== undefined ? frameData.parentID : null),
-      groupID:       (frameData.groupId !== undefined) ? frameData.groupId : (frameData.groupID !== undefined ? frameData.groupID : null),
+      parentID:      (frameData.parentID !== undefined) ? frameData.parentID : (frameData.parentID !== undefined ? frameData.parentID : null),
+      groupID:       (frameData.groupID !== undefined) ? frameData.groupID : (frameData.groupID !== undefined ? frameData.groupID : null),
       groupType:     (frameData.groupType !== undefined) ? frameData.groupType : null,
       authorType:    (frameData.authorType !== undefined) ? frameData.authorType : null,
       authorID:      (frameData.authorID !== undefined) ? frameData.authorID : null,
@@ -245,7 +245,7 @@ export class FramePersistence {
   // _recordToFrame
   // ---------------------------------------------------------------------------
   // Converts a DB Frame model instance to a FrameManager-compatible
-  // data object. Handles field mapping (parentID → parentId, groupID → groupId)
+  // data object. Handles field mapping (parentID → parentID, groupID → groupID)
   // and JSON deserialization (content/targets strings → objects).
   // ---------------------------------------------------------------------------
 
@@ -277,8 +277,8 @@ export class FramePersistence {
       type:          record.type,
       content:       (content !== undefined && content !== null) ? content : {},
       targets:       (targets !== undefined && targets !== null) ? targets : [],
-      parentId:      record.parentID || null,
-      groupId:       record.groupID || null,
+      parentID:      record.parentID || null,
+      groupID:       record.groupID || null,
       groupType:     record.groupType || null,
       order:         record.order,
       timestamp:     record.timestamp,

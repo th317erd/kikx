@@ -252,7 +252,7 @@ class KikxSessionPage extends HTMLElement {
     this._destroyFrameManager();
   }
 
-  get sessionId() {
+  get sessionID() {
     return this.getAttribute('data-id');
   }
 
@@ -261,13 +261,13 @@ class KikxSessionPage extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   _updateSessionView() {
-    let sessionId = this.sessionId;
+    let sessionID = this.sessionID;
 
-    if (sessionId) {
+    if (sessionID) {
       this._topBar.removeAttribute('hide-back');
-      this._topBar.setAttribute('session-name', sessionId);
+      this._topBar.setAttribute('session-name', sessionID);
       this._messageInput.classList.remove('hidden');
-      this._messageInput.sessionId = sessionId;
+      this._messageInput.sessionID = sessionID;
 
       // Reset session cost when navigating to a new session
       let currentCosts = connection.getCosts();
@@ -276,8 +276,8 @@ class KikxSessionPage extends HTMLElement {
       // Create client-side FrameManager for this session
       this._initFrameManager();
 
-      this._fetchSessionDetails(sessionId);
-      this._loadFrames(sessionId).then(() => this._connectStream(sessionId));
+      this._fetchSessionDetails(sessionID);
+      this._loadFrames(sessionID).then(() => this._connectStream(sessionID));
     } else {
       this._topBar.setAttribute('hide-back', '');
       this._topBar.removeAttribute('session-name');
@@ -311,9 +311,9 @@ class KikxSessionPage extends HTMLElement {
     }
   }
 
-  async _fetchSessionDetails(sessionId) {
+  async _fetchSessionDetails(sessionID) {
     try {
-      let result  = await getSession(sessionId);
+      let result  = await getSession(sessionID);
       let session = (result && result.data) ? result.data : result;
 
       if (session && session.session)
@@ -321,7 +321,7 @@ class KikxSessionPage extends HTMLElement {
 
       this._currentSession = session;
 
-      let displayName = session.name || sessionId;
+      let displayName = session.name || sessionID;
 
       // For DM sessions, show the agent name without "DM: " prefix
       if (displayName.startsWith('DM: '))
@@ -334,9 +334,9 @@ class KikxSessionPage extends HTMLElement {
     }
   }
 
-  async _loadFrames(sessionId) {
+  async _loadFrames(sessionID) {
     try {
-      let result = await getFrames(sessionId);
+      let result = await getFrames(sessionID);
       let data   = (result && result.data) || {};
       let frames = Array.isArray(data) ? data : (data.frames || []);
 
@@ -381,14 +381,14 @@ class KikxSessionPage extends HTMLElement {
   }
 
   async _loadOlderFrames() {
-    let sessionId = this.sessionId;
-    if (!sessionId || !this._frameManager)
+    let sessionID = this.sessionID;
+    if (!sessionID || !this._frameManager)
       return;
 
     this._loadingOlder = true;
 
     try {
-      let result = await getFrames(sessionId, {
+      let result = await getFrames(sessionID, {
         beforeOrder: this._oldestLoadedOrder,
         limit:       50,
       });
@@ -430,14 +430,14 @@ class KikxSessionPage extends HTMLElement {
   // SSE Stream
   // ---------------------------------------------------------------------------
 
-  _connectStream(sessionId) {
+  _connectStream(sessionID) {
     this._disconnectStream();
 
     let token = getAuthToken();
     if (!token)
       return;
 
-    let url    = `/kikx/api/v2/sessions/${sessionId}/stream`;
+    let url    = `/kikx/api/v2/sessions/${sessionID}/stream`;
     let abort  = new AbortController();
     this._streamAbort = abort;
 
@@ -657,8 +657,8 @@ class KikxSessionPage extends HTMLElement {
       }
 
       // Thread: update reply count on the parent message now that the frame is confirmed
-      if (frame.parentId)
-        this._updateReplyCount(frame.parentId);
+      if (frame.parentID)
+        this._updateReplyCount(frame.parentID);
 
       return;
     }
@@ -887,8 +887,8 @@ class KikxSessionPage extends HTMLElement {
     interaction.setAttribute('data-frame-id', frame.id);
 
     // Thread: set reply context if this frame is a reply
-    if (frame.parentId) {
-      let preview = this._getParentPreview(frame.parentId);
+    if (frame.parentID) {
+      let preview = this._getParentPreview(frame.parentID);
       if (preview)
         interaction.setAttribute('parent-preview', preview);
     }
@@ -919,8 +919,8 @@ class KikxSessionPage extends HTMLElement {
     this._placeInteraction(interaction, options);
 
     // Thread: update reply count on parent message
-    if (frame.parentId)
-      this._updateReplyCount(frame.parentId);
+    if (frame.parentID)
+      this._updateReplyCount(frame.parentID);
 
     if (debug.isEnabled()) {
       debug.trackElement(frame.interactionID || frame.id, interaction);
@@ -954,7 +954,7 @@ class KikxSessionPage extends HTMLElement {
     }
   }
 
-  _renderUserMessage(text, parentId) {
+  _renderUserMessage(text, parentID) {
     let name = this._getUserDisplayName();
 
     let interaction = document.createElement('kikx-interaction');
@@ -964,8 +964,8 @@ class KikxSessionPage extends HTMLElement {
     interaction.setAttribute('timestamp', formatTimestamp(new Date().toISOString()));
 
     // Thread: set reply context on the optimistic bubble
-    if (parentId) {
-      let preview = this._getParentPreview(parentId);
+    if (parentID) {
+      let preview = this._getParentPreview(parentID);
       if (preview)
         interaction.setAttribute('parent-preview', preview);
     }
@@ -1037,24 +1037,24 @@ class KikxSessionPage extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   async _onSendMessage(event) {
-    let { text, parentId } = event.detail || {};
+    let { text, parentID } = event.detail || {};
     if (!text)
       return;
 
-    let sessionId = this.sessionId;
-    if (!sessionId)
+    let sessionID = this.sessionID;
+    if (!sessionID)
       return;
 
     // Determine agent ID from session data (may be null for agent-less sessions)
-    let agentId = null;
+    let agentID = null;
     if (this._currentSession)
-      agentId = this._currentSession.dmAgentID || this._currentSession.agentId || this._currentSession.agentID;
+      agentID = this._currentSession.dmAgentID || this._currentSession.agentID || this._currentSession.agentID;
 
     // Render user message immediately (optimistic)
-    this._renderUserMessage(text, parentId);
+    this._renderUserMessage(text, parentID);
 
     try {
-      await sendMessage(sessionId, text, agentId || undefined, parentId || undefined);
+      await sendMessage(sessionID, text, agentID || undefined, parentID || undefined);
       this._messageInput.clearDraft();
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -1360,9 +1360,9 @@ class KikxSessionPage extends HTMLElement {
       let result;
       let newSession;
 
-      if (detail.agentId) {
+      if (detail.agentID) {
         // Create (or reuse) a DM session with the selected agent
-        result     = await getOrCreateDm(detail.agentId);
+        result     = await getOrCreateDm(detail.agentID);
         let data   = (result && result.data) || result;
         newSession = data.session || data;
 
@@ -1442,13 +1442,13 @@ class KikxSessionPage extends HTMLElement {
   }
 
   async _onPermissionResponse(event) {
-    let { permissionId, decisions } = event.detail || {};
+    let { permissionID, decisions } = event.detail || {};
 
-    if (!permissionId)
+    if (!permissionID)
       return;
 
-    let sessionId = this.sessionId;
-    if (!sessionId)
+    let sessionID = this.sessionID;
+    if (!sessionID)
       return;
 
     // Mark the permission UI as processed
@@ -1459,7 +1459,7 @@ class KikxSessionPage extends HTMLElement {
     try {
       // Pass decisions array as body to the unified endpoint
       let body = (Array.isArray(decisions) && decisions.length > 0) ? { decisions } : undefined;
-      await approvePermission(sessionId, permissionId, body);
+      await approvePermission(sessionID, permissionID, body);
     } catch (error) {
       console.error('Permission approval failed:', error);
     }
@@ -1468,12 +1468,12 @@ class KikxSessionPage extends HTMLElement {
   }
 
   async _onCancelInteraction() {
-    let sessionId = this.sessionId;
-    if (!sessionId)
+    let sessionID = this.sessionID;
+    if (!sessionID)
       return;
 
     try {
-      await cancelInteraction(sessionId);
+      await cancelInteraction(sessionID);
     } catch (error) {
       console.error('Cancel interaction failed:', error);
     }
@@ -1559,9 +1559,9 @@ class KikxSessionPage extends HTMLElement {
     return template.innerHTML;
   }
 
-  async _persistFrameContent(sessionId, interaction, answers) {
-    let frameId = interaction.getAttribute('data-frame-id');
-    if (!frameId)
+  async _persistFrameContent(sessionID, interaction, answers) {
+    let frameID = interaction.getAttribute('data-frame-id');
+    if (!frameID)
       return;
 
     let updatedHTML = this._buildUpdatedFrameHTML(interaction, answers);
@@ -1569,7 +1569,7 @@ class KikxSessionPage extends HTMLElement {
       return;
 
     try {
-      await updateFrameContent(sessionId, frameId, { html: updatedHTML });
+      await updateFrameContent(sessionID, frameID, { html: updatedHTML });
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to persist frame content:', error);
@@ -1591,16 +1591,16 @@ class KikxSessionPage extends HTMLElement {
       return;
 
     let answers   = this._collectPromptValues(interaction);
-    let sessionId = this.sessionId;
+    let sessionID = this.sessionID;
 
-    if (!sessionId)
+    if (!sessionID)
       return;
 
-    let agentId = null;
+    let agentID = null;
     if (this._currentSession)
-      agentId = this._currentSession.dmAgentID || this._currentSession.agentId || this._currentSession.agentID;
+      agentID = this._currentSession.dmAgentID || this._currentSession.agentID || this._currentSession.agentID;
 
-    if (!agentId)
+    if (!agentID)
       return;
 
     // Format answers as a readable message for the agent
@@ -1616,10 +1616,10 @@ class KikxSessionPage extends HTMLElement {
     this._renderUserMessage(text);
 
     // Persist the answered values back into the frame content
-    await this._persistFrameContent(sessionId, interaction, answers);
+    await this._persistFrameContent(sessionID, interaction, answers);
 
     try {
-      await sendMessage(sessionId, text, agentId);
+      await sendMessage(sessionID, text, agentID);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to submit prompt answers:', error);
@@ -1634,16 +1634,16 @@ class KikxSessionPage extends HTMLElement {
       return;
 
     let answers   = this._collectPromptValues(interaction);
-    let sessionId = this.sessionId;
+    let sessionID = this.sessionID;
 
-    if (!sessionId)
+    if (!sessionID)
       return;
 
-    let agentId = null;
+    let agentID = null;
     if (this._currentSession)
-      agentId = this._currentSession.dmAgentID || this._currentSession.agentId || this._currentSession.agentID;
+      agentID = this._currentSession.dmAgentID || this._currentSession.agentID || this._currentSession.agentID;
 
-    if (!agentId)
+    if (!agentID)
       return;
 
     // Build refusal message listing each prompt
@@ -1656,10 +1656,10 @@ class KikxSessionPage extends HTMLElement {
     this._renderUserMessage(text);
 
     // Persist readonly state (no answer values) back into the frame content
-    await this._persistFrameContent(sessionId, interaction, {});
+    await this._persistFrameContent(sessionID, interaction, {});
 
     try {
-      await sendMessage(sessionId, text, agentId);
+      await sendMessage(sessionID, text, agentID);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to send ignore response:', error);
@@ -1677,18 +1677,18 @@ class KikxSessionPage extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   _onReplyToMessage(event) {
-    let { frameId, participantName } = event.detail || {};
-    if (!frameId)
+    let { frameID, participantName } = event.detail || {};
+    if (!frameID)
       return;
 
-    this._messageInput.setReplyMode(frameId, participantName);
+    this._messageInput.setReplyMode(frameID, participantName);
   }
 
-  _getParentPreview(parentId) {
-    if (!parentId || !this._frameManager)
+  _getParentPreview(parentID) {
+    if (!parentID || !this._frameManager)
       return null;
 
-    let parentFrame = this._frameManager.get(parentId);
+    let parentFrame = this._frameManager.get(parentID);
     if (!parentFrame)
       return null;
 
@@ -1716,15 +1716,15 @@ class KikxSessionPage extends HTMLElement {
     return preview || null;
   }
 
-  _updateReplyCount(parentId) {
-    if (!parentId || !this._chatView || !this._chatView.shadowRoot)
+  _updateReplyCount(parentID) {
+    if (!parentID || !this._chatView || !this._chatView.shadowRoot)
       return;
 
-    // Count all frames in the FrameManager that have this parentId
+    // Count all frames in the FrameManager that have this parentID
     let count = 0;
     if (this._frameManager) {
       for (let frame of this._frameManager) {
-        if (frame.parentId === parentId)
+        if (frame.parentID === parentID)
           count++;
       }
     }
@@ -1734,7 +1734,7 @@ class KikxSessionPage extends HTMLElement {
 
     // Find the parent interaction element and set reply-count
     let parentEl = this._chatView.shadowRoot.querySelector(
-      `kikx-interaction[data-frame-id="${parentId}"]`,
+      `kikx-interaction[data-frame-id="${parentID}"]`,
     );
 
     if (parentEl)

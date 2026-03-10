@@ -20,36 +20,36 @@ describe('Structural ACL Validator', () => {
     let validate = createStructuralACLValidator();
 
     it('should allow system to create any frame type', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'anything-at-all' }];
-      let context = { authorType: 'system', authorId: null };
+      let context = { authorType: 'system', authorID: null };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, true);
     });
 
     it('should allow user to create user-message', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'user-message' }];
-      let context = { authorType: 'user', authorId: 'usr_1' };
+      let context = { authorType: 'user', authorID: 'usr_1' };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, true);
     });
 
     it('should allow user to create hml-prompt-value', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'hml-prompt-value' }];
-      let context = { authorType: 'user', authorId: 'usr_1' };
+      let context = { authorType: 'user', authorID: 'usr_1' };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, true);
     });
 
     it('should deny user creating message type', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'message' }];
-      let context = { authorType: 'user', authorId: 'usr_1' };
+      let context = { authorType: 'user', authorID: 'usr_1' };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, false);
@@ -58,72 +58,72 @@ describe('Structural ACL Validator', () => {
     });
 
     it('should allow agent to create message', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'message' }];
-      let context = { authorType: 'agent', authorId: 'agt_1' };
+      let context = { authorType: 'agent', authorID: 'agt_1' };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, true);
     });
 
     it('should allow agent to create tool-call', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'tool-call' }];
-      let context = { authorType: 'agent', authorId: 'agt_1' };
+      let context = { authorType: 'agent', authorID: 'agt_1' };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, true);
     });
 
     it('should allow agent to create reflection', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'reflection' }];
-      let context = { authorType: 'agent', authorId: 'agt_1' };
+      let context = { authorType: 'agent', authorID: 'agt_1' };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, true);
     });
 
     it('should deny agent creating user-message', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'user-message' }];
-      let context = { authorType: 'agent', authorId: 'agt_1' };
+      let context = { authorType: 'agent', authorID: 'agt_1' };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, false);
     });
 
     it('should allow tool to create tool-result', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'tool-result' }];
-      let context = { authorType: 'tool', authorId: null };
+      let context = { authorType: 'tool', authorID: null };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, true);
     });
 
     it('should allow tool to create tool-error', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'tool-error' }];
-      let context = { authorType: 'tool', authorId: null };
+      let context = { authorType: 'tool', authorID: null };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, true);
     });
 
     it('should deny tool creating message', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'message' }];
-      let context = { authorType: 'tool', authorId: null };
+      let context = { authorType: 'tool', authorID: null };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, false);
     });
 
     it('should deny unknown authorType', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'message' }];
-      let context = { authorType: 'hacker', authorId: null };
+      let context = { authorType: 'hacker', authorID: null };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, false);
@@ -131,9 +131,9 @@ describe('Structural ACL Validator', () => {
     });
 
     it('should deny null authorType', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'create' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'create' }] };
       let frames  = [{ id: 'f1', type: 'message' }];
-      let context = { authorType: null, authorId: null };
+      let context = { authorType: null, authorID: null };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, false);
@@ -148,18 +148,18 @@ describe('Structural ACL Validator', () => {
     let validate = createStructuralACLValidator();
 
     it('should allow system to modify any frame', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'update' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'update' }] };
       let frames  = [{ id: 'f1', type: 'message', authorType: 'agent', authorID: 'agt_1' }];
-      let context = { authorType: 'system', authorId: null };
+      let context = { authorType: 'system', authorID: null };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, true);
     });
 
     it('should deny agent modifying user frame', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'update' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'update' }] };
       let frames  = [{ id: 'f1', type: 'user-message', authorType: 'user', authorID: 'usr_1' }];
-      let context = { authorType: 'agent', authorId: 'agt_1' };
+      let context = { authorType: 'agent', authorID: 'agt_1' };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, false);
@@ -167,27 +167,27 @@ describe('Structural ACL Validator', () => {
     });
 
     it('should deny user modifying agent frame', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'update' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'update' }] };
       let frames  = [{ id: 'f1', type: 'message', authorType: 'agent', authorID: 'agt_1' }];
-      let context = { authorType: 'user', authorId: 'usr_1' };
+      let context = { authorType: 'user', authorID: 'usr_1' };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, false);
     });
 
     it('should allow agent to modify own frame', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'update' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'update' }] };
       let frames  = [{ id: 'f1', type: 'message', authorType: 'agent', authorID: 'agt_1' }];
-      let context = { authorType: 'agent', authorId: 'agt_1' };
+      let context = { authorType: 'agent', authorID: 'agt_1' };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, true);
     });
 
     it('should deny agent modifying another agent frame', () => {
-      let commit  = { changes: [{ frameId: 'f1', operation: 'update' }] };
+      let commit  = { changes: [{ frameID: 'f1', operation: 'update' }] };
       let frames  = [{ id: 'f1', type: 'message', authorType: 'agent', authorID: 'agt_2' }];
-      let context = { authorType: 'agent', authorId: 'agt_1' };
+      let context = { authorType: 'agent', authorID: 'agt_1' };
 
       let result = validate(commit, frames, context);
       assert.equal(result.allowed, false);
@@ -206,7 +206,7 @@ describe('Structural ACL Validator', () => {
 
       let results = manager.merge(
         [{ id: 'f1', type: 'message', content: { html: 'hello' } }],
-        { authorType: 'agent', authorId: 'agt_1' },
+        { authorType: 'agent', authorID: 'agt_1' },
       );
 
       assert.equal(results.length, 1);
@@ -221,7 +221,7 @@ describe('Structural ACL Validator', () => {
 
       let results = manager.merge(
         [{ id: 'f1', type: 'message', content: { html: 'hello' } }],
-        { authorType: 'user', authorId: 'usr_1' },
+        { authorType: 'user', authorID: 'usr_1' },
       );
 
       assert.equal(results.length, 0);
@@ -238,7 +238,7 @@ describe('Structural ACL Validator', () => {
 
       manager.merge(
         [{ id: 'f1', type: 'tool-call' }],
-        { authorType: 'user', authorId: 'usr_1' },
+        { authorType: 'user', authorID: 'usr_1' },
       );
 
       assert.ok(rejected);

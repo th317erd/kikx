@@ -159,8 +159,8 @@ export class WebSocketTransport {
     }
 
     // Attach user info to the websocket
-    ws._userId         = decoded.sub;
-    ws._organizationId = decoded.org;
+    ws._userID         = decoded.sub;
+    ws._organizationID = decoded.org;
     ws._isAlive        = true;
 
     // Track pong responses for keep-alive

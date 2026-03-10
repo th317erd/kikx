@@ -305,7 +305,7 @@ function registerComponent() {
       this.dispatchEvent(new JsdomCustomEvent('interaction-ignore', {
         bubbles:  true,
         composed: true,
-        detail:   { interactionId: this.getAttribute('interaction-id') },
+        detail:   { interactionID: this.getAttribute('interaction-id') },
       }));
     }
 
@@ -313,7 +313,7 @@ function registerComponent() {
       this.dispatchEvent(new JsdomCustomEvent('interaction-submit', {
         bubbles:  true,
         composed: true,
-        detail:   { interactionId: this.getAttribute('interaction-id') },
+        detail:   { interactionID: this.getAttribute('interaction-id') },
       }));
     }
   }
@@ -500,7 +500,7 @@ describe('kikx-interaction', () => {
   // 14. Ignore button dispatches interaction-ignore event
   // -------------------------------------------------------------------------
 
-  it('dispatches interaction-ignore event with interactionId when Ignore is clicked', () => {
+  it('dispatches interaction-ignore event with interactionID when Ignore is clicked', () => {
     element.setAttribute('interaction-id', 'frame-42');
     element.setAttribute('show-actions', '');
 
@@ -513,14 +513,14 @@ describe('kikx-interaction', () => {
     ignoreButton.click();
 
     assert.ok(receivedEvent, 'interaction-ignore event should have been dispatched');
-    assert.equal(receivedEvent.detail.interactionId, 'frame-42');
+    assert.equal(receivedEvent.detail.interactionID, 'frame-42');
   });
 
   // -------------------------------------------------------------------------
   // 15. Submit button dispatches interaction-submit event
   // -------------------------------------------------------------------------
 
-  it('dispatches interaction-submit event with interactionId when Submit is clicked', () => {
+  it('dispatches interaction-submit event with interactionID when Submit is clicked', () => {
     element.setAttribute('interaction-id', 'frame-99');
     element.setAttribute('show-actions', '');
 
@@ -533,6 +533,6 @@ describe('kikx-interaction', () => {
     submitButton.click();
 
     assert.ok(receivedEvent, 'interaction-submit event should have been dispatched');
-    assert.equal(receivedEvent.detail.interactionId, 'frame-99');
+    assert.equal(receivedEvent.detail.interactionID, 'frame-99');
   });
 });

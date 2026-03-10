@@ -42,12 +42,12 @@ function mockT(key) {
 
 function makeSessions() {
   return [
-    { id: 'ch1', name: 'General',       active: false, archived: false, participantCount: 5,  parentId: null, lastMessage: 'Hello',   lastActivity: 1000, unreadCount: 3 },
-    { id: 'ch2', name: 'Engineering',    active: true,  archived: false, participantCount: 4,  parentId: null, lastMessage: 'Hi',      lastActivity: 2000, unreadCount: 0 },
-    { id: 'pr1', name: 'Alice',          active: false, archived: false, participantCount: 2,  parentId: null, lastMessage: 'Hey',     lastActivity: 3000, unreadCount: 1 },
-    { id: 'pr2', name: 'Bob',            active: false, archived: false, participantCount: 2,  parentId: null, lastMessage: 'Yo',      lastActivity: 500,  unreadCount: 0 },
-    { id: 'ar1', name: 'Old Channel',    active: false, archived: true,  participantCount: 3,  parentId: null, lastMessage: 'Bye',     lastActivity: 100,  unreadCount: 0 },
-    { id: 'ar2', name: 'Old Private',    active: false, archived: true,  participantCount: 2,  parentId: null, lastMessage: 'Later',   lastActivity: 200,  unreadCount: 0 },
+    { id: 'ch1', name: 'General',       active: false, archived: false, participantCount: 5,  parentID: null, lastMessage: 'Hello',   lastActivity: 1000, unreadCount: 3 },
+    { id: 'ch2', name: 'Engineering',    active: true,  archived: false, participantCount: 4,  parentID: null, lastMessage: 'Hi',      lastActivity: 2000, unreadCount: 0 },
+    { id: 'pr1', name: 'Alice',          active: false, archived: false, participantCount: 2,  parentID: null, lastMessage: 'Hey',     lastActivity: 3000, unreadCount: 1 },
+    { id: 'pr2', name: 'Bob',            active: false, archived: false, participantCount: 2,  parentID: null, lastMessage: 'Yo',      lastActivity: 500,  unreadCount: 0 },
+    { id: 'ar1', name: 'Old Channel',    active: false, archived: true,  participantCount: 3,  parentID: null, lastMessage: 'Bye',     lastActivity: 100,  unreadCount: 0 },
+    { id: 'ar2', name: 'Old Private',    active: false, archived: true,  participantCount: 2,  parentID: null, lastMessage: 'Later',   lastActivity: 200,  unreadCount: 0 },
   ];
 }
 
@@ -170,13 +170,13 @@ function registerComponent() {
 
       let actionButton = target.closest('.action-button');
       if (actionButton) {
-        let sessionId = actionButton.dataset.sessionId;
+        let sessionID = actionButton.dataset.sessionID;
         let action    = actionButton.dataset.action;
 
         this.dispatchEvent(new dom.window.CustomEvent(action, {
           bubbles:  true,
           composed: true,
-          detail:   { sessionId },
+          detail:   { sessionID },
         }));
 
         return;
@@ -184,12 +184,12 @@ function registerComponent() {
 
       let row = target.closest('.session-row');
       if (row) {
-        let sessionId = row.dataset.sessionId;
+        let sessionID = row.dataset.sessionID;
 
         this.dispatchEvent(new dom.window.CustomEvent('select-session', {
           bubbles:  true,
           composed: true,
-          detail:   { sessionId },
+          detail:   { sessionID },
         }));
       }
     }
@@ -375,11 +375,11 @@ describe('kikx-session-list', () => {
 
     let activeRows = element.shadowRoot.querySelectorAll('.session-row.active');
     assert.equal(activeRows.length, 1, 'should have exactly one active row');
-    assert.equal(activeRows[0].dataset.sessionId, 'ch2', 'active row should be Engineering (ch2)');
+    assert.equal(activeRows[0].dataset.sessionID, 'ch2', 'active row should be Engineering (ch2)');
   });
 
   // -------------------------------------------------------------------------
-  // 8. Clicking session dispatches select-session event with sessionId
+  // 8. Clicking session dispatches select-session event with sessionID
   // -------------------------------------------------------------------------
 
   it('dispatches select-session event when a session row is clicked', () => {
@@ -397,11 +397,11 @@ describe('kikx-session-list', () => {
     row.click();
 
     assert.ok(eventFired, 'select-session event should be dispatched');
-    assert.deepEqual(eventDetail, { sessionId: 'pr1' });
+    assert.deepEqual(eventDetail, { sessionID: 'pr1' });
   });
 
   // -------------------------------------------------------------------------
-  // 9. Archive button dispatches archive-session event with sessionId
+  // 9. Archive button dispatches archive-session event with sessionID
   // -------------------------------------------------------------------------
 
   it('dispatches archive-session event when archive button is clicked', () => {
@@ -422,7 +422,7 @@ describe('kikx-session-list', () => {
     archiveButton.click();
 
     assert.ok(eventFired, 'archive-session event should be dispatched');
-    assert.deepEqual(eventDetail, { sessionId: 'pr1' });
+    assert.deepEqual(eventDetail, { sessionID: 'pr1' });
   });
 
   // -------------------------------------------------------------------------
@@ -448,7 +448,7 @@ describe('kikx-session-list', () => {
     reviveButton.click();
 
     assert.ok(eventFired, 'revive-session event should be dispatched');
-    assert.deepEqual(eventDetail, { sessionId: 'ar1' });
+    assert.deepEqual(eventDetail, { sessionID: 'ar1' });
   });
 
   // -------------------------------------------------------------------------

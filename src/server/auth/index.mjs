@@ -351,8 +351,8 @@ export function createAuthMiddleware(authService) {
     let decoded = authService.verifyToken(token);
 
     // Attach to request
-    req.userId         = decoded.sub;
-    req.organizationId = decoded.org;
+    req.userID         = decoded.sub;
+    req.organizationID = decoded.org;
     req.getUMK         = () => authService.getUMK(decoded);
   };
 }

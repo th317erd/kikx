@@ -44,23 +44,23 @@ function createMockRequest() {
 
 // Simulate the StreamController.connect() listener wiring without importing
 // the full Mythix controller. This mirrors the exact listener logic.
-function wireStreamListeners(interactionLoop, sessionId, response) {
-  let onFrame = ({ sessionID, frame }) => {
-    if (sessionID !== sessionId)
+function wireStreamListeners(interactionLoop, sessionID, response) {
+  let onFrame = ({ sessionID: sid, frame }) => {
+    if (sid !== sessionID)
       return;
 
     response.write(`event: frame\ndata: ${JSON.stringify(frame)}\n\n`);
   };
 
   let onCommit = ({ sessionID: sid, commit }) => {
-    if (sid !== sessionId)
+    if (sid !== sessionID)
       return;
 
     response.write(`event: commit\ndata: ${JSON.stringify(commit)}\n\n`);
   };
 
-  let onInteractionStart = ({ sessionID, interactionID }) => {
-    if (sessionID !== sessionId)
+  let onInteractionStart = ({ sessionID: sid, interactionID }) => {
+    if (sid !== sessionID)
       return;
 
     response.write(`event: interaction:start\ndata: ${JSON.stringify({ interactionID })}\n\n`);
@@ -97,9 +97,9 @@ describe('StreamController commit forwarding', () => {
     it('forwards commit events for the correct session', () => {
       let commit = {
         order:       1,
-        changes:     [{ frameId: 'frm_1', operation: 'create' }],
+        changes:     [{ frameID: 'frm_1', operation: 'create' }],
         authorType:  'user',
-        authorId:    'usr_1',
+        authorID:    'usr_1',
         timestamp:   Date.now(),
         parentOrder: null,
         silent:      false,
@@ -140,9 +140,9 @@ describe('StreamController commit forwarding', () => {
 
       let commit = {
         order:       2,
-        changes:     [{ frameId: 'frm_enriched', operation: 'create' }],
+        changes:     [{ frameID: 'frm_enriched', operation: 'create' }],
         authorType:  'agent',
-        authorId:    'agt_1',
+        authorID:    'agt_1',
         timestamp:   Date.now(),
         parentOrder: 1,
         silent:      false,
@@ -176,7 +176,7 @@ describe('StreamController commit forwarding', () => {
 
     it('both frame and commit events are forwarded for same interaction', () => {
       let frame  = { id: 'frm_1', type: 'message', content: { html: 'test' } };
-      let commit = { order: 1, frames: [frame], changes: [{ frameId: 'frm_1', operation: 'create' }] };
+      let commit = { order: 1, frames: [frame], changes: [{ frameID: 'frm_1', operation: 'create' }] };
 
       interactionLoop.emit('frame', { sessionID: 'ses_abc', frame });
       interactionLoop.emit('commit', { sessionID: 'ses_abc', commit });

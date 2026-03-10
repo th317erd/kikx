@@ -11,7 +11,7 @@ import { PluginInterface } from '../../src/core/plugin-loader/plugin-interface.m
 // =============================================================================
 
 class TestAgent extends AgentInterface {
-  static pluginId    = 'test-agent';
+  static pluginID    = 'test-agent';
   static featureName = 'test';
   static displayName = 'Test Agent';
   static description = 'A test agent for unit tests';
@@ -42,7 +42,7 @@ describe('AgentInterface — class hierarchy', () => {
   });
 
   it('should have null static metadata by default', () => {
-    assert.equal(AgentInterface.pluginId, null);
+    assert.equal(AgentInterface.pluginID, null);
     assert.equal(AgentInterface.featureName, null);
     assert.equal(AgentInterface.displayName, null);
     assert.equal(AgentInterface.description, null);
@@ -50,7 +50,7 @@ describe('AgentInterface — class hierarchy', () => {
   });
 
   it('should allow subclasses to override static metadata', () => {
-    assert.equal(TestAgent.pluginId, 'test-agent');
+    assert.equal(TestAgent.pluginID, 'test-agent');
     assert.equal(TestAgent.featureName, 'test');
     assert.equal(TestAgent.displayName, 'Test Agent');
     assert.equal(TestAgent.description, 'A test agent for unit tests');
@@ -191,7 +191,7 @@ describe('AgentInterface — _createGenerator()', () => {
 describe('AgentInterface — yield protocol', () => {
   it('should pass tool results back via yield protocol', async () => {
     class ToolAgent extends AgentInterface {
-      static pluginId    = 'tool-agent';
+      static pluginID    = 'tool-agent';
       static featureName = 'tool-test';
       static agentType   = 'tool-test';
 
@@ -223,7 +223,7 @@ describe('AgentInterface — yield protocol', () => {
 
   it('should handle multiple sequential tool calls', async () => {
     class MultiToolAgent extends AgentInterface {
-      static pluginId    = 'multi-tool-agent';
+      static pluginID    = 'multi-tool-agent';
       static featureName = 'multi-tool';
       static agentType   = 'multi-tool';
 
@@ -257,7 +257,7 @@ describe('AgentInterface — yield protocol', () => {
 
   it('should support reflection blocks', async () => {
     class ReflectiveAgent extends AgentInterface {
-      static pluginId    = 'reflective-agent';
+      static pluginID    = 'reflective-agent';
       static featureName = 'reflective';
       static agentType   = 'reflective';
 
@@ -407,7 +407,7 @@ describe('AgentInterface — getCapabilities()', () => {
 
   it('should allow subclass to override capabilities', () => {
     class AdvancedAgent extends AgentInterface {
-      static pluginId    = 'advanced-agent';
+      static pluginID    = 'advanced-agent';
       static featureName = 'advanced';
       static agentType   = 'advanced';
 

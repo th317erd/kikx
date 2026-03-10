@@ -471,8 +471,8 @@ describe('createAuthMiddleware', () => {
     let req = { headers: { cookie: `kikx_token=${validToken}` } };
     middleware(req);
 
-    assert.ok(req.userId);
-    assert.ok(req.organizationId);
+    assert.ok(req.userID);
+    assert.ok(req.organizationID);
     assert.ok(typeof req.getUMK === 'function');
   });
 
@@ -480,8 +480,8 @@ describe('createAuthMiddleware', () => {
     let req = { headers: { authorization: `Bearer ${validToken}` } };
     middleware(req);
 
-    assert.ok(req.userId);
-    assert.ok(req.organizationId);
+    assert.ok(req.userID);
+    assert.ok(req.organizationID);
   });
 
   it('should prefer kikx_token cookie over token cookie', () => {
@@ -490,22 +490,22 @@ describe('createAuthMiddleware', () => {
     middleware(req);
 
     // Should succeed using kikx_token, not crash on garbage token
-    assert.ok(req.userId);
+    assert.ok(req.userID);
   });
 
   it('should fall back to token cookie', () => {
     let req = { headers: { cookie: `token=${validToken}` } };
     middleware(req);
 
-    assert.ok(req.userId);
+    assert.ok(req.userID);
   });
 
-  it('should attach userId and organizationId', () => {
+  it('should attach userID and organizationID', () => {
     let req = { headers: { authorization: `Bearer ${validToken}` } };
     middleware(req);
 
-    assert.ok(req.userId.startsWith('usr_'));
-    assert.ok(req.organizationId.startsWith('org_'));
+    assert.ok(req.userID.startsWith('usr_'));
+    assert.ok(req.organizationID.startsWith('org_'));
   });
 
   it('should provide getUMK accessor', () => {

@@ -147,7 +147,7 @@ describe('FrameManager Events', () => {
       assert.ok(captured.previousHead);
     });
 
-    it('should fire frame:updated:{targetId} with correct ID', () => {
+    it('should fire frame:updated:{targetID} with correct ID', () => {
       let manager  = new FrameManager();
       let captured = null;
 

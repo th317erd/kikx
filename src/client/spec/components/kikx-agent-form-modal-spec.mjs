@@ -243,7 +243,7 @@ function registerComponent() {
       this.dispatchEvent(new dom.window.CustomEvent('agent-save', {
         bubbles:  true,
         composed: true,
-        detail:   { agentId: this._agent?.id, values: this.getValues() },
+        detail:   { agentID: this._agent?.id, values: this.getValues() },
       }));
     }
 
@@ -251,7 +251,7 @@ function registerComponent() {
       this.dispatchEvent(new dom.window.CustomEvent('agent-delete', {
         bubbles:  true,
         composed: true,
-        detail:   { agentId: this._agent?.id },
+        detail:   { agentID: this._agent?.id },
       }));
     }
 
@@ -408,7 +408,7 @@ describe('kikx-agent-form-modal', () => {
     assert.ok(eventFired, 'agent-save event should be dispatched');
     assert.equal(eventData.bubbles, true, 'event should bubble');
     assert.equal(eventData.composed, true, 'event should be composed');
-    assert.equal(eventData.detail.agentId, 'agent-99');
+    assert.equal(eventData.detail.agentID, 'agent-99');
     assert.deepEqual(eventData.detail.values, {
       name:     'My Agent',
       provider: 'openai',
@@ -418,10 +418,10 @@ describe('kikx-agent-form-modal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 8. Delete dispatches agent-delete with agentId
+  // 8. Delete dispatches agent-delete with agentID
   // -------------------------------------------------------------------------
 
-  it('delete dispatches agent-delete with agentId', () => {
+  it('delete dispatches agent-delete with agentID', () => {
     element.agent = { id: 'agent-77', name: 'Foo', provider: 'x', apiKey: 'k', model: 'm' };
 
     let eventFired = false;
@@ -438,7 +438,7 @@ describe('kikx-agent-form-modal', () => {
     assert.ok(eventFired, 'agent-delete event should be dispatched');
     assert.equal(eventData.bubbles, true, 'event should bubble');
     assert.equal(eventData.composed, true, 'event should be composed');
-    assert.equal(eventData.detail.agentId, 'agent-77');
+    assert.equal(eventData.detail.agentID, 'agent-77');
   });
 
   // -------------------------------------------------------------------------

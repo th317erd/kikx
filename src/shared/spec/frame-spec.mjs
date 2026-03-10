@@ -16,8 +16,8 @@ describe('Frame', () => {
       assert.deepEqual(frame.targets, []);
       assert.equal(frame.phantom, false);
       assert.deepEqual(frame.content, {});
-      assert.equal(frame.parentId, null);
-      assert.equal(frame.groupId, null);
+      assert.equal(frame.parentID, null);
+      assert.equal(frame.groupID, null);
       assert.equal(frame.groupType, null);
       assert.equal(frame.order, 0);
       assert.equal(frame.hidden, true);
@@ -75,8 +75,8 @@ describe('Frame', () => {
         targets:     ['user-1', 'user-2'],
         phantom:     true,
         content:     { text: 'hello' },
-        parentId:    'parent-1',
-        groupId:     'group-1',
+        parentID:    'parent-1',
+        groupID:     'group-1',
         groupType:   'thread',
         order:       5,
         timestamp:   1000,
@@ -95,8 +95,8 @@ describe('Frame', () => {
       assert.deepEqual(frame.targets, ['user-1', 'user-2']);
       assert.equal(frame.phantom, true);
       assert.deepEqual(frame.content, { text: 'hello' });
-      assert.equal(frame.parentId, 'parent-1');
-      assert.equal(frame.groupId, 'group-1');
+      assert.equal(frame.parentID, 'parent-1');
+      assert.equal(frame.groupID, 'group-1');
       assert.equal(frame.groupType, 'thread');
       assert.equal(frame.order, 5);
       assert.equal(frame.timestamp, 1000);

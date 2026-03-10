@@ -195,7 +195,7 @@ function buildHmlPromptReference() {
 
 export function setup({ registerTool, registerCommand, registerInstructions, PluginInterface, context }) {
   class HelpTool extends PluginInterface {
-    static pluginId    = 'help';
+    static pluginID    = 'help';
     static featureName = 'search';
     static displayName = 'Help';
     static description = 'Search available tools, commands, and interactive prompt types';

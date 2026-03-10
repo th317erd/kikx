@@ -277,12 +277,12 @@ function registerComponent() {
     _handleAbilityClick(event) {
       let card = event.target.closest('.ability-card');
       if (card) {
-        let abilityId = card.dataset.abilityId;
+        let abilityID = card.dataset.abilityID;
 
         this.dispatchEvent(new dom.window.CustomEvent('select-ability', {
           bubbles:  true,
           composed: true,
-          detail:   { abilityId },
+          detail:   { abilityID },
         }));
       }
     }
@@ -467,10 +467,10 @@ describe('kikx-ability-list-modal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 10. Clicking ability dispatches select-ability with abilityId
+  // 10. Clicking ability dispatches select-ability with abilityID
   // -------------------------------------------------------------------------
 
-  it('clicking ability dispatches select-ability with abilityId', () => {
+  it('clicking ability dispatches select-ability with abilityID', () => {
     element.abilities = makeAbilities();
 
     let eventFired  = false;
@@ -485,7 +485,7 @@ describe('kikx-ability-list-modal', () => {
     card.click();
 
     assert.ok(eventFired, 'select-ability event should be dispatched');
-    assert.deepEqual(eventDetail, { abilityId: 's2' });
+    assert.deepEqual(eventDetail, { abilityID: 's2' });
   });
 
   // -------------------------------------------------------------------------

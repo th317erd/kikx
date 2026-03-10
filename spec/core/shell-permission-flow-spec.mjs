@@ -18,7 +18,7 @@ import { parseShellCommands }      from '../../src/core/internal-plugins/shell/c
 // =============================================================================
 
 class MockAgent extends AgentInterface {
-  static pluginId    = 'mock-agent';
+  static pluginID    = 'mock-agent';
   static featureName = 'mock';
   static displayName = 'Mock Agent';
   static description = 'Mock agent for testing';
@@ -89,7 +89,7 @@ describe('Shell Permission Flow (per-command)', () => {
       content: {
         toolName:  'shell:execute',
         arguments: { command },
-        toolUseId: `tu_${Date.now()}`,
+        toolUseID: `tu_${Date.now()}`,
       },
     };
   }

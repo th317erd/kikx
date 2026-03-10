@@ -228,14 +228,14 @@ export function truncateConversation(messages, options = {}) {
 function buildToolPairMap(messages) {
   let pairs = new Map();
 
-  // Index tool-calls by toolUseId
-  let toolCallsByUseId = new Map();
+  // Index tool-calls by toolUseID
+  let toolCallsByUseID = new Map();
   for (let i = 0; i < messages.length; i++) {
     let message = messages[i];
     if (message.type === 'tool-call') {
-      let toolUseId = message.content && message.content.toolUseId;
-      if (toolUseId)
-        toolCallsByUseId.set(toolUseId, i);
+      let toolUseID = message.content && message.content.toolUseID;
+      if (toolUseID)
+        toolCallsByUseID.set(toolUseID, i);
     }
   }
 
@@ -243,9 +243,9 @@ function buildToolPairMap(messages) {
   for (let i = 0; i < messages.length; i++) {
     let message = messages[i];
     if (message.type === 'tool-result') {
-      let toolUseId = message.content && message.content.toolUseId;
-      if (toolUseId && toolCallsByUseId.has(toolUseId)) {
-        let callIndex = toolCallsByUseId.get(toolUseId);
+      let toolUseID = message.content && message.content.toolUseID;
+      if (toolUseID && toolCallsByUseID.has(toolUseID)) {
+        let callIndex = toolCallsByUseID.get(toolUseID);
         pairs.set(callIndex, i);
         pairs.set(i, callIndex);
       }

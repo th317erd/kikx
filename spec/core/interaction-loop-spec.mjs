@@ -19,7 +19,7 @@ import { AgentInterface }     from '../../src/core/plugins/agent-interface.mjs';
 // =============================================================================
 
 class MockAgent extends AgentInterface {
-  static pluginId    = 'mock-agent';
+  static pluginID    = 'mock-agent';
   static featureName = 'mock';
   static displayName = 'Mock Agent';
   static description = 'Mock agent for testing';
@@ -389,7 +389,7 @@ describe('InteractionLoop', () => {
 
       // Custom agent that captures the result
       class ResultCapturingAgent extends AgentInterface {
-        static pluginId    = 'result-capturing';
+        static pluginID    = 'result-capturing';
         static featureName = 'capture';
         static agentType   = 'capture';
 
@@ -536,7 +536,7 @@ describe('InteractionLoop', () => {
       let cancelledPromise = new Promise((resolve) => { cancelledResolve = resolve; });
 
       class SlowAgent extends AgentInterface {
-        static pluginId    = 'slow-agent';
+        static pluginID    = 'slow-agent';
         static featureName = 'slow';
         static agentType   = 'slow';
 
@@ -583,7 +583,7 @@ describe('InteractionLoop', () => {
       let session = await createTestSession();
 
       class QueueTestAgent extends AgentInterface {
-        static pluginId    = 'queue-test';
+        static pluginID    = 'queue-test';
         static featureName = 'queue-test';
         static agentType   = 'queue-test';
 
@@ -647,7 +647,7 @@ describe('InteractionLoop', () => {
       let interactionCount = 0;
 
       class CountingAgent extends AgentInterface {
-        static pluginId    = 'counting';
+        static pluginID    = 'counting';
         static featureName = 'counting';
         static agentType   = 'counting';
 
@@ -685,7 +685,7 @@ describe('InteractionLoop', () => {
       let toolExecuted = false;
 
       class PermissionAgent extends AgentInterface {
-        static pluginId    = 'perm-agent';
+        static pluginID    = 'perm-agent';
         static featureName = 'perm';
         static agentType   = 'perm';
 
@@ -1004,7 +1004,7 @@ describe('InteractionLoop', () => {
       let loop    = createLoop();
 
       class ThrowingAgent extends AgentInterface {
-        static pluginId    = 'throwing';
+        static pluginID    = 'throwing';
         static featureName = 'throwing';
         static agentType   = 'throwing';
 
@@ -1030,7 +1030,7 @@ describe('InteractionLoop', () => {
       let loop    = createLoop();
 
       class FailAgent extends AgentInterface {
-        static pluginId    = 'fail';
+        static pluginID    = 'fail';
         static featureName = 'fail';
         static agentType   = 'fail';
 
@@ -1497,7 +1497,7 @@ describe('InteractionLoop', () => {
 
       // Override MockAgent to yield done with usage instead of default empty done
       class UsageAgent extends AgentInterface {
-        static pluginId    = 'usage-agent';
+        static pluginID    = 'usage-agent';
         static featureName = 'mock';
         static displayName = 'Usage Agent';
         static description = 'Mock agent with usage';
@@ -1561,8 +1561,8 @@ describe('InteractionLoop', () => {
       let loop   = createLoop();
       let frames = [
         { type: 'user-message', content: { text: 'hello' } },
-        { type: 'pending-action', content: { toolName: 'shell', arguments: {}, toolUseId: 'toolu_123' } },
-        { type: 'tool-result', content: { output: 'done', toolUseId: 'toolu_123' } },
+        { type: 'pending-action', content: { toolName: 'shell', arguments: {}, toolUseID: 'toolu_123' } },
+        { type: 'tool-result', content: { output: 'done', toolUseID: 'toolu_123' } },
         { type: 'message', content: { html: '<p>hi</p>' } },
       ];
 
@@ -1570,7 +1570,7 @@ describe('InteractionLoop', () => {
       assert.equal(messages.length, 4);
       assert.equal(messages[1].type, 'tool-call');
       assert.equal(messages[1].content.toolName, 'shell');
-      assert.equal(messages[1].content.toolUseId, 'toolu_123');
+      assert.equal(messages[1].content.toolUseID, 'toolu_123');
       assert.equal(messages[2].type, 'tool-result');
     });
 
@@ -1578,7 +1578,7 @@ describe('InteractionLoop', () => {
       let loop   = createLoop();
       let frames = [
         { type: 'user-message', content: { text: 'hello' } },
-        { type: 'pending-action', content: { toolName: 'shell', arguments: {}, toolUseId: 'toolu_orphan' } },
+        { type: 'pending-action', content: { toolName: 'shell', arguments: {}, toolUseID: 'toolu_orphan' } },
         { type: 'message', content: { html: '<p>hi</p>' } },
       ];
 

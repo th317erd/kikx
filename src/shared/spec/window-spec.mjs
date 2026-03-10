@@ -83,7 +83,7 @@ describe('Windowed Loading', () => {
 
   it('evict() should also remove pointers and children entries', () => {
     manager.merge([{ id: 'parent', type: 'message' }]);
-    manager.merge([{ id: 'child', type: 'message', parentId: 'parent' }]);
+    manager.merge([{ id: 'child', type: 'message', parentID: 'parent' }]);
     let parentOrder = manager.get('parent').order;
 
     manager.evict(parentOrder + 1);

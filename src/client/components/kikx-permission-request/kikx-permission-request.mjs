@@ -14,7 +14,7 @@ import { t } from '../../lib/i18n.mjs';
 //   (status: 'needs-approval' | 'allowed')
 //
 // Dispatches 'permission-response' event on submit with:
-//   detail: { permissionId, decisions: [{ command, decision }] }
+//   detail: { permissionID, decisions: [{ command, decision }] }
 // =============================================================================
 
 const DECISION_BUTTONS = [
@@ -361,7 +361,7 @@ class KikxPermissionRequest extends HTMLElement {
       bubbles:  true,
       composed: true,
       detail: {
-        permissionId: this.getAttribute('permission-id') || '',
+        permissionID: this.getAttribute('permission-id') || '',
         decisions,
       },
     }));

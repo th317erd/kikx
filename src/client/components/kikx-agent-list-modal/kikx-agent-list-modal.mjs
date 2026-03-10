@@ -148,12 +148,12 @@ class KikxAgentListModal extends HTMLElement {
     // Settings gear button
     let settingsButton = target.closest('.settings-button');
     if (settingsButton) {
-      let agentId = settingsButton.dataset.agentId;
+      let agentID = settingsButton.dataset.agentID;
 
       this.dispatchEvent(new CustomEvent('edit-agent', {
         bubbles:  true,
         composed: true,
-        detail:   { agentId },
+        detail:   { agentID },
       }));
 
       return;
@@ -162,12 +162,12 @@ class KikxAgentListModal extends HTMLElement {
     // Agent card
     let card = target.closest('.agent-card');
     if (card) {
-      let agentId = card.dataset.agentId;
+      let agentID = card.dataset.agentID;
 
       this.dispatchEvent(new CustomEvent('select-agent', {
         bubbles:  true,
         composed: true,
-        detail:   { agentId },
+        detail:   { agentID },
       }));
     }
   }

@@ -183,8 +183,8 @@ describe('Message History Utilities (C5)', () => {
 
     it('should include resolved pending-action frames as tool-calls', () => {
       let frames = [
-        { id: 'f1', type: 'pending-action', content: { toolName: 'test', toolUseId: 'tu_1' }, deleted: false, hidden: false },
-        { id: 'f2', type: 'tool-result', content: { output: 'ok', toolUseId: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f1', type: 'pending-action', content: { toolName: 'test', toolUseID: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f2', type: 'tool-result', content: { output: 'ok', toolUseID: 'tu_1' }, deleted: false, hidden: false },
       ];
       let msgs = buildMessages(frames);
       assert.equal(msgs.length, 2);
@@ -193,7 +193,7 @@ describe('Message History Utilities (C5)', () => {
 
     it('should exclude unresolved pending-action frames', () => {
       let frames = [
-        { id: 'f1', type: 'pending-action', content: { toolName: 'test', toolUseId: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f1', type: 'pending-action', content: { toolName: 'test', toolUseID: 'tu_1' }, deleted: false, hidden: false },
       ];
       let msgs = buildMessages(frames);
       assert.equal(msgs.length, 0);

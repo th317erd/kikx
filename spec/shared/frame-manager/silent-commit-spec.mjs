@@ -88,18 +88,18 @@ describe('FrameManager silent commit flag', () => {
   // ---------------------------------------------------------------------------
 
   describe('combined with other options', () => {
-    it('silent + authorType/authorId are both stored correctly', () => {
+    it('silent + authorType/authorID are both stored correctly', () => {
       let manager = new FrameManager();
 
       manager.merge(
         [{ id: 'f1', type: 'note', content: { text: 'hello' } }],
-        { silent: true, authorType: 'agent', authorId: 'agent-42' },
+        { silent: true, authorType: 'agent', authorID: 'agent-42' },
       );
 
       let commit = manager.getLatestCommit();
       assert.equal(commit.silent, true);
       assert.equal(commit.authorType, 'agent');
-      assert.equal(commit.authorId, 'agent-42');
+      assert.equal(commit.authorID, 'agent-42');
     });
 
     it('silent + events:false are both respected', () => {

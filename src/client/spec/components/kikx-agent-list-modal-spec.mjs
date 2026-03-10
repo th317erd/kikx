@@ -195,12 +195,12 @@ function registerComponent() {
       // Settings gear button
       let settingsButton = target.closest('.settings-button');
       if (settingsButton) {
-        let agentId = settingsButton.dataset.agentId;
+        let agentID = settingsButton.dataset.agentID;
 
         this.dispatchEvent(new dom.window.CustomEvent('edit-agent', {
           bubbles:  true,
           composed: true,
-          detail:   { agentId },
+          detail:   { agentID },
         }));
 
         return;
@@ -209,12 +209,12 @@ function registerComponent() {
       // Agent card
       let card = target.closest('.agent-card');
       if (card) {
-        let agentId = card.dataset.agentId;
+        let agentID = card.dataset.agentID;
 
         this.dispatchEvent(new dom.window.CustomEvent('select-agent', {
           bubbles:  true,
           composed: true,
-          detail:   { agentId },
+          detail:   { agentID },
         }));
       }
     }
@@ -360,7 +360,7 @@ describe('kikx-agent-list-modal', () => {
   // 8. Clicking agent card dispatches select-agent event
   // -------------------------------------------------------------------------
 
-  it('clicking agent card dispatches select-agent event with agentId', () => {
+  it('clicking agent card dispatches select-agent event with agentID', () => {
     element.agents = makeAgents();
 
     let eventFired  = false;
@@ -375,14 +375,14 @@ describe('kikx-agent-list-modal', () => {
     card.click();
 
     assert.ok(eventFired, 'select-agent event should be dispatched');
-    assert.deepEqual(eventDetail, { agentId: 'a2' });
+    assert.deepEqual(eventDetail, { agentID: 'a2' });
   });
 
   // -------------------------------------------------------------------------
   // 9. Clicking gear dispatches edit-agent event
   // -------------------------------------------------------------------------
 
-  it('clicking gear dispatches edit-agent event with agentId', () => {
+  it('clicking gear dispatches edit-agent event with agentID', () => {
     element.agents = makeAgents();
 
     let eventFired  = false;
@@ -397,7 +397,7 @@ describe('kikx-agent-list-modal', () => {
     gearButton.click();
 
     assert.ok(eventFired, 'edit-agent event should be dispatched');
-    assert.deepEqual(eventDetail, { agentId: 'a1' });
+    assert.deepEqual(eventDetail, { agentID: 'a1' });
   });
 
   // -------------------------------------------------------------------------

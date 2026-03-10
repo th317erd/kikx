@@ -155,9 +155,9 @@ export class PermissionEngine {
   // deleteRule
   // ---------------------------------------------------------------------------
 
-  async deleteRule(ruleId) {
+  async deleteRule(ruleID) {
     let { PermissionRule } = this._getModels();
-    let rule               = await PermissionRule.where.id.EQ(ruleId).first();
+    let rule               = await PermissionRule.where.id.EQ(ruleID).first();
 
     if (!rule)
       return false;

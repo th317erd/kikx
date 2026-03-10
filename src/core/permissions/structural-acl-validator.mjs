@@ -61,10 +61,10 @@ export function createStructuralACLValidator(options = {}) {
             };
           }
 
-          if (frame.authorID && actorContext.authorId && frame.authorID !== actorContext.authorId) {
+          if (frame.authorID && actorContext.authorID && frame.authorID !== actorContext.authorID) {
             return {
               allowed: false,
-              reason:  `actor "${actorContext.authorId}" cannot modify frame owned by "${frame.authorID}"`,
+              reason:  `actor "${actorContext.authorID}" cannot modify frame owned by "${frame.authorID}"`,
             };
           }
         }

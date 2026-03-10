@@ -42,10 +42,10 @@ class KikxWebsocketManager extends HTMLElement {
   }
 
   set url(value) {
-    let previousUrl = this._url;
+    let previousURL = this._url;
     this._url = value;
 
-    if (this._connected && value !== previousUrl)
+    if (this._connected && value !== previousURL)
       this.connect();
   }
 

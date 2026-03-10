@@ -144,9 +144,9 @@ describe('Stop as Commit (B8)', () => {
     let latestCommit = frameManager.getLatestCommit();
     assert.equal(latestCommit.authorType, 'user');
 
-    // Commit changes are { frameId, operation } records — resolve the frame
+    // Commit changes are { frameID, operation } records — resolve the frame
     let stopChangeEntry = latestCommit.changes.find((c) => {
-      let frame = frameManager.getHead(c.frameId);
+      let frame = frameManager.getHead(c.frameID);
       return frame && frame.type === 'stop';
     });
 
@@ -167,7 +167,7 @@ describe('Stop as Commit (B8)', () => {
     let messages = interactionLoop._buildMessages(frames);
 
     assert.equal(messages.length, 2, 'Stop frame should be excluded');
-    assert.ok(!messages.find((m) => m.frameId === 'f2'), 'No message should come from stop frame');
+    assert.ok(!messages.find((m) => m.frameID === 'f2'), 'No message should come from stop frame');
   });
 
   // ---------------------------------------------------------------------------
@@ -186,7 +186,7 @@ describe('Stop as Commit (B8)', () => {
       content:    { targetAgentID: agent.id },
       authorType: 'user',
       authorID:   'usr_1',
-    }], { authorType: 'user', authorId: 'usr_1' });
+    }], { authorType: 'user', authorID: 'usr_1' });
 
     let events = [];
     let cancelHandler = (data) => events.push(data);
@@ -228,7 +228,7 @@ describe('Stop as Commit (B8)', () => {
       content:    { targetAgentID: null },
       authorType: 'user',
       authorID:   'usr_1',
-    }], { authorType: 'user', authorId: 'usr_1' });
+    }], { authorType: 'user', authorID: 'usr_1' });
 
     // Mark both agents as active
     scheduler._activeAgents.set(`${session.id}:${agentA.id}`, true);
@@ -259,7 +259,7 @@ describe('Stop as Commit (B8)', () => {
       content:    { targetAgentID: agent.id },
       authorType: 'user',
       authorID:   'usr_1',
-    }], { authorType: 'user', authorId: 'usr_1' });
+    }], { authorType: 'user', authorID: 'usr_1' });
 
     let stopCommit = frameManager.getLatestCommit();
     let scheduled  = await scheduler.onCommit(session.id, stopCommit);

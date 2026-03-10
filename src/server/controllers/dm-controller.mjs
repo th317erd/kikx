@@ -17,12 +17,12 @@ export class DmController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async getOrCreate({ params }) {
-    let agentId        = params.agentId;
+    let agentID        = params.agentID;
     let { Agent }      = this.getCoreModels();
     let sessionManager = this.getSessionManager();
 
     // Verify agent exists
-    let agent = await Agent.where.id.EQ(agentId).first();
+    let agent = await Agent.where.id.EQ(agentID).first();
     if (!agent)
       this.throwNotFoundError('Agent not found');
 
@@ -30,7 +30,7 @@ export class DmController extends ControllerAuthBase {
     let { Session } = this.getCoreModels();
     let existing    = await Session.where
       .type.EQ('dm')
-      .dmAgentID.EQ(agentId)
+      .dmAgentID.EQ(agentID)
       .organizationID.EQ(agent.organizationID)
       .first();
 
@@ -41,7 +41,7 @@ export class DmController extends ControllerAuthBase {
     let session = await sessionManager.createSession(agent.organizationID, {
       name:      `DM: ${agent.name}`,
       type:      'dm',
-      dmAgentID: agentId,
+      dmAgentID: agentID,
     });
 
     this.setStatusCode(201);
@@ -54,10 +54,10 @@ export class DmController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async getSummary({ params }) {
-    let agentId   = params.agentId;
+    let agentID   = params.agentID;
     let { Agent } = this.getCoreModels();
 
-    let agent = await Agent.where.id.EQ(agentId).first();
+    let agent = await Agent.where.id.EQ(agentID).first();
     if (!agent)
       this.throwNotFoundError('Agent not found');
 
@@ -69,10 +69,10 @@ export class DmController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async updateSummary({ params, body }) {
-    let agentId   = params.agentId;
+    let agentID   = params.agentID;
     let { Agent } = this.getCoreModels();
 
-    let agent = await Agent.where.id.EQ(agentId).first();
+    let agent = await Agent.where.id.EQ(agentID).first();
     if (!agent)
       this.throwNotFoundError('Agent not found');
 
@@ -88,11 +88,11 @@ export class DmController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async summarize({ params }) {
-    let agentId   = params.agentId;
+    let agentID   = params.agentID;
     let core      = this.getCore();
     let { Agent } = this.getCoreModels();
 
-    let agent = await Agent.where.id.EQ(agentId).first();
+    let agent = await Agent.where.id.EQ(agentID).first();
     if (!agent)
       this.throwNotFoundError('Agent not found');
 
@@ -100,7 +100,7 @@ export class DmController extends ControllerAuthBase {
     let { Session } = this.getCoreModels();
     let dmSession   = await Session.where
       .type.EQ('dm')
-      .dmAgentID.EQ(agentId)
+      .dmAgentID.EQ(agentID)
       .organizationID.EQ(agent.organizationID)
       .first();
 

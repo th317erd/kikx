@@ -11,7 +11,7 @@ import { htmlToMarkdown } from './html-to-markdown.mjs';
 
 export function setup({ registerTool, PluginInterface }) {
   class WebsearchTool extends PluginInterface {
-    static pluginId    = 'websearch';
+    static pluginID    = 'websearch';
     static featureName = 'fetch';
     static displayName = 'Web Search';
     static description = 'Fetch and render web pages as markdown';

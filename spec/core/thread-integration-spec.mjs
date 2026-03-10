@@ -13,12 +13,12 @@ import { FramePersistence } from '../../src/core/frames/index.mjs';
 // Thread Integration Tests
 // =============================================================================
 // TDD red-phase tests for thread flow using parentID on frames.
-// Threads are formed by setting parentId on reply frames, pointing back to
+// Threads are formed by setting parentID on reply frames, pointing back to
 // the original message they respond to. FrameManager tracks these via its
-// internal _children map and exposes them via getChildren(parentId).
+// internal _children map and exposes them via getChildren(parentID).
 //
 // Tests verify:
-//   1. User message -> reply with parentId -> chain is correct
+//   1. User message -> reply with parentID -> chain is correct
 //   2. Multiple replies to the same parent
 //   3. Thread isolation — different threads don't interfere
 //   4. Nested threads — reply to a reply
@@ -60,8 +60,8 @@ describe('Thread Integration', () => {
   }
 
   // ---- Test 1 ----
-  // User message -> user reply (parentId) -> verify parentId chain
-  it('reply frame has correct parentId linking to the main message', async () => {
+  // User message -> user reply (parentID) -> verify parentID chain
+  it('reply frame has correct parentID linking to the main message', async () => {
     let frameManager = manager.getFrameManager(session.id);
 
     // Create a main message frame (no parent)
@@ -71,31 +71,31 @@ describe('Thread Integration', () => {
         id:         mainID,
         type:       'message',
         content:    { text: 'This is the main message' },
-        parentId:   null,
+        parentID:   null,
         authorType: 'user',
         authorID:   'usr_thread_test',
         hidden:     false,
       },
     ]);
 
-    // Create a reply frame with parentId pointing to the main message
+    // Create a reply frame with parentID pointing to the main message
     let replyID = generateFrameID();
     frameManager.merge([
       {
         id:         replyID,
         type:       'message',
         content:    { text: 'This is a reply' },
-        parentId:   mainID,
+        parentID:   mainID,
         authorType: 'user',
         authorID:   'usr_thread_test',
         hidden:     false,
       },
     ]);
 
-    // Verify the reply's parentId is set correctly
+    // Verify the reply's parentID is set correctly
     let replyFrame = frameManager.get(replyID);
     assert.ok(replyFrame, 'Reply frame should exist');
-    assert.equal(replyFrame.parentId, mainID, 'Reply parentId should point to main message');
+    assert.equal(replyFrame.parentID, mainID, 'Reply parentID should point to main message');
 
     // Load all frames, verify both exist
     let allFrames = frameManager.toArray();
@@ -105,7 +105,7 @@ describe('Thread Integration', () => {
     assert.ok(allIDs.includes(mainID));
     assert.ok(allIDs.includes(replyID));
 
-    // Filter by parentId of main message — verify only the reply is returned
+    // Filter by parentID of main message — verify only the reply is returned
     let children = frameManager.getChildren(mainID);
     assert.equal(children.length, 1, 'Main message should have exactly 1 child');
     assert.equal(children[0].id, replyID);
@@ -123,14 +123,14 @@ describe('Thread Integration', () => {
         id:         mainID,
         type:       'message',
         content:    { text: 'Root message' },
-        parentId:   null,
+        parentID:   null,
         authorType: 'user',
         authorID:   'usr_multi_reply',
         hidden:     false,
       },
     ]);
 
-    // Create 3 reply frames with parentId = main frame's id
+    // Create 3 reply frames with parentID = main frame's id
     let replyIDs = [];
     for (let index = 0; index < 3; index++) {
       let replyID = generateFrameID();
@@ -141,7 +141,7 @@ describe('Thread Integration', () => {
           id:         replyID,
           type:       'message',
           content:    { text: `Reply #${index + 1}` },
-          parentId:   mainID,
+          parentID:   mainID,
           authorType: 'user',
           authorID:   'usr_multi_reply',
           hidden:     false,
@@ -149,7 +149,7 @@ describe('Thread Integration', () => {
       ]);
     }
 
-    // Load with parentId filter, verify all 3 returned
+    // Load with parentID filter, verify all 3 returned
     let children = frameManager.getChildren(mainID);
     assert.equal(children.length, 3, 'Should have exactly 3 children');
 
@@ -181,7 +181,7 @@ describe('Thread Integration', () => {
         id:         mainA,
         type:       'message',
         content:    { text: 'Thread A root' },
-        parentId:   null,
+        parentID:   null,
         authorType: 'user',
         authorID:   'usr_isolation',
         hidden:     false,
@@ -193,7 +193,7 @@ describe('Thread Integration', () => {
         id:         mainB,
         type:       'message',
         content:    { text: 'Thread B root' },
-        parentId:   null,
+        parentID:   null,
         authorType: 'user',
         authorID:   'usr_isolation',
         hidden:     false,
@@ -208,7 +208,7 @@ describe('Thread Integration', () => {
         id:         replyA1,
         type:       'message',
         content:    { text: 'Reply A1' },
-        parentId:   mainA,
+        parentID:   mainA,
         authorType: 'user',
         authorID:   'usr_isolation',
         hidden:     false,
@@ -219,7 +219,7 @@ describe('Thread Integration', () => {
         id:         replyA2,
         type:       'message',
         content:    { text: 'Reply A2' },
-        parentId:   mainA,
+        parentID:   mainA,
         authorType: 'user',
         authorID:   'usr_isolation',
         hidden:     false,
@@ -233,7 +233,7 @@ describe('Thread Integration', () => {
         id:         replyB1,
         type:       'message',
         content:    { text: 'Reply B1' },
-        parentId:   mainB,
+        parentID:   mainB,
         authorType: 'user',
         authorID:   'usr_isolation',
         hidden:     false,
@@ -272,7 +272,7 @@ describe('Thread Integration', () => {
         id:         mainID,
         type:       'message',
         content:    { text: 'Main message' },
-        parentId:   null,
+        parentID:   null,
         authorType: 'user',
         authorID:   'usr_nested',
         hidden:     false,
@@ -284,7 +284,7 @@ describe('Thread Integration', () => {
         id:         reply1ID,
         type:       'message',
         content:    { text: 'First reply (to main)' },
-        parentId:   mainID,
+        parentID:   mainID,
         authorType: 'user',
         authorID:   'usr_nested',
         hidden:     false,
@@ -296,7 +296,7 @@ describe('Thread Integration', () => {
         id:         reply2ID,
         type:       'message',
         content:    { text: 'Second reply (to reply1)' },
-        parentId:   reply1ID,
+        parentID:   reply1ID,
         authorType: 'user',
         authorID:   'usr_nested',
         hidden:     false,
@@ -322,14 +322,14 @@ describe('Thread Integration', () => {
     assert.ok(allIDs.includes(reply1ID));
     assert.ok(allIDs.includes(reply2ID));
 
-    // Verify the chain: reply2.parentId -> reply1, reply1.parentId -> main
+    // Verify the chain: reply2.parentID -> reply1, reply1.parentID -> main
     let reply2Frame = frameManager.get(reply2ID);
-    assert.equal(reply2Frame.parentId, reply1ID);
+    assert.equal(reply2Frame.parentID, reply1ID);
 
     let reply1Frame = frameManager.get(reply1ID);
-    assert.equal(reply1Frame.parentId, mainID);
+    assert.equal(reply1Frame.parentID, mainID);
 
     let mainFrame = frameManager.get(mainID);
-    assert.equal(mainFrame.parentId, null);
+    assert.equal(mainFrame.parentID, null);
   });
 });

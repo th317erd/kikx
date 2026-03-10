@@ -49,14 +49,14 @@ describe('Viewport Management (D5)', () => {
     return session;
   }
 
-  async function seedFrames(sessionId, count) {
+  async function seedFrames(sessionID, count) {
     let { Frame } = models;
     let frames = [];
 
     for (let i = 1; i <= count; i++) {
       frames.push({
         id:            `frm_${XID.next()}`,
-        sessionID:     sessionId,
+        sessionID:     sessionID,
         type:          'message',
         content:       JSON.stringify({ text: `Message ${i}` }),
         order:         i,

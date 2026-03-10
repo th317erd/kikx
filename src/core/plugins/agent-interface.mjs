@@ -8,7 +8,7 @@
 // protocol that the kernel uses to drive interactions.
 //
 // Subclasses MUST override:
-//   - static metadata (pluginId, featureName, agentType, etc.)
+//   - static metadata (pluginID, featureName, agentType, etc.)
 //   - _createGenerator(params) — returns an async generator yielding blocks
 //
 // The interaction protocol:
@@ -23,7 +23,7 @@ import { PluginInterface } from '../plugin-loader/plugin-interface.mjs';
 
 export class AgentInterface extends PluginInterface {
   // Static metadata — subclasses MUST override
-  static pluginId     = null;
+  static pluginID     = null;
   static featureName  = null;
   static displayName  = null;
   static description  = null;

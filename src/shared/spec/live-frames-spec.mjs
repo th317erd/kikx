@@ -6,11 +6,11 @@ import { FrameManager } from '../frame-manager/frame-manager.mjs';
 import { Frame } from '../frame-manager/frame.mjs';
 
 describe('Live Frames (Phantom Handling)', () => {
-  describe('phantom with groupId — first phantom creates group frame', () => {
+  describe('phantom with groupID — first phantom creates group frame', () => {
     it('should create a group frame from the first phantom', () => {
       let manager = new FrameManager();
       let results = manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
       ]);
 
       assert.equal(results.length, 1);
@@ -20,7 +20,7 @@ describe('Live Frames (Phantom Handling)', () => {
     it('should set correct properties on the group frame', () => {
       let manager = new FrameManager();
       let results = manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'assistant-message', content: { text: 'He' }, parentId: 'session-1' },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'assistant-message', content: { text: 'He' }, parentID: 'session-1' },
       ]);
 
       let group = results[0];
@@ -30,14 +30,14 @@ describe('Live Frames (Phantom Handling)', () => {
       assert.equal(group.phantom, false, 'group frame should NOT be phantom');
       assert.equal(group.hidden, true, 'group frame should default to hidden');
       assert.equal(group.deleted, false, 'group frame should default to not deleted');
-      assert.equal(group.parentId, 'session-1');
+      assert.equal(group.parentID, 'session-1');
       assert.ok(group instanceof Frame);
     });
 
-    it('should store the group frame and make it retrievable by groupId', () => {
+    it('should store the group frame and make it retrievable by groupID', () => {
       let manager = new FrameManager();
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
       ]);
 
       let stored = manager.get('g1');
@@ -49,7 +49,7 @@ describe('Live Frames (Phantom Handling)', () => {
     it('should NOT store the phantom frame itself', () => {
       let manager = new FrameManager();
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
       ]);
 
       let phantom = manager.get('p1');
@@ -62,20 +62,20 @@ describe('Live Frames (Phantom Handling)', () => {
 
       manager.on('frame:added', (payload) => { captured = payload; });
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
       ]);
 
       assert.ok(captured, 'frame:added should fire');
       assert.equal(captured.frame.id, 'g1');
     });
 
-    it('should emit frame:added:{groupId} on first phantom', () => {
+    it('should emit frame:added:{groupID} on first phantom', () => {
       let manager  = new FrameManager();
       let captured = null;
 
       manager.on('frame:added:g1', (payload) => { captured = payload; });
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
       ]);
 
       assert.ok(captured, 'frame:added:g1 should fire');
@@ -85,23 +85,23 @@ describe('Live Frames (Phantom Handling)', () => {
     it('should use phantom type as fallback when groupType is not set', () => {
       let manager = new FrameManager();
       let results = manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', content: { text: 'He' } },
       ]);
 
       assert.equal(results[0].type, 'token');
     });
   });
 
-  describe('phantom with groupId — subsequent phantoms merge into group', () => {
+  describe('phantom with groupID — subsequent phantoms merge into group', () => {
     it('should deep-merge content from second phantom into group frame', () => {
       let manager = new FrameManager();
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
       ]);
 
       let results = manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'assistant-message', content: { text: 'Hello' } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'assistant-message', content: { text: 'Hello' } },
       ]);
 
       assert.equal(results.length, 1);
@@ -113,15 +113,15 @@ describe('Live Frames (Phantom Handling)', () => {
       let manager = new FrameManager();
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { tokens: ['a'] } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { tokens: ['a'] } },
       ]);
 
       manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { tokens: ['b'], count: 2 } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { tokens: ['b'], count: 2 } },
       ]);
 
       let results = manager.merge([
-        { id: 'p3', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { tokens: ['c'], status: 'done' } },
+        { id: 'p3', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { tokens: ['c'], status: 'done' } },
       ]);
 
       let group = results[0];
@@ -136,12 +136,12 @@ describe('Live Frames (Phantom Handling)', () => {
       let captured = null;
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'He' } },
       ]);
 
       manager.on('frame:updated', (payload) => { captured = payload; });
       manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'Hello' } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'Hello' } },
       ]);
 
       assert.ok(captured, 'frame:updated should fire');
@@ -149,17 +149,17 @@ describe('Live Frames (Phantom Handling)', () => {
       assert.ok(captured.previousHead, 'should include previousHead');
     });
 
-    it('should emit frame:updated:{groupId} on subsequent phantoms', () => {
+    it('should emit frame:updated:{groupID} on subsequent phantoms', () => {
       let manager  = new FrameManager();
       let captured = null;
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'He' } },
       ]);
 
       manager.on('frame:updated:g1', (payload) => { captured = payload; });
       manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'Hello' } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'Hello' } },
       ]);
 
       assert.ok(captured, 'frame:updated:g1 should fire');
@@ -173,13 +173,13 @@ describe('Live Frames (Phantom Handling)', () => {
       manager.on('frame:added', () => { count++; });
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'He' } },
       ]);
 
       assert.equal(count, 1, 'frame:added fires once for group creation');
 
       manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'Hello' } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'Hello' } },
       ]);
 
       assert.equal(count, 1, 'frame:added should NOT fire again on update');
@@ -189,11 +189,11 @@ describe('Live Frames (Phantom Handling)', () => {
       let manager = new FrameManager();
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'He' } },
       ]);
 
       manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'Hello' } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'Hello' } },
       ]);
 
       let stored = manager.get('g1');
@@ -201,7 +201,7 @@ describe('Live Frames (Phantom Handling)', () => {
     });
   });
 
-  describe('phantom without groupId — standalone ephemeral', () => {
+  describe('phantom without groupID — standalone ephemeral', () => {
     it('should NOT store standalone phantom', () => {
       let manager = new FrameManager();
       manager.merge([
@@ -267,12 +267,12 @@ describe('Live Frames (Phantom Handling)', () => {
 
       // First phantom creates group with type 'assistant-message'
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
       ]);
 
       // Second phantom has conflicting groupType
       let results = manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'system-message', content: { text: 'conflict' } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'system-message', content: { text: 'conflict' } },
       ]);
 
       assert.equal(results.length, 0, 'conflicting phantom should be skipped');
@@ -288,32 +288,32 @@ describe('Live Frames (Phantom Handling)', () => {
       let events  = [];
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'assistant-message', content: { text: 'He' } },
       ]);
 
       manager.on('frame:updated', () => { events.push('updated'); });
       manager.on('frame:added', () => { events.push('added'); });
 
       manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'system-message', content: { text: 'bad' } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'system-message', content: { text: 'bad' } },
       ]);
 
       assert.deepEqual(events, []);
     });
   });
 
-  describe('group frame parentId', () => {
-    it('should inherit parentId from the first phantom', () => {
+  describe('group frame parentID', () => {
+    it('should inherit parentID from the first phantom', () => {
       let manager = new FrameManager();
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: {}, parentId: 'session-42' },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: {}, parentID: 'session-42' },
       ]);
 
       let group = manager.get('g1');
-      assert.equal(group.parentId, 'session-42');
+      assert.equal(group.parentID, 'session-42');
     });
 
-    it('should index group frame as child of parentId', () => {
+    it('should index group frame as child of parentID', () => {
       let manager = new FrameManager();
 
       // Create parent first
@@ -322,12 +322,12 @@ describe('Live Frames (Phantom Handling)', () => {
       ]);
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: {}, parentId: 'session-42' },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: {}, parentID: 'session-42' },
       ]);
 
       let children = manager.getChildren('session-42');
       let groupChild = children.find((c) => c.id === 'g1');
-      assert.ok(groupChild, 'group frame should be a child of parentId');
+      assert.ok(groupChild, 'group frame should be a child of parentID');
     });
   });
 
@@ -338,7 +338,7 @@ describe('Live Frames (Phantom Handling)', () => {
 
       manager.on('frame:added', () => { fired = true; });
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'He' } },
       ], { events: false });
 
       assert.equal(fired, false);
@@ -348,14 +348,14 @@ describe('Live Frames (Phantom Handling)', () => {
       let manager = new FrameManager();
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'He' } },
       ]);
 
       let fired = false;
       manager.on('frame:updated', () => { fired = true; });
 
       manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'Hello' } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'Hello' } },
       ], { events: false });
 
       assert.equal(fired, false);
@@ -379,7 +379,7 @@ describe('Live Frames (Phantom Handling)', () => {
 
       manager.on('frames:bulk-loaded', (payload) => { captured = payload; });
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'He' } },
       ], { events: false });
 
       assert.ok(captured);
@@ -392,15 +392,15 @@ describe('Live Frames (Phantom Handling)', () => {
       let manager = new FrameManager({ history: true });
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'H' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'H' } },
       ]);
 
       manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'He' } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'He' } },
       ]);
 
       manager.merge([
-        { id: 'p3', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'Hel' } },
+        { id: 'p3', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'Hel' } },
       ]);
 
       let history = manager.getVersionHistory('g1');
@@ -414,11 +414,11 @@ describe('Live Frames (Phantom Handling)', () => {
       let manager = new FrameManager({ history: true });
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'H' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'H' } },
       ]);
 
       manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'Hello' } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'Hello' } },
       ]);
 
       let head = manager.getHead('g1');
@@ -431,11 +431,11 @@ describe('Live Frames (Phantom Handling)', () => {
       let manager = new FrameManager({ history: false });
 
       manager.merge([
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'H' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'H' } },
       ]);
 
       manager.merge([
-        { id: 'p2', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'Hello' } },
+        { id: 'p2', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'Hello' } },
       ]);
 
       let head = manager.getHead('g1');
@@ -452,19 +452,19 @@ describe('Live Frames (Phantom Handling)', () => {
 
       // Interleave phantoms from two different groups
       manager.merge([
-        { id: 'pA1', type: 'token', phantom: true, groupId: 'gA', groupType: 'msg', content: { text: 'Alpha' } },
+        { id: 'pA1', type: 'token', phantom: true, groupID: 'gA', groupType: 'msg', content: { text: 'Alpha' } },
       ]);
 
       manager.merge([
-        { id: 'pB1', type: 'token', phantom: true, groupId: 'gB', groupType: 'msg', content: { text: 'Beta' } },
+        { id: 'pB1', type: 'token', phantom: true, groupID: 'gB', groupType: 'msg', content: { text: 'Beta' } },
       ]);
 
       manager.merge([
-        { id: 'pA2', type: 'token', phantom: true, groupId: 'gA', groupType: 'msg', content: { text: 'Alpha updated' } },
+        { id: 'pA2', type: 'token', phantom: true, groupID: 'gA', groupType: 'msg', content: { text: 'Alpha updated' } },
       ]);
 
       manager.merge([
-        { id: 'pB2', type: 'token', phantom: true, groupId: 'gB', groupType: 'msg', content: { text: 'Beta updated' } },
+        { id: 'pB2', type: 'token', phantom: true, groupID: 'gB', groupType: 'msg', content: { text: 'Beta updated' } },
       ]);
 
       let groupA = manager.getHead('gA');
@@ -478,15 +478,15 @@ describe('Live Frames (Phantom Handling)', () => {
       let manager = new FrameManager({ history: true });
 
       manager.merge([
-        { id: 'pA1', type: 'token', phantom: true, groupId: 'gA', groupType: 'msg', content: { v: 1 } },
+        { id: 'pA1', type: 'token', phantom: true, groupID: 'gA', groupType: 'msg', content: { v: 1 } },
       ]);
 
       manager.merge([
-        { id: 'pB1', type: 'token', phantom: true, groupId: 'gB', groupType: 'msg', content: { v: 10 } },
+        { id: 'pB1', type: 'token', phantom: true, groupID: 'gB', groupType: 'msg', content: { v: 10 } },
       ]);
 
       manager.merge([
-        { id: 'pA2', type: 'token', phantom: true, groupId: 'gA', groupType: 'msg', content: { v: 2 } },
+        { id: 'pA2', type: 'token', phantom: true, groupID: 'gA', groupType: 'msg', content: { v: 2 } },
       ]);
 
       let historyA = manager.getVersionHistory('gA');
@@ -508,15 +508,15 @@ describe('Live Frames (Phantom Handling)', () => {
       manager.on('frame:updated', (p) => { updatedIds.push(p.frame.id); });
 
       manager.merge([
-        { id: 'pA1', type: 'token', phantom: true, groupId: 'gA', groupType: 'msg', content: { text: 'a' } },
+        { id: 'pA1', type: 'token', phantom: true, groupID: 'gA', groupType: 'msg', content: { text: 'a' } },
       ]);
 
       manager.merge([
-        { id: 'pB1', type: 'token', phantom: true, groupId: 'gB', groupType: 'msg', content: { text: 'b' } },
+        { id: 'pB1', type: 'token', phantom: true, groupID: 'gB', groupType: 'msg', content: { text: 'b' } },
       ]);
 
       manager.merge([
-        { id: 'pA2', type: 'token', phantom: true, groupId: 'gA', groupType: 'msg', content: { text: 'a2' } },
+        { id: 'pA2', type: 'token', phantom: true, groupID: 'gA', groupType: 'msg', content: { text: 'a2' } },
       ]);
 
       assert.deepEqual(addedIds, ['gA', 'gB']);
@@ -529,7 +529,7 @@ describe('Live Frames (Phantom Handling)', () => {
       let manager = new FrameManager();
       let results = manager.merge([
         { id: 'normal-1', type: 'message', content: { text: 'hello' } },
-        { id: 'p1', type: 'token', phantom: true, groupId: 'g1', groupType: 'msg', content: { text: 'He' } },
+        { id: 'p1', type: 'token', phantom: true, groupID: 'g1', groupType: 'msg', content: { text: 'He' } },
         { id: 'normal-2', type: 'message', content: { text: 'world' } },
       ]);
 

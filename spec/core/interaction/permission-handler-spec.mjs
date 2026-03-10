@@ -52,7 +52,7 @@ describe('PermissionHandler (C5)', () => {
   describe('hardBreak', () => {
     it('should create pending-action and permission-request frames', async () => {
       let generator = { return: async () => {} };
-      let block     = { content: { toolName: 'shell:execute', arguments: { command: 'ls' }, toolUseId: 'tu_1' } };
+      let block     = { content: { toolName: 'shell:execute', arguments: { command: 'ls' }, toolUseID: 'tu_1' } };
 
       mockLoop._active.set('ses_1', { generator });
 
@@ -65,7 +65,7 @@ describe('PermissionHandler (C5)', () => {
 
     it('should store permission-waiting state', async () => {
       let generator = { return: async () => {} };
-      let block     = { content: { toolName: 'test', arguments: {}, toolUseId: 'tu_1' } };
+      let block     = { content: { toolName: 'test', arguments: {}, toolUseID: 'tu_1' } };
       let params    = { agentPlugin: {} };
 
       mockLoop._active.set('ses_1', { generator });
@@ -81,7 +81,7 @@ describe('PermissionHandler (C5)', () => {
     it('should destroy the generator', async () => {
       let returnCalled = false;
       let generator    = { return: async () => { returnCalled = true; } };
-      let block        = { content: { toolName: 'test', arguments: {}, toolUseId: 'tu_1' } };
+      let block        = { content: { toolName: 'test', arguments: {}, toolUseID: 'tu_1' } };
 
       mockLoop._active.set('ses_1', { generator });
 
@@ -91,7 +91,7 @@ describe('PermissionHandler (C5)', () => {
 
     it('should clean up active interaction', async () => {
       let generator = { return: async () => {} };
-      let block     = { content: { toolName: 'test', arguments: {}, toolUseId: 'tu_1' } };
+      let block     = { content: { toolName: 'test', arguments: {}, toolUseID: 'tu_1' } };
 
       mockLoop._active.set('ses_1', { generator });
       await handler.hardBreak('ses_1', generator, block, 'int_1', {}, null);
@@ -101,7 +101,7 @@ describe('PermissionHandler (C5)', () => {
 
     it('should emit interaction:end and permission:request', async () => {
       let generator = { return: async () => {} };
-      let block     = { content: { toolName: 'test', arguments: {}, toolUseId: 'tu_1' } };
+      let block     = { content: { toolName: 'test', arguments: {}, toolUseID: 'tu_1' } };
 
       mockLoop._active.set('ses_1', { generator });
       await handler.hardBreak('ses_1', generator, block, 'int_1', {}, null);
@@ -143,7 +143,7 @@ describe('PermissionHandler (C5)', () => {
             id: {
               EQ: (id) => ({
                 first: async () => ({
-                  getContent: () => ({ toolName: 'test', arguments: {}, toolUseId: 'tu_1' }),
+                  getContent: () => ({ toolName: 'test', arguments: {}, toolUseID: 'tu_1' }),
                   processed: false,
                   save: async () => {},
                 }),
@@ -174,7 +174,7 @@ describe('PermissionHandler (C5)', () => {
             id: {
               EQ: () => ({
                 first: async () => ({
-                  getContent: () => ({ toolName: 'test', arguments: {}, toolUseId: 'tu_1' }),
+                  getContent: () => ({ toolName: 'test', arguments: {}, toolUseID: 'tu_1' }),
                   processed: false,
                   save: async () => {},
                 }),
@@ -251,7 +251,7 @@ describe('PermissionHandler (C5)', () => {
               EQ: () => ({
                 first: async () => ({
                   processed: false,
-                  content:   { toolName: 'shell:execute', toolUseId: 'tu_1' },
+                  content:   { toolName: 'shell:execute', toolUseID: 'tu_1' },
                   save: async function() { savedRecords.push(this); },
                 }),
               }),
@@ -263,7 +263,7 @@ describe('PermissionHandler (C5)', () => {
       await handler.deny('ses_1', 'frm_pending');
 
       assert.ok(createdFrames.some((f) => f.type === 'permission-denied'));
-      assert.ok(createdFrames.some((f) => f.type === 'tool-result' && f.content.toolUseId === 'tu_1'));
+      assert.ok(createdFrames.some((f) => f.type === 'tool-result' && f.content.toolUseID === 'tu_1'));
       assert.ok(createdFrames.some((f) => f.type === 'tool-result' && f.content.output.includes('Permission denied')));
       assert.ok(!mockLoop._permissionWaiting.has('ses_1'));
     });
@@ -284,7 +284,7 @@ describe('PermissionHandler (C5)', () => {
               EQ: () => ({
                 first: async () => ({
                   processed: false,
-                  content:   { toolName: 'shell:execute', toolUseId: 'tu_2' },
+                  content:   { toolName: 'shell:execute', toolUseID: 'tu_2' },
                   save: async () => {},
                 }),
               }),

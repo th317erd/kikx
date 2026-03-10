@@ -18,14 +18,14 @@ function shuffle(array) {
   return arr;
 }
 
-function phantom(id, groupId, groupType, parentId, content) {
+function phantom(id, groupID, groupType, parentID, content) {
   return {
     id,
     type:    'token',
     phantom: true,
-    groupId,
+    groupID,
     groupType,
-    parentId,
+    parentID,
     content,
   };
 }
@@ -40,10 +40,10 @@ describe('S1: Basic two-user conversation', () => {
 
     // Alice sends first interaction
     fm.merge([
-      { id: 'alice-1', type: 'interaction', parentId: null, content: { text: 'Hello agent' } },
+      { id: 'alice-1', type: 'interaction', parentID: null, content: { text: 'Hello agent' } },
     ]);
 
-    // Agent streams response: 5 phantoms with same groupId
+    // Agent streams response: 5 phantoms with same groupID
     let agentGroup1 = 'agent-resp-1';
     for (let i = 1; i <= 5; i++) {
       fm.merge([
@@ -53,10 +53,10 @@ describe('S1: Basic two-user conversation', () => {
 
     // Alice sends follow-up interaction
     fm.merge([
-      { id: 'alice-2', type: 'interaction', parentId: null, content: { text: 'Tell me more' } },
+      { id: 'alice-2', type: 'interaction', parentID: null, content: { text: 'Tell me more' } },
     ]);
 
-    // Agent streams again: 3 phantoms, different groupId
+    // Agent streams again: 3 phantoms, different groupID
     let agentGroup2 = 'agent-resp-2';
     for (let i = 1; i <= 3; i++) {
       fm.merge([
@@ -128,13 +128,13 @@ describe('S2: Multi-agent concurrent streaming', () => {
 
     // Alice sends interaction
     fm.merge([
-      { id: 'alice-msg', type: 'interaction', parentId: null, content: { text: 'Question' } },
+      { id: 'alice-msg', type: 'interaction', parentID: null, content: { text: 'Question' } },
     ]);
 
-    // Agent-1 starts streaming (groupId: 'g1', groupType: 'reflection')
+    // Agent-1 starts streaming (groupID: 'g1', groupType: 'reflection')
     fm.merge([phantom('a1-p1', 'g1', 'reflection', 'alice-msg', { text: 'thinking-1' })]);
 
-    // Agent-2 starts streaming (groupId: 'g2', groupType: 'message')
+    // Agent-2 starts streaming (groupID: 'g2', groupType: 'message')
     fm.merge([phantom('a2-p1', 'g2', 'message', 'alice-msg', { text: 'response-1' })]);
 
     // Interleave: agent1, agent2, agent1, agent2, agent1
@@ -187,8 +187,8 @@ describe('S3: Permission flow', () => {
 
     // Agent sends interaction with a permission-prompt child
     fm.merge([
-      { id: 'agent-interaction', type: 'interaction', parentId: null, content: { text: 'I need to run a tool' } },
-      { id: 'perm-prompt-1', type: 'permission-prompt', parentId: 'agent-interaction', content: { tool: 'bash', command: 'ls /', status: 'pending' } },
+      { id: 'agent-interaction', type: 'interaction', parentID: null, content: { text: 'I need to run a tool' } },
+      { id: 'perm-prompt-1', type: 'permission-prompt', parentID: 'agent-interaction', content: { tool: 'bash', command: 'ls /', status: 'pending' } },
     ]);
 
     assert.ok(fm.get('perm-prompt-1'), 'permission prompt should be stored');
@@ -240,11 +240,11 @@ describe('S4: HML prompt flow', () => {
 
     // Agent sends interaction with an HML prompt child
     fm.merge([
-      { id: 'agent-int-2', type: 'interaction', parentId: null, content: { text: 'Need your input' } },
+      { id: 'agent-int-2', type: 'interaction', parentID: null, content: { text: 'Need your input' } },
       {
         id:       'hml-prompt-1',
         type:     'hml-prompt',
-        parentId: 'agent-int-2',
+        parentID: 'agent-int-2',
         content:  {
           fields: [
             { name: 'name', label: 'Your name', type: 'text' },
@@ -309,14 +309,14 @@ describe('S5: Bulk load then live', () => {
       bulkFrames.push({
         id:      `int-${i}`,
         type:    'interaction',
-        parentId: null,
+        parentID: null,
         content: { text: `interaction-${i}` },
       });
       for (let j = 0; j < 3; j++) {
         bulkFrames.push({
           id:       `msg-${i}-${j}`,
           type:     'message',
-          parentId: `int-${i}`,
+          parentID: `int-${i}`,
           content:  { text: `message-${i}-${j}` },
         });
       }
@@ -341,7 +341,7 @@ describe('S5: Bulk load then live', () => {
 
     // Live: user sends new interaction, agent streams response
     fm.merge([
-      { id: 'live-int', type: 'interaction', parentId: null, content: { text: 'live question' } },
+      { id: 'live-int', type: 'interaction', parentID: null, content: { text: 'live question' } },
     ]);
 
     fm.merge([phantom('lp-1', 'live-resp', 'message', 'live-int', { text: 'live-1' })]);
@@ -382,14 +382,14 @@ describe('S5b: Randomized bulk load', () => {
       baseFrames.push({
         id:       `int-${i}`,
         type:     'interaction',
-        parentId: null,
+        parentID: null,
         content:  { text: `interaction-${i}` },
       });
       for (let j = 0; j < 3; j++) {
         baseFrames.push({
           id:       `msg-${i}-${j}`,
           type:     'message',
-          parentId: `int-${i}`,
+          parentID: `int-${i}`,
           content:  { text: `message-${i}-${j}` },
         });
       }
@@ -447,7 +447,7 @@ describe('S6: Late history backfill', () => {
       recentFrames.push({
         id:      `frame-${i}`,
         type:    'message',
-        parentId: null,
+        parentID: null,
         content: { text: `message-${i}`, originalOrder: i },
       });
     }
@@ -455,7 +455,7 @@ describe('S6: Late history backfill', () => {
 
     // User interacts live (gets order 21+)
     fm.merge([
-      { id: 'live-msg', type: 'interaction', parentId: null, content: { text: 'live message' } },
+      { id: 'live-msg', type: 'interaction', parentID: null, content: { text: 'live message' } },
     ]);
 
     // Load older page (order 1-10, backfill)
@@ -464,7 +464,7 @@ describe('S6: Late history backfill', () => {
       olderFrames.push({
         id:      `frame-${i}`,
         type:    'message',
-        parentId: null,
+        parentID: null,
         content: { text: `message-${i}`, originalOrder: i },
       });
     }
@@ -509,13 +509,13 @@ describe('S7: Concurrent users', () => {
 
     // Bob's agent is mid-stream when Alice sends
     fm.merge([
-      { id: 'bob-int', type: 'interaction', parentId: null, content: { text: 'Bob asks' } },
+      { id: 'bob-int', type: 'interaction', parentID: null, content: { text: 'Bob asks' } },
     ]);
     fm.merge([phantom('bob-p1', 'bob-resp', 'message', 'bob-int', { text: 'bob-chunk-1' })]);
 
     // Alice sends interaction while Bob's agent is streaming
     fm.merge([
-      { id: 'alice-int', type: 'interaction', parentId: null, content: { text: 'Alice asks' } },
+      { id: 'alice-int', type: 'interaction', parentID: null, content: { text: 'Alice asks' } },
     ]);
 
     // Bob's stream continues
@@ -526,7 +526,7 @@ describe('S7: Concurrent users', () => {
 
     // Bob sends another interaction while Alice's agent is mid-stream
     fm.merge([
-      { id: 'bob-int-2', type: 'interaction', parentId: null, content: { text: 'Bob follows up' } },
+      { id: 'bob-int-2', type: 'interaction', parentID: null, content: { text: 'Bob follows up' } },
     ]);
 
     // Alice's stream continues
@@ -538,12 +538,12 @@ describe('S7: Concurrent users', () => {
     // ── Verify no corruption ──
     // Bob's first response
     let bobResp = fm.getHead('bob-resp');
-    assert.equal(bobResp.parentId, 'bob-int');
+    assert.equal(bobResp.parentID, 'bob-int');
     assert.deepEqual(bobResp.content, { text: 'bob-final' });
 
     // Alice's response
     let aliceResp = fm.getHead('alice-resp');
-    assert.equal(aliceResp.parentId, 'alice-int');
+    assert.equal(aliceResp.parentID, 'alice-int');
     assert.deepEqual(aliceResp.content, { text: 'alice-chunk-2' });
 
     // Each participant's frames independent
@@ -714,7 +714,7 @@ describe('S10: Standalone phantoms', () => {
 
     // Then send a real message
     fm.merge([
-      { id: 'real-msg', type: 'message', parentId: null, content: { text: 'Hello everyone' } },
+      { id: 'real-msg', type: 'message', parentID: null, content: { text: 'Hello everyone' } },
     ]);
 
     // ── No phantoms stored ──
@@ -761,7 +761,7 @@ describe('S11: Full realistic conversation (BOSS FIGHT)', () => {
       bulkFrames.push({
         id:       `bulk-int-${i}`,
         type:     'interaction',
-        parentId: null,
+        parentID: null,
         content:  { text: `bulk-interaction-${i}` },
       });
       // 2 children each, plus one extra for interaction-0
@@ -770,7 +770,7 @@ describe('S11: Full realistic conversation (BOSS FIGHT)', () => {
         bulkFrames.push({
           id:       `bulk-msg-${i}-${j}`,
           type:     'message',
-          parentId: `bulk-int-${i}`,
+          parentID: `bulk-int-${i}`,
           content:  { text: `bulk-message-${i}-${j}` },
         });
       }
@@ -791,7 +791,7 @@ describe('S11: Full realistic conversation (BOSS FIGHT)', () => {
 
     // ── Step 2: Alice sends message ──
     fm.merge([
-      { id: 'alice-msg-1', type: 'interaction', parentId: null, content: { text: 'Alice starts' } },
+      { id: 'alice-msg-1', type: 'interaction', parentID: null, content: { text: 'Alice starts' } },
     ]);
 
     er.assertFiredWith('frame:added', (p) => p.frame.id === 'alice-msg-1');
@@ -824,7 +824,7 @@ describe('S11: Full realistic conversation (BOSS FIGHT)', () => {
       {
         id:       'hml-prompt',
         type:     'hml-prompt',
-        parentId: 'alice-msg-1',
+        parentID: 'alice-msg-1',
         content:  {
           fields: [{ name: 'confirm', label: 'Confirm action?', type: 'boolean' }],
           status: 'pending',
@@ -851,7 +851,7 @@ describe('S11: Full realistic conversation (BOSS FIGHT)', () => {
 
     // ── Step 7: Bob sends message ──
     fm.merge([
-      { id: 'bob-msg-1', type: 'interaction', parentId: null, content: { text: 'Bob joins' } },
+      { id: 'bob-msg-1', type: 'interaction', parentID: null, content: { text: 'Bob joins' } },
     ]);
 
     // ── Step 8: Agent-2 streams response to Bob (3 phantoms) ──
@@ -861,14 +861,14 @@ describe('S11: Full realistic conversation (BOSS FIGHT)', () => {
 
     let agent2Resp = fm.getHead('agent2-response');
     assert.deepEqual(agent2Resp.content, { text: 'bob-resp-3' });
-    assert.equal(agent2Resp.parentId, 'bob-msg-1');
+    assert.equal(agent2Resp.parentID, 'bob-msg-1');
 
     // ── Step 9: Permission prompt created ──
     fm.merge([
       {
         id:       'perm-prompt',
         type:     'permission-prompt',
-        parentId: 'alice-msg-1',
+        parentID: 'alice-msg-1',
         content:  { tool: 'file-write', path: '/tmp/test', status: 'pending' },
       },
     ]);
@@ -898,7 +898,7 @@ describe('S11: Full realistic conversation (BOSS FIGHT)', () => {
 
     // ── Step 12: Alice sends follow-up ──
     fm.merge([
-      { id: 'alice-msg-2', type: 'interaction', parentId: null, content: { text: 'Alice follows up' } },
+      { id: 'alice-msg-2', type: 'interaction', parentID: null, content: { text: 'Alice follows up' } },
     ]);
 
     // ── Step 13: Agent-1 streams final response ──
@@ -908,7 +908,7 @@ describe('S11: Full realistic conversation (BOSS FIGHT)', () => {
 
     let finalResp = fm.getHead('agent1-final');
     assert.deepEqual(finalResp.content, { text: 'final-3' });
-    assert.equal(finalResp.parentId, 'alice-msg-2');
+    assert.equal(finalResp.parentID, 'alice-msg-2');
 
     // ── Step 14: Backfill 5 older frames ──
     let backfillFrames = [];
@@ -916,7 +916,7 @@ describe('S11: Full realistic conversation (BOSS FIGHT)', () => {
       backfillFrames.push({
         id:       `backfill-${i}`,
         type:     'message',
-        parentId: null,
+        parentID: null,
         content:  { text: `old-message-${i}` },
       });
     }

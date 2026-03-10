@@ -32,7 +32,7 @@ import { AgentInterface }      from '../../src/core/plugins/agent-interface.mjs'
 // the agent record passed to execute().
 
 class MockAgent extends AgentInterface {
-  static pluginId    = 'mock-multi';
+  static pluginID    = 'mock-multi';
   static featureName = 'mock-multi';
   static displayName = 'Mock Multi Agent';
   static description = 'Mock agent for multi-agent tests';
@@ -60,7 +60,7 @@ class MockAgent extends AgentInterface {
 
 // CrashingAgent: yields some blocks then throws
 class CrashingAgent extends AgentInterface {
-  static pluginId    = 'crashing-agent';
+  static pluginID    = 'crashing-agent';
   static featureName = 'crashing';
   static displayName = 'Crashing Agent';
   static description = 'Agent that crashes for testing';
@@ -495,7 +495,7 @@ describe('Multi-Agent Integration', () => {
         content:    { text: 'Hello team' },
         authorType: 'user',
         authorID:   'usr_test',
-      }], { authorType: 'user', authorId: 'usr_test' });
+      }], { authorType: 'user', authorID: 'usr_test' });
 
       let scheduled = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
 
@@ -619,7 +619,7 @@ describe('Multi-Agent Integration', () => {
         content:    { text: 'After crash' },
         authorType: 'user',
         authorID:   'usr_test',
-      }], { authorType: 'user', authorId: 'usr_test' });
+      }], { authorType: 'user', authorID: 'usr_test' });
 
       // Scheduler should offer to trigger the crashed agent again (it's not stuck "active")
       let scheduled = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
@@ -692,7 +692,7 @@ describe('Multi-Agent Integration', () => {
         content:    { targetAgentID: beta.id },
         authorType: 'user',
         authorID:   'usr_test',
-      }], { authorType: 'user', authorId: 'usr_test' });
+      }], { authorType: 'user', authorID: 'usr_test' });
 
       await scheduler.onCommit(session.id, frameManager.getLatestCommit());
 
@@ -725,7 +725,7 @@ describe('Multi-Agent Integration', () => {
         content:    { targetAgentID: null },
         authorType: 'user',
         authorID:   'usr_test',
-      }], { authorType: 'user', authorId: 'usr_test' });
+      }], { authorType: 'user', authorID: 'usr_test' });
 
       let events = [];
       let cancelHandler = (data) => events.push(data);
@@ -785,7 +785,7 @@ describe('Multi-Agent Integration', () => {
         content:    { text: 'Start the cycle' },
         authorType: 'user',
         authorID:   'usr_test',
-      }], { authorType: 'user', authorId: 'usr_test' });
+      }], { authorType: 'user', authorID: 'usr_test' });
 
       let userCommit = frameManager.getLatestCommit();
 
@@ -810,7 +810,7 @@ describe('Multi-Agent Integration', () => {
       await runInteraction(session.id, beta, pluginB, null, { replayFromPermission: true });
 
       // Step 5: Agent A's commit should NOT re-trigger Alpha (self-authored)
-      let alphaCommit = frameManager.getCommits().find((c) => c.authorId === alpha.id);
+      let alphaCommit = frameManager.getCommits().find((c) => c.authorID === alpha.id);
       if (alphaCommit) {
         let reScheduled = await scheduler.onCommit(session.id, alphaCommit);
         let alphaSelf = reScheduled.find((s) => s.agentID === alpha.id);
@@ -854,7 +854,7 @@ describe('Multi-Agent Integration', () => {
         content:    { text: 'Second message' },
         authorType: 'user',
         authorID:   'usr_test',
-      }], { authorType: 'user', authorId: 'usr_test' });
+      }], { authorType: 'user', authorID: 'usr_test' });
 
       let newCommit  = frameManager.getLatestCommit();
       let scheduled  = await scheduler.onCommit(session.id, newCommit);

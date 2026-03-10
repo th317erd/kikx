@@ -10,7 +10,7 @@
 
 export class PluginInterface {
   // Static metadata — override in subclasses
-  static pluginId     = null;
+  static pluginID     = null;
   static featureName  = null;
   static displayName  = null;
   static description  = null;
@@ -45,7 +45,7 @@ export class PluginInterface {
 
   getHelp() {
     return {
-      name:        `${this.constructor.pluginId}:${this.constructor.featureName}`,
+      name:        `${this.constructor.pluginID}:${this.constructor.featureName}`,
       displayName: this.constructor.displayName,
       description: this.constructor.description,
       icon:        this.constructor.icon,

@@ -14,7 +14,7 @@ import { ShellPermissions }    from './shell-permissions.mjs';
 
 export function setup({ registerTool, PluginInterface }) {
   class ShellTool extends PluginInterface {
-    static pluginId    = 'shell';
+    static pluginID    = 'shell';
     static featureName = 'execute';
     static displayName = 'Shell';
     static description = 'Execute shell commands';

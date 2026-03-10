@@ -10,7 +10,7 @@ import { parseShellCommands } from '../internal-plugins/shell/command-parser.mjs
 // permission/tool callbacks).
 //
 // Accepts injectable `resolveContext` for HTTP-specific concerns (UMK for key
-// decryption, userId for permissions).
+// decryption, userID for permissions).
 // =============================================================================
 
 export class AgentResolver {
@@ -29,7 +29,7 @@ export class AgentResolver {
   // resolveContext:
   //   keystore       — Keystore instance (for API key decryption)
   //   umk            — User master key (Buffer)
-  //   userId         — authenticated user ID
+  //   userID         — authenticated user ID
   //   sessionID      — session scope for permissions
   //
   // Returns: { agentPlugin, resolvedAgent }
@@ -54,9 +54,9 @@ export class AgentResolver {
     let resolvedAgent = { ...(agent.toJSON ? agent.toJSON() : agent) };
 
     // Decrypt API key if encrypted and context provides keys
-    if (agent.encryptedAPIKey && resolveContext.keystore && resolveContext.umk && resolveContext.userId) {
+    if (agent.encryptedAPIKey && resolveContext.keystore && resolveContext.umk && resolveContext.userID) {
       try {
-        let userKey   = resolveContext.keystore.deriveUserKey(resolveContext.umk, resolveContext.userId);
+        let userKey   = resolveContext.keystore.deriveUserKey(resolveContext.umk, resolveContext.userID);
         let encrypted = JSON.parse(agent.encryptedAPIKey);
 
         resolvedAgent.apiKey = resolveContext.keystore.decrypt(encrypted, userKey).toString('utf8');

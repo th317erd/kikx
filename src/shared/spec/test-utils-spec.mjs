@@ -542,8 +542,8 @@ describe('IntegrityChecker', () => {
 
       manager.merge([
         { id: 'parent', type: 'thread' },
-        { id: 'child-1', type: 'message', parentId: 'parent' },
-        { id: 'child-2', type: 'message', parentId: 'parent' },
+        { id: 'child-1', type: 'message', parentID: 'parent' },
+        { id: 'child-2', type: 'message', parentID: 'parent' },
       ]);
 
       assert.doesNotThrow(() => IntegrityChecker.assertValid(manager));
@@ -584,7 +584,7 @@ describe('IntegrityChecker', () => {
 
       manager.merge([
         { id: 'parent', type: 'thread' },
-        { id: 'child-1', type: 'message', parentId: 'parent' },
+        { id: 'child-1', type: 'message', parentID: 'parent' },
       ]);
 
       // Corrupt: remove child-1 from frames but leave it in children index
@@ -595,11 +595,11 @@ describe('IntegrityChecker', () => {
       assert.ok(result.errors.some((e) => e.includes('child-1')));
     });
 
-    it('should detect mismatched parentId references', () => {
+    it('should detect mismatched parentID references', () => {
       let manager = new FrameManager();
 
       manager.merge([
-        { id: 'f1', type: 'message', parentId: 'nonexistent-parent' },
+        { id: 'f1', type: 'message', parentID: 'nonexistent-parent' },
       ]);
 
       let result = IntegrityChecker.check(manager);

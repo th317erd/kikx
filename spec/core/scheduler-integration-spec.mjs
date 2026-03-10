@@ -19,7 +19,7 @@ import { AgentInterface }      from '../../src/core/plugins/agent-interface.mjs'
 // =============================================================================
 
 class MockAgent extends AgentInterface {
-  static pluginId    = 'mock-agent';
+  static pluginID    = 'mock-agent';
   static featureName = 'mock';
   static displayName = 'Mock Agent';
   static description = 'Mock agent for testing';
@@ -134,7 +134,7 @@ describe('Scheduler Integration (B7)', () => {
     frameManager.merge([{
       id: 'frm_b7m_1', type: 'user-message', content: { text: 'Hello agents' },
       authorType: 'user', authorID: 'usr_1',
-    }], { authorType: 'user', authorId: 'usr_1' });
+    }], { authorType: 'user', authorID: 'usr_1' });
 
     let scheduled = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
 
@@ -193,7 +193,7 @@ describe('Scheduler Integration (B7)', () => {
     frameManager.merge([{
       id: 'frm_b7e_1', type: 'user-message', content: { text: 'Event test' },
       authorType: 'user', authorID: 'usr_1',
-    }], { authorType: 'user', authorId: 'usr_1' });
+    }], { authorType: 'user', authorID: 'usr_1' });
 
     await scheduler.onCommit(session.id, frameManager.getLatestCommit());
 

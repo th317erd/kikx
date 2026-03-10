@@ -556,22 +556,22 @@ describe('FramePersistence', () => {
   // ===========================================================================
 
   describe('_frameToRecord', () => {
-    it('should map parentId to parentID', () => {
+    it('should map parentID to parentID', () => {
       let record = persistence._frameToRecord('ses_001', 'int_001', {
         id:       'frm_test',
         type:     'message',
-        parentId: 'frm_parent',
+        parentID: 'frm_parent',
         order:    1,
       });
 
       assert.equal(record.parentID, 'frm_parent');
     });
 
-    it('should map groupId to groupID', () => {
+    it('should map groupID to groupID', () => {
       let record = persistence._frameToRecord('ses_001', 'int_001', {
         id:      'frm_test',
         type:    'message',
-        groupId: 'grp_001',
+        groupID: 'grp_001',
         order:   1,
       });
 
@@ -615,7 +615,7 @@ describe('FramePersistence', () => {
   });
 
   describe('_recordToFrame', () => {
-    it('should map parentID to parentId', () => {
+    it('should map parentID to parentID', () => {
       let frame = persistence._recordToFrame({
         id:        'frm_test',
         type:      'message',
@@ -624,10 +624,10 @@ describe('FramePersistence', () => {
         timestamp: Date.now(),
       });
 
-      assert.equal(frame.parentId, 'frm_parent');
+      assert.equal(frame.parentID, 'frm_parent');
     });
 
-    it('should map groupID to groupId', () => {
+    it('should map groupID to groupID', () => {
       let frame = persistence._recordToFrame({
         id:        'frm_test',
         type:      'message',
@@ -636,7 +636,7 @@ describe('FramePersistence', () => {
         timestamp: Date.now(),
       });
 
-      assert.equal(frame.groupId, 'grp_001');
+      assert.equal(frame.groupID, 'grp_001');
     });
 
     it('should deserialize content JSON string to object', () => {
@@ -705,8 +705,8 @@ describe('FramePersistence', () => {
           type:          'message',
           content:       content,
           targets:       targets,
-          parentId:      'frm_parent_id',
-          groupId:       'grp_001',
+          parentID:      'frm_parent_id',
+          groupID:       'grp_001',
           groupType:     'thinking',
           interactionID: 'int_root',
           authorType:    'agent',
@@ -731,8 +731,8 @@ describe('FramePersistence', () => {
       assert.equal(frame.type, 'message');
       assert.deepEqual(frame.content, content);
       assert.deepEqual(frame.targets, targets);
-      assert.equal(frame.parentId, 'frm_parent_id');
-      assert.equal(frame.groupId, 'grp_001');
+      assert.equal(frame.parentID, 'frm_parent_id');
+      assert.equal(frame.groupID, 'grp_001');
       assert.equal(frame.groupType, 'thinking');
       assert.equal(frame.hidden, false);
       assert.equal(frame.deleted, false);

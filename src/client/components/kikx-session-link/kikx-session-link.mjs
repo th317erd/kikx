@@ -144,14 +144,14 @@ class KikxSessionLink extends HTMLElement {
   }
 
   _onClick() {
-    let targetSessionId = this.getAttribute('target-session-id');
-    if (!targetSessionId)
+    let targetSessionID = this.getAttribute('target-session-id');
+    if (!targetSessionID)
       return;
 
     this.dispatchEvent(new CustomEvent('select-session', {
       bubbles:  true,
       composed: true,
-      detail:   { id: targetSessionId },
+      detail:   { id: targetSessionID },
     }));
   }
 }

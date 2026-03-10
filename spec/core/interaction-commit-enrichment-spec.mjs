@@ -18,7 +18,7 @@ import { AgentInterface }     from '../../src/core/plugins/agent-interface.mjs';
 // =============================================================================
 
 class MockAgent extends AgentInterface {
-  static pluginId    = 'mock-agent';
+  static pluginID    = 'mock-agent';
   static featureName = 'mock';
   static displayName = 'Mock Agent';
   static description = 'Mock agent for testing';

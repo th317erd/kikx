@@ -178,13 +178,13 @@ class KikxCreateSessionModal extends HTMLElement {
   }
 
   _onCreate() {
-    let agentId = this._agentSelect.value || null;
+    let agentID = this._agentSelect.value || null;
     let name    = this._input.value.trim() || null;
 
     this.dispatchEvent(new CustomEvent('session-create', {
       bubbles:  true,
       composed: true,
-      detail:   { name, agentId },
+      detail:   { name, agentID },
     }));
   }
 

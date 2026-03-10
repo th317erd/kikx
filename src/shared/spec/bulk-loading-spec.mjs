@@ -23,8 +23,8 @@ function generateFrames(count, options = {}) {
       content: { text: `content-${i}`, index: i },
     };
 
-    if (options.parentId)
-      frame.parentId = options.parentId;
+    if (options.parentID)
+      frame.parentID = options.parentID;
 
     frames.push(frame);
   }
@@ -108,11 +108,11 @@ describe('FrameManager Bulk Loading', () => {
 
       let children = [];
       for (let i = 0; i < 6; i++) {
-        let parentId = (i < 3) ? 'parent-1' : 'parent-2';
+        let parentID = (i < 3) ? 'parent-1' : 'parent-2';
         children.push({
           id:       `child-${i}`,
           type:     'message',
-          parentId: parentId,
+          parentID: parentID,
           content:  { index: i },
         });
       }
@@ -137,9 +137,9 @@ describe('FrameManager Bulk Loading', () => {
 
       let frames = [
         { id: 'root', type: 'thread' },
-        { id: 'c-3', type: 'message', parentId: 'root', content: { label: 'third' } },
-        { id: 'c-1', type: 'message', parentId: 'root', content: { label: 'first' } },
-        { id: 'c-2', type: 'message', parentId: 'root', content: { label: 'second' } },
+        { id: 'c-3', type: 'message', parentID: 'root', content: { label: 'third' } },
+        { id: 'c-1', type: 'message', parentID: 'root', content: { label: 'first' } },
+        { id: 'c-2', type: 'message', parentID: 'root', content: { label: 'second' } },
       ];
 
       manager.merge(frames, { events: false });
@@ -200,9 +200,9 @@ describe('FrameManager Bulk Loading', () => {
     it('should produce correct parent-child relationships regardless of insertion order', () => {
       let frameData = [
         { id: 'parent', type: 'thread' },
-        { id: 'child-a', type: 'message', parentId: 'parent', content: { label: 'a' } },
-        { id: 'child-b', type: 'message', parentId: 'parent', content: { label: 'b' } },
-        { id: 'child-c', type: 'message', parentId: 'parent', content: { label: 'c' } },
+        { id: 'child-a', type: 'message', parentID: 'parent', content: { label: 'a' } },
+        { id: 'child-b', type: 'message', parentID: 'parent', content: { label: 'b' } },
+        { id: 'child-c', type: 'message', parentID: 'parent', content: { label: 'c' } },
       ];
 
       // Load in order
@@ -243,7 +243,7 @@ describe('FrameManager Bulk Loading', () => {
         frameData.push({
           id:       `child-x-${i}`,
           type:     'message',
-          parentId: 'parent-x',
+          parentID: 'parent-x',
           content:  { childIndex: i },
         });
       }

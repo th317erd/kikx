@@ -22,12 +22,12 @@ export class IntegrityChecker {
   }
 
   /**
-   * All parentId references point to existing frames (or are null)
+   * All parentID references point to existing frames (or are null)
    */
   static _checkParentReferences(frameManager, errors) {
     for (let [, frame] of frameManager._frames) {
-      if (frame.parentId && !frameManager._frames.has(frame.parentId))
-        errors.push(`Frame "${frame.id}" has parentId "${frame.parentId}" which does not exist in the frame index`);
+      if (frame.parentID && !frameManager._frames.has(frame.parentID))
+        errors.push(`Frame "${frame.id}" has parentID "${frame.parentID}" which does not exist in the frame index`);
     }
   }
 
@@ -35,9 +35,9 @@ export class IntegrityChecker {
    * Every FramePointer chain is valid (no broken links, no cycles, consistent head/tail)
    */
   static _checkPointerChains(frameManager, errors) {
-    for (let [frameId, pointer] of frameManager._pointers) {
+    for (let [frameID, pointer] of frameManager._pointers) {
       if (!pointer) {
-        errors.push(`Pointer for frame "${frameId}" is null/undefined`);
+        errors.push(`Pointer for frame "${frameID}" is null/undefined`);
         continue;
       }
 
@@ -48,14 +48,14 @@ export class IntegrityChecker {
 
       while (current) {
         if (visited.has(current)) {
-          errors.push(`Cycle detected in pointer chain for frame "${frameId}" (forward walk)`);
+          errors.push(`Cycle detected in pointer chain for frame "${frameID}" (forward walk)`);
           break;
         }
 
         visited.add(current);
 
         if (!current.frame)
-          errors.push(`Pointer node in chain for frame "${frameId}" has null frame`);
+          errors.push(`Pointer node in chain for frame "${frameID}" has null frame`);
 
         last    = current;
         current = current.next;
@@ -63,7 +63,7 @@ export class IntegrityChecker {
 
       // Forward walk should reach head
       if (last && last !== pointer.head)
-        errors.push(`Forward walk for frame "${frameId}" did not reach head`);
+        errors.push(`Forward walk for frame "${frameID}" did not reach head`);
 
       // Walk backward from head
       let visitedReverse = new Set();
@@ -72,7 +72,7 @@ export class IntegrityChecker {
 
       while (current) {
         if (visitedReverse.has(current)) {
-          errors.push(`Cycle detected in pointer chain for frame "${frameId}" (backward walk)`);
+          errors.push(`Cycle detected in pointer chain for frame "${frameID}" (backward walk)`);
           break;
         }
 
@@ -83,7 +83,7 @@ export class IntegrityChecker {
 
       // Backward walk should reach stored pointer
       if (first && first !== pointer)
-        errors.push(`Backward walk for frame "${frameId}" did not reach stored pointer`);
+        errors.push(`Backward walk for frame "${frameID}" did not reach stored pointer`);
     }
   }
 
@@ -91,17 +91,17 @@ export class IntegrityChecker {
    * No orphaned FramePointers (pointer exists but referenced frame doesn't exist in frame index)
    */
   static _checkOrphanedPointers(frameManager, errors) {
-    for (let [frameId] of frameManager._pointers) {
-      if (!frameManager._frames.has(frameId))
-        errors.push(`Pointer exists for frame "${frameId}" but no corresponding frame in the index`);
+    for (let [frameID] of frameManager._pointers) {
+      if (!frameManager._frames.has(frameID))
+        errors.push(`Pointer exists for frame "${frameID}" but no corresponding frame in the index`);
     }
   }
 
   /**
-   * Order values are monotonically increasing for frames with same parentId
+   * Order values are monotonically increasing for frames with same parentID
    */
   static _checkOrderMonotonicity(frameManager, errors) {
-    for (let [parentId, childIds] of frameManager._children) {
+    for (let [parentID, childIds] of frameManager._children) {
       if (!childIds || childIds.length < 2)
         continue;
 
@@ -114,7 +114,7 @@ export class IntegrityChecker {
           continue;
 
         if (childFrame.order <= lastOrder)
-          errors.push(`Order not monotonically increasing for children of "${parentId}": frame "${childIds[j]}" has order ${childFrame.order} but previous was ${lastOrder}`);
+          errors.push(`Order not monotonically increasing for children of "${parentID}": frame "${childIds[j]}" has order ${childFrame.order} but previous was ${lastOrder}`);
 
         lastOrder = childFrame.order;
       }
@@ -134,36 +134,36 @@ export class IntegrityChecker {
   }
 
   /**
-   * Children lists are consistent with parentId references
+   * Children lists are consistent with parentID references
    */
   static _checkChildrenConsistency(frameManager, errors) {
     // Build a set of all child relationships from the children index
     let indexedChildren = new Map();
 
-    for (let [parentId, childIds] of frameManager._children) {
+    for (let [parentID, childIds] of frameManager._children) {
       for (let j = 0; j < childIds.length; j++)
-        indexedChildren.set(childIds[j], parentId);
+        indexedChildren.set(childIds[j], parentID);
     }
 
-    // Every frame with a parentId should appear in the children index
+    // Every frame with a parentID should appear in the children index
     for (let [, frame] of frameManager._frames) {
-      if (frame.parentId) {
+      if (frame.parentID) {
         let indexedParent = indexedChildren.get(frame.id);
 
         if (!indexedParent)
-          errors.push(`Frame "${frame.id}" has parentId "${frame.parentId}" but is not in the children index`);
-        else if (indexedParent !== frame.parentId)
-          errors.push(`Frame "${frame.id}" has parentId "${frame.parentId}" but children index lists it under "${indexedParent}"`);
+          errors.push(`Frame "${frame.id}" has parentID "${frame.parentID}" but is not in the children index`);
+        else if (indexedParent !== frame.parentID)
+          errors.push(`Frame "${frame.id}" has parentID "${frame.parentID}" but children index lists it under "${indexedParent}"`);
       }
     }
 
     // Every entry in the children index should reference an existing frame
-    for (let [parentId, childIds] of frameManager._children) {
+    for (let [parentID, childIds] of frameManager._children) {
       for (let j = 0; j < childIds.length; j++) {
-        let childId = childIds[j];
+        let childID = childIds[j];
 
-        if (!frameManager._frames.has(childId))
-          errors.push(`Children index for "${parentId}" references frame "${childId}" which does not exist`);
+        if (!frameManager._frames.has(childID))
+          errors.push(`Children index for "${parentID}" references frame "${childID}" which does not exist`);
       }
     }
   }

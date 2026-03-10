@@ -132,7 +132,7 @@ describe('SchedulerOrchestrator', () => {
         content:    { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       let commit = frameManager.getLatestCommit();
 
@@ -172,7 +172,7 @@ describe('SchedulerOrchestrator', () => {
         content:    { text: 'Something went wrong' },
         authorType: 'system',
         authorID:   null,
-      }], { authorType: 'system', authorId: null });
+      }], { authorType: 'system', authorID: null });
 
       let commit = frameManager.getLatestCommit();
 
@@ -212,7 +212,7 @@ describe('SchedulerOrchestrator', () => {
         content:    { html: '<p>Agent reply</p>' },
         authorType: 'agent',
         authorID:   agentA.id,
-      }], { authorType: 'agent', authorId: agentA.id });
+      }], { authorType: 'agent', authorID: agentA.id });
 
       let commit = frameManager.getLatestCommit();
 
@@ -321,7 +321,7 @@ describe('SchedulerOrchestrator', () => {
         content:    { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       let commit = frameManager.getLatestCommit();
       interactionLoop.emit('commit', { sessionID: session.id, commit });
@@ -368,7 +368,7 @@ describe('SchedulerOrchestrator', () => {
         content:    { text: 'Hello all three' },
         authorType: 'user',
         authorID:   'usr_1',
-      }], { authorType: 'user', authorId: 'usr_1' });
+      }], { authorType: 'user', authorID: 'usr_1' });
 
       let commit = frameManager.getLatestCommit();
       interactionLoop.emit('commit', { sessionID: session.id, commit });

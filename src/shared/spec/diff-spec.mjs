@@ -41,7 +41,7 @@ describe('Diff', () => {
 
     let result = manager.diff(0, order);
     assert.equal(result.length, 1);
-    assert.equal(result[0].frameId, 'f1');
+    assert.equal(result[0].frameID, 'f1');
     assert.equal(result[0].operation, 'create');
     assert.ok(result[0].frame);
     assert.equal(result[0].frame.id, 'f1');
@@ -57,7 +57,7 @@ describe('Diff', () => {
     let result = manager.diff(order1, order2);
 
     // u1 is created, f1 is updated
-    let f1Change = result.find((c) => c.frameId === 'f1');
+    let f1Change = result.find((c) => c.frameID === 'f1');
     assert.ok(f1Change);
     assert.equal(f1Change.operation, 'update');
   });
@@ -72,7 +72,7 @@ describe('Diff', () => {
     let result = manager.diff(0, manager.getLatestCommit().order);
 
     // f1 should appear once with its latest state, not multiple times
-    let f1Changes = result.filter((c) => c.frameId === 'f1');
+    let f1Changes = result.filter((c) => c.frameID === 'f1');
     assert.equal(f1Changes.length, 1);
     assert.equal(f1Changes[0].frame.content.text, 'v3');
   });
@@ -87,7 +87,7 @@ describe('Diff', () => {
 
     // Should include f2 and f3 (from after order1 to order3)
     let result = manager.diff(order1, order3);
-    let frameIds = result.map((c) => c.frameId);
+    let frameIds = result.map((c) => c.frameID);
     assert.ok(frameIds.includes('f2'));
     assert.ok(frameIds.includes('f3'));
     assert.ok(!frameIds.includes('f1'));
@@ -99,7 +99,7 @@ describe('Diff', () => {
     manager.merge([{ id: 'f3', type: 'message' }]);
 
     let result = manager.diff(0, manager.getLatestCommit().order);
-    let frameIds = result.map((c) => c.frameId);
+    let frameIds = result.map((c) => c.frameID);
     assert.ok(frameIds.includes('f1'));
     assert.ok(frameIds.includes('f2'));
     assert.ok(frameIds.includes('f3'));
@@ -118,7 +118,7 @@ describe('Diff', () => {
 
     let result = manager.diff('processed/agent-1', 'heads/main');
     assert.equal(result.length, 1);
-    assert.equal(result[0].frameId, 'f2');
+    assert.equal(result[0].frameID, 'f2');
   });
 
   it('diff() should throw for non-existent ref name', () => {
@@ -139,7 +139,7 @@ describe('Diff', () => {
     manager.merge([{ id: 'u1', type: 'message', targets: ['f1'], content: { text: 'v2' } }]);
 
     let result = manager.diff(0, manager.getLatestCommit().order);
-    let f1Change = result.find((c) => c.frameId === 'f1');
+    let f1Change = result.find((c) => c.frameID === 'f1');
     // First operation was 'create', so it stays 'create'
     assert.equal(f1Change.operation, 'create');
   });
@@ -159,7 +159,7 @@ describe('Diff', () => {
     // Should be Frame objects, not change records
     assert.ok(frames[0].id);
     assert.ok(frames[0].type);
-    assert.equal(frames[0].frameId, undefined);
+    assert.equal(frames[0].frameID, undefined);
     assert.equal(frames[0].operation, undefined);
   });
 

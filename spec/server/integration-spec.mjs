@@ -17,7 +17,7 @@ import { AgentInterface }   from '../../src/core/plugins/agent-interface.mjs';
 // =============================================================================
 
 class MockAgent extends AgentInterface {
-  static pluginId    = 'mock-agent';
+  static pluginID    = 'mock-agent';
   static featureName = 'mock';
   static agentType   = 'mock';
 
@@ -50,7 +50,7 @@ class MockAgent extends AgentInterface {
 // =============================================================================
 
 class SlowMockAgent extends AgentInterface {
-  static pluginId    = 'slow-mock-agent';
+  static pluginID    = 'slow-mock-agent';
   static featureName = 'slow-mock';
   static agentType   = 'slow-mock';
 

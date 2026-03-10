@@ -36,7 +36,7 @@ export function setup({ registerSelector, context }) {
       let frameManager = this.context.frameManager;
 
       for (let change of changes) {
-        let frame = frameManager && frameManager.getHead(change.frameId);
+        let frame = frameManager && frameManager.getHead(change.frameID);
         if (!frame || frame.type !== 'tool-call')
           continue;
 

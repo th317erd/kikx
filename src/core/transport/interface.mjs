@@ -10,7 +10,7 @@ export class Transport extends EventEmitter {
   }
 
   // Send a message/frame to a specific client/connection
-  async send(connectionId, data) {
+  async send(connectionID, data) {
     throw new Error('Transport.send() not implemented');
   }
 
@@ -26,7 +26,7 @@ export class Transport extends EventEmitter {
   }
 
   // Create a streaming connection (for SSE-like transports)
-  createStream(connectionId, options) {
+  createStream(connectionID, options) {
     throw new Error('Transport.createStream() not implemented');
   }
 

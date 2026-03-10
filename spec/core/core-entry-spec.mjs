@@ -320,7 +320,7 @@ describe('KikxCore plugin loading', () => {
 
   it('should load plugins from config.plugins.modules on start', async () => {
     class TestAgent extends AgentInterface {
-      static pluginId = 'test-agent';
+      static pluginID = 'test-agent';
     }
 
     core = createKikxCore({
@@ -370,7 +370,7 @@ describe('KikxCore plugin loading', () => {
 
   it('should skip disabled plugins', async () => {
     class TestAgent extends AgentInterface {
-      static pluginId = 'disabled-agent';
+      static pluginID = 'disabled-agent';
     }
 
     core = createKikxCore({

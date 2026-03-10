@@ -27,7 +27,7 @@ describe('Adversarial Tests', () => {
         { id: 'f1', type: 'message', content: { text: 'original' } },
       ]);
 
-      let originalId = fm.get('f1').id;
+      let originalID = fm.get('f1').id;
 
       // Attack: attempt to overwrite the id via a merge targeting f1
       fm.merge([
@@ -37,7 +37,7 @@ describe('Adversarial Tests', () => {
       // The attack frame uses its own id 'atk-1' (or 'hijacked' if the literal wins),
       // but f1 must keep its original id regardless.
       let f1 = fm.getHead('f1');
-      assert.equal(f1.id, originalId, 'Frame f1 should keep its original id');
+      assert.equal(f1.id, originalID, 'Frame f1 should keep its original id');
 
       IntegrityChecker.assertValid(fm);
     });
@@ -86,19 +86,19 @@ describe('Adversarial Tests', () => {
       // Create interaction I1 with child F1
       fm.merge([
         { id: 'i1', type: 'interaction', content: {} },
-        { id: 'f1', type: 'message', parentId: 'i1', content: { text: 'child of i1' } },
+        { id: 'f1', type: 'message', parentID: 'i1', content: { text: 'child of i1' } },
         { id: 'i2', type: 'interaction', content: {} },
       ]);
 
-      assert.equal(fm.get('f1').parentId, 'i1');
+      assert.equal(fm.get('f1').parentID, 'i1');
 
       // Attack: try to reparent f1 to i2 via merge
       fm.merge([
-        { id: 'atk-4', type: 'merge', targets: ['f1'], content: {}, parentId: 'i2' },
+        { id: 'atk-4', type: 'merge', targets: ['f1'], content: {}, parentID: 'i2' },
       ]);
 
       let f1 = fm.getHead('f1');
-      assert.equal(f1.parentId, 'i1', 'Frame f1 should remain child of i1');
+      assert.equal(f1.parentID, 'i1', 'Frame f1 should remain child of i1');
 
       IntegrityChecker.assertValid(fm);
     });
@@ -216,7 +216,7 @@ describe('Adversarial Tests', () => {
       IntegrityChecker.assertValid(fm);
     });
 
-    it('H10: phantom with groupId merges content into existing frame', () => {
+    it('H10: phantom with groupID merges content into existing frame', () => {
       let fm = new FrameManager();
 
       // Create a normal frame f1
@@ -224,9 +224,9 @@ describe('Adversarial Tests', () => {
         { id: 'f1', type: 'message', content: { text: 'hello' } },
       ]);
 
-      // Send a phantom with groupId=f1.id — this should merge content into f1
+      // Send a phantom with groupID=f1.id — this should merge content into f1
       fm.merge([
-        { id: 'phantom-1', type: 'message', phantom: true, groupId: 'f1', content: { extra: 'data' } },
+        { id: 'phantom-1', type: 'message', phantom: true, groupID: 'f1', content: { extra: 'data' } },
       ]);
 
       let f1 = fm.getHead('f1');
@@ -237,23 +237,23 @@ describe('Adversarial Tests', () => {
       IntegrityChecker.assertValid(fm);
     });
 
-    it('H11: frame with nonexistent parentId is stored (orphan)', () => {
+    it('H11: frame with nonexistent parentID is stored (orphan)', () => {
       let fm = new FrameManager();
 
       fm.merge([
-        { id: 'orphan-1', type: 'message', parentId: 'nonexistent', content: { text: 'lost' } },
+        { id: 'orphan-1', type: 'message', parentID: 'nonexistent', content: { text: 'lost' } },
       ]);
 
       // Frame should be stored even though parent doesn't exist
       let orphan = fm.get('orphan-1');
       assert.ok(orphan, 'Orphan frame should be stored');
-      assert.equal(orphan.parentId, 'nonexistent');
+      assert.equal(orphan.parentID, 'nonexistent');
       assert.equal(orphan.content.text, 'lost');
 
       // IntegrityChecker will correctly flag the orphan parent reference.
       // Verify it reports the specific error.
       let result = IntegrityChecker.check(fm);
-      assert.equal(result.valid, false, 'IntegrityChecker should flag orphan parentId');
+      assert.equal(result.valid, false, 'IntegrityChecker should flag orphan parentID');
       assert.ok(
         result.errors.some(e => e.includes('nonexistent') && e.includes('does not exist')),
         'Error should mention the nonexistent parent',
@@ -265,7 +265,7 @@ describe('Adversarial Tests', () => {
 
       // First phantom creates the group frame with type 'message'
       fm.merge([
-        { id: 'p1', type: 'phantom', phantom: true, groupId: 'g1', groupType: 'message', content: { text: 'first' } },
+        { id: 'p1', type: 'phantom', phantom: true, groupID: 'g1', groupType: 'message', content: { text: 'first' } },
       ]);
 
       let g1 = fm.getHead('g1');
@@ -273,7 +273,7 @@ describe('Adversarial Tests', () => {
 
       // Second phantom with conflicting groupType should be skipped
       fm.merge([
-        { id: 'p2', type: 'phantom', phantom: true, groupId: 'g1', groupType: 'reflection', content: { text: 'second' } },
+        { id: 'p2', type: 'phantom', phantom: true, groupID: 'g1', groupType: 'reflection', content: { text: 'second' } },
       ]);
 
       let g1After = fm.getHead('g1');

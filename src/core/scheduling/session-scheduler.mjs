@@ -32,7 +32,7 @@ export class SessionScheduler extends EventEmitter {
     // agentID → true while agent is running
     this._activeAgents = new Map();
 
-    // sessionID → { keystore, umk, userId } for secondary agent resolution
+    // sessionID → { keystore, umk, userID } for secondary agent resolution
     this._resolveContexts = new Map();
 
     // sessionID → [{ agentID }] — agents queued to trigger
@@ -74,12 +74,12 @@ export class SessionScheduler extends EventEmitter {
       return [];
 
     // Check if the commit contains a stop frame — handle cancellation
-    // commit.changes are { frameId, operation } records; resolve to actual frames
+    // commit.changes are { frameID, operation } records; resolve to actual frames
     let frameManager = this._sessionManager.getFrameManager(sessionID);
     let stopFrames   = [];
 
     for (let change of (commit.changes || [])) {
-      let frame = frameManager.getHead(change.frameId);
+      let frame = frameManager.getHead(change.frameID);
       if (frame && frame.type === 'stop')
         stopFrames.push(frame);
     }
@@ -107,7 +107,7 @@ export class SessionScheduler extends EventEmitter {
         continue;
 
       // Skip if this agent authored the commit (prevents infinite loop)
-      if (commit.authorId && commit.authorId === agentID) {
+      if (commit.authorID && commit.authorID === agentID) {
         this.emit('schedule:skip', { sessionID, agentID, reason: 'self-authored' });
         continue;
       }

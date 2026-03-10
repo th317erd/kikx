@@ -216,7 +216,7 @@ function registerComponent() {
         bubbles:  true,
         composed: true,
         detail: {
-          permissionId: this.getAttribute('permission-id') || '',
+          permissionID: this.getAttribute('permission-id') || '',
           decision:     this._selectedValue,
         },
       }));
@@ -364,7 +364,7 @@ describe('kikx-permission-request', () => {
     button.click();
 
     assert.equal(events.length, 1, 'should have dispatched one event');
-    assert.equal(events[0].detail.permissionId, 'perm-42', 'permissionId should match attribute');
+    assert.equal(events[0].detail.permissionID, 'perm-42', 'permissionID should match attribute');
     assert.equal(events[0].detail.decision, 'allow-session', 'decision should be allow-session');
     assert.equal(events[0].bubbles, true, 'event should bubble');
     assert.equal(events[0].composed, true, 'event should be composed');

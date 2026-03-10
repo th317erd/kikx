@@ -19,7 +19,7 @@ export class AuthController extends ControllerAuthBase {
 
   async updateProfile({ body }) {
     let { User } = this.getCoreModels();
-    let user     = await User.where.id.EQ(this.request.userId).first();
+    let user     = await User.where.id.EQ(this.request.userID).first();
 
     if (!user)
       this.throwNotFoundError('User not found');
@@ -114,7 +114,7 @@ export class AuthController extends ControllerAuthBase {
 
   async me() {
     let { User } = this.getCoreModels();
-    let user     = await User.where.id.EQ(this.request.userId).first();
+    let user     = await User.where.id.EQ(this.request.userID).first();
 
     if (!user)
       this.throwNotFoundError('User not found');

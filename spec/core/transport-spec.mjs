@@ -177,7 +177,7 @@ describe('EventTransport', () => {
     await transport.send('stream-1', 'hello');
 
     assert.ok(emitted);
-    assert.equal(emitted.connectionId, 'stream-1');
+    assert.equal(emitted.connectionID, 'stream-1');
     assert.equal(emitted.data, 'hello');
   });
 
@@ -219,7 +219,7 @@ describe('EventTransport', () => {
     transport.simulateMessage('client-1', { action: 'join' });
 
     assert.equal(received.length, 1);
-    assert.equal(received[0].connectionId, 'client-1');
+    assert.equal(received[0].connectionID, 'client-1');
     assert.deepStrictEqual(received[0].data, { action: 'join' });
   });
 
@@ -235,7 +235,7 @@ describe('EventTransport', () => {
     await transport.send('nonexistent', 'test');
 
     assert.ok(emitted);
-    assert.equal(emitted.connectionId, 'nonexistent');
+    assert.equal(emitted.connectionID, 'nonexistent');
   });
 
   it('should clear all streams on disconnect', async () => {
@@ -334,7 +334,7 @@ describe('SSETransport', () => {
 
     assert.equal(transport.getConnectionCount(), 1);
     assert.ok(emitted);
-    assert.equal(emitted.connectionId, 'conn-1');
+    assert.equal(emitted.connectionID, 'conn-1');
     assert.equal(typeof unregister, 'function');
   });
 
@@ -348,7 +348,7 @@ describe('SSETransport', () => {
 
     assert.equal(transport.getConnectionCount(), 0);
     assert.ok(emitted);
-    assert.equal(emitted.connectionId, 'conn-1');
+    assert.equal(emitted.connectionID, 'conn-1');
     assert.equal(writer.isClosed(), true);
   });
 
@@ -411,7 +411,7 @@ describe('SSETransport', () => {
     await transport.send('conn-1', 'test');
 
     assert.ok(emitted);
-    assert.equal(emitted.connectionId, 'conn-1');
+    assert.equal(emitted.connectionID, 'conn-1');
     assert.equal(emitted.data, 'test');
   });
 

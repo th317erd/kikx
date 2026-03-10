@@ -79,7 +79,7 @@ describe('Commit Log', () => {
     let commit = manager.getLatestCommit();
     assert.ok(commit.changes.length >= 1);
 
-    let change = commit.changes.find((c) => c.frameId === 'f1');
+    let change = commit.changes.find((c) => c.frameID === 'f1');
     assert.ok(change, 'expected change for f1');
     assert.equal(change.operation, 'create');
   });
@@ -95,8 +95,8 @@ describe('Commit Log', () => {
 
     let commit = commits[0];
     assert.equal(commit.changes.length, 2);
-    assert.ok(commit.changes.find((c) => c.frameId === 'f1'));
-    assert.ok(commit.changes.find((c) => c.frameId === 'f2'));
+    assert.ok(commit.changes.find((c) => c.frameID === 'f1'));
+    assert.ok(commit.changes.find((c) => c.frameID === 'f2'));
   });
 
   it('should track target merges as updates', () => {
@@ -109,33 +109,33 @@ describe('Commit Log', () => {
     ]);
 
     let commit = manager.getLatestCommit();
-    let updateChange = commit.changes.find((c) => c.frameId === 'f1');
+    let updateChange = commit.changes.find((c) => c.frameID === 'f1');
     assert.ok(updateChange, 'expected update change for target f1');
     assert.equal(updateChange.operation, 'update');
   });
 
   it('should track phantom group creation as create', () => {
     manager.merge([
-      { id: 'p1', type: 'message', phantom: true, groupId: 'g1', groupType: 'message', content: { text: 'streaming' } },
+      { id: 'p1', type: 'message', phantom: true, groupID: 'g1', groupType: 'message', content: { text: 'streaming' } },
     ]);
 
     let commit = manager.getLatestCommit();
-    let change = commit.changes.find((c) => c.frameId === 'g1');
+    let change = commit.changes.find((c) => c.frameID === 'g1');
     assert.ok(change, 'expected change for group frame g1');
     assert.equal(change.operation, 'create');
   });
 
   it('should track phantom merge into existing group as update', () => {
     manager.merge([
-      { id: 'p1', type: 'message', phantom: true, groupId: 'g1', groupType: 'message', content: { text: 'v1' } },
+      { id: 'p1', type: 'message', phantom: true, groupID: 'g1', groupType: 'message', content: { text: 'v1' } },
     ]);
 
     manager.merge([
-      { id: 'p2', type: 'message', phantom: true, groupId: 'g1', content: { text: 'v2' } },
+      { id: 'p2', type: 'message', phantom: true, groupID: 'g1', content: { text: 'v2' } },
     ]);
 
     let commit = manager.getLatestCommit();
-    let change = commit.changes.find((c) => c.frameId === 'g1');
+    let change = commit.changes.find((c) => c.frameID === 'g1');
     assert.ok(change, 'expected update change for group g1');
     assert.equal(change.operation, 'update');
   });
@@ -149,18 +149,18 @@ describe('Commit Log', () => {
 
     let commit = manager.getLatestCommit();
     assert.equal(commit.authorType, 'system');
-    assert.equal(commit.authorId, null);
+    assert.equal(commit.authorID, null);
   });
 
-  it('should record authorType and authorId from merge options', () => {
+  it('should record authorType and authorID from merge options', () => {
     manager.merge([{ id: 'f1', type: 'message' }], {
       authorType: 'user',
-      authorId:   'alice',
+      authorID:   'alice',
     });
 
     let commit = manager.getLatestCommit();
     assert.equal(commit.authorType, 'user');
-    assert.equal(commit.authorId, 'alice');
+    assert.equal(commit.authorID, 'alice');
   });
 
   // ---------------------------------------------------------------------------

@@ -16,7 +16,7 @@ import { PermissionDeniedError }   from '../../src/core/permissions/permission-d
 // =============================================================================
 
 class MockAgent extends AgentInterface {
-  static pluginId    = 'mock-agent';
+  static pluginID    = 'mock-agent';
   static featureName = 'mock';
   static displayName = 'Mock Agent';
   static description = 'Mock agent for testing';
@@ -100,7 +100,7 @@ describe('Command Permissions (system:command)', () => {
       let ToolClass = registry.getTool('system:command');
 
       assert.ok(ToolClass, 'system:command tool should be registered');
-      assert.equal(ToolClass.pluginId, 'system');
+      assert.equal(ToolClass.pluginID, 'system');
       assert.equal(ToolClass.featureName, 'command');
       assert.equal(ToolClass.riskLevel, 'high');
     });
@@ -716,7 +716,7 @@ describe('Command Permissions (system:command)', () => {
 
       // Step 2: Normal message — spy on the messages the agent receives
       class SpyAgent extends AgentInterface {
-        static pluginId    = 'spy-hidden';
+        static pluginID    = 'spy-hidden';
         static featureName = 'spy';
         static agentType   = 'spy';
 

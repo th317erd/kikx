@@ -224,12 +224,12 @@ class KikxAbilityListModal extends HTMLElement {
   _handleAbilityClick(event) {
     let card = event.target.closest('.ability-card');
     if (card) {
-      let abilityId = card.dataset.abilityId;
+      let abilityID = card.dataset.abilityID;
 
       this.dispatchEvent(new CustomEvent('select-ability', {
         bubbles:  true,
         composed: true,
-        detail:   { abilityId },
+        detail:   { abilityID },
       }));
     }
   }

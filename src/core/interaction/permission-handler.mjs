@@ -35,7 +35,7 @@ export class PermissionHandler {
     let pendingFrame   = {
       id:            pendingFrameID,
       type:          'pending-action',
-      content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseId: block.content.toolUseId },
+      content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseID: block.content.toolUseID },
       timestamp:     Date.now(),
       interactionID,
       authorType:    block.authorType || 'agent',
@@ -47,7 +47,7 @@ export class PermissionHandler {
 
     await loop._createFrame(sessionID, pendingFrame, frameManager, {
       authorType: block.authorType || 'agent',
-      authorId:   block.authorID || null,
+      authorID:   block.authorID || null,
     });
 
     // 2. Create permission-request frame
@@ -134,7 +134,7 @@ export class PermissionHandler {
     await loop._createFrame(sessionID, {
       id:            resultFrameID,
       type:          'tool-result',
-      content:       { output: toolOutput, toolUseId: content.toolUseId },
+      content:       { output: toolOutput, toolUseID: content.toolUseID },
       timestamp:     Date.now(),
       interactionID: waiting.interactionID,
       authorType:    'system',
@@ -231,14 +231,14 @@ export class PermissionHandler {
       catch (_error) { pendingContent = {}; }
     }
 
-    let toolUseId = (pendingContent && pendingContent.toolUseId) || null;
+    let toolUseID = (pendingContent && pendingContent.toolUseID) || null;
     let toolName  = (pendingContent && pendingContent.toolName) || 'unknown';
 
-    if (toolUseId) {
+    if (toolUseID) {
       await loop._createFrame(sessionID, {
         id:            generateID('frm_'),
         type:          'tool-result',
-        content:       { output: `Permission denied: the user denied execution of "${toolName}". Do not retry this exact command unless the user explicitly asks you to.`, toolUseId },
+        content:       { output: `Permission denied: the user denied execution of "${toolName}". Do not retry this exact command unless the user explicitly asks you to.`, toolUseID },
         timestamp:     Date.now(),
         interactionID: waiting.interactionID,
         authorType:    'system',

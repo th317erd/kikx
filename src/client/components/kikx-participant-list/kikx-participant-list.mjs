@@ -68,12 +68,12 @@ class KikxParticipantList extends HTMLElement {
     let row = event.target.closest('.participant-row');
     if (!row) return;
 
-    let participantId = row.dataset.participantId;
+    let participantID = row.dataset.participantID;
 
     this.dispatchEvent(new CustomEvent('select-participant', {
       bubbles:  true,
       composed: true,
-      detail:   { participantId },
+      detail:   { participantID },
     }));
   }
 

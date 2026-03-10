@@ -13,7 +13,7 @@ export class AgentController extends ControllerAuthBase {
 
   async list() {
     let { Agent } = this.getCoreModels();
-    let agents    = await Agent.where.organizationID.EQ(this.request.organizationId).all();
+    let agents    = await Agent.where.organizationID.EQ(this.request.organizationID).all();
 
     return { data: { agents } };
   }
@@ -35,7 +35,7 @@ export class AgentController extends ControllerAuthBase {
     let keystore   = this.getKeystore();
 
     let agentData = {
-      organizationID: this.request.organizationId,
+      organizationID: this.request.organizationID,
       name,
       pluginID,
       instructions: instructions || null,
@@ -44,7 +44,7 @@ export class AgentController extends ControllerAuthBase {
     // Encrypt API key if provided
     if (apiKey) {
       let umk       = this.request.getUMK();
-      let userKey   = keystore.deriveUserKey(umk, this.request.userId);
+      let userKey   = keystore.deriveUserKey(umk, this.request.userID);
       let encrypted = keystore.encrypt(apiKey, userKey);
 
       agentData.encryptedAPIKey = JSON.stringify(encrypted);
@@ -63,7 +63,7 @@ export class AgentController extends ControllerAuthBase {
 
   async show({ params }) {
     let { Agent } = this.getCoreModels();
-    let agent     = await Agent.where.id.EQ(params.agentId).first();
+    let agent     = await Agent.where.id.EQ(params.agentID).first();
 
     if (!agent)
       this.throwNotFoundError('Agent not found');
@@ -77,7 +77,7 @@ export class AgentController extends ControllerAuthBase {
 
   async update({ params, body }) {
     let { Agent } = this.getCoreModels();
-    let agent     = await Agent.where.id.EQ(params.agentId).first();
+    let agent     = await Agent.where.id.EQ(params.agentID).first();
 
     if (!agent)
       this.throwNotFoundError('Agent not found');
@@ -98,7 +98,7 @@ export class AgentController extends ControllerAuthBase {
       if (apiKey) {
         let keystore  = this.getKeystore();
         let umk       = this.request.getUMK();
-        let userKey   = keystore.deriveUserKey(umk, this.request.userId);
+        let userKey   = keystore.deriveUserKey(umk, this.request.userID);
         let encrypted = keystore.encrypt(apiKey, userKey);
 
         agent.encryptedAPIKey = JSON.stringify(encrypted);
@@ -118,7 +118,7 @@ export class AgentController extends ControllerAuthBase {
 
   async destroy({ params }) {
     let { Agent } = this.getCoreModels();
-    let agent     = await Agent.where.id.EQ(params.agentId).first();
+    let agent     = await Agent.where.id.EQ(params.agentID).first();
 
     if (!agent)
       this.throwNotFoundError('Agent not found');
