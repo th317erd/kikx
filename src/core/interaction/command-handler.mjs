@@ -49,7 +49,22 @@ export class CommandHandler {
     if (!registry)
       return null;
 
-    return registry.getCommand(commandName);
+    // Traditional commands take precedence
+    let handler = registry.getCommand(commandName);
+    if (handler)
+      return handler;
+
+    // Fall back to capabilities with matching slash command
+    let capability = registry.getCapabilityBySlashCommand(commandName);
+    if (capability) {
+      // Return a wrapper function with __capability attached so execute() can detect it
+      let wrapper = () => {};
+      wrapper.__capability = capability;
+
+      return wrapper;
+    }
+
+    return null;
   }
 
   // ---------------------------------------------------------------------------
@@ -137,6 +152,43 @@ export class CommandHandler {
     if (!resultContent) {
       if (!handler) {
         resultContent = { html: `<p>Unknown command: <code>/${commandMatch.commandName}</code></p>` };
+      } else if (handler.__capability) {
+        // Unified capability execution
+        let capability = handler.__capability;
+
+        try {
+          let structuredParams;
+
+          if (typeof capability.parseArgs === 'function') {
+            structuredParams = capability.parseArgs(commandMatch.arguments);
+
+            if (!structuredParams) {
+              let usage = capability.schema
+                ? `<p>Usage: <code>/${commandMatch.commandName}</code> — could not parse arguments.</p>`
+                : `<p>Usage: <code>/${commandMatch.commandName}</code></p>`;
+              resultContent = { html: usage };
+            }
+          } else {
+            // No parseArgs — pass raw text as { text }
+            structuredParams = { text: commandMatch.arguments };
+          }
+
+          if (!resultContent) {
+            let result = await capability.handler({
+              params:     structuredParams,
+              sessionID,
+              context:    loop._context,
+              authorType: params.authorType || 'user',
+              authorID:   params.authorID || null,
+              agent:      params.agent,
+            });
+
+            resultContent = (result && result.content) || { html: '<p>Command executed.</p>' };
+            resultFlags   = result || {};
+          }
+        } catch (error) {
+          resultContent = { html: `<p>Command error: ${error.message}</p>` };
+        }
       } else {
         try {
           let result = await handler({

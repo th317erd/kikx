@@ -1,32 +1,44 @@
-# Session Relationships, Cross-Session Tools, and Thread Support
+# Follow-Up: Thread UI, Session-Links, Plugin Wiring, and Gaps
 
-Plan: `bot-docs/future-plans/sessions-as-frames.yaml`
-Design dialog: `.claude/conversation.md` (Rounds 1-7)
+Previous work: Session Relationships, Cross-Session Tools, and Thread Support (committed `ad21e8c` on `v2`).
 
-## Execution Order (TDD: tests first, then implementation)
+## Items 1-6 (from next-steps list)
 
-### Phase A: Test Infrastructure — COMPLETE
-- [x] **A1: Audit existing tests** — 4 files need updates: session-manager-spec (6 alias, 4 overrides, 3 updateParticipant), models-spec (alias + getDisplayName on Participant), command-dispatch-spec (invite alias test), message-assembly-v2-spec (alias in participant data)
-- [x] **A2: Write session-relationships-spec.mjs** — 14 tests (12 fail TDD, 2 pass). Sub-sessions, CASCADE, depth, guards.
-- [x] **A3: Write participant-lifecycle-spec.mjs** — 17 tests (14 fail TDD, 3 pass). Lifecycle frames, model cleanup, idempotent dupes.
-- [x] **A4: Write cross-session-spec.mjs** — 43 tests. All 5 tools (listSessions, createSession, postToSession, readFromSession, inviteParticipant) with happy/failure/edge paths. Fails on import (plugin doesn't exist yet).
-- [x] **A5: Write thread-support-spec.mjs** — 15 tests (6 pass, 9 fail TDD). parentId query filter + InteractionLoop parentId pass-through.
-- [x] **A6: Write integration specs** — 11 tests across 3 files: sub-session (4), cross-session (3), thread (4).
+### 1. Thread Client UI ✅
+- [x] Reply button on interaction bubbles
+- [x] Reply banner on message input (with cancel)
+- [x] Reply count badges on parent messages
+- [x] Reply context indicator on child messages
+- [x] parentId in send-message event flow
+- [x] 13 UI tests (6 interaction + 7 message-input)
 
-### Phase B: Implementation (make tests pass)
-- [x] **B1: Session model** — 14/14 tests pass. parentSessionID + linkedFrameID + virtual relationships + createSession pass-through.
-- [x] **B2: Participant model** — alias/overrides/getDisplayName removed. 2 existing model tests break (B7 fix).
-- [x] **B3: SessionManager** — 16/17 pass (Test 4 expected fail: no framePersistence in test context). Lifecycle frames, archived rejection, idempotent dupes.
-- [x] **B4: /invite command** — Drop alias parsing, simplify. Also fixed primer/index.mjs p.alias reference.
-- [x] **B5: Cross-session plugin** — 43/43 tests pass. 5 tools registered. Fixed test bugs (getFrames→toArray, sessionID→targetSessionID).
-- [x] **B6: Thread support** — 15/15 tests pass. parentId filter in loadFramesInto + parentId pass-through in all InteractionLoop frame calls.
-- [x] **B7: Fix existing tests** — 135/135 pass across 4 files. Deleted 8 alias/overrides tests, updated 3 others.
+### 2. Session-Link Frame Rendering ✅
+- [x] `kikx-session-link` WebComponent (clickable card)
+- [x] `session-link` case in `_renderFrame()`
+- [x] `participant-joined`/`participant-left` hidden from chat
+- [x] 6 component tests
 
-### Phase C: Verification
-- [x] **C1: Run full test suite** — 1894/1895 pass. 1 known expected failure (Test 4: framePersistence not in test context).
-- [x] **C2: Run AGIS thorough_review** — All 8 areas verified. 1 issue found and fixed (InteractionController parentId pass-through). 2 optional items deferred (self-reference guard, SOLR search).
+### 3. Wire Cross-Session Plugin into Plugin Loader ✅
+- [x] Verified: FilesystemPluginProvider auto-discovers all plugins — no changes needed
+
+### 4. Self-Reference Guard on parentSessionID ✅
+- [x] Guard in `SessionManager.createSession()`
+- [x] Test in `session-relationships-spec.mjs`
+
+### 5. listSessions Frame Content Search (Stopgap) ✅
+- [x] In-memory FrameManager content search in `ListSessionsTool._execute()`
+- [x] 3 tests in `cross-session-spec.mjs`
+
+### 6. Command-Tool Unification ✅
+- [x] `registerCapability()` API on PluginRegistry
+- [x] CommandHandler resolves capabilities by slash command alias
+- [x] InteractionController.executeTool resolves capabilities by name
+- [x] HelpIndex includes capability entries
+- [x] Migrated `/invite` → `invite` capability (slash + tool)
+- [x] Migrated `/reload` → `reload` capability (slash + tool)
+- [x] Updated `system:command` bridge to resolve capabilities
+- [x] Updated agent instructions for direct capability usage
+- [x] 21 new tests (12 registry + 6 command-handler + 3 help-index)
 
 ## Status
-- **COMPLETE.** All phases done. Ready for commit.
-- **Tests written:** 100 new tests across 8 files (14 + 17 + 43 + 15 + 4 + 3 + 4)
-- **Baseline:** 1800 existing tests pass, 0 fail
+- **All 6 items complete.** 1961/1962 tests pass (1 pre-existing failure in participant-lifecycle-spec.mjs).

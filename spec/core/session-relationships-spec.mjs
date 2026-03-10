@@ -3,6 +3,8 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
+import XID from 'xid-js';
+
 import { createKikxCore } from '../../src/core/index.mjs';
 import { SessionManager } from '../../src/core/session/index.mjs';
 
@@ -255,6 +257,24 @@ describe('Session Parent-Child Relationships', () => {
       // This is acceptable for now; a guard can be added later.
       assert.equal(fetched.parentSessionID, session.id);
     }
+  });
+
+  // 11b. Self-referencing parentSessionID at creation time (pre-generated ID)
+  it('self-referencing parentSessionID at creation — should throw "Session cannot be its own parent"', async () => {
+    let preGeneratedID = XID.next();
+
+    await assert.rejects(
+      () => manager.createSession(org.id, {
+        id:              preGeneratedID,
+        name:            'Self-Referencing',
+        parentSessionID: preGeneratedID,
+      }),
+      (error) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /Session cannot be its own parent/);
+        return true;
+      },
+    );
   });
 
   // ===========================================================================

@@ -95,7 +95,8 @@ describe('CommandHandler (C5)', () => {
     it('should return handler from registry', () => {
       let fn = () => {};
       mockLoop._pluginRegistry = {
-        getCommand: (name) => name === 'reload' ? fn : null,
+        getCommand:                  (name) => name === 'reload' ? fn : null,
+        getCapabilityBySlashCommand: () => null,
       };
 
       assert.equal(handler.resolve('reload'), fn);
@@ -103,7 +104,8 @@ describe('CommandHandler (C5)', () => {
 
     it('should return null for unknown command', () => {
       mockLoop._pluginRegistry = {
-        getCommand: () => null,
+        getCommand:                  () => null,
+        getCapabilityBySlashCommand: () => null,
       };
 
       assert.equal(handler.resolve('unknown'), null);
@@ -113,6 +115,157 @@ describe('CommandHandler (C5)', () => {
       mockLoop._pluginRegistry = null;
       assert.equal(handler.resolve('anything'), null);
     });
+
+    it('should resolve a capability by slash command alias', () => {
+      let capability = {
+        name:         'inviteParticipant',
+        handler:      async () => ({ content: { html: 'invited' } }),
+        slashCommand: 'invite',
+        parseArgs:    (raw) => ({ agentName: raw }),
+      };
+
+      mockLoop._pluginRegistry = {
+        getCommand:                  () => null,
+        getCapabilityBySlashCommand: (name) => name === 'invite' ? capability : null,
+      };
+
+      let result = handler.resolve('invite');
+      assert.ok(result, 'Should resolve capability');
+      assert.equal(result.__capability, capability);
+    });
+
+    it('should prefer traditional command over capability with same slash alias', () => {
+      let fn = () => 'command-wins';
+      let capability = {
+        name:         'inviteParticipant',
+        handler:      async () => ({ content: { html: 'cap' } }),
+        slashCommand: 'invite',
+      };
+
+      mockLoop._pluginRegistry = {
+        getCommand:                  (name) => name === 'invite' ? fn : null,
+        getCapabilityBySlashCommand: (name) => name === 'invite' ? capability : null,
+      };
+
+      let result = handler.resolve('invite');
+      assert.equal(result, fn, 'Traditional command should take precedence');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // execute — capabilities
+  // ---------------------------------------------------------------------------
+
+  describe('execute (capabilities)', () => {
+    it('should execute a capability via slash command with parseArgs', async () => {
+      let receivedParams = null;
+      let capability = {
+        name:         'inviteParticipant',
+        handler:      async ({ params, sessionID, context, authorType }) => {
+          receivedParams = { params, sessionID, authorType };
+          return { content: { html: '<p>Invited!</p>' } };
+        },
+        slashCommand: 'invite',
+        parseArgs:    (raw) => ({ agentName: raw.replace(/^@/, '').trim() }),
+      };
+
+      mockLoop._pluginRegistry = {
+        getCommand:                  () => null,
+        getCapabilityBySlashCommand: (name) => name === 'invite' ? capability : null,
+      };
+
+      // The resolve step returns a wrapper with __capability attached
+      let resolved = handler.resolve('invite');
+      assert.ok(resolved.__capability);
+
+      await handler.execute('ses_1', {
+        userMessage: '/invite @test-agent',
+        authorType:  'user',
+        authorID:    'user_1',
+      }, { commandName: 'invite', arguments: '@test-agent' });
+
+      assert.ok(receivedParams, 'Capability handler should have been called');
+      assert.equal(receivedParams.params.agentName, 'test-agent');
+      assert.equal(receivedParams.sessionID, 'ses_1');
+      assert.equal(receivedParams.authorType, 'user');
+      assert.equal(savedFrames[1].type, 'command-result');
+      assert.ok(savedFrames[1].content.html.includes('Invited!'));
+    });
+
+    it('should handle parseArgs returning null (bad args)', async () => {
+      let capability = {
+        name:         'inviteParticipant',
+        handler:      async () => ({ content: { html: 'should not reach' } }),
+        slashCommand: 'invite',
+        parseArgs:    () => null,
+        schema:       { type: 'object', properties: { agentName: { type: 'string' } } },
+      };
+
+      mockLoop._pluginRegistry = {
+        getCommand:                  () => null,
+        getCapabilityBySlashCommand: (name) => name === 'invite' ? capability : null,
+      };
+
+      handler.resolve('invite');
+
+      await handler.execute('ses_1', {
+        userMessage: '/invite',
+        authorType:  'user',
+      }, { commandName: 'invite', arguments: '' });
+
+      // Should produce an error frame, not call the handler
+      assert.equal(savedFrames[1].type, 'command-result');
+      assert.ok(savedFrames[1].content.html.includes('Usage'));
+    });
+
+    it('should handle capability without parseArgs (raw args as text param)', async () => {
+      let receivedParams = null;
+      let capability = {
+        name:         'simpleCap',
+        handler:      async ({ params }) => {
+          receivedParams = params;
+          return { content: { html: 'done' } };
+        },
+        slashCommand: 'simple',
+        // no parseArgs
+      };
+
+      mockLoop._pluginRegistry = {
+        getCommand:                  () => null,
+        getCapabilityBySlashCommand: (name) => name === 'simple' ? capability : null,
+      };
+
+      handler.resolve('simple');
+
+      await handler.execute('ses_1', {
+        userMessage: '/simple hello world',
+        authorType:  'user',
+      }, { commandName: 'simple', arguments: 'hello world' });
+
+      assert.deepEqual(receivedParams, { text: 'hello world' });
+    });
+
+    it('should pass injectPrimer flag from capability result', async () => {
+      let capability = {
+        name:         'reload',
+        handler:      async () => ({ content: { html: 'Reloaded' }, injectPrimer: true }),
+        slashCommand: 'reload',
+      };
+
+      mockLoop._pluginRegistry = {
+        getCommand:                  () => null,
+        getCapabilityBySlashCommand: (name) => name === 'reload' ? capability : null,
+      };
+
+      handler.resolve('reload');
+
+      await handler.execute('ses_1', {
+        userMessage: '/reload',
+        authorType:  'user',
+      }, { commandName: 'reload', arguments: '' });
+
+      assert.ok(mockLoop._primerNeeded.has('ses_1'));
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -121,7 +274,7 @@ describe('CommandHandler (C5)', () => {
 
   describe('execute', () => {
     it('should create user-message and command-result frames', async () => {
-      mockLoop._pluginRegistry = { getCommand: () => null };
+      mockLoop._pluginRegistry = { getCommand: () => null, getCapabilityBySlashCommand: () => null };
 
       let interactionID = await handler.execute('ses_1', {
         userMessage: '/unknown',
@@ -143,6 +296,7 @@ describe('CommandHandler (C5)', () => {
             return async () => ({ content: { html: '<p>Test result</p>' } });
           return null;
         },
+        getCapabilityBySlashCommand: () => null,
       };
 
       await handler.execute('ses_1', {
@@ -155,6 +309,7 @@ describe('CommandHandler (C5)', () => {
     it('should handle command handler errors gracefully', async () => {
       mockLoop._pluginRegistry = {
         getCommand: () => async () => { throw new Error('boom'); },
+        getCapabilityBySlashCommand: () => null,
       };
 
       await handler.execute('ses_1', {
@@ -165,7 +320,7 @@ describe('CommandHandler (C5)', () => {
     });
 
     it('should emit interaction:start and interaction:end', async () => {
-      mockLoop._pluginRegistry = { getCommand: () => null };
+      mockLoop._pluginRegistry = { getCommand: () => null, getCapabilityBySlashCommand: () => null };
 
       await handler.execute('ses_1', {
         userMessage: '/test',
@@ -179,6 +334,7 @@ describe('CommandHandler (C5)', () => {
     it('should set injectPrimer flag from command result', async () => {
       mockLoop._pluginRegistry = {
         getCommand: () => async () => ({ content: { html: 'ok' }, injectPrimer: true }),
+        getCapabilityBySlashCommand: () => null,
       };
 
       await handler.execute('ses_1', {
@@ -194,6 +350,7 @@ describe('CommandHandler (C5)', () => {
 
       mockLoop._pluginRegistry = {
         getCommand: () => async () => ({ content: { html: 'ok' } }),
+        getCapabilityBySlashCommand: () => null,
       };
 
       await handler.execute('ses_1', {

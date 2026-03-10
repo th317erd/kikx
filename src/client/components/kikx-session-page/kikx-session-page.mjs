@@ -180,6 +180,7 @@ class KikxSessionPage extends HTMLElement {
     this._onInteractionSubmit    = this._onInteractionSubmit.bind(this);
     this._onInteractionIgnore    = this._onInteractionIgnore.bind(this);
     this._onSelectSession        = this._onSelectSession.bind(this);
+    this._onReplyToMessage       = this._onReplyToMessage.bind(this);
   }
 
   connectedCallback() {
@@ -221,6 +222,7 @@ class KikxSessionPage extends HTMLElement {
     this.shadowRoot.addEventListener('interaction-submit', this._onInteractionSubmit);
     this.shadowRoot.addEventListener('interaction-ignore', this._onInteractionIgnore);
     this.shadowRoot.addEventListener('select-session', this._onSelectSession);
+    this.shadowRoot.addEventListener('reply-to-message', this._onReplyToMessage);
 
     this._loadInitialData();
   }
@@ -244,6 +246,7 @@ class KikxSessionPage extends HTMLElement {
     this.shadowRoot.removeEventListener('interaction-submit', this._onInteractionSubmit);
     this.shadowRoot.removeEventListener('interaction-ignore', this._onInteractionIgnore);
     this.shadowRoot.removeEventListener('select-session', this._onSelectSession);
+    this.shadowRoot.removeEventListener('reply-to-message', this._onReplyToMessage);
 
     this._disconnectStream();
     this._destroyFrameManager();
@@ -653,6 +656,10 @@ class KikxSessionPage extends HTMLElement {
         }
       }
 
+      // Thread: update reply count on the parent message now that the frame is confirmed
+      if (frame.parentId)
+        this._updateReplyCount(frame.parentId);
+
       return;
     }
 
@@ -664,10 +671,42 @@ class KikxSessionPage extends HTMLElement {
       'tool-error',
       'hook-blocked',
       'permission-denied',
+      'participant-joined',
+      'participant-left',
     ]);
 
     if (hiddenTypes.has(frame.type))
       return;
+
+    // Session-link frames — render as clickable card
+    if (frame.type === 'session-link') {
+      let content = frame.content || {};
+
+      let interaction = document.createElement('kikx-interaction');
+      interaction.setAttribute('alignment', 'system');
+      interaction.setAttribute('participant-name', 'System');
+      interaction.setAttribute('participant-initials', '#');
+      interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
+      interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
+      interaction.setAttribute('data-frame-id', frame.id);
+
+      let sessionLink = document.createElement('kikx-session-link');
+      sessionLink.setAttribute('target-session-id', content.targetSessionID || '');
+      sessionLink.setAttribute('session-title', content.title || 'Sub-session');
+
+      if (content.participants && content.participants.length > 0)
+        sessionLink.setAttribute('participant-count', String(content.participants.length));
+
+      interaction.appendChild(sessionLink);
+      this._placeInteraction(interaction, options);
+
+      if (debug.isEnabled()) {
+        debug.trackElement(frame.interactionID || frame.id, interaction);
+        debug.pushFrame(frame.interactionID || frame.id, frame);
+      }
+
+      return;
+    }
 
     // Permission request — render approval UI
     if (frame.type === 'permission-request') {
@@ -847,6 +886,13 @@ class KikxSessionPage extends HTMLElement {
     interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
     interaction.setAttribute('data-frame-id', frame.id);
 
+    // Thread: set reply context if this frame is a reply
+    if (frame.parentId) {
+      let preview = this._getParentPreview(frame.parentId);
+      if (preview)
+        interaction.setAttribute('parent-preview', preview);
+    }
+
     // Set server-estimated token count for user messages
     if (isUser && frame.content && frame.content.estimatedTokens)
       interaction.setAttribute('token-count', String(frame.content.estimatedTokens));
@@ -871,6 +917,10 @@ class KikxSessionPage extends HTMLElement {
 
     interaction.appendChild(messageContent);
     this._placeInteraction(interaction, options);
+
+    // Thread: update reply count on parent message
+    if (frame.parentId)
+      this._updateReplyCount(frame.parentId);
 
     if (debug.isEnabled()) {
       debug.trackElement(frame.interactionID || frame.id, interaction);
@@ -904,7 +954,7 @@ class KikxSessionPage extends HTMLElement {
     }
   }
 
-  _renderUserMessage(text) {
+  _renderUserMessage(text, parentId) {
     let name = this._getUserDisplayName();
 
     let interaction = document.createElement('kikx-interaction');
@@ -912,6 +962,13 @@ class KikxSessionPage extends HTMLElement {
     interaction.setAttribute('participant-name', name);
     interaction.setAttribute('participant-initials', getInitials(name));
     interaction.setAttribute('timestamp', formatTimestamp(new Date().toISOString()));
+
+    // Thread: set reply context on the optimistic bubble
+    if (parentId) {
+      let preview = this._getParentPreview(parentId);
+      if (preview)
+        interaction.setAttribute('parent-preview', preview);
+    }
 
     let messageContent = document.createElement('kikx-message-content');
     messageContent.content = `<p>${this._escapeHTML(text)}</p>`;
@@ -980,7 +1037,7 @@ class KikxSessionPage extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   async _onSendMessage(event) {
-    let { text } = event.detail || {};
+    let { text, parentId } = event.detail || {};
     if (!text)
       return;
 
@@ -994,10 +1051,10 @@ class KikxSessionPage extends HTMLElement {
       agentId = this._currentSession.dmAgentID || this._currentSession.agentId || this._currentSession.agentID;
 
     // Render user message immediately (optimistic)
-    this._renderUserMessage(text);
+    this._renderUserMessage(text, parentId);
 
     try {
-      await sendMessage(sessionId, text, agentId || undefined);
+      await sendMessage(sessionId, text, agentId || undefined, parentId || undefined);
       this._messageInput.clearDraft();
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -1613,6 +1670,75 @@ class KikxSessionPage extends HTMLElement {
 
   _onModalClose() {
     // No-op: modals close themselves
+  }
+
+  // ---------------------------------------------------------------------------
+  // Thread support — reply button handler + reply count tracking
+  // ---------------------------------------------------------------------------
+
+  _onReplyToMessage(event) {
+    let { frameId, participantName } = event.detail || {};
+    if (!frameId)
+      return;
+
+    this._messageInput.setReplyMode(frameId, participantName);
+  }
+
+  _getParentPreview(parentId) {
+    if (!parentId || !this._frameManager)
+      return null;
+
+    let parentFrame = this._frameManager.get(parentId);
+    if (!parentFrame)
+      return null;
+
+    let name = parentFrame.authorName || '';
+    let text = '';
+
+    if (parentFrame.content) {
+      if (parentFrame.content.text)
+        text = parentFrame.content.text;
+      else if (parentFrame.content.html) {
+        // Strip HTML for preview
+        let div = document.createElement('div');
+        div.innerHTML = parentFrame.content.html;
+        text = (div.textContent || '').trim();
+      }
+    }
+
+    let preview = text.substring(0, 60);
+    if (text.length > 60)
+      preview += '...';
+
+    if (name)
+      return `${name}: ${preview}`;
+
+    return preview || null;
+  }
+
+  _updateReplyCount(parentId) {
+    if (!parentId || !this._chatView || !this._chatView.shadowRoot)
+      return;
+
+    // Count all frames in the FrameManager that have this parentId
+    let count = 0;
+    if (this._frameManager) {
+      for (let frame of this._frameManager) {
+        if (frame.parentId === parentId)
+          count++;
+      }
+    }
+
+    if (count <= 0)
+      return;
+
+    // Find the parent interaction element and set reply-count
+    let parentEl = this._chatView.shadowRoot.querySelector(
+      `kikx-interaction[data-frame-id="${parentId}"]`,
+    );
+
+    if (parentEl)
+      parentEl.setAttribute('reply-count', String(count));
   }
 }
 

@@ -65,8 +65,59 @@ const TEMPLATE_HTML = `
     .queue-indicator {
       display: none;
     }
+
+    .reply-banner {
+      display: none;
+      align-items: center;
+      gap: var(--spacing-sm, 8px);
+      padding: 6px 12px;
+      background: var(--accent-dim, rgba(0, 229, 255, 0.10));
+      border-left: 3px solid var(--accent-primary, #00e5ff);
+      border-radius: var(--border-radius-small, 4px) var(--border-radius-small, 4px) 0 0;
+      font-size: 0.85rem;
+      color: var(--text-secondary, #a0a0b8);
+    }
+
+    .reply-banner.visible {
+      display: flex;
+    }
+
+    .reply-banner-text {
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .reply-banner-name {
+      color: var(--accent-primary, #00e5ff);
+      font-weight: 600;
+    }
+
+    .reply-cancel-button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted, #606078);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 2px 6px;
+      border-radius: var(--border-radius-small, 4px);
+      line-height: 1;
+    }
+
+    .reply-cancel-button:hover {
+      color: var(--text-primary, #e8e8f0);
+      background: var(--glass-hover, rgba(255, 255, 255, 0.08));
+    }
   </style>
 
+  <div class="reply-banner">
+    <div class="reply-banner-text">
+      Replying to <span class="reply-banner-name"></span>
+    </div>
+    <button class="reply-cancel-button" type="button">&times;</button>
+  </div>
   <div class="input-area">
     <textarea class="message-textarea" rows="1"></textarea>
     <button class="send-button"></button>
@@ -94,18 +145,23 @@ class KikxMessageInput extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
 
-    this._textarea       = this.shadowRoot.querySelector('.message-textarea');
-    this._sendButton     = this.shadowRoot.querySelector('.send-button');
-    this._queueIndicator = this.shadowRoot.querySelector('.queue-indicator');
-    this._queueCount     = this.shadowRoot.querySelector('.queue-count');
+    this._textarea          = this.shadowRoot.querySelector('.message-textarea');
+    this._sendButton        = this.shadowRoot.querySelector('.send-button');
+    this._queueIndicator    = this.shadowRoot.querySelector('.queue-indicator');
+    this._queueCount        = this.shadowRoot.querySelector('.queue-count');
+    this._replyBanner       = this.shadowRoot.querySelector('.reply-banner');
+    this._replyBannerName   = this.shadowRoot.querySelector('.reply-banner-name');
+    this._replyCancelButton = this.shadowRoot.querySelector('.reply-cancel-button');
 
     this._queue         = [];
     this._isInteracting = false;
     this._sessionId     = null;
+    this._replyToFrameId = null;
 
-    this._onKeyDown   = this._onKeyDown.bind(this);
-    this._onSendClick = this._onSendClick.bind(this);
-    this._onInput     = this._onInput.bind(this);
+    this._onKeyDown      = this._onKeyDown.bind(this);
+    this._onSendClick    = this._onSendClick.bind(this);
+    this._onInput        = this._onInput.bind(this);
+    this._onReplyCancel  = this._onReplyCancel.bind(this);
   }
 
   connectedCallback() {
@@ -113,12 +169,14 @@ class KikxMessageInput extends HTMLElement {
     this._textarea.addEventListener('keydown', this._onKeyDown);
     this._textarea.addEventListener('input', this._onInput);
     this._sendButton.addEventListener('click', this._onSendClick);
+    this._replyCancelButton.addEventListener('click', this._onReplyCancel);
   }
 
   disconnectedCallback() {
     this._textarea.removeEventListener('keydown', this._onKeyDown);
     this._textarea.removeEventListener('input', this._onInput);
     this._sendButton.removeEventListener('click', this._onSendClick);
+    this._replyCancelButton.removeEventListener('click', this._onReplyCancel);
   }
 
   _render() {
@@ -198,6 +256,14 @@ class KikxMessageInput extends HTMLElement {
 
   _onKeyDown(event) {
     if (event.key === 'Escape') {
+      // Cancel reply mode first
+      if (this._replyToFrameId) {
+        event.preventDefault();
+        this.clearReplyMode();
+
+        return;
+      }
+
       if (this._queue.length > 0) {
         event.preventDefault();
 
@@ -252,11 +318,17 @@ class KikxMessageInput extends HTMLElement {
 
     // Draft stays in sessionStorage until session-page calls clearDraft()
     // after a successful 200 from the API.
+    let detail = { text };
+    if (this._replyToFrameId)
+      detail.parentId = this._replyToFrameId;
+
     this.dispatchEvent(new CustomEvent('send-message', {
       bubbles:  true,
       composed: true,
-      detail:   { text },
+      detail,
     }));
+
+    this.clearReplyMode();
   }
 
   _updateQueueIndicator() {
@@ -292,6 +364,28 @@ class KikxMessageInput extends HTMLElement {
   clear() {
     this._textarea.value = '';
     this._autoResize();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reply mode
+  // ---------------------------------------------------------------------------
+
+  setReplyMode(frameId, participantName) {
+    this._replyToFrameId = frameId;
+    this._replyBannerName.textContent = participantName || 'message';
+    this._replyBanner.classList.add('visible');
+    this._textarea.focus();
+  }
+
+  clearReplyMode() {
+    this._replyToFrameId = null;
+    this._replyBanner.classList.remove('visible');
+    this._replyBannerName.textContent = '';
+  }
+
+  _onReplyCancel() {
+    this.clearReplyMode();
+    this._textarea.focus();
   }
 }
 

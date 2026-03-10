@@ -9,8 +9,8 @@ export class Frame {
     this.targets     = (data.targets !== undefined) ? data.targets : [];
     this.phantom     = (data.phantom !== undefined) ? data.phantom : false;
     this.content     = (data.content !== undefined) ? data.content : {};
-    this.parentId    = (data.parentId !== undefined) ? data.parentId : null;
-    this.groupId     = (data.groupId !== undefined) ? data.groupId : null;
+    this.parentId    = data.parentId ?? data.parentID ?? null;
+    this.groupId     = data.groupId ?? data.groupID ?? null;
     this.groupType   = (data.groupType !== undefined) ? data.groupType : null;
     this.order       = (data.order !== undefined) ? data.order : 0;
     this.timestamp   = (data.timestamp !== undefined) ? data.timestamp : now;

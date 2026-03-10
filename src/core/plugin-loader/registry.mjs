@@ -13,6 +13,7 @@ export class PluginRegistry {
   constructor() {
     this._tools          = new Map();
     this._commands       = new Map();
+    this._capabilities   = new Map();
     this._customElements = new Set();
     this._agentTypes     = new Map();
     this._hooks          = new Map(); // hookName -> handler[]
@@ -74,6 +75,50 @@ export class PluginRegistry {
 
   getCommands() {
     return new Map(this._commands);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Capabilities (unified command + tool)
+  // ---------------------------------------------------------------------------
+
+  registerCapability(name, options) {
+    if (!name || typeof name !== 'string')
+      throw new Error('Capability name must be a non-empty string');
+
+    if (!options || typeof options.handler !== 'function')
+      throw new Error(`Capability "${name}" handler must be a function`);
+
+    if (this._capabilities.has(name))
+      console.warn(`Capability "${name}" is being overridden`);
+
+    this._capabilities.set(name, {
+      name,
+      handler:      options.handler,
+      schema:       options.schema || null,
+      description:  options.description || null,
+      displayName:  options.displayName || null,
+      riskLevel:    options.riskLevel || 'high',
+      slashCommand: options.slashCommand || null,
+      parseArgs:    options.parseArgs || null,
+      examples:     options.examples || null,
+    });
+  }
+
+  getCapability(name) {
+    return this._capabilities.get(name) || null;
+  }
+
+  getCapabilities() {
+    return new Map(this._capabilities);
+  }
+
+  getCapabilityBySlashCommand(commandName) {
+    for (let [, capability] of this._capabilities) {
+      if (capability.slashCommand === commandName)
+        return capability;
+    }
+
+    return null;
   }
 
   // ---------------------------------------------------------------------------

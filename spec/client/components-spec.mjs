@@ -40,6 +40,7 @@ before(async () => {
   await import('../../src/client/components/kikx-interaction/kikx-interaction.mjs');
   await import('../../src/client/components/kikx-hml-prompt/kikx-hml-prompt.mjs');
   await import('../../src/client/components/kikx-permission-request/kikx-permission-request.mjs');
+  await import('../../src/client/components/kikx-session-link/kikx-session-link.mjs');
 });
 
 after(() => {
@@ -2591,5 +2592,295 @@ describe('Sanitizer strips kikx-permission-request', () => {
     // But normal content should remain
     assert.ok(body.innerHTML.includes('Hello'));
     assert.ok(body.innerHTML.includes('World'));
+  });
+});
+
+// =============================================================================
+// KikxSessionLink
+// =============================================================================
+
+describe('KikxSessionLink', () => {
+  it('should render with title and default meta', () => {
+    let doc  = getDocument();
+    let link = doc.createElement('kikx-session-link');
+    link.setAttribute('session-title', 'My Sub-Session');
+    link.setAttribute('target-session-id', 'ses_abc123');
+    doc.body.appendChild(link);
+
+    let shadow = link.shadowRoot;
+    let title  = shadow.querySelector('.link-title');
+    let meta   = shadow.querySelector('.link-meta');
+
+    assert.equal(title.textContent, 'My Sub-Session');
+    assert.equal(meta.textContent, 'Session');
+  });
+
+  it('should show participant count when set', () => {
+    let doc  = getDocument();
+    let link = doc.createElement('kikx-session-link');
+    link.setAttribute('session-title', 'Team Chat');
+    link.setAttribute('participant-count', '3');
+    doc.body.appendChild(link);
+
+    let meta = link.shadowRoot.querySelector('.link-meta');
+    assert.equal(meta.textContent, '3 participants');
+  });
+
+  it('should show singular participant for count of 1', () => {
+    let doc  = getDocument();
+    let link = doc.createElement('kikx-session-link');
+    link.setAttribute('session-title', 'Solo');
+    link.setAttribute('participant-count', '1');
+    doc.body.appendChild(link);
+
+    let meta = link.shadowRoot.querySelector('.link-meta');
+    assert.equal(meta.textContent, '1 participant');
+  });
+
+  it('should dispatch select-session event on click', () => {
+    let doc  = getDocument();
+    let link = doc.createElement('kikx-session-link');
+    link.setAttribute('target-session-id', 'ses_target');
+    link.setAttribute('session-title', 'Click Me');
+    doc.body.appendChild(link);
+
+    let dispatched = null;
+    link.addEventListener('select-session', (event) => { dispatched = event.detail; });
+
+    let card = link.shadowRoot.querySelector('.link-card');
+    card.click();
+
+    assert.ok(dispatched, 'select-session event should fire');
+    assert.equal(dispatched.id, 'ses_target');
+  });
+
+  it('should not dispatch event when no target-session-id', () => {
+    let doc  = getDocument();
+    let link = doc.createElement('kikx-session-link');
+    link.setAttribute('session-title', 'No Target');
+    doc.body.appendChild(link);
+
+    let dispatched = null;
+    link.addEventListener('select-session', (event) => { dispatched = event.detail; });
+
+    let card = link.shadowRoot.querySelector('.link-card');
+    card.click();
+
+    assert.equal(dispatched, null, 'No event should fire without target-session-id');
+  });
+
+  it('should use default title when none provided', () => {
+    let doc  = getDocument();
+    let link = doc.createElement('kikx-session-link');
+    doc.body.appendChild(link);
+
+    let title = link.shadowRoot.querySelector('.link-title');
+    assert.equal(title.textContent, 'Sub-session');
+  });
+});
+
+// =============================================================================
+// KikxInteraction — Reply features
+// =============================================================================
+
+describe('KikxInteraction reply features', () => {
+  it('should have a reply button in the footer', () => {
+    let doc         = getDocument();
+    let interaction = doc.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'agent');
+    interaction.setAttribute('participant-name', 'Agent');
+    interaction.setAttribute('data-frame-id', 'frm_abc');
+    doc.body.appendChild(interaction);
+
+    let replyButton = interaction.shadowRoot.querySelector('.reply-button');
+    assert.ok(replyButton, 'Reply button should exist');
+    assert.equal(replyButton.textContent, 'Reply');
+  });
+
+  it('should hide reply button for system alignment', () => {
+    let doc         = getDocument();
+    let interaction = doc.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'system');
+    interaction.setAttribute('data-frame-id', 'frm_sys');
+    doc.body.appendChild(interaction);
+
+    // JSDOM doesn't resolve :host() selectors in getComputedStyle, so verify
+    // the CSS rule exists in the shadow stylesheet instead.
+    let styleEl = interaction.shadowRoot.querySelector('style');
+    assert.ok(styleEl, 'Shadow root should contain a <style> element');
+    assert.ok(
+      styleEl.textContent.includes(':host([alignment="system"]) .reply-button'),
+      'CSS should contain a rule hiding .reply-button for system alignment',
+    );
+  });
+
+  it('should dispatch reply-to-message event on reply click', () => {
+    let doc         = getDocument();
+    let interaction = doc.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'agent');
+    interaction.setAttribute('participant-name', 'Bot');
+    interaction.setAttribute('data-frame-id', 'frm_reply');
+    doc.body.appendChild(interaction);
+
+    let dispatched = null;
+    interaction.addEventListener('reply-to-message', (event) => { dispatched = event.detail; });
+
+    let replyButton = interaction.shadowRoot.querySelector('.reply-button');
+    replyButton.click();
+
+    assert.ok(dispatched, 'reply-to-message event should fire');
+    assert.equal(dispatched.frameId, 'frm_reply');
+    assert.equal(dispatched.participantName, 'Bot');
+  });
+
+  it('should show reply count badge when reply-count attribute is set', () => {
+    let doc         = getDocument();
+    let interaction = doc.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'agent');
+    interaction.setAttribute('participant-name', 'Agent');
+    interaction.setAttribute('reply-count', '5');
+    doc.body.appendChild(interaction);
+
+    let badge = interaction.shadowRoot.querySelector('.reply-count-badge');
+    assert.ok(badge, 'Reply count badge should exist');
+    assert.equal(badge.textContent, '5 replies');
+  });
+
+  it('should show singular reply for count of 1', () => {
+    let doc         = getDocument();
+    let interaction = doc.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'user');
+    interaction.setAttribute('participant-name', 'User');
+    interaction.setAttribute('reply-count', '1');
+    doc.body.appendChild(interaction);
+
+    let badge = interaction.shadowRoot.querySelector('.reply-count-badge');
+    assert.equal(badge.textContent, '1 reply');
+  });
+
+  it('should show reply context when parent-preview is set', () => {
+    let doc         = getDocument();
+    let interaction = doc.createElement('kikx-interaction');
+    interaction.setAttribute('alignment', 'agent');
+    interaction.setAttribute('participant-name', 'Agent');
+    interaction.setAttribute('parent-preview', 'User: Can you help me?');
+    doc.body.appendChild(interaction);
+
+    let contextText = interaction.shadowRoot.querySelector('.reply-context-text');
+    assert.ok(contextText, 'Reply context text should exist');
+    assert.equal(contextText.textContent, 'User: Can you help me?');
+  });
+});
+
+// =============================================================================
+// KikxMessageInput — Reply mode
+// =============================================================================
+
+describe('KikxMessageInput reply mode', () => {
+  it('should have reply banner hidden by default', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    let banner = input.shadowRoot.querySelector('.reply-banner');
+    assert.ok(banner, 'Reply banner should exist');
+    assert.ok(!banner.classList.contains('visible'), 'Reply banner should be hidden');
+  });
+
+  it('should show reply banner when setReplyMode is called', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.setReplyMode('frm_parent', 'Agent Smith');
+
+    let banner     = input.shadowRoot.querySelector('.reply-banner');
+    let bannerName = input.shadowRoot.querySelector('.reply-banner-name');
+
+    assert.ok(banner.classList.contains('visible'), 'Reply banner should be visible');
+    assert.equal(bannerName.textContent, 'Agent Smith');
+  });
+
+  it('should hide reply banner when clearReplyMode is called', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.setReplyMode('frm_parent', 'Agent');
+    input.clearReplyMode();
+
+    let banner = input.shadowRoot.querySelector('.reply-banner');
+    assert.ok(!banner.classList.contains('visible'), 'Reply banner should be hidden after clear');
+  });
+
+  it('should include parentId in send-message event when in reply mode', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.setReplyMode('frm_parent123', 'Agent');
+
+    let dispatched = null;
+    input.addEventListener('send-message', (event) => { dispatched = event.detail; });
+
+    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    textarea.value = 'My reply';
+
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+    sendButton.click();
+
+    assert.ok(dispatched, 'send-message event should fire');
+    assert.equal(dispatched.text, 'My reply');
+    assert.equal(dispatched.parentId, 'frm_parent123');
+  });
+
+  it('should clear reply mode after sending', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.setReplyMode('frm_parent', 'Agent');
+
+    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    textarea.value = 'Reply text';
+
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+    sendButton.click();
+
+    let banner = input.shadowRoot.querySelector('.reply-banner');
+    assert.ok(!banner.classList.contains('visible'), 'Reply banner should be hidden after send');
+  });
+
+  it('should not include parentId when not in reply mode', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    let dispatched = null;
+    input.addEventListener('send-message', (event) => { dispatched = event.detail; });
+
+    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    textarea.value = 'Normal message';
+
+    let sendButton = input.shadowRoot.querySelector('.send-button');
+    sendButton.click();
+
+    assert.ok(dispatched, 'send-message event should fire');
+    assert.equal(dispatched.text, 'Normal message');
+    assert.equal(dispatched.parentId, undefined, 'No parentId for non-reply messages');
+  });
+
+  it('should clear reply mode on cancel button click', () => {
+    let doc   = getDocument();
+    let input = doc.createElement('kikx-message-input');
+    doc.body.appendChild(input);
+
+    input.setReplyMode('frm_parent', 'Agent');
+
+    let cancelButton = input.shadowRoot.querySelector('.reply-cancel-button');
+    cancelButton.click();
+
+    let banner = input.shadowRoot.querySelector('.reply-banner');
+    assert.ok(!banner.classList.contains('visible'), 'Reply banner should be hidden after cancel');
   });
 });

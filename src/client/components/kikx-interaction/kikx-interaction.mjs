@@ -89,10 +89,80 @@ const TEMPLATE_HTML = `
       display: none;
     }
 
+    .reply-context {
+      display: none;
+      align-items: center;
+      gap: var(--spacing-xs, 4px);
+      padding: 4px 8px;
+      margin-bottom: 2px;
+      font-size: 0.8rem;
+      color: var(--text-muted, #606078);
+      border-left: 2px solid var(--accent-dim, rgba(0, 229, 255, 0.30));
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 0 var(--border-radius-small, 4px) var(--border-radius-small, 4px) 0;
+    }
+
+    :host([parent-preview]) .reply-context {
+      display: flex;
+    }
+
+    .reply-context-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .footer-left {
       display: flex;
       gap: var(--spacing-sm, 8px);
       align-items: center;
+    }
+
+    .reply-button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted, #606078);
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 2px 6px;
+      border-radius: var(--border-radius-small, 4px);
+      transition: color 0.2s ease, background 0.2s ease;
+      display: none;
+    }
+
+    :host([data-frame-id]) .reply-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    :host([alignment="system"]) .reply-button {
+      display: none;
+    }
+
+    .reply-button:hover {
+      color: var(--accent-primary, #00e5ff);
+      background: var(--glass-hover, rgba(255, 255, 255, 0.08));
+    }
+
+    .reply-count-badge {
+      display: none;
+      font-size: 0.8rem;
+      color: var(--accent-primary, #00e5ff);
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: var(--border-radius-small, 4px);
+      transition: background 0.2s ease;
+    }
+
+    .reply-count-badge:hover {
+      background: var(--glass-hover, rgba(255, 255, 255, 0.08));
+    }
+
+    :host([reply-count]) .reply-count-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
     }
 
     .footer-right {
@@ -131,6 +201,9 @@ const TEMPLATE_HTML = `
   </style>
 
   <div class="bubble">
+    <div class="reply-context">
+      <span class="reply-context-text"></span>
+    </div>
     <div class="bubble-header">
       <div class="avatar"></div>
       <div class="header-text">
@@ -143,6 +216,8 @@ const TEMPLATE_HTML = `
     <div class="footer">
       <div class="footer-left">
         <span class="footer-meta"></span>
+        <button class="reply-button" type="button">Reply</button>
+        <span class="reply-count-badge"></span>
       </div>
       <div class="footer-right"></div>
     </div>
@@ -182,6 +257,8 @@ class KikxInteraction extends HTMLElement {
       'token-count',
       'show-actions',
       'data-interaction-id',
+      'parent-preview',
+      'reply-count',
     ];
   }
 
@@ -190,21 +267,27 @@ class KikxInteraction extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
 
-    this._avatar      = this.shadowRoot.querySelector('.avatar');
-    this._headerName  = this.shadowRoot.querySelector('.header-name');
-    this._footerMeta  = this.shadowRoot.querySelector('.footer-meta');
-    this._footerRight = this.shadowRoot.querySelector('.footer-right');
+    this._avatar           = this.shadowRoot.querySelector('.avatar');
+    this._headerName       = this.shadowRoot.querySelector('.header-name');
+    this._footerMeta       = this.shadowRoot.querySelector('.footer-meta');
+    this._footerRight      = this.shadowRoot.querySelector('.footer-right');
+    this._replyButton      = this.shadowRoot.querySelector('.reply-button');
+    this._replyCountBadge  = this.shadowRoot.querySelector('.reply-count-badge');
+    this._replyContextText = this.shadowRoot.querySelector('.reply-context-text');
 
     this._onIgnoreClick = this._onIgnoreClick.bind(this);
     this._onSubmitClick = this._onSubmitClick.bind(this);
+    this._onReplyClick  = this._onReplyClick.bind(this);
   }
 
   connectedCallback() {
     this._render();
+    this._replyButton.addEventListener('click', this._onReplyClick);
   }
 
   disconnectedCallback() {
     this._removeActionListeners();
+    this._replyButton.removeEventListener('click', this._onReplyClick);
   }
 
   attributeChangedCallback() {
@@ -236,6 +319,19 @@ class KikxInteraction extends HTMLElement {
       parts.push(tokenStr);
 
     this._footerMeta.textContent = parts.join(' / ');
+
+    // Reply context (shown when this message is a reply to another)
+    let parentPreview = this.getAttribute('parent-preview');
+    if (parentPreview)
+      this._replyContextText.textContent = parentPreview;
+
+    // Reply count badge
+    let replyCount = this.getAttribute('reply-count');
+    if (replyCount) {
+      let count = parseInt(replyCount, 10);
+      if (count > 0)
+        this._replyCountBadge.textContent = `${count} ${(count === 1) ? 'reply' : 'replies'}`;
+    }
 
     this._renderActions();
   }
@@ -292,6 +388,27 @@ class KikxInteraction extends HTMLElement {
       bubbles:  true,
       composed: true,
       detail:   { interactionId: this.getAttribute('data-interaction-id') },
+    }));
+  }
+
+  _onReplyClick() {
+    let frameId   = this.getAttribute('data-frame-id');
+    let name      = this.getAttribute('participant-name') || '';
+    let alignment = this.getAttribute('alignment') || '';
+
+    // Build a short preview from the first message-content child
+    let preview = '';
+    let content = this.querySelector('kikx-message-content');
+    if (content && content.shadowRoot) {
+      let body = content.shadowRoot.querySelector('.message-body');
+      if (body)
+        preview = (body.textContent || '').trim().substring(0, 80);
+    }
+
+    this.dispatchEvent(new CustomEvent('reply-to-message', {
+      bubbles:  true,
+      composed: true,
+      detail:   { frameId, participantName: name, preview, alignment },
     }));
   }
 }

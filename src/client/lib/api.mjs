@@ -224,10 +224,13 @@ export function updateFrameContent(sessionId, frameId, content) {
 
 // Interaction endpoints
 
-export function sendMessage(sessionId, message, agentId) {
+export function sendMessage(sessionId, message, agentId, parentId) {
   let body = { message };
   if (agentId)
     body.agentId = agentId;
+
+  if (parentId)
+    body.parentId = parentId;
 
   return request('POST', `/sessions/${sessionId}/interact/send`, body);
 }

@@ -305,6 +305,64 @@ describe('Cross-Session Plugin', () => {
       assert.ok(found);
       assert.equal(found.lastActivityAt, found.createdAt);
     });
+
+    // ---- Test 15b ----
+    it('search matches frame content when session name does not match', async () => {
+      let agent   = await createAgent(org.id, 'test-ls-agent-13');
+      let session = await createSessionWithParticipant(org.id, agent.id, { name: 'General Chat' });
+
+      // Add a frame with searchable content
+      let fm = sessionManager.getFrameManager(session.id);
+      fm.merge([
+        { id: 'frm_search1', type: 'message', content: { text: 'The quick brown fox' }, authorType: 'agent', authorID: agent.id },
+      ], { authorType: 'agent', authorId: agent.id });
+
+      let tool   = instantiateTool(ListSessionsTool);
+      let result = await tool.execute({ agentID: agent.id, search: 'brown fox' });
+
+      assert.equal(result.sessions.length, 1);
+      assert.equal(result.sessions[0].id, session.id);
+    });
+
+    // ---- Test 15c ----
+    it('search returns empty when neither name nor content matches', async () => {
+      let agent   = await createAgent(org.id, 'test-ls-agent-14');
+      let session = await createSessionWithParticipant(org.id, agent.id, { name: 'General Chat' });
+
+      let fm = sessionManager.getFrameManager(session.id);
+      fm.merge([
+        { id: 'frm_search2', type: 'message', content: { text: 'Hello world' }, authorType: 'agent', authorID: agent.id },
+      ], { authorType: 'agent', authorId: agent.id });
+
+      let tool   = instantiateTool(ListSessionsTool);
+      let result = await tool.execute({ agentID: agent.id, search: 'nonexistent term' });
+
+      assert.ok(Array.isArray(result.sessions));
+      assert.equal(result.sessions.length, 0);
+    });
+
+    // ---- Test 15d ----
+    it('search prioritizes name match and also includes content match', async () => {
+      let agent = await createAgent(org.id, 'test-ls-agent-15');
+
+      // Session whose name matches the search
+      let sessionA = await createSessionWithParticipant(org.id, agent.id, { name: 'Project Alpha' });
+
+      // Session whose name does NOT match, but has frame content that matches
+      let sessionB = await createSessionWithParticipant(org.id, agent.id, { name: 'General' });
+      let fm = sessionManager.getFrameManager(sessionB.id);
+      fm.merge([
+        { id: 'frm_search3', type: 'message', content: { text: 'Discussion about Project Alpha requirements' }, authorType: 'agent', authorID: agent.id },
+      ], { authorType: 'agent', authorId: agent.id });
+
+      let tool   = instantiateTool(ListSessionsTool);
+      let result = await tool.execute({ agentID: agent.id, search: 'Project Alpha' });
+
+      assert.equal(result.sessions.length, 2);
+      let ids = result.sessions.map((s) => s.id);
+      assert.ok(ids.includes(sessionA.id), 'should include name-matched session');
+      assert.ok(ids.includes(sessionB.id), 'should include content-matched session');
+    });
   });
 
   // ===========================================================================

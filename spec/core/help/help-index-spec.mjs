@@ -116,6 +116,72 @@ describe('HelpIndex', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Capabilities
+  // -------------------------------------------------------------------------
+
+  it('should include registered capabilities in entries', () => {
+    registry.registerCapability('invite', {
+      handler:      async () => {},
+      description:  'Invite an agent',
+      displayName:  'Invite Agent',
+      riskLevel:    'high',
+      slashCommand: 'invite',
+      schema:       { type: 'object', properties: { agentName: { type: 'string' } } },
+    });
+
+    let index   = new HelpIndex(registry);
+    let entries = index.getEntries();
+    let caps    = entries.filter((e) => e.category === 'capability');
+
+    assert.equal(caps.length, 1);
+    assert.equal(caps[0].name, 'invite');
+    assert.equal(caps[0].description, 'Invite an agent');
+    assert.equal(caps[0].displayName, 'Invite Agent');
+    assert.equal(caps[0].riskLevel, 'high');
+    assert.equal(caps[0].slashCommand, 'invite');
+    assert.ok(caps[0].schema);
+  });
+
+  it('should include capabilities alongside tools and commands', () => {
+    class ToolA extends PluginInterface {
+      static pluginId    = 'toolA';
+      static featureName = 'run';
+      static displayName = 'Tool A';
+      static description = 'A tool';
+    }
+
+    registry.registerTool('toolA:run', ToolA);
+    registry.registerCommand('help', () => {}, { description: 'Show help' });
+    registry.registerCapability('invite', {
+      handler:     async () => {},
+      description: 'Invite agent',
+    });
+
+    let index   = new HelpIndex(registry);
+    let entries = index.getEntries();
+
+    assert.equal(entries.length, 3);
+    assert.ok(entries.some((e) => e.category === 'tool'));
+    assert.ok(entries.some((e) => e.category === 'command'));
+    assert.ok(entries.some((e) => e.category === 'capability'));
+  });
+
+  it('should search across capabilities', () => {
+    registry.registerCapability('invite', {
+      handler:      async () => {},
+      description:  'Invite an agent to the session',
+      displayName:  'Invite Agent',
+      slashCommand: 'invite',
+    });
+
+    let index   = new HelpIndex(registry);
+    let results = index.search('invite');
+
+    assert.ok(results.length >= 1);
+    assert.ok(results.some((e) => e.name === 'invite' && e.category === 'capability'));
+  });
+
+  // -------------------------------------------------------------------------
   // Search
   // -------------------------------------------------------------------------
 

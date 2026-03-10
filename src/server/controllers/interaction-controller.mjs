@@ -132,6 +132,13 @@ export class InteractionController extends ControllerAuthBase {
 
       let ToolClass = pluginRegistry.getTool(featureName);
 
+      // For capabilities, check if it exists for permission routing
+      if (!ToolClass) {
+        let capability = pluginRegistry.getCapability(featureName);
+        if (capability && capability.riskLevel === 'low')
+          return false; // Low-risk capabilities auto-allowed
+      }
+
       return permissionEngine.checkPermission(featureName, toolArgs, {
         organizationID: agent.organizationID,
         scope:          'session',
@@ -142,8 +149,28 @@ export class InteractionController extends ControllerAuthBase {
 
     let executeTool = async (toolName, toolArgs) => {
       let ToolClass = pluginRegistry.getTool(toolName);
-      if (!ToolClass)
+
+      if (!ToolClass) {
+        // Try capabilities before giving up
+        let capability = pluginRegistry.getCapability(toolName);
+        if (capability) {
+          let result = await capability.handler({
+            params:     toolArgs,
+            sessionID:  params.sessionId,
+            context:    core.getContext(),
+            authorType: 'agent',
+            authorID:   this.request.userId,
+            agent:      resolvedAgent,
+          });
+
+          if (result && result.injectPrimer)
+            interactionLoop.requestPrimerRefresh(params.sessionId);
+
+          return (result && result.content) || result;
+        }
+
         throw new Error(`Unknown tool: ${toolName}`);
+      }
 
       let toolInstance = new ToolClass(core.getContext());
 

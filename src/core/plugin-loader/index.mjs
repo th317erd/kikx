@@ -127,6 +127,7 @@ export class PluginLoader {
       AgentInterface,
       registerTool:          (name, ToolClass) => registry.registerTool(name, ToolClass),
       registerCommand:       (name, handler)   => registry.registerCommand(name, handler),
+      registerCapability:    (name, options)   => registry.registerCapability(name, options),
       registerCustomElement: (tagName)         => registry.registerCustomElement(tagName),
       registerAgentType:     (id, AgentClass)  => registry.registerAgentType(id, AgentClass),
       registerHook:          (hookName, handler) => registry.registerHook(hookName, handler),

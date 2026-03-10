@@ -37,6 +37,13 @@ export class HelpIndex {
       entries.push(entry);
     }
 
+    // --- Capabilities ---
+    let capabilities = this._registry.getCapabilities();
+    for (let [name, capability] of capabilities) {
+      let entry = this._buildCapabilityEntry(name, capability);
+      entries.push(entry);
+    }
+
     return entries;
   }
 
@@ -97,5 +104,23 @@ export class HelpIndex {
       parameters:  help.parameters || null,
       examples:    help.examples || null,
     };
+  }
+
+  _buildCapabilityEntry(name, capability) {
+    let entry = {
+      category:     'capability',
+      name,
+      displayName:  capability.displayName || name,
+      description:  capability.description || null,
+      riskLevel:    capability.riskLevel || 'high',
+      schema:       capability.schema || null,
+      slashCommand: capability.slashCommand || null,
+      examples:     capability.examples || null,
+    };
+
+    if (capability.slashCommand)
+      entry.usage = `/${capability.slashCommand}`;
+
+    return entry;
   }
 }

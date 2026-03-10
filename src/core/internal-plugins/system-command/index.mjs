@@ -37,20 +37,46 @@ export function setup({ registerTool, registerInstructions, PluginInterface, con
       if (!registry)
         return { html: '<p>Error: plugin registry not available.</p>' };
 
-      let handler = registry.getCommand(commandName);
+      // Try traditional command first, then capability by slash command
+      let handler    = registry.getCommand(commandName);
+      let capability = !handler ? registry.getCapabilityBySlashCommand(commandName) : null;
 
-      if (!handler)
+      if (!handler && !capability)
         return { html: `<p>Unknown command: <code>/${commandName}</code></p>` };
 
       try {
-        let result = await handler({
-          sessionID:  _sessionID,
-          arguments:  args || '',
-          context:    this._context,
-          authorType: 'agent',
-          authorID:   _authorID || null,
-          agent:      _agent || null,
-        });
+        let result;
+
+        if (capability) {
+          // Execute as capability — parse args if parseArgs is available
+          let structuredParams;
+
+          if (typeof capability.parseArgs === 'function')
+            structuredParams = capability.parseArgs(args || '');
+          else
+            structuredParams = { text: args || '' };
+
+          if (!structuredParams)
+            return { html: `<p>Usage: <code>/${commandName}</code> — could not parse arguments.</p>` };
+
+          result = await capability.handler({
+            params:     structuredParams,
+            sessionID:  _sessionID,
+            context:    this._context,
+            authorType: 'agent',
+            authorID:   _authorID || null,
+            agent:      _agent || null,
+          });
+        } else {
+          result = await handler({
+            sessionID:  _sessionID,
+            arguments:  args || '',
+            context:    this._context,
+            authorType: 'agent',
+            authorID:   _authorID || null,
+            agent:      _agent || null,
+          });
+        }
 
         let content     = (result && result.content) || { html: '<p>Command executed.</p>' };
         let injectPrimer = !!(result && result.injectPrimer);
@@ -82,11 +108,11 @@ export function setup({ registerTool, registerInstructions, PluginInterface, con
   registerTool('system:command', SystemCommandTool);
 
   registerInstructions(
-    'You can execute server commands using the `system:command` tool. ' +
-    'For example, to invite an agent to the session: `{ command: "invite", args: "@agent-name" }`. ' +
-    'To reload your instructions: `{ command: "reload" }`. ' +
-    'Only use this tool when you need to perform a server action — do not use it in response to ' +
-    'a user typing a slash command, as the server handles those automatically.',
+    'Some capabilities are available as direct tools: `invite` (invite an agent, e.g. `{ agentName: "agent-name" }`) ' +
+    'and `reload` (reload instructions). Prefer calling these tools directly. ' +
+    'For commands not yet available as direct tools, use the `system:command` bridge tool: ' +
+    '`{ command: "help", args: "" }`. ' +
+    'Do not use `system:command` in response to a user typing a slash command — the server handles those automatically.',
     { priority: 200 },
   );
 

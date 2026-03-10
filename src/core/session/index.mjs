@@ -54,6 +54,9 @@ export class SessionManager {
     if (options.parentSessionID !== undefined)
       sessionData.parentSessionID = options.parentSessionID;
 
+    if (options.parentSessionID !== undefined && options.id !== undefined && options.parentSessionID === options.id)
+      throw new Error('Session cannot be its own parent');
+
     if (options.linkedFrameID !== undefined)
       sessionData.linkedFrameID = options.linkedFrameID;
 

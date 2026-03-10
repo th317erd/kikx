@@ -79,11 +79,22 @@ export function setup({ registerTool, PluginInterface }) {
         if (params.topLevelOnly && session.parentSessionID != null)
           continue;
 
-        // Search filter (case-insensitive name match)
+        // Search filter (case-insensitive name match, then frame content)
         if (params.search) {
           let searchLower = params.search.toLowerCase();
-          if (!session.name || !session.name.toLowerCase().includes(searchLower))
-            continue;
+          let nameMatch = session.name && session.name.toLowerCase().includes(searchLower);
+          if (!nameMatch) {
+            // Fall back to searching frame content in-memory
+            let sessionManager = this._context.getProperty('sessionManager');
+            let fm = sessionManager.getFrameManager(session.id);
+            let frames = fm.toArray();
+            let contentMatch = frames.some((f) => {
+              let contentString = (typeof f.content === 'string') ? f.content : JSON.stringify(f.content || '');
+              return contentString.toLowerCase().includes(searchLower);
+            });
+            if (!contentMatch)
+              continue;
+          }
         }
 
         // Get participant count for this session

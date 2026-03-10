@@ -721,6 +721,135 @@ describe('PluginRegistry', () => {
       assert.ok(registry.getCustomElements().has('kikx-test'));
     });
   });
+
+  // ---- Capabilities ----
+
+  describe('registerCapability', () => {
+    it('should register a valid capability', () => {
+      let handler = async () => ({ content: { html: 'ok' } });
+      registry.registerCapability('invite', {
+        handler,
+        schema:       { type: 'object', properties: { agentName: { type: 'string' } }, required: ['agentName'] },
+        description:  'Invite an agent',
+        displayName:  'Invite Agent',
+        riskLevel:    'high',
+        slashCommand: 'invite',
+        parseArgs:    (raw) => ({ agentName: raw.replace(/^@/, '') }),
+      });
+
+      let cap = registry.getCapability('invite');
+      assert.ok(cap, 'Capability should be stored');
+      assert.equal(cap.handler, handler);
+      assert.equal(cap.description, 'Invite an agent');
+      assert.equal(cap.displayName, 'Invite Agent');
+      assert.equal(cap.riskLevel, 'high');
+      assert.equal(cap.slashCommand, 'invite');
+      assert.ok(cap.schema);
+      assert.equal(typeof cap.parseArgs, 'function');
+    });
+
+    it('should throw if name is empty', () => {
+      assert.throws(
+        () => registry.registerCapability('', { handler: async () => {} }),
+        { message: 'Capability name must be a non-empty string' },
+      );
+    });
+
+    it('should throw if name is not a string', () => {
+      assert.throws(
+        () => registry.registerCapability(123, { handler: async () => {} }),
+        { message: 'Capability name must be a non-empty string' },
+      );
+    });
+
+    it('should throw if handler is missing', () => {
+      assert.throws(
+        () => registry.registerCapability('test', {}),
+        { message: 'Capability "test" handler must be a function' },
+      );
+    });
+
+    it('should throw if handler is not a function', () => {
+      assert.throws(
+        () => registry.registerCapability('test', { handler: 'not-a-function' }),
+        { message: 'Capability "test" handler must be a function' },
+      );
+    });
+
+    it('should default riskLevel to high', () => {
+      registry.registerCapability('test', { handler: async () => {} });
+      let cap = registry.getCapability('test');
+      assert.equal(cap.riskLevel, 'high');
+    });
+
+    it('should warn on override', () => {
+      let warnings = [];
+      let original = console.warn;
+      console.warn = (...args) => warnings.push(args.join(' '));
+
+      try {
+        registry.registerCapability('dup', { handler: async () => 'v1' });
+        registry.registerCapability('dup', { handler: async () => 'v2' });
+
+        assert.equal(warnings.length, 1);
+        assert.ok(warnings[0].includes('dup'));
+        assert.ok(warnings[0].includes('overridden'));
+      } finally {
+        console.warn = original;
+      }
+    });
+
+    it('should return null for unregistered capability', () => {
+      assert.equal(registry.getCapability('missing'), null);
+    });
+
+    it('should return all capabilities via getCapabilities', () => {
+      registry.registerCapability('cap-a', { handler: async () => {} });
+      registry.registerCapability('cap-b', { handler: async () => {} });
+
+      let caps = registry.getCapabilities();
+      assert.ok(caps instanceof Map);
+      assert.equal(caps.size, 2);
+      assert.ok(caps.has('cap-a'));
+      assert.ok(caps.has('cap-b'));
+    });
+
+    it('should return a defensive copy from getCapabilities', () => {
+      registry.registerCapability('cap-1', { handler: async () => {} });
+      let caps = registry.getCapabilities();
+      caps.delete('cap-1');
+
+      // Internal map should still have it
+      assert.ok(registry.getCapability('cap-1'));
+    });
+
+    it('should find capability by slash command alias', () => {
+      registry.registerCapability('inviteParticipant', {
+        handler:      async () => {},
+        slashCommand: 'invite',
+      });
+
+      let cap = registry.getCapabilityBySlashCommand('invite');
+      assert.ok(cap, 'Should find capability by slash command');
+      assert.equal(cap.name, 'inviteParticipant');
+    });
+
+    it('should return null for unknown slash command', () => {
+      assert.equal(registry.getCapabilityBySlashCommand('nonexistent'), null);
+    });
+
+    it('should allow capability without slash command', () => {
+      registry.registerCapability('internal-op', {
+        handler: async () => {},
+        // no slashCommand
+      });
+
+      let cap = registry.getCapability('internal-op');
+      assert.ok(cap);
+      assert.equal(cap.slashCommand, null);
+      assert.equal(registry.getCapabilityBySlashCommand('internal-op'), null);
+    });
+  });
 });
 
 // =============================================================================
@@ -888,6 +1017,28 @@ describe('PluginLoader', () => {
 
     let registry = loader.getRegistry();
     assert.equal(registry.getCommand('greet'), handler);
+  });
+
+  it('should allow plugin to register capabilities via context', async () => {
+    let handler = async () => ({ content: { html: 'ok' } });
+
+    let module = {
+      setup: (context) => {
+        context.registerCapability('test-cap', {
+          handler,
+          description:  'A test capability',
+          slashCommand: 'testcap',
+        });
+      },
+    };
+
+    await loader.loadPlugin('cap-plugin', module);
+
+    let registry = loader.getRegistry();
+    let cap      = registry.getCapability('test-cap');
+    assert.ok(cap, 'Capability should be registered via plugin context');
+    assert.equal(cap.handler, handler);
+    assert.equal(cap.slashCommand, 'testcap');
   });
 
   it('should allow plugin to register custom elements via context', async () => {
