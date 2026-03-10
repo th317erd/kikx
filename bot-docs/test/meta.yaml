@@ -1176,3 +1176,113 @@ reactive-frame-engine:
       with a more comprehensive solution. It SUPERSEDES seqda dependency (dropped).
       It EXTENDS the permission system (Tier 2 structural ACLs complement existing
       Tier 3 policy engine). No conflicts detected.
+
+# =============================================================================
+# 10. SESSION RELATIONSHIPS + CROSS-SESSION TOOLS + THREADS
+# =============================================================================
+# Source: .claude/conversation.md Rounds 1-7 (2026-03-09)
+# Plan: bot-docs/future-plans/sessions-as-frames.yaml (rewritten)
+# =============================================================================
+
+session-relationships:
+
+  - assert: "Session model changes have complete acceptance criteria"
+    severity: blocker
+    status: pass
+    notes: >
+      parentSessionID (FK self, CASCADE, nullable, indexed) and
+      linkedFrameID (STRING, nullable, indexed) fully specified
+      with types, constraints, purpose, and guards (self-reference).
+
+  - assert: "Participant model changes have complete acceptance criteria"
+    severity: blocker
+    status: pass
+    notes: >
+      Remove alias + getDisplayName() + overrides. Model becomes
+      pure join table {id, sessionID, agentID, createdAt, updatedAt}.
+
+  - assert: "Existing tests referencing alias/overrides audited"
+    severity: high
+    status: needs-review
+    notes: >
+      session-manager-spec.mjs may reference alias parameter in
+      addParticipant() calls. Must update before implementation.
+
+  - assert: "Participant lifecycle frames are implementation-ready"
+    severity: blocker
+    status: pass
+    notes: >
+      addParticipant → Participant record + participant-joined frame
+      via FrameManager.merge(). Direct approach, no events. Frame
+      schema defined. removeParticipant same pattern.
+
+  - assert: "Cross-session plugin has complete tool specifications"
+    severity: blocker
+    status: pass
+    notes: >
+      5 tools: listSessions, createSession, postToSession,
+      readFromSession, inviteParticipant. Each has args schema,
+      return type, permission space, behavior description.
+
+  - assert: "Cross-session tool permissions model defined"
+    severity: blocker
+    status: pass
+    notes: >
+      Each tool has own permission space. createSession uses
+      argument-dependent permissions (Keystore.canonicalize for
+      deterministic serialization, already built).
+
+  - assert: "Session-link frame cyclic ID dependency resolved"
+    severity: blocker
+    status: pass
+    notes: >
+      Pre-generate both XIDs (sessionID + frameID) before creating
+      either record. Wrapped in transaction for atomicity.
+
+  - assert: "Thread support is implementation-ready"
+    severity: high
+    status: pass
+    notes: >
+      Server-side only. Frame query filter by parentId. InteractionLoop
+      accepts parentId. No reply counts (client computes). Client
+      UI deferred. FrameManager already supports parentId.
+
+  - assert: "No circular dependencies in plan"
+    severity: blocker
+    status: pass
+    notes: >
+      Session → Frame (linkedFrameID) is one-way STRING reference.
+      Frame → Session (content.targetSessionID) is content-level.
+      No model-level circular FKs. XID pre-generation resolves order.
+
+  - assert: "Implementation order defined"
+    severity: high
+    status: pass
+    notes: >
+      Step 1: Session model. Step 2: Participant model + frames.
+      Step 3: /invite update. Step 4: Cross-session plugin.
+      Step 5: Thread support. Step 6: Tests.
+
+  - assert: "All features have test strategy"
+    severity: blocker
+    status: pass
+    notes: >
+      5 unit test files + 3 integration test files + 2 existing
+      test updates. Every feature has happy, failure, and edge
+      case coverage defined.
+
+  - assert: "Plan is rollback-safe"
+    severity: high
+    status: pass
+    notes: >
+      All changes additive (new fields, new types, new plugin).
+      Removing alias/overrides is breaking but no production consumers.
+      V1 development, no migration needed.
+
+  - assert: "Command-tool unification deferred cleanly"
+    severity: medium
+    status: pass
+    notes: >
+      Captured in command-tool-unification.yaml. Cross-session
+      tools use registerTool(), /invite stays as command. No
+      blocking dependency.

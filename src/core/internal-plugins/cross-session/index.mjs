@@ -1,0 +1,424 @@
+'use strict';
+
+import XID from 'xid-js';
+
+// =============================================================================
+// Cross-Session Plugin
+// =============================================================================
+// Provides tools for cross-session operations: listing, creating, posting to,
+// reading from, and inviting participants to sessions.
+//
+// Tools registered:
+//   cross-session:listSessions
+//   cross-session:createSession
+//   cross-session:postToSession
+//   cross-session:readFromSession
+//   cross-session:inviteParticipant
+// =============================================================================
+
+export function setup({ registerTool, PluginInterface }) {
+
+  // ---------------------------------------------------------------------------
+  // cross-session:listSessions
+  // ---------------------------------------------------------------------------
+
+  class ListSessionsTool extends PluginInterface {
+    static pluginId    = 'cross-session';
+    static featureName = 'listSessions';
+    static displayName = 'List Sessions';
+    static description = 'List sessions the agent has access to';
+    static riskLevel   = 'low';
+    static inputSchema = {
+      type:       'object',
+      properties: {
+        search:          { type: 'string', description: 'Keyword filter on session name' },
+        type:            { type: 'string', enum: ['chat', 'dm'] },
+        archived:        { type: 'boolean', default: false },
+        parentSessionID: { type: 'string', description: 'Filter by parent session' },
+        topLevelOnly:    { type: 'boolean', default: false },
+        limit:           { type: 'integer', default: 20 },
+        offset:          { type: 'integer', default: 0 },
+      },
+    };
+
+    async _execute(params) {
+      let models  = this._context.getProperty('models');
+      let { Participant, Session } = models;
+      let agentID = params.agentID;
+
+      // Get session IDs where agent is participant
+      let participantRecords = await Participant.where.agentID.EQ(agentID).all();
+      let sessionIDs = participantRecords.map((p) => p.sessionID);
+
+      if (sessionIDs.length === 0)
+        return { sessions: [] };
+
+      // Load sessions and apply filters
+      let sessions = [];
+      for (let sessionID of sessionIDs) {
+        let session = await Session.where.id.EQ(sessionID).first();
+        if (!session)
+          continue;
+
+        // Type filter
+        if (params.type && session.type !== params.type)
+          continue;
+
+        // Archived filter
+        if (params.archived === true && !session.archived)
+          continue;
+
+        if (!params.archived && session.archived)
+          continue;
+
+        // Parent session filter
+        if (params.parentSessionID && session.parentSessionID !== params.parentSessionID)
+          continue;
+
+        // Top-level only filter
+        if (params.topLevelOnly && session.parentSessionID != null)
+          continue;
+
+        // Search filter (case-insensitive name match)
+        if (params.search) {
+          let searchLower = params.search.toLowerCase();
+          if (!session.name || !session.name.toLowerCase().includes(searchLower))
+            continue;
+        }
+
+        // Get participant count for this session
+        let sessionParticipants = await Participant.where.sessionID.EQ(session.id).all();
+
+        let createdAt      = session.createdAt;
+        let updatedAt      = session.updatedAt;
+        let createdMs      = (createdAt && typeof createdAt.toMillis === 'function') ? createdAt.toMillis() : createdAt;
+        let updatedMs      = (updatedAt && typeof updatedAt.toMillis === 'function') ? updatedAt.toMillis() : updatedAt;
+        let lastActivityAt = (!updatedAt || updatedMs === createdMs) ? createdAt : updatedAt;
+
+        sessions.push({
+          id:               session.id,
+          name:             session.name,
+          type:             session.type,
+          archived:         session.archived,
+          parentSessionID:  session.parentSessionID,
+          participantCount: sessionParticipants.length,
+          createdAt,
+          lastActivityAt,
+        });
+      }
+
+      // Pagination
+      let offset = params.offset || 0;
+      let limit  = params.limit || 20;
+      sessions = sessions.slice(offset, offset + limit);
+
+      return { sessions };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // cross-session:createSession
+  // ---------------------------------------------------------------------------
+
+  class CreateSessionTool extends PluginInterface {
+    static pluginId    = 'cross-session';
+    static featureName = 'createSession';
+    static displayName = 'Create Session';
+    static description = 'Create a top-level or sub-session';
+    static riskLevel   = 'high';
+    static inputSchema = {
+      type:       'object',
+      required:   ['title'],
+      properties: {
+        title:           { type: 'string' },
+        participants:    { type: 'array', items: { type: 'string' }, default: [] },
+        parentSessionID: { type: 'string' },
+        type:            { type: 'string', default: 'chat' },
+      },
+    };
+
+    async _execute(params) {
+      let sessionManager = this._context.getProperty('sessionManager');
+      let models         = this._context.getProperty('models');
+      let { Agent }      = models;
+
+      if (!params.title)
+        throw new Error('title is required');
+
+      let agentID        = params.agentID;
+      let organizationID = null;
+
+      // Resolve organization from the agent
+      if (agentID) {
+        let agent = await Agent.where.id.EQ(agentID).first();
+        if (agent)
+          organizationID = agent.organizationID;
+      }
+
+      let sessionOptions = { name: params.title, type: params.type || 'chat' };
+
+      // Sub-session handling
+      if (params.parentSessionID) {
+        let parentSession = await sessionManager.getSession(params.parentSessionID);
+        if (!parentSession)
+          throw new Error(`Parent session not found: ${params.parentSessionID}`);
+
+        if (parentSession.archived)
+          throw new Error('Parent session is archived');
+
+        organizationID = organizationID || parentSession.organizationID;
+        sessionOptions.parentSessionID = params.parentSessionID;
+
+        // Pre-generate a frame ID for the session-link
+        let frameID = `frm_${XID.next()}`;
+        sessionOptions.linkedFrameID = frameID;
+
+        // Create the sub-session
+        let session = await sessionManager.createSession(organizationID, sessionOptions);
+
+        // Create session-link frame in parent session
+        let frameManager = sessionManager.getFrameManager(params.parentSessionID);
+        let linkFrame = {
+          id:         frameID,
+          type:       'session-link',
+          content:    { targetSessionID: session.id, title: params.title, participants: params.participants || [] },
+          timestamp:  Date.now(),
+          authorType: 'system',
+          authorID:   null,
+          hidden:     false,
+          deleted:    false,
+          processed:  false,
+        };
+        frameManager.merge([linkFrame], { authorType: 'system' });
+
+        let framePersistence = this._context.getProperty('framePersistence');
+        if (framePersistence)
+          await framePersistence.saveFrames(params.parentSessionID, [linkFrame]);
+
+        // Add participants
+        await this._addParticipants(sessionManager, models, session.id, params.participants || []);
+
+        return { sessionID: session.id, title: params.title, participants: params.participants || [] };
+      }
+
+      // Top-level session
+      let session = await sessionManager.createSession(organizationID, sessionOptions);
+      await this._addParticipants(sessionManager, models, session.id, params.participants || []);
+
+      return { sessionID: session.id, title: params.title, participants: params.participants || [] };
+    }
+
+    async _addParticipants(sessionManager, models, sessionID, participantNames) {
+      let { Agent } = models;
+      for (let name of participantNames) {
+        let agent = await Agent.where.name.EQ(name).first();
+        if (!agent)
+          throw new Error(`Agent not found: ${name}`);
+
+        await sessionManager.addParticipant(sessionID, agent.id);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // cross-session:postToSession
+  // ---------------------------------------------------------------------------
+
+  class PostToSessionTool extends PluginInterface {
+    static pluginId    = 'cross-session';
+    static featureName = 'postToSession';
+    static displayName = 'Post to Session';
+    static description = 'Post a message to another session';
+    static riskLevel   = 'high';
+    static inputSchema = {
+      type:       'object',
+      required:   ['sessionID', 'message'],
+      properties: {
+        sessionID: { type: 'string' },
+        message:   { type: 'string' },
+      },
+    };
+
+    async _execute(params) {
+      if (!params.sessionID)
+        throw new Error('sessionID is required');
+
+      if (!params.message)
+        throw new Error('message is required');
+
+      let sessionManager = this._context.getProperty('sessionManager');
+      let session = await sessionManager.getSession(params.sessionID);
+      if (!session)
+        throw new Error(`Session not found: ${params.sessionID}`);
+
+      if (session.archived)
+        throw new Error('Session is archived');
+
+      let agentID = params.agentID;
+      let frameID = `frm_${XID.next()}`;
+
+      let frameManager = sessionManager.getFrameManager(params.sessionID);
+      let frameData = {
+        id:         frameID,
+        type:       'message',
+        content:    { text: params.message },
+        timestamp:  Date.now(),
+        authorType: 'agent',
+        authorID:   agentID,
+        hidden:     false,
+        deleted:    false,
+        processed:  false,
+      };
+      frameManager.merge([frameData], { authorType: 'agent', authorId: agentID });
+
+      let framePersistence = this._context.getProperty('framePersistence');
+      if (framePersistence)
+        await framePersistence.saveFrames(params.sessionID, [frameData]);
+
+      return { frameID, sessionID: params.sessionID };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // cross-session:readFromSession
+  // ---------------------------------------------------------------------------
+
+  class ReadFromSessionTool extends PluginInterface {
+    static pluginId    = 'cross-session';
+    static featureName = 'readFromSession';
+    static displayName = 'Read from Session';
+    static description = 'Read frames from another session with filtering';
+    static riskLevel   = 'low';
+    static inputSchema = {
+      type:       'object',
+      required:   ['sessionID'],
+      properties: {
+        sessionID: { type: 'string' },
+        keyword:   { type: 'string' },
+        types:     { type: 'array', items: { type: 'string' } },
+        limit:     { type: 'integer', default: 10 },
+        offset:    { type: 'integer', default: 0 },
+      },
+    };
+
+    async _execute(params) {
+      if (!params.sessionID)
+        throw new Error('sessionID is required');
+
+      let sessionManager = this._context.getProperty('sessionManager');
+      let session = await sessionManager.getSession(params.sessionID);
+      if (!session)
+        throw new Error(`Session not found: ${params.sessionID}`);
+
+      let frameManager = sessionManager.getFrameManager(params.sessionID);
+      let frames = frameManager.toArray();
+
+      // Type filter
+      if (params.types && params.types.length > 0) {
+        frames = frames.filter((f) => params.types.includes(f.type));
+      } else {
+        // Exclude system lifecycle frames by default
+        frames = frames.filter((f) => f.authorType !== 'system');
+      }
+
+      // Keyword filter (case-insensitive search in content)
+      if (params.keyword) {
+        let keyword = params.keyword.toLowerCase();
+        frames = frames.filter((f) => {
+          let contentString = (typeof f.content === 'string') ? f.content : JSON.stringify(f.content || '');
+          return contentString.toLowerCase().includes(keyword);
+        });
+      }
+
+      // Pagination
+      let offset = params.offset || 0;
+      let limit  = Math.min(params.limit || 10, 50);
+      frames = frames.slice(offset, offset + limit);
+
+      // Build summaries
+      let summaries = frames.map((f) => {
+        let contentString = (typeof f.content === 'string') ? f.content : JSON.stringify(f.content || '');
+        let snippet = (contentString.length > 200) ? contentString.slice(0, 200) + '...' : contentString;
+        return {
+          id:         f.id,
+          type:       f.type,
+          authorType: f.authorType,
+          authorID:   f.authorID,
+          content:    snippet,
+          timestamp:  f.timestamp,
+        };
+      });
+
+      return { frames: summaries };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // cross-session:inviteParticipant
+  // ---------------------------------------------------------------------------
+
+  class InviteParticipantTool extends PluginInterface {
+    static pluginId    = 'cross-session';
+    static featureName = 'inviteParticipant';
+    static displayName = 'Invite Participant';
+    static description = 'Invite an agent to a session';
+    static riskLevel   = 'high';
+    static inputSchema = {
+      type:       'object',
+      required:   ['sessionID', 'agentName'],
+      properties: {
+        sessionID: { type: 'string' },
+        agentName: { type: 'string' },
+      },
+    };
+
+    async _execute(params) {
+      if (!params.sessionID)
+        throw new Error('sessionID is required');
+
+      if (!params.agentName)
+        throw new Error('agentName is required');
+
+      let sessionManager = this._context.getProperty('sessionManager');
+      let models         = this._context.getProperty('models');
+      let { Agent }      = models;
+
+      let session = await sessionManager.getSession(params.sessionID);
+      if (!session)
+        throw new Error(`Session not found: ${params.sessionID}`);
+
+      if (session.archived)
+        throw new Error('Session is archived');
+
+      let agent = await Agent.where.name.EQ(params.agentName).first();
+      if (!agent)
+        throw new Error(`Agent not found: ${params.agentName}`);
+
+      // Reject self-invite
+      let callerAgentID = params.agentID;
+      if (callerAgentID && agent.id === callerAgentID)
+        throw new Error('Cannot invite yourself');
+
+      let participant = await sessionManager.addParticipant(params.sessionID, agent.id);
+
+      return {
+        participantID: participant.id,
+        agentID:       agent.id,
+        agentName:     agent.name,
+        sessionID:     params.sessionID,
+      };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Register all tools
+  // ---------------------------------------------------------------------------
+
+  registerTool('cross-session:listSessions',     ListSessionsTool);
+  registerTool('cross-session:createSession',     CreateSessionTool);
+  registerTool('cross-session:postToSession',     PostToSessionTool);
+  registerTool('cross-session:readFromSession',   ReadFromSessionTool);
+  registerTool('cross-session:inviteParticipant', InviteParticipantTool);
+
+  return () => {};
+}

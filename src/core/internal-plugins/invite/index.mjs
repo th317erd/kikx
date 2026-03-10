@@ -3,22 +3,22 @@
 // =============================================================================
 // Invite Command Plugin
 // =============================================================================
-// Registers `/invite @agentName [as Alias]` command.
+// Registers `/invite @agentName` command.
 // Adds the named agent as a participant to the current session.
+// The participant-joined frame is created by addParticipant() automatically.
 // =============================================================================
 
 export function setup({ registerCommand, context }) {
   registerCommand('invite', async ({ sessionID, arguments: argsString }) => {
     if (!argsString)
-      return { content: { html: '<p>Usage: <code>/invite @agentName [as Alias]</code></p>' } };
+      return { content: { html: '<p>Usage: <code>/invite @agentName</code></p>' } };
 
-    // Parse: @agentName [as Alias] [extra...]
-    let argMatch = argsString.match(/^@?([\w_-]+)(?:\s+as\s+(\S+))?/i);
+    // Parse: @agentName
+    let argMatch = argsString.match(/^@?([\w_-]+)/);
     if (!argMatch)
-      return { content: { html: '<p>Usage: <code>/invite @agentName [as Alias]</code></p>' } };
+      return { content: { html: '<p>Usage: <code>/invite @agentName</code></p>' } };
 
     let agentName = argMatch[1];
-    let alias     = argMatch[2] || null;
 
     // Look up the agent
     let { Agent } = context.getProperty('models');
@@ -27,24 +27,21 @@ export function setup({ registerCommand, context }) {
     if (!agent)
       return { content: { html: `<p>Agent not found: <strong>${agentName}</strong></p>` } };
 
-    // Add as participant
+    // Add as participant (creates participant-joined frame automatically)
     let sessionManager = context.getProperty('sessionManager');
-    await sessionManager.addParticipant(sessionID, agent.id, { alias });
+    await sessionManager.addParticipant(sessionID, agent.id);
 
-    let aliasNote = alias ? ` as <em>${alias}</em>` : '';
     return {
-      content: { html: `<p>Invited <strong>${agentName}</strong>${aliasNote} to this session.</p>` },
+      content: { html: `<p>Invited <strong>${agentName}</strong> to this session.</p>` },
     };
   }, {
     description: 'Invite an agent to the current session as a participant.',
-    usage:       '/invite @agentName [as Alias]',
+    usage:       '/invite @agentName',
     parameters:  [
       { name: 'agentName', required: true, description: 'The name of the agent to invite (with or without @ prefix)' },
-      { name: 'as Alias',  required: false, description: 'Optional display alias for the agent in this session' },
     ],
     examples: [
-      { input: '/invite @test-claude',            description: 'Invite the test-claude agent' },
-      { input: '/invite @test-claude as Assistant', description: 'Invite test-claude with display name "Assistant"' },
+      { input: '/invite @test-claude', description: 'Invite the test-claude agent' },
     ],
   });
 

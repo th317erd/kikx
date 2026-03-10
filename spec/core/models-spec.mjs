@@ -383,25 +383,6 @@ describe('Participant model', () => {
     assert.ok(participant.id.startsWith('prt_'));
   });
 
-  it('should create a participant with alias', async () => {
-    let participant = await models.Participant.create({
-      sessionID: session.id,
-      agentID:   agent.id,
-      alias:     'BobTheBurgerGuy',
-    });
-
-    assert.equal(participant.alias, 'BobTheBurgerGuy');
-    assert.equal(participant.getDisplayName(), 'BobTheBurgerGuy');
-  });
-
-  it('should return null displayName when no alias', async () => {
-    let participant = await models.Participant.create({
-      sessionID: session.id,
-      agentID:   agent.id,
-    });
-
-    assert.equal(participant.getDisplayName(), null);
-  });
 });
 
 // =============================================================================

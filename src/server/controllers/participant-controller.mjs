@@ -23,17 +23,13 @@ export class ParticipantController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async create({ params, body }) {
-    let { agentId, alias, overrides } = body || {};
+    let { agentId } = body || {};
 
     if (!agentId)
       this.throwBadRequestError('agentId is required');
 
     let sessionManager = this.getSessionManager();
-    let participant    = await sessionManager.addParticipant(
-      params.sessionId,
-      agentId,
-      { alias, overrides },
-    );
+    let participant    = await sessionManager.addParticipant(params.sessionId, agentId);
 
     this.setStatusCode(201);
 
@@ -46,8 +42,15 @@ export class ParticipantController extends ControllerAuthBase {
 
   async destroy({ params }) {
     let sessionManager = this.getSessionManager();
+    let models         = this.getCoreModels();
+    let { Participant } = models;
 
-    await sessionManager.removeParticipant(params.participantId);
+    // Look up participant to get sessionID and agentID for the new signature
+    let participant = await Participant.where.id.EQ(params.participantId).first();
+    if (!participant)
+      this.throwNotFoundError('Participant not found');
+
+    await sessionManager.removeParticipant(participant.sessionID, participant.agentID);
 
     return { data: { deleted: true } };
   }

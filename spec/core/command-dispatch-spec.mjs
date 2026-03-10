@@ -365,28 +365,6 @@ describe('Command Dispatch', () => {
       assert.ok(found, 'Agent should be a participant');
     });
 
-    it('should invite with alias', async () => {
-      let session = await createTestSession();
-      let loop    = createLoop();
-
-      let agent = await models.Agent.create({
-        name:           'test-alias-agent',
-        organizationID: session.organizationID,
-        pluginID:       'mock-agent',
-      });
-
-      await loop.startInteraction(session.id, defaultParams(
-        new MockAgent(context, []),
-        { userMessage: `/invite @${agent.name} as MyAlias` },
-      ));
-
-      let fm     = await framePersistence.loadFrames(session.id);
-      let frames = fm.toArray();
-      let resultFrames = frames.filter((f) => f.type === 'command-result');
-
-      assert.ok(resultFrames[0].content.html.includes('MyAlias'));
-    });
-
     it('should return error for unknown agent', async () => {
       let session = await createTestSession();
       let loop    = createLoop();

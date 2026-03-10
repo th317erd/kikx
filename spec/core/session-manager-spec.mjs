@@ -239,32 +239,6 @@ describe('SessionManager', () => {
     assert.equal(participant.agentID, agent.id);
   });
 
-  it('addParticipant — should add with alias', async () => {
-    let agent   = await models.Agent.create({ organizationID: org.id, name: 'test-alias', pluginID: 'claude-agent' });
-    let session = await manager.createSession(org.id);
-
-    let participant = await manager.addParticipant(session.id, agent.id, { alias: 'BobTheBurgerGuy' });
-    assert.equal(participant.alias, 'BobTheBurgerGuy');
-  });
-
-  it('addParticipant — should add with overrides as object', async () => {
-    let agent     = await models.Agent.create({ organizationID: org.id, name: 'test-over', pluginID: 'claude-agent' });
-    let session   = await manager.createSession(org.id);
-    let overrides = { temperature: 0.5 };
-
-    let participant = await manager.addParticipant(session.id, agent.id, { overrides });
-    assert.equal(participant.overrides, JSON.stringify(overrides));
-  });
-
-  it('addParticipant — should add with overrides as string', async () => {
-    let agent     = await models.Agent.create({ organizationID: org.id, name: 'test-str', pluginID: 'claude-agent' });
-    let session   = await manager.createSession(org.id);
-    let overrides = '{"temperature": 0.5}';
-
-    let participant = await manager.addParticipant(session.id, agent.id, { overrides });
-    assert.equal(participant.overrides, overrides);
-  });
-
   it('addParticipant — should throw for non-existent session', async () => {
     let agent = await models.Agent.create({ organizationID: org.id, name: 'test-nosess', pluginID: 'claude-agent' });
 
@@ -299,21 +273,20 @@ describe('SessionManager', () => {
   // removeParticipant
   // ===========================================================================
   it('removeParticipant — should remove a participant', async () => {
-    let agent       = await models.Agent.create({ organizationID: org.id, name: 'test-rem', pluginID: 'claude-agent' });
-    let session     = await manager.createSession(org.id);
-    let participant = await manager.addParticipant(session.id, agent.id);
+    let agent   = await models.Agent.create({ organizationID: org.id, name: 'test-rem', pluginID: 'claude-agent' });
+    let session = await manager.createSession(org.id);
+    await manager.addParticipant(session.id, agent.id);
 
-    let result = await manager.removeParticipant(participant.id);
+    let result = await manager.removeParticipant(session.id, agent.id);
     assert.equal(result, true);
 
     let participants = await manager.getParticipants(session.id);
     assert.equal(participants.length, 0);
   });
 
-  it('removeParticipant — should throw for non-existent', async () => {
-    await assert.rejects(() => manager.removeParticipant('prt_nope'), {
-      message: /Participant not found/,
-    });
+  it('removeParticipant — should return null for non-existent', async () => {
+    let result = await manager.removeParticipant('ses_nope', 'agt_nope');
+    assert.equal(result, null);
   });
 
   // ===========================================================================
@@ -340,27 +313,8 @@ describe('SessionManager', () => {
   // ===========================================================================
   // updateParticipant
   // ===========================================================================
-  it('updateParticipant — should update alias', async () => {
-    let agent       = await models.Agent.create({ organizationID: org.id, name: 'test-updAlias', pluginID: 'claude-agent' });
-    let session     = await manager.createSession(org.id);
-    let participant = await manager.addParticipant(session.id, agent.id, { alias: 'Old' });
-
-    let updated = await manager.updateParticipant(participant.id, { alias: 'New' });
-    assert.equal(updated.alias, 'New');
-  });
-
-  it('updateParticipant — should update overrides', async () => {
-    let agent       = await models.Agent.create({ organizationID: org.id, name: 'test-updOver', pluginID: 'claude-agent' });
-    let session     = await manager.createSession(org.id);
-    let participant = await manager.addParticipant(session.id, agent.id);
-    let overrides   = { model: 'gpt-4' };
-
-    let updated = await manager.updateParticipant(participant.id, { overrides });
-    assert.equal(updated.overrides, JSON.stringify(overrides));
-  });
-
   it('updateParticipant — should throw for non-existent', async () => {
-    await assert.rejects(() => manager.updateParticipant('prt_nope', { alias: 'X' }), {
+    await assert.rejects(() => manager.updateParticipant('prt_nope'), {
       message: /Participant not found/,
     });
   });

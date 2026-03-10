@@ -1,64 +1,610 @@
-# Sessions-as-Frames Unification
-# Deferred from: Phase C (Event Routing Layer)
-# Priority: Medium
-# Complexity: High
+# Session Relationships, Cross-Session Tools, and Thread Support
+# Replaces: Sessions-as-Frames Unification (abandoned after design review)
+# Priority: High
+# Complexity: Medium
+# Last updated: 2026-03-09
+# Design dialog: .claude/conversation.md (Rounds 1-7)
+
+# =============================================================================
+# Summary
+# =============================================================================
 
 summary: >
-  Unify sessions and frames into a single data model. Sessions become
-  top-level frames with no parent. Messages become child frames. Sub-
-  conversations (e.g. agent-to-agent side-channels) become child frames
-  of the session frame. This eliminates the separate SessionManager
-  abstraction and gives fractal nesting for free.
+  Enhance the existing Session model with parent-child relationships for
+  sub-sessions, add cross-session agent tools as an internal plugin, and
+  add server-side thread support via frame parentId. Sessions and Participants
+  remain as separate models (not unified into frames). The original
+  "sessions-as-frames" unification was abandoned after design review —
+  sessions and frames serve fundamentally different purposes (containers
+  vs events) and keeping them separate better supports the three target
+  capabilities: agent side-channels, cross-session posting, and threads.
 
-current_state: >
-  Sessions and frames are managed by separate subsystems (SessionManager
-  and FrameManager). Sessions live in a sessions table with their own
-  CRUD operations. FrameManagers are created per-session. The two are
-  coupled but distinct — SessionManager owns lifecycle, FrameManager
-  owns content.
+# =============================================================================
+# Design Decisions (from conversation.md Rounds 1-7)
+# =============================================================================
 
-requirements:
-  - Sessions are root frames (no parent_id)
-  - Messages are child frames of the session frame
-  - DMs are sessions with exactly 2 participants
-  - Self channels are sessions with 1 participant
-  - Sub-conversations nest as child frames of their parent session
-  - SessionManager and FrameManager merge into a single system
-  - Existing session APIs remain backward-compatible during migration
-  - Participant list stored as a property of the session frame
+design_decisions:
 
-design_notes: >
-  This is deferred until the Frame Event Router (Phase C) is stable.
-  The router must be validated independently before coupling it with
-  a session model change.
+  sessions_stay:
+    decision: Sessions remain as a separate model, not unified into frames.
+    rationale: >
+      Sessions have mutable metadata (name, archived), organizational
+      ownership, and participant lists. Frames are immutable events.
+      The three target capabilities (sub-sessions, cross-posting, threads)
+      all assume sessions exist. Eliminating sessions would mean
+      reinventing session-like concepts inside the frame model.
 
-  Bridge option (if needed sooner): add sessionFrameId to Session model.
-  On session creation, also create a type: 'session' frame. Messages
-  reference parentId: sessionFrameId. This gets the data model right
-  without requiring full SessionManager removal.
+  participants_stay:
+    decision: Participant model stays as a DB table (pure join table).
+    rationale: >
+      "Which sessions is agent X in?" runs on every interaction, every
+      scheduling check, every sidebar render. Needs indexed JOINs.
+      Participant model drops alias and overrides fields — becomes
+      { id, sessionID, agentID, createdAt, updatedAt }.
 
-  DM identity: A DM is a top-level frame with participants.length === 2.
-  Not all sessions with the same participants are the same DM — users
-  may want multiple conversations with the same parties. DMs are a
-  special case where participants.ids define the channel identity.
+  participant_audit_frames:
+    decision: >
+      addParticipant/removeParticipant create participant-joined/left
+      frames via FrameManager.merge(). Data first, render derives from it.
+    rationale: >
+      The frame is the audit record. The client renders it as a system
+      message. The /invite command just calls addParticipant() — the
+      frame is created by the function, not the command. This means
+      programmatic additions (tools, APIs) also get audit frames for free.
 
-  Self channels: A top-level frame with 1 participant. Could serve as
-  a personal scratchpad, or as an agent playground for experimentation.
+  threads_are_frames:
+    decision: Threads are frames with parentId, NOT sub-sessions.
+    rationale: >
+      Threads are lightweight (3-5 replies typically). Creating a full
+      session for a thread reply is overhead. Thread frames live in the
+      same commit log as the main conversation — agents see full context
+      naturally. Sub-sessions are for heavyweight branched conversations.
 
-dependencies:
-  - Phase C (Frame Event Router) must be stable
-  - FrameManager must handle root frames (no parent)
-  - Participant management must work as frame properties
+  cross_org_sub_sessions:
+    decision: Let the permissions system handle cross-org sub-sessions.
+    rationale: >
+      No hard model-level enforcement of same-org. If permissions allow
+      it, it works. If not, it's denied at the permission layer.
 
-files:
-  - src/core/session/index.mjs          # Merge into frame system
-  - src/shared/frame-manager/frame-manager.mjs  # Support root frames
-  - src/core/models/session.mjs         # Bridge or deprecate
+  archived_sessions_read_only:
+    decision: Archived sessions are read-only. No new frames, no new participants.
+    rationale: >
+      A logic gate, not a permanent state. Unarchiving restores writes.
+
+  duplicate_participant_handling:
+    decision: addParticipant is silently idempotent for duplicates.
+    rationale: No error, no duplicate record, no duplicate frame.
+
+  command_tool_unification:
+    decision: Deferred to future plan (command-tool-unification.yaml).
+    rationale: >
+      Commands and tools are functionally identical (same operations,
+      different invocation interfaces). Unification is a clean refactor
+      but adds scope. For now, cross-session tools use registerTool()
+      and /invite stays as a command calling addParticipant().
+
+# =============================================================================
+# Implementation Steps (ordered)
+# =============================================================================
+
+steps:
+
+  # ---------------------------------------------------------------------------
+  # Step 1: Session Model Changes
+  # ---------------------------------------------------------------------------
+  step_1:
+    name: Session model — add parent/linked fields
+    files:
+      - src/core/models/session-model.mjs
+    changes:
+      - field: parentSessionID
+        type: FOREIGN_KEY('Session:id', { onDelete: 'CASCADE' })
+        allowNull: true
+        index: true
+        purpose: >
+          Links sub-sessions to their parent. NULL = top-level session.
+          CASCADE ensures deleting a parent removes all children.
+
+      - field: linkedFrameID
+        type: STRING(128)
+        allowNull: true
+        index: true
+        purpose: >
+          The frame ID in the PARENT session that represents this
+          sub-session (the session-link clickable bubble). NULL for
+          top-level sessions. Not a FK to Frame because the frame
+          lives in a different session's table partition.
+
+    guards:
+      - parentSessionID must not equal the session's own ID (self-reference)
+      - Validate that parentSessionID refers to an existing session
+
+  # ---------------------------------------------------------------------------
+  # Step 2: Participant Model Changes + Participant Frames
+  # ---------------------------------------------------------------------------
+  step_2:
+    name: Participant model cleanup + lifecycle frames
+    files:
+      - src/core/models/participant-model.mjs
+      - src/core/session/index.mjs
+    changes:
+      remove_fields:
+        - alias (field + getDisplayName method)
+        - overrides
+
+      add_participant_updates:
+        addParticipant:
+          signature: addParticipant(sessionID, agentID)
+          behavior:
+            - Check session is not archived (logic gate)
+            - Check agent not already a participant (idempotent — return existing if so)
+            - Create Participant DB record
+            - Get FrameManager via this.getFrameManager(sessionID)
+            - Merge participant-joined frame
+            - Frame schema:
+                type: 'participant-joined'
+                content: '{ agentID, agentName }'
+                hidden: false
+                authorType: 'system'
+                authorID: null
+            - Normal commit pipeline handles persistence + routing + SSE
+
+        removeParticipant:
+          signature: removeParticipant(sessionID, agentID)
+          behavior:
+            - Delete Participant record
+            - Merge participant-left frame
+            - Frame schema:
+                type: 'participant-left'
+                content: '{ agentID, agentName, reason }'
+                hidden: false
+                authorType: 'system'
+                authorID: null
+
+  # ---------------------------------------------------------------------------
+  # Step 3: /invite Command Update
+  # ---------------------------------------------------------------------------
+  step_3:
+    name: Simplify /invite command
+    files:
+      - src/core/internal-plugins/invite/index.mjs
+    changes:
+      - Drop 'as Alias' argument parsing
+      - Remove alias parameter from addParticipant call
+      - participant-joined frame is now created by addParticipant(),
+        not by the command. Command response is just a confirmation.
+      - Simplify regex to only match agent name
+
+  # ---------------------------------------------------------------------------
+  # Step 4: Cross-Session Internal Plugin
+  # ---------------------------------------------------------------------------
+  step_4:
+    name: Cross-session tools plugin
+    files:
+      - src/core/internal-plugins/cross-session/index.mjs  # NEW
+    comment_in_code: >
+      TODO: When command-tool-unification is implemented, inviteParticipant
+      should be unified with the /invite command under a single capability.
+
+    tools:
+
+      listSessions:
+        description: List sessions the agent has access to
+        permission_space: listSessions
+        args:
+          search:
+            type: string
+            description: >
+              Keyword filter. Searches session names AND frame content
+              (JOIN query, LIKE '%keyword%'). SOLR replaces this later.
+          type:
+            type: string
+            enum: [chat, dm]
+            description: Filter by session type
+          archived:
+            type: boolean
+            default: false
+            description: Include archived sessions
+          parentSessionID:
+            type: string
+            description: Filter by parent session (children only)
+          topLevelOnly:
+            type: boolean
+            default: false
+            description: Only return sessions with null parentSessionID
+          limit:
+            type: integer
+            default: 20
+          offset:
+            type: integer
+            default: 0
+        returns: >
+          [{ id, name, type, archived, parentSessionID,
+             participantCount, lastActivityAt }]
+        enforcement: >
+          Only returns sessions where the agent is a participant.
+          Enforced server-side, not a filter option.
+
+      createSession:
+        description: Create a top-level or sub-session
+        permission_space: createSession
+        args:
+          title:
+            type: string
+            required: true
+          participants:
+            type: array of string (agent names)
+            default: []
+          parentSessionID:
+            type: string
+            description: >
+              If provided, creates a sub-session. If omitted, creates
+              a top-level session.
+          type:
+            type: string
+            default: chat
+        behavior:
+          top_level: >
+            Creates Session record (parentSessionID = null).
+            Creates Participant records for invited agents.
+            Creates participant-joined frames for each.
+          sub_session: >
+            Pre-generate both IDs (sessionID + frameID) to avoid
+            cyclic dependency. Create Session record with
+            parentSessionID and linkedFrameID. Create session-link
+            frame in parent session. Create Participant records +
+            participant-joined frames in sub-session. Wrap in
+            transaction for atomicity.
+          session_link_frame:
+            type: 'session-link'
+            content: '{ targetSessionID, title, participants }'
+            hidden: false
+            authorType: 'system'
+        permission_logic: >
+          Argument-dependent. Top-level: permission key createSession
+          with args { type: 'top-level' }. Sub-session: permission
+          key createSession with args { type: 'sub-session',
+          parentSessionID }. Standing approvals match on arg patterns.
+          Canonicalized via Keystore.canonicalize() for deterministic
+          serialization.
+        returns: '{ sessionID, title, participants }'
+
+      postToSession:
+        description: Post a message to another session
+        permission_space: postToSession
+        args:
+          sessionID:
+            type: string
+            required: true
+          message:
+            type: string
+            required: true
+        behavior: >
+          Creates a frame in the target session authored by the agent
+          (authorType: 'agent', authorID: agent.id). The tool-call
+          frame stays in the original session. Target session must
+          not be archived. Agent need not be a participant in target
+          (permissions gate this).
+        returns: '{ frameID, sessionID }'
+
+      readFromSession:
+        description: Read frames from another session with filtering
+        permission_space: readFromSession
+        args:
+          sessionID:
+            type: string
+            required: true
+          keyword:
+            type: string
+            description: Case-insensitive content search (LIKE)
+          types:
+            type: array of string
+            description: Filter by frame types
+          limit:
+            type: integer
+            default: 10
+            max: 50
+          offset:
+            type: integer
+            default: 0
+        returns: >
+          Frame summaries: [{ id, type, authorType, authorID,
+          contentSnippet, timestamp }]. Content truncated, not
+          full JSON blob.
+
+      inviteParticipant:
+        description: Invite an agent to a session
+        permission_space: inviteParticipant
+        args:
+          sessionID:
+            type: string
+            required: true
+            description: Defaults to current session
+          agentName:
+            type: string
+            required: true
+        behavior: >
+          Looks up agent by name. Calls sessionManager.addParticipant()
+          which creates Participant record + participant-joined frame.
+          Session must not be archived.
+        returns: '{ participantID, agentID, agentName, sessionID }'
+
+  # ---------------------------------------------------------------------------
+  # Step 5: Thread Support (Server-Side Only)
+  # ---------------------------------------------------------------------------
+  step_5:
+    name: Thread support — frame query + InteractionLoop parentId
+    files:
+      - src/server/controllers/frame-controller.mjs
+      - src/core/interaction/index.mjs
+    changes:
+      frame_query:
+        description: >
+          Add parentId query parameter to GET /sessions/:sessionId/frames.
+          When provided, returns only frames where parentID = parentId.
+          When absent, behavior unchanged (returns all frames).
+        notes: >
+          No server-side reply counts. Client loads all frames and
+          groups by parentId. Count is trivial client-side.
+
+      interaction_loop:
+        description: >
+          InteractionLoop.startInteraction() and postMessage() accept
+          optional parentId parameter. When provided, created frames
+          (user-message, agent-response) have parentId set, making
+          them thread replies to the specified message.
+
+  # ---------------------------------------------------------------------------
+  # Step 6: Tests
+  # ---------------------------------------------------------------------------
+  step_6:
+    name: Comprehensive test suite
+    note: TDD — write tests before implementation where possible.
+    files:
+      new:
+        - spec/core/session-relationships-spec.mjs
+        - spec/core/participant-lifecycle-spec.mjs
+        - spec/core/internal-plugins/cross-session-spec.mjs
+        - spec/core/thread-support-spec.mjs
+        - spec/core/sub-session-integration-spec.mjs
+        - spec/core/cross-session-integration-spec.mjs
+        - spec/core/thread-integration-spec.mjs
+      update:
+        - spec/core/session-manager-spec.mjs  # Remove alias/overrides references
+        - spec/core/internal-plugins/invite-spec.mjs  # Drop alias tests
+
+# =============================================================================
+# Test Strategy (from conversation.md Round 6)
+# =============================================================================
 
 tests:
-  - Create session = create root frame with no parent
-  - DM identified by 2 participants
-  - Self channel identified by 1 participant
-  - Nested sub-conversations create child frames correctly
-  - Existing session APIs continue to work during bridge period
-  - Fractal nesting: session within a message within a session
+
+  session_relationships:
+    file: spec/core/session-relationships-spec.mjs
+    coverage:
+      happy:
+        - Create top-level session (parentSessionID null)
+        - Create sub-session with parentSessionID
+        - Create sub-session with linkedFrameID
+        - Query child sessions of a parent
+        - Query top-level sessions only
+        - CASCADE delete parent removes children
+        - CASCADE delete propagates through depth 2+
+        - Multiple sub-sessions under one parent
+      failure:
+        - Non-existent parentSessionID (FK constraint failure)
+        - Self-referencing parentSessionID (guard)
+      edge:
+        - Depth 3+ nesting with CASCADE
+        - Orphaned linkedFrameID (frame deleted, session still works)
+        - Archive parent — child sessions independent
+
+  participant_lifecycle:
+    file: spec/core/participant-lifecycle-spec.mjs
+    coverage:
+      happy:
+        - addParticipant creates record + participant-joined frame
+        - Frame has correct schema (type, content, hidden, authorType)
+        - Frame persisted to DB
+        - Frame has correct monotonic order
+        - removeParticipant deletes record + creates participant-left frame
+        - Re-add after remove creates new record + new frame
+        - Multiple add/remove cycles produce ordered frames
+      failure:
+        - addParticipant with non-existent sessionID
+        - addParticipant with non-existent agentID
+        - addParticipant on archived session — rejected
+        - removeParticipant when agent not a participant — no-op
+      edge:
+        - Duplicate addParticipant — silently idempotent
+        - Concurrent addParticipant for same agent
+        - Model schema: alias field absent, overrides field absent
+
+  cross_session_plugin:
+    file: spec/core/internal-plugins/cross-session-spec.mjs
+    coverage:
+      listSessions:
+        happy:
+          - Returns sessions where agent is participant
+          - Excludes sessions where agent is not participant
+          - search filters by session name (case-insensitive)
+          - search filters across frame content (JOIN)
+          - type filter works
+          - archived filter works (default false)
+          - parentSessionID filter returns children
+          - topLevelOnly filter excludes children
+          - limit + offset pagination
+          - Returns correct fields including lastActivityAt
+        failure:
+          - Empty search — returns all (no filter)
+          - Agent has no sessions — empty array
+          - Permission denied
+        edge:
+          - Session with zero frames (lastActivityAt = createdAt)
+
+      createSession:
+        happy:
+          - Top-level session (no parentSessionID)
+          - Sub-session with parentSessionID + session-link frame
+          - Pre-generated XIDs resolve cyclic dependency
+          - session-link frame correct content + order
+          - Participants created + participant-joined frames
+        failure:
+          - Missing title — error
+          - Invalid parentSessionID — error
+          - Non-existent agent name — error
+          - Permission denied
+        edge:
+          - Empty participants array
+          - Sub-session in archived parent — rejected
+          - Depth 2 sub-session
+          - Argument-dependent permissions (approve parent A, deny B)
+
+      postToSession:
+        happy:
+          - Frame created in target session with agent as author
+          - Tool-call frame stays in original session
+          - Returns frameID + sessionID
+          - Target FrameManager receives commit event
+        failure:
+          - Invalid sessionID — error
+          - Permission denied
+          - Empty message — error
+          - Target session archived — rejected
+        edge:
+          - Post to same session (degenerate, works)
+          - Post to sub-session of current session
+
+      readFromSession:
+        happy:
+          - Returns frame summaries
+          - keyword filters content
+          - types filter works
+          - limit + offset pagination
+          - Content truncated in response
+        failure:
+          - Invalid sessionID — error
+          - Permission denied
+          - No matches — empty array
+        edge:
+          - Session with no frames — empty array
+          - limit 0 — empty or error
+          - keyword matches JSON keys (acceptable V1)
+
+      inviteParticipant:
+        happy:
+          - Invite to current session
+          - Invite to different session
+          - Permission approved
+          - Returns correct fields
+        failure:
+          - Non-existent agent name — error
+          - Already in session — idempotent (no error)
+          - Permission denied
+          - Archived session — rejected
+        edge:
+          - Agent invites itself — rejected
+
+  thread_support:
+    file: spec/core/thread-support-spec.mjs
+    coverage:
+      happy:
+        - Frame with parentId created correctly
+        - Query by parentId returns thread replies
+        - Thread replies have correct session order
+        - InteractionLoop with parentId — agent responses get parentId
+        - Multiple threads on different messages
+      failure:
+        - parentId to frame in different session — error
+      edge:
+        - Nested threads (reply to a reply)
+        - Thread on hidden frame
+        - Thread on deleted frame
+        - Thread on session-link frame
+
+  integration:
+    files:
+      - spec/core/sub-session-integration-spec.mjs
+      - spec/core/cross-session-integration-spec.mjs
+      - spec/core/thread-integration-spec.mjs
+    coverage:
+      sub_session:
+        - Create parent → create sub-session → verify session-link frame
+        - Verify pre-generated XIDs (no cyclic dependency)
+        - Delete parent cascades to sub-session
+      cross_session:
+        - Agent posts from session A to session B
+        - Tool-call in A, message in B, tool-result back to A
+      threads:
+        - User message → user reply (parentId) → agent responds in thread
+        - All frames have correct parentId chain
+
+# =============================================================================
+# Existing Test Updates
+# =============================================================================
+
+existing_test_updates:
+  - file: spec/core/session-manager-spec.mjs
+    changes: >
+      Remove all references to alias parameter in addParticipant calls.
+      Remove tests for overrides field. Add tests for new
+      parentSessionID and linkedFrameID fields.
+
+  - file: spec/core/internal-plugins/invite-spec.mjs
+    changes: >
+      Remove 'as Alias' test cases. Verify alias syntax is ignored
+      (backward compat — doesn't error, just ignores). Verify
+      participant-joined frame is created by addParticipant, not
+      the command.
+
+# =============================================================================
+# Files Summary
+# =============================================================================
+
+files:
+  modify:
+    - src/core/models/session-model.mjs         # Add parentSessionID, linkedFrameID
+    - src/core/models/participant-model.mjs      # Remove alias, overrides, getDisplayName
+    - src/core/session/index.mjs                 # Update add/removeParticipant
+    - src/core/internal-plugins/invite/index.mjs # Drop alias parsing
+    - src/core/interaction/index.mjs             # Accept parentId parameter
+    - src/server/controllers/frame-controller.mjs # parentId query filter
+
+  create:
+    - src/core/internal-plugins/cross-session/index.mjs  # NEW plugin
+
+  test_modify:
+    - spec/core/session-manager-spec.mjs
+    - spec/core/internal-plugins/invite-spec.mjs
+
+  test_create:
+    - spec/core/session-relationships-spec.mjs
+    - spec/core/participant-lifecycle-spec.mjs
+    - spec/core/internal-plugins/cross-session-spec.mjs
+    - spec/core/thread-support-spec.mjs
+    - spec/core/sub-session-integration-spec.mjs
+    - spec/core/cross-session-integration-spec.mjs
+    - spec/core/thread-integration-spec.mjs
+
+# =============================================================================
+# Dependencies
+# =============================================================================
+
+dependencies:
+  all_met:
+    - Phase C (Frame Event Router) — COMPLETE
+    - FrameManager parent-child nesting — COMPLETE
+    - FramePersistence save/load — COMPLETE
+    - PermissionService + Keystore (canonicalize) — COMPLETE
+    - BasePluginClass + registerTool — COMPLETE
+
+# =============================================================================
+# Deferred / Future Work
+# =============================================================================
+
+deferred:
+  - Thread client UI (client-only, server support built here)
+  - Session-link live previews/summaries (future enhancement)
+  - Command-tool unification (see command-tool-unification.yaml)
+  - Generalized agent-as-system-accessor tools beyond cross-session
+  - SOLR full-text search replacing LIKE queries

@@ -343,11 +343,12 @@ describe('Integration: Simple Interaction', () => {
       userMessage: 'Check interaction ID',
     });
 
-    // Load frames from DB
+    // Load frames from DB (exclude participant lifecycle frames which have their own IDs)
     let models   = core.getModels();
     let dbFrames = await models.Frame.where.sessionID.EQ(setup.session.id).all();
+    let interactionFrames = dbFrames.filter((f) => f.type !== 'participant-joined' && f.type !== 'participant-left');
 
-    for (let frame of dbFrames)
+    for (let frame of interactionFrames)
       assert.equal(frame.interactionID, interactionID, 'All frames should have same interactionID');
   });
 
@@ -563,7 +564,10 @@ describe('Integration: Tool Call Interaction', () => {
     });
 
     let frameManager = await framePersistence.loadFrames(setup.session.id);
-    let frames       = frameManager.toArray();
+    let allFrames    = frameManager.toArray();
+
+    // Filter out participant lifecycle frames (created by addParticipant in setup)
+    let frames = allFrames.filter((f) => f.type !== 'participant-joined' && f.type !== 'participant-left');
 
     assert.equal(frames[0].type, 'user-message');
     assert.equal(frames[1].type, 'tool-call');

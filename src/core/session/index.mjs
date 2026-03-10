@@ -1,5 +1,6 @@
 'use strict';
 
+import XID from 'xid-js';
 import { FrameManager } from '../../shared/frame-manager/frame-manager.mjs';
 
 // =============================================================================
@@ -35,6 +36,9 @@ export class SessionManager {
     let { Session } = this._models;
     let sessionData = { organizationID };
 
+    if (options.id !== undefined)
+      sessionData.id = options.id;
+
     if (options.name !== undefined)
       sessionData.name = options.name;
 
@@ -46,6 +50,12 @@ export class SessionManager {
 
     if (options.dmAgentID !== undefined)
       sessionData.dmAgentID = options.dmAgentID;
+
+    if (options.parentSessionID !== undefined)
+      sessionData.parentSessionID = options.parentSessionID;
+
+    if (options.linkedFrameID !== undefined)
+      sessionData.linkedFrameID = options.linkedFrameID;
 
     let session = await Session.create(sessionData);
     return session;
@@ -129,7 +139,7 @@ export class SessionManager {
   // Participant Management
   // ---------------------------------------------------------------------------
 
-  async addParticipant(sessionID, agentID, options = {}) {
+  async addParticipant(sessionID, agentID) {
     if (!sessionID)
       throw new Error('sessionID is required');
 
@@ -141,40 +151,91 @@ export class SessionManager {
     if (!session)
       throw new Error(`Session not found: ${sessionID}`);
 
+    // Reject if archived
+    if (session.archived)
+      throw new Error('Session is archived');
+
     // Validate agent exists
     let { Agent, Participant } = this._models;
     let agent = await Agent.where.id.EQ(agentID).first();
     if (!agent)
       throw new Error(`Agent not found: ${agentID}`);
 
-    let participantData = {
-      sessionID,
-      agentID,
+    // Idempotent: if already a participant, return existing
+    let existing = await Participant.where.sessionID.EQ(sessionID).AND.agentID.EQ(agentID).first();
+    if (existing)
+      return existing;
+
+    // Create Participant record
+    let participant = await Participant.create({ sessionID, agentID });
+
+    // Create participant-joined frame
+    let frameManager = this.getFrameManager(sessionID);
+    let frameData = {
+      id:         `frm_${XID.next()}`,
+      type:       'participant-joined',
+      content:    { agentID, agentName: agent.name },
+      timestamp:  Date.now(),
+      authorType: 'system',
+      authorID:   null,
+      hidden:     false,
+      deleted:    false,
+      processed:  false,
     };
 
-    if (options.alias !== undefined)
-      participantData.alias = options.alias;
+    frameManager.merge([frameData], { authorType: 'system' });
 
-    if (options.overrides !== undefined)
-      participantData.overrides = (typeof options.overrides === 'string')
-        ? options.overrides
-        : JSON.stringify(options.overrides);
+    // Persist the frame
+    let framePersistence = this._context.getProperty('framePersistence');
+    if (framePersistence)
+      await framePersistence.saveFrames(sessionID, [frameData]);
 
-    let participant = await Participant.create(participantData);
     return participant;
   }
 
-  async removeParticipant(participantID) {
-    if (!participantID)
-      throw new Error('participantID is required');
+  async removeParticipant(sessionID, agentID) {
+    if (!sessionID)
+      throw new Error('sessionID is required');
 
-    let { Participant } = this._models;
-    let participant     = await Participant.where.id.EQ(participantID).first();
+    if (!agentID)
+      throw new Error('agentID is required');
 
+    // Find the participant
+    let { Agent, Participant } = this._models;
+    let participant = await Participant.where.sessionID.EQ(sessionID).AND.agentID.EQ(agentID).first();
+
+    // No-op if not a participant (return falsy)
     if (!participant)
-      throw new Error(`Participant not found: ${participantID}`);
+      return null;
 
+    // Look up agent name for the frame
+    let agent     = await Agent.where.id.EQ(agentID).first();
+    let agentName = agent ? agent.name : agentID;
+
+    // Delete the participant record
     await participant.destroy();
+
+    // Create participant-left frame
+    let frameManager = this.getFrameManager(sessionID);
+    let frameData = {
+      id:         `frm_${XID.next()}`,
+      type:       'participant-left',
+      content:    { agentID, agentName, reason: 'removed' },
+      timestamp:  Date.now(),
+      authorType: 'system',
+      authorID:   null,
+      hidden:     false,
+      deleted:    false,
+      processed:  false,
+    };
+
+    frameManager.merge([frameData], { authorType: 'system' });
+
+    // Persist the frame
+    let framePersistence = this._context.getProperty('framePersistence');
+    if (framePersistence)
+      await framePersistence.saveFrames(sessionID, [frameData]);
+
     return true;
   }
 
@@ -196,15 +257,6 @@ export class SessionManager {
 
     if (!participant)
       throw new Error(`Participant not found: ${participantID}`);
-
-    if (updates.alias !== undefined)
-      participant.alias = updates.alias;
-
-    if (updates.overrides !== undefined) {
-      participant.overrides = (typeof updates.overrides === 'string')
-        ? updates.overrides
-        : JSON.stringify(updates.overrides);
-    }
 
     await participant.save();
     return participant;

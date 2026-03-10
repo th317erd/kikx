@@ -115,6 +115,9 @@ export class FramePersistence {
     if (options.beforeOrder !== undefined)
       query = query.AND.order.LT(options.beforeOrder);
 
+    if (options.parentId !== undefined)
+      query = query.AND.parentID.EQ(options.parentId);
+
     query = query.ORDER('+Frame:order');
 
     if (options.limit !== undefined)

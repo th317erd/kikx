@@ -49,6 +49,21 @@ export class Session extends ModelBase {
       defaultValue: false,
       index:        true,
     },
+    // Links sub-sessions to their parent session
+    parentSessionID: {
+      type:         Types.FOREIGN_KEY('Session:id', { onDelete: 'CASCADE' }),
+      allowNull:    true,
+      defaultValue: null,
+      index:        true,
+    },
+    // The frame ID in the parent session representing this sub-session (session-link bubble).
+    // Not a FK because the frame lives in a different session's partition.
+    linkedFrameID: {
+      type:         Types.STRING(128),
+      allowNull:    true,
+      defaultValue: null,
+      index:        true,
+    },
     // Virtual relationships
     organization: {
       type: Types.Model('Organization', ({ self }, { Organization }, userQuery) => {
@@ -58,6 +73,16 @@ export class Session extends ModelBase {
     participants: {
       type: Types.Models('Participant', ({ self }, { Participant }, userQuery) => {
         return Participant.$.sessionID.EQ(self.id).MERGE(userQuery);
+      }),
+    },
+    parentSession: {
+      type: Types.Model('Session', ({ self }, { Session }, userQuery) => {
+        return Session.$.id.EQ(self.parentSessionID).MERGE(userQuery);
+      }),
+    },
+    children: {
+      type: Types.Models('Session', ({ self }, { Session }, userQuery) => {
+        return Session.$.parentSessionID.EQ(self.id).MERGE(userQuery);
       }),
     },
   };

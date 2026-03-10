@@ -5,8 +5,8 @@ import { ModelBase, Types } from './model-base.mjs';
 // =============================================================================
 // Participant
 // =============================================================================
-// An agent instance bound to a session, with optional alias/overrides.
-// Represents the "agent IN a session" concept from the plan.
+// An agent instance bound to a session.
+// Pure join table: { id, sessionID, agentID, createdAt, updatedAt }.
 // =============================================================================
 
 export class Participant extends ModelBase {
@@ -30,16 +30,6 @@ export class Participant extends ModelBase {
       allowNull: false,
       index:     true,
     },
-    // Session-level alias (e.g., "/invite @claude as BobTheBurgerGuy")
-    alias: {
-      type:      Types.STRING(128),
-      allowNull: true,
-    },
-    // Session-level instruction overrides (JSON)
-    overrides: {
-      type:      Types.TEXT('long'),
-      allowNull: true,
-    },
     // Virtual relationships
     session: {
       type: Types.Model('Session', ({ self }, { Session }, userQuery) => {
@@ -52,8 +42,4 @@ export class Participant extends ModelBase {
       }),
     },
   };
-
-  getDisplayName() {
-    return this.alias || null;
-  }
 }

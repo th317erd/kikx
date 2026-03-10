@@ -56,7 +56,7 @@ export class PrimerAssembler {
     if (options.participants && options.participants.length > 1) {
       let otherAgents = options.participants
         .filter((p) => p.agentID !== (agent && agent.id))
-        .map((p) => p.alias || p.agentID)
+        .map((p) => p.agentID)
         .join(', ');
 
       sections.push(

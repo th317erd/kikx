@@ -162,6 +162,7 @@ export class InteractionLoop extends EventEmitter {
           interactionID,
           authorType:    'system',
           authorID:      null,
+          parentID:      params.parentId || null,
           hidden:        false,
           deleted:       false,
           processed:     false,
@@ -186,6 +187,7 @@ export class InteractionLoop extends EventEmitter {
         interactionID,
         authorType:    params.authorType || 'user',
         authorID:      params.authorID || null,
+        parentID:      params.parentId || null,
         hidden:        false,
         deleted:       false,
         processed:     false,
@@ -316,6 +318,7 @@ export class InteractionLoop extends EventEmitter {
           await this._createFrame(sessionID, {
             id: frameID, type: 'message', content: { html }, timestamp, interactionID,
             authorType: block.authorType || 'agent', authorID: block.authorID || null,
+            parentID: params.parentId || null,
             hidden: false, deleted: false, processed: false,
           }, frameManager, { authorType: block.authorType || 'agent', authorId: block.authorID || null });
         } else if (block.type === 'tool-call') {
@@ -345,6 +348,7 @@ export class InteractionLoop extends EventEmitter {
                   content: { toolName: block.content.toolName, reason: permError.reason },
                   timestamp: Date.now(), interactionID,
                   authorType: 'system', authorID: null,
+                  parentID: params.parentId || null,
                   hidden: false, deleted: false, processed: false,
                 }, frameManager, { authorType: 'system' });
                 result = { type: 'tool-result', content: { output: `Error: ${permError.message}` } };
@@ -365,6 +369,7 @@ export class InteractionLoop extends EventEmitter {
             content: { toolName: block.content.toolName, arguments: block.content.arguments, toolUseId: block.content.toolUseId },
             timestamp, interactionID,
             authorType: block.authorType || 'agent', authorID: block.authorID || null,
+            parentID: params.parentId || null,
             hidden: false, deleted: false, processed: false,
           }, frameManager, { authorType: block.authorType || 'agent', authorId: block.authorID || null });
 
@@ -381,6 +386,7 @@ export class InteractionLoop extends EventEmitter {
                 content: { toolName: block.content.toolName, message: toolError.message },
                 timestamp: Date.now(), interactionID,
                 authorType: 'system', authorID: null,
+                parentID: params.parentId || null,
                 hidden: false, deleted: false, processed: false,
               }, frameManager, { authorType: 'system' });
             }
@@ -400,6 +406,7 @@ export class InteractionLoop extends EventEmitter {
             content: { output: toolOutput, toolUseId: block.content.toolUseId },
             timestamp: Date.now(), interactionID,
             authorType: 'system', authorID: null,
+            parentID: params.parentId || null,
             hidden: false, deleted: false, processed: false,
           }, frameManager, { authorType: 'system' });
 
@@ -408,6 +415,7 @@ export class InteractionLoop extends EventEmitter {
           await this._createFrame(sessionID, {
             id: frameID, type: 'reflection', content: block.content, timestamp, interactionID,
             authorType: block.authorType || 'agent', authorID: block.authorID || null,
+            parentID: params.parentId || null,
             hidden: true, deleted: false, processed: false,
           }, frameManager, { authorType: block.authorType || 'agent', authorId: block.authorID || null });
         }
@@ -417,6 +425,7 @@ export class InteractionLoop extends EventEmitter {
         id: generateID('frm_'), type: 'error', content: { message: error.message },
         timestamp: Date.now(), interactionID,
         authorType: 'system', authorID: null,
+        parentID: params.parentId || null,
         hidden: false, deleted: false, processed: false,
       }, frameManager, { authorType: 'system' });
     } finally {
@@ -507,7 +516,7 @@ export class InteractionLoop extends EventEmitter {
   // and broadcast via SSE so all connected clients see it.
   // ---------------------------------------------------------------------------
 
-  async postMessage(sessionID, { text, authorType, authorID }) {
+  async postMessage(sessionID, { text, authorType, authorID, parentId }) {
     if (!sessionID)
       throw new Error('sessionID is required');
 
@@ -548,6 +557,7 @@ export class InteractionLoop extends EventEmitter {
       interactionID,
       authorType:    authorType || 'user',
       authorID:      authorID || null,
+      parentID:      parentId || null,
       hidden:        false,
       deleted:       false,
       processed:     false,

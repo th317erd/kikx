@@ -193,14 +193,14 @@ describe('Message Assembly v2 (B6)', () => {
         { id: 'agt_me', name: 'test-me' },
         {
           participants: [
-            { agentID: 'agt_me', alias: 'Me' },
-            { agentID: 'agt_other', alias: 'OtherBot' },
+            { agentID: 'agt_me' },
+            { agentID: 'agt_other' },
           ],
         },
       );
 
       assert.ok(primer.includes('MULTI-AGENT SESSION'));
-      assert.ok(primer.includes('OtherBot'));
+      assert.ok(primer.includes('agt_other'));
       assert.ok(primer.includes('<agent-message'));
     });
 
@@ -211,7 +211,7 @@ describe('Message Assembly v2 (B6)', () => {
         { id: 'agt_me', name: 'test-me' },
         {
           participants: [
-            { agentID: 'agt_me', alias: 'Me' },
+            { agentID: 'agt_me' },
           ],
         },
       );
