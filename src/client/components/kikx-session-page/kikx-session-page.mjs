@@ -869,41 +869,6 @@ class KikxSessionPage extends HTMLElement {
       return;
     }
 
-    // Discussion frames — visually distinct from regular messages
-    if (frame.type === 'discussion') {
-      let content   = frame.content || {};
-      let agentName = this._getAgentDisplayName(frame.authorID) || frame.authorID || 'Agent';
-      let round     = content.round || '?';
-      let text      = content.text || '';
-
-      let interaction = document.createElement('kikx-interaction');
-      interaction.setAttribute('alignment', 'agent');
-      interaction.setAttribute('participant-name', agentName);
-      interaction.setAttribute('participant-initials', getInitials(agentName));
-      interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
-      interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
-      interaction.setAttribute('data-frame-id', frame.id);
-      interaction.setAttribute('data-discussion-round', String(round));
-
-      let messageContent = document.createElement('kikx-message-content');
-      let label = `<div style="font-size:0.75em;color:var(--text-muted,#606078);margin-bottom:4px;">Discussion (round ${this._escapeHTML(String(round))})</div>`;
-      let html  = content.html || `<p>${this._escapeHTML(text)}</p>`;
-      messageContent.content = label + html;
-
-      if (content.claimIntent)
-        interaction.setAttribute('data-claim-intent', 'true');
-
-      interaction.appendChild(messageContent);
-      this._placeInteraction(interaction, options);
-
-      if (debug.isEnabled()) {
-        debug.trackElement(frame.interactionID || frame.id, interaction);
-        debug.pushFrame(frame.interactionID || frame.id, frame);
-      }
-
-      return;
-    }
-
     // Message frames: finalize streaming bubble if active
     if (frame.type === 'message' && this._streamingInteraction) {
       let content = frame.content;

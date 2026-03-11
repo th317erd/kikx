@@ -1,0 +1,18 @@
+# Session Constraint Warnings
+# Status: PLANNED
+# Priority: Low
+# Complexity: Low
+# Depends on: Abilities system (dynamic prompt injection)
+
+summary: >
+  Inject warnings into agent system prompts when approaching session
+  constraints. "You have 10 interactions remaining" or "1 minute left."
+  Requires the Abilities system for dynamic prompt injection.
+
+design:
+  triggers:
+    - 90% of maxInteractions reached
+    - 1 minute before endsAt
+  injection: >
+    Via Abilities system — dynamic system prompt additions injected
+    before each agent interaction. No frame creation, just prompt context.

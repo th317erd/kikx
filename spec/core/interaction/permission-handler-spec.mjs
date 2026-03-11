@@ -29,6 +29,9 @@ describe('PermissionHandler (C5)', () => {
         },
       },
       _models: null,
+      _activeKey(sessionID, agentID) {
+        return (agentID) ? `${sessionID}:${agentID}` : sessionID;
+      },
       async _createFrame(_sid, frameData, _fm, _opts) {
         createdFrames.push(frameData);
         return frameData;

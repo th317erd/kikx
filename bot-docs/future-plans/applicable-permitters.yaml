@@ -1,0 +1,20 @@
+# Applicable Permitters
+# Status: PLANNED
+# Priority: Low
+# Complexity: Medium
+
+summary: >
+  Role-based permission approval: not just "any user in the session"
+  but "which specific users are authorized to approve this request."
+  Currently all users in a session can approve any permission request.
+
+design:
+  current: >
+    Any user participant in the nearest ancestor session can approve
+    any permission request. First come, first served.
+
+  future: >
+    Permission requests carry metadata about what kind of approval is
+    needed. Users have approval scopes (e.g., "can approve shell commands"
+    vs "can approve session creation"). Only users with the matching
+    scope see the request.

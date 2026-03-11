@@ -10,7 +10,7 @@ import { ModelBase, Types } from './model-base.mjs';
 // =============================================================================
 
 export class Session extends ModelBase {
-  static version = 1;
+  static version = 2;
 
   static fields = {
     ...(ModelBase.fields || {}),
@@ -63,6 +63,20 @@ export class Session extends ModelBase {
       allowNull:    true,
       defaultValue: null,
       index:        true,
+    },
+    // Maximum number of agent-authored commits allowed before the session is constrained.
+    // null means unconstrained (no limit).
+    maxInteractions: {
+      type:         Types.INTEGER,
+      allowNull:    true,
+      defaultValue: null,
+    },
+    // Deadline after which the session is constrained.
+    // null means unconstrained (no time limit).
+    endsAt: {
+      type:         Types.DATETIME,
+      allowNull:    true,
+      defaultValue: null,
     },
     // Virtual relationships
     organization: {

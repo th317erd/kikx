@@ -1,0 +1,48 @@
+# Danger Level Permissions
+# Status: PLANNED
+# Priority: Medium
+# Complexity: Medium
+
+summary: >
+  Per-agent risk tolerance configuration that controls permission inheritance
+  behavior. Three levels: Low (no inheritance, every combo explicit),
+  Medium (walk-up inheritance, tool-level approval), Yolo (auto-approve all).
+
+depends_on:
+  - agent-memory-context.yaml  # Storage for per-agent config
+
+levels:
+  low:
+    description: >
+      No permission inheritance across session boundaries. Each
+      session/agent/tool/arguments combo requires explicit approval.
+      Most restrictive.
+    inheritance: false
+    granularity: session + agent + tool + arguments
+
+  medium:
+    description: >
+      Child sessions inherit parent permissions via walk-up.
+      Tool-level approval (any arguments accepted once tool approved).
+      Default behavior. Already implemented as the only behavior.
+    inheritance: true
+    granularity: tool-level
+
+  yolo:
+    description: >
+      Everything auto-approved. No permission prompts. Use with caution.
+    inheritance: true
+    granularity: N/A (all auto-approved)
+
+implementation:
+  - agent.getConfig().riskLevel returns the level (stub returns 'medium')
+  - PermissionEngine.checkPermission() branches on riskLevel
+  - Low: ancestorIDs = [currentSessionID] (don't walk up)
+  - Yolo: return false immediately (no approval needed)
+  - UI: dropdown in agent settings panel
+  - Storage: per-agent memory context (JSON)
+
+special_cases:
+  createSession: >
+    Always requires explicit permission regardless of danger level
+    (except Yolo). Enforced via CrossSessionPermissions plugin overload.

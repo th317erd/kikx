@@ -1,0 +1,22 @@
+# Agent Memory Context
+# Status: PLANNED
+# Priority: Medium
+# Complexity: Medium
+
+summary: >
+  Per-actor persisted JSON context stored in the database. Provides
+  agent-specific configuration, preferences, and memory that persists
+  across sessions. Replaces the static agent.getConfig() stub.
+
+design:
+  storage: >
+    JSON column on Agent model (or separate AgentConfig table).
+    Accessed via agent.getConfig() / agent.setConfig().
+
+  contents:
+    riskLevel: 'medium'        # Danger Level setting
+    # Future: agent-specific preferences, learned behaviors, etc.
+
+  access_pattern: >
+    Read on interaction start (cached for interaction lifetime).
+    Written via agent settings UI or API.

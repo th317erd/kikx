@@ -38,6 +38,9 @@ implemented:
       - src/core/internal-plugins/cross-session/index.mjs  # createRelay on postToSession
       - src/server/controllers/stream-controller.mjs   # relay:delta SSE events
 
+related:
+  - agent-deliberation.yaml  # Uses streaming identity + relay as prerequisites
+
 tests:
   - spec/core/interaction/streaming-identity-spec.mjs   # 7 tests
   - spec/server/controllers/stream-controller-spec.mjs  # +6 tests

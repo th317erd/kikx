@@ -289,28 +289,28 @@ describe('SessionScheduler (C2 — trigger queue + interaction loop)', () => {
   // ---------------------------------------------------------------------------
 
   describe('_triggerNext re-queue', () => {
-    it('should re-queue trigger when interaction loop is active for session', async () => {
+    it('should re-queue trigger when the SAME agent is already active', async () => {
       let scheduler     = createScheduler();
       let agentResolver = new AgentResolver(core);
 
       scheduler.connectToInteractionLoop(interactionLoop, agentResolver);
 
-      // Queue a trigger
+      // Queue a trigger for agt_1
       scheduler.queueTrigger('ses_active', 'agt_1');
 
-      // Simulate an active interaction by directly setting the _active map
-      interactionLoop._active.set('ses_active', true);
+      // Simulate agt_1 already active (per-agent composite key)
+      interactionLoop._active.set('ses_active:agt_1', true);
 
       // Call _triggerNext directly
       await scheduler._triggerNext('ses_active');
 
-      // The trigger should have been re-queued since the interaction loop is busy
+      // The trigger should have been re-queued since the same agent is busy
       assert.equal(scheduler.hasPendingTriggers('ses_active'), true);
       let pending = scheduler.getPendingTriggers('ses_active');
       assert.equal(pending[0].agentID, 'agt_1');
 
       // Clean up
-      interactionLoop._active.delete('ses_active');
+      interactionLoop._active.delete('ses_active:agt_1');
       scheduler.clearTriggers('ses_active');
       scheduler.disconnectFromInteractionLoop();
     });

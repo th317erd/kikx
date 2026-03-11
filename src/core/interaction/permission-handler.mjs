@@ -86,7 +86,10 @@ export class PermissionHandler {
     await generator.return();
 
     // 4. Store permission-waiting state (includes frameManager for approve/deny)
-    loop._permissionWaiting.set(sessionID, {
+    let agentID   = params.agent && params.agent.id;
+    let activeKey = loop._activeKey(sessionID, agentID);
+
+    loop._permissionWaiting.set(activeKey, {
       pendingFrameID,
       requestFrameID,
       interactionID,
@@ -95,8 +98,8 @@ export class PermissionHandler {
     });
 
     // Clean up active interaction
-    loop._active.delete(sessionID);
-    loop.emit('interaction:end', { sessionID, interactionID, agentID: null });
+    loop._active.delete(activeKey);
+    loop.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
   }
 
   // ---------------------------------------------------------------------------
@@ -105,7 +108,7 @@ export class PermissionHandler {
 
   async approve(sessionID, frameID) {
     let loop    = this._loop;
-    let waiting = loop._permissionWaiting.get(sessionID);
+    let waiting = this._findWaiting(sessionID);
 
     if (!waiting)
       throw new Error(`No pending permission for session: ${sessionID}`);
@@ -159,7 +162,7 @@ export class PermissionHandler {
     }
 
     // Clear permission-waiting state
-    loop._permissionWaiting.delete(sessionID);
+    this._deleteWaiting(sessionID);
 
     // Start NEW interaction with replay flag
     let newParams = {
@@ -176,7 +179,7 @@ export class PermissionHandler {
 
   async deny(sessionID, frameID) {
     let loop    = this._loop;
-    let waiting = loop._permissionWaiting.get(sessionID);
+    let waiting = this._findWaiting(sessionID);
 
     if (!waiting)
       throw new Error(`No pending permission for session: ${sessionID}`);
@@ -250,7 +253,7 @@ export class PermissionHandler {
     }
 
     // Clear permission-waiting state
-    loop._permissionWaiting.delete(sessionID);
+    this._deleteWaiting(sessionID);
 
     // Start NEW interaction with replay flag so the agent sees the denial
     let newParams = {
@@ -259,5 +262,46 @@ export class PermissionHandler {
     };
 
     return await loop.startInteraction(sessionID, newParams);
+  }
+
+  // ---------------------------------------------------------------------------
+  // _findWaiting / _deleteWaiting — composite key lookup helpers
+  // ---------------------------------------------------------------------------
+  // Permission waiting may be keyed by composite `${sessionID}:${agentID}` or
+  // plain `sessionID`. These helpers find/delete by sessionID, checking both.
+  // ---------------------------------------------------------------------------
+
+  _findWaiting(sessionID) {
+    let map = this._loop._permissionWaiting;
+
+    // Direct match (backward compat: no agent)
+    if (map.has(sessionID))
+      return map.get(sessionID);
+
+    // Scan composite keys
+    let prefix = `${sessionID}:`;
+    for (let [key, value] of map) {
+      if (key.startsWith(prefix))
+        return value;
+    }
+
+    return null;
+  }
+
+  _deleteWaiting(sessionID) {
+    let map = this._loop._permissionWaiting;
+
+    if (map.has(sessionID)) {
+      map.delete(sessionID);
+      return;
+    }
+
+    let prefix = `${sessionID}:`;
+    for (let key of map.keys()) {
+      if (key.startsWith(prefix)) {
+        map.delete(key);
+        return;
+      }
+    }
   }
 }

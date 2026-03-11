@@ -117,21 +117,6 @@ export function buildMessages(frames, forAgentID) {
     } else if (type === 'tool-result') {
       let content = frame.content || {};
       messages.push({ type: 'tool-result', content, frameID: frame.id });
-    } else if (type === 'discussion') {
-      // Discussion frames are presented as labeled agent messages so that
-      // coordinators can see the ongoing discussion context.
-      let content   = frame.content || {};
-      let text      = content.text || '';
-      let round     = content.round || '?';
-      let agentName = frame.authorID || 'unknown';
-      let wrapped   = `<discussion round="${round}" agent="${agentName}">${text}</discussion>`;
-
-      // If forAgentID matches the author, present as assistant; otherwise user-role
-      if (forAgentID && frame.authorID === forAgentID) {
-        messages.push({ role: 'assistant', content: wrapped, frameID: frame.id });
-      } else {
-        messages.push({ role: 'user', content: wrapped, frameID: frame.id, sourceAgentID: frame.authorID });
-      }
     }
   }
 

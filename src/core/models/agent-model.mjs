@@ -59,4 +59,8 @@ export class Agent extends ModelBase {
       }),
     },
   };
+
+  getConfig() {
+    return { riskLevel: 'medium' };
+  }
 }

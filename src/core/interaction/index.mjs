@@ -35,13 +35,14 @@ export class InteractionLoop extends EventEmitter {
 
     this._context = context;
 
-    // Active interactions: sessionID -> { generator, interactionID, params }
+    // Active interactions: compositeKey -> { generator, interactionID, params }
+    // Key is `${sessionID}:${agentID}` when agent present, or `sessionID` for backward compat
     this._active = new Map();
 
-    // Message queues: sessionID -> string[]
+    // Message queues: compositeKey -> string[]
     this._queues = new Map();
 
-    // Permission waiting: sessionID -> { frameID, params }
+    // Permission waiting: compositeKey -> { frameID, params }
     this._permissionWaiting = new Map();
 
     // Sessions needing primer on next interaction (set by /reload command)
@@ -50,6 +51,14 @@ export class InteractionLoop extends EventEmitter {
     // Delegated subsystems
     this._permissionHandler = new PermissionHandler(this);
     this._commandHandler    = new CommandHandler(this);
+  }
+
+  // ---------------------------------------------------------------------------
+  // _activeKey — composite key for per-agent state maps
+  // ---------------------------------------------------------------------------
+
+  _activeKey(sessionID, agentID) {
+    return (agentID) ? `${sessionID}:${agentID}` : sessionID;
   }
 
   // ---------------------------------------------------------------------------
@@ -118,10 +127,13 @@ export class InteractionLoop extends EventEmitter {
     if (!sessionID)
       throw new Error('sessionID is required');
 
-    // If already running an interaction for this session, queue the message
-    if (this._active.has(sessionID)) {
+    // If already running an interaction for this agent (or session), queue the message
+    let agentID   = params.agent && params.agent.id;
+    let activeKey = this._activeKey(sessionID, agentID);
+
+    if (this._active.has(activeKey)) {
       if (params.userMessage)
-        this.queueMessage(sessionID, params.userMessage);
+        this.queueMessage(sessionID, params.userMessage, agentID);
 
       return null;
     }
@@ -216,7 +228,6 @@ export class InteractionLoop extends EventEmitter {
     }
 
     // Ensure per-agent ref exists for scheduling/diff
-    let agentID = params.agent && params.agent.id;
     if (agentID)
       this._ensureAgentRef(frameManager, agentID);
 
@@ -229,8 +240,8 @@ export class InteractionLoop extends EventEmitter {
       context: this._context,
     });
 
-    // Track the active interaction
-    this._active.set(sessionID, {
+    // Track the active interaction (per-agent key)
+    this._active.set(activeKey, {
       generator,
       interactionID,
       params,
@@ -429,14 +440,21 @@ export class InteractionLoop extends EventEmitter {
         hidden: false, deleted: false, processed: false,
       }, frameManager, { authorType: 'system' });
     } finally {
-      let agentID = params.agent && params.agent.id;
+      let agentID   = params.agent && params.agent.id;
+      let activeKey = this._activeKey(sessionID, agentID);
+
       if (agentID)
         this._advanceAgentRef(frameManager, agentID);
 
-      this._active.delete(sessionID);
-      this.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
+      // If cancelInteraction already removed the key, skip cleanup to avoid
+      // double-emit of interaction:end and unwanted queue drain.
+      let wasActive = this._active.has(activeKey);
+      this._active.delete(activeKey);
 
-      await this._drainQueue(sessionID, params);
+      if (wasActive) {
+        this.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
+        await this._drainQueue(sessionID, params, agentID);
+      }
     }
   }
 
@@ -448,12 +466,19 @@ export class InteractionLoop extends EventEmitter {
     let targetAgentID = options.targetAgentID || null;
     let authorType    = options.authorType || 'system';
     let authorID      = options.authorID || null;
-    let active        = this._active.get(sessionID);
+    let activeKey     = this._activeKey(sessionID, targetAgentID);
+    let active        = this._active.get(activeKey);
 
     if (!active)
       return null;
 
-    await active.generator.return();
+    // Delete active key FIRST so isActive() returns false immediately
+    this._active.delete(activeKey);
+
+    // Signal the generator to stop. Non-blocking — the generator may be
+    // awaiting an internal promise (e.g., API call) and will finalize when
+    // that settles. We don't await here to avoid hanging on stuck generators.
+    active.generator.return().catch(() => {});
 
     let frameManager = active.frameManager || null;
     await this._createFrame(sessionID, {
@@ -461,11 +486,11 @@ export class InteractionLoop extends EventEmitter {
       content: { targetAgentID }, authorType, authorID,
     }, frameManager, { authorType, authorID: authorID });
 
-    this._active.delete(sessionID);
-    this.emit('interaction:end', { sessionID, interactionID: active.interactionID, agentID: null });
+    this.emit('interaction:end', { sessionID, interactionID: active.interactionID, agentID: targetAgentID });
 
-    let queued = this._queues.get(sessionID) || [];
-    this._queues.delete(sessionID);
+    let queueKey = this._activeKey(sessionID, targetAgentID);
+    let queued   = this._queues.get(queueKey) || [];
+    this._queues.delete(queueKey);
 
     return queued.length > 0 ? queued.join('\n\n') : null;
   }
@@ -486,20 +511,24 @@ export class InteractionLoop extends EventEmitter {
   // Message Queue
   // ---------------------------------------------------------------------------
 
-  queueMessage(sessionID, text) {
-    if (!this._queues.has(sessionID))
-      this._queues.set(sessionID, []);
+  queueMessage(sessionID, text, agentID) {
+    let queueKey = this._activeKey(sessionID, agentID);
 
-    this._queues.get(sessionID).push(text);
+    if (!this._queues.has(queueKey))
+      this._queues.set(queueKey, []);
+
+    this._queues.get(queueKey).push(text);
   }
 
-  async _drainQueue(sessionID, params) {
-    let queue = this._queues.get(sessionID);
+  async _drainQueue(sessionID, params, agentID) {
+    let queueKey = this._activeKey(sessionID, agentID);
+    let queue    = this._queues.get(queueKey);
+
     if (!queue || queue.length === 0)
       return;
 
     let combinedMessage = queue.join('\n\n');
-    this._queues.delete(sessionID);
+    this._queues.delete(queueKey);
 
     await this.startInteraction(sessionID, {
       ...params,
@@ -570,16 +599,43 @@ export class InteractionLoop extends EventEmitter {
   // State Queries
   // ---------------------------------------------------------------------------
 
-  isActive(sessionID) {
-    return this._active.has(sessionID);
+  isActive(sessionID, agentID) {
+    if (agentID)
+      return this._active.has(this._activeKey(sessionID, agentID));
+
+    // Session-level: true if any agent (or agent-less) is active
+    if (this._active.has(sessionID))
+      return true;
+
+    let prefix = `${sessionID}:`;
+    for (let key of this._active.keys()) {
+      if (key.startsWith(prefix))
+        return true;
+    }
+
+    return false;
   }
 
-  isWaitingForPermission(sessionID) {
-    return this._permissionWaiting.has(sessionID);
+  isWaitingForPermission(sessionID, agentID) {
+    if (agentID)
+      return this._permissionWaiting.has(this._activeKey(sessionID, agentID));
+
+    // Session-level: true if any agent is waiting
+    if (this._permissionWaiting.has(sessionID))
+      return true;
+
+    let prefix = `${sessionID}:`;
+    for (let key of this._permissionWaiting.keys()) {
+      if (key.startsWith(prefix))
+        return true;
+    }
+
+    return false;
   }
 
-  getQueuedMessages(sessionID) {
-    return this._queues.get(sessionID) || [];
+  getQueuedMessages(sessionID, agentID) {
+    let queueKey = this._activeKey(sessionID, agentID);
+    return this._queues.get(queueKey) || [];
   }
 
   requestPrimerRefresh(sessionID) {

@@ -58,6 +58,13 @@ export class PermissionEngine {
     if (toolClass && toolClass.riskLevel === 'critical')
       return true;
 
+    // Agent config guard: only 'medium' risk level is currently supported
+    let agent  = options.agent;
+    let config = (agent && typeof agent.getConfig === 'function') ? agent.getConfig() : { riskLevel: 'medium' };
+
+    if (config.riskLevel !== 'medium')
+      throw new Error(`Unsupported risk level: ${config.riskLevel}`);
+
     // Build query: match feature name AND organization
     let query = PermissionRule.where
       .organizationID.EQ(organizationID)
@@ -74,15 +81,43 @@ export class PermissionEngine {
       return true;
     });
 
-    // Filter by scope hierarchy — include rules at current scope level and broader
-    activeRules = this._filterByScope(activeRules, scope, scopeID);
+    // Build ancestry chain for session walk-up (if session context is available)
+    let sessionManager     = this._context.getProperty('sessionManager');
+    let ancestorSessionIDs = [];
+
+    if (sessionManager && scopeID)
+      ancestorSessionIDs = await sessionManager.getAncestryChain(scopeID);
+
+    // Filter by scope hierarchy — include rules at current scope level and broader.
+    // If ancestry walk-up is available, include rules scoped to ancestor sessions.
+    activeRules = this._filterByScopeWithAncestry(activeRules, scope, scopeID, ancestorSessionIDs);
 
     // Verify fingerprints if requested (Step 19)
     if (verifyFingerprint && userKey)
       activeRules = this._filterByFingerprint(activeRules, userKey);
 
-    // Sort by priority descending (higher priority = first evaluated)
-    activeRules.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    // Sort by ancestry distance (closer ancestors first), then by priority
+    // descending within each distance level.
+    if (ancestorSessionIDs.length > 0) {
+      let distanceMap = new Map();
+      for (let index = 0; index < ancestorSessionIDs.length; index++)
+        distanceMap.set(ancestorSessionIDs[index], index);
+
+      activeRules.sort((a, b) => {
+        let distanceA = (a.scope === 'session' && a.scopeID) ? (distanceMap.get(a.scopeID) ?? Infinity) : Infinity;
+        let distanceB = (b.scope === 'session' && b.scopeID) ? (distanceMap.get(b.scopeID) ?? Infinity) : Infinity;
+
+        // Closer ancestor first (lower distance)
+        if (distanceA !== distanceB)
+          return distanceA - distanceB;
+
+        // Within same distance, higher priority first
+        return (b.priority || 0) - (a.priority || 0);
+      });
+    } else {
+      // No ancestry — original sort by priority descending
+      activeRules.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    }
 
     // Custom matching via Permissions subclass if toolClass provides one
     let permissionsInstance = null;
@@ -215,6 +250,10 @@ export class PermissionEngine {
   }
 
   _filterByScope(rules, currentScope, currentScopeID) {
+    return this._filterByScopeWithAncestry(rules, currentScope, currentScopeID, []);
+  }
+
+  _filterByScopeWithAncestry(rules, currentScope, currentScopeID, ancestorSessionIDs) {
     if (!currentScope)
       return rules;
 
@@ -224,6 +263,15 @@ export class PermissionEngine {
 
     // Include rules at the current scope level and broader (higher index in hierarchy)
     let allowedScopes = SCOPE_HIERARCHY.slice(currentIndex);
+
+    // Build set of valid session IDs (self + ancestors) for walk-up matching
+    let validSessionIDs = new Set();
+
+    if (currentScopeID)
+      validSessionIDs.add(currentScopeID);
+
+    for (let ancestorID of ancestorSessionIDs)
+      validSessionIDs.add(ancestorID);
 
     return rules.filter((rule) => {
       let ruleScope = rule.scope || 'global';
@@ -236,12 +284,24 @@ export class PermissionEngine {
       if (!allowedScopes.includes(ruleScope))
         return false;
 
-      // For session/frame scoped rules, scopeID must match
-      if (ruleScope === 'session' || ruleScope === 'frame') {
+      // For session-scoped rules, check if scopeID matches self or any ancestor
+      if (ruleScope === 'session') {
+        if (rule.scopeID) {
+          if (validSessionIDs.size > 0)
+            return validSessionIDs.has(rule.scopeID);
+
+          return rule.scopeID === currentScopeID;
+        }
+
+        // If no scopeID on rule, it applies to all sessions
+        return true;
+      }
+
+      // For frame-scoped rules, scopeID must match exactly (no walk-up)
+      if (ruleScope === 'frame') {
         if (rule.scopeID && currentScopeID)
           return rule.scopeID === currentScopeID;
 
-        // If no scopeID on rule, it applies to all sessions/frames
         return true;
       }
 

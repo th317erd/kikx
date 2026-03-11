@@ -26,41 +26,42 @@
 
 ## Step 1: `agent.getConfig()` Stub
 
-- [ ] Add `getConfig()` to Agent model returning `{ riskLevel: 'medium' }`
-- [ ] Tests: `spec/core/models/agent-config-spec.mjs`
+- [x] Add `getConfig()` to Agent model returning `{ riskLevel: 'medium' }`
+- [x] Tests: `spec/core/models/agent-config-spec.mjs`
 
 ## Step 2: Session Constraints (`maxInteractions`, `endsAt`)
 
-- [ ] Add `maxInteractions` (integer, nullable) and `endsAt` (datetime, nullable) to Session model, bump version to 2
-- [ ] Commit-level constraint enforcement (commitValidator): archive session when hit
-- [ ] Create `session-constrained` system frame before archiving
-- [ ] Only agent-authored commits count toward `maxInteractions`
-- [ ] Tests: `spec/core/models/session-constraints-spec.mjs`
-- [ ] Tests: `spec/core/session/constraint-enforcement-spec.mjs`
+- [x] Add `maxInteractions` (integer, nullable) and `endsAt` (datetime, nullable) to Session model, bump version to 2
+- [x] Commit-level constraint enforcement (commitValidator): archive session when hit
+- [x] Create `session-constrained` system frame before archiving
+- [x] Only agent-authored commits count toward `maxInteractions`
+- [x] Tests: `spec/core/models/session-constraints-spec.mjs` (14 tests)
+- [x] Tests: `spec/core/session/constraint-enforcement-spec.mjs` (24 tests)
 
 ## Step 3: Per-Agent Interaction Loops
 
-- [ ] Change `InteractionLoop._active` key from `sessionID` to `${sessionID}:${agentID}`
-- [ ] Allow concurrent agent interactions in same session
-- [ ] Update `isActive()` to support both session-level and agent-level checks
-- [ ] SessionScheduler: trigger all agents with pending refs concurrently
-- [ ] Tests: `spec/core/interaction/per-agent-loop-spec.mjs`
-- [ ] Tests: `spec/core/scheduling/concurrent-trigger-spec.mjs`
+- [x] Change `InteractionLoop._active` key from `sessionID` to `${sessionID}:${agentID}`
+- [x] Allow concurrent agent interactions in same session
+- [x] Update `isActive()` to support both session-level and agent-level checks
+- [x] SessionScheduler: trigger all agents with pending refs concurrently
+- [x] Tests: `spec/core/interaction/per-agent-loop-spec.mjs` (15 tests)
+- [x] Tests: `spec/core/scheduling/concurrent-trigger-spec.mjs` (9 tests)
 
 ## Step 4: Session Ancestry Queries + Caching
 
-- [ ] `SessionManager.getAncestryChain(sessionID)` — bulk-load ancestry via recursive query
-- [ ] `SessionManager.getNearestUserAncestor(sessionID)` — find closest ancestor with user
-- [ ] Cache per session (ancestry is immutable)
-- [ ] Tests: `spec/core/session/ancestry-spec.mjs`
-- [ ] Tests: `spec/core/session/nearest-user-ancestor-spec.mjs`
+- [x] `SessionManager.getAncestryChain(sessionID)` — iterative walk-up via parentSessionID chain
+- [x] `SessionManager.getNearestUserAncestor(sessionID)` — find closest ancestor with user frame (authorType === 'user')
+- [x] `SessionManager.clearAncestryCache(sessionID)` — invalidates cache for session and any chains containing it
+- [x] Cache per session (ancestry is immutable, no TTL)
+- [x] Tests: `spec/core/session/ancestry-spec.mjs` (14 tests)
+- [x] Tests: `spec/core/session/nearest-user-ancestor-spec.mjs` (14 tests)
 
 ## Step 5: Permission Walk-Up in PermissionEngine
 
-- [ ] `checkPermission()` queries rules across all ancestor sessions (via cached ancestry)
-- [ ] Guard on `agent.getConfig().riskLevel` — throw on non-medium
-- [ ] Closest ancestor match wins
-- [ ] Tests: `spec/core/permissions/permission-walkup-spec.mjs`
+- [x] `checkPermission()` queries rules across all ancestor sessions (via cached ancestry)
+- [x] Guard on `agent.getConfig().riskLevel` — throw on non-medium
+- [x] Closest ancestor match wins
+- [x] Tests: `spec/core/permissions/permission-walkup-spec.mjs` (24 tests)
 
 ## Step 6: `CrossSessionPermissions` Class
 
@@ -72,11 +73,29 @@
 
 ## Step 7: Cross-Session Permission Approval
 
-- [ ] `PermissionHandler.hardBreak()`: create permission-request in nearest user ancestor
-- [ ] `pending-action` stays in requesting (child) session
-- [ ] `approve()`: commit tool-result to requesting session's FrameManager
-- [ ] No user in ancestry → deny immediately
-- [ ] Tests: `spec/core/interaction/cross-session-permission-spec.mjs`
+- [ ] Write tests first (TDD red phase): `spec/core/interaction/cross-session-permission-spec.mjs`
+  - [ ] Permission request in child session with no user → appears in parent session
+  - [ ] Permission request walks up multiple levels to find user session
+  - [ ] No user in ancestry → immediate denial
+  - [ ] Approval in parent routes tool-result to child session's FrameManager
+  - [ ] Denial in parent routes denial to child session
+  - [ ] Child session retains pending-action frame locally
+  - [ ] Permission request in session WITH a user → stays in same session (backward compat)
+  - [ ] Edge case: parent session FrameManager not loaded
+- [ ] Implement `PermissionHandler.hardBreak()` cross-session awareness
+  - [ ] Check if current session has user frames
+  - [ ] If no user, call `SessionManager.getNearestUserAncestor(sessionID)`
+  - [ ] Create `permission-request` frame in ancestor's FrameManager
+  - [ ] Keep `pending-action` frame in child's FrameManager
+  - [ ] Store `requestingSessionID` in permission-waiting state
+  - [ ] If no user ancestor, deny immediately
+- [ ] Implement `approve()` cross-session routing
+  - [ ] Commit tool-result to requesting (child) session's FrameManager
+  - [ ] Use `requestingSessionID` from waiting state
+- [ ] Implement `deny()` cross-session routing
+  - [ ] Commit denial frames to requesting (child) session's FrameManager
+- [ ] Run cross-session-permission tests → green
+- [ ] Run interaction-loop-spec → no regression
 
 ## Step 8: `createSession` Tool Extension
 

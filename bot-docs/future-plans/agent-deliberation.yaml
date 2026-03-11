@@ -1,0 +1,140 @@
+# Agent Deliberation via Child Sessions
+# Status: PLANNED (Phase 1)
+# Priority: High
+# Complexity: High
+
+summary: >
+  Agents debate and deliberate by chatting freely in a child session.
+  An agent creates a child session with participants and initial instructions,
+  agents interact concurrently via per-agent interaction loops, and results
+  are posted back to the parent session. No orchestrator, no state machine —
+  just a regular session with constraints and permission inheritance.
+
+prerequisites:
+  streaming_identity:
+    status: IMPLEMENTED
+    description: >
+      SSE events carry agentID, authorType, authorID. Per-agent typing
+      indicators and streaming bubbles on the client.
+    yaml: inter-agent-streaming.yaml
+
+  participant_roles:
+    status: IMPLEMENTED
+    description: >
+      Participant model has role field (coordinator/member). Creating
+      agent becomes coordinator of child session.
+    files:
+      - src/core/models/participant-model.mjs
+
+  cross_session_tools:
+    status: IMPLEMENTED
+    description: >
+      createSession and postToSession tools exist in cross-session plugin.
+      StreamRelay forwards deltas across session boundaries.
+    files:
+      - src/core/internal-plugins/cross-session/index.mjs
+      - src/core/scheduling/stream-relay.mjs
+
+phase_1:
+  agent_config_stub:
+    description: >
+      agent.getConfig() returns static { riskLevel: 'medium' }.
+      Extension point for future Danger Level support. All call sites
+      guard with throw on non-medium.
+    files:
+      - src/core/models/agent-model.mjs
+
+  session_constraints:
+    description: >
+      Session model gains maxInteractions (integer, nullable) and endsAt
+      (timestamp, nullable). Checked at commit level. Session archived
+      when constraint hit. Agent-created child sessions get defaults
+      (maxInteractions: 100, endsAt: now + 10min) if none specified.
+    files:
+      - src/core/models/session-model.mjs
+      - src/core/session/index.mjs
+
+  per_agent_interaction_loops:
+    description: >
+      InteractionLoop._active key changes from sessionID to
+      sessionID:agentID. Multiple agents can have concurrent interactions
+      in the same session. SessionScheduler triggers all agents with
+      pending refs, not just one at a time.
+    files:
+      - src/core/interaction/index.mjs
+      - src/core/scheduling/session-scheduler.mjs
+
+  ancestry_queries:
+    description: >
+      SessionManager gains getAncestryChain(sessionID) and
+      getNearestUserAncestor(sessionID). Bulk-loads via recursive query.
+      Results cached per session (ancestry is immutable).
+    files:
+      - src/core/session/index.mjs
+
+  permission_walkup:
+    description: >
+      PermissionEngine.checkPermission() queries rules across all
+      ancestor sessions via cached ancestry chain. Closest match wins.
+      Guards on agent.getConfig().riskLevel (Medium behavior only).
+    files:
+      - src/core/permissions/permission-engine.mjs
+
+  cross_session_permissions:
+    description: >
+      CrossSessionPermissions extends Permissions base class.
+      createSession always requires explicit approval (no rule matching).
+      postToSession to parent auto-approved if agent is a participant
+      in the parent session (logic-based, not DB records).
+    files:
+      - src/core/internal-plugins/cross-session/cross-session-permissions.mjs
+      - src/core/internal-plugins/cross-session/index.mjs
+
+  cross_session_permission_approval:
+    description: >
+      PermissionHandler.hardBreak() creates permission-request frame in
+      nearest ancestor session with a user participant. Pending-action
+      stays in requesting session. Approval commits tool-result to
+      requesting session's FrameManager. Router handles the rest.
+    files:
+      - src/core/interaction/permission-handler.mjs
+
+  create_session_extension:
+    description: >
+      createSession tool gains initialMessage (string) and constraints
+      (object with maxInteractions, endsAt). Creating agent becomes
+      coordinator. initialMessage creates first frame authored by
+      creating agent. Agent-created child sessions get default
+      constraints if none specified.
+    files:
+      - src/core/internal-plugins/cross-session/index.mjs
+
+phase_2:
+  - Live inline mini-ChatView in session-link bubble
+  - Expand/shrink animation (DOM reparenting without element destruction)
+  - Whisper/@mention targeting
+  - Constraint warning injection (depends on Abilities system)
+
+tests:
+  - spec/core/models/agent-config-spec.mjs
+  - spec/core/models/session-constraints-spec.mjs
+  - spec/core/session/constraint-enforcement-spec.mjs
+  - spec/core/interaction/per-agent-loop-spec.mjs
+  - spec/core/scheduling/concurrent-trigger-spec.mjs
+  - spec/core/session/ancestry-spec.mjs
+  - spec/core/session/nearest-user-ancestor-spec.mjs
+  - spec/core/permissions/permission-walkup-spec.mjs
+  - spec/core/internal-plugins/cross-session/cross-session-permissions-spec.mjs
+  - spec/core/interaction/cross-session-permission-spec.mjs
+  - spec/core/internal-plugins/cross-session/create-session-extended-spec.mjs
+  - spec/core/integration/child-session-deliberation-spec.mjs
+
+cleanup:
+  remove:
+    - src/core/scheduling/discussion-orchestrator.mjs
+    - spec/core/scheduling/discussion-orchestrator-spec.mjs
+    - spec/core/scheduling/discussion-integration-spec.mjs
+  revert:
+    - src/core/interaction/message-history.mjs
+    - src/core/internal-plugins/scheduling/index.mjs
+    - src/client/components/kikx-session-page/kikx-session-page.mjs

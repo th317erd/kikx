@@ -98,7 +98,9 @@ describe('Stop as Commit (B8)', () => {
 
     async function* mockGen() { /* empty */ }
 
-    interactionLoop._active.set(session.id, {
+    // Use composite key — cancelInteraction computes ${sessionID}:${targetAgentID}
+    let activeKey = `${session.id}:${agent.id}`;
+    interactionLoop._active.set(activeKey, {
       generator:     mockGen(),
       interactionID: 'int_test_target',
       params:        {},

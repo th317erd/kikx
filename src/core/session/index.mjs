@@ -17,6 +17,7 @@ export class SessionManager {
 
     this._context       = context;
     this._frameManagers = new Map();
+    this._ancestryCache = new Map();
 
     let models = this._context.getProperty('models');
     if (!models)
@@ -59,6 +60,12 @@ export class SessionManager {
 
     if (options.linkedFrameID !== undefined)
       sessionData.linkedFrameID = options.linkedFrameID;
+
+    if (options.maxInteractions !== undefined)
+      sessionData.maxInteractions = options.maxInteractions;
+
+    if (options.endsAt !== undefined)
+      sessionData.endsAt = options.endsAt;
 
     let session = await Session.create(sessionData);
     return session;
@@ -276,6 +283,100 @@ export class SessionManager {
     let { Participant } = this._models;
     let participants    = await Participant.where.sessionID.EQ(sessionID).AND.role.EQ('coordinator').all();
     return participants;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ancestry Queries
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns an array of session IDs from self to root:
+   *   [sessionID, parentID, grandparentID, ...]
+   *
+   * Returns an empty array if the session does not exist.
+   * Results are cached — ancestry is immutable once a session is created.
+   */
+  async getAncestryChain(sessionID) {
+    if (!sessionID)
+      return [];
+
+    // Check cache first
+    let cached = this._ancestryCache.get(sessionID);
+    if (cached)
+      return cached;
+
+    let chain      = [];
+    let currentID  = sessionID;
+    let visited    = new Set();
+    let maxDepth   = 100;
+
+    while (currentID && chain.length < maxDepth) {
+      // Guard against circular references (shouldn't happen with FK constraints,
+      // but protects against corrupted data)
+      if (visited.has(currentID))
+        break;
+
+      let session = await this.getSession(currentID);
+      if (!session)
+        break;
+
+      chain.push(currentID);
+      visited.add(currentID);
+      currentID = session.parentSessionID || null;
+    }
+
+    // Cache the result (ancestry is immutable — no TTL needed)
+    if (chain.length > 0)
+      this._ancestryCache.set(sessionID, chain);
+
+    return chain;
+  }
+
+  /**
+   * Returns the session ID of the closest ancestor (including self) that has
+   * at least one frame with authorType === 'user'.
+   *
+   * Returns null if no user found in any ancestor or if session doesn't exist.
+   */
+  async getNearestUserAncestor(sessionID) {
+    if (!sessionID)
+      return null;
+
+    let chain = await this.getAncestryChain(sessionID);
+    if (chain.length === 0)
+      return null;
+
+    let { Frame } = this._models;
+
+    for (let ancestorID of chain) {
+      let userFrame = await Frame.where
+        .sessionID.EQ(ancestorID)
+        .AND.authorType.EQ('user')
+        .first();
+
+      if (userFrame)
+        return ancestorID;
+    }
+
+    return null;
+  }
+
+  /**
+   * Clears the ancestry cache entry for a session.
+   * Also clears any cached chains that include this sessionID.
+   */
+  clearAncestryCache(sessionID) {
+    if (!sessionID)
+      return;
+
+    // Direct cache entry
+    this._ancestryCache.delete(sessionID);
+
+    // Also clear any entries whose chain includes this sessionID
+    for (let [cachedSessionID, chain] of this._ancestryCache) {
+      if (chain.includes(sessionID))
+        this._ancestryCache.delete(cachedSessionID);
+    }
   }
 
   // ---------------------------------------------------------------------------

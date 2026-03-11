@@ -314,8 +314,8 @@ export class SessionScheduler extends EventEmitter {
     if (!entry)
       return;
 
-    // Skip if the interaction loop already has an active interaction
-    if (this._interactionLoop.isActive(sessionID)) {
+    // Skip if this specific agent already has an active interaction
+    if (this._interactionLoop.isActive(sessionID, entry.agentID)) {
       // Put it back and wait — retried on next interaction:end
       this.queueTrigger(sessionID, entry.agentID);
       return;
