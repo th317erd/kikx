@@ -268,6 +268,13 @@ export function setup({ registerTool, PluginInterface }) {
       let agentID = params.agentID;
       let frameID = `frm_${XID.next()}`;
 
+      // Set up streaming relay from current session to target session
+      let streamRelay      = this._context.getProperty('streamRelay');
+      let currentSessionID = params.currentSessionID || null;
+
+      if (streamRelay && currentSessionID && currentSessionID !== params.sessionID)
+        streamRelay.createRelay(currentSessionID, params.sessionID);
+
       let frameManager = sessionManager.getFrameManager(params.sessionID);
       let frameData = {
         id:         frameID,

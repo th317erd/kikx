@@ -1,1992 +1,2179 @@
-Good afternoon! Ha! I asked you this message, and then walked away. I then went to bed, because I was sick and feeling terrible. But I first put a lot of thought into this, and now I come back, and you have had very similar
-thoughts! I'd like to just drop into dialog for a moment, if we may.
+# Inter-Agent Streaming + Multi-Coordinator Discussion Protocol
 
-First, I was thinking about "everything is a message". Let's strip the world back to a single fact: if everything were a message, and we left it that way (at its fundamental core), then we are building a brain-dead chat
-application, where the only thing that can happen is "mail": you get a message, you send a message... you work on a conversation, you write a book... at the end of the day, it is just words, visable messages, a compilation, a
-book... nothing more.
-
-But, obviously we WANT something more. We want interactions. We want _reactions_. We want to do work, and _report back on the work done_. So, really, the question becomes "how do you turn messages into useful work?"
-
-I think I might have an answer after thinking about this for nearly 24 hours now. I am going to use an analogy, and I wince just thinking about it, but it is a good analogy, and it flows well: React. First, I _hate_ React. I
-think it is a terrible library, developed by stupid engineers, and I feel that it has very much negetively impacted our world (including adding thousands of tons of CO2 to the atmosphere through wasted CPU cycles). However, the
-idea of a "declarative state machine" is our product in a nut-shell, and it has some really good fundamental parallels.
-
-For example, let's think of every message itself as a React component: React components display things (i.e. just like messages), but they can also _do work_. They can accomplish something. They do this through the process of a
-"state machine". Sure, that state machine is for updating visuals, but it is more than this: the visuals update when an AJAX request completes, when the user interacts with something, when "something happens". This is exactly
-what we are doing: we have "visuals" (messages), which "have things happen". When those things happen, more things happen, including the generation of more messages.
-
-So, now let's continue with this fundamental understanding. First, let's talk about the elephant in the room: the "hard break" of the permissions system. You mentioned it many times, and it also has me on the fence too. However,
-I find confidence in my thoughts when I "draw contrast". I do this all the time in life. If you were thinking of an image editor, and the image was life, then I am constantly opening the "Brightness and Contrast" dialog, and I
-am jacking the contrast to +100%. For example, if I jack the contrast on our permissions system, "removing" the process altogether (hypothetically, and just for the thinking process), then you have a NOOP permissions system: Agent
-requests tool use -> permissions NOOP -> tool use continues. No problems. But, obviously, _this_ doesn't actually describe our permissions "system" very well. If we take the contrast down just one step, then this becomes Agent
-requests tool use -> await -> tool use continues. This is better, but we still don't have a "permissions system"... we ARE however getting closer to understanding our "messages as a state machine" system. So, let's focus on the
-next step, that is our problem (or at least a big part of it): HOW do we VERIFY permissions BEFORE we allow that "await" to proceed?
-
-For example, that hypothetical chain of events could just be: agent posts a tool use request message -> a message is posted approving this tool use -> this posted message is the "event" that initiates the tool use -> the tool use
-response is turned into a message -> a new message is "received" and fed to all interested parties (the agent in this case). NOW we have described the entire process with messages. However, the gotcha here is the AUTHORITY. We
-can't just have ANYONE post a "tool use approved" message. We need _specific_ people to post the approval message.
-
-Let's ignore that for just a moment however, and look at the fundamental pattern here:
-user types a message (something happens, an event) -> agent thinks about message -> agent responds (something happens, an event) -> user thinks about message -> user responds (something happens, an event), agent thinks -> agent uses a tool (event) -> permissions request (responds, event) -> user answers permissions request (responds, event) -> ??? was this really the correct user??? -> tool fires (event) -> agent thinks -> agent responds (event)...
-
-Everything is really event driven. Nothing happens without there first being an "event", even if that event is a timer firing, motion detected on a camera, a certain audio freqency played, etc...
-
-But we have STATIC MESSAGES, how are we supposed to make those fire events? And how do we keep this whole thing secure, such that only certain people can answer a permissions prompt for example (the agent is not allow to answer its own prompt)?
-
-Well, the key to the first problem is in events: everything happens at a time. This is where the React metaphor comes in. We just have all frame updates be an "event". They can even call "on{PropertyName}Changed" in the server, which would be routed to the plugins. If we have an "onChange" event, then the action was authorized and permitted by the server. The other thing we could do that would be cool might be to have signatures. We could move to a pub/private key, and any given user that acts ("events") will not only be authenticated by the server, but will also sign their change/frame. In the permissions example, the authorizing actor (agent, user, or other user) would sign their frame. Doing so, the server and all other parties can verify the truth with the public key. This is an interesting idea all on its own: essentially your key pair becomes your authentication and authority. But this is just me daydreaming that it could be a protocol that would work on any network, even the block chain (though that might be slow enough to make you want to cry).
-
-In any case, the pattern now is very clear: we have a messaging system, that sends frames, and does a darn good job at tracking and merging them. The 'messages' or 'interactions' would then emmit events, when iteracted with. This might be true if an hml-prompt is in use for example. The user "submits" the form, and a new, signed frame is created, the "parent_id" is the "parent_id" of the "hml-prompt" interaction/message, and this frame provides the "value"s to the hml-prompt for the submitted fields. This is a "onChange" event, which causes the field (who are listening) to update themselves, and turn to a "success" green. Since this happened on the "interaction" (parent frame), the "Ignore / Submit" button container can also subscribe to this event, and hide itself when there is at least one value recorded.
-
-Take another example, I tool use: the agent posts a message of type "tool". The only thing this type/name/content does is get matched via a router to the correct listeners. When the correct plugin gets matched (which might be plural) the plugin will generate output. This output will be collected, and will be turned into a message "Tool use in progress. Result will be posted later, with ID TOOL_AF8B23D98BC304." The request is wrapped in a permissions system gate, and the permissions system launches a dialog/inline prompts to ask the user if they wish to proceed. Now, the user responds with a signed frame, the server permits the change, and the "permit" goes from "false" to "true", and "onPermitChange" is fired (or `onChange(key, previousValue, newValue)`), the tool continues execution, and a response message (the output of the tool) is posted into the message stream/queue, like "Tool ID TOOL_AF8B23D98BC304 Run Complete, Response: ..." The agent then picks this up, and now successfully ran a tool, with a permissions prompt in-between, and no hard break (or rather, ALWAYS hard break).
-
-Now, we DO have one problem. We don't necessarily want to hold "event bindings" in memory. This would be a nightmare for a number of reasons. We do want the system to remain stateless (which is a funny thing to say about a "state machine" :joy:). For this reason I was thinking the plugin system happens via routing. In the example above, the tool executing would have happened from a plugin, and so the plugin could have put routing properties on the message, for example a "TOOL_" prefix. It could even be stamped with a plugin id, or a category of plugins, or whatever. The point is that the message is fed through at least one plugin handler via routing when it is updated. Part of the routing can be which properties the plugin is listening for.
-
-This keeps the state machine "stateless". When a frame is modified, the whole thing is loaded, the diff is applied, and "onChange" event(s) fired. These "events" fire along a "router" that runs the appropriate plugin methods (which might then supply output and post another message).
-
-There are many things which is interesting with this concept, but one of the most interesting is that is is entirely multi-party and asynchronous (and stateless) from the get-go. Another interesting thing is that it can use pretty much any underlying network, you can have intermingled messages which are invisible to one party or another, you could have cross-channel posting (i.e. a DM bot posting into a channel, or visa-versa). So many things are possible with such a system! There are only a few key implementation details that we MUST get correct: frame state, changes and event routing, and publishing with identity and authority.
-
-This also makes for an AMAZING way to implement the "Abilities" system I have been considering for so long. The Abilities have always been verbal guides for the agent(s). i.e The user says "I want you to do this task for me", the Abilities prompt then follows that up immediately by concatenating onto the message:
-
-```
-I want you to do this task for me
-
-If this is a coding related request, then questions to ask yourself:
-1. Have you thought about unit testing?
-2. Have you fulled planned this out yet?
-3. Do you need to stop and ask any clarifying questions?
-```
-
-The last part that is tacked on there is an "Ability". These are what come from the DM with the agent. Previous to this encounter, the user would have had a DM with the agent:
-
-U: Hey, Claude, what I ask you a question related to code, I want you to conside the following questions?
-1. Have you thought about unit testing?
-2. Have you fulled planned this out yet?
-3. Do you need to stop and ask any clarifying questions?
-
-A: Got it! Updating my Abilities list ->
-```
-ABILITES:
-U: Hey, Claude, what I ask you a question related to code, I want you to conside the following questions?
-1. Have you thought about unit testing?
-2. Have you fulled planned this out yet?
-3. Do you need to stop and ask any clarifying questions?
-
-... ability 2
-
-... ability 3
-```
-
-We could also spin up a "meeting" session between agents, and they could talk to other without the user ever seeing anything (if we _wanted_ to hide it). The agent could invite another agent into the channel, the user approves the request, the agent enters the channel, the first agent (A) then sends a message to the second agent (B). We could have this interaction visible (certainly during debugging), or we could had it by having user visibility flags (or even encryption that can only be broken by the receiving party). In any case, B gets a message from A (event), A thinks, and responds (event), B receives response from A, and talks back, etc... until they both decide they have figured the problem out, and then they finally respond to the Coordinator Agent, who then responds to the user (or uses the response to make a decision, or run a tool).
-
-If the system has the following features written really well, then I think we will have a rockstar system:
-1. A frame/commit engine for reconstrucing exact historical states.
-2. This frame/commit engine then BECOMES a queue. As we spoke before, each use knows which messages they having yet read by their respective "HEAD" commit for their personal "branch". They simply diff their HEAD and "current". That is the queue.
-3. A really good event system, that routes frames through plugins, and on those plugins fires "onChange" methods, that recieve the entire frame, and can write messages (or parts of messages, as multiple plugins might match on any given frame/event).
-4. A really solid authentication system, with signatures, and the ability to prove identity. We can in the future improve this with ACLs, for all sorts of things, to ensure only exactly what we want to have happen happens.
-
-
-We can still have "phantom frames" for things we don't want to store (i.e. "agent is typing..."), or "thinking" messages.
-
-We can have any type of GUI we want inside any message, as we support HTML, and our frame manager event engine will allow for anything a plugin supports.
-
-BOOM! 💥 We have gold.
-
-Thoughts?
+Planning conversation for streaming identity, cross-session relaying, and multi-coordinator discussion. User annotates inline with `<!-- comments -->`.
 
 ---
 
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-06 — Claude's Response                    -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+## Round 1 — Understanding Intent
 
----
+**The idea in three sentences:**
 
-Alright. This is a lot, and it's *good*. Let me actually engage with it rather than just nodding along.
+When a session has two or more agents marked as "coordinators," incoming user messages trigger a round-robin
+<!-- 
+Comment: You say round-robin, which is fine, but is this really true? We will always be feeding all conversation history to all agents, by necessity of design and memory. This means anything any user say will go to BOTH agents, by default. Right?
 
----
-
-First — the uncomfortable thing I have to say: **we've already built most of this, we just didn't realize it yet.**
-
-The frame/commit engine? Built. Agent refs as HEAD pointers for the "unread queue"? Built. The diff mechanism for "what hasn't this agent seen"? Built. Multi-agent sequential triggering via the orchestrator? Built. Frames as the persistence layer that survives process restarts? Built.
-
-What we *haven't* built is the thing your entire vision hinges on: **the event layer on frame mutations**.
-
-Right now, frames go into the commit log and... sit there. The interaction loop manually orchestrates everything — it's procedural. "Execute tool, create result frame, feed back to generator." Your vision flips this: frame mutations *are* the events. The system reacts to frame changes, not to procedure calls. The interaction loop stops being an orchestrator and becomes a *router*.
-
-That's the paradigm shift. And it's a big one.
-
----
-
-Let me push back on a few things, because you told me to act like a peer:
-
-**1. The "stateless state machine" tension is real, not just funny.**
-
-You wave this off with a joke, but it's actually the hardest design problem in your vision. When you say "load the frame, apply the diff, fire onChange, route to plugins" — that *is* state. The question is: where does the *continuation* live? When a tool starts executing (could take 30 seconds), what tracks that it's in-progress? The frame itself, sure — you'd have a status field that goes from `pending` → `executing` → `complete`. But what *process* is watching for the `pending → executing` transition? If the server restarts mid-execution, who picks it up?
-
-The current system "solves" this poorly (generator in memory, hard-break on interruption). Your vision solves it *better* (frame state is persistent, events are derived from state transitions), but you'll still need a **recovery mechanism** — something that scans for frames stuck in `executing` status on startup and re-triggers them. This is solvable, but don't underestimate it.
+Besides, even if I am wrong, this would still only be "pseudo random", in the sense that if an agent is busy "thinking", we would sent it to the "available" agent instead.
+ -->
+discussion protocol instead of the normal single-agent response — each coordinator takes turns producing visible "discussion" frames where they deliberate, and one eventually claims the right to deliver the final response. This sits on top of a streaming identity layer that tags every SSE event with the authoring agent's ID, so the client can show per-agent typing indicators and streaming bubbles even when multiple agents are active. There's also a cross-session relay that forwards streaming deltas back to the originating session when one agent delegates work to another session, so the user isn't staring at silence while something happens elsewhere.
 
 <!-- 
-Good thinking... the answer I think is quite simple: the plugins pick it up.
-
-Now I immediately hear you saying "Whoa whoa whoa! You want to take THOUSANDS of frames and pump them back through this engine on every load?!"
-
-And the answer, to your astonishment, is "YES!"... kinda
-
-Really, the missing pieces is to send the LOADED frames back through the router. If the frame engine doesn't have a parent, it already silently drops the frame. So if we load at any boundary (even partial child frames), the engine still corrects itself.
-
-So we load the "last 20 messages" when someone opens the Session in the browser. These 20 get fed back through the router. If a frame is done, it can deliberately mark a "done" property on the frame that get's saved. When this goes back through the router, the router could have a default short-circuit to ignore and stop processing "done" frames. However, this is just ONE filter, or property the router could use... plugins could handle other properties, and if they (for example) KNOW the frame is complete, even without a "done" property, the plugin could halt the routing, and cease processing.
-
-So really, as I said, the answer to your "omg" question is "yes", but only on a very limited, and filtered level (a rejection at the router level is not much difference then a "continue" in a loop).
-
-So the state is always the successfully commited state. Anything that is mid-flight simply get's picked up by a plugin, and treated as a brand new "onChange" event. Now the plugin ITSELF might store mid-flight properties, such as a progress for a file download (this makes me think we might want instant-write commits that don't fire events, or even ANY commit is allowed to bypass routing). This way, the plugin itself can optionally pick up on mid-flight frames, by storing its own data that it needs to do so.
+Yes, this all sounds correct.
  -->
 
-**2. The React analogy is better than you think (and worse than you think).**
+**Three capabilities:**
 
-Better: the "declarative state machine" framing is exactly right. Frames declare state, plugins react to state changes, reactions produce new state. That's React's model. It's proven at scale.
+1. **Streaming identity** — the client knows *which* agent is talking
+2. **Multi-coordinator discussion** — agents deliberate before one responds
+3. **Cross-session relay** — streaming forwarded across session boundaries
 
-Worse: React's biggest problem is *unnecessary re-renders* — cascading state changes that trigger more state changes that trigger more state changes. Your system will have the same problem. Agent posts tool-use frame → onChange fires → plugin creates permission-request frame → onChange fires → ... → user approves → onChange fires → tool executes → onChange fires → result frame created → onChange fires → agent picks it up → onChange fires → agent responds → onChange fires. That's a LOT of event cascading. You need circuit breakers, or you'll get infinite loops that make the ping-pong problem look quaint.
+### Questions Before Architecture
 
-The `authorType !== 'user'` filter we just debugged? That's the *baby version* of this problem. In a fully event-driven system, you'll need a much more sophisticated model for "which frame mutations should trigger which plugins."
-
-<!-- 
-This is true. However, we have one difference going for us that React rarely (if ever) has: we have a full history of all changes committed. This means IF we have an event loop, we can easily debug it. This means we can also fairly easily detect such loops or other issues, and interject, or correct them, if needed.
-
-To counter your claim here: Our current system isn't exactly very easily to debug and maintain either.
- -->
-
-**3. The routing/matching model is where the real design work lives.**
-
-You mention "routing properties" and "plugin matching" almost casually, but this is the core of the architecture. How does a plugin declare what it's interested in? Options:
-
-- **By frame type** (`tool-call`, `permission-response`, etc.) — simple, but rigid
-- **By properties** (any frame with `toolName` matching `shell:*`) — flexible, but complex matching
-- **By lineage** (any frame whose parent is a `permission-request`) — powerful for the permission flow, but requires graph traversal
-- **By subscription** (plugin explicitly subscribes to specific frame IDs) — stateful, violates "stateless" goal
-
-You'll probably need a combination. And the routing engine needs to be *fast* — it fires on every frame mutation.
-
-<!-- 
-"By subscription" is not stateless. Plugins are always loaded into memory. They could register listener "selectors". Think of it like reverse CSS... the selector matches the event.
-
-There are an infinite number of ways, but honestly, a Sizzle engine isn't a bad idea:
-```
-on(#frame-id) {
-}
-
-on(.permissions-request) {
-}
-
-on(.permissions-request [type=Shell]) {
-}
-```
-
-This could fairly easily be optimized to be blazing fast.
- -->
-
-**4. The signature/authority model is gorgeous but might be premature.**
-
-Public/private key pairs for identity and authority is a beautiful idea. It makes the system trust-minimized — you don't need to trust the server, you verify the signature. But right now, you have a single server with a single database. The crypto adds complexity without solving a real problem *yet*. I'd mark this as "design for, but don't implement until multi-server or federation is on the roadmap." The important thing is that your frame schema has a `signature` field ready to be populated.
-
-<!-- 
-Fair point. As long as the server controls all input sources, and authenticates those sources, this really shouldn't be a problem on a federated server. We might still need a hard-wired set of properties, or a schema for frames, to let us know which "federated fields" are not to be touched. This also hints at a universal frame "merging" system that is security aware. Maybe?
-
-I do agree with you however.
- -->
-
----
-
-Now, the parts I'm genuinely excited about:
-
-**The frame/commit engine AS the queue is brilliant.** We already have this. Agent refs are HEAD pointers. Diff from HEAD to current = unread messages. This means the "event system" doesn't need a separate queue infrastructure (Redis, RabbitMQ, etc.) — the commit log IS the queue. Each consumer (agent, plugin, UI) has its own cursor into the same log. This is essentially the Kafka model, but using your git-like commit system. It's elegant and it's already built.
-
-**The Abilities system via DM sessions is clever.** It turns agent customization into a conversation rather than a configuration form. The agent summarizes its own abilities from natural language instructions. This is already partially implemented via `dmSummary` and `instructions` on the agent model. Formalizing it as an "Abilities" concept that gets injected into conversations is the natural next step.
-
-**Multi-agent side-channels are powerful.** Agents inviting other agents into sub-conversations, working out a problem, and reporting back to a coordinator — this is genuinely novel for a chat system. And your architecture supports it naturally: it's just more sessions with more participants posting more frames. The visibility/encryption layer is the interesting part — you could have frames that are readable only by certain participants (encrypted to their public keys), creating genuine private channels within a shared session.
-
-<!-- 
-This could also be a "child session", if we decide we want to give Sessions a nullable "parent_id"... which is an interesting idea.
-
-Either that or sessions are just top-level frames, and "interactions" are child-frames...
-
-...now there is a mind-bending idea!
- -->
-
----
-
-So where does this leave us concretely?
-
-The system we have today is **the storage and scheduling layer** of your vision. What's missing is **the event routing layer** — the thing that turns frame mutations into plugin invocations. If we build that, the interaction loop simplifies dramatically:
-
-1. Agent yields a tool-call → creates a `tool-call` frame
-2. Frame creation triggers `onChange` → routes to tool plugin
-3. Tool plugin checks permissions (creates `permission-request` frame if needed)
-4. Permission frame mutation triggers `onChange` → routes to UI/notification
-5. User response creates `permission-response` frame
-6. Frame creation triggers `onChange` → routes back to tool plugin
-7. Tool executes, creates `tool-result` frame
-8. Frame creation triggers `onChange` → routes to agent (via its ref/queue)
-9. Agent processes result, continues
-
-No hard break. No generator destruction. No replay. Just frames and events.
-
-The interaction loop becomes: "run the agent generator, and for each thing it yields, create a frame. When the frame system triggers events that produce results, feed them back to the generator."
-
-That's... dramatically simpler than what we have.
+**Q1: Who is this for?**
+Is this a "panel of experts" UX where the user *watches* agents deliberate? Or is the discussion more of an internal coordination mechanism that happens behind the scenes, with only the final response shown to the user?
 
 <!--
-Great! Let's keep discussing this.
+This is more of the later:
+"Or is the discussion more of an internal coordination mechanism that happens behind the scenes, with only the final response shown to the user?"
 
-Please, also keep in mind, that we have yet to launch this, and it is a pet project. If we need big refactors, that is not a big deal. Yes, I do know that "perfect" is always on the horizon... but I want to feel excited about my design, not unsure... and THIS design feels exciting!
+However, it might be _cool_ to watch them deliberate.
+-->
 
-I do greatly appreciate you pushing back... and those are some really good counter arguments you provide! Keep it coming!
- -->
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-06 — Claude's Response to Annotations     -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-
----
-
-I see what you've done — annotated my response with inline counterarguments via HTML comments. That's a great format for async dialog. Let me respond to each one.
-
----
-
-**On the recovery problem (your "YES, kinda" answer):**
-
-You're right, and I was overthinking it. Re-feeding loaded frames through the router on startup is elegant precisely *because* of the property you described: a "done" frame hits the router, the router sees it's done, skips it. A stuck-in-progress frame hits the router, the plugin picks it up and resumes. The router doesn't need to know the difference — the *plugin* knows.
-
-And your point about "instant-write commits that don't fire events" is important. You're describing two commit modes:
-- **Reactive commits** — frame mutation triggers routing (the normal path)
-- **Silent commits** — frame mutation persists state but doesn't trigger routing (progress updates, intermediate state, bookkeeping)
-
-That's actually critical for preventing the cascading problem I warned about. A tool updating its progress 50 times during execution shouldn't fire 50 onChange events. Silent commits let plugins track their own state without creating noise.
-
-**On debugging cascading events:**
-
-Touché. "Our current system isn't exactly very easy to debug and maintain either." You're absolutely right. I was holding the proposed system to a higher standard than the current one. The commit history giving you a full audit trail of every event cascade is a *massive* advantage over the current system, where if a generator breaks mid-stream you're debugging in-memory state with console.logs — which is literally what we just did for three hours with the orchestrator.
-
-**On the CSS selector routing — this is actually brilliant:**
-
-I initially listed "by subscription" as violating statelessness, but you corrected me: plugins registering selectors at load time isn't stateful in the problematic sense. The selectors are static declarations, not runtime subscriptions. They're more like Express route definitions than WebSocket subscriptions.
-
-The Sizzle-like syntax is genuinely clever:
-
-```
-on(#frame-id) { }                        // specific frame
-on(.permissions-request) { }              // by type/class
-on(.permissions-request [type=Shell]) { } // type + property match
-```
-
-This gives you all four of my proposed matching strategies in a single, familiar syntax:
-- `#frame-id` = by subscription (specific frame)
-- `.permissions-request` = by type
-- `[toolName^=shell]` = by property
-- `.permissions-request > .response` = by lineage
-
-And it *is* optimizable. CSS selector engines are some of the most optimized matching code in existence. You could index by type (like a hash lookup on the "class"), then refine with property checks. The common case — matching by frame type — becomes an O(1) map lookup.
-
-The question I'd push on: does the selector match against the *frame itself*, or against the *change event*? Because `on(.tool-call)` matching any tool-call frame is different from `on(.tool-call:created)` vs `on(.tool-call:modified)`. You probably want both — "this frame exists" vs "this frame just changed." Maybe pseudo-selectors: `:created`, `:modified`, `:deleted`?
+**Q2: How does a coordinator differ from a member?**
+Is a coordinator just "an agent that's allowed to respond to the user directly" while members only act when delegated to? Or is there a richer distinction you have in mind?
 
 <!-- 
-Here I think you are conflating "events" in the common sense with "frame routing". 
+The "Coordinator" agent has a few special properties:
+1. They get the final say in any debate or mismatch
+2. They are instructed _not_ to do long-running or difficult tasks, but instead to simply coordinate other agents to do the work.
+3. In a "debate" situation like this, they would be selected to be the one to respond to the user by default.
+4. In a debate situation like this, if none of the involved parties is a Coordinator agent, then they could mutually agree upon who will respond. Or the system simply returns the last message.
+-->
 
-"create" isn't meaningful -> onChange.previousValue == null for frame ID
-"modify" isn't meaningful -> "onChange" already IS this.
-"deleted" isn't meaningful -> onChange.newValue == null for frame ID
- -->
-
-**On "sessions are just top-level frames, and interactions are child-frames":**
-
-This IS mind-bending, and I want to sit with it for a moment. If sessions are top-level frames, then:
-
-- Creating a session = creating a root frame
-- A message in the session = a child frame
-- A sub-conversation between agents = a child frame of the session frame, which itself has child frames (the agent messages)
-- A tool call and its result = child frames of the agent message frame
-
-Everything becomes a tree. The commit log tracks the tree. Refs point into the tree. The router matches anywhere in the tree.
-
-This unifies session management and frame management into a single system. You wouldn't need a separate `sessions` table — sessions ARE frames with no parent. The `SessionManager` and `FrameManager` merge into one thing.
-
-The implication is fractal: a "session" at one level is a "message" at a higher level. An agent's internal tool-call conversation is a session *within* a message *within* a session. You get nesting for free.
-
-The scary part: tree traversal for routing becomes important. `on(.permissions-request)` needs to know whether to match globally or scoped to the current session-frame subtree. Probably scoped by default, global with a modifier.
-
-<!-- 
-I don't think this is exactly accurate here. A frame update is a frame update. All frames have ids. A plugin will always get exactly one "event" from one frame update. All loaded plugins CAN subscribe to this update, but that is N-plugins worst case, not N*N-frames. A plugin COULD decide to do whatever it wants with the "event", but this won't impact the router.
-
-Did I misunderstand you? Or does this make sense?
- -->
-
-But honestly? This is the kind of unification that makes architectures sing. One data structure. One engine. One routing system. Everything else is just plugins declaring what they care about.
-
----
-
-I share your excitement. This design has the feeling of convergence — where multiple separate concerns (sessions, frames, events, plugins, permissions, multi-agent) collapse into a single unified model. That's usually a sign you've found the right abstraction.
-
-The four pillars you identified are exactly right:
-1. Frame/commit engine (built)
-2. Frame-as-queue via refs (built)
-3. Event routing through plugins (THE missing piece)
-4. Authentication/authority (server-controlled for now, signature-ready for later)
+**Q3: Claim semantics**
+When a coordinator "claims" the response, is that the agent's own decision (it decides it's best suited), or should the user have any say? Could two agents fight over a claim?
 
 <!--
-What are your thoughts on what I've said so far?
+I think I already defined this above.
+-->
+
+**Q4: Scale**
+Are we designing for 2 coordinators (the common case), or do you envision 3, 4, 5+ coordinators in a session? That changes how round-robin feels.
+
+<!-- 
+Honestly, I think getting more than one coordinator in any given session will likely be an accident, not a common occurance. I think you slightly misunderstood the idea behind this feature. The idea is pretty straight forward: Have agents (with different abilities and characters) argue and debate about something until they work it out. It is a problem-solving technique. There is no special reliance on "Coordinators".
+-->
+
+---
+
+*Annotate each question above with your thoughts, then let me know when you're ready for Round 2.*
+
+---
+---
+---
+
+## Round 2 — Correcting My Mental Model
+
+I had this backwards. Let me restate what I now understand, because if I'm still wrong I'd rather find out now than three files in.
+
+### What This Feature Actually Is
+
+It's not "a coordinator protocol." It's an **agent debate mechanism**. When a session has 2+ agents and a user message arrives, ALL of those agents see the message (they already do — that's how the scheduling works). The new behavior is: instead of each agent independently producing a response to the user, they first exchange perspectives with each other — debating, critiquing, building on each other's ideas — and then ONE of them delivers the final response.
+
+The coordinator role is incidental to this. A coordinator happens to be the default tiebreaker for "who delivers the final response," but the feature itself works between any combination of agents. Two members debate? Fine — they agree who responds, or the system picks the last speaker.
+
+### On "Round-Robin"
+
+You're right to push back. All agents already receive the full conversation history — that's a given. And the current `SessionScheduler` already triggers all agents with pending refs. So the agents don't need to be "given turns" — they're all going to respond anyway.
+
+The question is: what happens between "all agents see the user message" and "the user gets a response"? Right now, each agent independently responds, and the responses just pile up. The new behavior inserts a **deliberation phase** where agents talk to each other before anyone talks to the user.
+
+But here's where I need your input. The current InteractionLoop runs one interaction per session at a time. So "all agents respond simultaneously" isn't what happens today — they're queued sequentially. The deliberation could work the same way: sequential turns, each agent seeing what the previous ones said. Or do you want actual parallelism (all agents think at the same time, merge perspectives after)?
+
+<!-- 
+I want the later: complete parallelism. This is what will happen at any Session level. Agents are essentially just "users"/actors in the same chat session. If a message is sent by an agent, user, or whatever actor, ALL parties in the session get it.
+
+Now I am totally okay with building a "whisper" feature, where you direct a message ONLY at a certain participant (this could be useful for our "out-of-band" agent communication we were discussing in another feature). This would likely be a command, i.e. "/at @agent-name Only you can hear me..."
+
+For now we would ignore who can read it (we might have better security in the future), and we just deliberately filter out such whispers to AI agents and their chat history (if it wasn't meant for them).
+
+But ultimately, it a debate, they would go back and forth naturally, just because they were sending each other messages, and then responding (...and loop).
+
+Keep in mind that a lot of the functionality of this app is by REQUESTING CERTAIN BEHAVIOR of the agent. So for example, we already have the hidden "Abilities" system we are working on, where an agent gets automatic and unseen prompt injections for instructions. We could do a similar thing when we start up the "debate". We could send instructions to both agents like: "You are both (all) here to figure out the following issue: X. I want you to debate this until you reach a conclusion, or have conclusively exhuasted all possible options. When you are done, please one of you respond with your result into the parent session (doing so would be automatically allowed in the permissions system FYI: this is cross-session posting, which is allowed by permission, but in this case we would preapprove the permission).
+ -->
+
+### Revised Understanding — Three Layers
+
+1. **Streaming identity** (prerequisite) — SSE events carry agent identity so the client knows who's talking. This is useful regardless of whether deliberation exists.
+
+2. **Agent deliberation** (the core feature) — When 2+ agents are in a session, user messages trigger a deliberation phase. Agents exchange `discussion` frames (visible or hidden, your call — you said "primarily internal but it'd be cool to watch"). After deliberation, one agent delivers the final response. Selection rules:
+   - If a coordinator is present → coordinator responds (they're the tiebreaker)
+   - If no coordinator → agents agree, or system picks last speaker
+  
+<!-- 
+We don't need special frame types. All we are describing is a child session. It would be a child session "with insight" if we were able to "watch" the deliberation. It isn't anything special, with the possible exception of the initial instructions prompt we provide to all parties when it starts.
+ -->
+
+3. **Cross-session relay** (independent feature) — Forwarding streaming deltas when agents delegate across sessions. This doesn't depend on deliberation at all.
+
+### Questions for Round 2
+
+**Q5: Trigger condition**
+When should deliberation activate? My original plan triggered on "2+ coordinators." Based on your feedback, should it trigger on "2+ agents (any role) in the session"? Or is there a threshold — maybe a session-level setting like `deliberationEnabled: true`?
+
+<!-- 
+It will start with a defined list of agents. It starts when they are all "present" (which would be instantly). In the future we might have the ability to have users or other actors join. For now, we won't worry about such complexities.
+-->
+
+**Q6: Deliberation visibility**
+You said "primarily internal, but it'd be cool to watch." For V1, should discussion frames be:
+- **Option A:** Hidden from the user (agents discuss internally, user only sees the final response)
+- **Option B:** Visible but visually distinct (user sees a collapsible "Agents are deliberating..." section)
+- **Option C:** Fully visible as regular messages (user watches the whole debate)
+
+<!-- 
+I'd like it to be both B and C. By default the message (special WebComponent for a child session, that is just a ChatView component inside a message bubble/as a frame [not a literal <frame>]) will be a simple "Agent Discussion..." type of message that is the collapsed state. The user can open this by tapping on it, and then see the discussion if they want to.
+-->
+
+**Q7: Deliberation mechanics**
+Today, agents are invoked sequentially (one interaction at a time per session). During deliberation, should we:
+- **Option A:** Keep sequential turns — Agent 1 speaks, Agent 2 sees what Agent 1 said and responds, Agent 1 sees Agent 2's response, etc. Natural conversation feel, but slower.
+- **Option B:** Parallel first pass — All agents respond simultaneously to the user message, then a synthesis/merge step picks the best response. Faster, but agents don't build on each other's ideas.
+- **Option C:** Something else you have in mind?
+
+<!-- 
+A wide open chat session, like any other session. Any agent can respond at any time. Any agents who are busy thinking simply have the response queued and fed to them when they are available next.
+-->
+
+**Q8: Termination**
+How does deliberation end? Options I see:
+- **Fixed round limit** (e.g., 3 rounds) — simple, predictable, but might cut off productive debate or waste rounds on a trivial question
+- **Agent-initiated** — an agent signals "I'm satisfied, let's respond" (your original "claim" concept, but more like consensus)
+- **Coordinator override** — if a coordinator is present, they decide when deliberation is done
+- **Some combination?**
+
+<!-- 
+Agent satisfaction, or the inability to reach satisfaction (failure). We start the conversation with a set of instructions. We COULD also have a sane limit, so for example we might automatically shut it down after 100 correspondances (just to make sure we don't have an "Yes!", "No!", "Yes!", "No!" interaction eat all the user's tokens).
+-->
+
+**Q9: What about the user?**
+Can the user intervene during deliberation? Send another message? Redirect the agents? Or is deliberation a "locked" phase where the user waits?
+
+<!-- 
+I'd like the user to be able to intervene, yes. Let me modify my original thoughts about the "collapsable view". Instead of a "collapsable view", let's have a "small" view, where the user can see the deliberation messages fly by, but only in a smallish chat bubble. If they tap on it, then they navigate to the child session directly, where they will then have their chat input field, and will be able to send a message. Pressing the "Back" button will properly go back to where the user was previously, as always.
+
+Bonus points! 🌟: It would be really awesome if when this child session ChatView is tapped on inside the message bubble, if it would "expand" to fill the screen, as a dialog, but perfectly matching up with the layout of the parent session ChatView. When the user presses "Esc" or navigates Back, the ChatView will then shrink back down to be inside the message bubble again.
+-->
+
+---
+
+*Annotate each question above, then let me know when you're ready for Round 3.*
+
+---
+---
+---
+
+## Round 3 — It's Just a Child Session
+
+Your responses completely dismantled my mental model. And honestly? The thing you're describing is *simpler* than what I built. Let me state it plainly so you can tell me if I've finally got it.
+
+### The Feature, Restated
+
+**Agent deliberation = create a child session, invite the agents, inject instructions, let them chat.**
+
+That's it. There is no orchestrator. There is no state machine. There is no "claim" mechanism. There is no special `discussion` frame type. There are no round-robin turns.
+
+It's a child session. The same `session-link` frame we already built appears in the parent session. The agents are just participants in a regular chat session. They respond to each other naturally — message, response, counter-response — like any group chat.
+
+<!--
+Yes Silly! :P Do you see why it is important to plan, rather than just gallivant off?
+ -->
+
+The only "special" parts are:
+
+1. **Initial instructions** — A system prompt injected when the session starts, telling agents what to debate and how to conclude (e.g., "When you reach consensus, post your result to the parent session using `postToSession`")
+2. **Pre-approved permissions** — The `postToSession` permission for posting back to the parent is auto-approved, so agents can deliver results without a user permission prompt
+3. **Safety limit** — A maximum exchange count (~100) to prevent runaway debates
+<!-- 
+We might also want a time-limit instead. We might want both. The idea of constraining sessions in meaningful ways is probably not one we should ignore, especially if sessions contain only agents.
+ -->
+4. **Inline preview** — The `session-link` bubble in the parent session shows a live mini-ChatView of the child session, with messages streaming by in real time. Tapping it navigates into the full child session where the user can participate.
+
+### What's Already Built vs What's Needed
+
+Here's where it gets interesting. A LOT of this already exists from our previous planning sessions:
+
+**Already built:**
+- Child sessions (`parentSessionID` + `session-link` frames) ✅
+- Cross-session posting (`postToSession` tool) ✅
+- `session-link` rendering in the parent chat ✅
+- Navigation to child sessions ✅
+- Streaming identity (SSE events carry `agentID`, `authorType`, `authorID`) ✅
+- Cross-session stream relay (`StreamRelay` class) ✅
+- Participant lifecycle (`addParticipant` with `participant-joined` frames) ✅
+
+<!-- 
+This feature is why I was moving in this direction! :P
+ -->
+
+**Needs building:**
+1. **Parallel interactions** — This is the elephant. `InteractionLoop` currently runs ONE interaction per session at a time (`_active` Map keyed by `sessionID`). For agents to chat freely in a session, multiple agents need to be executing concurrently within the same session. This is a fundamental architectural change.
+<!-- 
+Yes, but PROBABLY not as much as you think. We still need an "InteractionLoop", it will simply live at the "agent" or "plugin/agent" level. I bet most of what you built is still valid. We just need to deliver messages to and from an interface of the InteractionLoop, and that interface will be the Session (FrameManager).
+ -->
+2. **Debate trigger mechanism** — Something (a command? a tool? an automatic detection?) that creates the child session, invites agents, injects the debate instructions, and kicks things off.
+<!-- 
+Why not the existing "createSession" tool we already have, with an "initialInstructions"/"initalMessage" property?
+ -->
+3. **Live inline mini-ChatView** — The `session-link` currently renders as a static clickable card. You want it to show a live miniature chat view of the child session with messages streaming in real time.
+<!-- 
+Yeah, why not? This would be fun, and we likely already have the FrameManager for it in memory... if it becomes a performance concern in the future, then we could always throw a boolean at it to disable this functionality.
+ -->
+4. **Pre-approved permission grants** — A way to programmatically approve a specific permission (e.g., "this agent can `postToSession` to session X") without prompting the user.
+<!-- 
+Yes, but there might be some issues with this. Based on our current design, there will be no "user signature" (maybe it would be the original permission for the agent to start a child-session?) for the system to sign. Also, when we say "programmatically approve" it means we need to add a session-permission record into the database, because it can't be memory-only.
+ -->
+5. **Session exchange limit** — A configurable cap on total messages in a session, with auto-shutdown.
+<!-- 
+Yes, I like the idea of a timestamp, and a max messages/interactions count.
+ -->
+6. **Expand/shrink animation** (bonus) — Tapping the inline ChatView expands it to fill the screen as a dialog, Esc/Back shrinks it back.
+<!-- 
+Yes, simply move the live element into different locations of the DOM, without ever destroying the element instance.
+ -->
+
+### The Big Problem: Parallel Interactions
+
+Let me be honest about this one, because it's the hardest part by far.
+
+Today, `InteractionLoop.startInteraction()` checks `this._active.get(sessionID)` — if there's already an active interaction for that session, the new one is effectively blocked. The scheduler queues agents and triggers them one at a time via `SessionScheduler._triggerNext()`.
+
+For a debate session to work as you describe — agents responding freely, concurrently — we need one of:
+
+**Option A: Per-agent interaction slots**
+Change `_active` from `Map<sessionID, interaction>` to `Map<sessionID, Map<agentID, interaction>>`. Multiple agents can have active interactions in the same session simultaneously. Each agent's generator runs independently. When Agent A commits a frame, Agent B's next iteration picks it up via FrameManager.
+
+**Concern:** Race conditions on frame ordering. Two agents committing simultaneously could interleave frames in unexpected ways. FrameManager uses `order` (monotonic per session) — concurrent commits need atomic order assignment.
+
+**Option B: Message queue model**
+Don't change InteractionLoop at all. Instead, agents in a debate session operate on a message queue: when a new frame arrives, all agents with pending refs get triggered sequentially (as today), but each agent only produces ONE response per trigger (not a full multi-turn interaction). This mimics "concurrent" chat without actual parallelism — it's just very fast sequential turns.
+
+<!-- 
+Why add the artificial complexity? If the agent is not available, queue the new message for sending when it is available. If the agent is available, deliver it the new message. Rinse and repeat for all agents.
+
+We are essentially chaning WHERE the InteractionLoop lives: at the agent level, NOT at the Session level. This means each agent becomes and InteractionLoop, with the FrameManager living outside that loop.
+ -->
+
+**Concern:** Feels artificial. If Agent A is taking 30 seconds to think, Agent B can't respond to anything until A finishes. That's not how chat works.
+
+**Option C: Separate InteractionLoop per session (or per agent)**
+Each debate session gets its own InteractionLoop instance, allowing truly independent execution. The main InteractionLoop handles normal sessions; debate sessions spin up lightweight loops.
+
+**Concern:** Resource management, complexity, event routing.
+
+I lean toward **Option A** but I want your take. This is the architectural decision that shapes everything else.
+
+### Questions for Round 3
+
+**Q10: What triggers a debate?**
+How does the user (or system) initiate a debate session? Options:
+- A command: `/debate @agent1 @agent2 "Should we use Redis or Postgres for caching?"`
+- A tool: An agent decides it needs to debate with another agent and creates the session itself
+- Automatic: Any multi-agent session automatically becomes a debate session
+- A UI button: User clicks "Start Discussion" in a multi-agent session
+
+<!-- 
+"createSession" tool we already have, with a new "intialMessage" property, and "participants".
+-->
+
+**Q11: Parallel interactions — which option?**
+Option A (per-agent slots in existing InteractionLoop), Option B (fast sequential, fake parallelism), or Option C (separate loops)? Or something else?
+
+<!-- 
+Read my other messages above please.
+-->
+
+**Q12: What about the code I already wrote?**
+I implemented a `DiscussionOrchestrator` with round-robin turns, claim semantics, and a coordinator-centric state machine. Based on this conversation, that's the wrong approach entirely. The right approach is child sessions with natural chat. Should I:
+- **Rip it out** and start fresh based on what we plan here
+- **Keep the streaming identity + relay pieces** (those are still correct) and only rip out the orchestrator
+- **Leave it for now** and build the correct thing alongside it, cleaning up later
+
+<!-- 
+We will worry about this when our plan is fully complete. WE ARE NOT focused on code right now. We are focused on PLANS. Don't get distracted.
+-->
+
+**Q13: Scope for V1 of this feature**
+You described a lot: live inline mini-ChatView, expand/shrink animation, user participation, whisper commands. For V1, what's the minimum that would make you happy? My suggestion for minimum viable:
+1. Streaming identity (done)
+2. Cross-session relay (done)
+3. Debate trigger (command or tool)
+4. Parallel interactions (the hard part) <!-- I doubt this is as difficult as you are making it out to be -->
+5. Child session appears as existing `session-link` card (no live preview yet)
+6. User navigates into child session to observe/participate
+
+The live inline preview and expand/shrink animation would be Phase 2. Thoughts?
+
+<!--
+I agree.
  -->
 
 ---
 
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-06 — Claude's Response to Round 2         -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+*Annotate each question above, then let me know when you're ready for Round 4.*
 
 ---
-
-Your annotations cut right through my over-engineering on two points:
-
-**On pseudo-selectors — you're completely right, I was conflating two things.**
-
-The onChange signature already carries the creation/modification/deletion semantics implicitly:
-- `previousValue === null` → it's a creation
-- `newValue === null` → it's a deletion
-- Both non-null → it's a modification
-
-The selector matches the *frame*. The *handler* receives the change context. A plugin that cares whether it's a creation vs modification checks the onChange arguments, not the selector. That's a cleaner separation of concerns than baking lifecycle semantics into the matching language. The selector is "what do I care about?" The handler logic is "what happened to it?"
-
-**On tree traversal — yes, I misunderstood, and you're right.**
-
-I was imagining the router needing to walk the frame tree to evaluate selectors. But that's not what you're describing. One frame mutates → one event fires → the router checks that event against N registered selectors. That's it. If a plugin's selector matches, the plugin gets the frame. If the plugin *wants* to look up the parent frame for context, that's the plugin's business — not the router's.
-
-The cost is O(N-plugins) per frame mutation, not O(N-plugins * N-frames). And N-plugins is small — maybe 10-20 even in a rich system. That's basically free.
-
-I was projecting complexity from the tree structure onto the routing engine, but they're independent. The tree is the *data model*. The router is a flat event dispatcher with pattern matching. A plugin could register `on([parentType=permissions-request])` if it wanted lineage-aware matching, and the router just checks that property on the frame — no traversal needed, because the frame already *knows* its parent.
-
-**On "what are your thoughts on what I've said so far":**
-
-Honestly? You've talked me out of most of my reservations. Let me be specific about where I've landed:
-
-1. **Recovery via re-feeding frames through the router** — Convinced. The "done" short-circuit makes this cheap, and it's self-healing. No separate recovery mechanism needed.
-
-2. **Silent commits** — Important design detail you introduced. Two commit modes (reactive vs silent) solve the cascading problem elegantly.
-
-3. **CSS-selector routing with onChange(previousValue, newValue)** — Convinced this is the right model. Selectors match frames, handlers receive change context. Simple, familiar, optimizable.
-
-4. **Sessions as top-level frames** — Still mind-bending, but I can't find a reason it wouldn't work. It eliminates an entire layer of abstraction (SessionManager) and gives you fractal nesting for free.
-
-<!-- 
-This also BECOMES our DM/PM messages. A DM IS a top-level frame with only two participants. That is how we define DM.
-
-I don't think we would want ALL frames to be `id: MD5(...partipants.ids)` for identity. I think we have many cases where we would want all the same parties, but a different conversation. However, DMs _could_ be an exception case, where `participants.ids.length === 2`. The other cool thing about this is that you could have a "Self" channel. I LOVE "Self" channels. Who cares? A "Self" channel is a top-level frame with one participant.
-
-This could also be an interesting "play ground" for agents later on, if we found a use for such a thing.
- -->
-
-5. **Signatures** — Agreed, defer but design for it.
-
-The one thing I'd still push on: **ordering guarantees**. When multiple plugins match the same frame mutation, what order do they fire in? Does it matter? In most cases probably not — each plugin reads the frame, does its thing, and writes new frames. But if two plugins both want to *modify* the same frame in response to a change, you have a conflict. The commit engine's merge semantics handle this at the data level, but logically you might want priority ordering on selectors (like CSS specificity, or explicit priority numbers on plugin registrations). Something to think about, but not a blocker.
-
-The design is solid. I'm genuinely excited about it too.
-
-<!-- 
-Yes, we will have to have a specifity engine... probably nothing as complicated as in the DOM. Honestly, I'd prefer a user driven order. The owner of the Organization decides on plugin order (with order defaulting to installation order).
- -->
-
- <!-- 
- I'd like to drop into AGIS planning mode to design this thing. However, when you do drop into this mode, I want to try something new. I want you to be the Coordinator, and I want you to spin up a sub-agent, and I want you to talk back and forth with them until you figure out the plan between yourselves. I want you to use AGIS skills between both of you (all that seem helpful, which is probably at least a few), and try and see if you can work this out from every angle, first by planning the actual plan, what is important, what needs to get cut or pushed to the future, what is wrong, what is right, what could be done better, what testing will be required to confirm "done", etc... Then, after the plan (vision) is 100% complete, overview it with PLAN TESTS. Ask amongst yourselves "What is wrong with this plan? What are we forgetting? What could be better? What's the best way to implement it?" etc... Next, after this is all done, and the plan has been fully reviewed, I want you to then understand the current state of the code base, and to plan what needs to change (the change diff). Once the plan is fully complete, including current code analysis and the changes needed, dump a detailed summary of it here, including and open questions or concerns you might have, and we will keep this dialog going. This conversation.md becomes the pre-planning, the dialog, and the boostrap for the plan itself.
-
- I trust you. I bet you and an agent can do a really good job. If you forgot what the AGIS skills are, or the "bot-docs" plans we have designed, then let me know, and I'll direct you. I am excited to see what you come up with!
-  -->
-
+---
 ---
 
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-06 — AGIS Planning: Coordinator + Agent   -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+## Round 4 — Per-Agent Interaction Loops and Session Constraints
 
----
+Yes, I do see why planning matters. Lesson internalized. Moving on.
 
-### Coordinator's Note
+### The Architecture: InteractionLoop Is Per-Agent
 
-I spun up a sub-agent and gave it the full context: our conversation, the existing reactive-frame-engine.yaml plan, the architecture docs, and instructions to use AGIS multi-perspective thinking (engineer, cynic, minimalist, qa_tester, security_officer, devil's advocate) plus the Question Gauntlet on every component.
+Your inline comment cracked it open for me. The shift isn't "how do we make the InteractionLoop handle parallelism" — it's "the InteractionLoop was always conceptually per-agent, we just happened to key it by session."
 
-The agent read all 8 key source files (~4,000+ lines of code), analyzed them, and produced the plan below. I agree with most of its conclusions — especially the pragmatic deferrals. Here are my Coordinator notes on where the agent's recommendations diverge from our original vision:
+**Current model:**
+```
+Session ←→ InteractionLoop (1:1, keyed by sessionID)
+                ↓
+            Agent generator
+```
 
-**Where the agent pushed back on us (and I think it's right):**
-- **DEFER sessions-as-frames.** The cynic and minimalist won. The router doesn't need this, the current SessionManager works, and coupling two big changes is a recipe for a two-front war. Build the router first, unify later.
-- **DEFER generator suspension.** Keep the hard-break for now, but express it through the router (move permission logic out of InteractionLoop into a plugin). Suspension requires a generator lifecycle manager and crash recovery — too much to couple with the router MVP.
-- **DEFER general re-feed.** Do targeted recovery for known stuck states instead. General re-feed needs handler idempotency guarantees we don't have yet.
+**Correct model:**
+```
+Session ←→ FrameManager (shared bus)
+              ↑        ↑
+         Agent A's    Agent B's
+         loop         loop
+```
 
-<!-- 
-I think these are all good ideas. But let's make sure we capture them in "future-plans" in "bot-docs".
- -->
+Each agent runs its own interaction loop independently. The FrameManager is the communication surface — it's where frames land and where agents read from. When Agent A commits a frame, it goes into the FrameManager. Agent B's loop detects new frames (via its ref) and gets triggered. Agent A might still be "thinking" when B responds. Both loops run concurrently.
 
-**Where I'd push back on the agent:**
-- The selector MVP (`type:foo` only) might be *too* minimal. Property selectors (`type:tool-call[toolName=shell:execute]`) are needed for the permission plugin to distinguish shell tool calls from websearch tool calls. I'd include property selectors in MVP.
-- The agent suggests keeping `registerHook` during migration (Phase C4). I'd deprecate it sooner — maintaining two systems for hooks is confusing.
+Practically, this means the `_active` map key changes from `sessionID` to `${sessionID}:${agentID}`. The InteractionLoop class itself mostly stays the same — the generator-based model, the event emission, the tool execution — all still valid. The scheduler just needs to allow concurrent triggers for different agents in the same session.
 
-<!-- 
-Again, I agree with you. Good assessment.
- -->
+**One concern I want to flag:** Frame ordering. Today, `FrameManager.merge()` assigns monotonic `order` values. If two agents commit simultaneously, we need atomic order assignment so frames don't collide. SQLite serializes writes naturally (WAL mode, single-writer), so this might be a non-issue in practice. But if we ever move to a multi-process model, it matters. Worth a comment in the code, not worth engineering for now.
 
-**What I particularly liked:**
-- The queue-based re-entrant processing (iterative, not recursive) is the right solution for the cascading problem we discussed.
-- Error frames as silent commits is elegant — prevents the error-cascade loop we worried about.
-- The incremental migration plan (C1→C2→C3→C4→C5) where each phase has its own test suite AND must pass all existing tests before proceeding.
-
-The full plan follows. Please read it, annotate with HTML comments as you've been doing, and we'll continue the dialog.
-
----
-
-# Reactive Frame Engine: Event Routing Layer — Architecture Plan
-
-**Date:** 2026-03-06
-**Phase:** C (Event Routing Layer)
-**Prerequisites:** Phase A (commit log, refs, diff, windowed loading, commit validator) and Phase B (author fields, structural ACL, frame creation pivot, per-agent refs, session scheduler, message assembly v2, controller integration, stop-as-commit) are COMPLETE.
-
----
-
-## 1. Vision Overview
-
-The Reactive Frame Engine transforms Kikx from a procedurally-orchestrated interaction system into a declarative, event-driven architecture where **frame mutations are the universal event primitive**. Today, the InteractionLoop manually drives agent-kernel communication: it iterates an async generator, intercepts tool calls, checks permissions, creates frames, and coordinates scheduling through explicit event emission and handler wiring. The proposed evolution replaces this imperative control flow with a **frame event router** — when a frame is created or modified, matched plugins are notified via `onChange(previousValue, newValue)`, and they react by creating new frames, which in turn trigger further routing. The interaction loop, permission system, and multi-agent scheduler all become plugins reacting to frame mutations rather than hardwired kernel logic.
-
-This is not a rewrite. The frame/commit engine and refs system (Phase A) and per-agent scheduling (Phase B) remain intact as foundation. The evolution introduces a CSS-selector-like plugin matching system, two commit modes (reactive and silent), and incrementally migrates scheduling, permissions, and hooks from the InteractionLoop into routing plugins. Sessions-as-frames unification, generator suspension, and general re-feed recovery are deferred to later phases.
+Does this match what you had in mind?
 
 <!-- 
-Please add to "future-plans".
- -->
+Good thinking. Our long-term vision is to use PostgreSQL... so this still won't be a problem.
+-->
 
----
+### Session Constraints
 
-## 2. Component Breakdown
+You mentioned both message count AND time limit. Let me flesh this out, because "constraining agent-only sessions" is a broadly useful concept.
 
-### 2.1. Frame Event Router
+**Session constraints model:**
 
-**Description:** The core routing engine. When `FrameManager.merge()` creates or modifies frames, the router determines which plugins care about that frame and invokes their `onChange(previousValue, newValue)` handler.
-
-**Design Decisions:**
-- `onChange(previousValue, newValue)` is the universal handler signature
-<!-- 
-Yes, but the argument signature you have is wrong. It needs to be:
-`onChange(propName, previousValue, newValue)`
-
-I like the idea of the engine doing the diff, and deciding there is a change. However, I think the plugin can deal with the level of call abstraction if it wants. A plugin could even do:
-```js
-onChange(propName, previousValue, newValue) {
-  return this[`on${propName}Change`].call(this, previousValue, newValue);
+```javascript
+// On Session model (or a related config)
+constraints: {
+  maxMessages:     100,     // null = unlimited
+  // Response from user: Yes, but let's be clear on what "message" means here. I am counting "interactions" as "messages"... we should probably name this "maxInteractions" so we don't cause confusion.
+  maxDurationMs:   300000,  // 5 minutes, null = unlimited
+  // Response from the user: No, I don't like this interface design. Let's do an "endsAt" timestamp.
 }
 ```
- -->
-- Routing happens per-commit, not per-frame (handlers see a consistent snapshot)
-<!-- 
-Correct. We can "lock" or "summarize" frames however we want for optimization. This will probably be an implementation detail of the commit engine itself.
- -->
-- Synchronous matching, async handling
-<!-- 
-I think I understand you here, and I think I want to say yes. A little more clarity on this one would be nice.
- -->
-- Handler isolation: one handler's failure does not prevent others from firing
-<!-- 
-Correct.
- -->
-- **Re-entrant safety via queue**: handlers that create new frames add commits to a queue processed iteratively, not recursively
 
-**Multi-Perspective Highlights:**
-- **cynic**: "This is an event bus. Event buses become debugging nightmares. How do you trace 'why did this frame get created?'"
-- **devil**: "Why not just use the existing EventEmitter?"
-- **Response**: EventEmitter can't do pattern-based matching, ordering control, isolation, or loop detection. The router provides all of these.
-
-**Acceptance Criteria:**
-1. Frame merge triggers matched handlers via `onChange(null, frame)` for creation
-2. Frame update triggers `onChange(previousFrame, newFrame)` for modification
-3. Silent commits do NOT trigger routing
-4. Handler errors are caught and don't prevent other handlers from firing
-<!-- Yes -->
-5. Re-entrant frame creation works without stack overflow (iterative processing)
-<!-- Yes -->
-6. Loop detection with configurable depth limit prevents infinite cycles
-<!-- Yes, but I caution worrying about this too much. We might actually find loops useful, and even a feature. I think for now we should debug and then fix bugs... but leave the ability to loop if you want to (a good example would be agent to agent dialog, which would look very much like a loop) -->
-
----
-
-### 2.2. Plugin Selector System
-
-**Description:** Plugins declare interest in frames via selectors registered at load time via `registerSelector(selector, handler)`.
-<!-- Yes, but plugins might also be able to assist with routing, storage, or other things. I like the generic plugin interface we have now, and I don't really want to change it too much. It is true that we will be "binding" to selectors, instead of "register"ing things. But I like the flexible, context driven interface we have. We likely will want plugins to do other things as well in the future. -->
-
-**MVP Selector Syntax:**
-- `type:user-message` — match frame.type === 'user-message'
-- `type:*` — catch-all
-- `author:agent` — match frame.authorType === 'agent'
-- `type:tool-call[toolName=shell:execute]` — type + content property match
-
-**Design Decisions:**
-- Registration at `setup()` time (alongside `registerTool`, `registerCommand`)
-<!-- 
-Yes, and I believe both of these are still needed.
- -->
-- Selectors compiled once at registration, not per-frame
-<!-- 
-Correct. Rarely. Probably only at plugin change/install/remove.
- -->
-- O(N-plugins) per frame mutation
-- Support both string selectors (parsed) AND function predicates (passed through)
-
-**Acceptance Criteria:**
-1. Plugins call `registerSelector(selector, handler)` in setup()
-2. Type selectors match frames with matching type
-3. Invalid selectors throw at registration time
-4. Multiple handlers can match the same frame
+When either limit is hit:
+1. A system frame is created: `{ type: 'session-constrained', content: { reason: 'max_messages' | 'timeout', limit: 100 } }`
+2. No further agent interactions are started in this session
+3. Existing in-flight interactions are allowed to complete (don't kill a mid-response agent)
+4. The session isn't archived or deleted — it's just "closed for new interactions"
 
 <!-- 
-You got it!
+Yes, and actually, our "archived" system does exactly this, flags it archived, and prevents further interaction.
  -->
 
----
-
-### 2.3. Reactive/Silent Commit Modes
-
-**Description:** `merge([frames], { silent: true })` persists without triggering routing.
-
-**Use cases for silent commits:**
-- Progress updates during tool execution
-- Agent ref advances
-- Error frames (prevents error cascades)
-- Internal bookkeeping
+**Where constraints are checked:**
+- `SessionScheduler`, before triggering an agent: check message count and session age
+- A background timer (or lazy check on next trigger) for the time limit
 
 <!-- 
-Yes.
+Probably at the commit level on the Session.
  -->
 
-**Acceptance Criteria:**
-1. Silent merge creates a commit that does NOT trigger routing
-2. Default merge DOES trigger routing
-3. `loadWindow()` does not trigger routing
-4. Silent commits are in the commit log (real commits, just non-reactive)
+**Where constraints are set:**
+- `createSession` tool gets a `constraints` parameter
+- For debate sessions, sensible defaults are injected automatically (e.g., `maxMessages: 100, maxDurationMs: 300000`)
+- Users could adjust via API or a future settings UI
+
+**Question:** Should the agent be warned when it's approaching the limit? e.g., "You have 10 messages remaining in this session." Injected as a system prompt addition when count > 90% of max?
 
 <!-- 
-Correct.
+Yes, absolutely. I was just thinking of this myself. It would also show up for time: "You have 5 minutes remaining"
+-->
+
+### Pre-Approved Permissions
+
+You raised a real issue. The permission system today works like this:
+1. Agent requests a tool use → `permission-request` frame created
+2. User approves → `permission-granted` frame created, signed by user's keystore
+3. The signature proves the user authorized this specific action
+
+For pre-approved permissions in a debate session, there's no user present to sign. Your suggestion of chaining from the original `createSession` permission is interesting:
+
+**Approach: Permission inheritance from parent action**
+
+When a user approves "Agent X can create a child session with agents Y and Z," that approval implicitly grants:
+- Agents Y and Z can `postToSession` back to the parent session
+- Agents Y and Z can `readFromSession` from the parent session
+
+The child session's permission records are created at session creation time, signed with a **system signature** that references the parent permission ID. The chain is:
+
+```
+User approves "createSession" for Agent X (user-signed)
+<!-- 
+NOTE: This could be an auto-approval.
  -->
+  → System creates child session
+  → System creates permission records for Y and Z (system-signed, references parent permission)
+```
 
----
+This means the permission record in the DB has:
+- `grantedBy: 'system'` (instead of a user ID)
+- `parentPermissionID: <the createSession approval ID>`
+- `scope: { tool: 'postToSession', sessionID: <parent session ID> }`
 
-### 2.4. Sessions-as-Frames Unification — DEFERRED
-
-**Recommendation:** Defer to a dedicated phase after the router is stable.
-
-**Rationale:** High risk, invasive, current SessionManager works and has tests. The router can be built and validated without this unification. Attempting it simultaneously creates a two-front war.
-
-**Bridge option (if needed sooner):** Add `sessionFrameId` to Session model. On session creation, also create a `type: 'session'` frame. Messages reference `parentId: sessionFrameId`.
+The audit trail is: "System granted this because the user approved the parent session creation."
 
 <!-- 
-I agree. We can defer this work for now... but let's be future-facig, be aware of it, and plan simple things now that will make our lives easier later. 
+Yes, exactly what I was thinking.
  -->
 
----
+**Alternative: Session-scoped blanket permissions**
 
-### 2.5. Permission Flow — KEEP HARD-BREAK, MOVE TO PLUGIN
+Simpler approach: when a session is created as a child, ALL agents in that session automatically get `postToSession` and `readFromSession` access to the parent. No individual permission records needed — the relationship itself (`parentSessionID`) IS the permission. The permission check simply asks: "Is the target session the parent of my current session? If yes, allowed."
 
-**Phase C approach:** Express permission flow through the router, but keep the hard-break mechanism. The permission plugin reacts to tool-call frames that need approval, creates permission-request frames, and the existing hard-break/replay logic handles the rest.
+This is less flexible but covers the debate use case perfectly and requires zero new permission records.
 
-**Phase D (later):** Replace hard-break with generator suspension. Requires generator lifecycle manager and crash recovery fallback.
+Which approach feels right to you?
 
-<!-- 
-I think all events are "hard breaks" in this new design, so I don't think this is an issue... but let's see if we can simplify and clean up this system a bit if possible.
- -->
-
----
-
-### 2.6. Recovery — TARGETED, NOT GENERAL
-
-**Phase C approach:** On session load, query for `pending-action` frames without matching responses. Re-emit `permission-request` frames. Users see pending permissions and can approve/deny.
-
-<!-- 
-Hmmm... not so sure about this one. I think you are saying that we just keep popping it up in their face. I don't like that idea. Let's not. If a question (or permission) needs to be asked again, the same tool call can always be invoked again.
- -->
-
-**General re-feed deferred** until handlers have proven idempotency in production.
-
----
-
-### 2.7. Plugin Ordering
-
-- Default: installation order (internal plugins first, then external)
-- Within a plugin: registration order
-- Configurable by org owner (future feature)
-
----
-
-## 3. Implementation Phases
-
-### Phase C1: Frame Event Router Foundation
-| Step | Description | Files |
-|------|------------|-------|
-| C1.1 | Create `FrameRouter` class | `src/core/routing/frame-router.mjs` (NEW) |
-| C1.2 | Create `SelectorCompiler` | `src/core/routing/selector-compiler.mjs` (NEW) |
-| C1.3 | Add `registerSelector` to PluginContext | `src/core/plugin-loader/index.mjs` (MODIFY) |
-| C1.4 | Add `registerSelector` to PluginRegistry | `src/core/plugin-loader/registry.mjs` (MODIFY) |
-| C1.5 | Add `silent` flag to merge options/commits | `src/shared/frame-manager/frame-manager.mjs` (MODIFY) |
-| C1.6 | Wire Router into KikxCore | `src/core/kikx-core.mjs` (MODIFY) |
-| C1.7 | Tests | `spec/core/routing/` (NEW) |
-
-### Phase C2: Migrate Scheduling to Router
-Convert SchedulerOrchestrator logic into a routing plugin.
-
-### Phase C3: Migrate Permission Flow to Router
-Move permission checking from InteractionLoop into a routing plugin.
-
-### Phase C4: Migrate Hook System to Router
-Replace HookRunner with routing-based message interception.
-
-### Phase C5: Slim Down InteractionLoop
-Remove migrated logic. Target: under 500 lines (from ~1150).
-
----
-
-## 4. What Changes in Current Code
-
-**Modified (~10 lines each):**
-- `frame-manager.mjs` — add `silent` flag
-- `plugin-loader/index.mjs` — add `registerSelector` to context
-- `plugin-loader/registry.mjs` — add `_selectors` registry
-
-**Heavily modified:**
-- `interaction/index.mjs` — remove ~400 lines of scheduling/permission/hook logic after C2-C5
-
-**Deprecated:**
-- `scheduler-orchestrator.mjs` — logic moves to scheduling plugin
-
-**New files:**
-- `src/core/routing/frame-router.mjs`
-- `src/core/routing/selector-compiler.mjs`
-- `src/core/internal-plugins/scheduling/index.mjs`
-- `src/core/internal-plugins/permissions/index.mjs`
-- Plus corresponding test files
-
----
-
-## 5. What Gets Deferred
-
-| Feature | When |
-|---------|------|
-| Sessions-as-Frames | After Phase C stable |
-| Generator Suspension | Phase D |
-| General Re-feed Recovery | After handlers battle-tested |
-| Configurable Plugin Ordering | When third-party plugins exist |
-| Abilities System | Phase E |
-| Signatures/Federation | When needed |
-
----
-
-## 6. Risk Assessment
-
-| Risk | Severity | Mitigation |
-|------|----------|-----------|
-| Re-entrant routing causes performance issues | Medium | Depth limit (default 10), monitoring |
-| Migration breaks existing behavior | High | Incremental phases, all tests pass each step |
-| Router performance with many plugins | Low | O(N-plugins) is fine for 10-20; index by type later |
-| Silent commit misuse | Low | Clear docs, naming conventions |
-| Error frame cascades | Medium | Error frames as silent commits |
-| Two code paths during migration | Medium | Feature flags, clear switch-over points |
-
----
-
-## 7. Plan Test Results
-
-All 17 plan assertions **PASS** at the design level. One requires runtime verification: "Existing tests continue to pass through migration."
-
----
-
-## 8. Open Questions
-
-1. **Selector syntax MVP**: Include property selectors (`[toolName=shell:execute]`) from the start, or add later?
-<!-- Included from the start. -->
-2. **Silent commit naming**: `{ silent: true }` or `{ reactive: false }`?
-<!-- I like "silent: true" -->
-3. **Loop depth limit**: Default 10? 20? Configurable per-plugin or globally?
-<!-- Looping for what? -->
-4. **Migration order**: Scheduling first (simplest), permissions (highest value), or hooks (fewest consumers)?
-<!-- Whichever is the easiest, and can get done in parallel with sub-agents. -->
-5. **Error frames**: Visible to user or admin-only diagnostic?
-<!-- 
-Visible to everyone. We will change this later on if we need to. At least for now this will be useful for debugging.
- -->
-6. **Phantom frames**: Should they trigger routing? (Current thinking: no)
-<!-- 
-For now, no... but I wonder if it will stay that way. Have it a boolean "phantom: true", and for now, we will skip routing... but that might change.
- -->
-7. **Command dispatch**: Move `/command` handling to a routing plugin too?
-<!-- 
-Yes, just make sure this plugin is essentially "zero" in priority. This is also where we will want a "handled" system, so a plugin doesn't have to call the "next" method.
- -->
-8. **Timeline priority**: Which phase is most urgent?
 <!--
-Nothing is urgent. I want it done correct, not quickly.
+I don't really like this approach, because it makes system boundaries implicit instead of explicit. I also want everything to flow through the permissions system, as that simplifies security, and adds power to the system to build useful features and extensions later on.
+ -->
+
+### `createSession` Tool Extension
+
+The trigger is simple: extend the existing `createSession` tool with `initialMessage`. Here's the refined spec:
+
+**`createSession(options)` — updated:**
+- `options.title` — session name (required)
+- `options.participants` — array of agent names to invite (required for debate)
+- `options.parentSessionID` — if provided, creates a child session (existing)
+- `options.initialMessage` — **NEW.** A message injected as the first frame in the new session. For debates, this contains the instructions: "Debate the following topic... When done, use postToSession to deliver your conclusion."
+- `options.constraints` — **NEW.** `{ maxMessages, maxDurationMs }`. Defaults applied for child sessions if not specified.
+
+The `initialMessage` is just a regular `user-message` frame authored by the system (or by the creating agent). Nothing special about it — it's how the conversation starts.
+
+**Question:** Who is the `author` of the initial message? Options:
+- The agent who called `createSession` (makes sense for agent-initiated debates)
+- The user (makes sense for user-initiated `/debate` commands)
+<!-- This would actually be "/sessions create parentID:{parentId|this} ... and we can add more arguments later -->
+- `system` (neutral)
+
+<!-- 
+Yes, I agree, and it also makes sense to make the "author" agent the Coordinator for the child-session. 
+-->
+
+### V1 Scope — Consolidated
+
+Based on your agreement, V1 is:
+
+1. **Per-agent interaction loops** — Change `_active` key to `sessionID:agentID`, allow concurrent agent interactions in a session
+2. **`createSession` extension** — Add `initialMessage` and `constraints` parameters
+3. **Session constraints** — Message count limit + time limit, checked by scheduler
+4. **Pre-approved permissions** — However we resolve the approach above
+5. **Child session renders as existing `session-link` card** — User clicks to navigate in, full participation available
+6. **Streaming identity + relay** — Already done
+
+**V2 (future):**
+- Live inline mini-ChatView in session-link bubble
+- Expand/shrink animation (DOM reparenting)
+- Whisper/`@` targeting feature
+
+<!-- 
+Yes, agreed.
+ -->
+
+### Questions for Round 4
+
+**Q14: Permission approach**
+Inheritance from parent action (explicit permission records, audit trail) vs session-scoped blanket (parentSessionID relationship = permission)? I lean toward the blanket approach for V1 — simpler, covers the case.
+
+<!-- Answered above -->
+
+**Q15: Initial message author**
+Creating agent, user, or system?
+
+<!-- Answered above -->
+
+**Q16: Agent warning near limits?**
+Should agents get a system prompt injection when they're approaching session constraints (e.g., "10 messages remaining")?
+
+<!-- Answered above (yes) -->
+
+**Q17: Does this V1 scope feel right?**
+Anything missing? Anything that should be cut?
+
+<!-- Yes, but please change your perspective here from "V1" and "V2" to instead be "Phase 1" and "Phase 2" -->
+
+---
+
+*Annotate each question above, then let me know when you're ready for Round 5.*
+
+---
+---
+---
+
+## Round 5 — Consolidated Design
+
+All decisions are resolved. Let me lay out the complete picture with every correction incorporated, then we can move to implementation steps and tests.
+
+### Design Decisions — Resolved
+
+| # | Decision | Resolution |
+|---|----------|------------|
+| 1 | What triggers deliberation? | `createSession` tool with `initialMessage` + `participants` |
+| 2 | Parallel interactions | Per-agent interaction loops. `_active` key: `sessionID:agentID`. FrameManager is the shared bus. |
+| 3 | Deliberation visibility (Phase 1) | `session-link` card in parent. Click to navigate into child session. |
+| 4 | Deliberation visibility (Phase 2) | Live inline mini-ChatView. Expand/shrink via DOM reparenting. |
+| 5 | Termination | Agent-initiated (consensus or failure). Safety: `maxInteractions` + `endsAt` timestamp. |
+| 6 | User intervention | User navigates into child session and participates directly. |
+| 7 | Permissions for child session agents | Inheritance from parent action. System-signed permission records referencing the `createSession` approval. Persisted to DB. |
+| 8 | Initial message author | The agent who calls `createSession`. That agent also becomes coordinator of the child session. |
+| 9 | Constraint enforcement | At the commit level on the Session, not in the scheduler. |
+| 10 | Agent warnings near limits | Yes. System prompt injection for both interaction count and time remaining. |
+
+### Session Constraints — Refined Model
+
+```javascript
+// On Session model
+constraints: {
+  maxInteractions: 100,                    // null = unlimited
+  endsAt:          '2026-03-10T15:30:00Z', // null = unlimited
+}
+```
+
+- `maxInteractions` counts completed interactions (agent turns), not individual frames
+- `endsAt` is an absolute timestamp, set at creation time (e.g., `now + 5 minutes`)
+- Checked at commit level — when a commit is about to happen, the session checks its own constraints
+- When a constraint is hit: session is archived (reuses existing archival mechanism — already prevents further interaction)
+- A `session-constrained` system frame is created before archiving, explaining why
+- In-flight interactions complete; no new ones start
+- Agent warnings injected into system prompt when approaching limits (e.g., 90% of maxInteractions, 1 minute remaining)
+
+### Permission Inheritance — Refined
+
+When `createSession` is approved (user-signed or auto-approved):
+
+1. System creates the child session
+2. System creates permission records for each invited agent:
+   - `grantedBy: 'system'`
+   - `parentPermissionID: <the createSession approval ID>`
+   - `scope: { tool: 'postToSession', targetSessionID: <parent session ID> }`
+   - `scope: { tool: 'readFromSession', targetSessionID: <parent session ID> }`
+3. These are real DB-persisted permission records, queryable, auditable
+4. The chain is traceable: "Why does Agent Y have postToSession access? Because the user approved Agent X creating this child session (permission ID: xyz)."
+
+**Open question:** Should child session agents also get auto-approved `postToSession` to the child session itself? Or does that flow naturally because they're already participants?
+
+<!-- 
+They should get auto approved to post to the parent session ONLY if they were already in the parent sessio as participants when the child session was created.
+-->
+
+### `createSession` Tool — Final Spec
+
+```
+createSession(options)
+  options.title            — string, required
+  options.participants     — string[], agent names to invite
+  options.parentSessionID  — string, optional (makes it a child session)
+  options.initialMessage   — string, optional (first frame in the new session)
+  options.constraints      — object, optional
+    .maxInteractions       — number, null = unlimited
+    .endsAt                — ISO timestamp, null = unlimited
+```
+
+- The creating agent is `authorType: 'agent'`, `authorID: <creating agent ID>` on the initial message frame
+- The creating agent is set as coordinator (`role: 'coordinator'`) in the child session
+- All other invited agents are members (`role: 'member'`)
+- User command equivalent: `/sessions create parentID:{parentId|this} title:"Discussion" participants:@agent1,@agent2`
+
+### Per-Agent InteractionLoop — What Changes
+
+**`_active` map:**
+- Current: `Map<sessionID, interaction>`
+- New: `Map<string, interaction>` where key is `${sessionID}:${agentID}`
+
+**`startInteraction(sessionID, params)`:**
+- Current: rejects if `_active.has(sessionID)`
+- New: rejects if `_active.has(${sessionID}:${params.agent.id})`
+- Same agent can't have two concurrent interactions in the same session, but different agents can
+
+**`SessionScheduler`:**
+- Current: `_triggerNext()` pops one agent, checks `_active` by session
+- New: `_triggerNext()` can trigger multiple agents concurrently, checks `_active` by session+agent
+
+**Event emission:**
+- All events already carry `sessionID` and `agentID` (thanks to streaming identity work). No changes needed.
+
+**FrameManager interaction:**
+- Each agent's ref tracks what it has processed. Concurrent commits from different agents interleave naturally. Order is guaranteed by SQLite/PostgreSQL write serialization.
+
+### Phase 1 Scope
+
+1. **Per-agent interaction loops** — `_active` key change, scheduler allows concurrent triggers
+2. **`createSession` extension** — `initialMessage`, `constraints`, coordinator role assignment
+3. **Session constraints** — `maxInteractions` + `endsAt` on Session model, commit-level enforcement, archival on constraint hit, agent warning prompts
+4. **Permission inheritance** — System-signed permission records for child session agents, chained from parent `createSession` approval
+5. **Child session as `session-link` card** — Existing rendering, click to navigate, full participation
+6. **Streaming identity + relay** — Already done
+
+### Phase 2 Scope (Future)
+
+- Live inline mini-ChatView in session-link bubble
+- Expand/shrink animation (DOM reparenting without element destruction)
+- Whisper/`@` targeting feature
+
+### Questions for Round 5
+
+**Q18: Auto-approve within child session?**
+Do agents in a child session need explicit permission records to interact within that session itself (post messages, use tools)? Or does being a participant inherently grant that? Today, agents in a session interact freely — the permission system gates tool use, not basic messaging. I assume this stays the same?
+
+<!-- 
+We should have the permissions boundary extend within a child session. So if the user has approved a tool use in the parent session, it will be approved in the child session as well. I am okay with simply making this a fundamental check in the permissions system if you want. We aso need any tool requests inside the child frame to be approved by a user in the parent frame. I wonder how we will figure this one out... crawl all the way up to the nearest "user" participated session? Or maybe that would get lost if it was also a sub-session? Oh... so many problems to think about!
+-->
+
+**Q19: Constraint defaults for child sessions**
+Should child sessions get automatic default constraints (e.g., `maxInteractions: 100`, `endsAt: now + 10min`) even if the `createSession` call doesn't specify them? This is a safety net for agent-created sessions. Or should unconstrained be the default, trusting the creating agent's instructions?
+
+<!--
+Only if an agent creates the child session. 
+-->
+
+**Q20: Are we ready for implementation planning?**
+If the design above looks right, I'd like to move to Round 6 where I lay out the concrete implementation steps, file changes, and test strategy — still planning mode, no code. Then you approve and we execute.
+
+<!--
+Hhmmmm... I think we still have some concerns about permission boundaries and tool use to work out.
  -->
 
 ---
 
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-06 — Corrections & Future Plans Captured  -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+*Annotate each question above, then let me know when you're ready for Round 6.*
+
+---
+---
+---
+
+## Round 6 — The Permission Boundary Problem
+
+You're right — this needs to be worked out before we plan implementation. The permission question is actually two problems:
+
+### Problem 1: Permission Inheritance (Downward)
+
+**Scenario:** User approves `shell:execute` for Agent X in the parent session. Agent X creates a child session. Agent Y in the child session also wants to use `shell:execute`. Should it be auto-approved?
+
+Your answer was yes: "if the user has approved a tool use in the parent session, it will be approved in the child session as well."
+
+**How this works mechanically:** When checking permissions in a session, the permission system walks up the session tree:
+
+```
+checkPermission(agentID, toolName, args, sessionID):
+  1. Check if permission exists for THIS session → found? approved.
+  2. Get session's parentSessionID
+  3. Check if permission exists in parent session → found? approved.
+  4. Repeat up the tree until root (parentSessionID is null)
+  5. Not found anywhere → not approved, need to request
+```
+
+This is a simple recursive/iterative lookup. The session tree is shallow (usually 1-2 levels deep). The permission records don't need to change — we just change WHERE we look for them.
+
+<!--
+Isn't there a way we could bulk-load this from the database? Or be smarter about how we query? I really would like an incredible level of depth reached with just an inch more effort, if possible.
+-->
+
+**Important nuance from your response:** The `postToSession` auto-approval to the parent only applies to agents who were ALREADY participants in the parent session. So: Agent X (in parent) creates child with Agent Y (NOT in parent) and Agent Z (in parent). Only Agent Z gets the auto-approved `postToSession` to the parent. Agent Y doesn't — it wasn't in the parent.
+
+### Problem 2: Permission Requests (Upward)
+
+**Scenario:** Agent Y in a child session wants to use `shell:execute`. It hasn't been approved in the child OR parent session. A permission request needs to be created. But there's no user in the child session. Where does the request go?
+
+**Your instinct:** "crawl all the way up to the nearest user-participated session."
+
+I think that's right, but let me lay out the mechanics and edge cases.
+
+**Approach: Permission Request Relay**
+
+When an agent in a child session needs approval for a tool that isn't already inherited:
+
+1. Permission system walks up the session tree looking for the nearest ancestor session with a human participant
+2. The `permission-request` frame is created in THAT ancestor session (where the user can see it)
+3. The request carries context: which child session, which agent, which tool, what arguments
+4. User sees something like: *"Agent Y (in 'Redis vs Postgres Discussion') wants to execute: `ls -la`"*
+5. User approves → permission record created. **Question: in which session?** Options below.
+6. Approval is communicated back down to the child session, unblocking the agent
+
+**Where does the approval record live?**
+
+- **Option A: In the ancestor session where the user approved.** The child session inherits it via the walk-up mechanism. This means the same tool is now approved for ALL child sessions under that ancestor.
+- **Option B: In the child session specifically.** Only that child session gets the approval. Other child sessions still need to ask.
+- **Option C: User chooses.** The permission prompt offers both: "Approve for this discussion only" vs "Approve for all sessions."
+
+I lean toward **Option A** as the default (approve in ancestor, inherited by all children), with Option C as a future enhancement. Rationale: if a user approves `shell:execute` once, they probably don't want to be asked again for every sub-session.
+
+What do you think?
+
+<!--
+I'd like to go with Option C, User Chooses... and I want to take this even one step further (what I am about to describe can be a future-plan):
+In the agent settings (I have since decided on my own that we need to have per-actor memory contexts that are persisted to the database), we add a new option: "Danger Level and store it in this "agent memory" (custom JSON context for the agent) - ..." Where "Danger Level" is one of "Low", "Medium", "I don't give a ...". Low will ask for EVERY session/agent/command|tool/arguments combo is a permanent permissions entity (approval or denial) key/id.
+"Medium" will allow the tool itself, with any arguments, and will allow other premiscuity, such as child-sessions gain full inheritance of their parent's permissions. Lastly, the final "super danger mode" simply allows everything.  
+-->
+
+### Edge Cases
+
+**No user in the ancestry at all:**
+The session tree is: Parent (agents only) → Child (agents only). No human participant anywhere. What happens?
+
+I'd say: **permission denied.** If no human is reachable in the session hierarchy, no one can approve. The agent gets a denial frame: "No user available to approve this action." This is a safety feature — agent-only session trees can't escalate their own permissions without human oversight.
+
+Does that feel right?
+
+<!--
+Yes, it does, especially for now. We might allow this in the future, but I would have concerns, such as infinite recursion. 
+-->
+
+**Deep nesting:**
+Session A (user + Agent X) → Session B (Agent X + Agent Y) → Session C (Agent Y + Agent Z). Agent Z wants `shell:execute`. Walk-up finds the user in Session A (two levels up). The request appears in Session A with full context about the chain.
+
+**Performance concern:** Walking up on every permission check could be slow if the tree is deep. But you said depth is usually 1-2 levels, and we can cache the "nearest user ancestor" for a session.
+
+**Multiple users in ancestry:**
+Session A has User1 and User2. Both are ancestors. Who gets the permission request? I'd say: create the request in the nearest ancestor that has ANY user, and any user in that session can approve. First come, first served.
+
+<!--
+The permissions frame needs to be in the same session as the tool use request, because the permissions approval/denial frame is a commit to the original tool request frame.
+However, the permissions-request frame could go on the closest parent that has a user participant (or maybe in more advanced future logic, the user who is actually permitted to give approval).
+This makes sense I think.
+
+All applicable users get the permissions request, and any applicable user may successfully grant or deny the request. "Applicable" is a permissions feature that hasn't yet been completed, and needs to go into a "future-plan".
+ 
+-->
+
+### Permission Inheritance for `createSession` Itself
+
+One more layer: when Agent X in a child session wants to create a GRANDCHILD session (depth 2), does the user need to approve again?
+
+<!--
+Yes. I am tempted to disallow it for now, because I am concerned of infinite recursion. However, I guess I am not against it as long as it always results in a permissions request (unless in "super dangerous" mode).
+-->
+
+Depends on how the original `createSession` permission was stored. If the user approved `createSession` with `type: 'sub-session'` in the parent — does that inherit to child sessions? Under the walk-up model, yes: the child session checks its own permissions, doesn't find `createSession`, walks up to parent, finds it, approved.
+
+So agents in child sessions can create grandchild sessions without re-prompting, as long as the original user approved sub-session creation somewhere in the ancestry. This seems correct — the user trusted the agents to create sub-sessions.
+
+But it also means an agent could theoretically create an infinite chain of sub-sessions. The constraint system handles this: agent-created child sessions get default constraints (`maxInteractions: 100`, `endsAt: now + 10min`), so runaway nesting burns out.
+
+<!--
+Yes, I am also concerned about issues... I think always request permission to create sub-sessions (unless in "super dangerous" mode). 
+-->
+
+### Revised Permission Model Summary
+
+<!--
+Note from user:
+The following is an example of a "Medium" Danger Level permissions interaction.
+A "Low" level would stop at the session boundary.
+-->
+
+```
+Permission check flow:
+  1. Check THIS session's permissions
+  2. Walk up parentSessionID chain, checking each ancestor
+  3. First match → approved
+  4. No match → find nearest ancestor with a user participant
+     → Create permission-request there
+     → User approves → record created in that ancestor
+     → Inherited by all descendants
+  5. No user in entire ancestry → denied
+```
+
+```
+Auto-approved permissions at child session creation:
+  For each invited agent:
+    IF agent was a participant in the parent session:
+      → Create postToSession(parentSessionID) permission
+      → Create readFromSession(parentSessionID) permission
+    ELSE:
+      → No auto-approvals for the parent
+    ALWAYS:
+      → Inherit all existing permissions from the ancestry
+```
+
+### Questions for Round 6
+
+**Q21: Approval record location**
+Option A (in ancestor, inherited by all children), Option B (in child only), or Option C (user chooses)?
+
+<!--
+HHHhmmmm... I think it needs to go in:
+```
+def closestParentWithAblePermitter() {
+  for session in each parent.next() {
+    if session.hasAblePermitter() {
+      // there is someone in this session that is able to approve of this request.
+      // place the permission approval frame here.
+    }
+  }
+}
+
+// Obviously "Allow Once"/"Deny Once" would place the permission approval/denial at the requesting frame
+```
+-->
+
+**Q22: No user in ancestry**
+Permission denied as safety default — agree?
+
+<!--
+Yes. 
+-->
+
+**Q23: Is the permission model now complete enough to move forward?**
+If so, I'd like to do one more round consolidating everything (design + permissions + constraints) into a concrete implementation plan with file changes and test strategy. Still planning, no code.
+
+<!--
+Let's go one more round just to make sure we capture everything. 
+-->
 
 ---
 
-## Annotations Incorporated — Resolved Decisions
+*Annotate each question above, then let me know when you're ready for Round 7.*
 
-All annotations from the architecture plan have been read and processed. Here's the refined set of decisions, incorporating your corrections:
+---
+---
+---
 
-### Resolved Open Questions
+## Round 7 — Full Consolidation
 
-| # | Question | Decision |
-|---|----------|----------|
-| 1 | Selector syntax MVP | **Include property selectors from the start.** `type:tool-call[toolName=shell:execute]` is needed for the permission plugin. |
-| 2 | Silent commit naming | **`{ silent: true }`** |
-| 3 | Loop depth limit | **Don't over-worry about loops.** Loops may be useful (agent-to-agent dialog looks like a loop). Debug and fix bugs as they arise, but leave the ability to loop. |
-| 4 | Migration order | **Whichever is easiest.** Can be parallelized with sub-agents. |
-| 5 | Error frames | **Visible to everyone** for now. Useful for debugging. Change later if needed. |
-| 6 | Phantom frames | **No routing for now.** Use `phantom: true` boolean on the frame. May change later. |
-| 7 | Command dispatch | **Yes, move to routing plugin.** "Zero" priority (always first). Add a **"handled" system** so plugins don't need to call `next()` — setting `handled = true` stops further routing. |
-| 8 | Timeline | **Nothing is urgent. Done correct, not quickly.** |
+Let me pull everything together into one clean picture. Every decision, every nuance, every correction from the last six rounds.
 
-### Key Corrections to the Plan
+### Bulk-Loading the Session Ancestry
 
-1. **onChange signature**: `onChange(propName, previousValue, newValue)` — NOT `onChange(previousValue, newValue)`. Plugins can further dispatch internally:
-   ```js
-   onChange(propName, previousValue, newValue) {
-     return this[`on${propName}Change`].call(this, previousValue, newValue);
-   }
+You asked if we can be smarter than iterative walk-up queries. Yes — a recursive CTE handles any depth in a single query:
+
+```sql
+-- Get full ancestry chain for a session
+WITH RECURSIVE ancestry AS (
+  SELECT id, parentSessionID, 0 AS depth FROM sessions WHERE id = :sessionID
+  UNION ALL
+  SELECT s.id, s.parentSessionID, a.depth + 1
+  FROM sessions s
+  JOIN ancestry a ON s.id = a.parentSessionID
+)
+SELECT * FROM ancestry ORDER BY depth;
+```
+
+Then permission check becomes one query against all ancestors:
+
+```sql
+SELECT * FROM permissions
+WHERE sessionID IN (SELECT id FROM ancestry)
+  AND toolName = :toolName
+  AND (agentID = :agentID OR agentID IS NULL)
+ORDER BY depth ASC
+LIMIT 1;
+```
+
+Closest match wins. One query, any depth. Works in SQLite and PostgreSQL. We cache the ancestry chain per session (it doesn't change during a session's lifetime) so subsequent checks are just a `WHERE IN` against cached IDs.
+
+For finding the nearest user ancestor:
+
+```sql
+SELECT a.id FROM ancestry a
+JOIN participants p ON p.sessionID = a.id
+WHERE p.participantType = 'user'
+ORDER BY a.depth ASC
+LIMIT 1;
+```
+
+Also cacheable.
+
+<!--
+Fantastic! 
+-->
+
+### The Two-Location Permission Model
+
+You made a critical correction that I want to make sure I have right:
+
+**Permission-request frame** → goes in the nearest ancestor session that has an "able permitter" (for now: any user). This is for *visibility* — the user needs to see the request.
+
+**Permission-approval/denial frame** → stays in the SAME session as the tool use request. This is for *commit integrity* — the approval is a commit against the original request frame.
+
+So the flow is:
+
+```
+1. Agent Y in child session requests shell:execute
+2. permission-request frame created in child session (local record)
+3. permission-request ALSO relayed to nearest ancestor with a user
+   (appears in user's session as a notification/request)
+4. User approves in their session
+5. permission-granted frame created in CHILD session
+   (committed against the original request)
+6. "Allow Once" → approval stays in child session only
+   "Allow Always" → additional permission record created in the
+   ancestor session where the user approved (for inheritance)
+```
+
+This means the user gets two choices on every approval:
+- **Allow Once / Deny Once** — record stays in the requesting session, one-time use
+- **Allow Always / Deny Always** — record goes in the closest ancestor with an able permitter, inherited by all descendants
+
+Does this match your intent?
+
+<!--
+Yes, this is what I was thinking in concept... but I wonder if creating multiple records is required. We simply tie a "frameID" to the approval record, right? Why would we care which session it lives in?
+Now we DO care which sesion the frame lives in that prompts the user for permission... the "prompt" frame needs to go in the correct session.
+But does the "prompt" frame and "answer" frame have to go together on the same session? Why would it matter if it crossed session boundaries? 
+-->
+
+### Danger Level (Future Plan)
+
+Your "Danger Level" concept is a per-agent configuration stored in agent memory (persisted JSON context). Three levels:
+
+| Level | Permission Inheritance | Approval Granularity | createSession |
+|-------|----------------------|---------------------|---------------|
+| **Low** | No inheritance. Each session/agent/tool/args combo requires explicit approval. | Most restrictive. Every unique combo. | Always ask. |
+| **Medium** | Child sessions inherit parent permissions. Walk-up enabled. | Tool-level (any args accepted once tool is approved). | Always ask. |
+| **Yolo** | Everything auto-approved. | N/A | Auto-approved. |
+
+For Phase 1, we implement the **Medium** behavior as the default (since that's what our permission model describes). The Danger Level selector and per-agent memory context go into a future plan YAML.
+
+<!--
+Yes. I don't want the permissions system to get in the way. I also want it to get in the way in specific circumstances, or to go away entirely with a high level of trust. For now we can stick to Medium as a sane default until we implement this. Or should we implement it now, as part of these permission system updates?
+-->
+
+`createSession` is special: always requires explicit permission regardless of danger level (except Yolo). Even if `createSession` was approved in a parent session, child sessions must re-ask. This prevents infinite nesting without user awareness.
+
+<!--
+Correct. We can get this functionality simply by overloading the permissions class in the plugin, like we do for the Shell plugin. 
+-->
+
+### Complete Design Summary
+
+Here is every piece of this feature, consolidated:
+
+#### 1. Per-Agent Interaction Loops
+
+- `_active` key: `${sessionID}:${agentID}` (not just `sessionID`)
+- Multiple agents can have concurrent interactions in the same session
+- Each agent's generator runs independently
+- FrameManager is the shared communication bus
+- Frame ordering guaranteed by database write serialization (SQLite WAL, PostgreSQL)
+- SessionScheduler triggers multiple agents concurrently
+
+#### 2. `createSession` Tool Extension
+
+- New params: `initialMessage` (string), `constraints` (object)
+- Creating agent becomes coordinator (`role: 'coordinator'`) of the child session
+- All other invited agents are members (`role: 'member'`)
+- `initialMessage` creates a `user-message` frame authored by the creating agent
+- Agent-created child sessions get default constraints if none specified
+- User command: `/sessions create parentID:{parentId|this} title:"..." participants:@a,@b`
+
+#### 3. Session Constraints
+
+- Session model gains: `maxInteractions` (integer, nullable), `endsAt` (timestamp, nullable)
+- Checked at commit level on the Session
+- When hit: session archived, `session-constrained` system frame created, in-flight interactions complete
+- Agent warnings injected into system prompt at 90% of maxInteractions or 1 minute remaining
+- Default constraints for agent-created child sessions: `maxInteractions: 100`, `endsAt: now + 10min`
+
+#### 4. Permission Inheritance
+
+- Permission checks walk up the session ancestry (bulk via recursive CTE)
+- Ancestry chain cached per session
+- `permission-request` frame: created locally AND relayed to nearest ancestor with an able permitter
+- `permission-granted/denied` frame: created in the requesting session (commit integrity)
+- "Allow Always": additional record in ancestor session (for inheritance)
+- "Allow Once": record only in requesting session
+- No user in ancestry → denied
+- `createSession` always requires explicit permission (no inheritance)
+
+#### 5. Auto-Approved Permissions at Child Session Creation
+
+- For each invited agent that WAS a participant in the parent session:
+  - `postToSession(parentSessionID)` — auto-approved
+  - `readFromSession(parentSessionID)` — auto-approved
+- System-signed, references parent `createSession` permission ID
+- Agents NOT in the parent session get no auto-approvals for the parent
+
+#### 6. Streaming Identity + Relay (Already Done)
+
+- SSE events carry `agentID`, `authorType`, `authorID`
+- `StreamRelay` forwards deltas across session boundaries
+- Client supports per-agent typing indicators and streaming bubbles
+
+#### Phase 1 Deliverables
+
+| # | Feature | Status |
+|---|---------|--------|
+| 1 | Per-agent interaction loops | To build |
+| 2 | `createSession` extension (initialMessage, constraints) | To build |
+| 3 | Session constraints (maxInteractions, endsAt) | To build |
+| 4 | Permission ancestry walk-up (recursive CTE) | To build |
+| 5 | Permission request relay to nearest user ancestor | To build |
+| 6 | Auto-approved permissions for child session agents | To build |
+| 7 | Child session renders as `session-link` card | Already built |
+| 8 | Streaming identity + relay | Already built |
+
+#### Phase 2 (Future)
+
+- Live inline mini-ChatView in session-link bubble
+- Expand/shrink animation (DOM reparenting)
+- Whisper/`@` targeting
+- Danger Level selector (Low/Medium/Yolo)
+- Per-agent memory context (persisted JSON)
+- "Applicable permitter" logic (who specifically can approve)
+
+#### Future Plans to Create
+
+- `danger-level-permissions.yaml` — Danger Level selector, per-agent config
+- `agent-memory-context.yaml` — Per-actor persisted JSON context
+- `applicable-permitters.yaml` — Who can approve what, role-based approval
+
+### Questions for Round 7
+
+**Q24: Does this complete summary accurately capture everything?**
+I want to make sure nothing was lost or misrepresented across six rounds of iteration.
+
+<!--
+I think we might still need a round or two. We are getting quite close though. 
+-->
+
+**Q25: Are we ready for implementation planning?**
+Next round would be: concrete file changes, implementation order, and test strategy. Still planning mode.
+
+<!-- Another round please -->
+
+---
+
+*Annotate above, then let me know when you're ready for Round 8 (implementation plan).*
+
+---
+---
+---
+
+## Round 8 — Simplifying Cross-Session Permissions + Danger Level Decision
+
+Three open threads from your Round 7 annotations. Let me address each.
+
+### Thread 1: Do Prompt and Answer Frames Need to Be in the Same Session?
+
+Short answer: **No, they don't.** And your instinct points to a simpler design.
+
+I went and read the current permissions implementation. Here's what actually happens today:
+
+1. Agent calls a tool → `PermissionEngine.checkPermission()` runs (at `permission-engine.mjs:49-115`)
+2. If approval needed → `PermissionHandler.hardBreak()` creates a `permission-request` frame AND a `pending-action` frame, both in the current session
+3. InteractionLoop pauses (generator yields)
+4. User sees the request, approves → `PermissionHandler.approve()` creates a `tool-result` frame, creates a permission rule record
+5. InteractionLoop resumes
+
+The key insight: **the permission rule record is NOT a frame.** It's a row in the permission rules table (managed by `PermissionEngine`). It has `scope`, `featureName`, `effect`, and `expiresAt`. The frames (`permission-request`, `pending-action`, `tool-result`) are just the interaction UX — they're how the agent and user communicate about the permission.
+
+So for cross-session, the flow simplifies to:
+
+```
+1. Agent Y in child session calls shell:execute
+2. PermissionEngine checks rules — walks up ancestry — no match
+3. permission-request frame created in ANCESTOR session
+   (where the user can see it)
+4. pending-action frame stays in CHILD session
+   (where the InteractionLoop is paused)
+5. User approves in ancestor session
+6. Permission rule record created in DB:
+   - "Allow Once": scope = frame-level, tied to child session
+   - "Allow Always": scope = session-level, sessionID = ancestor's
+7. tool-result frame created in CHILD session
+   (unblocks the paused InteractionLoop)
+```
+
+The "prompt" frame lives in the ancestor. The "answer" effect (the rule record) is just a database row — it doesn't "live" in any session. The `tool-result` frame lives in the child session where it's needed. No frame needs to cross session boundaries. Only the **notification** of the approval needs to travel back down — which is just an event or callback, not a frame.
+
+This means:
+- We do NOT need to create multiple records
+- We do NOT need the answer frame in the requesting session
+- The `permission-request` frame has a `pendingFrameID` pointing to the `pending-action` in the child session — that cross-session reference is just an ID in the content, which is fine
+- The rule record has a `frameID` reference (your suggestion) — one record, references one frame
+
+The only new thing we need is: **a way to relay the approval notification back to the child session's PermissionHandler** so it can create the `tool-result` frame locally and resume the generator. This is an event relay — similar to how `StreamRelay` works. When the user approves in the ancestor session, an event fires, the permission system in the child session picks it up, creates the local `tool-result` frame, and resumes the interaction.
+
+Does this match what you were getting at?
+
+<!--
+You appear to be confused, and thinking about our old implementation of the code. Now that we have greatly improved the frame manager, this just becomes a commit, and everything else happens through the router automatically.
+Are you saying something else that I don't understand?
+-->
+
+### Thread 2: Danger Level — Now or Later?
+
+Here's my honest assessment:
+
+**What we're building IS Medium behavior.** The permission walk-up, the ancestry inheritance, the "Allow Always propagates down" — that's Medium. We don't need to label it that way or add a selector to get the behavior.
+
+**Low and Yolo are behavioral modifiers on top of Medium's infrastructure:**
+- **Low**: Same infrastructure, but `checkPermission()` doesn't walk up. It only checks the current session's rules. Every session is its own island.
+- **Yolo**: Same infrastructure, but `checkPermission()` returns `false` (no approval needed) immediately for everything.
+
+So Low and Yolo are each ~5 lines of code in `PermissionEngine.checkPermission()`:
+
+```javascript
+// Pseudocode
+if (dangerLevel === 'yolo')
+  return false; // auto-approve everything
+
+let ancestorIDs = (dangerLevel === 'low')
+  ? [sessionID]                   // don't walk up
+  : await getAncestryChain(sessionID); // Medium: walk up
+```
+
+**The real blocker for Danger Level isn't the permission logic — it's where to store the setting.** You mentioned per-agent memory context (persisted JSON). That's a separate feature (`agent-memory-context.yaml`). Without it, where does the Danger Level live? Options:
+
+1. **On the Agent model** — add a `dangerLevel` column. Simple, but it's a global setting per agent, not per-session.
+2. **On the Participant record** — `role` is already there, we could add `dangerLevel`. Per-session, per-agent. But it's coupling unrelated concerns.
+3. **On the Session model** — a session-wide danger level. All agents in the session share it. Simplest for Phase 1.
+4. **Defer** — build Medium as the only behavior, add the selector when per-agent memory context exists.
+
+My recommendation: **Option 4 (defer).** The infrastructure we're building supports all three levels with minimal changes later. The actual differentiation is ~10 lines of code once we have somewhere to store the setting. Implementing it now means we need to also solve the storage problem, which drags in agent-memory-context — and that's scope creep.
+
+But I recognize you might disagree. If you want it now, Option 3 (session-level) is the cheapest path.
+
+<!--
+Add an "agent.getConfig()" function that just returns a static obect for now. This object will contain a "riskLevel" key, with a "medium" value. At all call sites, we can throw an error for anything but "medium". This enables us to easily update it in the future, without the need for a full implementation right now.
+-->
+
+### Thread 3: `createSession` Permission via Plugin Overload
+
+You're right — this is clean. The `ShellPermissions` class already demonstrates the pattern perfectly (at `shell/shell-permissions.mjs:19-51`). It extends the base `Permissions` class and overrides `matchesRule()`.
+
+For `createSession`, the cross-session plugin would:
+
+```javascript
+// CrossSessionPermissions extends Permissions
+matchesRule(rule, args, metadata) {
+  // createSession ALWAYS requires explicit permission
+  // No inheritance, no walk-up, always ask
+  if (args.toolName === 'createSession')
+    return false; // rule doesn't match → falls through to "needs approval"
+
+  return super.matchesRule(rule, args, metadata);
+}
+```
+
+Wait, actually — re-reading the `PermissionEngine` flow, the approach is even simpler. The tool itself can declare `riskLevel: 'critical'` which makes it ALWAYS require approval (line 56-57 in `permission-engine.mjs`). But that doesn't distinguish between "always ask" and "no inheritance" — `critical` still allows existing rules to match.
+
+So the plugin overload is the right approach. The `CrossSessionPermissions.matchesRule()` would specifically prevent any existing `createSession` rules from matching via inheritance, forcing a new approval each time. This is exactly what you described.
+
+### Updated Permission Flow — Complete
+
+```
+Permission check (Medium behavior):
+  1. Tool riskLevel check (none → skip, critical → always ask)
+  2. Load ancestry chain (recursive CTE, cached)
+  3. Query rules across all ancestor sessions
+  4. Plugin's matchesRule() filters (e.g., ShellPermissions for exact-match,
+     CrossSessionPermissions for createSession-always-ask)
+  5. First match → apply (allow/deny)
+  6. No match → needs approval:
+     a. Find nearest ancestor with user participant (cached)
+     b. Create permission-request frame in that ancestor
+     c. Create pending-action frame in requesting session
+     d. InteractionLoop pauses
+  7. User approves:
+     a. Permission rule created (scope per Allow Once/Always)
+     b. Approval event relayed to requesting session
+     c. tool-result frame created in requesting session
+     d. InteractionLoop resumes
+  8. No user in ancestry → denied immediately
+```
+
+### Remaining Open Items
+
+I think we're getting close. Here's what I believe is still unresolved:
+
+1. **The approval relay mechanism** — how does the ancestor session's approval event reach the child session's PermissionHandler? Event bus? Direct callback? A "watcher" that polls?
+2. **Auto-approved permissions at child creation** — we said agents already in the parent get `postToSession` access. Does this go through the same `matchesRule()` path, or is it a separate check?
+<!--
+I guess there isn't any reason we can't just overload the Permissions class in this plugin too. That way we could get this behavior as logic, instead of database records. I wonder which way would be more secure though...
+-->
+3. **Warning injection near constraints** — where exactly does the 90% / 1-minute-remaining check happen? In the context builder before each interaction? In the system prompt assembly?
+
+<!--
+We have already talked fairly extensively about "Abilities", and how we need a system to inject dynamic prompts into the message stream at the bot. This is to request the bot have certain behaviors.
+We should be able to use such a system for exactly this purpose. We could always defer this nice-to-have to the future-plan when we have the underlying injection support we need.
+-->
+
+### Questions for Round 8
+
+**Q26: Does the simplified permission frame model make sense?**
+Prompt frame in ancestor, pending-action in child, tool-result in child, rule record in DB. No frames cross session boundaries — only a notification event does.
+
+**Q27: Danger Level — defer to Phase 2 or implement now?**
+I recommend deferring. The infrastructure supports it, the differentiation is minimal code, and the storage question drags in agent-memory-context.
+
+**Q28: Approval relay mechanism**
+How should the ancestor session's approval reach the child session? I'm leaning toward an event on the InteractionLoop (or a shared event bus) — similar pattern to StreamRelay. The PermissionHandler in the child session subscribes, waits for the event, then resumes.
+
+<!--
+I agree with all of these. Let me know what you think about my comments.
+-->
+
+---
+
+*Annotate each question above, then let me know when you're ready for Round 9 or implementation planning.*
+
+---
+---
+---
+
+## Round 9 — Corrections, Resolved Threads, and Pre-Implementation Inventory
+
+### Correction: The Approval Relay Is Just a Commit
+
+You're absolutely right, and I was overcomplicating this. Let me restate it clearly so we're aligned.
+
+When a user approves a permission in the ancestor session, `PermissionHandler.approve()` runs server-side. It already knows where the `pending-action` lives (via `pendingFrameID` in the permission-request's content). It executes the tool, then commits the `tool-result` frame into the **child session's FrameManager**. The child session's FrameRouter picks up the commit automatically, the SchedulingPlugin sees new unprocessed frames for the agent, and the InteractionLoop resumes.
+
+No event relay. No special bus. No watcher. Just a commit to the right FrameManager, and the existing routing infrastructure handles the rest. Same mechanism that handles every other frame in the system.
+
+The only new behavior is that `PermissionHandler.approve()` needs to commit to a **different session's FrameManager** than the one where the approval UI lives. Today it always commits to the same session. For cross-session permissions, it commits to the child session's FrameManager instead. That's a one-line change in where it resolves the FrameManager from.
+
+### Resolved: `agent.getConfig()` Stub
+
+Smart approach. Instead of deferring Danger Level entirely OR implementing it fully, we plant the interface:
+
+```javascript
+// On Agent model or a utility
+getConfig() {
+  return { riskLevel: 'medium' };
+}
+```
+
+At every call site in the permission system where behavior would diverge by risk level:
+
+```javascript
+let config    = agent.getConfig();
+let riskLevel = config.riskLevel;
+
+if (riskLevel !== 'medium')
+  throw new Error(`Unsupported risk level: ${riskLevel}`);
+
+// ... Medium behavior (walk-up, inheritance, etc.)
+```
+
+This gives us:
+- A documented extension point for future Danger Level support
+- Zero storage question to solve now
+- Every call site is marked and ready
+- If someone tries to use Low or Yolo before it's implemented, they get a clear error instead of silent wrong behavior
+
+### Resolved: Auto-Approved Permissions — Logic vs Records
+
+You asked which is more secure: a Permissions class override (logic-based) vs DB records.
+
+**Logic-based** (`CrossSessionPermissions.matchesRule()` checks "is this agent a participant in the parent session?"):
+- Automatically revokes access if the agent is removed from the parent session — no stale records
+- The participant record IS the authorization — it's the source of truth
+- No records to manage, create, or clean up
+- Not independently auditable (but the participant record serves as audit)
+
+**DB records** (permission rule rows created at child session creation):
+- Explicitly auditable — you can query "what permissions were granted and why"
+- Can be individually revoked without removing the participant
+- Can become stale — agent removed from parent but permission record lingers
+- More moving parts, more cleanup needed
+
+I lean toward **logic-based for the auto-approval check**, because:
+1. The authorization is intrinsically tied to participant status — if you're in the parent, you can post back. If you're not, you can't. There's no scenario where you'd want one without the other.
+2. Stale records are a real security risk. Logic-based checks can't go stale.
+3. The `matchesRule()` override in `CrossSessionPermissions` would look something like:
+
+```javascript
+matchesRule(rule, args, metadata) {
+  let { toolName, targetSessionID } = args;
+
+  // Auto-approve postToSession to parent if agent is a parent participant
+  if (toolName === 'postToSession' && targetSessionID) {
+    let session         = metadata.session;
+    let parentSessionID = session?.parentSessionID;
+
+    if (targetSessionID === parentSessionID && metadata.isParentParticipant)
+      return true; // rule matches → allowed
+  }
+
+  // createSession always requires explicit permission
+  if (toolName === 'createSession')
+    return false; // never match existing rules → forces new approval
+
+  return super.matchesRule(rule, args, metadata);
+}
+```
+
+Both the `createSession` always-ask AND the `postToSession` auto-approval live in the same Permissions class override. Clean, testable, no DB records.
+
+The downside — no independent revocation — doesn't matter here because the action IS the relationship. Revoking "Agent Y can post to parent" without removing Agent Y from the parent session is a contradiction.
+
+### Resolved: Warning Injection Deferred
+
+Constraint warnings ("you have 10 interactions remaining", "1 minute left") depend on the Abilities system for dynamic prompt injection. We haven't built that yet. For Phase 1:
+
+- **Constraints enforce**: session archived when `maxInteractions` or `endsAt` is hit ✅
+- **Warnings deferred**: no "approaching limit" prompts until Abilities system exists
+
+This goes into a future plan note.
+
+### Pre-Implementation Inventory — What's Actually Changing
+
+Let me lay out everything one more time, but now as a **concrete inventory of changes**, not design philosophy. Every item here is something we'll build.
+
+#### New Code
+
+| Item | Description |
+|------|-------------|
+| `agent.getConfig()` | Static stub returning `{ riskLevel: 'medium' }`. Extension point. |
+| `CrossSessionPermissions` | Permissions class override in cross-session plugin. Handles `createSession` always-ask and `postToSession` parent-participant auto-approval. |
+| Ancestry CTE query | Bulk-load session ancestry chain. Cached per session. Used by permission walk-up. |
+| Nearest-user-ancestor query | Find closest ancestor with a user participant. Cached. Used for permission-request relay. |
+| Permission walk-up in `PermissionEngine` | `checkPermission()` queries rules across all ancestor sessions (via cached ancestry), not just current session. |
+| Cross-session `PermissionHandler.approve()` | Resolve FrameManager from `pendingFrameID`'s session, not the approval session. Commit tool-result to the correct (child) session. |
+| `maxInteractions` + `endsAt` on Session | Two nullable columns. Checked at commit level (commitValidator). Archive on hit. |
+| Per-agent `_active` key | Change from `sessionID` to `${sessionID}:${agentID}`. Allow concurrent agent interactions in same session. |
+| `createSession` extension | Add `initialMessage` and `constraints` parameters. Creating agent → coordinator. |
+
+#### Modified Code
+
+| File | Change |
+|------|--------|
+| `permission-engine.mjs` | Walk-up ancestry chain, guard on `agent.getConfig().riskLevel` |
+| `permission-handler.mjs` | Cross-session FrameManager resolution for approve/deny |
+| `session/index.mjs` | Ancestry query methods, caching |
+| `interaction/index.mjs` | `_active` key change to `sessionID:agentID` |
+| `session-scheduler.mjs` | Allow concurrent triggers for different agents in same session |
+| `cross-session/index.mjs` | `CrossSessionPermissions` class, `createSession` extension |
+| Session model | `maxInteractions`, `endsAt` columns, commit validator |
+
+#### NOT Changing (Phase 2 / Future)
+
+| Item | Reason |
+|------|--------|
+| Live inline mini-ChatView | Phase 2 |
+| Expand/shrink animation | Phase 2 |
+| Whisper/`@` targeting | Phase 2 |
+| Danger Level selector UI | Needs agent-memory-context |
+| Low/Yolo risk level behavior | Behind `getConfig()` stub |
+| Constraint warnings | Needs Abilities system |
+| "Applicable permitter" logic | Future plan |
+
+### Questions for Round 9
+
+**Q29: Logic-based auto-approval for postToSession — does the security argument hold?**
+My case: participant status IS the authorization, so logic-based can't go stale. Any concerns I'm missing?
+
+<!--
+I agree with you. Let's go logic based.
+-->
+
+**Q30: Is this inventory complete?**
+I want to make sure I haven't dropped anything from the previous 8 rounds. If this list is right, the next step is implementation order and test strategy.
+
+<!--
+This all looks correct to me.
+-->
+
+**Q31: Ready for implementation planning?**
+Next round would be: ordered implementation steps, test-first strategy, file-by-file changes. Still planning mode, no code.
+
+<!--
+Yes!
+-->
+
+---
+
+*Annotate above, then let me know if we need another round or are ready for the implementation plan.*
+
+---
+---
+---
+
+## Round 10 — Implementation Plan
+
+All design decisions are resolved. Here's the concrete implementation plan: ordered steps, file changes, test strategy. TDD throughout — tests first, then implementation.
+
+### Step 0: Cleanup Wrong-Approach Code
+
+Before building the right thing, remove the wrong-approach code from the earlier session. This is a targeted cleanup, not a rewrite.
+
+**Remove:**
+- `src/core/scheduling/discussion-orchestrator.mjs` — Delete entirely
+- `spec/core/scheduling/discussion-orchestrator-spec.mjs` — Delete entirely
+- `spec/core/scheduling/discussion-integration-spec.mjs` — Delete entirely (the `buildMessages` discussion-frame tests test dead code)
+
+**Revert changes in:**
+- `src/core/interaction/message-history.mjs` — Remove the `} else if (type === 'discussion') {` branch from `buildMessages()`. Discussion frames don't exist in the new design.
+- `src/core/internal-plugins/scheduling/index.mjs` — Remove the coordinator-detection block that delegates to DiscussionOrchestrator.
+- `src/client/components/kikx-session-page/kikx-session-page.mjs` — Remove the `if (frame.type === 'discussion')` rendering branch.
+
+**Keep:**
+- All streaming identity changes (Phase 1A-1C from original plan) ✅
+- StreamRelay class and wiring ✅
+- Participant `role` field ✅
+- Multi-agent streaming display ✅
+
+**Test:** Full suite pass after cleanup.
+
+---
+
+### Step 1: `agent.getConfig()` Stub
+
+**Purpose:** Plant the interface for Danger Level without solving storage.
+
+**File:** `src/core/models/agent-model.mjs`
+
+Add instance method to `Agent`:
+
+```javascript
+getConfig() {
+  return { riskLevel: 'medium' };
+}
+```
+
+**Tests:** `spec/core/models/agent-config-spec.mjs`
+- `getConfig()` returns object with `riskLevel: 'medium'`
+- Return value is a fresh object each call (no shared mutation)
+
+**Test:** Step 1 tests pass.
+
+---
+
+### Step 2: Session Constraints (`maxInteractions`, `endsAt`)
+
+**Purpose:** Add constraint fields to Session model and enforce them at the commit level.
+
+**File:** `src/core/models/session-model.mjs`
+
+Add fields, bump version to 2:
+
+```javascript
+static version = 2;
+
+// ... existing fields ...
+
+maxInteractions: {
+  type:         Types.INTEGER,
+  allowNull:    true,
+  defaultValue: null,
+},
+endsAt: {
+  type:         Types.DATETIME,
+  allowNull:    true,
+  defaultValue: null,
+},
+```
+
+**File:** `src/core/session/index.mjs`
+
+In the commit validator (or wherever FrameManagers are created with validators):
+- Before allowing a commit, check `session.maxInteractions` against current interaction count
+- Before allowing a commit, check `session.endsAt` against `Date.now()`
+- If constraint hit: create a `session-constrained` system frame, archive the session, reject the commit
+- Only count agent-authored commits as "interactions" toward `maxInteractions`
+
+**Tests:** `spec/core/models/session-constraints-spec.mjs`
+- Session model accepts `maxInteractions` and `endsAt` fields
+- Defaults are null (unconstrained)
+- `maxInteractions: 0` is a valid constraint (immediate archive)
+- `endsAt` in the past is a valid constraint (immediate archive)
+
+**Tests:** `spec/core/session/constraint-enforcement-spec.mjs`
+- Commit succeeds when under `maxInteractions` limit
+- Commit rejected and session archived when `maxInteractions` hit
+- Commit succeeds when before `endsAt`
+- Commit rejected and session archived when past `endsAt`
+- `session-constrained` frame created with reason
+- User-authored commits don't count toward `maxInteractions`
+- System-authored commits don't count toward `maxInteractions`
+- Only agent-authored commits count
+- Both constraints checked simultaneously — first hit wins
+- Null constraints mean unconstrained (no check)
+- In-flight interaction completes even after constraint hit (next commit rejected, not current)
+
+**Test:** Step 2 tests pass + full suite regression.
+
+---
+
+### Step 3: Per-Agent Interaction Loops
+
+**Purpose:** Change `InteractionLoop._active` key from `sessionID` to `${sessionID}:${agentID}`, enabling concurrent agent interactions in the same session.
+
+**File:** `src/core/interaction/index.mjs`
+
+Changes:
+- Line 39: `this._active = new Map()` — no change (it's just a Map)
+- Line 122: `if (this._active.has(sessionID))` → `if (this._active.has(${sessionID}:${agentID}))`
+  - Need to extract `agentID` from `params.agent.id`
+  - If no agent (user-initiated, no agent context), fall back to `sessionID` as key
+- Line 233: `this._active.set(sessionID, ...)` → same key change
+- Line 436: `this._active.delete(sessionID)` → same key change
+- Line 451: `this._active.get(sessionID)` → same key change
+- Line 464: `this._active.delete(sessionID)` → same key change
+- Line 574: `this._active.has(sessionID)` → needs to check if ANY interaction exists for this session, or specifically for an agent. This is the `isActive(sessionID)` method — might need an `isActive(sessionID, agentID)` variant.
+
+**File:** `src/core/scheduling/session-scheduler.mjs`
+
+The scheduler already keys `_activeAgents` by `${sessionID}:${agentID}` (line 116). But `_triggerNext()` likely still triggers one at a time. Change to allow concurrent triggers — trigger ALL agents with pending refs, not just one.
+
+**Tests:** `spec/core/interaction/per-agent-loop-spec.mjs`
+- Two agents can have concurrent interactions in the same session
+- Same agent cannot have two concurrent interactions in the same session
+- Agent A's frames are visible to Agent B's next iteration
+- `isActive(sessionID)` returns true if ANY agent is active
+- `isActive(sessionID, agentID)` returns true only for that agent
+- Cancelling one agent doesn't affect the other
+- Interaction end for one agent doesn't block the other
+
+**Tests:** `spec/core/scheduling/concurrent-trigger-spec.mjs`
+- `onCommit` schedules multiple agents in a single call
+- Each scheduled agent gets its own trigger
+- Agent that authored the commit is still skipped
+- Already-active agent is still skipped
+- Multiple agents triggered concurrently reach their generators
+
+**Test:** Step 3 tests pass + full suite regression.
+
+---
+
+### Step 4: Session Ancestry Queries + Caching
+
+**Purpose:** Enable permission walk-up by bulk-loading the session ancestry chain.
+
+**File:** `src/core/session/index.mjs`
+
+New methods on `SessionManager`:
+
+```javascript
+async getAncestryChain(sessionID)
+// Returns array of session IDs from self to root: [sessionID, parentID, grandparentID, ...]
+// Uses recursive query via Mythix ORM (or iterative if ORM doesn't support CTE)
+// Results cached per sessionID (ancestry doesn't change during a session's lifetime)
+
+async getNearestUserAncestor(sessionID)
+// Returns the closest ancestor session ID that has a user participant
+// Uses ancestry chain + participant check
+// Results cached per sessionID
+```
+
+Cache: simple `Map<sessionID, ancestorIDs[]>` on `SessionManager`. Cleared when session is created or deleted. No TTL needed — ancestry is immutable.
+
+**Tests:** `spec/core/session/ancestry-spec.mjs`
+- Root session returns `[self]`
+- Child session returns `[self, parent]`
+- Grandchild returns `[self, parent, grandparent]`
+- Deep chain (5 levels) returns correct order
+- Cache returns same result on second call without re-querying
+- Cache invalidation on session creation/deletion
+- Session with no parent returns `[self]`
+- Non-existent session throws
+
+**Tests:** `spec/core/session/nearest-user-ancestor-spec.mjs`
+- Session with user participant returns self
+- Child session with no user returns parent (which has user)
+- Deep chain finds user 3 levels up
+- No user in entire chain returns null
+- Multiple users — returns nearest ancestor, not deepest
+- Cache hit on second call
+
+**Test:** Step 4 tests pass + full suite regression.
+
+---
+
+### Step 5: Permission Walk-Up in PermissionEngine
+
+**Purpose:** `checkPermission()` queries rules across all ancestor sessions, not just the current session.
+
+**File:** `src/core/permissions/permission-engine.mjs`
+
+Changes to `checkPermission()` (line 49-115):
+
+1. After existing `riskLevel` checks (lines 54-59), add:
+   ```javascript
+   let agent  = options.agent;
+   let config = (agent && typeof agent.getConfig === 'function') ? agent.getConfig() : { riskLevel: 'medium' };
+
+   if (config.riskLevel !== 'medium')
+     throw new Error(`Unsupported risk level: ${config.riskLevel}`);
    ```
 
-2. **Recovery approach**: Do NOT re-pop pending permissions in users' faces. If a question needs to be asked again, the same tool call can be invoked again by the agent. Recovery is plugin-driven, not system-driven.
+2. Replace the current single-session query (lines 62-66) with ancestry-aware query:
+   ```javascript
+   let sessionManager = this._context.getProperty('sessionManager');
+   let sessionID      = options.scopeID;
+   let ancestorIDs    = (sessionManager && sessionID)
+     ? await sessionManager.getAncestryChain(sessionID)
+     : [];
 
-3. **Plugin interface**: Keep the flexible, context-driven plugin interface. `registerSelector` is additive alongside existing `registerTool` and `registerCommand` — not a replacement.
+   // Query rules across all ancestor sessions
+   let query = PermissionRule.where
+     .organizationID.EQ(organizationID)
+     .featureName.EQ(featureName)
+     .scope.EQ('session')
+     .scopeID.IN(ancestorIDs);
+   ```
 
-4. **Permissions simplification**: "All events are hard breaks in this new design" — the event-driven architecture naturally pauses between events. Simplify and clean up the permission system accordingly.
+3. Add proximity ordering — rules from closer ancestors win over distant ones.
 
-5. **Loop detection**: Be cautious. Agent-to-agent dialog is a valid use case that looks like a loop. Don't block legitimate loops.
+**Tests:** `spec/core/permissions/permission-walkup-spec.mjs`
+- Rule in current session matches
+- No rule in current session, rule in parent matches (walk-up)
+- No rule in current or parent, rule in grandparent matches
+- Closer ancestor's rule wins over distant ancestor's rule
+- `deny` rule in closer ancestor overrides `allow` in distant ancestor
+- `allow` rule in closer ancestor overrides `deny` in distant ancestor
+- No rules in any ancestor → needs approval
+- Unsupported risk level throws error
+- Agent without `getConfig()` defaults to medium
+- Walk-up disabled when no sessionManager available (graceful fallback)
 
-### Deferred Items — Captured in bot-docs
-
-All six deferred items have been captured in `bot-docs/future-plans/` with detailed YAML files:
-
-| Item | File | Priority |
-|------|------|----------|
-| Sessions-as-Frames | `bot-docs/future-plans/sessions-as-frames.yaml` | Medium |
-| Generator Suspension | `bot-docs/future-plans/generator-suspension.yaml` | Medium |
-| General Re-feed Recovery | `bot-docs/future-plans/general-re-feed-recovery.yaml` | Low |
-| Configurable Plugin Ordering | `bot-docs/future-plans/configurable-plugin-ordering.yaml` | Low |
-| Abilities System | `bot-docs/future-plans/abilities-system.yaml` | Medium |
-| Signatures & Federation | `bot-docs/future-plans/signatures-federation.yaml` | Low |
-
-The `bot-docs/plan/kikx/future-plans.yaml` index has been updated with cross-references to each detailed file.
-
-### What's Next
-
-The plan is fully annotated, corrections incorporated, and deferrals documented. The next step when you're ready is to formalize Phase C1 into a concrete implementation plan (the TODO.md) and start building. Phase C1 is the Frame Event Router Foundation — the selector compiler, router core, silent commit mode, and the wiring into KikxCore. Everything else (C2-C5 migrations) depends on C1 being solid.
-
-<!-- 
-This is turning into a good plan. I have one concern though. I think our "onChange" system might be a little simple, in the sense that we don't have a clear place in the process to call "next" for the next plugin to execute.
-
-I would like to be able to call "next" to execute the next plugin. The next call should also pass along the "context", which will include the frame. We can then have a "change helper" in the plugin base class to detect changes.
-
-i.e.
-
-export function setup({ BasePluginClass, registerSelector }) {
-  class Plugin extends BasePluginClass {
-    onChange(context, propName, previousValue, newValue) { // I just realized that we should probably pass in the context? Or maybe we provide the context to the class when we instantiate (new Plugin(context))? The later concerns me, as this is async code, and the context might change through the pipeline... but I guess if we ensure only one plugin executes at a time (serial execution) then maybe this isn't an issue?
-      // Do something
-    }
-
-    async process(context) { // Get's call when the selector matches
-      const {
-        frames, // the entire frame stack
-        previousFrame, // the previous frame
-        newFrame, // the new committed frame
-        next, // the next plugin (or NOOP, if the system detects there is no "next")
-      } = context;
-
-      this.processChanges(context); // Calls "this.onChange" on changed properties... this is the helper in BasePluginClass that detects property/state changes... although, we DO need to know if a frame has changed before we start routing to get this far and deep into a plugin... so maybe the "changes" come across in the context? And this just iterates the "changes" passed in via the engine?
-
-      return await next(context); // user can optionally modify context, i.e. for plugins that assist with routing, add metadata, etc...
-    }
-  }
-
-  registerSelector('.selector', Plugin); // Register the plugin class (not instance... I don't want instances to be running for a long time, as this adds complexity, and could be a big potential source of bugs and memory issues, plus cross-server issues)
-}
-
- -->
-
- <!--
- Thoughts? We appear to have a number of open-ended questions here.
-  -->
+**Test:** Step 5 tests pass + full suite regression.
 
 ---
 
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-07 — Claude's Response: Plugin Lifecycle  -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+### Step 6: `CrossSessionPermissions` Class
 
----
+**Purpose:** Two behaviors in one Permissions override:
+1. `createSession` always requires explicit approval (no rule matching)
+2. `postToSession` to parent auto-approved if agent is a participant in the parent
 
-Yeah, we do have open questions, and they're the *right* questions to be asking before writing code. Let me work through them one at a time.
+**File:** `src/core/internal-plugins/cross-session/cross-session-permissions.mjs` (NEW)
 
-### The `process()` + `onChange()` split
+```javascript
+export class CrossSessionPermissions extends Permissions {
+  matchesRule(rule, args, metadata) {
+    // createSession: never match existing rules → always forces new approval
+    if (args.toolName === 'createSession')
+      return { matches: false };
 
-Your sketch actually reveals two distinct concerns that were conflated in the original plan:
+    // postToSession to parent: auto-approve if agent is parent participant
+    if (args.toolName === 'postToSession' && args.targetSessionID) {
+      let session         = metadata.session;
+      let parentSessionID = session?.parentSessionID;
 
-1. **`process(context)`** — "A frame matched your selector. Here's the full context. Do your thing." This is the entry point. This is where the plugin decides what to do.
-2. **`onChange(context, propName, previousValue, newValue)`** — "Here's a specific property that changed." This is a convenience helper for plugins that care about individual property transitions.
-
-I think you're right that `process()` is the primary handler, and `onChange()` is a *derived* helper that `processChanges()` calls in a loop. The router calls `process()`. The plugin optionally calls `this.processChanges(context)` which diffs and dispatches to `onChange()` per-property. Or the plugin ignores `processChanges()` entirely and just works with `context.newFrame` directly. That's clean.
-
-### The `next()` middleware pattern
-
-This is where I want to push back a little — not on the concept, but on the *default behavior*.
-
-You said earlier: "I want a 'handled' system, so a plugin doesn't have to call the 'next' method." But now you're sketching a middleware chain where plugins explicitly call `next()`. These are two different models:
-
-**Model A — Middleware (Express-style):** Plugin MUST call `next()` to continue the chain. If it doesn't, routing stops. This is powerful (plugins can transform context, short-circuit) but error-prone (forget `next()` and you silently break the chain).
-
-**Model B — Broadcast with "handled" flag:** Router calls every matched plugin. Plugin sets `context.handled = true` to stop further routing. Default is "everyone gets called." This is simpler and less error-prone.
-
-Your code sketch shows Model A, but your earlier annotation ("I want a 'handled' system, so a plugin doesn't have to call next") describes Model B.
-
-My recommendation: **Model B as the default, with `next()` available for the rare cases that need it.** Here's why:
-
-- Most plugins don't care about ordering. They match a frame, do their thing, create new frames. They shouldn't need to think about `next()`.
-- The "handled" flag covers the command dispatch case you described — the command plugin sets `handled = true` and the router stops.
-- Middleware chains are powerful but they're a cognitive tax on every plugin author. "Did I remember to call next?" is the #1 bug in Express middleware.
-
-Concrete proposal:
-
-```js
-async process(context) {
-  // Default: router calls every matched plugin in order.
-  // If you want to stop further routing:
-  context.handled = true;
-
-  // If you need to transform context for downstream plugins
-  // (rare, mainly for routing/metadata plugins):
-  context.newFrame.metadata = { ...context.newFrame.metadata, enriched: true };
-
-  // No "next()" call needed. Router handles iteration.
-}
-```
-
-For the rare middleware case (a plugin that wraps/transforms), we could have a separate registration: `registerMiddleware('.selector', Plugin)` — these DO get `next()` and run before broadcast handlers. But I'd defer that until we actually need it.
-
-<!-- 
-HHmmmm... I do greatly appreciate you pushing back, but I don't think I agree with you. Here is why:
-1. The "next" process naturally creates a "call chain"/async interation for the routing system. This simplifies the entire system. Sure, the router manages and handles the "next" and "done" calls themselves, but the chain is naturally async, and is a natural form of iteration to crawl the registered selectors.
-2. I DO want plugins to be able to modify the context and frames (i.e. one plugin adds metadata to the frame, silently commits that, and passes the update onto the next plugin in the chain). This becomes more convoluted if we have a "pluggin" and "middleware" system, or a separate "handled" process. Besides, what if a plugin needs to be middleware AND a plugin at the same time? Why have two separate systems?
-3. Plugins are not exactly build by "anyone" and "everyone" on the fly. Plugin authors need to be good engineers, and need to know what they are doing. Don't call "next"? Too bad, you broke things. Fix your bug.
-4. However, ONE thing comes out of your push back. I think we do need an explicit "done" method that is passed in side-by-side with "next". If the plugin wants to stop the call chain, then it `return await done(context);`, instead of calling "next".
-5. Another thing, the router itself should wrap the `process` call in a "try/catch/finally". This way, if the plugin throws an error, or returns WITHOUT calling done/next, then we can properly handle the situation without the whole system going down (not calling done/next would itself throw/log an error for that specific plugin). i.e. if "process" returns without a "next" or "done" call, that is an error.
-
-Thoughts? I am still open to feedback.
- -->
-
-### Context: argument vs constructor
-
-You flagged this yourself: "maybe we provide the context to the class when we instantiate? The later concerns me, as this is async code."
-
-Your instinct is right to be concerned. Context-on-constructor means the instance is bound to one routing cycle. Context-as-argument means the class is reusable.
-
-But then you also said: "Register the plugin class (not instance... I don't want instances running for a long time)."
-
-So: **fresh instance per routing cycle**. The router does `new Plugin()`, calls `plugin.process(context)`, and the instance is GC'd. No long-lived state, no cross-contamination, no memory leaks.
-
-This means context goes in the argument (or the constructor, since the instance is short-lived — functionally equivalent). I'd lean toward the constructor because it makes `this.context` available in `onChange()` without threading it through:
-
-```js
-class Plugin extends BasePluginClass {
-  // BasePluginClass constructor stores context on this.context
-  // BasePluginClass.processChanges() iterates context.changes and calls onChange()
-
-  async process() {
-    // this.context is available
-    this.processChanges(); // calls onChange() per changed property
-  }
-
-  onChange(propName, previousValue, newValue) {
-    // this.context is available if needed
-    if (propName === 'status' && newValue === 'approved') {
-      // do something
+      if (args.targetSessionID === parentSessionID && metadata.isParentParticipant)
+        return { matches: true, effect: 'allow' };
     }
+
+    return super.matchesRule(rule, args, metadata);
   }
 }
 ```
 
-Since instances are per-routing-cycle, the "context might change through the pipeline" concern evaporates — each plugin gets its own instance with its own context snapshot.
+**File:** `src/core/internal-plugins/cross-session/index.mjs`
 
-<!-- 
-Adding the context to the plugin class instance itself (via the constructor) greatly simplifies the interface, and we already know that we don't want plugins processing in parallel (I can see such a thing turning nightmarish real fast). So as long as we spin up the plugin class, await for it to finish (which hopefully happens after a "next" or "done" call), then we should never need to worry about the "contex" becoming stale out-of-band.
- -->
+- `CreateSessionTool.getPermissionsClass()` returns `CrossSessionPermissions`
+- `PostToSessionTool.getPermissionsClass()` returns `CrossSessionPermissions`
+- Wire `metadata.isParentParticipant` into the permission check context
 
-### Where do `changes` come from?
+**Tests:** `spec/core/internal-plugins/cross-session/cross-session-permissions-spec.mjs`
+- `createSession` never matches any existing rule (always asks)
+- `createSession` with exact matching rule still doesn't match
+- `postToSession` to parent auto-approved when agent is parent participant
+- `postToSession` to parent NOT auto-approved when agent is NOT parent participant
+- `postToSession` to non-parent session falls through to normal matching
+- `readFromSession` falls through to normal matching
+- Other tools fall through to `super.matchesRule()`
 
-You asked: "we DO need to know if a frame has changed before we start routing... so maybe the 'changes' come across in the context?"
-
-Yes. The router computes the diff *before* dispatching. The context includes:
-
-```js
-context = {
-  frames,          // full frame stack (for lookups)
-  previousFrame,   // frame before this commit (null for creation)
-  newFrame,        // frame after this commit (null for deletion)
-  changes,         // [{ propName, previousValue, newValue }, ...] — pre-computed diff
-  commit,          // the commit that triggered this routing cycle
-  handled,         // false initially, plugin can set to true
-};
-```
-
-`processChanges()` in `BasePluginClass` just iterates `context.changes` and calls `this.onChange()` for each. The router already did the diff — the plugin doesn't need to.
-
-<!-- 
-Agreed. Good thinking.
- -->
-
-### Summary of open questions — proposed answers
-
-| Question | Proposed Answer |
-|----------|-----------------|
-| `process()` vs `onChange()` | `process()` is the entry point. `onChange()` is a convenience helper called by `processChanges()`. |
-| `next()` vs `handled` flag | **`handled` flag** as default. No `next()` needed. Router iterates matched plugins automatically. Defer middleware-style `next()` until proven needed. |
-| Context delivery | Constructor arg. Fresh instance per routing cycle. `this.context` available everywhere. |
-| Where do changes come from? | Router computes diff, passes `context.changes` array. `processChanges()` iterates it. |
-| Class vs instance registration | **Class registration** (`registerSelector('.selector', PluginClass)`). Router instantiates per cycle. |
-
-<!--
-Any further thoughts?
- -->
+**Test:** Step 6 tests pass + full suite regression.
 
 ---
 
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-07 — Claude's Response: next/done Model   -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+### Step 7: Cross-Session Permission Approval
+
+**Purpose:** When a permission request originates in a child session but the user approves in an ancestor, `PermissionHandler.approve()` needs to resolve the correct FrameManager.
+
+**File:** `src/core/interaction/permission-handler.mjs`
+
+Changes to `approve()` (line 106-171):
+- Currently `waiting.frameManager` is the FrameManager from the session where the request originated — this is already correct for the child session.
+- The `permission-request` frame needs to be created in the ancestor session (nearest user ancestor), not the current session.
+
+Changes to `hardBreak()`:
+- When creating `permission-request` frame: look up nearest user ancestor via `sessionManager.getNearestUserAncestor(sessionID)`
+- If found: create permission-request in THAT session's FrameManager
+- If not found: deny immediately (no user in ancestry)
+- The `pending-action` frame stays in the current (child) session's FrameManager
+
+**Tests:** `spec/core/interaction/cross-session-permission-spec.mjs`
+- Permission request in child session creates request frame in parent session (where user is)
+- Pending-action frame stays in child session
+- Approval creates tool-result in child session (not parent)
+- Approval restarts interaction in child session
+- No user in ancestry → permission denied immediately
+- Permission request in root session (with user) → normal behavior (unchanged)
+- Denial creates permission-denied frame in child session
+- Multiple pending permissions across different child sessions don't interfere
+
+**Test:** Step 7 tests pass + full suite regression.
 
 ---
 
-Alright, you've convinced me. Let me explain why, and then let's nail down the revised model.
+### Step 8: `createSession` Tool Extension
 
-### Why `next()`/`done()` wins over `handled` flag
+**Purpose:** Add `initialMessage` and `constraints` to `createSession`, making it the trigger for agent deliberation.
 
-Your five points are all good, but #2 and #4 together are what tipped me. Let me restate the argument as I understand it:
+**File:** `src/core/internal-plugins/cross-session/index.mjs`
 
-- A `handled` flag gives you two states: "keep going" and "stop." That's it.
-- `next(context)` / `done(context)` gives you three: "keep going with this context," "stop, I'm done," and implicitly "I modified the context before passing it along."
+Changes to `CreateSessionTool`:
 
-The `handled` flag can't express "I added metadata to this frame, now let the next plugin see my enriched version." You'd need the flag *plus* some way to mutate shared state, which is the same thing as middleware but with extra steps and more footguns. Why have two systems when one does both?
+1. Add to `inputSchema.properties`:
+   ```javascript
+   initialMessage:  { type: 'string' },
+   constraints:     {
+     type: 'object',
+     properties: {
+       maxInteractions: { type: 'number' },
+       endsAt:          { type: 'string' }, // ISO timestamp
+     },
+   },
+   ```
 
-And point #3 is pragmatically correct — these aren't npm packages installed by random developers. Plugin authors are us, or engineers we trust. The cognitive overhead of "remember to call `next()` or `done()`" is a non-issue for competent engineers, especially with the safety net from point #5.
+2. In `_execute()`:
+   - Pass `constraints` to `sessionManager.createSession()` (which persists them on the Session model)
+   - Set creating agent as coordinator: `addParticipant(sessionID, agentID, { role: 'coordinator' })`
+   - Other participants added as members: `addParticipant(sessionID, agentID, { role: 'member' })`
+   - If `initialMessage` provided: create a `user-message` frame authored by the creating agent as the first frame in the new session
+   - If agent-created child session and no constraints specified: apply defaults (`maxInteractions: 100`, `endsAt: now + 10min`)
 
-### The safety net (point #5) is the key insight
+3. Auto-approval logic for parent participants:
+   - Check which invited agents are participants in the parent session
+   - For those agents: the `CrossSessionPermissions.matchesRule()` logic-based check handles the auto-approval (Step 6)
 
-The router wrapping `process()` in try/catch/finally solves the "forgot to call next" problem that was my main objection. Here's what the router does internally:
+**Tests:** `spec/core/internal-plugins/cross-session/create-session-extended-spec.mjs`
+- `initialMessage` creates first frame in new session
+- `initialMessage` frame authored by creating agent
+- `constraints.maxInteractions` persisted on session model
+- `constraints.endsAt` persisted on session model
+- Creating agent becomes coordinator in child session
+- Other participants become members
+- Agent-created child with no constraints gets defaults
+- User-created child with no constraints stays unconstrained
+- Session-link frame created in parent session (existing behavior preserved)
+- Participants resolved by agent name (existing behavior preserved)
+- Invalid participant name throws error (existing behavior preserved)
 
-```js
-async _executeChain(matchedPlugins, context) {
-  let index = 0;
-  let chainResolved = false;
-
-  const done = async (ctx) => {
-    chainResolved = true;
-    return ctx;
-  };
-
-  const next = async (ctx) => {
-    chainResolved = true;
-    index++;
-    if (index >= matchedPlugins.length)
-      return ctx;
-
-    chainResolved = false; // reset for next plugin
-    return await this._invokePlugin(matchedPlugins[index], ctx, next, done);
-  };
-
-  return await this._invokePlugin(matchedPlugins[0], context, next, done);
-}
-
-async _invokePlugin(PluginClass, context, next, done) {
-  let chainResolved = false;
-  const wrappedNext = async (ctx) => { chainResolved = true; return next(ctx); };
-  const wrappedDone = async (ctx) => { chainResolved = true; return done(ctx); };
-
-  const plugin = new PluginClass(context);
-  try {
-    const result = await plugin.process(wrappedNext, wrappedDone);
-    if (!chainResolved) {
-      // Plugin returned without calling next() or done() — that's a bug
-      this._logger.error(`Plugin ${PluginClass.name} returned without calling next() or done()`);
-      // Fail safe: treat as done() to prevent silent chain breakage
-
-      /*
-      Response from user: I am not sure I like the idea of one plugin breaking the entire chain. I think we should just log the error, and call "next" ourselves. We could always evict the plugin as well, if this becomes a bigger issue in the future (with plugins not properly going through the proper process).
-      */
-      return context;
-    }
-    return result;
-  } catch (err) {
-    this._logger.error(`Plugin ${PluginClass.name} threw:`, err);
-    // Plugin crashed — continue chain so one bad plugin doesn't break everything
-    return next(context);
-  }
-}
-```
-
-Key behaviors:
-- **Plugin forgets `next()`/`done()`**: Logged as error, ~~treated as `done()`~~ <!-- still call "next" and proceed. Evict the plugin if the behavior continues (should be a future plan). --> ~~Chain stops but system doesn't break.~~
-- **Plugin throws**: Logged as error, chain **continues** (skips the broken plugin). One plugin's crash doesn't prevent others from processing.
-<!-- This same mentality should be applied to the item above. -->
-- **Plugin calls `done()`**: Chain stops intentionally. No error.
-- **Plugin calls `next(ctx)`**: Chain continues with (potentially modified) context.
-
-### Revised plugin interface
-
-Incorporating all agreed-upon decisions:
-
-```js
-export function setup({ BasePluginClass, registerSelector }) {
-  class PermissionsPlugin extends BasePluginClass {
-    // BasePluginClass constructor receives context, stores as this.context
-    // this.context = { frames, previousFrame, newFrame, changes, commit } /* From user: We should probably also have access to the "engine" in here... but don't sweat that. DO feel free to add what is needed to this context however, and think about future-needs for plugins */
-
-    async process(next, done) {
-      // Check if this tool call needs permission
-      let toolName = this.context.newFrame.content?.toolName;
-      let needsApproval = await this.checkPermission(toolName); // We need the permissions system to have "metadata" like it currently does, i.e. like how the shell command stores commands and arguments that are allowed/disallowed
-
-      if (needsApproval) {
-        // Create a permission-request frame (reactive commit — triggers routing)
-        await this.createFrame({ type: 'permission-request', ... });
-        return await done(this.context); // Stop chain — waiting for user response
-      }
-
-      // No permission needed — pass along, maybe with metadata
-      this.context.newFrame.metadata = {
-        ...this.context.newFrame.metadata,
-        permissionChecked: true, // We need to ensure keys like this can not be set by anyone but the system itself, or that they are derived from the system directly
-      };
-
-      return await next(this.context);
-    }
-
-    // Optional: use the convenience helper for property-level changes
-    onChange(propName, previousValue, newValue) {
-      if (propName === 'approved' && newValue === true) {
-        // Permission was granted — execute the tool
-        
-        /* Response from user:
-        If we have the tool/whatever execution happen inside the permission frame itself, then we also have to pass along context/the original frame, and the permissions system has to know HOW to execute it. It is probably better if the permissions system commits an update to the original frame, which will send the frame back through the router as an "event", and then the tool-call gets a "signed updated" from the system that allows the tool-call to proceed (with the original frame/context that the tool call already had).
-        */
-      }
-    }
-  }
-
-  registerSelector('type:tool-call', PermissionsPlugin);
-}
-```
-
-### Context on constructor — agreed
-
-Serial execution + fresh instance per cycle = context on constructor is safe. `this.context` is available in both `process()` and `onChange()` without threading. Instance is GC'd after the routing cycle. Clean.
-
-### Updated summary
-
-| Question | Final Answer |
-|----------|-------------|
-| `process()` vs `onChange()` | `process(next, done)` is the entry point. `onChange()` is a convenience helper. |
-| Routing model | **`next(ctx)`/`done(ctx)` middleware chain.** Router catches missing calls and crashes. |
-| Context delivery | Constructor arg. Fresh instance per routing cycle. `this.context` everywhere. |
-| Changes | Router computes diff, passes `context.changes`. `processChanges()` iterates. |
-| Registration | Class registration. Router instantiates per cycle. |
-| Error handling | Plugin crash → logged, chain continues. Missing next/done → logged, treated as done. |
-
-I think we've resolved all the open design questions for the plugin lifecycle. Unless you see something I'm missing, this is ready to be formalized into a Phase C1 implementation plan.
-
-<!--
-I brought up some further important points for us to discuss here... let's make sure we cover them before we proceed.
- -->
+**Test:** Step 8 tests pass + full suite regression.
 
 ---
 
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-07 — Claude's Response: Four Points       -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+### Step 9: Integration Test + Full Suite
+
+**Purpose:** End-to-end validation that all pieces work together.
+
+**Tests:** `spec/core/integration/child-session-deliberation-spec.mjs`
+- Agent creates child session with `initialMessage` and two participants
+- Both agents receive the initial message and can respond concurrently (per-agent loops)
+- Agent in child session posts result to parent session via `postToSession` (auto-approved)
+- `createSession` requires user approval (always-ask)
+- Session archives when `maxInteractions` hit
+- Session archives when `endsAt` passed
+- Permission request in child session appears in ancestor session with user
+- Full test suite pass (all existing tests + all new tests)
 
 ---
 
-Four important points raised. Let me address each.
+### Implementation Order Summary
 
-### 1. Missing `next()`/`done()` → call `next()`, don't stop the chain
+| Step | Description | Dependencies | New Tests |
+|------|-------------|-------------|-----------|
+| 0 | Cleanup wrong-approach code | None | 0 (removing tests) |
+| 1 | `agent.getConfig()` stub | None | ~3 |
+| 2 | Session constraints | None | ~15 |
+| 3 | Per-agent interaction loops | None | ~12 |
+| 4 | Ancestry queries + caching | None | ~12 |
+| 5 | Permission walk-up | Step 1, 4 | ~10 |
+| 6 | CrossSessionPermissions | Step 5 | ~8 |
+| 7 | Cross-session permission approval | Step 4, 6 | ~10 |
+| 8 | `createSession` extension | Step 2, 3, 6 | ~12 |
+| 9 | Integration test | All | ~8 |
+| | **Total new tests** | | **~90** |
 
-You're right. I had the error behavior backwards. If a plugin forgets to call `next()` or `done()`, the safe behavior is to **continue the chain**, not stop it. A broken plugin shouldn't have the power to silently halt all downstream processing. The corrected `_invokePlugin`:
+Steps 1-4 have no interdependencies and can be implemented in any order (or in parallel by sub-agents). Steps 5-8 have dependencies as noted. Step 9 is last.
 
-```js
-if (!chainResolved) {
-  this._logger.error(`Plugin ${PluginClass.name} returned without calling next() or done()`);
-  return next(context); // Continue chain — don't let a broken plugin stop everything
-}
-```
+### Future Plan YAMLs to Create
 
-And in the catch block, same thing — already calling `next(context)`. Both failure modes (forgot to call, threw an error) have the same recovery: log it, keep going. Consistent.
+After implementation, create:
+- `bot-docs/future-plans/danger-level-permissions.yaml` — Low/Medium/Yolo selector, storage in agent-memory-context
+- `bot-docs/future-plans/agent-memory-context.yaml` — Per-actor persisted JSON context (replaces `getConfig()` stub)
+- `bot-docs/future-plans/applicable-permitters.yaml` — Role-based approval (who can approve what)
+- `bot-docs/future-plans/constraint-warnings.yaml` — Agent prompt injection for approaching limits (depends on Abilities system)
+- Update `bot-docs/future-plans/inter-agent-streaming.yaml` — Mark Phase 1 items as done
+- Update `bot-docs/future-plans/multi-coordinator-protocol.yaml` — Rewrite to reflect child-session design
 
-Plugin eviction on repeated violations is a good future-plan item. A simple counter: if a plugin fails N times in a row, disable it and log a warning. But that's later.
+### Questions for Round 10
 
-### 2. Context should include the engine
+**Q32: Does this implementation order make sense?**
+Steps 1-4 are independent foundations, 5-8 build on them, 9 validates everything.
 
-Makes sense. Plugins will need to do things like query frames, create commits, look up participants. The context should provide access to the system capabilities the plugin needs. Something like:
+**Q33: Test count and coverage — anything missing?**
+~90 new tests across 10 spec files. Each step has its own spec targeting specific behaviors.
 
-```js
-context = {
-  // Frame data for this routing cycle
-  frames,          // full frame stack
-  previousFrame,   // before commit (null for creation)
-  newFrame,        // after commit (null for deletion)
-  changes,         // [{ propName, previousValue, newValue }, ...]
-  commit,          // the triggering commit
+**Q34: Ready to execute?**
+If this plan looks right, I'll update TODO.md with these steps and start implementing (Step 0 first). Still in planning mode until you say go.
 
-  // System access
-  engine,          // the frame engine / manager — query frames, create commits
-  session,         // session context (participants, settings)
-  logger,          // scoped logger for this plugin
-};
-```
+<!--
+Before this plan is complete, don't we actually need to update the plan YAML file?
 
-I'd keep this extensible — the context object can grow as we discover what plugins need. The initial set should be whatever the first few plugins (scheduling, permissions, command dispatch) actually require. We'll learn what's missing fast.
-
-<!-- 
-Love this! The "logger" being in the context also allows the plugin base class to expose this via a "this.logger" getter.
- -->
-
-### 3. Permission metadata (allowed/disallowed commands, arguments)
-
-This is about making sure the permission system carries its current richness into the routing model. Today, shell permissions have metadata like `{ allowedCommands: [...], blockedPatterns: [...] }`. The permission plugin needs this same data.
-
-This fits naturally: the permission plugin reads its configuration (which could be stored as frames, or loaded from the agent/org settings — however permissions are currently configured). The plugin itself owns this logic, not the router. The router just delivers the `type:tool-call` frame to the permission plugin. What the plugin does with it — including checking tool-specific metadata — is the plugin's business.
-
-No architecture change needed here. It's an implementation detail of the permission plugin.
-
-<!-- 
-This means each plugin needs its own "space" in the database. I think we already have this. Something to think about.
-
-And, if I remember correctly, we designed plugins to have their own "space" in a cascading way: They have global spaces, which merge into sessions spaces, which could merge even lower. This makes sense, as we probably want per-session storage for plugins, and also other "scopes".
- -->
-
-### 4. Permission approval flow — update the original frame, don't execute from the permission plugin
-
-This is a really good architectural insight. Let me make sure I understand the flow you're describing:
-
-1. Agent yields tool-call → `type:tool-call` frame created (status: `pending`)
-2. Router delivers to permission plugin → plugin sees it needs approval
-3. Permission plugin creates `type:permission-request` frame, calls `done()` — chain stops
-4. User approves → permission-response frame created
-5. Router delivers permission-response to permission plugin
-6. Permission plugin **updates the original tool-call frame** (sets status: `approved`, signs it)
-7. This update triggers the router again — the tool-call frame goes back through routing
-8. The tool-execution plugin sees `type:tool-call` with `status: approved` and a valid system signature → executes the tool
-9. Tool result → new frame → routing continues
-
-This is cleaner than having the permission plugin execute the tool because:
-- The permission plugin doesn't need to know *how* to execute tools. Separation of concerns.
-- The tool-execution plugin already has the original context — it was the one that first received the tool-call frame.
-- The "signed update from the system" concept naturally fits the authority model. The permission plugin stamps the frame with proof of approval. The tool plugin verifies the stamp before executing. <!-- Note from user: An important distinction here: The tool plugin ITSELF doesn't verify the signature of approval, instead it is still the permissions system, when the tool plugin calls "this.checkPermissions" again. -->
-
-This also means tool-call frames have a lifecycle: `pending` → `approved`/`denied` → `executing` → `complete`. Each transition is a frame mutation, each mutation goes through routing. The whole flow is observable in the commit log.
-<!-- 
-Yes.
- -->
-
-This is genuinely elegant. The permission system becomes a gatekeeper that stamps frames, not a dispatcher that executes things.
-
-<!-- 
-Yes, but through this dialog it has become clear that we need properties, or approval signatures (maybe tied to frame id?) that are OUTSIDE the scope of frames, or properties that are protected system-only properties on frames. It would be a security violation to leave such properties open to the world. We need to ENSURE authority and identity on such frame updates. This is important.
- -->
-
-### Updated error handling summary
-
-| Failure Mode | Behavior |
-|-------------|----------|
-| Plugin forgets `next()`/`done()` | Logged as error, `next(context)` called automatically — chain continues |
-| Plugin throws | Logged as error, `next(context)` called — chain continues |
-| Plugin calls `done(context)` | Chain stops intentionally. No error. |
-| Plugin calls `next(context)` | Chain continues with (potentially modified) context |
-| Plugin fails repeatedly | Future: eviction after N consecutive failures |
+This all looks really good. I agree with all of it. Good job focusing on tests this time. :)
+-->
 
 ---
 
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-07 — Claude's Response: Protected Props   -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+*Annotate above. If the plan looks right, tell me to execute and I'll start building.*
+
+---
+---
+---
+
+## Round 10B — Plan YAMLs
+
+You're right — the YAMLs are part of the plan. The current `multi-coordinator-protocol.yaml` describes the wrong design (orchestrator, round-robin, claims). It needs a full rewrite. The `inter-agent-streaming.yaml` is accurate for the streaming parts but needs a note about what's coming next.
+
+I also need to draft the new future-plan YAMLs we identified during planning.
+
+### Rewrite: `multi-coordinator-protocol.yaml`
+
+The filename itself is wrong — it's not a "multi-coordinator protocol" anymore. It's "agent deliberation via child sessions." I'd rename it to `agent-deliberation.yaml`.
+
+```yaml
+# Agent Deliberation via Child Sessions
+# Status: PLANNED (Phase 1)
+# Priority: High
+# Complexity: High
+
+summary: >
+  Agents debate and deliberate by chatting freely in a child session.
+  An agent creates a child session with participants and initial instructions,
+  agents interact concurrently via per-agent interaction loops, and results
+  are posted back to the parent session. No orchestrator, no state machine —
+  just a regular session with constraints and permission inheritance.
+
+prerequisites:
+  streaming_identity:
+    status: IMPLEMENTED
+    description: >
+      SSE events carry agentID, authorType, authorID. Per-agent typing
+      indicators and streaming bubbles on the client.
+    yaml: inter-agent-streaming.yaml
+
+  participant_roles:
+    status: IMPLEMENTED
+    description: >
+      Participant model has role field (coordinator/member). Creating
+      agent becomes coordinator of child session.
+    files:
+      - src/core/models/participant-model.mjs
+
+  cross_session_tools:
+    status: IMPLEMENTED
+    description: >
+      createSession and postToSession tools exist in cross-session plugin.
+      StreamRelay forwards deltas across session boundaries.
+    files:
+      - src/core/internal-plugins/cross-session/index.mjs
+      - src/core/scheduling/stream-relay.mjs
+
+phase_1:
+  agent_config_stub:
+    description: >
+      agent.getConfig() returns static { riskLevel: 'medium' }.
+      Extension point for future Danger Level support. All call sites
+      guard with throw on non-medium.
+    files:
+      - src/core/models/agent-model.mjs
+
+  session_constraints:
+    description: >
+      Session model gains maxInteractions (integer, nullable) and endsAt
+      (timestamp, nullable). Checked at commit level. Session archived
+      when constraint hit. Agent-created child sessions get defaults
+      (maxInteractions: 100, endsAt: now + 10min) if none specified.
+    files:
+      - src/core/models/session-model.mjs
+      - src/core/session/index.mjs
+
+  per_agent_interaction_loops:
+    description: >
+      InteractionLoop._active key changes from sessionID to
+      sessionID:agentID. Multiple agents can have concurrent interactions
+      in the same session. SessionScheduler triggers all agents with
+      pending refs, not just one at a time.
+    files:
+      - src/core/interaction/index.mjs
+      - src/core/scheduling/session-scheduler.mjs
+
+  ancestry_queries:
+    description: >
+      SessionManager gains getAncestryChain(sessionID) and
+      getNearestUserAncestor(sessionID). Bulk-loads via recursive query.
+      Results cached per session (ancestry is immutable).
+    files:
+      - src/core/session/index.mjs
+
+  permission_walkup:
+    description: >
+      PermissionEngine.checkPermission() queries rules across all
+      ancestor sessions via cached ancestry chain. Closest match wins.
+      Guards on agent.getConfig().riskLevel (Medium behavior only).
+    files:
+      - src/core/permissions/permission-engine.mjs
+
+  cross_session_permissions:
+    description: >
+      CrossSessionPermissions extends Permissions base class.
+      createSession always requires explicit approval (no rule matching).
+      postToSession to parent auto-approved if agent is a participant
+      in the parent session (logic-based, not DB records).
+    files:
+      - src/core/internal-plugins/cross-session/cross-session-permissions.mjs  # NEW
+      - src/core/internal-plugins/cross-session/index.mjs
+
+  cross_session_permission_approval:
+    description: >
+      PermissionHandler.hardBreak() creates permission-request frame in
+      nearest ancestor session with a user participant. Pending-action
+      stays in requesting session. Approval commits tool-result to
+      requesting session's FrameManager. Router handles the rest.
+    files:
+      - src/core/interaction/permission-handler.mjs
+
+  create_session_extension:
+    description: >
+      createSession tool gains initialMessage (string) and constraints
+      (object with maxInteractions, endsAt). Creating agent becomes
+      coordinator. initialMessage creates first frame authored by
+      creating agent. Agent-created child sessions get default
+      constraints if none specified.
+    files:
+      - src/core/internal-plugins/cross-session/index.mjs
+
+phase_2:
+  - Live inline mini-ChatView in session-link bubble
+  - Expand/shrink animation (DOM reparenting without element destruction)
+  - Whisper/@mention targeting
+  - Constraint warning injection (depends on Abilities system)
+
+tests:
+  - spec/core/models/agent-config-spec.mjs
+  - spec/core/models/session-constraints-spec.mjs
+  - spec/core/session/constraint-enforcement-spec.mjs
+  - spec/core/interaction/per-agent-loop-spec.mjs
+  - spec/core/scheduling/concurrent-trigger-spec.mjs
+  - spec/core/session/ancestry-spec.mjs
+  - spec/core/session/nearest-user-ancestor-spec.mjs
+  - spec/core/permissions/permission-walkup-spec.mjs
+  - spec/core/internal-plugins/cross-session/cross-session-permissions-spec.mjs
+  - spec/core/interaction/cross-session-permission-spec.mjs
+  - spec/core/internal-plugins/cross-session/create-session-extended-spec.mjs
+  - spec/core/integration/child-session-deliberation-spec.mjs
+
+cleanup:
+  remove:
+    - src/core/scheduling/discussion-orchestrator.mjs
+    - spec/core/scheduling/discussion-orchestrator-spec.mjs
+    - spec/core/scheduling/discussion-integration-spec.mjs
+  revert:
+    - src/core/interaction/message-history.mjs        # remove discussion frame branch
+    - src/core/internal-plugins/scheduling/index.mjs  # remove coordinator detection
+    - src/client/components/kikx-session-page/kikx-session-page.mjs  # remove discussion rendering
+```
+
+### Update: `inter-agent-streaming.yaml`
+
+Minor update — the streaming work is correctly marked as implemented. Just add a note linking to the deliberation plan:
+
+```yaml
+# Inter-Agent Streaming
+# Status: IMPLEMENTED
+# Implemented: 2026-03-10
+# Priority: Medium
+# Complexity: High
+
+# ... (existing content stays the same) ...
+
+related:
+  - agent-deliberation.yaml  # Uses streaming identity + relay as prerequisites
+```
+
+### New: `danger-level-permissions.yaml`
+
+```yaml
+# Danger Level Permissions
+# Status: PLANNED
+# Priority: Medium
+# Complexity: Medium
+
+summary: >
+  Per-agent risk tolerance configuration that controls permission inheritance
+  behavior. Three levels: Low (no inheritance, every combo explicit),
+  Medium (walk-up inheritance, tool-level approval), Yolo (auto-approve all).
+
+depends_on:
+  - agent-memory-context.yaml  # Storage for per-agent config
+
+levels:
+  low:
+    description: >
+      No permission inheritance across session boundaries. Each
+      session/agent/tool/arguments combo requires explicit approval.
+      Most restrictive.
+    inheritance: false
+    granularity: session + agent + tool + arguments
+
+  medium:
+    description: >
+      Child sessions inherit parent permissions via walk-up.
+      Tool-level approval (any arguments accepted once tool approved).
+      Default behavior. Already implemented as the only behavior.
+    inheritance: true
+    granularity: tool-level
+
+  yolo:
+    description: >
+      Everything auto-approved. No permission prompts. Use with caution.
+    inheritance: true
+    granularity: N/A (all auto-approved)
+
+implementation:
+  - agent.getConfig().riskLevel returns the level (stub returns 'medium')
+  - PermissionEngine.checkPermission() branches on riskLevel
+  - Low: ancestorIDs = [currentSessionID] (don't walk up)
+  - Yolo: return false immediately (no approval needed)
+  - UI: dropdown in agent settings panel
+  - Storage: per-agent memory context (JSON)
+
+special_cases:
+  createSession: >
+    Always requires explicit permission regardless of danger level
+    (except Yolo). Enforced via CrossSessionPermissions plugin overload.
+```
+
+### New: `agent-memory-context.yaml`
+
+```yaml
+# Agent Memory Context
+# Status: PLANNED
+# Priority: Medium
+# Complexity: Medium
+
+summary: >
+  Per-actor persisted JSON context stored in the database. Provides
+  agent-specific configuration, preferences, and memory that persists
+  across sessions. Replaces the static agent.getConfig() stub.
+
+design:
+  storage: >
+    JSON column on Agent model (or separate AgentConfig table).
+    Accessed via agent.getConfig() / agent.setConfig().
+
+  contents:
+    riskLevel: 'medium'        # Danger Level setting
+    # Future: agent-specific preferences, learned behaviors, etc.
+
+  access_pattern: >
+    Read on interaction start (cached for interaction lifetime).
+    Written via agent settings UI or API.
+```
+
+### New: `applicable-permitters.yaml`
+
+```yaml
+# Applicable Permitters
+# Status: PLANNED
+# Priority: Low
+# Complexity: Medium
+
+summary: >
+  Role-based permission approval: not just "any user in the session"
+  but "which specific users are authorized to approve this request."
+  Currently all users in a session can approve any permission request.
+
+design:
+  current: >
+    Any user participant in the nearest ancestor session can approve
+    any permission request. First come, first served.
+
+  future: >
+    Permission requests carry metadata about what kind of approval is
+    needed. Users have approval scopes (e.g., "can approve shell commands"
+    vs "can approve session creation"). Only users with the matching
+    scope see the request.
+```
+
+### New: `constraint-warnings.yaml`
+
+```yaml
+# Session Constraint Warnings
+# Status: PLANNED
+# Priority: Low
+# Complexity: Low
+# Depends on: Abilities system (dynamic prompt injection)
+
+summary: >
+  Inject warnings into agent system prompts when approaching session
+  constraints. "You have 10 interactions remaining" or "1 minute left."
+  Requires the Abilities system for dynamic prompt injection.
+
+design:
+  triggers:
+    - 90% of maxInteractions reached
+    - 1 minute before endsAt
+  injection: >
+    Via Abilities system — dynamic system prompt additions injected
+    before each agent interaction. No frame creation, just prompt context.
+```
+
+### Step 0 Updated
+
+Step 0 now includes:
+1. Delete wrong-approach files
+2. Revert wrong-approach changes in existing files
+3. Rename `multi-coordinator-protocol.yaml` → `agent-deliberation.yaml` with new content
+4. Update `inter-agent-streaming.yaml` with `related` link
+5. Create 4 new future-plan YAMLs
+
+### Questions for Round 10B
+
+**Q35: Rename `multi-coordinator-protocol.yaml` → `agent-deliberation.yaml`?**
+The old name describes the wrong feature. The new name matches the actual design.
+
+<!--
+Good thinking!
+-->
+
+**Q36: Do the future-plan YAMLs capture everything we deferred?**
+Danger Level, agent memory context, applicable permitters, constraint warnings. Anything else?
+
+<!--
+I think we got it.
+-->
+
+**Q37: Now ready to execute?**
+
+<!--
+Yes Claude. Thank you for being so patient! Please commit and push before you start. I also want you to remain the Coordinator. Have sub-agents do the heavy lifting.
+-->
 
 ---
 
-Three annotations, all good. Let me take them in order.
-
-### Plugin scoped storage — cascading spaces
-
-You're right, we already have this concept. Plugins have storage that cascades: global → org → session (and potentially lower). The permission plugin stores its allowed/blocked command lists at the appropriate scope. This is an existing design that carries forward cleanly — no new architecture needed, just make sure the context exposes the plugin's scoped storage so it can read its configuration during `process()`.
-
-<!-- 
-We probably should have the plugin system itself LOAD its data. The router or engine shouldn't be "aware" of such things. Besides, "process" calls are async, so this should work just fine. This also means we lazy-load only what we need to load (JIT loading).
- -->
-
-### Permission check stays in the permission system
-
-Your correction on step 8 is important. I had the tool plugin verifying the approval signature, but that's wrong — the tool plugin shouldn't know *anything* about permissions. The flow is:
-
-1. Tool-call frame created (status: `pending`)
-2. **Permission plugin** sees it → needs approval → creates permission-request, calls `done()`
-3. User approves → permission plugin updates tool-call frame (status: `approved`, stamped)
-4. Tool-call frame goes back through routing
-5. **Permission plugin** sees it *again* → calls `this.checkPermission()` → sees it's already approved → calls `next(context)`
-6. **Tool plugin** sees it → status is `approved`, permission plugin already passed it through → executes
-
-The permission plugin is *always* the gatekeeper. The tool plugin never checks permissions itself. It trusts that if it received the frame through the chain, permission was already handled upstream. This is the whole point of ordered middleware — plugins earlier in the chain handle concerns that plugins later in the chain don't need to think about.
-
-This also means the permission plugin needs to run *before* the tool plugin in the chain. Which ties back to your "zero priority" comment about plugin ordering. Internal system plugins (command dispatch, permissions) run first. Tool execution runs after.
-
-<!-- 
-I think conceptually you have this correct, but again I want to make some important distictions. The engine/plugin system itself can't and shouldn't "know" what needs permission approval, and what doesn't. Doing so breaks future-compatibility, and bogs us down with static internals.
-
-Instead, I'd like to clean-up what you have said here to be more explicit about what actually happens, and in what order:
-
-1. Tool-call frame created
-2. Tool plugin executed, and "await this.checkPermission" happens inside the plugin (pointing out that "async" here is important, if the plugin system needs to load its own metadata [discussed above])
-3. No approval can be made, so "this.checkPermission" fails, generates a permission request frame, and calls "done".
-4. User responds to permissions request -> gives approval signature
-5. This "approval" update "event" from the user routes back to the permissions frame, back though the plugin, where the original tool-call frame now gets a new "signed commit".
-6. This routes a new "update event" through the tool plugin, which again calls "await this.checkPermissions", which this time is automatically approved, because of the signed-commit that approves it.
-7. Tool execution proceeds as-normal
-
-Alternative flow if the tool is already pre-approved by the user/system:
-Step 2 jumps directly to step 6 because of a prior pre-approval
- -->
-
-### Protected frame properties — this is the big one
-
-You're identifying a real security requirement: if the permission system stamps a frame with `status: approved`, what stops a malicious plugin (or a compromised agent) from setting `status: approved` directly, bypassing the permission system entirely?
-
-Options I see:
-
-**Option A — System-only properties via schema enforcement:**
-The frame engine knows which properties are "system-only" (e.g. `status`, `approvedBy`, `approvalSignature`). Any attempt to set these through the normal `merge()` path is rejected unless the caller has system authority. Plugins that need to set system properties go through a privileged API (`engine.systemUpdate(frameId, props)`) that's only available to internal plugins.
-
-**Option B — Separate authority record:**
-Approval isn't stored *on* the frame at all. Instead, there's a separate `approvals` table/store keyed by frame ID. The permission system writes to this store. The permission plugin reads from this store when checking `this.checkPermission()`. Frame properties remain unprivileged — the authority lives outside the frame.
-
-**Option C — Signed properties:**
-Properties like `approved` are paired with a signature: `{ approved: true, approvalSig: 'hmac_xyz' }`. The signature is computed using a server-side secret. Any plugin can *read* the property, but only the server can *produce* a valid signature. The permission plugin verifies the signature, not just the boolean.
-
-My take: **Option A is simplest and sufficient for now.** We're on a single server. We control the plugin loading. System-only properties enforced at the engine level prevent accidental or malicious overwrites. The engine already validates frames through the commit validator — adding a "protected properties" check is natural.
-
-Option C is elegant and would be needed for federation (where you can't trust remote servers to enforce Option A). But per our earlier agreement, federation is deferred.
-
-<!-- 
-Actually, none of this is likely needed if we stick to the flow I outlined above. Any malicious actor can commit whatever they want to the frame. Any such update will simply be ignored, as long as the "checkPermissions" that is part of the permissions system checks for a valid signature of the original permission-request frame. There is no way for a malicious actor to properly sign the frame, unless that actor has access to the user's private key.
-
-As long as we design the signature system properly, and always have permission checks go through the permissions system via a "checkPermissions" anmd the "checkPermissions" does the correct thing (verify the signature), then we likely won't have a problem. With this pattern, we aren't just checking boolean properties like "approved: true"... instead, the check that actually happens is a signature verification, which if not present, will be rejected.
-
-Your next question might properly be "What about global/long-standing approvals?" Well, those are ALSO signed by the user(s) and their private keys. Same thing, different frame grants the approval (a global/scoped signed approval).
- -->
-
-The concrete implementation: FrameManager gets a `_protectedProperties` set (e.g. `['status', 'approvedBy', 'permissionChecked']`). Regular `merge()` strips these. A `mergeTrusted()` or similar method preserves them, and is only callable from system context (internal plugins). The router passes the appropriate merge capability based on plugin trust level.
-
-Does this address your concern, or are you thinking about a different attack surface?
-
-<!--
-What do you think, given my feedback here? What security concerns am I glossing over?
- -->
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-07 — Claude's Response: Signature Model   -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-
----
-
-Okay, you've fundamentally reframed how I was thinking about this. Let me work through it.
-
-### Plugin JIT loading — agreed, trivial
-
-The plugin loads its own data during `process()` (which is async). The router/engine doesn't "know" or "care" about plugin storage. The context just provides access to the storage API. The plugin decides when and what to load. Lazy, JIT, clean.
-
-### The corrected permission flow — this changes everything
-
-I had the permission system as a *separate plugin* that runs before the tool plugin. You're saying no — `checkPermission` lives in the **tool plugin itself** as a method call. The tool plugin is the one that decides "I need permission." This is a critical distinction.
-
-Let me restate your flow to make sure I have it:
-
-1. Tool-call frame created → routes to the **tool plugin**
-2. Tool plugin calls `await this.checkPermission()` — this is a method on `BasePluginClass`
-3. `checkPermission()` looks for a valid signed approval for this tool call. Doesn't find one.
-4. `checkPermission()` creates a permission-request frame and calls `done()` — the chain stops, and we're now waiting for the user
-5. User approves → creates a signed approval frame (signed with the user's private key)
-6. This approval routes back through the system, and the **original tool-call frame gets a signed commit** attesting to the approval
-7. The tool-call frame update routes back to the **tool plugin**
-8. Tool plugin calls `await this.checkPermission()` *again* — this time it finds the signed approval, verifies the signature, and returns success
-9. Tool execution proceeds
-
-<!-- 
-Correct, with one minor clarification: the "done" is actually called by the tool plugin itself when "checkPermissions" fails.
- -->
-
-**What I had wrong:** I was modeling permissions as a separate plugin in the chain that runs *before* the tool plugin. You're modeling it as a capability *within* every plugin — `this.checkPermission()` is part of `BasePluginClass`. Any plugin can call it. The permission system is a service, not a middleware layer.
-
-<!-- 
-Correct. This is something I also wanted to clarify: The permissions system is BAKED INTO the system... it isn't a plugin, and it isn't separate from the system. It can have a "plugin architecture" if we need it to, just so it slips right into the current framework, but ultimately it runs first, and is managed by the system itself.
- -->
-
-This is better because:
-- No ordering dependency between "permission plugin" and "tool plugin"
-- Every plugin can protect any operation it wants, not just tool calls
-- The permission system doesn't need to understand what it's protecting — it just verifies signatures
-- Pre-approval (step 2 jumping to step 6) works naturally because `checkPermission()` just looks for a valid signature — if one already exists, it returns immediately
-
-### On protected properties — you're right, we don't need them
-
-I was thinking about this wrong. I was worried about a malicious actor setting `approved: true` on a frame. Your response is: **who cares?** Let them write whatever they want. The permission check doesn't look at a boolean property. It verifies a **cryptographic signature** on the approval frame. You can set `approved: true` all day long — without a valid signature from an authorized user, `checkPermission()` will reject it.
-
-This eliminates Option A (protected properties), Option B (separate table), and even Option C (signed properties) as I described it. The security isn't at the property level or the engine level — it's at the **verification level inside `checkPermission()`**.
-
-The frame itself is just data. The authority comes from the signature chain: "User X signed approval Y for tool-call Z." If you can't produce that signature, the approval doesn't exist, regardless of what properties you've written to the frame.
-
-<!-- 
-Yes, exactly!
- -->
-
-### Security concerns you might be glossing over
-
-You asked, so here's what I'd push on:
-
-**1. Key management before federation.**
-You said signatures are deferred to federation, but the permission flow as you've described it *requires* signatures to work. If `checkPermission()` verifies a signature, we need key pairs now, not later. Unless... `checkPermission()` uses a simpler verification mechanism in the near term (server-side HMAC, or just "the server stamps the approval commit with `authorType: 'user'` and `authorID`, and since we trust the server, we trust the stamp"). In other words: on a single server, the server's authentication of the user *is* the signature. We can swap in real crypto later without changing the `checkPermission()` interface.
-
-<!-- 
-Is there any reason we can't just move to a public/private key pair now (or even just depend on a GPG library)?
- -->
-
-**2. Replay attacks.**
-If a user signs an approval for "execute shell command `ls`", can that signed approval be replayed to approve a *different* shell command? The signature needs to bind to the specific tool-call frame (by ID, or by content hash). Otherwise a single approval grants blanket access.
-
-<!--
-What if the thing signed is the frame ID being approved? Duplicates of frame_id is invalid is disallowed.
- -->
-
-**3. Scope of pre-approvals.**
-"Global/scoped signed approvals" — these are powerful and dangerous. A pre-approval that says "user X approves all shell commands" is a valid use case, but it's also a wide-open door. The scoping needs to be precise: what tool, what parameters, what session, what time window. This is a UX design problem as much as a security one.
-
-<!--
-Yes, this could be a problem. Also, if we are approving the frame via signing the frame id, this also won't work. Thoughts? I do want to allow "dangerous mode" where all permissions are automatically approved.
-
-However, to auto-approve permissions, we will need to think of something. What if we have the system itself sign such requests?
-
-This makes me consider a problem with our current system though: user signing keys are encrypted, and user interaction is required to get to the keys. So an "always allow" can't be per-user. It has to be per-session, and signed by the system. 
-
-Maybe we simplify all things, and just make all signatures system signatures? We can then have an audit-trail for which user requested the signing (and was authenticated and approved by the system).
- -->
-
-**4. Revocation.**
-If a user grants a standing approval and later revokes it, how does the system know? The signed frame still exists. You'd need either: expiration timestamps on approvals, a revocation list, or version numbers where newer revocations override older approvals.
-
-<!--
-We could always commit an update that revokes the signing. However, this doesn't seem like it will actually be a problem. If a user auto-approves a bunch of tools, and then revokes that auto-approval, well those tools have already run, so why does it matter? Anything that hasn't already been approved and executed, well, it will just need manual approval instead.
- -->
-
-None of these are blockers for Phase C. But they're worth thinking about now so the `checkPermission()` interface is designed to handle them later. The method signature probably needs to accept the specific thing being checked (tool name, parameters) so the verification can bind to the right scope.
-
-<!--
-Good thoughts here! Help me think through this.
- -->
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-07 — Claude's Response: Signing Model     -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-
----
-
-Let me think through each of your responses. You're pulling on threads that are converging toward a cleaner answer than any of the options I originally proposed.
-
-### 1. Key pairs now — can we just do it?
-
-No real reason we can't. Node.js has `crypto.generateKeyPairSync` / `crypto.sign` / `crypto.verify` built in. No external dependency needed. Ed25519 is fast, small keys (32 bytes), small signatures (64 bytes), and is the modern standard for this kind of thing.
-
-```js
-import { generateKeyPairSync, sign, verify } from 'node:crypto';
-
-// Generate
-const { publicKey, privateKey } = generateKeyPairSync('ed25519');
-
-// Sign
-const signature = sign(null, Buffer.from(frameId), privateKey);
-
-// Verify
-const valid = verify(null, Buffer.from(frameId), publicKey, signature);
-```
-
-That's it. No GPG needed. The question is just *when* keys get generated and *where* they're stored. For now: generated on user creation, private key stored encrypted in the DB (or derived from their password), public key stored plainly. But this brings us to the problem you identified...
-
-### 2. Replay — signing the frame ID
-
-Signing the frame ID works perfectly for per-request approvals. Frame IDs are unique. If I sign `frm_abc123`, that signature is only valid for `frm_abc123`. Can't replay it against `frm_xyz789`. Problem solved.
-
-### 3. Pre-approvals — this is the hard one, and you've landed on the answer
-
-You walked yourself through the problem and arrived at: **system signatures with user audit trail.**
-
-Let me trace your reasoning and make sure we agree:
-
-**The problem:** Per-frame signing (sign the frame ID) can't express "always approve shell commands." You'd need the user's private key to sign future frame IDs, but the private key is encrypted and requires user interaction.
-
-**Your proposed solution:** The *system* signs approvals. The system has its own key pair. When a user says "always allow shell commands in this session," the system records: "User X (authenticated, verified) authorized auto-approval for [scope]. System signing all matching requests on their behalf." The system signs future tool-call approvals using the system key, with an audit record pointing back to the user's authorization.
-
-This gives you two tiers:
-
-| Tier | Who Signs | When | Trust Model |
-|------|-----------|------|-------------|
-| **Per-request** | System (on behalf of authenticated user) | User clicks "Approve" on a specific tool call | User authenticated → system signs the specific frame ID |
-| **Standing approval** | System (on behalf of authenticated user) | User configures "always allow X" | User authenticated → system records the rule → system auto-signs matching frames |
-
-Wait — I just realized something. With your model, *both* tiers are actually system signatures. The difference is just whether the user explicitly approved *this specific request* or *a class of requests*. In both cases, the system does the signing because it's the one that verified the user's identity.
-
-This simplifies everything dramatically:
-
-- **One signing key**: the system's key pair. Not per-user keys.
-- **`checkPermission()` verifies**: system signature on the approval frame.
-- **Audit trail**: the approval frame records *which user* authorized it and *how* (explicit click vs standing rule).
-- **No user key management**: users authenticate via password/session token (as they do now). The system acts as their signing proxy.
-
-Per-user key pairs become a federation concern only — needed when you can't trust the system to honestly report "user X authorized this." On a single server, the system *is* the trusted authority.
-
-<!--
-Yes, but I have a concern. What if we have compromised keys?
-
-I was also thinking we could sign "on behalf" of a specific user. In the case of user-approve, this is straight forward. In the second case, the system is signing on behalf of the user, but that is upon behalf of the users' permanent global approval, that was signed by the user.
-
-The interesting part about this idea is that the system is always the signer, but only ever on behalf of another actor. This would be interesting from a few different perspectives. One of them would be that if a user was removed from an organization, all their permissions requests now become invalid, because the system attempts to sign on behalf on an approval request that has been deleted. What I am describing here is "onion encryption", or "envolope" encryption.
-
-This still doesn't fix out issue with a compromised system key. I guess maybe keys could be timstamped? So that the key selected for varification would be chosen based on a date rane? This way, when we rotate keys, we can still load and verify OLD data, but any NEW data can not be verified by an old key?
- -->
-
-### 4. Revocation — you're right, it's a non-issue
-
-Your logic is sound: if a tool was already approved and executed, revoking the approval retroactively is meaningless — the tool already ran. For future requests, the system just stops auto-signing. `checkPermission()` checks for a valid standing approval *at the time of the request*. If the standing approval has been revoked (new commit that nullifies it), the system won't auto-sign, and the tool call falls back to manual approval.
-
-No revocation list needed. The commit log *is* the revocation list. A revocation is just another commit.
-
-### Revised `checkPermission()` flow
-
-```
-checkPermission(toolName, params):
-  1. Look for a system-signed approval frame for THIS frame ID
-     → Found + valid signature? Return approved.
-
-  2. Look for a standing approval rule matching (toolName, params, session scope)
-     → Found + not revoked? System auto-signs this frame ID. Return approved.
-
-  3. No approval found.
-     → Create permission-request frame.
-     → Return denied (caller should call done()).
-```
-
-### One remaining question
-
-With system-only signing, the "dangerous mode" (auto-approve everything) is just a system-level standing approval with scope `*`. The system auto-signs every tool call. Clean, auditable, and easily toggled per-session.
-
-But: should "dangerous mode" be per-session, per-user, per-org, or global? My instinct says per-session is the safest default. A user can say "I trust this agent in this session" without accidentally granting blanket access across all sessions.
-
-<!--
-I agree. I can see other possibilites in the future, but I think this is a good start.
- -->
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-07 — Claude's Response: Envelope Signing  -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-
----
-
-### Envelope signing — "system always signs on behalf of"
-
-This is a really elegant model. Let me make sure I'm following the layers:
-
-**Layer 1 — Per-request approval:**
-- User clicks "Approve" for a specific tool call
-- System signs: `sign(frameId, systemPrivateKey)`
-- Approval record: `{ frameId, approvedBy: userId, type: 'explicit', systemSig: '...' }`
-
-**Layer 2 — Standing approval (auto-approve):**
-- User previously signed a standing rule: `sign('allow:shell:*:session:ses_abc', userPrivateKey)` → stored as a standing-approval frame
-- Tool call comes in matching the rule
-- System verifies the standing approval is valid (user's signature checks out, user still exists, user still in org)
-- System signs *on behalf of* the user: `sign(frameId + standingApprovalFrameId, systemPrivateKey)`
-- Approval record: `{ frameId, approvedBy: userId, type: 'standing', standingApprovalRef: standingApprovalFrameId, systemSig: '...' }`
-
-The "envelope" part: the system signature wraps a reference to the user's authorization. It's a chain: system signed this frame → because user signed that standing approval → which covers this scope. If the user is removed from the org, their standing approval frame becomes invalid (user no longer authorized), so the system refuses to sign on their behalf. The chain breaks naturally.
-
-Wait — but you said user keys are encrypted and require user interaction. So at Layer 2, the user *did* interact once (to create the standing approval). That standing approval was signed with their key at that time. The system then references that signed artifact for future auto-approvals. The user doesn't need to interact again until the standing approval is revoked or expires.
-
-That's clean. The user's signature is a *one-time delegation* to the system for a specific scope. The system carries it forward.
-
-<!--
-Yes, the user's PRIVATE key is encrypted. Their public key is still available. So their signature can be verified.
-
-You are making this envelope encryption idea harder than it needs to be.
-
-A signing request is:
-`{authUserID:..., frameID:..., ts:timestamp, whatever...}`
-
-In this very specific order. This is then the literal data that is used for the verification.
-The user signs this blob of data, and stores the result in the frame. The verification can happen with the user's public key, and further verification can be had by knowing it was this very specific set of deterministic data that WAS signed, garenteeing the original intent was preserved.
-
-Then, the system signs this request as well. The system signs the user's signature. This can be verified with te server's public key, and the comparison of it to deterministic (and true) ordered datapoints further guarentees legitimacy.
-
-A request is only ever valid if it has a server signature signing a user's signature. In the case of an auto-approval, we wouldn't use datapoints like "frame id". Instead, we would use deterministic datapoints like the pattern itself `{authUserID:..., pattern:*, type:command, ts:...}`.
-
-Does this make sense? Am I getting us any closer to an understanding?
- -->
-
-### Compromised system key + key rotation
-
-You're right to worry about this. If the system key is compromised, an attacker could forge approval signatures for any tool call.
-
-Your timestamped key idea works. Here's a concrete approach:
-
-**Key versioning:**
-- System generates a new key pair periodically (or on demand via admin action)
-- Each key pair has a `validFrom` / `validUntil` timestamp and a `keyVersion` integer
-- When signing, the system uses the *current* key and stamps the `keyVersion` on the approval
-- When verifying, `checkPermission()` looks up the key by `keyVersion` and checks that the approval timestamp falls within the key's validity window
-
-```js
-// System key store (in DB or config)
-systemKeys = [
-  { version: 1, publicKey, privateKey, validFrom: '2026-01-01', validUntil: '2026-06-30' },
-  { version: 2, publicKey, privateKey, validFrom: '2026-07-01', validUntil: null },  // current
-];
-
-// Sign with current key
-approval = { frameId, keyVersion: 2, sig: sign(frameId, currentKey.privateKey) };
-
-// Verify — look up key by version, check timestamp
-const key = systemKeys.find(k => k.version === approval.keyVersion);
-const valid = verify(frameId, key.publicKey, approval.sig)
-           && approval.timestamp >= key.validFrom
-           && (!key.validUntil || approval.timestamp <= key.validUntil);
-```
-
-**On compromise:**
-- Rotate: generate new key pair, set `validUntil` on the old one
-- Old approvals still verify (they were signed before compromise)
-- New approvals can only be forged with the new key (which the attacker doesn't have)
-- If you *know* the old key was compromised, you can invalidate it entirely (`compromised: true`), which invalidates all approvals signed with it. Nuclear option, but available.
-
-This is straightforward to implement and doesn't add much complexity. The key store is just a small table. Signing adds a version number. Verification does one extra lookup.
-
-<!--
-Yay! Thank you for the feedback. 
- -->
-
-### Where this leaves us for Phase C
-
-Here's what I think the implementation priority looks like:
-
-**Phase C (now):** `checkPermission()` uses system signing with the current (single) key. No key rotation yet, no user key pairs. System signs on behalf of authenticated users. Frame ID is the signed payload. Standing approvals scoped per-session.
-
-**Later:** Key rotation, envelope signing with user standing-approval references, per-org/global scopes, federation with user key pairs.
-
-The `checkPermission()` interface stays the same either way — the internals evolve, but the plugin just calls `await this.checkPermission(toolName, params)` and gets back approved/denied.
-
-<!--
-I can agree to a near-future plan for this. We can defer key rotation to another future plan. Please add it to our "future-plans". 
- -->
-
-### Dangerous mode
-
-Per-session, agreed. A session-scoped standing approval with scope `*`, signed by the system on behalf of the authenticated user who enabled it. Auditable, revocable, and contained.
-
-<!--
-Honestly I'd prefer this not to be any different than any other permissions. The user grants per-session approvals by default, and only when the user goes into "global permisions" in their prefernces can they create approvals (or denials) that are applied globally. But if they allow dangerous mode globally, well, that is their choice. We might provide a little warning for our convenience.
- -->
-
----
-
-I think we've reached a natural stopping point on the signing/permissions design. We have enough clarity to build Phase C1 without painting ourselves into a corner on the security model. Want to keep going on conversation.md, or shall we start formalizing Phase C1?
-
-<!--
-Maybe, I still want to better understand envolope signing, and how it must be based on deterministic and verifiable states.
- -->
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-07 — Claude's Response: Deterministic Sig -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-
----
-
-You're right, I was overcomplicating it. Let me restate the envelope signing model as you've described it — simply and concretely.
-
-### The signing model, simplified
-
-A signature is always computed over a **deterministic, ordered blob of data**. The blob is the proof of intent. If you can reconstruct the blob from known facts and the signature verifies, you know the intent was genuine.
-
-**Per-request approval (user approves a specific tool call):**
-
-```
-// The deterministic data blob — order matters
-blob = `${authUserID}:${frameID}:${timestamp}`
-
-// User signs the blob with their private key
-userSig = sign(blob, userPrivateKey)
-
-// System verifies the user's signature with the user's public key
-verify(blob, userPublicKey, userSig)  // → true
-
-// System then signs the USER's signature with the system key
-systemSig = sign(userSig, systemPrivateKey)
-
-// Stored on the approval frame:
-{ authUserID, frameID, ts: timestamp, userSig, systemSig }
-```
-
-**To verify:**
-1. Reconstruct the blob from the stored fields: `${authUserID}:${frameID}:${ts}`
-2. Verify `userSig` against the blob using the user's public key → proves the user intended to approve this exact frame at this exact time
-3. Verify `systemSig` against `userSig` using the system's public key → proves the system witnessed and endorsed the user's approval
-
-Both signatures must be present and valid. A request is only legitimate if **the system signed the user's signature**. The system won't sign unless it authenticated the user. The user can't fake the system signature. The system can't fake the user signature. Both parties must agree.
-
-<!--
-Curious... without access to the user's private key, what does reconstructing the blob do? How do we compare against the original? Can you explain this process to me? 
- -->
-
-**Standing approval (auto-approve a pattern):**
-
-```
-// Different deterministic blob — no frameID, uses pattern instead
-blob = `${authUserID}:${pattern}:${type}:${scope}:${timestamp}`
-// e.g. "usr_abc:*:command:ses_xyz:1709827200"
-
-userSig = sign(blob, userPrivateKey)
-systemSig = sign(userSig, systemPrivateKey)
-
-// Stored on the standing-approval frame:
-{ authUserID, pattern: '*', type: 'command', scope: 'ses_xyz', ts: timestamp, userSig, systemSig }
-```
-
-**When a tool call comes in that matches a standing approval:**
-1. System finds the matching standing-approval frame
-2. System verifies both signatures on the standing approval (is it still valid?)
-3. System checks: does user still exist? Still in org? Standing approval not revoked?
-4. System creates a new per-request approval for *this* frame ID, but signed only by the system (the user's authority is *derived* from the standing approval)
-
-```
-// Auto-approved: system signs on behalf of user, referencing the standing approval
-blob = `${authUserID}:${frameID}:${standingApprovalFrameID}:${timestamp}`
-systemSig = sign(blob, systemPrivateKey)
-
-// No userSig — the authority comes from the standing approval chain
-{ authUserID, frameID, standingApprovalRef: standingApprovalFrameID, ts: timestamp, systemSig }
-```
-
-The verification chain: system signed this → because standing approval X exists → standing approval X was signed by user Y → user Y is still authorized.
-
-<!--
-Correct, you got the concept down. 
- -->
-
-### Why deterministic data matters
-
-The blob isn't random metadata. It's a precise statement of intent reconstructable from verifiable facts:
-
-- `authUserID` — who authorized it (verifiable: user exists in DB)
-- `frameID` — what was authorized (verifiable: frame exists in commit log)
-- `timestamp` — when it was authorized (verifiable: within key validity window)
-- `pattern` / `type` / `scope` — what class of actions was authorized (verifiable: matches the tool call being checked)
-
-If any of these are tampered with, the signature won't verify because the reconstructed blob won't match what was originally signed. You can't change the frameID and keep the signature valid. You can't change the userID. You can't backdate it. The signature binds all the fields together.
-
-<!--
-Exactly. 
- -->
-
-### Dangerous mode = just another standing approval
-
-No special system. User goes to session settings (or global preferences), enables "auto-approve all" for some scope. This creates a standing-approval frame with `pattern: '*'`. Same signing. Same verification. Same audit trail. If they do it globally, it's `scope: 'global'` instead of `scope: 'ses_xyz'`. We can show a warning ("This grants blanket approval across all sessions — are you sure?") but ultimately it's their choice.
-
-<!--
-Yep! 
- -->
-
-### Key rotation — added to future-plans
-
-Per your request, I'll add key rotation to the future-plans after this response.
-
-<!--
-Yes please, and thank you! 
- -->
-
-### Where I think we are now
-
-The signing model is:
-1. **Deterministic blobs** — ordered fields that capture intent
-2. **User signs the blob** (per-request) or **signed it once** (standing approval)
-3. **System signs the user's signature** — endorsement by the trusted authority
-4. **Verification reconstructs the blob** and checks both signatures
-5. **Auto-approval** = system signs on behalf of user, referencing a valid standing approval
-
-Does this match your understanding? Anything I'm still getting wrong?
-
-<!--
-Yes, I think we are both on the same page. I'd like to understand the data point reconstruction, and how we use that to validate (via cryptographic hash? help me understand...)
- -->
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-07 — Claude's Response: How Signing Works -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-
----
-
-### How public/private key signing actually works — the mechanics
-
-Let me walk through this step by step, because it's genuinely elegant once you see what's happening mathematically.
-
-**The key pair relationship:**
-
-Ed25519 generates two keys that are mathematically linked:
-- **Private key**: a 32-byte secret. Only the signer has this.
-- **Public key**: a 32-byte value derived from the private key. Anyone can have this.
-
-The magic: you can **sign** with the private key, and anyone with the public key can **verify** the signature is genuine — without ever seeing the private key. It's a one-way mathematical relationship.
-
-**What `sign()` actually does:**
-
-```
-data = "usr_abc:frm_xyz:1709827200"    // the deterministic blob
-signature = sign(data, privateKey)      // → 64 bytes of signature
-```
-
-Internally, `sign()` does:
-1. Hash the data (Ed25519 uses SHA-512 internally)
-2. Combine that hash with the private key using elliptic curve math
-3. Produce a 64-byte signature that is *unique to both the data AND the key*
-
-The signature is essentially: "this specific data was endorsed by the holder of this specific private key."
-
-**What `verify()` actually does:**
-
-```
-data = "usr_abc:frm_xyz:1709827200"    // reconstructed from stored fields
-valid = verify(data, publicKey, signature)  // → true or false
-```
-
-Internally, `verify()` does:
-1. Hash the data the same way `sign()` did
-2. Use the *public key* and the *signature* to check that the signature could only have been produced by the corresponding private key
-3. Return true/false
-
-**The key insight you're asking about — reconstruction:**
-
-We don't compare blobs directly. We don't need the original blob. We **reconstruct** it from the stored fields and ask: "does the signature verify against this reconstructed data?"
-
-Here's the concrete flow:
-
-```js
-// === AT APPROVAL TIME (user clicks "Approve") ===
-
-// 1. Build the deterministic blob from current facts
-let blob = `${authUserID}:${frameID}:${Date.now()}`;
-// blob = "usr_abc:frm_xyz:1709827200"
-
-// 2. User's client signs it
-let userSig = sign(blob, userPrivateKey);
-// userSig = <64 bytes> — unique to this blob + this private key
-
-// 3. Store the approval
-approval = { authUserID: 'usr_abc', frameID: 'frm_xyz', ts: 1709827200, userSig };
-
-
-// === AT VERIFICATION TIME (checkPermission called) ===
-
-// 4. Read the stored approval
-let { authUserID, frameID, ts, userSig } = approval;
-
-// 5. RECONSTRUCT the blob from the stored fields — same format, same order
-let reconstructed = `${authUserID}:${frameID}:${ts}`;
-// reconstructed = "usr_abc:frm_xyz:1709827200"
-
-// 6. Look up the user's PUBLIC key (stored openly in the DB)
-let publicKey = await getUserPublicKey(authUserID);
-
-// 7. Verify: does this signature match this data + this public key?
-let valid = verify(reconstructed, publicKey, userSig);
-// If someone tampered with authUserID, frameID, or ts in the stored approval,
-// the reconstructed blob won't match what was originally signed,
-// and verify() returns false.
-```
-
-**Why this works — the tamper scenarios:**
-
-| Attack | What happens |
-|--------|-------------|
-| Change `frameID` in stored approval | Reconstructed blob is different → signature doesn't match → `verify()` returns false |
-| Change `authUserID` in stored approval | Reconstructed blob different + wrong public key used → double fail |
-| Change `ts` in stored approval | Reconstructed blob different → signature doesn't match |
-| Forge a signature without the private key | Computationally infeasible (would take billions of years) |
-| Copy signature to a different approval | Signature was computed over different data → won't verify against new blob |
-
-The deterministic blob format is the contract between signer and verifier. Both sides agree: "this is the exact string that represents this approval." If the stored fields are tampered with, the reconstructed blob won't match, and the signature fails. If the signature is forged, the math fails. There's no way to cheat without the private key.
-
-**No hash comparison needed.** The `verify()` function does all the cryptographic work internally. We just feed it: the reconstructed data, the public key, and the signature. It returns true or false. That's it.
-
-### The envelope layer (system signing the user's signature)
-
-Same principle, one layer deeper:
-
-```js
-// System signs the user's signature (not the blob — the signature itself)
-systemSig = sign(userSig, systemPrivateKey);
-
-// To verify the system layer:
-let systemValid = verify(userSig, systemPublicKey, systemSig);
-// Proves: the system endorsed this specific user signature
-```
-
-Both must pass:
-1. `verify(reconstructedBlob, userPublicKey, userSig)` — user approved this data
-2. `verify(userSig, systemPublicKey, systemSig)` — system endorsed the user's approval
-
-Does this clarify the mechanics?
-
-<!--
-Fantastic! Yes, this is how I imagined it worked. Thanks for clarifying.
-
-Do you think we are ready to update our plan? What about testing? What about verifying "done"?
- -->
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-07 — Claude's Response: Plan Readiness    -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-
----
-
-### Are we ready to update the plan?
-
-Yes, I think so. Our conversation.md dialog has resolved every open design question from the original architecture plan, and introduced several new decisions that weren't in the original. Let me inventory what's changed since the AGIS-produced plan:
-
-**Decisions that refined the original plan:**
-
-| Topic | Original Plan | After Dialog |
-|-------|--------------|-------------|
-| onChange signature | `onChange(previousValue, newValue)` | `onChange(propName, previousValue, newValue)` |
-| Routing model | Broadcast with `handled` flag | **`next(ctx)`/`done(ctx)` middleware chain** |
-| Plugin entry point | `onChange()` only | **`process(next, done)` as entry, `onChange()` as convenience helper** |
-| Plugin lifecycle | Not specified | **Class registration, fresh instance per routing cycle, context on constructor** |
-| Error handling | Not specified | **Missing next/done → log + call next. Throw → log + call next. Never break the chain.** |
-| Permission architecture | Separate permission plugin in chain | **`checkPermission()` on BasePluginClass — a service, not middleware** |
-| Permission approval flow | Permission plugin executes tool | **Permission plugin stamps frame, frame re-routes to tool plugin** |
-| Protected properties | Options A/B/C proposed | **Not needed — security via signature verification** |
-| Signing model | Deferred to federation | **System envelope signing for Phase C. Deterministic blobs. Key rotation deferred.** |
-| Plugin storage loading | Engine loads into context | **Plugin JIT-loads its own data during async `process()`** |
-| Dangerous mode | Not specified | **Standing approval with `pattern: '*'`, per-session default** |
-
-**New concepts not in the original plan:**
-
-1. **Envelope signing** — system always signs on behalf of authenticated user
-2. **Standing approvals** — signed rules that authorize auto-approval for matching patterns
-3. **`done()` function** — explicit chain termination (vs `next()` for continuation)
-4. **Router safety net** — try/catch/finally around every plugin, chain never breaks
-5. **Tool-call frame lifecycle** — `pending` → `approved` → `executing` → `complete`
-6. **Plugin eviction** — future: disable plugin after N consecutive failures
-
-### What about testing?
-
-For Phase C1, here's what I think the test matrix looks like:
-
-**Selector Compiler tests:**
-- Parse `type:user-message` → matcher function
-- Parse `type:tool-call[toolName=shell:execute]` → matcher with property check
-- Parse `type:*` → catch-all matcher
-- Parse `author:agent` → authorType matcher
-- Invalid selector → throws at registration time
-- Function predicate passed through unchanged
-
-**Frame Router tests:**
-- Frame creation triggers matched handlers (`onChange(propName, null, newValue)`)
-- Frame update triggers matched handlers (`onChange(propName, oldValue, newValue)`)
-- Silent commits do NOT trigger routing
-- Handler errors caught, chain continues
-- Missing `next()`/`done()` → logged, chain continues
-- `done()` stops chain intentionally
-- `next(ctx)` passes modified context to next plugin
-- Re-entrant frame creation processed iteratively (no stack overflow)
-- Multiple plugins match same frame → all invoked in order
-- No matched plugins → no error, commit still persists
-- `context.changes` correctly computed by router before dispatch
-
-**BasePluginClass tests:**
-- Constructor stores context on `this.context`
-- `this.logger` available via context
-- `processChanges()` iterates `context.changes` and calls `onChange()` per entry
-- `checkPermission()` creates permission-request frame on denial
-- `checkPermission()` returns approved when valid signature exists
-
-**Silent commit tests:**
-- `merge([frames], { silent: true })` creates commit with `silent: true`
-- Silent commits in commit log (they're real commits)
-- Silent commits do NOT trigger router
-- Default merge (no options) triggers router
-
-**Integration tests:**
-- Full round-trip: frame created → selector matches → plugin.process() called → plugin creates new frame → second routing cycle fires
-- Permission flow: tool-call → checkPermission fails → permission-request created → user approves → signed commit → tool-call re-routes → checkPermission passes → tool executes
-
-### What about verifying "done"?
-
-For Phase C1 to be "done":
-
-1. **All new tests pass** (selector compiler, frame router, base plugin class, silent commits)
-2. **All existing tests still pass** (1411+ tests, nothing broken)
-3. **The router is wired into KikxCore** and fires on non-silent merges
-4. **At least one plugin registered via `registerSelector()`** and triggered by a frame mutation (even if it's a test-only plugin)
-5. **Silent commits proven** — a merge with `{ silent: true }` does NOT trigger routing
-
-Phase C1 does NOT include:
-- Migrating scheduling to the router (that's C2)
-- Migrating permissions to the router (that's C3)
-- Migrating hooks (C4)
-- Slimming InteractionLoop (C5)
-- Envelope signing implementation (deferred, but the `checkPermission()` interface is ready for it)
-
-Phase C1 is the foundation. If it's solid, everything else bolts on incrementally.
-
-Shall I update the plan in bot-docs to reflect all of this?
-
-<!--
-Yes, please do. We are adding all C* plans, yes? We would just _start integrating_ Phase C1 first, correct?
- -->
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- CONVERSATION BOUNDARY — 2026-03-07 — Claude's Response: Plan Update       -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-
----
-
-Yes, exactly. The bot-docs plan will cover all of C1 through C5, but implementation starts at C1. Each phase has its own "done" criteria. You don't touch C2 until C1 is solid.
-
-I'll update the bot-docs plan now — the reactive-frame-engine.yaml — to reflect everything from our dialog. This will be a substantial revision incorporating all the design decisions we've made.
+*Annotate above. If the YAMLs look right and the plan is complete, tell me to execute.*

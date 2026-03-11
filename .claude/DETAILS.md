@@ -15,7 +15,7 @@ Important details to remember across sessions.
 ## Planning Workflow
 
 - **`.claude/conversation2.md`** — V2 server planning Q&A (Rounds 1-19 complete). User answers inline in HTML comments. OVERWRITE each round.
-- **`.claude/conversation.md`** — Owned by another bot instance. DO NOT USE.
+- **`.claude/conversation.md`** — Reactive Frame Engine design dialog (Phases A-D). User annotates with HTML comments. Read-only reference — contains all design decisions for the routing engine, permission signing, plugin lifecycle, etc.
 - **`bot-docs/plan/kikx/server-plan.yaml`** — Formal plan YAML (874 lines, fully updated through Round 19)
 - **`bot-docs/plan/kikx/client-plan.yaml`** — V2 client plan (existing from earlier sessions)
 - **`bot-docs/plan/kikx/frame-manager.yaml`** — FrameManager spec

@@ -15,7 +15,9 @@ import { BasePluginClass } from '../../routing/base-plugin-class.mjs';
 // =============================================================================
 
 export function setup({ registerSelector, context }) {
-  let sessionScheduler = context.getProperty('sessionScheduler');
+  let sessionScheduler      = context.getProperty('sessionScheduler');
+  let sessionManager        = context.getProperty('sessionManager');
+  let discussionOrchestrator = context.getProperty('discussionOrchestrator');
 
   // If no scheduler exists (e.g., embedded/test mode without multi-agent),
   // skip registration entirely.
@@ -34,6 +36,31 @@ export function setup({ registerSelector, context }) {
       }
 
       try {
+        // Check for multi-coordinator discussion
+        if (discussionOrchestrator && sessionManager) {
+          let coordinators = await sessionManager.getCoordinators(sessionID);
+
+          if (coordinators && coordinators.length >= 2) {
+            let coordinatorList = coordinators.map((p) => ({
+              agentID:       p.agentID,
+              participantID: p.id,
+              agentName:     p.agentName || p.agentID,
+            }));
+
+            let result = await discussionOrchestrator.startDiscussion(sessionID, coordinatorList, commit);
+
+            // If bypassed via @mention, schedule only the targeted coordinator
+            if (result.bypassed) {
+              sessionScheduler.queueTrigger(sessionID, result.targetAgentID);
+              return await next(this.context);
+            }
+
+            // Discussion started — orchestrator handles scheduling from here
+            return await next(this.context);
+          }
+        }
+
+        // Standard path: 0-1 coordinators or no discussion orchestrator
         let scheduled = await sessionScheduler.onCommit(sessionID, commit);
 
         if (scheduled && scheduled.length > 0) {

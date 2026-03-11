@@ -42,6 +42,10 @@ export class ControllerBase extends MythixControllerBase {
     return this.getCore().getContext().getProperty('sessionScheduler');
   }
 
+  getStreamRelay() {
+    return this.getCore().getContext().getProperty('streamRelay');
+  }
+
   getCoreModels() {
     return this.getCore().getModels();
   }

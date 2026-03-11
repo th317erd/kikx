@@ -1,56 +1,63 @@
 # Multiple Coordinator Discussion Protocol
-# Deferred from: Phase 3 (Agent Roles & Coordination)
+# Status: IMPLEMENTED (V2)
+# Implemented: 2026-03-10
 # Priority: Low
 # Complexity: Very High
 
 summary: >
-  When multiple agents have coordinator role in a session, they discuss
-  via frames before one responds to the user. Enables "panel discussion"
-  style interactions where multiple AI perspectives collaborate.
+  When 2+ coordinator-role participants exist in a session, user messages
+  trigger a round-robin discussion protocol. Coordinators take turns
+  producing discussion frames, then one claims the final response.
 
-current_state: >
-  Sessions support multiple coordinators via the role field on
-  session_participants. However, only the first coordinator found by
-  loadSessionWithAgent() actually responds. Additional coordinators
-  are effectively ignored.
+implemented:
+  participant_roles:
+    description: >
+      Participant model extended with role field (coordinator/member).
+      SessionManager supports addParticipant with role, updateParticipant
+      applying role changes, and getCoordinators() query.
+    files:
+      - src/core/models/participant-model.mjs    # role field, version 2
+      - src/core/session/index.mjs               # addParticipant, updateParticipant, getCoordinators
 
-requirements:
-  - All coordinators receive unaddressed user messages
-  - Coordinators exchange frames (visible to user) to discuss approach
-  - One coordinator claims the response (or they synthesize jointly)
-  - Maximum exchange rounds configurable (default: 3 rounds)
-  - User can @mention a specific coordinator to bypass discussion
-  - Discussion frames visually distinct from direct responses
-  - Deadlock prevention: if no coordinator claims within timeout, first responds
+  discussion_orchestrator:
+    description: >
+      State machine (IDLE -> DISCUSSING -> CLAIMED -> RESPONDING -> IDLE)
+      managing round-robin discussion turns. Supports @mention bypass,
+      auto-claim on max rounds exceeded, deadlock prevention on errors.
+    files:
+      - src/core/scheduling/discussion-orchestrator.mjs  # NEW — state machine
 
-design_notes: >
-  This is architecturally complex. Options:
+  scheduling_integration:
+    description: >
+      SchedulingPlugin detects 2+ coordinators and delegates to
+      DiscussionOrchestrator instead of standard SessionScheduler path.
+    files:
+      - src/core/internal-plugins/scheduling/index.mjs
 
-  1. Sequential: Coordinator A responds first, B sees A's response and
-     adds/corrects. Simple but slow and doesn't feel like discussion.
+  message_history:
+    description: >
+      Discussion frames rendered in agent message history with XML
+      wrapping (<discussion round="N" agent="agentID">). Own discussion
+      messages as assistant role, others as user role with attribution.
+    files:
+      - src/core/interaction/message-history.mjs
 
-  2. Parallel + merge: Both respond simultaneously, system merges.
-     Fast but merge is AI-hard.
+  client_display:
+    description: >
+      Discussion frames rendered with "Discussion (round N)" label,
+      visually distinct from regular messages. Claim intent highlighted
+      via data-claim-intent attribute.
+    files:
+      - src/client/components/kikx-session-page/kikx-session-page.mjs
 
-  3. Turn-based discussion: A proposes, B critiques, A revises, then
-     final response. Most natural but requires orchestration logic.
-
-  Option 3 is recommended. The orchestrator would be a new system-level
-  function (like DelegateFunction) that manages the discussion rounds.
-
-  Key risk: token cost. Each discussion round is a full API call per
-  coordinator. A 3-round discussion with 2 coordinators = 6 API calls
-  per user message.
-
-files:
-  - server/lib/interactions/functions/discuss.mjs   # Discussion orchestrator
-  - server/lib/messaging/session-setup.mjs          # Multi-coordinator detection
-  - server/lib/pipeline/context.mjs                 # Discussion-aware context
+events:
+  - 'discussion:start'   # { sessionID, coordinators, maxRounds }
+  - 'discussion:round'   # { sessionID, round, agentID }
+  - 'discussion:claim'   # { sessionID, agentID, round }
+  - 'discussion:end'     # { sessionID, claimedByAgentID }
+  - 'discussion:bypass'  # { sessionID, targetAgentID, reason }
 
 tests:
-  - Two coordinators receive same message
-  - Discussion round produces frames visible to user
-  - Final response attributed to claiming coordinator
-  - @mention bypasses discussion, routes directly
-  - Timeout triggers fallback to first coordinator
-  - Token cost tracked per discussion round
+  - spec/core/models/participant-role-spec.mjs              # 13 tests
+  - spec/core/scheduling/discussion-orchestrator-spec.mjs   # 46 tests
+  - spec/core/scheduling/discussion-integration-spec.mjs    # 12 tests

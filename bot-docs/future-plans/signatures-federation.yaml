@@ -2,65 +2,172 @@
 # Deferred from: Phase C (Event Routing Layer)
 # Priority: Low
 # Complexity: Very High
+# Last updated: 2026-03-09
 
 summary: >
-  Public/private key pairs for identity and authority. Every frame
-  mutation is signed by its author, enabling cryptographic verification
-  of identity without trusting the server. Foundation for multi-server
-  federation where frames can be verified across trust boundaries.
+  Per-user Ed25519 key pairs for cryptographic identity, per-frame
+  authorship signatures, and a federation protocol enabling frames to
+  be verified across trust boundaries without trusting the remote server.
 
-current_state: >
-  Identity is server-controlled. The server authenticates users via
-  session tokens and stamps authorType/authorID on frames. There is
-  no cryptographic proof that a frame was authored by a specific
-  entity — you trust the server to be honest about attribution.
+# =============================================================================
+# What is ALREADY BUILT
+# =============================================================================
 
-  This works for a single-server deployment but doesn't scale to
-  federation or trust-minimized architectures.
+already_built:
+  keystore:
+    file: src/core/crypto/keystore.mjs
+    status: COMPLETE
+    details: >
+      System-level signing infrastructure using HMAC-SHA256 with the REK
+      (Runtime Encryption Key). Provides sign(), verify(), canonicalize()
+      (deterministic sorted-key JSON), and timing-safe comparison. Also
+      handles AES-256-GCM encryption, UMK wrapping, password slot
+      derivation (scrypt), per-user key derivation, and fingerprinting.
 
-requirements:
-  - Each user/agent has a key pair (generated or imported)
-  - Frame mutations are signed with the author's private key
-  - Other parties can verify frame authorship with the public key
-  - Server validates signatures before accepting frame mutations
-  - Frame schema includes a signature field
-  - Federated frames: frames from remote servers can be verified
-    using the author's public key without trusting the remote server
-  - Key rotation without breaking verification of old frames
+  envelope_signing:
+    file: src/core/permissions/permission-service.mjs
+    status: COMPLETE
+    details: >
+      PermissionService wraps PermissionEngine + Keystore. Provides
+      signApproval(), verifyApproval(), check() (returns signed approval
+      on allow), createStandingApproval() (session-scoped auto-approve
+      rules with signed metadata), and revokeStandingApproval().
+      Approval blobs are deterministic: { action, featureName, args,
+      sessionID }. Canonicalized and HMAC-signed by the system key.
 
-design_notes: >
-  The important near-term action is ensuring the frame schema has a
-  signature field ready to be populated. This is a schema concern,
-  not an implementation concern.
+  permission_flow:
+    files:
+      - src/core/routing/base-plugin-class.mjs
+      - src/core/internal-plugins/permissions/index.mjs
+      - src/core/interaction/permission-handler.mjs
+    status: COMPLETE
+    details: >
+      Full permission middleware chain via the FrameRouter. Tool plugins
+      call checkPermission(), which delegates to PermissionService.
+      Denied tool calls generate permission-request frames. User
+      approval creates a signed commit. The tool-call frame re-routes
+      through the plugin with a valid signature. Standing approvals
+      allow auto-signing matching requests per-session.
 
-  For federation, a universal frame merging system that is security-
-  aware will be needed — certain "federated fields" must not be
-  modified by remote servers (e.g. authorType, authorID, signature).
-  This hints at a frame field ACL system.
+  design_decisions_from_conversation:
+    source: .claude/conversation.md (2026-03-06 through 2026-03-07)
+    decisions:
+      - System always signs on behalf of authenticated users (envelope model)
+      - Deterministic blobs capture intent (ordered fields, canonicalized)
+      - Per-request approval signs the specific frame/action
+      - Standing approvals are signed rules that the system auto-applies
+      - Revocation is a commit (no separate revocation list needed)
+      - Dangerous mode is just a standing approval with pattern '*'
+      - Per-user Ed25519 key pairs deferred to federation phase
 
-  Key pair management is a significant UX challenge. Users shouldn't
-  need to understand PKI to use the system. Options:
-  - Server generates and manages keys (convenient but centralized)
-  - Client generates keys, server stores public key (more secure)
-  - External key provider (e.g. hardware tokens, OS keychain)
+# =============================================================================
+# What REMAINS to be built
+# =============================================================================
 
-  Deferral reason: single server, single database. The crypto adds
-  complexity without solving a real problem yet. Design for it (schema
-  field), don't implement until federation is on the roadmap.
+remaining:
+  per_user_key_pairs:
+    priority: Low
+    complexity: Medium
+    description: >
+      Each user and agent gets an Ed25519 key pair. Private key stored
+      encrypted in the DB (wrapped by user's UMK). Public key stored
+      plainly. User signs their own approval blobs with their private
+      key. System then envelope-signs the user's signature with the
+      system key. Verification requires both: user signature valid
+      (via public key) AND system endorsement valid (via system key).
+    notes: >
+      The conversation.md dialog designed this two-layer envelope in
+      detail. The interface (checkPermission, signApproval, verifyApproval)
+      would not change — only the internals of how signatures are
+      produced and verified. Node.js crypto.generateKeyPairSync('ed25519')
+      is built-in, no external dependencies needed.
+
+  per_frame_authorship_signatures:
+    priority: Low
+    complexity: Medium
+    description: >
+      Every frame mutation is signed by its author's private key. The
+      frame schema gains a 'signature' field. The server validates
+      signatures before accepting frame mutations. Any party with the
+      author's public key can verify a frame was genuinely authored by
+      that entity, without trusting the server.
+    notes: >
+      Currently frames are stamped with authorType/authorID by the
+      server — trust-the-server model. This upgrades to cryptographic
+      proof of authorship.
+
+  federation_protocol:
+    priority: Low
+    complexity: Very High
+    description: >
+      Multi-server protocol for sharing and verifying frames across
+      trust boundaries. A remote server sends frames; the receiving
+      server verifies author signatures using public keys without
+      trusting the remote server. Requires: discovery protocol, public
+      key exchange, frame field ACLs (protected fields like authorType,
+      authorID, signature cannot be modified by remote servers), and
+      conflict resolution for concurrent frame mutations.
+    notes: >
+      This is the "someday" feature. Single-server deployment works
+      fine with system-level signing. Federation is only needed when
+      multiple independent Kikx servers need to share conversations.
+
+  key_rotation:
+    priority: Low
+    complexity: Medium
+    description: >
+      Versioned system key pairs with validFrom/validUntil timestamps.
+      Old approvals still verify with old keys. New approvals only
+      signed with current key. Compromised key can be invalidated.
+    notes: >
+      Also captured separately in future-plans/key-rotation.yaml.
+      Applies to both system keys and per-user keys once those exist.
+
+# =============================================================================
+# Dependencies & Files
+# =============================================================================
 
 dependencies:
-  - Frame schema supports signature field
-  - Key management infrastructure
-  - Federation protocol design
+  - Per-user key pairs require UMK infrastructure (COMPLETE — keystore has wrapUMK/unwrapUMK)
+  - Per-frame signatures require frame schema update (signature field)
+  - Federation requires per-user key pairs + per-frame signatures + protocol design
 
-files:
-  - src/shared/frame-manager/frame-manager.mjs  # Signature field in schema
-  - src/core/auth/                               # Key management (NEW)
-  - src/core/federation/                         # Federation protocol (NEW)
+existing_files:
+  - src/core/crypto/keystore.mjs               # System signing (COMPLETE)
+  - src/core/permissions/permission-service.mjs # Envelope signing (COMPLETE)
+  - src/core/permissions/permission-engine.mjs  # Rule evaluation (COMPLETE)
+
+new_files_when_needed:
+  - src/core/crypto/user-keys.mjs              # Per-user key pair management
+  - src/core/federation/                        # Federation protocol
+
+# =============================================================================
+# Tests (for remaining work)
+# =============================================================================
 
 tests:
-  - Frame signed by author -> signature verifies with public key
-  - Tampered frame -> signature verification fails
-  - Key rotation -> old frames still verify with old public key
-  - Federated frame from remote server -> verified without trusting server
-  - Unsigned frame rejected (when signatures required)
+  per_user_keys:
+    - User key pair generated on registration
+    - Private key encrypted with UMK, decryptable on login
+    - User signs approval blob with private key
+    - System envelope-signs user's signature
+    - Verification requires both user + system signatures
+    - Tampered user signature fails verification
+    - Tampered system signature fails verification
+
+  per_frame_signatures:
+    - Frame signed by author on creation
+    - Signature verifies with author's public key
+    - Tampered frame content fails signature check
+    - Unsigned frame rejected when signatures required
+
+  federation:
+    - Federated frame from remote server verified without trusting server
+    - Protected fields (authorType, authorID, signature) rejected if modified by remote
+    - Key exchange between servers establishes trust
+    - Unknown author's frame rejected until public key obtained
+
+  key_rotation:
+    - Old frames verify with old key version
+    - New frames signed with current key
+    - Invalidated key rejects all its signatures

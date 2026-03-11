@@ -142,7 +142,7 @@ export class SessionManager {
   // Participant Management
   // ---------------------------------------------------------------------------
 
-  async addParticipant(sessionID, agentID) {
+  async addParticipant(sessionID, agentID, options = {}) {
     if (!sessionID)
       throw new Error('sessionID is required');
 
@@ -169,8 +169,9 @@ export class SessionManager {
     if (existing)
       return existing;
 
-    // Create Participant record
-    let participant = await Participant.create({ sessionID, agentID });
+    // Create Participant record with optional role
+    let role        = options.role || 'member';
+    let participant = await Participant.create({ sessionID, agentID, role });
 
     // Create participant-joined frame
     let frameManager = this.getFrameManager(sessionID);
@@ -261,8 +262,20 @@ export class SessionManager {
     if (!participant)
       throw new Error(`Participant not found: ${participantID}`);
 
+    if (updates.role !== undefined)
+      participant.role = updates.role;
+
     await participant.save();
     return participant;
+  }
+
+  async getCoordinators(sessionID) {
+    if (!sessionID)
+      throw new Error('sessionID is required');
+
+    let { Participant } = this._models;
+    let participants    = await Participant.where.sessionID.EQ(sessionID).AND.role.EQ('coordinator').all();
+    return participants;
   }
 
   // ---------------------------------------------------------------------------

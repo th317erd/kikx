@@ -59,21 +59,39 @@ function wireStreamListeners(interactionLoop, sessionID, response) {
     response.write(`event: commit\ndata: ${JSON.stringify(commit)}\n\n`);
   };
 
-  let onInteractionStart = ({ sessionID: sid, interactionID }) => {
+  let onInteractionStart = ({ sessionID: sid, interactionID, agentID }) => {
     if (sid !== sessionID)
       return;
 
-    response.write(`event: interaction:start\ndata: ${JSON.stringify({ interactionID })}\n\n`);
+    response.write(`event: interaction:start\ndata: ${JSON.stringify({ interactionID, agentID: agentID || null })}\n\n`);
+  };
+
+  let onInteractionEnd = ({ sessionID: sid, interactionID, agentID }) => {
+    if (sid !== sessionID)
+      return;
+
+    response.write(`event: interaction:end\ndata: ${JSON.stringify({ interactionID, agentID: agentID || null })}\n\n`);
+  };
+
+  let onDelta = ({ sessionID: sid, interactionID: iid, content, authorType: aType, authorID: aID }) => {
+    if (sid !== sessionID)
+      return;
+
+    response.write(`event: delta\ndata: ${JSON.stringify({ interactionID: iid, content, authorType: aType || null, authorID: aID || null })}\n\n`);
   };
 
   interactionLoop.on('frame', onFrame);
   interactionLoop.on('commit', onCommit);
   interactionLoop.on('interaction:start', onInteractionStart);
+  interactionLoop.on('interaction:end', onInteractionEnd);
+  interactionLoop.on('delta', onDelta);
 
   return () => {
     interactionLoop.off('frame', onFrame);
     interactionLoop.off('commit', onCommit);
     interactionLoop.off('interaction:start', onInteractionStart);
+    interactionLoop.off('interaction:end', onInteractionEnd);
+    interactionLoop.off('delta', onDelta);
   };
 }
 
@@ -199,6 +217,82 @@ describe('StreamController commit forwarding', () => {
 
       interactionLoop.emit('frame', { sessionID: 'ses_abc', frame: {} });
       interactionLoop.emit('commit', { sessionID: 'ses_abc', commit: {} });
+
+      assert.equal(response.chunks.length, 0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Streaming identity — agentID in interaction events, authorType/authorID in delta
+  // ---------------------------------------------------------------------------
+
+  describe('streaming identity', () => {
+    it('interaction:start SSE includes agentID', () => {
+      interactionLoop.emit('interaction:start', { sessionID: 'ses_abc', interactionID: 'int_1', agentID: 'agt_42' });
+
+      let startChunks = response.chunks.filter((chunk) => chunk.startsWith('event: interaction:start'));
+      assert.equal(startChunks.length, 1);
+
+      let data = JSON.parse(startChunks[0].split('data: ')[1].trim());
+      assert.equal(data.interactionID, 'int_1');
+      assert.equal(data.agentID, 'agt_42');
+    });
+
+    it('interaction:start SSE agentID is null when not provided', () => {
+      interactionLoop.emit('interaction:start', { sessionID: 'ses_abc', interactionID: 'int_2' });
+
+      let startChunks = response.chunks.filter((chunk) => chunk.startsWith('event: interaction:start'));
+      let data = JSON.parse(startChunks[0].split('data: ')[1].trim());
+      assert.equal(data.agentID, null);
+    });
+
+    it('interaction:end SSE includes agentID', () => {
+      interactionLoop.emit('interaction:end', { sessionID: 'ses_abc', interactionID: 'int_3', agentID: 'agt_99' });
+
+      let endChunks = response.chunks.filter((chunk) => chunk.startsWith('event: interaction:end'));
+      assert.equal(endChunks.length, 1);
+
+      let data = JSON.parse(endChunks[0].split('data: ')[1].trim());
+      assert.equal(data.interactionID, 'int_3');
+      assert.equal(data.agentID, 'agt_99');
+    });
+
+    it('delta SSE includes authorType and authorID', () => {
+      interactionLoop.emit('delta', {
+        sessionID:     'ses_abc',
+        interactionID: 'int_4',
+        content:       { text: 'hello' },
+        authorType:    'agent',
+        authorID:      'agt_55',
+      });
+
+      let deltaChunks = response.chunks.filter((chunk) => chunk.startsWith('event: delta'));
+      assert.equal(deltaChunks.length, 1);
+
+      let data = JSON.parse(deltaChunks[0].split('data: ')[1].trim());
+      assert.equal(data.interactionID, 'int_4');
+      assert.equal(data.authorType, 'agent');
+      assert.equal(data.authorID, 'agt_55');
+      assert.deepStrictEqual(data.content, { text: 'hello' });
+    });
+
+    it('delta SSE authorType/authorID are null when not provided', () => {
+      interactionLoop.emit('delta', {
+        sessionID:     'ses_abc',
+        interactionID: 'int_5',
+        content:       { text: 'bare' },
+      });
+
+      let deltaChunks = response.chunks.filter((chunk) => chunk.startsWith('event: delta'));
+      let data = JSON.parse(deltaChunks[0].split('data: ')[1].trim());
+      assert.equal(data.authorType, null);
+      assert.equal(data.authorID, null);
+    });
+
+    it('filters streaming identity events by sessionID', () => {
+      interactionLoop.emit('interaction:start', { sessionID: 'ses_other', interactionID: 'int_x', agentID: 'agt_1' });
+      interactionLoop.emit('interaction:end', { sessionID: 'ses_other', interactionID: 'int_x', agentID: 'agt_1' });
+      interactionLoop.emit('delta', { sessionID: 'ses_other', interactionID: 'int_x', content: { text: 'hi' }, authorType: 'agent', authorID: 'agt_1' });
 
       assert.equal(response.chunks.length, 0);
     });

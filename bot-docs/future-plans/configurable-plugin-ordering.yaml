@@ -1,63 +1,57 @@
-# Configurable Plugin Ordering
+# Configurable Plugin Ordering — API & UI
 # Deferred from: Phase C (Event Routing Layer)
 # Priority: Low
 # Complexity: Low
 
 summary: >
-  Allow organization owners to configure the order in which plugins
-  are evaluated during frame routing. Default ordering is installation
-  order (internal plugins first, then external). This enables fine-
-  grained control over plugin priority when multiple plugins match
-  the same frame mutation.
+  Provide an API endpoint and org-owner-facing UI for reordering external
+  plugins. The routing engine already evaluates plugins in registration
+  order (internal first, then external). This feature exposes that
+  ordering to org owners so they can adjust external plugin priority
+  without code changes.
 
 current_state: >
-  Plugin execution order is implicit — plugins are loaded in a fixed
-  order (internal first, then external by registration time). There is
-  no user-facing configuration for ordering. Within a plugin, handler
-  registration order determines evaluation sequence.
-
-  Phase C introduces a command dispatch routing plugin with "zero"
-  priority (always first), and a "handled" flag system where a plugin
-  can stop further routing for a frame without explicitly calling next().
+  Phase C is complete. The FrameRouter evaluates matched plugins in
+  registration order: internal plugins first (command dispatch, scheduling,
+  permissions, hooks), then external plugins in filesystem discovery
+  order. The next()/done() middleware chain and "handled" short-circuit
+  are fully implemented. There is no user-facing way to change the
+  order of external plugins.
 
 requirements:
-  - Org owners can reorder plugins via settings
-  - Internal plugins maintain their relative ordering (not user-configurable)
-  - External plugins can be reordered relative to each other
-  - Default order is installation order
-  - Priority numbers or explicit ordering (not CSS specificity)
-  - "Handled" flag: when a plugin sets handled=true, no further plugins
-    are evaluated for that frame mutation
+  - API endpoint (e.g. PUT /orgs/:orgId/plugin-order) to set external
+    plugin ordering for an organization
+  - Settings UI tab for org owners to drag-and-drop reorder external
+    plugins
+  - Internal plugins are NOT reorderable (always run first, fixed order)
+  - Only external plugins appear in the reorder UI
+  - Default order is filesystem discovery order (current behavior)
+  - Persisted on the Organization model (JSON array of plugin IDs)
+  - FrameRouter reads the stored order at startup and on config change
 
 design_notes: >
-  The "handled" system (mentioned in Open Question 7 of the architecture
-  plan) is separate from ordering but related. A plugin at position 1
-  that sets handled=true prevents plugins at positions 2+ from seeing
-  the frame. This is most useful for command dispatch — the command
-  plugin should run first ("zero" priority), and if it handles a
-  /command, other plugins don't need to see it.
+  This is purely an API + UI feature. The router already supports
+  ordered evaluation — the only change needed is reading the plugin
+  order from the Organization model instead of using implicit discovery
+  order. The UI is a simple sortable list in the org settings page.
 
-  Implementation is straightforward once the router supports ordered
-  plugin evaluation. Store plugin order as a JSON array on the
-  Organization model. Router reads this at startup and evaluates
-  matched handlers in the specified order.
-
-  Deferral reason: no third-party plugins exist yet. Internal plugins
-  have well-defined ordering needs that are hardcoded. This becomes
-  valuable when external plugins can be installed.
+  Not needed until third-party or multiple external plugins exist.
+  Internal plugin ordering is hardcoded and well-tested.
 
 dependencies:
-  - Phase C (Frame Event Router) must be stable
-  - Third-party plugin ecosystem exists
+  - Phase C (Frame Event Router) — COMPLETE
+  - Multiple external plugins installed (practical prerequisite)
 
 files:
-  - src/core/routing/frame-router.mjs     # Ordered handler evaluation
-  - src/core/models/organization.mjs      # Plugin order setting
-  - src/core/plugin-loader/registry.mjs   # Order-aware registration
+  - src/server/controllers/org-controller.mjs    # New endpoint
+  - src/core/models/organization.mjs             # pluginOrder field
+  - src/core/routing/frame-router.mjs            # Read stored order
+  - src/client/components/kikx-settings-page/    # Reorder UI tab
 
 tests:
-  - Plugins fire in configured order
-  - "Handled" flag stops further plugin evaluation
-  - Default order matches installation order
-  - Internal plugins always run before external
-  - Org owner can reorder external plugins
+  - API sets and retrieves plugin order for org
+  - FrameRouter evaluates external plugins in stored order
+  - Internal plugins always run before external regardless of config
+  - Missing/invalid order falls back to discovery order
+  - Non-owner cannot modify plugin order (403)
+  - UI renders sortable list of external plugins

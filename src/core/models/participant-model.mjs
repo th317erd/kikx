@@ -10,7 +10,7 @@ import { ModelBase, Types } from './model-base.mjs';
 // =============================================================================
 
 export class Participant extends ModelBase {
-  static version = 1;
+  static version = 2;
 
   static fields = {
     ...(ModelBase.fields || {}),
@@ -29,6 +29,12 @@ export class Participant extends ModelBase {
       type:      Types.FOREIGN_KEY('Agent:id', { onDelete: 'CASCADE' }),
       allowNull: false,
       index:     true,
+    },
+    role: {
+      type:         Types.STRING(32),
+      defaultValue: 'member',
+      allowNull:    false,
+      index:        true,
     },
     // Virtual relationships
     session: {

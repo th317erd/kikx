@@ -40,18 +40,18 @@ export class StreamController extends ControllerAuthBase {
     };
 
     // Interaction lifecycle
-    let onInteractionStart = ({ sessionID: sid, interactionID }) => {
+    let onInteractionStart = ({ sessionID: sid, interactionID, agentID }) => {
       if (sid !== sessionID)
         return;
 
-      response.write(`event: interaction:start\ndata: ${JSON.stringify({ interactionID })}\n\n`);
+      response.write(`event: interaction:start\ndata: ${JSON.stringify({ interactionID, agentID: agentID || null })}\n\n`);
     };
 
-    let onInteractionEnd = ({ sessionID: sid, interactionID }) => {
+    let onInteractionEnd = ({ sessionID: sid, interactionID, agentID }) => {
       if (sid !== sessionID)
         return;
 
-      response.write(`event: interaction:end\ndata: ${JSON.stringify({ interactionID })}\n\n`);
+      response.write(`event: interaction:end\ndata: ${JSON.stringify({ interactionID, agentID: agentID || null })}\n\n`);
     };
 
     let onPermissionRequest = ({ sessionID: sid, frameID, toolName }) => {
@@ -62,18 +62,18 @@ export class StreamController extends ControllerAuthBase {
     };
 
     // Streaming deltas (transient, not persisted)
-    let onDelta = ({ sessionID: sid, interactionID: iid, content }) => {
+    let onDelta = ({ sessionID: sid, interactionID: iid, content, authorType: aType, authorID: aID }) => {
       if (sid !== sessionID)
         return;
 
-      response.write(`event: delta\ndata: ${JSON.stringify({ interactionID: iid, content })}\n\n`);
+      response.write(`event: delta\ndata: ${JSON.stringify({ interactionID: iid, content, authorType: aType || null, authorID: aID || null })}\n\n`);
     };
 
-    let onReflectionDelta = ({ sessionID: sid, interactionID: iid, content }) => {
+    let onReflectionDelta = ({ sessionID: sid, interactionID: iid, content, authorType: aType, authorID: aID }) => {
       if (sid !== sessionID)
         return;
 
-      response.write(`event: reflection-delta\ndata: ${JSON.stringify({ interactionID: iid, content })}\n\n`);
+      response.write(`event: reflection-delta\ndata: ${JSON.stringify({ interactionID: iid, content, authorType: aType || null, authorID: aID || null })}\n\n`);
     };
 
     let onUsage = ({ sessionID: sid, interactionID: iid, usage }) => {
@@ -91,6 +91,23 @@ export class StreamController extends ControllerAuthBase {
       response.write(`event: commit\ndata: ${JSON.stringify(commit)}\n\n`);
     };
 
+    // Cross-session relay events
+    let streamRelay = this.getStreamRelay ? this.getStreamRelay() : null;
+
+    let onRelayDelta = ({ sourceSessionID, targetSessionID, interactionID, content, authorType, authorID }) => {
+      if (sourceSessionID !== sessionID)
+        return;
+
+      response.write(`event: relay:delta\ndata: ${JSON.stringify({ sourceSessionID, targetSessionID, interactionID, content, authorType: authorType || null, authorID: authorID || null })}\n\n`);
+    };
+
+    let onRelayReflectionDelta = ({ sourceSessionID, targetSessionID, interactionID, content, authorType, authorID }) => {
+      if (sourceSessionID !== sessionID)
+        return;
+
+      response.write(`event: relay:reflection-delta\ndata: ${JSON.stringify({ sourceSessionID, targetSessionID, interactionID, content, authorType: authorType || null, authorID: authorID || null })}\n\n`);
+    };
+
     // Attach listeners
     interactionLoop.on('frame', onFrame);
     interactionLoop.on('commit', onCommit);
@@ -100,6 +117,11 @@ export class StreamController extends ControllerAuthBase {
     interactionLoop.on('delta', onDelta);
     interactionLoop.on('reflection-delta', onReflectionDelta);
     interactionLoop.on('interaction:usage', onUsage);
+
+    if (streamRelay) {
+      streamRelay.on('relay:delta', onRelayDelta);
+      streamRelay.on('relay:reflection-delta', onRelayReflectionDelta);
+    }
 
     // Clean up on disconnect
     let cleanup = () => {
@@ -111,6 +133,11 @@ export class StreamController extends ControllerAuthBase {
       interactionLoop.off('delta', onDelta);
       interactionLoop.off('reflection-delta', onReflectionDelta);
       interactionLoop.off('interaction:usage', onUsage);
+
+      if (streamRelay) {
+        streamRelay.off('relay:delta', onRelayDelta);
+        streamRelay.off('relay:reflection-delta', onRelayReflectionDelta);
+      }
     };
 
     // Store cleanup reference for testing

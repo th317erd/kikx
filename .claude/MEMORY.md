@@ -1,26 +1,85 @@
-# Session Memory (2026-03-04)
+# Session Memory (2026-03-09)
 
-## Changes Made This Session
+## What We Did This Session
 
-### UI Polish & Bug Fixes
-- **User chat bubble color** now follows active accent/theme color (`--accent-dim` / `--accent-glow`) instead of hardcoded red/pink. Changed in both `theme.css` and `kikx-interaction.mjs`.
-- **Status bar cost values** colored with `--accent-text` via `.cost-value` CSS class. Category labels ("Global", "Service", "Session") remain `--text-secondary`.
-- **Message input padding** increased: `:host` uses `--spacing-md` (16px) horizontal, `.input-area` uses `--spacing-md` (16px) horizontal for proper Send button breathing room.
-- **Interaction component layout**: Timestamp moved from header to footer. Footer format is "timestamp / ~N tokens" (combined in `.footer-meta` span). Header now only shows avatar + name.
+### 1. Committed & Pushed All Uncommitted Work
+- Commit `67f31e6`: Agent-less messaging, context truncation, permission denial feedback, UI polish
+- Pushed 14 commits to `origin/v2` (was 13 ahead, now synced)
+- **1800 tests, 0 failures** — clean
 
-### Token Tracking (Server-Side)
-- **Server estimates user message tokens** in `InteractionLoop.startInteraction()`: `Math.ceil(text.length / 4) * agentCount`. Stored as `content.estimatedTokens` in user-message frames. Persists across reload.
-- **SSE user-message frames** no longer fully skipped on client — they find the optimistic bubble and set `token-count`, `data-frame-id`, `data-interaction-id` from server data.
-- **Usage event** sets output tokens on agent bubbles only (`[alignment="agent"]` selector prevents overwriting user bubble).
-- **History rendering** reads `estimatedTokens` from frame content for user messages.
+### 2. Reviewed bot-docs Plans
+- Read all files in `bot-docs/future-plans/` (22 files at start)
+- Read `.claude/conversation.md` — the full Reactive Frame Engine design dialog (Phases A-D)
+- Cross-referenced plans against implemented code
 
-### Bug: querySelector + Shadow DOM
-- `this._chatView.querySelector(...)` can't find interactions inside `kikx-chat-view`'s shadow DOM. Must use `this._chatView.shadowRoot.querySelector(...)` instead. The interactions are appended via `appendInteraction()` into the shadow DOM's `.interaction-stream` div, not as light DOM children.
+### 3. Dropped Stale Plans
+- **`npm-plugin-support.yaml`** — DELETED. Already implemented: `_loadPlugins()` in `kikx-core.mjs:219` supports internal plugins, data dir, config paths, and `KIKX_PLUGIN_PATHS` env var.
+- **`generator-suspension.yaml`** — DELETED. Superseded by Phase C's `next()`/`done()` middleware routing model.
+- **`chained-command-permissions-ux.yaml`** — DELETED. Permissions system working as designed with envelope signing.
 
-### Bug: Usage selector collision
-- Both user and agent bubbles can share the same `data-interaction-id`. The `_handleUsage` selector must include `[alignment="agent"]` to avoid overwriting the user bubble's estimated tokens with the agent's output tokens.
+### 4. Rewrote Plans
+- **`configurable-plugin-ordering.yaml`** — Rewritten to scope only API endpoint + org-owner UI for reordering external plugins. Router already supports ordered evaluation.
+- **`signatures-federation.yaml`** — Rewritten with "already built" vs "remaining" sections. Documents that Keystore, envelope signing, and PermissionService are COMPLETE. Remaining: per-user Ed25519 keys, per-frame authorship signatures, federation protocol.
+
+### 5. Detailed Plan Reviews (for user)
+- Explained `sessions-as-frames.yaml` and `general-re-feed-recovery.yaml` in depth
+- Explained `signatures-federation.yaml` and `meta-permissions.yaml` in depth
+- Confirmed Phase C3 envelope signing is live and working
+
+## Current State of Plans
+
+### Future Plans Still Active (19 files after cleanup)
+**High Priority:**
+- `meta-permissions.yaml` — Who can modify permission rules (file paths need V2 update)
+- `device-approval-auth.yaml` — Cross-device login without credential transmission
+
+**Medium Priority:**
+- `sessions-as-frames.yaml` — Unify sessions + frames into single data model
+- `abilities-system.yaml` — Natural language agent customization via DM sessions
+- `inter-agent-streaming.yaml` — Member responses streamed to coordinator
+- `cross-session-replay-prevention.yaml` — Nonce-based multi-session security
+- `general-re-feed-recovery.yaml` — Self-healing for stuck frames after crash
+
+**Low Priority:**
+- `signatures-federation.yaml` — Per-user keys + federation (partially built)
+- `key-rotation.yaml` — Versioned system key pairs
+- `configurable-plugin-ordering.yaml` — API/UI for org owners to reorder plugins
+- `multi-coordinator-protocol.yaml`
+- `settings-ui-polish.yaml`
+- `participant-sidebar.yaml`
+- `agent-avatar-picker.yaml`
+- `plugin-auto-reload.yaml`
+- `structured-command-args.yaml`
+- `rich-content-renderers.yaml`
+- `message-screenshots.yaml`
+
+## Build Status (as of 2026-03-09)
+
+| Phase | Status |
+|-------|--------|
+| Phase 1 (MVP, Steps 1-13) | COMPLETE |
+| Phase 2 (V1 Parity, Steps 14-19) | COMPLETE |
+| Phase 3 (V2 Differentiators) | NOT STARTED |
+| Phase A (Commit log, refs, diff) | COMPLETE |
+| Phase B (Author fields, ACL, scheduler) | COMPLETE |
+| Phase C1 (Frame Router Foundation) | COMPLETE |
+| Phase C2 (Scheduling → router plugin) | COMPLETE |
+| Phase C3 (Permissions + envelope signing) | COMPLETE |
+| Phase C4 (Hooks → routing plugin) | COMPLETE |
+| Phase C5 (InteractionLoop slimmed) | COMPLETE |
+| Phase D1-D6 (Streaming + viewport) | COMPLETE |
+| Context Truncation Phase 1 | COMPLETE |
+| Agent-less Messaging | COMPLETE |
+| Permission Denial Feedback | COMPLETE |
+
+## Key Conversation.md Context
+- `.claude/conversation.md` — The full Reactive Frame Engine design dialog (2026-03-06 to 2026-03-07). User annotates with HTML comments. Contains all design decisions for Phases A-D.
+- **conversation.md is owned by another bot instance** per DETAILS.md... BUT this session we read it as a reference to understand what was built. The user asked us to read it.
+- Context truncation "Phase 2" (rolling compacts with agent involvement) was discussed in a prior session but never written to a file. No plan exists for it.
 
 ## Key Reminders
 - **Anthropic prompt cache**: `cache_control: { type: 'ephemeral' }` caches context for ~5 minutes. Deleting DB frames doesn't clear the agent's "memory" until cache expires.
 - **Server restart required** after changing any file in `src/core/` or `src/server/` — client files are served fresh on reload.
 - **V2 server PID**: check with `ps aux | grep 'node.*index.mjs'`
+- **Shadow DOM gotcha**: `this._chatView.querySelector(...)` can't reach into shadow DOM. Must use `this._chatView.shadowRoot.querySelector(...)`.
+- **Usage selector collision**: `_handleUsage` must include `[alignment="agent"]` to avoid overwriting user bubble tokens.

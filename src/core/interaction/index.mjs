@@ -237,7 +237,7 @@ export class InteractionLoop extends EventEmitter {
       frameManager,
     });
 
-    this.emit('interaction:start', { sessionID, interactionID });
+    this.emit('interaction:start', { sessionID, interactionID, agentID: (params.agent && params.agent.id) || null });
     await this._iterateGenerator(sessionID, generator, interactionID, params, frameManager);
 
     return interactionID;
