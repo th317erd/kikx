@@ -1,22 +1,44 @@
 # Agent Memory Context
-# Status: PLANNED
+# Status: IMPLEMENTED
 # Priority: Medium
 # Complexity: Medium
+# Implemented: 2026-03-11
 
 summary: >
   Per-actor persisted JSON context stored in the database. Provides
   agent-specific configuration, preferences, and memory that persists
-  across sessions. Replaces the static agent.getConfig() stub.
+  across sessions. Also provides session-level context that inherits
+  through the parent chain for child sessions.
 
-design:
-  storage: >
-    JSON column on Agent model (or separate AgentConfig table).
-    Accessed via agent.getConfig() / agent.setConfig().
+implementation:
+  agent_config:
+    column: config (TEXT long, nullable)
+    methods: getConfig(), setConfig(), updateConfig(), getSafeConfig()
+    defaults: { riskLevel: 'medium' }
+    protected_keys: apiKey, encryptedAPIKey (stripped from tool responses)
+    model_version: 2
 
-  contents:
-    riskLevel: 'medium'        # Danger Level setting
-    # Future: agent-specific preferences, learned behaviors, etc.
+  session_context:
+    column: context (TEXT long, nullable)
+    methods: getContext(), setContext(), updateContext(), getEffectiveContext()
+    defaults: {}
+    inheritance: child sessions inherit parent context (child overrides win)
+    model_version: 3
 
-  access_pattern: >
-    Read on interaction start (cached for interaction lifetime).
-    Written via agent settings UI or API.
+  memory_plugin:
+    path: src/core/internal-plugins/memory/index.mjs
+    tools:
+      - memory:getAgentConfig (low risk)
+      - memory:setAgentConfig (low risk)
+      - memory:updateAgentConfig (low risk)
+      - memory:getSessionContext (low risk)
+      - memory:setSessionContext (high risk)
+      - memory:updateSessionContext (high risk)
+
+  tests:
+    - spec/core/models/agent-config-spec.mjs (24 tests)
+    - spec/core/models/session-context-spec.mjs (26 tests)
+    - spec/core/internal-plugins/memory/agent-memory-spec.mjs (19 tests)
+    - spec/core/internal-plugins/memory/session-memory-spec.mjs (16 tests)
+    - spec/core/integration/memory-context-integration-spec.mjs (6 tests)
+    # Total: 91 new tests (85 net new + 6 updated from existing)

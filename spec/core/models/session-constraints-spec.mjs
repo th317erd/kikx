@@ -39,9 +39,9 @@ describe('Session constraint fields', () => {
   // Version bump
   // ---------------------------------------------------------------------------
 
-  it('Session model version is 2', () => {
+  it('Session model version is 3', () => {
     let { Session } = models;
-    assert.equal(Session.version, 2);
+    assert.equal(Session.version, 3);
   });
 
   // ---------------------------------------------------------------------------

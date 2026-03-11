@@ -6,11 +6,15 @@ import { ModelBase, Types } from './model-base.mjs';
 // Agent
 // =============================================================================
 // Configured agent instance at org level.
-// Has a name, plugin type, encrypted API key, and instructions.
+// Has a name, plugin type, encrypted API key, instructions, and config.
 // =============================================================================
 
+const AGENT_DEFAULTS = { riskLevel: 'medium' };
+
 export class Agent extends ModelBase {
-  static version = 1;
+  static version = 2;
+
+  static PROTECTED_KEYS = new Set(['apiKey', 'encryptedAPIKey']);
 
   static fields = {
     ...(ModelBase.fields || {}),
@@ -52,6 +56,11 @@ export class Agent extends ModelBase {
       type:      Types.TEXT('long'),
       allowNull: true,
     },
+    // Persisted JSON config (risk level, model preferences, abilities, etc.)
+    config: {
+      type:      Types.TEXT('long'),
+      allowNull: true,
+    },
     // Virtual relationships
     organization: {
       type: Types.Model('Organization', ({ self }, { Organization }, userQuery) => {
@@ -60,7 +69,53 @@ export class Agent extends ModelBase {
     },
   };
 
+  // ---------------------------------------------------------------------------
+  // Config methods
+  // ---------------------------------------------------------------------------
+
   getConfig() {
-    return { riskLevel: 'medium' };
+    let stored = null;
+
+    if (this.config != null) {
+      try {
+        stored = JSON.parse(this.config);
+      } catch (_e) {
+        // Graceful degradation: invalid JSON → defaults
+        stored = null;
+      }
+    }
+
+    if (!stored || typeof stored !== 'object')
+      return { ...AGENT_DEFAULTS };
+
+    // Deep-clone to prevent mutation leaking back
+    return { ...AGENT_DEFAULTS, ...JSON.parse(JSON.stringify(stored)) };
+  }
+
+  setConfig(value) {
+    if (value == null) {
+      this.config = null;
+      return;
+    }
+
+    this.config = JSON.stringify(value);
+  }
+
+  updateConfig(partial) {
+    if (!partial || typeof partial !== 'object' || Object.keys(partial).length === 0)
+      return;
+
+    let current = this.getConfig();
+    let merged  = { ...current, ...partial };
+    this.setConfig(merged);
+  }
+
+  getSafeConfig() {
+    let config = this.getConfig();
+
+    for (let key of Agent.PROTECTED_KEYS)
+      delete config[key];
+
+    return config;
   }
 }

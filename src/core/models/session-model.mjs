@@ -10,7 +10,7 @@ import { ModelBase, Types } from './model-base.mjs';
 // =============================================================================
 
 export class Session extends ModelBase {
-  static version = 2;
+  static version = 3;
 
   static fields = {
     ...(ModelBase.fields || {}),
@@ -78,6 +78,11 @@ export class Session extends ModelBase {
       allowNull:    true,
       defaultValue: null,
     },
+    // Persisted JSON context (runtime metadata, inherited by child sessions)
+    context: {
+      type:      Types.TEXT('long'),
+      allowNull: true,
+    },
     // Virtual relationships
     organization: {
       type: Types.Model('Organization', ({ self }, { Organization }, userQuery) => {
@@ -100,4 +105,69 @@ export class Session extends ModelBase {
       }),
     },
   };
+
+  // ---------------------------------------------------------------------------
+  // Context methods
+  // ---------------------------------------------------------------------------
+
+  getContext() {
+    if (this.context == null)
+      return {};
+
+    try {
+      let parsed = JSON.parse(this.context);
+      if (!parsed || typeof parsed !== 'object')
+        return {};
+
+      // Deep-clone to prevent mutation leaking back
+      return JSON.parse(JSON.stringify(parsed));
+    } catch (_e) {
+      return {};
+    }
+  }
+
+  setContext(value) {
+    if (value == null) {
+      this.context = null;
+      return;
+    }
+
+    this.context = JSON.stringify(value);
+  }
+
+  updateContext(partial) {
+    if (!partial || typeof partial !== 'object' || Object.keys(partial).length === 0)
+      return;
+
+    let current = this.getContext();
+    let merged  = { ...current, ...partial };
+    this.setContext(merged);
+  }
+
+  async getEffectiveContext() {
+    let Session  = this.getModel('Session');
+    let contexts = [];
+    let current  = this;
+
+    // Collect contexts from child (this) up to root
+    contexts.push(current.getContext());
+
+    while (current.parentSessionID) {
+      let parent = await Session.where.id.EQ(current.parentSessionID).first();
+      if (!parent)
+        break;
+
+      contexts.push(parent.getContext());
+      current = parent;
+    }
+
+    // Merge from root down (deepest child wins)
+    contexts.reverse();
+    let effective = {};
+    for (let ctx of contexts)
+      Object.assign(effective, ctx);
+
+    // Return deep-cloned copy
+    return JSON.parse(JSON.stringify(effective));
+  }
 }

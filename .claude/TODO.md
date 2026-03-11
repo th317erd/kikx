@@ -1,69 +1,43 @@
-# Agent Deliberation via Child Sessions — COMPLETE
+# Agent & Session Memory Context — COMPLETE
 
-## Previously Completed (Streaming Foundation)
+## Step 1: Agent Config Persistence (TDD) ✅
 
-- [x] Participant `role` field (coordinator/member) on Participant model
-- [x] SessionManager: `addParticipant` with role, `updateParticipant`, `getCoordinators()`
-- [x] Streaming identity: SSE events carry `agentID`, `authorType`, `authorID`
-- [x] Multi-agent streaming display: per-agent typing indicators, delta routing
-- [x] Cross-session StreamRelay: delta forwarding across session boundaries
+- [x] 1A. Write expanded tests in `spec/core/models/agent-config-spec.mjs` (24 tests)
+- [x] 1B. Implement config field, getConfig(), setConfig(), updateConfig(), getSafeConfig() in `agent-model.mjs`
+- [x] 1C. Run tests, verify green — 24/24 pass
 
-## Step 0: Cleanup Wrong-Approach Code ✅
+## Step 2: Session Context Persistence (TDD) ✅
 
-- [x] Delete discussion-orchestrator files, revert wrong-approach code
-- [x] Rename/create YAML future-plans
-- [x] Full test suite pass after cleanup
+- [x] 2A. Write tests in `spec/core/models/session-context-spec.mjs` (18 tests)
+- [x] 2B. Implement context field, getContext(), setContext(), updateContext() in `session-model.mjs`
+- [x] 2C. Update version assertion in `session-constraints-spec.mjs` (2 -> 3)
+- [x] 2D. Run tests, verify green
 
-## Step 1: `agent.getConfig()` Stub ✅
+## Step 3: Session Context Inheritance (TDD) ✅
 
-- [x] Add `getConfig()` to Agent model returning `{ riskLevel: 'medium' }`
-- [x] Tests: `spec/core/models/agent-config-spec.mjs`
+- [x] 3A. Add inheritance tests to `session-context-spec.mjs` (8 tests)
+- [x] 3B. Implement `getEffectiveContext()` in `session-model.mjs`
+- [x] 3C. Run tests, verify green — 26/26 pass
 
-## Step 2: Session Constraints (`maxInteractions`, `endsAt`) ✅
+## Step 4: Memory Plugin - Agent Tools (TDD) ✅
 
-- [x] Add `maxInteractions` and `endsAt` to Session model
-- [x] Commit-level constraint enforcement + `session-constrained` frame
-- [x] Tests: 14 + 24 = 38 tests
+- [x] 4A. Write tests in `spec/core/internal-plugins/memory/agent-memory-spec.mjs` (19 tests)
+- [x] 4B. Implement memory plugin with agent tools in `src/core/internal-plugins/memory/index.mjs`
+- [x] 4C. Run tests, verify green — 19/19 pass
 
-## Step 3: Per-Agent Interaction Loops ✅
+## Step 5: Memory Plugin - Session Tools (TDD) ✅
 
-- [x] Composite key `${sessionID}:${agentID}` for concurrent agents
-- [x] Tests: 15 + 9 = 24 tests
+- [x] 5A. Write tests in `spec/core/internal-plugins/memory/session-memory-spec.mjs` (16 tests)
+- [x] 5B. Implement session tools in memory plugin
+- [x] 5C. Run tests, verify green — 16/16 pass
 
-## Step 4: Session Ancestry Queries + Caching ✅
+## Step 6: Integration + Full Suite ✅
 
-- [x] `getAncestryChain()`, `getNearestUserAncestor()`, `clearAncestryCache()`
-- [x] Tests: 14 + 14 = 28 tests
+- [x] 6A. Write integration tests in `spec/core/integration/memory-context-integration-spec.mjs` (6 tests)
+- [x] 6B. Full test suite: 2335/2336 pass (1 pre-existing failure)
+- [x] 6C. Update `bot-docs/future-plans/agent-memory-context.yaml` to IMPLEMENTED
 
-## Step 5: Permission Walk-Up in PermissionEngine ✅
+## Summary
 
-- [x] Rules across ancestor sessions, closest wins
-- [x] Tests: 24 tests
-
-## Step 6: `CrossSessionPermissions` Class ✅
-
-- [x] `cross-session-permissions.mjs` — createSession always approval, postToSession auto-approve for participants
-- [x] `checkPermission()` pre-rule hook in PermissionEngine
-- [x] Wire `getPermissionsClass()` into CreateSessionTool and PostToSessionTool
-- [x] Tests: 29 tests
-
-## Step 7: Cross-Session Permission Approval ✅
-
-- [x] `PermissionHandler.hardBreak()` routes permission-request to nearest user ancestor
-- [x] No user in ancestry → immediate denial with tool-result
-- [x] `requestingSessionID` in waiting state
-- [x] Graceful fallback when sessionManager unavailable
-- [x] Tests: 11 tests (backward compat + cross-session)
-
-## Step 8: `createSession` Tool Extension ✅
-
-- [x] `initialMessage` and `constraints` in inputSchema
-- [x] Creating agent → coordinator, others → member
-- [x] Default `maxInteractions` (20) for agent-created child sessions
-- [x] Tests: 19 tests
-
-## Step 9: Integration Test ✅
-
-- [x] Full lifecycle, concurrent agents, permission routing, walk-up, denial, constraints, ancestry
-- [x] Tests: 8 integration tests
-- [x] Full suite: 2250/2251 pass (1 pre-existing failure)
+- **91 new tests** across 5 test files
+- **Full suite: 2335/2336** (1 pre-existing failure, unchanged)
