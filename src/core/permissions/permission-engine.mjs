@@ -127,6 +127,13 @@ export class PermissionEngine {
         permissionsInstance = new PermissionsClass(this._context);
     }
 
+    // Pre-rule logic: checkPermission() can short-circuit the entire rule loop
+    if (permissionsInstance) {
+      let preRuleResult = await permissionsInstance.checkPermission(featureName, args, options);
+      if (preRuleResult !== null)
+        return preRuleResult;
+    }
+
     // First match wins
     for (let rule of activeRules) {
       // Custom matching: if tool has a Permissions class, check matchesRule

@@ -1,6 +1,7 @@
 'use strict';
 
 import XID from 'xid-js';
+import { CrossSessionPermissions } from './cross-session-permissions.mjs';
 
 // =============================================================================
 // Cross-Session Plugin
@@ -229,6 +230,10 @@ export function setup({ registerTool, PluginInterface }) {
         await sessionManager.addParticipant(sessionID, agent.id);
       }
     }
+
+    getPermissionsClass() {
+      return CrossSessionPermissions;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -294,6 +299,10 @@ export function setup({ registerTool, PluginInterface }) {
         await framePersistence.saveFrames(params.sessionID, [frameData]);
 
       return { frameID, sessionID: params.sessionID };
+    }
+
+    getPermissionsClass() {
+      return CrossSessionPermissions;
     }
   }
 
