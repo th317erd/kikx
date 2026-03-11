@@ -32,6 +32,7 @@ describe('Participant Lifecycle Frames', () => {
     await core.start();
     models      = core.getModels();
     persistence = new FramePersistence(core.getContext());
+    core.getContext().setProperty('framePersistence', persistence);
   });
 
   after(async () => {
