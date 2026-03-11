@@ -26,11 +26,19 @@ export class PermissionHandler {
   // ---------------------------------------------------------------------------
   // hardBreak — pause interaction for permission approval
   // ---------------------------------------------------------------------------
+  // Cross-session awareness:
+  //   If the current session has no user (agent-only child session), the
+  //   permission-request frame is routed to the nearest ancestor session that
+  //   has a user. If no user exists anywhere in the ancestry, the tool call
+  //   is denied immediately without waiting.
+  //
+  //   The pending-action frame always stays in the current (requesting) session.
+  // ---------------------------------------------------------------------------
 
   async hardBreak(sessionID, generator, block, interactionID, params, frameManager) {
     let loop = this._loop;
 
-    // 1. Persist pending-action frame
+    // 1. Persist pending-action frame (always in the current session)
     let pendingFrameID = generateID('frm_');
     let pendingFrame   = {
       id:            pendingFrameID,
@@ -50,7 +58,38 @@ export class PermissionHandler {
       authorID:   block.authorID || null,
     });
 
-    // 2. Create permission-request frame
+    // 2. Determine where to route the permission-request
+    //    - If the current session has a user → same session (backward compat)
+    //    - If not → walk up ancestry to find nearest user session
+    //    - If no user anywhere → deny immediately
+    let targetSessionID    = sessionID;
+    let targetFrameManager = frameManager;
+    let sessionManager     = (typeof loop._getSessionManager === 'function') ? loop._getSessionManager() : null;
+
+    if (sessionManager) {
+      let nearestUserSessionID = await sessionManager.getNearestUserAncestor(sessionID);
+
+      if (!nearestUserSessionID) {
+        // No user in ancestry — deny immediately
+        await this._denyNoUser(sessionID, generator, block, interactionID, params, frameManager, pendingFrameID);
+        return;
+      }
+
+      if (nearestUserSessionID !== sessionID) {
+        // User is in an ancestor session — route permission-request there
+        targetSessionID = nearestUserSessionID;
+
+        // Load ancestor's FrameManager for proper order assignment + commit system
+        let framePersistence = loop._getFramePersistence();
+        targetFrameManager   = sessionManager.getFrameManager(nearestUserSessionID);
+        await framePersistence.loadFramesInto(targetFrameManager, nearestUserSessionID);
+
+        let nextDbOrder = await framePersistence.getNextOrder(nearestUserSessionID);
+        targetFrameManager.syncOrderCounter(nextDbOrder - 1);
+      }
+    }
+
+    // 3. Create permission-request frame (in the target session)
     // For shell:execute, include per-command data for the permission UI.
     // Prefer _parsedCommands (enriched with status by checkPermission callback),
     // fall back to fresh parse for contexts without per-command checking.
@@ -79,13 +118,13 @@ export class PermissionHandler {
       processed:     false,
     };
 
-    await loop._createFrame(sessionID, requestFrame, frameManager, { authorType: 'system' });
+    await loop._createFrame(targetSessionID, requestFrame, targetFrameManager, { authorType: 'system' });
     loop.emit('permission:request', { sessionID, frameID: pendingFrameID, requestFrameID, toolName: block.content.toolName });
 
-    // 3. Destroy the generator
+    // 4. Destroy the generator
     await generator.return();
 
-    // 4. Store permission-waiting state (includes frameManager for approve/deny)
+    // 5. Store permission-waiting state (includes frameManager for approve/deny)
     let agentID   = params.agent && params.agent.id;
     let activeKey = loop._activeKey(sessionID, agentID);
 
@@ -95,9 +134,54 @@ export class PermissionHandler {
       interactionID,
       params,
       frameManager,
+      requestingSessionID: sessionID,
     });
 
     // Clean up active interaction
+    loop._active.delete(activeKey);
+    loop.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
+  }
+
+  // ---------------------------------------------------------------------------
+  // _denyNoUser — immediate denial when no user exists in session ancestry
+  // ---------------------------------------------------------------------------
+
+  async _denyNoUser(sessionID, generator, block, interactionID, params, frameManager, pendingFrameID) {
+    let loop    = this._loop;
+    let { Frame } = loop._context.getProperty('models');
+
+    // Mark pending-action as processed (it was already persisted)
+    let pendingRecord = await Frame.where.id.EQ(pendingFrameID).first();
+    if (pendingRecord) {
+      pendingRecord.processed   = true;
+      pendingRecord.processedAt = Date.now();
+      await pendingRecord.save();
+    }
+
+    // Create tool-result frame with denial message
+    let toolName = block.content.toolName || 'unknown';
+    await loop._createFrame(sessionID, {
+      id:            generateID('frm_'),
+      type:          'tool-result',
+      content:       {
+        output:    `Permission denied: no user session found in ancestry to approve "${toolName}". Tool execution was automatically denied.`,
+        toolUseID: block.content.toolUseID,
+      },
+      timestamp:     Date.now(),
+      interactionID,
+      authorType:    'system',
+      authorID:      null,
+      hidden:        false,
+      deleted:       false,
+      processed:     false,
+    }, frameManager, { authorType: 'system' });
+
+    // Destroy the generator and clean up
+    await generator.return();
+
+    let agentID   = params.agent && params.agent.id;
+    let activeKey = loop._activeKey(sessionID, agentID);
+
     loop._active.delete(activeKey);
     loop.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
   }
