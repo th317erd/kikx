@@ -146,8 +146,20 @@ export function setup({ registerTool, PluginInterface }) {
         participants:    { type: 'array', items: { type: 'string' }, default: [] },
         parentSessionID: { type: 'string' },
         type:            { type: 'string', default: 'chat' },
+        initialMessage:  { type: 'string', description: 'First message in the new session, authored by the creating agent' },
+        constraints:     {
+          type:        'object',
+          description: 'Session constraints (maxInteractions, endsAt)',
+          properties:  {
+            maxInteractions: { type: 'integer', description: 'Maximum number of agent interactions' },
+            endsAt:          { type: 'string', description: 'ISO 8601 timestamp after which the session auto-archives' },
+          },
+        },
       },
     };
+
+    // Default maxInteractions for agent-created child sessions
+    static DEFAULT_CHILD_MAX_INTERACTIONS = 20;
 
     async _execute(params) {
       let sessionManager = this._context.getProperty('sessionManager');
@@ -169,6 +181,14 @@ export function setup({ registerTool, PluginInterface }) {
 
       let sessionOptions = { name: params.title, type: params.type || 'chat' };
 
+      // Apply constraints if provided
+      let constraints = params.constraints || {};
+      if (constraints.maxInteractions !== undefined)
+        sessionOptions.maxInteractions = constraints.maxInteractions;
+
+      if (constraints.endsAt !== undefined)
+        sessionOptions.endsAt = constraints.endsAt;
+
       // Sub-session handling
       if (params.parentSessionID) {
         let parentSession = await sessionManager.getSession(params.parentSessionID);
@@ -180,6 +200,10 @@ export function setup({ registerTool, PluginInterface }) {
 
         organizationID = organizationID || parentSession.organizationID;
         sessionOptions.parentSessionID = params.parentSessionID;
+
+        // Apply default constraints for agent-created child sessions (if no explicit constraints)
+        if (agentID && sessionOptions.maxInteractions === undefined)
+          sessionOptions.maxInteractions = CreateSessionTool.DEFAULT_CHILD_MAX_INTERACTIONS;
 
         // Pre-generate a frame ID for the session-link
         let frameID = `frm_${XID.next()}`;
@@ -207,28 +231,62 @@ export function setup({ registerTool, PluginInterface }) {
         if (framePersistence)
           await framePersistence.saveFrames(params.parentSessionID, [linkFrame]);
 
-        // Add participants
-        await this._addParticipants(sessionManager, models, session.id, params.participants || []);
+        // Add participants (creating agent → coordinator, others → member)
+        await this._addParticipants(sessionManager, models, session.id, params.participants || [], agentID);
+
+        // Create initial message frame if provided
+        await this._createInitialMessage(session.id, params.initialMessage, agentID);
 
         return { sessionID: session.id, title: params.title, participants: params.participants || [] };
       }
 
       // Top-level session
       let session = await sessionManager.createSession(organizationID, sessionOptions);
-      await this._addParticipants(sessionManager, models, session.id, params.participants || []);
+      await this._addParticipants(sessionManager, models, session.id, params.participants || [], agentID);
+
+      // Create initial message frame if provided
+      await this._createInitialMessage(session.id, params.initialMessage, agentID);
 
       return { sessionID: session.id, title: params.title, participants: params.participants || [] };
     }
 
-    async _addParticipants(sessionManager, models, sessionID, participantNames) {
+    async _addParticipants(sessionManager, models, sessionID, participantNames, creatorAgentID) {
       let { Agent } = models;
       for (let name of participantNames) {
         let agent = await Agent.where.name.EQ(name).first();
         if (!agent)
           throw new Error(`Agent not found: ${name}`);
 
-        await sessionManager.addParticipant(sessionID, agent.id);
+        // Creating agent gets coordinator role, others get member
+        let role = (creatorAgentID && agent.id === creatorAgentID) ? 'coordinator' : 'member';
+        await sessionManager.addParticipant(sessionID, agent.id, { role });
       }
+    }
+
+    async _createInitialMessage(sessionID, initialMessage, agentID) {
+      if (!initialMessage)
+        return;
+
+      let sessionManager  = this._context.getProperty('sessionManager');
+      let framePersistence = this._context.getProperty('framePersistence');
+
+      let frameManager = sessionManager.getFrameManager(sessionID);
+      let frameData    = {
+        id:         `frm_${XID.next()}`,
+        type:       'message',
+        content:    { text: initialMessage },
+        timestamp:  Date.now(),
+        authorType: 'agent',
+        authorID:   agentID || null,
+        hidden:     false,
+        deleted:    false,
+        processed:  false,
+      };
+
+      frameManager.merge([frameData], { authorType: 'agent', authorID: agentID || null });
+
+      if (framePersistence)
+        await framePersistence.saveFrames(sessionID, [frameData]);
     }
 
     getPermissionsClass() {
