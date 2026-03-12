@@ -7,6 +7,7 @@ import { PermissionHandler }     from './permission-handler.mjs';
 import { CommandHandler }        from './command-handler.mjs';
 import { isFirstMessage, injectPrimer, buildMessages } from './message-history.mjs';
 import { truncateContent, truncateConversation }       from './context-truncation.mjs';
+import { reinjectAbilities }                           from './abilities-reinjection.mjs';
 
 // =============================================================================
 // InteractionLoop
@@ -226,6 +227,9 @@ export class InteractionLoop extends EventEmitter {
           messages = injectPrimer(messages, primer);
       }
     }
+
+    // Re-inject abilities after truncation if primer was not injected this turn
+    messages = reinjectAbilities(messages, params.agent, { primerInjected: needsPrimer });
 
     // Ensure per-agent ref exists for scheduling/diff
     if (agentID)
