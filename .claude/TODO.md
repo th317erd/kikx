@@ -41,10 +41,15 @@
   - Call after primer injection block with `{ primerInjected: needsPrimer }`
 - [x] 3D. Run tests, verify green (2340 tests, 0 failures)
 
-## Step 4: Integration Test + Full Suite
+## Step 4: Integration Test + Full Suite — COMPLETE
 
-- [ ] 4A. Write integration test in `spec/core/integration/abilities-integration-spec.mjs`:
-  - Full round-trip: create agent → set abilities → assemble primer → verify
-  - Truncation round-trip: set abilities → long history → truncate → verify re-injected
-- [ ] 4B. Full test suite run — all existing + new tests pass
-- [ ] 4C. Update `bot-docs/future-plans/abilities-system.yaml` to reflect completed state
+- [x] 4A. Write integration test in `spec/core/integration/abilities-integration-spec.mjs` (20 tests):
+  - Full round-trip: 3 tests (abilities content, section ordering, instruction boundaries)
+  - No abilities: 2 tests (no abilities section, management note present)
+  - Truncation round-trip: 2 tests (re-injection after truncation, first non-marker injection)
+  - No double-injection: 2 tests (primerInjected true skips, unchanged reference)
+  - Set/change abilities: 3 tests (reflect changes, round-trip, multiple changes)
+  - Clear abilities: 3 tests (setAbilities null, management note persists, empty string)
+  - Edge cases: 5 tests (special characters, whitespace-only, no truncation marker, low budget, mutual exclusion)
+- [x] 4B. Full test suite run — all existing + new tests pass (2332 tests, 0 failures)
+- [x] 4C. Update TODO.md to reflect completed state
