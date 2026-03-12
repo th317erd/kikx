@@ -147,6 +147,164 @@ describe('PrimerAssembler', () => {
       assert.ok(result.includes('INSTRUCTION A'));
       assert.ok(result.includes('INSTRUCTION B'));
     });
+
+    // -------------------------------------------------------------------------
+    // Abilities injection
+    // -------------------------------------------------------------------------
+
+    it('should include abilities section when agent has abilities', () => {
+      let agent = {
+        instructions:  'Be helpful.',
+        getAbilities:  () => 'Never deploy on Fridays.',
+        hasAbilities:  () => true,
+      };
+
+      let result = assembler.assemble(agent);
+      assert.ok(result.includes('--- ABILITIES ---'));
+      assert.ok(result.includes('Never deploy on Fridays.'));
+      assert.ok(result.includes('--- END ABILITIES ---'));
+    });
+
+    it('should NOT include abilities section when agent has no abilities', () => {
+      let agent = {
+        instructions:  'Be helpful.',
+        getAbilities:  () => null,
+        hasAbilities:  () => false,
+      };
+
+      let result = assembler.assemble(agent);
+      assert.ok(!result.includes('--- ABILITIES ---'));
+      assert.ok(!result.includes('--- END ABILITIES ---'));
+    });
+
+    it('should place abilities section after agent instructions', () => {
+      let agent = {
+        instructions:  'AGENT INSTRUCTIONS HERE',
+        getAbilities:  () => 'ABILITIES TEXT HERE',
+        hasAbilities:  () => true,
+      };
+
+      let result        = assembler.assemble(agent);
+      let instrIndex    = result.indexOf('AGENT INSTRUCTIONS HERE');
+      let abilitiesIndex = result.indexOf('ABILITIES TEXT HERE');
+
+      assert.ok(instrIndex >= 0, 'Agent instructions should be present');
+      assert.ok(abilitiesIndex >= 0, 'Abilities text should be present');
+      assert.ok(instrIndex < abilitiesIndex, 'Instructions should come before abilities');
+    });
+
+    it('should wrap abilities text in clear delimiters', () => {
+      let agent = {
+        getAbilities:  () => 'Rule 1: Check tests.\nRule 2: No force push.',
+        hasAbilities:  () => true,
+      };
+
+      let result = assembler.assemble(agent);
+      assert.ok(result.includes('--- ABILITIES ---\nRule 1: Check tests.\nRule 2: No force push.\n--- END ABILITIES ---'));
+    });
+
+    it('should append abilities reminder footer when abilities exist', () => {
+      let agent = {
+        getAbilities:  () => 'Some ability text.',
+        hasAbilities:  () => true,
+      };
+
+      let result = assembler.assemble(agent);
+      assert.ok(result.includes('Remember to check each user request against your ABILITIES before proceeding.'));
+    });
+
+    it('should NOT append abilities reminder footer when no abilities', () => {
+      let agent = {
+        getAbilities:  () => null,
+        hasAbilities:  () => false,
+      };
+
+      let result = assembler.assemble(agent);
+      assert.ok(!result.includes('Remember to check each user request against your ABILITIES'));
+    });
+
+    it('should still work with null agent (no abilities section)', () => {
+      let result = assembler.assemble(null);
+      assert.ok(!result.includes('--- ABILITIES ---'));
+      assert.ok(result.includes('--- START OF INSTRUCTIONS ---'));
+    });
+
+    it('should work with agent that has instructions but no abilities methods', () => {
+      let agent  = { instructions: 'Be helpful.' };
+      let result = assembler.assemble(agent);
+      assert.ok(result.includes('Be helpful.'));
+      assert.ok(!result.includes('--- ABILITIES ---'));
+    });
+
+    it('should include DM ability-management instructions when isDM is true', () => {
+      let agent = {
+        instructions:  'Be helpful.',
+        getAbilities:  () => null,
+        hasAbilities:  () => false,
+      };
+
+      let result = assembler.assemble(agent, { isDM: true });
+      assert.ok(result.includes('memory:updateAgentConfig'));
+      assert.ok(result.includes('abilities'));
+    });
+
+    it('should NOT include DM ability-management instructions when isDM is false', () => {
+      let agent = {
+        instructions:  'Be helpful.',
+        getAbilities:  () => null,
+        hasAbilities:  () => false,
+      };
+
+      let result = assembler.assemble(agent, { isDM: false });
+      assert.ok(!result.includes('DM SESSION'));
+    });
+
+    // -------------------------------------------------------------------------
+    // DM session awareness (Step 4 tests)
+    // -------------------------------------------------------------------------
+
+    it('DM primer tells agent to use memory:updateAgentConfig to manage abilities', () => {
+      let agent = {
+        getAbilities:  () => null,
+        hasAbilities:  () => false,
+      };
+
+      let result = assembler.assemble(agent, { isDM: true });
+      assert.ok(result.includes('memory:updateAgentConfig'));
+    });
+
+    it('DM primer tells agent the abilities key is a text string', () => {
+      let agent = {
+        getAbilities:  () => null,
+        hasAbilities:  () => false,
+      };
+
+      let result = assembler.assemble(agent, { isDM: true });
+      assert.ok(result.includes('abilities'));
+      // Should mention it's a text/string value
+      assert.ok(result.includes('text') || result.includes('string'));
+    });
+
+    it('DM primer tells agent to confirm changes with the user', () => {
+      let agent = {
+        getAbilities:  () => null,
+        hasAbilities:  () => false,
+      };
+
+      let result = assembler.assemble(agent, { isDM: true });
+      assert.ok(result.includes('Confirm') || result.includes('confirm'));
+    });
+
+    it('Non-DM sessions do not get DM management instructions', () => {
+      let agent = {
+        instructions:  'Be helpful.',
+        getAbilities:  () => 'Some ability.',
+        hasAbilities:  () => true,
+      };
+
+      let result = assembler.assemble(agent);
+      assert.ok(!result.includes('DM SESSION'));
+    });
   });
 
   // ---------------------------------------------------------------------------

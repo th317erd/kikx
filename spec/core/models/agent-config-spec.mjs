@@ -311,6 +311,81 @@ describe('Agent Config Persistence', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Abilities convenience methods
+  // ---------------------------------------------------------------------------
+
+  it('getAbilities() returns null when no abilities stored', async () => {
+    let agent = await createAgent('test-abilities-null');
+    assert.equal(agent.getAbilities(), null);
+  });
+
+  it('getAbilities() returns the abilities string when stored', async () => {
+    let agent = await createAgent('test-abilities-get');
+    agent.updateConfig({ abilities: 'If merging to main, ask about production deploy.' });
+    assert.equal(agent.getAbilities(), 'If merging to main, ask about production deploy.');
+  });
+
+  it('setAbilities(text) persists abilities string in config', async () => {
+    let agent = await createAgent('test-abilities-set');
+    agent.setAbilities('Always respond in Spanish.');
+    await agent.save();
+
+    let { Agent } = models;
+    let fetched = await Agent.where.id.EQ(agent.id).first();
+    assert.equal(fetched.getAbilities(), 'Always respond in Spanish.');
+  });
+
+  it('setAbilities(null) clears abilities', async () => {
+    let agent = await createAgent('test-abilities-clear');
+    agent.setAbilities('Some ability text');
+    await agent.save();
+
+    agent.setAbilities(null);
+    await agent.save();
+
+    let { Agent } = models;
+    let fetched = await Agent.where.id.EQ(agent.id).first();
+    assert.equal(fetched.getAbilities(), null);
+  });
+
+  it('getAbilities() round-trips through DB fetch', async () => {
+    let agent = await createAgent('test-abilities-roundtrip');
+    let text  = 'Rule 1: No deploys on Friday.\nRule 2: Always run tests.';
+    agent.setAbilities(text);
+    await agent.save();
+
+    let { Agent } = models;
+    let fetched = await Agent.where.id.EQ(agent.id).first();
+    assert.equal(fetched.getAbilities(), text);
+  });
+
+  it('hasAbilities() returns false when no abilities', async () => {
+    let agent = await createAgent('test-has-abilities-false');
+    assert.equal(agent.hasAbilities(), false);
+  });
+
+  it('hasAbilities() returns true when abilities text is non-empty', async () => {
+    let agent = await createAgent('test-has-abilities-true');
+    agent.setAbilities('Check for breaking changes before merge.');
+    assert.equal(agent.hasAbilities(), true);
+  });
+
+  it('abilities are independent from other config keys', async () => {
+    let agent = await createAgent('test-abilities-independent');
+    agent.setConfig({ riskLevel: 'high', model: 'claude-opus' });
+    await agent.save();
+
+    agent.setAbilities('Never auto-merge PRs.');
+    await agent.save();
+
+    let config = agent.getConfig();
+    assert.equal(config.riskLevel, 'high');
+    assert.equal(config.model, 'claude-opus');
+    assert.equal(config.abilities, 'Never auto-merge PRs.');
+    assert.equal(agent.getAbilities(), 'Never auto-merge PRs.');
+  });
+
+  // ---------------------------------------------------------------------------
   // Version bump
   // ---------------------------------------------------------------------------
 

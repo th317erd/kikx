@@ -110,6 +110,22 @@ export class Agent extends ModelBase {
     this.setConfig(merged);
   }
 
+  // ---------------------------------------------------------------------------
+  // Abilities convenience methods
+  // ---------------------------------------------------------------------------
+
+  getAbilities() {
+    return this.getConfig().abilities || null;
+  }
+
+  setAbilities(text) {
+    this.updateConfig({ abilities: text });
+  }
+
+  hasAbilities() {
+    return !!this.getAbilities();
+  }
+
   getSafeConfig() {
     let config = this.getConfig();
 
