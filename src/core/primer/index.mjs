@@ -84,6 +84,20 @@ export class PrimerAssembler {
     if (agent && agent.dmSummary)
       sections.push(agent.dmSummary);
 
+    // 6. Abilities section (only when agent has abilities)
+    let agentHasAbilities = agent && typeof agent.hasAbilities === 'function' && agent.hasAbilities();
+
+    if (agentHasAbilities)
+      sections.push(`--- ABILITIES ---\n${agent.getAbilities()}\n--- END ABILITIES ---`);
+
+    // 7. Management note (always present when agent is provided)
+    if (agent)
+      sections.push('You can manage your abilities (behavioral instructions) using the memory:updateAgentConfig tool.');
+
+    // 8. Abilities reminder (only when agent has abilities)
+    if (agentHasAbilities)
+      sections.push('Remember to check each user request against your ABILITIES before proceeding.');
+
     let body = sections.join('\n\n');
 
     return `--- START OF INSTRUCTIONS ---\n${body}\n--- END OF INSTRUCTIONS ---`;

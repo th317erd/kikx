@@ -236,66 +236,22 @@ describe('PrimerAssembler', () => {
       assert.ok(!result.includes('--- ABILITIES ---'));
     });
 
-    it('should include DM ability-management instructions when isDM is true', () => {
+    // -------------------------------------------------------------------------
+    // Management instructions (always present)
+    // -------------------------------------------------------------------------
+
+    it('should always include management instructions even when agent has no abilities', () => {
       let agent = {
         instructions:  'Be helpful.',
         getAbilities:  () => null,
         hasAbilities:  () => false,
       };
 
-      let result = assembler.assemble(agent, { isDM: true });
-      assert.ok(result.includes('memory:updateAgentConfig'));
-      assert.ok(result.includes('abilities'));
-    });
-
-    it('should NOT include DM ability-management instructions when isDM is false', () => {
-      let agent = {
-        instructions:  'Be helpful.',
-        getAbilities:  () => null,
-        hasAbilities:  () => false,
-      };
-
-      let result = assembler.assemble(agent, { isDM: false });
-      assert.ok(!result.includes('DM SESSION'));
-    });
-
-    // -------------------------------------------------------------------------
-    // DM session awareness (Step 4 tests)
-    // -------------------------------------------------------------------------
-
-    it('DM primer tells agent to use memory:updateAgentConfig to manage abilities', () => {
-      let agent = {
-        getAbilities:  () => null,
-        hasAbilities:  () => false,
-      };
-
-      let result = assembler.assemble(agent, { isDM: true });
+      let result = assembler.assemble(agent);
       assert.ok(result.includes('memory:updateAgentConfig'));
     });
 
-    it('DM primer tells agent the abilities key is a text string', () => {
-      let agent = {
-        getAbilities:  () => null,
-        hasAbilities:  () => false,
-      };
-
-      let result = assembler.assemble(agent, { isDM: true });
-      assert.ok(result.includes('abilities'));
-      // Should mention it's a text/string value
-      assert.ok(result.includes('text') || result.includes('string'));
-    });
-
-    it('DM primer tells agent to confirm changes with the user', () => {
-      let agent = {
-        getAbilities:  () => null,
-        hasAbilities:  () => false,
-      };
-
-      let result = assembler.assemble(agent, { isDM: true });
-      assert.ok(result.includes('Confirm') || result.includes('confirm'));
-    });
-
-    it('Non-DM sessions do not get DM management instructions', () => {
+    it('should mention memory:updateAgentConfig in management instructions', () => {
       let agent = {
         instructions:  'Be helpful.',
         getAbilities:  () => 'Some ability.',
@@ -303,7 +259,8 @@ describe('PrimerAssembler', () => {
       };
 
       let result = assembler.assemble(agent);
-      assert.ok(!result.includes('DM SESSION'));
+      assert.ok(result.includes('memory:updateAgentConfig'));
+      assert.ok(result.includes('abilities'));
     });
   });
 
