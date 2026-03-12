@@ -2,7 +2,7 @@
 # Deferred from: Phase C (Event Routing Layer)
 # Priority: Medium
 # Complexity: Medium
-# Status: IN PROGRESS (as of 2026-03-12)
+# Status: COMPLETE (as of 2026-03-12)
 
 summary: >
   A system where users customize agent behavior through natural language
@@ -13,10 +13,10 @@ summary: >
   context truncation to ensure they survive long conversations.
 
 current_state: >
-  Step 1 complete. Agent model has getAbilities(), setAbilities(),
-  hasAbilities() convenience methods storing abilities as plain text
-  under config.abilities. 8 tests passing. Steps 2-4 planned, not
-  yet implemented.
+  COMPLETE. All 4 steps implemented and tested. 2315 total tests,
+  0 failures. Agent model convenience methods, PrimerAssembler
+  abilities injection, post-truncation re-injection, and full
+  integration tests all passing.
 
 design_decisions:
   - Abilities are plain text on agent config (config.abilities key)
