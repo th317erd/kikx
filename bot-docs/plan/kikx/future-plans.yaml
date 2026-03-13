@@ -1,21 +1,11 @@
 # Future Plans
 # Items to revisit in subsequent development cycles.
+# Updated: 2026-03-13
 
 items:
-  - id: checkPermission-api-naming
-    title: "Rename checkPermission() API for clarity"
-    priority: low
-    description: |
-      Currently checkPermission() returns true = "needs permission" / false = "allowed",
-      which is counter-intuitive. A future refactor should rename to something clearer
-      (e.g. requiresApproval() or invert to isAllowed()).
-    affected_files:
-      - src/core/permissions/permission-engine.mjs
-      - src/core/interaction/index.mjs
-      - src/server/controllers/interaction-controller.mjs
-      - spec/core/command-permission-spec.mjs
-      - spec/core/interaction-loop-spec.mjs
-    added: "2026-03-03"
+  # ===========================================================================
+  # COMPLETE
+  # ===========================================================================
 
   - id: sessions-as-frames
     title: "Sessions-as-Frames Unification"
@@ -37,15 +27,118 @@ items:
       No replay needed. Requires generator lifecycle manager and crash recovery.
     added: "2026-03-06"
 
-  - id: general-re-feed-recovery
-    title: "General Re-feed Recovery"
-    priority: low
-    status: ARCHIVED
+  - id: inter-agent-streaming
+    title: "Inter-Agent Streaming"
+    priority: medium
+    status: COMPLETE
+    completed: "2026-03-10"
     description: |
-      On session load, feed loaded frames through the router for self-healing.
-      Infrastructure already exists (router, plugins, orphan detection).
-      Will address if/when a real stuck-frame problem surfaces in production.
-    see_also: bot-docs/future-plans/general-re-feed-recovery.yaml
+      Multi-agent sessions with scheduling, streaming, and inter-agent context.
+      Agents see each other's responses. FrameRouter scheduling plugin triggers
+      secondary agents on user-message commits.
+    see_also: bot-docs/future-plans/inter-agent-streaming.yaml
+
+  - id: agent-memory-context
+    title: "Agent Memory Context"
+    priority: medium
+    status: COMPLETE
+    completed: "2026-03-11"
+    description: |
+      Per-actor persisted JSON context stored in DB. Agent config (abilities,
+      preferences) and session context (inheritable through parent chain).
+      6 memory tools, 91 tests.
+    see_also: bot-docs/future-plans/agent-memory-context.yaml
+
+  - id: agent-deliberation
+    title: "Agent Deliberation / Child Sessions"
+    priority: high
+    status: COMPLETE
+    completed: "2026-03-11"
+    description: |
+      Agents create child sessions for internal deliberation via
+      cross-session:createSession tool. Session-link frames in parent,
+      maxInteractions constraint, parent context inheritance.
+    see_also: bot-docs/future-plans/agent-deliberation.yaml
+
+  - id: abilities-system
+    title: "Abilities System"
+    priority: medium
+    status: COMPLETE
+    completed: "2026-03-12"
+    description: |
+      Users customize agent behavior through conversation in any session.
+      Agent stores abilities as plain text on config, injected into primer
+      and re-injected after context truncation.
+    see_also: bot-docs/future-plans/abilities-system.yaml
+    added: "2026-03-06"
+
+  # ===========================================================================
+  # REMAINING — Medium Priority
+  # ===========================================================================
+
+  - id: danger-level-permissions
+    title: "Danger Level Permissions"
+    priority: medium
+    status: PLANNED
+    description: |
+      Enforce tool risk levels (low/medium/high/critical) through the
+      permission engine. Auto-allow low-risk tools, prompt for high-risk,
+      block critical without explicit org-level override.
+    see_also: bot-docs/future-plans/danger-level-permissions.yaml
+    added: "2026-03-06"
+
+  - id: device-approval-auth
+    title: "Device Approval Auth"
+    priority: medium
+    description: |
+      Two-factor device approval for new logins. Known devices stored per user.
+      New device triggers approval flow (email, push, or existing device).
+    see_also: bot-docs/future-plans/device-approval-auth.yaml
+    added: "2026-03-06"
+
+  - id: key-rotation
+    title: "System Key Rotation"
+    priority: medium
+    description: |
+      Versioned system key pairs with rotation support. Each key has a
+      validity window. Compromised keys can be invalidated. Old approvals
+      verify against their original key version.
+    added: "2026-03-07"
+
+  # ===========================================================================
+  # REMAINING — Low Priority
+  # ===========================================================================
+
+  - id: checkPermission-api-naming
+    title: "Rename checkPermission() API for clarity"
+    priority: low
+    description: |
+      Currently checkPermission() returns true = "needs permission" / false = "allowed",
+      which is counter-intuitive. Rename to requiresApproval() or invert to isAllowed().
+    affected_files:
+      - src/core/permissions/permission-engine.mjs
+      - src/core/interaction/index.mjs
+      - src/server/controllers/interaction-controller.mjs
+    added: "2026-03-03"
+
+  - id: applicable-permitters
+    title: "Applicable Permitters"
+    priority: low
+    status: PLANNED
+    description: |
+      Allow permission rules to specify which users/roles can approve them.
+      Currently any authenticated user can approve any permission request.
+    see_also: bot-docs/future-plans/applicable-permitters.yaml
+    added: "2026-03-06"
+
+  - id: constraint-warnings
+    title: "Constraint Warnings"
+    priority: low
+    status: PLANNED
+    description: |
+      Warn agents when approaching session constraints (maxInteractions,
+      endsAt). Inject warning into context N interactions before limit.
+    see_also: bot-docs/future-plans/constraint-warnings.yaml
     added: "2026-03-06"
 
   - id: configurable-plugin-ordering
@@ -58,20 +151,41 @@ items:
     see_also: bot-docs/future-plans/configurable-plugin-ordering.yaml
     added: "2026-03-06"
 
-  - id: abilities-system
-    title: "Abilities System"
-    priority: medium
-    status: COMPLETE
+  # ===========================================================================
+  # DEFERRED — Low Priority, Not Urgent
+  # ===========================================================================
+
+  - id: agent-avatar-picker
+    title: "Agent Avatar Picker"
+    priority: low
+    status: DEFERRED
     description: |
-      Users customize agent behavior through conversation in any session.
-      Agent stores abilities as plain text on config, injected into primer
-      and re-injected after context truncation.
-    see_also: bot-docs/future-plans/abilities-system.yaml
-    added: "2026-03-06"
+      UI for selecting/uploading agent avatars. Currently agents use
+      initials fallback via kikx-user-avatar component.
+    see_also: bot-docs/future-plans/agent-avatar-picker.yaml
+
+  - id: message-screenshots
+    title: "Message Screenshots"
+    priority: low
+    status: DEFERRED
+    description: |
+      Allow agents to take screenshots of rendered messages or web pages
+      for visual context in conversations.
+    see_also: bot-docs/future-plans/message-screenshots.yaml
+
+  - id: rich-content-renderers
+    title: "Rich Content Renderers"
+    priority: low
+    status: DEFERRED
+    description: |
+      Pluggable renderers for rich content types (charts, tables, code blocks
+      with syntax highlighting, image galleries, etc.).
+    see_also: bot-docs/future-plans/rich-content-renderers.yaml
 
   - id: signatures-federation
     title: "Signatures & Federation"
     priority: low
+    status: DEFERRED
     description: |
       Public/private key pairs for identity and authority. Cryptographic
       verification of frame authorship. Foundation for multi-server federation.
@@ -79,12 +193,17 @@ items:
     see_also: bot-docs/future-plans/signatures-federation.yaml
     added: "2026-03-06"
 
-  - id: key-rotation
-    title: "System Key Rotation"
-    priority: medium
+  # ===========================================================================
+  # ARCHIVED
+  # ===========================================================================
+
+  - id: general-re-feed-recovery
+    title: "General Re-feed Recovery"
+    priority: low
+    status: ARCHIVED
     description: |
-      Versioned system key pairs with rotation support. Each key has a
-      validity window. Compromised keys can be invalidated. Old approvals
-      verify against their original key version.
-    see_also: bot-docs/future-plans/key-rotation.yaml
-    added: "2026-03-07"
+      On session load, feed loaded frames through the router for self-healing.
+      Infrastructure already exists (router, plugins, orphan detection).
+      Will address if/when a real stuck-frame problem surfaces in production.
+    see_also: bot-docs/future-plans/general-re-feed-recovery.yaml
+    added: "2026-03-06"
