@@ -20,30 +20,31 @@ items:
   - id: sessions-as-frames
     title: "Sessions-as-Frames Unification"
     priority: medium
+    status: COMPLETE
     description: |
       Unify sessions and frames into a single data model. Sessions become
       top-level frames with no parent. DMs = 2 participants. Self channels = 1.
       Eliminates SessionManager abstraction, gives fractal nesting for free.
-    see_also: bot-docs/future-plans/sessions-as-frames.yaml
     added: "2026-03-06"
 
   - id: generator-suspension
     title: "Generator Suspension (Replace Hard-Break)"
     priority: medium
+    status: COMPLETE
     description: |
       Replace permission hard-break with true generator suspension. Generator
       suspends (not destroyed) on permission request, resumes on approval.
       No replay needed. Requires generator lifecycle manager and crash recovery.
-    see_also: bot-docs/future-plans/generator-suspension.yaml
     added: "2026-03-06"
 
   - id: general-re-feed-recovery
     title: "General Re-feed Recovery"
     priority: low
+    status: ARCHIVED
     description: |
       On session load, feed loaded frames through the router for self-healing.
-      Plugins detect and recover stuck-in-progress work. Requires handler
-      idempotency guarantees. Does NOT auto-recover pending permissions.
+      Infrastructure already exists (router, plugins, orphan detection).
+      Will address if/when a real stuck-frame problem surfaces in production.
     see_also: bot-docs/future-plans/general-re-feed-recovery.yaml
     added: "2026-03-06"
 
@@ -58,12 +59,13 @@ items:
     added: "2026-03-06"
 
   - id: abilities-system
-    title: "Abilities System via DM Sessions"
+    title: "Abilities System"
     priority: medium
+    status: COMPLETE
     description: |
-      Users customize agent behavior through DM conversations. Agent
-      summarizes instructions into "Abilities" injected into future contexts.
-      Replaces configuration forms with conversational customization.
+      Users customize agent behavior through conversation in any session.
+      Agent stores abilities as plain text on config, injected into primer
+      and re-injected after context truncation.
     see_also: bot-docs/future-plans/abilities-system.yaml
     added: "2026-03-06"
 

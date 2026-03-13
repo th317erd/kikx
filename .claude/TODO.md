@@ -1,55 +1,76 @@
-# Abilities System
+# Puppeteer E2E Testing — Completed Features
 
-## Step 1: Agent Abilities Convenience Methods (TDD) — COMPLETE
+## Step 1: Setup & Login ✅
+- [x] Verify server is running at `https://wyatt-desktop.mythix.info/kikx/`
+- [x] Navigate to login page
+- [x] Log in as `test-bot@kikx.com` / `securePass123`
+- [x] Verify dashboard/session list loads (sidebar with agents, sessions, status bar)
 
-- [x] 1A. Write tests in `spec/core/models/agent-config-spec.mjs` (8 tests)
-- [x] 1B. Implement `getAbilities()`, `setAbilities()`, `hasAbilities()` in `agent-model.mjs`
-- [x] 1C. Run tests, verify green
+## Step 2: Abilities System ✅
+- [x] Create a new session with `test-claude` agent
+- [x] Send a message instructing the agent to update its abilities
+- [x] Agent requests permission for `memory:getAgentConfig` → approve
+- [x] Agent requests permission for `memory:updateAgentConfig` → approve
+- [x] Verify agent responds acknowledging the ability change
+- [x] Start a NEW session with `test-claude` to verify abilities persist across sessions
+- [x] Agent responds in pirate speak when asked about weather (abilities working!)
 
-## Step 2: PrimerAssembler — Abilities Injection (TDD) — COMPLETE
+### Bugs Found & Fixed:
+1. **Missing `agentID` in body** → no agent processing (201 not 202)
+2. **`agentID` not injected into tool execution** → `UpdateAgentConfigTool` failed
+   - Fix: inject agent context for ALL tool calls, not just `system:command`
+3. **`toolUseID` casing mismatch** → Anthropic API 400 on permission replay
+   - Plugin emits `toolUseId` (camelCase), core stored `toolUseID` (uppercase)
+   - Fix: accept both casings in core + plugin
+4. **Abilities not in primer** → `resolvedAgent` plain object missing `hasAbilities()`
+   - Fix: preserve convenience methods on resolved agent
+5. **Silent error swallowing** → errors only stored as frames, no console output
+   - Fix: added `console.error()` in `_iterateGenerator` catch block
 
-- [x] 2A. Fix existing tests in `spec/core/primer-assembler-spec.mjs`:
-  - Removed 6 DM-specific tests (isDM references)
-  - Kept 8 non-DM abilities tests
-  - Added 2 tests for always-present management instructions
-- [x] 2B. Implement abilities section in `PrimerAssembler.assemble()`:
-  - If `agent.hasAbilities()`: append `--- ABILITIES ---` delimited section
-  - If `agent.hasAbilities()`: append reminder line
-  - Always: include brief management instruction re: `memory:updateAgentConfig`
-  - No `isDM` parameter, no signature change
-  - Ordering: [instructions] → [abilities] → [management note] → [reminder]
-- [x] 2C. Run tests, verify green (57 primer tests + 32 agent-config tests, all pass)
+## Step 3: Inter-Agent Streaming ✅
+- [x] Create multi-agent session via API (test-claude + test-claude-2)
+- [x] Send message, both agents respond
+- [x] Agent 2 sees Agent 1's response in context (inter-agent streaming confirmed)
+- [x] UI renders all 3 interactions (user + 2 agents) with correct attribution
+- [x] SSE Connected once session loaded
 
-## Step 3: Post-Truncation Abilities Re-injection (TDD) — COMPLETE
+### Bug Found & Fixed:
+6. **Scheduling plugin lazy-resolution test regression** — 6 tests failed after lazy-resolution fix
+   - Root cause: FrameRouter scheduling plugin auto-calls `onCommit` on merge,
+     conflicting with tests that manually call `onCommit`
+   - Fix: Added `silent: true` to test merges, `markComplete` cleanup, updated test expectations
 
-- [x] 3A. Write tests in `spec/core/interaction/abilities-reinjection-spec.mjs` (25 tests):
-  - Truncation + abilities: 5 tests (concatenation, delimiters, reminder, format, marker skip)
-  - Truncation + no abilities: 1 test (unchanged)
-  - No truncation: 2 tests (unchanged with various message counts)
-  - Primer already injected: 3 tests (primerInjected true/false/missing)
-  - Null/undefined/plain agent: 3 tests
-  - Immutability: 2 tests (no mutation, new array reference)
-  - Edge cases: 9 tests (empty/null/undefined messages, no user msg, null content, empty content, empty abilities string, only-first injection, varied marker text)
-- [x] 3B. Implement `reinjectAbilities()` in `src/core/interaction/abilities-reinjection.mjs`:
-  - Pure function: `reinjectAbilities(messages, agent, options = {})`
-  - Guards: primerInjected, null agent, missing hasAbilities method, no abilities, no truncation marker
-  - Detects truncation via `[Earlier conversation history was truncated` prefix
-  - Injects into first non-marker user message (same pattern as `injectPrimer`)
-  - Returns new array, does not mutate input
-- [x] 3C. Wire into InteractionLoop (`src/core/interaction/index.mjs`):
-  - Import `reinjectAbilities` from new module
-  - Call after primer injection block with `{ primerInjected: needsPrimer }`
-- [x] 3D. Run tests, verify green (2340 tests, 0 failures)
+## Step 4: Agent Deliberation / Child Sessions ✅
+- [x] Send message instructing agent to use `cross-session:createSession`
+- [x] Permission request for high-risk tool → approve
+- [x] Tool executes: child session created with parentSessionID + linkedFrameID
+- [x] `session-link` frame appears in parent session
+- [x] Child session has initial message from agent
+- [x] UI shows permission request (Processed), session-link card, and agent response
 
-## Step 4: Integration Test + Full Suite — COMPLETE
+### Bugs Found & Fixed:
+7. **Scheduler double-trigger in single-agent sessions** — scheduling plugin queued
+   trigger for primary agent (already handled by controller), then re-triggered on
+   interaction end with no resolve context → crypto decrypt failure
+   - Fix: Added `markActive()` to SessionScheduler; controller marks primary agent
+     active before starting interaction; always set resolve context (not just multi-agent)
 
-- [x] 4A. Write integration test in `spec/core/integration/abilities-integration-spec.mjs` (20 tests):
-  - Full round-trip: 3 tests (abilities content, section ordering, instruction boundaries)
-  - No abilities: 2 tests (no abilities section, management note present)
-  - Truncation round-trip: 2 tests (re-injection after truncation, first non-marker injection)
-  - No double-injection: 2 tests (primerInjected true skips, unchanged reference)
-  - Set/change abilities: 3 tests (reflect changes, round-trip, multiple changes)
-  - Clear abilities: 3 tests (setAbilities null, management note persists, empty string)
-  - Edge cases: 5 tests (special characters, whitespace-only, no truncation marker, low budget, mutual exclusion)
-- [x] 4B. Full test suite run — all existing + new tests pass (2332 tests, 0 failures)
-- [x] 4C. Update TODO.md to reflect completed state
+## Step 5: Agent Memory Context ✅
+- [x] Create fresh session with test-claude agent
+- [x] Ask about weather — agent explicitly references "my abilities section" and responds in pirate speak
+- [x] Confirms agent config (abilities) persists across sessions via DB → PrimerAssembler injection
+- [x] UI renders pirate response with interactive form (location input)
+- [x] No server errors — `markActive` fix prevents double-trigger
+
+### No new bugs found.
+
+---
+
+## Summary
+
+**All 5 E2E steps complete.** 7 bugs found and fixed across 2 sessions:
+- Bugs 1-5: Abilities system (Step 2)
+- Bug 6: Scheduling plugin test regression (Step 3)
+- Bug 7: Scheduler double-trigger / crypto error (Step 4)
+
+All 2311 unit tests pass. All features verified end-to-end via Puppeteer + API.
