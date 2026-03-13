@@ -43,7 +43,11 @@ const TEMPLATE_HTML = `
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: var(--border-radius-large, 12px);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 16px var(--accent-glow, rgba(0, 229, 255, 0.10));
+      box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.5),
+        0 0 20px var(--accent-glow, rgba(0, 229, 255, 0.15)),
+        0 0 40px rgba(176, 64, 255, 0.08),
+        0 0 60px rgba(255, 64, 129, 0.04);
       color: var(--text-primary, #e8e8f0);
       padding: 0;
     }

@@ -25,17 +25,27 @@ const TEMPLATE_HTML = `
       flex-direction: column;
       gap: var(--spacing-xs, 4px);
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(var(--glass-blur, 16px));
+      -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: var(--border-radius-large, 12px);
       padding: 12px 14px;
       color: var(--text-primary, #e8e8f0);
+      box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.2),
+        0 0 20px rgba(0, 229, 255, 0.03),
+        0 0 40px rgba(176, 64, 255, 0.02);
     }
 
     :host([alignment="user"]) .bubble {
-      background: var(--chat-user-background, var(--accent-dim, rgba(0, 229, 255, 0.10)));
+      background:
+        linear-gradient(135deg,
+          var(--accent-dim, rgba(0, 229, 255, 0.10)) 0%,
+          rgba(176, 64, 255, 0.06) 100%);
       border-color: var(--chat-user-border, var(--accent-glow, rgba(0, 229, 255, 0.30)));
+      box-shadow:
+        0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.20)),
+        0 0 30px rgba(176, 64, 255, 0.08);
     }
 
     .bubble-header {

@@ -23,7 +23,11 @@ html, body {
 }
 
 body {
-  background: var(--background-base);
+  background:
+    radial-gradient(ellipse at 15% 50%, rgba(176, 64, 255, 0.07) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 20%, rgba(0, 229, 255, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 90%, rgba(255, 64, 129, 0.04) 0%, transparent 50%),
+    var(--background-base);
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.5;
@@ -46,7 +50,7 @@ body {
   --glass-background-hover: rgba(255, 255, 255, 0.08);
   --glass-background-active: rgba(255, 255, 255, 0.10);
   --glass-border: rgba(255, 255, 255, 0.10);
-  --glass-blur: 12px;
+  --glass-blur: 16px;
 
   /* Text */
   --text-primary: #e8e8f0;
@@ -77,6 +81,28 @@ body {
   /* Shadows */
   --shadow-glow: 0 0 12px var(--accent-glow);
   --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.4);
+
+  /* Neon Palette (fixed rainbow — independent of accent choice) */
+  --neon-cyan: #00e5ff;
+  --neon-magenta: #ff00ea;
+  --neon-purple: #b040ff;
+  --neon-pink: #ff4081;
+  --neon-blue: #448aff;
+  --neon-green: #00e676;
+  --neon-yellow: #ffea00;
+  --neon-orange: #ff9100;
+
+  /* Rainbow Gradient (for decorative borders) */
+  --neon-rainbow: linear-gradient(90deg, #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100);
+
+  /* Ambient Glow (multi-color neon) */
+  --neon-ambient-glow:
+    0 0 15px rgba(0, 229, 255, 0.10),
+    0 0 30px rgba(176, 64, 255, 0.06),
+    0 0 60px rgba(255, 64, 129, 0.04);
+
+  /* Glass (solid variant for panels/modals) */
+  --glass-background-solid: rgba(18, 18, 42, 0.95);
 
   /* Spacing */
   --spacing-xs: 4px;
@@ -122,7 +148,7 @@ body {
   --glass-background-hover: rgba(0, 0, 0, 0.05);
   --glass-background-active: rgba(0, 0, 0, 0.08);
   --glass-border: rgba(0, 0, 0, 0.10);
-  --glass-blur: 12px;
+  --glass-blur: 16px;
 
   /* Text */
   --text-primary: #1a1a2e;

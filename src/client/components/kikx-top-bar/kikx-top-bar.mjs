@@ -10,11 +10,28 @@ const TEMPLATE_HTML = `
     :host {
       display: block;
       height: 52px;
-      background: var(--glass-background, rgba(255, 255, 255, 0.05));
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
-      box-shadow: 0 2px 12px var(--accent-glow, rgba(0, 229, 255, 0.15));
+      position: relative;
+      background:
+        linear-gradient(90deg,
+          rgba(176, 64, 255, 0.06) 0%,
+          rgba(0, 229, 255, 0.04) 50%,
+          rgba(255, 64, 129, 0.05) 100%),
+        var(--glass-background, rgba(255, 255, 255, 0.05));
+      backdrop-filter: blur(var(--glass-blur, 16px));
+      -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
+      border-bottom: none;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    :host::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100);
+      box-shadow: 0 0 8px rgba(0, 229, 255, 0.3), 0 0 20px rgba(176, 64, 255, 0.15);
     }
 
     .bar {

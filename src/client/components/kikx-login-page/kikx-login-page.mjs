@@ -10,7 +10,11 @@ const TEMPLATE_HTML = `
     :host {
       display: block;
       min-height: 100vh;
-      background: var(--background-base, #0a0a1a);
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(176, 64, 255, 0.10) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 80%, rgba(0, 229, 255, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 90% 30%, rgba(255, 64, 129, 0.06) 0%, transparent 50%),
+        var(--background-base, #0a0a1a);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -22,11 +26,14 @@ const TEMPLATE_HTML = `
       max-width: 400px;
       padding: var(--spacing-xl, 32px);
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(var(--glass-blur, 16px));
+      -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: var(--border-radius-large, 12px);
-      box-shadow: 0 0 24px var(--accent-glow, rgba(0, 229, 255, 0.30));
+      box-shadow:
+        0 0 24px var(--accent-glow, rgba(0, 229, 255, 0.30)),
+        0 0 48px rgba(176, 64, 255, 0.12),
+        0 0 80px rgba(255, 64, 129, 0.06);
       text-align: center;
     }
 

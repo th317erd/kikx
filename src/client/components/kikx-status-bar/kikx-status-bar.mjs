@@ -23,16 +23,28 @@ const TEMPLATE_HTML = `
       justify-content: space-between;
       height: 30px;
       padding: 0 12px;
+      position: relative;
       font-size: 1rem;
       font-family: var(--font-family, system-ui, sans-serif);
       color: var(--text-secondary, #a0a0b8);
       background: var(--glass-background, rgba(10, 10, 30, 0.7));
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-top: 1px solid var(--border-glow, rgba(100, 200, 255, 0.15));
-      box-shadow: 0 -1px 8px var(--glow-subtle, rgba(100, 200, 255, 0.05));
+      backdrop-filter: blur(var(--glass-blur, 16px));
+      -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
+      border-top: none;
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
       box-sizing: border-box;
       user-select: none;
+    }
+
+    :host::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100);
+      box-shadow: 0 0 6px rgba(0, 229, 255, 0.2), 0 0 12px rgba(176, 64, 255, 0.1);
     }
 
     .connection-status {

@@ -11,10 +11,13 @@ const TEMPLATE_HTML = `
       height: 100%;
       overflow: hidden;
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-left: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
-      box-shadow: -2px 0 16px var(--accent-glow, rgba(0, 229, 255, 0.15));
+      backdrop-filter: blur(var(--glass-blur, 16px));
+      -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
+      border-left: 1px solid rgba(255, 255, 255, 0.06);
+      box-shadow:
+        -2px 0 20px rgba(0, 0, 0, 0.3),
+        -1px 0 15px rgba(0, 229, 255, 0.08),
+        -1px 0 30px rgba(176, 64, 255, 0.05);
       color: var(--text-primary, #e8e8f0);
       transition: width 0.3s ease;
     }
@@ -139,15 +142,17 @@ const TEMPLATE_HTML = `
       padding: 6px var(--spacing-sm, 8px);
       cursor: pointer;
       border-radius: var(--border-radius-small, 4px);
-      transition: background 0.15s ease;
+      transition: background 0.15s ease, box-shadow 0.15s ease;
     }
 
     .session-row:hover {
-      background: var(--glass-hover, rgba(255, 255, 255, 0.08));
+      background: var(--glass-background-hover, rgba(255, 255, 255, 0.08));
     }
 
     .session-row.active {
-      background: rgba(0, 229, 255, 0.10);
+      background: var(--accent-dim, rgba(0, 229, 255, 0.10));
+      border-left: 2px solid var(--accent-primary, #00e5ff);
+      box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.10));
     }
 
     .session-icon {

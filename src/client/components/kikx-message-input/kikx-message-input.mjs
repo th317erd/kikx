@@ -15,11 +15,14 @@ const TEMPLATE_HTML = `
       align-items: flex-end;
       gap: var(--spacing-xs, 4px);
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(var(--glass-blur, 16px));
+      -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: var(--border-radius-medium, 8px);
       padding: var(--spacing-xs, 4px) var(--spacing-md, 16px);
+      box-shadow:
+        0 0 15px rgba(0, 229, 255, 0.06),
+        0 0 30px rgba(176, 64, 255, 0.03);
     }
 
     .message-textarea {
@@ -56,10 +59,13 @@ const TEMPLATE_HTML = `
       white-space: nowrap;
       /* Match single-line textarea height so button is centered at baseline */
       align-self: center;
+      box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
     .send-button:hover {
-      box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40));
+      box-shadow:
+        0 0 16px var(--accent-glow, rgba(0, 229, 255, 0.40)),
+        0 0 32px var(--accent-glow, rgba(0, 229, 255, 0.20));
     }
 
     .queue-indicator {

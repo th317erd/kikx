@@ -21,7 +21,11 @@ const TEMPLATE_HTML = `
       grid-template-rows: auto 1fr auto auto;
       height: 100vh;
       overflow: hidden;
-      background: var(--background-base, #0a0a1a);
+      background:
+        radial-gradient(ellipse at 15% 85%, rgba(176, 64, 255, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 85% 15%, rgba(0, 229, 255, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(255, 64, 129, 0.03) 0%, transparent 60%),
+        var(--background-base, #0a0a1a);
       color: var(--text-primary, #e8e8f0);
     }
 
