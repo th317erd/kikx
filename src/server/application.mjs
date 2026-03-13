@@ -18,7 +18,8 @@ import { AuthService }     from './auth/index.mjs';
 import { SessionManager }  from '../core/session/index.mjs';
 import { FramePersistence } from '../core/frames/index.mjs';
 import { InteractionLoop }  from '../core/interaction/index.mjs';
-import { ContentSanitizer } from '../core/lib/content-sanitizer.mjs';
+import { ContentSanitizer }    from '../core/lib/content-sanitizer.mjs';
+import { MarkdownConverter }   from '../core/lib/markdown-converter.mjs';
 import { SessionScheduler }      from '../core/scheduling/session-scheduler.mjs';
 import { AgentResolver }         from '../core/scheduling/agent-resolver.mjs';
 import { PermissionService }     from '../core/permissions/permission-service.mjs';
@@ -148,6 +149,7 @@ export class Application extends MythixApplication {
     context.setProperty('sessionManager', sessionManager);
     context.setProperty('framePersistence', framePersistence);
     context.setProperty('contentSanitizer', sanitizer);
+    context.setProperty('markdownConverter', new MarkdownConverter(sanitizer));
     context.setProperty('interactionLoop', interactionLoop);
     context.setProperty('sessionScheduler', sessionScheduler);
     context.setProperty('agentResolver', agentResolver);

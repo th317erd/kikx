@@ -3,10 +3,12 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createKikxCore }     from '../../src/core/index.mjs';
-import { InteractionLoop }    from '../../src/core/interaction/index.mjs';
-import { SessionManager }     from '../../src/core/session/index.mjs';
-import { FramePersistence }   from '../../src/core/frames/index.mjs';
+import { createKikxCore }       from '../../src/core/index.mjs';
+import { InteractionLoop }     from '../../src/core/interaction/index.mjs';
+import { SessionManager }      from '../../src/core/session/index.mjs';
+import { FramePersistence }    from '../../src/core/frames/index.mjs';
+import { MarkdownConverter }   from '../../src/core/lib/markdown-converter.mjs';
+import { ContentSanitizer }    from '../../src/core/lib/content-sanitizer.mjs';
 
 // =============================================================================
 // postMessage Tests
@@ -252,6 +254,171 @@ describe('InteractionLoop.postMessage', () => {
 
       assert.equal(f1.authorID, 'user_alice');
       assert.equal(f2.authorID, 'user_bob');
+    });
+  });
+
+  // ===========================================================================
+  // Markdown conversion
+  // ===========================================================================
+
+  describe('markdown conversion', () => {
+    function createLoopWithMarkdown() {
+      let sanitizer = new ContentSanitizer();
+      let converter = new MarkdownConverter(sanitizer);
+      context.setProperty('markdownConverter', converter);
+
+      return new InteractionLoop(context);
+    }
+
+    it('should store content.text when convertMarkdown is false', async () => {
+      let loop    = createLoopWithMarkdown();
+      let session = await createTestSession();
+
+      let result = await loop.postMessage(session.id, {
+        text:            '**bold**',
+        authorType:      'user',
+        convertMarkdown: false,
+      });
+
+      let { Frame } = models;
+      let frame = await Frame.where.id.EQ(result.frameID).first();
+
+      let content = typeof frame.getContent === 'function' ? frame.getContent() : frame.content;
+      if (typeof content === 'string')
+        content = JSON.parse(content);
+
+      assert.equal(content.text, '**bold**');
+      assert.equal(content.html, undefined);
+    });
+
+    it('should store content.text when convertMarkdown is not provided', async () => {
+      let loop    = createLoopWithMarkdown();
+      let session = await createTestSession();
+
+      let result = await loop.postMessage(session.id, {
+        text:       'hello',
+        authorType: 'user',
+      });
+
+      let { Frame } = models;
+      let frame = await Frame.where.id.EQ(result.frameID).first();
+
+      let content = typeof frame.getContent === 'function' ? frame.getContent() : frame.content;
+      if (typeof content === 'string')
+        content = JSON.parse(content);
+
+      assert.equal(content.text, 'hello');
+      assert.equal(content.html, undefined);
+    });
+
+    it('should convert markdown and store content.html when convertMarkdown is true', async () => {
+      let loop    = createLoopWithMarkdown();
+      let session = await createTestSession();
+
+      let result = await loop.postMessage(session.id, {
+        text:            '**bold** and *italic*',
+        authorType:      'user',
+        convertMarkdown: true,
+      });
+
+      let { Frame } = models;
+      let frame = await Frame.where.id.EQ(result.frameID).first();
+
+      let content = typeof frame.getContent === 'function' ? frame.getContent() : frame.content;
+      if (typeof content === 'string')
+        content = JSON.parse(content);
+
+      assert.ok(content.html, 'content.html should be set');
+      assert.ok(content.html.includes('<strong>bold</strong>'), 'should contain bold HTML');
+      assert.ok(content.html.includes('<em>italic</em>'), 'should contain italic HTML');
+      assert.equal(content.text, undefined, 'content.text should not be set');
+    });
+
+    it('should preserve estimatedTokens when converting markdown', async () => {
+      let loop    = createLoopWithMarkdown();
+      let session = await createTestSession();
+      let text    = '**test** content';
+
+      let result = await loop.postMessage(session.id, {
+        text,
+        authorType:      'user',
+        convertMarkdown: true,
+      });
+
+      let { Frame } = models;
+      let frame = await Frame.where.id.EQ(result.frameID).first();
+
+      let content = typeof frame.getContent === 'function' ? frame.getContent() : frame.content;
+      if (typeof content === 'string')
+        content = JSON.parse(content);
+
+      assert.equal(content.estimatedTokens, Math.ceil(text.length / 4));
+    });
+
+    it('should sanitize converted HTML', async () => {
+      let loop    = createLoopWithMarkdown();
+      let session = await createTestSession();
+
+      let result = await loop.postMessage(session.id, {
+        text:            'Hello <script>alert("xss")</script>',
+        authorType:      'user',
+        convertMarkdown: true,
+      });
+
+      let { Frame } = models;
+      let frame = await Frame.where.id.EQ(result.frameID).first();
+
+      let content = typeof frame.getContent === 'function' ? frame.getContent() : frame.content;
+      if (typeof content === 'string')
+        content = JSON.parse(content);
+
+      assert.ok(!content.html.includes('<script>'), 'should strip script tags');
+      assert.ok(!content.html.includes('alert'), 'should strip script content');
+    });
+
+    it('should handle markdown with code blocks', async () => {
+      let loop    = createLoopWithMarkdown();
+      let session = await createTestSession();
+
+      let result = await loop.postMessage(session.id, {
+        text:            '```\nconst x = 1;\n```',
+        authorType:      'user',
+        convertMarkdown: true,
+      });
+
+      let { Frame } = models;
+      let frame = await Frame.where.id.EQ(result.frameID).first();
+
+      let content = typeof frame.getContent === 'function' ? frame.getContent() : frame.content;
+      if (typeof content === 'string')
+        content = JSON.parse(content);
+
+      assert.ok(content.html.includes('<pre>'), 'should contain pre tag');
+      assert.ok(content.html.includes('<code>'), 'should contain code tag');
+    });
+
+    it('should fall back to raw text when markdownConverter is not on context', async () => {
+      // Remove converter from context to test fallback
+      context.setProperty('markdownConverter', null);
+
+      let loop    = new InteractionLoop(context);
+      let session = await createTestSession();
+
+      let result = await loop.postMessage(session.id, {
+        text:            '**bold**',
+        authorType:      'user',
+        convertMarkdown: true,
+      });
+
+      let { Frame } = models;
+      let frame = await Frame.where.id.EQ(result.frameID).first();
+
+      let content = typeof frame.getContent === 'function' ? frame.getContent() : frame.content;
+      if (typeof content === 'string')
+        content = JSON.parse(content);
+
+      // Without converter, the raw text is stored as html
+      assert.equal(content.html, '**bold**');
     });
   });
 });

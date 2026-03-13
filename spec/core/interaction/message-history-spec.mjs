@@ -228,5 +228,41 @@ describe('Message History Utilities (C5)', () => {
       assert.equal(msgs[0].content, '');
       assert.equal(msgs[1].content, '');
     });
+
+    // Markdown-converted user messages (content.html instead of content.text)
+    it('should use content.html for user-message frames when available', () => {
+      let frames = [
+        { id: 'f1', type: 'user-message', content: { html: '<p>hello</p>' }, deleted: false, hidden: false },
+      ];
+      let msgs = buildMessages(frames);
+      assert.equal(msgs.length, 1);
+      assert.equal(msgs[0].role, 'user');
+      assert.equal(msgs[0].content, '<p>hello</p>');
+    });
+
+    it('should prefer content.html over content.text for user-message frames', () => {
+      let frames = [
+        { id: 'f1', type: 'user-message', content: { html: '<p>converted</p>', text: 'original' }, deleted: false, hidden: false },
+      ];
+      let msgs = buildMessages(frames);
+      assert.equal(msgs[0].content, '<p>converted</p>');
+    });
+
+    it('should fall back to content.text when content.html is absent for user-message', () => {
+      let frames = [
+        { id: 'f1', type: 'user-message', content: { text: 'plain text' }, deleted: false, hidden: false },
+      ];
+      let msgs = buildMessages(frames);
+      assert.equal(msgs[0].content, 'plain text');
+    });
+
+    it('should handle user-message with empty html string', () => {
+      let frames = [
+        { id: 'f1', type: 'user-message', content: { html: '', text: 'fallback' }, deleted: false, hidden: false },
+      ];
+      let msgs = buildMessages(frames);
+      // Empty html is falsy, should fall back to text
+      assert.equal(msgs[0].content, 'fallback');
+    });
   });
 });

@@ -676,15 +676,22 @@ class KikxSessionPage extends HTMLElement {
     if (frame.type === 'user-message' && !options.fromHistory) {
       let estimatedTokens = frame.content && frame.content.estimatedTokens;
 
-      if (estimatedTokens) {
-        // Find the most recent user bubble without a data-frame-id (the optimistic one)
-        let allInteractions = this._chatView.shadowRoot.querySelectorAll('kikx-interaction[alignment="user"]:not([data-frame-id])');
-        let optimistic = allInteractions.length > 0 ? allInteractions[allInteractions.length - 1] : null;
+      // Find the most recent user bubble without a data-frame-id (the optimistic one)
+      let allInteractions = this._chatView.shadowRoot.querySelectorAll('kikx-interaction[alignment="user"]:not([data-frame-id])');
+      let optimistic = allInteractions.length > 0 ? allInteractions[allInteractions.length - 1] : null;
 
-        if (optimistic) {
-          optimistic.setAttribute('data-frame-id', frame.id);
-          optimistic.setAttribute('data-interaction-id', frame.interactionID || frame.id);
+      if (optimistic) {
+        optimistic.setAttribute('data-frame-id', frame.id);
+        optimistic.setAttribute('data-interaction-id', frame.interactionID || frame.id);
+
+        if (estimatedTokens)
           optimistic.setAttribute('token-count', String(estimatedTokens));
+
+        // If the server converted markdown → HTML, update the optimistic bubble
+        if (frame.content && frame.content.html) {
+          let messageContent = optimistic.querySelector('kikx-message-content');
+          if (messageContent)
+            messageContent.content = frame.content.html;
         }
       }
 

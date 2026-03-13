@@ -78,6 +78,10 @@ export class InteractionLoop extends EventEmitter {
     return this._context.getProperty('contentSanitizer');
   }
 
+  _getMarkdownConverter() {
+    return this._context.getProperty('markdownConverter');
+  }
+
   _getHookRunner() {
     // Prefer HookService (C4) over legacy HookRunner
     return this._context.getProperty('hookService') || this._context.getProperty('hookRunner');
@@ -192,10 +196,21 @@ export class InteractionLoop extends EventEmitter {
       let agentCount      = params.agentCount || 1;
       let estimatedTokens = Math.ceil(params.userMessage.length / 4) * agentCount;
 
+      // Optionally convert markdown → sanitized HTML
+      let frameContent;
+
+      if (params.convertMarkdown) {
+        let converter = this._getMarkdownConverter();
+        let html      = (converter) ? converter.convert(params.userMessage) : params.userMessage;
+        frameContent  = { html, estimatedTokens };
+      } else {
+        frameContent = { text: params.userMessage, estimatedTokens };
+      }
+
       await this._createFrame(sessionID, {
         id:            generateID('frm_'),
         type:          'user-message',
-        content:       { text: params.userMessage, estimatedTokens },
+        content:       frameContent,
         timestamp:     Date.now(),
         interactionID,
         authorType:    params.authorType || 'user',
@@ -551,7 +566,7 @@ export class InteractionLoop extends EventEmitter {
   // and broadcast via SSE so all connected clients see it.
   // ---------------------------------------------------------------------------
 
-  async postMessage(sessionID, { text, authorType, authorID, parentID }) {
+  async postMessage(sessionID, { text, authorType, authorID, parentID, convertMarkdown }) {
     if (!sessionID)
       throw new Error('sessionID is required');
 
@@ -584,10 +599,21 @@ export class InteractionLoop extends EventEmitter {
     let frameID       = generateID('frm_');
     let interactionID = generateID('int_');
 
+    // Optionally convert markdown → sanitized HTML
+    let frameContent;
+
+    if (convertMarkdown) {
+      let converter = this._getMarkdownConverter();
+      let html      = (converter) ? converter.convert(text) : text;
+      frameContent  = { html, estimatedTokens: Math.ceil(text.length / 4) };
+    } else {
+      frameContent = { text, estimatedTokens: Math.ceil(text.length / 4) };
+    }
+
     await this._createFrame(sessionID, {
       id:            frameID,
       type:          'user-message',
-      content:       { text, estimatedTokens: Math.ceil(text.length / 4) },
+      content:       frameContent,
       timestamp:     Date.now(),
       interactionID,
       authorType:    authorType || 'user',

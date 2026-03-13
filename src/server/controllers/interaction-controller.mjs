@@ -13,7 +13,7 @@ export class InteractionController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async sendMessage({ params, body }) {
-    let { message, agentID, parentID } = body || {};
+    let { message, agentID, parentID, convertMarkdown } = body || {};
 
     if (!message)
       this.throwBadRequestError('message is required');
@@ -28,6 +28,7 @@ export class InteractionController extends ControllerAuthBase {
         authorType: 'user',
         authorID:   this.request.userID,
         parentID,
+        convertMarkdown,
       });
 
       this.setStatusCode(201);
@@ -230,6 +231,7 @@ export class InteractionController extends ControllerAuthBase {
       authorID:    this.request.userID,
       agentCount,
       parentID,
+      convertMarkdown,
       checkPermission,
       executeTool,
     });

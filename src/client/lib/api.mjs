@@ -225,7 +225,7 @@ export function updateFrameContent(sessionID, frameID, content) {
 // Interaction endpoints
 
 export function sendMessage(sessionID, message, agentID, parentID) {
-  let body = { message };
+  let body = { message, convertMarkdown: true };
   if (agentID)
     body.agentID = agentID;
 

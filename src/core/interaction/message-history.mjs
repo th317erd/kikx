@@ -89,7 +89,7 @@ export function buildMessages(frames, forAgentID) {
 
     if (type === 'user-message') {
       let content = frame.content || {};
-      messages.push({ role: 'user', content: content.text || '', frameID: frame.id });
+      messages.push({ role: 'user', content: content.html || content.text || '', frameID: frame.id });
     } else if (type === 'message') {
       let content = frame.content || {};
       let html    = content.html || '';

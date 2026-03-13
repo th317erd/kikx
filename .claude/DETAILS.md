@@ -50,12 +50,13 @@ Important details to remember across sessions.
 - **Phase 3 (V2 Differentiators):** IN PROGRESS
 - **Phase C (Frame Event Router):** COMPLETE (C1-C4)
 - **E2E Integration:** VERIFIED
-- **Test count:** 2315 tests, 0 failures
+- **Test count:** 2398 tests, 0 failures
 
 ### Completed Future Plans
 
 | Feature | Completed |
 |---------|-----------|
+| Markdown Conversion | 2026-03-13 |
 | Abilities System | 2026-03-12 |
 | Inter-Agent Streaming | 2026-03-10 |
 | Agent Memory Context | 2026-03-11 |
@@ -98,12 +99,14 @@ Important details to remember across sessions.
 - **Context Truncation:** `src/core/interaction/context-truncation.mjs`
 - **Message History:** `src/core/interaction/message-history.mjs`
 - **Abilities Re-injection:** `src/core/interaction/abilities-reinjection.mjs`
+- **Markdown Converter:** `src/core/lib/markdown-converter.mjs`
 - **Primer Assembler:** `src/core/primer/index.mjs`
 - **Agent Model:** `src/core/models/agent-model.mjs`
 - **V2 Client:** `src/client/` (Waves A-I complete, 38 components)
 - **Plan YAML:** `bot-docs/plan/kikx/server-plan.yaml`
 - **Future plans index:** `bot-docs/plan/kikx/future-plans.yaml`
 - **Future plan specs:** `bot-docs/future-plans/*.yaml`
+- **User message pipeline:** `bot-docs/docs/user-message-pipeline.md` — full data flow from HTTP request to frame creation
 
 ## Known Issue: node:sqlite
 

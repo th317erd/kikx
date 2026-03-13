@@ -14,6 +14,7 @@
     "migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
+    "marked": "^17.0.4",
     "mythix": "^4.1.0",
     "mythix-orm": "^1.15.0",
     "mythix-orm-sqlite": "^3.0.0",
