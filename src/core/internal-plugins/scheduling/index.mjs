@@ -9,29 +9,26 @@ import { BasePluginClass } from '../../routing/base-plugin-class.mjs';
 // user-message frames via the FrameRouter and triggers multi-agent
 // scheduling when a user-authored commit arrives.
 //
-// The scheduling plugin accesses the SessionScheduler from the KikxCore
-// context (captured via closure at setup time). All persistent state
-// lives in SessionScheduler — the plugin instance is stateless.
+// The scheduling plugin resolves the SessionScheduler lazily from the
+// KikxCore context at process time (not setup time), because the scheduler
+// is registered on context AFTER plugins load.
 // =============================================================================
 
 export function setup({ registerSelector, context }) {
-  let sessionScheduler = context.getProperty('sessionScheduler');
-
-  // If no scheduler exists (e.g., embedded/test mode without multi-agent),
-  // skip registration entirely.
-  if (!sessionScheduler)
-    return;
-
   class SchedulingPlugin extends BasePluginClass {
     async process(next, done) {
+      // Resolve scheduler lazily — it may not exist at setup time
+      let sessionScheduler = context.getProperty('sessionScheduler');
+      if (!sessionScheduler)
+        return await next(this.context);
+
       let commit    = this.context.commit;
       let sessionID = this.context.session && this.context.session.id;
 
       // Only schedule agents on user-authored commits. Agent and system
       // commits must be ignored to prevent ping-pong loops.
-      if (!sessionID || !commit || commit.authorType !== 'user') {
+      if (!sessionID || !commit || commit.authorType !== 'user')
         return await next(this.context);
-      }
 
       try {
         let scheduled = await sessionScheduler.onCommit(sessionID, commit);

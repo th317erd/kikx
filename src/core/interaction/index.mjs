@@ -381,7 +381,7 @@ export class InteractionLoop extends EventEmitter {
           // Execute tool
           await this._createFrame(sessionID, {
             id: frameID, type: 'tool-call',
-            content: { toolName: block.content.toolName, arguments: block.content.arguments, toolUseID: block.content.toolUseID },
+            content: { toolName: block.content.toolName, arguments: block.content.arguments, toolUseID: block.content.toolUseId || block.content.toolUseID },
             timestamp, interactionID,
             authorType: block.authorType || 'agent', authorID: block.authorID || null,
             parentID: params.parentID || null,
@@ -418,7 +418,7 @@ export class InteractionLoop extends EventEmitter {
 
           await this._createFrame(sessionID, {
             id: generateID('frm_'), type: 'tool-result',
-            content: { output: toolOutput, toolUseID: block.content.toolUseID },
+            content: { output: toolOutput, toolUseID: block.content.toolUseId || block.content.toolUseID },
             timestamp: Date.now(), interactionID,
             authorType: 'system', authorID: null,
             parentID: params.parentID || null,
@@ -436,6 +436,8 @@ export class InteractionLoop extends EventEmitter {
         }
       }
     } catch (error) {
+      console.error(`[InteractionLoop] Error in interaction ${interactionID} (session ${sessionID}):`, error);
+
       await this._createFrame(sessionID, {
         id: generateID('frm_'), type: 'error', content: { message: error.message },
         timestamp: Date.now(), interactionID,

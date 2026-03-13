@@ -77,8 +77,9 @@ describe('SchedulingPlugin (C2)', () => {
       assert.ok(selectors[0].PluginClass);
     });
 
-    it('should skip registration when no sessionScheduler on context', () => {
-      // Create a fresh context mock without sessionScheduler
+    it('should still register even when no sessionScheduler on context (lazy resolution)', () => {
+      // The plugin always registers; it resolves the scheduler lazily
+      // at process() time, so setup() succeeds even without a scheduler.
       let mockContext = {
         getProperty: (key) => {
           if (key === 'sessionScheduler') return undefined;
@@ -93,7 +94,8 @@ describe('SchedulingPlugin (C2)', () => {
 
       setup({ registerSelector, context: mockContext });
 
-      assert.equal(selectors.length, 0);
+      assert.equal(selectors.length, 1, 'Should register selector (lazy resolution)');
+      assert.equal(selectors[0].selector, 'type:user-message');
     });
   });
 

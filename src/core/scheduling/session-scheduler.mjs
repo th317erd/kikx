@@ -204,6 +204,10 @@ export class SessionScheduler extends EventEmitter {
       this.clearResolveContext(sessionID);
   }
 
+  markActive(sessionID, agentID) {
+    this._activeAgents.set(`${sessionID}:${agentID}`, true);
+  }
+
   isAgentActive(sessionID, agentID) {
     return !!this._activeAgents.get(`${sessionID}:${agentID}`);
   }

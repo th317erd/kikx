@@ -53,6 +53,13 @@ export class InteractionController extends ControllerAuthBase {
 
     // Resolve API key if encrypted
     let resolvedAgent = { ...agent.toJSON ? agent.toJSON() : agent };
+
+    // Preserve abilities convenience methods for PrimerAssembler
+    if (typeof agent.hasAbilities === 'function') {
+      resolvedAgent.hasAbilities = () => agent.hasAbilities();
+      resolvedAgent.getAbilities = () => agent.getAbilities();
+    }
+
     if (agent.encryptedAPIKey) {
       try {
         let umk       = this.request.getUMK();
@@ -174,40 +181,44 @@ export class InteractionController extends ControllerAuthBase {
 
       let toolInstance = new ToolClass(core.getContext());
 
-      // Inject session context for system:command
-      if (toolName === 'system:command') {
-        let augmentedArgs = {
-          ...toolArgs,
-          _sessionID: params.sessionID,
-          _authorID:  this.request.userID,
-          _agent:     resolvedAgent,
-        };
+      // Inject session/agent context into all tool calls
+      let augmentedArgs = {
+        ...toolArgs,
+        _sessionID: params.sessionID,
+        _authorID:  this.request.userID,
+        _agent:     resolvedAgent,
+      };
 
-        let result = await toolInstance.execute(augmentedArgs);
+      // Inject agentID for tools that need to identify the calling agent
+      if (resolvedAgent && resolvedAgent.id)
+        augmentedArgs.agentID = toolArgs.agentID || resolvedAgent.id;
 
-        if (result && result.injectPrimer)
-          interactionLoop.requestPrimerRefresh(params.sessionID);
+      let result = await toolInstance.execute(augmentedArgs);
 
-        return result;
-      }
+      if (result && result.injectPrimer)
+        interactionLoop.requestPrimerRefresh(params.sessionID);
 
-      return toolInstance.execute(toolArgs);
+      return result;
     };
 
-    // If session has multiple participants, stash resolve context on the
-    // scheduler so the orchestrator can decrypt API keys for secondary agents.
+    // Stash resolve context on the scheduler so it can decrypt API keys
+    // for re-triggered or secondary agents.
     let sessionManager   = this.getSessionManager();
     let sessionScheduler = this.getSessionScheduler();
     let participants     = await sessionManager.getParticipants(params.sessionID);
     let agentCount       = (participants && participants.length > 0) ? participants.length : 1;
 
-    if (agentCount > 1 && sessionScheduler) {
+    if (sessionScheduler) {
       let umk = this.request.getUMK();
       sessionScheduler.setResolveContext(params.sessionID, {
         keystore,
         umk,
         userID: this.request.userID,
       });
+
+      // Mark the primary agent as active BEFORE starting the interaction,
+      // so the scheduling plugin's onCommit skips it (prevents double-trigger).
+      sessionScheduler.markActive(params.sessionID, agentID);
     }
 
     // Start interaction (non-blocking — frames emitted via SSE)

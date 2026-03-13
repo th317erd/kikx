@@ -495,7 +495,7 @@ describe('Multi-Agent Integration', () => {
         content:    { text: 'Hello team' },
         authorType: 'user',
         authorID:   'usr_test',
-      }], { authorType: 'user', authorID: 'usr_test' });
+      }], { authorType: 'user', authorID: 'usr_test', silent: true });
 
       let scheduled = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
 
@@ -611,6 +611,11 @@ describe('Multi-Agent Integration', () => {
       // Verify the loop cleaned up (no stuck active state)
       assert.ok(!interactionLoop.isActive(session.id), 'Session should not be active after crash');
 
+      // Clear scheduler active state from FrameRouter auto-scheduling
+      // (in production, connectToInteractionLoop handles this via interaction:end)
+      scheduler.markComplete(session.id, crasher.id);
+      scheduler.markComplete(session.id, healthy.id);
+
       // Create a new user message to trigger scheduling
       let frameManager = sessionManager.getFrameManager(session.id);
       frameManager.merge([{
@@ -619,7 +624,7 @@ describe('Multi-Agent Integration', () => {
         content:    { text: 'After crash' },
         authorType: 'user',
         authorID:   'usr_test',
-      }], { authorType: 'user', authorID: 'usr_test' });
+      }], { authorType: 'user', authorID: 'usr_test', silent: true });
 
       // Scheduler should offer to trigger the crashed agent again (it's not stuck "active")
       let scheduled = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
@@ -785,7 +790,7 @@ describe('Multi-Agent Integration', () => {
         content:    { text: 'Start the cycle' },
         authorType: 'user',
         authorID:   'usr_test',
-      }], { authorType: 'user', authorID: 'usr_test' });
+      }], { authorType: 'user', authorID: 'usr_test', silent: true });
 
       let userCommit = frameManager.getLatestCommit();
 
@@ -846,6 +851,11 @@ describe('Multi-Agent Integration', () => {
       await runInteraction(session.id, alpha, pluginA1, 'First message');
       await runInteraction(session.id, beta, pluginB1, null, { replayFromPermission: true });
 
+      // Clear scheduler active state from FrameRouter auto-scheduling
+      // (in production, connectToInteractionLoop handles this via interaction:end)
+      scheduler.markComplete(session.id, alpha.id);
+      scheduler.markComplete(session.id, beta.id);
+
       // Second user message
       let frameManager = sessionManager.getFrameManager(session.id);
       frameManager.merge([{
@@ -854,7 +864,7 @@ describe('Multi-Agent Integration', () => {
         content:    { text: 'Second message' },
         authorType: 'user',
         authorID:   'usr_test',
-      }], { authorType: 'user', authorID: 'usr_test' });
+      }], { authorType: 'user', authorID: 'usr_test', silent: true });
 
       let newCommit  = frameManager.getLatestCommit();
       let scheduled  = await scheduler.onCommit(session.id, newCommit);

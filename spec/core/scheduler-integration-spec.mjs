@@ -134,7 +134,7 @@ describe('Scheduler Integration (B7)', () => {
     frameManager.merge([{
       id: 'frm_b7m_1', type: 'user-message', content: { text: 'Hello agents' },
       authorType: 'user', authorID: 'usr_1',
-    }], { authorType: 'user', authorID: 'usr_1' });
+    }], { authorType: 'user', authorID: 'usr_1', silent: true });
 
     let scheduled = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
 
@@ -193,7 +193,7 @@ describe('Scheduler Integration (B7)', () => {
     frameManager.merge([{
       id: 'frm_b7e_1', type: 'user-message', content: { text: 'Event test' },
       authorType: 'user', authorID: 'usr_1',
-    }], { authorType: 'user', authorID: 'usr_1' });
+    }], { authorType: 'user', authorID: 'usr_1', silent: true });
 
     await scheduler.onCommit(session.id, frameManager.getLatestCommit());
 

@@ -43,7 +43,7 @@ export class PermissionHandler {
     let pendingFrame   = {
       id:            pendingFrameID,
       type:          'pending-action',
-      content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseID: block.content.toolUseID },
+      content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseID: block.content.toolUseId || block.content.toolUseID },
       timestamp:     Date.now(),
       interactionID,
       authorType:    block.authorType || 'agent',
@@ -165,7 +165,7 @@ export class PermissionHandler {
       type:          'tool-result',
       content:       {
         output:    `Permission denied: no user session found in ancestry to approve "${toolName}". Tool execution was automatically denied.`,
-        toolUseID: block.content.toolUseID,
+        toolUseID: block.content.toolUseId || block.content.toolUseID,
       },
       timestamp:     Date.now(),
       interactionID,
