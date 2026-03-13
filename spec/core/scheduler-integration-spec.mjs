@@ -180,6 +180,117 @@ describe('Scheduler Integration (B7)', () => {
     assert.equal(result, null);
   });
 
+  // ---------------------------------------------------------------------------
+  // Regression: Bug #7 — markActive prevents double-trigger
+  // ---------------------------------------------------------------------------
+  // When the HTTP controller marks the primary agent active before
+  // startInteraction, the scheduling plugin's onCommit must skip it.
+  // Without this, single-agent sessions get double-triggered.
+  // ---------------------------------------------------------------------------
+
+  it('markActive() should make isAgentActive() return true', async () => {
+    let { agent, session } = await createTestSetup();
+
+    assert.equal(scheduler.isAgentActive(session.id, agent.id), false);
+
+    scheduler.markActive(session.id, agent.id);
+    assert.equal(scheduler.isAgentActive(session.id, agent.id), true);
+
+    // Cleanup
+    scheduler.markComplete(session.id, agent.id);
+    assert.equal(scheduler.isAgentActive(session.id, agent.id), false);
+  });
+
+  it('onCommit should skip agents pre-marked active via markActive()', async () => {
+    let { agent, session } = await createTestSetup();
+
+    // Pre-mark agent as active (simulates controller calling markActive before startInteraction)
+    scheduler.markActive(session.id, agent.id);
+
+    let frameManager = sessionManager.getFrameManager(session.id);
+    frameManager.merge([{
+      id:         'frm_b7_ma_1',
+      type:       'user-message',
+      content:    { text: 'Should not double-trigger' },
+      authorType: 'user',
+      authorID:   'usr_1',
+    }], { authorType: 'user', authorID: 'usr_1', silent: true });
+
+    let scheduled = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
+
+    assert.equal(scheduled.length, 0, 'Agent should be skipped because it is already active');
+
+    // Cleanup
+    scheduler.markComplete(session.id, agent.id);
+  });
+
+  it('onCommit should still schedule non-active agents in multi-agent session when primary is markActive', async () => {
+    let org     = await models.Organization.create({ name: 'B7 markActive Multi Org' });
+    let agentA  = await models.Agent.create({ organizationID: org.id, name: 'test-b7-ma-a', pluginID: 'mock' });
+    let agentB  = await models.Agent.create({ organizationID: org.id, name: 'test-b7-ma-b', pluginID: 'mock' });
+    let session = await sessionManager.createSession(org.id, { name: 'B7 markActive Multi' });
+
+    await sessionManager.addParticipant(session.id, agentA.id);
+    await sessionManager.addParticipant(session.id, agentB.id);
+
+    // Only mark agentA as active (primary agent)
+    scheduler.markActive(session.id, agentA.id);
+
+    let frameManager = sessionManager.getFrameManager(session.id);
+    frameManager.merge([{
+      id:         'frm_b7_mam_1',
+      type:       'user-message',
+      content:    { text: 'Only agentB should be scheduled' },
+      authorType: 'user',
+      authorID:   'usr_1',
+    }], { authorType: 'user', authorID: 'usr_1', silent: true });
+
+    let scheduled = await scheduler.onCommit(session.id, frameManager.getLatestCommit());
+
+    assert.equal(scheduled.length, 1, 'Only the non-active agent should be scheduled');
+    assert.equal(scheduled[0].agentID, agentB.id, 'AgentB (not pre-marked) should be the one scheduled');
+
+    // Cleanup
+    scheduler.markComplete(session.id, agentA.id);
+    scheduler.markComplete(session.id, agentB.id);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Regression: Bug #7 — resolve context for single-agent sessions
+  // ---------------------------------------------------------------------------
+  // The controller must always set resolve context, not just for multi-agent
+  // sessions, so the scheduler can decrypt API keys if a re-trigger happens.
+  // ---------------------------------------------------------------------------
+
+  it('setResolveContext should store and retrieve context for any session', () => {
+    let sessionID = 'ses_resolve_ctx_test';
+    let mockContext = { keystore: 'ks', umk: 'umk', userID: 'usr_1' };
+
+    assert.equal(scheduler.getResolveContext(sessionID), null, 'No context initially');
+
+    scheduler.setResolveContext(sessionID, mockContext);
+    assert.deepEqual(scheduler.getResolveContext(sessionID), mockContext);
+
+    // Cleanup
+    scheduler.clearResolveContext(sessionID);
+    assert.equal(scheduler.getResolveContext(sessionID), null, 'Context cleared');
+  });
+
+  it('markComplete should clear resolve context when no agents remain active', () => {
+    let sessionID = 'ses_resolve_clear_test';
+    let mockContext = { keystore: 'ks', umk: 'umk', userID: 'usr_1' };
+
+    scheduler.setResolveContext(sessionID, mockContext);
+    scheduler.markActive(sessionID, 'agt_1');
+    scheduler.markActive(sessionID, 'agt_2');
+
+    scheduler.markComplete(sessionID, 'agt_1');
+    assert.ok(scheduler.getResolveContext(sessionID), 'Context still present while agt_2 active');
+
+    scheduler.markComplete(sessionID, 'agt_2');
+    assert.equal(scheduler.getResolveContext(sessionID), null, 'Context cleared when all agents done');
+  });
+
   it('should forward scheduler events for observability', async () => {
     let { agent, session } = await createTestSetup();
     let events = [];
