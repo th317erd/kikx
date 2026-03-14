@@ -6,11 +6,11 @@ import assert from 'node:assert/strict';
 import { createKikxCore } from '../../../src/core/index.mjs';
 
 // =============================================================================
-// Agent Config Persistence Tests
+// Agent Config Persistence Tests (ValueStore-backed)
 // =============================================================================
-// Verifies the `config` field and associated methods:
+// Verifies the async config methods backed by ValueStore:
 //   getConfig(), setConfig(), updateConfig(), getSafeConfig()
-// Agent config is persisted as JSON TEXT and merged over defaults.
+// Agent config is stored as individual key-value entries in the ValueStore table.
 // =============================================================================
 
 describe('Agent Config Persistence', () => {
@@ -43,23 +43,15 @@ describe('Agent Config Persistence', () => {
   }
 
   // ---------------------------------------------------------------------------
-  // Field existence
-  // ---------------------------------------------------------------------------
-
-  it('config field exists on agent instances and defaults to null', async () => {
-    let agent = await createAgent('test-config-field');
-    assert.equal(agent.config == null, true, 'config should be null or undefined by default');
-  });
-
-  // ---------------------------------------------------------------------------
   // PROTECTED_KEYS static
   // ---------------------------------------------------------------------------
 
-  it('Agent.PROTECTED_KEYS is a Set containing apiKey and encryptedAPIKey', () => {
+  it('Agent.PROTECTED_KEYS is a Set containing apiKey, encryptedAPIKey, and riskLevel', () => {
     let { Agent } = models;
     assert.ok(Agent.PROTECTED_KEYS instanceof Set);
     assert.ok(Agent.PROTECTED_KEYS.has('apiKey'));
     assert.ok(Agent.PROTECTED_KEYS.has('encryptedAPIKey'));
+    assert.ok(Agent.PROTECTED_KEYS.has('riskLevel'));
   });
 
   // ---------------------------------------------------------------------------
@@ -71,66 +63,52 @@ describe('Agent Config Persistence', () => {
     assert.equal(typeof agent.getConfig, 'function');
   });
 
-  it('getConfig() with null stored config returns defaults { riskLevel: medium }', async () => {
+  it('getConfig() with no stored entries returns empty defaults', async () => {
     let agent  = await createAgent('test-config-defaults');
-    let config = agent.getConfig();
+    let config = await agent.getConfig();
 
     assert.equal(typeof config, 'object');
     assert.notEqual(config, null);
-    assert.equal(config.riskLevel, 'medium');
+    assert.deepStrictEqual(config, {});
   });
 
-  it('getConfig() with stored config returns stored values merged over defaults', async () => {
+  it('getConfig() with stored config returns stored values', async () => {
     let agent = await createAgent('test-config-merge');
-    agent.setConfig({ riskLevel: 'high', model: 'claude-sonnet' });
-    await agent.save();
+    await agent.setConfig({ riskLevel: 'high', model: 'claude-sonnet' });
 
-    let config = agent.getConfig();
+    let config = await agent.getConfig();
     assert.equal(config.riskLevel, 'high');
     assert.equal(config.model, 'claude-sonnet');
   });
 
-  it('getConfig() stored values override defaults', async () => {
+  it('getConfig() stored values are returned', async () => {
     let agent = await createAgent('test-config-override');
-    agent.setConfig({ riskLevel: 'low' });
-    await agent.save();
+    await agent.setConfig({ riskLevel: 'low' });
 
-    let config = agent.getConfig();
+    let config = await agent.getConfig();
     assert.equal(config.riskLevel, 'low');
   });
 
-  it('getConfig() with invalid JSON in column returns defaults (graceful degradation)', async () => {
-    let agent = await createAgent('test-config-invalid-json');
-
-    // Manually set invalid JSON in the column
-    agent.config = 'not valid json {{{';
-
-    let config = agent.getConfig();
-    assert.equal(config.riskLevel, 'medium');
-    assert.deepStrictEqual(Object.keys(config), ['riskLevel']);
-  });
-
-  it('returned object contains only expected keys when no config stored', async () => {
+  it('returned object contains only stored keys when no defaults', async () => {
     let agent  = await createAgent('test-config-keys');
-    let config = agent.getConfig();
+    let config = await agent.getConfig();
     let keys   = Object.keys(config);
 
-    assert.deepStrictEqual(keys, ['riskLevel']);
+    assert.deepStrictEqual(keys, []);
   });
 
   // ---------------------------------------------------------------------------
   // setConfig()
   // ---------------------------------------------------------------------------
 
-  it('setConfig(obj) + save() persists and round-trips via getConfig()', async () => {
+  it('setConfig(obj) persists and round-trips via getConfig()', async () => {
     let agent = await createAgent('test-config-roundtrip');
-    agent.setConfig({ riskLevel: 'critical', model: 'gpt-4' });
-    await agent.save();
+    await agent.setConfig({ riskLevel: 'critical', model: 'gpt-4' });
 
     // Re-fetch from DB
     let { Agent } = models;
     let fetched = await Agent.where.id.EQ(agent.id).first();
-    let config  = fetched.getConfig();
+    let config  = await fetched.getConfig();
 
     assert.equal(config.riskLevel, 'critical');
     assert.equal(config.model, 'gpt-4');
@@ -138,79 +116,86 @@ describe('Agent Config Persistence', () => {
 
   it('setConfig(null) clears config back to defaults', async () => {
     let agent = await createAgent('test-config-clear');
-    agent.setConfig({ riskLevel: 'high', custom: 'value' });
-    await agent.save();
+    await agent.setConfig({ riskLevel: 'high', custom: 'value' });
+    await agent.setConfig(null);
 
-    agent.setConfig(null);
-    await agent.save();
-
-    let config = agent.getConfig();
-    assert.equal(config.riskLevel, 'medium');
+    let config = await agent.getConfig();
+    assert.deepStrictEqual(config, {});
     assert.equal(config.custom, undefined);
   });
 
   it('setConfig({}) stores empty object, getConfig() returns defaults', async () => {
     let agent = await createAgent('test-config-empty');
-    agent.setConfig({});
-    await agent.save();
+    await agent.setConfig({});
 
-    let config = agent.getConfig();
-    assert.equal(config.riskLevel, 'medium');
+    let config = await agent.getConfig();
+    assert.deepStrictEqual(config, {});
   });
 
   // ---------------------------------------------------------------------------
   // updateConfig()
   // ---------------------------------------------------------------------------
 
-  it('updateConfig(partial) shallow-merges into existing config', async () => {
+  it('updateConfig(partial) merges into existing config', async () => {
     let agent = await createAgent('test-config-update-merge');
-    agent.setConfig({ riskLevel: 'high', model: 'claude-sonnet' });
-    await agent.save();
+    await agent.setConfig({ riskLevel: 'high', model: 'claude-sonnet' });
+    await agent.updateConfig({ apiUrl: 'https://api.example.com' });
 
-    agent.updateConfig({ apiUrl: 'https://api.example.com' });
-    await agent.save();
-
-    let config = agent.getConfig();
+    let config = await agent.getConfig();
     assert.equal(config.riskLevel, 'high');
     assert.equal(config.model, 'claude-sonnet');
     assert.equal(config.apiUrl, 'https://api.example.com');
   });
 
-  it('updateConfig(partial) on null config creates from partial + defaults', async () => {
+  it('updateConfig(partial) on empty config creates entries', async () => {
     let agent = await createAgent('test-config-update-null');
-    agent.updateConfig({ model: 'gpt-4' });
-    await agent.save();
+    await agent.updateConfig({ model: 'gpt-4' });
 
-    let config = agent.getConfig();
-    assert.equal(config.riskLevel, 'medium');
+    let config = await agent.getConfig();
     assert.equal(config.model, 'gpt-4');
   });
 
   it('updateConfig({}) is a no-op', async () => {
     let agent = await createAgent('test-config-update-noop');
-    agent.setConfig({ riskLevel: 'high' });
-    await agent.save();
+    await agent.setConfig({ riskLevel: 'high' });
+    await agent.updateConfig({});
 
-    agent.updateConfig({});
-    await agent.save();
-
-    let config = agent.getConfig();
+    let config = await agent.getConfig();
     assert.equal(config.riskLevel, 'high');
   });
 
   it('updateConfig allows arbitrary keys (model, apiUrl, abilities blob)', async () => {
     let agent = await createAgent('test-config-arbitrary');
-    agent.updateConfig({
+    await agent.updateConfig({
       model:     'claude-opus',
       apiUrl:    'https://api.anthropic.com',
       abilities: { codeReview: true, testing: true },
     });
-    await agent.save();
 
-    let config = agent.getConfig();
+    let config = await agent.getConfig();
     assert.equal(config.model, 'claude-opus');
     assert.equal(config.apiUrl, 'https://api.anthropic.com');
     assert.deepStrictEqual(config.abilities, { codeReview: true, testing: true });
+  });
+
+  it('updateConfig upserts existing values', async () => {
+    let agent = await createAgent('test-config-upsert');
+    await agent.setConfig({ riskLevel: 'high', model: 'claude-sonnet' });
+    await agent.updateConfig({ riskLevel: 'low' });
+
+    let config = await agent.getConfig();
+    assert.equal(config.riskLevel, 'low');
+    assert.equal(config.model, 'claude-sonnet');
+  });
+
+  it('updateConfig with null value deletes the entry', async () => {
+    let agent = await createAgent('test-config-update-delete');
+    await agent.setConfig({ riskLevel: 'high', model: 'claude-sonnet' });
+    await agent.updateConfig({ model: null });
+
+    let config = await agent.getConfig();
+    assert.equal(config.riskLevel, 'high');
+    assert.equal(config.model, undefined);
   });
 
   // ---------------------------------------------------------------------------
@@ -219,32 +204,33 @@ describe('Agent Config Persistence', () => {
 
   it('returns a fresh object on each call (no shared mutation risk)', async () => {
     let agent   = await createAgent('test-config-fresh');
-    let config1 = agent.getConfig();
-    let config2 = agent.getConfig();
+    let config1 = await agent.getConfig();
+    let config2 = await agent.getConfig();
 
     assert.notStrictEqual(config1, config2, 'each call should return a new object');
     assert.deepStrictEqual(config1, config2, 'contents should be identical');
   });
 
   it('mutating one config does not affect subsequent calls', async () => {
-    let agent  = await createAgent('test-config-mutation');
-    let config = agent.getConfig();
+    let agent = await createAgent('test-config-mutation');
+    await agent.setConfig({ riskLevel: 'medium' });
+
+    let config = await agent.getConfig();
     config.riskLevel = 'high';
 
-    let fresh = agent.getConfig();
+    let fresh = await agent.getConfig();
     assert.equal(fresh.riskLevel, 'medium', 'mutation should not leak to next call');
   });
 
   it('mutating getConfig() result does not affect stored config', async () => {
     let agent = await createAgent('test-config-mutation-stored');
-    agent.setConfig({ riskLevel: 'high', items: [1, 2, 3] });
-    await agent.save();
+    await agent.setConfig({ riskLevel: 'high', items: [1, 2, 3] });
 
-    let config = agent.getConfig();
+    let config = await agent.getConfig();
     config.riskLevel = 'changed';
     config.items.push(4);
 
-    let fresh = agent.getConfig();
+    let fresh = await agent.getConfig();
     assert.equal(fresh.riskLevel, 'high');
     assert.deepStrictEqual(fresh.items, [1, 2, 3]);
   });
@@ -257,18 +243,15 @@ describe('Agent Config Persistence', () => {
     let agent1 = await createAgent('test-config-independent-a');
     let agent2 = await createAgent('test-config-independent-b');
 
-    agent1.setConfig({ riskLevel: 'high' });
-    await agent1.save();
-
-    agent2.setConfig({ riskLevel: 'low' });
-    await agent2.save();
+    await agent1.setConfig({ riskLevel: 'high' });
+    await agent2.setConfig({ riskLevel: 'low' });
 
     let { Agent } = models;
     let fetched1 = await Agent.where.id.EQ(agent1.id).first();
     let fetched2 = await Agent.where.id.EQ(agent2.id).first();
 
-    assert.equal(fetched1.getConfig().riskLevel, 'high');
-    assert.equal(fetched2.getConfig().riskLevel, 'low');
+    assert.equal((await fetched1.getConfig()).riskLevel, 'high');
+    assert.equal((await fetched2.getConfig()).riskLevel, 'low');
   });
 
   // ---------------------------------------------------------------------------
@@ -277,34 +260,42 @@ describe('Agent Config Persistence', () => {
 
   it('getSafeConfig() strips protected keys (apiKey)', async () => {
     let agent = await createAgent('test-config-safe-apikey');
-    // Simulate protected keys in stored config
-    agent.config = JSON.stringify({ riskLevel: 'medium', apiKey: 'sk-secret-12345' });
+    await agent.setConfig({ riskLevel: 'medium', apiKey: 'sk-secret-12345' });
 
-    let safeConfig = agent.getSafeConfig();
-    assert.equal(safeConfig.riskLevel, 'medium');
+    let safeConfig = await agent.getSafeConfig();
+    assert.equal(safeConfig.riskLevel, undefined);
     assert.equal(safeConfig.apiKey, undefined);
   });
 
   it('getSafeConfig() strips protected keys (encryptedAPIKey)', async () => {
     let agent = await createAgent('test-config-safe-encrypted');
-    agent.config = JSON.stringify({ riskLevel: 'high', encryptedAPIKey: '{ciphertext}' });
+    await agent.setConfig({ riskLevel: 'high', encryptedAPIKey: '{ciphertext}' });
 
-    let safeConfig = agent.getSafeConfig();
-    assert.equal(safeConfig.riskLevel, 'high');
+    let safeConfig = await agent.getSafeConfig();
+    assert.equal(safeConfig.riskLevel, undefined);
     assert.equal(safeConfig.encryptedAPIKey, undefined);
+  });
+
+  it('getSafeConfig() strips riskLevel (now a protected key)', async () => {
+    let agent = await createAgent('test-config-safe-risklevel');
+    await agent.setConfig({ riskLevel: 'high', model: 'claude-opus' });
+
+    let safeConfig = await agent.getSafeConfig();
+    assert.equal(safeConfig.riskLevel, undefined);
+    assert.equal(safeConfig.model, 'claude-opus');
   });
 
   it('getSafeConfig() returns defaults when no config stored', async () => {
     let agent      = await createAgent('test-config-safe-defaults');
-    let safeConfig = agent.getSafeConfig();
+    let safeConfig = await agent.getSafeConfig();
 
-    assert.equal(safeConfig.riskLevel, 'medium');
+    assert.deepStrictEqual(safeConfig, {});
   });
 
   it('getSafeConfig() returns fresh copy (mutation isolation)', async () => {
     let agent = await createAgent('test-config-safe-fresh');
-    let safe1 = agent.getSafeConfig();
-    let safe2 = agent.getSafeConfig();
+    let safe1 = await agent.getSafeConfig();
+    let safe2 = await agent.getSafeConfig();
 
     assert.notStrictEqual(safe1, safe2);
     assert.deepStrictEqual(safe1, safe2);
@@ -316,81 +307,83 @@ describe('Agent Config Persistence', () => {
 
   it('getAbilities() returns null when no abilities stored', async () => {
     let agent = await createAgent('test-abilities-null');
-    assert.equal(agent.getAbilities(), null);
+    assert.equal(await agent.getAbilities(), null);
   });
 
   it('getAbilities() returns the abilities string when stored', async () => {
     let agent = await createAgent('test-abilities-get');
-    agent.updateConfig({ abilities: 'If merging to main, ask about production deploy.' });
-    assert.equal(agent.getAbilities(), 'If merging to main, ask about production deploy.');
+    await agent.updateConfig({ abilities: 'If merging to main, ask about production deploy.' });
+    assert.equal(await agent.getAbilities(), 'If merging to main, ask about production deploy.');
   });
 
   it('setAbilities(text) persists abilities string in config', async () => {
     let agent = await createAgent('test-abilities-set');
-    agent.setAbilities('Always respond in Spanish.');
-    await agent.save();
+    await agent.setAbilities('Always respond in Spanish.');
 
     let { Agent } = models;
     let fetched = await Agent.where.id.EQ(agent.id).first();
-    assert.equal(fetched.getAbilities(), 'Always respond in Spanish.');
+    assert.equal(await fetched.getAbilities(), 'Always respond in Spanish.');
   });
 
   it('setAbilities(null) clears abilities', async () => {
     let agent = await createAgent('test-abilities-clear');
-    agent.setAbilities('Some ability text');
-    await agent.save();
-
-    agent.setAbilities(null);
-    await agent.save();
+    await agent.setAbilities('Some ability text');
+    await agent.setAbilities(null);
 
     let { Agent } = models;
     let fetched = await Agent.where.id.EQ(agent.id).first();
-    assert.equal(fetched.getAbilities(), null);
+    assert.equal(await fetched.getAbilities(), null);
   });
 
   it('getAbilities() round-trips through DB fetch', async () => {
     let agent = await createAgent('test-abilities-roundtrip');
     let text  = 'Rule 1: No deploys on Friday.\nRule 2: Always run tests.';
-    agent.setAbilities(text);
-    await agent.save();
+    await agent.setAbilities(text);
 
     let { Agent } = models;
     let fetched = await Agent.where.id.EQ(agent.id).first();
-    assert.equal(fetched.getAbilities(), text);
+    assert.equal(await fetched.getAbilities(), text);
   });
 
   it('hasAbilities() returns false when no abilities', async () => {
     let agent = await createAgent('test-has-abilities-false');
-    assert.equal(agent.hasAbilities(), false);
+    assert.equal(await agent.hasAbilities(), false);
   });
 
   it('hasAbilities() returns true when abilities text is non-empty', async () => {
     let agent = await createAgent('test-has-abilities-true');
-    agent.setAbilities('Check for breaking changes before merge.');
-    assert.equal(agent.hasAbilities(), true);
+    await agent.setAbilities('Check for breaking changes before merge.');
+    assert.equal(await agent.hasAbilities(), true);
   });
 
   it('abilities are independent from other config keys', async () => {
     let agent = await createAgent('test-abilities-independent');
-    agent.setConfig({ riskLevel: 'high', model: 'claude-opus' });
-    await agent.save();
+    await agent.setConfig({ riskLevel: 'high', model: 'claude-opus' });
+    await agent.setAbilities('Never auto-merge PRs.');
 
-    agent.setAbilities('Never auto-merge PRs.');
-    await agent.save();
-
-    let config = agent.getConfig();
+    let config = await agent.getConfig();
     assert.equal(config.riskLevel, 'high');
     assert.equal(config.model, 'claude-opus');
     assert.equal(config.abilities, 'Never auto-merge PRs.');
-    assert.equal(agent.getAbilities(), 'Never auto-merge PRs.');
+    assert.equal(await agent.getAbilities(), 'Never auto-merge PRs.');
   });
 
   // ---------------------------------------------------------------------------
   // Version bump
   // ---------------------------------------------------------------------------
 
-  it('Agent model version is 2', () => {
+  it('Agent model version is 3', () => {
     let { Agent } = models;
-    assert.equal(Agent.version, 2);
+    assert.equal(Agent.version, 3);
+  });
+
+  // ---------------------------------------------------------------------------
+  // AGENT_DEFAULTS is empty
+  // ---------------------------------------------------------------------------
+
+  it('AGENT_DEFAULTS is empty (no riskLevel)', async () => {
+    let agent  = await createAgent('test-empty-defaults');
+    let config = await agent.getConfig();
+    assert.deepStrictEqual(config, {});
   });
 });

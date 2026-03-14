@@ -17,6 +17,9 @@ import { Agent } from '../../models/agent-model.mjs';
 //   memory:getSessionContext
 //   memory:setSessionContext
 //   memory:updateSessionContext
+//   memory:getValue
+//   memory:setValue
+//   memory:searchValues
 // =============================================================================
 
 function stripProtectedKeys(obj) {
@@ -59,7 +62,7 @@ export function setup({ registerTool, PluginInterface }) {
       if (!agent)
         throw new Error(`Agent not found: ${agentID}`);
 
-      return { config: agent.getSafeConfig() };
+      return { config: await agent.getSafeConfig() };
     }
   }
 
@@ -94,10 +97,9 @@ export function setup({ registerTool, PluginInterface }) {
         throw new Error(`Agent not found: ${agentID}`);
 
       let safeConfig = stripProtectedKeys(params.config);
-      agent.setConfig(safeConfig);
-      await agent.save();
+      await agent.setConfig(safeConfig);
 
-      return { config: agent.getSafeConfig() };
+      return { config: await agent.getSafeConfig() };
     }
   }
 
@@ -132,10 +134,9 @@ export function setup({ registerTool, PluginInterface }) {
         throw new Error(`Agent not found: ${agentID}`);
 
       let safeUpdates = stripProtectedKeys(params.updates);
-      agent.updateConfig(safeUpdates);
-      await agent.save();
+      await agent.updateConfig(safeUpdates);
 
-      return { config: agent.getSafeConfig() };
+      return { config: await agent.getSafeConfig() };
     }
   }
 
@@ -171,7 +172,7 @@ export function setup({ registerTool, PluginInterface }) {
 
       let context = (params.effective)
         ? await session.getEffectiveContext()
-        : session.getContext();
+        : await session.getContext();
 
       return { context };
     }
@@ -208,10 +209,9 @@ export function setup({ registerTool, PluginInterface }) {
       if (!session)
         throw new Error(`Session not found: ${sessionID}`);
 
-      session.setContext(params.context);
-      await session.save();
+      await session.setContext(params.context);
 
-      return { context: session.getContext() };
+      return { context: await session.getContext() };
     }
   }
 
@@ -246,10 +246,251 @@ export function setup({ registerTool, PluginInterface }) {
       if (!session)
         throw new Error(`Session not found: ${sessionID}`);
 
-      session.updateContext(params.updates);
-      await session.save();
+      await session.updateContext(params.updates);
 
-      return { context: session.getContext() };
+      return { context: await session.getContext() };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // memory:getValue
+  // ---------------------------------------------------------------------------
+
+  class GetMemoryValueTool extends PluginInterface {
+    static pluginID    = 'memory';
+    static featureName = 'getValue';
+    static displayName = 'Get Memory Value';
+    static description = 'Get a value from agent memory storage';
+    static riskLevel   = 'low';
+    static inputSchema = {
+      type:       'object',
+      required:   ['key'],
+      properties: {
+        key: {
+          type:        'string',
+          description: 'The key to retrieve',
+        },
+        scopeID: {
+          type:        'string',
+          description: 'Optional scope ID (defaults to current session ID)',
+        },
+      },
+    };
+
+    async _execute(params) {
+      let { key, scopeID } = params;
+      let models  = this._context.getProperty('models');
+      let { Agent: AgentModel, ValueStore } = models;
+      let agentID = params.agentID;
+
+      if (!agentID)
+        throw new Error('agentID is required');
+
+      let agent = await AgentModel.where.id.EQ(agentID).first();
+      if (!agent)
+        throw new Error(`Agent not found: ${agentID}`);
+
+      // Default scope to current session ID
+      if (scopeID === undefined || scopeID === null)
+        scopeID = params.currentSessionID || '';
+
+      let entry = await ValueStore
+        .where.ownerType.EQ('Agent')
+        .ownerID.EQ(agent.id)
+        .namespace.EQ('memory')
+        .scopeID.EQ(scopeID)
+        .key.EQ(key)
+        .first();
+
+      if (!entry)
+        return { key, value: null, scopeID };
+
+      let value = null;
+      try {
+        value = JSON.parse(entry.value);
+      } catch (_e) {
+        value = entry.value;
+      }
+
+      return { key, value, scopeID };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // memory:setValue
+  // ---------------------------------------------------------------------------
+
+  class SetMemoryValueTool extends PluginInterface {
+    static pluginID    = 'memory';
+    static featureName = 'setValue';
+    static displayName = 'Set Memory Value';
+    static description = 'Store a value in agent memory storage';
+    static riskLevel   = 'low';
+    static inputSchema = {
+      type:       'object',
+      required:   ['key', 'value'],
+      properties: {
+        key: {
+          type:        'string',
+          description: 'The key to store',
+        },
+        value: {
+          description: 'The value to store (any JSON type)',
+        },
+        scopeID: {
+          type:        'string',
+          description: 'Optional scope ID (defaults to current session ID)',
+        },
+      },
+    };
+
+    async _execute(params) {
+      let { key, value, scopeID } = params;
+      let models  = this._context.getProperty('models');
+      let { Agent: AgentModel, ValueStore } = models;
+      let agentID = params.agentID;
+
+      if (!agentID)
+        throw new Error('agentID is required');
+
+      let agent = await AgentModel.where.id.EQ(agentID).first();
+      if (!agent)
+        throw new Error(`Agent not found: ${agentID}`);
+
+      // Default scope to current session ID
+      if (scopeID === undefined || scopeID === null)
+        scopeID = params.currentSessionID || '';
+
+      if (value === null || value === undefined) {
+        // Delete the entry
+        let existing = await ValueStore
+          .where.ownerType.EQ('Agent')
+          .ownerID.EQ(agent.id)
+          .namespace.EQ('memory')
+          .scopeID.EQ(scopeID)
+          .key.EQ(key)
+          .first();
+
+        if (existing)
+          await existing.destroy();
+
+        return { key, value: null, scopeID, deleted: true };
+      }
+
+      // Upsert
+      let existing = await ValueStore
+        .where.ownerType.EQ('Agent')
+        .ownerID.EQ(agent.id)
+        .namespace.EQ('memory')
+        .scopeID.EQ(scopeID)
+        .key.EQ(key)
+        .first();
+
+      if (existing) {
+        existing.value = JSON.stringify(value);
+        await existing.save();
+      } else {
+        await ValueStore.create({
+          organizationID: agent.organizationID,
+          ownerType:      'Agent',
+          ownerID:        agent.id,
+          namespace:      'memory',
+          scopeID,
+          key,
+          value:          JSON.stringify(value),
+        });
+      }
+
+      return { key, value, scopeID };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // memory:searchValues
+  // ---------------------------------------------------------------------------
+
+  class SearchMemoryValuesTool extends PluginInterface {
+    static pluginID    = 'memory';
+    static featureName = 'searchValues';
+    static displayName = 'Search Memory Values';
+    static description = 'Search agent memory storage by key or value content';
+    static riskLevel   = 'low';
+    static inputSchema = {
+      type:       'object',
+      properties: {
+        query: {
+          type:        'string',
+          description: 'Search query (empty = list all)',
+        },
+        scopeID: {
+          type:        'string',
+          description: 'Optional scope ID (null = search all scopes)',
+        },
+        limit: {
+          type:        'integer',
+          description: 'Maximum results (default 20)',
+        },
+        offset: {
+          type:        'integer',
+          description: 'Skip first N results (default 0)',
+        },
+      },
+    };
+
+    async _execute(params) {
+      let { query, scopeID, limit, offset } = params;
+      let models  = this._context.getProperty('models');
+      let { Agent: AgentModel, ValueStore } = models;
+      let agentID = params.agentID;
+
+      if (!agentID)
+        throw new Error('agentID is required');
+
+      let agent = await AgentModel.where.id.EQ(agentID).first();
+      if (!agent)
+        throw new Error(`Agent not found: ${agentID}`);
+
+      limit  = limit || 20;
+      offset = offset || 0;
+
+      // Build base query
+      let q = ValueStore
+        .where.ownerType.EQ('Agent')
+        .ownerID.EQ(agent.id)
+        .namespace.EQ('memory');
+
+      // Scope filtering: undefined/null = all scopes, '' = default scope only
+      if (scopeID !== undefined && scopeID !== null)
+        q = q.scopeID.EQ(scopeID);
+
+      let entries = await q.all();
+
+      // Filter by query if provided (in-JS LIKE matching)
+      if (query) {
+        let lowerQuery = query.toLowerCase();
+        entries = entries.filter((entry) => {
+          let keyMatch   = entry.key.toLowerCase().includes(lowerQuery);
+          let valueMatch = entry.value && entry.value.toLowerCase().includes(lowerQuery);
+          return keyMatch || valueMatch;
+        });
+      }
+
+      let count = entries.length;
+
+      // Apply offset and limit
+      entries = entries.slice(offset, offset + limit);
+
+      let results = entries.map((entry) => {
+        let value = null;
+        try {
+          value = JSON.parse(entry.value);
+        } catch (_e) {
+          value = entry.value;
+        }
+        return { key: entry.key, value, scopeID: entry.scopeID, updatedAt: entry.updatedAt };
+      });
+
+      return { results, count };
     }
   }
 
@@ -263,6 +504,9 @@ export function setup({ registerTool, PluginInterface }) {
   registerTool('memory:getSessionContext',   GetSessionContextTool);
   registerTool('memory:setSessionContext',   SetSessionContextTool);
   registerTool('memory:updateSessionContext', UpdateSessionContextTool);
+  registerTool('memory:getValue',            GetMemoryValueTool);
+  registerTool('memory:setValue',            SetMemoryValueTool);
+  registerTool('memory:searchValues',        SearchMemoryValuesTool);
 
   return () => {};
 }

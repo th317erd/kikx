@@ -10,13 +10,14 @@
 
 export { ModelBase, Model, Types } from './model-base.mjs';
 export { Organization }            from './organization-model.mjs';
-export { User }                    from './user-model.mjs';
+export { User, USER_DEFAULTS }     from './user-model.mjs';
 export { Role }                    from './role-model.mjs';
 export { Agent }                   from './agent-model.mjs';
 export { Session }                 from './session-model.mjs';
 export { Participant }             from './participant-model.mjs';
 export { Frame }                   from './frame-model.mjs';
 export { PermissionRule }          from './permission-rule-model.mjs';
+export { ValueStore }             from './value-store-model.mjs';
 
 import { Organization }   from './organization-model.mjs';
 import { User }           from './user-model.mjs';
@@ -26,6 +27,7 @@ import { Session }        from './session-model.mjs';
 import { Participant }    from './participant-model.mjs';
 import { Frame }          from './frame-model.mjs';
 import { PermissionRule } from './permission-rule-model.mjs';
+import { ValueStore }    from './value-store-model.mjs';
 
 // Default model set for core
 export const DEFAULT_MODELS = [
@@ -37,4 +39,5 @@ export const DEFAULT_MODELS = [
   Participant,
   Frame,
   PermissionRule,
+  ValueStore,
 ];

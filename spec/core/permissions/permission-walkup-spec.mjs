@@ -16,8 +16,9 @@ import { SessionManager } from '../../../src/core/session/index.mjs';
 // the engine queries permission rules across ALL ancestor sessions (self first,
 // then parent, grandparent, etc.). Closer ancestor rules take priority.
 //
-// Also tests the agent config risk-level guard: only 'medium' is supported;
-// any other value throws.
+// Also tests the agent config risk-level resolution: valid values are
+// 'strict', 'normal', 'permissive'; 'medium' maps to 'normal' for
+// backward compatibility; unknown values throw.
 // =============================================================================
 
 describe('PermissionEngine — permission walk-up', () => {
@@ -129,6 +130,7 @@ describe('PermissionEngine — permission walk-up', () => {
         organizationID: orgID,
         scope:          'session',
         scopeID:        child.id,
+        riskLevel:      'normal',
       });
 
       assert.equal(result, false);
@@ -152,6 +154,7 @@ describe('PermissionEngine — permission walk-up', () => {
         organizationID: orgID,
         scope:          'session',
         scopeID:        grandchild.id,
+        riskLevel:      'normal',
       });
 
       assert.equal(result, false);
@@ -176,6 +179,7 @@ describe('PermissionEngine — permission walk-up', () => {
           organizationID: orgID,
           scope:          'session',
           scopeID:        child.id,
+          riskLevel:      'normal',
         }),
         (error) => error.name === 'PermissionDeniedError',
       );
@@ -216,6 +220,7 @@ describe('PermissionEngine — permission walk-up', () => {
         organizationID: orgID,
         scope:          'session',
         scopeID:        child.id,
+        riskLevel:      'normal',
       });
 
       assert.equal(result, false);
@@ -251,6 +256,7 @@ describe('PermissionEngine — permission walk-up', () => {
           organizationID: orgID,
           scope:          'session',
           scopeID:        child.id,
+          riskLevel:      'normal',
         }),
         (error) => error.name === 'PermissionDeniedError',
       );
@@ -287,6 +293,7 @@ describe('PermissionEngine — permission walk-up', () => {
           organizationID: orgID,
           scope:          'session',
           scopeID:        grandchild.id,
+          riskLevel:      'normal',
         }),
         (error) => error.name === 'PermissionDeniedError',
       );
@@ -322,6 +329,7 @@ describe('PermissionEngine — permission walk-up', () => {
         organizationID: orgID,
         scope:          'session',
         scopeID:        grandchild.id,
+        riskLevel:      'normal',
       });
 
       assert.equal(result, false);
@@ -341,6 +349,7 @@ describe('PermissionEngine — permission walk-up', () => {
         organizationID: orgID,
         scope:          'session',
         scopeID:        grandchild.id,
+        riskLevel:      'normal',
       });
 
       assert.equal(result, true);
@@ -352,11 +361,11 @@ describe('PermissionEngine — permission walk-up', () => {
   // ---------------------------------------------------------------------------
 
   describe('agent config risk-level guard', () => {
-    it('should throw for unsupported risk level (low)', async () => {
+    it('should throw for invalid risk level (low)', async () => {
       let [session] = await createSessionChain(1);
 
       let mockAgent = {
-        getConfig: () => ({ riskLevel: 'low' }),
+        getConfig: async () => ({ riskLevel: 'low' }),
       };
 
       await assert.rejects(
@@ -366,15 +375,15 @@ describe('PermissionEngine — permission walk-up', () => {
           scopeID:        session.id,
           agent:          mockAgent,
         }),
-        { message: 'Unsupported risk level: low' },
+        { message: 'Invalid risk level: low' },
       );
     });
 
-    it('should throw for unsupported risk level (high)', async () => {
+    it('should throw for invalid risk level (high)', async () => {
       let [session] = await createSessionChain(1);
 
       let mockAgent = {
-        getConfig: () => ({ riskLevel: 'high' }),
+        getConfig: async () => ({ riskLevel: 'high' }),
       };
 
       await assert.rejects(
@@ -384,15 +393,15 @@ describe('PermissionEngine — permission walk-up', () => {
           scopeID:        session.id,
           agent:          mockAgent,
         }),
-        { message: 'Unsupported risk level: high' },
+        { message: 'Invalid risk level: high' },
       );
     });
 
-    it('should proceed normally for medium risk level', async () => {
+    it('should proceed normally for medium risk level (backward compat to normal)', async () => {
       let [session] = await createSessionChain(1);
 
       let mockAgent = {
-        getConfig: () => ({ riskLevel: 'medium' }),
+        getConfig: async () => ({ riskLevel: 'medium' }),
       };
 
       await engine.createRule({
@@ -414,7 +423,7 @@ describe('PermissionEngine — permission walk-up', () => {
       assert.equal(result, false);
     });
 
-    it('should default to medium when agent has no getConfig method', async () => {
+    it('should default to strict when agent has no getConfig method', async () => {
       let [session] = await createSessionChain(1);
 
       let mockAgent = {};
@@ -428,7 +437,7 @@ describe('PermissionEngine — permission walk-up', () => {
         createdBy:      'usr_test',
       });
 
-      // Should NOT throw — defaults to medium
+      // Should NOT throw — defaults to strict, which still allows same-session rules
       let result = await engine.checkPermission('shell:execute', {}, {
         organizationID: orgID,
         scope:          'session',
@@ -439,7 +448,7 @@ describe('PermissionEngine — permission walk-up', () => {
       assert.equal(result, false);
     });
 
-    it('should default to medium when no agent is provided', async () => {
+    it('should default to strict when no agent is provided', async () => {
       let [session] = await createSessionChain(1);
 
       await engine.createRule({
@@ -451,7 +460,7 @@ describe('PermissionEngine — permission walk-up', () => {
         createdBy:      'usr_test',
       });
 
-      // No agent in options at all — should NOT throw
+      // No agent in options at all — should NOT throw, defaults to strict
       let result = await engine.checkPermission('shell:execute', {}, {
         organizationID: orgID,
         scope:          'session',
@@ -534,6 +543,7 @@ describe('PermissionEngine — permission walk-up', () => {
         organizationID: orgID,
         scope:          'session',
         scopeID:        grandchild.id,
+        riskLevel:      'normal',
       });
 
       assert.equal(result, false);
@@ -639,6 +649,7 @@ describe('PermissionEngine — permission walk-up', () => {
         organizationID: orgID,
         scope:          'session',
         scopeID:        child.id,
+        riskLevel:      'normal',
       });
 
       assert.equal(result, true);
@@ -664,6 +675,7 @@ describe('PermissionEngine — permission walk-up', () => {
         organizationID: orgID,
         scope:          'session',
         scopeID:        child.id,
+        riskLevel:      'normal',
       });
 
       // Expired rule should be ignored, so still needs permission
@@ -703,6 +715,7 @@ describe('PermissionEngine — permission walk-up', () => {
         organizationID: orgID,
         scope:          'session',
         scopeID:        grandchild.id,
+        riskLevel:      'normal',
       });
 
       assert.equal(result, false);

@@ -236,6 +236,7 @@ export class FramePersistence {
       deleted:       (frameData.deleted !== undefined) ? frameData.deleted : false,
       processed:     (frameData.processed !== undefined) ? frameData.processed : false,
       processedAt:   (frameData.processedAt !== undefined) ? frameData.processedAt : null,
+      signature:     (frameData.signature !== undefined) ? frameData.signature : null,
     };
 
     return record;
@@ -288,6 +289,7 @@ export class FramePersistence {
       processedAt:   record.processedAt,
       authorType:    record.authorType || null,
       authorID:      record.authorID || null,
+      signature:     record.signature || null,
       createdAt:     record.createdAt || null,
     };
   }

@@ -40,9 +40,39 @@ export function setup({ registerSelector, context }) {
         if (!frame || frame.type !== 'tool-call')
           continue;
 
-        // If frame has a signature, verify it
-        let signature = frame.content && frame.content._signature;
-        if (signature) {
+        // Read signature from the frame's top-level signature field (Ed25519)
+        let signature = frame.signature;
+        if (!signature)
+          continue;
+
+        // Look up author's public key for Ed25519 verification
+        let authorPublicKey = null;
+
+        if (commit) {
+          let models = context.getProperty('models');
+
+          if (models && commit.authorType === 'user' && commit.authorID) {
+            let user = await models.User.where.id.EQ(commit.authorID).first();
+            if (user)
+              authorPublicKey = user.publicKey;
+          } else if (models && commit.authorType === 'agent' && commit.authorID) {
+            let agent = await models.Agent.where.id.EQ(commit.authorID).first();
+            if (agent)
+              authorPublicKey = agent.publicKey;
+          }
+        }
+
+        if (authorPublicKey) {
+          // Verify with Ed25519 using the author's public key
+          let keystore = context.getProperty('keystore');
+          let valid    = keystore && keystore.verifyWithPublicKey(
+            frame.content, authorPublicKey, signature,
+          );
+
+          if (!valid)
+            this.logger.warn(`PermissionPlugin: invalid Ed25519 signature on frame ${frame.id}`);
+        } else {
+          // Fallback: try HMAC verification via permission service (backward compat)
           let valid = permissionService.verifyApproval(
             frame.content.toolName,
             frame.content.arguments || {},

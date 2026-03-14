@@ -44,14 +44,14 @@ describe('PrimerAssembler', () => {
   // ---------------------------------------------------------------------------
 
   describe('assemble', () => {
-    it('should return content wrapped with instruction boundaries', () => {
-      let result = assembler.assemble({});
+    it('should return content wrapped with instruction boundaries', async () => {
+      let result = await assembler.assemble({});
       assert.ok(result.startsWith('--- START OF INSTRUCTIONS ---\n'));
       assert.ok(result.endsWith('\n--- END OF INSTRUCTIONS ---'));
     });
 
-    it('should include core instructions when no agent or plugins', () => {
-      let result = assembler.assemble({});
+    it('should include core instructions when no agent or plugins', async () => {
+      let result = await assembler.assemble({});
       assert.ok(result.includes('You are an AI assistant running inside Kikx'));
       assert.ok(result.includes('OUTPUT FORMAT:'));
       assert.ok(result.includes('TOOL DISCOVERY:'));
@@ -59,51 +59,51 @@ describe('PrimerAssembler', () => {
       assert.ok(result.includes('USER PROMPTS:'));
     });
 
-    it('should include agent instructions when present', () => {
+    it('should include agent instructions when present', async () => {
       let agent  = { instructions: 'You are a coding assistant. Be helpful.' };
-      let result = assembler.assemble(agent);
+      let result = await assembler.assemble(agent);
       assert.ok(result.includes('You are a coding assistant. Be helpful.'));
     });
 
-    it('should include agent dmSummary when present', () => {
+    it('should include agent dmSummary when present', async () => {
       let agent  = { dmSummary: 'This agent specializes in data analysis.' };
-      let result = assembler.assemble(agent);
+      let result = await assembler.assemble(agent);
       assert.ok(result.includes('This agent specializes in data analysis.'));
     });
 
-    it('should include both agent instructions and dmSummary', () => {
+    it('should include both agent instructions and dmSummary', async () => {
       let agent = {
         instructions: 'Be concise.',
         dmSummary:    'Expert in Python.',
       };
 
-      let result = assembler.assemble(agent);
+      let result = await assembler.assemble(agent);
       assert.ok(result.includes('Be concise.'));
       assert.ok(result.includes('Expert in Python.'));
     });
 
-    it('should include plugin-registered instructions', () => {
+    it('should include plugin-registered instructions', async () => {
       registry.registerInstructions('test-plugin', 'Use test-plugin:run to execute tests.');
-      let result = assembler.assemble({});
+      let result = await assembler.assemble({});
       assert.ok(result.includes('Use test-plugin:run to execute tests.'));
     });
 
-    it('should sort plugin instructions by priority', () => {
+    it('should sort plugin instructions by priority', async () => {
       registry.registerInstructions('low-priority', 'LOW PRIORITY CONTENT', { priority: 200 });
       registry.registerInstructions('high-priority', 'HIGH PRIORITY CONTENT', { priority: 10 });
 
-      let result     = assembler.assemble({});
+      let result     = await assembler.assemble({});
       let highIndex  = result.indexOf('HIGH PRIORITY CONTENT');
       let lowIndex   = result.indexOf('LOW PRIORITY CONTENT');
 
       assert.ok(highIndex < lowIndex, 'High priority should appear before low priority');
     });
 
-    it('should include core + plugins + agent in correct order', () => {
+    it('should include core + plugins + agent in correct order', async () => {
       registry.registerInstructions('my-plugin', 'PLUGIN INSTRUCTION HERE', { priority: 80 });
       let agent = { instructions: 'AGENT INSTRUCTION HERE' };
 
-      let result      = assembler.assemble(agent);
+      let result      = await assembler.assemble(agent);
       let coreIndex   = result.indexOf('You are an AI assistant running inside Kikx');
       let pluginIndex = result.indexOf('PLUGIN INSTRUCTION HERE');
       let agentIndex  = result.indexOf('AGENT INSTRUCTION HERE');
@@ -115,35 +115,35 @@ describe('PrimerAssembler', () => {
       assert.ok(pluginIndex < agentIndex, 'Plugin should come before agent');
     });
 
-    it('should handle null agent gracefully', () => {
-      let result = assembler.assemble(null);
+    it('should handle null agent gracefully', async () => {
+      let result = await assembler.assemble(null);
       assert.ok(result.includes('--- START OF INSTRUCTIONS ---'));
       assert.ok(result.includes('--- END OF INSTRUCTIONS ---'));
     });
 
-    it('should handle undefined agent gracefully', () => {
-      let result = assembler.assemble(undefined);
+    it('should handle undefined agent gracefully', async () => {
+      let result = await assembler.assemble(undefined);
       assert.ok(result.includes('--- START OF INSTRUCTIONS ---'));
     });
 
-    it('should handle agent with no instructions or dmSummary', () => {
-      let result = assembler.assemble({ name: 'test-agent' });
+    it('should handle agent with no instructions or dmSummary', async () => {
+      let result = await assembler.assemble({ name: 'test-agent' });
       assert.ok(result.includes('You are an AI assistant running inside Kikx'));
       assert.ok(!result.includes('undefined'));
     });
 
-    it('should work when pluginRegistry is not on context', () => {
+    it('should work when pluginRegistry is not on context', async () => {
       properties.delete('pluginRegistry');
-      let result = assembler.assemble({});
+      let result = await assembler.assemble({});
       assert.ok(result.includes('--- START OF INSTRUCTIONS ---'));
       assert.ok(result.includes('You are an AI assistant running inside Kikx'));
     });
 
-    it('should include multiple plugin instructions', () => {
+    it('should include multiple plugin instructions', async () => {
       registry.registerInstructions('plugin-a', 'INSTRUCTION A');
       registry.registerInstructions('plugin-b', 'INSTRUCTION B');
 
-      let result = assembler.assemble({});
+      let result = await assembler.assemble({});
       assert.ok(result.includes('INSTRUCTION A'));
       assert.ok(result.includes('INSTRUCTION B'));
     });
@@ -152,39 +152,39 @@ describe('PrimerAssembler', () => {
     // Abilities injection
     // -------------------------------------------------------------------------
 
-    it('should include abilities section when agent has abilities', () => {
+    it('should include abilities section when agent has abilities', async () => {
       let agent = {
         instructions:  'Be helpful.',
-        getAbilities:  () => 'Never deploy on Fridays.',
-        hasAbilities:  () => true,
+        getAbilities:  async () => 'Never deploy on Fridays.',
+        hasAbilities:  async () => true,
       };
 
-      let result = assembler.assemble(agent);
+      let result = await assembler.assemble(agent);
       assert.ok(result.includes('--- ABILITIES ---'));
       assert.ok(result.includes('Never deploy on Fridays.'));
       assert.ok(result.includes('--- END ABILITIES ---'));
     });
 
-    it('should NOT include abilities section when agent has no abilities', () => {
+    it('should NOT include abilities section when agent has no abilities', async () => {
       let agent = {
         instructions:  'Be helpful.',
-        getAbilities:  () => null,
-        hasAbilities:  () => false,
+        getAbilities:  async () => null,
+        hasAbilities:  async () => false,
       };
 
-      let result = assembler.assemble(agent);
+      let result = await assembler.assemble(agent);
       assert.ok(!result.includes('--- ABILITIES ---'));
       assert.ok(!result.includes('--- END ABILITIES ---'));
     });
 
-    it('should place abilities section after agent instructions', () => {
+    it('should place abilities section after agent instructions', async () => {
       let agent = {
         instructions:  'AGENT INSTRUCTIONS HERE',
-        getAbilities:  () => 'ABILITIES TEXT HERE',
-        hasAbilities:  () => true,
+        getAbilities:  async () => 'ABILITIES TEXT HERE',
+        hasAbilities:  async () => true,
       };
 
-      let result        = assembler.assemble(agent);
+      let result        = await assembler.assemble(agent);
       let instrIndex    = result.indexOf('AGENT INSTRUCTIONS HERE');
       let abilitiesIndex = result.indexOf('ABILITIES TEXT HERE');
 
@@ -193,45 +193,45 @@ describe('PrimerAssembler', () => {
       assert.ok(instrIndex < abilitiesIndex, 'Instructions should come before abilities');
     });
 
-    it('should wrap abilities text in clear delimiters', () => {
+    it('should wrap abilities text in clear delimiters', async () => {
       let agent = {
-        getAbilities:  () => 'Rule 1: Check tests.\nRule 2: No force push.',
-        hasAbilities:  () => true,
+        getAbilities:  async () => 'Rule 1: Check tests.\nRule 2: No force push.',
+        hasAbilities:  async () => true,
       };
 
-      let result = assembler.assemble(agent);
+      let result = await assembler.assemble(agent);
       assert.ok(result.includes('--- ABILITIES ---\nRule 1: Check tests.\nRule 2: No force push.\n--- END ABILITIES ---'));
     });
 
-    it('should append abilities reminder footer when abilities exist', () => {
+    it('should append abilities reminder footer when abilities exist', async () => {
       let agent = {
-        getAbilities:  () => 'Some ability text.',
-        hasAbilities:  () => true,
+        getAbilities:  async () => 'Some ability text.',
+        hasAbilities:  async () => true,
       };
 
-      let result = assembler.assemble(agent);
+      let result = await assembler.assemble(agent);
       assert.ok(result.includes('Remember to check each user request against your ABILITIES before proceeding.'));
     });
 
-    it('should NOT append abilities reminder footer when no abilities', () => {
+    it('should NOT append abilities reminder footer when no abilities', async () => {
       let agent = {
-        getAbilities:  () => null,
-        hasAbilities:  () => false,
+        getAbilities:  async () => null,
+        hasAbilities:  async () => false,
       };
 
-      let result = assembler.assemble(agent);
+      let result = await assembler.assemble(agent);
       assert.ok(!result.includes('Remember to check each user request against your ABILITIES'));
     });
 
-    it('should still work with null agent (no abilities section)', () => {
-      let result = assembler.assemble(null);
+    it('should still work with null agent (no abilities section)', async () => {
+      let result = await assembler.assemble(null);
       assert.ok(!result.includes('--- ABILITIES ---'));
       assert.ok(result.includes('--- START OF INSTRUCTIONS ---'));
     });
 
-    it('should work with agent that has instructions but no abilities methods', () => {
+    it('should work with agent that has instructions but no abilities methods', async () => {
       let agent  = { instructions: 'Be helpful.' };
-      let result = assembler.assemble(agent);
+      let result = await assembler.assemble(agent);
       assert.ok(result.includes('Be helpful.'));
       assert.ok(!result.includes('--- ABILITIES ---'));
     });
@@ -240,25 +240,25 @@ describe('PrimerAssembler', () => {
     // Management instructions (always present)
     // -------------------------------------------------------------------------
 
-    it('should always include management instructions even when agent has no abilities', () => {
+    it('should always include management instructions even when agent has no abilities', async () => {
       let agent = {
         instructions:  'Be helpful.',
-        getAbilities:  () => null,
-        hasAbilities:  () => false,
+        getAbilities:  async () => null,
+        hasAbilities:  async () => false,
       };
 
-      let result = assembler.assemble(agent);
+      let result = await assembler.assemble(agent);
       assert.ok(result.includes('memory:updateAgentConfig'));
     });
 
-    it('should mention memory:updateAgentConfig in management instructions', () => {
+    it('should mention memory:updateAgentConfig in management instructions', async () => {
       let agent = {
         instructions:  'Be helpful.',
-        getAbilities:  () => 'Some ability.',
-        hasAbilities:  () => true,
+        getAbilities:  async () => 'Some ability.',
+        hasAbilities:  async () => true,
       };
 
-      let result = assembler.assemble(agent);
+      let result = await assembler.assemble(agent);
       assert.ok(result.includes('memory:updateAgentConfig'));
       assert.ok(result.includes('abilities'));
     });

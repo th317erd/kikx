@@ -105,8 +105,7 @@ describe('Memory Plugin — Session Tools', () => {
   describe('memory:getSessionContext', () => {
     it('returns session context', async () => {
       let session = await createSession();
-      session.setContext({ mood: 'productive', topic: 'testing' });
-      await session.save();
+      await session.setContext({ mood: 'productive', topic: 'testing' });
 
       let tool   = instantiateTool(GetSessionContextTool);
       let result = await tool.execute({ sessionID: session.id });
@@ -126,12 +125,10 @@ describe('Memory Plugin — Session Tools', () => {
 
     it('with effective: true returns inherited context', async () => {
       let parent = await createSession();
-      parent.setContext({ parentKey: 'parentValue', shared: 'from-parent' });
-      await parent.save();
+      await parent.setContext({ parentKey: 'parentValue', shared: 'from-parent' });
 
       let child = await createSession({ parentSessionID: parent.id });
-      child.setContext({ shared: 'from-child' });
-      await child.save();
+      await child.setContext({ shared: 'from-child' });
 
       let tool   = instantiateTool(GetSessionContextTool);
       let result = await tool.execute({ sessionID: child.id, effective: true });
@@ -206,8 +203,7 @@ describe('Memory Plugin — Session Tools', () => {
   describe('memory:updateSessionContext', () => {
     it('merges partial context into existing', async () => {
       let session = await createSession();
-      session.setContext({ mood: 'calm', topic: 'design' });
-      await session.save();
+      await session.setContext({ mood: 'calm', topic: 'design' });
 
       let tool = instantiateTool(UpdateSessionContextTool);
       await tool.execute({

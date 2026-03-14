@@ -24,7 +24,7 @@ export class AuthController extends ControllerAuthBase {
     if (!user)
       this.throwNotFoundError('User not found');
 
-    let { firstName, lastName, email, avatar } = body || {};
+    let { firstName, lastName, email, avatar, riskLevel } = body || {};
 
     if (firstName !== undefined)
       user.firstName = firstName;
@@ -41,6 +41,32 @@ export class AuthController extends ControllerAuthBase {
 
     await user.save();
 
+    // Update riskLevel in user settings if provided
+    if (riskLevel !== undefined) {
+      let keystore = this.getKeystore();
+      let umk      = this.request.getUMK();
+
+      // Generate Ed25519 key pair on-the-fly for pre-existing users who lack one
+      if (!user.encryptedPrivateKey) {
+        let { publicKey: signingPublicKey, privateKey: signingPrivateKey } = keystore.generateSigningKeyPair();
+        let encryptedSigningKey = keystore.encryptUserPrivateKey(signingPrivateKey, umk, user.id);
+
+        user.publicKey           = signingPublicKey;
+        user.encryptedPrivateKey = JSON.stringify(encryptedSigningKey);
+        await user.save();
+      }
+
+      let privateKeyPEM = keystore.decryptUserPrivateKey(
+        JSON.parse(user.encryptedPrivateKey),
+        umk,
+        user.id,
+      );
+
+      await user.updateSettings({ riskLevel }, keystore, privateKeyPEM);
+    }
+
+    let settings = await user.getSettings();
+
     return {
       data: {
         id:             user.id,
@@ -49,6 +75,7 @@ export class AuthController extends ControllerAuthBase {
         lastName:       user.lastName,
         organizationID: user.organizationID,
         avatar:         user.avatar ? true : false,
+        riskLevel:      settings.riskLevel,
       },
     };
   }
@@ -119,6 +146,8 @@ export class AuthController extends ControllerAuthBase {
     if (!user)
       this.throwNotFoundError('User not found');
 
+    let settings = await user.getSettings();
+
     return {
       data: {
         id:             user.id,
@@ -127,6 +156,7 @@ export class AuthController extends ControllerAuthBase {
         lastName:       user.lastName,
         organizationID: user.organizationID,
         avatar:         user.avatar || null,
+        riskLevel:      settings.riskLevel,
       },
     };
   }

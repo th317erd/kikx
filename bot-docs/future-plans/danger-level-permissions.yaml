@@ -89,12 +89,11 @@ signing:
     values (failed verification) fall back to 'strict'.
   key_derivation: "keystore.deriveUserKey(UMK, userID) — per-user, stable across password changes"
   sign_method: "keystore.fingerprint(valueJSON, userKey) — HMAC-SHA256 → 64-char hex"
-  open_issue: >
-    The signing key (derived from UMK) is only available during authenticated
-    HTTP requests. Agent tool calls during interactions — especially in child
-    sessions — may not have an authenticated request context. A solution for
-    signing key availability outside request boundaries is needed before
-    implementation. This is being actively designed.
+  resolved: >
+    RESOLVED: Ed25519 asymmetric keys. Sign with user's private key (UMK-derived,
+    authenticated writes only). Verify with user's public key (plaintext, always
+    available). Server-operated actors (agents) use SMK-derived encryption for
+    their Ed25519 private keys. See conversation.md merged plan.
   tamper_scenarios:
     - scenario: "Agent writes riskLevel='permissive' directly to DB"
       result: "Signature mismatch → fallback to 'strict'"

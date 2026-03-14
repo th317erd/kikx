@@ -50,7 +50,7 @@ Important details to remember across sessions.
 - **Phase 3 (V2 Differentiators):** IN PROGRESS
 - **Phase C (Frame Event Router):** COMPLETE (C1-C4)
 - **E2E Integration:** VERIFIED
-- **Test count:** 2398 tests, 0 failures
+- **Test count:** 2780 tests, 0 failures
 
 ### Completed Future Plans
 
@@ -99,6 +99,7 @@ Important details to remember across sessions.
 - **Context Truncation:** `src/core/interaction/context-truncation.mjs`
 - **Message History:** `src/core/interaction/message-history.mjs`
 - **Abilities Re-injection:** `src/core/interaction/abilities-reinjection.mjs`
+- **Frame Signing Utility:** `src/core/crypto/frame-signing.mjs`
 - **Markdown Converter:** `src/core/lib/markdown-converter.mjs`
 - **Primer Assembler:** `src/core/primer/index.mjs`
 - **Agent Model:** `src/core/models/agent-model.mjs`

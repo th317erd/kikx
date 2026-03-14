@@ -2,6 +2,9 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs     from 'node:fs';
+import path   from 'node:path';
+import os     from 'node:os';
 
 import { KikxCore }         from '../../src/core/kikx-core.mjs';
 import { Keystore }         from '../../src/core/crypto/keystore.mjs';
@@ -77,13 +80,17 @@ function createController(ControllerClass, { mockApp, req, res }) {
 
 let core, keystore, context, authService, sessionManager, framePersistence, interactionLoop, mockApp;
 let testUser, testToken, testOrg, testUMK;
+let routesTempDir;
 
 before(async () => {
+  routesTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kikx-routes-test-'));
+
   core = new KikxCore({ database: { filename: ':memory:' } });
   await core.start();
 
   keystore = new Keystore({ devMode: true, devSeed: 'test-routes-seed' });
   keystore.initialize();
+  keystore.loadServerMasterKey(routesTempDir);
 
   context = core.getContext();
   context.setProperty('keystore', keystore);
@@ -120,6 +127,9 @@ before(async () => {
 after(async () => {
   keystore.destroy();
   await core.stop();
+
+  if (routesTempDir && fs.existsSync(routesTempDir))
+    fs.rmSync(routesTempDir, { recursive: true, force: true });
 });
 
 // =============================================================================

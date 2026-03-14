@@ -59,6 +59,7 @@ export class InteractionController extends ControllerAuthBase {
     if (typeof agent.hasAbilities === 'function') {
       resolvedAgent.hasAbilities = () => agent.hasAbilities();
       resolvedAgent.getAbilities = () => agent.getAbilities();
+      resolvedAgent.getConfig    = () => agent.getConfig();
     }
 
     if (agent.encryptedAPIKey) {
@@ -101,6 +102,7 @@ export class InteractionController extends ControllerAuthBase {
             scope:          'session',
             scopeID:        params.sessionID,
             toolClass:      ShellToolClass,
+            agent:          resolvedAgent,
           };
 
           let anyNeedsApproval = false;
@@ -152,6 +154,7 @@ export class InteractionController extends ControllerAuthBase {
         scope:          'session',
         scopeID:        params.sessionID,
         toolClass:      ToolClass,
+        agent:          resolvedAgent,
       });
     };
 

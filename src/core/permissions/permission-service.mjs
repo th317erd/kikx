@@ -43,7 +43,7 @@ export class PermissionService {
   // ---------------------------------------------------------------------------
 
   async check(featureName, args, options = {}) {
-    let { organizationID, sessionID, toolClass, pluginRegistry, privateKeyPEM } = options;
+    let { organizationID, sessionID, toolClass, pluginRegistry, privateKeyPEM, agent, user } = options;
 
     // Look up tool class from registry if not provided
     if (!toolClass && pluginRegistry)
@@ -54,6 +54,8 @@ export class PermissionService {
       scope:   sessionID ? 'session' : 'global',
       scopeID: sessionID || null,
       toolClass,
+      agent,
+      user,
     });
 
     if (!needsPermission) {

@@ -105,6 +105,7 @@ export class AgentResolver {
             scope:          'session',
             scopeID:        sessionID,
             toolClass:      ShellToolClass,
+            agent:          resolvedAgent,
           };
 
           let anyNeedsApproval = false;
@@ -147,6 +148,7 @@ export class AgentResolver {
         scope:          'session',
         scopeID:        sessionID,
         toolClass:      ToolClass,
+        agent:          resolvedAgent,
       });
     };
 

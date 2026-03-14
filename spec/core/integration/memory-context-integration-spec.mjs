@@ -90,18 +90,17 @@ describe('Memory Context Integration', () => {
   it('agent sets config via tool, reads it back, persists across re-fetch', async () => {
     let agent = await createAgent('test-integ-agent-1');
 
-    // Set config via tool
+    // Set config via tool (riskLevel is stripped by stripProtectedKeys)
     let setTool = instantiateTool(SetAgentConfigTool);
     await setTool.execute({
       agentID: agent.id,
-      config:  { riskLevel: 'critical', model: 'claude-opus', abilities: { planning: true } },
+      config:  { model: 'claude-opus', abilities: { planning: true } },
     });
 
-    // Read back via tool
+    // Read back via tool (getSafeConfig strips protected keys including riskLevel)
     let getTool = instantiateTool(GetAgentConfigTool);
     let result  = await getTool.execute({ agentID: agent.id });
 
-    assert.equal(result.config.riskLevel, 'critical');
     assert.equal(result.config.model, 'claude-opus');
     assert.deepStrictEqual(result.config.abilities, { planning: true });
 
@@ -113,7 +112,7 @@ describe('Memory Context Integration', () => {
     });
 
     let result2 = await getTool.execute({ agentID: agent.id });
-    assert.equal(result2.config.riskLevel, 'critical');
+    assert.equal(result2.config.model, 'claude-opus');
     assert.deepStrictEqual(result2.config.abilities, { planning: true, coding: true });
   });
 
@@ -153,20 +152,19 @@ describe('Memory Context Integration', () => {
   it('protected keys never leak through tool responses even when stored in DB', async () => {
     let agent = await createAgent('test-integ-agent-leak');
 
-    // Bypass the tool to inject protected keys directly into DB
-    agent.config = JSON.stringify({
+    // Store protected keys directly via setConfig (bypassing stripProtectedKeys)
+    await agent.setConfig({
       riskLevel:      'medium',
       apiKey:         'sk-secret-should-never-appear',
       encryptedAPIKey: '{ciphertext-should-never-appear}',
       model:          'claude-sonnet',
     });
-    await agent.save();
 
-    // Read via tool — should be stripped
+    // Read via tool — protected keys should be stripped by getSafeConfig
     let getTool = instantiateTool(GetAgentConfigTool);
     let result  = await getTool.execute({ agentID: agent.id });
 
-    assert.equal(result.config.riskLevel, 'medium');
+    assert.equal(result.config.riskLevel, undefined, 'riskLevel is now a protected key');
     assert.equal(result.config.model, 'claude-sonnet');
     assert.equal(result.config.apiKey, undefined, 'apiKey must not leak');
     assert.equal(result.config.encryptedAPIKey, undefined, 'encryptedAPIKey must not leak');
@@ -175,15 +173,15 @@ describe('Memory Context Integration', () => {
     let setTool = instantiateTool(SetAgentConfigTool);
     await setTool.execute({
       agentID: agent.id,
-      config:  { apiKey: 'sk-evil', encryptedAPIKey: '{evil}', riskLevel: 'low' },
+      config:  { apiKey: 'sk-evil', encryptedAPIKey: '{evil}', custom: 'allowed' },
     });
 
     let { Agent: AgentModel } = models;
-    let fetched = await AgentModel.where.id.EQ(agent.id).first();
-    let raw     = JSON.parse(fetched.config);
-    assert.equal(raw.apiKey, undefined, 'apiKey should not be stored via tool');
-    assert.equal(raw.encryptedAPIKey, undefined, 'encryptedAPIKey should not be stored via tool');
-    assert.equal(raw.riskLevel, 'low');
+    let fetched    = await AgentModel.where.id.EQ(agent.id).first();
+    let fullConfig = await fetched.getConfig();
+    assert.equal(fullConfig.apiKey, undefined, 'apiKey should not be stored via tool');
+    assert.equal(fullConfig.encryptedAPIKey, undefined, 'encryptedAPIKey should not be stored via tool');
+    assert.equal(fullConfig.custom, 'allowed');
   });
 
   // ---------------------------------------------------------------------------
@@ -223,18 +221,21 @@ describe('Memory Context Integration', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Plugin registers all 6 tools
+  // Plugin registers all 9 tools
   // ---------------------------------------------------------------------------
 
-  it('memory plugin registers exactly 6 tools', () => {
+  it('memory plugin registers exactly 9 tools', () => {
     let tools = registry.getTools();
     let memoryTools = [...tools.keys()].filter((k) => k.startsWith('memory:'));
-    assert.equal(memoryTools.length, 6);
+    assert.equal(memoryTools.length, 9);
     assert.deepStrictEqual(memoryTools.sort(), [
       'memory:getAgentConfig',
       'memory:getSessionContext',
+      'memory:getValue',
+      'memory:searchValues',
       'memory:setAgentConfig',
       'memory:setSessionContext',
+      'memory:setValue',
       'memory:updateAgentConfig',
       'memory:updateSessionContext',
     ]);

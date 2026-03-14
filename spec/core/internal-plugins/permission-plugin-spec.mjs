@@ -121,10 +121,12 @@ describe('PermissionPlugin (C3)', () => {
       let signature    = permissionService.signApproval('shell:execute', { command: 'ls' }, 'ses_1');
       let frameManager = new FrameManager({ history: true });
 
+      // Signature on frame.signature (HMAC fallback — no author public key in DB)
       frameManager.merge([{
         id:         'frm_tc_valid',
         type:       'tool-call',
-        content:    { toolName: 'shell:execute', arguments: { command: 'ls' }, _signature: signature },
+        content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
+        signature,
         authorType: 'agent',
         authorID:   'agt_1',
       }], { authorType: 'agent', authorID: 'agt_1' });
@@ -138,7 +140,7 @@ describe('PermissionPlugin (C3)', () => {
       });
 
       let nextCalled = false;
-      // Should not throw or warn (valid signature)
+      // Should not throw or warn (valid HMAC signature, no public key to Ed25519-verify)
       await plugin.process(
         async () => { nextCalled = true; },
         async () => {},
@@ -154,10 +156,12 @@ describe('PermissionPlugin (C3)', () => {
 
       let frameManager = new FrameManager({ history: true });
 
+      // Invalid signature on frame.signature (HMAC fallback path — no author in DB)
       frameManager.merge([{
         id:         'frm_tc_invalid',
         type:       'tool-call',
-        content:    { toolName: 'shell:execute', arguments: { command: 'ls' }, _signature: 'a'.repeat(64) },
+        content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
+        signature:  'a'.repeat(64),
         authorType: 'agent',
         authorID:   'agt_1',
       }], { authorType: 'agent', authorID: 'agt_1' });

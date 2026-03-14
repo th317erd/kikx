@@ -63,6 +63,10 @@ export class FrameManager {
       frameData.order     = ++this._orderCounter;
       frameData.timestamp = frameData.timestamp || Date.now();
 
+      // Propagate signature from merge options if not already set on frameData
+      if (options.signature && !frameData.signature)
+        frameData.signature = options.signature;
+
       let frame = new Frame(frameData);
 
       // ── Phantom frame handling ──

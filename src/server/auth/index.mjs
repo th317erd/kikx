@@ -194,6 +194,14 @@ export class AuthService {
       passwordSlot:   JSON.stringify(passwordSlot),
     });
 
+    // Generate Ed25519 signing key pair for user
+    let { publicKey: signingPublicKey, privateKey: signingPrivateKey } = this._keystore.generateSigningKeyPair();
+    let encryptedSigningKey = this._keystore.encryptUserPrivateKey(signingPrivateKey, umk, user.id);
+
+    user.publicKey           = signingPublicKey;
+    user.encryptedPrivateKey = JSON.stringify(encryptedSigningKey);
+    await user.save();
+
     // Create default admin role
     await Role.create({
       organizationID: organization.id,
@@ -234,6 +242,16 @@ export class AuthService {
       umk = await this._keystore.openPasswordSlot(passwordSlot, password);
     } catch (_error) {
       throw new AuthError('Invalid email or password', 'INVALID_CREDENTIALS');
+    }
+
+    // Generate Ed25519 key pair for pre-existing users who lack one
+    if (!user.encryptedPrivateKey) {
+      let { publicKey: signingPublicKey, privateKey: signingPrivateKey } = this._keystore.generateSigningKeyPair();
+      let encryptedSigningKey = this._keystore.encryptUserPrivateKey(signingPrivateKey, umk, user.id);
+
+      user.publicKey           = signingPublicKey;
+      user.encryptedPrivateKey = JSON.stringify(encryptedSigningKey);
+      await user.save();
     }
 
     // Generate JWT with vault claim (UMK re-wrapped with REK)

@@ -76,32 +76,48 @@ items:
   # REMAINING — Medium Priority
   # ===========================================================================
 
+  - id: ed25519-identity-valuestore-permissions
+    title: "Ed25519 Identity + ValueStore + Danger Level Permissions"
+    priority: high
+    status: IN_PROGRESS
+    description: |
+      Merged plan: Ed25519 asymmetric key pairs (user + agent + system),
+      unified ValueStore (replaces Agent.config, Session.context, adds User settings),
+      permission signing migration (HMAC → Ed25519), frame authorship signatures,
+      and danger level permissions (strict/normal/permissive).
+      SMK (Server Master Key) for actor key encryption.
+    see_also:
+      - .claude/conversation.md
+      - bot-docs/future-plans/value-store.yaml
+      - bot-docs/future-plans/danger-level-permissions.yaml
+      - bot-docs/future-plans/signatures-federation.yaml
+    added: "2026-03-14"
+
   - id: value-store
     title: "Value Store — Unified Config/Context/Memory Storage"
     priority: high
-    status: PLANNED
+    status: "IN_PROGRESS (merged into ed25519-identity-valuestore-permissions)"
     description: |
       Replace inline JSON blob columns (Agent.config, Session.context) with a
       dedicated ValueStore table. Key-value store with namespace separation
-      (config/context/memory), per-entry HMAC signing for tamper detection,
-      search capabilities, and scoped storage. Foundation for agent queryable
-      memory and danger-level-permissions.
+      (config/context/memory), per-entry Ed25519 signing for tamper detection,
+      search capabilities, and scoped storage.
     see_also: bot-docs/future-plans/value-store.yaml
     added: "2026-03-13"
+    updated: "2026-03-14"
 
   - id: danger-level-permissions
     title: "Danger Level Permissions"
     priority: medium
-    status: PLANNED
+    status: "IN_PROGRESS (merged into ed25519-identity-valuestore-permissions)"
     depends_on: value-store
     description: |
       Per-agent and per-user risk tolerance (Strict / Normal / Permissive YOLO).
       Resolution chain: agent config → user account → 'strict' fallback.
-      Tamper-proof via HMAC signing. Includes UI dropdowns on agent form
-      and settings page.
+      Tamper-proof via Ed25519 signing.
     see_also: bot-docs/future-plans/danger-level-permissions.yaml
     added: "2026-03-06"
-    updated: "2026-03-13"
+    updated: "2026-03-14"
 
   - id: device-approval-auth
     title: "Device Approval Auth"
@@ -201,13 +217,15 @@ items:
   - id: signatures-federation
     title: "Signatures & Federation"
     priority: low
-    status: DEFERRED
+    status: "PARTIAL (key pairs + frame signatures pulled into ed25519-identity-valuestore-permissions; federation protocol remains DEFERRED)"
     description: |
       Public/private key pairs for identity and authority. Cryptographic
       verification of frame authorship. Foundation for multi-server federation.
-      Near-term: ensure frame schema has signature field ready.
+      Key pairs and frame signatures are being implemented now. Federation
+      protocol and two-layer envelopes remain deferred.
     see_also: bot-docs/future-plans/signatures-federation.yaml
     added: "2026-03-06"
+    updated: "2026-03-14"
 
   # ===========================================================================
   # ARCHIVED

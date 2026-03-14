@@ -46,7 +46,7 @@ export class PrimerAssembler {
     this._context = context;
   }
 
-  assemble(agent, options = {}) {
+  async assemble(agent, options = {}) {
     let sections = [];
 
     // 1. Core instructions (always present)
@@ -85,10 +85,10 @@ export class PrimerAssembler {
       sections.push(agent.dmSummary);
 
     // 6. Abilities section (only when agent has abilities)
-    let agentHasAbilities = agent && typeof agent.hasAbilities === 'function' && agent.hasAbilities();
+    let agentHasAbilities = agent && typeof agent.hasAbilities === 'function' && await agent.hasAbilities();
 
     if (agentHasAbilities)
-      sections.push(`--- ABILITIES ---\n${agent.getAbilities()}\n--- END ABILITIES ---`);
+      sections.push(`--- ABILITIES ---\n${await agent.getAbilities()}\n--- END ABILITIES ---`);
 
     // 7. Management note (always present when agent is provided)
     if (agent)

@@ -186,10 +186,10 @@ describe('Message Assembly v2 (B6)', () => {
   // ---------------------------------------------------------------------------
 
   describe('PrimerAssembler multi-agent', () => {
-    it('should include multi-agent context when >1 participant', () => {
+    it('should include multi-agent context when >1 participant', async () => {
       let assembler = new PrimerAssembler(context);
 
-      let primer = assembler.assemble(
+      let primer = await assembler.assemble(
         { id: 'agt_me', name: 'test-me' },
         {
           participants: [
@@ -204,10 +204,10 @@ describe('Message Assembly v2 (B6)', () => {
       assert.ok(primer.includes('<agent-message'));
     });
 
-    it('should NOT include multi-agent context for single participant', () => {
+    it('should NOT include multi-agent context for single participant', async () => {
       let assembler = new PrimerAssembler(context);
 
-      let primer = assembler.assemble(
+      let primer = await assembler.assemble(
         { id: 'agt_me', name: 'test-me' },
         {
           participants: [
@@ -219,10 +219,10 @@ describe('Message Assembly v2 (B6)', () => {
       assert.ok(!primer.includes('MULTI-AGENT SESSION'));
     });
 
-    it('should NOT include multi-agent context when no participants option', () => {
+    it('should NOT include multi-agent context when no participants option', async () => {
       let assembler = new PrimerAssembler(context);
 
-      let primer = assembler.assemble({ id: 'agt_me', name: 'test-me' });
+      let primer = await assembler.assemble({ id: 'agt_me', name: 'test-me' });
 
       assert.ok(!primer.includes('MULTI-AGENT SESSION'));
     });

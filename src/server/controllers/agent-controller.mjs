@@ -6,6 +6,8 @@
 
 import { ControllerAuthBase } from './controller-auth-base.mjs';
 
+let VALID_RISK_LEVELS = new Set(['strict', 'normal', 'permissive']);
+
 export class AgentController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
   // GET /api/v2/agents
@@ -15,7 +17,13 @@ export class AgentController extends ControllerAuthBase {
     let { Agent } = this.getCoreModels();
     let agents    = await Agent.where.organizationID.EQ(this.request.organizationID).all();
 
-    return { data: { agents } };
+    let agentsWithRiskLevel = [];
+    for (let agent of agents) {
+      let config = await agent.getConfig();
+      agentsWithRiskLevel.push({ agent, riskLevel: config.riskLevel || null });
+    }
+
+    return { data: { agents: agentsWithRiskLevel } };
   }
 
   // ---------------------------------------------------------------------------
@@ -23,13 +31,16 @@ export class AgentController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async create({ body }) {
-    let { name, pluginID, instructions, apiKey } = body || {};
+    let { name, pluginID, instructions, apiKey, riskLevel } = body || {};
 
     if (!name)
       this.throwBadRequestError('name is required');
 
     if (!pluginID)
       this.throwBadRequestError('pluginID is required');
+
+    if (riskLevel && !VALID_RISK_LEVELS.has(riskLevel))
+      this.throwBadRequestError(`Invalid riskLevel: "${riskLevel}". Must be one of: strict, normal, permissive`);
 
     let { Agent }  = this.getCoreModels();
     let keystore   = this.getKeystore();
@@ -52,9 +63,23 @@ export class AgentController extends ControllerAuthBase {
 
     let agent = await Agent.create(agentData);
 
+    // Generate Ed25519 signing key pair for agent
+    let { publicKey: signingPublicKey, privateKey: signingPrivateKey } = keystore.generateSigningKeyPair();
+    let encryptedSigningKey = keystore.encryptActorPrivateKey(signingPrivateKey, agent.id);
+
+    agent.publicKey           = signingPublicKey;
+    agent.encryptedPrivateKey = JSON.stringify(encryptedSigningKey);
+    await agent.save();
+
+    // Store riskLevel in agent config if provided
+    if (riskLevel)
+      await agent.updateConfig({ riskLevel });
+
     this.setStatusCode(201);
 
-    return { data: { agent } };
+    let config = await agent.getConfig();
+
+    return { data: { agent, riskLevel: config.riskLevel || null } };
   }
 
   // ---------------------------------------------------------------------------
@@ -68,7 +93,9 @@ export class AgentController extends ControllerAuthBase {
     if (!agent)
       this.throwNotFoundError('Agent not found');
 
-    return { data: { agent } };
+    let config = await agent.getConfig();
+
+    return { data: { agent, riskLevel: config.riskLevel || null } };
   }
 
   // ---------------------------------------------------------------------------
@@ -82,7 +109,7 @@ export class AgentController extends ControllerAuthBase {
     if (!agent)
       this.throwNotFoundError('Agent not found');
 
-    let { name, pluginID, instructions, apiKey } = body || {};
+    let { name, pluginID, instructions, apiKey, riskLevel } = body || {};
 
     if (name !== undefined)
       agent.name = name;
@@ -109,7 +136,21 @@ export class AgentController extends ControllerAuthBase {
 
     await agent.save();
 
-    return { data: { agent } };
+    // Update riskLevel in agent config if provided
+    if (riskLevel !== undefined) {
+      if (riskLevel === null || riskLevel === '') {
+        await agent.updateConfig({ riskLevel: null });
+      } else {
+        if (!VALID_RISK_LEVELS.has(riskLevel))
+          this.throwBadRequestError(`Invalid riskLevel: "${riskLevel}". Must be one of: strict, normal, permissive`);
+
+        await agent.updateConfig({ riskLevel });
+      }
+    }
+
+    let config = await agent.getConfig();
+
+    return { data: { agent, riskLevel: config.riskLevel || null } };
   }
 
   // ---------------------------------------------------------------------------

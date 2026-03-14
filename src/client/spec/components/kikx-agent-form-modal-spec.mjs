@@ -151,6 +151,15 @@ function registerComponent() {
           <label class="form-label model-label"></label>
           <input class="form-input model-input" type="text" />
         </div>
+        <div class="form-group">
+          <label class="form-label risk-level-label"></label>
+          <select class="form-select risk-level-select">
+            <option value=""></option>
+            <option value="strict"></option>
+            <option value="normal"></option>
+            <option value="permissive"></option>
+          </select>
+        </div>
         <div class="button-row">
           <button class="delete-button"></button>
           <button class="cancel-button"></button>
@@ -158,15 +167,17 @@ function registerComponent() {
         </div>
       `;
 
-      this._nameInput     = this.shadowRoot.querySelector('.name-input');
-      this._providerInput = this.shadowRoot.querySelector('.provider-input');
-      this._apiKeyInput   = this.shadowRoot.querySelector('.api-key-input');
-      this._modelInput    = this.shadowRoot.querySelector('.model-input');
+      this._nameInput        = this.shadowRoot.querySelector('.name-input');
+      this._providerInput    = this.shadowRoot.querySelector('.provider-input');
+      this._apiKeyInput      = this.shadowRoot.querySelector('.api-key-input');
+      this._modelInput       = this.shadowRoot.querySelector('.model-input');
+      this._riskLevelSelect  = this.shadowRoot.querySelector('.risk-level-select');
 
-      this._nameLabel     = this.shadowRoot.querySelector('.name-label');
-      this._providerLabel = this.shadowRoot.querySelector('.provider-label');
-      this._apiKeyLabel   = this.shadowRoot.querySelector('.api-key-label');
-      this._modelLabel    = this.shadowRoot.querySelector('.model-label');
+      this._nameLabel        = this.shadowRoot.querySelector('.name-label');
+      this._providerLabel    = this.shadowRoot.querySelector('.provider-label');
+      this._apiKeyLabel      = this.shadowRoot.querySelector('.api-key-label');
+      this._modelLabel       = this.shadowRoot.querySelector('.model-label');
+      this._riskLevelLabel   = this.shadowRoot.querySelector('.risk-level-label');
 
       this._saveButton   = this.shadowRoot.querySelector('.save-button');
       this._deleteButton = this.shadowRoot.querySelector('.delete-button');
@@ -180,10 +191,17 @@ function registerComponent() {
     }
 
     connectedCallback() {
-      this._nameLabel.textContent     = mockT('agent.form.nameLabel');
-      this._providerLabel.textContent = mockT('agent.form.providerLabel');
-      this._apiKeyLabel.textContent   = mockT('agent.form.apiKeyLabel');
-      this._modelLabel.textContent    = mockT('agent.form.modelLabel');
+      this._nameLabel.textContent      = mockT('agent.form.nameLabel');
+      this._providerLabel.textContent  = mockT('agent.form.providerLabel');
+      this._apiKeyLabel.textContent    = mockT('agent.form.apiKeyLabel');
+      this._modelLabel.textContent     = mockT('agent.form.modelLabel');
+      this._riskLevelLabel.textContent = mockT('agent.form.riskLevel');
+
+      let options = this._riskLevelSelect.options;
+      options[0].textContent = mockT('agent.form.accountDefault');
+      options[1].textContent = mockT('agent.form.strict');
+      options[2].textContent = mockT('agent.form.normal');
+      options[3].textContent = mockT('agent.form.permissive');
 
       this._saveButton.textContent   = mockT('agent.form.saveButton');
       this._deleteButton.textContent = mockT('agent.form.deleteButton');
@@ -213,24 +231,27 @@ function registerComponent() {
       this._agent = value;
 
       if (value) {
-        this._nameInput.value     = value.name || '';
-        this._providerInput.value = value.provider || '';
-        this._apiKeyInput.value   = value.apiKey || '';
-        this._modelInput.value    = value.model || '';
+        this._nameInput.value        = value.name || '';
+        this._providerInput.value    = value.provider || '';
+        this._apiKeyInput.value      = value.apiKey || '';
+        this._modelInput.value       = value.model || '';
+        this._riskLevelSelect.value  = value.riskLevel || '';
       } else {
-        this._nameInput.value     = '';
-        this._providerInput.value = '';
-        this._apiKeyInput.value   = '';
-        this._modelInput.value    = '';
+        this._nameInput.value        = '';
+        this._providerInput.value    = '';
+        this._apiKeyInput.value      = '';
+        this._modelInput.value       = '';
+        this._riskLevelSelect.value  = '';
       }
     }
 
     getValues() {
       return {
-        name:     this._nameInput.value,
-        provider: this._providerInput.value,
-        apiKey:   this._apiKeyInput.value,
-        model:    this._modelInput.value,
+        name:      this._nameInput.value,
+        provider:  this._providerInput.value,
+        apiKey:    this._apiKeyInput.value,
+        model:     this._modelInput.value,
+        riskLevel: this._riskLevelSelect.value,
       };
     }
 
@@ -410,10 +431,11 @@ describe('kikx-agent-form-modal', () => {
     assert.equal(eventData.composed, true, 'event should be composed');
     assert.equal(eventData.detail.agentID, 'agent-99');
     assert.deepEqual(eventData.detail.values, {
-      name:     'My Agent',
-      provider: 'openai',
-      apiKey:   'sk-abc123',
-      model:    'gpt-4',
+      name:      'My Agent',
+      provider:  'openai',
+      apiKey:    'sk-abc123',
+      model:     'gpt-4',
+      riskLevel: '',
     });
   });
 
@@ -491,15 +513,136 @@ describe('kikx-agent-form-modal', () => {
     let values = element.getValues();
 
     assert.deepEqual(values, {
-      name:     'Typed Name',
-      provider: 'typed-provider',
-      apiKey:   'typed-key',
-      model:    'typed-model',
+      name:      'Typed Name',
+      provider:  'typed-provider',
+      apiKey:    'typed-key',
+      model:     'typed-model',
+      riskLevel: '',
     });
   });
 
   // -------------------------------------------------------------------------
-  // 12. Real module exports a class constructor
+  // 12. Risk level dropdown renders with correct options
+  // -------------------------------------------------------------------------
+
+  it('renders risk level dropdown with correct options', () => {
+    let select = element.shadowRoot.querySelector('.risk-level-select');
+    assert.ok(select, 'should have a risk level select element');
+    assert.equal(select.options.length, 4, 'should have 4 options');
+
+    assert.equal(select.options[0].value, '', 'first option value should be empty string');
+    assert.equal(select.options[0].textContent, localeData.agent.form.accountDefault);
+    assert.equal(select.options[1].value, 'strict');
+    assert.equal(select.options[1].textContent, localeData.agent.form.strict);
+    assert.equal(select.options[2].value, 'normal');
+    assert.equal(select.options[2].textContent, localeData.agent.form.normal);
+    assert.equal(select.options[3].value, 'permissive');
+    assert.equal(select.options[3].textContent, localeData.agent.form.permissive);
+  });
+
+  // -------------------------------------------------------------------------
+  // 13. Risk level label uses i18n key
+  // -------------------------------------------------------------------------
+
+  it('renders risk level label from i18n', () => {
+    let label = element.shadowRoot.querySelector('.risk-level-label');
+    assert.ok(label, 'should have a risk level label');
+    assert.equal(label.textContent, localeData.agent.form.riskLevel);
+  });
+
+  // -------------------------------------------------------------------------
+  // 14. getValues() includes riskLevel
+  // -------------------------------------------------------------------------
+
+  it('getValues() includes riskLevel', () => {
+    let select = element.shadowRoot.querySelector('.risk-level-select');
+    select.value = 'permissive';
+
+    let values = element.getValues();
+    assert.equal(values.riskLevel, 'permissive', 'getValues should include selected riskLevel');
+  });
+
+  // -------------------------------------------------------------------------
+  // 15. agent setter populates riskLevel
+  // -------------------------------------------------------------------------
+
+  it('agent setter populates riskLevel from agent data', () => {
+    element.agent = {
+      id:        'agent-55',
+      name:      'Risk Agent',
+      provider:  'anthropic',
+      apiKey:    'sk-test',
+      model:     'claude-3',
+      riskLevel: 'strict',
+    };
+
+    let select = element.shadowRoot.querySelector('.risk-level-select');
+    assert.equal(select.value, 'strict', 'riskLevel should be pre-selected from agent data');
+  });
+
+  // -------------------------------------------------------------------------
+  // 16. agent setter defaults riskLevel to empty when not provided
+  // -------------------------------------------------------------------------
+
+  it('agent setter defaults riskLevel to empty when not provided', () => {
+    element.agent = {
+      id:       'agent-56',
+      name:     'No Risk Agent',
+      provider: 'openai',
+      apiKey:   'sk-test',
+      model:    'gpt-4',
+    };
+
+    let select = element.shadowRoot.querySelector('.risk-level-select');
+    assert.equal(select.value, '', 'riskLevel should default to empty string');
+  });
+
+  // -------------------------------------------------------------------------
+  // 17. agent-save event includes riskLevel in detail values
+  // -------------------------------------------------------------------------
+
+  it('agent-save event includes riskLevel in detail values', () => {
+    element.agent = { id: 'agent-88', name: '', provider: '', apiKey: '', model: '' };
+
+    let select = element.shadowRoot.querySelector('.risk-level-select');
+    select.value = 'normal';
+
+    let eventData = null;
+
+    element.addEventListener('agent-save', (event) => {
+      eventData = event;
+    });
+
+    let saveButton = element.shadowRoot.querySelector('.save-button');
+    saveButton.click();
+
+    assert.ok(eventData, 'agent-save event should fire');
+    assert.equal(eventData.detail.values.riskLevel, 'normal', 'riskLevel should be in event detail values');
+  });
+
+  // -------------------------------------------------------------------------
+  // 18. Clearing agent resets riskLevel to empty
+  // -------------------------------------------------------------------------
+
+  it('clearing agent resets riskLevel to empty', () => {
+    element.agent = {
+      id:        'agent-99',
+      name:      'Test',
+      provider:  'x',
+      apiKey:    'k',
+      model:     'm',
+      riskLevel: 'permissive',
+    };
+
+    let select = element.shadowRoot.querySelector('.risk-level-select');
+    assert.equal(select.value, 'permissive', 'should be set first');
+
+    element.agent = null;
+    assert.equal(select.value, '', 'should reset to empty after clearing agent');
+  });
+
+  // -------------------------------------------------------------------------
+  // 19. Real module exports a class constructor
   // -------------------------------------------------------------------------
 
   it('real module exports a class constructor', async () => {

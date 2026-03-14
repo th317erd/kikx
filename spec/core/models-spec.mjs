@@ -28,8 +28,8 @@ async function createStartedCore() {
 // Model Definitions
 // =============================================================================
 describe('Model definitions', () => {
-  it('should export all 7 default models', () => {
-    assert.equal(DEFAULT_MODELS.length, 8);
+  it('should export all 9 default models', () => {
+    assert.equal(DEFAULT_MODELS.length, 9);
   });
 
   it('should include all expected model classes', () => {
@@ -42,6 +42,7 @@ describe('Model definitions', () => {
     assert.ok(names.includes('Participant'));
     assert.ok(names.includes('Frame'));
     assert.ok(names.includes('PermissionRule'));
+    assert.ok(names.includes('ValueStore'));
   });
 
   it('should have version on all models', () => {

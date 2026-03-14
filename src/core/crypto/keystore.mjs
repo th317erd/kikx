@@ -1,12 +1,17 @@
 'use strict';
 
 import crypto from 'node:crypto';
+import fs     from 'node:fs';
+import path   from 'node:path';
 
 export class Keystore {
   constructor(options = {}) {
-    this._rek     = null;
-    this._devMode = options.devMode || false;
-    this._devSeed = options.devSeed || null;
+    this._rek             = null;
+    this._smk             = null;
+    this._systemPublicKey  = null;
+    this._systemPrivateKey = null;
+    this._devMode         = options.devMode || false;
+    this._devSeed         = options.devSeed || null;
   }
 
   // --- REK (Runtime Encryption Key) ---
@@ -31,10 +36,228 @@ export class Keystore {
       this._rek.fill(0);
       this._rek = null;
     }
+
+    if (this._smk) {
+      this._smk.fill(0);
+      this._smk = null;
+    }
+
+    this._systemPublicKey  = null;
+    this._systemPrivateKey = null;
   }
 
   isInitialized() {
     return this._rek !== null;
+  }
+
+  // --- SMK (Server Master Key) ---
+
+  // Load or generate the Server Master Key from disk.
+  // Reads hex-encoded 32 bytes from configDir/server.key (or KIKX_SERVER_KEY_FILE env var).
+  // If the file doesn't exist, generates a new key and writes it.
+  loadServerMasterKey(configDir) {
+    if (!configDir)
+      throw new Error('configDir is required');
+
+    let keyPath = process.env.KIKX_SERVER_KEY_FILE || path.join(configDir, 'server.key');
+
+    // Ensure config directory exists
+    let keyDir = path.dirname(keyPath);
+    if (!fs.existsSync(keyDir))
+      fs.mkdirSync(keyDir, { recursive: true });
+
+    if (fs.existsSync(keyPath)) {
+      let hex = fs.readFileSync(keyPath, 'utf8').trim();
+      this._validateSmkHex(hex);
+      this._smk = Buffer.from(hex, 'hex');
+    } else {
+      this._smk = crypto.randomBytes(32);
+      let hex   = this._smk.toString('hex');
+
+      fs.writeFileSync(keyPath, hex, { mode: 0o600 });
+    }
+  }
+
+  // Validate that a string is exactly 64 hex characters (32 bytes).
+  _validateSmkHex(hex) {
+    if (!hex || hex.length === 0)
+      throw new Error('Server key file is empty');
+
+    if (!/^[0-9a-f]+$/i.test(hex))
+      throw new Error('Server key file contains non-hex characters');
+
+    if (hex.length !== 64)
+      throw new Error(`Server key file must contain exactly 64 hex characters (32 bytes), got ${hex.length}`);
+  }
+
+  // --- Ed25519 Signing ---
+
+  // Generate an Ed25519 signing key pair.
+  // Returns { publicKey, privateKey } as PEM strings.
+  generateSigningKeyPair() {
+    let { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519', {
+      publicKeyEncoding:  { type: 'spki',  format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+
+    return { publicKey, privateKey };
+  }
+
+  // Sign data with an Ed25519 private key.
+  // Canonicalizes objects, then signs. Returns hex string.
+  signWithPrivateKey(data, privateKeyPEM) {
+    if (data == null)
+      throw new Error('Data is required for signing');
+
+    if (privateKeyPEM == null)
+      throw new Error('Private key is required for signing');
+
+    let blob      = (typeof data === 'string') ? data : this.canonicalize(data);
+    let signature = crypto.sign(null, Buffer.from(blob), privateKeyPEM);
+
+    return signature.toString('hex');
+  }
+
+  // Verify an Ed25519 signature against data.
+  // Returns boolean. Returns false (not throw) for invalid keys or signatures.
+  verifyWithPublicKey(data, publicKeyPEM, signatureHex) {
+    try {
+      if (data == null || publicKeyPEM == null || signatureHex == null)
+        return false;
+
+      let blob = (typeof data === 'string') ? data : this.canonicalize(data);
+
+      return crypto.verify(null, Buffer.from(blob), publicKeyPEM, Buffer.from(signatureHex, 'hex'));
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  // --- Actor Key Encryption (SMK-derived) ---
+
+  // Encrypt an actor's private key PEM using an SMK-derived key.
+  encryptActorPrivateKey(privateKeyPEM, actorID) {
+    if (!this._smk)
+      throw new Error('Server Master Key not loaded');
+
+    if (privateKeyPEM == null)
+      throw new Error('Private key PEM is required');
+
+    if (actorID == null)
+      throw new Error('Actor ID is required');
+
+    let derivedKey = crypto.createHmac('sha256', this._smk).update(actorID).digest();
+
+    return this.encrypt(privateKeyPEM, derivedKey);
+  }
+
+  // Decrypt an actor's private key PEM using an SMK-derived key.
+  decryptActorPrivateKey(encryptedData, actorID) {
+    if (!this._smk)
+      throw new Error('Server Master Key not loaded');
+
+    if (encryptedData == null)
+      throw new Error('Encrypted data is required');
+
+    if (actorID == null)
+      throw new Error('Actor ID is required');
+
+    let derivedKey = crypto.createHmac('sha256', this._smk).update(actorID).digest();
+
+    return this.decrypt(encryptedData, derivedKey).toString('utf8');
+  }
+
+  // --- User Key Encryption (UMK-derived) ---
+
+  // Encrypt a user's private key PEM using a UMK-derived key.
+  encryptUserPrivateKey(privateKeyPEM, umk, userID) {
+    if (privateKeyPEM == null)
+      throw new Error('Private key PEM is required');
+
+    if (umk == null)
+      throw new Error('UMK is required');
+
+    if (userID == null)
+      throw new Error('User ID is required');
+
+    let derivedKey = this.deriveUserKey(umk, userID);
+
+    return this.encrypt(privateKeyPEM, derivedKey);
+  }
+
+  // Decrypt a user's private key PEM using a UMK-derived key.
+  decryptUserPrivateKey(encryptedData, umk, userID) {
+    if (encryptedData == null)
+      throw new Error('Encrypted data is required');
+
+    if (umk == null)
+      throw new Error('UMK is required');
+
+    if (userID == null)
+      throw new Error('User ID is required');
+
+    let derivedKey = this.deriveUserKey(umk, userID);
+
+    return this.decrypt(encryptedData, derivedKey).toString('utf8');
+  }
+
+  // --- System Key Pair (file-based) ---
+
+  // Load or generate the system signing key pair from disk.
+  // Reads system-signing.pub (PEM) and system-signing.key.enc (JSON envelope) from configDir.
+  // Requires SMK to be loaded first.
+  loadSystemKeyPair(configDir) {
+    if (!this._smk)
+      throw new Error('Server Master Key must be loaded before loading system key pair');
+
+    if (!configDir)
+      throw new Error('configDir is required');
+
+    let publicKeyPath  = path.join(configDir, 'system-signing.pub');
+    let privateKeyPath = path.join(configDir, 'system-signing.key.enc');
+
+    // Ensure config directory exists
+    if (!fs.existsSync(configDir))
+      fs.mkdirSync(configDir, { recursive: true });
+
+    if (fs.existsSync(publicKeyPath) && fs.existsSync(privateKeyPath)) {
+      // Load existing key pair
+      this._systemPublicKey = fs.readFileSync(publicKeyPath, 'utf8');
+
+      let envelope          = JSON.parse(fs.readFileSync(privateKeyPath, 'utf8'));
+      this._systemPrivateKey = this.decrypt(envelope, this._smk).toString('utf8');
+    } else {
+      // Generate new key pair
+      let { publicKey, privateKey } = this.generateSigningKeyPair();
+
+      this._systemPublicKey  = publicKey;
+      this._systemPrivateKey = privateKey;
+
+      // Write public key as plain PEM
+      fs.writeFileSync(publicKeyPath, publicKey, { mode: 0o644 });
+
+      // Encrypt and write private key
+      let envelope = this.encrypt(privateKey, this._smk);
+      fs.writeFileSync(privateKeyPath, JSON.stringify(envelope), { mode: 0o600 });
+    }
+  }
+
+  // Sign data with the system private key (Ed25519).
+  systemSign(data) {
+    if (!this._systemPrivateKey)
+      throw new Error('System key pair not loaded');
+
+    return this.signWithPrivateKey(data, this._systemPrivateKey);
+  }
+
+  // Verify data against a signature using the system public key (Ed25519).
+  systemVerify(data, signatureHex) {
+    return this.verifyWithPublicKey(data, this._systemPublicKey, signatureHex);
+  }
+
+  // Get the system public key PEM.
+  getSystemPublicKey() {
+    return this._systemPublicKey;
   }
 
   // --- AES-256-GCM Encryption ---

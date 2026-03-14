@@ -195,6 +195,50 @@ const TEMPLATE_HTML = `
       padding: var(--spacing-md, 16px) 0;
     }
 
+    .form-select {
+      width: 100%;
+      padding: 10px 12px;
+      box-sizing: border-box;
+      background: var(--input-background, rgba(255, 255, 255, 0.05));
+      border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
+      border-radius: var(--border-radius-medium, 8px);
+      color: var(--text-primary, #e8e8f0);
+      font-size: 1rem;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.2s ease;
+    }
+
+    .form-select:focus {
+      border-color: var(--accent-primary, #00e5ff);
+    }
+
+    .form-description {
+      color: var(--text-secondary, #a0a0b8);
+      font-size: 1rem;
+      margin-bottom: var(--spacing-md, 16px);
+    }
+
+    .save-indicator {
+      display: inline-block;
+      margin-left: var(--spacing-sm, 8px);
+      font-size: 1rem;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .save-indicator.visible {
+      opacity: 1;
+    }
+
+    .save-indicator.success {
+      color: var(--color-success, #00e676);
+    }
+
+    .save-indicator.error {
+      color: var(--color-error, #ff1744);
+    }
+
     .avatar-row {
       display: flex;
       align-items: center;
@@ -470,8 +514,49 @@ class KikxSettingsPage extends HTMLElement {
   _buildPermissionsTab(panel) {
     panel.innerHTML = `
       <div class="section-heading">${t('settings.permissions.heading')}</div>
-      <div class="empty-state">${t('settings.permissions.empty')}</div>
+      <p class="form-description">${t('settings.permissions.description')}</p>
+      <div class="form-group">
+        <label class="form-label">${t('settings.permissions.riskLevel')}</label>
+        <select class="form-select risk-level-select">
+          <option value="strict">${t('settings.permissions.strict')} — ${t('settings.permissions.strictDesc')}</option>
+          <option value="normal">${t('settings.permissions.normal')} — ${t('settings.permissions.normalDesc')}</option>
+          <option value="permissive">${t('settings.permissions.permissive')} — ${t('settings.permissions.permissiveDesc')}</option>
+        </select>
+        <span class="save-indicator"></span>
+      </div>
     `;
+
+    let select    = panel.querySelector('.risk-level-select');
+    let indicator = panel.querySelector('.save-indicator');
+
+    // Pre-select from current user profile
+    let user = profile.getUser() || {};
+    if (user.riskLevel)
+      select.value = user.riskLevel;
+    else
+      select.value = 'normal';
+
+    select.addEventListener('change', async () => {
+      let value = select.value;
+
+      try {
+        await updateProfile({ riskLevel: value });
+
+        let currentUser = profile.getUser() || {};
+        profile.setUser({ ...currentUser, riskLevel: value }, getAuthToken());
+        persistAuth(getAuthToken(), { ...currentUser, riskLevel: value });
+
+        indicator.textContent = t('settings.permissions.saved');
+        indicator.className   = 'save-indicator visible success';
+      } catch (_error) {
+        indicator.textContent = t('settings.permissions.error');
+        indicator.className   = 'save-indicator visible error';
+      }
+
+      setTimeout(() => {
+        indicator.classList.remove('visible');
+      }, 3000);
+    });
   }
 
   _buildAppearanceTab(panel) {

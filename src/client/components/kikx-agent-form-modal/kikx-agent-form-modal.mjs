@@ -29,6 +29,23 @@ const TEMPLATE_HTML = `
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
+    .form-select {
+      width: 100%; box-sizing: border-box;
+      padding: 8px 12px; font-size: 1rem;
+      background: var(--input-background, rgba(255, 255, 255, 0.05));
+      border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
+      border-radius: var(--border-radius-small, 4px);
+      color: var(--text-primary, #e8e8f0); outline: none;
+      font-family: inherit;
+      transition: border-color 0.2s ease;
+      cursor: pointer;
+    }
+
+    .form-select:focus {
+      border-color: var(--accent-primary, #00e5ff);
+      box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
+    }
+
     .button-row {
       display: flex; gap: var(--spacing-sm, 8px); justify-content: flex-end;
       margin-top: 16px; padding-top: 12px;
@@ -78,6 +95,15 @@ const TEMPLATE_HTML = `
     <label class="form-label model-label"></label>
     <input class="form-input model-input" type="text" />
   </div>
+  <div class="form-group">
+    <label class="form-label risk-level-label"></label>
+    <select class="form-select risk-level-select">
+      <option value=""></option>
+      <option value="strict"></option>
+      <option value="normal"></option>
+      <option value="permissive"></option>
+    </select>
+  </div>
   <div class="button-row">
     <button class="delete-button"></button>
     <button class="cancel-button"></button>
@@ -104,15 +130,17 @@ class KikxAgentFormModal extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
 
-    this._nameInput     = this.shadowRoot.querySelector('.name-input');
-    this._providerInput = this.shadowRoot.querySelector('.provider-input');
-    this._apiKeyInput   = this.shadowRoot.querySelector('.api-key-input');
-    this._modelInput    = this.shadowRoot.querySelector('.model-input');
+    this._nameInput        = this.shadowRoot.querySelector('.name-input');
+    this._providerInput    = this.shadowRoot.querySelector('.provider-input');
+    this._apiKeyInput      = this.shadowRoot.querySelector('.api-key-input');
+    this._modelInput       = this.shadowRoot.querySelector('.model-input');
+    this._riskLevelSelect  = this.shadowRoot.querySelector('.risk-level-select');
 
-    this._nameLabel     = this.shadowRoot.querySelector('.name-label');
-    this._providerLabel = this.shadowRoot.querySelector('.provider-label');
-    this._apiKeyLabel   = this.shadowRoot.querySelector('.api-key-label');
-    this._modelLabel    = this.shadowRoot.querySelector('.model-label');
+    this._nameLabel        = this.shadowRoot.querySelector('.name-label');
+    this._providerLabel    = this.shadowRoot.querySelector('.provider-label');
+    this._apiKeyLabel      = this.shadowRoot.querySelector('.api-key-label');
+    this._modelLabel       = this.shadowRoot.querySelector('.model-label');
+    this._riskLevelLabel   = this.shadowRoot.querySelector('.risk-level-label');
 
     this._saveButton   = this.shadowRoot.querySelector('.save-button');
     this._deleteButton = this.shadowRoot.querySelector('.delete-button');
@@ -126,10 +154,17 @@ class KikxAgentFormModal extends HTMLElement {
   }
 
   connectedCallback() {
-    this._nameLabel.textContent     = t('agent.form.nameLabel');
-    this._providerLabel.textContent = t('agent.form.providerLabel');
-    this._apiKeyLabel.textContent   = t('agent.form.apiKeyLabel');
-    this._modelLabel.textContent    = t('agent.form.modelLabel');
+    this._nameLabel.textContent      = t('agent.form.nameLabel');
+    this._providerLabel.textContent  = t('agent.form.providerLabel');
+    this._apiKeyLabel.textContent    = t('agent.form.apiKeyLabel');
+    this._modelLabel.textContent     = t('agent.form.modelLabel');
+    this._riskLevelLabel.textContent = t('agent.form.riskLevel');
+
+    let options = this._riskLevelSelect.options;
+    options[0].textContent = t('agent.form.accountDefault');
+    options[1].textContent = t('agent.form.strict');
+    options[2].textContent = t('agent.form.normal');
+    options[3].textContent = t('agent.form.permissive');
 
     this._saveButton.textContent   = t('agent.form.saveButton');
     this._deleteButton.textContent = t('agent.form.deleteButton');
@@ -159,24 +194,27 @@ class KikxAgentFormModal extends HTMLElement {
     this._agent = value;
 
     if (value) {
-      this._nameInput.value     = value.name || '';
-      this._providerInput.value = value.provider || '';
-      this._apiKeyInput.value   = value.apiKey || '';
-      this._modelInput.value    = value.model || '';
+      this._nameInput.value        = value.name || '';
+      this._providerInput.value    = value.provider || '';
+      this._apiKeyInput.value      = value.apiKey || '';
+      this._modelInput.value       = value.model || '';
+      this._riskLevelSelect.value  = value.riskLevel || '';
     } else {
-      this._nameInput.value     = '';
-      this._providerInput.value = '';
-      this._apiKeyInput.value   = '';
-      this._modelInput.value    = '';
+      this._nameInput.value        = '';
+      this._providerInput.value    = '';
+      this._apiKeyInput.value      = '';
+      this._modelInput.value       = '';
+      this._riskLevelSelect.value  = '';
     }
   }
 
   getValues() {
     return {
-      name:     this._nameInput.value,
-      provider: this._providerInput.value,
-      apiKey:   this._apiKeyInput.value,
-      model:    this._modelInput.value,
+      name:      this._nameInput.value,
+      provider:  this._providerInput.value,
+      apiKey:    this._apiKeyInput.value,
+      model:     this._modelInput.value,
+      riskLevel: this._riskLevelSelect.value,
     };
   }
 

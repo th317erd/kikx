@@ -25,22 +25,22 @@ const TRUNCATION_MARKER_PREFIX = '[Earlier conversation history was truncated';
  * @param {object} agent
  * @param {object} [options]
  * @param {boolean} [options.primerInjected] — true when primer is being injected this turn
- * @returns {Array}
+ * @returns {Promise<Array>}
  */
-export function reinjectAbilities(messages, agent, options = {}) {
+export async function reinjectAbilities(messages, agent, options = {}) {
   if (!messages || messages.length === 0)
     return messages || [];
 
   if (options.primerInjected)
     return messages;
 
-  if (agent == null || typeof agent.hasAbilities !== 'function' || !agent.hasAbilities())
+  if (agent == null || typeof agent.hasAbilities !== 'function' || !await agent.hasAbilities())
     return messages;
 
   if (!hasTruncationMarker(messages))
     return messages;
 
-  let abilitiesBlock = buildAbilitiesBlock(agent.getAbilities());
+  let abilitiesBlock = buildAbilitiesBlock(await agent.getAbilities());
 
   // Find the first user message that is NOT the truncation marker
   let targetIndex = -1;

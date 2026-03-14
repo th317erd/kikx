@@ -101,13 +101,11 @@ signing:
       1. Derive user key (same derivation)
       2. Verify: keystore.fingerprint(storedValue, userKey) === storedSignature
       3. If valid → use value. If invalid → treat as tampered → fallback.
-  open_issue: >
-    HMAC verification requires the user's key, which is derived from the UMK.
-    The UMK is only available during authenticated HTTP requests (from the JWT
-    vault claim). Agent tool calls during interactions — especially child sessions —
-    may not have an authenticated request context. The signing key availability
-    problem needs a solution before implementation. See conversation.md Round 8
-    for options discussed (none yet accepted).
+  resolved: >
+    RESOLVED: Ed25519 asymmetric keys solve this. Sign with user's private key
+    (requires UMK, only during authenticated writes). Verify with user's public
+    key (stored plaintext on User model, always available). See conversation.md
+    merged plan for full design.
 
 # =============================================================================
 # ValueStoreService API

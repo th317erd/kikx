@@ -53,10 +53,12 @@ export class PermissionHandler {
       processed:     false,
     };
 
+    let signingContext = (params && params._signingContext) || null;
+
     await loop._createFrame(sessionID, pendingFrame, frameManager, {
       authorType: block.authorType || 'agent',
       authorID:   block.authorID || null,
-    });
+    }, signingContext);
 
     // 2. Determine where to route the permission-request
     //    - If the current session has a user → same session (backward compat)
@@ -118,7 +120,7 @@ export class PermissionHandler {
       processed:     false,
     };
 
-    await loop._createFrame(targetSessionID, requestFrame, targetFrameManager, { authorType: 'system' });
+    await loop._createFrame(targetSessionID, requestFrame, targetFrameManager, { authorType: 'system' }, signingContext);
     loop.emit('permission:request', { sessionID, frameID: pendingFrameID, requestFrameID, toolName: block.content.toolName });
 
     // 4. Destroy the generator
@@ -147,8 +149,9 @@ export class PermissionHandler {
   // ---------------------------------------------------------------------------
 
   async _denyNoUser(sessionID, generator, block, interactionID, params, frameManager, pendingFrameID) {
-    let loop    = this._loop;
-    let { Frame } = loop._context.getProperty('models');
+    let loop           = this._loop;
+    let { Frame }      = loop._context.getProperty('models');
+    let signingContext = (params && params._signingContext) || null;
 
     // Mark pending-action as processed (it was already persisted)
     let pendingRecord = await Frame.where.id.EQ(pendingFrameID).first();
@@ -174,7 +177,7 @@ export class PermissionHandler {
       hidden:        false,
       deleted:       false,
       processed:     false,
-    }, frameManager, { authorType: 'system' });
+    }, frameManager, { authorType: 'system' }, signingContext);
 
     // Destroy the generator and clean up
     await generator.return();
@@ -217,6 +220,7 @@ export class PermissionHandler {
     // Store tool-result frame via FrameManager (use waiting.frameManager if available)
     let approveFrameManager = waiting.frameManager || null;
     let resultFrameID       = generateID('frm_');
+    let signingContext      = (waiting.params && waiting.params._signingContext) || null;
 
     await loop._createFrame(sessionID, {
       id:            resultFrameID,
@@ -229,7 +233,7 @@ export class PermissionHandler {
       hidden:        false,
       deleted:       false,
       processed:     false,
-    }, approveFrameManager, { authorType: 'system' });
+    }, approveFrameManager, { authorType: 'system' }, signingContext);
 
     // Mark pending-action and permission-request as processed
     pendingRecord.processed   = true;
@@ -291,6 +295,7 @@ export class PermissionHandler {
 
     // Store denial frame via FrameManager (use waiting.frameManager if available)
     let denyFrameManager = waiting.frameManager || null;
+    let signingContext   = (waiting.params && waiting.params._signingContext) || null;
 
     await loop._createFrame(sessionID, {
       id:            generateID('frm_'),
@@ -303,7 +308,7 @@ export class PermissionHandler {
       hidden:        false,
       deleted:       false,
       processed:     false,
-    }, denyFrameManager, { authorType: 'user' });
+    }, denyFrameManager, { authorType: 'user' }, signingContext);
 
     // Create a tool-result frame so the agent sees the denial in its context.
     // Without this, the pending-action has no matching tool-result, so
@@ -333,7 +338,7 @@ export class PermissionHandler {
         hidden:        false,
         deleted:       false,
         processed:     false,
-      }, denyFrameManager, { authorType: 'system' });
+      }, denyFrameManager, { authorType: 'system' }, signingContext);
     }
 
     // Clear permission-waiting state

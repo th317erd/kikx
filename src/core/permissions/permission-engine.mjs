@@ -43,11 +43,12 @@ export class PermissionEngine {
   //   scope          — current scope context ('global', 'session', 'frame')
   //   scopeID        — session or frame ID for scoped rules
   //   verifyFingerprint — if true, validate rule fingerprints (Step 19)
-  //   userKey        — user key for fingerprint verification
+  //   userKey        — user key for fingerprint verification (HMAC)
+  //   publicKeyPEM   — Ed25519 public key for fingerprint verification
   // ---------------------------------------------------------------------------
 
   async checkPermission(featureName, args, options = {}) {
-    let { organizationID, scope, scopeID, verifyFingerprint, userKey, toolClass } = options;
+    let { organizationID, scope, scopeID, verifyFingerprint, userKey, publicKeyPEM, toolClass } = options;
     let { PermissionRule } = this._getModels();
 
     // Auto-allow tools with no risk (e.g. help:search)
@@ -58,12 +59,8 @@ export class PermissionEngine {
     if (toolClass && toolClass.riskLevel === 'critical')
       return true;
 
-    // Agent config guard: only 'medium' risk level is currently supported
-    let agent  = options.agent;
-    let config = (agent && typeof agent.getConfig === 'function') ? agent.getConfig() : { riskLevel: 'medium' };
-
-    if (config.riskLevel !== 'medium')
-      throw new Error(`Unsupported risk level: ${config.riskLevel}`);
+    // Resolve the effective risk level from agent config, user settings, or default
+    let riskLevel = await this._resolveRiskLevel(options);
 
     // Build query: match feature name AND organization
     let query = PermissionRule.where
@@ -88,13 +85,18 @@ export class PermissionEngine {
     if (sessionManager && scopeID)
       ancestorSessionIDs = await sessionManager.getAncestryChain(scopeID);
 
+    // Strict mode: restrict ancestry walk-up — session-scoped rules only match
+    // the exact current session, not parent sessions.
+    if (riskLevel === 'strict')
+      ancestorSessionIDs = [];
+
     // Filter by scope hierarchy — include rules at current scope level and broader.
     // If ancestry walk-up is available, include rules scoped to ancestor sessions.
     activeRules = this._filterByScopeWithAncestry(activeRules, scope, scopeID, ancestorSessionIDs);
 
     // Verify fingerprints if requested (Step 19)
-    if (verifyFingerprint && userKey)
-      activeRules = this._filterByFingerprint(activeRules, userKey);
+    if (verifyFingerprint && (userKey || publicKeyPEM))
+      activeRules = this._filterByFingerprint(activeRules, userKey, publicKeyPEM);
 
     // Sort by ancestry distance (closer ancestors first), then by priority
     // descending within each distance level.
@@ -152,7 +154,10 @@ export class PermissionEngine {
         return false; // No permission needed
     }
 
-    // No match = default deny (needs permission)
+    // No match: permissive mode auto-allows, all others default deny
+    if (riskLevel === 'permissive')
+      return false;
+
     return true;
   }
 
@@ -163,7 +168,8 @@ export class PermissionEngine {
   //
   // ruleData:
   //   organizationID, featureName, effect, scope, scopeID,
-  //   metadata, priority, createdBy, userKey (for fingerprinting)
+  //   metadata, priority, createdBy,
+  //   privateKeyPEM (Ed25519 fingerprinting), userKey (HMAC fingerprinting)
   // ---------------------------------------------------------------------------
 
   async createRule(ruleData) {
@@ -181,8 +187,15 @@ export class PermissionEngine {
       expiresAt:      ruleData.expiresAt || null,
     };
 
-    // Fingerprint if userKey is provided (Step 19)
-    if (ruleData.userKey) {
+    // Fingerprint: Ed25519 signature (preferred) or HMAC fallback
+    if (ruleData.privateKeyPEM) {
+      let keystore = this._getKeystore();
+      if (keystore) {
+        let fingerprintData = `${data.organizationID}:${data.featureName}:${data.effect}:${data.scope}`;
+        data.fingerprint    = keystore.signWithPrivateKey(fingerprintData, ruleData.privateKeyPEM);
+      }
+    } else if (ruleData.userKey) {
+      // Backward compat: HMAC fingerprint (Step 19)
       let keystore = this._getKeystore();
       if (keystore) {
         let fingerprintData = `${data.organizationID}:${data.featureName}:${data.effect}:${data.scope}`;
@@ -242,6 +255,56 @@ export class PermissionEngine {
       query = query.scope.EQ(filters.scope);
 
     return await query.all();
+  }
+
+  // ---------------------------------------------------------------------------
+  // _resolveRiskLevel — resolve effective risk level from options chain
+  // ---------------------------------------------------------------------------
+  // Resolution order:
+  //   1. options.riskLevel (pre-resolved, explicit override)
+  //   2. options.agent.getConfig().riskLevel
+  //   3. options.user.getSettings().riskLevel
+  //   4. Default: 'strict'
+  //
+  // Backward compat: 'medium' is treated as 'normal'.
+  // Valid values: 'strict', 'normal', 'permissive'
+  // ---------------------------------------------------------------------------
+
+  async _resolveRiskLevel(options = {}) {
+    let resolved;
+
+    // 1. Explicit override from options
+    if (options.riskLevel) {
+      resolved = options.riskLevel;
+    } else {
+      // 2. Agent config
+      let agent  = options.agent;
+      let config = (agent && typeof agent.getConfig === 'function') ? await agent.getConfig() : null;
+
+      if (config && config.riskLevel) {
+        resolved = config.riskLevel;
+      } else {
+        // 3. User settings
+        let user     = options.user;
+        let settings = (user && typeof user.getSettings === 'function') ? await user.getSettings() : null;
+
+        if (settings && settings.riskLevel)
+          resolved = settings.riskLevel;
+        else
+          resolved = 'strict'; // 4. Default
+      }
+    }
+
+    // Backward compat: 'medium' → 'normal'
+    if (resolved === 'medium')
+      resolved = 'normal';
+
+    // Validate
+    let validLevels = new Set(['strict', 'normal', 'permissive']);
+    if (!validLevels.has(resolved))
+      throw new Error(`Invalid risk level: ${resolved}`);
+
+    return resolved;
   }
 
   // ---------------------------------------------------------------------------
@@ -316,7 +379,7 @@ export class PermissionEngine {
     });
   }
 
-  _filterByFingerprint(rules, userKey) {
+  _filterByFingerprint(rules, userKey, publicKeyPEM) {
     let keystore = this._getKeystore();
     if (!keystore)
       return rules;
@@ -326,11 +389,22 @@ export class PermissionEngine {
       if (!rule.fingerprint)
         return false;
 
-      // Recompute fingerprint and compare
       let fingerprintData = `${rule.organizationID}:${rule.featureName}:${rule.effect}:${rule.scope}`;
-      let expected        = keystore.fingerprint(fingerprintData, userKey);
 
-      return rule.fingerprint === expected;
+      // Try Ed25519 verification first
+      if (publicKeyPEM) {
+        let valid = keystore.verifyWithPublicKey(fingerprintData, publicKeyPEM, rule.fingerprint);
+        if (valid)
+          return true;
+      }
+
+      // Fallback to HMAC verification
+      if (userKey) {
+        let expected = keystore.fingerprint(fingerprintData, userKey);
+        return rule.fingerprint === expected;
+      }
+
+      return false;
     });
   }
 }

@@ -8,6 +8,8 @@
 // Overrides createDatabaseConnection() to reuse KikxCore's connection.
 // =============================================================================
 
+import path from 'node:path';
+
 import { Application as MythixApplication } from 'mythix';
 
 import { getRoutes }       from './routes/index.mjs';
@@ -23,6 +25,7 @@ import { MarkdownConverter }   from '../core/lib/markdown-converter.mjs';
 import { SessionScheduler }      from '../core/scheduling/session-scheduler.mjs';
 import { AgentResolver }         from '../core/scheduling/agent-resolver.mjs';
 import { PermissionService }     from '../core/permissions/permission-service.mjs';
+import { ValueStoreService }     from '../core/lib/value-store-service.mjs';
 
 export class Application extends MythixApplication {
   static getName() {
@@ -115,7 +118,19 @@ export class Application extends MythixApplication {
 
     this._keystore = new Keystore(keystoreConfig);
     this._keystore.initialize();
+
+    // Load server master key (for actor key encryption)
+    let configDir = this.getOptions().configDir || path.join(process.env.HOME || '/tmp', '.config', 'kikx');
+    this._keystore.loadServerMasterKey(configDir);
+
+    // Load system signing key pair
+    this._keystore.loadSystemKeyPair(configDir);
+
     context.setProperty('keystore', this._keystore);
+
+    // Initialize value store service
+    let valueStoreService = new ValueStoreService({ context });
+    context.setProperty('valueStoreService', valueStoreService);
 
     // Initialize auth service
     this._authService = new AuthService({ context, keystore: this._keystore });

@@ -8,6 +8,7 @@ import { CommandHandler }        from './command-handler.mjs';
 import { isFirstMessage, injectPrimer, buildMessages } from './message-history.mjs';
 import { truncateContent, truncateConversation }       from './context-truncation.mjs';
 import { reinjectAbilities }                           from './abilities-reinjection.mjs';
+import { signFrameContent, decryptAgentPrivateKey }    from '../crypto/frame-signing.mjs';
 
 // =============================================================================
 // InteractionLoop
@@ -87,11 +88,80 @@ export class InteractionLoop extends EventEmitter {
     return this._context.getProperty('hookService') || this._context.getProperty('hookRunner');
   }
 
+  _getKeystore() {
+    return this._context.getProperty('keystore');
+  }
+
+  // ---------------------------------------------------------------------------
+  // _signFrame — sign frame content before commit (best-effort)
+  // ---------------------------------------------------------------------------
+  // Determines the correct private key based on authorType and signs the frame
+  // content. Uses cached agent/user keys from the signing context when available.
+  // Returns the hex signature, or null if signing is not possible.
+  // ---------------------------------------------------------------------------
+
+  _signFrame(frameData, signingContext) {
+    let keystore = this._getKeystore();
+    if (!keystore)
+      return null;
+
+    let authorType = frameData.authorType;
+    let content    = frameData.content;
+
+    if (authorType === 'system')
+      return signFrameContent(keystore, content, 'system', null);
+
+    if (authorType === 'agent' && signingContext && signingContext.agentPrivateKey)
+      return signFrameContent(keystore, content, 'agent', signingContext.agentPrivateKey);
+
+    if (authorType === 'user' && signingContext && signingContext.userPrivateKey)
+      return signFrameContent(keystore, content, 'user', signingContext.userPrivateKey);
+
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // _buildSigningContext — prepare cached signing keys for an interaction
+  // ---------------------------------------------------------------------------
+  // Called once per startInteraction(). Decrypts the agent private key (if
+  // available) so it can be reused for every frame in the interaction without
+  // repeated SMK-derived decryption.
+  // ---------------------------------------------------------------------------
+
+  _buildSigningContext(params) {
+    let keystore = this._getKeystore();
+    if (!keystore)
+      return null;
+
+    let context = {};
+
+    // Agent private key: decrypt once, cache for interaction lifetime
+    let agent = params.agent;
+    if (agent && agent.encryptedPrivateKey) {
+      let agentPrivateKey = decryptAgentPrivateKey(keystore, agent.encryptedPrivateKey, agent.id);
+      if (agentPrivateKey)
+        context.agentPrivateKey = agentPrivateKey;
+    }
+
+    // User private key: passed in by caller (e.g., server decrypted via UMK)
+    if (params.userPrivateKey)
+      context.userPrivateKey = params.userPrivateKey;
+
+    return context;
+  }
+
   // ---------------------------------------------------------------------------
   // _createFrame — routes frame creation through FrameManager for commits
   // ---------------------------------------------------------------------------
 
-  async _createFrame(sessionID, frameData, frameManager, mergeOptions = {}) {
+  async _createFrame(sessionID, frameData, frameManager, mergeOptions = {}, signingContext) {
+    // Sign the frame content before commit (best-effort)
+    if (!frameData.signature) {
+      let signature = this._signFrame(frameData, signingContext);
+      if (signature)
+        frameData.signature = signature;
+    }
+
     let framePersistence = this._getFramePersistence();
 
     if (frameManager) {
@@ -153,6 +223,10 @@ export class InteractionLoop extends EventEmitter {
     let sessionManager   = this._getSessionManager();
     let interactionID    = generateID('int_');
 
+    // Build signing context: decrypt agent private key once per interaction
+    let signingContext = this._buildSigningContext(params);
+    params = { ...params, _signingContext: signingContext };
+
     // Load FrameManager BEFORE creating any frames
     let frameManager = sessionManager.getFrameManager(sessionID);
     await framePersistence.loadFramesInto(frameManager, sessionID);
@@ -183,7 +257,7 @@ export class InteractionLoop extends EventEmitter {
           hidden:        false,
           deleted:       false,
           processed:     false,
-        }, frameManager, { authorType: 'system' });
+        }, frameManager, { authorType: 'system' }, signingContext);
 
         return interactionID;
       }
@@ -219,7 +293,7 @@ export class InteractionLoop extends EventEmitter {
         hidden:        false,
         deleted:       false,
         processed:     false,
-      }, frameManager, { authorType: params.authorType || 'user', authorID: params.authorID || null });
+      }, frameManager, { authorType: params.authorType || 'user', authorID: params.authorID || null }, signingContext);
     }
 
     // Build message history from existing frames
@@ -237,14 +311,14 @@ export class InteractionLoop extends EventEmitter {
     if (needsPrimer) {
       let primerAssembler = this._context.getProperty('primerAssembler');
       if (primerAssembler) {
-        let primer = primerAssembler.assemble(params.agent);
+        let primer = await primerAssembler.assemble(params.agent);
         if (primer)
           messages = injectPrimer(messages, primer);
       }
     }
 
     // Re-inject abilities after truncation if primer was not injected this turn
-    messages = reinjectAbilities(messages, params.agent, { primerInjected: needsPrimer });
+    messages = await reinjectAbilities(messages, params.agent, { primerInjected: needsPrimer });
 
     // Ensure per-agent ref exists for scheduling/diff
     if (agentID)
@@ -278,8 +352,9 @@ export class InteractionLoop extends EventEmitter {
   // ---------------------------------------------------------------------------
 
   async _iterateGenerator(sessionID, generator, interactionID, params, frameManager) {
-    let sanitizer  = this._getContentSanitizer();
-    let hookRunner = this._getHookRunner();
+    let sanitizer      = this._getContentSanitizer();
+    let hookRunner     = this._getHookRunner();
+    let signingContext = params._signingContext || null;
     let result;
 
     try {
@@ -350,7 +425,7 @@ export class InteractionLoop extends EventEmitter {
             authorType: block.authorType || 'agent', authorID: block.authorID || null,
             parentID: params.parentID || null,
             hidden: false, deleted: false, processed: false,
-          }, frameManager, { authorType: block.authorType || 'agent', authorID: block.authorID || null });
+          }, frameManager, { authorType: block.authorType || 'agent', authorID: block.authorID || null }, signingContext);
         } else if (block.type === 'tool-call') {
           // Hook: agent → tool
           if (hookRunner) {
@@ -380,7 +455,7 @@ export class InteractionLoop extends EventEmitter {
                   authorType: 'system', authorID: null,
                   parentID: params.parentID || null,
                   hidden: false, deleted: false, processed: false,
-                }, frameManager, { authorType: 'system' });
+                }, frameManager, { authorType: 'system' }, signingContext);
                 result = { type: 'tool-result', content: { output: `Error: ${permError.message}` } };
                 continue;
               }
@@ -401,7 +476,7 @@ export class InteractionLoop extends EventEmitter {
             authorType: block.authorType || 'agent', authorID: block.authorID || null,
             parentID: params.parentID || null,
             hidden: false, deleted: false, processed: false,
-          }, frameManager, { authorType: block.authorType || 'agent', authorID: block.authorID || null });
+          }, frameManager, { authorType: block.authorType || 'agent', authorID: block.authorID || null }, signingContext);
 
           let executeTool = params.executeTool;
           let toolOutput  = '';
@@ -418,7 +493,7 @@ export class InteractionLoop extends EventEmitter {
                 authorType: 'system', authorID: null,
                 parentID: params.parentID || null,
                 hidden: false, deleted: false, processed: false,
-              }, frameManager, { authorType: 'system' });
+              }, frameManager, { authorType: 'system' }, signingContext);
             }
           }
 
@@ -438,7 +513,7 @@ export class InteractionLoop extends EventEmitter {
             authorType: 'system', authorID: null,
             parentID: params.parentID || null,
             hidden: false, deleted: false, processed: false,
-          }, frameManager, { authorType: 'system' });
+          }, frameManager, { authorType: 'system' }, signingContext);
 
           result = { type: 'tool-result', content: { output: toolOutput } };
         } else if (block.type === 'reflection') {
@@ -447,7 +522,7 @@ export class InteractionLoop extends EventEmitter {
             authorType: block.authorType || 'agent', authorID: block.authorID || null,
             parentID: params.parentID || null,
             hidden: true, deleted: false, processed: false,
-          }, frameManager, { authorType: block.authorType || 'agent', authorID: block.authorID || null });
+          }, frameManager, { authorType: block.authorType || 'agent', authorID: block.authorID || null }, signingContext);
         }
       }
     } catch (error) {
@@ -459,7 +534,7 @@ export class InteractionLoop extends EventEmitter {
         authorType: 'system', authorID: null,
         parentID: params.parentID || null,
         hidden: false, deleted: false, processed: false,
-      }, frameManager, { authorType: 'system' });
+      }, frameManager, { authorType: 'system' }, signingContext);
     } finally {
       let agentID   = params.agent && params.agent.id;
       let activeKey = this._activeKey(sessionID, agentID);
@@ -501,11 +576,12 @@ export class InteractionLoop extends EventEmitter {
     // that settles. We don't await here to avoid hanging on stuck generators.
     active.generator.return().catch(() => {});
 
-    let frameManager = active.frameManager || null;
+    let frameManager   = active.frameManager || null;
+    let signingContext = (active.params && active.params._signingContext) || null;
     await this._createFrame(sessionID, {
       id: generateID('frm_'), type: 'stop',
       content: { targetAgentID }, authorType, authorID,
-    }, frameManager, { authorType, authorID: authorID });
+    }, frameManager, { authorType, authorID: authorID }, signingContext);
 
     this.emit('interaction:end', { sessionID, interactionID: active.interactionID, agentID: targetAgentID });
 
@@ -566,7 +642,7 @@ export class InteractionLoop extends EventEmitter {
   // and broadcast via SSE so all connected clients see it.
   // ---------------------------------------------------------------------------
 
-  async postMessage(sessionID, { text, authorType, authorID, parentID, convertMarkdown }) {
+  async postMessage(sessionID, { text, authorType, authorID, parentID, convertMarkdown, userPrivateKey }) {
     if (!sessionID)
       throw new Error('sessionID is required');
 
@@ -610,6 +686,8 @@ export class InteractionLoop extends EventEmitter {
       frameContent = { text, estimatedTokens: Math.ceil(text.length / 4) };
     }
 
+    let signingContext = (userPrivateKey) ? { userPrivateKey } : null;
+
     await this._createFrame(sessionID, {
       id:            frameID,
       type:          'user-message',
@@ -622,7 +700,7 @@ export class InteractionLoop extends EventEmitter {
       hidden:        false,
       deleted:       false,
       processed:     false,
-    }, frameManager, { authorType: authorType || 'user', authorID: authorID || null });
+    }, frameManager, { authorType: authorType || 'user', authorID: authorID || null }, signingContext);
 
     return { interactionID, frameID };
   }

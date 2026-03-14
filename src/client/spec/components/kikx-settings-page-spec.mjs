@@ -40,7 +40,7 @@ function mockT(key) {
 // Constants mirroring the real component
 // ---------------------------------------------------------------------------
 
-const TAB_KEYS = ['profile', 'account', 'apiKeys', 'permissions', 'appearance'];
+const TAB_KEYS = ['profile', 'account', 'permissions', 'appearance', 'logout'];
 
 // ---------------------------------------------------------------------------
 // jsdom setup -- fresh instance per test with custom element registered
@@ -217,7 +217,24 @@ function registerComponent() {
         let panel       = doc.createElement('div');
         panel.className = 'tab-panel' + ((key === this._activeTab) ? ' active' : '');
         panel.dataset.tab = key;
-        panel.textContent = mockT('settings.tabs.' + key) + ' settings content';
+
+        if (key === 'permissions') {
+          panel.innerHTML = `
+            <div class="section-heading">${mockT('settings.permissions.heading')}</div>
+            <p class="form-description">${mockT('settings.permissions.description')}</p>
+            <div class="form-group">
+              <label class="form-label">${mockT('settings.permissions.riskLevel')}</label>
+              <select class="form-select risk-level-select">
+                <option value="strict">${mockT('settings.permissions.strict')}</option>
+                <option value="normal">${mockT('settings.permissions.normal')}</option>
+                <option value="permissive">${mockT('settings.permissions.permissive')}</option>
+              </select>
+            </div>
+          `;
+        } else {
+          panel.textContent = mockT('settings.tabs.' + key) + ' settings content';
+        }
+
         this._tabContent.appendChild(panel);
       }
     }
@@ -431,7 +448,62 @@ describe('kikx-settings-page', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 12. Real module exports a class constructor
+  // 12. Permissions tab renders risk level dropdown
+  // -----------------------------------------------------------------------
+
+  it('permissions tab renders risk level dropdown', () => {
+    let tabButtons = element.shadowRoot.querySelectorAll('.tab-button');
+
+    // Click the permissions tab (index 2)
+    tabButtons[2].click();
+
+    let permissionsPanel = element.shadowRoot.querySelector('.tab-panel[data-tab="permissions"]');
+    assert.ok(permissionsPanel, 'should have a permissions panel');
+
+    let select = permissionsPanel.querySelector('.risk-level-select');
+    assert.ok(select, 'permissions panel should contain a risk level select');
+
+    assert.equal(select.options.length, 3, 'should have 3 options');
+    assert.equal(select.options[0].value, 'strict');
+    assert.equal(select.options[1].value, 'normal');
+    assert.equal(select.options[2].value, 'permissive');
+  });
+
+  // -----------------------------------------------------------------------
+  // 13. Permissions tab renders section heading from i18n
+  // -----------------------------------------------------------------------
+
+  it('permissions tab renders section heading from i18n', () => {
+    let permissionsPanel = element.shadowRoot.querySelector('.tab-panel[data-tab="permissions"]');
+    let heading = permissionsPanel.querySelector('.section-heading');
+    assert.ok(heading, 'should have a section heading');
+    assert.equal(heading.textContent, localeData.settings.permissions.heading);
+  });
+
+  // -----------------------------------------------------------------------
+  // 14. Permissions tab renders description from i18n
+  // -----------------------------------------------------------------------
+
+  it('permissions tab renders description from i18n', () => {
+    let permissionsPanel = element.shadowRoot.querySelector('.tab-panel[data-tab="permissions"]');
+    let description = permissionsPanel.querySelector('.form-description');
+    assert.ok(description, 'should have a description');
+    assert.equal(description.textContent, localeData.settings.permissions.description);
+  });
+
+  // -----------------------------------------------------------------------
+  // 15. Permissions tab risk level label from i18n
+  // -----------------------------------------------------------------------
+
+  it('permissions tab risk level label from i18n', () => {
+    let permissionsPanel = element.shadowRoot.querySelector('.tab-panel[data-tab="permissions"]');
+    let label = permissionsPanel.querySelector('.form-label');
+    assert.ok(label, 'should have a form label');
+    assert.equal(label.textContent, localeData.settings.permissions.riskLevel);
+  });
+
+  // -----------------------------------------------------------------------
+  // 16. Real module exports a class constructor
   // -----------------------------------------------------------------------
 
   it('real module exports a class constructor', async () => {

@@ -10,7 +10,7 @@ import { ModelBase, Types } from './model-base.mjs';
 // =============================================================================
 
 export class Session extends ModelBase {
-  static version = 3;
+  static version = 4;
 
   static fields = {
     ...(ModelBase.fields || {}),
@@ -78,11 +78,6 @@ export class Session extends ModelBase {
       allowNull:    true,
       defaultValue: null,
     },
-    // Persisted JSON context (runtime metadata, inherited by child sessions)
-    context: {
-      type:      Types.TEXT('long'),
-      allowNull: true,
-    },
     // Virtual relationships
     organization: {
       type: Types.Model('Organization', ({ self }, { Organization }, userQuery) => {
@@ -107,41 +102,97 @@ export class Session extends ModelBase {
   };
 
   // ---------------------------------------------------------------------------
-  // Context methods
+  // Context methods (async -- backed by ValueStore table)
   // ---------------------------------------------------------------------------
 
-  getContext() {
-    if (this.context == null)
-      return {};
+  async getContext() {
+    let ValueStore = this.getModel('ValueStore');
+    let entries = await ValueStore
+      .where.ownerType.EQ('Session')
+      .ownerID.EQ(this.id)
+      .namespace.EQ('context')
+      .scopeID.EQ('')
+      .all();
 
-    try {
-      let parsed = JSON.parse(this.context);
-      if (!parsed || typeof parsed !== 'object')
-        return {};
-
-      // Deep-clone to prevent mutation leaking back
-      return JSON.parse(JSON.stringify(parsed));
-    } catch (_e) {
-      return {};
+    let context = {};
+    for (let entry of entries) {
+      try {
+        context[entry.key] = JSON.parse(entry.value);
+      } catch (_e) {
+        context[entry.key] = entry.value;
+      }
     }
+
+    return context;
   }
 
-  setContext(value) {
-    if (value == null) {
-      this.context = null;
+  async setContext(value) {
+    let ValueStore = this.getModel('ValueStore');
+
+    // Delete all existing context entries
+    let existing = await ValueStore
+      .where.ownerType.EQ('Session')
+      .ownerID.EQ(this.id)
+      .namespace.EQ('context')
+      .scopeID.EQ('')
+      .all();
+
+    for (let entry of existing)
+      await entry.destroy();
+
+    if (value == null)
       return;
-    }
 
-    this.context = JSON.stringify(value);
+    for (let [key, val] of Object.entries(value)) {
+      await ValueStore.create({
+        organizationID: this.organizationID,
+        ownerType:      'Session',
+        ownerID:        this.id,
+        namespace:      'context',
+        scopeID:        '',
+        key,
+        value:          JSON.stringify(val),
+      });
+    }
   }
 
-  updateContext(partial) {
+  async updateContext(partial) {
     if (!partial || typeof partial !== 'object' || Object.keys(partial).length === 0)
       return;
 
-    let current = this.getContext();
-    let merged  = { ...current, ...partial };
-    this.setContext(merged);
+    let ValueStore = this.getModel('ValueStore');
+
+    for (let [key, val] of Object.entries(partial)) {
+      let existing = await ValueStore
+        .where.ownerType.EQ('Session')
+        .ownerID.EQ(this.id)
+        .namespace.EQ('context')
+        .scopeID.EQ('')
+        .key.EQ(key)
+        .first();
+
+      if (val == null) {
+        if (existing)
+          await existing.destroy();
+
+        continue;
+      }
+
+      if (existing) {
+        existing.value = JSON.stringify(val);
+        await existing.save();
+      } else {
+        await ValueStore.create({
+          organizationID: this.organizationID,
+          ownerType:      'Session',
+          ownerID:        this.id,
+          namespace:      'context',
+          scopeID:        '',
+          key,
+          value:          JSON.stringify(val),
+        });
+      }
+    }
   }
 
   async getEffectiveContext() {
@@ -150,14 +201,14 @@ export class Session extends ModelBase {
     let current  = this;
 
     // Collect contexts from child (this) up to root
-    contexts.push(current.getContext());
+    contexts.push(await current.getContext());
 
     while (current.parentSessionID) {
       let parent = await Session.where.id.EQ(current.parentSessionID).first();
       if (!parent)
         break;
 
-      contexts.push(parent.getContext());
+      contexts.push(await parent.getContext());
       current = parent;
     }
 

@@ -28,10 +28,10 @@ function createMockAgent(options = {}) {
     id:            options.id || 'agt_integration_test',
     instructions:  options.instructions || '',
     dmSummary:     options.dmSummary || '',
-    getAbilities:  () => config.abilities || null,
-    hasAbilities:  () => !!config.abilities,
+    getAbilities:  async () => config.abilities || null,
+    hasAbilities:  async () => !!config.abilities,
     setAbilities:  (text) => { config.abilities = text || null; },
-    getConfig:     () => ({ ...config }),
+    getConfig:     async () => ({ ...config }),
   };
 }
 
@@ -83,14 +83,14 @@ describe('Abilities System — Integration', () => {
   // ---------------------------------------------------------------------------
 
   describe('full round-trip: primer includes abilities', () => {
-    it('should include abilities text, delimiters, reminder, and management note in primer', () => {
+    it('should include abilities text, delimiters, reminder, and management note in primer', async () => {
       let { assembler } = createAssembler();
       let agent = createMockAgent({
         instructions: 'You are a helpful coding assistant.',
         config:       { abilities: 'Never deploy on Fridays.\nAlways run tests first.' },
       });
 
-      let primer = assembler.assemble(agent);
+      let primer = await assembler.assemble(agent);
 
       // Abilities text is present
       assert.ok(primer.includes('Never deploy on Fridays.'));
@@ -107,14 +107,14 @@ describe('Abilities System — Integration', () => {
       assert.ok(primer.includes('memory:updateAgentConfig'));
     });
 
-    it('should order sections: instructions before abilities before management note before reminder', () => {
+    it('should order sections: instructions before abilities before management note before reminder', async () => {
       let { assembler } = createAssembler();
       let agent = createMockAgent({
         instructions: 'AGENT_INSTRUCTIONS_MARKER',
         config:       { abilities: 'ABILITIES_TEXT_MARKER' },
       });
 
-      let primer = assembler.assemble(agent);
+      let primer = await assembler.assemble(agent);
 
       let instructionsIndex  = primer.indexOf('AGENT_INSTRUCTIONS_MARKER');
       let abilitiesIndex     = primer.indexOf('ABILITIES_TEXT_MARKER');
@@ -131,13 +131,13 @@ describe('Abilities System — Integration', () => {
       assert.ok(managementIndex < reminderIndex, 'Management note should come before reminder');
     });
 
-    it('should wrap the entire primer in instruction boundaries', () => {
+    it('should wrap the entire primer in instruction boundaries', async () => {
       let { assembler } = createAssembler();
       let agent = createMockAgent({
         config: { abilities: 'Some ability text.' },
       });
 
-      let primer = assembler.assemble(agent);
+      let primer = await assembler.assemble(agent);
 
       assert.ok(primer.startsWith('--- START OF INSTRUCTIONS ---\n'));
       assert.ok(primer.endsWith('\n--- END OF INSTRUCTIONS ---'));
@@ -149,26 +149,26 @@ describe('Abilities System — Integration', () => {
   // ---------------------------------------------------------------------------
 
   describe('agent with no abilities: management note but no abilities section', () => {
-    it('should NOT include abilities delimiters or reminder', () => {
+    it('should NOT include abilities delimiters or reminder', async () => {
       let { assembler } = createAssembler();
       let agent = createMockAgent({
         instructions: 'Be helpful.',
       });
 
-      let primer = assembler.assemble(agent);
+      let primer = await assembler.assemble(agent);
 
       assert.ok(!primer.includes('--- ABILITIES ---'));
       assert.ok(!primer.includes('--- END ABILITIES ---'));
       assert.ok(!primer.includes('Remember to check each user request against your ABILITIES'));
     });
 
-    it('should still include management note', () => {
+    it('should still include management note', async () => {
       let { assembler } = createAssembler();
       let agent = createMockAgent({
         instructions: 'Be helpful.',
       });
 
-      let primer = assembler.assemble(agent);
+      let primer = await assembler.assemble(agent);
 
       assert.ok(primer.includes('memory:updateAgentConfig'));
     });
@@ -179,7 +179,7 @@ describe('Abilities System — Integration', () => {
   // ---------------------------------------------------------------------------
 
   describe('truncation round-trip: abilities re-injected after truncation', () => {
-    it('should re-inject abilities into messages after truncateConversation drops them', () => {
+    it('should re-inject abilities into messages after truncateConversation drops them', async () => {
       let abilitiesText = 'Never force push to main.\nAlways write tests.';
       let agent = createMockAgent({
         config: { abilities: abilitiesText },
@@ -189,7 +189,7 @@ describe('Abilities System — Integration', () => {
       // The first message is a user message with primer+abilities (simulating real flow).
       // Add large assistant messages to exceed the budget.
       let { assembler } = createAssembler();
-      let primer = assembler.assemble(agent);
+      let primer = await assembler.assemble(agent);
 
       let messages = [
         { role: 'user', content: primer + '\n\nHello, help me with code.' },
@@ -217,7 +217,7 @@ describe('Abilities System — Integration', () => {
       assert.ok(!hasPrimerAbilities, 'Original abilities should have been truncated away');
 
       // Re-inject abilities
-      let result = reinjectAbilities(truncated, agent, { primerInjected: false });
+      let result = await reinjectAbilities(truncated, agent, { primerInjected: false });
 
       // Verify abilities are back in the output
       let reinjectedMessage = result.find(
@@ -233,7 +233,7 @@ describe('Abilities System — Integration', () => {
       );
     });
 
-    it('should inject into the first non-marker user message', () => {
+    it('should inject into the first non-marker user message', async () => {
       let agent = createMockAgent({
         config: { abilities: 'Check tests before merging.' },
       });
@@ -246,7 +246,7 @@ describe('Abilities System — Integration', () => {
         { role: 'assistant', content: 'Another response.' },
       ];
 
-      let result = reinjectAbilities(messages, agent, { primerInjected: false });
+      let result = await reinjectAbilities(messages, agent, { primerInjected: false });
 
       // Truncation marker should be untouched
       assert.ok(!result[0].content.includes('--- ABILITIES ---'));
@@ -263,7 +263,7 @@ describe('Abilities System — Integration', () => {
   // ---------------------------------------------------------------------------
 
   describe('truncation with primer already injected: no double-injection', () => {
-    it('should NOT re-inject abilities when primerInjected is true', () => {
+    it('should NOT re-inject abilities when primerInjected is true', async () => {
       let agent = createMockAgent({
         config: { abilities: 'Never deploy on Fridays.' },
       });
@@ -273,13 +273,13 @@ describe('Abilities System — Integration', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let result = reinjectAbilities(messages, agent, { primerInjected: true });
+      let result = await reinjectAbilities(messages, agent, { primerInjected: true });
 
       assert.ok(!result[1].content.includes('--- ABILITIES ---'));
       assert.equal(result[1].content, 'Hello');
     });
 
-    it('should leave the message array completely unchanged when primer is already injected', () => {
+    it('should leave the message array completely unchanged when primer is already injected', async () => {
       let agent = createMockAgent({
         config: { abilities: 'Always run linter.' },
       });
@@ -290,7 +290,7 @@ describe('Abilities System — Integration', () => {
         { role: 'user', content: 'Follow-up' },
       ];
 
-      let result = reinjectAbilities(messages, agent, { primerInjected: true });
+      let result = await reinjectAbilities(messages, agent, { primerInjected: true });
 
       // Should be the exact same reference (early return path)
       assert.equal(result, messages);
@@ -302,7 +302,7 @@ describe('Abilities System — Integration', () => {
   // ---------------------------------------------------------------------------
 
   describe('set abilities then re-assemble primer reflects change', () => {
-    it('should reflect new abilities after setAbilities()', () => {
+    it('should reflect new abilities after setAbilities()', async () => {
       let { assembler } = createAssembler();
       let agent = createMockAgent({
         instructions: 'Be concise.',
@@ -310,58 +310,58 @@ describe('Abilities System — Integration', () => {
       });
 
       // First primer — has original abilities
-      let primer1 = assembler.assemble(agent);
+      let primer1 = await assembler.assemble(agent);
       assert.ok(primer1.includes('Original ability: check PRs.'));
 
       // Update abilities
       agent.setAbilities('Updated ability: run CI before merge.');
 
       // Second primer — has updated abilities, NOT original
-      let primer2 = assembler.assemble(agent);
+      let primer2 = await assembler.assemble(agent);
       assert.ok(primer2.includes('Updated ability: run CI before merge.'));
       assert.ok(!primer2.includes('Original ability: check PRs.'));
     });
 
-    it('should round-trip through getAbilities after setAbilities', () => {
+    it('should round-trip through getAbilities after setAbilities', async () => {
       let agent = createMockAgent();
 
-      assert.equal(agent.getAbilities(), null);
-      assert.equal(agent.hasAbilities(), false);
+      assert.equal(await agent.getAbilities(), null);
+      assert.equal(await agent.hasAbilities(), false);
 
       agent.setAbilities('Ability 1');
-      assert.equal(agent.getAbilities(), 'Ability 1');
-      assert.equal(agent.hasAbilities(), true);
+      assert.equal(await agent.getAbilities(), 'Ability 1');
+      assert.equal(await agent.hasAbilities(), true);
 
       agent.setAbilities('Ability 2: different text');
-      assert.equal(agent.getAbilities(), 'Ability 2: different text');
-      assert.equal(agent.hasAbilities(), true);
+      assert.equal(await agent.getAbilities(), 'Ability 2: different text');
+      assert.equal(await agent.hasAbilities(), true);
     });
 
-    it('should reflect each change in a freshly assembled primer', () => {
+    it('should reflect each change in a freshly assembled primer', async () => {
       let { assembler } = createAssembler();
       let agent = createMockAgent({
         instructions: 'Agent instructions.',
       });
 
       // No abilities initially
-      let primer0 = assembler.assemble(agent);
+      let primer0 = await assembler.assemble(agent);
       assert.ok(!primer0.includes('--- ABILITIES ---'));
 
       // Add abilities
       agent.setAbilities('First set of abilities.');
-      let primer1 = assembler.assemble(agent);
+      let primer1 = await assembler.assemble(agent);
       assert.ok(primer1.includes('First set of abilities.'));
       assert.ok(primer1.includes('--- ABILITIES ---'));
 
       // Change abilities
       agent.setAbilities('Second set of abilities.');
-      let primer2 = assembler.assemble(agent);
+      let primer2 = await assembler.assemble(agent);
       assert.ok(primer2.includes('Second set of abilities.'));
       assert.ok(!primer2.includes('First set of abilities.'));
 
       // Third change
       agent.setAbilities('Third and final abilities.');
-      let primer3 = assembler.assemble(agent);
+      let primer3 = await assembler.assemble(agent);
       assert.ok(primer3.includes('Third and final abilities.'));
       assert.ok(!primer3.includes('Second set of abilities.'));
     });
@@ -372,7 +372,7 @@ describe('Abilities System — Integration', () => {
   // ---------------------------------------------------------------------------
 
   describe('clear abilities: primer no longer has abilities section', () => {
-    it('should remove abilities section from primer after setAbilities(null)', () => {
+    it('should remove abilities section from primer after setAbilities(null)', async () => {
       let { assembler } = createAssembler();
       let agent = createMockAgent({
         instructions: 'Agent instructions.',
@@ -380,7 +380,7 @@ describe('Abilities System — Integration', () => {
       });
 
       // Primer with abilities
-      let primerBefore = assembler.assemble(agent);
+      let primerBefore = await assembler.assemble(agent);
       assert.ok(primerBefore.includes('--- ABILITIES ---'));
       assert.ok(primerBefore.includes('Ability that will be cleared.'));
       assert.ok(primerBefore.includes('--- END ABILITIES ---'));
@@ -390,46 +390,46 @@ describe('Abilities System — Integration', () => {
       agent.setAbilities(null);
 
       // Primer without abilities
-      let primerAfter = assembler.assemble(agent);
+      let primerAfter = await assembler.assemble(agent);
       assert.ok(!primerAfter.includes('--- ABILITIES ---'));
       assert.ok(!primerAfter.includes('Ability that will be cleared.'));
       assert.ok(!primerAfter.includes('--- END ABILITIES ---'));
       assert.ok(!primerAfter.includes('Remember to check each user request against your ABILITIES'));
     });
 
-    it('should retain management note after clearing abilities', () => {
+    it('should retain management note after clearing abilities', async () => {
       let { assembler } = createAssembler();
       let agent = createMockAgent({
         config: { abilities: 'Temporary ability.' },
       });
 
       // Before clearing
-      let primerBefore = assembler.assemble(agent);
+      let primerBefore = await assembler.assemble(agent);
       assert.ok(primerBefore.includes('memory:updateAgentConfig'));
 
       // Clear abilities
       agent.setAbilities(null);
 
       // After clearing — management note should still be present
-      let primerAfter = assembler.assemble(agent);
+      let primerAfter = await assembler.assemble(agent);
       assert.ok(primerAfter.includes('memory:updateAgentConfig'));
     });
 
-    it('should handle clearing with empty string same as null', () => {
+    it('should handle clearing with empty string same as null', async () => {
       let { assembler } = createAssembler();
       let agent = createMockAgent({
         config: { abilities: 'Some ability.' },
       });
 
       // Verify abilities are present
-      let primer1 = assembler.assemble(agent);
+      let primer1 = await assembler.assemble(agent);
       assert.ok(primer1.includes('--- ABILITIES ---'));
 
       // Clear with empty string (setAbilities converts falsy to null)
       agent.setAbilities('');
 
       // Verify abilities section is gone
-      let primer2 = assembler.assemble(agent);
+      let primer2 = await assembler.assemble(agent);
       assert.ok(!primer2.includes('--- ABILITIES ---'));
 
       // Management note persists
@@ -442,7 +442,7 @@ describe('Abilities System — Integration', () => {
   // ---------------------------------------------------------------------------
 
   describe('edge cases across the full pipeline', () => {
-    it('should handle multi-line abilities with special characters through primer and re-injection', () => {
+    it('should handle multi-line abilities with special characters through primer and re-injection', async () => {
       let { assembler } = createAssembler();
       let abilitiesText = 'Rule 1: Use <code> tags for inline code.\nRule 2: Prefer "single quotes" over `backticks`.\nRule 3: Handle $special & characters.';
       let agent = createMockAgent({
@@ -450,7 +450,7 @@ describe('Abilities System — Integration', () => {
       });
 
       // Through primer
-      let primer = assembler.assemble(agent);
+      let primer = await assembler.assemble(agent);
       assert.ok(primer.includes(abilitiesText));
 
       // Through re-injection
@@ -458,25 +458,25 @@ describe('Abilities System — Integration', () => {
         truncationMarker(),
         { role: 'user', content: 'Help me' },
       ];
-      let result = reinjectAbilities(messages, agent, { primerInjected: false });
+      let result = await reinjectAbilities(messages, agent, { primerInjected: false });
       assert.ok(result[1].content.includes(abilitiesText));
     });
 
-    it('should handle abilities with only whitespace as effectively empty', () => {
+    it('should handle abilities with only whitespace as effectively empty', async () => {
       let { assembler } = createAssembler();
       let agent = createMockAgent({
         config: { abilities: '   ' },
       });
 
       // hasAbilities should be true (non-empty string)
-      assert.equal(agent.hasAbilities(), true);
+      assert.equal(await agent.hasAbilities(), true);
 
       // Primer should include the whitespace-only abilities section
-      let primer = assembler.assemble(agent);
+      let primer = await assembler.assemble(agent);
       assert.ok(primer.includes('--- ABILITIES ---'));
     });
 
-    it('should not re-inject when there is no truncation marker in messages', () => {
+    it('should not re-inject when there is no truncation marker in messages', async () => {
       let agent = createMockAgent({
         config: { abilities: 'Some ability.' },
       });
@@ -487,7 +487,7 @@ describe('Abilities System — Integration', () => {
         { role: 'user', content: 'Follow up' },
       ];
 
-      let result = reinjectAbilities(messages, agent, { primerInjected: false });
+      let result = await reinjectAbilities(messages, agent, { primerInjected: false });
 
       // No changes because no truncation occurred
       assert.equal(result[0].content, 'Normal conversation');
@@ -496,7 +496,7 @@ describe('Abilities System — Integration', () => {
       assert.ok(!result[2].content.includes('--- ABILITIES ---'));
     });
 
-    it('should work correctly with truncateConversation using a low budget', () => {
+    it('should work correctly with truncateConversation using a low budget', async () => {
       let agent = createMockAgent({
         config: { abilities: 'Always validate inputs.' },
       });
@@ -515,7 +515,7 @@ describe('Abilities System — Integration', () => {
 
       // Only proceed if truncation actually happened
       if (truncated[0].content.startsWith('[Earlier conversation history was truncated')) {
-        let result = reinjectAbilities(truncated, agent, { primerInjected: false });
+        let result = await reinjectAbilities(truncated, agent, { primerInjected: false });
 
         let hasAbilities = result.some(
           (message) => message.content && message.content.includes('--- ABILITIES ---'),
@@ -524,7 +524,7 @@ describe('Abilities System — Integration', () => {
       }
     });
 
-    it('should keep re-injection and primer mutually exclusive via primerInjected flag', () => {
+    it('should keep re-injection and primer mutually exclusive via primerInjected flag', async () => {
       let agent = createMockAgent({
         config: { abilities: 'Critical ability.' },
       });
@@ -535,11 +535,11 @@ describe('Abilities System — Integration', () => {
       ];
 
       // With primerInjected: true -> no re-injection (primer will have abilities)
-      let resultWithPrimer = reinjectAbilities(messages, agent, { primerInjected: true });
+      let resultWithPrimer = await reinjectAbilities(messages, agent, { primerInjected: true });
       assert.ok(!resultWithPrimer[1].content.includes('--- ABILITIES ---'));
 
       // With primerInjected: false -> re-injection happens
-      let resultWithoutPrimer = reinjectAbilities(messages, agent, { primerInjected: false });
+      let resultWithoutPrimer = await reinjectAbilities(messages, agent, { primerInjected: false });
       assert.ok(resultWithoutPrimer[1].content.includes('--- ABILITIES ---'));
     });
   });

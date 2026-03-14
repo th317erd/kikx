@@ -10,7 +10,7 @@ import { ModelBase, Types } from './model-base.mjs';
 // =============================================================================
 
 export class Frame extends ModelBase {
-  static version = 1;
+  static version = 2;
 
   static fields = {
     ...(ModelBase.fields || {}),
@@ -100,6 +100,11 @@ export class Frame extends ModelBase {
     },
     processedAt: {
       type:      Types.DATETIME,
+      allowNull: true,
+    },
+    // Ed25519 signature hex string
+    signature: {
+      type:      Types.STRING(256),
       allowNull: true,
     },
     // Frame timestamp (milliseconds since epoch)
