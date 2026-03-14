@@ -17,13 +17,7 @@ export class AgentController extends ControllerAuthBase {
     let { Agent } = this.getCoreModels();
     let agents    = await Agent.where.organizationID.EQ(this.request.organizationID).all();
 
-    let agentsWithRiskLevel = [];
-    for (let agent of agents) {
-      let config = await agent.getConfig();
-      agentsWithRiskLevel.push({ agent, riskLevel: config.riskLevel || null });
-    }
-
-    return { data: { agents: agentsWithRiskLevel } };
+    return { data: { agents } };
   }
 
   // ---------------------------------------------------------------------------
