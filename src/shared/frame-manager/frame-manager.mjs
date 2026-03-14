@@ -447,6 +447,11 @@ export class FrameManager {
     return this;
   }
 
+  removeAllListeners(event) {
+    this._emitter.removeAllListeners(event);
+    return this;
+  }
+
   emit(event, data) {
     this._emitter.emit(event, data);
     return this;

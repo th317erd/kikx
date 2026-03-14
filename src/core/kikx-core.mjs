@@ -133,10 +133,44 @@ export class KikxCore {
         await this._connection.createTable(Model, { ifNotExists: true });
     }
 
+    // Run schema migrations for existing tables with new columns
+    await this._runSchemaMigrations();
+
     // Store on context
     this._models = models;
     this._context.setProperty('models', models);
     this._context.setProperty('connection', this._connection);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Schema migrations — add columns that were added in model version bumps.
+  // SQLite ALTER TABLE ADD COLUMN is idempotent-safe via try/catch.
+  // ---------------------------------------------------------------------------
+
+  async _runSchemaMigrations() {
+    let migrations = [
+      // Frame v2: signature field
+      'ALTER TABLE frames ADD COLUMN signature TEXT',
+      // User v2: Ed25519 key pair fields
+      'ALTER TABLE users ADD COLUMN publicKey TEXT',
+      'ALTER TABLE users ADD COLUMN encryptedPrivateKey TEXT',
+      // Agent v3: Ed25519 key pair fields
+      'ALTER TABLE agents ADD COLUMN publicKey TEXT',
+      'ALTER TABLE agents ADD COLUMN encryptedPrivateKey TEXT',
+    ];
+
+    for (let sql of migrations) {
+      try {
+        await this._connection.exec(sql);
+      } catch (error) {
+        // "duplicate column name" = column already exists (safe to ignore)
+        // "no such table" = fresh DB, table was just created with correct schema (safe to ignore)
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('no such table')))
+          continue;
+
+        throw error;
+      }
+    }
   }
 
   _getModelClasses() {
