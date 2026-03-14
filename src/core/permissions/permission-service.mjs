@@ -43,7 +43,7 @@ export class PermissionService {
   // ---------------------------------------------------------------------------
 
   async check(featureName, args, options = {}) {
-    let { organizationID, sessionID, toolClass, pluginRegistry } = options;
+    let { organizationID, sessionID, toolClass, pluginRegistry, privateKeyPEM } = options;
 
     // Look up tool class from registry if not provided
     if (!toolClass && pluginRegistry)
@@ -58,7 +58,7 @@ export class PermissionService {
 
     if (!needsPermission) {
       // Approved — sign the approval envelope
-      let signature = this._signApproval(featureName, args, sessionID);
+      let signature = this._signApproval(featureName, args, sessionID, privateKeyPEM);
       return { decision: 'allow', signature };
     }
 
@@ -81,7 +81,7 @@ export class PermissionService {
   // ---------------------------------------------------------------------------
 
   async createStandingApproval(options = {}) {
-    let { organizationID, sessionID, featureName, createdBy, expiresAt, priority } = options;
+    let { organizationID, sessionID, featureName, createdBy, expiresAt, priority, privateKeyPEM } = options;
 
     if (!organizationID)
       throw new Error('organizationID is required');
@@ -93,7 +93,7 @@ export class PermissionService {
     let effectivePriority = priority !== undefined ? priority : 100;
 
     // Sign the standing approval
-    let signature = this._signApproval(effectiveFeature, { standing: true, sessionID }, sessionID);
+    let signature = this._signApproval(effectiveFeature, { standing: true, sessionID }, sessionID, privateKeyPEM);
 
     let rule = await this._permissionEngine.createRule({
       organizationID,
@@ -152,13 +152,17 @@ export class PermissionService {
   // signApproval / verifyApproval — Envelope signing
   // ---------------------------------------------------------------------------
 
-  signApproval(featureName, args, sessionID) {
-    return this._signApproval(featureName, args, sessionID || null);
+  signApproval(featureName, args, sessionID, privateKeyPEM) {
+    return this._signApproval(featureName, args, sessionID || null, privateKeyPEM);
   }
 
-  verifyApproval(featureName, args, signature, sessionID) {
+  verifyApproval(featureName, args, signature, sessionID, publicKeyPEM) {
     let blob = this._buildApprovalBlob(featureName, args, sessionID);
     try {
+      if (publicKeyPEM)
+        return this._keystore.verifyWithPublicKey(blob, publicKeyPEM, signature);
+
+      // Fallback to HMAC verification (backward compat during transition)
       return this._keystore.verify(blob, signature);
     } catch (_error) {
       return false;
@@ -169,8 +173,12 @@ export class PermissionService {
   // Internal
   // ---------------------------------------------------------------------------
 
-  _signApproval(featureName, args, sessionID) {
+  _signApproval(featureName, args, sessionID, privateKeyPEM) {
     let blob = this._buildApprovalBlob(featureName, args, sessionID);
+    if (privateKeyPEM)
+      return this._keystore.signWithPrivateKey(blob, privateKeyPEM);
+
+    // Fallback to HMAC if no private key provided (backward compat during transition)
     return this._keystore.sign(blob);
   }
 
