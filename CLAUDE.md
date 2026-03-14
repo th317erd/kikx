@@ -3,13 +3,15 @@
 ## ⚠️ TEST CREDENTIALS - READ THIS FIRST ⚠️
 
 ```
-Username: claude
-Password: claude123
+Email:    test-bot@kikx.com
+Password: securePass123
 ```
 
 **MEMORIZE THESE.** Use for ALL browser testing and Puppeteer automation.
 
-The `claude` user has agent `test-claude` with a valid Anthropic API key.
+The `test-bot` user has agents:
+- `test-claude` (agt_d6k1n1wpe7dy5tq17hcg) — valid Anthropic API key
+- `test-claude-2` (agt_d6n3g30pe7dwfan9erdg) — same API key
 
 ---
 
@@ -33,9 +35,9 @@ Examples:
 
 ### For Real Interaction Testing
 
-Use the `claude` user's `test-claude` agent which has a valid API key.
+Use the `test-bot` user's `test-claude` agent which has a valid API key.
 
-- Login as `claude` / `claude123`
+- Login as `test-bot@kikx.com` / `securePass123`
 - Create a new **session** (sessions are safe to create freely)
 - Select `test-claude` as the agent
 - Send test messages to verify functionality

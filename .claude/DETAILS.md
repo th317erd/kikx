@@ -50,13 +50,14 @@ Important details to remember across sessions.
 - **Phase 3 (V2 Differentiators):** IN PROGRESS
 - **Phase C (Frame Event Router):** COMPLETE (C1-C4)
 - **E2E Integration:** VERIFIED
-- **Test count:** 2780 tests, 0 failures
+- **Test count:** 2935 tests, 0 failures
 
 ### Completed Future Plans
 
 | Feature | Completed |
 |---------|-----------|
 | Markdown Conversion | 2026-03-13 |
+| Ed25519 Identity + ValueStore + Danger Level | 2026-03-14 |
 | Abilities System | 2026-03-12 |
 | Inter-Agent Streaming | 2026-03-10 |
 | Agent Memory Context | 2026-03-11 |
@@ -68,7 +69,6 @@ Important details to remember across sessions.
 
 | Feature | Priority |
 |---------|----------|
-| Danger Level Permissions | Medium |
 | Device Approval Auth | Medium |
 | Key Rotation | Medium |
 | Applicable Permitters | Low |

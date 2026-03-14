@@ -213,6 +213,22 @@ export class InteractionLoop extends EventEmitter {
       return null;
     }
 
+    // Clean up stale permission-waiting state for this session/agent.
+    // If the user sends a new message while a permission is pending, the old
+    // permission becomes orphaned. Clear it so the agent context stays clean.
+    if (!params.replayFromPermission && this._permissionWaiting.has(activeKey)) {
+      this._permissionWaiting.delete(activeKey);
+    } else if (!params.replayFromPermission) {
+      // Also check for composite key matches (session prefix scan)
+      let prefix = `${sessionID}:`;
+      for (let key of this._permissionWaiting.keys()) {
+        if (key === sessionID || key.startsWith(prefix)) {
+          this._permissionWaiting.delete(key);
+          break;
+        }
+      }
+    }
+
     // Command dispatch: intercept /command messages
     let commandMatch = this._commandHandler.parse(params.userMessage);
     if (commandMatch)
@@ -741,6 +757,10 @@ export class InteractionLoop extends EventEmitter {
     }
 
     return false;
+  }
+
+  getPermissionWaiting(sessionID) {
+    return this._permissionHandler._findWaiting(sessionID);
   }
 
   getQueuedMessages(sessionID, agentID) {

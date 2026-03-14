@@ -264,5 +264,105 @@ describe('Message History Utilities (C5)', () => {
       // Empty html is falsy, should fall back to text
       assert.equal(msgs[0].content, 'fallback');
     });
+
+    // -------------------------------------------------------------------------
+    // Permission replay: user message between pending-action and tool-result
+    // -------------------------------------------------------------------------
+
+    it('should keep tool-result adjacent to pending-action even when user message intervenes', () => {
+      // Simulates: user sends a message while a permission is pending,
+      // then the permission is approved, creating a tool-result AFTER the user message.
+      let frames = [
+        { id: 'f1', type: 'user-message', content: { text: 'run date' }, deleted: false, hidden: false },
+        { id: 'f2', type: 'message', content: { html: 'Running date command.' }, deleted: false, hidden: false },
+        { id: 'f3', type: 'pending-action', content: { toolName: 'shell:execute', arguments: { command: 'date' }, toolUseID: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f4', type: 'permission-request', content: { toolName: 'shell:execute' }, deleted: false, hidden: false },
+        { id: 'f5', type: 'user-message', content: { text: 'also search the web' }, deleted: false, hidden: false },
+        { id: 'f6', type: 'tool-result', content: { output: 'Sat Mar 14', toolUseID: 'tu_1' }, deleted: false, hidden: false },
+      ];
+
+      let msgs = buildMessages(frames);
+
+      // Expected order: user-msg, assistant-msg, tool-call(tu_1), tool-result(tu_1), user-msg
+      assert.equal(msgs.length, 5);
+      assert.equal(msgs[0].role, 'user');
+      assert.equal(msgs[0].content, 'run date');
+      assert.equal(msgs[1].role, 'assistant');
+      assert.equal(msgs[2].type, 'tool-call');
+      assert.equal(msgs[2].content.toolUseID, 'tu_1');
+      assert.equal(msgs[3].type, 'tool-result');
+      assert.equal(msgs[3].content.toolUseID, 'tu_1');
+      assert.equal(msgs[4].role, 'user');
+      assert.equal(msgs[4].content, 'also search the web');
+    });
+
+    it('should strip _parsedCommands from pending-action arguments', () => {
+      let frames = [
+        { id: 'f1', type: 'pending-action', content: {
+          toolName: 'shell:execute',
+          arguments: { command: 'ls', _parsedCommands: [{ command: 'ls', status: 'approved' }] },
+          toolUseID: 'tu_1',
+        }, deleted: false, hidden: false },
+        { id: 'f2', type: 'tool-result', content: { output: 'file1\nfile2', toolUseID: 'tu_1' }, deleted: false, hidden: false },
+      ];
+
+      let msgs = buildMessages(frames);
+      assert.equal(msgs[0].type, 'tool-call');
+      assert.equal(msgs[0].content.arguments.command, 'ls');
+      assert.equal(msgs[0].content.arguments._parsedCommands, undefined);
+    });
+
+    it('should not duplicate tool-result when pending-action pulls it forward', () => {
+      let frames = [
+        { id: 'f1', type: 'pending-action', content: { toolName: 'test', toolUseID: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f2', type: 'user-message', content: { text: 'extra' }, deleted: false, hidden: false },
+        { id: 'f3', type: 'tool-result', content: { output: 'ok', toolUseID: 'tu_1' }, deleted: false, hidden: false },
+      ];
+
+      let msgs = buildMessages(frames);
+      let toolResults = msgs.filter((m) => m.type === 'tool-result');
+      assert.equal(toolResults.length, 1, 'should have exactly one tool-result');
+    });
+
+    it('should only skip deleted/hidden tool-results from resolvedToolIds', () => {
+      // A deleted tool-result should NOT cause its pending-action to be included
+      let frames = [
+        { id: 'f1', type: 'pending-action', content: { toolName: 'test', toolUseID: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f2', type: 'tool-result', content: { output: 'ok', toolUseID: 'tu_1' }, deleted: true, hidden: false },
+      ];
+
+      let msgs = buildMessages(frames);
+      assert.equal(msgs.length, 0, 'pending-action without visible tool-result should be excluded');
+    });
+
+    it('should handle multiple pending-actions with interleaved user messages', () => {
+      let frames = [
+        { id: 'f1', type: 'pending-action', content: { toolName: 'a', toolUseID: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f2', type: 'user-message', content: { text: 'msg1' }, deleted: false, hidden: false },
+        { id: 'f3', type: 'tool-result', content: { output: 'r1', toolUseID: 'tu_1' }, deleted: false, hidden: false },
+        { id: 'f4', type: 'message', content: { html: 'resp' }, deleted: false, hidden: false },
+        { id: 'f5', type: 'pending-action', content: { toolName: 'b', toolUseID: 'tu_2' }, deleted: false, hidden: false },
+        { id: 'f6', type: 'user-message', content: { text: 'msg2' }, deleted: false, hidden: false },
+        { id: 'f7', type: 'tool-result', content: { output: 'r2', toolUseID: 'tu_2' }, deleted: false, hidden: false },
+      ];
+
+      let msgs = buildMessages(frames);
+
+      // Expected: tool-call(1), tool-result(1), user-msg1, assistant, tool-call(2), tool-result(2), user-msg2
+      assert.equal(msgs.length, 7);
+      assert.equal(msgs[0].type, 'tool-call');
+      assert.equal(msgs[0].content.toolUseID, 'tu_1');
+      assert.equal(msgs[1].type, 'tool-result');
+      assert.equal(msgs[1].content.toolUseID, 'tu_1');
+      assert.equal(msgs[2].role, 'user');
+      assert.equal(msgs[2].content, 'msg1');
+      assert.equal(msgs[3].role, 'assistant');
+      assert.equal(msgs[4].type, 'tool-call');
+      assert.equal(msgs[4].content.toolUseID, 'tu_2');
+      assert.equal(msgs[5].type, 'tool-result');
+      assert.equal(msgs[5].content.toolUseID, 'tu_2');
+      assert.equal(msgs[6].role, 'user');
+      assert.equal(msgs[6].content, 'msg2');
+    });
   });
 });

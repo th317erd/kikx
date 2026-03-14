@@ -13,8 +13,28 @@ export class FrameController extends ControllerAuthBase {
 
   async list({ params, query }) {
     let framePersistence = this.getFramePersistence();
-    let frameManager     = await framePersistence.loadFrames(params.sessionID, query || {});
-    let frames           = frameManager.toArray();
+
+    // Sanitize query string params before passing to ORM
+    let options = {};
+    if (query) {
+      if (query.interactionID)
+        options.interactionID = query.interactionID;
+
+      if (query.afterOrder !== undefined && query.afterOrder !== '') {
+        let parsed = parseInt(query.afterOrder, 10);
+        if (!isNaN(parsed))
+          options.afterOrder = parsed;
+      }
+
+      if (query.limit !== undefined && query.limit !== '') {
+        let parsed = parseInt(query.limit, 10);
+        if (!isNaN(parsed) && parsed > 0)
+          options.limit = parsed;
+      }
+    }
+
+    let frameManager = await framePersistence.loadFrames(params.sessionID, options);
+    let frames       = frameManager.toArray();
 
     return { data: { frames } };
   }

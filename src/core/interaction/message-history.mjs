@@ -67,14 +67,29 @@ export function injectPrimer(messages, primer) {
  * @returns {Array} messages suitable for agent execution
  */
 export function buildMessages(frames, forAgentID) {
-  // Collect toolUseIds that have results — used to filter orphaned pending-actions
-  let resolvedToolIds = new Set();
+  // First pass: collect resolved tool IDs and map each to its result frame.
+  // Only consider non-deleted, non-hidden tool-result frames so we don't
+  // include a pending-action whose result was removed.
+  let resolvedToolIds  = new Set();
+  let toolResultFrames = new Map(); // toolUseID → first matching tool-result frame
+
   for (let frame of frames) {
-    if (frame.type === 'tool-result' && frame.content && frame.content.toolUseID)
+    if (frame.deleted || frame.hidden)
+      continue;
+
+    if (frame.type === 'tool-result' && frame.content && frame.content.toolUseID) {
       resolvedToolIds.add(frame.content.toolUseID);
+
+      if (!toolResultFrames.has(frame.content.toolUseID))
+        toolResultFrames.set(frame.content.toolUseID, frame);
+    }
   }
 
   let messages = [];
+
+  // Track which toolUseIDs already have a tool-result in the output —
+  // prevents duplicate tool_result blocks that cause Anthropic API errors
+  let emittedToolResults = new Set();
 
   for (let frame of frames) {
     // Skip deleted and hidden frames (hidden = visible in UI but not in agent context)
@@ -112,10 +127,38 @@ export function buildMessages(frames, forAgentID) {
     } else if (type === 'pending-action') {
       // Only include pending-actions that were approved (have a matching tool-result)
       let content = frame.content || {};
-      if (content.toolUseID && resolvedToolIds.has(content.toolUseID))
-        messages.push({ type: 'tool-call', content, authorType: 'agent', frameID: frame.id });
+      if (content.toolUseID && resolvedToolIds.has(content.toolUseID)) {
+        // Strip internal fields (e.g. _parsedCommands) from arguments before
+        // exposing to the agent — they are UI/permission-system metadata.
+        let cleanContent = content;
+        if (content.arguments && content.arguments._parsedCommands) {
+          let { _parsedCommands, ...cleanArgs } = content.arguments;
+          cleanContent = { ...content, arguments: cleanArgs };
+        }
+
+        messages.push({ type: 'tool-call', content: cleanContent, authorType: 'agent', frameID: frame.id });
+
+        // Immediately emit the matching tool-result so the tool_use / tool_result
+        // pair stays adjacent. Without this, user messages sent while a permission
+        // was pending would land between the pair, causing API errors (e.g.
+        // "tool_use ids found without tool_result blocks immediately after").
+        let resultFrame = toolResultFrames.get(content.toolUseID);
+        if (resultFrame && !emittedToolResults.has(content.toolUseID)) {
+          emittedToolResults.add(content.toolUseID);
+          messages.push({ type: 'tool-result', content: resultFrame.content || {}, frameID: resultFrame.id });
+        }
+      }
     } else if (type === 'tool-result') {
-      let content = frame.content || {};
+      let content  = frame.content || {};
+      let resultID = content.toolUseID;
+
+      // Deduplicate: only include the first tool-result per toolUseID
+      if (resultID && emittedToolResults.has(resultID))
+        continue;
+
+      if (resultID)
+        emittedToolResults.add(resultID);
+
       messages.push({ type: 'tool-result', content, frameID: frame.id });
     }
   }

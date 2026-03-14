@@ -230,6 +230,7 @@ export default {
     sessions:          'Sessions',
     addFriend:         '+',
     addSession:        '+',
+    noSessions:        'No sessions yet.',
     archiveShow:       '\u{1F435}',
     archiveHide:       '\u{1F648}',
   },

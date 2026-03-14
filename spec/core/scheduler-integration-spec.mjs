@@ -276,7 +276,7 @@ describe('Scheduler Integration (B7)', () => {
     assert.equal(scheduler.getResolveContext(sessionID), null, 'Context cleared');
   });
 
-  it('markComplete should clear resolve context when no agents remain active', () => {
+  it('markComplete should NOT clear resolve context (deferred to _triggerNext)', () => {
     let sessionID = 'ses_resolve_clear_test';
     let mockContext = { keystore: 'ks', umk: 'umk', userID: 'usr_1' };
 
@@ -288,7 +288,12 @@ describe('Scheduler Integration (B7)', () => {
     assert.ok(scheduler.getResolveContext(sessionID), 'Context still present while agt_2 active');
 
     scheduler.markComplete(sessionID, 'agt_2');
-    assert.equal(scheduler.getResolveContext(sessionID), null, 'Context cleared when all agents done');
+    // markComplete no longer clears — _triggerNext handles cleanup after all triggers are processed
+    assert.ok(scheduler.getResolveContext(sessionID), 'Context retained for _triggerNext to use');
+
+    // Explicit clear still works
+    scheduler.clearResolveContext(sessionID);
+    assert.equal(scheduler.getResolveContext(sessionID), null, 'Context cleared by explicit clearResolveContext');
   });
 
   it('should forward scheduler events for observability', async () => {

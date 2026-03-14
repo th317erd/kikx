@@ -285,8 +285,8 @@ export class InteractionController extends ControllerAuthBase {
         // Resolve organizationID — look up from permission-waiting state or agent
         let organizationID = null;
 
-        // Try to get from waiting state's agent params
-        let waiting = interactionLoop._permissionWaiting.get(params.sessionID);
+        // Try to get from waiting state's agent params (uses composite key lookup)
+        let waiting = interactionLoop.getPermissionWaiting(params.sessionID);
         if (waiting && waiting.params && waiting.params.agent)
           organizationID = waiting.params.agent.organizationID;
 

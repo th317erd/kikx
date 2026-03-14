@@ -199,9 +199,10 @@ export class SessionScheduler extends EventEmitter {
     let activeKey = `${sessionID}:${agentID}`;
     this._activeAgents.delete(activeKey);
 
-    // Clear resolve context when no agents remain active for this session
-    if (this.getActiveAgents(sessionID).length === 0)
-      this.clearResolveContext(sessionID);
+    // Don't clear resolve context here — _onInteractionEnd calls _triggerNext
+    // after markComplete, and _triggerNext needs the resolveContext to decrypt
+    // API keys for secondary agents. Context is cleared in _triggerNext when
+    // no more pending triggers remain.
   }
 
   markActive(sessionID, agentID) {
@@ -315,8 +316,13 @@ export class SessionScheduler extends EventEmitter {
 
   async _triggerNext(sessionID) {
     let entry = this.dequeueTrigger(sessionID);
-    if (!entry)
+    if (!entry) {
+      // No more pending triggers — safe to clear resolveContext if no active agents
+      if (this.getActiveAgents(sessionID).length === 0)
+        this.clearResolveContext(sessionID);
+
       return;
+    }
 
     // Skip if this specific agent already has an active interaction
     if (this._interactionLoop.isActive(sessionID, entry.agentID)) {

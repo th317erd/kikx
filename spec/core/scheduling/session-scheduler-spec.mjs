@@ -362,7 +362,7 @@ describe('SessionScheduler (B5)', () => {
       assert.equal(scheduler.getResolveContext('ses_1'), null);
     });
 
-    it('should auto-clear resolve context when last agent completes', () => {
+    it('should NOT clear resolve context in markComplete (deferred to _triggerNext)', () => {
       let scheduler = createScheduler();
       scheduler.setResolveContext('ses_1', { keystore: 'ks' });
 
@@ -370,12 +370,27 @@ describe('SessionScheduler (B5)', () => {
       scheduler._activeAgents.set('ses_1:agt_1', true);
       assert.ok(scheduler.getResolveContext('ses_1'));
 
-      // Mark complete — should auto-clear since no more active agents
+      // markComplete no longer clears — _triggerNext handles cleanup
       scheduler.markComplete('ses_1', 'agt_1');
+      assert.ok(scheduler.getResolveContext('ses_1'));
+    });
+
+    it('should clear resolve context in _triggerNext when no pending triggers and no active agents', async () => {
+      let scheduler = createScheduler();
+      scheduler.setResolveContext('ses_1', { keystore: 'ks' });
+
+      scheduler._activeAgents.set('ses_1:agt_1', true);
+      scheduler.markComplete('ses_1', 'agt_1');
+
+      // Context still present after markComplete
+      assert.ok(scheduler.getResolveContext('ses_1'));
+
+      // _triggerNext finds no pending triggers + no active agents → clears context
+      await scheduler._triggerNext('ses_1');
       assert.equal(scheduler.getResolveContext('ses_1'), null);
     });
 
-    it('should NOT clear resolve context when other agents still active', () => {
+    it('should NOT clear resolve context when other agents still active', async () => {
       let scheduler = createScheduler();
       scheduler.setResolveContext('ses_1', { keystore: 'ks' });
 
@@ -384,10 +399,12 @@ describe('SessionScheduler (B5)', () => {
 
       scheduler.markComplete('ses_1', 'agt_1');
 
-      // agt_2 still active, context should remain
+      // agt_2 still active, context should remain even after _triggerNext
+      await scheduler._triggerNext('ses_1');
       assert.ok(scheduler.getResolveContext('ses_1'));
 
       scheduler.markComplete('ses_1', 'agt_2');
+      await scheduler._triggerNext('ses_1');
       assert.equal(scheduler.getResolveContext('ses_1'), null);
     });
   });

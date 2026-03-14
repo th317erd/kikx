@@ -200,6 +200,11 @@ export class PermissionHandler {
     if (!waiting)
       throw new Error(`No pending permission for session: ${sessionID}`);
 
+    // Atomically clear permission-waiting state BEFORE any async work.
+    // This prevents concurrent approve() calls from processing the same
+    // permission twice (which would create duplicate tool-result frames).
+    this._deleteWaiting(sessionID);
+
     let { Frame } = loop._context.getProperty('models');
 
     // Load the pending-action frame (always use the stored pending frame ID,
@@ -249,9 +254,6 @@ export class PermissionHandler {
       }
     }
 
-    // Clear permission-waiting state
-    this._deleteWaiting(sessionID);
-
     // Start NEW interaction with replay flag
     let newParams = {
       ...waiting.params,
@@ -271,6 +273,10 @@ export class PermissionHandler {
 
     if (!waiting)
       throw new Error(`No pending permission for session: ${sessionID}`);
+
+    // Atomically clear permission-waiting state BEFORE any async work.
+    // Prevents concurrent deny() calls from processing the same permission twice.
+    this._deleteWaiting(sessionID);
 
     let { Frame } = loop._context.getProperty('models');
 
@@ -340,9 +346,6 @@ export class PermissionHandler {
         processed:     false,
       }, denyFrameManager, { authorType: 'system' }, signingContext);
     }
-
-    // Clear permission-waiting state
-    this._deleteWaiting(sessionID);
 
     // Start NEW interaction with replay flag so the agent sees the denial
     let newParams = {
