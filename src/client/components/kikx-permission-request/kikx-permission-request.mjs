@@ -338,8 +338,14 @@ class KikxPermissionRequest extends HTMLElement {
   }
 
   _updateConfirmState() {
+    // No sub-commands (simple tool permission) — enable confirm immediately
+    if (this._commands.length === 0) {
+      this._confirmButton.disabled = false;
+      return;
+    }
+
     // Confirm is enabled when ALL commands have a decision
-    let allDecided = this._commands.length > 0 && this._commands.every(
+    let allDecided = this._commands.every(
       (cmd) => this._decisions.has(cmd.command),
     );
 
