@@ -2,47 +2,254 @@
 # Status: PLANNED
 # Priority: Medium
 # Complexity: Medium
+# Updated: 2026-03-13
 
 summary: >
-  Per-agent risk tolerance configuration that controls permission inheritance
-  behavior. Three levels: Low (no inheritance, every combo explicit),
-  Medium (walk-up inheritance, tool-level approval), Yolo (auto-approve all).
+  Per-agent (and per-user) risk tolerance configuration that controls permission
+  behavior. Three levels: Strict (no inheritance), Normal (walk-up inheritance),
+  Permissive/YOLO (auto-approve unless denied). Resolution chain:
+  Agent config → User account → 'strict' fallback. Tamper-proof via HMAC signing.
 
 depends_on:
-  - agent-memory-context.yaml  # Storage for per-agent config
+  - value-store.yaml  # Unified config/context/memory storage
+
+# =============================================================================
+# Risk Levels
+# =============================================================================
 
 levels:
-  low:
+  strict:
+    config_value: "'strict'"
+    display_name: "Strict"
     description: >
-      No permission inheritance across session boundaries. Each
-      session/agent/tool/arguments combo requires explicit approval.
-      Most restrictive.
-    inheritance: false
-    granularity: session + agent + tool + arguments
+      No permission inheritance across session boundaries. Each session needs
+      its own approvals. Most restrictive.
+    behavior:
+      - "Restrict ancestorSessionIDs to [currentSessionID] only — no walk-up"
+      - "Everything else unchanged — tool risk levels, rule matching, deny rules"
+    ui_description: "Every tool needs explicit approval per session"
 
-  medium:
+  normal:
+    config_value: "'normal'"
+    display_name: "Normal"
     description: >
-      Child sessions inherit parent permissions via walk-up.
-      Tool-level approval (any arguments accepted once tool approved).
-      Default behavior. Already implemented as the only behavior.
-    inheritance: true
-    granularity: tool-level
+      Child sessions inherit parent permissions via walk-up. Tool-level approval.
+      Current default behavior — already implemented.
+    behavior:
+      - "No changes to existing permission engine logic"
+      - "Session-scoped rules from ancestor sessions apply to children"
+    ui_description: "Inherited permissions, balanced security"
+    backward_compat: "'medium' accepted as alias, treated as 'normal'"
 
-  yolo:
+  permissive:
+    config_value: "'permissive'"
+    display_name: "Permissive (YOLO)"
     description: >
-      Everything auto-approved. No permission prompts. Use with caution.
-    inheritance: true
-    granularity: N/A (all auto-approved)
+      Auto-approve when no rule matches. Deny rules still block. Critical tools
+      still prompt. Permissions subclass overrides (e.g., createSession) still
+      respected. Only the no-match default changes from "needs approval" to
+      "auto-approved".
+    behavior:
+      - "Run the FULL existing pipeline unchanged"
+      - "Deny rules still throw PermissionDeniedError"
+      - "Critical tool risk level still returns true (needs approval)"
+      - "Permissions.checkPermission() return values all respected (true/false/null)"
+      - "ONLY change: final 'return true' (no match) becomes 'return false' (auto-approve)"
+    ui_description: "Auto-approve most tools (critical tools still prompt)"
+
+# =============================================================================
+# Resolution Chain
+# =============================================================================
+
+resolution_chain:
+  description: >
+    The effective riskLevel is determined by checking multiple sources in order.
+    First match wins.
+  chain:
+    - source: "agent.getConfig().riskLevel"
+      description: "Agent-specific override (optional, set by human via UI)"
+    - source: "user.getVerifiedSettings().riskLevel"
+      description: "User account default (signed, verified against tampering)"
+    - source: "'strict'"
+      description: "Final fallback — most restrictive, safe default"
+  notes:
+    - "Agent riskLevel is OPTIONAL — removed from AGENT_DEFAULTS"
+    - "User riskLevel has a default of 'normal' (from USER_DEFAULTS)"
+    - "If user settings are tampered (signature mismatch), falls back to 'strict'"
+    - "'riskLevel' added to Agent PROTECTED_KEYS — agents cannot self-escalate"
+
+# =============================================================================
+# Signing & Tamper Detection
+# =============================================================================
+
+signing:
+  description: >
+    User and agent riskLevel values are HMAC-signed when written through
+    authenticated endpoints. On read, the signature is verified. Tampered
+    values (failed verification) fall back to 'strict'.
+  key_derivation: "keystore.deriveUserKey(UMK, userID) — per-user, stable across password changes"
+  sign_method: "keystore.fingerprint(valueJSON, userKey) — HMAC-SHA256 → 64-char hex"
+  open_issue: >
+    The signing key (derived from UMK) is only available during authenticated
+    HTTP requests. Agent tool calls during interactions — especially in child
+    sessions — may not have an authenticated request context. A solution for
+    signing key availability outside request boundaries is needed before
+    implementation. This is being actively designed.
+  tamper_scenarios:
+    - scenario: "Agent writes riskLevel='permissive' directly to DB"
+      result: "Signature mismatch → fallback to 'strict'"
+    - scenario: "Agent modifies both value and signature"
+      result: "Can't forge valid signature without UMK → fallback to 'strict'"
+    - scenario: "Agent deletes the ValueStore row entirely"
+      result: "No entry → fallback to 'strict'"
+
+# =============================================================================
+# Implementation Steps
+# =============================================================================
 
 implementation:
-  - agent.getConfig().riskLevel returns the level (stub returns 'medium')
-  - PermissionEngine.checkPermission() branches on riskLevel
-  - Low: ancestorIDs = [currentSessionID] (don't walk up)
-  - Yolo: return false immediately (no approval needed)
-  - UI: dropdown in agent settings panel
-  - Storage: per-agent memory context (JSON)
+  step_1:
+    title: "Fix agent passthrough gap"
+    file: "src/server/controllers/interaction-controller.mjs"
+    description: "Pass agent object to permissionEngine.checkPermission() options"
 
-special_cases:
-  createSession: >
-    Always requires explicit permission regardless of danger level
-    (except Yolo). Enforced via CrossSessionPermissions plugin overload.
+  step_2:
+    title: "Pass verified user riskLevel to permission engine"
+    file: "src/server/controllers/interaction-controller.mjs"
+    description: >
+      Load user record, derive user key, verify settings via ValueStoreService.
+      Pass userRiskLevel to permission engine. Fallback to 'strict' on verification failure.
+
+  step_3:
+    title: "Unlock the permission engine"
+    file: "src/core/permissions/permission-engine.mjs"
+    description: >
+      Replace the hard throw on non-'medium' riskLevel with resolution chain
+      and 3-way branch. Normalize 'medium' → 'normal' for backward compat.
+      strict: restrict ancestry to [currentSessionID].
+      normal: existing walk-up (unchanged).
+      permissive: run full pipeline, flip no-match default to false.
+
+  step_4:
+    title: "Update Agent model"
+    file: "src/core/models/agent-model.mjs"
+    description: >
+      Remove riskLevel from AGENT_DEFAULTS (now optional).
+      Add 'riskLevel' to PROTECTED_KEYS.
+      Validate riskLevel values when explicitly set.
+
+  step_5:
+    title: "Expose riskLevel in APIs"
+    files:
+      - "src/server/controllers/agent-controller.mjs — accept riskLevel, sign via ValueStoreService"
+      - "src/server/controllers/auth-controller.mjs — accept riskLevel, sign via ValueStoreService"
+
+  step_6:
+    title: "Agent form dropdown"
+    file: "src/client/components/kikx-agent-form-modal/kikx-agent-form-modal.mjs"
+    description: >
+      Add <select> with 4 options:
+      Account Default (empty/null), Strict, Normal, Permissive (YOLO).
+
+  step_7:
+    title: "Settings page permissions tab"
+    file: "src/client/components/kikx-settings-page/kikx-settings-page.mjs"
+    description: >
+      Replace "No permission grants" stub with riskLevel dropdown (3 options,
+      no "Account Default"). Read/write via PUT /api/v2/auth/me.
+
+  step_8:
+    title: "Tests"
+    description: "See test plan below"
+
+# =============================================================================
+# Test Plan
+# =============================================================================
+
+tests:
+  permission_engine:
+    file: "spec/core/permissions/permission-engine-risklevel-spec.mjs"
+    happy_path:
+      - "strict mode: parent session allow rule does NOT apply to child session"
+      - "strict mode: own session allow rule applies normally"
+      - "strict mode: global allow rule applies normally"
+      - "normal mode: existing walk-up behavior (regression test)"
+      - "permissive mode: no matching rules → auto-approved (returns false)"
+      - "permissive mode: Permissions.checkPermission() returns true → respected"
+      - "permissive mode: Permissions.checkPermission() returns false → respected"
+      - "permissive mode: Permissions.checkPermission() returns null → auto-approved"
+    failure_path:
+      - "permissive mode: deny rule → still denied (throws PermissionDeniedError)"
+      - "permissive mode: critical tool → still needs approval (returns true)"
+      - "permissive mode: createSession → still needs approval (CrossSessionPermissions)"
+      - "agent is null/undefined → no agent riskLevel, fall through to user"
+      - "agent.getConfig() throws → catch and fallback to 'strict'"
+      - "userRiskLevel is null → fallback to 'strict'"
+      - "userRiskLevel is unrecognized string → fallback to 'strict'"
+      - "riskLevel is a number instead of string → type check, fallback"
+      - "riskLevel is empty string → fallback"
+    resolution_chain:
+      - "Agent has riskLevel → uses it"
+      - "Agent has no riskLevel, user has riskLevel → uses user's"
+      - "Neither has riskLevel → falls back to 'strict'"
+      - "Agent 'permissive' overrides user 'strict'"
+      - "User 'permissive' applies when agent has no value"
+      - "Tampered user settings (bad signature) → falls back to 'strict'"
+    backward_compat:
+      - "'medium' in agent config → treated as 'normal'"
+      - "'medium' in user settings → treated as 'normal'"
+
+  user_settings:
+    file: "spec/core/models/user-settings-spec.mjs"
+    happy_path:
+      - "getSettings() returns USER_DEFAULTS when empty"
+      - "getSettings() merges stored with defaults"
+      - "updateSettings() signs sensitive keys (riskLevel)"
+      - "updateSettings() doesn't sign non-sensitive keys"
+      - "getVerifiedSettings() with valid signature returns settings"
+    failure_path:
+      - "getVerifiedSettings() with tampered riskLevel → returns null"
+      - "getVerifiedSettings() with missing signature → returns null"
+      - "getVerifiedSettings() with different userKey → returns null"
+      - "updateSettings() without userKey → throws"
+      - "updateSettings() with null userKey → throws"
+      - "updateSettings({ riskLevel: 'invalid' }) → validation error"
+      - "getVerifiedSettings() when no settings exist → returns defaults (safe)"
+
+  tamper_detection:
+    file: "spec/core/permissions/tamper-detection-spec.mjs"
+    scenarios:
+      - "Write riskLevel via API → read back verified → matches"
+      - "Tamper value in DB, leave signature → verification fails → 'strict'"
+      - "Tamper signature in DB, leave value → verification fails → 'strict'"
+      - "Tamper both value and signature → verification fails → 'strict'"
+      - "Delete ValueStore row → getVerified returns null → 'strict'"
+      - "Copy signature from another user's entry → fails (different userKey)"
+
+  api_controllers:
+    file: "spec/server/controllers/"
+    tests:
+      - "Agent update with valid riskLevel → stored + signed"
+      - "Agent update with invalid riskLevel → 400"
+      - "Agent update with riskLevel = null → clears (falls back to user default)"
+      - "User settings update with riskLevel → stored + signed"
+      - "User settings GET → returns current riskLevel"
+      - "Agent riskLevel update without auth → 401"
+      - "Agent riskLevel for agent in different org → 403/404"
+      - "User settings update without auth → 401"
+      - "User settings with invalid riskLevel → 400"
+
+# =============================================================================
+# Affected Files
+# =============================================================================
+
+affected_files:
+  modified:
+    - "src/core/permissions/permission-engine.mjs — resolution chain, 3-way branch"
+    - "src/server/controllers/interaction-controller.mjs — pass agent + verified userRiskLevel"
+    - "src/core/models/agent-model.mjs — remove riskLevel default, add to PROTECTED_KEYS"
+    - "src/server/controllers/agent-controller.mjs — accept riskLevel, signed writes"
+    - "src/server/controllers/auth-controller.mjs — accept riskLevel, signed writes"
+    - "src/client/components/kikx-agent-form-modal/kikx-agent-form-modal.mjs — dropdown (4 options)"
+    - "src/client/components/kikx-settings-page/kikx-settings-page.mjs — permissions tab dropdown"
+    - "src/client/lib/api.mjs — pass riskLevel in updates"

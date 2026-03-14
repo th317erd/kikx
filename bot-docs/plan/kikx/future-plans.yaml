@@ -76,16 +76,32 @@ items:
   # REMAINING — Medium Priority
   # ===========================================================================
 
+  - id: value-store
+    title: "Value Store — Unified Config/Context/Memory Storage"
+    priority: high
+    status: PLANNED
+    description: |
+      Replace inline JSON blob columns (Agent.config, Session.context) with a
+      dedicated ValueStore table. Key-value store with namespace separation
+      (config/context/memory), per-entry HMAC signing for tamper detection,
+      search capabilities, and scoped storage. Foundation for agent queryable
+      memory and danger-level-permissions.
+    see_also: bot-docs/future-plans/value-store.yaml
+    added: "2026-03-13"
+
   - id: danger-level-permissions
     title: "Danger Level Permissions"
     priority: medium
     status: PLANNED
+    depends_on: value-store
     description: |
-      Enforce tool risk levels (low/medium/high/critical) through the
-      permission engine. Auto-allow low-risk tools, prompt for high-risk,
-      block critical without explicit org-level override.
+      Per-agent and per-user risk tolerance (Strict / Normal / Permissive YOLO).
+      Resolution chain: agent config → user account → 'strict' fallback.
+      Tamper-proof via HMAC signing. Includes UI dropdowns on agent form
+      and settings page.
     see_also: bot-docs/future-plans/danger-level-permissions.yaml
     added: "2026-03-06"
+    updated: "2026-03-13"
 
   - id: device-approval-auth
     title: "Device Approval Auth"

@@ -1,0 +1,259 @@
+# Value Store — Unified Config/Context/Memory Storage
+# Status: PLANNED
+# Priority: High (foundational for danger-level-permissions + agent queryable storage)
+# Complexity: Medium
+# Added: 2026-03-13
+
+summary: >
+  Replace inline JSON blob columns (Agent.config, Session.context) with a
+  dedicated ValueStore table. Key-value store with namespace separation,
+  per-entry HMAC signing for tamper detection, and search capabilities.
+  Foundation for agent queryable memory storage.
+
+depends_on: []
+
+# =============================================================================
+# Motivation
+# =============================================================================
+
+motivation:
+  problems:
+    - Agent.config and Session.context are opaque JSON blobs — not queryable
+    - Per-entry signing impossible with monolithic JSON columns
+    - Same DB tampering risk applies to agent config as to user settings
+    - No extensible storage for agent memories / details
+  solution: >
+    A unified key-value table (ValueStore) with ownerType/ownerID/namespace/scopeID/key
+    indexing. Supports per-entry HMAC signing, search, and scoped storage.
+
+# =============================================================================
+# Schema
+# =============================================================================
+
+schema:
+  table: value_stores
+  model: ValueStore
+  prefix: "vs_"
+  fields:
+    id:             { type: "XID(vs_)", primaryKey: true }
+    organizationID: { type: "FK → Organization", cascade: true }
+    ownerType:      { type: "STRING(32)",  values: ["agent", "user", "session"] }
+    ownerID:        { type: "STRING(128)", description: "Entity ID" }
+    namespace:      { type: "STRING(64)",  values: ["config", "context", "memory"] }
+    scopeID:        { type: "STRING(128)", default: "''", description: "Optional scoping (e.g., session ID). Empty string = not scoped." }
+    key:            { type: "STRING(256)", description: "The setting/memory key" }
+    value:          { type: "TEXT(long)",  description: "JSON-encoded value" }
+    signature:      { type: "STRING(128)", nullable: true, description: "Optional HMAC-SHA256 hex" }
+    createdAt:      { type: "DATETIME" }
+    updatedAt:      { type: "DATETIME" }
+  indexes:
+    - unique: [ownerType, ownerID, namespace, scopeID, key]
+    - index:  [organizationID]
+    - index:  [ownerType, namespace, key]
+    - index:  [ownerType, ownerID, namespace, scopeID]
+  notes:
+    - "scopeID defaults to '' (empty string, not NULL) because SQLite treats NULLs as distinct in UNIQUE indexes"
+
+# =============================================================================
+# Namespace Design
+# =============================================================================
+
+namespaces:
+  config:
+    owner_types: [agent, user]
+    who_writes: "Human (via UI/API)"
+    signed: "Yes — sensitive keys (e.g., riskLevel)"
+    description: "System configuration set by humans"
+  context:
+    owner_types: [session]
+    who_writes: "Agent (via memory tools)"
+    signed: "No"
+    description: "Session runtime context, inheritable through parent chain"
+  memory:
+    owner_types: [agent]
+    who_writes: "Agent (via memory tools)"
+    signed: "No"
+    description: "Agent-managed storage for memories, details, preferences"
+
+# =============================================================================
+# Signing Strategy
+# =============================================================================
+
+signing:
+  description: >
+    Per-entry HMAC-SHA256 signing for tamper detection. Only sensitive keys
+    get signed. Uses existing keystore.fingerprint() + deriveUserKey() primitives.
+  signed_keys:
+    - key: riskLevel
+      owner_types: [agent, user]
+      signed_with: "User key (deriveUserKey(UMK, userID))"
+      reason: "Prevents agent self-escalation of permissions"
+  unsigned:
+    - "Agent abilities (agent writes these itself)"
+    - "Session context entries (agent-managed runtime data)"
+    - "Agent memory entries (agent's own storage)"
+  verification_flow:
+    write: >
+      1. Derive user key: keystore.deriveUserKey(request.getUMK(), request.userID)
+      2. Sign: keystore.fingerprint(JSON.stringify(value), userKey)
+      3. Store value + signature in ValueStore row
+    read: >
+      1. Derive user key (same derivation)
+      2. Verify: keystore.fingerprint(storedValue, userKey) === storedSignature
+      3. If valid → use value. If invalid → treat as tampered → fallback.
+  open_issue: >
+    HMAC verification requires the user's key, which is derived from the UMK.
+    The UMK is only available during authenticated HTTP requests (from the JWT
+    vault claim). Agent tool calls during interactions — especially child sessions —
+    may not have an authenticated request context. The signing key availability
+    problem needs a solution before implementation. See conversation.md Round 8
+    for options discussed (none yet accepted).
+
+# =============================================================================
+# ValueStoreService API
+# =============================================================================
+
+service:
+  name: ValueStoreService
+  file: "src/core/lib/value-store-service.mjs"
+  registered_on: CascadingContext
+  methods:
+    # Core CRUD
+    - name: get
+      args: "(ownerType, ownerID, namespace, key, { scopeID })"
+      returns: "parsed value or null"
+    - name: set
+      args: "(ownerType, ownerID, namespace, key, value, { scopeID })"
+      returns: void
+      notes: "null or undefined value → deletes the entry"
+    - name: getAll
+      args: "(ownerType, ownerID, namespace, { scopeID })"
+      returns: "{ key: value, ... }"
+    - name: setAll
+      args: "(ownerType, ownerID, namespace, entries, { scopeID })"
+      returns: "void (bulk upsert)"
+    - name: delete
+      args: "(ownerType, ownerID, namespace, key, { scopeID })"
+      returns: void
+      notes: "Idempotent — missing key is not an error"
+    # Signed operations
+    - name: setSigned
+      args: "(ownerType, ownerID, namespace, key, value, userKey, { scopeID })"
+      returns: void
+    - name: getVerified
+      args: "(ownerType, ownerID, namespace, key, userKey, { scopeID })"
+      returns: "value or null (null if tampered or missing)"
+    # Search
+    - name: search
+      args: "(ownerType, ownerID, namespace, query, { scopeID, limit, offset })"
+      returns: "[{ key, value, scopeID, updatedAt }, ...]"
+      notes: "LIKE-based search on key names AND value content. Empty query = list all. Default limit 20."
+
+# =============================================================================
+# Model Migration
+# =============================================================================
+
+model_migration:
+  agent:
+    file: "src/core/models/agent-model.mjs"
+    remove_column: config
+    async_methods:
+      - "getConfig() → valueStoreService.getAll('agent', this.id, 'config') merged with AGENT_DEFAULTS"
+      - "updateConfig(partial) → valueStoreService.setAll('agent', this.id, 'config', partial)"
+      - "getSafeConfig() → getConfig() with PROTECTED_KEYS stripped"
+      - "getAbilities() → valueStoreService.get('agent', this.id, 'config', 'abilities')"
+      - "setAbilities(text) → valueStoreService.set('agent', this.id, 'config', 'abilities', text)"
+    notes:
+      - "All methods become async (breaking change to callers)"
+      - "setAbilities('') clears the entry (same as null)"
+      - "AGENT_DEFAULTS no longer includes riskLevel (now optional)"
+
+  session:
+    file: "src/core/models/session-model.mjs"
+    remove_column: context
+    async_methods:
+      - "getContext() → valueStoreService.getAll('session', this.id, 'context')"
+      - "updateContext(partial) → valueStoreService.setAll('session', this.id, 'context', partial)"
+      - "setContext(value) → replace all entries in 'context' namespace"
+      - "getEffectiveContext() → walk parent chain, merge root-down"
+    notes: "All methods become async"
+
+  user:
+    file: "src/core/models/user-model.mjs"
+    new_methods:
+      - "getSettings() → valueStoreService.getAll('user', this.id, 'config') merged with USER_DEFAULTS"
+      - "updateSettings(partial, userKey) → signed writes for sensitive keys"
+      - "getVerifiedSettings(userKey) → verified read, null on tamper"
+    defaults: "USER_DEFAULTS = { riskLevel: 'normal' }"
+    notes: "No schema changes on User model itself — data lives in ValueStore"
+
+# =============================================================================
+# New Memory Tools
+# =============================================================================
+
+new_tools:
+  - name: "memory:getValue"
+    risk_level: low
+    input:
+      key: { type: string, required: true }
+      namespace: { type: string, default: "memory" }
+      scopeID: { type: string, default: "current session ID" }
+    output: "{ key, value, scopeID }"
+
+  - name: "memory:setValue"
+    risk_level: low
+    input:
+      key: { type: string, required: true }
+      value: { type: any, required: true }
+      namespace: { type: string, default: "memory" }
+      scopeID: { type: string, default: "current session ID" }
+    output: "{ key, value, scopeID }"
+    guards:
+      - "Cannot write to 'config' namespace (enforced in tool)"
+
+  - name: "memory:searchValues"
+    risk_level: low
+    input:
+      query: { type: string, required: false, description: "Empty = list all" }
+      namespace: { type: string, default: "memory" }
+      scopeID: { type: string, required: false, description: "null = search all scopes" }
+      limit: { type: integer, default: 20 }
+      offset: { type: integer, default: 0 }
+    output: "{ results: [{ key, value, scopeID, updatedAt }], count }"
+
+# =============================================================================
+# Design Decisions (Resolved)
+# =============================================================================
+
+design_decisions:
+  - question: "set() with null value"
+    answer: "Delete the entry (treat null as 'unset')"
+  - question: "set() with undefined value"
+    answer: "Also delete the entry (not throw)"
+  - question: "Corrupted JSON on read"
+    answer: "Return null + log warning (graceful degradation)"
+  - question: "searchValues with empty query"
+    answer: "Allow it — acts as listing/scan. Use limit + offset for pagination."
+  - question: "setAbilities('')"
+    answer: "Clear (delete entry). Abilities injection site must handle null."
+  - question: "Table name"
+    answer: "ValueStore (not ConfigValue — not everything is config-related)"
+  - question: "Async all the way"
+    answer: "Yes — model wrapper methods become async. All callers already async."
+  - question: "Clean break vs migration fallback"
+    answer: "Clean break — drop old columns. Pre-release v2, no production data."
+
+# =============================================================================
+# Affected Files
+# =============================================================================
+
+affected_files:
+  new:
+    - "src/core/models/value-store-model.mjs"
+    - "src/core/lib/value-store-service.mjs"
+  modified:
+    - "src/server/application.mjs — register ValueStoreService on context"
+    - "src/core/models/agent-model.mjs — async wrappers, drop config column"
+    - "src/core/models/session-model.mjs — async wrappers, drop context column"
+    - "src/core/models/user-model.mjs — add settings methods"
+    - "src/core/internal-plugins/memory/index.mjs — 3 new tools + async migration"
