@@ -97,12 +97,12 @@ const TEMPLATE_HTML = `
       animation: dot-hue-cycle 15s linear infinite;
     }
 
-    /* Glow halo layer */
+    /* Glow halo layer — wider strip + heavier blur for visible glow */
     .input-area::after {
-      inset: -4px;
-      padding: 6px;
+      inset: -14px;
+      padding: 18px;
       z-index: -2;
-      opacity: 0.4;
+      opacity: 0.55;
       animation: dot-hue-cycle-glow 15s linear infinite;
     }
 
@@ -115,8 +115,8 @@ const TEMPLATE_HTML = `
     }
 
     @keyframes dot-hue-cycle-glow {
-      from { filter: blur(8px) hue-rotate(0deg); }
-      to   { filter: blur(8px) hue-rotate(360deg); }
+      from { filter: blur(22px) hue-rotate(0deg); }
+      to   { filter: blur(22px) hue-rotate(360deg); }
     }
 
     .message-textarea {

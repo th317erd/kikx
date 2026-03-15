@@ -68,7 +68,7 @@ How it works:
 
 The pseudo-element's `padding` property controls the visible border thickness:
 - `::before` has `padding: 1.5px` — sharp 1.5px border
-- `::after` has `padding: 6px` and `inset: -4px` — wide glow extending outside
+- `::after` has `padding: 18px` and `inset: -14px` — wide glow extending well outside the border
 
 ### The Gradient
 
@@ -103,8 +103,8 @@ For the glow layer, the animation includes `blur()` alongside `hue-rotate()` sin
 
 ```css
 @keyframes dot-hue-cycle-glow {
-  from { filter: blur(8px) hue-rotate(0deg); }
-  to   { filter: blur(8px) hue-rotate(360deg); }
+  from { filter: blur(22px) hue-rotate(0deg); }
+  to   { filter: blur(22px) hue-rotate(360deg); }
 }
 ```
 
