@@ -133,6 +133,10 @@ class KikxChatView extends HTMLElement {
     }));
   }
 
+  clear() {
+    this._interactionStream.innerHTML = '';
+  }
+
   appendInteraction(element) {
     this._interactionStream.appendChild(element);
 

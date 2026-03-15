@@ -236,8 +236,8 @@ const TEMPLATE_HTML = `
       background: transparent;
       color: var(--text-muted, #606078);
       cursor: pointer;
-      font-size: 0.8rem;
-      padding: 2px 6px;
+      font-size: 0.9rem;
+      padding: 4px 10px;
       border-radius: var(--border-radius-small, 4px);
       transition: color 0.2s ease, background 0.2s ease;
       display: none;
@@ -249,7 +249,8 @@ const TEMPLATE_HTML = `
       gap: 4px;
     }
 
-    :host([alignment="system"]) .reply-button {
+    :host([alignment="system"]) .reply-button,
+    :host([bubble-type="permission"]) .reply-button {
       display: none;
     }
 

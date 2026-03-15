@@ -2395,8 +2395,12 @@ describe('KikxPermissionRequest', () => {
       { command: 'cat', arguments: ['file.txt'], status: 'needs-approval' },
     ];
 
-    let rows = perm.shadowRoot.querySelectorAll('.command-row');
+    let rows = perm.shadowRoot.querySelectorAll('.command-row:not(.header-row)');
     assert.equal(rows.length, 3);
+
+    // Should also have a header row for multi-command permissions
+    let headerRow = perm.shadowRoot.querySelector('.header-row');
+    assert.ok(headerRow, 'Should have a select-all header row');
   });
 
   it('should show command name and arguments in each row', () => {
@@ -2486,16 +2490,15 @@ describe('KikxPermissionRequest', () => {
     let confirmBtn = perm.shadowRoot.querySelector('.confirm-button');
     assert.ok(confirmBtn.disabled, 'Confirm should be disabled initially');
 
-    // Decide on first command only
-    let firstRow    = perm.shadowRoot.querySelectorAll('.command-row')[0];
-    let firstButton = firstRow.querySelector('.decision-button');
+    // Decide on first command only (skip header row)
+    let commandRows = perm.shadowRoot.querySelectorAll('.command-row:not(.header-row)');
+    let firstButton = commandRows[0].querySelector('.decision-button');
     firstButton.click();
 
     assert.ok(confirmBtn.disabled, 'Confirm should still be disabled (only 1 of 2 decided)');
 
     // Decide on second command
-    let secondRow    = perm.shadowRoot.querySelectorAll('.command-row')[1];
-    let secondButton = secondRow.querySelector('.decision-button');
+    let secondButton = commandRows[1].querySelector('.decision-button');
     secondButton.click();
 
     assert.ok(!confirmBtn.disabled, 'Confirm should be enabled (all decided)');
@@ -2512,11 +2515,11 @@ describe('KikxPermissionRequest', () => {
       { command: 'grep', arguments: ['foo'], status: 'needs-approval' },
     ];
 
-    // Click allow-forever for ls (first button in first row)
-    let rows = perm.shadowRoot.querySelectorAll('.command-row');
+    // Click allow-forever for ls (skip header row)
+    let rows = perm.shadowRoot.querySelectorAll('.command-row:not(.header-row)');
     rows[0].querySelector('.decision-button[data-decision="allow-forever"]').click();
 
-    // Click deny-once for grep (third button in second row)
+    // Click deny-once for grep
     rows[1].querySelector('.decision-button[data-decision="deny-once"]').click();
 
     let dispatched = null;

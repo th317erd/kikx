@@ -25,18 +25,65 @@ export function parseShellCommands(input) {
   if (!trimmed)
     return [];
 
-  let tokens   = parse(trimmed);
+  let tokens    = parse(trimmed);
   let commands  = [];
   let current   = { command: null, arguments: [] };
 
-  for (let token of tokens) {
+  // Track heredoc state: shell-quote splits << into two { op: '<' } tokens.
+  // When we detect that pattern, consume all remaining tokens until the
+  // delimiter appears again, treating everything as part of the current command.
+  let heredocDelimiter = null;
+  let lastWasRedirect  = false;
+
+  for (let i = 0; i < tokens.length; i++) {
+    let token = tokens[i];
+
+    // Inside a heredoc — consume tokens until we see the closing delimiter
+    if (heredocDelimiter) {
+      if (typeof token === 'string' && token === heredocDelimiter)
+        heredocDelimiter = null; // Heredoc closed, resume normal parsing
+
+      // Either way, skip heredoc body tokens (they're content, not commands)
+      continue;
+    }
+
     if (typeof token === 'string') {
+      if (lastWasRedirect) {
+        // This string follows << — it's the heredoc delimiter
+        // Strip leading - (<<-WORD strips tabs) and quotes
+        heredocDelimiter = token.replace(/^-/, '').replace(/^['"]|['"]$/g, '');
+        lastWasRedirect  = false;
+        continue;
+      }
+
       if (!current.command)
         current.command = token;
       else
         current.arguments.push(token);
     } else if (token && token.op) {
-      // Operator: |, &, &&, ||, ;, etc.
+      // Detect << (heredoc): shell-quote emits two consecutive { op: '<' }
+      if (token.op === '<') {
+        let next = tokens[i + 1];
+        if (next && next.op === '<') {
+          lastWasRedirect = true;
+          i++; // Skip the second '<'
+          continue;
+        }
+      }
+
+      // Redirections (< , >) are part of the current command, not separators.
+      if (token.op === '<' || token.op === '>') {
+        // Next token is the filename — consume it as an argument
+        let next = tokens[i + 1];
+        if (next && typeof next === 'string') {
+          current.arguments.push(next);
+          i++;
+        }
+
+        continue;
+      }
+
+      // Command separator: |, &, &&, ||, ;, etc.
       if (current.command)
         commands.push({ ...current });
 

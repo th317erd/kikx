@@ -84,15 +84,34 @@ class KikxApplication extends HTMLElement {
   }
 
   renderPage(route, params) {
-    while (this.firstChild)
-      this.removeChild(this.firstChild);
+    if (!route) {
+      while (this.firstChild)
+        this.removeChild(this.firstChild);
 
-    if (!route)
       return;
+    }
 
     let tagName = PAGE_ELEMENTS[route.name];
     if (!tagName)
       return;
+
+    // Reuse existing page element if the tag name matches (e.g., navigating
+    // between sessions). This avoids destroying and rebuilding the sidebar,
+    // friends list, etc. — just update the attributes so the page can swap
+    // its content without a full teardown.
+    let existing = this.firstChild;
+    if (existing && existing.tagName === tagName.toUpperCase()) {
+      if (params) {
+        for (let [key, value] of Object.entries(params))
+          existing.setAttribute(`data-${key}`, value);
+      }
+
+      return;
+    }
+
+    // Different page type — full swap
+    while (this.firstChild)
+      this.removeChild(this.firstChild);
 
     let page = document.createElement(tagName);
 

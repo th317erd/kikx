@@ -156,6 +156,13 @@ function getInitials(name) {
 }
 
 class KikxSessionPage extends HTMLElement {
+  static get observedAttributes() { return ['data-id']; }
+
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (name === 'data-id' && oldValue !== null && oldValue !== newValue)
+      this._updateSessionView();
+  }
+
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -272,6 +279,11 @@ class KikxSessionPage extends HTMLElement {
     let sessionID = this.sessionID;
 
     if (sessionID) {
+      // Clean up previous session if switching
+      this._disconnectStream();
+      this._destroyFrameManager();
+      this._chatView.clear();
+
       this._topBar.removeAttribute('hide-back');
       this._topBar.setAttribute('session-name', sessionID);
       this._messageInput.classList.remove('hidden');
@@ -1481,12 +1493,17 @@ class KikxSessionPage extends HTMLElement {
     if (!usage)
       return;
 
-    // Set output tokens on the agent's interaction element (not the user's)
+    // Set output tokens on the agent's interaction elements for this interaction.
+    // Multiple elements may exist (command results, reflections, final response),
+    // so set on all of them.
     let outputTokens = usage.outputTokens || 0;
-    let agentInteraction = this._chatView.shadowRoot.querySelector(`kikx-interaction[alignment="agent"][data-interaction-id="${interactionID}"]`);
 
-    if (agentInteraction && outputTokens > 0)
-      agentInteraction.setAttribute('token-count', String(outputTokens));
+    if (outputTokens > 0) {
+      let agentInteractions = this._chatView.shadowRoot.querySelectorAll(`kikx-interaction[alignment="agent"][data-interaction-id="${interactionID}"]`);
+
+      for (let interaction of agentInteractions)
+        interaction.setAttribute('token-count', String(outputTokens));
+    }
 
     // Update costs in the store
     let cost         = estimateCost(usage);
@@ -1660,8 +1677,12 @@ class KikxSessionPage extends HTMLElement {
     if (!sessionID)
       return;
 
-    // Mark the permission UI as processed
-    let permEl = event.target.closest('kikx-permission-request') || event.target;
+    // Mark the permission UI as processed immediately to prevent further clicks.
+    // Use composedPath() to find the actual element across shadow DOM boundaries,
+    // since event.target is retargeted to kikx-interaction at this scope.
+    let permEl = event.composedPath().find((el) => el.tagName === 'KIKX-PERMISSION-REQUEST');
+    if (permEl && permEl.setAttribute)
+      permEl.setAttribute('processed', '');
 
     try {
       // Pass decisions array as body to the unified endpoint
@@ -1689,9 +1710,6 @@ class KikxSessionPage extends HTMLElement {
 
       console.error('Permission approval failed:', error);
     }
-
-    if (permEl && permEl.setAttribute)
-      permEl.setAttribute('processed', '');
 
     this._messageInput.focus();
   }

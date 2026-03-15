@@ -109,6 +109,8 @@ const TEMPLATE_HTML = `
       flex-shrink: 0;
       max-height: 200px;
       overflow-y: auto;
+      overflow-x: hidden;
+      padding: 4px 0;
     }
 
     .friends-area::-webkit-scrollbar { width: 6px; }

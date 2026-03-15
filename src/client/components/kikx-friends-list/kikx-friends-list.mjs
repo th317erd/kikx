@@ -7,7 +7,7 @@ const TEMPLATE_HTML = `
   <style>
     :host {
       display: block;
-      overflow-y: auto;
+      overflow: hidden;
     }
 
     :host::-webkit-scrollbar { width: 6px; }

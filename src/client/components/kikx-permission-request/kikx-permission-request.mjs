@@ -69,6 +69,17 @@ const TEMPLATE_HTML = `
       background: rgba(255, 255, 255, 0.04);
     }
 
+    .command-row.header-row {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+      padding-bottom: 8px;
+      margin-bottom: 2px;
+    }
+
+    .header-label {
+      font-weight: 600;
+      font-style: italic;
+    }
+
     .command-row.pre-approved {
       opacity: 0.6;
     }
@@ -365,6 +376,44 @@ class KikxPermissionRequest extends HTMLElement {
   _render() {
     this._commandTable.innerHTML = '';
 
+    // Add "select all" header row when multiple commands need approval
+    let needsApproval = this._commands.filter((c) => c.status !== 'allowed');
+    if (needsApproval.length > 1) {
+      let headerRow = document.createElement('div');
+      headerRow.className = 'command-row header-row';
+
+      let headerLabel = document.createElement('span');
+      headerLabel.className = 'command-text header-label';
+      headerLabel.textContent = 'All';
+      headerRow.appendChild(headerLabel);
+
+      let headerArea = document.createElement('div');
+      headerArea.className = 'decision-area';
+
+      let headerDecisionLabel = document.createElement('span');
+      headerDecisionLabel.className = 'decision-label';
+      headerDecisionLabel.textContent = 'Select all:';
+      headerArea.appendChild(headerDecisionLabel);
+
+      let headerButtons = document.createElement('div');
+      headerButtons.className = 'decision-buttons';
+
+      for (let btn of DECISION_BUTTONS) {
+        let button = document.createElement('button');
+        button.className = 'decision-button';
+        button.textContent = btn.icon;
+        button.title = (t(btn.tooltipKey) || btn.decision) + ' (all)';
+        button.setAttribute('data-decision', btn.decision);
+        button.setAttribute('data-active-class', btn.activeClass);
+        button.setAttribute('data-select-all', 'true');
+        headerButtons.appendChild(button);
+      }
+
+      headerArea.appendChild(headerButtons);
+      headerRow.appendChild(headerArea);
+      this._commandTable.appendChild(headerRow);
+    }
+
     for (let cmd of this._commands) {
       let row = document.createElement('div');
       row.className = 'command-row';
@@ -446,22 +495,34 @@ class KikxPermissionRequest extends HTMLElement {
     if (!button)
       return;
 
+    let decision    = button.getAttribute('data-decision');
+    let activeClass = button.getAttribute('data-active-class');
+
+    // Select-all header button — apply to every command row
+    if (button.hasAttribute('data-select-all')) {
+      this._applyDecisionToAll(decision, activeClass);
+      return;
+    }
+
     let row     = button.closest('.command-row');
     let command = row && row.getAttribute('data-command');
     if (!command)
       return;
 
-    let decision    = button.getAttribute('data-decision');
-    let activeClass = button.getAttribute('data-active-class');
+    this._applyDecisionToRow(row, command, decision, activeClass);
+    this._updateConfirmState();
+  }
 
+  _applyDecisionToRow(row, command, decision, activeClass) {
     // Deactivate all siblings
     let siblings = row.querySelectorAll('.decision-button');
-    for (let sibling of siblings) {
+    for (let sibling of siblings)
       sibling.classList.remove('active-allow', 'active-deny');
-    }
 
-    // Activate clicked button
-    button.classList.add(activeClass);
+    // Activate the matching button
+    let matchingButton = row.querySelector(`.decision-button[data-decision="${decision}"]`);
+    if (matchingButton)
+      matchingButton.classList.add(activeClass);
 
     // Update the decision label
     let label = row.querySelector('.decision-label');
@@ -470,6 +531,35 @@ class KikxPermissionRequest extends HTMLElement {
 
     // Store decision
     this._decisions.set(command, decision);
+  }
+
+  _applyDecisionToAll(decision, activeClass) {
+    // Apply to header row
+    let headerRow = this._commandTable.querySelector('.header-row');
+    if (headerRow) {
+      let siblings = headerRow.querySelectorAll('.decision-button');
+      for (let sibling of siblings)
+        sibling.classList.remove('active-allow', 'active-deny');
+
+      let matchingButton = headerRow.querySelector(`.decision-button[data-decision="${decision}"]`);
+      if (matchingButton)
+        matchingButton.classList.add(activeClass);
+
+      let label = headerRow.querySelector('.decision-label');
+      if (label)
+        this._updateDecisionLabel(label, decision);
+    }
+
+    // Apply to each command row
+    let rows = this._commandTable.querySelectorAll('.command-row:not(.header-row):not(.pre-approved)');
+    for (let row of rows) {
+      let command = row.getAttribute('data-command');
+      if (!command)
+        continue;
+
+      this._applyDecisionToRow(row, command, decision, activeClass);
+    }
+
     this._updateConfirmState();
   }
 
