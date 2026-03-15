@@ -115,7 +115,7 @@ export function getRoutes({ path }) {
         });
 
         endpoint(sessionID, {
-          methods:    [ 'PUT' ],
+          methods:    [ 'PUT', 'PATCH' ],
           controller: 'SessionController.update',
         });
 

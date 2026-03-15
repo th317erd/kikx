@@ -1,5 +1,11 @@
 'use strict';
 
+import {
+  computeKeyFingerprint,
+  signValue,
+  verifyValue,
+} from '../crypto/value-signing.mjs';
+
 // =============================================================================
 // ValueStoreService
 // =============================================================================
@@ -77,8 +83,9 @@ export class ValueStoreService {
       .first();
 
     if (entry) {
-      entry.value     = JSON.stringify(value);
-      entry.signature = null;
+      entry.value                 = JSON.stringify(value);
+      entry.signature             = null;
+      entry.signingKeyFingerprint = null;
       await entry.save();
     } else {
       if (!organizationID)
@@ -201,28 +208,37 @@ export class ValueStoreService {
     // Apply offset and limit
     let sliced = filtered.slice(offset, offset + limit);
 
-    return sliced.map((entry) => ({
-      key:       entry.key,
-      value:     this._parseValue(entry.value),
-      scopeID:   entry.scopeID,
-      updatedAt: entry.updatedAt,
-    }));
+    return sliced.map((entry) => {
+      let result = {
+        key:       entry.key,
+        value:     this._parseValue(entry.value),
+        scopeID:   entry.scopeID,
+        updatedAt: entry.updatedAt,
+        signed:    !!entry.signature,
+      };
+
+      return result;
+    });
   }
 
   // ---------------------------------------------------------------------------
-  // setSigned(ownerType, ownerID, namespace, key, value, privateKeyPEM, options)
+  // setSigned(ownerType, ownerID, namespace, key, value, privateKeyPEM, publicKeyPEM, options)
   // ---------------------------------------------------------------------------
   // Sign the value with an Ed25519 private key before storing.
-  // The signature covers the canonical JSON of the value.
+  // The signature covers the full composite key + value to prevent replay.
+  // Stores the signing key fingerprint for key rotation detection.
   // ---------------------------------------------------------------------------
 
-  async setSigned(ownerType, ownerID, namespace, key, value, privateKeyPEM, options = {}) {
+  async setSigned(ownerType, ownerID, namespace, key, value, privateKeyPEM, publicKeyPEM, options = {}) {
     let { scopeID = '', organizationID } = options;
-    let keystore     = this._getKeystore();
+    let keystore       = this._getKeystore();
     let { ValueStore } = this._getModels();
 
-    let jsonValue    = JSON.stringify(value);
-    let signature    = keystore.signWithPrivateKey(jsonValue, privateKeyPEM);
+    let jsonValue = JSON.stringify(value);
+    let signed    = signValue(keystore, privateKeyPEM, publicKeyPEM, ownerType, ownerID, namespace, scopeID, key, jsonValue);
+
+    if (!signed)
+      throw new Error('Failed to sign value — check that private and public keys are valid');
 
     let entry = await ValueStore
       .where.ownerType.EQ(ownerType)
@@ -233,8 +249,9 @@ export class ValueStoreService {
       .first();
 
     if (entry) {
-      entry.value     = jsonValue;
-      entry.signature = signature;
+      entry.value                 = jsonValue;
+      entry.signature             = signed.signature;
+      entry.signingKeyFingerprint = signed.fingerprint;
       await entry.save();
     } else {
       if (!organizationID)
@@ -247,8 +264,9 @@ export class ValueStoreService {
         namespace,
         scopeID,
         key,
-        value:     jsonValue,
-        signature,
+        value:                 jsonValue,
+        signature:             signed.signature,
+        signingKeyFingerprint: signed.fingerprint,
       });
     }
   }
@@ -257,7 +275,10 @@ export class ValueStoreService {
   // getVerified(ownerType, ownerID, namespace, key, publicKeyPEM, options)
   // ---------------------------------------------------------------------------
   // Fetch an entry and verify its signature with an Ed25519 public key.
-  // Returns parsed value if valid, null if tampered or missing.
+  // Returns { value, signed, verified } or null if entry not found.
+  //
+  // - signed: true if a signature exists on the entry
+  // - verified: true if the signature is valid for the current value+key
   // ---------------------------------------------------------------------------
 
   async getVerified(ownerType, ownerID, namespace, key, publicKeyPEM, options = {}) {
@@ -276,15 +297,18 @@ export class ValueStoreService {
     if (!entry)
       return null;
 
+    let value = this._parseValue(entry.value);
+
     if (!entry.signature)
-      return null;
+      return { value, signed: false };
 
-    let valid = keystore.verifyWithPublicKey(entry.value, publicKeyPEM, entry.signature);
+    let verified = verifyValue(
+      keystore, publicKeyPEM,
+      ownerType, ownerID, namespace, scopeID, key,
+      entry.value, entry.signature,
+    );
 
-    if (!valid)
-      return null;
-
-    return this._parseValue(entry.value);
+    return { value, signed: true, verified };
   }
 
   // ---------------------------------------------------------------------------

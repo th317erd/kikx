@@ -438,16 +438,18 @@ describe('Tamper Detection — Integration', () => {
     });
 
     it('should store and retrieve a signed value successfully', async () => {
-      await service.setSigned('Agent', 'agt_vs_tamper_1', 'config', 'secret', 'classified-data', privateKey, {
+      await service.setSigned('Agent', 'agt_vs_tamper_1', 'config', 'secret', 'classified-data', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
-      let value = await service.getVerified('Agent', 'agt_vs_tamper_1', 'config', 'secret', publicKey);
-      assert.equal(value, 'classified-data', 'verified retrieval of signed value should work');
+      let result = await service.getVerified('Agent', 'agt_vs_tamper_1', 'config', 'secret', publicKey);
+      assert.equal(result.value, 'classified-data', 'verified retrieval of signed value should work');
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, true);
     });
 
     it('should detect tampering when the stored value is modified in the database', async () => {
-      await service.setSigned('Agent', 'agt_vs_tamper_2', 'config', 'level', 'high', privateKey, {
+      await service.setSigned('Agent', 'agt_vs_tamper_2', 'config', 'level', 'high', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
@@ -463,13 +465,14 @@ describe('Tamper Detection — Integration', () => {
       entry.value = JSON.stringify('low');
       await entry.save();
 
-      // Verify: getVerified should return null
-      let value = await service.getVerified('Agent', 'agt_vs_tamper_2', 'config', 'level', publicKey);
-      assert.equal(value, null, 'tampered value should return null from getVerified');
+      // Verify: getVerified should detect tampering
+      let result = await service.getVerified('Agent', 'agt_vs_tamper_2', 'config', 'level', publicKey);
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, false, 'tampered value should fail verification');
     });
 
     it('should detect tampering when the signature is modified in the database', async () => {
-      await service.setSigned('Agent', 'agt_vs_tamper_3', 'config', 'mode', 'safe', privateKey, {
+      await service.setSigned('Agent', 'agt_vs_tamper_3', 'config', 'mode', 'safe', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
@@ -485,12 +488,13 @@ describe('Tamper Detection — Integration', () => {
       entry.signature = 'deadcafe'.repeat(16);
       await entry.save();
 
-      let value = await service.getVerified('Agent', 'agt_vs_tamper_3', 'config', 'mode', publicKey);
-      assert.equal(value, null, 'tampered signature should return null from getVerified');
+      let result = await service.getVerified('Agent', 'agt_vs_tamper_3', 'config', 'mode', publicKey);
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, false, 'tampered signature should fail verification');
     });
 
     it('should detect tampering when both value and signature are changed', async () => {
-      await service.setSigned('Agent', 'agt_vs_tamper_4', 'config', 'policy', 'strict', privateKey, {
+      await service.setSigned('Agent', 'agt_vs_tamper_4', 'config', 'policy', 'strict', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
@@ -507,8 +511,9 @@ describe('Tamper Detection — Integration', () => {
       entry.signature = 'abcd1234'.repeat(16);
       await entry.save();
 
-      let value = await service.getVerified('Agent', 'agt_vs_tamper_4', 'config', 'policy', publicKey);
-      assert.equal(value, null, 'dual tampering should return null from getVerified');
+      let result = await service.getVerified('Agent', 'agt_vs_tamper_4', 'config', 'policy', publicKey);
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, false, 'dual tampering should fail verification');
     });
 
     it('should return null from getVerified for unsigned values set via set()', async () => {
@@ -521,28 +526,30 @@ describe('Tamper Detection — Integration', () => {
       let valueGet = await service.get('Agent', 'agt_vs_unsigned', 'config', 'theme');
       assert.equal(valueGet, 'dark', 'regular get() should return the value');
 
-      // getVerified() should return null because there is no signature
-      let valueVerified = await service.getVerified('Agent', 'agt_vs_unsigned', 'config', 'theme', publicKey);
-      assert.equal(valueVerified, null, 'getVerified should return null for unsigned values');
+      // getVerified() should return signed: false for unsigned entry
+      let resultVerified = await service.getVerified('Agent', 'agt_vs_unsigned', 'config', 'theme', publicKey);
+      assert.equal(resultVerified.signed, false, 'unsigned entry should have signed: false');
+      assert.equal(resultVerified.value, 'dark');
     });
 
     it('should detect tampering with wrong public key', async () => {
-      await service.setSigned('Agent', 'agt_vs_tamper_5', 'config', 'data', 'important', privateKey, {
+      await service.setSigned('Agent', 'agt_vs_tamper_5', 'config', 'data', 'important', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
       // Generate a different key pair
       let otherKeys = keystore.generateSigningKeyPair();
 
-      let value = await service.getVerified('Agent', 'agt_vs_tamper_5', 'config', 'data', otherKeys.publicKey);
-      assert.equal(value, null, 'wrong public key should cause verification to fail');
+      let result = await service.getVerified('Agent', 'agt_vs_tamper_5', 'config', 'data', otherKeys.publicKey);
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, false, 'wrong public key should cause verification to fail');
     });
 
     it('should detect re-signing attack (value re-signed with different key)', async () => {
       let otherKeys = keystore.generateSigningKeyPair();
 
       // Original: signed with the main key pair
-      await service.setSigned('Agent', 'agt_vs_tamper_6', 'config', 'access', 'admin', privateKey, {
+      await service.setSigned('Agent', 'agt_vs_tamper_6', 'config', 'access', 'admin', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
@@ -560,24 +567,30 @@ describe('Tamper Detection — Integration', () => {
       await entry.save();
 
       // Verification with original public key should fail
-      let value = await service.getVerified('Agent', 'agt_vs_tamper_6', 'config', 'access', publicKey);
-      assert.equal(value, null, 'value re-signed with attacker key should fail original key verification');
+      let result = await service.getVerified('Agent', 'agt_vs_tamper_6', 'config', 'access', publicKey);
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, false, 'value re-signed with attacker key should fail original key verification');
 
       // Verification with attacker's public key WOULD pass (but legitimate verifier uses original key)
-      let attackerValue = await service.getVerified('Agent', 'agt_vs_tamper_6', 'config', 'access', otherKeys.publicKey);
-      assert.equal(attackerValue, 'admin', 'attacker key verifies their own signature (expected)');
+      // Note: attacker re-signed just the raw value, not the full payload. So even with their
+      // key it will fail because the signing payload includes composite key components.
+      let attackerResult = await service.getVerified('Agent', 'agt_vs_tamper_6', 'config', 'access', otherKeys.publicKey);
+      assert.equal(attackerResult.signed, true);
+      assert.equal(attackerResult.verified, false, 'attacker raw-value signature fails payload verification');
     });
 
     it('should handle object values being tampered', async () => {
       let originalObj = { permissions: ['read', 'write'], level: 5 };
 
-      await service.setSigned('Agent', 'agt_vs_tamper_7', 'config', 'perms', originalObj, privateKey, {
+      await service.setSigned('Agent', 'agt_vs_tamper_7', 'config', 'perms', originalObj, privateKey, publicKey, {
         organizationID: organization.id,
       });
 
       // Verify original
-      let value = await service.getVerified('Agent', 'agt_vs_tamper_7', 'config', 'perms', publicKey);
-      assert.deepEqual(value, originalObj, 'original object should verify');
+      let result = await service.getVerified('Agent', 'agt_vs_tamper_7', 'config', 'perms', publicKey);
+      assert.deepEqual(result.value, originalObj, 'original object should verify');
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, true);
 
       // Tamper: escalate permissions
       let { ValueStore } = models;
@@ -592,7 +605,8 @@ describe('Tamper Detection — Integration', () => {
       await entry.save();
 
       let tampered = await service.getVerified('Agent', 'agt_vs_tamper_7', 'config', 'perms', publicKey);
-      assert.equal(tampered, null, 'escalated permission object should fail verification');
+      assert.equal(tampered.signed, true);
+      assert.equal(tampered.verified, false, 'escalated permission object should fail verification');
     });
   });
 
@@ -774,12 +788,14 @@ describe('Tamper Detection — Integration', () => {
       assert.equal(ruleResult, false, 'permission rule fingerprint should be valid');
 
       // --- Component 3: ValueStore signed value ---
-      await service.setSigned('Agent', 'agt_cross_test', 'config', 'policy', 'enabled', agentKeys.privateKey, {
+      await service.setSigned('Agent', 'agt_cross_test', 'config', 'policy', 'enabled', agentKeys.privateKey, agentKeys.publicKey, {
         organizationID: organization.id,
       });
 
-      let vsValue = await service.getVerified('Agent', 'agt_cross_test', 'config', 'policy', agentKeys.publicKey);
-      assert.equal(vsValue, 'enabled', 'value store signed value should verify');
+      let vsResult = await service.getVerified('Agent', 'agt_cross_test', 'config', 'policy', agentKeys.publicKey);
+      assert.equal(vsResult.value, 'enabled', 'value store signed value should verify');
+      assert.equal(vsResult.signed, true);
+      assert.equal(vsResult.verified, true);
 
       // --- All three components are valid at this point ---
 
@@ -797,7 +813,8 @@ describe('Tamper Detection — Integration', () => {
       assert.equal(ruleStillValid, false, 'permission rule should still be valid after frame tampering');
 
       let vsStillValid = await service.getVerified('Agent', 'agt_cross_test', 'config', 'policy', agentKeys.publicKey);
-      assert.equal(vsStillValid, 'enabled', 'value store should still be valid after frame tampering');
+      assert.equal(vsStillValid.value, 'enabled', 'value store should still be valid after frame tampering');
+      assert.equal(vsStillValid.verified, true);
     });
 
     it('should detect tampering in each component independently', async () => {
@@ -818,7 +835,7 @@ describe('Tamper Detection — Integration', () => {
         privateKeyPEM:  privateKey,
       });
 
-      await service.setSigned('Agent', 'agt_cross_indep', 'config', 'flag', true, agentKeys.privateKey, {
+      await service.setSigned('Agent', 'agt_cross_indep', 'config', 'flag', true, agentKeys.privateKey, agentKeys.publicKey, {
         organizationID: organization.id,
       });
 
@@ -846,8 +863,9 @@ describe('Tamper Detection — Integration', () => {
       assert.equal(frameValid, true, 'untampered frame should still verify');
 
       // ValueStore should still verify (untampered)
-      let vsValue = await service.getVerified('Agent', 'agt_cross_indep', 'config', 'flag', agentKeys.publicKey);
-      assert.equal(vsValue, true, 'untampered value store should still verify');
+      let vsResult = await service.getVerified('Agent', 'agt_cross_indep', 'config', 'flag', agentKeys.publicKey);
+      assert.equal(vsResult.value, true, 'untampered value store should still verify');
+      assert.equal(vsResult.verified, true);
     });
 
     it('should demonstrate agent key encryption and decryption round-trip with signing', async () => {

@@ -1,4 +1,4 @@
-# TODO: Ed25519 Identity + ValueStore + Danger Level Permissions
+# TODO: ValueStore Signed Values
 
 ## Status Key
 - [ ] Not started
@@ -7,50 +7,34 @@
 
 ---
 
-## Wave 1 — Complete
-- [x] A1+A2: SMK + Ed25519 on Keystore
-- [x] B1: ValueStore Model
+## Step 1: Model Migration
+- [x] `signature` TEXT column already exists on ValueStore model
+- [x] Add `signingKeyFingerprint` STRING(64) column to ValueStore model
 
-## Wave 2 — Complete
-- [x] A3: System Key Pair
-- [x] A4+A5: User + Agent Key Pairs
-- [x] B2: ValueStoreService
+## Step 2: Signing Utilities
+- [x] Create `src/core/crypto/value-signing.mjs` with:
+  - `computeKeyFingerprint(publicKeyPEM)` → first 32 hex chars of SHA-256
+  - `buildSigningPayload(ownerType, ownerID, namespace, scopeID, key, jsonValue)` → deterministic string
+  - `signValue(keystore, privateKeyPEM, publicKeyPEM, ...)` → `{ signature, fingerprint }`
+  - `verifyValue(keystore, publicKeyPEM, ...)` → boolean
 
-## Wave 3 — Complete
-- [x] B3: Agent Config → ValueStore
-- [x] B4: Session Context → ValueStore
-- [x] B5: User Settings via ValueStore
-- [x] B6: Memory Tools
-- [x] C1: Frame Signature Field
+## Step 3: ValueStoreService Updates
+- [x] `setSigned()` — uses new signing payload, stores `signingKeyFingerprint`
+- [x] `getVerified()` — returns `{ value, signed, verified }` instead of value-or-null
+- [x] `search()` — includes `signed` boolean per result
+- [x] `set()` — clears both `signature` and `signingKeyFingerprint` on overwrite
 
-## Wave 4 — Complete
-- [x] C2: PermissionService → Ed25519
-- [x] C3: PermissionEngine Fingerprint → Ed25519
-- [x] C4: PermissionPlugin Update
-- [x] C5: Frame Authorship Signing
+## Step 4: Tool Updates
+- [x] `memory:setValue` — accepts `sign` boolean, decrypts agent private key, signs value
+- [x] `memory:getValue` — returns `signed`/`verified` flags when signature exists
+- [x] `memory:searchValues` — returns `signed`/`verified` per result
 
-## Wave 5 — Complete
+## Step 5: Tests
+- [x] Unit tests for signing/verification helpers (`spec/core/crypto/value-signing-spec.mjs` — 37 tests)
+- [x] Unit tests for ValueStoreService signed values (`spec/core/lib/value-store-service-spec.mjs` — updated, 45 tests)
+- [x] Integration tests: sign → retrieve → verify (`spec/core/internal-plugins/memory-signing-spec.mjs` — 21 tests)
+- [x] Tamper detection: modify value in DB → verified: false (`spec/core/integration/tamper-detection-spec.mjs` — updated, 39 tests)
+- [x] Key fingerprint mismatch detection (covered in value-signing-spec + tamper-detection-spec)
+- [x] Adversarial: missing signature, corrupted signature, wrong key (covered across all test files)
 
-- [x] **D1: Permission Engine 3-Way Branch** (51 tests)
-  - Resolution chain: agent config → user settings → 'strict'
-  - strict/normal/permissive, 'medium' → 'normal' backward compat
-  - Tests: spec/core/permissions/permission-engine-risklevel-spec.mjs
-
-- [x] **D2: API Endpoints** (36 tests)
-  - Agent controller: accept riskLevel, sign via ValueStore
-  - Auth controller: accept riskLevel, sign via ValueStore
-  - Tests: spec/server/controllers/risklevel-api-spec.mjs
-
-- [x] **D3: UI** (11 tests)
-  - Agent form modal: dropdown (Account Default, Strict, Normal, Permissive)
-  - Settings page: permissions tab (Strict, Normal, Permissive)
-
-## Wave 6 — Complete
-
-- [x] Tamper Detection Integration Tests (39 tests)
-- [x] Existing Test Updates (handled by Wave 3-5 agents)
-- [x] Full Test Suite Run — 2863 tests, 0 failures
-- [x] Puppeteer E2E Testing
-  - Login, settings permissions tab, agent form dropdown, API round-trip
-  - Bug found + fixed: pre-existing users without Ed25519 keys crash on riskLevel save
-  - Fix: generate keys on-the-fly during login and updateProfile
+## ✓ COMPLETE — All 2999 tests pass

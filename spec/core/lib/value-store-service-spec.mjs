@@ -402,14 +402,14 @@ describe('ValueStoreService', () => {
   // ---------------------------------------------------------------------------
 
   describe('setSigned / getVerified', () => {
-    it('setSigned() stores value with signature', async () => {
+    it('setSigned() stores value with signature and fingerprint', async () => {
       let { publicKey, privateKey } = keystore.generateSigningKeyPair();
 
-      await service.setSigned('Agent', 'agt_sign1', 'config', 'riskLevel', 'permissive', privateKey, {
+      await service.setSigned('Agent', 'agt_sign1', 'config', 'riskLevel', 'permissive', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
-      // Verify the raw DB entry has a signature
+      // Verify the raw DB entry has a signature and fingerprint
       let { ValueStore } = models;
       let entry = await ValueStore
         .where.ownerType.EQ('Agent')
@@ -419,23 +419,27 @@ describe('ValueStoreService', () => {
 
       assert.ok(entry.signature, 'signature should be set');
       assert.ok(entry.signature.length > 0, 'signature should be non-empty');
+      assert.ok(entry.signingKeyFingerprint, 'fingerprint should be set');
+      assert.equal(entry.signingKeyFingerprint.length, 32, 'fingerprint should be 32 hex chars');
     });
 
-    it('getVerified() returns value when signature is valid', async () => {
+    it('getVerified() returns { value, signed: true, verified: true } when valid', async () => {
       let { publicKey, privateKey } = keystore.generateSigningKeyPair();
 
-      await service.setSigned('Agent', 'agt_sign2', 'config', 'riskLevel', 'permissive', privateKey, {
+      await service.setSigned('Agent', 'agt_sign2', 'config', 'riskLevel', 'permissive', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
-      let value = await service.getVerified('Agent', 'agt_sign2', 'config', 'riskLevel', publicKey);
-      assert.equal(value, 'permissive');
+      let result = await service.getVerified('Agent', 'agt_sign2', 'config', 'riskLevel', publicKey);
+      assert.equal(result.value, 'permissive');
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, true);
     });
 
-    it('getVerified() returns null when value is tampered', async () => {
+    it('getVerified() returns verified: false when value is tampered', async () => {
       let { publicKey, privateKey } = keystore.generateSigningKeyPair();
 
-      await service.setSigned('Agent', 'agt_tamper', 'config', 'riskLevel', 'permissive', privateKey, {
+      await service.setSigned('Agent', 'agt_tamper', 'config', 'riskLevel', 'permissive', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
@@ -450,14 +454,15 @@ describe('ValueStoreService', () => {
       entry.value = JSON.stringify('strict');
       await entry.save();
 
-      let value = await service.getVerified('Agent', 'agt_tamper', 'config', 'riskLevel', publicKey);
-      assert.equal(value, null, 'should return null for tampered value');
+      let result = await service.getVerified('Agent', 'agt_tamper', 'config', 'riskLevel', publicKey);
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, false, 'should be verified: false for tampered value');
     });
 
-    it('getVerified() returns null when signature is tampered', async () => {
+    it('getVerified() returns verified: false when signature is tampered', async () => {
       let { publicKey, privateKey } = keystore.generateSigningKeyPair();
 
-      await service.setSigned('Agent', 'agt_sigmod', 'config', 'riskLevel', 'permissive', privateKey, {
+      await service.setSigned('Agent', 'agt_sigmod', 'config', 'riskLevel', 'permissive', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
@@ -472,28 +477,30 @@ describe('ValueStoreService', () => {
       entry.signature = 'deadbeef00112233';
       await entry.save();
 
-      let value = await service.getVerified('Agent', 'agt_sigmod', 'config', 'riskLevel', publicKey);
-      assert.equal(value, null, 'should return null for tampered signature');
+      let result = await service.getVerified('Agent', 'agt_sigmod', 'config', 'riskLevel', publicKey);
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, false, 'should be verified: false for tampered signature');
     });
 
     it('getVerified() returns null for non-existent key', async () => {
       let { publicKey } = keystore.generateSigningKeyPair();
 
-      let value = await service.getVerified('Agent', 'agt_ghost', 'config', 'nope', publicKey);
-      assert.equal(value, null);
+      let result = await service.getVerified('Agent', 'agt_ghost', 'config', 'nope', publicKey);
+      assert.equal(result, null);
     });
 
-    it('getVerified() returns null when verified with wrong public key', async () => {
+    it('getVerified() returns verified: false when verified with wrong public key', async () => {
       let keyPair1 = keystore.generateSigningKeyPair();
       let keyPair2 = keystore.generateSigningKeyPair();
 
-      await service.setSigned('Agent', 'agt_wrongkey', 'config', 'riskLevel', 'permissive', keyPair1.privateKey, {
+      await service.setSigned('Agent', 'agt_wrongkey', 'config', 'riskLevel', 'permissive', keyPair1.privateKey, keyPair1.publicKey, {
         organizationID: organization.id,
       });
 
       // Try verifying with a different key pair's public key
-      let value = await service.getVerified('Agent', 'agt_wrongkey', 'config', 'riskLevel', keyPair2.publicKey);
-      assert.equal(value, null, 'should return null when verified with wrong public key');
+      let result = await service.getVerified('Agent', 'agt_wrongkey', 'config', 'riskLevel', keyPair2.publicKey);
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, false, 'should be verified: false when using wrong public key');
     });
 
     it('setSigned() then getVerified() round trip with Ed25519 key pair', async () => {
@@ -501,30 +508,34 @@ describe('ValueStoreService', () => {
 
       let original = { sensitivity: 'high', tags: ['a', 'b'] };
 
-      await service.setSigned('User', 'usr_rt', 'settings', 'preferences', original, privateKey, {
+      await service.setSigned('User', 'usr_rt', 'settings', 'preferences', original, privateKey, publicKey, {
         organizationID: organization.id,
       });
 
-      let value = await service.getVerified('User', 'usr_rt', 'settings', 'preferences', publicKey);
-      assert.deepEqual(value, original);
+      let result = await service.getVerified('User', 'usr_rt', 'settings', 'preferences', publicKey);
+      assert.deepEqual(result.value, original);
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, true);
     });
 
     it('setSigned() upserts signed entries', async () => {
       let { publicKey, privateKey } = keystore.generateSigningKeyPair();
 
-      await service.setSigned('Agent', 'agt_sig_ups', 'config', 'level', 'v1', privateKey, {
+      await service.setSigned('Agent', 'agt_sig_ups', 'config', 'level', 'v1', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
-      await service.setSigned('Agent', 'agt_sig_ups', 'config', 'level', 'v2', privateKey, {
+      await service.setSigned('Agent', 'agt_sig_ups', 'config', 'level', 'v2', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
-      let value = await service.getVerified('Agent', 'agt_sig_ups', 'config', 'level', publicKey);
-      assert.equal(value, 'v2');
+      let result = await service.getVerified('Agent', 'agt_sig_ups', 'config', 'level', publicKey);
+      assert.equal(result.value, 'v2');
+      assert.equal(result.signed, true);
+      assert.equal(result.verified, true);
     });
 
-    it('getVerified() returns null for entry without signature', async () => {
+    it('getVerified() returns { signed: false } for entry without signature', async () => {
       let { publicKey } = keystore.generateSigningKeyPair();
 
       // Create an unsigned entry via regular set()
@@ -532,8 +543,10 @@ describe('ValueStoreService', () => {
         organizationID: organization.id,
       });
 
-      let value = await service.getVerified('Agent', 'agt_nosig', 'config', 'unsigned', publicKey);
-      assert.equal(value, null, 'should return null for entry without signature');
+      let result = await service.getVerified('Agent', 'agt_nosig', 'config', 'unsigned', publicKey);
+      assert.equal(result.signed, false, 'should be signed: false for unsigned entry');
+      assert.equal(result.value, 'data');
+      assert.equal(result.verified, undefined, 'verified should not be present for unsigned entries');
     });
   });
 
@@ -606,17 +619,17 @@ describe('ValueStoreService', () => {
       assert.equal(value, 'v2');
     });
 
-    it('set() clears signature on upsert (unsigned overwrite of signed entry)', async () => {
+    it('set() clears signature and fingerprint on upsert (unsigned overwrite of signed entry)', async () => {
       let { publicKey, privateKey } = keystore.generateSigningKeyPair();
 
-      await service.setSigned('Agent', 'agt_clear_sig', 'config', 'key', 'signed', privateKey, {
+      await service.setSigned('Agent', 'agt_clear_sig', 'config', 'key', 'signed', privateKey, publicKey, {
         organizationID: organization.id,
       });
 
       // Overwrite with unsigned set()
       await service.set('Agent', 'agt_clear_sig', 'config', 'key', 'unsigned');
 
-      // The old signature should be cleared
+      // The old signature and fingerprint should be cleared
       let { ValueStore } = models;
       let entry = await ValueStore
         .where.ownerType.EQ('Agent')
@@ -625,6 +638,7 @@ describe('ValueStoreService', () => {
         .first();
 
       assert.equal(entry.signature, null, 'signature should be cleared on unsigned upsert');
+      assert.equal(entry.signingKeyFingerprint, null, 'fingerprint should be cleared on unsigned upsert');
     });
 
     it('set() with array value stores and retrieves correctly', async () => {

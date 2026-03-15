@@ -1,6 +1,12 @@
 'use strict';
 
-import { Agent } from '../../models/agent-model.mjs';
+import { Agent }                  from '../../models/agent-model.mjs';
+import { decryptAgentPrivateKey } from '../../crypto/frame-signing.mjs';
+import {
+  computeKeyFingerprint,
+  signValue,
+  verifyValue,
+} from '../../crypto/value-signing.mjs';
 
 // =============================================================================
 // Memory Plugin
@@ -260,7 +266,7 @@ export function setup({ registerTool, PluginInterface }) {
     static pluginID    = 'memory';
     static featureName = 'getValue';
     static displayName = 'Get Memory Value';
-    static description = 'Get a value from agent memory storage';
+    static description = 'Get a value from agent memory storage. Returns signed/verified flags if the value was stored with signing.';
     static riskLevel   = 'low';
     static inputSchema = {
       type:       'object',
@@ -312,7 +318,23 @@ export function setup({ registerTool, PluginInterface }) {
         value = entry.value;
       }
 
-      return { key, value, scopeID };
+      let result = { key, value, scopeID };
+
+      // Include signing verification if the entry has a signature
+      if (entry.signature) {
+        result.signed = true;
+
+        let keystore = this._context.getProperty('keystore');
+        result.verified = verifyValue(
+          keystore, agent.publicKey,
+          'Agent', agent.id, 'memory', scopeID, key,
+          entry.value, entry.signature,
+        );
+      } else {
+        result.signed = false;
+      }
+
+      return result;
     }
   }
 
@@ -324,7 +346,7 @@ export function setup({ registerTool, PluginInterface }) {
     static pluginID    = 'memory';
     static featureName = 'setValue';
     static displayName = 'Set Memory Value';
-    static description = 'Store a value in agent memory storage';
+    static description = 'Store a value in agent memory storage. Pass sign:true to cryptographically sign the value for tamper detection on retrieval.';
     static riskLevel   = 'low';
     static inputSchema = {
       type:       'object',
@@ -341,11 +363,15 @@ export function setup({ registerTool, PluginInterface }) {
           type:        'string',
           description: 'Optional scope ID (defaults to current session ID)',
         },
+        sign: {
+          type:        'boolean',
+          description: 'If true, cryptographically sign the value with the agent\'s Ed25519 key for tamper detection',
+        },
       },
     };
 
     async _execute(params) {
-      let { key, value, scopeID } = params;
+      let { key, value, scopeID, sign } = params;
       let models  = this._context.getProperty('models');
       let { Agent: AgentModel, ValueStore } = models;
       let agentID = params.agentID;
@@ -377,6 +403,37 @@ export function setup({ registerTool, PluginInterface }) {
         return { key, value: null, scopeID, deleted: true };
       }
 
+      let jsonValue             = JSON.stringify(value);
+      let signature             = null;
+      let signingKeyFingerprint = null;
+
+      // Sign the value if requested
+      if (sign) {
+        let keystore = this._context.getProperty('keystore');
+
+        // Use _agent (injected by executeTool) or fall back to fetched agent
+        let sourceAgent = params._agent || agent;
+
+        if (!sourceAgent.encryptedPrivateKey)
+          throw new Error('Agent does not have a signing key pair — cannot sign value');
+
+        let privateKeyPEM = decryptAgentPrivateKey(keystore, sourceAgent.encryptedPrivateKey, agent.id);
+        if (!privateKeyPEM)
+          throw new Error('Failed to decrypt agent private key for signing');
+
+        let signed = signValue(
+          keystore, privateKeyPEM, agent.publicKey,
+          'Agent', agent.id, 'memory', scopeID, key,
+          jsonValue,
+        );
+
+        if (!signed)
+          throw new Error('Failed to sign value');
+
+        signature             = signed.signature;
+        signingKeyFingerprint = signed.fingerprint;
+      }
+
       // Upsert
       let existing = await ValueStore
         .where.ownerType.EQ('Agent')
@@ -387,21 +444,30 @@ export function setup({ registerTool, PluginInterface }) {
         .first();
 
       if (existing) {
-        existing.value = JSON.stringify(value);
+        existing.value                 = jsonValue;
+        existing.signature             = signature;
+        existing.signingKeyFingerprint = signingKeyFingerprint;
         await existing.save();
       } else {
         await ValueStore.create({
-          organizationID: agent.organizationID,
-          ownerType:      'Agent',
-          ownerID:        agent.id,
-          namespace:      'memory',
+          organizationID:       agent.organizationID,
+          ownerType:            'Agent',
+          ownerID:              agent.id,
+          namespace:            'memory',
           scopeID,
           key,
-          value:          JSON.stringify(value),
+          value:                jsonValue,
+          signature,
+          signingKeyFingerprint,
         });
       }
 
-      return { key, value, scopeID };
+      let result = { key, value, scopeID };
+
+      if (sign)
+        result.signed = true;
+
+      return result;
     }
   }
 
@@ -413,7 +479,7 @@ export function setup({ registerTool, PluginInterface }) {
     static pluginID    = 'memory';
     static featureName = 'searchValues';
     static displayName = 'Search Memory Values';
-    static description = 'Search agent memory storage by key or value content';
+    static description = 'Search agent memory storage by key or value content. Results include signed/verified flags for signed values.';
     static riskLevel   = 'low';
     static inputSchema = {
       type:       'object',
@@ -480,6 +546,8 @@ export function setup({ registerTool, PluginInterface }) {
       // Apply offset and limit
       entries = entries.slice(offset, offset + limit);
 
+      let keystore = this._context.getProperty('keystore');
+
       let results = entries.map((entry) => {
         let value = null;
         try {
@@ -487,7 +555,24 @@ export function setup({ registerTool, PluginInterface }) {
         } catch (_e) {
           value = entry.value;
         }
-        return { key: entry.key, value, scopeID: entry.scopeID, updatedAt: entry.updatedAt };
+
+        let result = {
+          key:       entry.key,
+          value,
+          scopeID:   entry.scopeID,
+          updatedAt: entry.updatedAt,
+          signed:    !!entry.signature,
+        };
+
+        if (entry.signature) {
+          result.verified = verifyValue(
+            keystore, agent.publicKey,
+            'Agent', agent.id, 'memory', entry.scopeID, entry.key,
+            entry.value, entry.signature,
+          );
+        }
+
+        return result;
       });
 
       return { results, count };

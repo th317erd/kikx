@@ -69,5 +69,9 @@ export class ValueStore extends ModelBase {
       type:      Types.STRING(256),
       allowNull: true,
     },
+    signingKeyFingerprint: {
+      type:      Types.STRING(64),
+      allowNull: true,
+    },
   };
 }
