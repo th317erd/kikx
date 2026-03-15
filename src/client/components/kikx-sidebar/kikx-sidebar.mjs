@@ -1,6 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
+import { GLOW_KEYFRAMES, glowCSS } from '../../styles/glow-focus.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -143,6 +144,8 @@ const TEMPLATE_HTML = `
       cursor: pointer;
       border-radius: var(--border-radius-small, 4px);
       transition: background 0.15s ease, box-shadow 0.15s ease;
+      position: relative;
+      isolation: isolate;
     }
 
     .session-row:hover {
@@ -154,6 +157,9 @@ const TEMPLATE_HTML = `
       border-left: 2px solid var(--accent-primary, #00e5ff);
       box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.10));
     }
+
+    ${GLOW_KEYFRAMES}
+    ${glowCSS('.session-row.active')}
 
     .session-icon {
       font-size: 1rem;

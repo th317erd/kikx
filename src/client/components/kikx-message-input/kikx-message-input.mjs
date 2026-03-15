@@ -1,24 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
-
-// ---------------------------------------------------------------------------
-// Register CSS custom property for animatable border angle.
-// Must be global (CSS.registerProperty) because @property inside
-// shadow DOM is not reliably supported across all browsers.
-// With syntax: '<angle>' the browser can interpolate the value
-// smoothly in @keyframes, enabling the conic-gradient rotation.
-// ---------------------------------------------------------------------------
-try {
-  CSS.registerProperty({
-    name:         '--border-angle',
-    syntax:       '<angle>',
-    inherits:     true,
-    initialValue: '0deg',
-  });
-} catch (e) {
-  // Already registered (another instance) or browser lacks support
-}
+import { GLOW_KEYFRAMES, glowCSS } from '../../styles/glow-focus.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -42,82 +25,10 @@ const TEMPLATE_HTML = `
       box-shadow:
         0 0 15px rgba(0, 229, 255, 0.06),
         0 0 30px rgba(176, 64, 255, 0.03);
-      animation: border-rotate 42s linear infinite;
     }
 
-    /* --------------------------------------------------------------------- */
-    /* Animated border glow dots                                             */
-    /* Two color-cycling dots orbit the .input-area border continuously.     */
-    /*                                                                       */
-    /* Technique:                                                            */
-    /*   1. conic-gradient with two narrow bright spots (the "dots")         */
-    /*   2. --border-angle rotates the gradient origin via @keyframes        */
-    /*   3. CSS mask (content-box XOR border-box) confines visibility        */
-    /*      to just the border/padding strip                                 */
-    /*   4. ::before = sharp dot, ::after = blurred glow halo               */
-    /*   5. hue-rotate filter cycles dot colors through the rainbow          */
-    /*                                                                       */
-    /* backdrop-filter on .input-area already creates a stacking context,    */
-    /* so z-index: -1/-2 on pseudo-elements places them above the glass      */
-    /* background but below the textarea and button.                         */
-    /* --------------------------------------------------------------------- */
-
-    .input-area::before,
-    .input-area::after {
-      content: '';
-      position: absolute;
-      border-radius: inherit;
-      background: conic-gradient(
-        from var(--border-angle, 0deg),
-        transparent 0%,
-        #00e5ff 3%,
-        transparent 6%,
-        transparent 47%,
-        #ff4081 50%,
-        transparent 53%,
-        transparent 100%
-      );
-      -webkit-mask:
-        linear-gradient(#fff 0 0) content-box,
-        linear-gradient(#fff 0 0);
-      -webkit-mask-composite: xor;
-      mask:
-        linear-gradient(#fff 0 0) content-box,
-        linear-gradient(#fff 0 0);
-      mask-composite: exclude;
-      pointer-events: none;
-    }
-
-    /* Sharp dot layer */
-    .input-area::before {
-      inset: 0;
-      padding: 1.5px;
-      z-index: -1;
-      opacity: 0.85;
-      animation: dot-hue-cycle 45s linear infinite;
-    }
-
-    /* Glow halo layer */
-    .input-area::after {
-      inset: -8px;
-      padding: 10px;
-      z-index: -2;
-      opacity: 0.55;
-      animation: dot-hue-cycle-glow 45s linear infinite;
-    }
-
-    @keyframes border-rotate {
-      to { --border-angle: 360deg; }
-    }
-
-    @keyframes dot-hue-cycle {
-      to { filter: hue-rotate(360deg); }
-    }
-
-    @keyframes dot-hue-cycle-glow {
-      from { filter: blur(14px) hue-rotate(0deg); }
-      to   { filter: blur(14px) hue-rotate(360deg); }
-    }
+    ${GLOW_KEYFRAMES}
+    ${glowCSS('.input-area:focus-within')}
 
     .message-textarea {
       flex: 1;
@@ -262,6 +173,7 @@ class KikxMessageInput extends HTMLElement {
     this._onSendClick    = this._onSendClick.bind(this);
     this._onInput        = this._onInput.bind(this);
     this._onReplyCancel  = this._onReplyCancel.bind(this);
+    this._onFocusIn      = this._onFocusIn.bind(this);
   }
 
   connectedCallback() {
@@ -270,12 +182,14 @@ class KikxMessageInput extends HTMLElement {
     this._textarea.addEventListener('input', this._onInput);
     this._sendButton.addEventListener('click', this._onSendClick);
     this._replyCancelButton.addEventListener('click', this._onReplyCancel);
+    this._textarea.addEventListener('focusin', this._onFocusIn);
   }
 
   disconnectedCallback() {
     this._textarea.removeEventListener('keydown', this._onKeyDown);
     this._textarea.removeEventListener('input', this._onInput);
     this._sendButton.removeEventListener('click', this._onSendClick);
+    this._textarea.removeEventListener('focusin', this._onFocusIn);
     this._replyCancelButton.removeEventListener('click', this._onReplyCancel);
   }
 
@@ -486,6 +400,13 @@ class KikxMessageInput extends HTMLElement {
   _onReplyCancel() {
     this.clearReplyMode();
     this._textarea.focus();
+  }
+
+  _onFocusIn() {
+    // Clear glow focus from any chat bubble when the input takes focus
+    this.ownerDocument.dispatchEvent(new CustomEvent('interaction-focused', {
+      detail: { source: this },
+    }));
   }
 }
 

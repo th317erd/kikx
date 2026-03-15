@@ -1,6 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
+import { GLOW_KEYFRAMES, glowCSS } from '../../styles/glow-focus.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -21,9 +22,14 @@ const TEMPLATE_HTML = `
     }
 
     /* ----------------------------------------------------------------- */
+    /* Animated border glow dots — shown when bubble is clicked          */
+    /* backdrop-filter creates a stacking context so z-index:-1/-2 works */
+    /* ----------------------------------------------------------------- */
+    ${GLOW_KEYFRAMES}
+    ${glowCSS('.bubble.focused')}
+
+    /* ----------------------------------------------------------------- */
     /* Glass-surface reflection (toggled via console: kikxReflections())  */
-    /* Option A: large blurred box-shadow for a color glow beneath each  */
-    /* bubble, like light bleeding onto a glass surface.                 */
     /* ----------------------------------------------------------------- */
     :host([reflect]) .bubble {
       box-shadow:
@@ -388,17 +394,23 @@ class KikxInteraction extends HTMLElement {
     this._onSubmitClick    = this._onSubmitClick.bind(this);
     this._onReplyClick     = this._onReplyClick.bind(this);
     this._onSlotChange     = this._updateReflectText.bind(this);
+    this._onBubbleClick    = this._onBubbleClick.bind(this);
+    this._onPeerFocus      = this._onPeerFocus.bind(this);
   }
 
   connectedCallback() {
     this._render();
     this._replyButton.addEventListener('click', this._onReplyClick);
     this._slot.addEventListener('slotchange', this._onSlotChange);
+    this._bubble.addEventListener('click', this._onBubbleClick);
+    this.ownerDocument.addEventListener('interaction-focused', this._onPeerFocus);
     requestAnimationFrame(() => this._updateReflectText());
   }
 
   disconnectedCallback() {
     this._removeActionListeners();
+    this._bubble.removeEventListener('click', this._onBubbleClick);
+    this.ownerDocument.removeEventListener('interaction-focused', this._onPeerFocus);
     this._replyButton.removeEventListener('click', this._onReplyClick);
     this._slot.removeEventListener('slotchange', this._onSlotChange);
   }
@@ -542,6 +554,24 @@ class KikxInteraction extends HTMLElement {
       composed: true,
       detail:   { frameID, participantName: name, preview, alignment },
     }));
+  }
+
+  _onBubbleClick() {
+    this._bubble.classList.add('focused');
+
+    // Tell sibling interactions to clear their focus
+    this.ownerDocument.dispatchEvent(new CustomEvent('interaction-focused', {
+      detail: { source: this },
+    }));
+  }
+
+  _onPeerFocus(event) {
+    if (event.detail.source !== this)
+      this._bubble.classList.remove('focused');
+  }
+
+  clearFocus() {
+    this._bubble.classList.remove('focused');
   }
 }
 
