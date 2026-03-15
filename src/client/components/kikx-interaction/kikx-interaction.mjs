@@ -22,33 +22,40 @@ const TEMPLATE_HTML = `
 
     /* ----------------------------------------------------------------- */
     /* Glass-surface reflection (toggled via console: kikxReflections())  */
-    /* Uses ::after with attr() text + blur to create a blurred,         */
-    /* text-shaped color echo beneath each bubble.                       */
+    /* Option A: large blurred box-shadow for a color glow beneath each  */
+    /* bubble, like light bleeding onto a glass surface.                 */
     /* ----------------------------------------------------------------- */
     :host([reflect]) .bubble {
-      position: relative;
-      overflow: visible;
+      box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.2),
+        0 0 20px rgba(0, 229, 255, 0.03),
+        0 0 40px rgba(176, 64, 255, 0.02),
+        8px 20px 30px -5px rgba(0, 229, 255, 0.08),
+        12px 25px 50px -5px rgba(176, 64, 255, 0.06);
     }
 
-    :host([reflect]) .bubble::after {
-      content: attr(data-reflect-text);
-      position: absolute;
-      top: calc(100% + 1px);
-      left: 12px;
-      right: -12px;
-      max-height: 30px;
-      overflow: hidden;
-      background: inherit;
-      border-radius: inherit;
-      padding: 8px 14px;
-      color: inherit;
-      font-size: inherit;
-      line-height: 1.4;
-      filter: blur(0.5px);
-      opacity: 0.10;
-      mask-image: linear-gradient(to top, transparent 5%, rgba(0, 0, 0, 0.6) 40%, transparent 100%);
-      -webkit-mask-image: linear-gradient(to top, transparent 5%, rgba(0, 0, 0, 0.6) 40%, transparent 100%);
-      pointer-events: none;
+    :host([alignment="user"][reflect]) .bubble {
+      box-shadow:
+        0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.20)),
+        0 0 30px rgba(176, 64, 255, 0.08),
+        8px 20px 30px -5px var(--accent-glow, rgba(0, 229, 255, 0.12)),
+        12px 25px 50px -5px rgba(176, 64, 255, 0.08);
+    }
+
+    :host([bubble-type="permission"][reflect]) .bubble {
+      box-shadow:
+        0 0 12px rgba(255, 234, 0, 0.20),
+        0 0 30px rgba(255, 234, 0, 0.08),
+        8px 20px 30px -5px rgba(255, 234, 0, 0.10),
+        12px 25px 50px -5px rgba(255, 234, 0, 0.06);
+    }
+
+    :host([bubble-type="error"][reflect]) .bubble {
+      box-shadow:
+        0 0 12px rgba(255, 23, 68, 0.20),
+        0 0 30px rgba(255, 23, 68, 0.08),
+        8px 20px 30px -5px rgba(255, 23, 68, 0.10),
+        12px 25px 50px -5px rgba(255, 23, 68, 0.06);
     }
 
     .bubble {
