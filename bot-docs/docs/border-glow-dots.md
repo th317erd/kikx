@@ -76,16 +76,16 @@ The pseudo-element's `padding` property controls the visible border thickness:
 conic-gradient(
   from var(--border-angle, 0deg),
   transparent 0%,
-  #00e5ff 3%,         /* Dot 1: cyan peak at ~11 degrees */
-  transparent 6%,
-  transparent 47%,
+  #00e5ff 6%,         /* Dot 1: cyan peak at ~22 degrees */
+  transparent 12%,
+  transparent 44%,
   #ff4081 50%,         /* Dot 2: pink peak at 180 degrees */
-  transparent 53%,
+  transparent 56%,
   transparent 100%
 )
 ```
 
-Each dot spans ~6% of the gradient (21.6 degrees) with smooth ramps from transparent to peak color and back. The two dots are 180 degrees apart (opposite sides of the border).
+Each dot spans ~12% of the gradient (43.2 degrees) with smooth ramps from transparent to peak color and back. The two dots are 180 degrees apart (opposite sides of the border).
 
 ### Color Cycling
 
@@ -119,7 +119,7 @@ For the glow layer, the animation includes `blur()` alongside `hue-rotate()` sin
 
 | Animation | Duration | Purpose |
 |-----------|----------|---------|
-| `border-rotate` | 8s | Dot orbital speed (one full loop) |
+| `border-rotate` | 14s | Dot orbital speed (one full loop) |
 | `dot-hue-cycle` | 15s | Color rainbow cycle (sharp dot layer) |
 | `dot-hue-cycle-glow` | 15s | Color rainbow cycle (glow layer, includes blur) |
 
@@ -130,7 +130,7 @@ To apply this effect to any bordered element:
 1. Ensure the element has `position: relative` (or something that establishes positioning context)
 2. Ensure a stacking context exists (via `backdrop-filter`, `isolation: isolate`, `z-index`, `transform`, etc.)
 3. Add the `::before` / `::after` pseudo-element styles
-4. Add `animation: border-rotate 8s linear infinite` to the element
+4. Add `animation: border-rotate 14s linear infinite` to the element
 5. The `CSS.registerProperty()` call only needs to happen once globally
 
 The effect automatically adapts to any element size and border-radius since:

@@ -42,7 +42,7 @@ const TEMPLATE_HTML = `
       box-shadow:
         0 0 15px rgba(0, 229, 255, 0.06),
         0 0 30px rgba(176, 64, 255, 0.03);
-      animation: border-rotate 8s linear infinite;
+      animation: border-rotate 14s linear infinite;
     }
 
     /* --------------------------------------------------------------------- */
@@ -70,11 +70,11 @@ const TEMPLATE_HTML = `
       background: conic-gradient(
         from var(--border-angle, 0deg),
         transparent 0%,
-        #00e5ff 3%,
-        transparent 6%,
-        transparent 47%,
+        #00e5ff 6%,
+        transparent 12%,
+        transparent 44%,
         #ff4081 50%,
-        transparent 53%,
+        transparent 56%,
         transparent 100%
       );
       -webkit-mask:
