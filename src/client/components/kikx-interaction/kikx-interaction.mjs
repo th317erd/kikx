@@ -507,30 +507,41 @@ if (typeof customElements !== 'undefined')
 if (typeof window !== 'undefined') {
   window.__kikxReflectionsEnabled = false;
 
+  function collectShadowRoots(node, results) {
+    if (node.shadowRoot) {
+      results.push(node.shadowRoot);
+      collectShadowRoots(node.shadowRoot, results);
+    }
+
+    let children = (node.shadowRoot) ? node.shadowRoot.children : node.children;
+    if (!children)
+      return;
+
+    for (let child of children)
+      collectShadowRoots(child, results);
+  }
+
   window.kikxReflections = function kikxReflections(force) {
     let enabled = (force !== undefined) ? !!force : !window.__kikxReflectionsEnabled;
     window.__kikxReflectionsEnabled = enabled;
 
-    let interactions = document.querySelectorAll('kikx-interaction');
-
-    // Also search inside shadow roots (chat-view, session-page)
     let roots = [document];
-    for (let el of document.querySelectorAll('*')) {
-      if (el.shadowRoot)
-        roots.push(el.shadowRoot);
-    }
+    collectShadowRoots(document.body, roots);
 
+    let count = 0;
     for (let root of roots) {
       for (let el of root.querySelectorAll('kikx-interaction')) {
         if (enabled)
           el.setAttribute('reflect', '');
         else
           el.removeAttribute('reflect');
+
+        count++;
       }
     }
 
     // eslint-disable-next-line no-console
-    console.log(`[kikx] Reflections ${(enabled) ? 'ON' : 'OFF'} (${interactions.length} bubbles)`);
+    console.log(`[kikx] Reflections ${(enabled) ? 'ON' : 'OFF'} (${count} bubbles)`);
 
     return enabled;
   };
