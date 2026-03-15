@@ -65,13 +65,25 @@ export class FrameController extends ControllerAuthBase {
     if (frame.sessionID !== params.sessionID)
       this.throwNotFoundError('Frame not found in this session');
 
+    // Merge with existing content (PATCH semantics — partial update)
+    let existing = {};
+    if (frame.content) {
+      try {
+        existing = (typeof frame.content === 'string') ? JSON.parse(frame.content) : frame.content;
+      } catch (_e) { /* non-JSON content, replace entirely */ }
+    }
+
+    let merged = (typeof content === 'object' && typeof existing === 'object')
+      ? { ...existing, ...content }
+      : content;
+
     // Re-sanitize HTML content before storing
     let sanitizer = this.getCore().getContext().getProperty('contentSanitizer');
-    if (content && typeof content === 'object' && content.html && sanitizer)
-      content.html = sanitizer.sanitize(content.html);
+    if (merged && typeof merged === 'object' && merged.html && sanitizer)
+      merged.html = sanitizer.sanitize(merged.html);
 
     // Serialize and update
-    let serialized = (typeof content === 'string') ? content : JSON.stringify(content);
+    let serialized = (typeof merged === 'string') ? merged : JSON.stringify(merged);
     frame.content  = serialized;
 
     await frame.save();

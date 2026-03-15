@@ -105,15 +105,19 @@ const TEMPLATE_HTML = `
     .decision-label.label-caution { color: #fdd835; }
     .decision-label.label-deny { color: #ff4444; }
 
-    .decision-label.label-deny-shake {
-      color: #ff4444;
-      animation: shake 0.4s ease-in-out infinite;
+    .decision-label.label-nod { animation: nod 1.5s ease-in-out infinite; }
+    .decision-label.label-shake { animation: headshake 1.5s ease-in-out infinite; }
+
+    @keyframes nod {
+      0%, 100% { transform: translateY(0); }
+      30%      { transform: translateY(2px); }
+      60%      { transform: translateY(-1px); }
     }
 
-    @keyframes shake {
+    @keyframes headshake {
       0%, 100% { transform: translateX(0); }
-      20%      { transform: translateX(-2px); }
-      40%      { transform: translateX(2px); }
+      20%      { transform: translateX(-3px); }
+      40%      { transform: translateX(3px); }
       60%      { transform: translateX(-2px); }
       80%      { transform: translateX(1px); }
     }
@@ -255,8 +259,13 @@ class KikxPermissionRequest extends HTMLElement {
     if (!this.hasAttribute('processed'))
       return;
 
-    // Collect unique decisions
+    // Collect unique decisions from live interaction
     let decisions = [...this._decisions.values()];
+
+    // Fallback to persisted decision from frame content (historical loads)
+    if (decisions.length === 0 && this.resolvedDecision)
+      decisions = [this.resolvedDecision];
+
     if (decisions.length === 0)
       return;
 
@@ -362,14 +371,19 @@ class KikxPermissionRequest extends HTMLElement {
       row.setAttribute('data-command', cmd.command);
 
       // Command text (command + arguments)
-      let textEl   = document.createElement('code');
-      textEl.className = 'command-text';
-      let fullCmd  = cmd.command;
-      if (cmd.arguments && cmd.arguments.length > 0)
-        fullCmd += ' ' + cmd.arguments.join(' ');
+      // Hide when fullCommand is already shown and there's only one command (avoids duplication)
+      let showCommandText = !(this._fullCommandEl.style.display !== 'none' && this._commands.length === 1);
 
-      textEl.textContent = fullCmd;
-      row.appendChild(textEl);
+      if (showCommandText) {
+        let textEl   = document.createElement('code');
+        textEl.className = 'command-text';
+        let fullCmd  = cmd.command;
+        if (cmd.arguments && cmd.arguments.length > 0)
+          fullCmd += ' ' + cmd.arguments.join(' ');
+
+        textEl.textContent = fullCmd;
+        row.appendChild(textEl);
+      }
 
       if (cmd.status === 'allowed') {
         // Pre-approved: show badge, no buttons
@@ -465,19 +479,19 @@ class KikxPermissionRequest extends HTMLElement {
     switch (decision) {
       case 'allow-forever':
         label.textContent = t('permission.allowForever') || 'Allow forever';
-        label.classList.add('label-allow');
+        label.classList.add('label-allow', 'label-nod');
         break;
       case 'allow-once':
         label.textContent = t('permission.allowOnceShort') || 'Allow once';
-        label.classList.add('label-allow');
+        label.classList.add('label-allow', 'label-nod');
         break;
       case 'deny-once':
         label.textContent = t('permission.denyOnce') || 'Deny once';
-        label.classList.add('label-caution');
+        label.classList.add('label-caution', 'label-shake');
         break;
       case 'deny-forever':
         label.textContent = t('permission.denyForever') || 'Deny forever';
-        label.classList.add('label-deny-shake');
+        label.classList.add('label-deny', 'label-shake');
         break;
       default:
         label.textContent = 'Please select:';

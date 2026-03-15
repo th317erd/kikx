@@ -796,8 +796,14 @@ class KikxSessionPage extends HTMLElement {
         permRequest.commands = [{ command: toolName, arguments: [], status: 'needs-approval' }];
       }
 
-      if (frame.processed)
+      if (frame.processed) {
+        // Restore decision from persisted frame content for historical frames
+        let storedDecision = frame.content && frame.content.decision;
+        if (storedDecision)
+          permRequest.resolvedDecision = storedDecision;
+
         permRequest.setAttribute('processed', '');
+      }
 
       interaction.appendChild(permRequest);
       this._placeInteraction(interaction, options);
@@ -1656,13 +1662,20 @@ class KikxSessionPage extends HTMLElement {
 
     // Mark the permission UI as processed
     let permEl = event.target.closest('kikx-permission-request') || event.target;
-    if (permEl && permEl.setAttribute)
-      permEl.setAttribute('processed', '');
 
     try {
       // Pass decisions array as body to the unified endpoint
       let body = (Array.isArray(decisions) && decisions.length > 0) ? { decisions } : undefined;
       await approvePermission(sessionID, permissionID, body);
+
+      // Persist the decision on the frame so historical loads show what was chosen
+      if (Array.isArray(decisions) && decisions.length > 0) {
+        let resolvedDecision = decisions[0].decision;
+        if (permEl)
+          permEl.resolvedDecision = resolvedDecision;
+
+        updateFrameContent(sessionID, permissionID, { decision: resolvedDecision, processed: true }).catch(() => {});
+      }
     } catch (error) {
       // Stale permission request — server restarted and lost the pending state
       if (error.status === 410) {
@@ -1676,6 +1689,9 @@ class KikxSessionPage extends HTMLElement {
 
       console.error('Permission approval failed:', error);
     }
+
+    if (permEl && permEl.setAttribute)
+      permEl.setAttribute('processed', '');
 
     this._messageInput.focus();
   }
