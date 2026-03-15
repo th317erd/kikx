@@ -290,6 +290,10 @@ export class InteractionController extends ControllerAuthBase {
         if (waiting && waiting.params && waiting.params.agent)
           organizationID = waiting.params.agent.organizationID;
 
+        // Fallback: use the authenticated user's organization from JWT
+        if (!organizationID)
+          organizationID = this.request.organizationID;
+
         for (let decision of decisions) {
           if (!decision.command || !decision.decision)
             continue;
