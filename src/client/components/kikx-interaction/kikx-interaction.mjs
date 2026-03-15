@@ -20,6 +20,20 @@ const TEMPLATE_HTML = `
       max-width: 100%;
     }
 
+    /* ----------------------------------------------------------------- */
+    /* Glass-surface reflection (toggled via console: kikxReflections())  */
+    /* contain: paint prevents infinite mirror recursion between siblings */
+    /* ----------------------------------------------------------------- */
+    :host([reflect]) {
+      contain: paint;
+      padding-bottom: 30px;
+    }
+
+    :host([reflect]) .bubble {
+      -webkit-box-reflect: below 4px
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05) 40%, transparent 80%);
+    }
+
     .bubble {
       display: flex;
       flex-direction: column;
@@ -484,5 +498,42 @@ class KikxInteraction extends HTMLElement {
 
 if (typeof customElements !== 'undefined')
   customElements.define('kikx-interaction', KikxInteraction);
+
+// ---------------------------------------------------------------------------
+// Console toggle: kikxReflections()
+// Toggles the glass-surface reflection effect on all chat bubbles.
+// Uses contain: paint on the host to prevent infinite mirror recursion.
+// ---------------------------------------------------------------------------
+if (typeof window !== 'undefined') {
+  window.__kikxReflectionsEnabled = false;
+
+  window.kikxReflections = function kikxReflections(force) {
+    let enabled = (force !== undefined) ? !!force : !window.__kikxReflectionsEnabled;
+    window.__kikxReflectionsEnabled = enabled;
+
+    let interactions = document.querySelectorAll('kikx-interaction');
+
+    // Also search inside shadow roots (chat-view, session-page)
+    let roots = [document];
+    for (let el of document.querySelectorAll('*')) {
+      if (el.shadowRoot)
+        roots.push(el.shadowRoot);
+    }
+
+    for (let root of roots) {
+      for (let el of root.querySelectorAll('kikx-interaction')) {
+        if (enabled)
+          el.setAttribute('reflect', '');
+        else
+          el.removeAttribute('reflect');
+      }
+    }
+
+    // eslint-disable-next-line no-console
+    console.log(`[kikx] Reflections ${(enabled) ? 'ON' : 'OFF'} (${interactions.length} bubbles)`);
+
+    return enabled;
+  };
+}
 
 export default KikxInteraction;
