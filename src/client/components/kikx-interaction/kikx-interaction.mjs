@@ -49,15 +49,18 @@ const TEMPLATE_HTML = `
     }
 
     /* ----------------------------------------------------------------- */
-    /* Permission / warning — yellow-tinted bubble, black-striped header */
+    /* Permission / warning — yellow bubble (same pattern as user msgs)  */
+    /* Uses --neon-yellow from the theme neon palette                    */
     /* ----------------------------------------------------------------- */
     :host([bubble-type="permission"]) .bubble {
-      background: color-mix(in srgb, var(--color-warning, #ffc107) 8%, transparent);
-      border-color: color-mix(in srgb, var(--color-warning, #ffc107) 25%, transparent);
+      background:
+        linear-gradient(135deg,
+          var(--color-warning-dim, rgba(255, 234, 0, 0.15)) 0%,
+          rgba(255, 234, 0, 0.06) 100%);
+      border-color: rgba(255, 234, 0, 0.30);
       box-shadow:
-        0 2px 8px rgba(0, 0, 0, 0.2),
-        0 0 20px color-mix(in srgb, var(--color-warning, #ffc107) 6%, transparent),
-        0 0 40px color-mix(in srgb, var(--color-warning, #ffc107) 3%, transparent);
+        0 0 12px rgba(255, 234, 0, 0.20),
+        0 0 30px rgba(255, 234, 0, 0.08);
     }
 
     :host([bubble-type="permission"]) .bubble-header {
@@ -71,20 +74,22 @@ const TEMPLATE_HTML = `
           transparent 8px,
           rgba(0, 0, 0, 0.12) 8px,
           rgba(0, 0, 0, 0.12) 16px
-        ),
-        color-mix(in srgb, var(--color-warning, #ffc107) 10%, transparent);
+        );
     }
 
     /* ----------------------------------------------------------------- */
-    /* Error / alert — red-tinted bubble, black-striped header           */
+    /* Error / alert — red bubble (same pattern as user msgs)            */
+    /* Uses --color-error from the theme semantic palette                */
     /* ----------------------------------------------------------------- */
     :host([bubble-type="error"]) .bubble {
-      background: color-mix(in srgb, var(--color-error, #ff1744) 8%, transparent);
-      border-color: color-mix(in srgb, var(--color-error, #ff1744) 25%, transparent);
+      background:
+        linear-gradient(135deg,
+          var(--color-error-dim, rgba(255, 23, 68, 0.15)) 0%,
+          rgba(255, 23, 68, 0.06) 100%);
+      border-color: rgba(255, 23, 68, 0.30);
       box-shadow:
-        0 2px 8px rgba(0, 0, 0, 0.2),
-        0 0 20px color-mix(in srgb, var(--color-error, #ff1744) 6%, transparent),
-        0 0 40px color-mix(in srgb, var(--color-error, #ff1744) 3%, transparent);
+        0 0 12px rgba(255, 23, 68, 0.20),
+        0 0 30px rgba(255, 23, 68, 0.08);
     }
 
     :host([bubble-type="error"]) .bubble-header {
@@ -98,8 +103,7 @@ const TEMPLATE_HTML = `
           transparent 8px,
           rgba(0, 0, 0, 0.12) 8px,
           rgba(0, 0, 0, 0.12) 16px
-        ),
-        color-mix(in srgb, var(--color-error, #ff1744) 10%, transparent);
+        );
     }
 
     .bubble-header {
