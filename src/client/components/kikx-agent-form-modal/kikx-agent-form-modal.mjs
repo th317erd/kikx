@@ -46,6 +46,11 @@ const TEMPLATE_HTML = `
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
+    .form-select option {
+      background: var(--bg-primary, #0a0a1a);
+      color: var(--text-primary, #e8e8f0);
+    }
+
     .button-row {
       display: flex; gap: var(--spacing-sm, 8px); justify-content: flex-end;
       margin-top: 16px; padding-top: 12px;

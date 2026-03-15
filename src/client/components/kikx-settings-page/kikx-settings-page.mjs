@@ -213,6 +213,11 @@ const TEMPLATE_HTML = `
       border-color: var(--accent-primary, #00e5ff);
     }
 
+    .form-select option {
+      background: var(--bg-primary, #0a0a1a);
+      color: var(--text-primary, #e8e8f0);
+    }
+
     .form-description {
       color: var(--text-secondary, #a0a0b8);
       font-size: 1rem;
