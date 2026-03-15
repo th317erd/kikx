@@ -780,9 +780,12 @@ class KikxSessionPage extends HTMLElement {
         let descriptionTemplate = t('permission.wantsToUse') || '{name} wants to use:';
         permRequest.description = descriptionTemplate.replace('{name}', name);
 
-        // Show tool arguments as full command string
+        // Show tool arguments as full command only for tools where arguments
+        // are meaningful for the permission decision (e.g. fetch URLs).
+        // Websearch queries are NOT shown because the permission is binary
+        // (allow/deny web search), not per-query.
         let toolArgs = frame.content && frame.content.arguments;
-        if (toolArgs) {
+        if (toolArgs && toolName !== 'websearch:search') {
           try {
             permRequest.fullCommand = `${toolName} ${JSON.stringify(toolArgs, null, 2)}`;
           } catch (e) {

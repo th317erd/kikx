@@ -90,6 +90,34 @@ const TEMPLATE_HTML = `
       white-space: nowrap;
     }
 
+    .decision-area {
+      display: flex; flex-direction: column; align-items: flex-start;
+      gap: 4px; flex-shrink: 0;
+    }
+
+    .decision-label {
+      font-size: 0.75rem; font-weight: 600;
+      color: var(--text-secondary, #a0a0b8);
+      line-height: 1;
+    }
+
+    .decision-label.label-allow { color: #66bb6a; }
+    .decision-label.label-caution { color: #fdd835; }
+    .decision-label.label-deny { color: #ff4444; }
+
+    .decision-label.label-deny-shake {
+      color: #ff4444;
+      animation: shake 0.4s ease-in-out infinite;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%      { transform: translateX(-2px); }
+      40%      { transform: translateX(2px); }
+      60%      { transform: translateX(-2px); }
+      80%      { transform: translateX(1px); }
+    }
+
     .decision-buttons {
       display: flex; gap: 4px;
       flex-shrink: 0;
@@ -288,9 +316,19 @@ class KikxPermissionRequest extends HTMLElement {
         badge.textContent  = t('permission.preApproved') || 'Pre-approved';
         row.appendChild(badge);
       } else {
-        // Decision buttons
+        // Decision area: label + buttons
+        let decisionArea = document.createElement('div');
+        decisionArea.className = 'decision-area';
+
+        let label = document.createElement('span');
+        label.className = 'decision-label';
+        label.textContent = 'Please select:';
+        decisionArea.appendChild(label);
+
         let buttonsContainer = document.createElement('div');
         buttonsContainer.className = 'decision-buttons';
+
+        let currentDecision = this._decisions.get(cmd.command);
 
         for (let btn of DECISION_BUTTONS) {
           let button = document.createElement('button');
@@ -301,14 +339,18 @@ class KikxPermissionRequest extends HTMLElement {
           button.setAttribute('data-active-class', btn.activeClass);
 
           // Restore active state if decision already selected
-          let currentDecision = this._decisions.get(cmd.command);
           if (currentDecision === btn.decision)
             button.classList.add(btn.activeClass);
 
           buttonsContainer.appendChild(button);
         }
 
-        row.appendChild(buttonsContainer);
+        decisionArea.appendChild(buttonsContainer);
+        row.appendChild(decisionArea);
+
+        // Restore label state if decision already selected
+        if (currentDecision)
+          this._updateDecisionLabel(label, currentDecision);
       }
 
       this._commandTable.appendChild(row);
@@ -343,9 +385,40 @@ class KikxPermissionRequest extends HTMLElement {
     // Activate clicked button
     button.classList.add(activeClass);
 
+    // Update the decision label
+    let label = row.querySelector('.decision-label');
+    if (label)
+      this._updateDecisionLabel(label, decision);
+
     // Store decision
     this._decisions.set(command, decision);
     this._updateConfirmState();
+  }
+
+  _updateDecisionLabel(label, decision) {
+    label.className = 'decision-label';
+
+    switch (decision) {
+      case 'allow-forever':
+        label.textContent = t('permission.allowForever') || 'Allow forever';
+        label.classList.add('label-allow');
+        break;
+      case 'allow-once':
+        label.textContent = t('permission.allowOnceShort') || 'Allow once';
+        label.classList.add('label-allow');
+        break;
+      case 'deny-once':
+        label.textContent = t('permission.denyOnce') || 'Deny once';
+        label.classList.add('label-caution');
+        break;
+      case 'deny-forever':
+        label.textContent = t('permission.denyForever') || 'Deny forever';
+        label.classList.add('label-deny-shake');
+        break;
+      default:
+        label.textContent = 'Please select:';
+        break;
+    }
   }
 
   _updateConfirmState() {
