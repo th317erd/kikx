@@ -22,8 +22,8 @@ const TEMPLATE_HTML = `
 
     /* ----------------------------------------------------------------- */
     /* Glass-surface reflection (toggled via console: kikxReflections())  */
-    /* Uses ::after pseudo-element with scaleY(-1) + blur + mask to      */
-    /* create a blurred, tinted echo beneath each bubble.                */
+    /* Uses ::after with attr() text + blur to create a blurred,         */
+    /* text-shaped color echo beneath each bubble.                       */
     /* ----------------------------------------------------------------- */
     :host([reflect]) .bubble {
       position: relative;
@@ -31,19 +31,24 @@ const TEMPLATE_HTML = `
     }
 
     :host([reflect]) .bubble::after {
-      content: '';
+      content: attr(data-reflect-text);
       position: absolute;
-      top: 100%;
+      top: calc(100% + 2px);
       left: 0;
       right: 0;
-      height: 40px;
+      max-height: 50px;
+      overflow: hidden;
       background: inherit;
       border-radius: inherit;
+      padding: 12px 14px;
+      color: inherit;
+      font-size: inherit;
+      line-height: 1.4;
       transform: scaleY(-1);
       filter: blur(6px);
       opacity: 0.12;
-      mask-image: linear-gradient(to top, transparent, rgba(0, 0, 0, 0.6) 30%, transparent 100%);
-      -webkit-mask-image: linear-gradient(to top, transparent, rgba(0, 0, 0, 0.6) 30%, transparent 100%);
+      mask-image: linear-gradient(to top, transparent 10%, rgba(0, 0, 0, 0.5) 50%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to top, transparent 10%, rgba(0, 0, 0, 0.5) 50%, transparent 100%);
       pointer-events: none;
     }
 
@@ -363,6 +368,7 @@ class KikxInteraction extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
 
+    this._bubble           = this.shadowRoot.querySelector('.bubble');
     this._avatar           = this.shadowRoot.querySelector('.avatar');
     this._headerName       = this.shadowRoot.querySelector('.header-name');
     this._footerMeta       = this.shadowRoot.querySelector('.footer-meta');
@@ -370,20 +376,25 @@ class KikxInteraction extends HTMLElement {
     this._replyButton      = this.shadowRoot.querySelector('.reply-button');
     this._replyCountBadge  = this.shadowRoot.querySelector('.reply-count-badge');
     this._replyContextText = this.shadowRoot.querySelector('.reply-context-text');
+    this._slot             = this.shadowRoot.querySelector('slot');
 
-    this._onIgnoreClick = this._onIgnoreClick.bind(this);
-    this._onSubmitClick = this._onSubmitClick.bind(this);
-    this._onReplyClick  = this._onReplyClick.bind(this);
+    this._onIgnoreClick    = this._onIgnoreClick.bind(this);
+    this._onSubmitClick    = this._onSubmitClick.bind(this);
+    this._onReplyClick     = this._onReplyClick.bind(this);
+    this._onSlotChange     = this._updateReflectText.bind(this);
   }
 
   connectedCallback() {
     this._render();
     this._replyButton.addEventListener('click', this._onReplyClick);
+    this._slot.addEventListener('slotchange', this._onSlotChange);
+    requestAnimationFrame(() => this._updateReflectText());
   }
 
   disconnectedCallback() {
     this._removeActionListeners();
     this._replyButton.removeEventListener('click', this._onReplyClick);
+    this._slot.removeEventListener('slotchange', this._onSlotChange);
   }
 
   attributeChangedCallback() {
@@ -430,6 +441,25 @@ class KikxInteraction extends HTMLElement {
     }
 
     this._renderActions();
+  }
+
+  _updateReflectText() {
+    let text = '';
+    let slotted = this._slot.assignedNodes({ flatten: true });
+
+    for (let node of slotted) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        text += node.textContent;
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        // Prefer shadow DOM textContent if available (e.g. kikx-message-content)
+        if (node.shadowRoot)
+          text += node.shadowRoot.textContent || '';
+        else
+          text += node.textContent || '';
+      }
+    }
+
+    this._bubble.setAttribute('data-reflect-text', text.trim().substring(0, 300));
   }
 
   _renderActions() {
