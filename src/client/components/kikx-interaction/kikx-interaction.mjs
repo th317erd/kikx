@@ -22,10 +22,10 @@ const TEMPLATE_HTML = `
 
     /* ----------------------------------------------------------------- */
     /* Glass-surface reflection (toggled via console: kikxReflections())  */
-    /* contain: paint prevents infinite mirror recursion between siblings */
+    /* Applied to .bubble (inside shadow DOM) rather than :host to avoid */
+    /* infinite mirror recursion — shadow DOM isolates each bubble.      */
     /* ----------------------------------------------------------------- */
     :host([reflect]) {
-      contain: paint;
       padding-bottom: 30px;
     }
 
