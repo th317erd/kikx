@@ -45,7 +45,7 @@ const TEMPLATE_HTML = `
       font-size: inherit;
       line-height: 1.4;
       transform: scaleY(-1);
-      filter: blur(2.5px);
+      filter: blur(0.5px);
       opacity: 0.10;
       mask-image: linear-gradient(to top, transparent 5%, rgba(0, 0, 0, 0.6) 40%, transparent 100%);
       -webkit-mask-image: linear-gradient(to top, transparent 5%, rgba(0, 0, 0, 0.6) 40%, transparent 100%);
