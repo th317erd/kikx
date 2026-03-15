@@ -188,6 +188,40 @@ class KikxModal extends HTMLElement {
   open() {
     this.setAttribute('open', '');
     this.dispatchEvent(new CustomEvent('modal-open', { bubbles: true, composed: true }));
+    this._autoFocus();
+  }
+
+  _autoFocus() {
+    // Wait a frame so slotted content has rendered
+    requestAnimationFrame(() => {
+      let target = this._findFirstFocusable(this);
+      if (target)
+        target.focus();
+    });
+  }
+
+  _findFirstFocusable(root) {
+    let selectors = 'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])';
+
+    // Check light-DOM children (slotted content)
+    let match = root.querySelector(selectors);
+    if (match)
+      return match;
+
+    // Walk children and check their shadow DOMs
+    for (let child of root.children) {
+      if (child.shadowRoot) {
+        let inner = this._findFirstFocusable(child.shadowRoot);
+        if (inner)
+          return inner;
+      }
+
+      let nested = this._findFirstFocusable(child);
+      if (nested)
+        return nested;
+    }
+
+    return null;
   }
 
   close() {
