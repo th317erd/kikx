@@ -70,11 +70,11 @@ const TEMPLATE_HTML = `
       background: conic-gradient(
         from var(--border-angle, 0deg),
         transparent 0%,
-        #00e5ff 6%,
-        transparent 12%,
-        transparent 44%,
+        #00e5ff 3%,
+        transparent 6%,
+        transparent 47%,
         #ff4081 50%,
-        transparent 56%,
+        transparent 53%,
         transparent 100%
       );
       -webkit-mask:
@@ -97,10 +97,10 @@ const TEMPLATE_HTML = `
       animation: dot-hue-cycle 15s linear infinite;
     }
 
-    /* Glow halo layer — wider strip + heavier blur for visible glow */
+    /* Glow halo layer */
     .input-area::after {
-      inset: -14px;
-      padding: 18px;
+      inset: -8px;
+      padding: 10px;
       z-index: -2;
       opacity: 0.55;
       animation: dot-hue-cycle-glow 15s linear infinite;
@@ -115,8 +115,8 @@ const TEMPLATE_HTML = `
     }
 
     @keyframes dot-hue-cycle-glow {
-      from { filter: blur(22px) hue-rotate(0deg); }
-      to   { filter: blur(22px) hue-rotate(360deg); }
+      from { filter: blur(14px) hue-rotate(0deg); }
+      to   { filter: blur(14px) hue-rotate(360deg); }
     }
 
     .message-textarea {
