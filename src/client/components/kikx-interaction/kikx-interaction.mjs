@@ -9,8 +9,6 @@ const TEMPLATE_HTML = `
       padding: var(--spacing-sm, 8px);
       max-width: 85%;
       align-self: flex-start;
-      -webkit-box-reflect: below 4px
-        linear-gradient(to bottom, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05) 40%, transparent 80%);
     }
 
     :host([alignment="user"]) {
