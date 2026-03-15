@@ -1661,6 +1661,16 @@ class KikxSessionPage extends HTMLElement {
       let body = (Array.isArray(decisions) && decisions.length > 0) ? { decisions } : undefined;
       await approvePermission(sessionID, permissionID, body);
     } catch (error) {
+      // Stale permission request — server restarted and lost the pending state
+      if (error.status === 410) {
+        if (permEl) {
+          permEl.setAttribute('expired', '');
+          permEl.setAttribute('processed', '');
+        }
+
+        return;
+      }
+
       console.error('Permission approval failed:', error);
     }
 

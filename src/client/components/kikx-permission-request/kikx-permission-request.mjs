@@ -142,6 +142,16 @@ const TEMPLATE_HTML = `
     }
 
     :host([processed]) .processed-badge { display: block; }
+
+    .expired-badge {
+      display: none; font-size: 1rem; font-weight: 600;
+      color: #ef9a9a; padding: 4px 0;
+    }
+
+    :host([expired]) .command-table,
+    :host([expired]) .confirm-button { display: none; }
+    :host([expired]) .processed-badge { display: none; }
+    :host([expired]) .expired-badge { display: block; }
   </style>
 
   <div class="permission-header">
@@ -153,6 +163,7 @@ const TEMPLATE_HTML = `
   <div class="command-table"></div>
   <button class="confirm-button" disabled></button>
   <div class="processed-badge">\u2713 Processed</div>
+  <div class="expired-badge">\u23F0 Expired — please resend your message</div>
 `;
 
 let cachedTemplate = null;
@@ -167,7 +178,7 @@ function getTemplate() {
 }
 
 class KikxPermissionRequest extends HTMLElement {
-  static get observedAttributes() { return ['processed', 'permission-id']; }
+  static get observedAttributes() { return ['processed', 'expired', 'permission-id']; }
 
   constructor() {
     super();

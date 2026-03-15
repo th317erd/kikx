@@ -323,18 +323,29 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
-    if (hasDeny) {
-      await interactionLoop.denyPermission(params.sessionID, params.frameID);
+    try {
+      if (hasDeny) {
+        await interactionLoop.denyPermission(params.sessionID, params.frameID);
 
-      return { data: { denied: true } };
+        return { data: { denied: true } };
+      }
+
+      let interactionID = await interactionLoop.approvePermission(
+        params.sessionID,
+        params.frameID,
+      );
+
+      return { data: { approved: true, interactionID } };
+    } catch (error) {
+      // Stale permission request (e.g., server restarted since the request was created)
+      if (error.message && error.message.includes('No pending permission')) {
+        this.setStatusCode(410);
+
+        return { data: { error: 'expired', message: 'This permission request has expired. Please resend your message to try again.' } };
+      }
+
+      throw error;
     }
-
-    let interactionID = await interactionLoop.approvePermission(
-      params.sessionID,
-      params.frameID,
-    );
-
-    return { data: { approved: true, interactionID } };
   }
 
   // ---------------------------------------------------------------------------
