@@ -1,7 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
-import { GLOW_KEYFRAMES, glowCSS } from '../../styles/glow-focus.mjs';
+import { GLOW_KEYFRAMES, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -26,6 +26,7 @@ const TEMPLATE_HTML = `
     /* backdrop-filter creates a stacking context so z-index:-1/-2 works */
     /* ----------------------------------------------------------------- */
     ${GLOW_KEYFRAMES}
+    ${glowHoverCSS('.bubble:hover:not(.focused)')}
     ${glowCSS('.bubble.focused')}
 
     /* ----------------------------------------------------------------- */

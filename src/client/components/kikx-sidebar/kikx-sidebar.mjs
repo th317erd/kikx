@@ -1,7 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
-import { GLOW_KEYFRAMES, glowCSS } from '../../styles/glow-focus.mjs';
+import { GLOW_KEYFRAMES, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -159,6 +159,7 @@ const TEMPLATE_HTML = `
     }
 
     ${GLOW_KEYFRAMES}
+    ${glowHoverCSS('.session-row:hover:not(.active)')}
     ${glowCSS('.session-row.active')}
 
     .session-icon {
