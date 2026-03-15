@@ -33,22 +33,22 @@ const TEMPLATE_HTML = `
     :host([reflect]) .bubble::after {
       content: attr(data-reflect-text);
       position: absolute;
-      top: calc(100% + 2px);
-      left: 0;
-      right: 0;
-      max-height: 50px;
+      top: calc(100% + 1px);
+      left: 6px;
+      right: -6px;
+      max-height: 35px;
       overflow: hidden;
       background: inherit;
       border-radius: inherit;
-      padding: 12px 14px;
+      padding: 10px 14px;
       color: inherit;
       font-size: inherit;
       line-height: 1.4;
       transform: scaleY(-1);
-      filter: blur(6px);
-      opacity: 0.12;
-      mask-image: linear-gradient(to top, transparent 10%, rgba(0, 0, 0, 0.5) 50%, transparent 100%);
-      -webkit-mask-image: linear-gradient(to top, transparent 10%, rgba(0, 0, 0, 0.5) 50%, transparent 100%);
+      filter: blur(2.5px);
+      opacity: 0.10;
+      mask-image: linear-gradient(to top, transparent 5%, rgba(0, 0, 0, 0.6) 40%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to top, transparent 5%, rgba(0, 0, 0, 0.6) 40%, transparent 100%);
       pointer-events: none;
     }
 
