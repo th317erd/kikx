@@ -42,7 +42,7 @@ const TEMPLATE_HTML = `
       box-shadow:
         0 0 15px rgba(0, 229, 255, 0.06),
         0 0 30px rgba(176, 64, 255, 0.03);
-      animation: border-rotate 14s linear infinite;
+      animation: border-rotate 42s linear infinite;
     }
 
     /* --------------------------------------------------------------------- */
@@ -94,7 +94,7 @@ const TEMPLATE_HTML = `
       padding: 1.5px;
       z-index: -1;
       opacity: 0.85;
-      animation: dot-hue-cycle 15s linear infinite;
+      animation: dot-hue-cycle 45s linear infinite;
     }
 
     /* Glow halo layer */
@@ -103,7 +103,7 @@ const TEMPLATE_HTML = `
       padding: 10px;
       z-index: -2;
       opacity: 0.55;
-      animation: dot-hue-cycle-glow 15s linear infinite;
+      animation: dot-hue-cycle-glow 45s linear infinite;
     }
 
     @keyframes border-rotate {
