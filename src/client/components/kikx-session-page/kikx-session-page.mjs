@@ -756,6 +756,7 @@ class KikxSessionPage extends HTMLElement {
       interaction.setAttribute('participant-name', name);
       interaction.setAttribute('participant-initials', getInitials(name));
       interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
+      interaction.setAttribute('bubble-type', 'permission');
       interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
       interaction.setAttribute('data-frame-id', frame.id);
 
@@ -836,6 +837,7 @@ class KikxSessionPage extends HTMLElement {
       interaction.setAttribute('alignment', 'agent');
       interaction.setAttribute('participant-name', 'System');
       interaction.setAttribute('participant-initials', '!');
+      interaction.setAttribute('bubble-type', 'error');
       interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
       interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
       interaction.setAttribute('data-frame-id', frame.id);

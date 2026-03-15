@@ -48,6 +48,46 @@ const TEMPLATE_HTML = `
         0 0 30px rgba(176, 64, 255, 0.08);
     }
 
+    /* ----------------------------------------------------------------- */
+    /* Permission request — faint construction-zone yellow/black stripes */
+    /* ----------------------------------------------------------------- */
+    :host([bubble-type="permission"]) .bubble {
+      background:
+        repeating-linear-gradient(
+          -45deg,
+          transparent,
+          transparent 10px,
+          rgba(255, 193, 7, 0.05) 10px,
+          rgba(255, 193, 7, 0.05) 20px
+        ),
+        var(--glass-background, rgba(255, 255, 255, 0.05));
+      border-color: rgba(255, 193, 7, 0.20);
+      box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.2),
+        0 0 20px rgba(255, 193, 7, 0.06),
+        0 0 40px rgba(255, 193, 7, 0.03);
+    }
+
+    /* ----------------------------------------------------------------- */
+    /* Error / alert — faint red/black stripes                           */
+    /* ----------------------------------------------------------------- */
+    :host([bubble-type="error"]) .bubble {
+      background:
+        repeating-linear-gradient(
+          -45deg,
+          transparent,
+          transparent 10px,
+          rgba(255, 68, 68, 0.05) 10px,
+          rgba(255, 68, 68, 0.05) 20px
+        ),
+        var(--glass-background, rgba(255, 255, 255, 0.05));
+      border-color: rgba(255, 68, 68, 0.20);
+      box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.2),
+        0 0 20px rgba(255, 68, 68, 0.06),
+        0 0 40px rgba(255, 68, 68, 0.03);
+    }
+
     .bubble-header {
       display: flex;
       align-items: center;
@@ -62,7 +102,7 @@ const TEMPLATE_HTML = `
       align-items: center;
       justify-content: center;
       font-weight: 700;
-      font-size: 1rem;
+      font-size: 0.65rem;
       flex-shrink: 0;
       color: #fff;
       background: var(--interaction-avatar-color, #e53935);
@@ -263,6 +303,7 @@ class KikxInteraction extends HTMLElement {
       'participant-initials',
       'avatar-color',
       'alignment',
+      'bubble-type',
       'timestamp',
       'token-count',
       'show-actions',
