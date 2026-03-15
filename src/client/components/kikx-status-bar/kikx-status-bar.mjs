@@ -44,8 +44,8 @@ const TEMPLATE_HTML = `
       right: 0;
       height: 1px;
       background: linear-gradient(90deg,
-        #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100,
-        #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100);
+        #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100, #ff4081,
+        #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100, #ff4081);
       background-size: 200% 100%;
       animation: rainbow-scroll 60s linear infinite;
       box-shadow: 0 0 6px rgba(0, 229, 255, 0.2), 0 0 12px rgba(176, 64, 255, 0.1);

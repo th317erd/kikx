@@ -90,8 +90,8 @@ export function glowHoverCSS(selector) {
       padding: 1.5px;
       z-index: -1;
       background: linear-gradient(90deg,
-        #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100,
-        #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100);
+        #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100, #ff4081,
+        #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100, #ff4081);
       background-size: 200% 100%;
       animation: rainbow-scroll 60s linear infinite;
       opacity: 0.25;

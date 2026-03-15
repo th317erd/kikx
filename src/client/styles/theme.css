@@ -93,7 +93,7 @@ body {
   --neon-orange: #ff9100;
 
   /* Rainbow Gradient (for decorative borders) */
-  --neon-rainbow: linear-gradient(90deg, #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100);
+  --neon-rainbow: linear-gradient(90deg, #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100, #ff4081);
 
   /* Ambient Glow (multi-color neon) */
   --neon-ambient-glow:
