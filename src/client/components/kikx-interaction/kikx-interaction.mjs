@@ -30,32 +30,32 @@ const TEMPLATE_HTML = `
         0 2px 8px rgba(0, 0, 0, 0.2),
         0 0 20px rgba(0, 229, 255, 0.03),
         0 0 40px rgba(176, 64, 255, 0.02),
-        8px 20px 30px -5px rgba(0, 229, 255, 0.08),
-        12px 25px 50px -5px rgba(176, 64, 255, 0.06);
+        3px 6px 10px -3px rgba(0, 229, 255, 0.07),
+        5px 8px 16px -3px rgba(176, 64, 255, 0.05);
     }
 
     :host([alignment="user"][reflect]) .bubble {
       box-shadow:
         0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.20)),
         0 0 30px rgba(176, 64, 255, 0.08),
-        8px 20px 30px -5px var(--accent-glow, rgba(0, 229, 255, 0.12)),
-        12px 25px 50px -5px rgba(176, 64, 255, 0.08);
+        3px 6px 10px -3px var(--accent-glow, rgba(0, 229, 255, 0.10)),
+        5px 8px 16px -3px rgba(176, 64, 255, 0.06);
     }
 
     :host([bubble-type="permission"][reflect]) .bubble {
       box-shadow:
         0 0 12px rgba(255, 234, 0, 0.20),
         0 0 30px rgba(255, 234, 0, 0.08),
-        8px 20px 30px -5px rgba(255, 234, 0, 0.10),
-        12px 25px 50px -5px rgba(255, 234, 0, 0.06);
+        3px 6px 10px -3px rgba(255, 234, 0, 0.08),
+        5px 8px 16px -3px rgba(255, 234, 0, 0.05);
     }
 
     :host([bubble-type="error"][reflect]) .bubble {
       box-shadow:
         0 0 12px rgba(255, 23, 68, 0.20),
         0 0 30px rgba(255, 23, 68, 0.08),
-        8px 20px 30px -5px rgba(255, 23, 68, 0.10),
-        12px 25px 50px -5px rgba(255, 23, 68, 0.06);
+        3px 6px 10px -3px rgba(255, 23, 68, 0.08),
+        5px 8px 16px -3px rgba(255, 23, 68, 0.05);
     }
 
     .bubble {
