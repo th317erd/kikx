@@ -1545,17 +1545,18 @@ class KikxSessionPage extends HTMLElement {
       let newSession;
 
       if (detail.agentID) {
-        // Create (or reuse) a DM session with the selected agent
-        result     = await getOrCreateDm(detail.agentID);
+        // Create a new DM session with the selected agent
+        let sessionData = {
+          type:      'dm',
+          dmAgentID: detail.agentID,
+        };
+
+        if (detail.name)
+          sessionData.name = detail.name;
+
+        result     = await createSession(sessionData);
         let data   = (result && result.data) || result;
         newSession = data.session || data;
-
-        // Override name if the user provided one
-        if (detail.name && newSession && newSession.id) {
-          let { updateSession } = await import('../../lib/api.mjs');
-          await updateSession(newSession.id, { name: detail.name });
-          newSession.name = detail.name;
-        }
       } else {
         result     = await createSession({ name: detail.name });
         let data   = (result && result.data) || result;
