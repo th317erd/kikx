@@ -30,6 +30,12 @@ Kikx is a self-hosted AI agent orchestration platform — a multi-agent, multi-u
 | [Client Plan](../plan/kikx/client-plan.yaml) | Client architecture plan: design system, components, state management, testing strategy (YAML) |
 | [Future Plans](../plan/kikx/future-plans.yaml) | Feature roadmap with status, priority, and descriptions (YAML) |
 
+## UI Effects
+
+| Document | Description |
+|----------|-------------|
+| [Border Glow Dots](./border-glow-dots.md) | Animated conic-gradient border effect: two color-cycling glowing dots orbit an element's border using CSS mask, custom property animation, and hue-rotate |
+
 ## Other
 
 | Document | Description |
