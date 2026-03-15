@@ -49,14 +49,15 @@ const TEMPLATE_HTML = `
     }
 
     /* ----------------------------------------------------------------- */
-    /* Permission request — construction-zone stripes on header only     */
+    /* Permission / warning — yellow-tinted bubble, black-striped header */
     /* ----------------------------------------------------------------- */
     :host([bubble-type="permission"]) .bubble {
-      border-color: rgba(255, 193, 7, 0.20);
+      background: color-mix(in srgb, var(--color-warning, #ffc107) 8%, transparent);
+      border-color: color-mix(in srgb, var(--color-warning, #ffc107) 25%, transparent);
       box-shadow:
         0 2px 8px rgba(0, 0, 0, 0.2),
-        0 0 20px rgba(255, 193, 7, 0.06),
-        0 0 40px rgba(255, 193, 7, 0.03);
+        0 0 20px color-mix(in srgb, var(--color-warning, #ffc107) 6%, transparent),
+        0 0 40px color-mix(in srgb, var(--color-warning, #ffc107) 3%, transparent);
     }
 
     :host([bubble-type="permission"]) .bubble-header {
@@ -68,20 +69,22 @@ const TEMPLATE_HTML = `
           -45deg,
           transparent,
           transparent 8px,
-          rgba(255, 193, 7, 0.06) 8px,
-          rgba(255, 193, 7, 0.06) 16px
-        );
+          rgba(0, 0, 0, 0.12) 8px,
+          rgba(0, 0, 0, 0.12) 16px
+        ),
+        color-mix(in srgb, var(--color-warning, #ffc107) 10%, transparent);
     }
 
     /* ----------------------------------------------------------------- */
-    /* Error / alert — red stripes on header only                        */
+    /* Error / alert — red-tinted bubble, black-striped header           */
     /* ----------------------------------------------------------------- */
     :host([bubble-type="error"]) .bubble {
-      border-color: rgba(255, 68, 68, 0.20);
+      background: color-mix(in srgb, var(--color-error, #ff1744) 8%, transparent);
+      border-color: color-mix(in srgb, var(--color-error, #ff1744) 25%, transparent);
       box-shadow:
         0 2px 8px rgba(0, 0, 0, 0.2),
-        0 0 20px rgba(255, 68, 68, 0.06),
-        0 0 40px rgba(255, 68, 68, 0.03);
+        0 0 20px color-mix(in srgb, var(--color-error, #ff1744) 6%, transparent),
+        0 0 40px color-mix(in srgb, var(--color-error, #ff1744) 3%, transparent);
     }
 
     :host([bubble-type="error"]) .bubble-header {
@@ -93,9 +96,10 @@ const TEMPLATE_HTML = `
           -45deg,
           transparent,
           transparent 8px,
-          rgba(255, 68, 68, 0.06) 8px,
-          rgba(255, 68, 68, 0.06) 16px
-        );
+          rgba(0, 0, 0, 0.12) 8px,
+          rgba(0, 0, 0, 0.12) 16px
+        ),
+        color-mix(in srgb, var(--color-error, #ff1744) 10%, transparent);
     }
 
     .bubble-header {
