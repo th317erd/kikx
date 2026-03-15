@@ -169,6 +169,10 @@ const TEMPLATE_HTML = `
       color: #66bb6a; padding: 4px 0;
     }
 
+    .processed-badge.badge-allow { color: #66bb6a; }
+    .processed-badge.badge-caution { color: #fdd835; }
+    .processed-badge.badge-deny { color: #ff4444; }
+
     :host([processed]) .processed-badge { display: block; }
 
     .expired-badge {
@@ -240,6 +244,66 @@ class KikxPermissionRequest extends HTMLElement {
   disconnectedCallback() {
     this._confirmButton.removeEventListener('click', this._onConfirmClick);
     this._commandTable.removeEventListener('click', this._onDecisionClick);
+  }
+
+  attributeChangedCallback(name) {
+    if (name === 'processed')
+      this._updateProcessedBadge();
+  }
+
+  _updateProcessedBadge() {
+    if (!this.hasAttribute('processed'))
+      return;
+
+    // Collect unique decisions
+    let decisions = [...this._decisions.values()];
+    if (decisions.length === 0)
+      return;
+
+    // For a single decision (or all the same), show it directly
+    let unique = [...new Set(decisions)];
+
+    if (unique.length === 1) {
+      let decision = unique[0];
+
+      this._processedBadge.className = 'processed-badge';
+
+      switch (decision) {
+        case 'allow-forever':
+          this._processedBadge.textContent = '\u2713 ' + (t('permission.allowForever') || 'Allow forever');
+          this._processedBadge.classList.add('badge-allow');
+          break;
+        case 'allow-once':
+          this._processedBadge.textContent = '\u2713 ' + (t('permission.allowOnceShort') || 'Allow once');
+          this._processedBadge.classList.add('badge-allow');
+          break;
+        case 'deny-once':
+          this._processedBadge.textContent = '\u2717 ' + (t('permission.denyOnce') || 'Deny once');
+          this._processedBadge.classList.add('badge-caution');
+          break;
+        case 'deny-forever':
+          this._processedBadge.textContent = '\u2717 ' + (t('permission.denyForever') || 'Deny forever');
+          this._processedBadge.classList.add('badge-deny');
+          break;
+      }
+    } else {
+      // Mixed decisions — show summary
+      let hasAllow = decisions.some((d) => d.startsWith('allow'));
+      let hasDeny  = decisions.some((d) => d.startsWith('deny'));
+
+      this._processedBadge.className = 'processed-badge';
+
+      if (hasAllow && hasDeny) {
+        this._processedBadge.textContent = '\u2713 Mixed decisions applied';
+        this._processedBadge.classList.add('badge-caution');
+      } else if (hasAllow) {
+        this._processedBadge.textContent = '\u2713 Allowed';
+        this._processedBadge.classList.add('badge-allow');
+      } else {
+        this._processedBadge.textContent = '\u2717 Denied';
+        this._processedBadge.classList.add('badge-deny');
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
