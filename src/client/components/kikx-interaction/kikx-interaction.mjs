@@ -22,16 +22,29 @@ const TEMPLATE_HTML = `
 
     /* ----------------------------------------------------------------- */
     /* Glass-surface reflection (toggled via console: kikxReflections())  */
-    /* Applied to .bubble (inside shadow DOM) rather than :host to avoid */
-    /* infinite mirror recursion — shadow DOM isolates each bubble.      */
+    /* Uses ::after pseudo-element with scaleY(-1) + blur + mask to      */
+    /* create a blurred, tinted echo beneath each bubble.                */
     /* ----------------------------------------------------------------- */
-    :host([reflect]) {
-      padding-bottom: 30px;
+    :host([reflect]) .bubble {
+      position: relative;
+      overflow: visible;
     }
 
-    :host([reflect]) .bubble {
-      -webkit-box-reflect: below 4px
-        linear-gradient(to bottom, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05) 40%, transparent 80%);
+    :host([reflect]) .bubble::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      height: 40px;
+      background: inherit;
+      border-radius: inherit;
+      transform: scaleY(-1);
+      filter: blur(6px);
+      opacity: 0.12;
+      mask-image: linear-gradient(to top, transparent, rgba(0, 0, 0, 0.6) 30%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to top, transparent, rgba(0, 0, 0, 0.6) 30%, transparent 100%);
+      pointer-events: none;
     }
 
     .bubble {
