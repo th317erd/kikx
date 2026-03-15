@@ -46,6 +46,12 @@ Use the `test-bot` user's `test-claude` agent which has a valid API key.
 
 ---
 
+## Project Documentation
+
+For a comprehensive understanding of the Kikx project — architecture, data models, plugin system, client, and more — see the **[Documentation Index](./bot-docs/docs/README.md)**.
+
+---
+
 ## !!!MANDATORY FIRST ACTION!!!
 
 **STOP. Before responding to the user, ask yourself: "Do I have the contents of `~/.claude-config/startup.md` in my current context?"**
