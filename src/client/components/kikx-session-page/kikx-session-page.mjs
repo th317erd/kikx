@@ -776,7 +776,20 @@ class KikxSessionPage extends HTMLElement {
         permRequest.commands = parsedCommands;
       } else {
         let toolName = (frame.content && frame.content.toolName) || 'unknown';
-        permRequest.description = `${name} wants to use: ${toolName}`;
+        let descriptionTemplate = t('permission.wantsToUse') || '{name} wants to use:';
+        permRequest.description = descriptionTemplate.replace('{name}', name);
+
+        // Show tool arguments as full command string
+        let toolArgs = frame.content && frame.content.arguments;
+        if (toolArgs) {
+          try {
+            permRequest.fullCommand = `${toolName} ${JSON.stringify(toolArgs, null, 2)}`;
+          } catch (e) {
+            permRequest.fullCommand = toolName;
+          }
+        }
+
+        permRequest.commands = [{ command: toolName, arguments: [], status: 'needs-approval' }];
       }
 
       if (frame.processed)

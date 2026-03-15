@@ -136,6 +136,7 @@ export default {
     allowAlways:      'Always allow',
     deny:             'Deny',
     wantsToExecute:   '{name} wants to execute:',
+    wantsToUse:       '{name} wants to use:',
     allowForever:     'Allow forever',
     allowOnceShort:   'Allow once',
     denyOnce:         'Deny once',

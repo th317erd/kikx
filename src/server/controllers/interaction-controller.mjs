@@ -305,7 +305,7 @@ export class InteractionController extends ControllerAuthBase {
 
           await permissionEngine.createRule({
             organizationID,
-            featureName: `shell:${decision.command}`,
+            featureName: (decision.command.includes(':')) ? decision.command : `shell:${decision.command}`,
             effect,
             scope:       'session',
             scopeID:     params.sessionID,

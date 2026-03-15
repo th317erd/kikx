@@ -84,10 +84,10 @@ describe('htmlToMarkdown', () => {
 });
 
 // =============================================================================
-// WebsearchTool registration
+// websearch:fetch registration and behavior
 // =============================================================================
 
-describe('WebsearchTool', () => {
+describe('websearch:fetch', () => {
   let core;
 
   beforeEach(async () => {
@@ -117,6 +117,17 @@ describe('WebsearchTool', () => {
     );
   });
 
+  it('should throw if url is not a string', async () => {
+    let registry  = core.getPluginRegistry();
+    let ToolClass = registry.getTool('websearch:fetch');
+    let tool      = new ToolClass(core.getContext());
+
+    await assert.rejects(
+      () => tool.execute({ url: 123 }),
+      { message: 'url is required' },
+    );
+  });
+
   it('should provide help information', () => {
     let registry  = core.getPluginRegistry();
     let ToolClass = registry.getTool('websearch:fetch');
@@ -124,7 +135,162 @@ describe('WebsearchTool', () => {
     let help      = tool.getHelp();
 
     assert.equal(help.name, 'websearch:fetch');
+    assert.equal(help.displayName, 'Fetch Page');
+    assert.ok(help.description);
+    assert.ok(help.inputSchema);
+    assert.ok(help.usage);
+    assert.ok(help.examples);
+    assert.ok(help.examples.length > 0);
+  });
+});
+
+// =============================================================================
+// websearch:search registration and behavior
+// =============================================================================
+
+describe('websearch:search', () => {
+  let core;
+
+  beforeEach(async () => {
+    core = createKikxCore();
+    await core.start();
+  });
+
+  afterEach(async () => {
+    if (core && core.isStarted())
+      await core.stop();
+  });
+
+  it('should register as websearch:search tool', () => {
+    let registry  = core.getPluginRegistry();
+    let ToolClass = registry.getTool('websearch:search');
+    assert.ok(ToolClass, 'websearch:search should be registered');
+  });
+
+  it('should throw if query is missing', async () => {
+    let registry  = core.getPluginRegistry();
+    let ToolClass = registry.getTool('websearch:search');
+    let tool      = new ToolClass(core.getContext());
+
+    await assert.rejects(
+      () => tool.execute({}),
+      { message: 'query is required' },
+    );
+  });
+
+  it('should throw if query is not a string', async () => {
+    let registry  = core.getPluginRegistry();
+    let ToolClass = registry.getTool('websearch:search');
+    let tool      = new ToolClass(core.getContext());
+
+    await assert.rejects(
+      () => tool.execute({ query: 42 }),
+      { message: 'query is required' },
+    );
+  });
+
+  it('should throw when puppeteer plugin is not installed', async () => {
+    let registry  = core.getPluginRegistry();
+    let ToolClass = registry.getTool('websearch:search');
+    let tool      = new ToolClass(core.getContext());
+
+    await assert.rejects(
+      () => tool.execute({ query: 'test' }),
+      (error) => {
+        assert.ok(error.message.includes('kikx-plugin-puppeteer'));
+        return true;
+      },
+    );
+  });
+
+  it('should provide help information', () => {
+    let registry  = core.getPluginRegistry();
+    let ToolClass = registry.getTool('websearch:search');
+    let tool      = new ToolClass(core.getContext());
+    let help      = tool.getHelp();
+
+    assert.equal(help.name, 'websearch:search');
     assert.equal(help.displayName, 'Web Search');
     assert.ok(help.description);
+    assert.ok(help.inputSchema);
+    assert.ok(help.usage);
+    assert.ok(help.examples);
+    assert.ok(help.examples.length > 0);
+  });
+
+  it('should have correct input schema', () => {
+    let registry  = core.getPluginRegistry();
+    let ToolClass = registry.getTool('websearch:search');
+
+    assert.equal(ToolClass.inputSchema.type, 'object');
+    assert.ok(ToolClass.inputSchema.properties.query);
+    assert.ok(ToolClass.inputSchema.properties.limit);
+    assert.deepEqual(ToolClass.inputSchema.required, ['query']);
+  });
+
+  it('should use executeInBrowser hook when puppeteer plugin is loaded', async () => {
+    let registry = core.getPluginRegistry();
+    let hookCalled = false;
+
+    // Simulate puppeteer plugin registering its hook
+    registry.registerHook('websearch:executeInBrowser', async (callback) => {
+      hookCalled = true;
+
+      // Return mock search results
+      return [
+        { title: 'Mock Result', url: 'https://example.com', snippet: 'A mock result' },
+      ];
+    });
+
+    let ToolClass = registry.getTool('websearch:search');
+    let tool      = new ToolClass(core.getContext());
+    let result    = await tool.execute({ query: 'test query' });
+
+    assert.ok(hookCalled, 'hook should have been called');
+    assert.equal(result.query, 'test query');
+    assert.equal(result.resultCount, 1);
+    assert.equal(result.results[0].title, 'Mock Result');
+    assert.ok(result.content.includes('Mock Result'));
+    assert.ok(result.content.includes('https://example.com'));
+  });
+});
+
+// =============================================================================
+// websearch:fetch rendering strategy
+// =============================================================================
+
+describe('websearch:fetch rendering strategy', () => {
+  let core;
+
+  beforeEach(async () => {
+    core = createKikxCore();
+    await core.start();
+  });
+
+  afterEach(async () => {
+    if (core && core.isStarted())
+      await core.stop();
+  });
+
+  it('should use renderPage hook when available and markdown negotiation fails', async () => {
+    let registry   = core.getPluginRegistry();
+    let hookCalled = false;
+
+    // Simulate puppeteer plugin registering its hook
+    registry.registerHook('websearch:renderPage', async ({ url, timeout }) => {
+      hookCalled = true;
+      return { html: '<p>Rendered content</p>', title: 'Test Page', url };
+    });
+
+    let ToolClass = registry.getTool('websearch:fetch');
+    let tool      = new ToolClass(core.getContext());
+
+    // Use a URL that will fail markdown negotiation (no server)
+    // but the hook should still be called as fallback
+    let result = await tool.execute({ url: 'http://localhost:99999/test' });
+
+    assert.ok(hookCalled, 'renderPage hook should have been called');
+    assert.equal(result.title, 'Test Page');
+    assert.ok(result.markdown.includes('Rendered content'));
   });
 });
