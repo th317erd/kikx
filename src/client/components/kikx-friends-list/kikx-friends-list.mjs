@@ -1,6 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
+import { GLOW_KEYFRAMES, glowHoverCSS } from '../../styles/glow-focus.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -28,11 +29,16 @@ const TEMPLATE_HTML = `
       cursor: pointer;
       border-radius: var(--border-radius-small, 4px);
       transition: background 0.15s ease;
+      position: relative;
+      isolation: isolate;
     }
 
     .friend-row:hover {
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
     }
+
+    ${GLOW_KEYFRAMES}
+    ${glowHoverCSS('.friend-row:hover')}
 
     .friend-name {
       flex: 1;
