@@ -49,18 +49,9 @@ const TEMPLATE_HTML = `
     }
 
     /* ----------------------------------------------------------------- */
-    /* Permission request — faint construction-zone yellow/black stripes */
+    /* Permission request — construction-zone stripes on header only     */
     /* ----------------------------------------------------------------- */
     :host([bubble-type="permission"]) .bubble {
-      background:
-        repeating-linear-gradient(
-          -45deg,
-          transparent,
-          transparent 10px,
-          rgba(255, 193, 7, 0.05) 10px,
-          rgba(255, 193, 7, 0.05) 20px
-        ),
-        var(--glass-background, rgba(255, 255, 255, 0.05));
       border-color: rgba(255, 193, 7, 0.20);
       box-shadow:
         0 2px 8px rgba(0, 0, 0, 0.2),
@@ -68,24 +59,43 @@ const TEMPLATE_HTML = `
         0 0 40px rgba(255, 193, 7, 0.03);
     }
 
-    /* ----------------------------------------------------------------- */
-    /* Error / alert — faint red/black stripes                           */
-    /* ----------------------------------------------------------------- */
-    :host([bubble-type="error"]) .bubble {
+    :host([bubble-type="permission"]) .bubble-header {
+      margin: -12px -14px 0;
+      padding: 10px 14px;
+      border-radius: var(--border-radius-large, 12px) var(--border-radius-large, 12px) 0 0;
       background:
         repeating-linear-gradient(
           -45deg,
           transparent,
-          transparent 10px,
-          rgba(255, 68, 68, 0.05) 10px,
-          rgba(255, 68, 68, 0.05) 20px
-        ),
-        var(--glass-background, rgba(255, 255, 255, 0.05));
+          transparent 8px,
+          rgba(255, 193, 7, 0.06) 8px,
+          rgba(255, 193, 7, 0.06) 16px
+        );
+    }
+
+    /* ----------------------------------------------------------------- */
+    /* Error / alert — red stripes on header only                        */
+    /* ----------------------------------------------------------------- */
+    :host([bubble-type="error"]) .bubble {
       border-color: rgba(255, 68, 68, 0.20);
       box-shadow:
         0 2px 8px rgba(0, 0, 0, 0.2),
         0 0 20px rgba(255, 68, 68, 0.06),
         0 0 40px rgba(255, 68, 68, 0.03);
+    }
+
+    :host([bubble-type="error"]) .bubble-header {
+      margin: -12px -14px 0;
+      padding: 10px 14px;
+      border-radius: var(--border-radius-large, 12px) var(--border-radius-large, 12px) 0 0;
+      background:
+        repeating-linear-gradient(
+          -45deg,
+          transparent,
+          transparent 8px,
+          rgba(255, 68, 68, 0.06) 8px,
+          rgba(255, 68, 68, 0.06) 16px
+        );
     }
 
     .bubble-header {
