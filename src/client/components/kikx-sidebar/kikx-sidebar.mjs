@@ -179,10 +179,47 @@ const TEMPLATE_HTML = `
     ${glowHoverCSS('kikx-sidebar .session-row:hover:not(.active)')}
     ${glowCSS('kikx-sidebar .session-row.active')}
 
-    kikx-sidebar .session-icon {
-      font-size: 1rem;
+    kikx-sidebar .session-gem {
+      width: 12px;
+      height: 12px;
       flex-shrink: 0;
-      opacity: 0.6;
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+      background: var(--text-muted, #606078);
+      opacity: 0.45;
+      position: relative;
+    }
+
+    kikx-sidebar .session-gem.unread {
+      opacity: 1;
+      background: conic-gradient(from 30deg,
+        #ff0040, #ff8000, #ffe000, #00ff80, #00c0ff, #8040ff, #ff0080, #ff0040);
+      animation: gem-shimmer 30s linear infinite;
+    }
+
+    kikx-sidebar .session-gem.unread::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(45deg, transparent 25%, rgba(255,255,255,0.45) 42%, transparent 58%),
+        linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.25) 48%, transparent 62%),
+        linear-gradient(to bottom, rgba(255,255,255,0.18) 0%, transparent 50%, rgba(0,0,0,0.12) 100%);
+      pointer-events: none;
+    }
+
+    @keyframes gem-shimmer {
+      from {
+        filter:
+          drop-shadow(0 0 3px rgba(0, 229, 255, 0.6))
+          drop-shadow(0 0 6px rgba(176, 64, 255, 0.35))
+          hue-rotate(0deg);
+      }
+      to {
+        filter:
+          drop-shadow(0 0 3px rgba(0, 229, 255, 0.6))
+          drop-shadow(0 0 6px rgba(176, 64, 255, 0.35))
+          hue-rotate(360deg);
+      }
     }
 
     kikx-sidebar .session-name {
@@ -358,9 +395,8 @@ class KikxSidebar extends HTMLElement {
       // Random glow offset so rows don't all rotate in sync
       row.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
 
-      let icon = document.createElement('span');
-      icon.className   = 'session-icon';
-      icon.textContent = (session.type === 'dm') ? '\uD83D\uDCAC' : '\uD83D\uDCC1';
+      let icon = document.createElement('div');
+      icon.className = (session.unreadCount > 0) ? 'session-gem unread' : 'session-gem';
       row.appendChild(icon);
 
       let nameSpan = document.createElement('span');
