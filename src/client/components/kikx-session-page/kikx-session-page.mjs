@@ -471,9 +471,13 @@ class KikxSessionPage extends HTMLElement {
     this._oldestLoadedOrder = 0;
     this._loadingOlder      = false;
 
-    // Multi-agent streaming: per-agent streaming state
-    // Map<agentID, { typingIndicator, typingDots, streamingInteraction, streamingContent, streamingHTML, streamingReflection, reflectionText }>
-    this._agentStreams = new Map();
+    // Streaming state — phantom frames through FrameManager
+    // Map<agentID, DOM element> — ephemeral typing indicators
+    this._typingIndicators = new Map();
+    // Map<agentID, { groupID, html, reflectionText, agentID }> — active streaming groups
+    this._streamingGroups = new Map();
+    // Map<relayKey, { interaction, content, html }> — cross-session relay streams
+    this._relayStreams = new Map();
 
     this._onAddFriend       = this._onAddFriend.bind(this);
     this._onNearTop         = this._onNearTop.bind(this);
@@ -637,78 +641,122 @@ class KikxSessionPage extends HTMLElement {
 
     this._frameManager = new FrameManager({ history: false });
 
-    // Event-driven rendering: FrameManager events → DOM projection
+    // --- Ephemeral typing indicators via phantom frames ---
+    this._frameManager.on('frame:phantom', ({ frame }) => {
+      if (frame.type !== 'typing-indicator')
+        return;
+
+      let agentID = (frame.content && frame.content.agentID) || 'default';
+
+      // Remove existing typing indicator for this agent
+      let existing = this._typingIndicators.get(agentID);
+      if (existing)
+        existing.remove();
+
+      let name = this._getAgentDisplayName(agentID !== 'default' ? agentID : null);
+
+      let interaction = document.createElement('kikx-interaction');
+      interaction.setAttribute('alignment', 'agent');
+      interaction.setAttribute('participant-name', name);
+      interaction.setAttribute('participant-initials', getInitials(name));
+      interaction.setAttribute('timestamp', formatTimestamp(new Date().toISOString()));
+
+      if (agentID !== 'default')
+        interaction.setAttribute('data-agent-id', agentID);
+
+      let dots = document.createElement('div');
+      dots.className = 'typing-indicator';
+      dots.innerHTML = '<span></span><span></span><span></span>';
+
+      interaction.appendChild(dots);
+      this._chatView.appendInteraction(interaction);
+
+      this._typingIndicators.set(agentID, interaction);
+    });
+
+    // --- Event-driven rendering: frame:added → DOM projection ---
     this._frameManager.on('frame:added', ({ frame }) => {
       // --- Streaming finalization ---
-      // If a message frame arrives while we're streaming, adopt the streaming
-      // bubble instead of creating a new element.
-      let agentID     = frame.authorID || null;
-      let streamState = (agentID && this._agentStreams.has(agentID))
-        ? this._agentStreams.get(agentID)
-        : null;
+      // When a commit frame arrives while we have a streaming group, adopt
+      // the group frame's DOM element instead of creating a new one.
+      if (frame.type === 'message') {
+        let agentID = frame.authorID || null;
+        let sg = null;
 
-      let streamingInteraction = streamState
-        ? streamState.streamingInteraction
-        : this._streamingInteraction;
+        // Find streaming group by agentID
+        if (agentID)
+          sg = this._streamingGroups.get(agentID);
 
-      if (frame.type === 'message' && streamingInteraction) {
-        let content = frame.content;
-        let html    = '';
-
-        if (content && typeof content === 'object') {
-          if (content.html)
-            html = content.html;
-          else if (content.text)
-            html = `<p>${escapeHTML(content.text)}</p>`;
-        } else if (typeof content === 'string') {
-          html = content;
+        // Fallback: check all streaming groups for a match
+        if (!sg) {
+          for (let [, group] of this._streamingGroups) {
+            if (group.groupID) {
+              sg = group;
+              break;
+            }
+          }
         }
 
-        let streamingContent = streamState
-          ? streamState.streamingContent
-          : this._streamingContent;
+        if (sg && sg.groupID) {
+          let groupEl = this._chatView.shadowRoot.querySelector(
+            `[data-frame-id="${sg.groupID}"]`,
+          );
 
-        if (streamingContent)
-          streamingContent.content = html;
+          if (groupEl) {
+            // Finalize: update content with server-rendered HTML
+            let content = frame.content;
+            let html    = '';
 
-        streamingInteraction.setAttribute('data-frame-id', frame.id);
+            if (content && typeof content === 'object') {
+              if (content.html)
+                html = content.html;
+              else if (content.text)
+                html = `<p>${escapeHTML(content.text)}</p>`;
+            } else if (typeof content === 'string') {
+              html = content;
+            }
 
-        if (debug.isEnabled() && frame.interactionID) {
-          debug.pushFrame(frame.interactionID, frame);
-          debug.snapshotComposed(frame.interactionID);
+            let mc = groupEl.querySelector('kikx-message-content');
+            if (mc && html)
+              mc.content = html;
+
+            // Switch data-frame-id from group ID to real frame ID
+            groupEl.setAttribute('data-frame-id', frame.id);
+
+            if (debug.isEnabled() && frame.interactionID) {
+              debug.pushFrame(frame.interactionID, frame);
+              debug.snapshotComposed(frame.interactionID);
+            }
+
+            // Clean up streaming group
+            if (agentID)
+              this._streamingGroups.delete(agentID);
+
+            return;
+          }
         }
-
-        if (streamState) {
-          streamState.streamingInteraction = null;
-          streamState.streamingContent     = null;
-          streamState.streamingHTML        = '';
-        }
-
-        this._streamingInteraction = null;
-        this._streamingContent     = null;
-        this._streamingHTML        = '';
-
-        return;
       }
 
-      // --- Reflection finalization (streaming) ---
+      // --- Reflection finalization ---
       if (frame.type === 'reflection') {
-        let streamingReflection = streamState
-          ? streamState.streamingReflection
-          : this._streamingReflection;
+        // Find a streaming group that has this reflection's interaction
+        for (let [agentID, sg] of this._streamingGroups) {
+          if (!sg.groupID)
+            continue;
 
-        if (streamingReflection) {
-          streamingReflection.content = (frame.content && frame.content.text) || '';
+          let groupEl = this._chatView.shadowRoot.querySelector(
+            `[data-frame-id="${sg.groupID}"]`,
+          );
 
-          if (streamState) {
-            streamState.streamingReflection = null;
-            streamState.reflectionText      = '';
+          if (groupEl) {
+            let rb = groupEl.querySelector('kikx-reflection-block');
+            if (rb) {
+              rb.content = (frame.content && frame.content.text) || '';
+              sg.reflectionText = '';
+            }
+
+            return;
           }
-
-          this._streamingReflection = null;
-          this._reflectionText      = '';
-
-          return;
         }
       }
 
@@ -756,6 +804,16 @@ class KikxSessionPage extends HTMLElement {
       if (!el)
         return;
 
+      // For streaming group frames, set the correct agent display name
+      for (let [, sg] of this._streamingGroups) {
+        if (sg.groupID === frame.id) {
+          let agentName = this._getAgentDisplayName(sg.agentID !== 'default' ? sg.agentID : null);
+          el.setAttribute('participant-name', agentName);
+          el.setAttribute('participant-initials', getInitials(agentName));
+          break;
+        }
+      }
+
       // Thread: set reply context if this frame is a reply
       if (frame.parentID) {
         let preview = this._getParentPreview(frame.parentID);
@@ -774,8 +832,54 @@ class KikxSessionPage extends HTMLElement {
       }
     });
 
+    // --- Event-driven rendering: frame:updated → patch DOM in place ---
     this._frameManager.on('frame:updated', ({ frame }) => {
-      this._updateRenderedFrame(frame);
+      if (!this._chatView || !this._chatView.shadowRoot)
+        return;
+
+      let el = this._chatView.shadowRoot.querySelector(
+        `[data-frame-id="${frame.id}"]`,
+      );
+
+      if (!el)
+        return;
+
+      // Update message content
+      if (frame.content && (frame.content.html || frame.content.text)) {
+        let mc = el.querySelector('kikx-message-content');
+
+        if (!mc) {
+          mc = document.createElement('kikx-message-content');
+          el.appendChild(mc);
+        }
+
+        let html = '';
+
+        if (frame.content.html)
+          html = frame.content.html;
+        else if (frame.content.text)
+          html = `<p>${escapeHTML(frame.content.text)}</p>`;
+
+        if (html)
+          mc.content = html;
+      }
+
+      // Update reflection content (streaming reflections stored in group frame)
+      if (frame.content && frame.content.reflectionText) {
+        let rb = el.querySelector('kikx-reflection-block');
+
+        if (!rb) {
+          rb = document.createElement('kikx-reflection-block');
+          let mc = el.querySelector('kikx-message-content');
+
+          if (mc)
+            el.insertBefore(rb, mc);
+          else
+            el.appendChild(rb);
+        }
+
+        rb.content = frame.content.reflectionText;
+      }
     });
   }
 
@@ -828,9 +932,38 @@ class KikxSessionPage extends HTMLElement {
           this._oldestLoadedOrder = minOrder;
         }
 
-        // Merge with events enabled — frame:added handlers render each frame
-        this._frameManager.merge(frames);
+        // Batch initial load: merge WITHOUT events, then render all frames
+        // in a single DocumentFragment append (avoids 100+ individual layout
+        // recalculations for large sessions).
+        this._frameManager.loadWindow(frames);
         this._frameManager.syncOrderCounter(this._frameManager.getWindowBounds().to);
+
+        let fragment   = document.createDocumentFragment();
+        let allFrames  = this._frameManager.toArray();
+
+        for (let i = 0; i < allFrames.length; i++) {
+          let el = createFrameElement(allFrames[i]);
+
+          if (!el)
+            continue;
+
+          // Thread: set reply context if this frame is a reply
+          if (allFrames[i].parentID) {
+            let preview = this._getParentPreview(allFrames[i].parentID);
+            if (preview)
+              el.setAttribute('parent-preview', preview);
+          }
+
+          if (debug.isEnabled()) {
+            debug.trackElement(allFrames[i].interactionID || allFrames[i].id, el);
+            debug.pushFrame(allFrames[i].interactionID || allFrames[i].id, allFrames[i]);
+          }
+
+          fragment.appendChild(el);
+        }
+
+        if (fragment.childNodes.length > 0)
+          this._chatView.appendInteraction(fragment);
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -1027,7 +1160,41 @@ class KikxSessionPage extends HTMLElement {
           return;
         }
 
-        this._handleStreamDelta(parsed);
+        if (!this._frameManager)
+          return;
+
+        let deltaText    = (parsed.content && parsed.content.text) || '';
+        let deltaAgentID = parsed.authorID || 'default';
+        let deltaGroupID = parsed.interactionID || `stream-${deltaAgentID}-${Date.now()}`;
+
+        // Remove typing indicator on first delta
+        let typingEl = this._typingIndicators.get(deltaAgentID);
+        if (typingEl) {
+          typingEl.remove();
+          this._typingIndicators.delete(deltaAgentID);
+        }
+
+        // Get or create streaming group
+        let sg = this._streamingGroups.get(deltaAgentID);
+        if (!sg) {
+          sg = { groupID: deltaGroupID, html: '', reflectionText: '', agentID: deltaAgentID };
+          this._streamingGroups.set(deltaAgentID, sg);
+        }
+
+        sg.html += deltaText;
+
+        // Merge phantom with groupID — FrameManager creates/updates group frame
+        this._frameManager.merge([{
+          id:      `delta-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type:    'message',
+          phantom: true,
+          groupID: sg.groupID,
+          content: { html: sg.html },
+        }]);
+
+        if (debug.isEnabled() && parsed.interactionID)
+          debug.setStreamDelta(parsed.interactionID, sg.html);
+
         break;
       }
 
@@ -1040,7 +1207,41 @@ class KikxSessionPage extends HTMLElement {
           return;
         }
 
-        this._handleReflectionDelta(parsed);
+        if (!this._frameManager)
+          return;
+
+        let reflText     = (parsed.content && parsed.content.text) || '';
+        let reflAgentID  = parsed.authorID || 'default';
+        let reflGroupID  = parsed.interactionID || `stream-${reflAgentID}-${Date.now()}`;
+
+        // Remove typing indicator on first reflection delta
+        let reflTypingEl = this._typingIndicators.get(reflAgentID);
+        if (reflTypingEl) {
+          reflTypingEl.remove();
+          this._typingIndicators.delete(reflAgentID);
+        }
+
+        // Get or create streaming group
+        let reflSg = this._streamingGroups.get(reflAgentID);
+        if (!reflSg) {
+          reflSg = { groupID: reflGroupID, html: '', reflectionText: '', agentID: reflAgentID };
+          this._streamingGroups.set(reflAgentID, reflSg);
+        }
+
+        reflSg.reflectionText += reflText;
+
+        // Merge phantom into same group — reflectionText merges alongside html
+        this._frameManager.merge([{
+          id:      `refl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type:    'message',
+          phantom: true,
+          groupID: reflSg.groupID,
+          content: { reflectionText: reflSg.reflectionText },
+        }]);
+
+        if (debug.isEnabled() && parsed.interactionID)
+          debug.setReflectionDelta(parsed.interactionID, reflSg.reflectionText);
+
         break;
       }
 
@@ -1061,9 +1262,19 @@ class KikxSessionPage extends HTMLElement {
         let startData;
         try { startData = JSON.parse(data); } catch (_error) { startData = {}; }
 
-        let startAgentID = startData.agentID || null;
+        let startAgentID = startData.agentID || 'default';
         this._messageInput.setInteracting(true);
-        this._showTypingIndicator(startAgentID);
+
+        // Merge ephemeral phantom (no groupID) → frame:phantom handler creates typing dots
+        if (this._frameManager) {
+          this._frameManager.merge([{
+            id:      `typing-${startAgentID}-${Date.now()}`,
+            type:    'typing-indicator',
+            phantom: true,
+            content: { agentID: startAgentID },
+          }]);
+        }
+
         let startStatusBar = this.shadowRoot.querySelector('kikx-status-bar');
         if (startStatusBar)
           startStatusBar.setInteracting(true);
@@ -1074,20 +1285,32 @@ class KikxSessionPage extends HTMLElement {
         let endData;
         try { endData = JSON.parse(data); } catch (_error) { endData = {}; }
 
-        let endAgentID = endData.agentID || null;
+        let endAgentID = endData.agentID || 'default';
 
         if (debug.isEnabled()) {
-          let streamState = (endAgentID) ? this._agentStreams.get(endAgentID) : null;
-          let streamingEl = (streamState && streamState.streamingInteraction) || this._streamingInteraction;
-          if (streamingEl) {
-            let interactionID = endData.interactionID || streamingEl.getAttribute('data-interaction-id');
-            if (interactionID)
-              debug.snapshotComposed(interactionID);
+          let sg = this._streamingGroups.get(endAgentID);
+          if (sg && sg.groupID) {
+            let groupEl = this._chatView.shadowRoot.querySelector(
+              `[data-frame-id="${sg.groupID}"]`,
+            );
+            if (groupEl) {
+              let interactionID = endData.interactionID || groupEl.getAttribute('data-interaction-id');
+              if (interactionID)
+                debug.snapshotComposed(interactionID);
+            }
           }
         }
 
-        this._removeTypingIndicator(endAgentID);
-        this._clearStreamingState(endAgentID);
+        // Remove typing indicator
+        let endTypingEl = this._typingIndicators.get(endAgentID);
+        if (endTypingEl) {
+          endTypingEl.remove();
+          this._typingIndicators.delete(endAgentID);
+        }
+
+        // Clean up streaming group
+        this._streamingGroups.delete(endAgentID);
+
         this._messageInput.setInteracting(false);
         let endStatusBar = this.shadowRoot.querySelector('kikx-status-bar');
         if (endStatusBar)
@@ -1115,32 +1338,6 @@ class KikxSessionPage extends HTMLElement {
     if (this._streamAbort) {
       this._streamAbort.abort();
       this._streamAbort = null;
-    }
-  }
-
-  _updateRenderedFrame(frame) {
-    if (!this._chatView || !this._chatView.shadowRoot)
-      return;
-
-    let existing = this._chatView.shadowRoot.querySelector(
-      `kikx-interaction[data-frame-id="${frame.id}"]`,
-    );
-
-    if (!existing)
-      return;
-
-    // Update content for message-type frames
-    let messageContent = existing.querySelector('kikx-message-content');
-    if (messageContent && frame.content) {
-      let html = '';
-
-      if (frame.content.html)
-        html = frame.content.html;
-      else if (frame.content.text)
-        html = `<p>${escapeHTML(frame.content.text)}</p>`;
-
-      if (html)
-        messageContent.content = html;
     }
   }
 
@@ -1339,237 +1536,18 @@ class KikxSessionPage extends HTMLElement {
   }
 
   // ---------------------------------------------------------------------------
-  // Typing indicator
-  // ---------------------------------------------------------------------------
-
-  _showTypingIndicator(agentID) {
-    this._removeTypingIndicator(agentID);
-
-    let name = this._getAgentDisplayName(agentID);
-
-    let interaction = document.createElement('kikx-interaction');
-    interaction.setAttribute('alignment', 'agent');
-    interaction.setAttribute('participant-name', name);
-    interaction.setAttribute('participant-initials', getInitials(name));
-    interaction.setAttribute('timestamp', formatTimestamp(new Date().toISOString()));
-
-    if (agentID)
-      interaction.setAttribute('data-agent-id', agentID);
-
-    let dots = document.createElement('div');
-    dots.className = 'typing-indicator';
-    dots.innerHTML = '<span></span><span></span><span></span>';
-
-    interaction.appendChild(dots);
-    this._chatView.appendInteraction(interaction);
-
-    let streamState = {
-      typingIndicator:      interaction,
-      typingDots:           dots,
-      streamingInteraction: null,
-      streamingContent:     null,
-      streamingHTML:        '',
-      streamingReflection:  null,
-      reflectionText:       '',
-    };
-
-    // Store per-agent and legacy single-agent references
-    if (agentID)
-      this._agentStreams.set(agentID, streamState);
-
-    this._typingIndicator      = interaction;
-    this._typingDots           = dots;
-    this._streamingHTML        = '';
-    this._streamingInteraction = null;
-    this._streamingContent     = null;
-    this._streamingReflection  = null;
-    this._reflectionText       = '';
-  }
-
-  _removeTypingIndicator(agentID) {
-    if (agentID) {
-      let streamState = this._agentStreams.get(agentID);
-      if (streamState && streamState.typingIndicator) {
-        streamState.typingIndicator.remove();
-        streamState.typingIndicator = null;
-        streamState.typingDots      = null;
-      }
-    }
-
-    // Also clean up legacy single-agent indicator
-    if (this._typingIndicator) {
-      this._typingIndicator.remove();
-      this._typingIndicator = null;
-      this._typingDots      = null;
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Streaming display
-  // ---------------------------------------------------------------------------
-
-  _handleStreamDelta(parsed) {
-    let text    = (parsed.content && parsed.content.text) || '';
-    let agentID = parsed.authorID || null;
-
-    // Resolve per-agent stream state, falling back to legacy single-agent
-    let streamState = (agentID && this._agentStreams.has(agentID))
-      ? this._agentStreams.get(agentID)
-      : null;
-
-    let typingIndicator = (streamState) ? streamState.typingIndicator : this._typingIndicator;
-    let typingDots      = (streamState) ? streamState.typingDots : this._typingDots;
-    let streamContent   = (streamState) ? streamState.streamingContent : this._streamingContent;
-
-    // First delta: promote typing indicator to streaming bubble
-    if (typingIndicator && !streamContent) {
-      // Remove typing dots
-      if (typingDots) {
-        typingDots.remove();
-        if (streamState)
-          streamState.typingDots = null;
-        else
-          this._typingDots = null;
-      }
-
-      // Create message-content inside the existing interaction bubble
-      let messageContent = document.createElement('kikx-message-content');
-      typingIndicator.appendChild(messageContent);
-
-      if (streamState) {
-        streamState.streamingInteraction = typingIndicator;
-        streamState.streamingContent     = messageContent;
-        streamState.typingIndicator      = null;
-        streamState.streamingHTML        = '';
-      }
-
-      this._streamingInteraction = typingIndicator;
-      this._streamingContent     = messageContent;
-      this._typingIndicator      = null;
-      this._streamingHTML        = '';
-
-      if (parsed.interactionID)
-        typingIndicator.setAttribute('data-interaction-id', parsed.interactionID);
-
-      if (debug.isEnabled() && parsed.interactionID)
-        debug.trackElement(parsed.interactionID, typingIndicator);
-
-      streamContent = messageContent;
-    }
-
-    if (!streamContent)
-      return;
-
-    let html = (streamState) ? streamState.streamingHTML : this._streamingHTML;
-    html += text;
-
-    if (streamState)
-      streamState.streamingHTML = html;
-
-    this._streamingHTML = html;
-    streamContent.content = html;
-
-    if (debug.isEnabled() && parsed.interactionID)
-      debug.setStreamDelta(parsed.interactionID, html);
-  }
-
-  _handleReflectionDelta(parsed) {
-    let text    = (parsed.content && parsed.content.text) || '';
-    let agentID = parsed.authorID || null;
-
-    // Resolve per-agent stream state
-    let streamState = (agentID && this._agentStreams.has(agentID))
-      ? this._agentStreams.get(agentID)
-      : null;
-
-    let streamingReflection  = (streamState) ? streamState.streamingReflection : this._streamingReflection;
-    let streamingInteraction = (streamState) ? streamState.streamingInteraction : this._streamingInteraction;
-    let streamingContent     = (streamState) ? streamState.streamingContent : this._streamingContent;
-    let typingIndicator      = (streamState) ? streamState.typingIndicator : this._typingIndicator;
-    let typingDots           = (streamState) ? streamState.typingDots : this._typingDots;
-
-    // First reflection delta: create reflection block inside streaming interaction
-    if (!streamingReflection) {
-      // Ensure we have a streaming interaction (promote typing indicator if needed)
-      if (typingIndicator && !streamingInteraction) {
-        if (typingDots) {
-          typingDots.remove();
-          if (streamState)
-            streamState.typingDots = null;
-          else
-            this._typingDots = null;
-        }
-
-        streamingInteraction = typingIndicator;
-
-        if (streamState) {
-          streamState.streamingInteraction = typingIndicator;
-          streamState.typingIndicator      = null;
-        }
-
-        this._streamingInteraction = typingIndicator;
-        this._typingIndicator      = null;
-      }
-
-      if (!streamingInteraction)
-        return;
-
-      let reflectionBlock = document.createElement('kikx-reflection-block');
-      if (streamingContent)
-        streamingInteraction.insertBefore(reflectionBlock, streamingContent);
-      else
-        streamingInteraction.appendChild(reflectionBlock);
-
-      streamingReflection = reflectionBlock;
-
-      if (streamState) {
-        streamState.streamingReflection = reflectionBlock;
-        streamState.reflectionText      = '';
-      }
-
-      this._streamingReflection = reflectionBlock;
-      this._reflectionText      = '';
-    }
-
-    let reflectionText = (streamState) ? streamState.reflectionText : this._reflectionText;
-    reflectionText += text;
-
-    if (streamState)
-      streamState.reflectionText = reflectionText;
-
-    this._reflectionText = reflectionText;
-    streamingReflection.content = reflectionText;
-
-    if (debug.isEnabled() && parsed.interactionID)
-      debug.setReflectionDelta(parsed.interactionID, reflectionText);
-  }
-
-  _clearStreamingState(agentID) {
-    if (agentID)
-      this._agentStreams.delete(agentID);
-
-    this._streamingInteraction = null;
-    this._streamingContent     = null;
-    this._streamingHTML        = '';
-    this._streamingReflection  = null;
-    this._reflectionText       = '';
-  }
-
-  // ---------------------------------------------------------------------------
   // Relay display — cross-session streaming
   // ---------------------------------------------------------------------------
 
   _handleRelayDelta(parsed) {
-    let text              = (parsed.content && parsed.content.text) || '';
-    let targetSessionID   = parsed.targetSessionID || '';
-    let agentID           = parsed.authorID || null;
-    let relayKey          = `relay:${targetSessionID}`;
+    let text            = (parsed.content && parsed.content.text) || '';
+    let targetSessionID = parsed.targetSessionID || '';
+    let agentID         = parsed.authorID || null;
+    let relayKey        = `relay:${targetSessionID}`;
 
-    // Use relay key to track streaming state for relayed content
-    let streamState = this._agentStreams.get(relayKey);
+    let relay = this._relayStreams.get(relayKey);
 
-    if (!streamState) {
-      // First relay delta: create a "via Session Y" streaming bubble
+    if (!relay) {
       let name = this._getAgentDisplayName(agentID) || 'Remote Agent';
 
       let interaction = document.createElement('kikx-interaction');
@@ -1583,21 +1561,12 @@ class KikxSessionPage extends HTMLElement {
       interaction.appendChild(messageContent);
       this._chatView.appendInteraction(interaction);
 
-      streamState = {
-        typingIndicator:      null,
-        typingDots:           null,
-        streamingInteraction: interaction,
-        streamingContent:     messageContent,
-        streamingHTML:        '',
-        streamingReflection:  null,
-        reflectionText:       '',
-      };
-
-      this._agentStreams.set(relayKey, streamState);
+      relay = { interaction, content: messageContent, html: '' };
+      this._relayStreams.set(relayKey, relay);
     }
 
-    streamState.streamingHTML += text;
-    streamState.streamingContent.content = streamState.streamingHTML;
+    relay.html += text;
+    relay.content.content = relay.html;
   }
 
   // ---------------------------------------------------------------------------

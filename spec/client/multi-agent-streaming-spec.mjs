@@ -8,13 +8,11 @@ import { setupDOM, teardownDOM, getDocument } from './jsdom-helper.mjs';
 // =============================================================================
 // Multi-Agent Streaming Tests
 // =============================================================================
-// Tests for per-agent typing indicators, delta routing to correct agent
-// bubbles, and interaction end finalization. Uses a lightweight harness
-// that stubs API calls and SSE to exercise the session page's streaming logic.
+// Tests for per-agent typing indicators, delta routing, and interaction
+// lifecycle — all driven by phantom frames through the FrameManager pipeline.
 // =============================================================================
 
 let store;
-let api;
 let i18n;
 let en;
 
@@ -24,11 +22,9 @@ before(async () => {
   i18n  = await import('../../src/client/lib/i18n.mjs');
   en    = (await import('../../src/client/lib/locales/en.mjs')).default;
   store = await import('../../src/client/lib/store.mjs');
-  api   = await import('../../src/client/lib/api.mjs');
 
   i18n.setLocale(en, 'en');
 
-  // Import required components
   await import('../../src/client/components/kikx-top-bar/kikx-top-bar.mjs');
   await import('../../src/client/components/kikx-status-bar/kikx-status-bar.mjs');
   await import('../../src/client/components/kikx-sidebar/kikx-sidebar.mjs');
@@ -47,22 +43,18 @@ after(() => {
   teardownDOM();
 });
 
-// Build a minimal session page with stubbed internals to avoid network calls.
 function createSessionPage() {
   let doc  = getDocument();
   let page = doc.createElement('kikx-session-page');
 
-  // Stub the session ID
   page.setAttribute('data-id', 'ses_test');
 
-  // Stub _loadInitialData, _fetchSessionDetails, _loadFrames, _connectStream
-  // to avoid real API calls
+  // Stub network methods before connecting to DOM
   page._loadInitialData     = async () => {};
   page._fetchSessionDetails = async () => {};
   page._loadFrames          = async () => {};
   page._connectStream       = () => {};
 
-  // Add agents to the store so _getAgentDisplayName works
   store.agents.addAgent({ id: 'agt_alpha', name: 'Alpha Agent' });
   store.agents.addAgent({ id: 'agt_beta', name: 'Beta Agent' });
 
@@ -115,153 +107,198 @@ describe('Multi-agent streaming', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Per-agent typing indicators
+  // Typing indicators — via ephemeral phantom frames
   // ---------------------------------------------------------------------------
 
   describe('typing indicators', () => {
-    it('creates typing indicator with agent-specific name', () => {
+    it('creates typing indicator via phantom frame on interaction:start', () => {
       let page = createSessionPage();
-      page._showTypingIndicator('agt_alpha');
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
 
-      assert.ok(page._typingIndicator);
-      assert.equal(page._typingIndicator.getAttribute('participant-name'), 'Alpha Agent');
-      assert.equal(page._typingIndicator.getAttribute('data-agent-id'), 'agt_alpha');
+      let indicator = page._typingIndicators.get('agt_alpha');
+      assert.ok(indicator, 'typing indicator should be stored in _typingIndicators');
+      assert.equal(indicator.getAttribute('participant-name'), 'Alpha Agent');
+      assert.equal(indicator.getAttribute('data-agent-id'), 'agt_alpha');
     });
 
-    it('stores per-agent streaming state', () => {
+    it('typing indicator has animated dots', () => {
       let page = createSessionPage();
-      page._showTypingIndicator('agt_alpha');
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
 
-      assert.ok(page._agentStreams.has('agt_alpha'));
-      let streamState = page._agentStreams.get('agt_alpha');
-      assert.ok(streamState.typingIndicator);
-      assert.ok(streamState.typingDots);
-      assert.equal(streamState.streamingContent, null);
+      let indicator = page._typingIndicators.get('agt_alpha');
+      let dots = indicator.querySelector('.typing-indicator');
+      assert.ok(dots, 'should have typing-indicator element');
+      assert.equal(dots.querySelectorAll('span').length, 3, 'should have 3 dot spans');
     });
 
-    it('removes agent-specific typing indicator', () => {
+    it('removes typing indicator on first delta', () => {
       let page = createSessionPage();
-      page._showTypingIndicator('agt_alpha');
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      assert.ok(page._typingIndicators.has('agt_alpha'));
 
-      let indicator = page._typingIndicator;
-      assert.ok(indicator.parentNode); // attached
+      page._handleSSEEvent('delta', JSON.stringify({
+        interactionID: 'int_1',
+        content:       { text: 'Hello' },
+        authorID:      'agt_alpha',
+      }));
 
-      page._removeTypingIndicator('agt_alpha');
-      assert.ok(!indicator.parentNode); // detached
+      assert.ok(!page._typingIndicators.has('agt_alpha'), 'typing indicator removed on delta');
     });
 
-    it('clears streaming state for specific agent on interaction:end', () => {
+    it('removes typing indicator on interaction:end', () => {
       let page = createSessionPage();
-      page._showTypingIndicator('agt_alpha');
-      assert.ok(page._agentStreams.has('agt_alpha'));
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      assert.ok(page._typingIndicators.has('agt_alpha'));
 
-      page._clearStreamingState('agt_alpha');
-      assert.ok(!page._agentStreams.has('agt_alpha'));
+      page._handleSSEEvent('interaction:end', JSON.stringify({ agentID: 'agt_alpha' }));
+      assert.ok(!page._typingIndicators.has('agt_alpha'));
     });
   });
 
   // ---------------------------------------------------------------------------
-  // Delta routing
+  // Delta routing — via phantom frames with groupID
   // ---------------------------------------------------------------------------
 
   describe('delta routing', () => {
-    it('promotes typing indicator to streaming bubble on first delta', () => {
+    it('creates streaming group on first delta', () => {
       let page = createSessionPage();
-      page._showTypingIndicator('agt_alpha');
-
-      page._handleStreamDelta({
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('delta', JSON.stringify({
         interactionID: 'int_1',
         content:       { text: 'Hello' },
-        authorType:    'agent',
         authorID:      'agt_alpha',
-      });
+      }));
 
-      // Typing indicator should be promoted
-      assert.equal(page._typingIndicator, null);
-      assert.ok(page._streamingContent);
-      assert.equal(page._streamingHTML, 'Hello');
+      let sg = page._streamingGroups.get('agt_alpha');
+      assert.ok(sg, 'streaming group should exist');
+      assert.equal(sg.html, 'Hello');
+      assert.equal(sg.groupID, 'int_1');
     });
 
     it('accumulates deltas for same agent', () => {
       let page = createSessionPage();
-      page._showTypingIndicator('agt_alpha');
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hello ' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'World' }, authorID: 'agt_alpha' }));
 
-      page._handleStreamDelta({ interactionID: 'int_1', content: { text: 'Hello ' }, authorID: 'agt_alpha' });
-      page._handleStreamDelta({ interactionID: 'int_1', content: { text: 'World' }, authorID: 'agt_alpha' });
-
-      assert.equal(page._streamingHTML, 'Hello World');
+      let sg = page._streamingGroups.get('agt_alpha');
+      assert.equal(sg.html, 'Hello World');
     });
 
-    it('updates per-agent streaming state in _agentStreams', () => {
+    it('merges phantom into FrameManager group frame', () => {
       let page = createSessionPage();
-      page._showTypingIndicator('agt_alpha');
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
 
-      page._handleStreamDelta({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' });
+      let groupFrame = page._frameManager.get('int_1');
+      assert.ok(groupFrame, 'group frame should exist in FrameManager');
+      assert.equal(groupFrame.content.html, 'Hi');
+    });
 
-      let streamState = page._agentStreams.get('agt_alpha');
-      assert.ok(streamState);
-      assert.equal(streamState.streamingHTML, 'Hi');
-      assert.ok(streamState.streamingInteraction);
-      assert.ok(streamState.streamingContent);
+    it('creates DOM element for streaming bubble', () => {
+      let page = createSessionPage();
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
+
+      let el = page._chatView.shadowRoot.querySelector('[data-frame-id="int_1"]');
+      assert.ok(el, 'streaming bubble should exist in DOM');
     });
   });
 
   // ---------------------------------------------------------------------------
-  // SSE event handling with agentID
+  // SSE event lifecycle
   // ---------------------------------------------------------------------------
 
   describe('SSE event handling', () => {
-    it('interaction:start parses agentID from event data', () => {
+    it('interaction:start creates typing indicator for correct agent', () => {
       let page = createSessionPage();
-
-      // Directly call _handleSSEEvent to simulate SSE
       page._handleSSEEvent('interaction:start', JSON.stringify({ interactionID: 'int_1', agentID: 'agt_beta' }));
 
-      // Should have created a typing indicator with Beta Agent name
-      assert.ok(page._typingIndicator);
-      assert.equal(page._typingIndicator.getAttribute('participant-name'), 'Beta Agent');
-      assert.equal(page._typingIndicator.getAttribute('data-agent-id'), 'agt_beta');
+      let indicator = page._typingIndicators.get('agt_beta');
+      assert.ok(indicator, 'typing indicator should exist');
+      assert.equal(indicator.getAttribute('participant-name'), 'Beta Agent');
+      assert.equal(indicator.getAttribute('data-agent-id'), 'agt_beta');
     });
 
-    it('interaction:end parses agentID and clears correct state', () => {
+    it('interaction:end clears both typing indicator and streaming group', () => {
       let page = createSessionPage();
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Test' }, authorID: 'agt_alpha' }));
 
-      page._handleSSEEvent('interaction:start', JSON.stringify({ interactionID: 'int_1', agentID: 'agt_alpha' }));
-      assert.ok(page._agentStreams.has('agt_alpha'));
-
-      page._handleSSEEvent('interaction:end', JSON.stringify({ interactionID: 'int_1', agentID: 'agt_alpha' }));
-      assert.ok(!page._agentStreams.has('agt_alpha'));
+      page._handleSSEEvent('interaction:end', JSON.stringify({ agentID: 'agt_alpha' }));
+      assert.ok(!page._streamingGroups.has('agt_alpha'), 'streaming group should be cleared');
+      assert.ok(!page._typingIndicators.has('agt_alpha'), 'typing indicator should be cleared');
     });
 
-    it('delta routing works through _handleSSEEvent', () => {
+    it('full lifecycle: start → delta → end', () => {
       let page = createSessionPage();
 
-      page._handleSSEEvent('interaction:start', JSON.stringify({ interactionID: 'int_1', agentID: 'agt_alpha' }));
-      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Test' }, authorType: 'agent', authorID: 'agt_alpha' }));
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      assert.ok(page._typingIndicators.has('agt_alpha'), 'typing indicator after start');
 
-      assert.equal(page._streamingHTML, 'Test');
+      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hello' }, authorID: 'agt_alpha' }));
+      assert.ok(!page._typingIndicators.has('agt_alpha'), 'typing indicator removed after delta');
+      assert.ok(page._streamingGroups.has('agt_alpha'), 'streaming group created');
+
+      page._handleSSEEvent('interaction:end', JSON.stringify({ agentID: 'agt_alpha' }));
+      assert.ok(!page._streamingGroups.has('agt_alpha'), 'streaming group cleared after end');
     });
   });
 
   // ---------------------------------------------------------------------------
-  // Fallback: single-agent mode
+  // Fallback: no agentID (uses 'default')
   // ---------------------------------------------------------------------------
 
   describe('single-agent fallback', () => {
     it('works without agentID (backward compatible)', () => {
       let page = createSessionPage();
 
-      // interaction:start without agentID
+      // interaction:start without agentID → uses 'default'
       page._handleSSEEvent('interaction:start', JSON.stringify({ interactionID: 'int_1' }));
-      assert.ok(page._typingIndicator);
+      assert.ok(page._typingIndicators.has('default'), 'typing indicator under "default" key');
 
-      // delta without authorID
+      // delta without authorID → uses 'default'
       page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'hello' } }));
-      assert.equal(page._streamingHTML, 'hello');
+      let sg = page._streamingGroups.get('default');
+      assert.ok(sg, 'streaming group under "default" key');
+      assert.equal(sg.html, 'hello');
 
-      // interaction:end without agentID
+      // interaction:end without agentID → clears 'default'
       page._handleSSEEvent('interaction:end', JSON.stringify({ interactionID: 'int_1' }));
-      assert.equal(page._streamingInteraction, null);
+      assert.ok(!page._streamingGroups.has('default'), 'streaming group cleared');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Reflection deltas
+  // ---------------------------------------------------------------------------
+
+  describe('reflection streaming', () => {
+    it('accumulates reflection text in streaming group', () => {
+      let page = createSessionPage();
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
+
+      page._handleSSEEvent('reflection-delta', JSON.stringify({
+        interactionID: 'int_1',
+        content:       { text: 'thinking...' },
+        authorID:      'agt_alpha',
+      }));
+
+      let sg = page._streamingGroups.get('agt_alpha');
+      assert.equal(sg.reflectionText, 'thinking...');
+    });
+
+    it('accumulates multiple reflection deltas', () => {
+      let page = createSessionPage();
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'msg' }, authorID: 'agt_alpha' }));
+
+      page._handleSSEEvent('reflection-delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'think ' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('reflection-delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'more' }, authorID: 'agt_alpha' }));
+
+      let sg = page._streamingGroups.get('agt_alpha');
+      assert.equal(sg.reflectionText, 'think more');
     });
   });
 });
