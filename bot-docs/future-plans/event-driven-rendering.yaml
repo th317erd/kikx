@@ -1,0 +1,223 @@
+# =============================================================================
+# Event-Driven DOM Rendering via FrameManager
+# =============================================================================
+# Refactor client-side rendering to be fully driven by FrameManager events,
+# as originally designed in the FrameManager spec and client architecture doc.
+#
+# Status: PLANNED
+# Created: 2026-03-15
+# =============================================================================
+
+meta:
+  title: "Event-Driven DOM Rendering via FrameManager"
+  parent_plan: "frame-manager.yaml"
+  related:
+    - "reactive-frame-engine.yaml"
+    - "client-plan.yaml"
+  references:
+    - "bot-docs/docs/client-architecture.md"
+    - "bot-docs/plan/kikx/frame-manager.yaml"
+    - "bot-docs/plan/kikx/reactive-frame-engine.yaml"
+  execution_tracking: ".claude/TODO.md"
+
+# =============================================================================
+# 1. PROBLEM
+# =============================================================================
+
+problem:
+  summary: |
+    The client-side rendering was supposed to be driven by FrameManager events
+    (frame:added, frame:updated, frame:phantom), with the DOM as a projection
+    of FrameManager state. Instead, three separate manual rendering paths were
+    built that bypass the event system.
+
+  symptoms:
+    - "Infinite scroll reload bug — _loadOlderFrames rendered from raw API data, beforeOrder was never parsed server-side"
+    - "Duplicate DOM elements — FrameManager deduplicates internally but rendering bypassed it"
+    - "Manual streaming state management — _agentStreams Map, _streamingInteraction, etc. instead of phantom frames"
+    - "fromHistory / prepend flags — hacks to make _renderFrame work from multiple call sites"
+    - "Ghost typing indicator managed manually instead of through phantom frames"
+
+  root_cause: |
+    The session that built the FrameManager and the session that wired up client
+    rendering were separated by compaction boundaries. The rendering session built
+    manual loops instead of reading the plan docs and using the event system that
+    was designed for exactly this purpose. Each subsequent session layered more
+    special cases on top instead of fixing the foundation.
+
+# =============================================================================
+# 2. PRINCIPLES (from original plan)
+# =============================================================================
+
+principles:
+  - "All frame data enters through merge() — events drive rendering"
+  - "Phantom frames with groupID handle streaming (deep-merge into group frame)"
+  - "Phantom frames without groupID handle ephemeral state (typing indicators)"
+  - "DOM is a projection of FrameManager state, not an independently managed thing"
+  - "querySelector('[data-frame-id=\"...\"]') is the DOM lookup mechanism (no parallel maps)"
+  - "Existing DOM elements are updated in place, not destroyed and recreated"
+  - "The database is the source of truth. The FrameManager is a materialized view."
+  - "Frame mutations are the universal event primitive."
+
+# =============================================================================
+# 3. IMPLEMENTATION STEPS
+# =============================================================================
+
+steps:
+  - id: step-1
+    title: "_createFrameElement(frame) — Pure DOM Factory"
+    status: PLANNED
+    description: |
+      Extract DOM element creation from _renderFrame() into a pure factory.
+      Takes a frame, returns an HTMLElement (or null for hidden types).
+      No placement logic, no side effects, no options flags.
+    deliverables:
+      - "Pure factory function for each frame type"
+      - "Returns null for non-renderable types"
+
+  - id: step-2
+    title: "Event-Driven Rendering — frame:added"
+    status: PLANNED
+    description: |
+      Wire frame:added to create and insert DOM elements at the correct ordered
+      position. Replaces manual loops in _loadFrames() and _loadOlderFrames().
+      Ordered insertion handles both append and prepend automatically.
+    deliverables:
+      - "Ordered DOM insertion based on frame.order"
+      - "Dedup via querySelector (DOM is truth)"
+      - "Scroll position preservation on above-viewport insertion"
+
+  - id: step-3
+    title: "Event-Driven Rendering — frame:updated"
+    status: PLANNED
+    description: |
+      Wire frame:updated to find and patch existing DOM elements in place.
+      Handles all frame types, not just message content. Streaming content
+      patches via phantom frame deep-merge → frame:updated.
+    deliverables:
+      - "In-place content patching for all types"
+      - "Streaming content updates via frame:updated"
+
+  - id: step-4
+    title: "Phantom Frames for Streaming"
+    status: PLANNED
+    description: |
+      Replace manual typing indicator and streaming bubble logic with phantom
+      frames through the FrameManager pipeline.
+    deliverables:
+      - "interaction:start → phantom frame (no groupID) → typing indicator"
+      - "First delta → phantom WITH groupID → persistent group frame → DOM element"
+      - "Subsequent deltas → deep-merge → frame:updated → patch DOM"
+      - "Final commit → real frame replaces group → frame:updated finalizes"
+      - "Remove _showTypingIndicator, _handleStreamDelta, _agentStreams, etc."
+
+  - id: step-5
+    title: "Unify Entry Points"
+    status: PLANNED
+    description: |
+      All frame data enters through merge() with events enabled. Remove all
+      { events: false } and loadWindow() calls from the session page.
+    deliverables:
+      - "_loadFrames() uses merge(frames) with events"
+      - "_loadOlderFrames() uses merge(frames) with events"
+      - "Remove _placeInteraction(), fromHistory, prepend options"
+
+  - id: step-6
+    title: "Optimistic User Messages with Ghost Styling"
+    status: PLANNED
+    description: |
+      User messages render immediately as ghost elements (reduced opacity,
+      pending class). Server confirmation adopts the ghost, removes pending
+      class, transitions to solid. Visual feedback for send-in-progress.
+    deliverables:
+      - "Ghost element with pending CSS class (transparent, desaturated)"
+      - "CSS transition from pending to confirmed (smooth opacity change)"
+      - "frame:added adoption of ghost elements"
+      - "Graceful handling when no ghost exists (create new element)"
+
+  - id: step-7
+    title: "Bulk Load Performance"
+    status: PLANNED
+    description: |
+      Initial load of 100+ frames shouldn't cause 100+ individual layout
+      recalculations. Batch DOM insertions via DocumentFragment or
+      requestAnimationFrame coalescing.
+    deliverables:
+      - "DocumentFragment batching or RAF coalescing"
+      - "Performance measurement before and after"
+
+  - id: step-8
+    title: "Cleanup"
+    status: PLANNED
+    description: |
+      Remove dead code and bandaids from the broken architecture.
+    deliverables:
+      - "Remove _renderFrame() (replaced by _createFrameElement + events)"
+      - "Remove _placeInteraction(), fromHistory/prepend options"
+      - "Remove streaming state variables (_streamingInteraction, etc.)"
+      - "Remove typing indicator variables"
+      - "Remove duplicate-check bandaid in _loadOlderFrames"
+      - "All tests pass, Puppeteer E2E verification"
+
+# =============================================================================
+# 4. TESTING
+# =============================================================================
+
+testing:
+  strategy: |
+    Three-tier testing: Node.js unit tests via jsdom (fast, deterministic),
+    Puppeteer E2E (real browser, real Shadow DOM), manual visual verification.
+
+  jsdom_tests:
+    - file: "spec/client/create-frame-element-spec.mjs"
+      description: "Pure factory tests — each frame type, hidden types, malformed input, XSS"
+    - file: "spec/client/event-driven-rendering-spec.mjs"
+      description: "Event pipeline tests — frame:added insertion, frame:updated patching, dedup, ordering, phantom streaming, ghost messages"
+
+  puppeteer_e2e:
+    - "Login → session → frames load in order"
+    - "Send message → ghost → confirm → solidify"
+    - "Agent responds with streaming → deltas accumulate → commit finalizes"
+    - "Scroll up → older frames load → scroll preserved → reach top → stop"
+    - "Session switch mid-stream → clean transition"
+    - "Rapid sends → all confirmed in order"
+
+  failure_paths:
+    - "frame:updated for nonexistent element → no crash"
+    - "frame:added for duplicate → skip"
+    - "Unknown frame type → no element, no error"
+    - "Frames with missing id/type → silently dropped"
+    - "Session switch during load → no cross-contamination"
+    - "Disconnected send → ghost stays pending"
+    - "Frames with zero/negative order → handled"
+    - "500+ frames bulk merge → no duplicates, correct order"
+
+# =============================================================================
+# 5. SERVER-SIDE FIX (ALREADY APPLIED)
+# =============================================================================
+
+server_fix:
+  status: COMPLETE
+  description: |
+    FrameController.list() was silently dropping the beforeOrder query parameter.
+    Fixed by adding beforeOrder parsing alongside existing afterOrder.
+  file: "src/server/controllers/frame-controller.mjs"
+  commit: "002e4a6"
+
+# =============================================================================
+# 6. NOTES
+# =============================================================================
+
+notes:
+  - |
+    _oldestLoadedOrder tracking uses raw API response orders (DB-level), not
+    FrameManager internal orders. This is correct because FrameManager reassigns
+    orders on merge.
+  - |
+    The near-top event in kikx-chat-view fires on every scroll while at top.
+    The _loadingOlder guard prevents concurrent loads. With proper beforeOrder
+    filtering, the server returns progressively older frames until empty.
+  - |
+    jsdom v25 supports Shadow DOM, custom elements, and querySelector within
+    shadow roots. The existing jsdom-helper.mjs and components-spec.mjs
+    already demonstrate this pattern.

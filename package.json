@@ -24,6 +24,9 @@
     "ws": "^8.19.0",
     "xid-js": "^1.0.1"
   },
+  "exports": {
+    "./*": "./src/*"
+  },
   "devDependencies": {
     "jsdom": "^25.0.0"
   }

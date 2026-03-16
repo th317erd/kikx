@@ -87,8 +87,10 @@ User messages render immediately before the server confirms. The FrameManager
 needs to handle adoption of optimistic elements.
 
 - [ ] `_renderUserMessage()` creates element WITHOUT `data-frame-id` (no frame exists yet)
+- [ ] Ghost styling: optimistic element gets a `pending` class — reduced opacity, slightly desaturated, subtle pulse or shimmer to signal "sending"
+- [ ] CSS transition on `kikx-interaction`: when `pending` class is removed, smooth fade to full opacity
 - [ ] When server confirms via SSE (user-message frame arrives), `merge()` adds the frame → `frame:added` fires
-- [ ] `frame:added` handler checks: is there an unattributed user element (`[alignment="user"]:not([data-frame-id])`)? If yes, adopt it (set `data-frame-id`, update metadata). If no, create new element.
+- [ ] `frame:added` handler checks: is there an unattributed user element (`[alignment="user"]:not([data-frame-id])`)? If yes, adopt it (set `data-frame-id`, update metadata, remove `pending` class → transitions to solid). If no, create new element.
 
 ## Step 7: Bulk Load Performance
 
@@ -126,3 +128,27 @@ Remove dead code and bandaids that were symptoms of the broken architecture.
   older frames until empty, then `_oldestLoadedOrder = 0` stops further requests.
 - Server-side fix already applied: `FrameController.list()` now parses
   `beforeOrder` from query params (was missing, causing infinite reload bug).
+
+---
+
+# Client Test Audit (2026-03-15)
+
+## Phase 1: Audit & Document
+- [x] Read all existing test files in `spec/client/`
+- [x] Read client-architecture.md for component inventory (32 components)
+- [x] Read untested component source files
+- [x] Catalog tested vs untested components
+
+## Phase 2: Write Missing Tests
+- [x] Create `spec/client/store-spec.mjs` — 37 tests covering all 6 scopes + events + getState
+- [x] Create `spec/client/router-spec.mjs` — 22 tests covering routes, params, auth guards, listeners
+- [x] Create `spec/client/i18n-spec.mjs` — 18 tests covering t(), interpolation, pluralization, locale
+- [x] Create `spec/client/untested-components-spec.mjs` — 72 tests for 7 previously untested components
+- [x] Edge cases/failure paths included in all new tests
+
+## Phase 3: Run & Verify
+- [x] Run `npm test` — 0 failures, 2915 pass, 290 cancelled (pre-existing bare import issue)
+- [x] No `{ todo: true }` needed — all new tests pass against current implementation
+
+## Phase 4: Document
+- [x] Create `bot-docs/docs/client-test-audit.md` — Full coverage matrix, priority gaps, bugs found

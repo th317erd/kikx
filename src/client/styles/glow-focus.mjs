@@ -57,8 +57,8 @@ export const GLOW_KEYFRAMES = `
   }
 
   @keyframes dot-hue-cycle-glow {
-    from { filter: blur(14px) hue-rotate(0deg); }
-    to   { filter: blur(14px) hue-rotate(360deg); }
+    from { filter: blur(10px) hue-rotate(0deg); }
+    to   { filter: blur(10px) hue-rotate(360deg); }
   }
 
   @keyframes rainbow-scroll {

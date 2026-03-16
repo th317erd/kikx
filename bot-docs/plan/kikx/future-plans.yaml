@@ -76,6 +76,18 @@ items:
   # REMAINING — Medium Priority
   # ===========================================================================
 
+  - id: event-driven-rendering
+    title: "Event-Driven DOM Rendering via FrameManager"
+    priority: high
+    status: PLANNED
+    description: |
+      Refactor client-side rendering to be fully driven by FrameManager events
+      (frame:added, frame:updated, frame:phantom). Replace manual rendering
+      loops with event-driven DOM projection. Add ghost styling for optimistic
+      user messages, phantom frames for streaming, ordered insertion.
+    see_also: bot-docs/future-plans/event-driven-rendering.yaml
+    added: "2026-03-15"
+
   - id: ed25519-identity-valuestore-permissions
     title: "Ed25519 Identity + ValueStore + Danger Level Permissions"
     priority: high

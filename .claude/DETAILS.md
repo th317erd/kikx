@@ -43,14 +43,36 @@ Important details to remember across sessions.
 
 ---
 
-## V2 Build Status (as of 2026-03-14)
+## V2 Build Status (as of 2026-03-15)
 
 - **Phase 1 (MVP, Steps 1-13):** COMPLETE
 - **Phase 2 (V1 Parity, Steps 14-19):** COMPLETE
 - **Phase 3 (V2 Differentiators):** IN PROGRESS
 - **Phase C (Frame Event Router):** COMPLETE (C1-C4)
 - **E2E Integration:** VERIFIED (92 frames, 0 errors in comprehensive permission E2E)
-- **Test count:** 2976 tests, 0 failures
+- **Test count:** 3017 tests, 0 failures
+
+## Current Work: Event-Driven DOM Rendering Refactor
+
+**Status:** TDD tests written, implementation NOT started yet.
+**Plan:** `bot-docs/future-plans/event-driven-rendering.yaml`
+**TODO:** `.claude/TODO.md` (8 steps)
+**TDD tests written:**
+- `spec/client/create-frame-element-spec.mjs` (569 lines) — Pure factory tests
+- `spec/client/event-driven-rendering-spec.mjs` (788 lines) — Event pipeline tests
+
+**Problem:** Client rendering bypasses FrameManager events. Three manual rendering
+paths exist instead of event-driven DOM projection. Caused infinite scroll bug,
+duplicate elements, architectural drift from plan.
+
+**Server fix already applied:** `FrameController.list()` now parses `beforeOrder`
+query param (was missing). Committed and pushed as `b003077`.
+
+**Background agent still running:** Client test audit agent — writing tests for
+store, router, i18n, and untested components. Check TODO.md for status.
+
+**Key principle:** ALL frame data enters through `merge()` with events enabled.
+DOM is a projection of FrameManager state. See MEMORY.md for full architecture notes.
 
 ### Completed Future Plans
 
@@ -69,6 +91,7 @@ Important details to remember across sessions.
 
 | Feature | Priority |
 |---------|----------|
+| Event-Driven DOM Rendering | High (TDD tests written, impl pending) |
 | Device Approval Auth | Medium |
 | Key Rotation | Medium |
 | Applicable Permitters | Low |
