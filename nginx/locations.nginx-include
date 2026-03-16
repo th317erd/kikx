@@ -59,7 +59,7 @@ location /shared/ {
 
 # Shared libraries (frame-manager, etc.) — served from src/shared/
 location /kikx/shared/ {
-  alias /home/wyatt/Projects/kikx-workspace/kikx/src/shared/;
+  alias /home/wyatt/Projects/kikx-workspace/kikx2/src/shared/;
   expires -1;
   add_header Cache-Control "no-cache, no-store, must-revalidate";
 
@@ -81,7 +81,7 @@ location /kikx/shared/ {
 # Static client files — served from src/client/
 # SPA fallback: try_files for history API routing
 location /kikx/ {
-  alias /home/wyatt/Projects/kikx-workspace/kikx/src/client/;
+  alias /home/wyatt/Projects/kikx-workspace/kikx2/src/client/;
   expires -1;
   add_header Cache-Control "no-cache, no-store, must-revalidate";
 
