@@ -7,6 +7,7 @@ import {
   signValue,
   verifyValue,
 } from '../../crypto/value-signing.mjs';
+import { MemoryPermissions } from './memory-permissions.mjs';
 
 // =============================================================================
 // Memory Plugin
@@ -56,6 +57,10 @@ export function setup({ registerTool, PluginInterface }) {
       properties: {},
     };
 
+    getPermissionsClass() {
+      return MemoryPermissions;
+    }
+
     async _execute(params) {
       let models  = this._context.getProperty('models');
       let { Agent: AgentModel } = models;
@@ -89,6 +94,10 @@ export function setup({ registerTool, PluginInterface }) {
         config: { type: 'object', description: 'The new configuration object' },
       },
     };
+
+    getPermissionsClass() {
+      return MemoryPermissions;
+    }
 
     async _execute(params) {
       let models  = this._context.getProperty('models');
@@ -127,6 +136,10 @@ export function setup({ registerTool, PluginInterface }) {
       },
     };
 
+    getPermissionsClass() {
+      return MemoryPermissions;
+    }
+
     async _execute(params) {
       let models  = this._context.getProperty('models');
       let { Agent: AgentModel } = models;
@@ -163,6 +176,10 @@ export function setup({ registerTool, PluginInterface }) {
         effective: { type: 'boolean', default: false, description: 'If true, returns inherited context from parent chain' },
       },
     };
+
+    getPermissionsClass() {
+      return MemoryPermissions;
+    }
 
     async _execute(params) {
       let models     = this._context.getProperty('models');
@@ -203,6 +220,10 @@ export function setup({ registerTool, PluginInterface }) {
       },
     };
 
+    getPermissionsClass() {
+      return MemoryPermissions;
+    }
+
     async _execute(params) {
       let models     = this._context.getProperty('models');
       let { Session } = models;
@@ -239,6 +260,10 @@ export function setup({ registerTool, PluginInterface }) {
         updates:   { type: 'object', description: 'Partial context to merge' },
       },
     };
+
+    getPermissionsClass() {
+      return MemoryPermissions;
+    }
 
     async _execute(params) {
       let models     = this._context.getProperty('models');
@@ -282,6 +307,10 @@ export function setup({ registerTool, PluginInterface }) {
         },
       },
     };
+
+    getPermissionsClass() {
+      return MemoryPermissions;
+    }
 
     async _execute(params) {
       let { key, scopeID } = params;
@@ -369,6 +398,10 @@ export function setup({ registerTool, PluginInterface }) {
         },
       },
     };
+
+    getPermissionsClass() {
+      return MemoryPermissions;
+    }
 
     async _execute(params) {
       let { key, value, scopeID, sign } = params;
@@ -502,6 +535,10 @@ export function setup({ registerTool, PluginInterface }) {
         },
       },
     };
+
+    getPermissionsClass() {
+      return MemoryPermissions;
+    }
 
     async _execute(params) {
       let { query, scopeID, limit, offset } = params;
