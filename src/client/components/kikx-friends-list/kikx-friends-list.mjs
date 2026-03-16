@@ -1,7 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
-import { GLOW_KEYFRAMES, glowHoverCSS } from '../../styles/glow-focus.mjs';
+import { GLOW_KEYFRAMES, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -37,8 +37,15 @@ const TEMPLATE_HTML = `
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
     }
 
+    .friend-row.active {
+      background: var(--accent-dim, rgba(0, 229, 255, 0.10));
+      border-left: 2px solid var(--accent-primary, #00e5ff);
+      box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.10));
+    }
+
     ${GLOW_KEYFRAMES}
-    ${glowHoverCSS('.friend-row:hover')}
+    ${glowHoverCSS('.friend-row:hover:not(.active)')}
+    ${glowCSS('.friend-row.active')}
 
     .friend-name {
       flex: 1;
@@ -99,8 +106,9 @@ class KikxFriendsList extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
 
-    this._container = this.shadowRoot.querySelector('.list-container');
-    this._friends   = [];
+    this._container      = this.shadowRoot.querySelector('.list-container');
+    this._friends        = [];
+    this._activeFriendID = null;
 
     this._onRowClick = this._onRowClick.bind(this);
   }
@@ -123,6 +131,15 @@ class KikxFriendsList extends HTMLElement {
     return this._friends;
   }
 
+  set activeFriendID(value) {
+    this._activeFriendID = value || null;
+    this._updateActiveFriend();
+  }
+
+  get activeFriendID() {
+    return this._activeFriendID;
+  }
+
   _render() {
     if (!this._container)
       return;
@@ -139,7 +156,7 @@ class KikxFriendsList extends HTMLElement {
 
     for (let friend of this._friends) {
       let row = document.createElement('div');
-      row.className     = 'friend-row';
+      row.className     = (friend.id === this._activeFriendID) ? 'friend-row active' : 'friend-row';
       row.dataset.id    = friend.id;
       row.dataset.type  = friend.type || 'agent';
 
@@ -177,6 +194,20 @@ class KikxFriendsList extends HTMLElement {
       row.appendChild(onlineIndicator);
 
       this._container.appendChild(row);
+    }
+  }
+
+  _updateActiveFriend() {
+    if (!this._container)
+      return;
+
+    let rows = this._container.querySelectorAll('.friend-row');
+
+    for (let row of rows) {
+      if (row.dataset.id === this._activeFriendID)
+        row.classList.add('active');
+      else
+        row.classList.remove('active');
     }
   }
 

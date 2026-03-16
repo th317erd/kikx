@@ -295,6 +295,20 @@ class KikxSidebar extends HTMLElement {
       else
         row.classList.remove('active');
     }
+
+    // For DM sessions, highlight the corresponding friend in the friends list
+    if (this._friendsList) {
+      let activeFriendID = null;
+
+      if (this._activeSessionID) {
+        let session = this._sessions.find((s) => s.id === this._activeSessionID);
+
+        if (session && session.type === 'dm' && session.dmAgentID)
+          activeFriendID = session.dmAgentID;
+      }
+
+      this._friendsList.activeFriendID = activeFriendID;
+    }
   }
 
   _renderSessions() {
