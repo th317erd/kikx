@@ -25,6 +25,7 @@ const TRUNCATION_MARKER_PREFIX = '[Earlier conversation history was truncated';
  * @param {object} agent
  * @param {object} [options]
  * @param {boolean} [options.primerInjected] — true when primer is being injected this turn
+ * @param {Function} [options.isDMForAgent] — async function that returns true if session is a DM for this agent
  * @returns {Promise<Array>}
  */
 export async function reinjectAbilities(messages, agent, options = {}) {
@@ -35,6 +36,10 @@ export async function reinjectAbilities(messages, agent, options = {}) {
     return messages;
 
   if (agent == null || typeof agent.hasAbilities !== 'function' || !await agent.hasAbilities())
+    return messages;
+
+  // Skip abilities in DM sessions — DMs are for configuring the agent
+  if (options.isDMForAgent && await options.isDMForAgent())
     return messages;
 
   if (!hasTruncationMarker(messages))
@@ -108,6 +113,11 @@ function buildAbilitiesBlock(abilitiesText) {
     '--- ABILITIES ---\n' +
     abilitiesText + '\n' +
     '--- END ABILITIES ---\n' +
-    'Remember to check each user request against your ABILITIES before proceeding.'
+    'ABILITIES ARE MANDATORY. Before responding to EVERY user message, you MUST:\n' +
+    '1. Review your ABILITIES section above.\n' +
+    '2. Check if any ability applies to the current message.\n' +
+    '3. If an ability applies, follow its instructions EXACTLY — abilities override your default behavior.\n' +
+    '4. If no ability applies, respond normally.\n' +
+    'Abilities are not suggestions — they are behavioral rules you must obey on every interaction.'
   );
 }

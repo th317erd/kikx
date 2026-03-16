@@ -92,6 +92,18 @@ export class InteractionLoop extends EventEmitter {
     return this._context.getProperty('keystore');
   }
 
+  async _isDMForAgent(agent, sessionID) {
+    if (!agent || !sessionID)
+      return false;
+
+    let models = this._context.getProperty('models');
+    if (!models || !models.Session)
+      return false;
+
+    let session = await models.Session.where.id.EQ(sessionID).first();
+    return session != null && session.dmAgentID === agent.id;
+  }
+
   // ---------------------------------------------------------------------------
   // _signFrame — sign frame content before commit (best-effort)
   // ---------------------------------------------------------------------------
@@ -327,14 +339,17 @@ export class InteractionLoop extends EventEmitter {
     if (needsPrimer) {
       let primerAssembler = this._context.getProperty('primerAssembler');
       if (primerAssembler) {
-        let primer = await primerAssembler.assemble(params.agent);
+        let primer = await primerAssembler.assemble(params.agent, { sessionID });
         if (primer)
           messages = injectPrimer(messages, primer);
       }
     }
 
     // Re-inject abilities after truncation if primer was not injected this turn
-    messages = await reinjectAbilities(messages, params.agent, { primerInjected: needsPrimer });
+    messages = await reinjectAbilities(messages, params.agent, {
+      primerInjected: needsPrimer,
+      isDMForAgent:   () => this._isDMForAgent(params.agent, sessionID),
+    });
 
     // Ensure per-agent ref exists for scheduling/diff
     if (agentID)

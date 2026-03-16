@@ -307,19 +307,53 @@ describe('MemoryPermissions', () => {
   });
 
   // ===========================================================================
-  // Session context tools — always defer to rules
+  // Session context tools
   // ===========================================================================
 
-  describe('session context tools — always defer to rules', () => {
-    it('defers getSessionContext', async () => {
+  describe('session context tools', () => {
+    // getSessionContext — auto-approved for current session reads
+
+    it('auto-approves getSessionContext when no sessionID arg (defaults to current)', async () => {
       let permissions = new MemoryPermissions(context);
       let result = await permissions.checkPermission(
         'memory:getSessionContext',
-        { sessionID: 'ses_123' },
+        {},
+        { scopeID: 'ses_current' },
+      );
+      assert.equal(result, false, 'getSessionContext with no sessionID should be auto-approved');
+    });
+
+    it('auto-approves getSessionContext when sessionID matches current session', async () => {
+      let permissions = new MemoryPermissions(context);
+      let result = await permissions.checkPermission(
+        'memory:getSessionContext',
+        { sessionID: 'ses_current' },
+        { scopeID: 'ses_current' },
+      );
+      assert.equal(result, false, 'getSessionContext for current session should be auto-approved');
+    });
+
+    it('defers getSessionContext when sessionID targets a different session', async () => {
+      let permissions = new MemoryPermissions(context);
+      let result = await permissions.checkPermission(
+        'memory:getSessionContext',
+        { sessionID: 'ses_other' },
+        { scopeID: 'ses_current' },
+      );
+      assert.equal(result, null, 'getSessionContext for different session should defer to rules');
+    });
+
+    it('auto-approves getSessionContext when options has no scopeID', async () => {
+      let permissions = new MemoryPermissions(context);
+      let result = await permissions.checkPermission(
+        'memory:getSessionContext',
+        {},
         {},
       );
-      assert.equal(result, null, 'getSessionContext should always defer to rules');
+      assert.equal(result, false, 'getSessionContext with no scopeID context should auto-approve');
     });
+
+    // setSessionContext / updateSessionContext — always defer to rules
 
     it('defers setSessionContext', async () => {
       let permissions = new MemoryPermissions(context);
@@ -339,16 +373,6 @@ describe('MemoryPermissions', () => {
         {},
       );
       assert.equal(result, null, 'updateSessionContext should always defer to rules');
-    });
-
-    it('defers getSessionContext even without args', async () => {
-      let permissions = new MemoryPermissions(context);
-      let result = await permissions.checkPermission(
-        'memory:getSessionContext',
-        {},
-        {},
-      );
-      assert.equal(result, null, 'getSessionContext with no args should still defer');
     });
   });
 

@@ -203,24 +203,25 @@ describe('PrimerAssembler', () => {
       assert.ok(result.includes('--- ABILITIES ---\nRule 1: Check tests.\nRule 2: No force push.\n--- END ABILITIES ---'));
     });
 
-    it('should append abilities reminder footer when abilities exist', async () => {
+    it('should append abilities mandate when abilities exist', async () => {
       let agent = {
         getAbilities:  async () => 'Some ability text.',
         hasAbilities:  async () => true,
       };
 
       let result = await assembler.assemble(agent);
-      assert.ok(result.includes('Remember to check each user request against your ABILITIES before proceeding.'));
+      assert.ok(result.includes('ABILITIES ARE MANDATORY'));
+      assert.ok(result.includes('abilities override your default behavior'));
     });
 
-    it('should NOT append abilities reminder footer when no abilities', async () => {
+    it('should NOT append abilities mandate when no abilities', async () => {
       let agent = {
         getAbilities:  async () => null,
         hasAbilities:  async () => false,
       };
 
       let result = await assembler.assemble(agent);
-      assert.ok(!result.includes('Remember to check each user request against your ABILITIES'));
+      assert.ok(!result.includes('ABILITIES ARE MANDATORY'));
     });
 
     it('should still work with null agent (no abilities section)', async () => {
@@ -234,6 +235,95 @@ describe('PrimerAssembler', () => {
       let result = await assembler.assemble(agent);
       assert.ok(result.includes('Be helpful.'));
       assert.ok(!result.includes('--- ABILITIES ---'));
+    });
+
+    // -------------------------------------------------------------------------
+    // DM session exclusion
+    // -------------------------------------------------------------------------
+
+    it('should NOT include abilities in DM session for the same agent', async () => {
+      let agent = {
+        id:            'agt_test_dm',
+        getAbilities:  async () => 'Some ability.',
+        hasAbilities:  async () => true,
+      };
+
+      // Mock session lookup — session.dmAgentID matches agent.id
+      properties.set('models', {
+        Session: {
+          where: {
+            id: {
+              EQ: () => ({
+                first: async () => ({ id: 'ses_dm', dmAgentID: 'agt_test_dm' }),
+              }),
+            },
+          },
+        },
+      });
+
+      let result = await assembler.assemble(agent, { sessionID: 'ses_dm' });
+      assert.ok(!result.includes('--- ABILITIES ---'), 'Abilities should NOT appear in DM session');
+      assert.ok(!result.includes('ABILITIES ARE MANDATORY'), 'Mandate should NOT appear in DM session');
+    });
+
+    it('should include abilities in non-DM session', async () => {
+      let agent = {
+        id:            'agt_test_nodm',
+        getAbilities:  async () => 'Some ability.',
+        hasAbilities:  async () => true,
+      };
+
+      // Mock session lookup — session.dmAgentID is null (normal chat)
+      properties.set('models', {
+        Session: {
+          where: {
+            id: {
+              EQ: () => ({
+                first: async () => ({ id: 'ses_chat', dmAgentID: null }),
+              }),
+            },
+          },
+        },
+      });
+
+      let result = await assembler.assemble(agent, { sessionID: 'ses_chat' });
+      assert.ok(result.includes('--- ABILITIES ---'), 'Abilities should appear in normal session');
+      assert.ok(result.includes('ABILITIES ARE MANDATORY'), 'Mandate should appear in normal session');
+    });
+
+    it('should include abilities in DM session for a different agent', async () => {
+      let agent = {
+        id:            'agt_other',
+        getAbilities:  async () => 'Some ability.',
+        hasAbilities:  async () => true,
+      };
+
+      // DM session belongs to a different agent
+      properties.set('models', {
+        Session: {
+          where: {
+            id: {
+              EQ: () => ({
+                first: async () => ({ id: 'ses_dm', dmAgentID: 'agt_different' }),
+              }),
+            },
+          },
+        },
+      });
+
+      let result = await assembler.assemble(agent, { sessionID: 'ses_dm' });
+      assert.ok(result.includes('--- ABILITIES ---'), 'Abilities should appear when DM is for a different agent');
+    });
+
+    it('should include abilities when no sessionID is provided', async () => {
+      let agent = {
+        id:            'agt_no_session',
+        getAbilities:  async () => 'Some ability.',
+        hasAbilities:  async () => true,
+      };
+
+      let result = await assembler.assemble(agent);
+      assert.ok(result.includes('--- ABILITIES ---'), 'Abilities should appear when no sessionID');
     });
 
     // -------------------------------------------------------------------------

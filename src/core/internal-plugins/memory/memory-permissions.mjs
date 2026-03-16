@@ -15,9 +15,12 @@ import { Permissions } from '../../permissions/permissions-base.mjs';
 //     scopeID, key, or any other arguments. All scopes belong to the agent.
 //     If the agentID targets a DIFFERENT agent, defer to rules (per-situation).
 //
-//   Session context tools (getSessionContext, setSessionContext, updateSessionContext):
-//     Always deferred to normal rule matching — these operate on sessions,
-//     not agent-owned data, and the write variants have riskLevel: 'high'.
+//   Session context tools:
+//     getSessionContext: auto-approved when reading the agent's current session
+//       (no sessionID arg, or sessionID matches the current session scope).
+//       Reading a different session defers to rules.
+//     setSessionContext, updateSessionContext: always deferred to normal rule
+//       matching — writes have riskLevel: 'high'.
 // =============================================================================
 
 const AGENT_OWNED_TOOLS = new Set([
@@ -31,8 +34,20 @@ const AGENT_OWNED_TOOLS = new Set([
 
 export class MemoryPermissions extends Permissions {
   async checkPermission(featureName, args, options) {
+    // Reading the current session's context is harmless — auto-approve
+    if (featureName === 'memory:getSessionContext') {
+      let currentSessionID = options && options.scopeID;
+      let requestedSession = args && args.sessionID;
+
+      // No explicit sessionID = current session, or explicit match
+      if (!requestedSession || requestedSession === currentSessionID)
+        return false;
+
+      return null; // Different session — defer to rules
+    }
+
     if (!AGENT_OWNED_TOOLS.has(featureName))
-      return null; // Session context tools — defer to normal rule matching
+      return null; // Write session tools + unknown — defer to normal rule matching
 
     // If agentID targets a different agent, defer to rules (require approval)
     let callingAgent = options && options.agent;

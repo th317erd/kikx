@@ -101,7 +101,7 @@ describe('Abilities System — Integration', () => {
       assert.ok(primer.includes('--- END ABILITIES ---'));
 
       // Reminder is present
-      assert.ok(primer.includes('Remember to check each user request against your ABILITIES before proceeding.'));
+      assert.ok(primer.includes('ABILITIES ARE MANDATORY'));
 
       // Management note is present
       assert.ok(primer.includes('memory:updateAgentConfig'));
@@ -119,7 +119,7 @@ describe('Abilities System — Integration', () => {
       let instructionsIndex  = primer.indexOf('AGENT_INSTRUCTIONS_MARKER');
       let abilitiesIndex     = primer.indexOf('ABILITIES_TEXT_MARKER');
       let managementIndex    = primer.indexOf('memory:updateAgentConfig');
-      let reminderIndex      = primer.indexOf('Remember to check each user request against your ABILITIES');
+      let reminderIndex      = primer.indexOf('ABILITIES ARE MANDATORY');
 
       assert.ok(instructionsIndex >= 0, 'Instructions should be present');
       assert.ok(abilitiesIndex >= 0, 'Abilities should be present');
@@ -159,7 +159,7 @@ describe('Abilities System — Integration', () => {
 
       assert.ok(!primer.includes('--- ABILITIES ---'));
       assert.ok(!primer.includes('--- END ABILITIES ---'));
-      assert.ok(!primer.includes('Remember to check each user request against your ABILITIES'));
+      assert.ok(!primer.includes('ABILITIES ARE MANDATORY'));
     });
 
     it('should still include management note', async () => {
@@ -228,7 +228,7 @@ describe('Abilities System — Integration', () => {
       assert.ok(reinjectedMessage.content.includes(abilitiesText), 'Re-injected text should match agent abilities');
       assert.ok(reinjectedMessage.content.includes('--- END ABILITIES ---'), 'Should include end delimiter');
       assert.ok(
-        reinjectedMessage.content.includes('Remember to check each user request against your ABILITIES'),
+        reinjectedMessage.content.includes('ABILITIES ARE MANDATORY'),
         'Should include reminder',
       );
     });
@@ -384,7 +384,7 @@ describe('Abilities System — Integration', () => {
       assert.ok(primerBefore.includes('--- ABILITIES ---'));
       assert.ok(primerBefore.includes('Ability that will be cleared.'));
       assert.ok(primerBefore.includes('--- END ABILITIES ---'));
-      assert.ok(primerBefore.includes('Remember to check each user request against your ABILITIES'));
+      assert.ok(primerBefore.includes('ABILITIES ARE MANDATORY'));
 
       // Clear abilities
       agent.setAbilities(null);
@@ -394,7 +394,7 @@ describe('Abilities System — Integration', () => {
       assert.ok(!primerAfter.includes('--- ABILITIES ---'));
       assert.ok(!primerAfter.includes('Ability that will be cleared.'));
       assert.ok(!primerAfter.includes('--- END ABILITIES ---'));
-      assert.ok(!primerAfter.includes('Remember to check each user request against your ABILITIES'));
+      assert.ok(!primerAfter.includes('ABILITIES ARE MANDATORY'));
     });
 
     it('should retain management note after clearing abilities', async () => {

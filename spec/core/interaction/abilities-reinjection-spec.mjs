@@ -69,7 +69,7 @@ describe('reinjectAbilities (Step 3)', () => {
       assert.ok(result[1].content.includes('--- END ABILITIES ---'));
     });
 
-    it('should include a reminder line after the abilities block', async () => {
+    it('should include the abilities mandate after the abilities block', async () => {
       let messages = [
         truncationMarker(),
         { role: 'user', content: 'Question?' },
@@ -78,7 +78,8 @@ describe('reinjectAbilities (Step 3)', () => {
       let agent  = agentWithAbilities('Some ability.');
       let result = await reinjectAbilities(messages, agent);
 
-      assert.ok(result[1].content.includes('Remember to check each user request against your ABILITIES before proceeding.'));
+      assert.ok(result[1].content.includes('ABILITIES ARE MANDATORY'));
+      assert.ok(result[1].content.includes('abilities override your default behavior'));
     });
 
     it('should format the abilities block correctly', async () => {
@@ -87,11 +88,11 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Original message' },
       ];
 
-      let agent    = agentWithAbilities('Rule A\nRule B');
-      let result   = await reinjectAbilities(messages, agent);
-      let expected = '--- ABILITIES ---\nRule A\nRule B\n--- END ABILITIES ---\nRemember to check each user request against your ABILITIES before proceeding.';
+      let agent  = agentWithAbilities('Rule A\nRule B');
+      let result = await reinjectAbilities(messages, agent);
 
-      assert.ok(result[1].content.includes(expected));
+      assert.ok(result[1].content.includes('--- ABILITIES ---\nRule A\nRule B\n--- END ABILITIES ---'));
+      assert.ok(result[1].content.includes('ABILITIES ARE MANDATORY'));
     });
 
     it('should inject into the first user message even if truncation marker is also user role', async () => {
@@ -249,6 +250,53 @@ describe('reinjectAbilities (Step 3)', () => {
 
       assert.equal(result[1].content, 'Hello');
       assert.ok(!result[1].content.includes('--- ABILITIES ---'));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // DM session exclusion
+  // ---------------------------------------------------------------------------
+
+  describe('when isDMForAgent returns true', () => {
+    it('should skip re-injection in DM sessions', async () => {
+      let messages = [
+        truncationMarker(),
+        { role: 'user', content: 'Hello' },
+      ];
+
+      let agent  = agentWithAbilities('Some ability.');
+      let result = await reinjectAbilities(messages, agent, {
+        isDMForAgent: async () => true,
+      });
+
+      assert.equal(result[1].content, 'Hello');
+      assert.ok(!result[1].content.includes('--- ABILITIES ---'));
+    });
+
+    it('should inject normally when isDMForAgent returns false', async () => {
+      let messages = [
+        truncationMarker(),
+        { role: 'user', content: 'Hello' },
+      ];
+
+      let agent  = agentWithAbilities('Some ability.');
+      let result = await reinjectAbilities(messages, agent, {
+        isDMForAgent: async () => false,
+      });
+
+      assert.ok(result[1].content.includes('--- ABILITIES ---'));
+    });
+
+    it('should inject normally when isDMForAgent is not provided', async () => {
+      let messages = [
+        truncationMarker(),
+        { role: 'user', content: 'Hello' },
+      ];
+
+      let agent  = agentWithAbilities('Some ability.');
+      let result = await reinjectAbilities(messages, agent);
+
+      assert.ok(result[1].content.includes('--- ABILITIES ---'));
     });
   });
 

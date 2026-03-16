@@ -84,23 +84,50 @@ export class PrimerAssembler {
     if (agent && agent.dmSummary)
       sections.push(agent.dmSummary);
 
-    // 6. Abilities section (only when agent has abilities)
-    let agentHasAbilities = agent && typeof agent.hasAbilities === 'function' && await agent.hasAbilities();
+    // 6. Abilities section
+    // Skip abilities when the agent is in its own DM session — DMs are for
+    // configuring the agent, not for the agent to act on its behaviors.
+    let isDMSession      = await this._isDMForAgent(agent, options.sessionID);
+    let agentHasAbilities = !isDMSession && agent && typeof agent.hasAbilities === 'function' && await agent.hasAbilities();
 
-    if (agentHasAbilities)
-      sections.push(`--- ABILITIES ---\n${await agent.getAbilities()}\n--- END ABILITIES ---`);
+    if (agentHasAbilities) {
+      sections.push(
+        `--- ABILITIES ---\n${await agent.getAbilities()}\n--- END ABILITIES ---`,
+      );
+    }
 
     // 7. Management note (always present when agent is provided)
     if (agent)
       sections.push('You can manage your abilities (behavioral instructions) using the memory:updateAgentConfig tool.');
 
-    // 8. Abilities reminder (only when agent has abilities)
-    if (agentHasAbilities)
-      sections.push('Remember to check each user request against your ABILITIES before proceeding.');
+    // 8. Abilities mandate (only when agent has abilities)
+    if (agentHasAbilities) {
+      sections.push(
+        'ABILITIES ARE MANDATORY. Before responding to EVERY user message, you MUST:\n' +
+        '1. Review your ABILITIES section above.\n' +
+        '2. Check if any ability applies to the current message.\n' +
+        '3. If an ability applies, follow its instructions EXACTLY — abilities override your default behavior.\n' +
+        '4. If no ability applies, respond normally.\n' +
+        'Abilities are not suggestions — they are behavioral rules you must obey on every interaction.',
+      );
+    }
 
     let body = sections.join('\n\n');
 
     return `--- START OF INSTRUCTIONS ---\n${body}\n--- END OF INSTRUCTIONS ---`;
+  }
+
+  // Check if the given sessionID is a DM session for this agent
+  async _isDMForAgent(agent, sessionID) {
+    if (!agent || !sessionID)
+      return false;
+
+    let models = this._context.getProperty('models');
+    if (!models || !models.Session)
+      return false;
+
+    let session = await models.Session.where.id.EQ(sessionID).first();
+    return session && session.dmAgentID === agent.id;
   }
 
   wrapMessage(primer, userMessage) {
