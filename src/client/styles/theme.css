@@ -28,9 +28,30 @@ body {
     radial-gradient(ellipse at 85% 20%, rgba(0, 229, 255, 0.06) 0%, transparent 50%),
     radial-gradient(ellipse at 50% 90%, rgba(255, 64, 129, 0.04) 0%, transparent 50%),
     var(--background-base);
+  background-size: 120% 120%, 110% 130%, 130% 110%, 100% 100%;
+  animation: ambient-breathe 90s ease-in-out infinite;
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.5;
+}
+
+@keyframes ambient-breathe {
+  0% {
+    background-size: 120% 120%, 110% 130%, 130% 110%, 100% 100%;
+    background-position: 0% 0%, 100% 0%, 50% 100%, 0% 0%;
+  }
+  33% {
+    background-size: 140% 130%, 130% 110%, 110% 130%, 100% 100%;
+    background-position: 5% 5%, 95% 5%, 45% 95%, 0% 0%;
+  }
+  66% {
+    background-size: 110% 140%, 120% 140%, 140% 120%, 100% 100%;
+    background-position: -3% -3%, 103% -3%, 53% 103%, 0% 0%;
+  }
+  100% {
+    background-size: 120% 120%, 110% 130%, 130% 110%, 100% 100%;
+    background-position: 0% 0%, 100% 0%, 50% 100%, 0% 0%;
+  }
 }
 
 /* =========================================================================

@@ -17,10 +17,18 @@ const TEMPLATE_HTML = `
           rgba(0, 229, 255, 0.04) 50%,
           rgba(255, 64, 129, 0.05) 100%),
         var(--glass-background, rgba(255, 255, 255, 0.05));
+      background-size: 200% 100%, 100% 100%;
+      animation: topbar-breathe 80s ease-in-out infinite;
       backdrop-filter: blur(var(--glass-blur, 16px));
       -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
       border-bottom: none;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    @keyframes topbar-breathe {
+      0%   { background-position: 0% 50%, 0% 0%; }
+      50%  { background-position: 100% 50%, 0% 0%; }
+      100% { background-position: 0% 50%, 0% 0%; }
     }
 
     :host::after {
