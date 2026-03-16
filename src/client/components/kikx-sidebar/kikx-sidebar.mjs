@@ -212,14 +212,14 @@ const TEMPLATE_HTML = `
     <span class="section-label friends-label"></span>
     <button class="section-add-button add-friend-button"></button>
   </div>
-  <div class="friends-area">
+  <div class="friends-area" tabindex="-1">
     <kikx-friends-list></kikx-friends-list>
   </div>
   <div class="section-header sessions-header">
     <span class="section-label sessions-label"></span>
     <button class="section-add-button add-session-button"></button>
   </div>
-  <div class="session-list"></div>
+  <div class="session-list" tabindex="-1"></div>
 `;
 
 let cachedTemplate = null;
