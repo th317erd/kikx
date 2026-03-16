@@ -26,6 +26,12 @@ export class FrameController extends ControllerAuthBase {
           options.afterOrder = parsed;
       }
 
+      if (query.beforeOrder !== undefined && query.beforeOrder !== '') {
+        let parsed = parseInt(query.beforeOrder, 10);
+        if (!isNaN(parsed))
+          options.beforeOrder = parsed;
+      }
+
       if (query.limit !== undefined && query.limit !== '') {
         let parsed = parseInt(query.limit, 10);
         if (!isNaN(parsed) && parsed > 0)

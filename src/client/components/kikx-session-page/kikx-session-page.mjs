@@ -460,9 +460,16 @@ class KikxSessionPage extends HTMLElement {
       this._oldestLoadedOrder = minOrder;
 
       // Prepend rendered frames (oldest first, so they stack correctly)
+      // Skip frames already in the DOM to prevent duplicates.
       let sorted = [...frames].sort((a, b) => a.order - b.order);
-      for (let frame of sorted)
-        this._renderFrame(frame, { fromHistory: true, prepend: true });
+      for (let frame of sorted) {
+        let existing = this._chatView.shadowRoot.querySelector(
+          `kikx-interaction[data-frame-id="${frame.id}"]`,
+        );
+
+        if (!existing)
+          this._renderFrame(frame, { fromHistory: true, prepend: true });
+      }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to load older frames:', error);
