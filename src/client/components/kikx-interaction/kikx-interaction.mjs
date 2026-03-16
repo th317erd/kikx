@@ -21,6 +21,17 @@ const TEMPLATE_HTML = `
       max-width: 100%;
     }
 
+    /* Transition for smooth pending → confirmed state change */
+    :host {
+      transition: opacity 0.3s ease, filter 0.3s ease;
+    }
+
+    /* Optimistic "sending" state — faded + desaturated until server confirms */
+    :host(.pending) {
+      opacity: 0.55;
+      filter: saturate(0.4);
+    }
+
     /* ----------------------------------------------------------------- */
     /* Animated border glow dots — shown when bubble is clicked          */
     /* backdrop-filter creates a stacking context so z-index:-1/-2 works */

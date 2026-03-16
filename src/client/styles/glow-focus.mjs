@@ -1,10 +1,13 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// Shared animated border glow effects
+// Shared animated border glow effects — CSS Motion Path particles
 //
-// Focus: Two color-cycling dots orbit the border of a focused element.
-// Hover: Faint scrolling rainbow border + single faint glow dot.
+// Two spherical particles with fading tails orbit the border of an element
+// using offset-path: border-box. Pure CSS, no JS positioning needed.
+//
+// Hover: Faint particles + scrolling rainbow border
+// Focus: Bright particles with prominent tails
 //
 // Usage:
 //   import { GLOW_KEYFRAMES, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
@@ -19,149 +22,99 @@
 // overrides hover when both states are active.
 //
 // The target element needs position: relative (or a stacking context from
-// backdrop-filter) so z-index: -1/-2 on pseudo-elements works correctly.
-// If the element does NOT have backdrop-filter, add isolation: isolate.
+// backdrop-filter) so the pseudo-elements render correctly.
 // ---------------------------------------------------------------------------
-
-// Register --border-angle as an animatable <angle> custom property.
-try {
-  CSS.registerProperty({
-    name:         '--border-angle',
-    syntax:       '<angle>',
-    inherits:     true,
-    initialValue: '0deg',
-  });
-} catch (e) {
-  // Already registered or browser lacks support
-}
-
-// Shared mask rules that confine a gradient to just the border strip.
-const BORDER_MASK = `
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-`;
 
 export const GLOW_KEYFRAMES = `
-  @keyframes border-rotate {
-    to { --border-angle: 360deg; }
+  @keyframes particle-orbit {
+    from { offset-distance: 0%; }
+    to   { offset-distance: 100%; }
   }
 
-  @keyframes dot-hue-cycle {
-    to { filter: hue-rotate(360deg); }
+  @keyframes particle-hue-cycle {
+    from { filter: hue-rotate(0deg); }
+    to   { filter: hue-rotate(360deg); }
   }
 
-  @keyframes dot-hue-cycle-glow {
-    from { filter: blur(10px) hue-rotate(0deg); }
-    to   { filter: blur(10px) hue-rotate(360deg); }
-  }
-
-  @keyframes rainbow-scroll {
-    to { background-position: -200% 0; }
-  }
 `;
 
-// ---------------------------------------------------------------------------
-// Hover glow: faint rainbow border (::before) + faint glow dot (::after)
-// ---------------------------------------------------------------------------
-export function glowHoverCSS(selector) {
+// Shared base styles for both particles (::before and ::after)
+function particleBase(selector, size, opacity) {
   return `
-    ${selector} {
-      animation: border-rotate 42s linear infinite;
-    }
-
     ${selector}::before,
     ${selector}::after {
       content: '';
       position: absolute;
-      border-radius: inherit;
-      ${BORDER_MASK}
       pointer-events: none;
+
+      /* Particle shape: elongated ellipse for comet tail effect */
+      width: ${size * 2.5}px;
+      height: ${size}px;
+      border-radius: 50%;
+
+      /* Orbit along the element's rounded-rect border */
+      offset-path: border-box;
+      offset-rotate: auto;
+      offset-anchor: ${Math.round(size * 0.85)}% 50%;
+
+      /* Hue cycling for color variation over time */
+      animation:
+        particle-orbit var(--particle-duration, 10s) linear infinite,
+        particle-hue-cycle 30s linear infinite;
     }
 
-    /* Faint scrolling rainbow border */
+    /* Particle 1 — cyan */
     ${selector}::before {
-      inset: 0;
-      padding: 1.5px;
-      z-index: -1;
-      background: linear-gradient(90deg,
-        #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100, #ff4081,
-        #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100, #ff4081);
-      background-size: 200% 100%;
-      animation: rainbow-scroll 60s linear infinite;
-      opacity: 0.25;
+      background: radial-gradient(
+        ellipse at 80% 50%,
+        rgba(0, 229, 255, ${opacity}) 0%,
+        rgba(0, 229, 255, ${opacity * 0.5}) 30%,
+        transparent 70%
+      );
+      box-shadow:
+        0 0 ${Math.round(size * 0.6)}px ${Math.round(size * 0.15)}px rgba(0, 229, 255, ${opacity * 0.5}),
+        0 0 ${Math.round(size * 0.3)}px rgba(0, 229, 255, ${opacity * 0.3});
+      animation-delay: 0s, 0s;
     }
 
-    /* Single faint glow dot */
+    /* Particle 2 — pink, opposite side */
     ${selector}::after {
-      inset: -4px;
-      padding: 5px;
-      z-index: -2;
-      background: conic-gradient(
-        from var(--border-angle, 0deg),
-        transparent 0%,
-        #00e5ff 3%,
-        transparent 6%,
-        transparent 47%,
-        #ff4081 50%,
-        transparent 53%,
-        transparent 100%
+      background: radial-gradient(
+        ellipse at 80% 50%,
+        rgba(255, 64, 129, ${opacity}) 0%,
+        rgba(255, 64, 129, ${opacity * 0.5}) 30%,
+        transparent 70%
       );
-      opacity: 0.20;
-      animation: dot-hue-cycle-glow 45s linear infinite;
+      box-shadow:
+        0 0 ${Math.round(size * 0.6)}px ${Math.round(size * 0.15)}px rgba(255, 64, 129, ${opacity * 0.5}),
+        0 0 ${Math.round(size * 0.3)}px rgba(255, 64, 129, ${opacity * 0.3});
+      animation-delay: calc(var(--particle-duration, 10s) * -0.5), -15s;
     }
   `;
 }
 
 // ---------------------------------------------------------------------------
-// Focus glow: sharp orbiting dot (::before) + blurred glow halo (::after)
+// Hover glow: faint particles + faint rainbow border via box-shadow
+// ---------------------------------------------------------------------------
+export function glowHoverCSS(selector) {
+  return `
+    ${selector} {
+      --particle-duration: 12s;
+    }
+
+    ${particleBase(selector, 12, 0.4)}
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Focus glow: bright, larger particles with prominent tails
 // ---------------------------------------------------------------------------
 export function glowCSS(selector) {
   return `
     ${selector} {
-      animation: border-rotate 42s linear infinite;
+      --particle-duration: 10s;
     }
 
-    ${selector}::before,
-    ${selector}::after {
-      content: '';
-      position: absolute;
-      border-radius: inherit;
-      background: conic-gradient(
-        from var(--border-angle, 0deg),
-        transparent 0%,
-        #00e5ff 3%,
-        transparent 6%,
-        transparent 47%,
-        #ff4081 50%,
-        transparent 53%,
-        transparent 100%
-      );
-      ${BORDER_MASK}
-      pointer-events: none;
-    }
-
-    /* Sharp dot layer */
-    ${selector}::before {
-      inset: 0;
-      padding: 1.5px;
-      z-index: -1;
-      opacity: 0.85;
-      animation: dot-hue-cycle 45s linear infinite;
-    }
-
-    /* Glow halo layer */
-    ${selector}::after {
-      inset: -8px;
-      padding: 10px;
-      z-index: -2;
-      opacity: 0.55;
-      animation: dot-hue-cycle-glow 45s linear infinite;
-    }
+    ${particleBase(selector, 20, 0.9)}
   `;
 }

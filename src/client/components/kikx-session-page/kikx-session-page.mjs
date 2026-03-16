@@ -156,6 +156,303 @@ function getInitials(name) {
   return parts[0].substring(0, 2).toUpperCase();
 }
 
+// ---------------------------------------------------------------------------
+// Pure DOM utilities
+// ---------------------------------------------------------------------------
+
+function escapeHTML(text) {
+  let div = document.createElement('div');
+  div.textContent = text;
+
+  return div.innerHTML;
+}
+
+// Frame types that are internal plumbing — never rendered in the DOM
+const HIDDEN_TYPES = new Set([
+  'pending-action',
+  'tool-call',
+  'tool-result',
+  'tool-error',
+  'hook-blocked',
+  'permission-denied',
+  'participant-joined',
+  'participant-left',
+]);
+
+// Frame types that produce visible DOM elements
+const RENDERABLE_TYPES = new Set([
+  'message',
+  'user-message',
+  'permission-request',
+  'session-link',
+  'command-result',
+  'error',
+  'reflection',
+]);
+
+// ---------------------------------------------------------------------------
+// createFrameElement(frame) — Pure DOM factory
+// ---------------------------------------------------------------------------
+// Takes a frame object, returns an HTMLElement (kikx-interaction) or null.
+// No placement, no side effects, no options flags.
+// ---------------------------------------------------------------------------
+
+export function createFrameElement(frame) {
+  if (frame == null || typeof frame !== 'object')
+    return null;
+
+  if (!frame.type || !frame.content)
+    return null;
+
+  if (HIDDEN_TYPES.has(frame.type))
+    return null;
+
+  if (!RENDERABLE_TYPES.has(frame.type))
+    return null;
+
+  let isUser    = (frame.type === 'user-message') || (frame.authorType === 'user');
+  let alignment;
+
+  if (frame.type === 'session-link')
+    alignment = 'system';
+  else if (isUser)
+    alignment = 'user';
+  else
+    alignment = 'agent';
+
+  let name = frame.authorName || (isUser ? 'You' : (frame.type === 'session-link' ? 'System' : 'Agent'));
+
+  let interaction = document.createElement('kikx-interaction');
+  interaction.setAttribute('alignment', alignment);
+  interaction.setAttribute('participant-name', name);
+  interaction.setAttribute('participant-initials', getInitials(name));
+  interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
+  interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id || '');
+
+  if (frame.id)
+    interaction.setAttribute('data-frame-id', frame.id);
+
+  switch (frame.type) {
+    case 'session-link': {
+      let content     = frame.content || {};
+      let sessionLink = document.createElement('kikx-session-link');
+
+      sessionLink.setAttribute('target-session-id', content.targetSessionID || '');
+      sessionLink.setAttribute('session-title', content.title || 'Sub-session');
+
+      if (content.participants && content.participants.length > 0)
+        sessionLink.setAttribute('participant-count', String(content.participants.length));
+
+      interaction.appendChild(sessionLink);
+      break;
+    }
+
+    case 'permission-request': {
+      interaction.setAttribute('bubble-type', 'permission');
+
+      let permRequest = document.createElement('kikx-permission-request');
+      permRequest.setAttribute('permission-id', frame.id || '');
+
+      let parsedCommands = frame.content && frame.content.parsedCommands;
+      if (parsedCommands && parsedCommands.length > 0) {
+        let descriptionTemplate = t('permission.wantsToExecute') || '{name} wants to execute:';
+        permRequest.description = descriptionTemplate.replace('{name}', name);
+
+        let fullCommandString = frame.content.arguments && frame.content.arguments.command;
+        if (fullCommandString)
+          permRequest.fullCommand = fullCommandString;
+
+        permRequest.commands = parsedCommands;
+      } else {
+        let toolName            = (frame.content && frame.content.toolName) || 'unknown';
+        let descriptionTemplate = t('permission.wantsToUse') || '{name} wants to use:';
+        permRequest.description = descriptionTemplate.replace('{name}', name);
+
+        let toolArgs = frame.content && frame.content.arguments;
+        if (toolArgs && toolName !== 'websearch:search') {
+          try {
+            permRequest.fullCommand = `${toolName} ${JSON.stringify(toolArgs, null, 2)}`;
+          } catch (_e) {
+            permRequest.fullCommand = toolName;
+          }
+        }
+
+        permRequest.commands = [{ command: toolName, arguments: [], status: 'needs-approval' }];
+      }
+
+      if (frame.processed) {
+        let storedDecision = frame.content && frame.content.decision;
+        if (storedDecision)
+          permRequest.resolvedDecision = storedDecision;
+
+        permRequest.setAttribute('processed', '');
+      }
+
+      interaction.appendChild(permRequest);
+      break;
+    }
+
+    case 'command-result': {
+      let messageContent = document.createElement('kikx-message-content');
+      messageContent.content = (frame.content && frame.content.html) || '';
+
+      interaction.appendChild(messageContent);
+      break;
+    }
+
+    case 'error': {
+      interaction.setAttribute('bubble-type', 'error');
+
+      let messageContent = document.createElement('kikx-message-content');
+      let errorMsg       = (frame.content && frame.content.message) || 'An error occurred';
+      messageContent.content = `<p style="color: var(--error-color, #ff4444);">Error: ${errorMsg}</p>`;
+
+      interaction.appendChild(messageContent);
+      break;
+    }
+
+    case 'reflection': {
+      let reflectionBlock = document.createElement('kikx-reflection-block');
+      reflectionBlock.content = (frame.content && frame.content.text) || '';
+
+      interaction.appendChild(reflectionBlock);
+      break;
+    }
+
+    case 'message':
+    case 'user-message': {
+      if (isUser && frame.content && frame.content.estimatedTokens)
+        interaction.setAttribute('token-count', String(frame.content.estimatedTokens));
+
+      let html    = '';
+      let content = frame.content;
+
+      if (content && typeof content === 'object') {
+        if (content.html)
+          html = content.html;
+        else if (content.text)
+          html = `<p>${escapeHTML(content.text)}</p>`;
+      } else if (typeof content === 'string') {
+        html = content;
+      }
+
+      let messageContent = document.createElement('kikx-message-content');
+      messageContent.content = html;
+
+      interaction.appendChild(messageContent);
+      break;
+    }
+  }
+
+  return interaction;
+}
+
+// ---------------------------------------------------------------------------
+// setupFrameRendering(frameManager, container) — Event wiring
+// ---------------------------------------------------------------------------
+// Wires FrameManager events to DOM operations. Returns a cleanup function.
+// frame:added  → create element, insert at ordered position
+// frame:updated → find element, patch content in place
+// ---------------------------------------------------------------------------
+
+export function setupFrameRendering(frameManager, container) {
+  function onFrameAdded({ frame }) {
+    // Dedup: skip if element already exists in the DOM
+    if (frame.id && container.querySelector(`[data-frame-id="${frame.id}"]`))
+      return;
+
+    // For user-message frames, check for ghost element to adopt
+    if (frame.type === 'user-message' || frame.authorType === 'user') {
+      let ghosts = container.querySelectorAll('kikx-interaction[alignment="user"]:not([data-frame-id])');
+      let ghost  = (ghosts.length > 0) ? ghosts[ghosts.length - 1] : null;
+
+      if (ghost && ghost.classList.contains('pending')) {
+        ghost.setAttribute('data-frame-id', frame.id);
+        ghost.setAttribute('data-interaction-id', frame.interactionID || frame.id);
+        ghost.classList.remove('pending');
+
+        if (frame.content && frame.content.estimatedTokens)
+          ghost.setAttribute('token-count', String(frame.content.estimatedTokens));
+
+        return;
+      }
+    }
+
+    let el = createFrameElement(frame);
+    if (!el)
+      return;
+
+    // Store order for position-based insertion
+    el.setAttribute('data-frame-order', String(frame.order));
+
+    // Find insertion point based on order
+    let inserted = false;
+    let children = container.querySelectorAll('[data-frame-order]');
+
+    for (let child of children) {
+      let childOrder = parseInt(child.getAttribute('data-frame-order'), 10);
+
+      if (frame.order < childOrder) {
+        // Preserve scroll position when inserting above viewport
+        let scrollBefore = container.scrollTop;
+        let heightBefore = container.scrollHeight;
+
+        container.insertBefore(el, child);
+
+        let heightAfter = container.scrollHeight;
+        if (container.scrollTop > 0)
+          container.scrollTop = scrollBefore + (heightAfter - heightBefore);
+
+        inserted = true;
+        break;
+      }
+    }
+
+    if (!inserted)
+      container.appendChild(el);
+  }
+
+  function onFrameUpdated({ frame }) {
+    if (!frame || !frame.id)
+      return;
+
+    let existing = container.querySelector(`[data-frame-id="${frame.id}"]`);
+    if (!existing)
+      return;
+
+    // Patch message content
+    let messageContent = existing.querySelector('kikx-message-content');
+    if (messageContent && frame.content) {
+      let html = '';
+
+      if (frame.content.html)
+        html = frame.content.html;
+      else if (frame.content.text)
+        html = `<p>${escapeHTML(frame.content.text)}</p>`;
+
+      if (html)
+        messageContent.content = html;
+    }
+
+    // Patch reflection content
+    let reflectionBlock = existing.querySelector('kikx-reflection-block');
+    if (reflectionBlock && frame.content && frame.content.text)
+      reflectionBlock.content = frame.content.text;
+  }
+
+  frameManager.on('frame:added', onFrameAdded);
+  frameManager.on('frame:updated', onFrameUpdated);
+
+  return function cleanup() {
+    frameManager.off('frame:added', onFrameAdded);
+    frameManager.off('frame:updated', onFrameUpdated);
+  };
+}
+
+// ---------------------------------------------------------------------------
+// KikxSessionPage component
+// ---------------------------------------------------------------------------
+
 class KikxSessionPage extends HTMLElement {
   static get observedAttributes() { return ['data-id']; }
 
@@ -340,9 +637,141 @@ class KikxSessionPage extends HTMLElement {
 
     this._frameManager = new FrameManager({ history: false });
 
-    // Event-driven rendering: FrameManager emits when frames are added/updated
+    // Event-driven rendering: FrameManager events → DOM projection
     this._frameManager.on('frame:added', ({ frame }) => {
-      this._renderFrame(frame);
+      // --- Streaming finalization ---
+      // If a message frame arrives while we're streaming, adopt the streaming
+      // bubble instead of creating a new element.
+      let agentID     = frame.authorID || null;
+      let streamState = (agentID && this._agentStreams.has(agentID))
+        ? this._agentStreams.get(agentID)
+        : null;
+
+      let streamingInteraction = streamState
+        ? streamState.streamingInteraction
+        : this._streamingInteraction;
+
+      if (frame.type === 'message' && streamingInteraction) {
+        let content = frame.content;
+        let html    = '';
+
+        if (content && typeof content === 'object') {
+          if (content.html)
+            html = content.html;
+          else if (content.text)
+            html = `<p>${escapeHTML(content.text)}</p>`;
+        } else if (typeof content === 'string') {
+          html = content;
+        }
+
+        let streamingContent = streamState
+          ? streamState.streamingContent
+          : this._streamingContent;
+
+        if (streamingContent)
+          streamingContent.content = html;
+
+        streamingInteraction.setAttribute('data-frame-id', frame.id);
+
+        if (debug.isEnabled() && frame.interactionID) {
+          debug.pushFrame(frame.interactionID, frame);
+          debug.snapshotComposed(frame.interactionID);
+        }
+
+        if (streamState) {
+          streamState.streamingInteraction = null;
+          streamState.streamingContent     = null;
+          streamState.streamingHTML        = '';
+        }
+
+        this._streamingInteraction = null;
+        this._streamingContent     = null;
+        this._streamingHTML        = '';
+
+        return;
+      }
+
+      // --- Reflection finalization (streaming) ---
+      if (frame.type === 'reflection') {
+        let streamingReflection = streamState
+          ? streamState.streamingReflection
+          : this._streamingReflection;
+
+        if (streamingReflection) {
+          streamingReflection.content = (frame.content && frame.content.text) || '';
+
+          if (streamState) {
+            streamState.streamingReflection = null;
+            streamState.reflectionText      = '';
+          }
+
+          this._streamingReflection = null;
+          this._reflectionText      = '';
+
+          return;
+        }
+      }
+
+      // --- User-message optimistic adoption ---
+      if (frame.type === 'user-message') {
+        let allGhosts = this._chatView.shadowRoot.querySelectorAll(
+          'kikx-interaction[alignment="user"]:not([data-frame-id])',
+        );
+        let optimistic = allGhosts.length > 0 ? allGhosts[allGhosts.length - 1] : null;
+
+        if (optimistic) {
+          optimistic.setAttribute('data-frame-id', frame.id);
+          optimistic.setAttribute('data-interaction-id', frame.interactionID || frame.id);
+          optimistic.classList.remove('pending');
+
+          let estimatedTokens = frame.content && frame.content.estimatedTokens;
+          if (estimatedTokens)
+            optimistic.setAttribute('token-count', String(estimatedTokens));
+
+          if (frame.content && frame.content.html) {
+            let messageContent = optimistic.querySelector('kikx-message-content');
+            if (messageContent)
+              messageContent.content = frame.content.html;
+          }
+
+          if (frame.parentID)
+            this._updateReplyCount(frame.parentID);
+
+          return;
+        }
+      }
+
+      // --- Dedup: skip if element already exists in DOM ---
+      if (frame.id) {
+        let existing = this._chatView.shadowRoot.querySelector(
+          `[data-frame-id="${frame.id}"]`,
+        );
+
+        if (existing)
+          return;
+      }
+
+      // --- Create and append new element ---
+      let el = createFrameElement(frame);
+      if (!el)
+        return;
+
+      // Thread: set reply context if this frame is a reply
+      if (frame.parentID) {
+        let preview = this._getParentPreview(frame.parentID);
+        if (preview)
+          el.setAttribute('parent-preview', preview);
+      }
+
+      this._chatView.appendInteraction(el);
+
+      if (frame.parentID)
+        this._updateReplyCount(frame.parentID);
+
+      if (debug.isEnabled()) {
+        debug.trackElement(frame.interactionID || frame.id, el);
+        debug.pushFrame(frame.interactionID || frame.id, frame);
+      }
     });
 
     this._frameManager.on('frame:updated', ({ frame }) => {
@@ -387,10 +816,6 @@ class KikxSessionPage extends HTMLElement {
       let frames = Array.isArray(data) ? data : (data.frames || []);
 
       if (this._frameManager) {
-        // Bulk load into FrameManager — suppress per-frame events
-        this._frameManager.merge(frames, { events: false });
-        this._frameManager.syncOrderCounter(this._frameManager.getWindowBounds().to);
-
         // Track oldest DB-level order for scroll-up pagination
         // (FrameManager reassigns orders internally, so use raw API data)
         if (frames.length > 0) {
@@ -403,13 +828,9 @@ class KikxSessionPage extends HTMLElement {
           this._oldestLoadedOrder = minOrder;
         }
 
-        // Render all frames from FrameManager's sorted state
-        for (let frame of this._frameManager)
-          this._renderFrame(frame, { fromHistory: true });
-      } else {
-        // Fallback: direct render (no FrameManager)
-        for (let frame of frames)
-          this._renderFrame(frame, { fromHistory: true });
+        // Merge with events enabled — frame:added handlers render each frame
+        this._frameManager.merge(frames);
+        this._frameManager.syncOrderCounter(this._frameManager.getWindowBounds().to);
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -448,7 +869,9 @@ class KikxSessionPage extends HTMLElement {
         return;
       }
 
-      // Load into FrameManager without events (we render manually in order)
+      // Load into FrameManager without events (older frames get higher
+      // FrameManager orders, which would place them at the bottom if we
+      // used events; we need them at the top).
       this._frameManager.loadWindow(frames);
 
       // Update oldest DB-level order from raw API data
@@ -460,17 +883,27 @@ class KikxSessionPage extends HTMLElement {
 
       this._oldestLoadedOrder = minOrder;
 
-      // Prepend rendered frames (oldest first, so they stack correctly)
-      // Skip frames already in the DOM to prevent duplicates.
-      let sorted = [...frames].sort((a, b) => a.order - b.order);
+      // Build a DocumentFragment with all older frames in chronological order,
+      // then prepend the entire fragment in one DOM operation.
+      let sorted   = [...frames].sort((a, b) => a.order - b.order);
+      let fragment = document.createDocumentFragment();
+
       for (let frame of sorted) {
+        // Dedup: skip frames already in the DOM
         let existing = this._chatView.shadowRoot.querySelector(
           `kikx-interaction[data-frame-id="${frame.id}"]`,
         );
 
-        if (!existing)
-          this._renderFrame(frame, { fromHistory: true, prepend: true });
+        if (existing)
+          continue;
+
+        let el = createFrameElement(frame);
+        if (el)
+          fragment.appendChild(el);
       }
+
+      if (fragment.childNodes.length > 0)
+        this._chatView.prependInteraction(fragment);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to load older frames:', error);
@@ -585,25 +1018,6 @@ class KikxSessionPage extends HTMLElement {
         break;
       }
 
-      case 'frame': {
-        // When FrameManager is present, frames arrive via 'commit' events
-        // (which already contain the frame data). Skip raw 'frame' events
-        // to avoid rendering the same frame twice.
-        if (this._frameManager)
-          break;
-
-        let frame;
-
-        try {
-          frame = JSON.parse(data);
-        } catch (_error) {
-          return;
-        }
-
-        this._renderFrame(frame);
-        break;
-      }
-
       case 'delta': {
         let parsed;
 
@@ -704,338 +1118,6 @@ class KikxSessionPage extends HTMLElement {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Frame rendering
-  // ---------------------------------------------------------------------------
-
-  _placeInteraction(interaction, options) {
-    if (options && options.prepend)
-      this._chatView.prependInteraction(interaction);
-    else
-      this._chatView.appendInteraction(interaction);
-  }
-
-  _renderFrame(frame, options = {}) {
-    // User-message frames from SSE: don't re-render (already shown optimistically),
-    // but update the optimistic element with server-provided metadata (token count, frame ID).
-    if (frame.type === 'user-message' && !options.fromHistory) {
-      let estimatedTokens = frame.content && frame.content.estimatedTokens;
-
-      // Find the most recent user bubble without a data-frame-id (the optimistic one)
-      let allInteractions = this._chatView.shadowRoot.querySelectorAll('kikx-interaction[alignment="user"]:not([data-frame-id])');
-      let optimistic = allInteractions.length > 0 ? allInteractions[allInteractions.length - 1] : null;
-
-      if (optimistic) {
-        optimistic.setAttribute('data-frame-id', frame.id);
-        optimistic.setAttribute('data-interaction-id', frame.interactionID || frame.id);
-
-        if (estimatedTokens)
-          optimistic.setAttribute('token-count', String(estimatedTokens));
-
-        // If the server converted markdown → HTML, update the optimistic bubble
-        if (frame.content && frame.content.html) {
-          let messageContent = optimistic.querySelector('kikx-message-content');
-          if (messageContent)
-            messageContent.content = frame.content.html;
-        }
-      }
-
-      // Thread: update reply count on the parent message now that the frame is confirmed
-      if (frame.parentID)
-        this._updateReplyCount(frame.parentID);
-
-      return;
-    }
-
-    // Skip non-renderable frame types (internal plumbing, not user-facing)
-    let hiddenTypes = new Set([
-      'pending-action',
-      'tool-call',
-      'tool-result',
-      'tool-error',
-      'hook-blocked',
-      'permission-denied',
-      'participant-joined',
-      'participant-left',
-    ]);
-
-    if (hiddenTypes.has(frame.type))
-      return;
-
-    // Session-link frames — render as clickable card
-    if (frame.type === 'session-link') {
-      let content = frame.content || {};
-
-      let interaction = document.createElement('kikx-interaction');
-      interaction.setAttribute('alignment', 'system');
-      interaction.setAttribute('participant-name', 'System');
-      interaction.setAttribute('participant-initials', '#');
-      interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
-      interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
-      interaction.setAttribute('data-frame-id', frame.id);
-
-      let sessionLink = document.createElement('kikx-session-link');
-      sessionLink.setAttribute('target-session-id', content.targetSessionID || '');
-      sessionLink.setAttribute('session-title', content.title || 'Sub-session');
-
-      if (content.participants && content.participants.length > 0)
-        sessionLink.setAttribute('participant-count', String(content.participants.length));
-
-      interaction.appendChild(sessionLink);
-      this._placeInteraction(interaction, options);
-
-      if (debug.isEnabled()) {
-        debug.trackElement(frame.interactionID || frame.id, interaction);
-        debug.pushFrame(frame.interactionID || frame.id, frame);
-      }
-
-      return;
-    }
-
-    // Permission request — render approval UI
-    if (frame.type === 'permission-request') {
-      let name = this._getAgentDisplayName();
-
-      let interaction = document.createElement('kikx-interaction');
-      interaction.setAttribute('alignment', 'agent');
-      interaction.setAttribute('participant-name', name);
-      interaction.setAttribute('participant-initials', getInitials(name));
-      interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
-      interaction.setAttribute('bubble-type', 'permission');
-      interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
-      interaction.setAttribute('data-frame-id', frame.id);
-
-      let permRequest = document.createElement('kikx-permission-request');
-      permRequest.setAttribute('permission-id', frame.id);
-
-      // Set per-command data if available (shell:execute with parsed commands)
-      let parsedCommands = frame.content && frame.content.parsedCommands;
-      if (parsedCommands && parsedCommands.length > 0) {
-        let descriptionTemplate = t('permission.wantsToExecute') || '{name} wants to execute:';
-        permRequest.description = descriptionTemplate.replace('{name}', name);
-
-        // Show the full original command string at the top
-        let fullCommandString = frame.content && frame.content.arguments && frame.content.arguments.command;
-        if (fullCommandString)
-          permRequest.fullCommand = fullCommandString;
-
-        permRequest.commands = parsedCommands;
-      } else {
-        let toolName = (frame.content && frame.content.toolName) || 'unknown';
-        let descriptionTemplate = t('permission.wantsToUse') || '{name} wants to use:';
-        permRequest.description = descriptionTemplate.replace('{name}', name);
-
-        // Show tool arguments as full command only for tools where arguments
-        // are meaningful for the permission decision (e.g. fetch URLs).
-        // Websearch queries are NOT shown because the permission is binary
-        // (allow/deny web search), not per-query.
-        let toolArgs = frame.content && frame.content.arguments;
-        if (toolArgs && toolName !== 'websearch:search') {
-          try {
-            permRequest.fullCommand = `${toolName} ${JSON.stringify(toolArgs, null, 2)}`;
-          } catch (e) {
-            permRequest.fullCommand = toolName;
-          }
-        }
-
-        permRequest.commands = [{ command: toolName, arguments: [], status: 'needs-approval' }];
-      }
-
-      if (frame.processed) {
-        // Restore decision from persisted frame content for historical frames
-        let storedDecision = frame.content && frame.content.decision;
-        if (storedDecision)
-          permRequest.resolvedDecision = storedDecision;
-
-        permRequest.setAttribute('processed', '');
-      }
-
-      interaction.appendChild(permRequest);
-      this._placeInteraction(interaction, options);
-
-      if (debug.isEnabled()) {
-        debug.trackElement(frame.interactionID || frame.id, interaction);
-        debug.pushFrame(frame.interactionID || frame.id, frame);
-      }
-
-      return;
-    }
-
-    // Command result — render as system message
-    if (frame.type === 'command-result') {
-      let interaction = document.createElement('kikx-interaction');
-      interaction.setAttribute('alignment', 'agent');
-      interaction.setAttribute('participant-name', 'System');
-      interaction.setAttribute('participant-initials', 'S');
-      interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
-      interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
-      interaction.setAttribute('data-frame-id', frame.id);
-
-      let messageContent = document.createElement('kikx-message-content');
-      messageContent.content = (frame.content && frame.content.html) || '';
-
-      interaction.appendChild(messageContent);
-      this._placeInteraction(interaction, options);
-
-      if (debug.isEnabled()) {
-        debug.trackElement(frame.interactionID || frame.id, interaction);
-        debug.pushFrame(frame.interactionID || frame.id, frame);
-      }
-
-      return;
-    }
-
-    // Error frames — render as error messages
-    if (frame.type === 'error') {
-      let interaction = document.createElement('kikx-interaction');
-      interaction.setAttribute('alignment', 'agent');
-      interaction.setAttribute('participant-name', 'System');
-      interaction.setAttribute('participant-initials', '!');
-      interaction.setAttribute('bubble-type', 'error');
-      interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
-      interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
-      interaction.setAttribute('data-frame-id', frame.id);
-
-      let messageContent = document.createElement('kikx-message-content');
-      let errorMsg = (frame.content && frame.content.message) || 'An error occurred';
-      messageContent.content = `<p style="color: var(--error-color, #ff4444);">Error: ${errorMsg}</p>`;
-
-      interaction.appendChild(messageContent);
-      this._placeInteraction(interaction, options);
-
-      if (debug.isEnabled()) {
-        debug.trackElement(frame.interactionID || frame.id, interaction);
-        debug.pushFrame(frame.interactionID || frame.id, frame);
-      }
-
-      return;
-    }
-
-    // Reflection frames
-    if (frame.type === 'reflection') {
-      // If we're streaming and have a live reflection block, finalize it
-      if (this._streamingReflection) {
-        this._streamingReflection.content = (frame.content && frame.content.text) || '';
-        this._streamingReflection = null;
-        this._reflectionText      = '';
-
-        return;
-      }
-
-      // From history or non-streaming: render as standalone collapsible block
-      if (options.fromHistory) {
-        let name = this._getAgentDisplayName();
-
-        let interaction = document.createElement('kikx-interaction');
-        interaction.setAttribute('alignment', 'agent');
-        interaction.setAttribute('participant-name', name);
-        interaction.setAttribute('participant-initials', getInitials(name));
-        interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
-        interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
-        interaction.setAttribute('data-frame-id', frame.id);
-
-        let reflectionBlock = document.createElement('kikx-reflection-block');
-        reflectionBlock.content = (frame.content && frame.content.text) || '';
-
-        interaction.appendChild(reflectionBlock);
-        this._placeInteraction(interaction, options);
-
-        if (debug.isEnabled()) {
-          debug.trackElement(frame.interactionID || frame.id, interaction);
-          debug.pushFrame(frame.interactionID || frame.id, frame);
-        }
-      }
-
-      return;
-    }
-
-    // Message frames: finalize streaming bubble if active
-    if (frame.type === 'message' && this._streamingInteraction) {
-      let content = frame.content;
-      let html    = '';
-
-      if (content && typeof content === 'object') {
-        if (content.html)
-          html = content.html;
-        else if (content.text)
-          html = `<p>${this._escapeHTML(content.text)}</p>`;
-      } else if (typeof content === 'string') {
-        html = content;
-      }
-
-      // Update the existing streaming content with the finalized (sanitized) HTML
-      if (this._streamingContent)
-        this._streamingContent.content = html;
-
-      // Set data-frame-id so persistence can find this frame later
-      this._streamingInteraction.setAttribute('data-frame-id', frame.id);
-
-      if (debug.isEnabled() && frame.interactionID) {
-        debug.pushFrame(frame.interactionID, frame);
-        debug.snapshotComposed(frame.interactionID);
-      }
-
-      this._streamingInteraction = null;
-      this._streamingContent     = null;
-      this._streamingHTML        = '';
-
-      return;
-    }
-
-    let isUser    = (frame.type === 'user-message') || (frame.authorType === 'user');
-    let alignment = (isUser) ? 'user' : 'agent';
-    let name      = frame.authorName || ((isUser) ? this._getUserDisplayName() : this._getAgentDisplayName());
-
-    let interaction = document.createElement('kikx-interaction');
-    interaction.setAttribute('alignment', alignment);
-    interaction.setAttribute('participant-name', name);
-    interaction.setAttribute('participant-initials', getInitials(name));
-    interaction.setAttribute('timestamp', formatTimestamp(frame.createdAt || frame.timestamp || Date.now()));
-    interaction.setAttribute('data-interaction-id', frame.interactionID || frame.id);
-    interaction.setAttribute('data-frame-id', frame.id);
-
-    // Thread: set reply context if this frame is a reply
-    if (frame.parentID) {
-      let preview = this._getParentPreview(frame.parentID);
-      if (preview)
-        interaction.setAttribute('parent-preview', preview);
-    }
-
-    // Set server-estimated token count for user messages
-    if (isUser && frame.content && frame.content.estimatedTokens)
-      interaction.setAttribute('token-count', String(frame.content.estimatedTokens));
-
-    // frame.content is an object: { html: "..." } or { text: "..." }
-    let content = frame.content;
-    let html    = '';
-
-    if (content && typeof content === 'object') {
-      if (content.html) {
-        html = content.html;
-      } else if (content.text) {
-        // Plain text (e.g. user-message frames) — escape for safe HTML rendering
-        html = `<p>${this._escapeHTML(content.text)}</p>`;
-      }
-    } else if (typeof content === 'string') {
-      html = content;
-    }
-
-    let messageContent = document.createElement('kikx-message-content');
-    messageContent.content = html;
-
-    interaction.appendChild(messageContent);
-    this._placeInteraction(interaction, options);
-
-    // Thread: update reply count on parent message
-    if (frame.parentID)
-      this._updateReplyCount(frame.parentID);
-
-    if (debug.isEnabled()) {
-      debug.trackElement(frame.interactionID || frame.id, interaction);
-      debug.pushFrame(frame.interactionID || frame.id, frame);
-    }
-  }
-
   _updateRenderedFrame(frame) {
     if (!this._chatView || !this._chatView.shadowRoot)
       return;
@@ -1055,7 +1137,7 @@ class KikxSessionPage extends HTMLElement {
       if (frame.content.html)
         html = frame.content.html;
       else if (frame.content.text)
-        html = `<p>${this._escapeHTML(frame.content.text)}</p>`;
+        html = `<p>${escapeHTML(frame.content.text)}</p>`;
 
       if (html)
         messageContent.content = html;
@@ -1079,9 +1161,10 @@ class KikxSessionPage extends HTMLElement {
     }
 
     let messageContent = document.createElement('kikx-message-content');
-    messageContent.content = `<p>${this._escapeHTML(text)}</p>`;
+    messageContent.content = `<p>${escapeHTML(text)}</p>`;
 
     interaction.appendChild(messageContent);
+    interaction.classList.add('pending');
     this._chatView.appendInteraction(interaction);
   }
 
@@ -1093,17 +1176,10 @@ class KikxSessionPage extends HTMLElement {
     interaction.setAttribute('timestamp', formatTimestamp(new Date().toISOString()));
 
     let messageContent = document.createElement('kikx-message-content');
-    messageContent.content = `<p style="color: var(--error-color, #ff4444);">${this._escapeHTML(message)}</p>`;
+    messageContent.content = `<p style="color: var(--error-color, #ff4444);">${escapeHTML(message)}</p>`;
 
     interaction.appendChild(messageContent);
     this._chatView.appendInteraction(interaction);
-  }
-
-  _escapeHTML(text) {
-    let div = document.createElement('div');
-    div.textContent = text;
-
-    return div.innerHTML;
   }
 
   _getUserDisplayName() {
