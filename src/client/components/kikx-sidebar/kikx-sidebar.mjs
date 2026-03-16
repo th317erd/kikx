@@ -110,7 +110,7 @@ const TEMPLATE_HTML = `
       max-height: 200px;
       overflow-y: auto;
       overflow-x: hidden;
-      padding: 4px 0;
+      padding: 4px 10px;
     }
 
     .friends-area::-webkit-scrollbar { width: 6px; }
@@ -125,6 +125,7 @@ const TEMPLATE_HTML = `
       flex: 1;
       overflow-y: auto;
       min-height: 0;
+      padding: 4px 10px;
     }
 
     .session-list::-webkit-scrollbar { width: 6px; }
