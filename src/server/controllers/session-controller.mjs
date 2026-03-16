@@ -48,7 +48,12 @@ export class SessionController extends ControllerAuthBase {
     if (!session)
       this.throwNotFoundError('Session not found');
 
-    return { data: { session } };
+    let participants = await sessionManager.getParticipants(params.sessionID);
+    let sessionData  = session.toJSON ? session.toJSON() : { ...session };
+
+    sessionData.participants = participants.map((p) => p.toJSON ? p.toJSON() : { ...p });
+
+    return { data: { session: sessionData } };
   }
 
   // ---------------------------------------------------------------------------

@@ -60,8 +60,8 @@ location /shared/ {
 # Shared libraries (frame-manager, etc.) — served from src/shared/
 location /kikx/shared/ {
   alias /home/wyatt/Projects/kikx-workspace/kikx/src/shared/;
-  expires 1h;
-  add_header Cache-Control "public, no-transform";
+  expires -1;
+  add_header Cache-Control "no-cache, no-store, must-revalidate";
 
   # MIME types — must be declared here since alias blocks inherit
   # the server-level types. The nested regex location was removed
@@ -82,8 +82,8 @@ location /kikx/shared/ {
 # SPA fallback: try_files for history API routing
 location /kikx/ {
   alias /home/wyatt/Projects/kikx-workspace/kikx/src/client/;
-  expires 1h;
-  add_header Cache-Control "public, no-transform";
+  expires -1;
+  add_header Cache-Control "no-cache, no-store, must-revalidate";
 
   # Serve .mjs files with correct MIME type
   types {

@@ -159,7 +159,7 @@ class KikxSessionPage extends HTMLElement {
   static get observedAttributes() { return ['data-id']; }
 
   attributeChangedCallback(name, oldValue, newValue) {
-    if (name === 'data-id' && oldValue !== null && oldValue !== newValue)
+    if (name === 'data-id' && oldValue !== newValue)
       this._updateSessionView();
   }
 
@@ -276,6 +276,11 @@ class KikxSessionPage extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   _updateSessionView() {
+    // Guard: shadow DOM refs not yet available (attributeChangedCallback
+    // fires before connectedCallback). connectedCallback will call us.
+    if (!this._topBar)
+      return;
+
     let sessionID = this.sessionID;
 
     if (sessionID) {
@@ -1150,8 +1155,14 @@ class KikxSessionPage extends HTMLElement {
 
     // Determine agent ID from session data (may be null for agent-less sessions)
     let agentID = null;
-    if (this._currentSession)
-      agentID = this._currentSession.dmAgentID || this._currentSession.agentID || this._currentSession.agentID;
+
+    if (this._currentSession) {
+      agentID = this._currentSession.dmAgentID || null;
+
+      // For chat sessions, resolve agent from participants
+      if (!agentID && this._currentSession.participants && this._currentSession.participants.length > 0)
+        agentID = this._currentSession.participants[0].agentID;
+    }
 
     // Render user message immediately (optimistic)
     this._renderUserMessage(text, parentID);
