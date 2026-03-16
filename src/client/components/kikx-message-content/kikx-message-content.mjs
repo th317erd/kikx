@@ -80,6 +80,11 @@ const TEMPLATE_HTML = `
       overflow-wrap: break-word;
     }
 
+    ::selection {
+      background: var(--accent-dim, rgba(0, 229, 255, 0.10));
+      color: var(--text-primary, #e8e8f0);
+    }
+
     .message-body {
       font-size: 1rem;
     }

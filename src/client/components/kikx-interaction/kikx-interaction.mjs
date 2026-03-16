@@ -1,7 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
-import { GLOW_KEYFRAMES, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
+import { glowInitCSS, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -10,6 +10,11 @@ const TEMPLATE_HTML = `
       padding: var(--spacing-sm, 8px);
       max-width: 85%;
       align-self: flex-start;
+    }
+
+    ::selection {
+      background: var(--accent-dim, rgba(0, 229, 255, 0.10));
+      color: var(--text-primary, #e8e8f0);
     }
 
     :host([alignment="user"]) {
@@ -36,7 +41,7 @@ const TEMPLATE_HTML = `
     /* Animated border glow dots — shown when bubble is clicked          */
     /* backdrop-filter creates a stacking context so z-index:-1/-2 works */
     /* ----------------------------------------------------------------- */
-    ${GLOW_KEYFRAMES}
+    ${glowInitCSS('.bubble')}
     ${glowHoverCSS('.bubble:hover:not(.focused)')}
     ${glowCSS('.bubble.focused')}
 
@@ -418,6 +423,9 @@ class KikxInteraction extends HTMLElement {
     this._bubble.addEventListener('click', this._onBubbleClick);
     this.ownerDocument.addEventListener('interaction-focused', this._onPeerFocus);
     requestAnimationFrame(() => this._updateReflectText());
+
+    // Random glow offset so bubbles don't all rotate in sync
+    this._bubble.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
   }
 
   disconnectedCallback() {

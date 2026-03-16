@@ -1,13 +1,13 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
-import { GLOW_KEYFRAMES, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
+import { glowInitCSS, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
 
 const TEMPLATE_HTML = `
   <style>
     :host {
       display: block;
-      overflow: hidden;
+      overflow: visible;
     }
 
     :host::-webkit-scrollbar { width: 6px; }
@@ -43,7 +43,7 @@ const TEMPLATE_HTML = `
       box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.10));
     }
 
-    ${GLOW_KEYFRAMES}
+    ${glowInitCSS('.friend-row')}
     ${glowHoverCSS('.friend-row:hover:not(.active)')}
     ${glowCSS('.friend-row.active')}
 
@@ -159,6 +159,9 @@ class KikxFriendsList extends HTMLElement {
       row.className     = (friend.id === this._activeFriendID) ? 'friend-row active' : 'friend-row';
       row.dataset.id    = friend.id;
       row.dataset.type  = friend.type || 'agent';
+
+      // Random glow offset so rows don't all rotate in sync
+      row.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
 
       let avatar = document.createElement('kikx-user-avatar');
       avatar.setAttribute('size', '28');

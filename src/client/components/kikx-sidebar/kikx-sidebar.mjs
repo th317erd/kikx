@@ -1,7 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
-import { GLOW_KEYFRAMES, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
+import { glowInitCSS, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -32,29 +32,43 @@ const TEMPLATE_HTML = `
       display: flex;
       align-items: center;
       gap: var(--spacing-xs, 4px);
-      padding: var(--spacing-sm, 8px);
+      padding: 14px var(--spacing-sm, 8px) var(--spacing-sm, 8px);
       flex-shrink: 0;
+      overflow: visible;
     }
 
-    .search-input {
+    .search-wrapper {
       flex: 1;
-      padding: 8px 12px;
+      position: relative;
+      isolation: isolate;
       background: var(--input-background, rgba(255, 255, 255, 0.05));
       border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
       border-radius: var(--border-radius-medium, 8px);
+      transition: border-color 0.2s ease;
+    }
+
+    .search-wrapper:focus-within {
+      border-color: var(--accent-primary, #00e5ff);
+    }
+
+    ${glowInitCSS('.search-wrapper')}
+    ${glowHoverCSS('.search-wrapper:hover:not(:focus-within)')}
+    ${glowCSS('.search-wrapper:focus-within')}
+
+    .search-input {
+      width: 100%;
+      padding: 8px 12px;
+      background: transparent;
+      border: none;
+      border-radius: inherit;
       color: var(--text-primary, #e8e8f0);
       font-size: 1rem;
       outline: none;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      box-sizing: border-box;
     }
 
     .search-input::placeholder {
       color: var(--input-placeholder, var(--text-muted, #606078));
-    }
-
-    .search-input:focus {
-      border-color: var(--accent-primary, #00e5ff);
-      box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
     .archive-toggle {
@@ -109,8 +123,8 @@ const TEMPLATE_HTML = `
       flex-shrink: 0;
       max-height: 200px;
       overflow-y: auto;
-      overflow-x: hidden;
-      padding: 4px 10px;
+      overflow-x: clip;
+      padding: 14px 14px;
     }
 
     .friends-area::-webkit-scrollbar { width: 6px; }
@@ -161,7 +175,7 @@ const TEMPLATE_HTML = `
       box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.10));
     }
 
-    ${GLOW_KEYFRAMES}
+    ${glowInitCSS('.session-row')}
     ${glowHoverCSS('.session-row:hover:not(.active)')}
     ${glowCSS('.session-row.active')}
 
@@ -189,7 +203,9 @@ const TEMPLATE_HTML = `
   </style>
 
   <div class="search-area">
-    <input class="search-input" type="text" />
+    <div class="search-wrapper">
+      <input class="search-input" type="text" />
+    </div>
     <button class="archive-toggle"></button>
   </div>
   <div class="section-header friends-header">
@@ -248,6 +264,10 @@ class KikxSidebar extends HTMLElement {
     this._addFriendButton.addEventListener('click', this._onAddFriendClick);
     this._addSessionButton.addEventListener('click', this._onAddSessionClick);
     this._sessionList.addEventListener('click', this._onSessionClick);
+
+    // Random glow offset for search wrapper
+    let searchWrapper = this.shadowRoot.querySelector('.search-wrapper');
+    searchWrapper.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
   }
 
   disconnectedCallback() {
@@ -332,6 +352,9 @@ class KikxSidebar extends HTMLElement {
       let row = document.createElement('div');
       row.className  = (session.id === this._activeSessionID) ? 'session-row active' : 'session-row';
       row.dataset.id = session.id;
+
+      // Random glow offset so rows don't all rotate in sync
+      row.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
 
       let icon = document.createElement('span');
       icon.className   = 'session-icon';

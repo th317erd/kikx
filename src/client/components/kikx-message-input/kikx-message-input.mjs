@@ -1,7 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
-import { GLOW_KEYFRAMES, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
+import { glowInitCSS, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -27,7 +27,7 @@ const TEMPLATE_HTML = `
         0 0 30px rgba(176, 64, 255, 0.03);
     }
 
-    ${GLOW_KEYFRAMES}
+    ${glowInitCSS('.input-area')}
     ${glowHoverCSS('.input-area:hover:not(:focus-within)')}
     ${glowCSS('.input-area:focus-within')}
 
@@ -184,6 +184,10 @@ class KikxMessageInput extends HTMLElement {
     this._sendButton.addEventListener('click', this._onSendClick);
     this._replyCancelButton.addEventListener('click', this._onReplyCancel);
     this._textarea.addEventListener('focusin', this._onFocusIn);
+
+    // Random glow offset
+    let inputArea = this.shadowRoot.querySelector('.input-area');
+    inputArea.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
   }
 
   disconnectedCallback() {
