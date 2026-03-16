@@ -496,11 +496,11 @@ describe('_createFrameElement — XSS sanitization', { timeout: 5000 }, () => {
     let scripts = el.querySelectorAll('script');
     assert.equal(scripts.length, 0, 'no script tags in light DOM');
 
-    // Also check shadow DOM of nested message-content
+    // Also check nested message-content
     let mc = el.querySelector('kikx-message-content');
-    if (mc && mc.shadowRoot) {
-      let shadowScripts = mc.shadowRoot.querySelectorAll('script');
-      assert.equal(shadowScripts.length, 0, 'no script tags in shadow DOM');
+    if (mc) {
+      let nestedScripts = mc.querySelectorAll('script');
+      assert.equal(nestedScripts.length, 0, 'no script tags in message content');
     }
   });
 
@@ -512,8 +512,8 @@ describe('_createFrameElement — XSS sanitization', { timeout: 5000 }, () => {
     let el = createFrameElement(frame);
     let mc = el.querySelector('kikx-message-content');
 
-    if (mc && mc.shadowRoot) {
-      let p = mc.shadowRoot.querySelector('p');
+    if (mc) {
+      let p = mc.querySelector('p');
       if (p) {
         assert.equal(p.getAttribute('onmouseover'), null, 'onmouseover should be stripped');
       }
@@ -528,8 +528,8 @@ describe('_createFrameElement — XSS sanitization', { timeout: 5000 }, () => {
     let el = createFrameElement(frame);
     let mc = el.querySelector('kikx-message-content');
 
-    if (mc && mc.shadowRoot) {
-      let a = mc.shadowRoot.querySelector('a');
+    if (mc) {
+      let a = mc.querySelector('a');
       if (a) {
         let href = a.getAttribute('href') || '';
         assert.ok(!href.includes('javascript:'), 'javascript: URI should be stripped');
@@ -545,9 +545,9 @@ describe('_createFrameElement — XSS sanitization', { timeout: 5000 }, () => {
     let el = createFrameElement(frame);
 
     let mc = el.querySelector('kikx-message-content');
-    if (mc && mc.shadowRoot) {
-      let iframes = mc.shadowRoot.querySelectorAll('iframe');
-      assert.equal(iframes.length, 0, 'no iframes in shadow DOM');
+    if (mc) {
+      let iframes = mc.querySelectorAll('iframe');
+      assert.equal(iframes.length, 0, 'no iframes in message content');
     }
   });
 
@@ -559,11 +559,11 @@ describe('_createFrameElement — XSS sanitization', { timeout: 5000 }, () => {
     let el = createFrameElement(frame);
 
     let mc = el.querySelector('kikx-message-content');
-    if (mc && mc.shadowRoot) {
-      let forms  = mc.shadowRoot.querySelectorAll('form');
-      let inputs = mc.shadowRoot.querySelectorAll('input');
-      assert.equal(forms.length, 0, 'no form tags in shadow DOM');
-      assert.equal(inputs.length, 0, 'no input tags in shadow DOM');
+    if (mc) {
+      let forms  = mc.querySelectorAll('form');
+      let inputs = mc.querySelectorAll('input');
+      assert.equal(forms.length, 0, 'no form tags in message content');
+      assert.equal(inputs.length, 0, 'no input tags in message content');
     }
   });
 });

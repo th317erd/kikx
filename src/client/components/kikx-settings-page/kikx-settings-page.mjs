@@ -11,7 +11,7 @@ const TAB_KEYS = ['profile', 'account', 'permissions', 'appearance', 'logout'];
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-settings-page {
       display: flex;
       flex-direction: column;
       height: 100vh;
@@ -20,7 +20,7 @@ const TEMPLATE_HTML = `
       overflow: hidden;
     }
 
-    .top-area {
+    kikx-settings-page .top-area {
       display: flex;
       align-items: center;
       gap: var(--spacing-sm, 8px);
@@ -29,7 +29,7 @@ const TEMPLATE_HTML = `
       border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
     }
 
-    .back-button {
+    kikx-settings-page .back-button {
       background: none;
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       color: var(--text-primary, #e8e8f0);
@@ -40,17 +40,17 @@ const TEMPLATE_HTML = `
       transition: background 0.2s ease;
     }
 
-    .back-button:hover {
+    kikx-settings-page .back-button:hover {
       background: var(--glass-hover, rgba(255, 255, 255, 0.10));
     }
 
-    .settings-title {
+    kikx-settings-page .settings-title {
       font-size: 1.25rem;
       font-weight: 600;
       color: var(--text-primary, #e8e8f0);
     }
 
-    .tab-bar {
+    kikx-settings-page .tab-bar {
       display: flex;
       gap: var(--spacing-xs, 4px);
       padding: var(--spacing-sm, 8px) var(--spacing-sm, 8px) 0;
@@ -58,7 +58,7 @@ const TEMPLATE_HTML = `
       border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
     }
 
-    .tab-button {
+    kikx-settings-page .tab-button {
       background: none;
       border: none;
       color: var(--text-secondary, #a0a0b8);
@@ -70,45 +70,45 @@ const TEMPLATE_HTML = `
       transition: color 0.2s ease, border-color 0.2s ease;
     }
 
-    .tab-button:hover {
+    kikx-settings-page .tab-button:hover {
       color: var(--text-primary, #e8e8f0);
       background: var(--glass-hover, rgba(255, 255, 255, 0.10));
     }
 
-    .tab-button.active {
+    kikx-settings-page .tab-button.active {
       color: var(--accent-primary, #00e5ff);
       border-bottom-color: var(--accent-primary, #00e5ff);
       box-shadow: 0 2px 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    .tab-content {
+    kikx-settings-page .tab-content {
       flex: 1;
       overflow: auto;
       padding: var(--spacing-sm, 8px);
     }
 
-    .tab-panel {
+    kikx-settings-page .tab-panel {
       display: none;
       color: var(--text-primary, #e8e8f0);
       max-width: 600px;
     }
 
-    .tab-panel.active {
+    kikx-settings-page .tab-panel.active {
       display: block;
     }
 
-    .form-group {
+    kikx-settings-page .form-group {
       margin-bottom: var(--spacing-md, 16px);
     }
 
-    .form-label {
+    kikx-settings-page .form-label {
       display: block;
       font-size: 1rem;
       color: var(--text-secondary, #a0a0b8);
       margin-bottom: var(--spacing-xs, 4px);
     }
 
-    .form-input {
+    kikx-settings-page .form-input {
       width: 100%;
       padding: 10px 12px;
       box-sizing: border-box;
@@ -121,16 +121,16 @@ const TEMPLATE_HTML = `
       transition: border-color 0.2s ease;
     }
 
-    .form-input:focus {
+    kikx-settings-page .form-input:focus {
       border-color: var(--accent-primary, #00e5ff);
     }
 
-    .form-input:disabled {
+    kikx-settings-page .form-input:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
 
-    .form-button {
+    kikx-settings-page .form-button {
       padding: 8px 20px;
       background: var(--accent-primary, #00e5ff);
       color: #fff;
@@ -142,22 +142,22 @@ const TEMPLATE_HTML = `
       transition: box-shadow 0.2s ease;
     }
 
-    .form-button:hover {
+    kikx-settings-page .form-button:hover {
       box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    .form-button.danger {
+    kikx-settings-page .form-button.danger {
       background: var(--color-error, #ff1744);
       color: #fff;
     }
 
-    .form-button.secondary {
+    kikx-settings-page .form-button.secondary {
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
       color: var(--text-primary, #e8e8f0);
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
     }
 
-    .section-heading {
+    kikx-settings-page .section-heading {
       font-size: 1rem;
       font-weight: 600;
       color: var(--text-primary, #e8e8f0);
@@ -166,13 +166,13 @@ const TEMPLATE_HTML = `
       border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
     }
 
-    .form-hint {
+    kikx-settings-page .form-hint {
       font-size: 1rem;
       color: var(--text-muted, #606078);
       margin-top: 2px;
     }
 
-    .theme-option {
+    kikx-settings-page .theme-option {
       display: inline-block;
       padding: 8px 16px;
       margin-right: var(--spacing-xs, 4px);
@@ -185,18 +185,18 @@ const TEMPLATE_HTML = `
       font-size: 1rem;
     }
 
-    .theme-option.selected {
+    kikx-settings-page .theme-option.selected {
       border-color: var(--accent-primary, #00e5ff);
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.20));
     }
 
-    .empty-state {
+    kikx-settings-page .empty-state {
       color: var(--text-muted, #606078);
       font-style: italic;
       padding: var(--spacing-md, 16px) 0;
     }
 
-    .form-select {
+    kikx-settings-page .form-select {
       width: 100%;
       padding: 10px 12px;
       box-sizing: border-box;
@@ -210,22 +210,22 @@ const TEMPLATE_HTML = `
       transition: border-color 0.2s ease;
     }
 
-    .form-select:focus {
+    kikx-settings-page .form-select:focus {
       border-color: var(--accent-primary, #00e5ff);
     }
 
-    .form-select option {
+    kikx-settings-page .form-select option {
       background: var(--bg-primary, #0a0a1a);
       color: var(--text-primary, #e8e8f0);
     }
 
-    .form-description {
+    kikx-settings-page .form-description {
       color: var(--text-secondary, #a0a0b8);
       font-size: 1rem;
       margin-bottom: var(--spacing-md, 16px);
     }
 
-    .save-indicator {
+    kikx-settings-page .save-indicator {
       display: inline-block;
       margin-left: var(--spacing-sm, 8px);
       font-size: 1rem;
@@ -233,26 +233,26 @@ const TEMPLATE_HTML = `
       transition: opacity 0.3s ease;
     }
 
-    .save-indicator.visible {
+    kikx-settings-page .save-indicator.visible {
       opacity: 1;
     }
 
-    .save-indicator.success {
+    kikx-settings-page .save-indicator.success {
       color: var(--color-success, #00e676);
     }
 
-    .save-indicator.error {
+    kikx-settings-page .save-indicator.error {
       color: var(--color-error, #ff1744);
     }
 
-    .avatar-row {
+    kikx-settings-page .avatar-row {
       display: flex;
       align-items: center;
       gap: var(--spacing-sm, 8px);
       margin-bottom: var(--spacing-sm, 8px);
     }
 
-    .email-pending {
+    kikx-settings-page .email-pending {
       display: none;
       padding: 8px 12px;
       margin-top: var(--spacing-xs, 4px);
@@ -263,11 +263,11 @@ const TEMPLATE_HTML = `
       font-size: 1rem;
     }
 
-    .email-pending.visible {
+    kikx-settings-page .email-pending.visible {
       display: block;
     }
 
-    .logout-description {
+    kikx-settings-page .logout-description {
       color: var(--text-secondary, #a0a0b8);
       font-size: 1rem;
       margin-bottom: var(--spacing-md, 16px);
@@ -296,7 +296,6 @@ function getTemplate() {
 class KikxSettingsPage extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
     this._activeTab     = 'profile';
     this._pendingAvatar = null;
     this._originalEmail = null;
@@ -305,12 +304,15 @@ class KikxSettingsPage extends HTMLElement {
   }
 
   connectedCallback() {
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
 
-    this._backButton   = this.shadowRoot.querySelector('.back-button');
-    this._titleElement = this.shadowRoot.querySelector('.settings-title');
-    this._tabBar       = this.shadowRoot.querySelector('.tab-bar');
-    this._tabContent   = this.shadowRoot.querySelector('.tab-content');
+      this._backButton   = this.querySelector('.back-button');
+      this._titleElement = this.querySelector('.settings-title');
+      this._tabBar       = this.querySelector('.tab-bar');
+      this._tabContent   = this.querySelector('.tab-content');
+    }
 
     this._render();
     this._backButton.addEventListener('click', this._onBackClick);

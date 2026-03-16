@@ -73,41 +73,41 @@ function sanitizeHTML(html, ownerDocument) {
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-message-content {
       display: block;
       line-height: 1.5;
       word-wrap: break-word;
       overflow-wrap: break-word;
     }
 
-    ::selection {
+    kikx-message-content ::selection {
       background: var(--accent-dim, rgba(0, 229, 255, 0.10));
       color: var(--text-primary, #e8e8f0);
     }
 
-    .message-body {
+    kikx-message-content .message-body {
       font-size: 1rem;
     }
 
-    .message-body h1, .message-body h2, .message-body h3,
-    .message-body h4, .message-body h5, .message-body h6 {
+    kikx-message-content .message-body h1, kikx-message-content .message-body h2, kikx-message-content .message-body h3,
+    kikx-message-content .message-body h4, kikx-message-content .message-body h5, kikx-message-content .message-body h6 {
       margin: 0.5em 0 0.25em;
       font-weight: 600;
       color: var(--text-primary, #e8e8f0);
     }
 
-    .message-body h1 { font-size: 1.25rem; }
-    .message-body h2 { font-size: 1.125rem; }
-    .message-body h3 { font-size: 1rem; }
+    kikx-message-content .message-body h1 { font-size: 1.25rem; }
+    kikx-message-content .message-body h2 { font-size: 1.125rem; }
+    kikx-message-content .message-body h3 { font-size: 1rem; }
 
-    .message-body p { margin: 0.25em 0; }
+    kikx-message-content .message-body p { margin: 0.25em 0; }
 
-    .message-body ul, .message-body ol {
+    kikx-message-content .message-body ul, kikx-message-content .message-body ol {
       margin: 0.25em 0;
       padding-left: 1.5em;
     }
 
-    .message-body code {
+    kikx-message-content .message-body code {
       background: rgba(255, 255, 255, 0.08);
       padding: 2px 6px;
       border-radius: 4px;
@@ -115,7 +115,7 @@ const TEMPLATE_HTML = `
       font-size: 1rem;
     }
 
-    .message-body pre {
+    kikx-message-content .message-body pre {
       background: rgba(0, 0, 0, 0.3);
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: var(--border-radius-small, 4px);
@@ -126,51 +126,51 @@ const TEMPLATE_HTML = `
       line-height: 1.4;
     }
 
-    .message-body pre code {
+    kikx-message-content .message-body pre code {
       background: none;
       padding: 0;
       border-radius: 0;
     }
 
-    .message-body blockquote {
+    kikx-message-content .message-body blockquote {
       border-left: 3px solid var(--accent-primary, #00e5ff);
       margin: 0.5em 0;
       padding: 0.25em 0.75em;
       color: var(--text-secondary, #a0a0b8);
     }
 
-    .message-body table {
+    kikx-message-content .message-body table {
       border-collapse: collapse;
       width: 100%;
       margin: 0.5em 0;
     }
 
-    .message-body th, .message-body td {
+    kikx-message-content .message-body th, kikx-message-content .message-body td {
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       padding: 6px 10px;
       text-align: left;
     }
 
-    .message-body th {
+    kikx-message-content .message-body th {
       background: rgba(255, 255, 255, 0.05);
       font-weight: 600;
     }
 
-    .message-body a {
+    kikx-message-content .message-body a {
       color: var(--accent-primary, #00e5ff);
       text-decoration: none;
     }
 
-    .message-body a:hover {
+    kikx-message-content .message-body a:hover {
       text-decoration: underline;
     }
 
-    .message-body img {
+    kikx-message-content .message-body img {
       max-width: 100%;
       border-radius: var(--border-radius-small, 4px);
     }
 
-    .message-body hr {
+    kikx-message-content .message-body hr {
       border: none;
       border-top: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       margin: 0.5em 0;
@@ -198,10 +198,6 @@ function getTemplate() {
 class KikxMessageContent extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._messageBody = this.shadowRoot.querySelector('.message-body');
     this._content = '';
   }
 
@@ -209,17 +205,31 @@ class KikxMessageContent extends HTMLElement {
 
   set content(value) {
     this._content = (value != null) ? String(value) : '';
-    this._render();
+
+    if (this._initialized)
+      this._render();
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._messageBody = this.querySelector('.message-body');
+    }
+
     let attributeContent = this.getAttribute('content');
     if (attributeContent && !this._content)
       this.content = attributeContent;
+    else if (this._content)
+      this._render();
   }
 
   _render() {
-    let sanitized = sanitizeHTML(this._content, this.shadowRoot.ownerDocument);
+    if (!this._messageBody)
+      return;
+
+    let sanitized = sanitizeHTML(this._content, this.ownerDocument);
     this._messageBody.innerHTML = sanitized;
   }
 }

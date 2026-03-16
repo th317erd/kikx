@@ -6,7 +6,7 @@ const TAB_KEYS = ['profile', 'account', 'apiKeys', 'permissions', 'appearance'];
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-settings-tabs {
       display: block;
       flex: 1;
       min-height: 0;
@@ -14,23 +14,23 @@ const TEMPLATE_HTML = `
       color: var(--text-primary, #e8e8f0);
     }
 
-    .panel {
+    kikx-settings-tabs .panel {
       display: none;
       padding: var(--spacing-sm, 8px);
     }
 
-    .panel[data-active] {
+    kikx-settings-tabs .panel[data-active] {
       display: block;
     }
 
-    .panel h2 {
+    kikx-settings-tabs .panel h2 {
       margin: 0 0 var(--spacing-sm, 8px) 0;
       font-size: 1.25rem;
       font-weight: 600;
       color: var(--text-primary, #e8e8f0);
     }
 
-    .panel p {
+    kikx-settings-tabs .panel p {
       margin: 0;
       color: var(--text-secondary, #a0a0b8);
       font-size: 1rem;
@@ -74,14 +74,17 @@ function getTemplate() {
 class KikxSettingsTabs extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._panels   = this.shadowRoot.querySelectorAll('.panel');
     this._activeTab = 'profile';
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._panels = this.querySelectorAll('.panel');
+    }
+
     this._render();
     this._showTab(this._activeTab);
   }
@@ -97,13 +100,16 @@ class KikxSettingsTabs extends HTMLElement {
 
   _render() {
     for (let key of TAB_KEYS) {
-      let panel   = this.shadowRoot.querySelector(`.panel[data-tab="${key}"]`);
+      let panel   = this.querySelector(`.panel[data-tab="${key}"]`);
       let heading = panel.querySelector('.panel-heading');
       heading.textContent = t(`settings.tabs.${key}`);
     }
   }
 
   _showTab(tabKey) {
+    if (!this._panels)
+      return;
+
     for (let panel of this._panels) {
       if (panel.getAttribute('data-tab') === tabKey) {
         panel.setAttribute('data-active', '');

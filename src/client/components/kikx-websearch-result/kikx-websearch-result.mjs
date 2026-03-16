@@ -2,9 +2,9 @@
 
 const TEMPLATE_HTML = `
   <style>
-    :host { display: block; border-radius: var(--border-radius-small, 4px); }
+    kikx-websearch-result { display: block; border-radius: var(--border-radius-small, 4px); }
 
-    .search-header {
+    kikx-websearch-result .search-header {
       display: flex; align-items: center; gap: var(--spacing-xs, 4px);
       padding: 6px 8px;
       background: rgba(255, 255, 255, 0.03);
@@ -13,41 +13,41 @@ const TEMPLATE_HTML = `
       font-size: 1rem; color: var(--text-secondary, #a0a0b8);
     }
 
-    .search-icon { font-size: 1rem; }
+    kikx-websearch-result .search-icon { font-size: 1rem; }
 
-    .status-text { font-weight: 600; }
+    kikx-websearch-result .status-text { font-weight: 600; }
 
-    .status-text.searching { color: var(--accent-primary, #00e5ff); }
-    .status-text.completed { color: #66bb6a; }
-    .status-text.error { color: #ef5350; }
+    kikx-websearch-result .status-text.searching { color: var(--accent-primary, #00e5ff); }
+    kikx-websearch-result .status-text.completed { color: #66bb6a; }
+    kikx-websearch-result .status-text.error { color: #ef5350; }
 
-    .results-list {
+    kikx-websearch-result .results-list {
       display: flex; flex-direction: column; gap: var(--spacing-xs, 4px);
       padding: var(--spacing-xs, 4px) 0;
     }
 
-    .result-entry {
+    kikx-websearch-result .result-entry {
       padding: 6px 8px;
       border-radius: var(--border-radius-small, 4px);
       transition: background 0.2s ease;
     }
 
-    .result-entry:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }
+    kikx-websearch-result .result-entry:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }
 
-    .result-title {
+    kikx-websearch-result .result-title {
       font-weight: 600; font-size: 1rem;
       color: var(--accent-primary, #00e5ff);
       text-decoration: none; display: block;
     }
 
-    .result-title:hover { text-decoration: underline; }
+    kikx-websearch-result .result-title:hover { text-decoration: underline; }
 
-    .result-url {
+    kikx-websearch-result .result-url {
       font-size: 1rem; color: var(--text-muted, #606078);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
 
-    .result-snippet {
+    kikx-websearch-result .result-snippet {
       font-size: 1rem; color: var(--text-secondary, #a0a0b8);
       line-height: 1.4; margin-top: 2px;
     }
@@ -84,15 +84,18 @@ class KikxWebsearchResult extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._statusText  = this.shadowRoot.querySelector('.status-text');
-    this._resultsList = this.shadowRoot.querySelector('.results-list');
-    this._results     = [];
+    this._results = [];
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._statusText  = this.querySelector('.status-text');
+      this._resultsList = this.querySelector('.results-list');
+    }
+
     this._renderStatus();
   }
 
@@ -119,6 +122,9 @@ class KikxWebsearchResult extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   _renderStatus() {
+    if (!this._statusText)
+      return;
+
     let status = this.getAttribute('status') || '';
 
     this._statusText.textContent = STATUS_LABELS[status] || '';
@@ -129,6 +135,9 @@ class KikxWebsearchResult extends HTMLElement {
   }
 
   _renderResults() {
+    if (!this._resultsList)
+      return;
+
     this._resultsList.innerHTML = '';
 
     for (let result of this._results) {

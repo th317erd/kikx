@@ -72,10 +72,19 @@ function registerComponent() {
   class KikxScrollAnchor extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._onClick = this._onClick.bind(this);
+    }
+
+    static get observedAttributes() { return ['hidden', 'unread-count']; }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-scroll-anchor {
             display: block;
             position: absolute;
             bottom: var(--spacing-md, 16px);
@@ -86,7 +95,7 @@ function registerComponent() {
             transition: opacity 0.2s ease, transform 0.2s ease;
           }
 
-          :host([hidden]) {
+          kikx-scroll-anchor[hidden] {
             display: none;
           }
 
@@ -143,15 +152,9 @@ function registerComponent() {
         </button>
       `;
 
-      this._button = this.shadowRoot.querySelector('.anchor-button');
-      this._badge  = this.shadowRoot.querySelector('.badge');
+      this._button = this.querySelector('.anchor-button');
+      this._badge  = this.querySelector('.badge');
 
-      this._onClick = this._onClick.bind(this);
-    }
-
-    static get observedAttributes() { return ['hidden', 'unread-count']; }
-
-    connectedCallback() {
       this._button.title = mockT('chat.scrollAnchor.jumpToBottom');
       this._button.addEventListener('click', this._onClick);
     }
@@ -224,11 +227,11 @@ describe('kikx-scroll-anchor', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -236,11 +239,11 @@ describe('kikx-scroll-anchor', () => {
   // -------------------------------------------------------------------------
 
   it('contains anchor button with chevron', () => {
-    let button = element.shadowRoot.querySelector('.anchor-button');
-    assert.ok(button, 'shadow DOM should contain .anchor-button');
+    let button = element.querySelector('.anchor-button');
+    assert.ok(button, 'should contain .anchor-button');
 
-    let chevron = element.shadowRoot.querySelector('.chevron');
-    assert.ok(chevron, 'shadow DOM should contain .chevron');
+    let chevron = element.querySelector('.chevron');
+    assert.ok(chevron, 'should contain .chevron');
     assert.equal(chevron.textContent, '\u25BC', 'chevron should display the down arrow character');
   });
 
@@ -249,7 +252,7 @@ describe('kikx-scroll-anchor', () => {
   // -------------------------------------------------------------------------
 
   it('button title is set from i18n', () => {
-    let button = element.shadowRoot.querySelector('.anchor-button');
+    let button = element.querySelector('.anchor-button');
     assert.equal(
       button.title,
       localeData.chat.scrollAnchor.jumpToBottom,
@@ -262,7 +265,7 @@ describe('kikx-scroll-anchor', () => {
   // -------------------------------------------------------------------------
 
   it('clicking button dispatches jump-to-bottom event', () => {
-    let button    = element.shadowRoot.querySelector('.anchor-button');
+    let button    = element.querySelector('.anchor-button');
     let eventFired = false;
     let eventData  = null;
 
@@ -283,8 +286,8 @@ describe('kikx-scroll-anchor', () => {
   // -------------------------------------------------------------------------
 
   it('badge is hidden by default', () => {
-    let badge = element.shadowRoot.querySelector('.badge');
-    assert.ok(badge, 'shadow DOM should contain .badge');
+    let badge = element.querySelector('.badge');
+    assert.ok(badge, 'should contain .badge');
     assert.equal(badge.getAttribute('data-count'), '0', 'default data-count should be 0');
     assert.equal(badge.textContent, '', 'badge text should be empty when count is 0');
   });
@@ -296,7 +299,7 @@ describe('kikx-scroll-anchor', () => {
   it('setUnreadCount(5) shows badge with text 5', () => {
     element.setUnreadCount(5);
 
-    let badge = element.shadowRoot.querySelector('.badge');
+    let badge = element.querySelector('.badge');
     assert.equal(badge.getAttribute('data-count'), '5', 'data-count should be 5');
     assert.equal(badge.textContent, '5', 'badge text should be 5');
   });
@@ -309,7 +312,7 @@ describe('kikx-scroll-anchor', () => {
     element.setUnreadCount(5);
     element.setUnreadCount(0);
 
-    let badge = element.shadowRoot.querySelector('.badge');
+    let badge = element.querySelector('.badge');
     assert.equal(badge.getAttribute('data-count'), '0', 'data-count should be 0');
     assert.equal(badge.textContent, '', 'badge text should be empty when count is 0');
   });
@@ -338,19 +341,19 @@ describe('kikx-scroll-anchor', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 11. hidden attribute uses display:none via :host([hidden]) CSS rule
+  // 11. hidden attribute uses display:none via kikx-scroll-anchor[hidden] CSS rule
   // -------------------------------------------------------------------------
 
-  it('hidden attribute uses display:none via :host([hidden]) CSS rule', () => {
-    let style = element.shadowRoot.querySelector('style');
+  it('hidden attribute uses display:none via kikx-scroll-anchor[hidden] CSS rule', () => {
+    let style = element.querySelector('style');
     assert.ok(style, 'should have a style element');
     assert.ok(
-      style.textContent.includes(':host([hidden])'),
-      'style should include :host([hidden]) rule',
+      style.textContent.includes('kikx-scroll-anchor[hidden]'),
+      'style should include kikx-scroll-anchor[hidden] rule',
     );
     assert.ok(
       style.textContent.includes('display: none'),
-      ':host([hidden]) rule should set display to none',
+      'kikx-scroll-anchor[hidden] rule should set display to none',
     );
   });
 
@@ -361,7 +364,7 @@ describe('kikx-scroll-anchor', () => {
   it('unread-count attribute updates badge via attributeChangedCallback', () => {
     element.setAttribute('unread-count', '3');
 
-    let badge = element.shadowRoot.querySelector('.badge');
+    let badge = element.querySelector('.badge');
     assert.equal(badge.getAttribute('data-count'), '3', 'data-count should reflect attribute');
     assert.equal(badge.textContent, '3', 'badge text should reflect attribute');
 

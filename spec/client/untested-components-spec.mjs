@@ -56,8 +56,8 @@ describe('KikxScrollAnchor', { timeout: 5000 }, () => {
     let anchor = doc.createElement('kikx-scroll-anchor');
     doc.body.appendChild(anchor);
 
-    let button = anchor.shadowRoot.querySelector('.anchor-button');
-    let badge  = anchor.shadowRoot.querySelector('.badge');
+    let button = anchor.querySelector('.anchor-button');
+    let badge  = anchor.querySelector('.badge');
 
     assert.ok(button, 'Button should exist');
     assert.ok(badge, 'Badge should exist');
@@ -71,7 +71,7 @@ describe('KikxScrollAnchor', { timeout: 5000 }, () => {
     let dispatched = false;
     anchor.addEventListener('jump-to-bottom', () => { dispatched = true; });
 
-    let button = anchor.shadowRoot.querySelector('.anchor-button');
+    let button = anchor.querySelector('.anchor-button');
     button.click();
 
     assert.ok(dispatched, 'jump-to-bottom event should fire');
@@ -95,7 +95,7 @@ describe('KikxScrollAnchor', { timeout: 5000 }, () => {
     doc.body.appendChild(anchor);
 
     anchor.setUnreadCount(5);
-    let badge = anchor.shadowRoot.querySelector('.badge');
+    let badge = anchor.querySelector('.badge');
     assert.equal(badge.textContent, '5');
     assert.equal(badge.getAttribute('data-count'), '5');
   });
@@ -108,7 +108,7 @@ describe('KikxScrollAnchor', { timeout: 5000 }, () => {
     anchor.setUnreadCount(3);
     anchor.setUnreadCount(0);
 
-    let badge = anchor.shadowRoot.querySelector('.badge');
+    let badge = anchor.querySelector('.badge');
     assert.equal(badge.textContent, '');
     assert.equal(badge.getAttribute('data-count'), '0');
   });
@@ -118,7 +118,7 @@ describe('KikxScrollAnchor', { timeout: 5000 }, () => {
     let anchor = doc.createElement('kikx-scroll-anchor');
     doc.body.appendChild(anchor);
 
-    let badge = anchor.shadowRoot.querySelector('.badge');
+    let badge = anchor.querySelector('.badge');
     assert.equal(badge.getAttribute('data-count'), '0');
   });
 });
@@ -134,7 +134,7 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     cmd.setAttribute('command-name', 'ls -la');
     doc.body.appendChild(cmd);
 
-    let name = cmd.shadowRoot.querySelector('.command-name');
+    let name = cmd.querySelector('.command-name');
     assert.equal(name.textContent, 'ls -la');
   });
 
@@ -145,7 +145,7 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     cmd.setAttribute('status', 'success');
     doc.body.appendChild(cmd);
 
-    let badge = cmd.shadowRoot.querySelector('.status-badge');
+    let badge = cmd.querySelector('.status-badge');
     assert.equal(badge.textContent, 'success');
     assert.ok(badge.classList.contains('success'));
   });
@@ -157,7 +157,7 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     cmd.setAttribute('status', 'error');
     doc.body.appendChild(cmd);
 
-    let badge = cmd.shadowRoot.querySelector('.status-badge');
+    let badge = cmd.querySelector('.status-badge');
     assert.ok(badge.classList.contains('error'));
   });
 
@@ -167,7 +167,7 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     cmd.setAttribute('command-name', 'ls');
     doc.body.appendChild(cmd);
 
-    let body = cmd.shadowRoot.querySelector('.command-body');
+    let body = cmd.querySelector('.command-body');
     assert.ok(!body.classList.contains('expanded'), 'Body should be collapsed by default');
   });
 
@@ -177,9 +177,9 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     cmd.setAttribute('command-name', 'ls');
     doc.body.appendChild(cmd);
 
-    let header    = cmd.shadowRoot.querySelector('.command-header');
-    let body      = cmd.shadowRoot.querySelector('.command-body');
-    let indicator = cmd.shadowRoot.querySelector('.collapse-indicator');
+    let header    = cmd.querySelector('.command-header');
+    let body      = cmd.querySelector('.command-body');
+    let indicator = cmd.querySelector('.collapse-indicator');
 
     header.click();
     assert.ok(body.classList.contains('expanded'), 'Should expand on first click');
@@ -196,7 +196,7 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     cmd.setAttribute('command-name', 'ls');
     doc.body.appendChild(cmd);
 
-    let body = cmd.shadowRoot.querySelector('.command-body');
+    let body = cmd.querySelector('.command-body');
 
     cmd.expand();
     assert.ok(body.classList.contains('expanded'));
@@ -212,7 +212,7 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     doc.body.appendChild(cmd);
 
     cmd.arguments = '-la /tmp';
-    let content = cmd.shadowRoot.querySelector('.arguments-content');
+    let content = cmd.querySelector('.arguments-content');
     assert.equal(content.textContent, '-la /tmp');
   });
 
@@ -223,7 +223,7 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     doc.body.appendChild(cmd);
 
     cmd.arguments = { url: 'https://example.com', method: 'GET' };
-    let content = cmd.shadowRoot.querySelector('.arguments-content');
+    let content = cmd.querySelector('.arguments-content');
     assert.ok(content.textContent.includes('"url"'));
     assert.ok(content.textContent.includes('"https://example.com"'));
   });
@@ -235,7 +235,7 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     doc.body.appendChild(cmd);
 
     cmd.result = 'hello world';
-    let content = cmd.shadowRoot.querySelector('.result-content');
+    let content = cmd.querySelector('.result-content');
     assert.equal(content.textContent, 'hello world');
   });
 
@@ -248,8 +248,8 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     cmd.arguments = '';
     cmd.result    = '';
 
-    let argsContent   = cmd.shadowRoot.querySelector('.arguments-content');
-    let resultContent = cmd.shadowRoot.querySelector('.result-content');
+    let argsContent   = cmd.querySelector('.arguments-content');
+    let resultContent = cmd.querySelector('.result-content');
     assert.equal(argsContent.textContent, '');
     assert.equal(resultContent.textContent, '');
   });
@@ -263,8 +263,8 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     cmd.arguments = null;
     cmd.result    = null;
 
-    let argsContent   = cmd.shadowRoot.querySelector('.arguments-content');
-    let resultContent = cmd.shadowRoot.querySelector('.result-content');
+    let argsContent   = cmd.querySelector('.arguments-content');
+    let resultContent = cmd.querySelector('.result-content');
     assert.equal(argsContent.textContent, '');
     assert.equal(resultContent.textContent, '');
   });
@@ -276,7 +276,7 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
     doc.body.appendChild(cmd);
 
     cmd.setAttribute('command-name', 'cat');
-    let name = cmd.shadowRoot.querySelector('.command-name');
+    let name = cmd.querySelector('.command-name');
     assert.equal(name.textContent, 'cat');
   });
 
@@ -301,7 +301,7 @@ describe('KikxReflectionBlock', { timeout: 5000 }, () => {
     let block = doc.createElement('kikx-reflection-block');
     doc.body.appendChild(block);
 
-    let label = block.shadowRoot.querySelector('.label');
+    let label = block.querySelector('.label');
     assert.ok(label, 'Label element should exist');
   });
 
@@ -310,7 +310,7 @@ describe('KikxReflectionBlock', { timeout: 5000 }, () => {
     let block = doc.createElement('kikx-reflection-block');
     doc.body.appendChild(block);
 
-    let content = block.shadowRoot.querySelector('.reflection-content');
+    let content = block.querySelector('.reflection-content');
     assert.ok(!content.classList.contains('expanded'));
   });
 
@@ -319,8 +319,8 @@ describe('KikxReflectionBlock', { timeout: 5000 }, () => {
     let block = doc.createElement('kikx-reflection-block');
     doc.body.appendChild(block);
 
-    let header  = block.shadowRoot.querySelector('.toggle-header');
-    let content = block.shadowRoot.querySelector('.reflection-content');
+    let header  = block.querySelector('.toggle-header');
+    let content = block.querySelector('.reflection-content');
 
     header.click();
     assert.ok(content.classList.contains('expanded'), 'Should expand');
@@ -350,7 +350,7 @@ describe('KikxReflectionBlock', { timeout: 5000 }, () => {
     block.content = 'Thinking about the problem...';
     assert.equal(block.content, 'Thinking about the problem...');
 
-    let contentEl = block.shadowRoot.querySelector('.reflection-content');
+    let contentEl = block.querySelector('.reflection-content');
     assert.equal(contentEl.textContent, 'Thinking about the problem...');
   });
 
@@ -363,7 +363,7 @@ describe('KikxReflectionBlock', { timeout: 5000 }, () => {
     block.addEventListener('reflection-toggle', () => { dispatched = true; });
 
     block.expand();
-    let content = block.shadowRoot.querySelector('.reflection-content');
+    let content = block.querySelector('.reflection-content');
     assert.ok(content.classList.contains('expanded'));
     assert.ok(dispatched, 'Should dispatch event');
   });
@@ -376,7 +376,7 @@ describe('KikxReflectionBlock', { timeout: 5000 }, () => {
     block.expand();
     block.collapse();
 
-    let content = block.shadowRoot.querySelector('.reflection-content');
+    let content = block.querySelector('.reflection-content');
     assert.ok(!content.classList.contains('expanded'));
   });
 
@@ -412,7 +412,7 @@ describe('KikxReflectionBlock', { timeout: 5000 }, () => {
     block.setAttribute('expanded', '');
     doc.body.appendChild(block);
 
-    let content = block.shadowRoot.querySelector('.reflection-content');
+    let content = block.querySelector('.reflection-content');
     assert.ok(content.classList.contains('expanded'));
   });
 });
@@ -428,7 +428,7 @@ describe('KikxWebsearchResult', { timeout: 5000 }, () => {
     search.setAttribute('status', 'searching');
     doc.body.appendChild(search);
 
-    let statusText = search.shadowRoot.querySelector('.status-text');
+    let statusText = search.querySelector('.status-text');
     assert.equal(statusText.textContent, 'Searching...');
     assert.ok(statusText.classList.contains('searching'));
   });
@@ -439,7 +439,7 @@ describe('KikxWebsearchResult', { timeout: 5000 }, () => {
     search.setAttribute('status', 'completed');
     doc.body.appendChild(search);
 
-    let statusText = search.shadowRoot.querySelector('.status-text');
+    let statusText = search.querySelector('.status-text');
     assert.equal(statusText.textContent, 'Completed');
     assert.ok(statusText.classList.contains('completed'));
   });
@@ -450,7 +450,7 @@ describe('KikxWebsearchResult', { timeout: 5000 }, () => {
     search.setAttribute('status', 'error');
     doc.body.appendChild(search);
 
-    let statusText = search.shadowRoot.querySelector('.status-text');
+    let statusText = search.querySelector('.status-text');
     assert.equal(statusText.textContent, 'Error');
     assert.ok(statusText.classList.contains('error'));
   });
@@ -461,7 +461,7 @@ describe('KikxWebsearchResult', { timeout: 5000 }, () => {
     search.setAttribute('status', 'unknown');
     doc.body.appendChild(search);
 
-    let statusText = search.shadowRoot.querySelector('.status-text');
+    let statusText = search.querySelector('.status-text');
     assert.equal(statusText.textContent, '');
   });
 
@@ -475,7 +475,7 @@ describe('KikxWebsearchResult', { timeout: 5000 }, () => {
       { title: 'Another Page', url: 'https://another.com', snippet: 'Another result' },
     ];
 
-    let entries = search.shadowRoot.querySelectorAll('.result-entry');
+    let entries = search.querySelectorAll('.result-entry');
     assert.equal(entries.length, 2);
 
     let firstTitle = entries[0].querySelector('.result-title');
@@ -497,7 +497,7 @@ describe('KikxWebsearchResult', { timeout: 5000 }, () => {
     doc.body.appendChild(search);
 
     search.results = [];
-    let entries = search.shadowRoot.querySelectorAll('.result-entry');
+    let entries = search.querySelectorAll('.result-entry');
     assert.equal(entries.length, 0);
   });
 
@@ -520,7 +520,7 @@ describe('KikxWebsearchResult', { timeout: 5000 }, () => {
 
     search.results = [{}];
 
-    let entry   = search.shadowRoot.querySelector('.result-entry');
+    let entry   = search.querySelector('.result-entry');
     let title   = entry.querySelector('.result-title');
     let url     = entry.querySelector('.result-url');
     let snippet = entry.querySelector('.result-snippet');
@@ -538,14 +538,14 @@ describe('KikxWebsearchResult', { timeout: 5000 }, () => {
     search.results = [
       { title: 'First', url: 'https://first.com', snippet: '' },
     ];
-    assert.equal(search.shadowRoot.querySelectorAll('.result-entry').length, 1);
+    assert.equal(search.querySelectorAll('.result-entry').length, 1);
 
     search.results = [
       { title: 'A', url: 'https://a.com', snippet: '' },
       { title: 'B', url: 'https://b.com', snippet: '' },
       { title: 'C', url: 'https://c.com', snippet: '' },
     ];
-    assert.equal(search.shadowRoot.querySelectorAll('.result-entry').length, 3);
+    assert.equal(search.querySelectorAll('.result-entry').length, 3);
   });
 });
 
@@ -559,8 +559,8 @@ describe('KikxModal', { timeout: 5000 }, () => {
     let modal = doc.createElement('kikx-modal');
     doc.body.appendChild(modal);
 
-    let backdrop = modal.shadowRoot.querySelector('.backdrop');
-    let panel    = modal.shadowRoot.querySelector('.panel');
+    let backdrop = modal.querySelector('.backdrop');
+    let panel    = modal.querySelector('.panel');
 
     assert.ok(backdrop, 'Backdrop should exist');
     assert.ok(panel, 'Panel should exist');
@@ -572,7 +572,7 @@ describe('KikxModal', { timeout: 5000 }, () => {
     modal.setAttribute('modal-title', 'Test Title');
     doc.body.appendChild(modal);
 
-    let title = modal.shadowRoot.querySelector('.panel-title');
+    let title = modal.querySelector('.panel-title');
     assert.equal(title.textContent, 'Test Title');
   });
 
@@ -583,7 +583,7 @@ describe('KikxModal', { timeout: 5000 }, () => {
     doc.body.appendChild(modal);
 
     modal.setAttribute('modal-title', 'Updated');
-    let title = modal.shadowRoot.querySelector('.panel-title');
+    let title = modal.querySelector('.panel-title');
     assert.equal(title.textContent, 'Updated');
   });
 
@@ -623,7 +623,7 @@ describe('KikxModal', { timeout: 5000 }, () => {
     let closed = false;
     modal.addEventListener('modal-close', () => { closed = true; });
 
-    let backdrop = modal.shadowRoot.querySelector('.backdrop');
+    let backdrop = modal.querySelector('.backdrop');
     backdrop.click();
 
     assert.ok(!modal.hasAttribute('open'));
@@ -639,7 +639,7 @@ describe('KikxModal', { timeout: 5000 }, () => {
     let closed = false;
     modal.addEventListener('modal-close', () => { closed = true; });
 
-    let closeButton = modal.shadowRoot.querySelector('.close-button');
+    let closeButton = modal.querySelector('.close-button');
     closeButton.click();
 
     assert.ok(!modal.hasAttribute('open'));
@@ -667,17 +667,17 @@ describe('KikxModal', { timeout: 5000 }, () => {
     let modal = doc.createElement('kikx-modal');
     doc.body.appendChild(modal);
 
-    let title = modal.shadowRoot.querySelector('.panel-title');
+    let title = modal.querySelector('.panel-title');
     assert.equal(title.textContent, '');
   });
 
-  it('should have a slot for slotted content', () => {
+  it('should have a panel-body for content projection', () => {
     let doc   = getDocument();
     let modal = doc.createElement('kikx-modal');
     doc.body.appendChild(modal);
 
-    let slot = modal.shadowRoot.querySelector('slot');
-    assert.ok(slot, 'Should have a slot element');
+    let panelBody = modal.querySelector('.panel-body');
+    assert.ok(panelBody, 'Should have a panel-body element for content projection');
   });
 
   it('should clean up escape listener on disconnect', () => {
@@ -701,7 +701,7 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
     doc.body.appendChild(list);
 
     list.sessions = [];
-    let emptyState = list.shadowRoot.querySelector('.empty-state');
+    let emptyState = list.querySelector('.empty-state');
     assert.ok(emptyState, 'Empty state should be shown');
   });
 
@@ -715,7 +715,7 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
       { id: 'ses_2', name: 'Team Chat', participantCount: 1, lastActivity: Date.now() - 1000 },
     ];
 
-    let rows = list.shadowRoot.querySelectorAll('.session-row');
+    let rows = list.querySelectorAll('.session-row');
     assert.equal(rows.length, 2);
   });
 
@@ -732,7 +732,7 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
     list.addEventListener('select-session', () => { fired = true; });
 
     // Click the session name span inside the row — event delegation via closest
-    let nameSpan = list.shadowRoot.querySelector('.session-name');
+    let nameSpan = list.querySelector('.session-name');
     nameSpan.click();
 
     assert.ok(fired, 'select-session event should fire');
@@ -754,7 +754,7 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
     ];
 
     list.filter = 'Alpha';
-    let rows = list.shadowRoot.querySelectorAll('.session-row');
+    let rows = list.querySelectorAll('.session-row');
     assert.equal(rows.length, 1);
 
     let name = rows[0].querySelector('.session-name');
@@ -771,7 +771,7 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
       { id: 'ses_2', name: 'Archived', participantCount: 1, lastActivity: Date.now(), archived: true },
     ];
 
-    let rows = list.shadowRoot.querySelectorAll('.session-row');
+    let rows = list.querySelectorAll('.session-row');
     assert.equal(rows.length, 1);
   });
 
@@ -786,7 +786,7 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
       { id: 'ses_2', name: 'Archived', participantCount: 1, lastActivity: Date.now(), archived: true },
     ];
 
-    let rows = list.shadowRoot.querySelectorAll('.session-row');
+    let rows = list.querySelectorAll('.session-row');
     assert.equal(rows.length, 2);
   });
 
@@ -800,7 +800,7 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
       { id: 'ses_2', name: 'Inactive', participantCount: 1, lastActivity: Date.now(), active: false },
     ];
 
-    let activeRows = list.shadowRoot.querySelectorAll('.session-row.active');
+    let activeRows = list.querySelectorAll('.session-row.active');
     assert.equal(activeRows.length, 1);
   });
 
@@ -813,7 +813,7 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
       { id: 'ses_1', name: 'Unread', participantCount: 1, lastActivity: Date.now(), unreadCount: 3 },
     ];
 
-    let badge = list.shadowRoot.querySelector('.unread-badge');
+    let badge = list.querySelector('.unread-badge');
     assert.ok(badge, 'Unread badge should exist');
     assert.equal(badge.textContent, '3');
   });
@@ -830,7 +830,7 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
       { id: 'ses_new', name: 'New', participantCount: 1, lastActivity: now },
     ];
 
-    let names = list.shadowRoot.querySelectorAll('.session-name');
+    let names = list.querySelectorAll('.session-name');
     assert.equal(names[0].textContent, 'New');
     assert.equal(names[1].textContent, 'Old');
   });
@@ -845,7 +845,7 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
       { id: 'ses_private', name: 'DM', participantCount: 2, lastActivity: Date.now() },
     ];
 
-    let categories = list.shadowRoot.querySelectorAll('.category');
+    let categories = list.querySelectorAll('.category');
     assert.equal(categories.length, 2, 'Should have channels and private categories');
   });
 
@@ -861,7 +861,7 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
     let fired = false;
     list.addEventListener('archive-session', () => { fired = true; });
 
-    let archiveButton = list.shadowRoot.querySelector('.action-button');
+    let archiveButton = list.querySelector('.action-button');
     archiveButton.click();
 
     assert.ok(fired, 'archive-session event should fire');
@@ -879,8 +879,8 @@ describe('KikxSessionList', { timeout: 5000 }, () => {
       { id: 'ses_1', name: 'DM', participantCount: 1, lastActivity: Date.now() },
     ];
 
-    let header = list.shadowRoot.querySelector('.category-header');
-    let items  = list.shadowRoot.querySelector('.category-items');
+    let header = list.querySelector('.category-header');
+    let items  = list.querySelector('.category-items');
 
     assert.ok(!items.classList.contains('collapsed'), 'Should start expanded');
 
@@ -902,9 +902,9 @@ describe('KikxCreateSessionModal', { timeout: 5000 }, () => {
     let form = doc.createElement('kikx-create-session-modal');
     doc.body.appendChild(form);
 
-    let input        = form.shadowRoot.querySelector('.session-name-input');
-    let createButton = form.shadowRoot.querySelector('.create-button');
-    let cancelButton = form.shadowRoot.querySelector('.cancel-button');
+    let input        = form.querySelector('.session-name-input');
+    let createButton = form.querySelector('.create-button');
+    let cancelButton = form.querySelector('.cancel-button');
 
     assert.ok(input, 'Name input should exist');
     assert.ok(createButton, 'Create button should exist');
@@ -921,7 +921,7 @@ describe('KikxCreateSessionModal', { timeout: 5000 }, () => {
       { id: 'agt_2', name: 'GPT' },
     ];
 
-    let select = form.shadowRoot.querySelector('.agent-select');
+    let select = form.querySelector('.agent-select');
     assert.notEqual(select.style.display, 'none');
 
     // Should have "None" option + 2 agent options
@@ -938,8 +938,8 @@ describe('KikxCreateSessionModal', { timeout: 5000 }, () => {
 
     form.agents = [];
 
-    let select    = form.shadowRoot.querySelector('.agent-select');
-    let noAgents  = form.shadowRoot.querySelector('.no-agents-message');
+    let select    = form.querySelector('.agent-select');
+    let noAgents  = form.querySelector('.no-agents-message');
 
     assert.equal(select.style.display, 'none');
     assert.notEqual(noAgents.style.display, 'none');
@@ -953,13 +953,13 @@ describe('KikxCreateSessionModal', { timeout: 5000 }, () => {
     form.agents = [{ id: 'agt_1', name: 'Claude' }];
 
     // Select agent and set name
-    form.shadowRoot.querySelector('.agent-select').value = 'agt_1';
-    form.shadowRoot.querySelector('.session-name-input').value = 'My Session';
+    form.querySelector('.agent-select').value = 'agt_1';
+    form.querySelector('.session-name-input').value = 'My Session';
 
     let detail = null;
     form.addEventListener('session-create', (event) => { detail = event.detail; });
 
-    form.shadowRoot.querySelector('.create-button').click();
+    form.querySelector('.create-button').click();
 
     assert.ok(detail, 'session-create event should fire');
     assert.equal(detail.name, 'My Session');
@@ -972,12 +972,12 @@ describe('KikxCreateSessionModal', { timeout: 5000 }, () => {
     doc.body.appendChild(form);
 
     form.agents = [{ id: 'agt_1', name: 'Claude' }];
-    form.shadowRoot.querySelector('.agent-select').value = '';
+    form.querySelector('.agent-select').value = '';
 
     let detail = null;
     form.addEventListener('session-create', (event) => { detail = event.detail; });
 
-    form.shadowRoot.querySelector('.create-button').click();
+    form.querySelector('.create-button').click();
 
     assert.equal(detail.agentID, null);
   });
@@ -990,7 +990,7 @@ describe('KikxCreateSessionModal', { timeout: 5000 }, () => {
     let cancelled = false;
     form.addEventListener('session-cancel', () => { cancelled = true; });
 
-    form.shadowRoot.querySelector('.cancel-button').click();
+    form.querySelector('.cancel-button').click();
     assert.ok(cancelled, 'session-cancel should fire');
   });
 
@@ -999,13 +999,13 @@ describe('KikxCreateSessionModal', { timeout: 5000 }, () => {
     let form = doc.createElement('kikx-create-session-modal');
     doc.body.appendChild(form);
 
-    form.shadowRoot.querySelector('.session-name-input').value = 'Enter Session';
+    form.querySelector('.session-name-input').value = 'Enter Session';
 
     let detail = null;
     form.addEventListener('session-create', (event) => { detail = event.detail; });
 
     let enterEvent = new globalThis.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
-    form.shadowRoot.querySelector('.session-name-input').dispatchEvent(enterEvent);
+    form.querySelector('.session-name-input').dispatchEvent(enterEvent);
 
     assert.ok(detail, 'session-create should fire on Enter');
     assert.equal(detail.name, 'Enter Session');
@@ -1017,13 +1017,13 @@ describe('KikxCreateSessionModal', { timeout: 5000 }, () => {
     doc.body.appendChild(form);
 
     form.agents = [{ id: 'agt_1', name: 'Claude' }];
-    form.shadowRoot.querySelector('.session-name-input').value = 'Something';
-    form.shadowRoot.querySelector('.agent-select').value = 'agt_1';
+    form.querySelector('.session-name-input').value = 'Something';
+    form.querySelector('.agent-select').value = 'agt_1';
 
     form.reset();
 
-    assert.equal(form.shadowRoot.querySelector('.session-name-input').value, '');
-    assert.equal(form.shadowRoot.querySelector('.agent-select').selectedIndex, 0);
+    assert.equal(form.querySelector('.session-name-input').value, '');
+    assert.equal(form.querySelector('.agent-select').selectedIndex, 0);
   });
 
   it('should handle non-array agents gracefully', () => {
@@ -1045,7 +1045,7 @@ describe('KikxCreateSessionModal', { timeout: 5000 }, () => {
 
     form.agents = [{ id: 'agt_unnamed' }];
 
-    let select = form.shadowRoot.querySelector('.agent-select');
+    let select = form.querySelector('.agent-select');
     assert.equal(select.options[1].textContent, 'agt_unnamed');
   });
 
@@ -1057,7 +1057,7 @@ describe('KikxCreateSessionModal', { timeout: 5000 }, () => {
     let detail = null;
     form.addEventListener('session-create', (event) => { detail = event.detail; });
 
-    form.shadowRoot.querySelector('.create-button').click();
+    form.querySelector('.create-button').click();
 
     assert.equal(detail.name, null);
   });

@@ -20,9 +20,6 @@ import {
   TEST_USER,
   launchBrowser,
   isServerRunning,
-  getShadowRoot,
-  shadowQuery,
-  getSessionPageShadow,
   login,
   navigateToSession,
   sendMessage,
@@ -152,11 +149,9 @@ describe('E2E: Login flow', { skip: !serverAvailable && 'Server not running' }, 
     let loginPage = await page.$('kikx-login-page');
     assert.ok(loginPage, 'kikx-login-page element should exist');
 
-    let shadow = await getShadowRoot(loginPage);
-
-    let emailInput    = await shadow.$('.email-input');
-    let passwordInput = await shadow.$('.password-input');
-    let submitButton  = await shadow.$('.submit-button');
+    let emailInput    = await page.$('kikx-login-page .email-input');
+    let passwordInput = await page.$('kikx-login-page .password-input');
+    let submitButton  = await page.$('kikx-login-page .submit-button');
 
     assert.ok(emailInput, 'email input should exist');
     assert.ok(passwordInput, 'password input should exist');
@@ -182,12 +177,9 @@ describe('E2E: Login flow', { skip: !serverAvailable && 'Server not running' }, 
   it('shows error on invalid credentials', async () => {
     await page.goto(`${BASE_URL}${BASE_PATH}/login`, { waitUntil: 'networkidle2' });
 
-    let loginPage = await page.$('kikx-login-page');
-    let shadow    = await getShadowRoot(loginPage);
-
-    let emailInput    = await shadow.$('.email-input');
-    let passwordInput = await shadow.$('.password-input');
-    let submitButton  = await shadow.$('.submit-button');
+    let emailInput    = await page.$('kikx-login-page .email-input');
+    let passwordInput = await page.$('kikx-login-page .password-input');
+    let submitButton  = await page.$('kikx-login-page .submit-button');
 
     await emailInput.type('wrong@example.com', { delay: 10 });
     await passwordInput.type('wrongPassword', { delay: 10 });
@@ -195,19 +187,17 @@ describe('E2E: Login flow', { skip: !serverAvailable && 'Server not running' }, 
 
     // Wait a moment for the error to appear
     await page.waitForFunction(
-      (host) => {
-        let shadow   = host.shadowRoot;
-        let status   = shadow.querySelector('.status-message');
+      () => {
+        let status = document.querySelector('kikx-login-page .status-message');
         return status && status.textContent.trim().length > 0;
       },
       { timeout: 5000 },
-      loginPage,
     );
 
-    let statusText = await page.evaluate((host) => {
-      let status = host.shadowRoot.querySelector('.status-message');
+    let statusText = await page.evaluate(() => {
+      let status = document.querySelector('kikx-login-page .status-message');
       return status ? status.textContent.trim() : '';
-    }, loginPage);
+    });
 
     assert.ok(statusText.length > 0, 'Should show error message for invalid credentials');
   });
@@ -243,15 +233,11 @@ describe('E2E: Session page rendering', { skip: !serverAvailable && 'Server not 
     let sessionPage = await page.$('kikx-session-page');
     assert.ok(sessionPage, 'kikx-session-page should exist');
 
-    // Chat view and message input are inside session page shadow DOM
-    let sessionShadow = await getSessionPageShadow(page);
-    assert.ok(sessionShadow, 'session page should have shadow root');
+    let chatView = await page.$('kikx-session-page kikx-chat-view');
+    assert.ok(chatView, 'kikx-chat-view should exist inside session page');
 
-    let chatView = await sessionShadow.$('kikx-chat-view');
-    assert.ok(chatView, 'kikx-chat-view should exist in session page shadow DOM');
-
-    let messageInput = await sessionShadow.$('kikx-message-input');
-    assert.ok(messageInput, 'kikx-message-input should exist in session page shadow DOM');
+    let messageInput = await page.$('kikx-session-page kikx-message-input');
+    assert.ok(messageInput, 'kikx-message-input should exist inside session page');
   });
 
   it('can navigate to a specific session', async () => {
@@ -302,18 +288,10 @@ describe('E2E: Message sending and rendering', { skip: !serverAvailable && 'Serv
 
     await sendMessage(page, 'E2E test message');
 
-    // Wait for the user message to appear (traverse session-page → chat-view shadow DOMs)
+    // Wait for the user message to appear — direct DOM query
     await page.waitForFunction(
       (count) => {
-        let sessionPage = document.querySelector('kikx-session-page');
-        if (!sessionPage || !sessionPage.shadowRoot)
-          return false;
-
-        let chatView = sessionPage.shadowRoot.querySelector('kikx-chat-view');
-        if (!chatView || !chatView.shadowRoot)
-          return false;
-
-        let messages = chatView.shadowRoot.querySelectorAll('kikx-interaction[alignment="user"]');
+        let messages = document.querySelectorAll('kikx-session-page kikx-chat-view kikx-interaction[alignment="user"]');
         return messages.length > count;
       },
       { timeout: 10000 },
@@ -355,15 +333,7 @@ describe('E2E: Message sending and rendering', { skip: !serverAvailable && 'Serv
     // Wait for finalization — data-frame-id is set when the commit frame arrives
     await page.waitForFunction(
       () => {
-        let sessionPage = document.querySelector('kikx-session-page');
-        if (!sessionPage || !sessionPage.shadowRoot)
-          return false;
-
-        let chatView = sessionPage.shadowRoot.querySelector('kikx-chat-view');
-        if (!chatView || !chatView.shadowRoot)
-          return false;
-
-        let agents = chatView.shadowRoot.querySelectorAll('kikx-interaction[alignment="agent"]');
+        let agents = document.querySelectorAll('kikx-session-page kikx-chat-view kikx-interaction[alignment="agent"]');
         if (agents.length === 0)
           return false;
 
@@ -547,35 +517,25 @@ describe('E2E: DOM structure', { skip: !serverAvailable && 'Server not running' 
     }
   });
 
-  it('chat view shadow DOM has interaction-stream container', async () => {
-    let sessionShadow = await getSessionPageShadow(page);
-    assert.ok(sessionShadow, 'session page should have shadow root');
+  it('chat view has interaction-stream container', async () => {
+    let chatView = await page.$('kikx-session-page kikx-chat-view');
+    assert.ok(chatView, 'kikx-chat-view should exist inside session page');
 
-    let chatView = await sessionShadow.$('kikx-chat-view');
-    assert.ok(chatView, 'kikx-chat-view should exist in session page shadow DOM');
+    let chatContainer     = await page.$('kikx-session-page kikx-chat-view .chat-container');
+    let interactionStream = await page.$('kikx-session-page kikx-chat-view .interaction-stream');
 
-    let chatShadow = await getShadowRoot(chatView);
-
-    let chatContainer     = await chatShadow.$('.chat-container');
-    let interactionStream = await chatShadow.$('.interaction-stream');
-
-    assert.ok(chatContainer, '.chat-container should exist in chat view shadow DOM');
-    assert.ok(interactionStream, '.interaction-stream should exist in chat view shadow DOM');
+    assert.ok(chatContainer, '.chat-container should exist in chat view');
+    assert.ok(interactionStream, '.interaction-stream should exist in chat view');
   });
 
-  it('message input shadow DOM has textarea and send button', async () => {
-    let sessionShadow = await getSessionPageShadow(page);
-    assert.ok(sessionShadow, 'session page should have shadow root');
+  it('message input has textarea and send button', async () => {
+    let messageInput = await page.$('kikx-session-page kikx-message-input');
+    assert.ok(messageInput, 'kikx-message-input should exist inside session page');
 
-    let messageInput = await sessionShadow.$('kikx-message-input');
-    assert.ok(messageInput, 'kikx-message-input should exist in session page shadow DOM');
+    let textarea   = await page.$('kikx-session-page kikx-message-input .message-textarea');
+    let sendButton = await page.$('kikx-session-page kikx-message-input .send-button');
 
-    let inputShadow = await getShadowRoot(messageInput);
-
-    let textarea   = await inputShadow.$('.message-textarea');
-    let sendButton = await inputShadow.$('.send-button');
-
-    assert.ok(textarea, '.message-textarea should exist in message input shadow DOM');
-    assert.ok(sendButton, '.send-button should exist in message input shadow DOM');
+    assert.ok(textarea, '.message-textarea should exist in message input');
+    assert.ok(sendButton, '.send-button should exist in message input');
   });
 });

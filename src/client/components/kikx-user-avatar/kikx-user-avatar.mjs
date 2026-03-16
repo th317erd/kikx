@@ -186,12 +186,12 @@ function getInitials(firstName, lastName, email) {
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-user-avatar {
       display: inline-block;
       line-height: 0;
     }
 
-    .avatar {
+    kikx-user-avatar .avatar {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -202,14 +202,14 @@ const TEMPLATE_HTML = `
       cursor: inherit;
     }
 
-    .avatar img {
+    kikx-user-avatar .avatar img {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
     }
 
-    .initials {
+    kikx-user-avatar .initials {
       color: var(--text-inverse, #0a0a1a);
       font-weight: 600;
       user-select: none;
@@ -239,17 +239,19 @@ class KikxUserAvatar extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._container = this.shadowRoot.querySelector('.avatar');
-    this._image     = this.shadowRoot.querySelector('.avatar-image');
-    this._initials  = this.shadowRoot.querySelector('.initials');
-
     this._onImageError = this._onImageError.bind(this);
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._container = this.querySelector('.avatar');
+      this._image     = this.querySelector('.avatar-image');
+      this._initials  = this.querySelector('.initials');
+    }
+
     this._image.addEventListener('error', this._onImageError);
     this._render();
   }

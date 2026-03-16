@@ -45,10 +45,18 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._config  = null;
+      this._onInputChange = this._onInputChange.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; padding: 4px 0; }
+          kikx-hml-prompt { display: block; padding: 4px 0; }
 
           .prompt-label {
             font-size: 0.8125rem; font-weight: 600;
@@ -101,8 +109,8 @@ function registerComponent() {
             background: transparent;
           }
 
-          :host([readonly]) .prompt-input,
-          :host([readonly]) input { pointer-events: none; opacity: 0.7; }
+          kikx-hml-prompt[readonly] .prompt-input,
+          kikx-hml-prompt[readonly] input { pointer-events: none; opacity: 0.7; }
         </style>
 
         <div class="prompt-container">
@@ -111,11 +119,11 @@ function registerComponent() {
         </div>
       `;
 
-      this._label   = this.shadowRoot.querySelector('.prompt-label');
-      this._control = this.shadowRoot.querySelector('.prompt-control');
-      this._config  = null;
+      this._label   = this.querySelector('.prompt-label');
+      this._control = this.querySelector('.prompt-control');
 
-      this._onInputChange = this._onInputChange.bind(this);
+      if (this._config)
+        this._renderControl();
     }
 
     get config() {
@@ -125,11 +133,6 @@ function registerComponent() {
     set config(value) {
       this._config = value;
       this._renderControl();
-    }
-
-    connectedCallback() {
-      if (this._config)
-        this._renderControl();
     }
 
     disconnectedCallback() {
@@ -448,11 +451,11 @@ describe('kikx-hml-prompt', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -462,7 +465,7 @@ describe('kikx-hml-prompt', () => {
   it('renders text input from config', () => {
     element.config = { inputType: 'text', label: 'Name' };
 
-    let input = element.shadowRoot.querySelector('input[type="text"]');
+    let input = element.querySelector('input[type="text"]');
     assert.ok(input, 'should render an <input type="text">');
     assert.ok(input.classList.contains('prompt-input'), 'should have prompt-input class');
   });
@@ -474,7 +477,7 @@ describe('kikx-hml-prompt', () => {
   it('renders textarea from config', () => {
     element.config = { inputType: 'textarea', label: 'Description' };
 
-    let textarea = element.shadowRoot.querySelector('textarea');
+    let textarea = element.querySelector('textarea');
     assert.ok(textarea, 'should render a <textarea>');
     assert.ok(textarea.classList.contains('prompt-input'), 'should have prompt-input class');
   });
@@ -490,7 +493,7 @@ describe('kikx-hml-prompt', () => {
       options: ['Red', 'Green', 'Blue'],
     };
 
-    let select  = element.shadowRoot.querySelector('select');
+    let select  = element.querySelector('select');
     let options = select.querySelectorAll('option');
 
     assert.ok(select, 'should render a <select>');
@@ -507,7 +510,7 @@ describe('kikx-hml-prompt', () => {
   it('renders checkbox from config', () => {
     element.config = { inputType: 'checkbox', label: 'Agree' };
 
-    let row      = element.shadowRoot.querySelector('.checkbox-row');
+    let row      = element.querySelector('.checkbox-row');
     let checkbox = row.querySelector('input[type="checkbox"]');
     let label    = row.querySelector('label');
 
@@ -527,10 +530,10 @@ describe('kikx-hml-prompt', () => {
       options: ['Small', 'Medium', 'Large'],
     };
 
-    let rows = element.shadowRoot.querySelectorAll('.radio-row');
+    let rows = element.querySelectorAll('.radio-row');
     assert.equal(rows.length, 3, 'should render 3 radio rows');
 
-    let radios = element.shadowRoot.querySelectorAll('input[type="radio"]');
+    let radios = element.querySelectorAll('input[type="radio"]');
     assert.equal(radios.length, 3, 'should have 3 radio inputs');
     assert.equal(radios[0].value, 'Small');
     assert.equal(radios[1].value, 'Medium');
@@ -544,7 +547,7 @@ describe('kikx-hml-prompt', () => {
   it('renders color input from config', () => {
     element.config = { inputType: 'color', label: 'Pick a color', defaultValue: '#ff0000' };
 
-    let input = element.shadowRoot.querySelector('input[type="color"]');
+    let input = element.querySelector('input[type="color"]');
     assert.ok(input, 'should render an <input type="color">');
     assert.equal(input.value, '#ff0000');
   });
@@ -562,7 +565,7 @@ describe('kikx-hml-prompt', () => {
       defaultValue: '50',
     };
 
-    let row     = element.shadowRoot.querySelector('.range-row');
+    let row     = element.querySelector('.range-row');
     let input   = row.querySelector('input[type="range"]');
     let display = row.querySelector('.range-value');
 
@@ -578,7 +581,7 @@ describe('kikx-hml-prompt', () => {
   it('displays label from config.label', () => {
     element.config = { inputType: 'text', label: 'Your Name' };
 
-    let label = element.shadowRoot.querySelector('.prompt-label');
+    let label = element.querySelector('.prompt-label');
     assert.equal(label.textContent, 'Your Name');
   });
 
@@ -589,7 +592,7 @@ describe('kikx-hml-prompt', () => {
   it('applies placeholder to text input', () => {
     element.config = { inputType: 'text', label: 'Name', placeholder: 'Enter name...' };
 
-    let input = element.shadowRoot.querySelector('input[type="text"]');
+    let input = element.querySelector('input[type="text"]');
     assert.equal(input.placeholder, 'Enter name...');
   });
 
@@ -611,7 +614,7 @@ describe('kikx-hml-prompt', () => {
     element.config = { inputType: 'text', label: 'Name' };
 
     element.setValue('Bob');
-    let input = element.shadowRoot.querySelector('input[type="text"]');
+    let input = element.querySelector('input[type="text"]');
     assert.equal(input.value, 'Bob');
     assert.equal(element.getValue(), 'Bob');
   });
@@ -624,7 +627,7 @@ describe('kikx-hml-prompt', () => {
     element.config = { inputType: 'text', label: 'Name' };
     element.setAttribute('readonly', '');
 
-    let input = element.shadowRoot.querySelector('input[type="text"]');
+    let input = element.querySelector('input[type="text"]');
     assert.equal(input.disabled, true, 'input should be disabled when readonly');
   });
 
@@ -641,7 +644,7 @@ describe('kikx-hml-prompt', () => {
       receivedEvent = event;
     });
 
-    let input    = element.shadowRoot.querySelector('input[type="text"]');
+    let input    = element.querySelector('input[type="text"]');
     input.value  = 'Charlie';
 
     let inputEvent = new dom.window.Event('input', { bubbles: true });

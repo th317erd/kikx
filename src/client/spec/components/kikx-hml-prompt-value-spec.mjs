@@ -72,10 +72,19 @@ function registerComponent() {
   class KikxHmlPromptValue extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._label     = '';
+      this._values    = [];
+      this._inputType = '';
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; padding: 4px 0; }
+          kikx-hml-prompt-value { display: block; padding: 4px 0; }
 
           .value-label {
             font-size: 0.75rem; font-weight: 600;
@@ -112,12 +121,8 @@ function registerComponent() {
         <div class="value-container"></div>
       `;
 
-      this._labelEl     = this.shadowRoot.querySelector('.value-label');
-      this._containerEl = this.shadowRoot.querySelector('.value-container');
-
-      this._label     = '';
-      this._values    = [];
-      this._inputType = '';
+      this._labelEl     = this.querySelector('.value-label');
+      this._containerEl = this.querySelector('.value-container');
     }
 
     get label() {
@@ -211,11 +216,11 @@ describe('kikx-hml-prompt-value', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -225,7 +230,7 @@ describe('kikx-hml-prompt-value', () => {
   it('renders label text', () => {
     element.label = 'Favorite Color';
 
-    let labelEl = element.shadowRoot.querySelector('.value-label');
+    let labelEl = element.querySelector('.value-label');
     assert.equal(labelEl.textContent, 'Favorite Color', 'label element should display the label text');
   });
 
@@ -236,7 +241,7 @@ describe('kikx-hml-prompt-value', () => {
   it('renders single value as pill', () => {
     element.values = ['Blue'];
 
-    let pills = element.shadowRoot.querySelectorAll('.value-pill');
+    let pills = element.querySelectorAll('.value-pill');
     assert.equal(pills.length, 1, 'should render exactly one pill');
     assert.equal(pills[0].textContent, 'Blue', 'pill should display the value text');
   });
@@ -248,7 +253,7 @@ describe('kikx-hml-prompt-value', () => {
   it('renders multiple values as multiple pills', () => {
     element.values = ['Red', 'Green', 'Blue'];
 
-    let pills = element.shadowRoot.querySelectorAll('.value-pill');
+    let pills = element.querySelectorAll('.value-pill');
     assert.equal(pills.length, 3, 'should render three pills');
     assert.equal(pills[0].textContent, 'Red');
     assert.equal(pills[1].textContent, 'Green');
@@ -266,7 +271,7 @@ describe('kikx-hml-prompt-value', () => {
     assert.equal(element.values.length, 1, 'array should have one element');
     assert.equal(element.values[0], 'Solo', 'element should be the original string');
 
-    let pills = element.shadowRoot.querySelectorAll('.value-pill');
+    let pills = element.querySelectorAll('.value-pill');
     assert.equal(pills.length, 1, 'should render one pill for the wrapped string');
     assert.equal(pills[0].textContent, 'Solo');
   });
@@ -279,7 +284,7 @@ describe('kikx-hml-prompt-value', () => {
     element.inputType = 'color';
     element.values = ['#ff5733'];
 
-    let pills = element.shadowRoot.querySelectorAll('.value-pill');
+    let pills = element.querySelectorAll('.value-pill');
     assert.equal(pills.length, 1, 'should render one pill');
     assert.ok(pills[0].classList.contains('color-value'), 'pill should have color-value class');
 
@@ -299,7 +304,7 @@ describe('kikx-hml-prompt-value', () => {
   it('empty values shows no pills', () => {
     element.values = [];
 
-    let pills = element.shadowRoot.querySelectorAll('.value-pill');
+    let pills = element.querySelectorAll('.value-pill');
     assert.equal(pills.length, 0, 'should render zero pills for empty array');
   });
 
@@ -311,13 +316,13 @@ describe('kikx-hml-prompt-value', () => {
     element.inputType = 'boolean';
     element.values = ['true'];
 
-    let pills = element.shadowRoot.querySelectorAll('.value-pill');
+    let pills = element.querySelectorAll('.value-pill');
     assert.equal(pills.length, 1, 'should render one pill');
     assert.equal(pills[0].textContent, 'Yes', 'true value should render as "Yes"');
 
     // Also check false
     element.values = ['false'];
-    pills = element.shadowRoot.querySelectorAll('.value-pill');
+    pills = element.querySelectorAll('.value-pill');
     assert.equal(pills[0].textContent, 'No', 'false value should render as "No"');
   });
 

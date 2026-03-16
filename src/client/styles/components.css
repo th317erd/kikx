@@ -1,0 +1,1144 @@
+/* =========================================================================
+   SHARED COMPONENT STYLES
+   Consolidated CSS patterns extracted from 31 web components.
+   Used when components move from Shadow DOM to light DOM.
+   ========================================================================= */
+
+
+/* =========================================================================
+   1. GLASS PANELS
+   Standard glass surface: translucent background, blur, glass border.
+   Used in: sidebar, interaction bubbles, message-input, top-bar, status-bar,
+            agent cards, session rows, settings top-area, tab-bar, etc.
+   ========================================================================= */
+
+.glass-panel {
+  background: var(--glass-background);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-medium);
+}
+
+.glass-panel:hover {
+  background: var(--glass-background-hover);
+}
+
+/* Solid variant for modals / overlays that need near-opaque backgrounds */
+.glass-panel-solid {
+  background: var(--glass-background-solid);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-large);
+  color: var(--text-primary);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px var(--accent-glow),
+    0 0 40px rgba(176, 64, 255, 0.08),
+    0 0 60px rgba(255, 64, 129, 0.04);
+}
+
+/* Glass surface with neon ambient shadow (sidebar, message-input) */
+.glass-panel-ambient {
+  background: var(--glass-background);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-medium);
+  box-shadow:
+    0 0 15px rgba(0, 229, 255, 0.06),
+    0 0 30px rgba(176, 64, 255, 0.03);
+}
+
+
+/* =========================================================================
+   2. PRIMARY BUTTONS  (.btn-primary)
+   Accent-colored, glow on hover. Used in: agent-form-modal (save),
+   create-session-modal (create), login-page (submit), message-input (send),
+   permission-request (confirm), agent-list-modal (add), add-friend-modal
+   (save/invite), settings-page (form-button), hml-prompt-value, etc.
+   ========================================================================= */
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--border-radius-small);
+  padding: 8px 20px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, opacity 0.2s ease;
+  font-family: inherit;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Full-width variant (login submit, agent-list add button) */
+.btn-primary.btn-full {
+  width: 100%;
+}
+
+/* Medium border-radius variant (used in settings, add-friend wizard, login) */
+.btn-primary.btn-rounded {
+  border-radius: var(--border-radius-medium);
+}
+
+
+/* =========================================================================
+   3. SECONDARY / CANCEL BUTTONS  (.btn-secondary)
+   Glass-styled, neutral. Used in: agent-form-modal (cancel), create-session
+   (cancel), add-friend-modal (back/cancel), settings-page (secondary), etc.
+   ========================================================================= */
+
+.btn-secondary {
+  background: none;
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  border-radius: var(--border-radius-small);
+  padding: 8px 16px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  font-family: inherit;
+}
+
+.btn-secondary:hover {
+  background: var(--glass-background-hover);
+}
+
+/* Filled secondary: glass background + glass border (settings, add-friend) */
+.btn-secondary.btn-filled {
+  background: var(--glass-background);
+  color: var(--text-primary);
+}
+
+.btn-secondary.btn-filled:hover {
+  background: rgba(255, 255, 255, 0.10);
+  box-shadow: none;
+}
+
+/* Medium border-radius variant */
+.btn-secondary.btn-rounded {
+  border-radius: var(--border-radius-medium);
+}
+
+
+/* =========================================================================
+   4. DANGER / DELETE BUTTONS  (.btn-danger)
+   Red-tinted for destructive actions. Used in: agent-form-modal (delete),
+   settings-page (danger button).
+   ========================================================================= */
+
+.btn-danger {
+  background: rgba(229, 57, 53, 0.15);
+  color: #ef5350;
+  border: 1px solid rgba(229, 57, 53, 0.30);
+  border-radius: var(--border-radius-small);
+  padding: 8px 16px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  font-family: inherit;
+}
+
+.btn-danger:hover {
+  background: rgba(229, 57, 53, 0.25);
+}
+
+/* Solid danger variant (settings page) */
+.btn-danger.btn-solid {
+  background: var(--color-error);
+  color: #fff;
+  border: none;
+}
+
+
+/* =========================================================================
+   5. ICON / GHOST BUTTONS  (.btn-ghost)
+   Background-less buttons that show background on hover. Used in: session-list
+   (action-button), interaction (reply-button), modal (close-button),
+   sidebar (archive-toggle), top-bar buttons, settings-button on agents, etc.
+   ========================================================================= */
+
+.btn-ghost {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--border-radius-small);
+  transition: background 0.2s ease, color 0.2s ease;
+  line-height: 1;
+  font-family: inherit;
+}
+
+.btn-ghost:hover {
+  background: var(--glass-background-hover);
+  color: var(--text-primary);
+}
+
+
+/* =========================================================================
+   6. FORM INPUTS
+   Used in: agent-form-modal, create-session-modal, login-page, hml-prompt,
+   add-friend-modal, settings-page, sidebar (search).
+   ========================================================================= */
+
+.form-group {
+  margin-bottom: var(--spacing-md);
+}
+
+.form-label {
+  display: block;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.form-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-size: 1rem;
+  background: var(--input-background);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-medium);
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.form-input::placeholder {
+  color: var(--input-placeholder);
+}
+
+.form-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Compact variant with smaller border-radius (agent-form-modal, hml-prompt) */
+.form-input.input-compact {
+  padding: 8px 12px;
+  border-radius: var(--border-radius-small);
+}
+
+
+/* =========================================================================
+   7. FORM SELECTS
+   Used in: agent-form-modal, create-session-modal, add-friend-modal,
+   hml-prompt, settings-page.
+   ========================================================================= */
+
+.form-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-size: 1rem;
+  background: var(--input-background);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-medium);
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.form-select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.form-select option {
+  background: var(--background-base);
+  color: var(--text-primary);
+}
+
+/* Compact variant with smaller border-radius */
+.form-select.select-compact {
+  padding: 8px 12px;
+  border-radius: var(--border-radius-small);
+}
+
+
+/* =========================================================================
+   8. BUTTON ROW LAYOUT
+   Flex row with gap and right-aligned buttons. Used in: agent-form-modal,
+   create-session-modal, add-friend-modal, settings-page.
+   ========================================================================= */
+
+.button-row {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: flex-end;
+  padding-top: var(--spacing-sm);
+}
+
+/* With separator line above (agent-form-modal) */
+.button-row.button-row-separated {
+  margin-top: var(--spacing-md);
+  padding-top: 12px;
+  border-top: 1px solid var(--glass-border);
+}
+
+
+/* =========================================================================
+   9. FORM HINTS AND STATUS MESSAGES
+   Used in: settings-page, login-page.
+   ========================================================================= */
+
+.form-hint {
+  font-size: 1rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.status-message {
+  display: none;
+  font-size: 1rem;
+  margin-top: var(--spacing-sm);
+  min-height: 1.25em;
+}
+
+.status-message.visible {
+  display: block;
+}
+
+.status-message.error {
+  color: var(--color-error);
+}
+
+.status-message.success {
+  color: var(--color-success);
+}
+
+
+/* =========================================================================
+   10. LIST ITEM HOVER STATES
+   Common row pattern with hover transitions. Used in: session-list,
+   friends-list, sidebar (session-row), agent-list-modal (agent-card).
+   ========================================================================= */
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 6px var(--spacing-sm);
+  cursor: pointer;
+  border-radius: var(--border-radius-small);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+  isolation: isolate;
+}
+
+.list-row:hover {
+  background: var(--glass-background-hover);
+}
+
+/* Active / selected state */
+.list-row.active {
+  background: var(--accent-dim);
+  border-left: 2px solid var(--accent-primary);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* Archived / dimmed state */
+.list-row.archived {
+  opacity: 0.6;
+}
+
+
+/* =========================================================================
+   11. LIST ITEM TEXT (truncated names)
+   Used in: session-list (.session-name), friends-list (.friend-name),
+   sidebar (.session-name).
+   ========================================================================= */
+
+.list-item-name {
+  flex: 1;
+  font-size: 1rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* =========================================================================
+   12. CARD LAYOUT
+   Glass-bordered card with hover. Used in: agent-list-modal (.agent-card).
+   ========================================================================= */
+
+.glass-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--glass-background);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-medium);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.glass-card:hover {
+  background: var(--glass-background-hover);
+}
+
+
+/* =========================================================================
+   13. MODAL / PANEL CHROME
+   Backdrop + panel structure for modals. Used in: kikx-modal.
+   ========================================================================= */
+
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-panel {
+  position: relative;
+  z-index: 1;
+  min-width: 320px;
+  max-width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--glass-background-solid);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-large);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px var(--accent-glow),
+    0 0 40px rgba(176, 64, 255, 0.08),
+    0 0 60px rgba(255, 64, 129, 0.04);
+  color: var(--text-primary);
+  padding: 0;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.modal-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 16px 20px 20px;
+}
+
+
+/* =========================================================================
+   14. SECTION HEADERS
+   Uppercase label with optional add-button. Used in: sidebar, settings-page.
+   ========================================================================= */
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  flex-shrink: 0;
+}
+
+.section-label {
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.section-heading {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: var(--spacing-md) 0 var(--spacing-sm);
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+
+/* =========================================================================
+   15. SECTION ADD BUTTON
+   Accent-colored small button in section headers. Used in: sidebar.
+   ========================================================================= */
+
+.section-add-button {
+  background: var(--glass-background);
+  border: 1px solid var(--glass-border);
+  color: var(--accent-primary);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 12px;
+  line-height: 1.2;
+  border-radius: var(--border-radius-medium);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+  font-family: inherit;
+}
+
+.section-add-button:hover {
+  background: rgba(255, 255, 255, 0.10);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+
+/* =========================================================================
+   16. EMPTY STATES
+   Centered muted text when a list is empty. Used in: session-list,
+   friends-list, sidebar, agent-list-modal.
+   ========================================================================= */
+
+.empty-state {
+  text-align: center;
+  padding: var(--spacing-md);
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-style: italic;
+}
+
+
+/* =========================================================================
+   17. BADGES
+   Small pill badges for counts and labels. Used in: session-list
+   (unread-badge), friends-list (agent-badge).
+   ========================================================================= */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--border-radius-pill);
+  flex-shrink: 0;
+}
+
+.badge-accent {
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+}
+
+.badge-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+
+/* =========================================================================
+   18. AVATARS
+   Circular avatar containers. Used in: interaction, agent-list-modal.
+   ========================================================================= */
+
+.avatar-circle {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.avatar-circle.avatar-small {
+  width: 28px;
+  height: 28px;
+  font-size: 0.65rem;
+}
+
+.avatar-circle.avatar-medium {
+  width: 36px;
+  height: 36px;
+  font-size: 1rem;
+}
+
+
+/* =========================================================================
+   19. SCROLLBAR STYLES (light variant for inner containers)
+   Thin 6px scrollbar with glass-border thumb. Used in: modal panel,
+   sidebar sections, friends-area, hml-prompt dropdown. Duplicated inline
+   in 6+ components — consolidated here.
+   ========================================================================= */
+
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 3px;
+}
+
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+.scroll-thin::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* Firefox */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--glass-border) transparent;
+}
+
+
+/* =========================================================================
+   20. COLLAPSE / ACCORDION
+   Collapsible sections with indicator arrow. Used in: session-list,
+   reflection-block.
+   ========================================================================= */
+
+.collapse-indicator {
+  display: inline-block;
+  transition: transform 0.2s ease;
+  font-size: 1rem;
+}
+
+.collapse-indicator.collapsed {
+  transform: rotate(-90deg);
+}
+
+.collapse-indicator.expanded {
+  transform: rotate(90deg);
+}
+
+
+/* =========================================================================
+   21. CATEGORY HEADERS (collapsible list groups)
+   Used in: session-list.
+   ========================================================================= */
+
+.category-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+
+.category-header:hover {
+  background: var(--glass-background-hover);
+}
+
+
+/* =========================================================================
+   22. CHAT BUBBLE
+   Glass-surface bubble for messages. Used in: interaction component.
+   ========================================================================= */
+
+.bubble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  background: var(--glass-background);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-large);
+  padding: 12px 14px;
+  color: var(--text-primary);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.2),
+    0 0 20px rgba(0, 229, 255, 0.03),
+    0 0 40px rgba(176, 64, 255, 0.02);
+}
+
+/* User-aligned bubble with accent gradient */
+.bubble-user {
+  background:
+    linear-gradient(135deg,
+      var(--accent-dim) 0%,
+      rgba(176, 64, 255, 0.06) 100%);
+  border-color: var(--chat-user-border);
+  box-shadow:
+    0 0 12px var(--accent-glow),
+    0 0 30px rgba(176, 64, 255, 0.08);
+}
+
+/* Warning / permission bubble */
+.bubble-warning {
+  background:
+    linear-gradient(135deg,
+      var(--color-warning-dim) 0%,
+      rgba(255, 234, 0, 0.06) 100%);
+  border-color: rgba(255, 234, 0, 0.30);
+  box-shadow:
+    0 0 12px rgba(255, 234, 0, 0.20),
+    0 0 30px rgba(255, 234, 0, 0.08);
+}
+
+/* Error bubble */
+.bubble-error {
+  background:
+    linear-gradient(135deg,
+      var(--color-error-dim) 0%,
+      rgba(255, 23, 68, 0.06) 100%);
+  border-color: rgba(255, 23, 68, 0.30);
+  box-shadow:
+    0 0 12px rgba(255, 23, 68, 0.20),
+    0 0 30px rgba(255, 23, 68, 0.08);
+}
+
+/* Hazard-stripe header for permission / error bubbles */
+.bubble-hazard-header {
+  margin: -12px -14px 0;
+  padding: 10px 14px;
+  border-radius: var(--border-radius-large) var(--border-radius-large) 0 0;
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 8px,
+      rgba(0, 0, 0, 0.12) 8px,
+      rgba(0, 0, 0, 0.12) 16px
+    );
+}
+
+
+/* =========================================================================
+   23. BUBBLE HEADER (avatar + name row)
+   Used in: interaction component.
+   ========================================================================= */
+
+.bubble-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.header-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+}
+
+.header-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+
+/* =========================================================================
+   24. BUBBLE FOOTER
+   Used in: interaction component — meta text, reply button, actions.
+   ========================================================================= */
+
+.bubble-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 1rem;
+  color: var(--text-muted);
+  padding-top: 2px;
+}
+
+.bubble-footer:empty {
+  display: none;
+}
+
+
+/* =========================================================================
+   25. REPLY CONTEXT (inline reply preview)
+   Used in: interaction component.
+   ========================================================================= */
+
+.reply-context {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  border-left: 2px solid var(--accent-dim);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 0 var(--border-radius-small) var(--border-radius-small) 0;
+}
+
+.reply-context-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* =========================================================================
+   26. REPLY BANNER (above message input)
+   Used in: message-input component.
+   ========================================================================= */
+
+.reply-banner {
+  display: none;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 6px 12px;
+  background: var(--accent-dim);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--border-radius-small) var(--border-radius-small) 0 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.reply-banner.visible {
+  display: flex;
+}
+
+.reply-banner-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reply-banner-name {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+
+/* =========================================================================
+   27. CODE / MONOSPACE BLOCKS
+   Used in: permission-request (full-command, command-text).
+   ========================================================================= */
+
+.code-block {
+  display: block;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--border-radius-small);
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.code-inline {
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* =========================================================================
+   28. TAB BAR
+   Horizontal tabs with underline indicator. Used in: settings-page.
+   ========================================================================= */
+
+.tab-bar {
+  display: flex;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-sm) 0;
+  background: var(--glass-background);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.tab-button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  padding: var(--spacing-sm);
+  cursor: pointer;
+  font-size: 1rem;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--border-radius-small) var(--border-radius-small) 0 0;
+  transition: color 0.2s ease, border-color 0.2s ease;
+  font-family: inherit;
+}
+
+.tab-button:hover {
+  color: var(--text-primary);
+  background: var(--glass-background-hover);
+}
+
+.tab-button.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+
+/* =========================================================================
+   29. TAB PANELS
+   Show/hide content panels for tabs. Used in: settings-page.
+   ========================================================================= */
+
+.tab-panel {
+  display: none;
+  color: var(--text-primary);
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+
+/* =========================================================================
+   30. RAINBOW BORDER / NEON STRIPE
+   Animated rainbow gradient line. Used in: top-bar (::after),
+   status-bar (::before).
+   ========================================================================= */
+
+@keyframes rainbow-scroll {
+  to { background-position: -200% 0; }
+}
+
+.rainbow-stripe {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    #ff4081, #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100, #ff4081,
+    #b040ff, #448aff, #00e5ff, #00e676, #ffea00, #ff9100, #ff4081);
+  background-size: 200% 100%;
+  animation: rainbow-scroll 60s linear infinite;
+  box-shadow:
+    0 0 8px rgba(0, 229, 255, 0.3),
+    0 0 20px rgba(176, 64, 255, 0.15);
+}
+
+.rainbow-stripe.stripe-top {
+  top: 0;
+  height: 1px;
+  box-shadow:
+    0 0 6px rgba(0, 229, 255, 0.2),
+    0 0 12px rgba(176, 64, 255, 0.1);
+}
+
+.rainbow-stripe.stripe-bottom {
+  bottom: 0;
+}
+
+
+/* =========================================================================
+   31. ONLINE / STATUS INDICATORS
+   Small colored dots. Used in: friends-list, status-bar.
+   ========================================================================= */
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.online {
+  background: #4caf50;
+}
+
+.status-dot.connecting {
+  background: #ffcc00;
+}
+
+.status-dot.offline {
+  background: #ff4444;
+}
+
+
+/* =========================================================================
+   32. WIZARD TYPE SELECTION
+   Large icon buttons for choosing between options. Used in: add-friend-modal.
+   ========================================================================= */
+
+.type-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  width: 140px;
+  height: 120px;
+  background: var(--glass-background);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-large);
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  font-family: inherit;
+}
+
+.type-button:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 12px var(--accent-glow);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+
+/* =========================================================================
+   33. LOGIN CARD
+   Centered glass card with multi-layer neon glow. Used in: login-page.
+   ========================================================================= */
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  padding: var(--spacing-xl);
+  background: var(--glass-background);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-large);
+  box-shadow:
+    0 0 24px var(--accent-glow),
+    0 0 48px rgba(176, 64, 255, 0.12),
+    0 0 80px rgba(255, 64, 129, 0.06);
+  text-align: center;
+}
+
+
+/* =========================================================================
+   34. UTILITY: VISIBILITY
+   ========================================================================= */
+
+.hidden {
+  display: none !important;
+}
+
+.invisible {
+  visibility: hidden;
+}
+
+
+/* =========================================================================
+   35. UTILITY: TEXT STYLES
+   ========================================================================= */
+
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+.text-accent { color: var(--accent-primary); }
+.text-error { color: var(--color-error); }
+.text-success { color: var(--color-success); }
+.text-warning { color: var(--color-warning); }
+
+
+/* =========================================================================
+   36. UTILITY: FLEX LAYOUTS
+   ========================================================================= */
+
+.flex-row {
+  display: flex;
+  align-items: center;
+}
+
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.flex-1 {
+  flex: 1;
+  min-width: 0;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gap-xs { gap: var(--spacing-xs); }
+.gap-sm { gap: var(--spacing-sm); }
+.gap-md { gap: var(--spacing-md); }
+.gap-lg { gap: var(--spacing-lg); }
+
+
+/* =========================================================================
+   37. TRUNCATED TEXT
+   ========================================================================= */
+
+.text-truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* =========================================================================
+   38. PENDING / OPTIMISTIC STATE
+   Faded + desaturated appearance for unconfirmed messages.
+   Used in: interaction component.
+   ========================================================================= */
+
+.pending {
+  opacity: 0.55;
+  filter: saturate(0.4);
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}

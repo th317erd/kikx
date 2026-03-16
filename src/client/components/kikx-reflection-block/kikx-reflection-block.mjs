@@ -4,13 +4,13 @@ import { t } from '../../lib/i18n.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-reflection-block {
       display: block;
       border-radius: var(--border-radius-small, 4px);
       overflow: hidden;
     }
 
-    .toggle-header {
+    kikx-reflection-block .toggle-header {
       display: flex;
       align-items: center;
       gap: var(--spacing-xs, 4px);
@@ -27,29 +27,29 @@ const TEMPLATE_HTML = `
       text-align: left;
     }
 
-    .toggle-header:hover {
+    kikx-reflection-block .toggle-header:hover {
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
     }
 
-    .collapse-indicator {
+    kikx-reflection-block .collapse-indicator {
       display: inline-block;
       font-size: 1rem;
       transition: transform 0.2s ease;
     }
 
-    .collapse-indicator.expanded {
+    kikx-reflection-block .collapse-indicator.expanded {
       transform: rotate(90deg);
     }
 
-    .brain-icon {
+    kikx-reflection-block .brain-icon {
       font-size: 1rem;
     }
 
-    .label {
+    kikx-reflection-block .label {
       font-weight: 600;
     }
 
-    .reflection-content {
+    kikx-reflection-block .reflection-content {
       display: none;
       padding: var(--spacing-sm, 8px);
       font-size: 1rem;
@@ -61,7 +61,7 @@ const TEMPLATE_HTML = `
       white-space: pre-wrap;
     }
 
-    .reflection-content.expanded {
+    kikx-reflection-block .reflection-content.expanded {
       display: block;
     }
   </style>
@@ -90,19 +90,21 @@ class KikxReflectionBlock extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._toggleHeader      = this.shadowRoot.querySelector('.toggle-header');
-    this._collapseIndicator = this.shadowRoot.querySelector('.collapse-indicator');
-    this._label             = this.shadowRoot.querySelector('.label');
-    this._reflectionContent = this.shadowRoot.querySelector('.reflection-content');
-    this._expanded          = false;
-
+    this._expanded = false;
     this._onToggleClick = this._onToggleClick.bind(this);
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._toggleHeader      = this.querySelector('.toggle-header');
+      this._collapseIndicator = this.querySelector('.collapse-indicator');
+      this._label             = this.querySelector('.label');
+      this._reflectionContent = this.querySelector('.reflection-content');
+    }
+
     this._label.textContent = t('chat.reflection.label');
     this._toggleHeader.addEventListener('click', this._onToggleClick);
 
@@ -124,11 +126,12 @@ class KikxReflectionBlock extends HTMLElement {
   }
 
   get content() {
-    return this._reflectionContent.textContent;
+    return (this._reflectionContent) ? this._reflectionContent.textContent : '';
   }
 
   set content(value) {
-    this._reflectionContent.textContent = value;
+    if (this._reflectionContent)
+      this._reflectionContent.textContent = value;
   }
 
   toggle() {
@@ -156,6 +159,9 @@ class KikxReflectionBlock extends HTMLElement {
 
   _setExpanded(expanded) {
     this._expanded = expanded;
+
+    if (!this._collapseIndicator)
+      return;
 
     if (expanded) {
       this._collapseIndicator.classList.add('expanded');

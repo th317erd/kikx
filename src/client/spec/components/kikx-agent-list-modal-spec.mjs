@@ -86,10 +86,20 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._agents = [];
+
+      this._onAgentListClick = this._onAgentListClick.bind(this);
+      this._onAddClick       = this._onAddClick.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: contents; }
+          kikx-agent-list-modal { display: contents; }
 
           .agent-list { display: flex; flex-direction: column; gap: var(--spacing-sm, 8px); }
 
@@ -139,17 +149,10 @@ function registerComponent() {
         <button class="add-button"></button>
       `;
 
-      this._agentList = this.shadowRoot.querySelector('.agent-list');
-      this._addButton = this.shadowRoot.querySelector('.add-button');
+      this._agentList = this.querySelector('.agent-list');
+      this._addButton = this.querySelector('.add-button');
       this._addButton.textContent = mockT('agent.list.addButton');
 
-      this._agents = [];
-
-      this._onAgentListClick = this._onAgentListClick.bind(this);
-      this._onAddClick       = this._onAddClick.bind(this);
-    }
-
-    connectedCallback() {
       this._agentList.addEventListener('click', this._onAgentListClick);
       this._addButton.addEventListener('click', this._onAddClick);
       this._render();
@@ -285,11 +288,11 @@ describe('kikx-agent-list-modal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -297,7 +300,7 @@ describe('kikx-agent-list-modal', () => {
   // -------------------------------------------------------------------------
 
   it('shows empty state message when no agents are provided', () => {
-    let emptyState = element.shadowRoot.querySelector('.empty-state');
+    let emptyState = element.querySelector('.empty-state');
     assert.ok(emptyState, 'should render empty state element');
     assert.equal(emptyState.textContent, localeData.agent.list.empty);
   });
@@ -309,7 +312,7 @@ describe('kikx-agent-list-modal', () => {
   it('renders agent cards from agents property', () => {
     element.agents = makeAgents();
 
-    let cards = element.shadowRoot.querySelectorAll('.agent-card');
+    let cards = element.querySelectorAll('.agent-card');
     assert.equal(cards.length, 3, 'should render 3 agent cards');
   });
 
@@ -320,7 +323,7 @@ describe('kikx-agent-list-modal', () => {
   it('agent card shows avatar with initials and color', () => {
     element.agents = makeAgents();
 
-    let avatar = element.shadowRoot.querySelector('.agent-avatar');
+    let avatar = element.querySelector('.agent-avatar');
     assert.ok(avatar, 'should have an avatar element');
     assert.equal(avatar.textContent, 'CL', 'avatar should show initials');
     assert.ok(
@@ -336,7 +339,7 @@ describe('kikx-agent-list-modal', () => {
   it('agent card shows agent name', () => {
     element.agents = makeAgents();
 
-    let names = element.shadowRoot.querySelectorAll('.agent-name');
+    let names = element.querySelectorAll('.agent-name');
     let texts = Array.from(names).map((el) => el.textContent);
 
     assert.ok(texts.includes('Claude'), 'should show Claude');
@@ -351,7 +354,7 @@ describe('kikx-agent-list-modal', () => {
   it('agent card has settings gear button', () => {
     element.agents = makeAgents();
 
-    let buttons = element.shadowRoot.querySelectorAll('.settings-button');
+    let buttons = element.querySelectorAll('.settings-button');
     assert.equal(buttons.length, 3, 'each card should have a settings button');
     assert.equal(buttons[0].textContent, '\u2699', 'settings button should show gear icon');
   });
@@ -371,7 +374,7 @@ describe('kikx-agent-list-modal', () => {
       eventDetail = event.detail;
     });
 
-    let card = element.shadowRoot.querySelector('.agent-card[data-agent-id="a2"]');
+    let card = element.querySelector('.agent-card[data-agent-id="a2"]');
     card.click();
 
     assert.ok(eventFired, 'select-agent event should be dispatched');
@@ -393,7 +396,7 @@ describe('kikx-agent-list-modal', () => {
       eventDetail = event.detail;
     });
 
-    let gearButton = element.shadowRoot.querySelector('.settings-button[data-agent-id="a1"]');
+    let gearButton = element.querySelector('.settings-button[data-agent-id="a1"]');
     gearButton.click();
 
     assert.ok(eventFired, 'edit-agent event should be dispatched');
@@ -411,7 +414,7 @@ describe('kikx-agent-list-modal', () => {
       eventFired = true;
     });
 
-    let addButton = element.shadowRoot.querySelector('.add-button');
+    let addButton = element.querySelector('.add-button');
     addButton.click();
 
     assert.ok(eventFired, 'create-agent event should be dispatched');
@@ -422,7 +425,7 @@ describe('kikx-agent-list-modal', () => {
   // -------------------------------------------------------------------------
 
   it('"New Agent" button text comes from i18n', () => {
-    let addButton = element.shadowRoot.querySelector('.add-button');
+    let addButton = element.querySelector('.add-button');
     assert.equal(addButton.textContent, localeData.agent.list.addButton);
   });
 

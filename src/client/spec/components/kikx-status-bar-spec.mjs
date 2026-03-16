@@ -89,14 +89,16 @@ function registerComponent() {
   class KikxStatusBar extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
       this._unsubscribe = null;
     }
 
     connectedCallback() {
-      this.shadowRoot.innerHTML = `
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-status-bar {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -174,9 +176,9 @@ function registerComponent() {
       let status = options.status || 'disconnected';
       let costs  = options.costs || { global: 0, service: 0, session: 0 };
 
-      let dot         = this.shadowRoot.querySelector('.status-dot');
-      let text        = this.shadowRoot.querySelector('.status-text');
-      let costDisplay = this.shadowRoot.querySelector('.cost-display');
+      let dot         = this.querySelector('.status-dot');
+      let text        = this.querySelector('.status-text');
+      let costDisplay = this.querySelector('.cost-display');
 
       if (!dot || !text || !costDisplay) {
         return;
@@ -235,11 +237,11 @@ describe('kikx-status-bar', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -247,14 +249,14 @@ describe('kikx-status-bar', () => {
   // -------------------------------------------------------------------------
 
   it('contains connection status indicator', () => {
-    let statusContainer = element.shadowRoot.querySelector('.connection-status');
-    assert.ok(statusContainer, 'shadow DOM should contain .connection-status');
+    let statusContainer = element.querySelector('.connection-status');
+    assert.ok(statusContainer, 'should contain .connection-status');
 
-    let dot = element.shadowRoot.querySelector('.status-dot');
-    assert.ok(dot, 'shadow DOM should contain .status-dot');
+    let dot = element.querySelector('.status-dot');
+    assert.ok(dot, 'should contain .status-dot');
 
-    let text = element.shadowRoot.querySelector('.status-text');
-    assert.ok(text, 'shadow DOM should contain .status-text');
+    let text = element.querySelector('.status-text');
+    assert.ok(text, 'should contain .status-text');
   });
 
   // -------------------------------------------------------------------------
@@ -262,7 +264,7 @@ describe('kikx-status-bar', () => {
   // -------------------------------------------------------------------------
 
   it('shows Disconnected by default', () => {
-    let text = element.shadowRoot.querySelector('.status-text');
+    let text = element.querySelector('.status-text');
     assert.equal(text.textContent, 'Disconnected', 'default status should be Disconnected');
   });
 
@@ -271,8 +273,8 @@ describe('kikx-status-bar', () => {
   // -------------------------------------------------------------------------
 
   it('contains cost display section', () => {
-    let costDisplay = element.shadowRoot.querySelector('.cost-display');
-    assert.ok(costDisplay, 'shadow DOM should contain .cost-display');
+    let costDisplay = element.querySelector('.cost-display');
+    assert.ok(costDisplay, 'should contain .cost-display');
   });
 
   // -------------------------------------------------------------------------
@@ -280,7 +282,7 @@ describe('kikx-status-bar', () => {
   // -------------------------------------------------------------------------
 
   it('shows all three cost labels', () => {
-    let costDisplay = element.shadowRoot.querySelector('.cost-display');
+    let costDisplay = element.querySelector('.cost-display');
     let html = costDisplay.innerHTML;
 
     assert.ok(html.includes('Global'), 'cost display should include Global label');
@@ -293,7 +295,7 @@ describe('kikx-status-bar', () => {
   // -------------------------------------------------------------------------
 
   it('formats costs as dollar amounts with 2 decimals', () => {
-    let costDisplay = element.shadowRoot.querySelector('.cost-display');
+    let costDisplay = element.querySelector('.cost-display');
     let html = costDisplay.innerHTML;
 
     assert.ok(html.includes('$0.00'), 'default costs should show $0.00');
@@ -314,7 +316,7 @@ describe('kikx-status-bar', () => {
   // -------------------------------------------------------------------------
 
   it('connection status dot is colored appropriately', () => {
-    let dot = element.shadowRoot.querySelector('.status-dot');
+    let dot = element.querySelector('.status-dot');
 
     // Default is disconnected -- red (jsdom normalizes hex to rgb)
     assert.ok(
@@ -348,8 +350,8 @@ describe('kikx-status-bar', () => {
   // -------------------------------------------------------------------------
 
   it('update method refreshes the display when called', () => {
-    let text        = element.shadowRoot.querySelector('.status-text');
-    let costDisplay = element.shadowRoot.querySelector('.cost-display');
+    let text        = element.querySelector('.status-text');
+    let costDisplay = element.querySelector('.cost-display');
 
     assert.equal(text.textContent, 'Disconnected', 'initial status text');
 

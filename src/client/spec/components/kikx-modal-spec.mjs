@@ -74,10 +74,19 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._onBackdropClick = this._onBackdropClick.bind(this);
+      this._onCloseClick    = this._onCloseClick.bind(this);
+      this._onKeyDown       = this._onKeyDown.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-modal {
             display: none;
             position: fixed;
             top: 0;
@@ -89,7 +98,7 @@ function registerComponent() {
             justify-content: center;
           }
 
-          :host([open]) {
+          kikx-modal[open] {
             display: flex;
           }
 
@@ -175,16 +184,10 @@ function registerComponent() {
         </div>
       `;
 
-      this._backdrop    = this.shadowRoot.querySelector('.backdrop');
-      this._closeButton = this.shadowRoot.querySelector('.close-button');
-      this._panelTitle  = this.shadowRoot.querySelector('.panel-title');
+      this._backdrop    = this.querySelector('.backdrop');
+      this._closeButton = this.querySelector('.close-button');
+      this._panelTitle  = this.querySelector('.panel-title');
 
-      this._onBackdropClick = this._onBackdropClick.bind(this);
-      this._onCloseClick    = this._onCloseClick.bind(this);
-      this._onKeyDown       = this._onKeyDown.bind(this);
-    }
-
-    connectedCallback() {
       this._backdrop.addEventListener('click', this._onBackdropClick);
       this._closeButton.addEventListener('click', this._onCloseClick);
       this._updateTitle();
@@ -284,11 +287,11 @@ describe('kikx-modal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -298,11 +301,11 @@ describe('kikx-modal', () => {
   it('is hidden by default (no open attribute)', () => {
     assert.ok(!element.hasAttribute('open'), 'element should not have open attribute by default');
 
-    let style = element.shadowRoot.querySelector('style');
+    let style = element.querySelector('style');
     assert.ok(style, 'should have a style element');
     assert.ok(
       style.textContent.includes('display: none'),
-      ':host default should set display to none',
+      'default style should set display to none',
     );
   });
 
@@ -311,14 +314,14 @@ describe('kikx-modal', () => {
   // -------------------------------------------------------------------------
 
   it('is visible when open attribute is set', () => {
-    let style = element.shadowRoot.querySelector('style');
+    let style = element.querySelector('style');
     assert.ok(
-      style.textContent.includes(':host([open])'),
-      'style should include :host([open]) rule',
+      style.textContent.includes('kikx-modal[open]'),
+      'style should include kikx-modal[open] rule',
     );
     assert.ok(
       style.textContent.includes('display: flex'),
-      ':host([open]) rule should set display to flex',
+      'kikx-modal[open] rule should set display to flex',
     );
   });
 
@@ -329,7 +332,7 @@ describe('kikx-modal', () => {
   it('modal-title attribute sets panel title text', () => {
     element.setAttribute('modal-title', 'Test Title');
 
-    let panelTitle = element.shadowRoot.querySelector('.panel-title');
+    let panelTitle = element.querySelector('.panel-title');
     assert.equal(panelTitle.textContent, 'Test Title', 'panel title should reflect modal-title attribute');
   });
 
@@ -390,7 +393,7 @@ describe('kikx-modal', () => {
       eventFired = true;
     });
 
-    let backdrop = element.shadowRoot.querySelector('.backdrop');
+    let backdrop = element.querySelector('.backdrop');
     backdrop.click();
 
     assert.ok(eventFired, 'modal-close event should fire when backdrop is clicked');
@@ -410,7 +413,7 @@ describe('kikx-modal', () => {
       eventFired = true;
     });
 
-    let closeButton = element.shadowRoot.querySelector('.close-button');
+    let closeButton = element.querySelector('.close-button');
     closeButton.click();
 
     assert.ok(eventFired, 'modal-close event should fire when close button is clicked');
@@ -442,8 +445,8 @@ describe('kikx-modal', () => {
   // -------------------------------------------------------------------------
 
   it('has a slot for content', () => {
-    let slot = element.shadowRoot.querySelector('slot');
-    assert.ok(slot, 'shadow DOM should contain a <slot> element');
+    let slot = element.querySelector('slot');
+    assert.ok(slot, 'should contain a <slot> element');
   });
 
   // -------------------------------------------------------------------------
@@ -451,13 +454,13 @@ describe('kikx-modal', () => {
   // -------------------------------------------------------------------------
 
   it('contains panel with header and body', () => {
-    let panel       = element.shadowRoot.querySelector('.panel');
-    let panelHeader = element.shadowRoot.querySelector('.panel-header');
-    let panelBody   = element.shadowRoot.querySelector('.panel-body');
+    let panel       = element.querySelector('.panel');
+    let panelHeader = element.querySelector('.panel-header');
+    let panelBody   = element.querySelector('.panel-body');
 
-    assert.ok(panel, 'shadow DOM should contain .panel');
-    assert.ok(panelHeader, 'shadow DOM should contain .panel-header');
-    assert.ok(panelBody, 'shadow DOM should contain .panel-body');
+    assert.ok(panel, 'should contain .panel');
+    assert.ok(panelHeader, 'should contain .panel-header');
+    assert.ok(panelBody, 'should contain .panel-body');
   });
 
   // -------------------------------------------------------------------------
@@ -465,8 +468,8 @@ describe('kikx-modal', () => {
   // -------------------------------------------------------------------------
 
   it('close button has aria-label', () => {
-    let closeButton = element.shadowRoot.querySelector('.close-button');
-    assert.ok(closeButton, 'shadow DOM should contain .close-button');
+    let closeButton = element.querySelector('.close-button');
+    assert.ok(closeButton, 'should contain .close-button');
 
     let ariaLabel = closeButton.getAttribute('aria-label');
     assert.equal(ariaLabel, localeData.common.close, 'aria-label should match i18n common.close');

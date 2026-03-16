@@ -90,10 +90,22 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._onBackClick       = this._onBackClick.bind(this);
+      this._onAgentsClick     = this._onAgentsClick.bind(this);
+      this._onAbilitiesClick  = this._onAbilitiesClick.bind(this);
+      this._onNewSessionClick = this._onNewSessionClick.bind(this);
+      this._onSettingsClick   = this._onSettingsClick.bind(this);
+      this._onLogoutClick     = this._onLogoutClick.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; height: 52px; }
+          kikx-top-bar { display: block; height: 52px; }
         </style>
         <div class="bar">
           <div class="left-group">
@@ -110,23 +122,14 @@ function registerComponent() {
         </div>
       `;
 
-      this._backButton       = this.shadowRoot.querySelector('.back-button');
-      this._sessionName      = this.shadowRoot.querySelector('.session-name');
-      this._agentsButton     = this.shadowRoot.querySelector('.agents-button');
-      this._abilitiesButton  = this.shadowRoot.querySelector('.abilities-button');
-      this._newSessionButton = this.shadowRoot.querySelector('.new-session-button');
-      this._settingsButton   = this.shadowRoot.querySelector('.settings-button');
-      this._logoutButton     = this.shadowRoot.querySelector('.logout-button');
+      this._backButton       = this.querySelector('.back-button');
+      this._sessionName      = this.querySelector('.session-name');
+      this._agentsButton     = this.querySelector('.agents-button');
+      this._abilitiesButton  = this.querySelector('.abilities-button');
+      this._newSessionButton = this.querySelector('.new-session-button');
+      this._settingsButton   = this.querySelector('.settings-button');
+      this._logoutButton     = this.querySelector('.logout-button');
 
-      this._onBackClick       = this._onBackClick.bind(this);
-      this._onAgentsClick     = this._onAgentsClick.bind(this);
-      this._onAbilitiesClick  = this._onAbilitiesClick.bind(this);
-      this._onNewSessionClick = this._onNewSessionClick.bind(this);
-      this._onSettingsClick   = this._onSettingsClick.bind(this);
-      this._onLogoutClick     = this._onLogoutClick.bind(this);
-    }
-
-    connectedCallback() {
       this._render();
 
       this._backButton.addEventListener('click', this._onBackClick);
@@ -231,11 +234,11 @@ describe('kikx-top-bar', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -243,7 +246,7 @@ describe('kikx-top-bar', () => {
   // -------------------------------------------------------------------------
 
   it('contains a back button', () => {
-    let backButton = element.shadowRoot.querySelector('.back-button');
+    let backButton = element.querySelector('.back-button');
     assert.ok(backButton, 'should have a back button');
     assert.equal(backButton.textContent, localeData.topBar.backButton);
   });
@@ -253,7 +256,7 @@ describe('kikx-top-bar', () => {
   // -------------------------------------------------------------------------
 
   it('displays application title as default session name', () => {
-    let sessionName = element.shadowRoot.querySelector('.session-name');
+    let sessionName = element.querySelector('.session-name');
     assert.ok(sessionName, 'should have a session name element');
     assert.equal(sessionName.textContent, localeData.application.title);
   });
@@ -265,7 +268,7 @@ describe('kikx-top-bar', () => {
   it('updates session name when session-name attribute changes', () => {
     element.setAttribute('session-name', 'My Custom Session');
 
-    let sessionName = element.shadowRoot.querySelector('.session-name');
+    let sessionName = element.querySelector('.session-name');
     assert.equal(sessionName.textContent, 'My Custom Session');
   });
 
@@ -273,7 +276,7 @@ describe('kikx-top-bar', () => {
     element.setAttribute('session-name', 'Temporary Name');
     element.removeAttribute('session-name');
 
-    let sessionName = element.shadowRoot.querySelector('.session-name');
+    let sessionName = element.querySelector('.session-name');
     assert.equal(sessionName.textContent, localeData.application.title);
   });
 
@@ -282,7 +285,7 @@ describe('kikx-top-bar', () => {
   // -------------------------------------------------------------------------
 
   it('contains an Agents button', () => {
-    let agentsButton = element.shadowRoot.querySelector('.agents-button');
+    let agentsButton = element.querySelector('.agents-button');
     assert.ok(agentsButton, 'should have an Agents button');
     assert.equal(agentsButton.textContent, localeData.topBar.agents);
   });
@@ -292,7 +295,7 @@ describe('kikx-top-bar', () => {
   // -------------------------------------------------------------------------
 
   it('contains an Abilities button', () => {
-    let abilitiesButton = element.shadowRoot.querySelector('.abilities-button');
+    let abilitiesButton = element.querySelector('.abilities-button');
     assert.ok(abilitiesButton, 'should have an Abilities button');
     assert.equal(abilitiesButton.textContent, localeData.topBar.abilities);
   });
@@ -302,7 +305,7 @@ describe('kikx-top-bar', () => {
   // -------------------------------------------------------------------------
 
   it('contains a New Session button', () => {
-    let newSessionButton = element.shadowRoot.querySelector('.new-session-button');
+    let newSessionButton = element.querySelector('.new-session-button');
     assert.ok(newSessionButton, 'should have a New Session button');
     assert.equal(newSessionButton.textContent, localeData.topBar.newSession);
   });
@@ -312,7 +315,7 @@ describe('kikx-top-bar', () => {
   // -------------------------------------------------------------------------
 
   it('contains a Settings button', () => {
-    let settingsButton = element.shadowRoot.querySelector('.settings-button');
+    let settingsButton = element.querySelector('.settings-button');
     assert.ok(settingsButton, 'should have a Settings button');
     assert.equal(settingsButton.textContent, localeData.topBar.settings);
   });
@@ -322,7 +325,7 @@ describe('kikx-top-bar', () => {
   // -------------------------------------------------------------------------
 
   it('contains a Logout button', () => {
-    let logoutButton = element.shadowRoot.querySelector('.logout-button');
+    let logoutButton = element.querySelector('.logout-button');
     assert.ok(logoutButton, 'should have a Logout button');
     assert.equal(logoutButton.textContent, localeData.topBar.logout);
   });
@@ -337,7 +340,7 @@ describe('kikx-top-bar', () => {
       eventFired = true;
     });
 
-    let agentsButton = element.shadowRoot.querySelector('.agents-button');
+    let agentsButton = element.querySelector('.agents-button');
     agentsButton.click();
 
     assert.ok(eventFired, 'open-agents-modal event should have been dispatched');
@@ -349,7 +352,7 @@ describe('kikx-top-bar', () => {
       eventFired = true;
     });
 
-    let abilitiesButton = element.shadowRoot.querySelector('.abilities-button');
+    let abilitiesButton = element.querySelector('.abilities-button');
     abilitiesButton.click();
 
     assert.ok(eventFired, 'open-abilities-modal event should have been dispatched');
@@ -361,7 +364,7 @@ describe('kikx-top-bar', () => {
       eventFired = true;
     });
 
-    let newSessionButton = element.shadowRoot.querySelector('.new-session-button');
+    let newSessionButton = element.querySelector('.new-session-button');
     newSessionButton.click();
 
     assert.ok(eventFired, 'create-session event should have been dispatched');
@@ -372,7 +375,7 @@ describe('kikx-top-bar', () => {
   // -------------------------------------------------------------------------
 
   it('calls profile.logout and navigates to login when Logout button is clicked', () => {
-    let logoutButton = element.shadowRoot.querySelector('.logout-button');
+    let logoutButton = element.querySelector('.logout-button');
     logoutButton.click();
 
     assert.equal(profileLogoutCalls.length, 1, 'profile.logout should have been called');
@@ -385,7 +388,7 @@ describe('kikx-top-bar', () => {
   // -------------------------------------------------------------------------
 
   it('navigates to /kikx/ when back button is clicked', () => {
-    let backButton = element.shadowRoot.querySelector('.back-button');
+    let backButton = element.querySelector('.back-button');
     backButton.click();
 
     assert.equal(navigateCalls.length, 1, 'navigate should have been called');
@@ -397,7 +400,7 @@ describe('kikx-top-bar', () => {
   // -------------------------------------------------------------------------
 
   it('navigates to /kikx/settings when settings button is clicked', () => {
-    let settingsButton = element.shadowRoot.querySelector('.settings-button');
+    let settingsButton = element.querySelector('.settings-button');
     settingsButton.click();
 
     assert.equal(navigateCalls.length, 1, 'navigate should have been called');

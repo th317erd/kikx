@@ -4,24 +4,24 @@ import { t } from '../../lib/i18n.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-session-list {
       display: block;
       overflow-y: auto;
       color: var(--text-primary, #e8e8f0);
     }
 
-    .empty-state {
+    kikx-session-list .empty-state {
       padding: var(--spacing-sm, 8px);
       text-align: center;
       color: var(--text-muted, #606078);
       font-size: 1rem;
     }
 
-    .category {
+    kikx-session-list .category {
       margin-bottom: var(--spacing-xs, 4px);
     }
 
-    .category-header {
+    kikx-session-list .category-header {
       display: flex;
       align-items: center;
       gap: var(--spacing-xs, 4px);
@@ -39,29 +39,29 @@ const TEMPLATE_HTML = `
       text-align: left;
     }
 
-    .category-header:hover {
+    kikx-session-list .category-header:hover {
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
     }
 
-    .collapse-indicator {
+    kikx-session-list .collapse-indicator {
       display: inline-block;
       transition: transform 0.2s ease;
       font-size: 1rem;
     }
 
-    .collapse-indicator.collapsed {
+    kikx-session-list .collapse-indicator.collapsed {
       transform: rotate(-90deg);
     }
 
-    .category-items {
+    kikx-session-list .category-items {
       overflow: hidden;
     }
 
-    .category-items.collapsed {
+    kikx-session-list .category-items.collapsed {
       display: none;
     }
 
-    .session-row {
+    kikx-session-list .session-row {
       display: flex;
       align-items: center;
       gap: var(--spacing-xs, 4px);
@@ -72,21 +72,21 @@ const TEMPLATE_HTML = `
       margin: 0 var(--spacing-xs, 4px);
     }
 
-    .session-row:hover {
+    kikx-session-list .session-row:hover {
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
     }
 
-    .session-row.active {
+    kikx-session-list .session-row.active {
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
       border-left: 2px solid var(--accent-primary, #00e5ff);
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.15));
     }
 
-    .session-row.archived {
+    kikx-session-list .session-row.archived {
       opacity: 0.6;
     }
 
-    .session-name {
+    kikx-session-list .session-name {
       flex: 1;
       font-size: 1rem;
       white-space: nowrap;
@@ -95,7 +95,7 @@ const TEMPLATE_HTML = `
       color: var(--text-primary, #e8e8f0);
     }
 
-    .unread-badge {
+    kikx-session-list .unread-badge {
       min-width: 18px;
       height: 18px;
       padding: 0 5px;
@@ -110,7 +110,7 @@ const TEMPLATE_HTML = `
       flex-shrink: 0;
     }
 
-    .action-button {
+    kikx-session-list .action-button {
       background: none;
       border: none;
       cursor: pointer;
@@ -123,11 +123,11 @@ const TEMPLATE_HTML = `
       flex-shrink: 0;
     }
 
-    .session-row:hover .action-button {
+    kikx-session-list .session-row:hover .action-button {
       opacity: 1;
     }
 
-    .action-button:hover {
+    kikx-session-list .action-button:hover {
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
       color: var(--text-primary, #e8e8f0);
     }
@@ -154,18 +154,20 @@ class KikxSessionList extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._container       = this.shadowRoot.querySelector('.container');
     this._sessions        = [];
     this._filter          = '';
     this._collapsedState  = {};
-
     this._onContainerClick = this._onContainerClick.bind(this);
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._container = this.querySelector('.container');
+    }
+
     this._render();
     this._container.addEventListener('click', this._onContainerClick);
   }

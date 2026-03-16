@@ -86,10 +86,19 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+      this._selectedValue  = null;
+
+      this._onSubmitClick  = this._onSubmitClick.bind(this);
+      this._onOptionChange = this._onOptionChange.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; padding: var(--spacing-sm, 8px); }
+          kikx-permission-request { display: block; padding: var(--spacing-sm, 8px); }
 
           .permission-header {
             display: flex; align-items: center; gap: var(--spacing-xs, 4px);
@@ -128,15 +137,15 @@ function registerComponent() {
           .submit-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
           .submit-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-          :host([processed]) .options-list,
-          :host([processed]) .submit-button { display: none; }
+          kikx-permission-request[processed] .options-list,
+          kikx-permission-request[processed] .submit-button { display: none; }
 
           .processed-badge {
             display: none; font-size: 0.8125rem; font-weight: 600;
             color: #66bb6a; padding: 4px 0;
           }
 
-          :host([processed]) .processed-badge { display: block; }
+          kikx-permission-request[processed] .processed-badge { display: block; }
         </style>
 
         <div class="permission-header">
@@ -149,18 +158,12 @@ function registerComponent() {
         <div class="processed-badge">\u2713 Processed</div>
       `;
 
-      this._titleText      = this.shadowRoot.querySelector('.title-text');
-      this._descriptionEl  = this.shadowRoot.querySelector('.permission-description');
-      this._optionsList    = this.shadowRoot.querySelector('.options-list');
-      this._submitButton   = this.shadowRoot.querySelector('.submit-button');
-      this._processedBadge = this.shadowRoot.querySelector('.processed-badge');
-      this._selectedValue  = null;
+      this._titleText      = this.querySelector('.title-text');
+      this._descriptionEl  = this.querySelector('.permission-description');
+      this._optionsList    = this.querySelector('.options-list');
+      this._submitButton   = this.querySelector('.submit-button');
+      this._processedBadge = this.querySelector('.processed-badge');
 
-      this._onSubmitClick  = this._onSubmitClick.bind(this);
-      this._onOptionChange = this._onOptionChange.bind(this);
-    }
-
-    connectedCallback() {
       this._titleText.textContent    = mockT('permission.title');
       this._submitButton.textContent = mockT('chat.interaction.submitButton');
 
@@ -256,11 +259,11 @@ describe('kikx-permission-request', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -268,12 +271,12 @@ describe('kikx-permission-request', () => {
   // -------------------------------------------------------------------------
 
   it('shows lightning icon and title from i18n', () => {
-    let icon  = element.shadowRoot.querySelector('.lightning-icon');
-    let title = element.shadowRoot.querySelector('.title-text');
+    let icon  = element.querySelector('.lightning-icon');
+    let title = element.querySelector('.title-text');
 
-    assert.ok(icon, 'shadow DOM should contain .lightning-icon');
+    assert.ok(icon, 'should contain .lightning-icon');
     assert.equal(icon.textContent, '\u26A1', 'lightning icon should display the zap emoji');
-    assert.ok(title, 'shadow DOM should contain .title-text');
+    assert.ok(title, 'should contain .title-text');
     assert.equal(
       title.textContent,
       localeData.permission.title,
@@ -288,7 +291,7 @@ describe('kikx-permission-request', () => {
   it('description property sets description text', () => {
     element.description = 'Allow access to the file system?';
 
-    let descEl = element.shadowRoot.querySelector('.permission-description');
+    let descEl = element.querySelector('.permission-description');
     assert.equal(
       descEl.textContent,
       'Allow access to the file system?',
@@ -301,7 +304,7 @@ describe('kikx-permission-request', () => {
   // -------------------------------------------------------------------------
 
   it('renders 4 radio options with correct labels', () => {
-    let rows = element.shadowRoot.querySelectorAll('.option-row');
+    let rows = element.querySelectorAll('.option-row');
     assert.equal(rows.length, 4, 'should render 4 option rows');
 
     let expectedLabels = [
@@ -322,8 +325,8 @@ describe('kikx-permission-request', () => {
   // -------------------------------------------------------------------------
 
   it('submit button is disabled by default', () => {
-    let button = element.shadowRoot.querySelector('.submit-button');
-    assert.ok(button, 'shadow DOM should contain .submit-button');
+    let button = element.querySelector('.submit-button');
+    assert.ok(button, 'should contain .submit-button');
     assert.equal(button.disabled, true, 'submit button should be disabled when no option is selected');
   });
 
@@ -332,8 +335,8 @@ describe('kikx-permission-request', () => {
   // -------------------------------------------------------------------------
 
   it('submit button is enabled after radio selection', () => {
-    let radios = element.shadowRoot.querySelectorAll('input[type="radio"]');
-    let button = element.shadowRoot.querySelector('.submit-button');
+    let radios = element.querySelectorAll('input[type="radio"]');
+    let button = element.querySelector('.submit-button');
 
     // Simulate selecting the first radio
     radios[0].checked = true;
@@ -349,8 +352,8 @@ describe('kikx-permission-request', () => {
   it('submit dispatches permission-response with correct decision', () => {
     element.setAttribute('permission-id', 'perm-42');
 
-    let radios = element.shadowRoot.querySelectorAll('input[type="radio"]');
-    let button = element.shadowRoot.querySelector('.submit-button');
+    let radios = element.querySelectorAll('input[type="radio"]');
+    let button = element.querySelector('.submit-button');
     let events = [];
 
     element.addEventListener('permission-response', (event) => {
@@ -377,10 +380,10 @@ describe('kikx-permission-request', () => {
   it('processed attribute hides options and submit', () => {
     element.setAttribute('processed', '');
 
-    let optionsList = element.shadowRoot.querySelector('.options-list');
-    let button      = element.shadowRoot.querySelector('.submit-button');
+    let optionsList = element.querySelector('.options-list');
+    let button      = element.querySelector('.submit-button');
 
-    // The :host([processed]) CSS rule sets display:none on these elements.
+    // The kikx-permission-request[processed] CSS rule sets display:none on these elements.
     // In JSDOM, computed styles via CSS selectors are not applied, so we
     // verify the attribute is present on the host (which the CSS rule targets).
     assert.ok(element.hasAttribute('processed'), 'element should have processed attribute');
@@ -395,8 +398,8 @@ describe('kikx-permission-request', () => {
   it('processed attribute shows processed badge', () => {
     element.setAttribute('processed', '');
 
-    let badge = element.shadowRoot.querySelector('.processed-badge');
-    assert.ok(badge, 'shadow DOM should contain .processed-badge');
+    let badge = element.querySelector('.processed-badge');
+    assert.ok(badge, 'should contain .processed-badge');
     assert.ok(
       badge.textContent.includes('Processed'),
       'processed badge should contain "Processed" text',
@@ -408,7 +411,7 @@ describe('kikx-permission-request', () => {
   // -------------------------------------------------------------------------
 
   it('radio options have correct values', () => {
-    let radios = element.shadowRoot.querySelectorAll('input[type="radio"]');
+    let radios = element.querySelectorAll('input[type="radio"]');
     assert.equal(radios.length, 4, 'should have 4 radio inputs');
 
     let expectedValues = ['allow-once', 'allow-session', 'allow-always', 'deny'];

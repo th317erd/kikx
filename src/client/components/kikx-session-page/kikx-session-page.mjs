@@ -11,7 +11,7 @@ import * as debug from '../../lib/debug.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-session-page {
       display: grid;
       grid-template-areas:
         "topbar  topbar"
@@ -30,46 +30,46 @@ const TEMPLATE_HTML = `
       color: var(--text-primary, #e8e8f0);
     }
 
-    kikx-top-bar {
+    kikx-session-page kikx-top-bar {
       grid-area: topbar;
     }
 
-    .chat-area {
+    kikx-session-page .chat-area {
       grid-area: chat;
       position: relative;
       overflow: hidden;
     }
 
-    kikx-chat-view {
+    kikx-session-page kikx-chat-view {
       width: 100%;
       height: 100%;
       overflow: hidden;
     }
 
-    kikx-message-input {
+    kikx-session-page kikx-message-input {
       grid-area: input;
     }
 
-    kikx-message-input.hidden {
+    kikx-session-page kikx-message-input.hidden {
       display: none;
     }
 
-    kikx-sidebar {
+    kikx-session-page kikx-sidebar {
       grid-area: sidebar;
       width: 300px;
     }
 
-    kikx-status-bar {
+    kikx-session-page kikx-status-bar {
       grid-area: statusbar;
     }
 
-    .typing-indicator {
+    kikx-session-page .typing-indicator {
       display: flex;
       gap: 4px;
       padding: 8px 4px;
     }
 
-    .typing-indicator span {
+    kikx-session-page .typing-indicator span {
       width: 6px;
       height: 6px;
       background: var(--text-muted, #606078);
@@ -77,8 +77,8 @@ const TEMPLATE_HTML = `
       animation: typing 1.4s infinite ease-in-out;
     }
 
-    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    kikx-session-page .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    kikx-session-page .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
 
     @keyframes typing {
       0%, 60%, 100% { transform: translateY(0); }
@@ -463,7 +463,6 @@ class KikxSessionPage extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
 
     this._currentSession    = null;
     this._eventSource       = null;
@@ -502,17 +501,17 @@ class KikxSessionPage extends HTMLElement {
   }
 
   connectedCallback() {
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
+    this.appendChild(getTemplate().content.cloneNode(true));
 
-    this._topBar             = this.shadowRoot.querySelector('kikx-top-bar');
-    this._chatView           = this.shadowRoot.querySelector('kikx-chat-view');
-    this._messageInput       = this.shadowRoot.querySelector('kikx-message-input');
-    this._sidebar            = this.shadowRoot.querySelector('kikx-sidebar');
-    this._scrollAnchor       = this.shadowRoot.querySelector('kikx-scroll-anchor');
-    this._friendModal        = this.shadowRoot.querySelector('.friend-modal');
-    this._sessionModal       = this.shadowRoot.querySelector('.session-modal');
-    this._addFriendWizard    = this.shadowRoot.querySelector('kikx-add-friend-modal');
-    this._createSessionModal = this.shadowRoot.querySelector('kikx-create-session-modal');
+    this._topBar             = this.querySelector('kikx-top-bar');
+    this._chatView           = this.querySelector('kikx-chat-view');
+    this._messageInput       = this.querySelector('kikx-message-input');
+    this._sidebar            = this.querySelector('kikx-sidebar');
+    this._scrollAnchor       = this.querySelector('kikx-scroll-anchor');
+    this._friendModal        = this.querySelector('.friend-modal');
+    this._sessionModal       = this.querySelector('.session-modal');
+    this._addFriendWizard    = this.querySelector('kikx-add-friend-modal');
+    this._createSessionModal = this.querySelector('kikx-create-session-modal');
 
     // Set modal titles
     this._friendModal.setAttribute('modal-title', t('friends.wizard.title'));
@@ -522,49 +521,49 @@ class KikxSessionPage extends HTMLElement {
     this._updateSessionView();
 
     // Event listeners
-    this.shadowRoot.addEventListener('add-friend', this._onAddFriend);
-    this.shadowRoot.addEventListener('add-session', this._onAddSession);
-    this.shadowRoot.addEventListener('friend-save', this._onFriendSave);
-    this.shadowRoot.addEventListener('friend-cancel', this._onFriendCancel);
-    this.shadowRoot.addEventListener('session-create', this._onSessionCreate);
-    this.shadowRoot.addEventListener('session-cancel', this._onSessionCancel);
-    this.shadowRoot.addEventListener('modal-close', this._onModalClose);
-    this.shadowRoot.addEventListener('select-friend', this._onSelectFriend);
-    this.shadowRoot.addEventListener('send-message', this._onSendMessage);
-    this.shadowRoot.addEventListener('anchored-change', this._onAnchoredChange);
-    this.shadowRoot.addEventListener('jump-to-bottom', this._onJumpToBottom);
-    this.shadowRoot.addEventListener('near-top', this._onNearTop);
-    this.shadowRoot.addEventListener('queue-change', this._onQueueChange);
-    this.shadowRoot.addEventListener('permission-response', this._onPermissionResponse);
-    this.shadowRoot.addEventListener('cancel-interaction', this._onCancelInteraction);
-    this.shadowRoot.addEventListener('interaction-submit', this._onInteractionSubmit);
-    this.shadowRoot.addEventListener('interaction-ignore', this._onInteractionIgnore);
-    this.shadowRoot.addEventListener('select-session', this._onSelectSession);
-    this.shadowRoot.addEventListener('reply-to-message', this._onReplyToMessage);
+    this.addEventListener('add-friend', this._onAddFriend);
+    this.addEventListener('add-session', this._onAddSession);
+    this.addEventListener('friend-save', this._onFriendSave);
+    this.addEventListener('friend-cancel', this._onFriendCancel);
+    this.addEventListener('session-create', this._onSessionCreate);
+    this.addEventListener('session-cancel', this._onSessionCancel);
+    this.addEventListener('modal-close', this._onModalClose);
+    this.addEventListener('select-friend', this._onSelectFriend);
+    this.addEventListener('send-message', this._onSendMessage);
+    this.addEventListener('anchored-change', this._onAnchoredChange);
+    this.addEventListener('jump-to-bottom', this._onJumpToBottom);
+    this.addEventListener('near-top', this._onNearTop);
+    this.addEventListener('queue-change', this._onQueueChange);
+    this.addEventListener('permission-response', this._onPermissionResponse);
+    this.addEventListener('cancel-interaction', this._onCancelInteraction);
+    this.addEventListener('interaction-submit', this._onInteractionSubmit);
+    this.addEventListener('interaction-ignore', this._onInteractionIgnore);
+    this.addEventListener('select-session', this._onSelectSession);
+    this.addEventListener('reply-to-message', this._onReplyToMessage);
 
     this._loadInitialData();
   }
 
   disconnectedCallback() {
-    this.shadowRoot.removeEventListener('add-friend', this._onAddFriend);
-    this.shadowRoot.removeEventListener('add-session', this._onAddSession);
-    this.shadowRoot.removeEventListener('friend-save', this._onFriendSave);
-    this.shadowRoot.removeEventListener('friend-cancel', this._onFriendCancel);
-    this.shadowRoot.removeEventListener('session-create', this._onSessionCreate);
-    this.shadowRoot.removeEventListener('session-cancel', this._onSessionCancel);
-    this.shadowRoot.removeEventListener('modal-close', this._onModalClose);
-    this.shadowRoot.removeEventListener('select-friend', this._onSelectFriend);
-    this.shadowRoot.removeEventListener('send-message', this._onSendMessage);
-    this.shadowRoot.removeEventListener('anchored-change', this._onAnchoredChange);
-    this.shadowRoot.removeEventListener('jump-to-bottom', this._onJumpToBottom);
-    this.shadowRoot.removeEventListener('near-top', this._onNearTop);
-    this.shadowRoot.removeEventListener('queue-change', this._onQueueChange);
-    this.shadowRoot.removeEventListener('permission-response', this._onPermissionResponse);
-    this.shadowRoot.removeEventListener('cancel-interaction', this._onCancelInteraction);
-    this.shadowRoot.removeEventListener('interaction-submit', this._onInteractionSubmit);
-    this.shadowRoot.removeEventListener('interaction-ignore', this._onInteractionIgnore);
-    this.shadowRoot.removeEventListener('select-session', this._onSelectSession);
-    this.shadowRoot.removeEventListener('reply-to-message', this._onReplyToMessage);
+    this.removeEventListener('add-friend', this._onAddFriend);
+    this.removeEventListener('add-session', this._onAddSession);
+    this.removeEventListener('friend-save', this._onFriendSave);
+    this.removeEventListener('friend-cancel', this._onFriendCancel);
+    this.removeEventListener('session-create', this._onSessionCreate);
+    this.removeEventListener('session-cancel', this._onSessionCancel);
+    this.removeEventListener('modal-close', this._onModalClose);
+    this.removeEventListener('select-friend', this._onSelectFriend);
+    this.removeEventListener('send-message', this._onSendMessage);
+    this.removeEventListener('anchored-change', this._onAnchoredChange);
+    this.removeEventListener('jump-to-bottom', this._onJumpToBottom);
+    this.removeEventListener('near-top', this._onNearTop);
+    this.removeEventListener('queue-change', this._onQueueChange);
+    this.removeEventListener('permission-response', this._onPermissionResponse);
+    this.removeEventListener('cancel-interaction', this._onCancelInteraction);
+    this.removeEventListener('interaction-submit', this._onInteractionSubmit);
+    this.removeEventListener('interaction-ignore', this._onInteractionIgnore);
+    this.removeEventListener('select-session', this._onSelectSession);
+    this.removeEventListener('reply-to-message', this._onReplyToMessage);
 
     this._disconnectStream();
     this._destroyFrameManager();
@@ -579,7 +578,7 @@ class KikxSessionPage extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   _updateSessionView() {
-    // Guard: shadow DOM refs not yet available (attributeChangedCallback
+    // Guard: DOM refs not yet available (attributeChangedCallback
     // fires before connectedCallback). connectedCallback will call us.
     if (!this._topBar)
       return;
@@ -702,7 +701,7 @@ class KikxSessionPage extends HTMLElement {
         }
 
         if (sg && sg.groupID) {
-          let groupEl = this._chatView.shadowRoot.querySelector(
+          let groupEl = this._chatView.querySelector(
             `[data-frame-id="${sg.groupID}"]`,
           );
 
@@ -748,7 +747,7 @@ class KikxSessionPage extends HTMLElement {
           if (!sg.groupID)
             continue;
 
-          let groupEl = this._chatView.shadowRoot.querySelector(
+          let groupEl = this._chatView.querySelector(
             `[data-frame-id="${sg.groupID}"]`,
           );
 
@@ -766,7 +765,7 @@ class KikxSessionPage extends HTMLElement {
 
       // --- User-message optimistic adoption ---
       if (frame.type === 'user-message') {
-        let allGhosts = this._chatView.shadowRoot.querySelectorAll(
+        let allGhosts = this._chatView.querySelectorAll(
           'kikx-interaction[alignment="user"]:not([data-frame-id])',
         );
         let optimistic = allGhosts.length > 0 ? allGhosts[allGhosts.length - 1] : null;
@@ -795,7 +794,7 @@ class KikxSessionPage extends HTMLElement {
 
       // --- Dedup: skip if element already exists in DOM ---
       if (frame.id) {
-        let existing = this._chatView.shadowRoot.querySelector(
+        let existing = this._chatView.querySelector(
           `[data-frame-id="${frame.id}"]`,
         );
 
@@ -838,10 +837,10 @@ class KikxSessionPage extends HTMLElement {
 
     // --- Event-driven rendering: frame:updated → patch DOM in place ---
     this._frameManager.on('frame:updated', ({ frame }) => {
-      if (!this._chatView || !this._chatView.shadowRoot)
+      if (!this._chatView)
         return;
 
-      let el = this._chatView.shadowRoot.querySelector(
+      let el = this._chatView.querySelector(
         `[data-frame-id="${frame.id}"]`,
       );
 
@@ -1029,7 +1028,7 @@ class KikxSessionPage extends HTMLElement {
 
       for (let frame of sorted) {
         // Dedup: skip frames already in the DOM
-        let existing = this._chatView.shadowRoot.querySelector(
+        let existing = this._chatView.querySelector(
           `kikx-interaction[data-frame-id="${frame.id}"]`,
         );
 
@@ -1333,7 +1332,7 @@ class KikxSessionPage extends HTMLElement {
           }]);
         }
 
-        let startStatusBar = this.shadowRoot.querySelector('kikx-status-bar');
+        let startStatusBar = this.querySelector('kikx-status-bar');
         if (startStatusBar)
           startStatusBar.setInteracting(true);
         break;
@@ -1348,7 +1347,7 @@ class KikxSessionPage extends HTMLElement {
         if (debug.isEnabled()) {
           let sg = this._streamingGroups.get(endAgentID);
           if (sg && sg.groupID) {
-            let groupEl = this._chatView.shadowRoot.querySelector(
+            let groupEl = this._chatView.querySelector(
               `[data-frame-id="${sg.groupID}"]`,
             );
             if (groupEl) {
@@ -1370,7 +1369,7 @@ class KikxSessionPage extends HTMLElement {
         this._streamingGroups.delete(endAgentID);
 
         this._messageInput.setInteracting(false);
-        let endStatusBar = this.shadowRoot.querySelector('kikx-status-bar');
+        let endStatusBar = this.querySelector('kikx-status-bar');
         if (endStatusBar)
           endStatusBar.setInteracting(false);
         break;
@@ -1643,7 +1642,7 @@ class KikxSessionPage extends HTMLElement {
     let outputTokens = usage.outputTokens || 0;
 
     if (outputTokens > 0) {
-      let agentInteractions = this._chatView.shadowRoot.querySelectorAll(`kikx-interaction[alignment="agent"][data-interaction-id="${interactionID}"]`);
+      let agentInteractions = this._chatView.querySelectorAll(`kikx-interaction[alignment="agent"][data-interaction-id="${interactionID}"]`);
 
       for (let i = 0; i < agentInteractions.length - 1; i++)
         agentInteractions[i].removeAttribute('token-count');
@@ -1801,7 +1800,7 @@ class KikxSessionPage extends HTMLElement {
 
   _onQueueChange(event) {
     let { count } = event.detail || {};
-    let statusBar = this.shadowRoot.querySelector('kikx-status-bar');
+    let statusBar = this.querySelector('kikx-status-bar');
 
     if (statusBar)
       statusBar.setQueueCount(count || 0);
@@ -1867,16 +1866,12 @@ class KikxSessionPage extends HTMLElement {
   }
 
   _collectPromptValues(interaction) {
-    // Prompts live inside kikx-message-content's shadow DOM
+    // Prompts live inside kikx-message-content (light DOM)
     let messageContents = interaction.querySelectorAll('kikx-message-content');
     let answers         = {};
 
     for (let messageContent of messageContents) {
-      let shadow = messageContent.shadowRoot;
-      if (!shadow)
-        continue;
-
-      let prompts = shadow.querySelectorAll('kikx-hml-prompt');
+      let prompts = messageContent.querySelectorAll('kikx-hml-prompt');
       for (let prompt of prompts) {
         let name  = prompt.getName();
         let value = prompt.getValue();
@@ -1894,11 +1889,7 @@ class KikxSessionPage extends HTMLElement {
 
     let messageContents = interaction.querySelectorAll('kikx-message-content');
     for (let messageContent of messageContents) {
-      let shadow = messageContent.shadowRoot;
-      if (!shadow)
-        continue;
-
-      let prompts = shadow.querySelectorAll('kikx-hml-prompt');
+      let prompts = messageContent.querySelectorAll('kikx-hml-prompt');
       for (let prompt of prompts) {
         // Set value attribute BEFORE readonly — readonly triggers _renderControl()
         // which rebuilds from getAttribute('value'), so the value must be set first.
@@ -2104,7 +2095,7 @@ class KikxSessionPage extends HTMLElement {
   }
 
   _updateReplyCount(parentID) {
-    if (!parentID || !this._chatView || !this._chatView.shadowRoot)
+    if (!parentID || !this._chatView)
       return;
 
     // Count all frames in the FrameManager that have this parentID
@@ -2120,7 +2111,7 @@ class KikxSessionPage extends HTMLElement {
       return;
 
     // Find the parent interaction element and set reply-count
-    let parentEl = this._chatView.shadowRoot.querySelector(
+    let parentEl = this._chatView.querySelector(
       `kikx-interaction[data-frame-id="${parentID}"]`,
     );
 

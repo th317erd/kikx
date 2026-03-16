@@ -1,9 +1,9 @@
 'use strict';
 
-// Shared scrollbar CSS for Shadow DOM adoption via constructable stylesheets.
+// Shared scrollbar CSS via constructable stylesheets.
 // Usage in a WebComponent:
 //   import { scrollbarStyleSheet } from 'kikx/lib/../styles/scrollbar-styles.mjs';
-//   this.shadowRoot.adoptedStyleSheets = [scrollbarStyleSheet, ...];
+//   document.adoptedStyleSheets = [...document.adoptedStyleSheets, scrollbarStyleSheet];
 
 export const scrollbarCSS = `
 ::-webkit-scrollbar {

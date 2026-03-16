@@ -2,14 +2,14 @@
 
 const TEMPLATE_HTML = `
   <style>
-    :host { display: block; padding: 4px 0; }
+    kikx-hml-prompt { display: block; padding: 4px 0; }
 
-    .prompt-label {
+    kikx-hml-prompt .prompt-label {
       font-size: 1rem; font-weight: 600;
       color: var(--text-secondary, #a0a0b8); margin-bottom: 4px;
     }
 
-    .prompt-input {
+    kikx-hml-prompt .prompt-input {
       width: 100%; box-sizing: border-box;
       padding: 6px 10px; font-size: 1rem;
       background: var(--input-background, rgba(255, 255, 255, 0.05));
@@ -20,20 +20,20 @@ const TEMPLATE_HTML = `
       font-family: inherit;
     }
 
-    .prompt-input:focus {
+    kikx-hml-prompt .prompt-input:focus {
       border-color: var(--accent-primary, #00e5ff);
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    textarea.prompt-input { resize: vertical; min-height: 60px; }
+    kikx-hml-prompt textarea.prompt-input { resize: vertical; min-height: 60px; }
 
     /* Custom select dropdown — native <select> options can't be styled */
-    .custom-select {
+    kikx-hml-prompt .custom-select {
       position: relative;
       width: 100%;
     }
 
-    .select-trigger {
+    kikx-hml-prompt .select-trigger {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -51,18 +51,18 @@ const TEMPLATE_HTML = `
       font-family: inherit;
     }
 
-    .select-trigger:focus {
+    kikx-hml-prompt .select-trigger:focus {
       border-color: var(--accent-primary, #00e5ff);
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    .select-trigger .arrow {
+    kikx-hml-prompt .select-trigger .arrow {
       font-size: 0.65rem;
       margin-left: 8px;
       opacity: 0.6;
     }
 
-    .select-options {
+    kikx-hml-prompt .select-options {
       display: none;
       position: absolute;
       top: 100%;
@@ -78,11 +78,11 @@ const TEMPLATE_HTML = `
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     }
 
-    .custom-select.open .select-options {
+    kikx-hml-prompt .custom-select.open .select-options {
       display: block;
     }
 
-    .select-option {
+    kikx-hml-prompt .select-option {
       padding: 6px 10px;
       font-size: 1rem;
       color: var(--text-primary, #e8e8f0);
@@ -90,63 +90,63 @@ const TEMPLATE_HTML = `
       transition: background 0.15s ease;
     }
 
-    .select-option:hover {
+    kikx-hml-prompt .select-option:hover {
       background: rgba(255, 255, 255, 0.08);
     }
 
-    .select-option.selected {
+    kikx-hml-prompt .select-option.selected {
       background: var(--accent-primary, #00e5ff);
       color: var(--background-base, #0a0a1a);
     }
 
-    .checkbox-row, .radio-row {
+    kikx-hml-prompt .checkbox-row, kikx-hml-prompt .radio-row {
       display: flex; align-items: center; gap: var(--spacing-xs, 4px);
       padding: 2px 0; font-size: 1rem; cursor: pointer;
       color: var(--text-primary, #e8e8f0);
     }
 
-    .checkbox-row label, .radio-row label {
+    kikx-hml-prompt .checkbox-row label, kikx-hml-prompt .radio-row label {
       cursor: pointer;
       user-select: none;
     }
 
-    .range-row {
+    kikx-hml-prompt .range-row {
       display: flex; align-items: center; gap: var(--spacing-sm, 8px);
     }
 
-    .range-value {
+    kikx-hml-prompt .range-value {
       font-size: 1rem; font-weight: 600; min-width: 40px; text-align: right;
       color: var(--accent-primary, #00e5ff);
     }
 
-    input[type="range"] {
+    kikx-hml-prompt input[type="range"] {
       flex: 1; accent-color: var(--accent-primary, #00e5ff);
     }
 
     /* Number spinner: hide default browser arrows, add custom styling */
-    input[type="number"] {
+    kikx-hml-prompt input[type="number"] {
       -moz-appearance: textfield;
     }
 
-    input[type="number"]::-webkit-inner-spin-button,
-    input[type="number"]::-webkit-outer-spin-button {
+    kikx-hml-prompt input[type="number"]::-webkit-inner-spin-button,
+    kikx-hml-prompt input[type="number"]::-webkit-outer-spin-button {
       -webkit-appearance: none;
       margin: 0;
     }
 
     /* Date/time picker: dark theme for picker indicator */
-    input[type="date"],
-    input[type="time"] {
+    kikx-hml-prompt input[type="date"],
+    kikx-hml-prompt input[type="time"] {
       color-scheme: dark;
     }
 
-    input[type="date"]::-webkit-calendar-picker-indicator,
-    input[type="time"]::-webkit-calendar-picker-indicator {
+    kikx-hml-prompt input[type="date"]::-webkit-calendar-picker-indicator,
+    kikx-hml-prompt input[type="time"]::-webkit-calendar-picker-indicator {
       filter: invert(0.7);
       cursor: pointer;
     }
 
-    input[type="color"] {
+    kikx-hml-prompt input[type="color"] {
       width: 48px; height: 32px; padding: 2px; cursor: pointer;
       border: 1px solid var(--input-border, rgba(255, 255, 255, 0.12));
       border-radius: var(--border-radius-small, 4px);
@@ -154,35 +154,35 @@ const TEMPLATE_HTML = `
     }
 
     /* Scrollbar for select dropdown */
-    .select-options::-webkit-scrollbar { width: 6px; }
-    .select-options::-webkit-scrollbar-track { background: transparent; }
-    .select-options::-webkit-scrollbar-thumb {
+    kikx-hml-prompt .select-options::-webkit-scrollbar { width: 6px; }
+    kikx-hml-prompt .select-options::-webkit-scrollbar-track { background: transparent; }
+    kikx-hml-prompt .select-options::-webkit-scrollbar-thumb {
       background: var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: 3px;
     }
-    .select-options::-webkit-scrollbar-button { display: none; }
+    kikx-hml-prompt .select-options::-webkit-scrollbar-button { display: none; }
 
     /* ===== Answered/readonly: success green ===== */
-    :host([readonly]) {
+    kikx-hml-prompt[readonly] {
       pointer-events: none;
     }
 
-    :host([readonly]) .prompt-label {
+    kikx-hml-prompt[readonly] .prompt-label {
       color: #4caf50;
     }
 
-    :host([readonly]) .prompt-input {
+    kikx-hml-prompt[readonly] .prompt-input {
       color: #81c784;
       border-color: rgba(76, 175, 80, 0.40);
       background: rgba(76, 175, 80, 0.08);
       box-shadow: 0 0 6px rgba(76, 175, 80, 0.15);
     }
 
-    :host([readonly]) textarea.prompt-input {
+    kikx-hml-prompt[readonly] textarea.prompt-input {
       color: #81c784;
     }
 
-    :host([readonly]) .select-trigger {
+    kikx-hml-prompt[readonly] .select-trigger {
       color: #81c784;
       border-color: rgba(76, 175, 80, 0.40);
       background: rgba(76, 175, 80, 0.08);
@@ -190,36 +190,36 @@ const TEMPLATE_HTML = `
       cursor: default;
     }
 
-    :host([readonly]) .select-trigger .arrow {
+    kikx-hml-prompt[readonly] .select-trigger .arrow {
       color: #4caf50;
     }
 
-    :host([readonly]) .checkbox-row,
-    :host([readonly]) .radio-row {
+    kikx-hml-prompt[readonly] .checkbox-row,
+    kikx-hml-prompt[readonly] .radio-row {
       color: #81c784;
       cursor: default;
     }
 
-    :host([readonly]) input[type="checkbox"],
-    :host([readonly]) input[type="radio"] {
+    kikx-hml-prompt[readonly] input[type="checkbox"],
+    kikx-hml-prompt[readonly] input[type="radio"] {
       accent-color: #4caf50;
     }
 
-    :host([readonly]) input[type="range"] {
+    kikx-hml-prompt[readonly] input[type="range"] {
       accent-color: #4caf50;
     }
 
-    :host([readonly]) .range-value {
+    kikx-hml-prompt[readonly] .range-value {
       color: #4caf50;
     }
 
-    :host([readonly]) input[type="color"] {
+    kikx-hml-prompt[readonly] input[type="color"] {
       border-color: rgba(76, 175, 80, 0.40);
       box-shadow: 0 0 6px rgba(76, 175, 80, 0.15);
     }
 
-    :host([readonly]) input[type="date"]::-webkit-calendar-picker-indicator,
-    :host([readonly]) input[type="time"]::-webkit-calendar-picker-indicator {
+    kikx-hml-prompt[readonly] input[type="date"]::-webkit-calendar-picker-indicator,
+    kikx-hml-prompt[readonly] input[type="time"]::-webkit-calendar-picker-indicator {
       display: none;
     }
   </style>
@@ -255,12 +255,6 @@ class KikxHmlPrompt extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._labelElement   = this.shadowRoot.querySelector('.prompt-label');
-    this._control        = this.shadowRoot.querySelector('.prompt-control');
-
     this._onInputChange = this._onInputChange.bind(this);
   }
 
@@ -269,6 +263,14 @@ class KikxHmlPrompt extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._labelElement = this.querySelector('.prompt-label');
+      this._control      = this.querySelector('.prompt-control');
+    }
+
     this._renderControl();
     this._notifyInteractionAncestor();
   }
@@ -283,7 +285,7 @@ class KikxHmlPrompt extends HTMLElement {
   }
 
   attributeChangedCallback() {
-    if (this.isConnected)
+    if (this.isConnected && this._initialized)
       this._renderControl();
   }
 
@@ -481,6 +483,9 @@ class KikxHmlPrompt extends HTMLElement {
   }
 
   _renderControl() {
+    if (!this._control)
+      return;
+
     this._removeListeners();
     this._control.innerHTML = '';
 
@@ -764,7 +769,7 @@ class KikxHmlPrompt extends HTMLElement {
       if (isReadonly) {
         // Don't use disabled — it applies browser-level grey styling that
         // can't be overridden by CSS (especially radio/checkbox).
-        // pointer-events:none on :host([readonly]) blocks mouse interaction;
+        // pointer-events:none on kikx-hml-prompt[readonly] blocks mouse interaction;
         // tabIndex=-1 blocks keyboard navigation.
         input.tabIndex = -1;
         input.setAttribute('aria-disabled', 'true');
@@ -798,7 +803,7 @@ class KikxHmlPrompt extends HTMLElement {
     if (this.hasAttribute('readonly'))
       return;
 
-    // Walk up through shadow DOM boundaries to find the hosting kikx-interaction
+    // Walk up to find the hosting kikx-interaction
     let node = this;
 
     while (node) {
@@ -807,11 +812,8 @@ class KikxHmlPrompt extends HTMLElement {
         return;
       }
 
-      // Cross shadow boundary: if we hit a shadow root, jump to its host
       if (node.parentNode) {
         node = node.parentNode;
-      } else if (node.host) {
-        node = node.host;
       } else {
         break;
       }

@@ -72,10 +72,20 @@ function registerComponent() {
   class KikxReflectionBlock extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+      this._expanded = false;
+
+      this._onToggleClick = this._onToggleClick.bind(this);
+    }
+
+    static get observedAttributes() { return ['expanded']; }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-reflection-block {
             display: block;
             border-radius: var(--border-radius-small, 4px);
             overflow: hidden;
@@ -145,18 +155,11 @@ function registerComponent() {
         <div class="reflection-content"></div>
       `;
 
-      this._toggleHeader      = this.shadowRoot.querySelector('.toggle-header');
-      this._collapseIndicator = this.shadowRoot.querySelector('.collapse-indicator');
-      this._label             = this.shadowRoot.querySelector('.label');
-      this._reflectionContent = this.shadowRoot.querySelector('.reflection-content');
-      this._expanded          = false;
+      this._toggleHeader      = this.querySelector('.toggle-header');
+      this._collapseIndicator = this.querySelector('.collapse-indicator');
+      this._label             = this.querySelector('.label');
+      this._reflectionContent = this.querySelector('.reflection-content');
 
-      this._onToggleClick = this._onToggleClick.bind(this);
-    }
-
-    static get observedAttributes() { return ['expanded']; }
-
-    connectedCallback() {
       this._label.textContent = mockT('chat.reflection.label');
       this._toggleHeader.addEventListener('click', this._onToggleClick);
 
@@ -262,11 +265,11 @@ describe('kikx-reflection-block', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -274,8 +277,8 @@ describe('kikx-reflection-block', () => {
   // -------------------------------------------------------------------------
 
   it('default state is collapsed', () => {
-    let content = element.shadowRoot.querySelector('.reflection-content');
-    assert.ok(content, 'shadow DOM should contain .reflection-content');
+    let content = element.querySelector('.reflection-content');
+    assert.ok(content, 'should contain .reflection-content');
     assert.ok(
       !content.classList.contains('expanded'),
       'reflection content should not have expanded class by default',
@@ -287,8 +290,8 @@ describe('kikx-reflection-block', () => {
   // -------------------------------------------------------------------------
 
   it('contains brain emoji icon', () => {
-    let brainIcon = element.shadowRoot.querySelector('.brain-icon');
-    assert.ok(brainIcon, 'shadow DOM should contain .brain-icon');
+    let brainIcon = element.querySelector('.brain-icon');
+    assert.ok(brainIcon, 'should contain .brain-icon');
     assert.equal(brainIcon.textContent, '\uD83E\uDDE0', 'brain icon should display the brain emoji');
   });
 
@@ -297,8 +300,8 @@ describe('kikx-reflection-block', () => {
   // -------------------------------------------------------------------------
 
   it('label shows i18n Reflection text', () => {
-    let label = element.shadowRoot.querySelector('.label');
-    assert.ok(label, 'shadow DOM should contain .label');
+    let label = element.querySelector('.label');
+    assert.ok(label, 'should contain .label');
     assert.equal(
       label.textContent,
       localeData.chat.reflection.label,
@@ -311,8 +314,8 @@ describe('kikx-reflection-block', () => {
   // -------------------------------------------------------------------------
 
   it('clicking toggle expands content', () => {
-    let header  = element.shadowRoot.querySelector('.toggle-header');
-    let content = element.shadowRoot.querySelector('.reflection-content');
+    let header  = element.querySelector('.toggle-header');
+    let content = element.querySelector('.reflection-content');
 
     header.click();
 
@@ -327,8 +330,8 @@ describe('kikx-reflection-block', () => {
   // -------------------------------------------------------------------------
 
   it('clicking toggle again collapses content', () => {
-    let header  = element.shadowRoot.querySelector('.toggle-header');
-    let content = element.shadowRoot.querySelector('.reflection-content');
+    let header  = element.querySelector('.toggle-header');
+    let content = element.querySelector('.reflection-content');
 
     header.click();
     assert.ok(content.classList.contains('expanded'), 'should be expanded after first click');
@@ -345,8 +348,8 @@ describe('kikx-reflection-block', () => {
   // -------------------------------------------------------------------------
 
   it('collapse indicator has expanded class when expanded', () => {
-    let header    = element.shadowRoot.querySelector('.toggle-header');
-    let indicator = element.shadowRoot.querySelector('.collapse-indicator');
+    let header    = element.querySelector('.toggle-header');
+    let indicator = element.querySelector('.collapse-indicator');
 
     assert.ok(
       !indicator.classList.contains('expanded'),
@@ -369,7 +372,7 @@ describe('kikx-reflection-block', () => {
     let reflectionText = 'The user is asking about quantum computing.';
     element.content = reflectionText;
 
-    let content = element.shadowRoot.querySelector('.reflection-content');
+    let content = element.querySelector('.reflection-content');
     assert.equal(
       content.textContent,
       reflectionText,
@@ -389,8 +392,8 @@ describe('kikx-reflection-block', () => {
     expandedElement.setAttribute('expanded', '');
     dom.window.document.body.appendChild(expandedElement);
 
-    let content   = expandedElement.shadowRoot.querySelector('.reflection-content');
-    let indicator = expandedElement.shadowRoot.querySelector('.collapse-indicator');
+    let content   = expandedElement.querySelector('.reflection-content');
+    let indicator = expandedElement.querySelector('.collapse-indicator');
 
     assert.ok(
       content.classList.contains('expanded'),
@@ -409,7 +412,7 @@ describe('kikx-reflection-block', () => {
   // -------------------------------------------------------------------------
 
   it('toggle() method toggles state', () => {
-    let content = element.shadowRoot.querySelector('.reflection-content');
+    let content = element.querySelector('.reflection-content');
 
     assert.ok(!content.classList.contains('expanded'), 'should start collapsed');
 

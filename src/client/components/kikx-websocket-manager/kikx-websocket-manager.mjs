@@ -2,7 +2,7 @@
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-websocket-manager {
       display: none;
     }
   </style>
@@ -22,7 +22,6 @@ function getTemplate() {
 class KikxWebsocketManager extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
 
     this._url              = '';
     this._connected        = false;
@@ -75,7 +74,10 @@ class KikxWebsocketManager extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   connectedCallback() {
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+    }
 
     if (this._url)
       this.connect();

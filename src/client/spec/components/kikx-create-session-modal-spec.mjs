@@ -72,10 +72,20 @@ function registerComponent() {
   class KikxCreateSessionModal extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._onInput   = this._onInput.bind(this);
+      this._onCreate  = this._onCreate.bind(this);
+      this._onCancel  = this._onCancel.bind(this);
+      this._onKeydown = this._onKeydown.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; }
+          kikx-create-session-modal { display: block; }
           .form-group { margin-bottom: 16px; }
           .form-label { display: block; font-size: 0.875rem; font-weight: 600; color: var(--text-secondary, #a0a0b8); margin-bottom: 6px; }
           .session-name-input { width: 100%; box-sizing: border-box; padding: 10px 14px; font-size: 1rem; background: var(--input-background, rgba(255,255,255,0.05)); border: 1px solid var(--input-border, rgba(255,255,255,0.12)); border-radius: var(--border-radius-medium, 8px); color: var(--text-primary, #e8e8f0); outline: none; font-family: inherit; }
@@ -98,10 +108,10 @@ function registerComponent() {
         </div>
       `;
 
-      this._label        = this.shadowRoot.querySelector('.form-label');
-      this._input        = this.shadowRoot.querySelector('.session-name-input');
-      this._createButton = this.shadowRoot.querySelector('.create-button');
-      this._cancelButton = this.shadowRoot.querySelector('.cancel-button');
+      this._label        = this.querySelector('.form-label');
+      this._input        = this.querySelector('.session-name-input');
+      this._createButton = this.querySelector('.create-button');
+      this._cancelButton = this.querySelector('.cancel-button');
 
       this._label.textContent        = mockT('session.create.title');
       this._input.placeholder        = mockT('session.create.namePlaceholder');
@@ -110,13 +120,6 @@ function registerComponent() {
 
       this._createButton.disabled = true;
 
-      this._onInput   = this._onInput.bind(this);
-      this._onCreate  = this._onCreate.bind(this);
-      this._onCancel  = this._onCancel.bind(this);
-      this._onKeydown = this._onKeydown.bind(this);
-    }
-
-    connectedCallback() {
       this._input.addEventListener('input', this._onInput);
       this._createButton.addEventListener('click', this._onCreate);
       this._cancelButton.addEventListener('click', this._onCancel);
@@ -209,11 +212,11 @@ describe('kikx-create-session-modal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -221,7 +224,7 @@ describe('kikx-create-session-modal', () => {
   // -------------------------------------------------------------------------
 
   it('label text comes from i18n session.create.title', () => {
-    let label = element.shadowRoot.querySelector('.form-label');
+    let label = element.querySelector('.form-label');
     assert.equal(label.textContent, localeData.session.create.title);
   });
 
@@ -230,7 +233,7 @@ describe('kikx-create-session-modal', () => {
   // -------------------------------------------------------------------------
 
   it('input has placeholder from i18n session.create.namePlaceholder', () => {
-    let input = element.shadowRoot.querySelector('.session-name-input');
+    let input = element.querySelector('.session-name-input');
     assert.equal(input.placeholder, localeData.session.create.namePlaceholder);
   });
 
@@ -239,7 +242,7 @@ describe('kikx-create-session-modal', () => {
   // -------------------------------------------------------------------------
 
   it('create button text comes from i18n session.create.createButton', () => {
-    let button = element.shadowRoot.querySelector('.create-button');
+    let button = element.querySelector('.create-button');
     assert.equal(button.textContent, localeData.session.create.createButton);
   });
 
@@ -248,7 +251,7 @@ describe('kikx-create-session-modal', () => {
   // -------------------------------------------------------------------------
 
   it('cancel button text comes from i18n session.create.cancelButton', () => {
-    let button = element.shadowRoot.querySelector('.cancel-button');
+    let button = element.querySelector('.cancel-button');
     assert.equal(button.textContent, localeData.session.create.cancelButton);
   });
 
@@ -257,7 +260,7 @@ describe('kikx-create-session-modal', () => {
   // -------------------------------------------------------------------------
 
   it('create button is disabled when input is empty', () => {
-    let button = element.shadowRoot.querySelector('.create-button');
+    let button = element.querySelector('.create-button');
     assert.equal(button.disabled, true, 'create button should be disabled when input is empty');
   });
 
@@ -266,8 +269,8 @@ describe('kikx-create-session-modal', () => {
   // -------------------------------------------------------------------------
 
   it('create button is enabled when input has text', () => {
-    let input  = element.shadowRoot.querySelector('.session-name-input');
-    let button = element.shadowRoot.querySelector('.create-button');
+    let input  = element.querySelector('.session-name-input');
+    let button = element.querySelector('.create-button');
 
     input.value = 'My Session';
     input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
@@ -280,8 +283,8 @@ describe('kikx-create-session-modal', () => {
   // -------------------------------------------------------------------------
 
   it('create button dispatches session-create event with trimmed name', () => {
-    let input  = element.shadowRoot.querySelector('.session-name-input');
-    let button = element.shadowRoot.querySelector('.create-button');
+    let input  = element.querySelector('.session-name-input');
+    let button = element.querySelector('.create-button');
 
     input.value = '  My Session  ';
     input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
@@ -305,7 +308,7 @@ describe('kikx-create-session-modal', () => {
   // -------------------------------------------------------------------------
 
   it('cancel button dispatches session-cancel event', () => {
-    let button = element.shadowRoot.querySelector('.cancel-button');
+    let button = element.querySelector('.cancel-button');
 
     let eventFired = false;
 
@@ -323,7 +326,7 @@ describe('kikx-create-session-modal', () => {
   // -------------------------------------------------------------------------
 
   it('Enter key in input triggers session-create event', () => {
-    let input = element.shadowRoot.querySelector('.session-name-input');
+    let input = element.querySelector('.session-name-input');
 
     input.value = 'Enter Session';
     input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));

@@ -4,10 +4,10 @@ import { t } from '../../lib/i18n.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host { display: block; }
-    .form-group { margin-bottom: 16px; }
-    .form-label { display: block; font-size: 1rem; font-weight: 600; color: var(--text-secondary, #a0a0b8); margin-bottom: 6px; }
-    .session-name-input, .agent-select {
+    kikx-create-session-modal { display: block; }
+    kikx-create-session-modal .form-group { margin-bottom: 16px; }
+    kikx-create-session-modal .form-label { display: block; font-size: 1rem; font-weight: 600; color: var(--text-secondary, #a0a0b8); margin-bottom: 6px; }
+    kikx-create-session-modal .session-name-input, kikx-create-session-modal .agent-select {
       width: 100%; box-sizing: border-box; padding: 10px 14px; font-size: 1rem;
       background: var(--input-background, rgba(255,255,255,0.05));
       border: 1px solid var(--input-border, rgba(255,255,255,0.12));
@@ -15,18 +15,18 @@ const TEMPLATE_HTML = `
       color: var(--text-primary, #e8e8f0);
       outline: none; font-family: inherit;
     }
-    .session-name-input:focus, .agent-select:focus {
+    kikx-create-session-modal .session-name-input:focus, kikx-create-session-modal .agent-select:focus {
       border-color: var(--accent-primary, #00e5ff);
       box-shadow: 0 0 8px var(--accent-glow, rgba(0,229,255,0.30));
     }
-    .agent-select option { background: var(--background-base, #1a1a2e); color: var(--text-primary, #e8e8f0); }
-    .button-row { display: flex; gap: var(--spacing-sm, 8px); justify-content: flex-end; }
-    .create-button { background: var(--accent-primary, #00e5ff); color: #fff; border: none; border-radius: var(--border-radius-small, 4px); padding: 10px 24px; font-weight: 600; font-size: 1rem; cursor: pointer; }
-    .create-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0,229,255,0.40)); }
-    .create-button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .cancel-button { background: none; border: 1px solid var(--glass-border, rgba(255,255,255,0.10)); color: var(--text-secondary, #a0a0b8); border-radius: var(--border-radius-small, 4px); padding: 10px 20px; font-size: 1rem; cursor: pointer; }
-    .cancel-button:hover { background: var(--glass-hover, rgba(255,255,255,0.08)); }
-    .no-agents-message { font-size: 0.9rem; color: var(--text-muted, #606078); font-style: italic; padding: 4px 0; }
+    kikx-create-session-modal .agent-select option { background: var(--background-base, #1a1a2e); color: var(--text-primary, #e8e8f0); }
+    kikx-create-session-modal .button-row { display: flex; gap: var(--spacing-sm, 8px); justify-content: flex-end; }
+    kikx-create-session-modal .create-button { background: var(--accent-primary, #00e5ff); color: #fff; border: none; border-radius: var(--border-radius-small, 4px); padding: 10px 24px; font-weight: 600; font-size: 1rem; cursor: pointer; }
+    kikx-create-session-modal .create-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0,229,255,0.40)); }
+    kikx-create-session-modal .create-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    kikx-create-session-modal .cancel-button { background: none; border: 1px solid var(--glass-border, rgba(255,255,255,0.10)); color: var(--text-secondary, #a0a0b8); border-radius: var(--border-radius-small, 4px); padding: 10px 20px; font-size: 1rem; cursor: pointer; }
+    kikx-create-session-modal .cancel-button:hover { background: var(--glass-hover, rgba(255,255,255,0.08)); }
+    kikx-create-session-modal .no-agents-message { font-size: 0.9rem; color: var(--text-muted, #606078); font-style: italic; padding: 4px 0; }
   </style>
 
   <div class="form-group">
@@ -58,25 +58,7 @@ function getTemplate() {
 class KikxCreateSessionModal extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._agentLabel     = this.shadowRoot.querySelector('.agent-label');
-    this._agentSelect    = this.shadowRoot.querySelector('.agent-select');
-    this._noAgentsMsg    = this.shadowRoot.querySelector('.no-agents-message');
-    this._nameLabel      = this.shadowRoot.querySelector('.name-label');
-    this._input          = this.shadowRoot.querySelector('.session-name-input');
-    this._createButton   = this.shadowRoot.querySelector('.create-button');
-    this._cancelButton   = this.shadowRoot.querySelector('.cancel-button');
-
     this._agents = [];
-
-    this._agentLabel.textContent     = 'Agent (optional)';
-    this._nameLabel.textContent      = 'Session name (optional)';
-    this._input.placeholder          = t('session.create.namePlaceholder');
-    this._createButton.textContent   = t('session.create.createButton');
-    this._cancelButton.textContent   = t('session.create.cancelButton');
-    this._noAgentsMsg.textContent    = 'No agents available.';
 
     this._onInput       = this._onInput.bind(this);
     this._onAgentChange = this._onAgentChange.bind(this);
@@ -86,6 +68,26 @@ class KikxCreateSessionModal extends HTMLElement {
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._agentLabel     = this.querySelector('.agent-label');
+      this._agentSelect    = this.querySelector('.agent-select');
+      this._noAgentsMsg    = this.querySelector('.no-agents-message');
+      this._nameLabel      = this.querySelector('.name-label');
+      this._input          = this.querySelector('.session-name-input');
+      this._createButton   = this.querySelector('.create-button');
+      this._cancelButton   = this.querySelector('.cancel-button');
+
+      this._agentLabel.textContent     = 'Agent (optional)';
+      this._nameLabel.textContent      = 'Session name (optional)';
+      this._input.placeholder          = t('session.create.namePlaceholder');
+      this._createButton.textContent   = t('session.create.createButton');
+      this._cancelButton.textContent   = t('session.create.cancelButton');
+      this._noAgentsMsg.textContent    = 'No agents available.';
+    }
+
     this._input.addEventListener('input', this._onInput);
     this._agentSelect.addEventListener('change', this._onAgentChange);
     this._createButton.addEventListener('click', this._onCreate);
@@ -136,6 +138,9 @@ class KikxCreateSessionModal extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   _renderAgentOptions() {
+    if (!this._agentSelect)
+      return;
+
     this._agentSelect.innerHTML = '';
 
     if (this._agents.length === 0) {
@@ -179,6 +184,9 @@ class KikxCreateSessionModal extends HTMLElement {
   }
 
   _updateCreateState() {
+    if (!this._createButton)
+      return;
+
     // Always allow creation — agent is optional
     this._createButton.disabled = false;
   }

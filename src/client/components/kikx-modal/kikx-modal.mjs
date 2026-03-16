@@ -4,7 +4,7 @@ import { t } from '../../lib/i18n.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-modal {
       display: none;
       position: fixed;
       top: 0;
@@ -16,11 +16,11 @@ const TEMPLATE_HTML = `
       justify-content: center;
     }
 
-    :host([open]) {
+    kikx-modal[open] {
       display: flex;
     }
 
-    .backdrop {
+    kikx-modal .backdrop {
       position: absolute;
       top: 0;
       left: 0;
@@ -31,7 +31,7 @@ const TEMPLATE_HTML = `
       -webkit-backdrop-filter: blur(4px);
     }
 
-    .panel {
+    kikx-modal .panel {
       position: relative;
       z-index: 1;
       min-width: 320px;
@@ -52,7 +52,7 @@ const TEMPLATE_HTML = `
       padding: 0;
     }
 
-    .panel-header {
+    kikx-modal .panel-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -60,12 +60,12 @@ const TEMPLATE_HTML = `
       border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
     }
 
-    .panel-title {
+    kikx-modal .panel-title {
       font-size: 1.125rem;
       font-weight: 600;
     }
 
-    .close-button {
+    kikx-modal .close-button {
       background: none;
       border: none;
       color: var(--text-muted, #606078);
@@ -77,22 +77,22 @@ const TEMPLATE_HTML = `
       line-height: 1;
     }
 
-    .close-button:hover {
+    kikx-modal .close-button:hover {
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
       color: var(--text-primary, #e8e8f0);
     }
 
-    .panel-body {
+    kikx-modal .panel-body {
       padding: 16px 20px 20px;
     }
 
-    .panel::-webkit-scrollbar { width: 6px; }
-    .panel::-webkit-scrollbar-track { background: transparent; }
-    .panel::-webkit-scrollbar-thumb {
+    kikx-modal .panel::-webkit-scrollbar { width: 6px; }
+    kikx-modal .panel::-webkit-scrollbar-track { background: transparent; }
+    kikx-modal .panel::-webkit-scrollbar-thumb {
       background: var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: 3px;
     }
-    .panel::-webkit-scrollbar-button { display: none; }
+    kikx-modal .panel::-webkit-scrollbar-button { display: none; }
   </style>
 
   <div class="backdrop"></div>
@@ -101,9 +101,7 @@ const TEMPLATE_HTML = `
       <span class="panel-title"></span>
       <button class="close-button" aria-label="${t('common.close') || 'Close'}">&#10005;</button>
     </div>
-    <div class="panel-body">
-      <slot></slot>
-    </div>
+    <div class="panel-body"></div>
   </div>
 `;
 
@@ -123,22 +121,29 @@ class KikxModal extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._backdrop    = this.shadowRoot.querySelector('.backdrop');
-    this._closeButton = this.shadowRoot.querySelector('.close-button');
-    this._panelTitle  = this.shadowRoot.querySelector('.panel-title');
-
     this._onBackdropClick = this._onBackdropClick.bind(this);
     this._onCloseClick    = this._onCloseClick.bind(this);
     this._onKeyDown       = this._onKeyDown.bind(this);
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._backdrop    = this.querySelector('.backdrop');
+      this._closeButton = this.querySelector('.close-button');
+      this._panelTitle  = this.querySelector('.panel-title');
+      this._panelBody   = this.querySelector('.panel-body');
+    }
+
     this._backdrop.addEventListener('click', this._onBackdropClick);
     this._closeButton.addEventListener('click', this._onCloseClick);
     this._updateTitle();
+
+    // Move any children that were added as light DOM (slotted content)
+    // into the panel-body, since we no longer have <slot>
+    this._moveChildrenToBody();
 
     if (this.hasAttribute('open'))
       this._addEscapeListener();
@@ -160,6 +165,54 @@ class KikxModal extends HTMLElement {
       else
         this._removeEscapeListener();
     }
+  }
+
+  // Move non-template children into the panel-body div
+  _moveChildrenToBody() {
+    if (!this._panelBody)
+      return;
+
+    // Collect children that are NOT part of our template (backdrop, panel, style)
+    let children = [];
+    for (let child of this.childNodes) {
+      if (child === this._backdrop || child === this._backdrop.parentNode)
+        continue;
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        if (child.classList && (child.classList.contains('backdrop') || child.classList.contains('panel')))
+          continue;
+        if (child.tagName === 'STYLE')
+          continue;
+      }
+      // Skip text nodes that are just whitespace
+      if (child.nodeType === Node.TEXT_NODE && !child.textContent.trim())
+        continue;
+
+      children.push(child);
+    }
+
+    for (let child of children)
+      this._panelBody.appendChild(child);
+  }
+
+  // Override appendChild to redirect into panel-body
+  appendChild(node) {
+    // If panel-body exists and the node isn't part of our template structure,
+    // put it in the panel-body
+    if (this._panelBody && node.nodeType === Node.ELEMENT_NODE) {
+      if (node.tagName === 'STYLE' || (node.classList && (node.classList.contains('backdrop') || node.classList.contains('panel'))))
+        return HTMLElement.prototype.appendChild.call(this, node);
+
+      return this._panelBody.appendChild(node);
+    }
+
+    return HTMLElement.prototype.appendChild.call(this, node);
+  }
+
+  // Override querySelector to also search panel-body children
+  querySelector(selector) {
+    // First try direct children
+    let result = HTMLElement.prototype.querySelector.call(this, selector);
+    return result;
   }
 
   _updateTitle() {
@@ -192,7 +245,7 @@ class KikxModal extends HTMLElement {
   }
 
   _autoFocus() {
-    // Wait a frame so slotted content has rendered
+    // Wait a frame so content has rendered
     requestAnimationFrame(() => {
       let target = this._findFirstFocusable(this);
       if (target)
@@ -203,19 +256,13 @@ class KikxModal extends HTMLElement {
   _findFirstFocusable(root) {
     let selectors = 'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])';
 
-    // Check light-DOM children (slotted content)
+    // Check children (light DOM now, no shadow boundary)
     let match = root.querySelector(selectors);
     if (match)
       return match;
 
-    // Walk children and check their shadow DOMs
+    // Walk children recursively
     for (let child of root.children) {
-      if (child.shadowRoot) {
-        let inner = this._findFirstFocusable(child.shadowRoot);
-        if (inner)
-          return inner;
-      }
-
       let nested = this._findFirstFocusable(child);
       if (nested)
         return nested;

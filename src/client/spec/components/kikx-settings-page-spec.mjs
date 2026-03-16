@@ -79,16 +79,18 @@ function registerComponent() {
   class KikxSettingsPage extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
       this._activeTab   = 'profile';
       this._onTabClick  = this._onTabClick.bind(this);
       this._onBackClick = this._onBackClick.bind(this);
     }
 
     connectedCallback() {
-      this.shadowRoot.innerHTML = `
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-settings-page {
             display: flex;
             flex-direction: column;
             height: 100vh;
@@ -182,10 +184,10 @@ function registerComponent() {
         <div class="tab-content"></div>
       `;
 
-      this._backButton   = this.shadowRoot.querySelector('.back-button');
-      this._titleElement = this.shadowRoot.querySelector('.settings-title');
-      this._tabBar       = this.shadowRoot.querySelector('.tab-bar');
-      this._tabContent   = this.shadowRoot.querySelector('.tab-content');
+      this._backButton   = this.querySelector('.back-button');
+      this._titleElement = this.querySelector('.settings-title');
+      this._tabBar       = this.querySelector('.tab-bar');
+      this._tabContent   = this.querySelector('.tab-content');
 
       this._render();
       this._backButton.addEventListener('click', this._onBackClick);
@@ -297,11 +299,11 @@ describe('kikx-settings-page', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -----------------------------------------------------------------------
 
-  it('has shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -----------------------------------------------------------------------
@@ -309,7 +311,7 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('contains title from i18n settings.title', () => {
-    let title = element.shadowRoot.querySelector('.settings-title');
+    let title = element.querySelector('.settings-title');
     assert.ok(title, 'should have a settings title element');
     assert.equal(title.textContent, localeData.settings.title);
   });
@@ -319,7 +321,7 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('contains back button with topBar.backButton text', () => {
-    let backButton = element.shadowRoot.querySelector('.back-button');
+    let backButton = element.querySelector('.back-button');
     assert.ok(backButton, 'should have a back button');
     assert.equal(backButton.textContent, localeData.topBar.backButton);
   });
@@ -329,7 +331,7 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('renders 5 tab buttons with correct i18n labels', () => {
-    let tabButtons = element.shadowRoot.querySelectorAll('.tab-button');
+    let tabButtons = element.querySelectorAll('.tab-button');
     assert.equal(tabButtons.length, 5, 'should have 5 tab buttons');
 
     let expectedLabels = TAB_KEYS.map((key) => localeData.settings.tabs[key]);
@@ -343,11 +345,11 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('has profile tab active by default', () => {
-    let tabButtons = element.shadowRoot.querySelectorAll('.tab-button');
+    let tabButtons = element.querySelectorAll('.tab-button');
     let profileButton = tabButtons[0];
     assert.ok(profileButton.classList.contains('active'), 'profile tab button should have active class');
 
-    let panels = element.shadowRoot.querySelectorAll('.tab-panel');
+    let panels = element.querySelectorAll('.tab-panel');
     let profilePanel = panels[0];
     assert.ok(profilePanel.classList.contains('active'), 'profile tab panel should have active class');
   });
@@ -357,7 +359,7 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('clicking a tab activates it and deactivates others', () => {
-    let tabButtons = element.shadowRoot.querySelectorAll('.tab-button');
+    let tabButtons = element.querySelectorAll('.tab-button');
 
     // Click the third tab (API Keys)
     tabButtons[2].click();
@@ -377,7 +379,7 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('only the active tab content panel is visible', () => {
-    let panels = element.shadowRoot.querySelectorAll('.tab-panel');
+    let panels = element.querySelectorAll('.tab-panel');
 
     // By default, only the first panel (profile) should be active
     assert.ok(panels[0].classList.contains('active'), 'profile panel should be active initially');
@@ -386,7 +388,7 @@ describe('kikx-settings-page', () => {
       assert.ok(!panels[i].classList.contains('active'), `panel ${i} should not be active initially`);
 
     // Click the Account tab (index 1)
-    let tabButtons = element.shadowRoot.querySelectorAll('.tab-button');
+    let tabButtons = element.querySelectorAll('.tab-button');
     tabButtons[1].click();
 
     // Now only the account panel should be active
@@ -408,7 +410,7 @@ describe('kikx-settings-page', () => {
       events.push(event);
     });
 
-    let backButton = element.shadowRoot.querySelector('.back-button');
+    let backButton = element.querySelector('.back-button');
     backButton.click();
 
     assert.equal(events.length, 1, 'should dispatch exactly one navigate event');
@@ -422,8 +424,8 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('each tab has a corresponding content panel', () => {
-    let tabButtons = element.shadowRoot.querySelectorAll('.tab-button');
-    let panels     = element.shadowRoot.querySelectorAll('.tab-panel');
+    let tabButtons = element.querySelectorAll('.tab-button');
+    let panels     = element.querySelectorAll('.tab-panel');
 
     assert.equal(tabButtons.length, panels.length, 'number of tabs and panels should match');
 
@@ -439,8 +441,8 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('tab styling includes active class rules', () => {
-    let styleElement = element.shadowRoot.querySelector('style');
-    assert.ok(styleElement, 'shadow DOM should contain a style element');
+    let styleElement = element.querySelector('style');
+    assert.ok(styleElement, 'should contain a style element');
 
     let cssText = styleElement.textContent;
     assert.ok(cssText.includes('.tab-button.active'), 'CSS should include .tab-button.active rule');
@@ -452,12 +454,12 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('permissions tab renders risk level dropdown', () => {
-    let tabButtons = element.shadowRoot.querySelectorAll('.tab-button');
+    let tabButtons = element.querySelectorAll('.tab-button');
 
     // Click the permissions tab (index 2)
     tabButtons[2].click();
 
-    let permissionsPanel = element.shadowRoot.querySelector('.tab-panel[data-tab="permissions"]');
+    let permissionsPanel = element.querySelector('.tab-panel[data-tab="permissions"]');
     assert.ok(permissionsPanel, 'should have a permissions panel');
 
     let select = permissionsPanel.querySelector('.risk-level-select');
@@ -474,7 +476,7 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('permissions tab renders section heading from i18n', () => {
-    let permissionsPanel = element.shadowRoot.querySelector('.tab-panel[data-tab="permissions"]');
+    let permissionsPanel = element.querySelector('.tab-panel[data-tab="permissions"]');
     let heading = permissionsPanel.querySelector('.section-heading');
     assert.ok(heading, 'should have a section heading');
     assert.equal(heading.textContent, localeData.settings.permissions.heading);
@@ -485,7 +487,7 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('permissions tab renders description from i18n', () => {
-    let permissionsPanel = element.shadowRoot.querySelector('.tab-panel[data-tab="permissions"]');
+    let permissionsPanel = element.querySelector('.tab-panel[data-tab="permissions"]');
     let description = permissionsPanel.querySelector('.form-description');
     assert.ok(description, 'should have a description');
     assert.equal(description.textContent, localeData.settings.permissions.description);
@@ -496,7 +498,7 @@ describe('kikx-settings-page', () => {
   // -----------------------------------------------------------------------
 
   it('permissions tab risk level label from i18n', () => {
-    let permissionsPanel = element.shadowRoot.querySelector('.tab-panel[data-tab="permissions"]');
+    let permissionsPanel = element.querySelector('.tab-panel[data-tab="permissions"]');
     let label = permissionsPanel.querySelector('.form-label');
     assert.ok(label, 'should have a form label');
     assert.equal(label.textContent, localeData.settings.permissions.riskLevel);

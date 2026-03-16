@@ -8,7 +8,7 @@ import store from '../../lib/store.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-top-bar {
       display: block;
       height: 52px;
       position: relative;
@@ -32,7 +32,7 @@ const TEMPLATE_HTML = `
       100% { background-position: 0% 50%, 0% 0%; }
     }
 
-    :host::after {
+    kikx-top-bar::after {
       content: '';
       position: absolute;
       bottom: 0;
@@ -51,7 +51,7 @@ const TEMPLATE_HTML = `
       to { background-position: -200% 0; }
     }
 
-    .bar {
+    kikx-top-bar .bar {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -59,35 +59,35 @@ const TEMPLATE_HTML = `
       padding: 0 var(--spacing-md, 16px);
     }
 
-    .left-group {
+    kikx-top-bar .left-group {
       display: flex;
       align-items: center;
       gap: var(--spacing-sm, 8px);
     }
 
-    .right-group {
+    kikx-top-bar .right-group {
       display: flex;
       align-items: center;
       gap: var(--spacing-xs, 4px);
     }
 
-    .app-logo {
+    kikx-top-bar .app-logo {
       height: 28px;
       width: auto;
       display: none;
     }
 
-    .app-logo.visible {
+    kikx-top-bar .app-logo.visible {
       display: block;
     }
 
-    .session-name {
+    kikx-top-bar .session-name {
       font-size: 1rem;
       font-weight: 600;
       color: var(--text-primary, #e8e8f0);
     }
 
-    button {
+    kikx-top-bar button {
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: var(--border-radius-medium, 8px);
@@ -98,18 +98,18 @@ const TEMPLATE_HTML = `
       transition: background 0.2s ease, box-shadow 0.2s ease;
     }
 
-    button:hover {
+    kikx-top-bar button:hover {
       background: rgba(255, 255, 255, 0.10);
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.20));
     }
 
-    .back-button {
+    kikx-top-bar .back-button {
       font-size: 1.1rem;
       padding: 4px 8px;
       line-height: 1;
     }
 
-    .avatar-button {
+    kikx-top-bar .avatar-button {
       background: none;
       border: none;
       padding: 2px;
@@ -119,11 +119,11 @@ const TEMPLATE_HTML = `
       line-height: 0;
     }
 
-    .avatar-button:hover {
+    kikx-top-bar .avatar-button:hover {
       box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    :host([hide-back]) .back-button {
+    kikx-top-bar[hide-back] .back-button {
       display: none;
     }
   </style>
@@ -160,21 +160,23 @@ class KikxTopBar extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._backButton   = this.shadowRoot.querySelector('.back-button');
-    this._appLogo      = this.shadowRoot.querySelector('.app-logo');
-    this._sessionName  = this.shadowRoot.querySelector('.session-name');
-    this._avatarButton = this.shadowRoot.querySelector('.avatar-button');
-    this._avatar       = this.shadowRoot.querySelector('kikx-user-avatar');
-
     this._onBackClick   = this._onBackClick.bind(this);
     this._onAvatarClick = this._onAvatarClick.bind(this);
     this._onStoreUpdate = this._onStoreUpdate.bind(this);
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._backButton   = this.querySelector('.back-button');
+      this._appLogo      = this.querySelector('.app-logo');
+      this._sessionName  = this.querySelector('.session-name');
+      this._avatarButton = this.querySelector('.avatar-button');
+      this._avatar       = this.querySelector('kikx-user-avatar');
+    }
+
     this._render();
 
     this._backButton.addEventListener('click', this._onBackClick);
@@ -201,6 +203,9 @@ class KikxTopBar extends HTMLElement {
   }
 
   _updateSessionName() {
+    if (!this._sessionName)
+      return;
+
     let name = this.getAttribute('session-name');
 
     if (name) {

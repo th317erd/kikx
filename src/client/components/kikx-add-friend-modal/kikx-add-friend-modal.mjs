@@ -4,27 +4,27 @@ import { t } from '../../lib/i18n.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-add-friend-modal {
       display: block;
       min-width: 320px;
     }
 
-    .wizard-step {
+    kikx-add-friend-modal .wizard-step {
       display: none;
     }
 
-    .wizard-step.active {
+    kikx-add-friend-modal .wizard-step.active {
       display: block;
     }
 
-    .type-selection {
+    kikx-add-friend-modal .type-selection {
       display: flex;
       gap: var(--spacing-md, 16px);
       justify-content: center;
       padding: var(--spacing-md, 16px) 0;
     }
 
-    .type-button {
+    kikx-add-friend-modal .type-button {
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -42,34 +42,34 @@ const TEMPLATE_HTML = `
       transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
     }
 
-    .type-button:hover {
+    kikx-add-friend-modal .type-button:hover {
       border-color: var(--accent-primary, #00e5ff);
       box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.25));
       background: rgba(255, 255, 255, 0.08);
     }
 
-    .type-icon {
+    kikx-add-friend-modal .type-icon {
       font-size: 2rem;
     }
 
-    .step-title {
+    kikx-add-friend-modal .step-title {
       font-size: 1rem;
       color: var(--text-secondary, #a0a0b8);
       margin-bottom: var(--spacing-md, 16px);
     }
 
-    .form-group {
+    kikx-add-friend-modal .form-group {
       margin-bottom: var(--spacing-md, 16px);
     }
 
-    .form-label {
+    kikx-add-friend-modal .form-label {
       display: block;
       font-size: 1rem;
       color: var(--text-secondary, #a0a0b8);
       margin-bottom: var(--spacing-xs, 4px);
     }
 
-    .form-input, .form-select {
+    kikx-add-friend-modal .form-input, kikx-add-friend-modal .form-select {
       width: 100%;
       padding: 10px 12px;
       box-sizing: border-box;
@@ -82,28 +82,28 @@ const TEMPLATE_HTML = `
       transition: border-color 0.2s ease;
     }
 
-    .form-input:focus, .form-select:focus {
+    kikx-add-friend-modal .form-input:focus, kikx-add-friend-modal .form-select:focus {
       border-color: var(--accent-primary, #00e5ff);
     }
 
-    .form-select {
+    kikx-add-friend-modal .form-select {
       appearance: none;
       cursor: pointer;
     }
 
-    .form-select option {
+    kikx-add-friend-modal .form-select option {
       background: var(--bg-primary, #0a0a1a);
       color: var(--text-primary, #e8e8f0);
     }
 
-    .button-row {
+    kikx-add-friend-modal .button-row {
       display: flex;
       gap: var(--spacing-sm, 8px);
       justify-content: flex-end;
       padding-top: var(--spacing-sm, 8px);
     }
 
-    .form-button {
+    kikx-add-friend-modal .form-button {
       padding: 8px 20px;
       background: var(--accent-primary, #00e5ff);
       color: #fff;
@@ -115,17 +115,17 @@ const TEMPLATE_HTML = `
       transition: box-shadow 0.2s ease;
     }
 
-    .form-button:hover {
+    kikx-add-friend-modal .form-button:hover {
       box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    .form-button.secondary {
+    kikx-add-friend-modal .form-button.secondary {
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
       color: var(--text-primary, #e8e8f0);
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
     }
 
-    .form-button.secondary:hover {
+    kikx-add-friend-modal .form-button.secondary:hover {
       background: rgba(255, 255, 255, 0.10);
       box-shadow: none;
     }
@@ -209,100 +209,103 @@ function getTemplate() {
 class KikxAddFriendModal extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._steps = {
-      type:  this.shadowRoot.querySelector('.step-type'),
-      agent: this.shadowRoot.querySelector('.step-agent'),
-      user:  this.shadowRoot.querySelector('.step-user'),
-    };
-
-    this._currentStep = 'type';
-
-    this._onAgentTypeClick = this._onAgentTypeClick.bind(this);
-    this._onUserTypeClick  = this._onUserTypeClick.bind(this);
-    this._onBackClick      = this._onBackClick.bind(this);
-    this._onCancelClick    = this._onCancelClick.bind(this);
-    this._onSaveClick      = this._onSaveClick.bind(this);
-    this._onInviteClick    = this._onInviteClick.bind(this);
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._steps = {
+        type:  this.querySelector('.step-type'),
+        agent: this.querySelector('.step-agent'),
+        user:  this.querySelector('.step-user'),
+      };
+
+      this._currentStep = 'type';
+
+      this._onAgentTypeClick = this._onAgentTypeClick.bind(this);
+      this._onUserTypeClick  = this._onUserTypeClick.bind(this);
+      this._onBackClick      = this._onBackClick.bind(this);
+      this._onCancelClick    = this._onCancelClick.bind(this);
+      this._onSaveClick      = this._onSaveClick.bind(this);
+      this._onInviteClick    = this._onInviteClick.bind(this);
+    }
+
     this._render();
 
-    this.shadowRoot.querySelector('.agent-type-button').addEventListener('click', this._onAgentTypeClick);
-    this.shadowRoot.querySelector('.user-type-button').addEventListener('click', this._onUserTypeClick);
-    this.shadowRoot.querySelector('.type-cancel-button').addEventListener('click', this._onCancelClick);
+    this.querySelector('.agent-type-button').addEventListener('click', this._onAgentTypeClick);
+    this.querySelector('.user-type-button').addEventListener('click', this._onUserTypeClick);
+    this.querySelector('.type-cancel-button').addEventListener('click', this._onCancelClick);
 
-    for (let button of this.shadowRoot.querySelectorAll('.back-button'))
+    for (let button of this.querySelectorAll('.back-button'))
       button.addEventListener('click', this._onBackClick);
 
-    for (let button of this.shadowRoot.querySelectorAll('.cancel-button'))
+    for (let button of this.querySelectorAll('.cancel-button'))
       button.addEventListener('click', this._onCancelClick);
 
-    this.shadowRoot.querySelector('.save-button').addEventListener('click', this._onSaveClick);
-    this.shadowRoot.querySelector('.invite-button').addEventListener('click', this._onInviteClick);
+    this.querySelector('.save-button').addEventListener('click', this._onSaveClick);
+    this.querySelector('.invite-button').addEventListener('click', this._onInviteClick);
   }
 
   disconnectedCallback() {
-    this.shadowRoot.querySelector('.agent-type-button').removeEventListener('click', this._onAgentTypeClick);
-    this.shadowRoot.querySelector('.user-type-button').removeEventListener('click', this._onUserTypeClick);
-    this.shadowRoot.querySelector('.type-cancel-button').removeEventListener('click', this._onCancelClick);
+    this.querySelector('.agent-type-button').removeEventListener('click', this._onAgentTypeClick);
+    this.querySelector('.user-type-button').removeEventListener('click', this._onUserTypeClick);
+    this.querySelector('.type-cancel-button').removeEventListener('click', this._onCancelClick);
 
-    for (let button of this.shadowRoot.querySelectorAll('.back-button'))
+    for (let button of this.querySelectorAll('.back-button'))
       button.removeEventListener('click', this._onBackClick);
 
-    for (let button of this.shadowRoot.querySelectorAll('.cancel-button'))
+    for (let button of this.querySelectorAll('.cancel-button'))
       button.removeEventListener('click', this._onCancelClick);
 
-    this.shadowRoot.querySelector('.save-button').removeEventListener('click', this._onSaveClick);
-    this.shadowRoot.querySelector('.invite-button').removeEventListener('click', this._onInviteClick);
+    this.querySelector('.save-button').removeEventListener('click', this._onSaveClick);
+    this.querySelector('.invite-button').removeEventListener('click', this._onInviteClick);
   }
 
   reset() {
     this._showStep('type');
 
-    let inputs = this.shadowRoot.querySelectorAll('.form-input');
+    let inputs = this.querySelectorAll('.form-input');
     for (let input of inputs)
       input.value = '';
 
-    let modelSelect = this.shadowRoot.querySelector('.model-select');
+    let modelSelect = this.querySelector('.model-select');
     if (modelSelect)
       modelSelect.value = 'claude-sonnet-4-6';
 
-    let pluginSelect = this.shadowRoot.querySelector('.plugin-select');
+    let pluginSelect = this.querySelector('.plugin-select');
     if (pluginSelect)
       pluginSelect.value = 'claude';
   }
 
   _render() {
-    let stepTitle = this.shadowRoot.querySelector('.step-title');
+    let stepTitle = this.querySelector('.step-title');
     stepTitle.textContent = t('friends.wizard.typeStep');
 
-    this.shadowRoot.querySelector('.agent-type-label').textContent    = t('friends.wizard.agentButton');
-    this.shadowRoot.querySelector('.user-type-label').textContent     = t('friends.wizard.userButton');
-    this.shadowRoot.querySelector('.type-cancel-button').textContent  = t('friends.wizard.cancelButton');
+    this.querySelector('.agent-type-label').textContent    = t('friends.wizard.agentButton');
+    this.querySelector('.user-type-label').textContent     = t('friends.wizard.userButton');
+    this.querySelector('.type-cancel-button').textContent  = t('friends.wizard.cancelButton');
 
     // Agent step labels
-    this.shadowRoot.querySelector('.plugin-label').textContent   = t('friends.wizard.pluginLabel');
-    this.shadowRoot.querySelector('.api-key-label').textContent  = t('friends.wizard.apiKeyLabel');
-    this.shadowRoot.querySelector('.name-label').textContent     = t('friends.wizard.nameLabel');
-    this.shadowRoot.querySelector('.model-label').textContent    = t('agent.form.modelLabel');
+    this.querySelector('.plugin-label').textContent   = t('friends.wizard.pluginLabel');
+    this.querySelector('.api-key-label').textContent  = t('friends.wizard.apiKeyLabel');
+    this.querySelector('.name-label').textContent     = t('friends.wizard.nameLabel');
+    this.querySelector('.model-label').textContent    = t('agent.form.modelLabel');
 
     // User step labels
-    this.shadowRoot.querySelector('.user-email-label').textContent = t('friends.wizard.emailLabel');
-    this.shadowRoot.querySelector('.user-name-label').textContent  = t('friends.wizard.nameLabel');
+    this.querySelector('.user-email-label').textContent = t('friends.wizard.emailLabel');
+    this.querySelector('.user-name-label').textContent  = t('friends.wizard.nameLabel');
 
     // Buttons
-    for (let button of this.shadowRoot.querySelectorAll('.back-button'))
+    for (let button of this.querySelectorAll('.back-button'))
       button.textContent = t('friends.wizard.backButton');
 
-    for (let button of this.shadowRoot.querySelectorAll('.cancel-button'))
+    for (let button of this.querySelectorAll('.cancel-button'))
       button.textContent = t('friends.wizard.cancelButton');
 
-    this.shadowRoot.querySelector('.save-button').textContent   = t('friends.wizard.saveButton');
-    this.shadowRoot.querySelector('.invite-button').textContent = t('friends.wizard.inviteButton');
+    this.querySelector('.save-button').textContent   = t('friends.wizard.saveButton');
+    this.querySelector('.invite-button').textContent = t('friends.wizard.inviteButton');
   }
 
   _showStep(stepName) {
@@ -332,10 +335,10 @@ class KikxAddFriendModal extends HTMLElement {
   }
 
   _onSaveClick() {
-    let pluginID = this.shadowRoot.querySelector('.plugin-select').value;
-    let apiKey   = this.shadowRoot.querySelector('.api-key-input').value.trim();
-    let name     = this.shadowRoot.querySelector('.name-input').value.trim();
-    let model    = this.shadowRoot.querySelector('.model-select').value;
+    let pluginID = this.querySelector('.plugin-select').value;
+    let apiKey   = this.querySelector('.api-key-input').value.trim();
+    let name     = this.querySelector('.name-input').value.trim();
+    let model    = this.querySelector('.model-select').value;
 
     this.dispatchEvent(new CustomEvent('friend-save', {
       bubbles:  true,
@@ -345,8 +348,8 @@ class KikxAddFriendModal extends HTMLElement {
   }
 
   _onInviteClick() {
-    let email = this.shadowRoot.querySelector('.user-email-input').value.trim();
-    let name  = this.shadowRoot.querySelector('.user-name-input').value.trim();
+    let email = this.querySelector('.user-email-input').value.trim();
+    let name  = this.querySelector('.user-name-input').value.trim();
 
     this.dispatchEvent(new CustomEvent('friend-save', {
       bubbles:  true,

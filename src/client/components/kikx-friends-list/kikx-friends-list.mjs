@@ -5,23 +5,23 @@ import { glowInitCSS, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs'
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-friends-list {
       display: block;
       overflow: visible;
     }
 
-    :host::-webkit-scrollbar { width: 6px; }
-    :host::-webkit-scrollbar-track { background: transparent; }
-    :host::-webkit-scrollbar-thumb {
+    kikx-friends-list::-webkit-scrollbar { width: 6px; }
+    kikx-friends-list::-webkit-scrollbar-track { background: transparent; }
+    kikx-friends-list::-webkit-scrollbar-thumb {
       background: var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: 3px;
     }
-    :host::-webkit-scrollbar-thumb:hover {
+    kikx-friends-list::-webkit-scrollbar-thumb:hover {
       background: var(--text-muted, #606078);
     }
-    :host::-webkit-scrollbar-button { display: none; }
+    kikx-friends-list::-webkit-scrollbar-button { display: none; }
 
-    .friend-row {
+    kikx-friends-list .friend-row {
       display: flex;
       align-items: center;
       gap: var(--spacing-sm, 8px);
@@ -33,21 +33,21 @@ const TEMPLATE_HTML = `
       isolation: isolate;
     }
 
-    .friend-row:hover {
+    kikx-friends-list .friend-row:hover {
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
     }
 
-    .friend-row.active {
+    kikx-friends-list .friend-row.active {
       background: var(--accent-dim, rgba(0, 229, 255, 0.10));
       border-left: 2px solid var(--accent-primary, #00e5ff);
       box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.10));
     }
 
-    ${glowInitCSS('.friend-row')}
-    ${glowHoverCSS('.friend-row:hover:not(.active)')}
-    ${glowCSS('.friend-row.active')}
+    ${glowInitCSS('kikx-friends-list .friend-row')}
+    ${glowHoverCSS('kikx-friends-list .friend-row:hover:not(.active)')}
+    ${glowCSS('kikx-friends-list .friend-row.active')}
 
-    .friend-name {
+    kikx-friends-list .friend-name {
       flex: 1;
       font-size: 1rem;
       color: var(--text-primary, #e8e8f0);
@@ -56,7 +56,7 @@ const TEMPLATE_HTML = `
       text-overflow: ellipsis;
     }
 
-    .agent-badge {
+    kikx-friends-list .agent-badge {
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -70,7 +70,7 @@ const TEMPLATE_HTML = `
       flex-shrink: 0;
     }
 
-    .online-indicator {
+    kikx-friends-list .online-indicator {
       display: none;
       width: 8px;
       height: 8px;
@@ -79,7 +79,7 @@ const TEMPLATE_HTML = `
       flex-shrink: 0;
     }
 
-    .empty-message {
+    kikx-friends-list .empty-message {
       padding: var(--spacing-sm, 8px);
       font-size: 1rem;
       color: var(--text-muted, #606078);
@@ -103,17 +103,19 @@ function getTemplate() {
 class KikxFriendsList extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._container      = this.shadowRoot.querySelector('.list-container');
     this._friends        = [];
     this._activeFriendID = null;
-
     this._onRowClick = this._onRowClick.bind(this);
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._container = this.querySelector('.list-container');
+    }
+
     this._render();
     this._container.addEventListener('click', this._onRowClick);
   }

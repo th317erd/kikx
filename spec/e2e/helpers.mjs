@@ -50,35 +50,6 @@ export async function isServerRunning() {
 }
 
 // ---------------------------------------------------------------------------
-// Shadow DOM helpers
-//
-// Puppeteer can pierce shadow DOM with `>>>` selector in newer versions,
-// but for reliability we use evaluateHandle to get shadow roots explicitly.
-// ---------------------------------------------------------------------------
-
-export async function getShadowRoot(elementHandle) {
-  return elementHandle.evaluateHandle((el) => el.shadowRoot);
-}
-
-export async function shadowQuery(page, hostSelector, innerSelector) {
-  let host = await page.$(hostSelector);
-  if (!host)
-    return null;
-
-  let shadow = await getShadowRoot(host);
-  return shadow.$(innerSelector);
-}
-
-export async function shadowQueryAll(page, hostSelector, innerSelector) {
-  let host = await page.$(hostSelector);
-  if (!host)
-    return [];
-
-  let shadow = await getShadowRoot(host);
-  return shadow.$$(innerSelector);
-}
-
-// ---------------------------------------------------------------------------
 // Login flow
 // ---------------------------------------------------------------------------
 
@@ -88,33 +59,31 @@ export async function login(page, options = {}) {
 
   await page.goto(`${BASE_URL}${BASE_PATH}/login`, { waitUntil: 'networkidle2' });
 
-  // Get login page shadow root
+  // Get login page element
   let loginPage = await page.$('kikx-login-page');
   if (!loginPage)
     throw new Error('kikx-login-page element not found');
 
-  let shadow = await getShadowRoot(loginPage);
-
   // Fill email
-  let emailInput = await shadow.$('.email-input');
+  let emailInput = await page.$('kikx-login-page .email-input');
   if (!emailInput)
-    throw new Error('.email-input not found in login page shadow DOM');
+    throw new Error('.email-input not found in login page');
 
   await emailInput.click({ clickCount: 3 }); // Select all existing text
   await emailInput.type(email, { delay: 20 });
 
   // Fill password
-  let passwordInput = await shadow.$('.password-input');
+  let passwordInput = await page.$('kikx-login-page .password-input');
   if (!passwordInput)
-    throw new Error('.password-input not found in login page shadow DOM');
+    throw new Error('.password-input not found in login page');
 
   await passwordInput.click({ clickCount: 3 });
   await passwordInput.type(password, { delay: 20 });
 
   // Submit
-  let submitButton = await shadow.$('.submit-button');
+  let submitButton = await page.$('kikx-login-page .submit-button');
   if (!submitButton)
-    throw new Error('.submit-button not found in login page shadow DOM');
+    throw new Error('.submit-button not found in login page');
 
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }),
@@ -136,38 +105,13 @@ export async function navigateToSession(page, sessionID) {
 }
 
 // ---------------------------------------------------------------------------
-// Session page shadow DOM access
-//
-// kikx-chat-view, kikx-message-input, and kikx-interaction elements
-// are all inside kikx-session-page's shadow DOM.
-// ---------------------------------------------------------------------------
-
-export async function getSessionPageShadow(page) {
-  let sessionPage = await page.$('kikx-session-page');
-  if (!sessionPage)
-    return null;
-
-  return getShadowRoot(sessionPage);
-}
-
-// ---------------------------------------------------------------------------
 // Message helpers
 // ---------------------------------------------------------------------------
 
 export async function sendMessage(page, text) {
-  let sessionShadow = await getSessionPageShadow(page);
-  if (!sessionShadow)
-    throw new Error('kikx-session-page not found');
-
-  let msgInput = await sessionShadow.$('kikx-message-input');
-  if (!msgInput)
-    throw new Error('kikx-message-input not found in session page shadow DOM');
-
-  let inputShadow = await getShadowRoot(msgInput);
-
-  let textarea = await inputShadow.$('.message-textarea');
+  let textarea = await page.$('kikx-session-page kikx-message-input .message-textarea');
   if (!textarea)
-    throw new Error('.message-textarea not found in message input shadow DOM');
+    throw new Error('.message-textarea not found in message input');
 
   await textarea.click();
   await textarea.type(text, { delay: 15 });
@@ -177,22 +121,11 @@ export async function sendMessage(page, text) {
 }
 
 export async function getMessages(page, alignment) {
-  let sessionShadow = await getSessionPageShadow(page);
-  if (!sessionShadow)
-    return [];
-
-  let chatView = await sessionShadow.$('kikx-chat-view');
-  if (!chatView)
-    return [];
-
-  // Interactions are appended to .interaction-stream inside chat view's shadow DOM
-  let chatShadow = await getShadowRoot(chatView);
-
   let selector = (alignment)
-    ? `kikx-interaction[alignment="${alignment}"]`
-    : 'kikx-interaction';
+    ? `kikx-session-page kikx-chat-view kikx-interaction[alignment="${alignment}"]`
+    : 'kikx-session-page kikx-chat-view kikx-interaction';
 
-  return chatShadow.$$(selector);
+  return page.$$(selector);
 }
 
 export async function getMessageCount(page, alignment) {
@@ -204,19 +137,10 @@ export async function waitForAgentResponse(page, options = {}) {
   let timeout      = options.timeout || 30000;
   let initialCount = options.initialCount || 0;
 
-  // Wait for a new agent message to appear — must traverse two shadow DOMs:
-  // session-page shadow → kikx-chat-view → chat-view shadow → kikx-interaction
+  // Wait for a new agent message to appear — direct DOM query (no shadow DOM)
   await page.waitForFunction(
     (count) => {
-      let sessionPage = document.querySelector('kikx-session-page');
-      if (!sessionPage || !sessionPage.shadowRoot)
-        return false;
-
-      let chatView = sessionPage.shadowRoot.querySelector('kikx-chat-view');
-      if (!chatView || !chatView.shadowRoot)
-        return false;
-
-      let messages = chatView.shadowRoot.querySelectorAll('kikx-interaction[alignment="agent"]');
+      let messages = document.querySelectorAll('kikx-session-page kikx-chat-view kikx-interaction[alignment="agent"]');
       return messages.length > count;
     },
     { timeout },
@@ -229,16 +153,7 @@ export async function waitForAgentResponse(page, options = {}) {
 // ---------------------------------------------------------------------------
 
 export async function getScrollInfo(page) {
-  let sessionShadow = await getSessionPageShadow(page);
-  if (!sessionShadow)
-    return null;
-
-  let chatView = await sessionShadow.$('kikx-chat-view');
-  if (!chatView)
-    return null;
-
-  let chatShadow = await getShadowRoot(chatView);
-  let container   = await chatShadow.$('.chat-container');
+  let container = await page.$('kikx-session-page kikx-chat-view .chat-container');
   if (!container)
     return null;
 
@@ -252,16 +167,9 @@ export async function getScrollInfo(page) {
 }
 
 export async function scrollToTop(page) {
-  let sessionShadow = await getSessionPageShadow(page);
-  if (!sessionShadow)
-    throw new Error('kikx-session-page not found');
-
-  let chatView = await sessionShadow.$('kikx-chat-view');
-  if (!chatView)
-    throw new Error('kikx-chat-view not found');
-
-  let chatShadow = await getShadowRoot(chatView);
-  let container   = await chatShadow.$('.chat-container');
+  let container = await page.$('kikx-session-page kikx-chat-view .chat-container');
+  if (!container)
+    throw new Error('.chat-container not found in chat view');
 
   await container.evaluate((el) => {
     el.scrollTop = 0;

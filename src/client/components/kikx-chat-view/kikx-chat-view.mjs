@@ -7,7 +7,7 @@ const TOP_THRESHOLD    = 50;
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-chat-view {
       display: flex;
       flex-direction: column;
       flex: 1;
@@ -15,21 +15,21 @@ const TEMPLATE_HTML = `
       overflow: hidden;
     }
 
-    .chat-container {
+    kikx-chat-view .chat-container {
       flex: 1;
       overflow-y: auto;
       padding: 16px 24px;
     }
 
-    .chat-container::-webkit-scrollbar { width: 6px; }
-    .chat-container::-webkit-scrollbar-track { background: transparent; }
-    .chat-container::-webkit-scrollbar-thumb {
+    kikx-chat-view .chat-container::-webkit-scrollbar { width: 6px; }
+    kikx-chat-view .chat-container::-webkit-scrollbar-track { background: transparent; }
+    kikx-chat-view .chat-container::-webkit-scrollbar-thumb {
       background: var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: 3px;
     }
-    .chat-container::-webkit-scrollbar-button { display: none; }
+    kikx-chat-view .chat-container::-webkit-scrollbar-button { display: none; }
 
-    .interaction-stream {
+    kikx-chat-view .interaction-stream {
       display: flex;
       flex-direction: column;
       gap: var(--spacing-sm, 8px);
@@ -38,9 +38,7 @@ const TEMPLATE_HTML = `
   </style>
 
   <div class="chat-container">
-    <div class="interaction-stream">
-      <slot></slot>
-    </div>
+    <div class="interaction-stream"></div>
   </div>
 `;
 
@@ -58,20 +56,22 @@ function getTemplate() {
 class KikxChatView extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._chatContainer     = this.shadowRoot.querySelector('.chat-container');
-    this._interactionStream = this.shadowRoot.querySelector('.interaction-stream');
     this._isAnchoredToBottom = true;
     this._resizeObserver     = null;
-
     this._onScroll = this._onScroll.bind(this);
   }
 
   get isAnchoredToBottom() { return this._isAnchoredToBottom; }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._chatContainer     = this.querySelector('.chat-container');
+      this._interactionStream = this.querySelector('.interaction-stream');
+    }
+
     this._chatContainer.addEventListener('scroll', this._onScroll);
     this._resizeObserver = new ResizeObserver(() => this._onContentResize());
     this._resizeObserver.observe(this._interactionStream);
@@ -100,7 +100,7 @@ class KikxChatView extends HTMLElement {
       }));
     }
 
-    // Near top → request older frames
+    // Near top -> request older frames
     if (container.scrollTop <= TOP_THRESHOLD) {
       this.dispatchEvent(new CustomEvent('near-top', {
         bubbles:  true,

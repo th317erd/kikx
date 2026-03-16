@@ -4,15 +4,15 @@ import { t } from '../../lib/i18n.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host { display: block; }
+    kikx-ability-list-modal { display: contents; }
 
-    .tabs {
+    kikx-ability-list-modal .tabs {
       display: flex; gap: 0;
       border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       margin-bottom: 12px;
     }
 
-    .tab-button {
+    kikx-ability-list-modal .tab-button {
       background: none; border: none;
       padding: 8px 16px; font-size: 1rem;
       color: var(--text-muted, #606078);
@@ -21,16 +21,16 @@ const TEMPLATE_HTML = `
       transition: color 0.2s ease;
     }
 
-    .tab-button.active {
+    kikx-ability-list-modal .tab-button.active {
       color: var(--accent-primary, #00e5ff);
       border-bottom-color: var(--accent-primary, #00e5ff);
     }
 
-    .tab-button:hover { color: var(--text-primary, #e8e8f0); }
+    kikx-ability-list-modal .tab-button:hover { color: var(--text-primary, #e8e8f0); }
 
-    .ability-list { display: flex; flex-direction: column; gap: var(--spacing-sm, 8px); }
+    kikx-ability-list-modal .ability-list { display: flex; flex-direction: column; gap: var(--spacing-sm, 8px); }
 
-    .ability-card {
+    kikx-ability-list-modal .ability-card {
       padding: 10px 12px;
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
@@ -38,14 +38,14 @@ const TEMPLATE_HTML = `
       cursor: pointer; transition: background 0.2s ease;
     }
 
-    .ability-card:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }
+    kikx-ability-list-modal .ability-card:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }
 
-    .ability-name {
+    kikx-ability-list-modal .ability-name {
       font-weight: 600; font-size: 1rem;
       color: var(--text-primary, #e8e8f0);
     }
 
-    .category-badge {
+    kikx-ability-list-modal .category-badge {
       display: inline-block; padding: 1px 8px;
       border-radius: 3px; font-size: 1rem;
       font-weight: 600; text-transform: uppercase;
@@ -54,19 +54,19 @@ const TEMPLATE_HTML = `
       margin-left: 8px;
     }
 
-    .ability-description {
+    kikx-ability-list-modal .ability-description {
       font-size: 1rem;
       color: var(--text-secondary, #a0a0b8);
       margin-top: 4px; line-height: 1.4;
     }
 
-    .empty-state {
+    kikx-ability-list-modal .empty-state {
       text-align: center; padding: 20px;
       color: var(--text-muted, #606078);
       font-size: 1rem;
     }
 
-    .add-button {
+    kikx-ability-list-modal .add-button {
       width: 100%; margin-top: var(--spacing-sm, 8px);
       padding: 10px; background: var(--accent-primary, #00e5ff);
       color: #fff; border: none;
@@ -74,10 +74,10 @@ const TEMPLATE_HTML = `
       font-weight: 600; font-size: 1rem; cursor: pointer;
     }
 
-    .add-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
+    kikx-ability-list-modal .add-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
 
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
+    kikx-ability-list-modal .tab-content { display: none; }
+    kikx-ability-list-modal .tab-content.active { display: block; }
   </style>
 
   <div class="tabs">
@@ -109,12 +109,11 @@ class KikxAbilityListModal extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
 
     // Create the inner kikx-modal
     this._modal = document.createElement('kikx-modal');
     this._modal.setAttribute('modal-title', t('ability.list.title'));
-    this.shadowRoot.appendChild(this._modal);
+    HTMLElement.prototype.appendChild.call(this, this._modal);
 
     // Create the content from template and append into modal
     let content = getTemplate().content.cloneNode(true);

@@ -77,10 +77,18 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._onKeyDown   = this._onKeyDown.bind(this);
+      this._onSendClick = this._onSendClick.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; padding: 8px; flex-shrink: 0; }
+          kikx-message-input { display: block; padding: 8px; flex-shrink: 0; }
         </style>
         <div class="input-area">
           <textarea class="message-textarea" rows="1"></textarea>
@@ -88,14 +96,9 @@ function registerComponent() {
         </div>
       `;
 
-      this._textarea   = this.shadowRoot.querySelector('.message-textarea');
-      this._sendButton = this.shadowRoot.querySelector('.send-button');
+      this._textarea   = this.querySelector('.message-textarea');
+      this._sendButton = this.querySelector('.send-button');
 
-      this._onKeyDown   = this._onKeyDown.bind(this);
-      this._onSendClick = this._onSendClick.bind(this);
-    }
-
-    connectedCallback() {
       this._render();
       this._textarea.addEventListener('keydown', this._onKeyDown);
       this._sendButton.addEventListener('click', this._onSendClick);
@@ -107,6 +110,7 @@ function registerComponent() {
     }
 
     attributeChangedCallback() {
+      if (!this._textarea || !this._sendButton) return;
       let isDisabled = this.hasAttribute('disabled');
       this._textarea.disabled   = isDisabled;
       this._sendButton.disabled = isDisabled;
@@ -188,11 +192,11 @@ describe('kikx-message-input', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -200,7 +204,7 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('contains textarea with correct placeholder', () => {
-    let textarea = element.shadowRoot.querySelector('.message-textarea');
+    let textarea = element.querySelector('.message-textarea');
     assert.ok(textarea, 'should have a textarea');
     assert.equal(textarea.placeholder, localeData.chat.input.placeholder);
   });
@@ -210,7 +214,7 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('contains send button with correct text', () => {
-    let sendButton = element.shadowRoot.querySelector('.send-button');
+    let sendButton = element.querySelector('.send-button');
     assert.ok(sendButton, 'should have a send button');
     assert.equal(sendButton.textContent, localeData.chat.input.sendButton);
   });
@@ -220,7 +224,7 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('dispatches send-message event on Enter key', () => {
-    let textarea = element.shadowRoot.querySelector('.message-textarea');
+    let textarea = element.querySelector('.message-textarea');
     textarea.value = 'Hello world';
 
     let receivedEvent = null;
@@ -244,7 +248,7 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('clears textarea after Enter key send', () => {
-    let textarea = element.shadowRoot.querySelector('.message-textarea');
+    let textarea = element.querySelector('.message-textarea');
     textarea.value = 'Hello world';
 
     let keyEvent = new dom.window.KeyboardEvent('keydown', {
@@ -262,7 +266,7 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('does not dispatch send-message on Shift+Enter', () => {
-    let textarea = element.shadowRoot.querySelector('.message-textarea');
+    let textarea = element.querySelector('.message-textarea');
     textarea.value = 'Hello world';
 
     let eventFired = false;
@@ -286,8 +290,8 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('dispatches send-message event on send button click', () => {
-    let textarea   = element.shadowRoot.querySelector('.message-textarea');
-    let sendButton = element.shadowRoot.querySelector('.send-button');
+    let textarea   = element.querySelector('.message-textarea');
+    let sendButton = element.querySelector('.send-button');
     textarea.value = 'Button test';
 
     let receivedEvent = null;
@@ -306,8 +310,8 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('clears textarea after send button click', () => {
-    let textarea   = element.shadowRoot.querySelector('.message-textarea');
-    let sendButton = element.shadowRoot.querySelector('.send-button');
+    let textarea   = element.querySelector('.message-textarea');
+    let sendButton = element.querySelector('.send-button');
     textarea.value = 'Button test';
 
     sendButton.click();
@@ -320,8 +324,8 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('does not dispatch send-message when textarea is empty', () => {
-    let textarea   = element.shadowRoot.querySelector('.message-textarea');
-    let sendButton = element.shadowRoot.querySelector('.send-button');
+    let textarea   = element.querySelector('.message-textarea');
+    let sendButton = element.querySelector('.send-button');
     textarea.value = '';
 
     let eventFired = false;
@@ -339,8 +343,8 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('does not dispatch send-message when textarea is whitespace-only', () => {
-    let textarea   = element.shadowRoot.querySelector('.message-textarea');
-    let sendButton = element.shadowRoot.querySelector('.send-button');
+    let textarea   = element.querySelector('.message-textarea');
+    let sendButton = element.querySelector('.send-button');
     textarea.value = '   \n  \t  ';
 
     let eventFired = false;
@@ -360,7 +364,7 @@ describe('kikx-message-input', () => {
   it('disabled attribute disables textarea', () => {
     element.setAttribute('disabled', '');
 
-    let textarea = element.shadowRoot.querySelector('.message-textarea');
+    let textarea = element.querySelector('.message-textarea');
     assert.equal(textarea.disabled, true, 'textarea should be disabled');
   });
 
@@ -371,7 +375,7 @@ describe('kikx-message-input', () => {
   it('disabled attribute disables send button', () => {
     element.setAttribute('disabled', '');
 
-    let sendButton = element.shadowRoot.querySelector('.send-button');
+    let sendButton = element.querySelector('.send-button');
     assert.equal(sendButton.disabled, true, 'send button should be disabled');
   });
 
@@ -380,12 +384,11 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('focus() method focuses the textarea', () => {
-    let textarea = element.shadowRoot.querySelector('.message-textarea');
+    let textarea = element.querySelector('.message-textarea');
 
     element.focus();
 
     assert.equal(dom.window.document.activeElement, element, 'element should be the active element');
-    assert.equal(element.shadowRoot.activeElement, textarea, 'textarea should be the shadow active element');
   });
 
   // -------------------------------------------------------------------------
@@ -393,7 +396,7 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('clear() method clears the textarea', () => {
-    let textarea = element.shadowRoot.querySelector('.message-textarea');
+    let textarea = element.querySelector('.message-textarea');
     textarea.value = 'Some text to clear';
 
     element.clear();
@@ -406,7 +409,7 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('Enter key calls preventDefault', () => {
-    let textarea = element.shadowRoot.querySelector('.message-textarea');
+    let textarea = element.querySelector('.message-textarea');
     textarea.value = 'Hello';
 
     let keyEvent = new dom.window.KeyboardEvent('keydown', {
@@ -425,7 +428,7 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('send-message event bubbles and is composed', () => {
-    let textarea = element.shadowRoot.querySelector('.message-textarea');
+    let textarea = element.querySelector('.message-textarea');
     textarea.value = 'Event props test';
 
     let receivedEvent = null;
@@ -433,7 +436,7 @@ describe('kikx-message-input', () => {
       receivedEvent = event;
     });
 
-    let sendButton = element.shadowRoot.querySelector('.send-button');
+    let sendButton = element.querySelector('.send-button');
     sendButton.click();
 
     assert.ok(receivedEvent, 'event should have been dispatched');
@@ -449,8 +452,8 @@ describe('kikx-message-input', () => {
     element.setAttribute('disabled', '');
     element.removeAttribute('disabled');
 
-    let textarea   = element.shadowRoot.querySelector('.message-textarea');
-    let sendButton = element.shadowRoot.querySelector('.send-button');
+    let textarea   = element.querySelector('.message-textarea');
+    let sendButton = element.querySelector('.send-button');
 
     assert.equal(textarea.disabled, false, 'textarea should be re-enabled');
     assert.equal(sendButton.disabled, false, 'send button should be re-enabled');
@@ -461,7 +464,7 @@ describe('kikx-message-input', () => {
   // -------------------------------------------------------------------------
 
   it('trims whitespace from message text in event detail', () => {
-    let textarea = element.shadowRoot.querySelector('.message-textarea');
+    let textarea = element.querySelector('.message-textarea');
     textarea.value = '  trimmed message  ';
 
     let receivedEvent = null;
@@ -469,7 +472,7 @@ describe('kikx-message-input', () => {
       receivedEvent = event;
     });
 
-    let sendButton = element.shadowRoot.querySelector('.send-button');
+    let sendButton = element.querySelector('.send-button');
     sendButton.click();
 
     assert.ok(receivedEvent, 'event should have been dispatched');

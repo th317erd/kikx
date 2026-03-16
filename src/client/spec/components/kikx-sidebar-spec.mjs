@@ -72,10 +72,18 @@ function registerComponent() {
   class KikxSidebar extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._archiveVisible = false;
+      this._onArchiveToggle = this._onArchiveToggle.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-sidebar {
             display: flex;
             flex-direction: column;
             width: 300px;
@@ -84,7 +92,7 @@ function registerComponent() {
             transition: width 0.3s ease;
           }
 
-          :host([collapsed]) {
+          kikx-sidebar[collapsed] {
             width: 0;
             overflow: hidden;
           }
@@ -100,17 +108,11 @@ function registerComponent() {
         <div class="participant-list"></div>
       `;
 
-      this._searchInput        = this.shadowRoot.querySelector('.search-input');
-      this._archiveToggle      = this.shadowRoot.querySelector('.archive-toggle');
-      this._sessionsHeader     = this.shadowRoot.querySelector('.sessions-header');
-      this._participantsHeader = this.shadowRoot.querySelector('.participants-header');
+      this._searchInput        = this.querySelector('.search-input');
+      this._archiveToggle      = this.querySelector('.archive-toggle');
+      this._sessionsHeader     = this.querySelector('.sessions-header');
+      this._participantsHeader = this.querySelector('.participants-header');
 
-      this._archiveVisible = false;
-
-      this._onArchiveToggle = this._onArchiveToggle.bind(this);
-    }
-
-    connectedCallback() {
       this._render();
       this._archiveToggle.addEventListener('click', this._onArchiveToggle);
     }
@@ -174,11 +176,11 @@ describe('kikx-sidebar', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -186,7 +188,7 @@ describe('kikx-sidebar', () => {
   // -------------------------------------------------------------------------
 
   it('contains search input with correct placeholder', () => {
-    let searchInput = element.shadowRoot.querySelector('.search-input');
+    let searchInput = element.querySelector('.search-input');
     assert.ok(searchInput, 'should have a search input');
     assert.equal(searchInput.getAttribute('type'), 'text');
     assert.equal(searchInput.placeholder, localeData.sidebar.searchPlaceholder);
@@ -197,7 +199,7 @@ describe('kikx-sidebar', () => {
   // -------------------------------------------------------------------------
 
   it('contains archive toggle button with default hide emoji', () => {
-    let archiveToggle = element.shadowRoot.querySelector('.archive-toggle');
+    let archiveToggle = element.querySelector('.archive-toggle');
     assert.ok(archiveToggle, 'should have an archive toggle button');
     assert.equal(archiveToggle.textContent, localeData.sidebar.archiveHide);
   });
@@ -207,7 +209,7 @@ describe('kikx-sidebar', () => {
   // -------------------------------------------------------------------------
 
   it('archive toggle switches between hide and show emojis on click', () => {
-    let archiveToggle = element.shadowRoot.querySelector('.archive-toggle');
+    let archiveToggle = element.querySelector('.archive-toggle');
 
     // Default state: hide emoji
     assert.equal(archiveToggle.textContent, localeData.sidebar.archiveHide);
@@ -226,7 +228,7 @@ describe('kikx-sidebar', () => {
   // -------------------------------------------------------------------------
 
   it('archive toggle dispatches toggle-archive custom event', () => {
-    let archiveToggle = element.shadowRoot.querySelector('.archive-toggle');
+    let archiveToggle = element.querySelector('.archive-toggle');
     let eventFired    = false;
     let eventDetail   = null;
 
@@ -246,7 +248,7 @@ describe('kikx-sidebar', () => {
   // -------------------------------------------------------------------------
 
   it('contains session list area', () => {
-    let sessionList = element.shadowRoot.querySelector('.session-list');
+    let sessionList = element.querySelector('.session-list');
     assert.ok(sessionList, 'should have a session list area');
   });
 
@@ -255,7 +257,7 @@ describe('kikx-sidebar', () => {
   // -------------------------------------------------------------------------
 
   it('contains participant list area', () => {
-    let participantList = element.shadowRoot.querySelector('.participant-list');
+    let participantList = element.querySelector('.participant-list');
     assert.ok(participantList, 'should have a participant list area');
   });
 
@@ -263,7 +265,7 @@ describe('kikx-sidebar', () => {
   // 9. Collapsed attribute hides the sidebar
   // -------------------------------------------------------------------------
 
-  it('collapsed attribute sets width to 0 via host style', () => {
+  it('collapsed attribute sets width to 0 via style', () => {
     element.setAttribute('collapsed', '');
 
     assert.ok(
@@ -271,12 +273,12 @@ describe('kikx-sidebar', () => {
       'element should have the collapsed attribute',
     );
 
-    // Verify the :host([collapsed]) CSS rule is present in the shadow DOM
-    let style = element.shadowRoot.querySelector('style');
+    // Verify the kikx-sidebar[collapsed] CSS rule is present
+    let style = element.querySelector('style');
     assert.ok(style, 'should have a style element');
     assert.ok(
-      style.textContent.includes(':host([collapsed])'),
-      'style should include :host([collapsed]) rule',
+      style.textContent.includes('kikx-sidebar[collapsed]'),
+      'style should include kikx-sidebar[collapsed] rule',
     );
     assert.ok(
       style.textContent.includes('width: 0'),
@@ -300,8 +302,8 @@ describe('kikx-sidebar', () => {
   // -------------------------------------------------------------------------
 
   it('renders section headers from i18n', () => {
-    let sessionsHeader     = element.shadowRoot.querySelector('.sessions-header');
-    let participantsHeader = element.shadowRoot.querySelector('.participants-header');
+    let sessionsHeader     = element.querySelector('.sessions-header');
+    let participantsHeader = element.querySelector('.participants-header');
 
     assert.equal(sessionsHeader.textContent, localeData.sidebar.sessions);
     assert.equal(participantsHeader.textContent, localeData.sidebar.participants);

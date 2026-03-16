@@ -91,10 +91,21 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._sessions        = [];
+      this._filter          = '';
+      this._collapsedState  = {};
+
+      this._onContainerClick = this._onContainerClick.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; overflow-y: auto; }
+          kikx-session-list { display: block; overflow-y: auto; }
           .empty-state { padding: 8px; text-align: center; }
           .category-header { cursor: pointer; }
           .category-items.collapsed { display: none; }
@@ -107,15 +118,8 @@ function registerComponent() {
         <div class="container"></div>
       `;
 
-      this._container       = this.shadowRoot.querySelector('.container');
-      this._sessions        = [];
-      this._filter          = '';
-      this._collapsedState  = {};
+      this._container = this.querySelector('.container');
 
-      this._onContainerClick = this._onContainerClick.bind(this);
-    }
-
-    connectedCallback() {
       this._render();
       this._container.addEventListener('click', this._onContainerClick);
     }
@@ -302,11 +306,11 @@ describe('kikx-session-list', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -314,7 +318,7 @@ describe('kikx-session-list', () => {
   // -------------------------------------------------------------------------
 
   it('shows empty state message when no sessions are provided', () => {
-    let emptyState = element.shadowRoot.querySelector('.empty-state');
+    let emptyState = element.querySelector('.empty-state');
     assert.ok(emptyState, 'should render empty state element');
     assert.equal(emptyState.textContent, localeData.session.list.empty);
   });
@@ -326,7 +330,7 @@ describe('kikx-session-list', () => {
   it('renders sessions grouped into Channels and Private categories', () => {
     element.sessions = makeSessions();
 
-    let headers = element.shadowRoot.querySelectorAll('.category-header');
+    let headers = element.querySelectorAll('.category-header');
     assert.equal(headers.length, 2, 'should have two category headers');
 
     let headerTexts = Array.from(headers).map((header) => header.textContent);
@@ -341,7 +345,7 @@ describe('kikx-session-list', () => {
   it('places sessions with participantCount >= 3 in Channels category', () => {
     element.sessions = makeSessions();
 
-    let channelsItems = element.shadowRoot.querySelector('.category-items[data-category="channels"]');
+    let channelsItems = element.querySelector('.category-items[data-category="channels"]');
     let rows          = channelsItems.querySelectorAll('.session-row');
     let names         = Array.from(rows).map((row) => row.querySelector('.session-name').textContent);
 
@@ -357,7 +361,7 @@ describe('kikx-session-list', () => {
   it('places sessions with participantCount < 3 in Private category', () => {
     element.sessions = makeSessions();
 
-    let privateItems = element.shadowRoot.querySelector('.category-items[data-category="private"]');
+    let privateItems = element.querySelector('.category-items[data-category="private"]');
     let rows         = privateItems.querySelectorAll('.session-row');
     let names        = Array.from(rows).map((row) => row.querySelector('.session-name').textContent);
 
@@ -373,7 +377,7 @@ describe('kikx-session-list', () => {
   it('applies .active class to the active session row', () => {
     element.sessions = makeSessions();
 
-    let activeRows = element.shadowRoot.querySelectorAll('.session-row.active');
+    let activeRows = element.querySelectorAll('.session-row.active');
     assert.equal(activeRows.length, 1, 'should have exactly one active row');
     assert.equal(activeRows[0].dataset.sessionID, 'ch2', 'active row should be Engineering (ch2)');
   });
@@ -393,7 +397,7 @@ describe('kikx-session-list', () => {
       eventDetail = event.detail;
     });
 
-    let row = element.shadowRoot.querySelector('.session-row[data-session-id="pr1"]');
+    let row = element.querySelector('.session-row[data-session-id="pr1"]');
     row.click();
 
     assert.ok(eventFired, 'select-session event should be dispatched');
@@ -415,7 +419,7 @@ describe('kikx-session-list', () => {
       eventDetail = event.detail;
     });
 
-    let archiveButton = element.shadowRoot.querySelector('.action-button[data-session-id="pr1"]');
+    let archiveButton = element.querySelector('.action-button[data-session-id="pr1"]');
     assert.ok(archiveButton, 'should have an archive button for pr1');
     assert.equal(archiveButton.textContent, localeData.session.archive.archiveAction);
 
@@ -441,7 +445,7 @@ describe('kikx-session-list', () => {
       eventDetail = event.detail;
     });
 
-    let reviveButton = element.shadowRoot.querySelector('.action-button[data-session-id="ar1"]');
+    let reviveButton = element.querySelector('.action-button[data-session-id="ar1"]');
     assert.ok(reviveButton, 'should have a revive button for ar1');
     assert.equal(reviveButton.textContent, localeData.session.archive.reviveAction);
 
@@ -459,7 +463,7 @@ describe('kikx-session-list', () => {
     element.setAttribute('show-archived', '');
     element.sessions = makeSessions();
 
-    let archivedRows = element.shadowRoot.querySelectorAll('.session-row.archived');
+    let archivedRows = element.querySelectorAll('.session-row.archived');
     assert.equal(archivedRows.length, 2, 'should show 2 archived sessions');
   });
 
@@ -470,10 +474,10 @@ describe('kikx-session-list', () => {
   it('hides archived sessions by default', () => {
     element.sessions = makeSessions();
 
-    let archivedRows = element.shadowRoot.querySelectorAll('.session-row.archived');
+    let archivedRows = element.querySelectorAll('.session-row.archived');
     assert.equal(archivedRows.length, 0, 'should not show any archived sessions by default');
 
-    let allRows = element.shadowRoot.querySelectorAll('.session-row');
+    let allRows = element.querySelectorAll('.session-row');
     assert.equal(allRows.length, 4, 'should show only 4 non-archived sessions');
   });
 
@@ -485,7 +489,7 @@ describe('kikx-session-list', () => {
     element.sessions = makeSessions();
     element.filter   = 'alice';
 
-    let rows  = element.shadowRoot.querySelectorAll('.session-row');
+    let rows  = element.querySelectorAll('.session-row');
     assert.equal(rows.length, 1, 'should show only 1 session matching the filter');
     assert.equal(rows[0].querySelector('.session-name').textContent, 'Alice');
   });
@@ -497,15 +501,15 @@ describe('kikx-session-list', () => {
   it('collapses category items when header is clicked', () => {
     element.sessions = makeSessions();
 
-    let channelsHeader = element.shadowRoot.querySelector('.category-header[data-category="channels"]');
+    let channelsHeader = element.querySelector('.category-header[data-category="channels"]');
     assert.ok(channelsHeader, 'should have a channels category header');
 
-    let channelsItems = element.shadowRoot.querySelector('.category-items[data-category="channels"]');
+    let channelsItems = element.querySelector('.category-items[data-category="channels"]');
     assert.ok(!channelsItems.classList.contains('collapsed'), 'channels should be expanded by default');
 
     channelsHeader.click();
 
-    channelsItems = element.shadowRoot.querySelector('.category-items[data-category="channels"]');
+    channelsItems = element.querySelector('.category-items[data-category="channels"]');
     assert.ok(channelsItems.classList.contains('collapsed'), 'channels should be collapsed after click');
 
     let indicator = channelsHeader.querySelector('.collapse-indicator');
@@ -514,7 +518,7 @@ describe('kikx-session-list', () => {
     // Click again to expand
     channelsHeader.click();
 
-    channelsItems = element.shadowRoot.querySelector('.category-items[data-category="channels"]');
+    channelsItems = element.querySelector('.category-items[data-category="channels"]');
     assert.ok(!channelsItems.classList.contains('collapsed'), 'channels should be expanded after second click');
   });
 
@@ -525,7 +529,7 @@ describe('kikx-session-list', () => {
   it('shows unread badge only when unreadCount > 0', () => {
     element.sessions = makeSessions();
 
-    let badges = element.shadowRoot.querySelectorAll('.unread-badge');
+    let badges = element.querySelectorAll('.unread-badge');
     assert.equal(badges.length, 2, 'should show 2 unread badges (General=3, Alice=1)');
 
     let badgeValues = Array.from(badges).map((badge) => badge.textContent);
@@ -533,7 +537,7 @@ describe('kikx-session-list', () => {
     assert.ok(badgeValues.includes('1'), 'should show badge with count 1');
 
     // Verify sessions without unread counts do not have badges
-    let bobRow = element.shadowRoot.querySelector('.session-row[data-session-id="pr2"]');
+    let bobRow = element.querySelector('.session-row[data-session-id="pr2"]');
     let bobBadge = bobRow.querySelector('.unread-badge');
     assert.equal(bobBadge, null, 'Bob should not have an unread badge');
   });
@@ -545,7 +549,7 @@ describe('kikx-session-list', () => {
   it('sorts sessions by lastActivity descending within categories', () => {
     element.sessions = makeSessions();
 
-    let privateItems = element.shadowRoot.querySelector('.category-items[data-category="private"]');
+    let privateItems = element.querySelector('.category-items[data-category="private"]');
     let rows         = privateItems.querySelectorAll('.session-row');
     let names        = Array.from(rows).map((row) => row.querySelector('.session-name').textContent);
 

@@ -92,10 +92,22 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._abilities = { system: [], user: [] };
+
+      this._onTabClick        = this._onTabClick.bind(this);
+      this._onSystemListClick = this._onSystemListClick.bind(this);
+      this._onUserListClick   = this._onUserListClick.bind(this);
+      this._onAddClick        = this._onAddClick.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; }
+          kikx-ability-list-modal { display: block; }
 
           .tabs {
             display: flex; gap: 0;
@@ -184,27 +196,18 @@ function registerComponent() {
         </div>
       `;
 
-      this._systemTab     = this.shadowRoot.querySelector('.system-tab');
-      this._userTab       = this.shadowRoot.querySelector('.user-tab');
-      this._systemContent = this.shadowRoot.querySelector('.system-content');
-      this._userContent   = this.shadowRoot.querySelector('.user-content');
-      this._systemList    = this.shadowRoot.querySelector('.system-list');
-      this._userList      = this.shadowRoot.querySelector('.user-list');
-      this._addButton     = this.shadowRoot.querySelector('.add-button');
+      this._systemTab     = this.querySelector('.system-tab');
+      this._userTab       = this.querySelector('.user-tab');
+      this._systemContent = this.querySelector('.system-content');
+      this._userContent   = this.querySelector('.user-content');
+      this._systemList    = this.querySelector('.system-list');
+      this._userList      = this.querySelector('.user-list');
+      this._addButton     = this.querySelector('.add-button');
 
       this._systemTab.textContent = mockT('ability.list.title');
       this._userTab.textContent   = mockT('ability.list.myAbilitiesTab');
       this._addButton.textContent = mockT('ability.list.addButton');
 
-      this._abilities = { system: [], user: [] };
-
-      this._onTabClick        = this._onTabClick.bind(this);
-      this._onSystemListClick = this._onSystemListClick.bind(this);
-      this._onUserListClick   = this._onUserListClick.bind(this);
-      this._onAddClick        = this._onAddClick.bind(this);
-    }
-
-    connectedCallback() {
       this._systemTab.addEventListener('click', this._onTabClick);
       this._userTab.addEventListener('click', this._onTabClick);
       this._systemList.addEventListener('click', this._onSystemListClick);
@@ -360,11 +363,11 @@ describe('kikx-ability-list-modal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -372,8 +375,8 @@ describe('kikx-ability-list-modal', () => {
   // -------------------------------------------------------------------------
 
   it('has two tab buttons with correct i18n labels', () => {
-    let systemTab = element.shadowRoot.querySelector('.system-tab');
-    let userTab   = element.shadowRoot.querySelector('.user-tab');
+    let systemTab = element.querySelector('.system-tab');
+    let userTab   = element.querySelector('.user-tab');
 
     assert.ok(systemTab, 'should have system tab button');
     assert.ok(userTab, 'should have user tab button');
@@ -386,9 +389,9 @@ describe('kikx-ability-list-modal', () => {
   // -------------------------------------------------------------------------
 
   it('system tab is active by default', () => {
-    let systemTab     = element.shadowRoot.querySelector('.system-tab');
-    let systemContent = element.shadowRoot.querySelector('.system-content');
-    let userContent   = element.shadowRoot.querySelector('.user-content');
+    let systemTab     = element.querySelector('.system-tab');
+    let systemContent = element.querySelector('.system-content');
+    let userContent   = element.querySelector('.user-content');
 
     assert.ok(systemTab.classList.contains('active'), 'system tab button should be active');
     assert.ok(systemContent.classList.contains('active'), 'system content should be active');
@@ -400,10 +403,10 @@ describe('kikx-ability-list-modal', () => {
   // -------------------------------------------------------------------------
 
   it('clicking user tab switches content', () => {
-    let systemTab     = element.shadowRoot.querySelector('.system-tab');
-    let userTab       = element.shadowRoot.querySelector('.user-tab');
-    let systemContent = element.shadowRoot.querySelector('.system-content');
-    let userContent   = element.shadowRoot.querySelector('.user-content');
+    let systemTab     = element.querySelector('.system-tab');
+    let userTab       = element.querySelector('.user-tab');
+    let systemContent = element.querySelector('.system-content');
+    let userContent   = element.querySelector('.user-content');
 
     userTab.click();
 
@@ -420,7 +423,7 @@ describe('kikx-ability-list-modal', () => {
   it('renders system abilities in system tab', () => {
     element.abilities = makeAbilities();
 
-    let cards = element.shadowRoot.querySelectorAll('.system-list .ability-card');
+    let cards = element.querySelectorAll('.system-list .ability-card');
     assert.equal(cards.length, 2, 'should render 2 system ability cards');
   });
 
@@ -431,7 +434,7 @@ describe('kikx-ability-list-modal', () => {
   it('renders user abilities in user tab', () => {
     element.abilities = makeAbilities();
 
-    let cards = element.shadowRoot.querySelectorAll('.user-list .ability-card');
+    let cards = element.querySelectorAll('.user-list .ability-card');
     assert.equal(cards.length, 2, 'should render 2 user ability cards');
   });
 
@@ -442,7 +445,7 @@ describe('kikx-ability-list-modal', () => {
   it('ability card shows name and category badge', () => {
     element.abilities = makeAbilities();
 
-    let card  = element.shadowRoot.querySelector('.system-list .ability-card');
+    let card  = element.querySelector('.system-list .ability-card');
     let name  = card.querySelector('.ability-name');
     let badge = card.querySelector('.category-badge');
 
@@ -459,7 +462,7 @@ describe('kikx-ability-list-modal', () => {
   it('ability card shows description', () => {
     element.abilities = makeAbilities();
 
-    let card = element.shadowRoot.querySelector('.system-list .ability-card');
+    let card = element.querySelector('.system-list .ability-card');
     let desc = card.querySelector('.ability-description');
 
     assert.ok(desc, 'should have a description element');
@@ -481,7 +484,7 @@ describe('kikx-ability-list-modal', () => {
       eventDetail = event.detail;
     });
 
-    let card = element.shadowRoot.querySelector('.system-list .ability-card[data-ability-id="s2"]');
+    let card = element.querySelector('.system-list .ability-card[data-ability-id="s2"]');
     card.click();
 
     assert.ok(eventFired, 'select-ability event should be dispatched');
@@ -500,10 +503,10 @@ describe('kikx-ability-list-modal', () => {
     });
 
     // Switch to user tab so the add button is in the active content
-    let userTab = element.shadowRoot.querySelector('.user-tab');
+    let userTab = element.querySelector('.user-tab');
     userTab.click();
 
-    let addButton = element.shadowRoot.querySelector('.add-button');
+    let addButton = element.querySelector('.add-button');
     assert.equal(addButton.textContent, localeData.ability.list.addButton);
     addButton.click();
 

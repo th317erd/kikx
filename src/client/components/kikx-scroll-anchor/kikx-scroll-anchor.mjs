@@ -4,7 +4,7 @@ import { t } from '../../lib/i18n.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-scroll-anchor {
       display: block;
       position: absolute;
       bottom: var(--spacing-md, 16px);
@@ -15,11 +15,11 @@ const TEMPLATE_HTML = `
       transition: opacity 0.2s ease, transform 0.2s ease;
     }
 
-    :host([hidden]) {
+    kikx-scroll-anchor[hidden] {
       display: none;
     }
 
-    .anchor-button {
+    kikx-scroll-anchor .anchor-button {
       pointer-events: auto;
       display: flex;
       align-items: center;
@@ -37,17 +37,17 @@ const TEMPLATE_HTML = `
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     }
 
-    .anchor-button:hover {
+    kikx-scroll-anchor .anchor-button:hover {
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
       box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    .chevron {
+    kikx-scroll-anchor .chevron {
       font-size: 1.125rem;
       line-height: 1;
     }
 
-    .badge {
+    kikx-scroll-anchor .badge {
       display: none;
       background: var(--accent-primary, #00e5ff);
       color: var(--bg-primary, #0a0a12);
@@ -61,7 +61,7 @@ const TEMPLATE_HTML = `
       padding: 0 4px;
     }
 
-    .badge[data-count]:not([data-count="0"]) {
+    kikx-scroll-anchor .badge[data-count]:not([data-count="0"]) {
       display: inline-block;
     }
   </style>
@@ -86,18 +86,20 @@ function getTemplate() {
 class KikxScrollAnchor extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._button = this.shadowRoot.querySelector('.anchor-button');
-    this._badge  = this.shadowRoot.querySelector('.badge');
-
     this._onClick = this._onClick.bind(this);
   }
 
   static get observedAttributes() { return ['hidden', 'unread-count']; }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._button = this.querySelector('.anchor-button');
+      this._badge  = this.querySelector('.badge');
+    }
+
     this._button.title = t('chat.scrollAnchor.jumpToBottom');
     this._button.addEventListener('click', this._onClick);
   }
@@ -119,6 +121,9 @@ class KikxScrollAnchor extends HTMLElement {
   }
 
   _updateBadge() {
+    if (!this._badge)
+      return;
+
     let count = parseInt(this.getAttribute('unread-count') || '0', 10);
     this._badge.textContent = (count > 0) ? String(count) : '';
     this._badge.setAttribute('data-count', String(count));

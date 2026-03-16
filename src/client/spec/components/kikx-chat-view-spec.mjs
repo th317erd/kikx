@@ -88,10 +88,17 @@ function registerComponent() {
   class KikxChatView extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+    }
+
+    get isAnchoredToBottom() { return this._isAnchoredToBottom; }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-chat-view {
             display: flex;
             flex-direction: column;
             flex: 1;
@@ -112,30 +119,25 @@ function registerComponent() {
           }
         </style>
         <div class="chat-container">
-          <div class="interaction-stream">
-            <slot></slot>
-          </div>
+          <div class="interaction-stream"></div>
         </div>
       `;
 
-      this._chatContainer     = this.shadowRoot.querySelector('.chat-container');
-      this._interactionStream = this.shadowRoot.querySelector('.interaction-stream');
+      this._chatContainer     = this.querySelector('.chat-container');
+      this._interactionStream = this.querySelector('.interaction-stream');
       this._isAnchoredToBottom = true;
       this._resizeObserver     = null;
 
       this._onScroll = this._onScroll.bind(this);
-    }
 
-    get isAnchoredToBottom() { return this._isAnchoredToBottom; }
-
-    connectedCallback() {
       this._chatContainer.addEventListener('scroll', this._onScroll);
       this._resizeObserver = new dom.window.ResizeObserver(() => this._onContentResize());
       this._resizeObserver.observe(this._interactionStream);
     }
 
     disconnectedCallback() {
-      this._chatContainer.removeEventListener('scroll', this._onScroll);
+      if (this._chatContainer)
+        this._chatContainer.removeEventListener('scroll', this._onScroll);
 
       if (this._resizeObserver) {
         this._resizeObserver.disconnect();
@@ -217,11 +219,11 @@ describe('kikx-chat-view', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -229,7 +231,7 @@ describe('kikx-chat-view', () => {
   // -------------------------------------------------------------------------
 
   it('contains a .chat-container scroll area', () => {
-    let chatContainer = element.shadowRoot.querySelector('.chat-container');
+    let chatContainer = element.querySelector('.chat-container');
     assert.ok(chatContainer, 'should have a .chat-container element');
   });
 
@@ -238,7 +240,7 @@ describe('kikx-chat-view', () => {
   // -------------------------------------------------------------------------
 
   it('contains .interaction-stream inside chat-container', () => {
-    let chatContainer     = element.shadowRoot.querySelector('.chat-container');
+    let chatContainer     = element.querySelector('.chat-container');
     let interactionStream = chatContainer.querySelector('.interaction-stream');
     assert.ok(interactionStream, 'should have a .interaction-stream inside .chat-container');
   });
@@ -260,7 +262,7 @@ describe('kikx-chat-view', () => {
     child.textContent = 'Hello world';
     element.appendInteraction(child);
 
-    let interactionStream = element.shadowRoot.querySelector('.interaction-stream');
+    let interactionStream = element.querySelector('.interaction-stream');
     let children          = interactionStream.querySelectorAll('div');
 
     assert.ok(children.length >= 1, 'interaction-stream should contain the appended element');
@@ -358,16 +360,7 @@ describe('kikx-chat-view', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 11. Has a slot for light DOM children
-  // -------------------------------------------------------------------------
-
-  it('has a slot for light DOM children', () => {
-    let slot = element.shadowRoot.querySelector('slot');
-    assert.ok(slot, 'should have a <slot> element in shadow DOM');
-  });
-
-  // -------------------------------------------------------------------------
-  // 12. Uses ResizeObserver (observer is created in connectedCallback)
+  // 11. Uses ResizeObserver (observer is created in connectedCallback)
   // -------------------------------------------------------------------------
 
   it('creates a ResizeObserver in connectedCallback', () => {
@@ -379,7 +372,7 @@ describe('kikx-chat-view', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 13. disconnectedCallback cleans up ResizeObserver
+  // 12. disconnectedCallback cleans up ResizeObserver
   // -------------------------------------------------------------------------
 
   it('disconnectedCallback cleans up ResizeObserver', () => {
@@ -389,7 +382,7 @@ describe('kikx-chat-view', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 14. _onContentResize scrolls to bottom when anchored
+  // 13. _onContentResize scrolls to bottom when anchored
   // -------------------------------------------------------------------------
 
   it('_onContentResize scrolls to bottom when anchored', () => {
@@ -406,7 +399,7 @@ describe('kikx-chat-view', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 15. _onContentResize does NOT scroll when not anchored
+  // 14. _onContentResize does NOT scroll when not anchored
   // -------------------------------------------------------------------------
 
   it('_onContentResize does not scroll when not anchored', () => {
@@ -423,7 +416,7 @@ describe('kikx-chat-view', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 16. Does not dispatch anchored-change when state doesn't change
+  // 15. Does not dispatch anchored-change when state doesn't change
   // -------------------------------------------------------------------------
 
   it('does not dispatch anchored-change when state does not change', () => {
@@ -446,7 +439,7 @@ describe('kikx-chat-view', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 17. Real module exports a class constructor
+  // 16. Real module exports a class constructor
   // -------------------------------------------------------------------------
 
   it('real module exports a class constructor', async () => {

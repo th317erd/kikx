@@ -464,21 +464,19 @@ describe('query-engine', () => {
     });
   });
 
-  // 16. $$m reaches into shadow roots
+  // 16. $$m scopes queries to a host element
   describe('$$m(hostElement, selectorOrElements)', () => {
-    it('wraps elements using a shadow root as the context root', () => {
+    it('selects child elements within the host element', () => {
       freshBody();
 
-      // jsdom supports attachShadow
       let host = document.createElement('div');
       document.body.appendChild(host);
-      let shadow = host.attachShadow({ mode: 'open' });
 
       let inner = document.createElement('span');
-      inner.className = 'shadow-child';
-      shadow.appendChild(inner);
+      inner.className = 'child-element';
+      host.appendChild(inner);
 
-      let result = $$m(host, '.shadow-child');
+      let result = $$m(host, '.child-element');
       assert.equal(result.length, 1);
       assert.equal(result[0], inner);
     });
@@ -487,10 +485,9 @@ describe('query-engine', () => {
       freshBody();
       let host = document.createElement('div');
       document.body.appendChild(host);
-      let shadow = host.attachShadow({ mode: 'open' });
 
       let inner = document.createElement('span');
-      shadow.appendChild(inner);
+      host.appendChild(inner);
 
       let result = $$m(host, [ inner ]);
       assert.equal(result.length, 1);

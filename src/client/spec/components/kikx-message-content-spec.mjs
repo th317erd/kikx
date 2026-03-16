@@ -107,10 +107,16 @@ function registerComponent() {
   class KikxMessageContent extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+      this._content = '';
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-message-content {
             display: block;
             line-height: 1.5;
             word-wrap: break-word;
@@ -212,8 +218,11 @@ function registerComponent() {
         <div class="message-body"></div>
       `;
 
-      this._messageBody = this.shadowRoot.querySelector('.message-body');
-      this._content = '';
+      this._messageBody = this.querySelector('.message-body');
+
+      let attributeContent = this.getAttribute('content');
+      if (attributeContent && !this._content)
+        this.content = attributeContent;
     }
 
     get content() { return this._content; }
@@ -223,14 +232,8 @@ function registerComponent() {
       this._render();
     }
 
-    connectedCallback() {
-      let attributeContent = this.getAttribute('content');
-      if (attributeContent && !this._content)
-        this.content = attributeContent;
-    }
-
     _render() {
-      let sanitized = sanitizeHTML(this._content, this.shadowRoot.ownerDocument);
+      let sanitized = sanitizeHTML(this._content, this.ownerDocument);
       this._messageBody.innerHTML = sanitized;
     }
   }
@@ -268,11 +271,11 @@ describe('kikx-message-content', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -280,8 +283,8 @@ describe('kikx-message-content', () => {
   // -------------------------------------------------------------------------
 
   it('contains .message-body container', () => {
-    let messageBody = element.shadowRoot.querySelector('.message-body');
-    assert.ok(messageBody, 'shadow DOM should contain .message-body');
+    let messageBody = element.querySelector('.message-body');
+    assert.ok(messageBody, 'should contain .message-body');
   });
 
   // -------------------------------------------------------------------------
@@ -291,7 +294,7 @@ describe('kikx-message-content', () => {
   it('renders plain text content', () => {
     element.content = 'Hello, world!';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     assert.equal(messageBody.textContent, 'Hello, world!');
   });
 
@@ -302,7 +305,7 @@ describe('kikx-message-content', () => {
   it('renders basic HTML formatting', () => {
     element.content = '<b>bold</b> and <i>italic</i> and <em>emphasis</em> and <strong>strong</strong>';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     assert.ok(messageBody.querySelector('b'), 'should render <b> tag');
     assert.ok(messageBody.querySelector('i'), 'should render <i> tag');
     assert.ok(messageBody.querySelector('em'), 'should render <em> tag');
@@ -318,7 +321,7 @@ describe('kikx-message-content', () => {
   it('renders headings', () => {
     element.content = '<h1>Heading 1</h1><h2>Heading 2</h2><h3>Heading 3</h3>';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     assert.ok(messageBody.querySelector('h1'), 'should render <h1>');
     assert.ok(messageBody.querySelector('h2'), 'should render <h2>');
     assert.ok(messageBody.querySelector('h3'), 'should render <h3>');
@@ -334,7 +337,7 @@ describe('kikx-message-content', () => {
   it('renders code blocks', () => {
     element.content = '<pre><code class="language-js">let x = 1;</code></pre>';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     let pre = messageBody.querySelector('pre');
     assert.ok(pre, 'should render <pre>');
 
@@ -351,7 +354,7 @@ describe('kikx-message-content', () => {
   it('renders blockquotes', () => {
     element.content = '<blockquote>A wise quote</blockquote>';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     let blockquote = messageBody.querySelector('blockquote');
     assert.ok(blockquote, 'should render <blockquote>');
     assert.equal(blockquote.textContent, 'A wise quote');
@@ -364,7 +367,7 @@ describe('kikx-message-content', () => {
   it('renders tables', () => {
     element.content = '<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody><tr><td>A</td><td>1</td></tr></tbody></table>';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     let table = messageBody.querySelector('table');
     assert.ok(table, 'should render <table>');
     assert.ok(table.querySelector('thead'), 'should render <thead>');
@@ -382,7 +385,7 @@ describe('kikx-message-content', () => {
   it('strips script tags', () => {
     element.content = '<p>safe</p><script>alert("xss")</script>';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     assert.ok(!messageBody.querySelector('script'), 'should not contain <script> element');
     assert.ok(messageBody.querySelector('p'), 'should still render the safe <p>');
     assert.equal(messageBody.querySelector('p').textContent, 'safe');
@@ -395,7 +398,7 @@ describe('kikx-message-content', () => {
   it('strips event handler attributes', () => {
     element.content = '<b onclick="alert(1)">click</b><img src="x.png" onerror="alert(2)">';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     let bold = messageBody.querySelector('b');
     assert.ok(bold, 'should render <b>');
     assert.equal(bold.getAttribute('onclick'), null, 'onclick should be stripped');
@@ -412,7 +415,7 @@ describe('kikx-message-content', () => {
   it('strips javascript: URLs from links', () => {
     element.content = '<a href="javascript:alert(1)">evil</a>';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     let link = messageBody.querySelector('a');
     assert.ok(link, 'should render <a> tag');
     assert.equal(link.getAttribute('href'), null, 'javascript: href should be stripped');
@@ -426,7 +429,7 @@ describe('kikx-message-content', () => {
   it('allows safe links with href', () => {
     element.content = '<a href="https://example.com" title="Example">link</a>';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     let link = messageBody.querySelector('a');
     assert.ok(link, 'should render <a> tag');
     assert.equal(link.getAttribute('href'), 'https://example.com', 'safe href should be preserved');
@@ -441,7 +444,7 @@ describe('kikx-message-content', () => {
   it('links get target="_blank" and rel="noopener noreferrer"', () => {
     element.content = '<a href="https://example.com">safe link</a>';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     let link = messageBody.querySelector('a');
     assert.ok(link, 'should render <a> tag');
     assert.equal(link.getAttribute('target'), '_blank', 'should have target="_blank"');
@@ -455,7 +458,7 @@ describe('kikx-message-content', () => {
   it('strips iframe, object, and embed tags', () => {
     element.content = '<iframe src="https://evil.com"></iframe><object data="x"></object><embed src="y"><p>safe</p>';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     assert.ok(!messageBody.querySelector('iframe'), 'should not contain <iframe>');
     assert.ok(!messageBody.querySelector('object'), 'should not contain <object>');
     assert.ok(!messageBody.querySelector('embed'), 'should not contain <embed>');
@@ -469,7 +472,7 @@ describe('kikx-message-content', () => {
   it('setting content property updates the display', () => {
     element.content = '<p>first</p>';
 
-    let messageBody = element.shadowRoot.querySelector('.message-body');
+    let messageBody = element.querySelector('.message-body');
     assert.equal(messageBody.querySelector('p').textContent, 'first');
 
     element.content = '<p>second</p>';

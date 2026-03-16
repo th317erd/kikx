@@ -5,13 +5,13 @@ import { glowInitCSS, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs'
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-message-input {
       display: block;
       padding: var(--spacing-sm, 8px) var(--spacing-md, 16px);
       flex-shrink: 0;
     }
 
-    .input-area {
+    kikx-message-input .input-area {
       display: flex;
       align-items: flex-end;
       gap: var(--spacing-xs, 4px);
@@ -27,11 +27,11 @@ const TEMPLATE_HTML = `
         0 0 30px rgba(176, 64, 255, 0.03);
     }
 
-    ${glowInitCSS('.input-area')}
-    ${glowHoverCSS('.input-area:hover:not(:focus-within)')}
-    ${glowCSS('.input-area:focus-within')}
+    ${glowInitCSS('kikx-message-input .input-area')}
+    ${glowHoverCSS('kikx-message-input .input-area:hover:not(:focus-within)')}
+    ${glowCSS('kikx-message-input .input-area:focus-within')}
 
-    .message-textarea {
+    kikx-message-input .message-textarea {
       flex: 1;
       background: transparent;
       border: none;
@@ -48,11 +48,11 @@ const TEMPLATE_HTML = `
       overflow-y: auto;
     }
 
-    .message-textarea::placeholder {
+    kikx-message-input .message-textarea::placeholder {
       color: var(--input-placeholder, var(--text-muted, #606078));
     }
 
-    .send-button {
+    kikx-message-input .send-button {
       background: var(--accent-primary, #00e5ff);
       color: #ffffff;
       border: none;
@@ -68,17 +68,17 @@ const TEMPLATE_HTML = `
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    .send-button:hover {
+    kikx-message-input .send-button:hover {
       box-shadow:
         0 0 16px var(--accent-glow, rgba(0, 229, 255, 0.40)),
         0 0 32px var(--accent-glow, rgba(0, 229, 255, 0.20));
     }
 
-    .queue-indicator {
+    kikx-message-input .queue-indicator {
       display: none;
     }
 
-    .reply-banner {
+    kikx-message-input .reply-banner {
       display: none;
       align-items: center;
       gap: var(--spacing-sm, 8px);
@@ -90,11 +90,11 @@ const TEMPLATE_HTML = `
       color: var(--text-secondary, #a0a0b8);
     }
 
-    .reply-banner.visible {
+    kikx-message-input .reply-banner.visible {
       display: flex;
     }
 
-    .reply-banner-text {
+    kikx-message-input .reply-banner-text {
       flex: 1;
       min-width: 0;
       white-space: nowrap;
@@ -102,12 +102,12 @@ const TEMPLATE_HTML = `
       text-overflow: ellipsis;
     }
 
-    .reply-banner-name {
+    kikx-message-input .reply-banner-name {
       color: var(--accent-primary, #00e5ff);
       font-weight: 600;
     }
 
-    .reply-cancel-button {
+    kikx-message-input .reply-cancel-button {
       border: none;
       background: transparent;
       color: var(--text-muted, #606078);
@@ -118,7 +118,7 @@ const TEMPLATE_HTML = `
       line-height: 1;
     }
 
-    .reply-cancel-button:hover {
+    kikx-message-input .reply-cancel-button:hover {
       color: var(--text-primary, #e8e8f0);
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
     }
@@ -154,17 +154,6 @@ function getTemplate() {
 class KikxMessageInput extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._textarea          = this.shadowRoot.querySelector('.message-textarea');
-    this._sendButton        = this.shadowRoot.querySelector('.send-button');
-    this._queueIndicator    = this.shadowRoot.querySelector('.queue-indicator');
-    this._queueCount        = this.shadowRoot.querySelector('.queue-count');
-    this._replyBanner       = this.shadowRoot.querySelector('.reply-banner');
-    this._replyBannerName   = this.shadowRoot.querySelector('.reply-banner-name');
-    this._replyCancelButton = this.shadowRoot.querySelector('.reply-cancel-button');
-
     this._queue         = [];
     this._isInteracting = false;
     this._sessionID     = null;
@@ -178,6 +167,19 @@ class KikxMessageInput extends HTMLElement {
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._textarea          = this.querySelector('.message-textarea');
+      this._sendButton        = this.querySelector('.send-button');
+      this._queueIndicator    = this.querySelector('.queue-indicator');
+      this._queueCount        = this.querySelector('.queue-count');
+      this._replyBanner       = this.querySelector('.reply-banner');
+      this._replyBannerName   = this.querySelector('.reply-banner-name');
+      this._replyCancelButton = this.querySelector('.reply-cancel-button');
+    }
+
     this._render();
     this._textarea.addEventListener('keydown', this._onKeyDown);
     this._textarea.addEventListener('input', this._onInput);
@@ -186,7 +188,7 @@ class KikxMessageInput extends HTMLElement {
     this._textarea.addEventListener('focusin', this._onFocusIn);
 
     // Random glow offset
-    let inputArea = this.shadowRoot.querySelector('.input-area');
+    let inputArea = this.querySelector('.input-area');
     inputArea.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
   }
 
@@ -199,6 +201,9 @@ class KikxMessageInput extends HTMLElement {
   }
 
   _render() {
+    if (!this._textarea)
+      return;
+
     this._textarea.placeholder   = t('chat.input.placeholder');
     this._sendButton.textContent = t('chat.input.sendButton');
   }
@@ -250,6 +255,9 @@ class KikxMessageInput extends HTMLElement {
   }
 
   _loadDraft() {
+    if (!this._textarea)
+      return;
+
     let key = this._getDraftKey();
     if (!key)
       return;

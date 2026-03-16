@@ -97,10 +97,17 @@ function registerComponent() {
   class KikxLoginPage extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._onSubmit = this._onSubmit.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; min-height: 100vh; }
+          kikx-login-page { display: block; min-height: 100vh; }
           .status-message { display: none; }
           .status-message.visible { display: block; }
           .status-message.error { color: red; }
@@ -117,17 +124,13 @@ function registerComponent() {
         </div>
       `;
 
-      this._emailInput      = this.shadowRoot.querySelector('.email-input');
-      this._submitButton    = this.shadowRoot.querySelector('.submit-button');
-      this._statusMessage   = this.shadowRoot.querySelector('.status-message');
-      this._titleElement    = this.shadowRoot.querySelector('.title');
-      this._subtitleElement = this.shadowRoot.querySelector('.subtitle');
-      this._form            = this.shadowRoot.querySelector('form');
+      this._emailInput      = this.querySelector('.email-input');
+      this._submitButton    = this.querySelector('.submit-button');
+      this._statusMessage   = this.querySelector('.status-message');
+      this._titleElement    = this.querySelector('.title');
+      this._subtitleElement = this.querySelector('.subtitle');
+      this._form            = this.querySelector('form');
 
-      this._onSubmit = this._onSubmit.bind(this);
-    }
-
-    connectedCallback() {
       this._render();
       this._form.addEventListener('submit', this._onSubmit);
     }
@@ -239,18 +242,17 @@ describe('kikx-login-page', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 2. Renders email input and submit button in shadow DOM
+  // 2. Renders email input and submit button in light DOM
   // -----------------------------------------------------------------------
 
-  it('renders email input and submit button in shadow DOM', () => {
-    let shadow = element.shadowRoot;
-    assert.ok(shadow, 'should have a shadow root');
+  it('renders email input and submit button in light DOM', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
 
-    let emailInput = shadow.querySelector('.email-input');
+    let emailInput = element.querySelector('.email-input');
     assert.ok(emailInput, 'should have an email input');
     assert.equal(emailInput.getAttribute('type'), 'email');
 
-    let submitButton = shadow.querySelector('.submit-button');
+    let submitButton = element.querySelector('.submit-button');
     assert.ok(submitButton, 'should have a submit button');
     assert.equal(submitButton.getAttribute('type'), 'submit');
   });
@@ -260,12 +262,12 @@ describe('kikx-login-page', () => {
   // -----------------------------------------------------------------------
 
   it('renders the application title', () => {
-    let title = element.shadowRoot.querySelector('.title');
+    let title = element.querySelector('.title');
     assert.equal(title.textContent, 'Kikx');
   });
 
   it('renders the login subtitle', () => {
-    let subtitle = element.shadowRoot.querySelector('.subtitle');
+    let subtitle = element.querySelector('.subtitle');
     assert.equal(subtitle.textContent, 'AI-powered collaborative channels');
   });
 
@@ -274,11 +276,11 @@ describe('kikx-login-page', () => {
   // -----------------------------------------------------------------------
 
   it('shows validation error when submitting with empty email', () => {
-    let form        = element.shadowRoot.querySelector('form');
+    let form        = element.querySelector('form');
     let submitEvent = new dom.window.Event('submit', { bubbles: true, cancelable: true });
     form.dispatchEvent(submitEvent);
 
-    let statusMessage = element.shadowRoot.querySelector('.status-message');
+    let statusMessage = element.querySelector('.status-message');
     assert.ok(statusMessage.classList.contains('visible'), 'status message should be visible');
     assert.ok(statusMessage.classList.contains('error'), 'status message should have error class');
     assert.equal(statusMessage.textContent, 'Email is required.');
@@ -289,10 +291,10 @@ describe('kikx-login-page', () => {
   // -----------------------------------------------------------------------
 
   it('calls sendMagicLink, sets token, updates store, and navigates on successful login', async () => {
-    let emailInput = element.shadowRoot.querySelector('.email-input');
+    let emailInput = element.querySelector('.email-input');
     emailInput.value = 'test@example.com';
 
-    let form        = element.shadowRoot.querySelector('form');
+    let form        = element.querySelector('form');
     let submitEvent = new dom.window.Event('submit', { bubbles: true, cancelable: true });
     form.dispatchEvent(submitEvent);
 
@@ -329,16 +331,16 @@ describe('kikx-login-page', () => {
       throw error;
     };
 
-    let emailInput = element.shadowRoot.querySelector('.email-input');
+    let emailInput = element.querySelector('.email-input');
     emailInput.value = 'missing@example.com';
 
-    let form        = element.shadowRoot.querySelector('form');
+    let form        = element.querySelector('form');
     let submitEvent = new dom.window.Event('submit', { bubbles: true, cancelable: true });
     form.dispatchEvent(submitEvent);
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    let statusMessage = element.shadowRoot.querySelector('.status-message');
+    let statusMessage = element.querySelector('.status-message');
     assert.ok(statusMessage.classList.contains('visible'), 'status message should be visible');
     assert.ok(statusMessage.classList.contains('error'), 'status message should have error class');
     assert.equal(statusMessage.textContent, 'No account found for that email.');
@@ -349,16 +351,16 @@ describe('kikx-login-page', () => {
       throw new Error('Network error');
     };
 
-    let emailInput = element.shadowRoot.querySelector('.email-input');
+    let emailInput = element.querySelector('.email-input');
     emailInput.value = 'user@example.com';
 
-    let form        = element.shadowRoot.querySelector('form');
+    let form        = element.querySelector('form');
     let submitEvent = new dom.window.Event('submit', { bubbles: true, cancelable: true });
     form.dispatchEvent(submitEvent);
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    let statusMessage = element.shadowRoot.querySelector('.status-message');
+    let statusMessage = element.querySelector('.status-message');
     assert.ok(statusMessage.classList.contains('visible'));
     assert.equal(statusMessage.textContent, 'Login failed. Please try again.');
   });
@@ -374,17 +376,17 @@ describe('kikx-login-page', () => {
       return new Promise((resolve) => { resolveLogin = resolve; });
     };
 
-    let emailInput = element.shadowRoot.querySelector('.email-input');
+    let emailInput = element.querySelector('.email-input');
     emailInput.value = 'user@example.com';
 
-    let form        = element.shadowRoot.querySelector('form');
+    let form        = element.querySelector('form');
     let submitEvent = new dom.window.Event('submit', { bubbles: true, cancelable: true });
     form.dispatchEvent(submitEvent);
 
     // Allow microtask to run the sync portion of _onSubmit up to the await
     await new Promise((resolve) => setTimeout(resolve, 5));
 
-    let submitButton = element.shadowRoot.querySelector('.submit-button');
+    let submitButton = element.querySelector('.submit-button');
     assert.equal(submitButton.disabled, true, 'button should be disabled during loading');
     assert.equal(submitButton.textContent, 'Sending...');
 
@@ -398,16 +400,16 @@ describe('kikx-login-page', () => {
       throw new Error('fail');
     };
 
-    let emailInput = element.shadowRoot.querySelector('.email-input');
+    let emailInput = element.querySelector('.email-input');
     emailInput.value = 'user@example.com';
 
-    let form        = element.shadowRoot.querySelector('form');
+    let form        = element.querySelector('form');
     let submitEvent = new dom.window.Event('submit', { bubbles: true, cancelable: true });
     form.dispatchEvent(submitEvent);
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    let submitButton = element.shadowRoot.querySelector('.submit-button');
+    let submitButton = element.querySelector('.submit-button');
     assert.equal(submitButton.disabled, false, 'button should be re-enabled after error');
     assert.equal(submitButton.textContent, 'Send Magic Link');
   });
@@ -417,10 +419,10 @@ describe('kikx-login-page', () => {
   // -----------------------------------------------------------------------
 
   it('uses i18n for all user-facing strings (no hardcoded text)', () => {
-    let title    = element.shadowRoot.querySelector('.title').textContent;
-    let subtitle = element.shadowRoot.querySelector('.subtitle').textContent;
-    let button   = element.shadowRoot.querySelector('.submit-button').textContent;
-    let input    = element.shadowRoot.querySelector('.email-input').placeholder;
+    let title    = element.querySelector('.title').textContent;
+    let subtitle = element.querySelector('.subtitle').textContent;
+    let button   = element.querySelector('.submit-button').textContent;
+    let input    = element.querySelector('.email-input').placeholder;
 
     // All displayed strings must match locale values
     assert.equal(title, localeData.application.title);
@@ -430,11 +432,11 @@ describe('kikx-login-page', () => {
   });
 
   it('uses i18n for error messages', () => {
-    let form        = element.shadowRoot.querySelector('form');
+    let form        = element.querySelector('form');
     let submitEvent = new dom.window.Event('submit', { bubbles: true, cancelable: true });
     form.dispatchEvent(submitEvent);
 
-    let statusMessage = element.shadowRoot.querySelector('.status-message');
+    let statusMessage = element.querySelector('.status-message');
     assert.equal(statusMessage.textContent, localeData.login.error.emailRequired);
   });
 
@@ -442,16 +444,16 @@ describe('kikx-login-page', () => {
     let resolveLogin;
     sendMagicLinkMock = () => new Promise((resolve) => { resolveLogin = resolve; });
 
-    let emailInput = element.shadowRoot.querySelector('.email-input');
+    let emailInput = element.querySelector('.email-input');
     emailInput.value = 'user@example.com';
 
-    let form        = element.shadowRoot.querySelector('form');
+    let form        = element.querySelector('form');
     let submitEvent = new dom.window.Event('submit', { bubbles: true, cancelable: true });
     form.dispatchEvent(submitEvent);
 
     await new Promise((resolve) => setTimeout(resolve, 5));
 
-    let submitButton = element.shadowRoot.querySelector('.submit-button');
+    let submitButton = element.querySelector('.submit-button');
     assert.equal(submitButton.textContent, localeData.login.loading);
 
     // Cleanup
@@ -464,7 +466,7 @@ describe('kikx-login-page', () => {
   // -----------------------------------------------------------------------
 
   it('has status message hidden by default', () => {
-    let statusMessage = element.shadowRoot.querySelector('.status-message');
+    let statusMessage = element.querySelector('.status-message');
     assert.ok(statusMessage, 'status message element should exist');
     assert.ok(!statusMessage.classList.contains('visible'), 'status message should not be visible initially');
   });

@@ -15,35 +15,35 @@ const TOTAL_STEPS = STEP_KEYS.length;
 
 const TEMPLATE_HTML = `
   <style>
-    :host { display: block; }
+    kikx-ability-wizard-modal { display: block; }
 
-    .step-indicator {
+    kikx-ability-wizard-modal .step-indicator {
       display: flex; gap: 8px; justify-content: center; margin-bottom: 16px;
     }
 
-    .step-dot {
+    kikx-ability-wizard-modal .step-dot {
       width: 10px; height: 10px; border-radius: 50%;
       background: var(--glass-border, rgba(255, 255, 255, 0.10));
       transition: background 0.2s ease;
     }
 
-    .step-dot.active {
+    kikx-ability-wizard-modal .step-dot.active {
       background: var(--accent-primary, #00e5ff);
     }
 
-    .step-dot.completed {
+    kikx-ability-wizard-modal .step-dot.completed {
       background: var(--accent-primary, #00e5ff); opacity: 0.5;
     }
 
-    .step-content { display: none; }
-    .step-content.active { display: block; }
+    kikx-ability-wizard-modal .step-content { display: none; }
+    kikx-ability-wizard-modal .step-content.active { display: block; }
 
-    .step-label {
+    kikx-ability-wizard-modal .step-label {
       font-size: 1rem; font-weight: 600;
       color: var(--text-primary, #e8e8f0); margin-bottom: 8px;
     }
 
-    .step-input {
+    kikx-ability-wizard-modal .step-input {
       width: 100%; box-sizing: border-box;
       padding: 8px 12px; font-size: 1rem;
       background: var(--input-background, rgba(255, 255, 255, 0.05));
@@ -53,24 +53,24 @@ const TEMPLATE_HTML = `
       font-family: inherit;
     }
 
-    .step-input:focus {
+    kikx-ability-wizard-modal .step-input:focus {
       border-color: var(--accent-primary, #00e5ff);
     }
 
-    textarea.step-input { resize: vertical; min-height: 80px; }
+    kikx-ability-wizard-modal textarea.step-input { resize: vertical; min-height: 80px; }
 
-    .checkbox-row {
+    kikx-ability-wizard-modal .checkbox-row {
       display: flex; align-items: center; gap: 8px;
       font-size: 1rem; color: var(--text-primary, #e8e8f0); cursor: pointer;
     }
 
-    .nav-buttons {
+    kikx-ability-wizard-modal .nav-buttons {
       display: flex; gap: 8px; justify-content: flex-end;
       margin-top: 16px; padding-top: 12px;
       border-top: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
     }
 
-    .back-button {
+    kikx-ability-wizard-modal .back-button {
       background: none;
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       color: var(--text-secondary, #a0a0b8);
@@ -78,7 +78,7 @@ const TEMPLATE_HTML = `
       padding: 8px 16px; font-size: 1rem; cursor: pointer;
     }
 
-    .next-button, .save-button {
+    kikx-ability-wizard-modal .next-button, kikx-ability-wizard-modal .save-button {
       background: var(--accent-primary, #00e5ff);
       color: #fff;
       border: none; border-radius: var(--border-radius-small, 4px);
@@ -109,23 +109,23 @@ function getTemplate() {
 class KikxAbilityWizardModal extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
+  }
+
+  connectedCallback() {
+    this.appendChild(getTemplate().content.cloneNode(true));
 
     this._currentStep = 0;
 
-    this._indicator     = this.shadowRoot.querySelector('.step-indicator');
-    this._container     = this.shadowRoot.querySelector('.steps-container');
-    this._backButton    = this.shadowRoot.querySelector('.back-button');
-    this._nextButton    = this.shadowRoot.querySelector('.next-button');
-    this._saveButton    = this.shadowRoot.querySelector('.save-button');
+    this._indicator     = this.querySelector('.step-indicator');
+    this._container     = this.querySelector('.steps-container');
+    this._backButton    = this.querySelector('.back-button');
+    this._nextButton    = this.querySelector('.next-button');
+    this._saveButton    = this.querySelector('.save-button');
 
     this._onBackClick = this._onBackClick.bind(this);
     this._onNextClick = this._onNextClick.bind(this);
     this._onSaveClick = this._onSaveClick.bind(this);
-  }
 
-  connectedCallback() {
     this._buildSteps();
     this._buildIndicator();
     this._applyLabels();
@@ -205,12 +205,12 @@ class KikxAbilityWizardModal extends HTMLElement {
     this._container.appendChild(step5);
 
     // Cache input references
-    this._nameInput        = this.shadowRoot.querySelector('.name-input');
-    this._categoryInput    = this.shadowRoot.querySelector('.category-input');
-    this._descriptionInput = this.shadowRoot.querySelector('.description-input');
-    this._whenToUseInput   = this.shadowRoot.querySelector('.when-to-use-input');
-    this._contentInput     = this.shadowRoot.querySelector('.content-input');
-    this._autoApproveInput = this.shadowRoot.querySelector('.auto-approve-input');
+    this._nameInput        = this.querySelector('.name-input');
+    this._categoryInput    = this.querySelector('.category-input');
+    this._descriptionInput = this.querySelector('.description-input');
+    this._whenToUseInput   = this.querySelector('.when-to-use-input');
+    this._contentInput     = this.querySelector('.content-input');
+    this._autoApproveInput = this.querySelector('.auto-approve-input');
   }
 
   _makeStepDiv(index) {
@@ -231,12 +231,12 @@ class KikxAbilityWizardModal extends HTMLElement {
   }
 
   _applyLabels() {
-    this.shadowRoot.querySelector('.name-label').textContent        = t(STEP_KEYS[0]);
-    this.shadowRoot.querySelector('.category-label').textContent    = t(STEP_KEYS[1]);
-    this.shadowRoot.querySelector('.description-label').textContent = t(STEP_KEYS[2]);
-    this.shadowRoot.querySelector('.when-to-use-label').textContent = t(STEP_KEYS[3]);
-    this.shadowRoot.querySelector('.content-label').textContent     = t(STEP_KEYS[4]);
-    this.shadowRoot.querySelector('.permissions-label').textContent = t(STEP_KEYS[5]);
+    this.querySelector('.name-label').textContent        = t(STEP_KEYS[0]);
+    this.querySelector('.category-label').textContent    = t(STEP_KEYS[1]);
+    this.querySelector('.description-label').textContent = t(STEP_KEYS[2]);
+    this.querySelector('.when-to-use-label').textContent = t(STEP_KEYS[3]);
+    this.querySelector('.content-label').textContent     = t(STEP_KEYS[4]);
+    this.querySelector('.permissions-label').textContent = t(STEP_KEYS[5]);
 
     this._backButton.textContent = t('ability.wizard.backButton');
     this._nextButton.textContent = t('ability.wizard.nextButton');
@@ -248,7 +248,7 @@ class KikxAbilityWizardModal extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   _syncUI() {
-    let steps = this.shadowRoot.querySelectorAll('.step-content');
+    let steps = this.querySelectorAll('.step-content');
 
     for (let step of steps) {
       let idx = Number(step.getAttribute('data-step'));

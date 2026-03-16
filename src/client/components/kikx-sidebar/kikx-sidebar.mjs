@@ -5,7 +5,7 @@ import { glowInitCSS, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs'
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-sidebar {
       display: flex;
       flex-direction: column;
       width: 300px;
@@ -23,12 +23,12 @@ const TEMPLATE_HTML = `
       transition: width 0.3s ease;
     }
 
-    :host([collapsed]) {
+    kikx-sidebar[collapsed] {
       width: 0;
       overflow: hidden;
     }
 
-    .search-area {
+    kikx-sidebar .search-area {
       display: flex;
       align-items: center;
       gap: var(--spacing-xs, 4px);
@@ -37,7 +37,7 @@ const TEMPLATE_HTML = `
       overflow: visible;
     }
 
-    .search-wrapper {
+    kikx-sidebar .search-wrapper {
       flex: 1;
       position: relative;
       isolation: isolate;
@@ -47,15 +47,15 @@ const TEMPLATE_HTML = `
       transition: border-color 0.2s ease;
     }
 
-    .search-wrapper:focus-within {
+    kikx-sidebar .search-wrapper:focus-within {
       border-color: var(--accent-primary, #00e5ff);
     }
 
-    ${glowInitCSS('.search-wrapper')}
-    ${glowHoverCSS('.search-wrapper:hover:not(:focus-within)')}
-    ${glowCSS('.search-wrapper:focus-within')}
+    ${glowInitCSS('kikx-sidebar .search-wrapper')}
+    ${glowHoverCSS('kikx-sidebar .search-wrapper:hover:not(:focus-within)')}
+    ${glowCSS('kikx-sidebar .search-wrapper:focus-within')}
 
-    .search-input {
+    kikx-sidebar .search-input {
       width: 100%;
       padding: 8px 12px;
       background: transparent;
@@ -67,11 +67,11 @@ const TEMPLATE_HTML = `
       box-sizing: border-box;
     }
 
-    .search-input::placeholder {
+    kikx-sidebar .search-input::placeholder {
       color: var(--input-placeholder, var(--text-muted, #606078));
     }
 
-    .archive-toggle {
+    kikx-sidebar .archive-toggle {
       background: none;
       border: none;
       font-size: 1.25rem;
@@ -81,11 +81,11 @@ const TEMPLATE_HTML = `
       transition: background 0.2s ease;
     }
 
-    .archive-toggle:hover {
+    kikx-sidebar .archive-toggle:hover {
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
     }
 
-    .section-header {
+    kikx-sidebar .section-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -93,7 +93,7 @@ const TEMPLATE_HTML = `
       flex-shrink: 0;
     }
 
-    .section-label {
+    kikx-sidebar .section-label {
       font-size: 1rem;
       font-weight: 600;
       text-transform: uppercase;
@@ -101,7 +101,7 @@ const TEMPLATE_HTML = `
       color: var(--text-secondary, #a0a0b8);
     }
 
-    .section-add-button {
+    kikx-sidebar .section-add-button {
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       color: var(--accent-primary, #00e5ff);
@@ -114,12 +114,12 @@ const TEMPLATE_HTML = `
       transition: background 0.2s ease, box-shadow 0.2s ease;
     }
 
-    .section-add-button:hover {
+    kikx-sidebar .section-add-button:hover {
       background: rgba(255, 255, 255, 0.10);
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.20));
     }
 
-    .friends-area {
+    kikx-sidebar .friends-area {
       flex-shrink: 0;
       max-height: 200px;
       overflow-y: auto;
@@ -127,33 +127,33 @@ const TEMPLATE_HTML = `
       padding: 14px 14px;
     }
 
-    .friends-area::-webkit-scrollbar { width: 6px; }
-    .friends-area::-webkit-scrollbar-track { background: transparent; }
-    .friends-area::-webkit-scrollbar-thumb {
+    kikx-sidebar .friends-area::-webkit-scrollbar { width: 6px; }
+    kikx-sidebar .friends-area::-webkit-scrollbar-track { background: transparent; }
+    kikx-sidebar .friends-area::-webkit-scrollbar-thumb {
       background: var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: 3px;
     }
-    .friends-area::-webkit-scrollbar-button { display: none; }
+    kikx-sidebar .friends-area::-webkit-scrollbar-button { display: none; }
 
-    .session-list {
+    kikx-sidebar .session-list {
       flex: 1;
       overflow-y: auto;
       min-height: 0;
       padding: 4px 10px;
     }
 
-    .session-list::-webkit-scrollbar { width: 6px; }
-    .session-list::-webkit-scrollbar-track { background: transparent; }
-    .session-list::-webkit-scrollbar-thumb {
+    kikx-sidebar .session-list::-webkit-scrollbar { width: 6px; }
+    kikx-sidebar .session-list::-webkit-scrollbar-track { background: transparent; }
+    kikx-sidebar .session-list::-webkit-scrollbar-thumb {
       background: var(--glass-border, rgba(255, 255, 255, 0.10));
       border-radius: 3px;
     }
-    .session-list::-webkit-scrollbar-thumb:hover {
+    kikx-sidebar .session-list::-webkit-scrollbar-thumb:hover {
       background: var(--text-muted, #606078);
     }
-    .session-list::-webkit-scrollbar-button { display: none; }
+    kikx-sidebar .session-list::-webkit-scrollbar-button { display: none; }
 
-    .session-row {
+    kikx-sidebar .session-row {
       display: flex;
       align-items: center;
       gap: var(--spacing-sm, 8px);
@@ -165,27 +165,27 @@ const TEMPLATE_HTML = `
       isolation: isolate;
     }
 
-    .session-row:hover {
+    kikx-sidebar .session-row:hover {
       background: var(--glass-background-hover, rgba(255, 255, 255, 0.08));
     }
 
-    .session-row.active {
+    kikx-sidebar .session-row.active {
       background: var(--accent-dim, rgba(0, 229, 255, 0.10));
       border-left: 2px solid var(--accent-primary, #00e5ff);
       box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.10));
     }
 
-    ${glowInitCSS('.session-row')}
-    ${glowHoverCSS('.session-row:hover:not(.active)')}
-    ${glowCSS('.session-row.active')}
+    ${glowInitCSS('kikx-sidebar .session-row')}
+    ${glowHoverCSS('kikx-sidebar .session-row:hover:not(.active)')}
+    ${glowCSS('kikx-sidebar .session-row.active')}
 
-    .session-icon {
+    kikx-sidebar .session-icon {
       font-size: 1rem;
       flex-shrink: 0;
       opacity: 0.6;
     }
 
-    .session-name {
+    kikx-sidebar .session-name {
       flex: 1;
       font-size: 1rem;
       color: var(--text-primary, #e8e8f0);
@@ -194,7 +194,7 @@ const TEMPLATE_HTML = `
       text-overflow: ellipsis;
     }
 
-    .sessions-empty {
+    kikx-sidebar .sessions-empty {
       padding: var(--spacing-sm, 8px);
       font-size: 1rem;
       color: var(--text-muted, #606078);
@@ -236,18 +236,6 @@ function getTemplate() {
 class KikxSidebar extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._searchInput       = this.shadowRoot.querySelector('.search-input');
-    this._archiveToggle     = this.shadowRoot.querySelector('.archive-toggle');
-    this._friendsLabel      = this.shadowRoot.querySelector('.friends-label');
-    this._sessionsLabel     = this.shadowRoot.querySelector('.sessions-label');
-    this._addFriendButton   = this.shadowRoot.querySelector('.add-friend-button');
-    this._addSessionButton  = this.shadowRoot.querySelector('.add-session-button');
-    this._friendsList       = this.shadowRoot.querySelector('kikx-friends-list');
-    this._sessionList       = this.shadowRoot.querySelector('.session-list');
-
     this._sessions         = [];
     this._activeSessionID  = null;
     this._archiveVisible = false;
@@ -259,6 +247,20 @@ class KikxSidebar extends HTMLElement {
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._searchInput       = this.querySelector('.search-input');
+      this._archiveToggle     = this.querySelector('.archive-toggle');
+      this._friendsLabel      = this.querySelector('.friends-label');
+      this._sessionsLabel     = this.querySelector('.sessions-label');
+      this._addFriendButton   = this.querySelector('.add-friend-button');
+      this._addSessionButton  = this.querySelector('.add-session-button');
+      this._friendsList       = this.querySelector('kikx-friends-list');
+      this._sessionList       = this.querySelector('.session-list');
+    }
+
     this._render();
     this._archiveToggle.addEventListener('click', this._onArchiveToggle);
     this._addFriendButton.addEventListener('click', this._onAddFriendClick);
@@ -266,7 +268,7 @@ class KikxSidebar extends HTMLElement {
     this._sessionList.addEventListener('click', this._onSessionClick);
 
     // Random glow offset for search wrapper
-    let searchWrapper = this.shadowRoot.querySelector('.search-wrapper');
+    let searchWrapper = this.querySelector('.search-wrapper');
     searchWrapper.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
   }
 

@@ -74,10 +74,17 @@ function registerComponent() {
   class KikxSettingsTabs extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._activeTab = 'profile';
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-settings-tabs {
             display: block;
             flex: 1;
             min-height: 0;
@@ -131,11 +138,8 @@ function registerComponent() {
         </div>
       `;
 
-      this._panels    = this.shadowRoot.querySelectorAll('.panel');
-      this._activeTab = 'profile';
-    }
+      this._panels = this.querySelectorAll('.panel');
 
-    connectedCallback() {
       this._render();
       this._showTab(this._activeTab);
     }
@@ -151,7 +155,7 @@ function registerComponent() {
 
     _render() {
       for (let key of TAB_KEYS) {
-        let panel   = this.shadowRoot.querySelector(`.panel[data-tab="${key}"]`);
+        let panel   = this.querySelector(`.panel[data-tab="${key}"]`);
         let heading = panel.querySelector('.panel-heading');
         heading.textContent = mockT(`settings.tabs.${key}`);
       }
@@ -201,11 +205,11 @@ describe('kikx-settings-tabs', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -213,7 +217,7 @@ describe('kikx-settings-tabs', () => {
   // -------------------------------------------------------------------------
 
   it('contains 5 content panels with data-tab attributes', () => {
-    let panels = element.shadowRoot.querySelectorAll('.panel[data-tab]');
+    let panels = element.querySelectorAll('.panel[data-tab]');
     assert.equal(panels.length, 5, 'should have 5 panels');
 
     let tabValues = Array.from(panels).map((p) => p.getAttribute('data-tab'));
@@ -233,11 +237,11 @@ describe('kikx-settings-tabs', () => {
   // -------------------------------------------------------------------------
 
   it('profile panel visible by default, others hidden', () => {
-    let profilePanel = element.shadowRoot.querySelector('.panel[data-tab="profile"]');
+    let profilePanel = element.querySelector('.panel[data-tab="profile"]');
     assert.ok(profilePanel.hasAttribute('data-active'), 'profile panel should be active');
 
     for (let key of ['account', 'apiKeys', 'permissions', 'appearance']) {
-      let panel = element.shadowRoot.querySelector(`.panel[data-tab="${key}"]`);
+      let panel = element.querySelector(`.panel[data-tab="${key}"]`);
       assert.ok(!panel.hasAttribute('data-active'), `${key} panel should not be active`);
     }
   });
@@ -249,10 +253,10 @@ describe('kikx-settings-tabs', () => {
   it('setting activeTab to account shows account panel', () => {
     element.activeTab = 'account';
 
-    let accountPanel = element.shadowRoot.querySelector('.panel[data-tab="account"]');
+    let accountPanel = element.querySelector('.panel[data-tab="account"]');
     assert.ok(accountPanel.hasAttribute('data-active'), 'account panel should be active');
 
-    let profilePanel = element.shadowRoot.querySelector('.panel[data-tab="profile"]');
+    let profilePanel = element.querySelector('.panel[data-tab="profile"]');
     assert.ok(!profilePanel.hasAttribute('data-active'), 'profile panel should not be active');
   });
 
@@ -263,7 +267,7 @@ describe('kikx-settings-tabs', () => {
   it('setting activeTab to apiKeys shows API Keys panel', () => {
     element.activeTab = 'apiKeys';
 
-    let apiKeysPanel = element.shadowRoot.querySelector('.panel[data-tab="apiKeys"]');
+    let apiKeysPanel = element.querySelector('.panel[data-tab="apiKeys"]');
     assert.ok(apiKeysPanel.hasAttribute('data-active'), 'apiKeys panel should be active');
   });
 
@@ -274,7 +278,7 @@ describe('kikx-settings-tabs', () => {
   it('setting activeTab to permissions shows permissions panel', () => {
     element.activeTab = 'permissions';
 
-    let permissionsPanel = element.shadowRoot.querySelector('.panel[data-tab="permissions"]');
+    let permissionsPanel = element.querySelector('.panel[data-tab="permissions"]');
     assert.ok(permissionsPanel.hasAttribute('data-active'), 'permissions panel should be active');
   });
 
@@ -285,7 +289,7 @@ describe('kikx-settings-tabs', () => {
   it('setting activeTab to appearance shows appearance panel', () => {
     element.activeTab = 'appearance';
 
-    let appearancePanel = element.shadowRoot.querySelector('.panel[data-tab="appearance"]');
+    let appearancePanel = element.querySelector('.panel[data-tab="appearance"]');
     assert.ok(appearancePanel.hasAttribute('data-active'), 'appearance panel should be active');
   });
 
@@ -295,7 +299,7 @@ describe('kikx-settings-tabs', () => {
 
   it('each panel has heading text from i18n', () => {
     for (let key of TAB_KEYS) {
-      let panel   = element.shadowRoot.querySelector(`.panel[data-tab="${key}"]`);
+      let panel   = element.querySelector(`.panel[data-tab="${key}"]`);
       let heading = panel.querySelector('.panel-heading');
       let expected = localeData.settings.tabs[key];
       assert.equal(heading.textContent, expected, `${key} panel heading should be "${expected}"`);
@@ -310,7 +314,7 @@ describe('kikx-settings-tabs', () => {
     for (let targetKey of TAB_KEYS) {
       element.activeTab = targetKey;
 
-      let activePanels = element.shadowRoot.querySelectorAll('.panel[data-active]');
+      let activePanels = element.querySelectorAll('.panel[data-active]');
       assert.equal(activePanels.length, 1, `only one panel should be active when tab is "${targetKey}"`);
       assert.equal(activePanels[0].getAttribute('data-tab'), targetKey);
     }

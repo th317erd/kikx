@@ -4,11 +4,11 @@ import { t } from '../../lib/i18n.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host { display: contents; }
+    kikx-agent-list-modal { display: contents; }
 
-    .agent-list { display: flex; flex-direction: column; gap: var(--spacing-sm, 8px); }
+    kikx-agent-list-modal .agent-list { display: flex; flex-direction: column; gap: var(--spacing-sm, 8px); }
 
-    .agent-card {
+    kikx-agent-list-modal .agent-card {
       display: flex; align-items: center; gap: 12px;
       padding: 10px 12px;
       background: var(--glass-background, rgba(255, 255, 255, 0.05));
@@ -17,28 +17,28 @@ const TEMPLATE_HTML = `
       cursor: pointer; transition: background 0.2s ease;
     }
 
-    .agent-card:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }
+    kikx-agent-list-modal .agent-card:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }
 
-    .agent-avatar {
+    kikx-agent-list-modal .agent-avatar {
       width: 36px; height: 36px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
       font-weight: 700; font-size: 1rem; color: #fff; flex-shrink: 0;
     }
 
-    .agent-name { flex: 1; font-weight: 500; font-size: 1rem; color: var(--text-primary, #e8e8f0); }
+    kikx-agent-list-modal .agent-name { flex: 1; font-weight: 500; font-size: 1rem; color: var(--text-primary, #e8e8f0); }
 
-    .settings-button {
+    kikx-agent-list-modal .settings-button {
       background: none; border: none; font-size: 1.125rem;
       color: var(--text-muted, #606078); cursor: pointer;
       padding: 4px 8px; border-radius: var(--border-radius-small, 4px);
       transition: background 0.2s ease;
     }
 
-    .settings-button:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); color: var(--text-primary, #e8e8f0); }
+    kikx-agent-list-modal .settings-button:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); color: var(--text-primary, #e8e8f0); }
 
-    .empty-state { text-align: center; padding: 20px; color: var(--text-muted, #606078); font-size: 1rem; }
+    kikx-agent-list-modal .empty-state { text-align: center; padding: 20px; color: var(--text-muted, #606078); font-size: 1rem; }
 
-    .add-button {
+    kikx-agent-list-modal .add-button {
       width: 100%; margin-top: var(--spacing-sm, 8px);
       padding: 10px; background: var(--accent-primary, #00e5ff);
       color: #fff; border: none;
@@ -47,11 +47,8 @@ const TEMPLATE_HTML = `
       transition: box-shadow 0.2s ease;
     }
 
-    .add-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
+    kikx-agent-list-modal .add-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
   </style>
-
-  <div class="agent-list"></div>
-  <button class="add-button"></button>
 `;
 
 let cachedTemplate = null;
@@ -70,21 +67,6 @@ class KikxAgentListModal extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-
-    // Create the inner kikx-modal
-    this._modal = document.createElement('kikx-modal');
-    this._modal.setAttribute('modal-title', t('agent.list.title'));
-    this.shadowRoot.appendChild(this._modal);
-
-    // Create the content from template and append into modal
-    let content = getTemplate().content.cloneNode(true);
-    this._modal.appendChild(content);
-
-    this._agentList = this._modal.querySelector('.agent-list');
-    this._addButton = this._modal.querySelector('.add-button');
-    this._addButton.textContent = t('agent.list.addButton');
-
     this._agents = [];
 
     this._onAgentListClick = this._onAgentListClick.bind(this);
@@ -92,6 +74,28 @@ class KikxAgentListModal extends HTMLElement {
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+
+      // Append style from template
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      // Create the inner kikx-modal
+      this._modal = document.createElement('kikx-modal');
+      this._modal.setAttribute('modal-title', t('agent.list.title'));
+      HTMLElement.prototype.appendChild.call(this, this._modal);
+
+      // Create the content and append into modal
+      this._agentList = document.createElement('div');
+      this._agentList.className = 'agent-list';
+      this._modal.appendChild(this._agentList);
+
+      this._addButton = document.createElement('button');
+      this._addButton.className = 'add-button';
+      this._addButton.textContent = t('agent.list.addButton');
+      this._modal.appendChild(this._addButton);
+    }
+
     this._agentList.addEventListener('click', this._onAgentListClick);
     this._addButton.addEventListener('click', this._onAddClick);
     this._render();

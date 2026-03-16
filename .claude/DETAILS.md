@@ -78,7 +78,7 @@ Important details to remember across sessions.
 - `spec/client/create-frame-element-spec.mjs` — Pure factory TDD tests
 - `spec/client/event-driven-rendering-spec.mjs` — Event pipeline TDD tests
 
-**Test count:** ~3204 tests, 0 failures
+**Test count:** ~3291 tests, 0 failures
 
 ### Completed Future Plans
 

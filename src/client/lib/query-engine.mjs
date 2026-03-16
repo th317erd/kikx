@@ -493,8 +493,9 @@ export function $m(selectorOrElements, options) {
   return QueryEngine.from.call(root, options || {}, selectorOrElements);
 }
 
-// $$m(hostElement, selectorOrElements) — operate within a shadow root.
+// $$m(hostElement, selectorOrElements) — operate within a host element.
+// Previously pierced shadow roots; now components use light DOM, so this
+// simply scopes queries to the host element itself.
 export function $$m(hostElement, selectorOrElements) {
-  let shadowRoot = hostElement.shadowRoot || hostElement;
-  return QueryEngine.from.call(shadowRoot, {}, selectorOrElements);
+  return QueryEngine.from.call(hostElement, {}, selectorOrElements);
 }

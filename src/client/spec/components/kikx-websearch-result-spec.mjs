@@ -83,10 +83,17 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._results     = [];
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; border-radius: var(--border-radius-small, 4px); }
+          kikx-websearch-result { display: block; border-radius: var(--border-radius-small, 4px); }
 
           .search-header {
             display: flex; align-items: center; gap: var(--spacing-xs, 4px);
@@ -144,12 +151,9 @@ function registerComponent() {
         <div class="results-list"></div>
       `;
 
-      this._statusText  = this.shadowRoot.querySelector('.status-text');
-      this._resultsList = this.shadowRoot.querySelector('.results-list');
-      this._results     = [];
-    }
+      this._statusText  = this.querySelector('.status-text');
+      this._resultsList = this.querySelector('.results-list');
 
-    connectedCallback() {
       this._renderStatus();
     }
 
@@ -240,11 +244,11 @@ describe('kikx-websearch-result', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -252,11 +256,11 @@ describe('kikx-websearch-result', () => {
   // -------------------------------------------------------------------------
 
   it('contains search header with search icon', () => {
-    let header = element.shadowRoot.querySelector('.search-header');
-    assert.ok(header, 'shadow DOM should contain .search-header');
+    let header = element.querySelector('.search-header');
+    assert.ok(header, 'should contain .search-header');
 
-    let icon = element.shadowRoot.querySelector('.search-icon');
-    assert.ok(icon, 'shadow DOM should contain .search-icon');
+    let icon = element.querySelector('.search-icon');
+    assert.ok(icon, 'should contain .search-icon');
     assert.equal(icon.textContent, '\uD83D\uDD0D', 'search icon should display magnifying glass emoji');
   });
 
@@ -267,7 +271,7 @@ describe('kikx-websearch-result', () => {
   it('status "searching" shows searching text and class', () => {
     element.setAttribute('status', 'searching');
 
-    let statusText = element.shadowRoot.querySelector('.status-text');
+    let statusText = element.querySelector('.status-text');
     assert.equal(statusText.textContent, 'Searching...', 'status text should display "Searching..."');
     assert.ok(statusText.classList.contains('searching'), 'status text should have searching class');
   });
@@ -279,7 +283,7 @@ describe('kikx-websearch-result', () => {
   it('status "completed" shows completed text and class', () => {
     element.setAttribute('status', 'completed');
 
-    let statusText = element.shadowRoot.querySelector('.status-text');
+    let statusText = element.querySelector('.status-text');
     assert.equal(statusText.textContent, 'Completed', 'status text should display "Completed"');
     assert.ok(statusText.classList.contains('completed'), 'status text should have completed class');
   });
@@ -291,7 +295,7 @@ describe('kikx-websearch-result', () => {
   it('status "error" shows error text and class', () => {
     element.setAttribute('status', 'error');
 
-    let statusText = element.shadowRoot.querySelector('.status-text');
+    let statusText = element.querySelector('.status-text');
     assert.equal(statusText.textContent, 'Error', 'status text should display "Error"');
     assert.ok(statusText.classList.contains('error'), 'status text should have error class');
   });
@@ -306,7 +310,7 @@ describe('kikx-websearch-result', () => {
       { title: 'Second Result', url: 'https://example.com/2', snippet: 'Second snippet' },
     ];
 
-    let entries = element.shadowRoot.querySelectorAll('.result-entry');
+    let entries = element.querySelectorAll('.result-entry');
     assert.equal(entries.length, 2, 'should render two result entries');
   });
 
@@ -319,7 +323,7 @@ describe('kikx-websearch-result', () => {
       { title: 'Test Title', url: 'https://example.com', snippet: 'A snippet' },
     ];
 
-    let title = element.shadowRoot.querySelector('.result-title');
+    let title = element.querySelector('.result-title');
     assert.ok(title, 'result entry should contain a .result-title link');
     assert.equal(title.tagName, 'A', 'result title should be an anchor element');
     assert.equal(title.textContent, 'Test Title', 'title text should match');
@@ -337,7 +341,7 @@ describe('kikx-websearch-result', () => {
       { title: 'Title', url: 'https://example.com/page', snippet: 'Snippet' },
     ];
 
-    let url = element.shadowRoot.querySelector('.result-url');
+    let url = element.querySelector('.result-url');
     assert.ok(url, 'result entry should contain a .result-url element');
     assert.equal(url.textContent, 'https://example.com/page', 'URL text should match');
   });
@@ -351,7 +355,7 @@ describe('kikx-websearch-result', () => {
       { title: 'Title', url: 'https://example.com', snippet: 'This is the snippet text' },
     ];
 
-    let snippet = element.shadowRoot.querySelector('.result-snippet');
+    let snippet = element.querySelector('.result-snippet');
     assert.ok(snippet, 'result entry should contain a .result-snippet element');
     assert.equal(snippet.textContent, 'This is the snippet text', 'snippet text should match');
   });
@@ -363,7 +367,7 @@ describe('kikx-websearch-result', () => {
   it('empty results shows no entries', () => {
     element.results = [];
 
-    let entries = element.shadowRoot.querySelectorAll('.result-entry');
+    let entries = element.querySelectorAll('.result-entry');
     assert.equal(entries.length, 0, 'should render zero result entries for empty array');
   });
 

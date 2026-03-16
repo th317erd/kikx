@@ -70,10 +70,9 @@ describe('KikxLoginPage', () => {
     let page = doc.createElement('kikx-login-page');
     doc.body.appendChild(page);
 
-    let shadow       = page.shadowRoot;
-    let title        = shadow.querySelector('.title');
-    let subtitle     = shadow.querySelector('.subtitle');
-    let submitButton = shadow.querySelector('.submit-button');
+    let title        = page.querySelector('.title');
+    let subtitle     = page.querySelector('.subtitle');
+    let submitButton = page.querySelector('.submit-button');
 
     assert.equal(title.textContent, 'Kikx');
     assert.equal(subtitle.textContent, en.login.subtitle);
@@ -85,7 +84,7 @@ describe('KikxLoginPage', () => {
     let page = doc.createElement('kikx-login-page');
     doc.body.appendChild(page);
 
-    let submitButton = page.shadowRoot.querySelector('.submit-button');
+    let submitButton = page.querySelector('.submit-button');
     assert.equal(submitButton.textContent, 'Sign In');
     assert.notEqual(submitButton.textContent, 'Send Magic Link');
   });
@@ -95,7 +94,7 @@ describe('KikxLoginPage', () => {
     let page = doc.createElement('kikx-login-page');
     doc.body.appendChild(page);
 
-    let passwordInput = page.shadowRoot.querySelector('.password-input');
+    let passwordInput = page.querySelector('.password-input');
     assert.equal(passwordInput.placeholder, 'Password');
   });
 
@@ -104,7 +103,7 @@ describe('KikxLoginPage', () => {
     let page = doc.createElement('kikx-login-page');
     doc.body.appendChild(page);
 
-    let emailInput = page.shadowRoot.querySelector('.email-input');
+    let emailInput = page.querySelector('.email-input');
     assert.equal(emailInput.placeholder, en.login.emailPlaceholder);
   });
 
@@ -113,7 +112,7 @@ describe('KikxLoginPage', () => {
     let page = doc.createElement('kikx-login-page');
     doc.body.appendChild(page);
 
-    let styleElement = page.shadowRoot.querySelector('style');
+    let styleElement = page.querySelector('style');
     let cssText      = styleElement.textContent;
 
     assert.ok(cssText.includes('box-sizing: border-box'), 'CSS should contain box-sizing: border-box');
@@ -124,7 +123,7 @@ describe('KikxLoginPage', () => {
     let page = doc.createElement('kikx-login-page');
     doc.body.appendChild(page);
 
-    let styleElement = page.shadowRoot.querySelector('style');
+    let styleElement = page.querySelector('style');
     let cssText      = styleElement.textContent;
 
     // Verify both .form-input and .submit-button have box-sizing
@@ -140,8 +139,8 @@ describe('KikxLoginPage', () => {
     let page = doc.createElement('kikx-login-page');
     doc.body.appendChild(page);
 
-    let form          = page.shadowRoot.querySelector('form');
-    let statusMessage = page.shadowRoot.querySelector('.status-message');
+    let form          = page.querySelector('form');
+    let statusMessage = page.querySelector('.status-message');
 
     form.dispatchEvent(new globalThis.Event('submit', { cancelable: true }));
 
@@ -155,11 +154,11 @@ describe('KikxLoginPage', () => {
     let page = doc.createElement('kikx-login-page');
     doc.body.appendChild(page);
 
-    let emailInput = page.shadowRoot.querySelector('.email-input');
+    let emailInput = page.querySelector('.email-input');
     emailInput.value = 'test@example.com';
 
-    let form          = page.shadowRoot.querySelector('form');
-    let statusMessage = page.shadowRoot.querySelector('.status-message');
+    let form          = page.querySelector('form');
+    let statusMessage = page.querySelector('.status-message');
 
     form.dispatchEvent(new globalThis.Event('submit', { cancelable: true }));
 
@@ -173,7 +172,7 @@ describe('KikxLoginPage', () => {
     let page = doc.createElement('kikx-login-page');
     doc.body.appendChild(page);
 
-    let passwordInput = page.shadowRoot.querySelector('.password-input');
+    let passwordInput = page.querySelector('.password-input');
     assert.equal(passwordInput.type, 'password');
   });
 });
@@ -188,9 +187,9 @@ describe('KikxTopBar', () => {
     let bar = doc.createElement('kikx-top-bar');
     doc.body.appendChild(bar);
 
-    assert.equal(bar.shadowRoot.querySelector('.agents-button'), null, 'No agents button');
-    assert.equal(bar.shadowRoot.querySelector('.new-session-button'), null, 'No new-session button');
-    assert.equal(bar.shadowRoot.querySelector('.logout-button'), null, 'No logout button');
+    assert.equal(bar.querySelector('.agents-button'), null, 'No agents button');
+    assert.equal(bar.querySelector('.new-session-button'), null, 'No new-session button');
+    assert.equal(bar.querySelector('.logout-button'), null, 'No logout button');
   });
 
   it('should render an avatar button instead of settings gear', () => {
@@ -198,10 +197,10 @@ describe('KikxTopBar', () => {
     let bar = doc.createElement('kikx-top-bar');
     doc.body.appendChild(bar);
 
-    let avatarButton = bar.shadowRoot.querySelector('.avatar-button');
+    let avatarButton = bar.querySelector('.avatar-button');
     assert.ok(avatarButton, 'Avatar button should exist');
 
-    let avatar = bar.shadowRoot.querySelector('kikx-user-avatar');
+    let avatar = bar.querySelector('kikx-user-avatar');
     assert.ok(avatar, 'Should contain a kikx-user-avatar element');
   });
 
@@ -210,7 +209,7 @@ describe('KikxTopBar', () => {
     let bar = doc.createElement('kikx-top-bar');
     doc.body.appendChild(bar);
 
-    let rightGroup = bar.shadowRoot.querySelector('.right-group');
+    let rightGroup = bar.querySelector('.right-group');
     let buttons    = rightGroup.querySelectorAll('button');
     assert.equal(buttons.length, 1, 'Should only have avatar button');
   });
@@ -220,7 +219,7 @@ describe('KikxTopBar', () => {
     let bar = doc.createElement('kikx-top-bar');
     doc.body.appendChild(bar);
 
-    let backButton = bar.shadowRoot.querySelector('.back-button');
+    let backButton = bar.querySelector('.back-button');
     assert.ok(backButton, 'Back button should exist');
     assert.equal(backButton.textContent, '\u2190');
   });
@@ -242,7 +241,7 @@ describe('KikxTopBar', () => {
     bar.setAttribute('session-name', 'My Test Session');
     doc.body.appendChild(bar);
 
-    let sessionName = bar.shadowRoot.querySelector('.session-name');
+    let sessionName = bar.querySelector('.session-name');
     assert.equal(sessionName.textContent, 'My Test Session');
   });
 
@@ -251,7 +250,7 @@ describe('KikxTopBar', () => {
     let bar = doc.createElement('kikx-top-bar');
     doc.body.appendChild(bar);
 
-    let sessionName = bar.shadowRoot.querySelector('.session-name');
+    let sessionName = bar.querySelector('.session-name');
     assert.equal(sessionName.textContent, 'Kikx');
   });
 
@@ -262,7 +261,7 @@ describe('KikxTopBar', () => {
 
     bar.setAttribute('session-name', 'Updated Name');
 
-    let sessionName = bar.shadowRoot.querySelector('.session-name');
+    let sessionName = bar.querySelector('.session-name');
     assert.equal(sessionName.textContent, 'Updated Name');
   });
 
@@ -277,7 +276,7 @@ describe('KikxTopBar', () => {
     let bar = doc.createElement('kikx-top-bar');
     doc.body.appendChild(bar);
 
-    let avatar = bar.shadowRoot.querySelector('kikx-user-avatar');
+    let avatar = bar.querySelector('kikx-user-avatar');
     assert.equal(avatar.getAttribute('email'), 'test@example.com');
     assert.equal(avatar.getAttribute('first-name'), 'Test');
     assert.equal(avatar.getAttribute('last-name'), 'User');
@@ -294,7 +293,7 @@ describe('KikxUserAvatar', () => {
     let avatar = doc.createElement('kikx-user-avatar');
     doc.body.appendChild(avatar);
 
-    let container = avatar.shadowRoot.querySelector('.avatar');
+    let container = avatar.querySelector('.avatar');
     assert.equal(container.style.width, '32px');
     assert.equal(container.style.height, '32px');
   });
@@ -305,7 +304,7 @@ describe('KikxUserAvatar', () => {
     avatar.setAttribute('size', '64');
     doc.body.appendChild(avatar);
 
-    let container = avatar.shadowRoot.querySelector('.avatar');
+    let container = avatar.querySelector('.avatar');
     assert.equal(container.style.width, '64px');
     assert.equal(container.style.height, '64px');
   });
@@ -317,7 +316,7 @@ describe('KikxUserAvatar', () => {
     avatar.setAttribute('last-name', 'Doe');
     doc.body.appendChild(avatar);
 
-    let initials = avatar.shadowRoot.querySelector('.initials');
+    let initials = avatar.querySelector('.initials');
     assert.equal(initials.textContent, 'JD');
     assert.notEqual(initials.style.display, 'none');
   });
@@ -328,7 +327,7 @@ describe('KikxUserAvatar', () => {
     avatar.setAttribute('email', 'alice@example.com');
     doc.body.appendChild(avatar);
 
-    let initials = avatar.shadowRoot.querySelector('.initials');
+    let initials = avatar.querySelector('.initials');
     // Gravatar img will try to load, but initials are there as fallback
     assert.equal(initials.textContent, 'AL');
   });
@@ -338,7 +337,7 @@ describe('KikxUserAvatar', () => {
     let avatar = doc.createElement('kikx-user-avatar');
     doc.body.appendChild(avatar);
 
-    let initials = avatar.shadowRoot.querySelector('.initials');
+    let initials = avatar.querySelector('.initials');
     assert.equal(initials.textContent, '??');
   });
 
@@ -348,7 +347,7 @@ describe('KikxUserAvatar', () => {
     avatar.setAttribute('avatar-data', 'data:image/png;base64,AAAA');
     doc.body.appendChild(avatar);
 
-    let img = avatar.shadowRoot.querySelector('.avatar-image');
+    let img = avatar.querySelector('.avatar-image');
     assert.equal(img.src, 'data:image/png;base64,AAAA');
     assert.equal(img.style.display, 'block');
   });
@@ -359,7 +358,7 @@ describe('KikxUserAvatar', () => {
     avatar.setAttribute('email', 'test@example.com');
     doc.body.appendChild(avatar);
 
-    let img = avatar.shadowRoot.querySelector('.avatar-image');
+    let img = avatar.querySelector('.avatar-image');
     assert.ok(img.src.includes('gravatar.com/avatar/'), 'Should use gravatar URL');
     assert.ok(img.src.includes('d=404'), 'Should use 404 fallback');
   });
@@ -372,12 +371,12 @@ describe('KikxUserAvatar', () => {
     avatar.setAttribute('last-name', 'User');
     doc.body.appendChild(avatar);
 
-    let img = avatar.shadowRoot.querySelector('.avatar-image');
+    let img = avatar.querySelector('.avatar-image');
     // Simulate image load error
     img.dispatchEvent(new globalThis.Event('error'));
 
     assert.equal(img.style.display, 'none');
-    let initials = avatar.shadowRoot.querySelector('.initials');
+    let initials = avatar.querySelector('.initials');
     assert.notEqual(initials.style.display, 'none');
     assert.equal(initials.textContent, 'TU');
   });
@@ -393,7 +392,7 @@ describe('KikxFriendsList', () => {
     let list = doc.createElement('kikx-friends-list');
     doc.body.appendChild(list);
 
-    let empty = list.shadowRoot.querySelector('.empty-message');
+    let empty = list.querySelector('.empty-message');
     assert.ok(empty, 'Empty message element should exist');
     assert.equal(empty.textContent, 'No friends yet.');
   });
@@ -408,7 +407,7 @@ describe('KikxFriendsList', () => {
       { id: '2', name: 'Human Two', type: 'user' },
     ];
 
-    let rows = list.shadowRoot.querySelectorAll('.friend-row');
+    let rows = list.querySelectorAll('.friend-row');
     assert.equal(rows.length, 2);
   });
 
@@ -422,7 +421,7 @@ describe('KikxFriendsList', () => {
       { id: '2', name: 'Human Two', type: 'user' },
     ];
 
-    let rows   = list.shadowRoot.querySelectorAll('.friend-row');
+    let rows   = list.querySelectorAll('.friend-row');
     let badge1 = rows[0].querySelector('.agent-badge');
     let badge2 = rows[1].querySelector('.agent-badge');
 
@@ -443,7 +442,7 @@ describe('KikxFriendsList', () => {
     let detail = null;
     list.addEventListener('select-friend', (event) => { detail = event.detail; });
 
-    let row = list.shadowRoot.querySelector('.friend-row');
+    let row = list.querySelector('.friend-row');
     row.click();
 
     assert.ok(detail, 'Event should have been dispatched');
@@ -460,7 +459,7 @@ describe('KikxFriendsList', () => {
       { id: '1', name: 'Agent One', type: 'agent' },
     ];
 
-    let row    = list.shadowRoot.querySelector('.friend-row');
+    let row    = list.querySelector('.friend-row');
     let avatar = row.querySelector('kikx-user-avatar');
     assert.ok(avatar, 'Row should contain avatar element');
     assert.equal(avatar.getAttribute('size'), '28');
@@ -477,8 +476,8 @@ describe('KikxAddFriendModal', () => {
     let wizard = doc.createElement('kikx-add-friend-modal');
     doc.body.appendChild(wizard);
 
-    let typeStep  = wizard.shadowRoot.querySelector('.step-type');
-    let agentStep = wizard.shadowRoot.querySelector('.step-agent');
+    let typeStep  = wizard.querySelector('.step-type');
+    let agentStep = wizard.querySelector('.step-agent');
 
     assert.ok(typeStep.classList.contains('active'), 'Type step should be active');
     assert.ok(!agentStep.classList.contains('active'), 'Agent step should be hidden');
@@ -489,11 +488,11 @@ describe('KikxAddFriendModal', () => {
     let wizard = doc.createElement('kikx-add-friend-modal');
     doc.body.appendChild(wizard);
 
-    let agentButton = wizard.shadowRoot.querySelector('.agent-type-button');
+    let agentButton = wizard.querySelector('.agent-type-button');
     agentButton.click();
 
-    let typeStep  = wizard.shadowRoot.querySelector('.step-type');
-    let agentStep = wizard.shadowRoot.querySelector('.step-agent');
+    let typeStep  = wizard.querySelector('.step-type');
+    let agentStep = wizard.querySelector('.step-agent');
 
     assert.ok(!typeStep.classList.contains('active'), 'Type step should be hidden');
     assert.ok(agentStep.classList.contains('active'), 'Agent step should be active');
@@ -504,10 +503,10 @@ describe('KikxAddFriendModal', () => {
     let wizard = doc.createElement('kikx-add-friend-modal');
     doc.body.appendChild(wizard);
 
-    let userButton = wizard.shadowRoot.querySelector('.user-type-button');
+    let userButton = wizard.querySelector('.user-type-button');
     userButton.click();
 
-    let userStep = wizard.shadowRoot.querySelector('.step-user');
+    let userStep = wizard.querySelector('.step-user');
     assert.ok(userStep.classList.contains('active'), 'User step should be active');
   });
 
@@ -517,14 +516,14 @@ describe('KikxAddFriendModal', () => {
     doc.body.appendChild(wizard);
 
     // Go to agent step
-    wizard.shadowRoot.querySelector('.agent-type-button').click();
-    assert.ok(wizard.shadowRoot.querySelector('.step-agent').classList.contains('active'));
+    wizard.querySelector('.agent-type-button').click();
+    assert.ok(wizard.querySelector('.step-agent').classList.contains('active'));
 
     // Click back
-    let backButton = wizard.shadowRoot.querySelector('.step-agent .back-button');
+    let backButton = wizard.querySelector('.step-agent .back-button');
     backButton.click();
 
-    assert.ok(wizard.shadowRoot.querySelector('.step-type').classList.contains('active'), 'Should be back on type step');
+    assert.ok(wizard.querySelector('.step-type').classList.contains('active'), 'Should be back on type step');
   });
 
   it('should dispatch friend-save with agent data on save', () => {
@@ -533,16 +532,16 @@ describe('KikxAddFriendModal', () => {
     doc.body.appendChild(wizard);
 
     // Go to agent step
-    wizard.shadowRoot.querySelector('.agent-type-button').click();
+    wizard.querySelector('.agent-type-button').click();
 
     // Fill fields
-    wizard.shadowRoot.querySelector('.name-input').value    = 'Test Agent';
-    wizard.shadowRoot.querySelector('.api-key-input').value = 'sk-test-123';
+    wizard.querySelector('.name-input').value    = 'Test Agent';
+    wizard.querySelector('.api-key-input').value = 'sk-test-123';
 
     let detail = null;
     wizard.addEventListener('friend-save', (event) => { detail = event.detail; });
 
-    wizard.shadowRoot.querySelector('.save-button').click();
+    wizard.querySelector('.save-button').click();
 
     assert.ok(detail, 'friend-save event should fire');
     assert.equal(detail.type, 'agent');
@@ -557,15 +556,15 @@ describe('KikxAddFriendModal', () => {
     doc.body.appendChild(wizard);
 
     // Go to user step
-    wizard.shadowRoot.querySelector('.user-type-button').click();
+    wizard.querySelector('.user-type-button').click();
 
-    wizard.shadowRoot.querySelector('.user-email-input').value = 'friend@example.com';
-    wizard.shadowRoot.querySelector('.user-name-input').value  = 'Friend Name';
+    wizard.querySelector('.user-email-input').value = 'friend@example.com';
+    wizard.querySelector('.user-name-input').value  = 'Friend Name';
 
     let detail = null;
     wizard.addEventListener('friend-save', (event) => { detail = event.detail; });
 
-    wizard.shadowRoot.querySelector('.invite-button').click();
+    wizard.querySelector('.invite-button').click();
 
     assert.ok(detail, 'friend-save event should fire');
     assert.equal(detail.type, 'user');
@@ -579,12 +578,12 @@ describe('KikxAddFriendModal', () => {
     doc.body.appendChild(wizard);
 
     // Go to agent step
-    wizard.shadowRoot.querySelector('.agent-type-button').click();
+    wizard.querySelector('.agent-type-button').click();
 
     let cancelled = false;
     wizard.addEventListener('friend-cancel', () => { cancelled = true; });
 
-    wizard.shadowRoot.querySelector('.step-agent .cancel-button').click();
+    wizard.querySelector('.step-agent .cancel-button').click();
 
     assert.ok(cancelled, 'friend-cancel event should fire');
   });
@@ -595,13 +594,13 @@ describe('KikxAddFriendModal', () => {
     doc.body.appendChild(wizard);
 
     // Go to agent step and fill fields
-    wizard.shadowRoot.querySelector('.agent-type-button').click();
-    wizard.shadowRoot.querySelector('.name-input').value = 'Something';
+    wizard.querySelector('.agent-type-button').click();
+    wizard.querySelector('.name-input').value = 'Something';
 
     wizard.reset();
 
-    assert.ok(wizard.shadowRoot.querySelector('.step-type').classList.contains('active'));
-    assert.equal(wizard.shadowRoot.querySelector('.name-input').value, '');
+    assert.ok(wizard.querySelector('.step-type').classList.contains('active'));
+    assert.equal(wizard.querySelector('.name-input').value, '');
   });
 });
 
@@ -615,8 +614,8 @@ describe('KikxSidebar', () => {
     let sidebar = doc.createElement('kikx-sidebar');
     doc.body.appendChild(sidebar);
 
-    let friendsLabel  = sidebar.shadowRoot.querySelector('.friends-label');
-    let sessionsLabel = sidebar.shadowRoot.querySelector('.sessions-label');
+    let friendsLabel  = sidebar.querySelector('.friends-label');
+    let sessionsLabel = sidebar.querySelector('.sessions-label');
 
     assert.equal(friendsLabel.textContent, 'Friends');
     assert.equal(sessionsLabel.textContent, 'Sessions');
@@ -627,8 +626,8 @@ describe('KikxSidebar', () => {
     let sidebar = doc.createElement('kikx-sidebar');
     doc.body.appendChild(sidebar);
 
-    let addFriendButton  = sidebar.shadowRoot.querySelector('.add-friend-button');
-    let addSessionButton = sidebar.shadowRoot.querySelector('.add-session-button');
+    let addFriendButton  = sidebar.querySelector('.add-friend-button');
+    let addSessionButton = sidebar.querySelector('.add-session-button');
 
     assert.ok(addFriendButton, 'Add friend button should exist');
     assert.ok(addSessionButton, 'Add session button should exist');
@@ -641,7 +640,7 @@ describe('KikxSidebar', () => {
     let sidebar = doc.createElement('kikx-sidebar');
     doc.body.appendChild(sidebar);
 
-    let participantsHeader = sidebar.shadowRoot.querySelector('.participants-header');
+    let participantsHeader = sidebar.querySelector('.participants-header');
     assert.equal(participantsHeader, null, 'Participants header should not exist');
   });
 
@@ -650,7 +649,7 @@ describe('KikxSidebar', () => {
     let sidebar = doc.createElement('kikx-sidebar');
     doc.body.appendChild(sidebar);
 
-    let friendsList = sidebar.shadowRoot.querySelector('kikx-friends-list');
+    let friendsList = sidebar.querySelector('kikx-friends-list');
     assert.ok(friendsList, 'Should contain friends list component');
   });
 
@@ -662,7 +661,7 @@ describe('KikxSidebar', () => {
     let dispatched = false;
     sidebar.addEventListener('add-friend', () => { dispatched = true; });
 
-    sidebar.shadowRoot.querySelector('.add-friend-button').click();
+    sidebar.querySelector('.add-friend-button').click();
     assert.ok(dispatched, 'add-friend event should fire');
   });
 
@@ -674,7 +673,7 @@ describe('KikxSidebar', () => {
     let dispatched = false;
     sidebar.addEventListener('add-session', () => { dispatched = true; });
 
-    sidebar.shadowRoot.querySelector('.add-session-button').click();
+    sidebar.querySelector('.add-session-button').click();
     assert.ok(dispatched, 'add-session event should fire');
   });
 
@@ -687,8 +686,8 @@ describe('KikxSidebar', () => {
       { id: '1', name: 'Agent A', type: 'agent' },
     ];
 
-    let friendsList = sidebar.shadowRoot.querySelector('kikx-friends-list');
-    let rows = friendsList.shadowRoot.querySelectorAll('.friend-row');
+    let friendsList = sidebar.querySelector('kikx-friends-list');
+    let rows = friendsList.querySelectorAll('.friend-row');
     assert.equal(rows.length, 1);
   });
 
@@ -697,7 +696,7 @@ describe('KikxSidebar', () => {
     let sidebar = doc.createElement('kikx-sidebar');
     doc.body.appendChild(sidebar);
 
-    let searchInput = sidebar.shadowRoot.querySelector('.search-input');
+    let searchInput = sidebar.querySelector('.search-input');
     assert.equal(searchInput.placeholder, 'Search...');
   });
 
@@ -709,7 +708,7 @@ describe('KikxSidebar', () => {
     let detail = null;
     sidebar.addEventListener('toggle-archive', (event) => { detail = event.detail; });
 
-    sidebar.shadowRoot.querySelector('.archive-toggle').click();
+    sidebar.querySelector('.archive-toggle').click();
     assert.ok(detail, 'toggle-archive event should fire');
     assert.equal(detail.visible, true);
   });
@@ -734,7 +733,7 @@ describe('KikxStatusBar', () => {
     let bar = doc.createElement('kikx-status-bar');
     doc.body.appendChild(bar);
 
-    let statusText = bar.shadowRoot.querySelector('.status-text');
+    let statusText = bar.querySelector('.status-text');
     assert.equal(statusText.textContent, en.statusBar.disconnected);
   });
 
@@ -743,7 +742,7 @@ describe('KikxStatusBar', () => {
     let bar = doc.createElement('kikx-status-bar');
     doc.body.appendChild(bar);
 
-    let costDisplay = bar.shadowRoot.querySelector('.cost-display');
+    let costDisplay = bar.querySelector('.cost-display');
     assert.ok(costDisplay.innerHTML.includes('$0.00'), 'Should show default zero costs');
   });
 
@@ -757,7 +756,7 @@ describe('KikxStatusBar', () => {
     // seqda emits update events asynchronously (microtask)
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    let statusText = bar.shadowRoot.querySelector('.status-text');
+    let statusText = bar.querySelector('.status-text');
     assert.equal(statusText.textContent, en.statusBar.connected);
   });
 
@@ -771,7 +770,7 @@ describe('KikxStatusBar', () => {
     // seqda emits update events asynchronously (microtask)
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    let costDisplay = bar.shadowRoot.querySelector('.cost-display');
+    let costDisplay = bar.querySelector('.cost-display');
     assert.ok(costDisplay.innerHTML.includes('$1.23'), 'Should show global cost');
     assert.ok(costDisplay.innerHTML.includes('$0.45'), 'Should show service cost');
     assert.ok(costDisplay.innerHTML.includes('$0.12'), 'Should show session cost');
@@ -794,7 +793,7 @@ describe('KikxStatusBar', () => {
     let bar = doc.createElement('kikx-status-bar');
     doc.body.appendChild(bar);
 
-    let statusDot = bar.shadowRoot.querySelector('.status-dot');
+    let statusDot = bar.querySelector('.status-dot');
     assert.ok(statusDot, 'Status dot should exist');
   });
 });
@@ -809,7 +808,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let title = page.shadowRoot.querySelector('.settings-title');
+    let title = page.querySelector('.settings-title');
     assert.equal(title.textContent, 'Settings');
   });
 
@@ -818,7 +817,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let tabs = page.shadowRoot.querySelectorAll('.tab-button');
+    let tabs = page.querySelectorAll('.tab-button');
     assert.equal(tabs.length, 5);
   });
 
@@ -827,7 +826,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let tabs   = page.shadowRoot.querySelectorAll('.tab-button');
+    let tabs   = page.querySelectorAll('.tab-button');
     let labels = Array.from(tabs).map((tab) => tab.textContent);
 
     assert.deepStrictEqual(labels, ['Profile', 'Account', 'Permissions', 'Appearance', 'Logout']);
@@ -838,10 +837,10 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let activeTab = page.shadowRoot.querySelector('.tab-button.active');
+    let activeTab = page.querySelector('.tab-button.active');
     assert.equal(activeTab.textContent, 'Profile');
 
-    let activePanel = page.shadowRoot.querySelector('.tab-panel.active');
+    let activePanel = page.querySelector('.tab-panel.active');
     assert.equal(activePanel.dataset.tab, 'profile');
   });
 
@@ -850,7 +849,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let panels = page.shadowRoot.querySelectorAll('.tab-panel');
+    let panels = page.querySelectorAll('.tab-panel');
     for (let panel of panels) {
       assert.ok(
         !panel.textContent.includes('settings content'),
@@ -864,7 +863,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let profilePanel = page.shadowRoot.querySelector('.tab-panel[data-tab="profile"]');
+    let profilePanel = page.querySelector('.tab-panel[data-tab="profile"]');
     let avatarRow    = profilePanel.querySelector('.avatar-row');
     let avatar       = profilePanel.querySelector('kikx-user-avatar');
 
@@ -878,7 +877,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let profilePanel = page.shadowRoot.querySelector('.tab-panel[data-tab="profile"]');
+    let profilePanel = page.querySelector('.tab-panel[data-tab="profile"]');
     let uploadButton = profilePanel.querySelector('.upload-avatar');
     let removeButton = profilePanel.querySelector('.remove-avatar');
 
@@ -893,7 +892,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let profilePanel = page.shadowRoot.querySelector('.tab-panel[data-tab="profile"]');
+    let profilePanel = page.querySelector('.tab-panel[data-tab="profile"]');
     let emailInput   = profilePanel.querySelector('.email-input');
 
     assert.ok(!emailInput.disabled, 'Email input should be enabled');
@@ -904,7 +903,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let profilePanel = page.shadowRoot.querySelector('.tab-panel[data-tab="profile"]');
+    let profilePanel = page.querySelector('.tab-panel[data-tab="profile"]');
     let hint = profilePanel.querySelector('.form-hint');
 
     assert.ok(hint, 'Email hint should exist');
@@ -916,10 +915,10 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let accountTab = page.shadowRoot.querySelector('.tab-button[data-tab="account"]');
+    let accountTab = page.querySelector('.tab-button[data-tab="account"]');
     accountTab.click();
 
-    let accountPanel  = page.shadowRoot.querySelector('.tab-panel[data-tab="account"]');
+    let accountPanel  = page.querySelector('.tab-panel[data-tab="account"]');
     assert.ok(accountPanel.classList.contains('active'), 'Account panel should be active');
 
     let passwordInputs = accountPanel.querySelectorAll('.form-input[type="password"]');
@@ -931,7 +930,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let logoutPanel = page.shadowRoot.querySelector('.tab-panel[data-tab="logout"]');
+    let logoutPanel = page.querySelector('.tab-panel[data-tab="logout"]');
     assert.ok(logoutPanel, 'Logout panel should exist');
 
     let logoutButton = logoutPanel.querySelector('.logout-action');
@@ -945,7 +944,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let logoutPanel = page.shadowRoot.querySelector('.tab-panel[data-tab="logout"]');
+    let logoutPanel = page.querySelector('.tab-panel[data-tab="logout"]');
     assert.ok(logoutPanel.textContent.includes('You will be returned to the login page'));
   });
 
@@ -959,10 +958,10 @@ describe('KikxSettingsPage', () => {
     store.profile.setUser({ id: '1' }, 'test');
 
     // Switch to logout tab
-    let logoutTab = page.shadowRoot.querySelector('.tab-button[data-tab="logout"]');
+    let logoutTab = page.querySelector('.tab-button[data-tab="logout"]');
     logoutTab.click();
 
-    let logoutButton = page.shadowRoot.querySelector('.tab-panel[data-tab="logout"] .logout-action');
+    let logoutButton = page.querySelector('.tab-panel[data-tab="logout"] .logout-action');
     logoutButton.click();
 
     assert.equal(localStorage.getItem('kikx_auth'), null, 'Auth should be cleared');
@@ -980,7 +979,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let profilePanel = page.shadowRoot.querySelector('.tab-panel[data-tab="profile"]');
+    let profilePanel = page.querySelector('.tab-panel[data-tab="profile"]');
     let firstName    = profilePanel.querySelector('.first-name-input');
     let lastName     = profilePanel.querySelector('.last-name-input');
     let email        = profilePanel.querySelector('.email-input');
@@ -995,15 +994,15 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let accountTab = page.shadowRoot.querySelector('.tab-button[data-tab="account"]');
+    let accountTab = page.querySelector('.tab-button[data-tab="account"]');
     accountTab.click();
 
-    let profileTab = page.shadowRoot.querySelector('.tab-button[data-tab="profile"]');
+    let profileTab = page.querySelector('.tab-button[data-tab="profile"]');
     assert.ok(!profileTab.classList.contains('active'), 'Profile tab should be inactive');
     assert.ok(accountTab.classList.contains('active'), 'Account tab should be active');
 
-    let profilePanel = page.shadowRoot.querySelector('.tab-panel[data-tab="profile"]');
-    let accountPanel = page.shadowRoot.querySelector('.tab-panel[data-tab="account"]');
+    let profilePanel = page.querySelector('.tab-panel[data-tab="profile"]');
+    let accountPanel = page.querySelector('.tab-panel[data-tab="account"]');
     assert.ok(!profilePanel.classList.contains('active'), 'Profile panel should be hidden');
     assert.ok(accountPanel.classList.contains('active'), 'Account panel should be visible');
   });
@@ -1016,7 +1015,7 @@ describe('KikxSettingsPage', () => {
     router.defineRoute('/kikx/', 'sessions');
     router.defineRoute('/kikx/settings', 'settings');
 
-    let backButton = page.shadowRoot.querySelector('.back-button');
+    let backButton = page.querySelector('.back-button');
     backButton.click();
 
     assert.equal(globalThis.window.location.pathname, '/kikx/');
@@ -1027,7 +1026,7 @@ describe('KikxSettingsPage', () => {
     let page = doc.createElement('kikx-settings-page');
     doc.body.appendChild(page);
 
-    let backButton = page.shadowRoot.querySelector('.back-button');
+    let backButton = page.querySelector('.back-button');
     assert.ok(backButton, 'Back button should exist');
     assert.equal(backButton.textContent, '\u2190');
   });
@@ -1177,8 +1176,8 @@ describe('KikxMessageInput', () => {
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    let textarea   = input.shadowRoot.querySelector('.message-textarea');
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let textarea   = input.querySelector('.message-textarea');
+    let sendButton = input.querySelector('.send-button');
 
     assert.ok(textarea, 'Textarea should exist');
     assert.ok(sendButton, 'Send button should exist');
@@ -1192,10 +1191,10 @@ describe('KikxMessageInput', () => {
     let dispatched = null;
     input.addEventListener('send-message', (event) => { dispatched = event.detail; });
 
-    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    let textarea = input.querySelector('.message-textarea');
     textarea.value = 'Hello world';
 
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let sendButton = input.querySelector('.send-button');
     sendButton.click();
 
     assert.ok(dispatched, 'send-message event should fire');
@@ -1215,10 +1214,10 @@ describe('KikxMessageInput', () => {
     input.addEventListener('send-message', (event) => { dispatched = event.detail; });
     input.addEventListener('queue-change', (event) => { queueCount = event.detail.count; });
 
-    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    let textarea = input.querySelector('.message-textarea');
     textarea.value = 'Queued message';
 
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let sendButton = input.querySelector('.send-button');
     sendButton.click();
 
     assert.equal(dispatched, null, 'send-message should NOT fire while interacting');
@@ -1236,8 +1235,8 @@ describe('KikxMessageInput', () => {
     let lastCount  = null;
     input.addEventListener('queue-change', (event) => { lastCount = event.detail.count; });
 
-    let textarea   = input.shadowRoot.querySelector('.message-textarea');
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let textarea   = input.querySelector('.message-textarea');
+    let sendButton = input.querySelector('.send-button');
 
     textarea.value = 'First';
     sendButton.click();
@@ -1258,8 +1257,8 @@ describe('KikxMessageInput', () => {
 
     input.setInteracting(true);
 
-    let textarea   = input.shadowRoot.querySelector('.message-textarea');
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let textarea   = input.querySelector('.message-textarea');
+    let sendButton = input.querySelector('.send-button');
 
     textarea.value = 'First';
     sendButton.click();
@@ -1289,8 +1288,8 @@ describe('KikxMessageInput', () => {
     let lastCount = null;
     input.addEventListener('queue-change', (event) => { lastCount = event.detail.count; });
 
-    let textarea   = input.shadowRoot.querySelector('.message-textarea');
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let textarea   = input.querySelector('.message-textarea');
+    let sendButton = input.querySelector('.send-button');
 
     textarea.value = 'Queued msg';
     sendButton.click();
@@ -1310,8 +1309,8 @@ describe('KikxMessageInput', () => {
 
     input.setInteracting(true);
 
-    let textarea   = input.shadowRoot.querySelector('.message-textarea');
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let textarea   = input.querySelector('.message-textarea');
+    let sendButton = input.querySelector('.send-button');
 
     textarea.value = 'First queued';
     sendButton.click();
@@ -1334,7 +1333,7 @@ describe('KikxMessageInput', () => {
     let dispatched = false;
     input.addEventListener('send-message', () => { dispatched = true; });
 
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let sendButton = input.querySelector('.send-button');
     sendButton.click();
 
     assert.equal(dispatched, false, 'Should not dispatch for empty text');
@@ -1372,7 +1371,7 @@ describe('KikxMessageInput', () => {
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    let textarea = input.querySelector('.message-textarea');
     textarea.value = 'Some text';
 
     let escEvent = new globalThis.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
@@ -1393,7 +1392,7 @@ describe('KikxMessageInput', () => {
 
     input.sessionID = 'ses_abc123';
 
-    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    let textarea = input.querySelector('.message-textarea');
     textarea.value = 'Work in progress';
     textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
 
@@ -1409,7 +1408,7 @@ describe('KikxMessageInput', () => {
 
     input.sessionID = 'ses_xyz789';
 
-    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    let textarea = input.querySelector('.message-textarea');
     assert.equal(textarea.value, 'Restored draft');
   });
 
@@ -1433,14 +1432,14 @@ describe('KikxMessageInput', () => {
 
     input.sessionID = 'ses_persist';
 
-    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    let textarea = input.querySelector('.message-textarea');
     textarea.value = 'Important message';
     textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
 
     assert.equal(sessionStorage.getItem('kikx_draft:ses_persist'), 'Important message');
 
     // Send the message
-    input.shadowRoot.querySelector('.send-button').click();
+    input.querySelector('.send-button').click();
 
     // Draft should still be in sessionStorage
     assert.equal(sessionStorage.getItem('kikx_draft:ses_persist'), 'Important message');
@@ -1454,14 +1453,14 @@ describe('KikxMessageInput', () => {
     input.sessionID = 'ses_queue';
     input.setInteracting(true);
 
-    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    let textarea = input.querySelector('.message-textarea');
     textarea.value = 'Queued text';
     textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
 
     assert.equal(sessionStorage.getItem('kikx_draft:ses_queue'), 'Queued text');
 
     // Queue it
-    input.shadowRoot.querySelector('.send-button').click();
+    input.querySelector('.send-button').click();
 
     // Draft should be cleared — text is in the queue now
     assert.equal(sessionStorage.getItem('kikx_draft:ses_queue'), null);
@@ -1474,7 +1473,7 @@ describe('KikxMessageInput', () => {
 
     input.sessionID = 'ses_empty';
 
-    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    let textarea = input.querySelector('.message-textarea');
     textarea.value = 'Some text';
     textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
 
@@ -1491,7 +1490,7 @@ describe('KikxMessageInput', () => {
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    let textarea = input.shadowRoot.querySelector('.message-textarea');
+    let textarea = input.querySelector('.message-textarea');
     textarea.value = 'No session';
     textarea.dispatchEvent(new globalThis.window.Event('input', { bubbles: true }));
 
@@ -1507,8 +1506,8 @@ describe('KikxMessageInput', () => {
     input.sessionID = 'ses_esc';
     input.setInteracting(true);
 
-    let textarea   = input.shadowRoot.querySelector('.message-textarea');
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let textarea   = input.querySelector('.message-textarea');
+    let sendButton = input.querySelector('.send-button');
 
     textarea.value = 'Queued';
     sendButton.click();
@@ -1530,10 +1529,10 @@ describe('KikxMessageInput', () => {
     doc.body.appendChild(input);
 
     input.sessionID = 'ses_a';
-    assert.equal(input.shadowRoot.querySelector('.message-textarea').value, 'Draft A');
+    assert.equal(input.querySelector('.message-textarea').value, 'Draft A');
 
     input.sessionID = 'ses_b';
-    assert.equal(input.shadowRoot.querySelector('.message-textarea').value, 'Draft B');
+    assert.equal(input.querySelector('.message-textarea').value, 'Draft B');
   });
 });
 
@@ -1598,7 +1597,7 @@ describe('kikx-hml-prompt: password type', () => {
     prompt.setAttribute('label', 'Password');
     doc.body.appendChild(prompt);
 
-    let input = prompt.shadowRoot.querySelector('input[type="password"]');
+    let input = prompt.querySelector('input[type="password"]');
     assert.ok(input, 'should render an input with type="password"');
   });
 });
@@ -1612,7 +1611,7 @@ describe('kikx-hml-prompt: radio/checkbox clickability', () => {
     prompt.setAttribute('options', 'Red,Blue,Green');
     doc.body.appendChild(prompt);
 
-    let labels = prompt.shadowRoot.querySelectorAll('label.radio-row');
+    let labels = prompt.querySelectorAll('label.radio-row');
     assert.equal(labels.length, 3, 'each radio option should be wrapped in a <label>');
 
     // Each label should contain an input and a span
@@ -1630,7 +1629,7 @@ describe('kikx-hml-prompt: radio/checkbox clickability', () => {
     prompt.setAttribute('label', 'I agree');
     doc.body.appendChild(prompt);
 
-    let label = prompt.shadowRoot.querySelector('label.checkbox-row');
+    let label = prompt.querySelector('label.checkbox-row');
     assert.ok(label, 'checkbox should be wrapped in a <label>');
     assert.ok(label.querySelector('input[type="checkbox"]'), 'label should contain checkbox input');
     assert.ok(label.querySelector('span'), 'label should contain text span');
@@ -1650,7 +1649,7 @@ describe('kikx-hml-prompt: getValue/setValue', () => {
     prompt.setAttribute('label', 'Username');
     doc.body.appendChild(prompt);
 
-    let input = prompt.shadowRoot.querySelector('input');
+    let input = prompt.querySelector('input');
     input.value = 'typed-by-user';
 
     assert.equal(prompt.getValue(), 'typed-by-user');
@@ -1676,7 +1675,7 @@ describe('kikx-hml-prompt: getValue/setValue', () => {
     prompt.setAttribute('label', 'Secret');
     doc.body.appendChild(prompt);
 
-    let input = prompt.shadowRoot.querySelector('input[type="password"]');
+    let input = prompt.querySelector('input[type="password"]');
     input.value = 'hunter2';
 
     assert.equal(prompt.getValue(), 'hunter2');
@@ -1690,7 +1689,7 @@ describe('kikx-hml-prompt: getValue/setValue', () => {
     prompt.setAttribute('label', 'Bio');
     doc.body.appendChild(prompt);
 
-    let textarea = prompt.shadowRoot.querySelector('textarea');
+    let textarea = prompt.querySelector('textarea');
     textarea.value = 'Hello world';
 
     assert.equal(prompt.getValue(), 'Hello world');
@@ -1704,7 +1703,7 @@ describe('kikx-hml-prompt: getValue/setValue', () => {
     prompt.setAttribute('label', 'Age');
     doc.body.appendChild(prompt);
 
-    let input = prompt.shadowRoot.querySelector('input[type="number"]');
+    let input = prompt.querySelector('input[type="number"]');
     input.value = '42';
 
     assert.equal(prompt.getValue(), '42');
@@ -1718,7 +1717,7 @@ describe('kikx-hml-prompt: getValue/setValue', () => {
     prompt.setAttribute('label', 'I agree');
     doc.body.appendChild(prompt);
 
-    let checkbox = prompt.shadowRoot.querySelector('input[type="checkbox"]');
+    let checkbox = prompt.querySelector('input[type="checkbox"]');
     assert.equal(prompt.getValue(), false, 'unchecked should be false');
 
     checkbox.checked = true;
@@ -1748,7 +1747,7 @@ describe('kikx-hml-prompt: getValue/setValue', () => {
     prompt.setAttribute('options', 'Red,Blue,Green');
     doc.body.appendChild(prompt);
 
-    let radios = prompt.shadowRoot.querySelectorAll('input[type="radio"]');
+    let radios = prompt.querySelectorAll('input[type="radio"]');
     radios[1].checked = true;
 
     assert.equal(prompt.getValue(), 'Blue');
@@ -1778,7 +1777,7 @@ describe('kikx-hml-prompt: getValue/setValue', () => {
     assert.equal(prompt.getValue(), 'Small');
 
     // Click the second option
-    let options = prompt.shadowRoot.querySelectorAll('.select-option');
+    let options = prompt.querySelectorAll('.select-option');
     options[1].click();
 
     assert.equal(prompt.getValue(), 'Medium');
@@ -1814,7 +1813,7 @@ describe('kikx-hml-prompt: value persistence on readonly', () => {
     prompt.setAttribute('value', 'user-typed-answer');
     prompt.setAttribute('readonly', '');
 
-    let input = prompt.shadowRoot.querySelector('input');
+    let input = prompt.querySelector('input');
     assert.equal(input.value, 'user-typed-answer', 'text value should survive readonly transition');
     assert.equal(input.getAttribute('aria-disabled'), 'true', 'input should be aria-disabled');
     assert.equal(input.tabIndex, -1, 'input should not be focusable');
@@ -1831,7 +1830,7 @@ describe('kikx-hml-prompt: value persistence on readonly', () => {
     prompt.setAttribute('value', 'hunter2');
     prompt.setAttribute('readonly', '');
 
-    let input = prompt.shadowRoot.querySelector('input[type="password"]');
+    let input = prompt.querySelector('input[type="password"]');
     assert.equal(input.value, 'hunter2', 'password value should survive readonly transition');
     assert.equal(input.getAttribute('aria-disabled'), 'true');
   });
@@ -1847,7 +1846,7 @@ describe('kikx-hml-prompt: value persistence on readonly', () => {
     prompt.setAttribute('value', 'My life story');
     prompt.setAttribute('readonly', '');
 
-    let textarea = prompt.shadowRoot.querySelector('textarea');
+    let textarea = prompt.querySelector('textarea');
     assert.equal(textarea.value, 'My life story', 'textarea value should survive readonly transition');
     assert.equal(textarea.getAttribute('aria-disabled'), 'true');
   });
@@ -1863,7 +1862,7 @@ describe('kikx-hml-prompt: value persistence on readonly', () => {
     prompt.setAttribute('value', '25');
     prompt.setAttribute('readonly', '');
 
-    let input = prompt.shadowRoot.querySelector('input[type="number"]');
+    let input = prompt.querySelector('input[type="number"]');
     assert.equal(input.value, '25', 'number value should survive readonly transition');
     assert.equal(input.getAttribute('aria-disabled'), 'true');
   });
@@ -1880,7 +1879,7 @@ describe('kikx-hml-prompt: value persistence on readonly', () => {
     prompt.setAttribute('readonly', '');
 
     assert.equal(prompt.getValue(), 'Large', 'select value should survive readonly transition');
-    let hidden = prompt.shadowRoot.querySelector('input[type="hidden"]');
+    let hidden = prompt.querySelector('input[type="hidden"]');
     assert.equal(hidden.getAttribute('aria-disabled'), 'true');
   });
 
@@ -1895,7 +1894,7 @@ describe('kikx-hml-prompt: value persistence on readonly', () => {
     prompt.setAttribute('value', 'true');
     prompt.setAttribute('readonly', '');
 
-    let checkbox = prompt.shadowRoot.querySelector('input[type="checkbox"]');
+    let checkbox = prompt.querySelector('input[type="checkbox"]');
     assert.equal(checkbox.checked, true, 'checkbox should be checked after readonly transition');
     assert.equal(checkbox.getAttribute('aria-disabled'), 'true');
   });
@@ -1911,7 +1910,7 @@ describe('kikx-hml-prompt: value persistence on readonly', () => {
     prompt.setAttribute('value', 'Blue');
     prompt.setAttribute('readonly', '');
 
-    let radios  = prompt.shadowRoot.querySelectorAll('input[type="radio"]');
+    let radios  = prompt.querySelectorAll('input[type="radio"]');
     let checked = Array.from(radios).find((r) => r.checked);
     assert.ok(checked, 'a radio should be checked');
     assert.equal(checked.value, 'Blue', 'Blue radio should be selected after readonly transition');
@@ -1932,7 +1931,7 @@ describe('kikx-hml-prompt: value persistence on readonly', () => {
     // This is the reload scenario: both attributes are set BEFORE connectedCallback
     doc.body.appendChild(prompt);
 
-    let input = prompt.shadowRoot.querySelector('input');
+    let input = prompt.querySelector('input');
     assert.equal(input.value, 'Portland', 'should render with persisted value on reload');
     assert.equal(input.getAttribute('aria-disabled'), 'true', 'should be aria-disabled on reload');
   });
@@ -1965,10 +1964,7 @@ describe('Prompt value collection from interaction', () => {
     let answers = {};
 
     for (let messageContent of messageContents) {
-      let shadow = messageContent.shadowRoot;
-      if (!shadow) continue;
-
-      let prompts = shadow.querySelectorAll('kikx-hml-prompt');
+      let prompts = messageContent.querySelectorAll('kikx-hml-prompt');
       for (let prompt of prompts) {
         let name  = prompt.getName();
         let value = prompt.getValue();
@@ -1984,9 +1980,8 @@ describe('Prompt value collection from interaction', () => {
     let html = '<p>Enter your name:</p><kikx-hml-prompt name="user-name" type="text" label="Name"></kikx-hml-prompt>';
     let interaction = buildInteractionWithPrompts(doc, html);
 
-    let shadow = interaction.querySelector('kikx-message-content').shadowRoot;
-    let prompt = shadow.querySelector('kikx-hml-prompt');
-    let input  = prompt.shadowRoot.querySelector('input');
+    let prompt = interaction.querySelector('kikx-message-content kikx-hml-prompt');
+    let input  = prompt.querySelector('input');
     input.value = 'Alice';
 
     let answers = collectPromptValues(interaction);
@@ -2002,12 +1997,11 @@ describe('Prompt value collection from interaction', () => {
     `;
     let interaction = buildInteractionWithPrompts(doc, html);
 
-    let shadow  = interaction.querySelector('kikx-message-content').shadowRoot;
-    let prompts = shadow.querySelectorAll('kikx-hml-prompt');
+    let prompts = interaction.querySelectorAll('kikx-message-content kikx-hml-prompt');
 
-    prompts[0].shadowRoot.querySelector('input').value = 'Bob';
-    prompts[1].shadowRoot.querySelector('input').value = 'Smith';
-    prompts[2].shadowRoot.querySelector('input[type="checkbox"]').checked = true;
+    prompts[0].querySelector('input').value = 'Bob';
+    prompts[1].querySelector('input').value = 'Smith';
+    prompts[2].querySelector('input[type="checkbox"]').checked = true;
 
     let answers = collectPromptValues(interaction);
     assert.equal(answers['first-name'], 'Bob');
@@ -2020,9 +2014,8 @@ describe('Prompt value collection from interaction', () => {
     let html = '<kikx-hml-prompt type="text" label="Favorite Color"></kikx-hml-prompt>';
     let interaction = buildInteractionWithPrompts(doc, html);
 
-    let shadow = interaction.querySelector('kikx-message-content').shadowRoot;
-    let prompt = shadow.querySelector('kikx-hml-prompt');
-    prompt.shadowRoot.querySelector('input').value = 'Blue';
+    let prompt = interaction.querySelector('kikx-message-content kikx-hml-prompt');
+    prompt.querySelector('input').value = 'Blue';
 
     let answers = collectPromptValues(interaction);
     assert.equal(answers['favorite-color'], 'Blue');
@@ -2035,8 +2028,8 @@ describe('Prompt value collection from interaction', () => {
 
     assert.equal(interaction.hasAttribute('show-actions'), true, 'show-actions should be set by prompt connectedCallback');
 
-    let submitBtn = interaction.shadowRoot.querySelector('.submit-button');
-    let ignoreBtn = interaction.shadowRoot.querySelector('.ignore-button');
+    let submitBtn = interaction.querySelector('.submit-button');
+    let ignoreBtn = interaction.querySelector('.ignore-button');
     assert.ok(submitBtn, 'submit button should exist');
     assert.ok(ignoreBtn, 'ignore button should exist');
   });
@@ -2049,7 +2042,7 @@ describe('Prompt value collection from interaction', () => {
     let dispatched = null;
     interaction.addEventListener('interaction-submit', (event) => { dispatched = event.detail; });
 
-    let submitBtn = interaction.shadowRoot.querySelector('.submit-button');
+    let submitBtn = interaction.querySelector('.submit-button');
     submitBtn.click();
 
     assert.ok(dispatched, 'interaction-submit should fire');
@@ -2064,7 +2057,7 @@ describe('Prompt value collection from interaction', () => {
     let dispatched = null;
     interaction.addEventListener('interaction-ignore', (event) => { dispatched = event.detail; });
 
-    let ignoreBtn = interaction.shadowRoot.querySelector('.ignore-button');
+    let ignoreBtn = interaction.querySelector('.ignore-button');
     ignoreBtn.click();
 
     assert.ok(dispatched, 'interaction-ignore should fire');
@@ -2182,11 +2175,11 @@ describe('kikx-hml-prompt: readonly behavior', () => {
     prompt.setAttribute('label', 'Q');
     doc.body.appendChild(prompt);
 
-    assert.equal(prompt.shadowRoot.querySelector('input').getAttribute('aria-disabled'), null);
+    assert.equal(prompt.querySelector('input').getAttribute('aria-disabled'), null);
 
     prompt.setAttribute('readonly', '');
-    assert.equal(prompt.shadowRoot.querySelector('input').getAttribute('aria-disabled'), 'true');
-    assert.equal(prompt.shadowRoot.querySelector('input').tabIndex, -1);
+    assert.equal(prompt.querySelector('input').getAttribute('aria-disabled'), 'true');
+    assert.equal(prompt.querySelector('input').tabIndex, -1);
   });
 
   it('should mark textarea as aria-disabled when readonly is set', () => {
@@ -2198,7 +2191,7 @@ describe('kikx-hml-prompt: readonly behavior', () => {
     doc.body.appendChild(prompt);
 
     prompt.setAttribute('readonly', '');
-    assert.equal(prompt.shadowRoot.querySelector('textarea').getAttribute('aria-disabled'), 'true');
+    assert.equal(prompt.querySelector('textarea').getAttribute('aria-disabled'), 'true');
   });
 
   it('should mark all radio buttons as aria-disabled when readonly is set', () => {
@@ -2210,7 +2203,7 @@ describe('kikx-hml-prompt: readonly behavior', () => {
     doc.body.appendChild(prompt);
 
     prompt.setAttribute('readonly', '');
-    let radios = prompt.shadowRoot.querySelectorAll('input[type="radio"]');
+    let radios = prompt.querySelectorAll('input[type="radio"]');
     for (let radio of radios)
       assert.equal(radio.getAttribute('aria-disabled'), 'true', 'radio should be aria-disabled');
   });
@@ -2224,7 +2217,7 @@ describe('kikx-hml-prompt: readonly behavior', () => {
     doc.body.appendChild(prompt);
 
     prompt.setAttribute('readonly', '');
-    assert.equal(prompt.shadowRoot.querySelector('input[type="checkbox"]').getAttribute('aria-disabled'), 'true');
+    assert.equal(prompt.querySelector('input[type="checkbox"]').getAttribute('aria-disabled'), 'true');
   });
 
   it('should apply pointer-events:none via CSS host([readonly])', () => {
@@ -2255,7 +2248,7 @@ describe('kikx-hml-prompt: readonly behavior', () => {
 
     assert.equal(interaction.hasAttribute('show-actions'), false,
       'readonly prompts should NOT trigger show-actions');
-    assert.equal(interaction.shadowRoot.querySelector('.submit-button'), null,
+    assert.equal(interaction.querySelector('.submit-button'), null,
       'submit button should not exist');
   });
 });
@@ -2292,10 +2285,10 @@ describe('Prompt persistence plumbing', () => {
     interaction.setAttribute('show-actions', '');
     doc.body.appendChild(interaction);
 
-    assert.ok(interaction.shadowRoot.querySelector('.submit-button'), 'should have submit button');
+    assert.ok(interaction.querySelector('.submit-button'), 'should have submit button');
 
     interaction.removeAttribute('show-actions');
-    assert.equal(interaction.shadowRoot.querySelector('.submit-button'), null, 'buttons should be removed');
+    assert.equal(interaction.querySelector('.submit-button'), null, 'buttons should be removed');
   });
 
   it('messageContent.content property stores and retrieves raw HTML', () => {
@@ -2316,7 +2309,7 @@ describe('Prompt persistence plumbing', () => {
 
     mc.content = '<kikx-hml-prompt name="q1" type="text" label="Q1"></kikx-hml-prompt>';
 
-    let prompt = mc.shadowRoot.querySelector('kikx-hml-prompt');
+    let prompt = mc.querySelector('kikx-hml-prompt');
     assert.ok(prompt, 'hml-prompt should be rendered inside message content');
     assert.equal(prompt.getName(), 'q1');
   });
@@ -2332,7 +2325,7 @@ describe('Prompt persistence plumbing', () => {
       <kikx-hml-prompt name="age" type="number" label="Age"></kikx-hml-prompt>
     `;
 
-    let prompts = mc.shadowRoot.querySelectorAll('kikx-hml-prompt');
+    let prompts = mc.querySelectorAll('kikx-hml-prompt');
     assert.equal(prompts.length, 2);
     assert.equal(prompts[0].getName(), 'name');
     assert.equal(prompts[1].getName(), 'age');
@@ -2346,10 +2339,10 @@ describe('Prompt persistence plumbing', () => {
     // Simulate reload: HTML has value and readonly already baked in
     mc.content = '<kikx-hml-prompt name="city" type="text" label="City" value="Portland" readonly=""></kikx-hml-prompt>';
 
-    let prompt = mc.shadowRoot.querySelector('kikx-hml-prompt');
+    let prompt = mc.querySelector('kikx-hml-prompt');
     assert.ok(prompt, 'prompt should render');
     assert.equal(prompt.getValue(), 'Portland', 'persisted value should be displayed');
-    assert.equal(prompt.shadowRoot.querySelector('input').getAttribute('aria-disabled'), 'true', 'should be readonly');
+    assert.equal(prompt.querySelector('input').getAttribute('aria-disabled'), 'true', 'should be readonly');
   });
 
   it('full reload scenario: multiple prompts with persisted values', () => {
@@ -2364,7 +2357,7 @@ describe('Prompt persistence plumbing', () => {
       <kikx-hml-prompt name="agree-terms" type="checkbox" label="Agree" value="true" readonly=""></kikx-hml-prompt>
     `;
 
-    let prompts = mc.shadowRoot.querySelectorAll('kikx-hml-prompt');
+    let prompts = mc.querySelectorAll('kikx-hml-prompt');
 
     assert.equal(prompts[0].getValue(), 'Alice', 'text value should persist');
     assert.equal(prompts[1].getValue(), 'Blue', 'select value should persist');
@@ -2372,7 +2365,7 @@ describe('Prompt persistence plumbing', () => {
 
     // All should be aria-disabled
     for (let prompt of prompts) {
-      let inputs = prompt.shadowRoot.querySelectorAll('input, textarea');
+      let inputs = prompt.querySelectorAll('input, textarea');
       for (let input of inputs)
         assert.equal(input.getAttribute('aria-disabled'), 'true', 'all inputs should be aria-disabled on reload');
     }
@@ -2395,11 +2388,11 @@ describe('KikxPermissionRequest', () => {
       { command: 'cat', arguments: ['file.txt'], status: 'needs-approval' },
     ];
 
-    let rows = perm.shadowRoot.querySelectorAll('.command-row:not(.header-row)');
+    let rows = perm.querySelectorAll('.command-row:not(.header-row)');
     assert.equal(rows.length, 3);
 
     // Should also have a header row for multi-command permissions
-    let headerRow = perm.shadowRoot.querySelector('.header-row');
+    let headerRow = perm.querySelector('.header-row');
     assert.ok(headerRow, 'Should have a select-all header row');
   });
 
@@ -2412,7 +2405,7 @@ describe('KikxPermissionRequest', () => {
       { command: 'ls', arguments: ['-la', '/tmp'], status: 'needs-approval' },
     ];
 
-    let codeEl = perm.shadowRoot.querySelector('.command-text');
+    let codeEl = perm.querySelector('.command-text');
     assert.ok(codeEl);
     assert.equal(codeEl.textContent, 'ls -la /tmp');
   });
@@ -2426,7 +2419,7 @@ describe('KikxPermissionRequest', () => {
       { command: 'ls', arguments: [], status: 'needs-approval' },
     ];
 
-    let buttons = perm.shadowRoot.querySelectorAll('.decision-button');
+    let buttons = perm.querySelectorAll('.decision-button');
     assert.equal(buttons.length, 4);
   });
 
@@ -2440,7 +2433,7 @@ describe('KikxPermissionRequest', () => {
       { command: 'grep', arguments: ['foo'], status: 'needs-approval' },
     ];
 
-    let rows = perm.shadowRoot.querySelectorAll('.command-row');
+    let rows = perm.querySelectorAll('.command-row');
     assert.equal(rows.length, 2);
 
     // First row should be pre-approved (no decision buttons)
@@ -2462,7 +2455,7 @@ describe('KikxPermissionRequest', () => {
       { command: 'ls', arguments: [], status: 'needs-approval' },
     ];
 
-    let buttons = perm.shadowRoot.querySelectorAll('.decision-button');
+    let buttons = perm.querySelectorAll('.decision-button');
 
     // Click the first button (allow-forever)
     buttons[0].click();
@@ -2487,11 +2480,11 @@ describe('KikxPermissionRequest', () => {
       { command: 'grep', arguments: ['foo'], status: 'needs-approval' },
     ];
 
-    let confirmBtn = perm.shadowRoot.querySelector('.confirm-button');
+    let confirmBtn = perm.querySelector('.confirm-button');
     assert.ok(confirmBtn.disabled, 'Confirm should be disabled initially');
 
     // Decide on first command only (skip header row)
-    let commandRows = perm.shadowRoot.querySelectorAll('.command-row:not(.header-row)');
+    let commandRows = perm.querySelectorAll('.command-row:not(.header-row)');
     let firstButton = commandRows[0].querySelector('.decision-button');
     firstButton.click();
 
@@ -2516,7 +2509,7 @@ describe('KikxPermissionRequest', () => {
     ];
 
     // Click allow-forever for ls (skip header row)
-    let rows = perm.shadowRoot.querySelectorAll('.command-row:not(.header-row)');
+    let rows = perm.querySelectorAll('.command-row:not(.header-row)');
     rows[0].querySelector('.decision-button[data-decision="allow-forever"]').click();
 
     // Click deny-once for grep
@@ -2527,7 +2520,7 @@ describe('KikxPermissionRequest', () => {
       dispatched = event.detail;
     });
 
-    let confirmBtn = perm.shadowRoot.querySelector('.confirm-button');
+    let confirmBtn = perm.querySelector('.confirm-button');
     confirmBtn.click();
 
     assert.ok(dispatched, 'Event should have been dispatched');
@@ -2554,7 +2547,7 @@ describe('KikxPermissionRequest', () => {
 
     // The CSS :host([processed]) hides these — in JSDOM we check computed
     // style isn't reliable, but we can verify the processed-badge is displayed
-    let badge = perm.shadowRoot.querySelector('.processed-badge');
+    let badge = perm.querySelector('.processed-badge');
     assert.ok(badge, 'Processed badge should exist');
   });
 
@@ -2568,7 +2561,7 @@ describe('KikxPermissionRequest', () => {
       { command: 'cat', arguments: ['file'], status: 'allowed' },
     ];
 
-    let confirmBtn = perm.shadowRoot.querySelector('.confirm-button');
+    let confirmBtn = perm.querySelector('.confirm-button');
     assert.ok(!confirmBtn.disabled, 'Confirm should be enabled when all pre-approved');
   });
 });
@@ -2585,8 +2578,7 @@ describe('Sanitizer strips kikx-permission-request', () => {
 
     mc.content = '<p>Hello</p><kikx-permission-request permission-id="fake"></kikx-permission-request><p>World</p>';
 
-    let shadow = mc.shadowRoot;
-    let body   = shadow.querySelector('.message-body');
+    let body = mc.querySelector('.message-body');
 
     // The permission-request element should be stripped
     assert.equal(body.querySelectorAll('kikx-permission-request').length, 0,
@@ -2610,9 +2602,8 @@ describe('KikxSessionLink', () => {
     link.setAttribute('target-session-id', 'ses_abc123');
     doc.body.appendChild(link);
 
-    let shadow = link.shadowRoot;
-    let title  = shadow.querySelector('.link-title');
-    let meta   = shadow.querySelector('.link-meta');
+    let title = link.querySelector('.link-title');
+    let meta  = link.querySelector('.link-meta');
 
     assert.equal(title.textContent, 'My Sub-Session');
     assert.equal(meta.textContent, 'Session');
@@ -2625,7 +2616,7 @@ describe('KikxSessionLink', () => {
     link.setAttribute('participant-count', '3');
     doc.body.appendChild(link);
 
-    let meta = link.shadowRoot.querySelector('.link-meta');
+    let meta = link.querySelector('.link-meta');
     assert.equal(meta.textContent, '3 participants');
   });
 
@@ -2636,7 +2627,7 @@ describe('KikxSessionLink', () => {
     link.setAttribute('participant-count', '1');
     doc.body.appendChild(link);
 
-    let meta = link.shadowRoot.querySelector('.link-meta');
+    let meta = link.querySelector('.link-meta');
     assert.equal(meta.textContent, '1 participant');
   });
 
@@ -2650,7 +2641,7 @@ describe('KikxSessionLink', () => {
     let dispatched = null;
     link.addEventListener('select-session', (event) => { dispatched = event.detail; });
 
-    let card = link.shadowRoot.querySelector('.link-card');
+    let card = link.querySelector('.link-card');
     card.click();
 
     assert.ok(dispatched, 'select-session event should fire');
@@ -2666,7 +2657,7 @@ describe('KikxSessionLink', () => {
     let dispatched = null;
     link.addEventListener('select-session', (event) => { dispatched = event.detail; });
 
-    let card = link.shadowRoot.querySelector('.link-card');
+    let card = link.querySelector('.link-card');
     card.click();
 
     assert.equal(dispatched, null, 'No event should fire without target-session-id');
@@ -2677,7 +2668,7 @@ describe('KikxSessionLink', () => {
     let link = doc.createElement('kikx-session-link');
     doc.body.appendChild(link);
 
-    let title = link.shadowRoot.querySelector('.link-title');
+    let title = link.querySelector('.link-title');
     assert.equal(title.textContent, 'Sub-session');
   });
 });
@@ -2695,7 +2686,7 @@ describe('KikxInteraction reply features', () => {
     interaction.setAttribute('data-frame-id', 'frm_abc');
     doc.body.appendChild(interaction);
 
-    let replyButton = interaction.shadowRoot.querySelector('.reply-button');
+    let replyButton = interaction.querySelector('.reply-button');
     assert.ok(replyButton, 'Reply button should exist');
     assert.equal(replyButton.textContent, 'Reply');
   });
@@ -2707,12 +2698,12 @@ describe('KikxInteraction reply features', () => {
     interaction.setAttribute('data-frame-id', 'frm_sys');
     doc.body.appendChild(interaction);
 
-    // JSDOM doesn't resolve :host() selectors in getComputedStyle, so verify
-    // the CSS rule exists in the shadow stylesheet instead.
-    let styleEl = interaction.shadowRoot.querySelector('style');
-    assert.ok(styleEl, 'Shadow root should contain a <style> element');
+    // Verify the CSS rule exists that hides reply-button for system alignment.
+    // With Light DOM, :host([alignment="system"]) became kikx-interaction[alignment="system"].
+    let styleEl = interaction.querySelector('style');
+    assert.ok(styleEl, 'Element should contain a <style> element');
     assert.ok(
-      styleEl.textContent.includes(':host([alignment="system"]) .reply-button'),
+      styleEl.textContent.includes('kikx-interaction[alignment="system"] .reply-button'),
       'CSS should contain a rule hiding .reply-button for system alignment',
     );
   });
@@ -2728,7 +2719,7 @@ describe('KikxInteraction reply features', () => {
     let dispatched = null;
     interaction.addEventListener('reply-to-message', (event) => { dispatched = event.detail; });
 
-    let replyButton = interaction.shadowRoot.querySelector('.reply-button');
+    let replyButton = interaction.querySelector('.reply-button');
     replyButton.click();
 
     assert.ok(dispatched, 'reply-to-message event should fire');
@@ -2744,7 +2735,7 @@ describe('KikxInteraction reply features', () => {
     interaction.setAttribute('reply-count', '5');
     doc.body.appendChild(interaction);
 
-    let badge = interaction.shadowRoot.querySelector('.reply-count-badge');
+    let badge = interaction.querySelector('.reply-count-badge');
     assert.ok(badge, 'Reply count badge should exist');
     assert.equal(badge.textContent, '5 replies');
   });
@@ -2757,7 +2748,7 @@ describe('KikxInteraction reply features', () => {
     interaction.setAttribute('reply-count', '1');
     doc.body.appendChild(interaction);
 
-    let badge = interaction.shadowRoot.querySelector('.reply-count-badge');
+    let badge = interaction.querySelector('.reply-count-badge');
     assert.equal(badge.textContent, '1 reply');
   });
 
@@ -2769,7 +2760,7 @@ describe('KikxInteraction reply features', () => {
     interaction.setAttribute('parent-preview', 'User: Can you help me?');
     doc.body.appendChild(interaction);
 
-    let contextText = interaction.shadowRoot.querySelector('.reply-context-text');
+    let contextText = interaction.querySelector('.reply-context-text');
     assert.ok(contextText, 'Reply context text should exist');
     assert.equal(contextText.textContent, 'User: Can you help me?');
   });
@@ -2785,7 +2776,7 @@ describe('KikxMessageInput reply mode', () => {
     let input = doc.createElement('kikx-message-input');
     doc.body.appendChild(input);
 
-    let banner = input.shadowRoot.querySelector('.reply-banner');
+    let banner = input.querySelector('.reply-banner');
     assert.ok(banner, 'Reply banner should exist');
     assert.ok(!banner.classList.contains('visible'), 'Reply banner should be hidden');
   });
@@ -2797,8 +2788,8 @@ describe('KikxMessageInput reply mode', () => {
 
     input.setReplyMode('frm_parent', 'Agent Smith');
 
-    let banner     = input.shadowRoot.querySelector('.reply-banner');
-    let bannerName = input.shadowRoot.querySelector('.reply-banner-name');
+    let banner     = input.querySelector('.reply-banner');
+    let bannerName = input.querySelector('.reply-banner-name');
 
     assert.ok(banner.classList.contains('visible'), 'Reply banner should be visible');
     assert.equal(bannerName.textContent, 'Agent Smith');
@@ -2812,7 +2803,7 @@ describe('KikxMessageInput reply mode', () => {
     input.setReplyMode('frm_parent', 'Agent');
     input.clearReplyMode();
 
-    let banner = input.shadowRoot.querySelector('.reply-banner');
+    let banner = input.querySelector('.reply-banner');
     assert.ok(!banner.classList.contains('visible'), 'Reply banner should be hidden after clear');
   });
 
@@ -2826,10 +2817,10 @@ describe('KikxMessageInput reply mode', () => {
     let dispatched = null;
     input.addEventListener('send-message', (event) => { dispatched = event.detail; });
 
-    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    let textarea   = input.querySelector('.message-textarea');
     textarea.value = 'My reply';
 
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let sendButton = input.querySelector('.send-button');
     sendButton.click();
 
     assert.ok(dispatched, 'send-message event should fire');
@@ -2844,13 +2835,13 @@ describe('KikxMessageInput reply mode', () => {
 
     input.setReplyMode('frm_parent', 'Agent');
 
-    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    let textarea   = input.querySelector('.message-textarea');
     textarea.value = 'Reply text';
 
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let sendButton = input.querySelector('.send-button');
     sendButton.click();
 
-    let banner = input.shadowRoot.querySelector('.reply-banner');
+    let banner = input.querySelector('.reply-banner');
     assert.ok(!banner.classList.contains('visible'), 'Reply banner should be hidden after send');
   });
 
@@ -2862,10 +2853,10 @@ describe('KikxMessageInput reply mode', () => {
     let dispatched = null;
     input.addEventListener('send-message', (event) => { dispatched = event.detail; });
 
-    let textarea   = input.shadowRoot.querySelector('.message-textarea');
+    let textarea   = input.querySelector('.message-textarea');
     textarea.value = 'Normal message';
 
-    let sendButton = input.shadowRoot.querySelector('.send-button');
+    let sendButton = input.querySelector('.send-button');
     sendButton.click();
 
     assert.ok(dispatched, 'send-message event should fire');
@@ -2880,10 +2871,10 @@ describe('KikxMessageInput reply mode', () => {
 
     input.setReplyMode('frm_parent', 'Agent');
 
-    let cancelButton = input.shadowRoot.querySelector('.reply-cancel-button');
+    let cancelButton = input.querySelector('.reply-cancel-button');
     cancelButton.click();
 
-    let banner = input.shadowRoot.querySelector('.reply-banner');
+    let banner = input.querySelector('.reply-banner');
     assert.ok(!banner.classList.contains('visible'), 'Reply banner should be hidden after cancel');
   });
 });

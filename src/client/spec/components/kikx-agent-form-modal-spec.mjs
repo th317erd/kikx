@@ -74,10 +74,21 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._agent = null;
+
+      this._onSaveClick   = this._onSaveClick.bind(this);
+      this._onDeleteClick = this._onDeleteClick.bind(this);
+      this._onCancelClick = this._onCancelClick.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; }
+          kikx-agent-form-modal { display: block; }
 
           .form-group { margin-bottom: 12px; }
 
@@ -167,30 +178,22 @@ function registerComponent() {
         </div>
       `;
 
-      this._nameInput        = this.shadowRoot.querySelector('.name-input');
-      this._providerInput    = this.shadowRoot.querySelector('.provider-input');
-      this._apiKeyInput      = this.shadowRoot.querySelector('.api-key-input');
-      this._modelInput       = this.shadowRoot.querySelector('.model-input');
-      this._riskLevelSelect  = this.shadowRoot.querySelector('.risk-level-select');
+      this._nameInput        = this.querySelector('.name-input');
+      this._providerInput    = this.querySelector('.provider-input');
+      this._apiKeyInput      = this.querySelector('.api-key-input');
+      this._modelInput       = this.querySelector('.model-input');
+      this._riskLevelSelect  = this.querySelector('.risk-level-select');
 
-      this._nameLabel        = this.shadowRoot.querySelector('.name-label');
-      this._providerLabel    = this.shadowRoot.querySelector('.provider-label');
-      this._apiKeyLabel      = this.shadowRoot.querySelector('.api-key-label');
-      this._modelLabel       = this.shadowRoot.querySelector('.model-label');
-      this._riskLevelLabel   = this.shadowRoot.querySelector('.risk-level-label');
+      this._nameLabel        = this.querySelector('.name-label');
+      this._providerLabel    = this.querySelector('.provider-label');
+      this._apiKeyLabel      = this.querySelector('.api-key-label');
+      this._modelLabel       = this.querySelector('.model-label');
+      this._riskLevelLabel   = this.querySelector('.risk-level-label');
 
-      this._saveButton   = this.shadowRoot.querySelector('.save-button');
-      this._deleteButton = this.shadowRoot.querySelector('.delete-button');
-      this._cancelButton = this.shadowRoot.querySelector('.cancel-button');
+      this._saveButton   = this.querySelector('.save-button');
+      this._deleteButton = this.querySelector('.delete-button');
+      this._cancelButton = this.querySelector('.cancel-button');
 
-      this._agent = null;
-
-      this._onSaveClick   = this._onSaveClick.bind(this);
-      this._onDeleteClick = this._onDeleteClick.bind(this);
-      this._onCancelClick = this._onCancelClick.bind(this);
-    }
-
-    connectedCallback() {
       this._nameLabel.textContent      = mockT('agent.form.nameLabel');
       this._providerLabel.textContent  = mockT('agent.form.providerLabel');
       this._apiKeyLabel.textContent    = mockT('agent.form.apiKeyLabel');
@@ -317,11 +320,11 @@ describe('kikx-agent-form-modal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -329,13 +332,13 @@ describe('kikx-agent-form-modal', () => {
   // -------------------------------------------------------------------------
 
   it('renders labels from i18n', () => {
-    let nameLabel     = element.shadowRoot.querySelector('.name-label');
-    let providerLabel = element.shadowRoot.querySelector('.provider-label');
-    let apiKeyLabel   = element.shadowRoot.querySelector('.api-key-label');
-    let modelLabel    = element.shadowRoot.querySelector('.model-label');
-    let saveButton    = element.shadowRoot.querySelector('.save-button');
-    let deleteButton  = element.shadowRoot.querySelector('.delete-button');
-    let cancelButton  = element.shadowRoot.querySelector('.cancel-button');
+    let nameLabel     = element.querySelector('.name-label');
+    let providerLabel = element.querySelector('.provider-label');
+    let apiKeyLabel   = element.querySelector('.api-key-label');
+    let modelLabel    = element.querySelector('.model-label');
+    let saveButton    = element.querySelector('.save-button');
+    let deleteButton  = element.querySelector('.delete-button');
+    let cancelButton  = element.querySelector('.cancel-button');
 
     assert.equal(nameLabel.textContent, localeData.agent.form.nameLabel);
     assert.equal(providerLabel.textContent, localeData.agent.form.providerLabel);
@@ -353,10 +356,10 @@ describe('kikx-agent-form-modal', () => {
   it('form fields start empty in create mode', () => {
     element.setAttribute('mode', 'create');
 
-    let nameInput     = element.shadowRoot.querySelector('.name-input');
-    let providerInput = element.shadowRoot.querySelector('.provider-input');
-    let apiKeyInput   = element.shadowRoot.querySelector('.api-key-input');
-    let modelInput    = element.shadowRoot.querySelector('.model-input');
+    let nameInput     = element.querySelector('.name-input');
+    let providerInput = element.querySelector('.provider-input');
+    let apiKeyInput   = element.querySelector('.api-key-input');
+    let modelInput    = element.querySelector('.model-input');
 
     assert.equal(nameInput.value, '', 'name input should be empty');
     assert.equal(providerInput.value, '', 'provider input should be empty');
@@ -378,10 +381,10 @@ describe('kikx-agent-form-modal', () => {
       model:    'claude-3-opus',
     };
 
-    let nameInput     = element.shadowRoot.querySelector('.name-input');
-    let providerInput = element.shadowRoot.querySelector('.provider-input');
-    let apiKeyInput   = element.shadowRoot.querySelector('.api-key-input');
-    let modelInput    = element.shadowRoot.querySelector('.model-input');
+    let nameInput     = element.querySelector('.name-input');
+    let providerInput = element.querySelector('.provider-input');
+    let apiKeyInput   = element.querySelector('.api-key-input');
+    let modelInput    = element.querySelector('.model-input');
 
     assert.equal(nameInput.value, 'Test Agent');
     assert.equal(providerInput.value, 'anthropic');
@@ -394,7 +397,7 @@ describe('kikx-agent-form-modal', () => {
   // -------------------------------------------------------------------------
 
   it('api key input is type password', () => {
-    let apiKeyInput = element.shadowRoot.querySelector('.api-key-input');
+    let apiKeyInput = element.querySelector('.api-key-input');
     assert.equal(apiKeyInput.getAttribute('type'), 'password', 'api key input should be type password');
   });
 
@@ -405,10 +408,10 @@ describe('kikx-agent-form-modal', () => {
   it('save dispatches agent-save with form values', () => {
     element.agent = { id: 'agent-99', name: '', provider: '', apiKey: '', model: '' };
 
-    let nameInput     = element.shadowRoot.querySelector('.name-input');
-    let providerInput = element.shadowRoot.querySelector('.provider-input');
-    let apiKeyInput   = element.shadowRoot.querySelector('.api-key-input');
-    let modelInput    = element.shadowRoot.querySelector('.model-input');
+    let nameInput     = element.querySelector('.name-input');
+    let providerInput = element.querySelector('.provider-input');
+    let apiKeyInput   = element.querySelector('.api-key-input');
+    let modelInput    = element.querySelector('.model-input');
 
     nameInput.value     = 'My Agent';
     providerInput.value = 'openai';
@@ -423,7 +426,7 @@ describe('kikx-agent-form-modal', () => {
       eventData  = event;
     });
 
-    let saveButton = element.shadowRoot.querySelector('.save-button');
+    let saveButton = element.querySelector('.save-button');
     saveButton.click();
 
     assert.ok(eventFired, 'agent-save event should be dispatched');
@@ -454,7 +457,7 @@ describe('kikx-agent-form-modal', () => {
       eventData  = event;
     });
 
-    let deleteButton = element.shadowRoot.querySelector('.delete-button');
+    let deleteButton = element.querySelector('.delete-button');
     deleteButton.click();
 
     assert.ok(eventFired, 'agent-delete event should be dispatched');
@@ -476,7 +479,7 @@ describe('kikx-agent-form-modal', () => {
       eventData  = event;
     });
 
-    let cancelButton = element.shadowRoot.querySelector('.cancel-button');
+    let cancelButton = element.querySelector('.cancel-button');
     cancelButton.click();
 
     assert.ok(eventFired, 'agent-cancel event should be dispatched');
@@ -491,7 +494,7 @@ describe('kikx-agent-form-modal', () => {
   it('delete button hidden in create mode', () => {
     element.setAttribute('mode', 'create');
 
-    let deleteButton = element.shadowRoot.querySelector('.delete-button');
+    let deleteButton = element.querySelector('.delete-button');
     assert.equal(deleteButton.style.display, 'none', 'delete button should be hidden in create mode');
   });
 
@@ -500,10 +503,10 @@ describe('kikx-agent-form-modal', () => {
   // -------------------------------------------------------------------------
 
   it('getValues() returns current field values', () => {
-    let nameInput     = element.shadowRoot.querySelector('.name-input');
-    let providerInput = element.shadowRoot.querySelector('.provider-input');
-    let apiKeyInput   = element.shadowRoot.querySelector('.api-key-input');
-    let modelInput    = element.shadowRoot.querySelector('.model-input');
+    let nameInput     = element.querySelector('.name-input');
+    let providerInput = element.querySelector('.provider-input');
+    let apiKeyInput   = element.querySelector('.api-key-input');
+    let modelInput    = element.querySelector('.model-input');
 
     nameInput.value     = 'Typed Name';
     providerInput.value = 'typed-provider';
@@ -526,7 +529,7 @@ describe('kikx-agent-form-modal', () => {
   // -------------------------------------------------------------------------
 
   it('renders risk level dropdown with correct options', () => {
-    let select = element.shadowRoot.querySelector('.risk-level-select');
+    let select = element.querySelector('.risk-level-select');
     assert.ok(select, 'should have a risk level select element');
     assert.equal(select.options.length, 4, 'should have 4 options');
 
@@ -545,7 +548,7 @@ describe('kikx-agent-form-modal', () => {
   // -------------------------------------------------------------------------
 
   it('renders risk level label from i18n', () => {
-    let label = element.shadowRoot.querySelector('.risk-level-label');
+    let label = element.querySelector('.risk-level-label');
     assert.ok(label, 'should have a risk level label');
     assert.equal(label.textContent, localeData.agent.form.riskLevel);
   });
@@ -555,7 +558,7 @@ describe('kikx-agent-form-modal', () => {
   // -------------------------------------------------------------------------
 
   it('getValues() includes riskLevel', () => {
-    let select = element.shadowRoot.querySelector('.risk-level-select');
+    let select = element.querySelector('.risk-level-select');
     select.value = 'permissive';
 
     let values = element.getValues();
@@ -576,7 +579,7 @@ describe('kikx-agent-form-modal', () => {
       riskLevel: 'strict',
     };
 
-    let select = element.shadowRoot.querySelector('.risk-level-select');
+    let select = element.querySelector('.risk-level-select');
     assert.equal(select.value, 'strict', 'riskLevel should be pre-selected from agent data');
   });
 
@@ -593,7 +596,7 @@ describe('kikx-agent-form-modal', () => {
       model:    'gpt-4',
     };
 
-    let select = element.shadowRoot.querySelector('.risk-level-select');
+    let select = element.querySelector('.risk-level-select');
     assert.equal(select.value, '', 'riskLevel should default to empty string');
   });
 
@@ -604,7 +607,7 @@ describe('kikx-agent-form-modal', () => {
   it('agent-save event includes riskLevel in detail values', () => {
     element.agent = { id: 'agent-88', name: '', provider: '', apiKey: '', model: '' };
 
-    let select = element.shadowRoot.querySelector('.risk-level-select');
+    let select = element.querySelector('.risk-level-select');
     select.value = 'normal';
 
     let eventData = null;
@@ -613,7 +616,7 @@ describe('kikx-agent-form-modal', () => {
       eventData = event;
     });
 
-    let saveButton = element.shadowRoot.querySelector('.save-button');
+    let saveButton = element.querySelector('.save-button');
     saveButton.click();
 
     assert.ok(eventData, 'agent-save event should fire');
@@ -634,7 +637,7 @@ describe('kikx-agent-form-modal', () => {
       riskLevel: 'permissive',
     };
 
-    let select = element.shadowRoot.querySelector('.risk-level-select');
+    let select = element.querySelector('.risk-level-select');
     assert.equal(select.value, 'permissive', 'should be set first');
 
     element.agent = null;

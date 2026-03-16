@@ -11,12 +11,12 @@
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-session-link {
       display: block;
       cursor: pointer;
     }
 
-    .link-card {
+    kikx-session-link .link-card {
       display: flex;
       align-items: center;
       gap: var(--spacing-sm, 8px);
@@ -30,12 +30,12 @@ const TEMPLATE_HTML = `
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
-    .link-card:hover {
+    kikx-session-link .link-card:hover {
       border-color: var(--accent-primary, #00e5ff);
       box-shadow: 0 0 8px var(--accent-dim, rgba(0, 229, 255, 0.10));
     }
 
-    .link-icon {
+    kikx-session-link .link-icon {
       flex-shrink: 0;
       width: 20px;
       height: 20px;
@@ -46,12 +46,12 @@ const TEMPLATE_HTML = `
       font-size: 14px;
     }
 
-    .link-details {
+    kikx-session-link .link-details {
       flex: 1;
       min-width: 0;
     }
 
-    .link-title {
+    kikx-session-link .link-title {
       font-weight: 600;
       font-size: 0.9rem;
       color: var(--accent-primary, #00e5ff);
@@ -60,20 +60,20 @@ const TEMPLATE_HTML = `
       text-overflow: ellipsis;
     }
 
-    .link-meta {
+    kikx-session-link .link-meta {
       font-size: 0.8rem;
       color: var(--text-muted, #606078);
       margin-top: 2px;
     }
 
-    .link-arrow {
+    kikx-session-link .link-arrow {
       flex-shrink: 0;
       color: var(--text-muted, #606078);
       font-size: 14px;
       transition: transform 0.2s ease;
     }
 
-    .link-card:hover .link-arrow {
+    kikx-session-link .link-card:hover .link-arrow {
       transform: translateX(2px);
       color: var(--accent-primary, #00e5ff);
     }
@@ -107,17 +107,19 @@ class KikxSessionLink extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._title = this.shadowRoot.querySelector('.link-title');
-    this._meta  = this.shadowRoot.querySelector('.link-meta');
-    this._card  = this.shadowRoot.querySelector('.link-card');
-
     this._onClick = this._onClick.bind(this);
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._title = this.querySelector('.link-title');
+      this._meta  = this.querySelector('.link-meta');
+      this._card  = this.querySelector('.link-card');
+    }
+
     this._render();
     this._card.addEventListener('click', this._onClick);
   }
@@ -132,6 +134,9 @@ class KikxSessionLink extends HTMLElement {
   }
 
   _render() {
+    if (!this._title)
+      return;
+
     let title = this.getAttribute('session-title') || 'Sub-session';
     let count = this.getAttribute('participant-count');
 

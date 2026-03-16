@@ -98,10 +98,18 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._onIgnoreClick = this._onIgnoreClick.bind(this);
+      this._onSubmitClick = this._onSubmitClick.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-interaction {
             display: flex;
             gap: var(--spacing-sm, 8px);
             padding: var(--spacing-sm, 8px);
@@ -109,12 +117,12 @@ function registerComponent() {
             align-self: flex-start;
           }
 
-          :host([alignment="user"]) {
+          kikx-interaction[alignment="user"] {
             align-self: flex-end;
             flex-direction: row-reverse;
           }
 
-          :host([alignment="system"]) {
+          kikx-interaction[alignment="system"] {
             align-self: center;
             max-width: 100%;
           }
@@ -160,7 +168,7 @@ function registerComponent() {
             color: var(--text-primary, #e8e8f0);
           }
 
-          :host([alignment="user"]) .content {
+          kikx-interaction[alignment="user"] .content {
             background: var(--user-bubble-background, rgba(229, 57, 53, 0.15));
             border-color: var(--user-bubble-border, rgba(229, 57, 53, 0.30));
           }
@@ -221,17 +229,12 @@ function registerComponent() {
         </div>
       `;
 
-      this._avatar      = this.shadowRoot.querySelector('.avatar');
-      this._header      = this.shadowRoot.querySelector('.header');
-      this._timestamp   = this.shadowRoot.querySelector('.timestamp');
-      this._tokenCount  = this.shadowRoot.querySelector('.token-count');
-      this._footerRight = this.shadowRoot.querySelector('.footer-right');
+      this._avatar      = this.querySelector('.avatar');
+      this._header      = this.querySelector('.header');
+      this._timestamp   = this.querySelector('.timestamp');
+      this._tokenCount  = this.querySelector('.token-count');
+      this._footerRight = this.querySelector('.footer-right');
 
-      this._onIgnoreClick = this._onIgnoreClick.bind(this);
-      this._onSubmitClick = this._onSubmitClick.bind(this);
-    }
-
-    connectedCallback() {
       this._render();
     }
 
@@ -351,11 +354,11 @@ describe('kikx-interaction', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -365,7 +368,7 @@ describe('kikx-interaction', () => {
   it('displays participant name in header', () => {
     element.setAttribute('participant-name', 'Agent Smith');
 
-    let header = element.shadowRoot.querySelector('.header');
+    let header = element.querySelector('.header');
     assert.equal(header.textContent, 'Agent Smith');
   });
 
@@ -376,7 +379,7 @@ describe('kikx-interaction', () => {
   it('displays initials in avatar', () => {
     element.setAttribute('participant-initials', 'AS');
 
-    let avatar = element.shadowRoot.querySelector('.avatar');
+    let avatar = element.querySelector('.avatar');
     assert.equal(avatar.textContent, 'AS');
   });
 
@@ -387,7 +390,7 @@ describe('kikx-interaction', () => {
   it('applies avatar color from attribute', () => {
     element.setAttribute('avatar-color', '#4caf50');
 
-    let avatar = element.shadowRoot.querySelector('.avatar');
+    let avatar = element.querySelector('.avatar');
     let inlineStyle = avatar.style.getPropertyValue('--interaction-avatar-color');
     assert.equal(inlineStyle, '#4caf50');
   });
@@ -400,26 +403,26 @@ describe('kikx-interaction', () => {
     element.setAttribute('alignment', 'user');
 
     assert.equal(element.getAttribute('alignment'), 'user',
-      'alignment attribute should be "user" for CSS :host([alignment="user"]) rules');
+      'alignment attribute should be "user" for CSS kikx-interaction[alignment="user"] rules');
 
-    // Verify the CSS rule exists in the shadow root style
-    let style = element.shadowRoot.querySelector('style');
-    assert.ok(style.textContent.includes(':host([alignment="user"])'),
-      'shadow CSS should contain :host([alignment="user"]) rule');
+    // Verify the CSS rule exists in the style
+    let style = element.querySelector('style');
+    assert.ok(style.textContent.includes('kikx-interaction[alignment="user"]'),
+      'CSS should contain kikx-interaction[alignment="user"] rule');
   });
 
   // -------------------------------------------------------------------------
   // 7. Agent alignment (default) left-aligns
   // -------------------------------------------------------------------------
 
-  it('default (agent) alignment uses flex-start via :host base styles', () => {
+  it('default (agent) alignment uses flex-start via base styles', () => {
     // No alignment attribute set -- defaults to flex-start (left-aligned)
     assert.equal(element.getAttribute('alignment'), null,
       'alignment should not be set by default');
 
-    let style = element.shadowRoot.querySelector('style');
+    let style = element.querySelector('style');
     assert.ok(style.textContent.includes('align-self: flex-start'),
-      'base :host style should include align-self: flex-start');
+      'base kikx-interaction style should include align-self: flex-start');
   });
 
   // -------------------------------------------------------------------------
@@ -431,9 +434,9 @@ describe('kikx-interaction', () => {
 
     assert.equal(element.getAttribute('alignment'), 'system');
 
-    let style = element.shadowRoot.querySelector('style');
-    assert.ok(style.textContent.includes(':host([alignment="system"])'),
-      'shadow CSS should contain :host([alignment="system"]) rule');
+    let style = element.querySelector('style');
+    assert.ok(style.textContent.includes('kikx-interaction[alignment="system"]'),
+      'CSS should contain kikx-interaction[alignment="system"] rule');
   });
 
   // -------------------------------------------------------------------------
@@ -443,7 +446,7 @@ describe('kikx-interaction', () => {
   it('displays timestamp in footer', () => {
     element.setAttribute('timestamp', '2:35 PM');
 
-    let timestamp = element.shadowRoot.querySelector('.timestamp');
+    let timestamp = element.querySelector('.timestamp');
     assert.equal(timestamp.textContent, '2:35 PM');
   });
 
@@ -453,7 +456,7 @@ describe('kikx-interaction', () => {
 
   it('formats token count with pluralization', () => {
     element.setAttribute('token-count', '1');
-    let tokenCount = element.shadowRoot.querySelector('.token-count');
+    let tokenCount = element.querySelector('.token-count');
     assert.equal(tokenCount.textContent, '~1 token');
 
     element.setAttribute('token-count', '150');
@@ -465,7 +468,7 @@ describe('kikx-interaction', () => {
   // -------------------------------------------------------------------------
 
   it('token count is empty when attribute is missing', () => {
-    let tokenCount = element.shadowRoot.querySelector('.token-count');
+    let tokenCount = element.querySelector('.token-count');
     assert.equal(tokenCount.textContent, '');
   });
 
@@ -476,7 +479,7 @@ describe('kikx-interaction', () => {
   it('renders Ignore and Submit buttons when show-actions is present', () => {
     element.setAttribute('show-actions', '');
 
-    let footerRight   = element.shadowRoot.querySelector('.footer-right');
+    let footerRight   = element.querySelector('.footer-right');
     let ignoreButton  = footerRight.querySelector('.ignore-button');
     let submitButton  = footerRight.querySelector('.submit-button');
 
@@ -491,7 +494,7 @@ describe('kikx-interaction', () => {
   // -------------------------------------------------------------------------
 
   it('does not render action buttons when show-actions is absent', () => {
-    let footerRight = element.shadowRoot.querySelector('.footer-right');
+    let footerRight = element.querySelector('.footer-right');
     let buttons     = footerRight.querySelectorAll('button');
     assert.equal(buttons.length, 0, 'should have no action buttons');
   });
@@ -509,7 +512,7 @@ describe('kikx-interaction', () => {
       receivedEvent = event;
     });
 
-    let ignoreButton = element.shadowRoot.querySelector('.ignore-button');
+    let ignoreButton = element.querySelector('.ignore-button');
     ignoreButton.click();
 
     assert.ok(receivedEvent, 'interaction-ignore event should have been dispatched');
@@ -529,7 +532,7 @@ describe('kikx-interaction', () => {
       receivedEvent = event;
     });
 
-    let submitButton = element.shadowRoot.querySelector('.submit-button');
+    let submitButton = element.querySelector('.submit-button');
     submitButton.click();
 
     assert.ok(receivedEvent, 'interaction-submit event should have been dispatched');

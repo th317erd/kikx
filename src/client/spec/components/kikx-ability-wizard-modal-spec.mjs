@@ -88,10 +88,21 @@ function registerComponent() {
   class KikxAbilityWizardModal extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._currentStep = 0;
+
+      this._onBackClick = this._onBackClick.bind(this);
+      this._onNextClick = this._onNextClick.bind(this);
+      this._onSaveClick = this._onSaveClick.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; }
+          kikx-ability-wizard-modal { display: block; }
 
           .step-indicator {
             display: flex; gap: 8px; justify-content: center; margin-bottom: 16px;
@@ -171,20 +182,12 @@ function registerComponent() {
         </div>
       `;
 
-      this._currentStep = 0;
+      this._indicator  = this.querySelector('.step-indicator');
+      this._container  = this.querySelector('.steps-container');
+      this._backButton = this.querySelector('.back-button');
+      this._nextButton = this.querySelector('.next-button');
+      this._saveButton = this.querySelector('.save-button');
 
-      this._indicator  = this.shadowRoot.querySelector('.step-indicator');
-      this._container  = this.shadowRoot.querySelector('.steps-container');
-      this._backButton = this.shadowRoot.querySelector('.back-button');
-      this._nextButton = this.shadowRoot.querySelector('.next-button');
-      this._saveButton = this.shadowRoot.querySelector('.save-button');
-
-      this._onBackClick = this._onBackClick.bind(this);
-      this._onNextClick = this._onNextClick.bind(this);
-      this._onSaveClick = this._onSaveClick.bind(this);
-    }
-
-    connectedCallback() {
       this._buildSteps();
       this._buildIndicator();
       this._applyLabels();
@@ -253,12 +256,12 @@ function registerComponent() {
       step5.innerHTML = '<div class="step-label permissions-label"></div><label class="checkbox-row"><input type="checkbox" class="auto-approve-input" /> Auto-approve</label>';
       this._container.appendChild(step5);
 
-      this._nameInput        = this.shadowRoot.querySelector('.name-input');
-      this._categoryInput    = this.shadowRoot.querySelector('.category-input');
-      this._descriptionInput = this.shadowRoot.querySelector('.description-input');
-      this._whenToUseInput   = this.shadowRoot.querySelector('.when-to-use-input');
-      this._contentInput     = this.shadowRoot.querySelector('.content-input');
-      this._autoApproveInput = this.shadowRoot.querySelector('.auto-approve-input');
+      this._nameInput        = this.querySelector('.name-input');
+      this._categoryInput    = this.querySelector('.category-input');
+      this._descriptionInput = this.querySelector('.description-input');
+      this._whenToUseInput   = this.querySelector('.when-to-use-input');
+      this._contentInput     = this.querySelector('.content-input');
+      this._autoApproveInput = this.querySelector('.auto-approve-input');
     }
 
     _makeStepDiv(index) {
@@ -279,12 +282,12 @@ function registerComponent() {
     }
 
     _applyLabels() {
-      this.shadowRoot.querySelector('.name-label').textContent        = mockT(STEP_KEYS[0]);
-      this.shadowRoot.querySelector('.category-label').textContent    = mockT(STEP_KEYS[1]);
-      this.shadowRoot.querySelector('.description-label').textContent = mockT(STEP_KEYS[2]);
-      this.shadowRoot.querySelector('.when-to-use-label').textContent = mockT(STEP_KEYS[3]);
-      this.shadowRoot.querySelector('.content-label').textContent     = mockT(STEP_KEYS[4]);
-      this.shadowRoot.querySelector('.permissions-label').textContent = mockT(STEP_KEYS[5]);
+      this.querySelector('.name-label').textContent        = mockT(STEP_KEYS[0]);
+      this.querySelector('.category-label').textContent    = mockT(STEP_KEYS[1]);
+      this.querySelector('.description-label').textContent = mockT(STEP_KEYS[2]);
+      this.querySelector('.when-to-use-label').textContent = mockT(STEP_KEYS[3]);
+      this.querySelector('.content-label').textContent     = mockT(STEP_KEYS[4]);
+      this.querySelector('.permissions-label').textContent = mockT(STEP_KEYS[5]);
 
       this._backButton.textContent = mockT('ability.wizard.backButton');
       this._nextButton.textContent = mockT('ability.wizard.nextButton');
@@ -294,7 +297,7 @@ function registerComponent() {
     // -- Internal: sync UI ---------------------------------------------------
 
     _syncUI() {
-      let steps = this.shadowRoot.querySelectorAll('.step-content');
+      let steps = this.querySelectorAll('.step-content');
 
       for (let step of steps) {
         let idx = Number(step.getAttribute('data-step'));
@@ -371,11 +374,11 @@ describe('kikx-ability-wizard-modal', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -383,7 +386,7 @@ describe('kikx-ability-wizard-modal', () => {
   // -------------------------------------------------------------------------
 
   it('starts at step 0 (Name)', () => {
-    let activeStep = element.shadowRoot.querySelector('.step-content.active');
+    let activeStep = element.querySelector('.step-content.active');
     assert.ok(activeStep, 'there should be an active step');
     assert.equal(activeStep.getAttribute('data-step'), '0', 'active step should be step 0');
   });
@@ -393,7 +396,7 @@ describe('kikx-ability-wizard-modal', () => {
   // -------------------------------------------------------------------------
 
   it('shows step indicator with 6 dots', () => {
-    let dots = element.shadowRoot.querySelectorAll('.step-dot');
+    let dots = element.querySelectorAll('.step-dot');
     assert.equal(dots.length, 6, 'should render 6 step indicator dots');
   });
 
@@ -402,8 +405,8 @@ describe('kikx-ability-wizard-modal', () => {
   // -------------------------------------------------------------------------
 
   it('first step shows name input with label from i18n', () => {
-    let nameLabel = element.shadowRoot.querySelector('.name-label');
-    let nameInput = element.shadowRoot.querySelector('.name-input');
+    let nameLabel = element.querySelector('.name-label');
+    let nameInput = element.querySelector('.name-input');
 
     assert.ok(nameLabel, 'name label should exist');
     assert.ok(nameInput, 'name input should exist');
@@ -415,10 +418,10 @@ describe('kikx-ability-wizard-modal', () => {
   // -------------------------------------------------------------------------
 
   it('next button advances to step 1', () => {
-    let nextButton = element.shadowRoot.querySelector('.next-button');
+    let nextButton = element.querySelector('.next-button');
     nextButton.click();
 
-    let activeStep = element.shadowRoot.querySelector('.step-content.active');
+    let activeStep = element.querySelector('.step-content.active');
     assert.equal(activeStep.getAttribute('data-step'), '1', 'active step should be step 1 after clicking next');
   });
 
@@ -427,13 +430,13 @@ describe('kikx-ability-wizard-modal', () => {
   // -------------------------------------------------------------------------
 
   it('back button returns to step 0', () => {
-    let nextButton = element.shadowRoot.querySelector('.next-button');
+    let nextButton = element.querySelector('.next-button');
     nextButton.click();
 
-    let backButton = element.shadowRoot.querySelector('.back-button');
+    let backButton = element.querySelector('.back-button');
     backButton.click();
 
-    let activeStep = element.shadowRoot.querySelector('.step-content.active');
+    let activeStep = element.querySelector('.step-content.active');
     assert.equal(activeStep.getAttribute('data-step'), '0', 'active step should be step 0 after clicking back');
   });
 
@@ -442,7 +445,7 @@ describe('kikx-ability-wizard-modal', () => {
   // -------------------------------------------------------------------------
 
   it('back button hidden on step 0', () => {
-    let backButton = element.shadowRoot.querySelector('.back-button');
+    let backButton = element.querySelector('.back-button');
     assert.equal(backButton.style.display, 'none', 'back button should be hidden on step 0');
   });
 
@@ -451,8 +454,8 @@ describe('kikx-ability-wizard-modal', () => {
   // -------------------------------------------------------------------------
 
   it('save button visible only on last step', () => {
-    let saveButton = element.shadowRoot.querySelector('.save-button');
-    let nextButton = element.shadowRoot.querySelector('.next-button');
+    let saveButton = element.querySelector('.save-button');
+    let nextButton = element.querySelector('.next-button');
 
     // On step 0, save should be hidden
     assert.equal(saveButton.style.display, 'none', 'save button should be hidden on step 0');
@@ -470,12 +473,12 @@ describe('kikx-ability-wizard-modal', () => {
   // -------------------------------------------------------------------------
 
   it('getValues() returns all field values', () => {
-    let nameInput        = element.shadowRoot.querySelector('.name-input');
-    let categoryInput    = element.shadowRoot.querySelector('.category-input');
-    let descriptionInput = element.shadowRoot.querySelector('.description-input');
-    let whenToUseInput   = element.shadowRoot.querySelector('.when-to-use-input');
-    let contentInput     = element.shadowRoot.querySelector('.content-input');
-    let autoApproveInput = element.shadowRoot.querySelector('.auto-approve-input');
+    let nameInput        = element.querySelector('.name-input');
+    let categoryInput    = element.querySelector('.category-input');
+    let descriptionInput = element.querySelector('.description-input');
+    let whenToUseInput   = element.querySelector('.when-to-use-input');
+    let contentInput     = element.querySelector('.content-input');
+    let autoApproveInput = element.querySelector('.auto-approve-input');
 
     nameInput.value        = 'Test Ability';
     categoryInput.value    = 'Testing';
@@ -501,7 +504,7 @@ describe('kikx-ability-wizard-modal', () => {
   // -------------------------------------------------------------------------
 
   it('save dispatches ability-save with values', () => {
-    let nameInput = element.shadowRoot.querySelector('.name-input');
+    let nameInput = element.querySelector('.name-input');
     nameInput.value = 'Saved Ability';
 
     let eventFired = false;
@@ -513,12 +516,12 @@ describe('kikx-ability-wizard-modal', () => {
     });
 
     // Navigate to the last step and click save
-    let nextButton = element.shadowRoot.querySelector('.next-button');
+    let nextButton = element.querySelector('.next-button');
 
     for (let i = 0; i < 5; i++)
       nextButton.click();
 
-    let saveButton = element.shadowRoot.querySelector('.save-button');
+    let saveButton = element.querySelector('.save-button');
     saveButton.click();
 
     assert.ok(eventFired, 'ability-save event should be dispatched');
@@ -532,9 +535,9 @@ describe('kikx-ability-wizard-modal', () => {
   // -------------------------------------------------------------------------
 
   it('reset() clears fields and returns to step 0', () => {
-    let nameInput     = element.shadowRoot.querySelector('.name-input');
-    let categoryInput = element.shadowRoot.querySelector('.category-input');
-    let nextButton    = element.shadowRoot.querySelector('.next-button');
+    let nameInput     = element.querySelector('.name-input');
+    let categoryInput = element.querySelector('.category-input');
+    let nextButton    = element.querySelector('.next-button');
 
     nameInput.value     = 'Something';
     categoryInput.value = 'Cat';
@@ -547,7 +550,7 @@ describe('kikx-ability-wizard-modal', () => {
     assert.equal(nameInput.value, '', 'name input should be cleared');
     assert.equal(categoryInput.value, '', 'category input should be cleared');
 
-    let activeStep = element.shadowRoot.querySelector('.step-content.active');
+    let activeStep = element.querySelector('.step-content.active');
     assert.equal(activeStep.getAttribute('data-step'), '0', 'should return to step 0 after reset');
   });
 });

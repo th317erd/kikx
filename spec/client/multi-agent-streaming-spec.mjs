@@ -200,7 +200,7 @@ describe('Multi-agent streaming', () => {
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
       page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
 
-      let el = page._chatView.shadowRoot.querySelector('[data-frame-id="int_1"]');
+      let el = page._chatView.querySelector('[data-frame-id="int_1"]');
       assert.ok(el, 'streaming bubble should exist in DOM');
     });
   });

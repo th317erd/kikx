@@ -52,10 +52,18 @@ function registerComponent() {
   class KikxParticipantList extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._participants = [];
+      this._onContainerClick = this._onContainerClick.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host { display: block; padding: 4px 0; }
+          kikx-participant-list { display: block; padding: 4px 0; }
           .participant-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
           .participant-row:hover { background: rgba(255,255,255,0.08); }
           .participant-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.7rem; color: #fff; flex-shrink: 0; }
@@ -67,13 +75,8 @@ function registerComponent() {
         <div class="list-container"></div>
       `;
 
-      this._container    = this.shadowRoot.querySelector('.list-container');
-      this._participants = [];
+      this._container = this.querySelector('.list-container');
 
-      this._onContainerClick = this._onContainerClick.bind(this);
-    }
-
-    connectedCallback() {
       this._render();
       this._container.addEventListener('click', this._onContainerClick);
     }
@@ -161,11 +164,11 @@ describe('kikx-participant-list', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -175,7 +178,7 @@ describe('kikx-participant-list', () => {
   it('renders participant rows from participants property', () => {
     element.participants = makeParticipants();
 
-    let rows = element.shadowRoot.querySelectorAll('.participant-row');
+    let rows = element.querySelectorAll('.participant-row');
     assert.equal(rows.length, 3, 'should render 3 participant rows');
   });
 
@@ -186,7 +189,7 @@ describe('kikx-participant-list', () => {
   it('shows initials and background color on the avatar', () => {
     element.participants = makeParticipants();
 
-    let avatars = element.shadowRoot.querySelectorAll('.participant-avatar');
+    let avatars = element.querySelectorAll('.participant-avatar');
     assert.equal(avatars.length, 3, 'should have 3 avatars');
 
     // Check first participant (Alice)
@@ -205,7 +208,7 @@ describe('kikx-participant-list', () => {
   it('displays participant names correctly', () => {
     element.participants = makeParticipants();
 
-    let names = element.shadowRoot.querySelectorAll('.participant-name');
+    let names = element.querySelectorAll('.participant-name');
     assert.equal(names[0].textContent, 'Alice', 'first name should be Alice');
     assert.equal(names[1].textContent, 'Bob', 'second name should be Bob');
     assert.equal(names[2].textContent, 'KikxBot', 'third name should be KikxBot');
@@ -218,7 +221,7 @@ describe('kikx-participant-list', () => {
   it('displays participant roles correctly', () => {
     element.participants = makeParticipants();
 
-    let roles = element.shadowRoot.querySelectorAll('.participant-role');
+    let roles = element.querySelectorAll('.participant-role');
     assert.equal(roles[0].textContent, 'coordinator', 'Alice role should be coordinator');
     assert.equal(roles[1].textContent, 'member', 'Bob role should be member');
     assert.equal(roles[2].textContent, 'BOT', 'KikxBot role should be BOT');
@@ -231,7 +234,7 @@ describe('kikx-participant-list', () => {
   it('applies coordinator-badge class to coordinator role', () => {
     element.participants = makeParticipants();
 
-    let roles = element.shadowRoot.querySelectorAll('.participant-role');
+    let roles = element.querySelectorAll('.participant-role');
 
     // Alice is coordinator
     assert.ok(roles[0].classList.contains('coordinator-badge'), 'coordinator role should have coordinator-badge class');
@@ -258,7 +261,7 @@ describe('kikx-participant-list', () => {
       eventDetail = event.detail;
     });
 
-    let row = element.shadowRoot.querySelector('.participant-row[data-participant-id="p2"]');
+    let row = element.querySelector('.participant-row[data-participant-id="p2"]');
     row.click();
 
     assert.ok(eventFired, 'select-participant event should be dispatched');
@@ -272,10 +275,10 @@ describe('kikx-participant-list', () => {
   it('shows no rows when participants is empty', () => {
     element.participants = [];
 
-    let rows = element.shadowRoot.querySelectorAll('.participant-row');
+    let rows = element.querySelectorAll('.participant-row');
     assert.equal(rows.length, 0, 'should render no participant rows');
 
-    let container = element.shadowRoot.querySelector('.list-container');
+    let container = element.querySelector('.list-container');
     assert.equal(container.innerHTML, '', 'container should be empty');
   });
 

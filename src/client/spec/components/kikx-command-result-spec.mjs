@@ -76,10 +76,21 @@ function registerComponent() {
 
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
+
+      this._expanded   = false;
+      this._arguments  = '';
+      this._result     = '';
+
+      this._onHeaderClick = this._onHeaderClick.bind(this);
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-command-result {
             display: block;
             border-radius: var(--border-radius-small, 4px);
             overflow: hidden;
@@ -194,22 +205,14 @@ function registerComponent() {
         </div>
       `;
 
-      this._header             = this.shadowRoot.querySelector('.command-header');
-      this._collapseIndicator  = this.shadowRoot.querySelector('.collapse-indicator');
-      this._commandName        = this.shadowRoot.querySelector('.command-name');
-      this._statusBadge        = this.shadowRoot.querySelector('.status-badge');
-      this._body               = this.shadowRoot.querySelector('.command-body');
-      this._argumentsContent   = this.shadowRoot.querySelector('.arguments-content');
-      this._resultContent      = this.shadowRoot.querySelector('.result-content');
+      this._header             = this.querySelector('.command-header');
+      this._collapseIndicator  = this.querySelector('.collapse-indicator');
+      this._commandName        = this.querySelector('.command-name');
+      this._statusBadge        = this.querySelector('.status-badge');
+      this._body               = this.querySelector('.command-body');
+      this._argumentsContent   = this.querySelector('.arguments-content');
+      this._resultContent      = this.querySelector('.result-content');
 
-      this._expanded   = false;
-      this._arguments  = '';
-      this._result     = '';
-
-      this._onHeaderClick = this._onHeaderClick.bind(this);
-    }
-
-    connectedCallback() {
       this._header.addEventListener('click', this._onHeaderClick);
       this._render();
     }
@@ -327,11 +330,11 @@ describe('kikx-command-result', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has a shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -339,14 +342,14 @@ describe('kikx-command-result', () => {
   // -------------------------------------------------------------------------
 
   it('default state is collapsed', () => {
-    let body = element.shadowRoot.querySelector('.command-body');
-    assert.ok(body, 'shadow DOM should contain .command-body');
+    let body = element.querySelector('.command-body');
+    assert.ok(body, 'should contain .command-body');
     assert.ok(
       !body.classList.contains('expanded'),
       'command-body should not have expanded class by default',
     );
 
-    let indicator = element.shadowRoot.querySelector('.collapse-indicator');
+    let indicator = element.querySelector('.collapse-indicator');
     assert.ok(
       !indicator.classList.contains('expanded'),
       'collapse-indicator should not have expanded class by default',
@@ -360,7 +363,7 @@ describe('kikx-command-result', () => {
   it('displays command name from attribute', () => {
     element.setAttribute('command-name', 'web_search');
 
-    let nameElement = element.shadowRoot.querySelector('.command-name');
+    let nameElement = element.querySelector('.command-name');
     assert.equal(nameElement.textContent, 'web_search', 'should display the command name');
   });
 
@@ -371,7 +374,7 @@ describe('kikx-command-result', () => {
   it('shows status badge with correct class for success', () => {
     element.setAttribute('status', 'success');
 
-    let badge = element.shadowRoot.querySelector('.status-badge');
+    let badge = element.querySelector('.status-badge');
     assert.equal(badge.textContent, 'success', 'badge should display status text');
     assert.ok(badge.classList.contains('success'), 'badge should have success class');
   });
@@ -383,7 +386,7 @@ describe('kikx-command-result', () => {
   it('shows status badge with correct class for error', () => {
     element.setAttribute('status', 'error');
 
-    let badge = element.shadowRoot.querySelector('.status-badge');
+    let badge = element.querySelector('.status-badge');
     assert.equal(badge.textContent, 'error', 'badge should display status text');
     assert.ok(badge.classList.contains('error'), 'badge should have error class');
   });
@@ -395,7 +398,7 @@ describe('kikx-command-result', () => {
   it('shows status badge with correct class for running', () => {
     element.setAttribute('status', 'running');
 
-    let badge = element.shadowRoot.querySelector('.status-badge');
+    let badge = element.querySelector('.status-badge');
     assert.equal(badge.textContent, 'running', 'badge should display status text');
     assert.ok(badge.classList.contains('running'), 'badge should have running class');
   });
@@ -405,8 +408,8 @@ describe('kikx-command-result', () => {
   // -------------------------------------------------------------------------
 
   it('clicking header toggles expanded state', () => {
-    let header = element.shadowRoot.querySelector('.command-header');
-    let body   = element.shadowRoot.querySelector('.command-body');
+    let header = element.querySelector('.command-header');
+    let body   = element.querySelector('.command-body');
 
     assert.ok(!body.classList.contains('expanded'), 'should start collapsed');
 
@@ -422,7 +425,7 @@ describe('kikx-command-result', () => {
   // -------------------------------------------------------------------------
 
   it('collapse indicator rotates when expanded', () => {
-    let indicator = element.shadowRoot.querySelector('.collapse-indicator');
+    let indicator = element.querySelector('.collapse-indicator');
 
     assert.ok(!indicator.classList.contains('expanded'), 'indicator should start without expanded class');
 
@@ -440,7 +443,7 @@ describe('kikx-command-result', () => {
   it('arguments property sets arguments content', () => {
     element.arguments = 'search query here';
 
-    let content = element.shadowRoot.querySelector('.arguments-content');
+    let content = element.querySelector('.arguments-content');
     assert.equal(content.textContent, 'search query here', 'arguments content should display the string value');
   });
 
@@ -451,7 +454,7 @@ describe('kikx-command-result', () => {
   it('result property sets result content', () => {
     element.result = 'Search completed successfully with 5 results.';
 
-    let content = element.shadowRoot.querySelector('.result-content');
+    let content = element.querySelector('.result-content');
     assert.equal(content.textContent, 'Search completed successfully with 5 results.', 'result content should display the string value');
   });
 
@@ -463,7 +466,7 @@ describe('kikx-command-result', () => {
     let argumentsObject = { query: 'hello world', limit: 10 };
     element.arguments = argumentsObject;
 
-    let content  = element.shadowRoot.querySelector('.arguments-content');
+    let content  = element.querySelector('.arguments-content');
     let expected = JSON.stringify(argumentsObject, null, 2);
     assert.equal(content.textContent, expected, 'object arguments should be pretty-printed as JSON');
   });
@@ -473,7 +476,7 @@ describe('kikx-command-result', () => {
   // -------------------------------------------------------------------------
 
   it('toggle()/expand()/collapse() methods work correctly', () => {
-    let body = element.shadowRoot.querySelector('.command-body');
+    let body = element.querySelector('.command-body');
 
     assert.ok(!body.classList.contains('expanded'), 'should start collapsed');
 
@@ -501,8 +504,8 @@ describe('kikx-command-result', () => {
   // -------------------------------------------------------------------------
 
   it('tool icon displays gear symbol', () => {
-    let icon = element.shadowRoot.querySelector('.tool-icon');
-    assert.ok(icon, 'shadow DOM should contain .tool-icon');
+    let icon = element.querySelector('.tool-icon');
+    assert.ok(icon, 'should contain .tool-icon');
     assert.equal(icon.textContent, '\u2699', 'tool icon should display the gear symbol');
   });
 

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 
 // ---------------------------------------------------------------------------
-// jsdom setup — fresh instance per test with custom element registered
+// jsdom setup -- fresh instance per test with custom element registered
 // ---------------------------------------------------------------------------
 
 let dom;
@@ -41,13 +41,15 @@ function registerComponent() {
   class KikxSessionPage extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
     }
 
     connectedCallback() {
-      this.shadowRoot.innerHTML = `
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
         <style>
-          :host {
+          kikx-session-page {
             display: grid;
             grid-template-areas:
               "topbar topbar"
@@ -125,47 +127,47 @@ describe('kikx-session-page', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 2. Has shadow root on connect
+  // 2. Renders template on connect
   // -----------------------------------------------------------------------
 
-  it('has shadow root on connect', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template on connect', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -----------------------------------------------------------------------
-  // 3. Contains kikx-top-bar in shadow DOM
+  // 3. Contains kikx-top-bar
   // -----------------------------------------------------------------------
 
-  it('contains kikx-top-bar in shadow DOM', () => {
-    let topBar = element.shadowRoot.querySelector('kikx-top-bar');
-    assert.ok(topBar, 'shadow DOM should contain kikx-top-bar');
+  it('contains kikx-top-bar', () => {
+    let topBar = element.querySelector('kikx-top-bar');
+    assert.ok(topBar, 'should contain kikx-top-bar');
   });
 
   // -----------------------------------------------------------------------
-  // 4. Contains kikx-chat-view in shadow DOM
+  // 4. Contains kikx-chat-view
   // -----------------------------------------------------------------------
 
-  it('contains kikx-chat-view in shadow DOM', () => {
-    let chatView = element.shadowRoot.querySelector('kikx-chat-view');
-    assert.ok(chatView, 'shadow DOM should contain kikx-chat-view');
+  it('contains kikx-chat-view', () => {
+    let chatView = element.querySelector('kikx-chat-view');
+    assert.ok(chatView, 'should contain kikx-chat-view');
   });
 
   // -----------------------------------------------------------------------
-  // 5. Contains kikx-sidebar in shadow DOM
+  // 5. Contains kikx-sidebar
   // -----------------------------------------------------------------------
 
-  it('contains kikx-sidebar in shadow DOM', () => {
-    let sidebar = element.shadowRoot.querySelector('kikx-sidebar');
-    assert.ok(sidebar, 'shadow DOM should contain kikx-sidebar');
+  it('contains kikx-sidebar', () => {
+    let sidebar = element.querySelector('kikx-sidebar');
+    assert.ok(sidebar, 'should contain kikx-sidebar');
   });
 
   // -----------------------------------------------------------------------
-  // 6. Contains kikx-status-bar in shadow DOM
+  // 6. Contains kikx-status-bar
   // -----------------------------------------------------------------------
 
-  it('contains kikx-status-bar in shadow DOM', () => {
-    let statusBar = element.shadowRoot.querySelector('kikx-status-bar');
-    assert.ok(statusBar, 'shadow DOM should contain kikx-status-bar');
+  it('contains kikx-status-bar', () => {
+    let statusBar = element.querySelector('kikx-status-bar');
+    assert.ok(statusBar, 'should contain kikx-status-bar');
   });
 
   // -----------------------------------------------------------------------
@@ -173,12 +175,12 @@ describe('kikx-session-page', () => {
   // -----------------------------------------------------------------------
 
   it('uses CSS Grid layout on the host element', () => {
-    let styleElement = element.shadowRoot.querySelector('style');
-    assert.ok(styleElement, 'shadow DOM should contain a style element');
+    let styleElement = element.querySelector('style');
+    assert.ok(styleElement, 'should contain a style element');
 
     let cssText = styleElement.textContent;
-    assert.ok(cssText.includes('display: grid'), 'host style should use display: grid');
-    assert.ok(cssText.includes('grid-template-areas'), 'host style should define grid-template-areas');
+    assert.ok(cssText.includes('display: grid'), 'style should use display: grid');
+    assert.ok(cssText.includes('grid-template-areas'), 'style should define grid-template-areas');
     assert.ok(cssText.includes('topbar'), 'grid areas should include topbar');
     assert.ok(cssText.includes('chat'), 'grid areas should include chat');
     assert.ok(cssText.includes('sidebar'), 'grid areas should include sidebar');
@@ -205,10 +207,10 @@ describe('kikx-session-page', () => {
   // -----------------------------------------------------------------------
 
   it('has full viewport height styling', () => {
-    let styleElement = element.shadowRoot.querySelector('style');
+    let styleElement = element.querySelector('style');
     let cssText = styleElement.textContent;
-    assert.ok(cssText.includes('height: 100vh'), 'host style should include height: 100vh');
-    assert.ok(cssText.includes('overflow: hidden'), 'host style should include overflow: hidden');
+    assert.ok(cssText.includes('height: 100vh'), 'style should include height: 100vh');
+    assert.ok(cssText.includes('overflow: hidden'), 'style should include overflow: hidden');
   });
 
   // -----------------------------------------------------------------------
@@ -235,7 +237,7 @@ describe('kikx-session-page', () => {
   // -----------------------------------------------------------------------
 
   it('sidebar has default width of 300px', () => {
-    let styleElement = element.shadowRoot.querySelector('style');
+    let styleElement = element.querySelector('style');
     let cssText = styleElement.textContent;
     assert.ok(cssText.includes('width: 300px'), 'sidebar style should set width: 300px');
   });

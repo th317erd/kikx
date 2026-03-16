@@ -26,23 +26,23 @@ const DECISION_BUTTONS = [
 
 const TEMPLATE_HTML = `
   <style>
-    :host { display: block; padding: var(--spacing-sm, 8px); }
+    kikx-permission-request { display: block; padding: var(--spacing-sm, 8px); }
 
-    .permission-header {
+    kikx-permission-request .permission-header {
       display: flex; align-items: center; gap: var(--spacing-xs, 4px);
       margin-bottom: var(--spacing-sm, 8px);
       font-weight: 600; font-size: 1rem;
       color: var(--text-primary, #e8e8f0);
     }
 
-    .lightning-icon { font-size: 1.125rem; }
+    kikx-permission-request .lightning-icon { font-size: 1.125rem; }
 
-    .permission-description {
+    kikx-permission-request .permission-description {
       font-size: 1rem; color: var(--text-secondary, #a0a0b8);
       margin-bottom: var(--spacing-sm, 8px); line-height: 1.4;
     }
 
-    .full-command {
+    kikx-permission-request .full-command {
       display: block;
       padding: 8px 10px;
       margin-bottom: var(--spacing-sm, 8px);
@@ -57,34 +57,34 @@ const TEMPLATE_HTML = `
       line-height: 1.5;
     }
 
-    .command-table {
+    kikx-permission-request .command-table {
       display: flex; flex-direction: column; gap: 6px;
       margin-bottom: var(--spacing-sm, 8px);
     }
 
-    .command-row {
+    kikx-permission-request .command-row {
       display: flex; align-items: center; gap: 8px;
       padding: 6px 8px;
       border-radius: var(--border-radius-small, 4px);
       background: rgba(255, 255, 255, 0.04);
     }
 
-    .command-row.header-row {
+    kikx-permission-request .command-row.header-row {
       border-bottom: 1px solid rgba(255, 255, 255, 0.10);
       padding-bottom: 8px;
       margin-bottom: 2px;
     }
 
-    .header-label {
+    kikx-permission-request .header-label {
       font-weight: 600;
       font-style: italic;
     }
 
-    .command-row.pre-approved {
+    kikx-permission-request .command-row.pre-approved {
       opacity: 0.6;
     }
 
-    .command-text {
+    kikx-permission-request .command-text {
       flex: 1;
       font-family: 'Fira Code', 'Cascadia Code', monospace;
       font-size: 0.9rem;
@@ -94,30 +94,30 @@ const TEMPLATE_HTML = `
       white-space: nowrap;
     }
 
-    .pre-approved-badge {
+    kikx-permission-request .pre-approved-badge {
       font-size: 0.75rem;
       color: #66bb6a;
       font-weight: 600;
       white-space: nowrap;
     }
 
-    .decision-area {
+    kikx-permission-request .decision-area {
       display: flex; flex-direction: column; align-items: flex-start;
       gap: 4px; flex-shrink: 0;
     }
 
-    .decision-label {
+    kikx-permission-request .decision-label {
       font-size: 0.75rem; font-weight: 600;
       color: var(--text-secondary, #a0a0b8);
       line-height: 1;
     }
 
-    .decision-label.label-allow { color: #66bb6a; }
-    .decision-label.label-caution { color: #fdd835; }
-    .decision-label.label-deny { color: #ff4444; }
+    kikx-permission-request .decision-label.label-allow { color: #66bb6a; }
+    kikx-permission-request .decision-label.label-caution { color: #fdd835; }
+    kikx-permission-request .decision-label.label-deny { color: #ff4444; }
 
-    .decision-label.label-nod { animation: nod 1.5s ease-in-out infinite; }
-    .decision-label.label-shake { animation: headshake 1.5s ease-in-out infinite; }
+    kikx-permission-request .decision-label.label-nod { animation: nod 1.5s ease-in-out infinite; }
+    kikx-permission-request .decision-label.label-shake { animation: headshake 1.5s ease-in-out infinite; }
 
     @keyframes nod {
       0%, 100% { transform: translateY(0); }
@@ -133,12 +133,12 @@ const TEMPLATE_HTML = `
       80%      { transform: translateX(1px); }
     }
 
-    .decision-buttons {
+    kikx-permission-request .decision-buttons {
       display: flex; gap: 4px;
       flex-shrink: 0;
     }
 
-    .decision-button {
+    kikx-permission-request .decision-button {
       background: transparent;
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: var(--border-radius-small, 4px);
@@ -150,55 +150,55 @@ const TEMPLATE_HTML = `
       color: var(--text-secondary, #a0a0b8);
     }
 
-    .decision-button:hover {
+    kikx-permission-request .decision-button:hover {
       background: rgba(255, 255, 255, 0.08);
     }
 
-    .decision-button.active-allow {
+    kikx-permission-request .decision-button.active-allow {
       background: rgba(102, 187, 106, 0.20);
       border-color: #66bb6a;
       color: #66bb6a;
     }
 
-    .decision-button.active-deny {
+    kikx-permission-request .decision-button.active-deny {
       background: rgba(255, 68, 68, 0.20);
       border-color: #ff4444;
       color: #ff4444;
     }
 
-    .confirm-button {
+    kikx-permission-request .confirm-button {
       background: var(--accent-primary, #00e5ff); color: #ffffff;
       border: none; border-radius: var(--border-radius-small, 4px);
       padding: 8px 16px; font-weight: 600; font-size: 1rem;
       cursor: pointer; transition: box-shadow 0.2s ease;
     }
 
-    .confirm-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
-    .confirm-button:disabled { opacity: 0.5; cursor: not-allowed; }
+    kikx-permission-request .confirm-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
+    kikx-permission-request .confirm-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    :host([processed]) .command-table,
-    :host([processed]) .confirm-button { display: none; }
+    kikx-permission-request[processed] .command-table,
+    kikx-permission-request[processed] .confirm-button { display: none; }
 
-    .processed-badge {
+    kikx-permission-request .processed-badge {
       display: none; font-size: 1rem; font-weight: 600;
       color: #66bb6a; padding: 4px 0;
     }
 
-    .processed-badge.badge-allow { color: #66bb6a; }
-    .processed-badge.badge-caution { color: #fdd835; }
-    .processed-badge.badge-deny { color: #ff4444; }
+    kikx-permission-request .processed-badge.badge-allow { color: #66bb6a; }
+    kikx-permission-request .processed-badge.badge-caution { color: #fdd835; }
+    kikx-permission-request .processed-badge.badge-deny { color: #ff4444; }
 
-    :host([processed]) .processed-badge { display: block; }
+    kikx-permission-request[processed] .processed-badge { display: block; }
 
-    .expired-badge {
+    kikx-permission-request .expired-badge {
       display: none; font-size: 1rem; font-weight: 600;
       color: #ef9a9a; padding: 4px 0;
     }
 
-    :host([expired]) .command-table,
-    :host([expired]) .confirm-button { display: none; }
-    :host([expired]) .processed-badge { display: none; }
-    :host([expired]) .expired-badge { display: block; }
+    kikx-permission-request[expired] .command-table,
+    kikx-permission-request[expired] .confirm-button { display: none; }
+    kikx-permission-request[expired] .processed-badge { display: none; }
+    kikx-permission-request[expired] .expired-badge { display: block; }
   </style>
 
   <div class="permission-header">
@@ -229,16 +229,6 @@ class KikxPermissionRequest extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._titleText      = this.shadowRoot.querySelector('.title-text');
-    this._descriptionEl  = this.shadowRoot.querySelector('.permission-description');
-    this._fullCommandEl  = this.shadowRoot.querySelector('.full-command');
-    this._commandTable   = this.shadowRoot.querySelector('.command-table');
-    this._confirmButton  = this.shadowRoot.querySelector('.confirm-button');
-    this._processedBadge = this.shadowRoot.querySelector('.processed-badge');
-
     this._decisions = new Map();
     this._commands  = [];
 
@@ -247,6 +237,18 @@ class KikxPermissionRequest extends HTMLElement {
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._titleText      = this.querySelector('.title-text');
+      this._descriptionEl  = this.querySelector('.permission-description');
+      this._fullCommandEl  = this.querySelector('.full-command');
+      this._commandTable   = this.querySelector('.command-table');
+      this._confirmButton  = this.querySelector('.confirm-button');
+      this._processedBadge = this.querySelector('.processed-badge');
+    }
+
     this._titleText.textContent    = t('permission.title');
     this._confirmButton.textContent = t('permission.confirmButton') || 'Confirm';
 
@@ -267,6 +269,9 @@ class KikxPermissionRequest extends HTMLElement {
   }
 
   _updateProcessedBadge() {
+    if (!this._processedBadge)
+      return;
+
     if (!this.hasAttribute('processed'))
       return;
 
@@ -331,18 +336,22 @@ class KikxPermissionRequest extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   get description() {
-    return this._descriptionEl.textContent;
+    return (this._descriptionEl) ? this._descriptionEl.textContent : '';
   }
 
   set description(value) {
-    this._descriptionEl.textContent = value || '';
+    if (this._descriptionEl)
+      this._descriptionEl.textContent = value || '';
   }
 
   get fullCommand() {
-    return this._fullCommandEl.textContent;
+    return (this._fullCommandEl) ? this._fullCommandEl.textContent : '';
   }
 
   set fullCommand(value) {
+    if (!this._fullCommandEl)
+      return;
+
     if (value) {
       this._fullCommandEl.textContent  = value;
       this._fullCommandEl.style.display = '';
@@ -374,6 +383,9 @@ class KikxPermissionRequest extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   _render() {
+    if (!this._commandTable)
+      return;
+
     this._commandTable.innerHTML = '';
 
     // Add "select all" header row when multiple commands need approval

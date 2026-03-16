@@ -4,16 +4,16 @@ import { t } from '../../lib/i18n.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host { display: block; }
+    kikx-agent-form-modal { display: block; }
 
-    .form-group { margin-bottom: 12px; }
+    kikx-agent-form-modal .form-group { margin-bottom: 12px; }
 
-    .form-label {
+    kikx-agent-form-modal .form-label {
       display: block; font-size: 1rem; font-weight: 600;
       color: var(--text-secondary, #a0a0b8); margin-bottom: 4px;
     }
 
-    .form-input {
+    kikx-agent-form-modal .form-input {
       width: 100%; box-sizing: border-box;
       padding: 8px 12px; font-size: 1rem;
       background: var(--input-background, rgba(255, 255, 255, 0.05));
@@ -24,12 +24,12 @@ const TEMPLATE_HTML = `
       transition: border-color 0.2s ease;
     }
 
-    .form-input:focus {
+    kikx-agent-form-modal .form-input:focus {
       border-color: var(--accent-primary, #00e5ff);
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    .form-select {
+    kikx-agent-form-modal .form-select {
       width: 100%; box-sizing: border-box;
       padding: 8px 12px; font-size: 1rem;
       background: var(--input-background, rgba(255, 255, 255, 0.05));
@@ -41,47 +41,47 @@ const TEMPLATE_HTML = `
       cursor: pointer;
     }
 
-    .form-select:focus {
+    kikx-agent-form-modal .form-select:focus {
       border-color: var(--accent-primary, #00e5ff);
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    .form-select option {
+    kikx-agent-form-modal .form-select option {
       background: var(--bg-primary, #0a0a1a);
       color: var(--text-primary, #e8e8f0);
     }
 
-    .button-row {
+    kikx-agent-form-modal .button-row {
       display: flex; gap: var(--spacing-sm, 8px); justify-content: flex-end;
       margin-top: 16px; padding-top: 12px;
       border-top: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
     }
 
-    .save-button {
+    kikx-agent-form-modal .save-button {
       background: var(--accent-primary, #00e5ff); color: #fff;
       border: none; border-radius: var(--border-radius-small, 4px);
       padding: 8px 20px; font-weight: 600; font-size: 1rem; cursor: pointer;
     }
 
-    .save-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
+    kikx-agent-form-modal .save-button:hover { box-shadow: 0 0 12px var(--accent-glow, rgba(0, 229, 255, 0.40)); }
 
-    .delete-button {
+    kikx-agent-form-modal .delete-button {
       background: rgba(229, 57, 53, 0.15); color: #ef5350;
       border: 1px solid rgba(229, 57, 53, 0.30);
       border-radius: var(--border-radius-small, 4px);
       padding: 8px 16px; font-size: 1rem; cursor: pointer;
     }
 
-    .delete-button:hover { background: rgba(229, 57, 53, 0.25); }
+    kikx-agent-form-modal .delete-button:hover { background: rgba(229, 57, 53, 0.25); }
 
-    .cancel-button {
+    kikx-agent-form-modal .cancel-button {
       background: none; border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       color: var(--text-secondary, #a0a0b8);
       border-radius: var(--border-radius-small, 4px);
       padding: 8px 16px; font-size: 1rem; cursor: pointer;
     }
 
-    .cancel-button:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }
+    kikx-agent-form-modal .cancel-button:hover { background: var(--glass-hover, rgba(255, 255, 255, 0.08)); }
   </style>
 
   <div class="form-group">
@@ -132,25 +132,6 @@ class KikxAgentFormModal extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._nameInput        = this.shadowRoot.querySelector('.name-input');
-    this._providerInput    = this.shadowRoot.querySelector('.provider-input');
-    this._apiKeyInput      = this.shadowRoot.querySelector('.api-key-input');
-    this._modelInput       = this.shadowRoot.querySelector('.model-input');
-    this._riskLevelSelect  = this.shadowRoot.querySelector('.risk-level-select');
-
-    this._nameLabel        = this.shadowRoot.querySelector('.name-label');
-    this._providerLabel    = this.shadowRoot.querySelector('.provider-label');
-    this._apiKeyLabel      = this.shadowRoot.querySelector('.api-key-label');
-    this._modelLabel       = this.shadowRoot.querySelector('.model-label');
-    this._riskLevelLabel   = this.shadowRoot.querySelector('.risk-level-label');
-
-    this._saveButton   = this.shadowRoot.querySelector('.save-button');
-    this._deleteButton = this.shadowRoot.querySelector('.delete-button');
-    this._cancelButton = this.shadowRoot.querySelector('.cancel-button');
-
     this._agent = null;
 
     this._onSaveClick   = this._onSaveClick.bind(this);
@@ -159,6 +140,27 @@ class KikxAgentFormModal extends HTMLElement {
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._nameInput        = this.querySelector('.name-input');
+      this._providerInput    = this.querySelector('.provider-input');
+      this._apiKeyInput      = this.querySelector('.api-key-input');
+      this._modelInput       = this.querySelector('.model-input');
+      this._riskLevelSelect  = this.querySelector('.risk-level-select');
+
+      this._nameLabel        = this.querySelector('.name-label');
+      this._providerLabel    = this.querySelector('.provider-label');
+      this._apiKeyLabel      = this.querySelector('.api-key-label');
+      this._modelLabel       = this.querySelector('.model-label');
+      this._riskLevelLabel   = this.querySelector('.risk-level-label');
+
+      this._saveButton   = this.querySelector('.save-button');
+      this._deleteButton = this.querySelector('.delete-button');
+      this._cancelButton = this.querySelector('.cancel-button');
+    }
+
     this._nameLabel.textContent      = t('agent.form.nameLabel');
     this._providerLabel.textContent  = t('agent.form.providerLabel');
     this._apiKeyLabel.textContent    = t('agent.form.apiKeyLabel');
@@ -197,6 +199,9 @@ class KikxAgentFormModal extends HTMLElement {
 
   set agent(value) {
     this._agent = value;
+
+    if (!this._nameInput)
+      return;
 
     if (value) {
       this._nameInput.value        = value.name || '';

@@ -2,14 +2,14 @@
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-command-result {
       display: block;
       border-radius: var(--border-radius-small, 4px);
       overflow: hidden;
       font-size: 1rem;
     }
 
-    .command-header {
+    kikx-command-result .command-header {
       display: flex;
       align-items: center;
       gap: var(--spacing-xs, 4px);
@@ -25,30 +25,30 @@ const TEMPLATE_HTML = `
       text-align: left;
     }
 
-    .command-header:hover {
+    kikx-command-result .command-header:hover {
       background: var(--glass-hover, rgba(255, 255, 255, 0.08));
     }
 
-    .collapse-indicator {
+    kikx-command-result .collapse-indicator {
       display: inline-block;
       font-size: 1rem;
       transition: transform 0.2s ease;
     }
 
-    .collapse-indicator.expanded {
+    kikx-command-result .collapse-indicator.expanded {
       transform: rotate(90deg);
     }
 
-    .tool-icon {
+    kikx-command-result .tool-icon {
       font-size: 1rem;
     }
 
-    .command-name {
+    kikx-command-result .command-name {
       font-weight: 600;
       font-family: 'Fira Code', 'Cascadia Code', monospace;
     }
 
-    .status-badge {
+    kikx-command-result .status-badge {
       margin-left: auto;
       padding: 1px 6px;
       border-radius: 3px;
@@ -57,33 +57,33 @@ const TEMPLATE_HTML = `
       text-transform: uppercase;
     }
 
-    .status-badge.success {
+    kikx-command-result .status-badge.success {
       background: rgba(76, 175, 80, 0.2);
       color: #66bb6a;
     }
 
-    .status-badge.error {
+    kikx-command-result .status-badge.error {
       background: rgba(229, 57, 53, 0.2);
       color: #ef5350;
     }
 
-    .status-badge.running {
+    kikx-command-result .status-badge.running {
       background: rgba(255, 183, 77, 0.2);
       color: #ffb74d;
     }
 
-    .command-body {
+    kikx-command-result .command-body {
       display: none;
       border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
       border-top: none;
       border-radius: 0 0 var(--border-radius-small, 4px) var(--border-radius-small, 4px);
     }
 
-    .command-body.expanded {
+    kikx-command-result .command-body.expanded {
       display: block;
     }
 
-    .section-label {
+    kikx-command-result .section-label {
       font-size: 1rem;
       font-weight: 600;
       text-transform: uppercase;
@@ -92,7 +92,7 @@ const TEMPLATE_HTML = `
       padding: 6px 8px 2px;
     }
 
-    .section-content {
+    kikx-command-result .section-content {
       padding: 4px 8px 8px;
       font-family: 'Fira Code', 'Cascadia Code', monospace;
       font-size: 1rem;
@@ -135,25 +135,26 @@ class KikxCommandResult extends HTMLElement {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._header             = this.shadowRoot.querySelector('.command-header');
-    this._collapseIndicator  = this.shadowRoot.querySelector('.collapse-indicator');
-    this._commandName        = this.shadowRoot.querySelector('.command-name');
-    this._statusBadge        = this.shadowRoot.querySelector('.status-badge');
-    this._body               = this.shadowRoot.querySelector('.command-body');
-    this._argumentsContent   = this.shadowRoot.querySelector('.arguments-content');
-    this._resultContent      = this.shadowRoot.querySelector('.result-content');
-
     this._expanded   = false;
     this._arguments  = '';
     this._result     = '';
-
     this._onHeaderClick = this._onHeaderClick.bind(this);
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._header             = this.querySelector('.command-header');
+      this._collapseIndicator  = this.querySelector('.collapse-indicator');
+      this._commandName        = this.querySelector('.command-name');
+      this._statusBadge        = this.querySelector('.status-badge');
+      this._body               = this.querySelector('.command-body');
+      this._argumentsContent   = this.querySelector('.arguments-content');
+      this._resultContent      = this.querySelector('.result-content');
+    }
+
     this._header.addEventListener('click', this._onHeaderClick);
     this._render();
   }
@@ -237,6 +238,9 @@ class KikxCommandResult extends HTMLElement {
   }
 
   _renderArguments() {
+    if (!this._argumentsContent)
+      return;
+
     let value = this._arguments;
 
     if (value && typeof value === 'object')
@@ -246,6 +250,9 @@ class KikxCommandResult extends HTMLElement {
   }
 
   _renderResult() {
+    if (!this._resultContent)
+      return;
+
     this._resultContent.textContent = this._result || '';
   }
 }

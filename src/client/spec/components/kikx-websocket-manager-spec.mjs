@@ -85,22 +85,6 @@ function registerComponent() {
   class KikxWebsocketManager extends JsdomHTMLElement {
     constructor() {
       super();
-      this.attachShadow({ mode: 'open' });
-      this.shadowRoot.innerHTML = `
-        <style>
-          :host {
-            display: none;
-          }
-        </style>
-      `;
-
-      this._url               = '';
-      this._connected         = false;
-      this._reconnectDelay    = 1000;
-      this._maxReconnectDelay = 30000;
-      this._currentDelay      = this._reconnectDelay;
-      this._reconnectTimer    = null;
-      this._socket            = null;
     }
 
     // Properties
@@ -141,6 +125,25 @@ function registerComponent() {
     // Lifecycle
 
     connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+
+      this.innerHTML = `
+        <style>
+          kikx-websocket-manager {
+            display: none;
+          }
+        </style>
+      `;
+
+      this._url               = '';
+      this._connected         = false;
+      this._reconnectDelay    = 1000;
+      this._maxReconnectDelay = 30000;
+      this._currentDelay      = this._reconnectDelay;
+      this._reconnectTimer    = null;
+      this._socket            = null;
+
       if (this._url)
         this.connect();
     }
@@ -280,11 +283,11 @@ describe('kikx-websocket-manager', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Has shadow root
+  // 2. Renders template
   // -------------------------------------------------------------------------
 
-  it('has shadow root', () => {
-    assert.ok(element.shadowRoot, 'element should have a shadow root');
+  it('renders template', () => {
+    assert.ok(element.innerHTML.length > 0, 'element should render its template');
   });
 
   // -------------------------------------------------------------------------
@@ -292,11 +295,11 @@ describe('kikx-websocket-manager', () => {
   // -------------------------------------------------------------------------
 
   it('host element is hidden via display: none', () => {
-    let style = element.shadowRoot.querySelector('style');
+    let style = element.querySelector('style');
     assert.ok(style, 'should have a style element');
     assert.ok(
       style.textContent.includes('display: none'),
-      ':host rule should set display to none',
+      'style rule should set display to none',
     );
   });
 

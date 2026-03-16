@@ -8,7 +8,7 @@ import { login, setAuthToken, persistAuth } from '../../lib/api.mjs';
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-login-page {
       display: block;
       min-height: 100vh;
       background:
@@ -22,7 +22,7 @@ const TEMPLATE_HTML = `
       padding: var(--spacing-md, 16px);
     }
 
-    .login-card {
+    kikx-login-page .login-card {
       width: 100%;
       max-width: 400px;
       padding: var(--spacing-xl, 32px);
@@ -38,7 +38,7 @@ const TEMPLATE_HTML = `
       text-align: center;
     }
 
-    .title {
+    kikx-login-page .title {
       font-size: 2.5rem;
       font-weight: 700;
       color: var(--accent-primary, #00e5ff);
@@ -46,19 +46,19 @@ const TEMPLATE_HTML = `
       letter-spacing: 0.05em;
     }
 
-    .subtitle {
+    kikx-login-page .subtitle {
       font-size: 1rem;
       color: var(--text-secondary, #a0a0b8);
       margin-bottom: var(--spacing-xl, 32px);
     }
 
-    form {
+    kikx-login-page form {
       display: flex;
       flex-direction: column;
       gap: var(--spacing-md, 16px);
     }
 
-    .form-input {
+    kikx-login-page .form-input {
       width: 100%;
       padding: 12px 16px;
       box-sizing: border-box;
@@ -71,16 +71,16 @@ const TEMPLATE_HTML = `
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
-    .form-input::placeholder {
+    kikx-login-page .form-input::placeholder {
       color: var(--input-placeholder, var(--text-muted, #606078));
     }
 
-    .form-input:focus {
+    kikx-login-page .form-input:focus {
       border-color: var(--accent-primary, #00e5ff);
       box-shadow: 0 0 8px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    .submit-button {
+    kikx-login-page .submit-button {
       width: 100%;
       padding: 12px 16px;
       box-sizing: border-box;
@@ -94,31 +94,31 @@ const TEMPLATE_HTML = `
       transition: box-shadow 0.2s ease, opacity 0.2s ease;
     }
 
-    .submit-button:hover:not(:disabled) {
+    kikx-login-page .submit-button:hover:not(:disabled) {
       box-shadow: 0 0 16px var(--accent-glow, rgba(0, 229, 255, 0.30));
     }
 
-    .submit-button:disabled {
+    kikx-login-page .submit-button:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
 
-    .status-message {
+    kikx-login-page .status-message {
       display: none;
       font-size: 1rem;
       margin-top: var(--spacing-sm, 8px);
       min-height: 1.25em;
     }
 
-    .status-message.visible {
+    kikx-login-page .status-message.visible {
       display: block;
     }
 
-    .status-message.error {
+    kikx-login-page .status-message.error {
       color: var(--color-error, #ff1744);
     }
 
-    .status-message.success {
+    kikx-login-page .status-message.success {
       color: var(--color-success, #00e676);
     }
   </style>
@@ -149,21 +149,23 @@ function getTemplate() {
 class KikxLoginPage extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
-
-    this._emailInput      = this.shadowRoot.querySelector('.email-input');
-    this._passwordInput   = this.shadowRoot.querySelector('.password-input');
-    this._submitButton    = this.shadowRoot.querySelector('.submit-button');
-    this._statusMessage   = this.shadowRoot.querySelector('.status-message');
-    this._titleElement    = this.shadowRoot.querySelector('.title');
-    this._subtitleElement = this.shadowRoot.querySelector('.subtitle');
-    this._form            = this.shadowRoot.querySelector('form');
-
     this._onSubmit = this._onSubmit.bind(this);
   }
 
   connectedCallback() {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+
+      this._emailInput      = this.querySelector('.email-input');
+      this._passwordInput   = this.querySelector('.password-input');
+      this._submitButton    = this.querySelector('.submit-button');
+      this._statusMessage   = this.querySelector('.status-message');
+      this._titleElement    = this.querySelector('.title');
+      this._subtitleElement = this.querySelector('.subtitle');
+      this._form            = this.querySelector('form');
+    }
+
     this._render();
     this._form.addEventListener('submit', this._onSubmit);
   }

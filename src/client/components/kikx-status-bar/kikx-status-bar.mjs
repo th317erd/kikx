@@ -17,7 +17,7 @@ const STATUS_KEYS = {
 
 const TEMPLATE_HTML = `
   <style>
-    :host {
+    kikx-status-bar {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -36,7 +36,7 @@ const TEMPLATE_HTML = `
       user-select: none;
     }
 
-    :host::before {
+    kikx-status-bar::before {
       content: '';
       position: absolute;
       top: 0;
@@ -55,13 +55,13 @@ const TEMPLATE_HTML = `
       to { background-position: -200% 0; }
     }
 
-    .connection-status {
+    kikx-status-bar .connection-status {
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
-    .status-dot {
+    kikx-status-bar .status-dot {
       display: inline-block;
       width: 8px;
       height: 8px;
@@ -69,32 +69,32 @@ const TEMPLATE_HTML = `
       background: var(--status-color, #ff4444);
     }
 
-    .status-text {
+    kikx-status-bar .status-text {
       color: var(--text-secondary, #a0a0b8);
     }
 
-    .queue-hint {
+    kikx-status-bar .queue-hint {
       color: var(--accent-primary, #00e5ff);
       font-style: italic;
       margin-left: 4px;
     }
 
-    .queue-hint:empty {
+    kikx-status-bar .queue-hint:empty {
       display: none;
     }
 
-    .cost-display {
+    kikx-status-bar .cost-display {
       display: flex;
       align-items: center;
       gap: 4px;
       color: var(--text-secondary, #a0a0b8);
     }
 
-    .cost-value {
+    kikx-status-bar .cost-value {
       color: var(--accent-text, var(--accent-primary, #00e5ff));
     }
 
-    .cost-separator {
+    kikx-status-bar .cost-separator {
       margin: 0 4px;
       opacity: 0.5;
     }
@@ -126,12 +126,15 @@ function formatCost(value) {
 class KikxStatusBar extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
     this._unsubscribe = null;
   }
 
   connectedCallback() {
-    this.shadowRoot.appendChild(getTemplate().content.cloneNode(true));
+    if (!this._initialized) {
+      this._initialized = true;
+      this.appendChild(getTemplate().content.cloneNode(true));
+    }
+
     this.update();
 
     this._onStoreUpdate = ({ modified }) => {
@@ -161,9 +164,9 @@ class KikxStatusBar extends HTMLElement {
       costs = connection.getCosts();
     }
 
-    let dot = this.shadowRoot.querySelector('.status-dot');
-    let text = this.shadowRoot.querySelector('.status-text');
-    let costDisplay = this.shadowRoot.querySelector('.cost-display');
+    let dot = this.querySelector('.status-dot');
+    let text = this.querySelector('.status-text');
+    let costDisplay = this.querySelector('.cost-display');
 
     if (!dot || !text || !costDisplay) {
       return;
@@ -198,7 +201,7 @@ class KikxStatusBar extends HTMLElement {
   }
 
   _updateHint() {
-    let hint = this.shadowRoot.querySelector('.queue-hint');
+    let hint = this.querySelector('.queue-hint');
     if (!hint)
       return;
 
