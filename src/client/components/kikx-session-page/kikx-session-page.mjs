@@ -285,9 +285,26 @@ class KikxSessionPage extends HTMLElement {
       this._chatView.clear();
 
       this._topBar.removeAttribute('hide-back');
-      this._topBar.setAttribute('session-name', sessionID);
+
+      // Use cached session name from the store to avoid flashing the raw ID
+      let cached      = sessions.getSession(sessionID);
+      let cachedName  = cached && cached.name;
+
+      if (cachedName) {
+        if (cachedName.startsWith('DM: '))
+          cachedName = cachedName.slice(4);
+
+        this._topBar.setAttribute('session-name', cachedName);
+      } else {
+        this._topBar.removeAttribute('session-name');
+      }
+
       this._messageInput.classList.remove('hidden');
       this._messageInput.sessionID = sessionID;
+
+      // Highlight the active session in the sidebar
+      if (this._sidebar)
+        this._sidebar.activeSessionID = sessionID;
 
       // Reset session cost when navigating to a new session
       let currentCosts = connection.getCosts();
@@ -302,6 +319,9 @@ class KikxSessionPage extends HTMLElement {
       this._topBar.setAttribute('hide-back', '');
       this._topBar.removeAttribute('session-name');
       this._messageInput.classList.add('hidden');
+
+      if (this._sidebar)
+        this._sidebar.activeSessionID = null;
 
       this._disconnectStream();
       this._destroyFrameManager();
@@ -1493,16 +1513,19 @@ class KikxSessionPage extends HTMLElement {
     if (!usage)
       return;
 
-    // Set output tokens on the agent's interaction elements for this interaction.
-    // Multiple elements may exist (command results, reflections, final response),
-    // so set on all of them.
+    // Show token count on only the last agent bubble for this interaction,
+    // since the count covers the entire turn, not individual messages.
+    // Clear it from earlier bubbles so it doesn't trail as new ones appear.
     let outputTokens = usage.outputTokens || 0;
 
     if (outputTokens > 0) {
       let agentInteractions = this._chatView.shadowRoot.querySelectorAll(`kikx-interaction[alignment="agent"][data-interaction-id="${interactionID}"]`);
 
-      for (let interaction of agentInteractions)
-        interaction.setAttribute('token-count', String(outputTokens));
+      for (let i = 0; i < agentInteractions.length - 1; i++)
+        agentInteractions[i].removeAttribute('token-count');
+
+      if (agentInteractions.length > 0)
+        agentInteractions[agentInteractions.length - 1].setAttribute('token-count', String(outputTokens));
     }
 
     // Update costs in the store
@@ -1585,24 +1608,17 @@ class KikxSessionPage extends HTMLElement {
       let result;
       let newSession;
 
-      if (detail.agentID) {
-        // Create a new DM session with the selected agent
-        let sessionData = {
-          type:      'dm',
-          dmAgentID: detail.agentID,
-        };
+      let sessionData = {};
 
-        if (detail.name)
-          sessionData.name = detail.name;
+      if (detail.name)
+        sessionData.name = detail.name;
 
-        result     = await createSession(sessionData);
-        let data   = (result && result.data) || result;
-        newSession = data.session || data;
-      } else {
-        result     = await createSession({ name: detail.name });
-        let data   = (result && result.data) || result;
-        newSession = data.session || data;
-      }
+      if (detail.agentID)
+        sessionData.agentID = detail.agentID;
+
+      result     = await createSession(sessionData);
+      let data   = (result && result.data) || result;
+      newSession = data.session || data;
 
       // Add to store if not already present
       let existing = sessions.getAllSessions();

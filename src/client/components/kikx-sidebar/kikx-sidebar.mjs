@@ -231,7 +231,8 @@ class KikxSidebar extends HTMLElement {
     this._friendsList       = this.shadowRoot.querySelector('kikx-friends-list');
     this._sessionList       = this.shadowRoot.querySelector('.session-list');
 
-    this._sessions       = [];
+    this._sessions         = [];
+    this._activeSessionID  = null;
     this._archiveVisible = false;
 
     this._onArchiveToggle    = this._onArchiveToggle.bind(this);
@@ -273,13 +274,36 @@ class KikxSidebar extends HTMLElement {
     return this._sessions;
   }
 
+  set activeSessionID(value) {
+    this._activeSessionID = value || null;
+    this._updateActiveSession();
+  }
+
+  get activeSessionID() {
+    return this._activeSessionID;
+  }
+
+  _updateActiveSession() {
+    if (!this._sessionList)
+      return;
+
+    let rows = this._sessionList.querySelectorAll('.session-row');
+
+    for (let row of rows) {
+      if (row.dataset.id === this._activeSessionID)
+        row.classList.add('active');
+      else
+        row.classList.remove('active');
+    }
+  }
+
   _renderSessions() {
     if (!this._sessionList)
       return;
 
     this._sessionList.innerHTML = '';
 
-    let visibleSessions = this._sessions.filter((s) => !s.archived);
+    let visibleSessions = this._sessions.filter((s) => !s.archived && s.type !== 'dm');
 
     if (visibleSessions.length === 0) {
       let empty = document.createElement('div');
@@ -291,7 +315,7 @@ class KikxSidebar extends HTMLElement {
 
     for (let session of visibleSessions) {
       let row = document.createElement('div');
-      row.className  = 'session-row';
+      row.className  = (session.id === this._activeSessionID) ? 'session-row active' : 'session-row';
       row.dataset.id = session.id;
 
       let icon = document.createElement('span');

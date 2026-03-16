@@ -68,6 +68,16 @@ export class SessionManager {
       sessionData.endsAt = options.endsAt;
 
     let session = await Session.create(sessionData);
+
+    // If an agentID was provided, add the agent as a participant
+    if (options.agentID) {
+      let { Participant } = this._models;
+      await Participant.create({
+        sessionID: session.id,
+        agentID:   options.agentID,
+      });
+    }
+
     return session;
   }
 

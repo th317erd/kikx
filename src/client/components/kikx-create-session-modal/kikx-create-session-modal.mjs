@@ -147,6 +147,12 @@ class KikxCreateSessionModal extends HTMLElement {
     this._agentSelect.style.display = '';
     this._noAgentsMsg.style.display = 'none';
 
+    // Add a "None" option so users can create sessions without an agent
+    let noneOption = document.createElement('option');
+    noneOption.value       = '';
+    noneOption.textContent = 'None';
+    this._agentSelect.appendChild(noneOption);
+
     for (let agent of this._agents) {
       let option = document.createElement('option');
       option.value       = agent.id;
