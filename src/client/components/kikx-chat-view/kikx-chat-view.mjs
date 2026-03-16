@@ -18,7 +18,7 @@ const TEMPLATE_HTML = `
     .chat-container {
       flex: 1;
       overflow-y: auto;
-      padding: 12px;
+      padding: 16px 24px;
     }
 
     .chat-container::-webkit-scrollbar { width: 6px; }
