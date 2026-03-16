@@ -470,6 +470,7 @@ class KikxSessionPage extends HTMLElement {
     this._frameManager      = null;
     this._oldestLoadedOrder = 0;
     this._loadingOlder      = false;
+    this._emptyStateElement = null;
 
     // Streaming state — phantom frames through FrameManager
     // Map<agentID, DOM element> — ephemeral typing indicators
@@ -590,6 +591,7 @@ class KikxSessionPage extends HTMLElement {
       this._disconnectStream();
       this._destroyFrameManager();
       this._chatView.clear();
+      this._emptyStateElement = null;
 
       this._topBar.removeAttribute('hide-back');
 
@@ -676,6 +678,8 @@ class KikxSessionPage extends HTMLElement {
 
     // --- Event-driven rendering: frame:added → DOM projection ---
     this._frameManager.on('frame:added', ({ frame }) => {
+      this._clearEmptyState();
+
       // --- Streaming finalization ---
       // When a commit frame arrives while we have a streaming group, adopt
       // the group frame's DOM element instead of creating a new one.
@@ -964,6 +968,8 @@ class KikxSessionPage extends HTMLElement {
 
         if (fragment.childNodes.length > 0)
           this._chatView.appendInteraction(fragment);
+        else
+          this._showEmptyState();
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -1043,6 +1049,58 @@ class KikxSessionPage extends HTMLElement {
     } finally {
       this._loadingOlder = false;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Empty state placeholder
+  // ---------------------------------------------------------------------------
+
+  _showEmptyState() {
+    if (this._emptyStateElement)
+      return;
+
+    let isDM    = this._isDMSession();
+    let message = (isDM) ? t('chat.empty.dm') : t('chat.empty.session');
+
+    let element       = document.createElement('div');
+    element.className = 'chat-empty-state';
+    element.textContent = message;
+
+    element.style.flex           = '1';
+    element.style.display        = 'flex';
+    element.style.alignItems     = 'center';
+    element.style.justifyContent = 'center';
+    element.style.color          = 'var(--text-muted, #606078)';
+    element.style.fontSize       = '1.125rem';
+    element.style.fontStyle      = 'italic';
+    element.style.userSelect     = 'none';
+
+    this._emptyStateElement = element;
+    this._chatView.appendInteraction(element);
+  }
+
+  _clearEmptyState() {
+    if (!this._emptyStateElement)
+      return;
+
+    this._emptyStateElement.remove();
+    this._emptyStateElement = null;
+  }
+
+  _isDMSession() {
+    if (this._currentSession) {
+      if (this._currentSession.dmAgentID)
+        return true;
+
+      if (this._currentSession.name && this._currentSession.name.startsWith('DM: '))
+        return true;
+    }
+
+    let cached = sessions.getSession(this.sessionID);
+    if (cached && cached.name && cached.name.startsWith('DM: '))
+      return true;
+
+    return false;
   }
 
   // ---------------------------------------------------------------------------
@@ -1342,6 +1400,8 @@ class KikxSessionPage extends HTMLElement {
   }
 
   _renderUserMessage(text, parentID) {
+    this._clearEmptyState();
+
     let name = this._getUserDisplayName();
 
     let interaction = document.createElement('kikx-interaction');

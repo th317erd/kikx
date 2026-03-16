@@ -103,6 +103,10 @@ export default {
     },
   },
   chat: {
+    empty: {
+      dm:      'Send a message to get started...',
+      session: 'Invite friends to get started...',
+    },
     input: {
       placeholder: 'Type a message...',
       sendButton:  'Send',
