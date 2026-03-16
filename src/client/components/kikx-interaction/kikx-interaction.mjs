@@ -403,6 +403,12 @@ class KikxInteraction extends HTMLElement {
   connectedCallback() {
     if (!this._initialized) {
       this._initialized = true;
+
+      // Collect children appended before connection (e.g. message content,
+      // permission requests, typing indicators). Without shadow DOM there is
+      // no <slot> to project them, so we move them into .content manually.
+      let pending = [...this.childNodes];
+
       this.appendChild(getTemplate().content.cloneNode(true));
 
       this._bubble           = this.querySelector('.bubble');
@@ -414,6 +420,9 @@ class KikxInteraction extends HTMLElement {
       this._replyCountBadge  = this.querySelector('.reply-count-badge');
       this._replyContextText = this.querySelector('.reply-context-text');
       this._contentEl        = this.querySelector('.content');
+
+      for (let node of pending)
+        this._contentEl.appendChild(node);
     }
 
     this._render();

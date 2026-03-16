@@ -210,7 +210,7 @@ const TEMPLATE_HTML = `
     }
 
     kikx-user-avatar .initials {
-      color: var(--text-inverse, #0a0a1a);
+      color: #fff;
       font-weight: 600;
       user-select: none;
     }

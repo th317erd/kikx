@@ -65,7 +65,7 @@ const TEMPLATE_HTML = `
       padding: 1px 6px;
       border-radius: 9999px;
       background: var(--accent-primary, #00e5ff);
-      color: var(--text-inverse, #0a0a1a);
+      color: #fff;
       letter-spacing: 0.03em;
       flex-shrink: 0;
     }

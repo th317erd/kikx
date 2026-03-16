@@ -46,6 +46,11 @@ const TEMPLATE_HTML = `
       height: auto;
       max-height: 130px;
       overflow-y: auto;
+      scrollbar-width: none; /* Firefox */
+    }
+
+    kikx-message-input .message-textarea::-webkit-scrollbar {
+      display: none; /* Chrome, Safari, Edge */
     }
 
     kikx-message-input .message-textarea::placeholder {
