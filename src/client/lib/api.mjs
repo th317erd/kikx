@@ -7,7 +7,9 @@ const STORAGE_KEY = 'kikx_auth';
 let authToken = null;
 let onUnauthorized = null;
 
-const BASE_URL = '/kikx/api/v2';
+import { API_BASE_URL } from './config.mjs';
+
+const BASE_URL = API_BASE_URL;
 
 export function setAuthToken(token) {
   authToken = token;

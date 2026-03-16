@@ -1,6 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
+import { BASE_PATH } from '../../lib/config.mjs';
 import { navigate } from '../../lib/router.mjs';
 import { profile } from '../../lib/store.mjs';
 import { clearPersistedAuth, updateProfile, getMe, persistAuth, getAuthToken } from '../../lib/api.mjs';
@@ -619,7 +620,7 @@ class KikxSettingsPage extends HTMLElement {
     panel.querySelector('.logout-action').addEventListener('click', () => {
       clearPersistedAuth();
       profile.logout();
-      navigate('/kikx/login');
+      navigate(BASE_PATH + '/login');
     });
   }
 
@@ -648,7 +649,7 @@ class KikxSettingsPage extends HTMLElement {
   }
 
   _onBackClick() {
-    navigate('/kikx/');
+    navigate(BASE_PATH + '/');
   }
 }
 

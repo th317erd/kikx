@@ -1,5 +1,11 @@
-# Kikx - /kikx/ path (for multi-app deployment)
-# Static files served by nginx. API + WS proxied to Mythix server.
+# Kikx — multi-prefix deployment (identical file in both repos)
+# /kikx/  → served from kikx-workspace/kikx/
+# /kikx2/ → served from kikx-workspace/kikx2/
+# Both proxy API + WS to the same Mythix backend on port 8089.
+
+# ===========================================================================
+# /kikx/ — served from kikx-workspace/kikx/
+# ===========================================================================
 
 # WebSocket endpoint → Mythix server
 location /kikx/ws {
@@ -50,22 +56,12 @@ location /kikx/api/ {
   proxy_redirect / /kikx/;
 }
 
-# Redirect /shared/ → /kikx/shared/ for relative imports.
-# Client files at /kikx/lib/store.mjs import ../../shared/lib/create-store.mjs
-# which resolves to /shared/lib/... (exits the /kikx/ prefix).
-location /shared/ {
-  rewrite ^/shared/(.*)$ /kikx/shared/$1 last;
-}
-
 # Shared libraries (frame-manager, etc.) — served from src/shared/
 location /kikx/shared/ {
-  alias /home/wyatt/Projects/kikx-workspace/kikx2/src/shared/;
+  alias /home/wyatt/Projects/kikx-workspace/kikx/src/shared/;
   expires -1;
   add_header Cache-Control "no-cache, no-store, must-revalidate";
 
-  # MIME types — must be declared here since alias blocks inherit
-  # the server-level types. The nested regex location was removed
-  # because nginx alias + nested regex = broken path resolution.
   types {
     application/javascript  js mjs;
     application/json        json;
@@ -81,11 +77,10 @@ location /kikx/shared/ {
 # Static client files — served from src/client/
 # SPA fallback: try_files for history API routing
 location /kikx/ {
-  alias /home/wyatt/Projects/kikx-workspace/kikx2/src/client/;
+  alias /home/wyatt/Projects/kikx-workspace/kikx/src/client/;
   expires -1;
   add_header Cache-Control "no-cache, no-store, must-revalidate";
 
-  # Serve .mjs files with correct MIME type
   types {
     text/html                             html htm;
     text/css                              css;
@@ -107,7 +102,107 @@ location /kikx/ {
   }
 
   # SPA history API fallback
-  # Note: try_files with alias is buggy in nginx, so we use error_page instead.
-  # When a file isn't found, internally redirect to index.html for client-side routing.
   error_page 404 = /kikx/index.html;
+}
+
+# ===========================================================================
+# /kikx2/ — served from kikx-workspace/kikx2/
+# ===========================================================================
+
+# WebSocket endpoint → Mythix server
+location /kikx2/ws {
+  rewrite ^/kikx2/ws$ /ws break;
+  proxy_pass http://127.0.0.1:8089;
+  proxy_http_version 1.1;
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+
+  # WebSocket upgrade headers
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "Upgrade";
+
+  # Keep WebSocket connections alive
+  proxy_read_timeout 86400;
+  proxy_send_timeout 86400;
+}
+
+# API endpoints → Mythix server
+location /kikx2/api/ {
+  rewrite ^/kikx2/api/(.*)$ /api/$1 break;
+  proxy_pass http://127.0.0.1:8089;
+  proxy_http_version 1.1;
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+
+  # WebSocket support
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "Upgrade";
+
+  # Longer timeouts for AI requests and WebSocket connections
+  proxy_read_timeout 86400;
+  proxy_send_timeout 86400;
+
+  # SSE streaming support - disable all buffering
+  proxy_buffering off;
+  proxy_cache off;
+  chunked_transfer_encoding on;
+
+  # Disable gzip for streaming (causes buffering)
+  gzip off;
+
+  # Rewrite Location headers to include /kikx2/ prefix
+  proxy_redirect / /kikx2/;
+}
+
+# Shared libraries (frame-manager, etc.) — served from src/shared/
+location /kikx2/shared/ {
+  alias /home/wyatt/Projects/kikx-workspace/kikx2/src/shared/;
+  expires -1;
+  add_header Cache-Control "no-cache, no-store, must-revalidate";
+
+  types {
+    application/javascript  js mjs;
+    application/json        json;
+    text/plain              txt;
+  }
+
+  # Block spec/ directory from being served
+  location ~* /kikx2/shared/spec/ {
+    return 404;
+  }
+}
+
+# Static client files — served from src/client/
+# SPA fallback: try_files for history API routing
+location /kikx2/ {
+  alias /home/wyatt/Projects/kikx-workspace/kikx2/src/client/;
+  expires -1;
+  add_header Cache-Control "no-cache, no-store, must-revalidate";
+
+  types {
+    text/html                             html htm;
+    text/css                              css;
+    application/javascript                js mjs;
+    application/json                      json;
+    image/svg+xml                         svg;
+    image/png                             png;
+    image/jpeg                            jpg jpeg;
+    image/gif                             gif;
+    image/x-icon                          ico;
+    font/woff2                            woff2;
+    font/woff                             woff;
+    application/octet-stream              bin;
+  }
+
+  # Block spec/ directory from being served
+  location ~* /kikx2/spec/ {
+    return 404;
+  }
+
+  # SPA history API fallback
+  error_page 404 = /kikx2/index.html;
 }

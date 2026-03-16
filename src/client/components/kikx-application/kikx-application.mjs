@@ -10,6 +10,7 @@ import {
   stop,
 } from '../../lib/router.mjs';
 
+import { BASE_PATH } from '../../lib/config.mjs';
 import { profile, theme } from '../../lib/store.mjs';
 import { setLocale } from '../../lib/i18n.mjs';
 import { setAuthToken, loadPersistedAuth, clearPersistedAuth, setOnUnauthorized } from '../../lib/api.mjs';
@@ -56,16 +57,16 @@ class KikxApplication extends HTMLElement {
     setOnUnauthorized(() => {
       clearPersistedAuth();
       profile.logout();
-      navigate('/kikx/login', { replace: true });
+      navigate(BASE_PATH + '/login', { replace: true });
     });
 
-    defineRoute('/kikx/login',        'login');
-    defineRoute('/kikx/',             'sessions', { requiresAuthentication: true });
-    defineRoute('/kikx/sessions/:id', 'session',  { requiresAuthentication: true });
-    defineRoute('/kikx/settings',     'settings', { requiresAuthentication: true });
+    defineRoute(BASE_PATH + '/login',        'login');
+    defineRoute(BASE_PATH + '/',             'sessions', { requiresAuthentication: true });
+    defineRoute(BASE_PATH + '/sessions/:id', 'session',  { requiresAuthentication: true });
+    defineRoute(BASE_PATH + '/settings',     'settings', { requiresAuthentication: true });
 
     setAuthCheck(() => profile.isAuthenticated());
-    setUnauthorizedRedirect('/kikx/login');
+    setUnauthorizedRedirect(BASE_PATH + '/login');
 
     this.removeRouteChangeListener = onRouteChange(({ route, params }) => {
       this.renderPage(route, params);

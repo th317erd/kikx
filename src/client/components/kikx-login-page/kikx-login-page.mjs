@@ -1,6 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
+import { BASE_PATH } from '../../lib/config.mjs';
 import { profile } from '../../lib/store.mjs';
 import { navigate } from '../../lib/router.mjs';
 import { login, setAuthToken, persistAuth } from '../../lib/api.mjs';
@@ -225,7 +226,7 @@ class KikxLoginPage extends HTMLElement {
       setAuthToken(token);
       persistAuth(token, result.data.user);
       profile.setUser(result.data.user, token);
-      navigate('/kikx/', { replace: true });
+      navigate(BASE_PATH + '/', { replace: true });
     } catch (error) {
       let message = (error && error.message)
         ? error.message

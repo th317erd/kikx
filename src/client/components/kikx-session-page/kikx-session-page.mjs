@@ -1,11 +1,12 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
+import { BASE_PATH, API_BASE_URL } from '../../lib/config.mjs';
 import { navigate } from '../../lib/router.mjs';
 import { getAgents, createAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, getSessions, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken } from '../../lib/api.mjs';
 import { agents, sessions, profile, connection } from '../../lib/store.mjs';
 import { estimateCost } from '../../lib/cost.mjs';
-import { FrameManager } from '../../../shared/frame-manager/frame-manager.mjs';
+import { FrameManager } from 'kikx/shared/frame-manager/frame-manager.mjs';
 import * as debug from '../../lib/debug.mjs';
 
 const TEMPLATE_HTML = `
@@ -489,7 +490,7 @@ class KikxSessionPage extends HTMLElement {
     if (!token)
       return;
 
-    let url    = `/kikx/api/v2/sessions/${sessionID}/stream`;
+    let url    = `${API_BASE_URL}/sessions/${sessionID}/stream`;
     let abort  = new AbortController();
     this._streamAbort = abort;
 
@@ -1647,7 +1648,7 @@ class KikxSessionPage extends HTMLElement {
       this._sessionModal.close();
 
       if (newSession && newSession.id)
-        navigate(`/kikx/sessions/${newSession.id}`);
+        navigate(`${BASE_PATH}/sessions/${newSession.id}`);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to create session:', error);
@@ -1665,7 +1666,7 @@ class KikxSessionPage extends HTMLElement {
         let session = data.session || data;
 
         if (session && session.id)
-          navigate(`/kikx/sessions/${session.id}`);
+          navigate(`${BASE_PATH}/sessions/${session.id}`);
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('Failed to open DM session:', error);
@@ -1677,7 +1678,7 @@ class KikxSessionPage extends HTMLElement {
     let { id } = event.detail || {};
 
     if (id)
-      navigate(`/kikx/sessions/${id}`);
+      navigate(`${BASE_PATH}/sessions/${id}`);
   }
 
   _onAnchoredChange(event) {

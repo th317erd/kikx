@@ -1,6 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
+import { BASE_PATH } from '../../lib/config.mjs';
 import { profile } from '../../lib/store.mjs';
 import { navigate } from '../../lib/router.mjs';
 import store from '../../lib/store.mjs';
@@ -130,7 +131,7 @@ const TEMPLATE_HTML = `
   <div class="bar">
     <div class="left-group">
       <button class="back-button" type="button"></button>
-      <img class="app-logo" src="/kikx/assets/images/kikx-cape.svg" alt="Kikx" />
+      <img class="app-logo" alt="Kikx" />
       <span class="session-name"></span>
     </div>
     <div class="right-group">
@@ -194,6 +195,7 @@ class KikxTopBar extends HTMLElement {
 
   _render() {
     this._backButton.textContent = t('topBar.backButton');
+    this._appLogo.src = BASE_PATH + '/assets/images/kikx-cape.svg';
     this._updateSessionName();
     this._updateAvatar();
   }
@@ -235,11 +237,11 @@ class KikxTopBar extends HTMLElement {
   }
 
   _onBackClick() {
-    navigate('/kikx/');
+    navigate(BASE_PATH + '/');
   }
 
   _onAvatarClick() {
-    navigate('/kikx/settings');
+    navigate(BASE_PATH + '/settings');
   }
 }
 

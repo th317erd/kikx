@@ -4,7 +4,7 @@
 // Wraps a lightweight store with typed scopes for each domain.
 // Components subscribe to update events for reactive re-rendering.
 
-import { createStore } from '../../shared/lib/create-store.mjs';
+import { createStore } from 'kikx/shared/lib/create-store.mjs';
 
 // Default values for each scope, kept as constants so resetStore() can
 // reproduce fresh copies without mutation.

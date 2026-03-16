@@ -3,12 +3,14 @@
 // History API router for Kikx V2.
 // Clean URLs, route matching with params, auth guard, navigation events.
 
+import { BASE_PATH } from './config.mjs';
+
 let routes                = [];
 let currentRoute          = null;
 let currentParams         = {};
 let listeners             = [];
 let authCheckFunction     = null;
-let unauthorizedRedirect  = '/kikx/login';
+let unauthorizedRedirect  = BASE_PATH + '/login';
 
 export function defineRoute(path, name, options = {}) {
   routes.push({ path, name, pattern: compilePattern(path), ...options });
@@ -124,5 +126,5 @@ export function reset() {
   currentParams        = {};
   listeners            = [];
   authCheckFunction    = null;
-  unauthorizedRedirect = '/kikx/login';
+  unauthorizedRedirect = BASE_PATH + '/login';
 }
