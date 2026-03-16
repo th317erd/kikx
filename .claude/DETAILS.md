@@ -35,7 +35,8 @@ Important details to remember across sessions.
 - nginx master config: `~/www/sites/wyatt-desktop.mythix.info.conf`
 - nginx include: `nginx/locations.nginx-include`
 - **Start server:** `KIKX_PLUGIN_PATHS=~/Projects/kikx-workspace node src/server/index.mjs` (requires Node 24)
-- **Test command:** `npm test` (runs `node --test --test-force-exit --test-timeout=30000 'spec/**/*-spec.mjs'`)
+- **Test command:** `npm test` (unit tests: `spec/{client,core,server,shared,integration,scripts}/**/*-spec.mjs`)
+- **E2E test command:** `npm run test:e2e` (requires running server, `spec/e2e/**/*-spec.mjs`)
 
 ## Current Branch
 
@@ -52,27 +53,32 @@ Important details to remember across sessions.
 - **E2E Integration:** VERIFIED (92 frames, 0 errors in comprehensive permission E2E)
 - **Test count:** 3017 tests, 0 failures
 
-## Current Work: Event-Driven DOM Rendering Refactor
+## Current Work: Event-Driven DOM Rendering Refactor — COMPLETE
 
-**Status:** TDD tests written, implementation NOT started yet.
+**Status:** ALL STEPS COMPLETE. Session page reduced from ~2463 to ~2046 lines.
 **Plan:** `bot-docs/future-plans/event-driven-rendering.yaml`
-**TODO:** `.claude/TODO.md` (8 steps)
-**TDD tests written:**
-- `spec/client/create-frame-element-spec.mjs` (569 lines) — Pure factory tests
-- `spec/client/event-driven-rendering-spec.mjs` (788 lines) — Event pipeline tests
+**TODO:** `.claude/TODO.md` (detailed step-by-step with completion status)
 
-**Problem:** Client rendering bypasses FrameManager events. Three manual rendering
-paths exist instead of event-driven DOM projection. Caused infinite scroll bug,
-duplicate elements, architectural drift from plan.
+**Completed steps:**
+- Steps 1-3: `createFrameElement()` factory + `frame:added`/`frame:updated` event handlers
+- Step 5: Unified entry points (all data through `merge()`)
+- Step 6: Optimistic user messages with ghost styling (`.pending` class)
+- Step 4: Phantom frames for streaming (replaced manual DOM with FrameManager phantoms)
+- Step 7: Bulk load performance (DocumentFragment batch rendering)
+- Step 8: Cleanup (~417 lines of dead code removed)
 
-**Server fix already applied:** `FrameController.list()` now parses `beforeOrder`
-query param (was missing). Committed and pushed as `b003077`.
+**Commits:**
+- `459d148` — Steps 1-3, 5, 6, 8
+- `644c2c7` — Steps 4, 7 (phantom streaming + batch load)
 
-**Background agent still running:** Client test audit agent — writing tests for
-store, router, i18n, and untested components. Check TODO.md for status.
+**Key files modified:**
+- `src/client/components/kikx-session-page/kikx-session-page.mjs` — Main refactor target
+- `src/client/components/kikx-interaction/kikx-interaction.mjs` — Pending ghost CSS
+- `spec/client/multi-agent-streaming-spec.mjs` — Rewritten for phantom interface
+- `spec/client/create-frame-element-spec.mjs` — Pure factory TDD tests
+- `spec/client/event-driven-rendering-spec.mjs` — Event pipeline TDD tests
 
-**Key principle:** ALL frame data enters through `merge()` with events enabled.
-DOM is a projection of FrameManager state. See MEMORY.md for full architecture notes.
+**Test count:** ~3204 tests, 0 failures
 
 ### Completed Future Plans
 
@@ -91,7 +97,7 @@ DOM is a projection of FrameManager state. See MEMORY.md for full architecture n
 
 | Feature | Priority |
 |---------|----------|
-| Event-Driven DOM Rendering | High (TDD tests written, impl pending) |
+| ~~Event-Driven DOM Rendering~~ | COMPLETE (all 8 steps) |
 | Device Approval Auth | Medium |
 | Key Rotation | Medium |
 | Applicable Permitters | Low |

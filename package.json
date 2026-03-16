@@ -5,7 +5,8 @@
   "type": "module",
   "license": "GPL-3.0",
   "scripts": {
-    "test": "node --test --test-force-exit --test-timeout=30000 'spec/**/*-spec.mjs'",
+    "test": "node --test --test-force-exit --test-timeout=30000 'spec/{client,core,server,shared,integration,scripts}/**/*-spec.mjs'",
+    "test:e2e": "node --test --test-force-exit --test-timeout=120000 'spec/e2e/**/*-spec.mjs'",
     "start": "KIKX_PLUGIN_PATHS=/home/wyatt/Projects/kikx-workspace node src/server/index.mjs",
     "stop": "fuser -k 8089/tcp 2>/dev/null || echo 'No server running on port 8089'",
     "restart": "npm run stop && sleep 2 && npm start",
@@ -28,6 +29,7 @@
     "./*": "./src/*"
   },
   "devDependencies": {
-    "jsdom": "^25.0.0"
+    "jsdom": "^25.0.0",
+    "puppeteer": "^24.37.5"
   }
 }

@@ -115,8 +115,8 @@ Remove dead code and bandaids that were symptoms of the broken architecture.
 - [x] Removed SSE `frame` case — dead code (FrameManager always present)
 - [x] Updated `_updateRenderedFrame()`, `_renderUserMessage()`, `_renderSystemError()` to use module-level `escapeHTML()`
 - [x] Verified all 3209 tests pass, 0 failures, 0 cancelled
-- [ ] Streaming state variables (`_streamingInteraction`, `_agentStreams`, etc.) retained — depends on Step 4
-- [ ] Puppeteer E2E test — deferred (not blocking)
+- [x] Streaming state variables removed — `_agentStreams` → `_typingIndicators` + `_streamingGroups` + `_relayStreams`
+- [x] Puppeteer E2E test — 18 tests across 5 suites: login, session rendering, message sending + agent response, scroll behavior, DOM structure verification
 
 ---
 
@@ -124,13 +124,14 @@ Remove dead code and bandaids that were symptoms of the broken architecture.
 
 **File**: `src/client/components/kikx-session-page/kikx-session-page.mjs`
 - Started at ~2463 lines
-- Now at ~2106 lines (~357 lines of dead code removed)
+- Now at ~2046 lines (~417 lines of dead code removed)
 - Exports: `createFrameElement(frame)`, `setupFrameRendering(frameManager, container)`
-- Event-driven rendering is the primary rendering path for initial load and SSE commits
-- Streaming (typing indicator + deltas) still uses manual DOM management (Step 4 deferred)
+- Event-driven rendering is the primary rendering path for all rendering (initial load, SSE commits, streaming)
+- Streaming uses FrameManager phantom frames (ephemeral for typing, groupID for deltas)
+- Initial load uses DocumentFragment batch rendering (single DOM append)
 - Optimistic user messages have ghost styling with smooth transition on confirmation
 
-**Test coverage**: 3209 tests, 0 failures, 0 cancelled
+**Test coverage**: 3239 unit tests + 18 E2E tests, 0 failures
 
 ---
 
