@@ -340,7 +340,11 @@ class KikxMessageInput extends HTMLElement {
     this._textarea.value = '';
     this._autoResize();
 
-    if (this._isInteracting) {
+    // Commands (e.g. /reload, /help, /invite) bypass the queue —
+    // they are operational directives, not conversation messages.
+    let isCommand = text.startsWith('/');
+
+    if (this._isInteracting && !isCommand) {
       this._queue.push(text);
       this._updateQueueIndicator();
       this.clearDraft();
