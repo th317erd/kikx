@@ -296,13 +296,16 @@ describe('KikxCommandResult', { timeout: 5000 }, () => {
 // =============================================================================
 
 describe('KikxReflectionBlock', { timeout: 5000 }, () => {
-  it('should render with label from locale', () => {
+  it('should render with animated thinking dots', () => {
     let doc   = getDocument();
     let block = doc.createElement('kikx-reflection-block');
     doc.body.appendChild(block);
 
-    let label = block.querySelector('.label');
-    assert.ok(label, 'Label element should exist');
+    let dots = block.querySelector('.thinking-dots');
+    assert.ok(dots, 'Thinking dots element should exist');
+
+    let dotSpans = dots.querySelectorAll('span');
+    assert.equal(dotSpans.length, 3, 'Should have 3 dot spans');
   });
 
   it('should start collapsed', () => {

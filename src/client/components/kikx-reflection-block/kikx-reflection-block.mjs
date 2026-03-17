@@ -1,7 +1,5 @@
 'use strict';
 
-import { t } from '../../lib/i18n.mjs';
-
 const TEMPLATE_HTML = `
   <style>
     kikx-reflection-block {
@@ -45,8 +43,30 @@ const TEMPLATE_HTML = `
       font-size: 1rem;
     }
 
-    kikx-reflection-block .label {
+    kikx-reflection-block .thinking-dots {
+      display: inline-flex;
+      gap: 2px;
       font-weight: 600;
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    kikx-reflection-block .thinking-dots span {
+      animation: kikx-dot-pulse 1.4s ease-in-out infinite;
+      opacity: 0.2;
+    }
+
+    kikx-reflection-block .thinking-dots span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    kikx-reflection-block .thinking-dots span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes kikx-dot-pulse {
+      0%, 80%, 100% { opacity: 0.2; }
+      40%           { opacity: 1; }
     }
 
     kikx-reflection-block .reflection-content {
@@ -69,7 +89,7 @@ const TEMPLATE_HTML = `
   <button class="toggle-header">
     <span class="collapse-indicator">\u25B6</span>
     <span class="brain-icon">\uD83E\uDDE0</span>
-    <span class="label"></span>
+    <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
   </button>
   <div class="reflection-content"></div>
 `;
@@ -101,11 +121,9 @@ class KikxReflectionBlock extends HTMLElement {
 
       this._toggleHeader      = this.querySelector('.toggle-header');
       this._collapseIndicator = this.querySelector('.collapse-indicator');
-      this._label             = this.querySelector('.label');
       this._reflectionContent = this.querySelector('.reflection-content');
     }
 
-    this._label.textContent = t('chat.reflection.label');
     this._toggleHeader.addEventListener('click', this._onToggleClick);
 
     if (this.hasAttribute('expanded'))

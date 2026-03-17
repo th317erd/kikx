@@ -110,9 +110,6 @@ export default {
         other: '~{count} tokens',
       },
     },
-    reflection: {
-      label: 'Reflection',
-    },
   },
   permission: {
     title:            'Permission Request',

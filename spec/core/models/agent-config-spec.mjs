@@ -368,6 +368,20 @@ describe('Agent Config Persistence', () => {
     assert.equal(await agent.getBehaviors(), 'Never auto-merge PRs.');
   });
 
+  it('getBehaviors() serializes object behaviors to JSON string', async () => {
+    let agent = await createAgent('test-behaviors-object');
+    let behaviorObj = {
+      crackers_response: { trigger: 'when user mentions crackers', response: 'Poly want! Poly want!' },
+    };
+
+    await agent.updateConfig({ behaviors: behaviorObj });
+    let result = await agent.getBehaviors();
+
+    assert.equal(typeof result, 'string', 'getBehaviors() should always return a string');
+    assert.ok(result.includes('crackers_response'), 'serialized text should contain the behavior key');
+    assert.ok(result.includes('Poly want!'), 'serialized text should contain the behavior content');
+  });
+
   // ---------------------------------------------------------------------------
   // Version bump
   // ---------------------------------------------------------------------------

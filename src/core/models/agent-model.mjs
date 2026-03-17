@@ -174,8 +174,21 @@ export class Agent extends ModelBase {
   // ---------------------------------------------------------------------------
 
   async getBehaviors() {
-    let config = await this.getConfig();
-    return config.behaviors || config.abilities || null;
+    let config    = await this.getConfig();
+    let behaviors = config.behaviors || config.abilities || null;
+
+    if (behaviors == null)
+      return null;
+
+    // Behaviors should be a plain text string, but agents may store them as
+    // structured objects. Serialize to readable text if needed.
+    if (typeof behaviors === 'string')
+      return behaviors;
+
+    if (typeof behaviors === 'object')
+      return JSON.stringify(behaviors, null, 2);
+
+    return String(behaviors);
   }
 
   async setBehaviors(text) {
