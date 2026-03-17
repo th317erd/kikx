@@ -222,7 +222,18 @@ export function createFrameElement(frame) {
   else
     alignment = 'agent';
 
-  let name = frame.authorName || (isUser ? 'You' : (frame.type === 'session-link' ? 'System' : 'Agent'));
+  let name = frame.authorName;
+
+  if (!name) {
+    if (isUser)
+      name = 'You';
+    else if (frame.type === 'session-link')
+      name = 'System';
+    else if (frame.authorType === 'agent' && frame.authorID)
+      name = agents.getAgent(frame.authorID)?.name || 'Agent';
+    else
+      name = 'Agent';
+  }
 
   let interaction = document.createElement('kikx-interaction');
   interaction.setAttribute('alignment', alignment);
