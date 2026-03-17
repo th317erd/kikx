@@ -695,13 +695,11 @@ class KikxSessionPage extends HTMLElement {
         })
         .catch((err) => console.error('Failed to mark session read:', err));
 
-      // Load persisted costs from the server
-      this._loadCosts(sessionID);
-
       // Create client-side FrameManager for this session
       this._initFrameManager();
 
-      this._fetchSessionDetails(sessionID);
+      // Load session details first, then costs (costs need participant info)
+      this._fetchSessionDetails(sessionID).then(() => this._loadCosts(sessionID));
       this._loadFrames(sessionID).then(() => this._connectStream(sessionID));
     } else {
       this._topBar.setAttribute('hide-back', '');
@@ -1020,7 +1018,7 @@ class KikxSessionPage extends HTMLElement {
 
       if (session && session.participants) {
         for (let p of session.participants) {
-          if (p.type === 'agent' && p.agentID) {
+          if (p.agentID) {
             let agent = agents.getAgent(p.agentID);
             if (agent && agent.pluginID) {
               // Map pluginID to serviceType

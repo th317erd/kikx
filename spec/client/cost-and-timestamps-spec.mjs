@@ -64,6 +64,189 @@ describe('estimateCost', () => {
     let expected = (1000 / 1_000_000) * 3.00 + (500 / 1_000_000) * 15.00;
     assert.ok(Math.abs(cost - expected) < 0.0000001);
   });
+
+  it('should use Anthropic pricing for serviceType "anthropic"', () => {
+    let cost = estimateCost({ inputTokens: 1_000_000 }, 'anthropic');
+    assert.ok(Math.abs(cost - 3.00) < 0.001);
+  });
+
+  it('should use OpenAI pricing for serviceType "openai"', () => {
+    let cost = estimateCost({ inputTokens: 1_000_000 }, 'openai');
+    assert.ok(Math.abs(cost - 2.50) < 0.001);
+  });
+
+  it('should fall back to Anthropic pricing for unknown serviceType', () => {
+    let cost = estimateCost({ inputTokens: 1_000_000 }, 'unknown');
+    assert.ok(Math.abs(cost - 3.00) < 0.001);
+  });
+
+  it('should fall back to Anthropic pricing when serviceType is null', () => {
+    let cost = estimateCost({ inputTokens: 1_000_000 }, null);
+    assert.ok(Math.abs(cost - 3.00) < 0.001);
+  });
+});
+
+// =============================================================================
+// _loadCosts serviceType derivation tests
+// =============================================================================
+// Tests the participant → serviceType logic that was fixed (p.type === 'agent'
+// was always false since Participant model has no type field; now uses p.agentID).
+// =============================================================================
+
+describe('_loadCosts serviceType derivation', () => {
+  // Extract the serviceType derivation logic for testing
+  function deriveServiceType(participants, getAgent) {
+    let serviceType = null;
+
+    if (participants) {
+      for (let p of participants) {
+        if (p.agentID) {
+          let agent = getAgent(p.agentID);
+          if (agent && agent.pluginID) {
+            if (agent.pluginID === 'claude-agent')
+              serviceType = 'anthropic';
+            else if (agent.pluginID === 'openai-agent')
+              serviceType = 'openai';
+          }
+          break;
+        }
+      }
+    }
+
+    return serviceType;
+  }
+
+  it('should return "anthropic" for claude-agent plugin', () => {
+    let participants = [{ agentID: 'agt_1', role: 'member' }];
+    let getAgent = (id) => (id === 'agt_1' ? { pluginID: 'claude-agent' } : null);
+    assert.equal(deriveServiceType(participants, getAgent), 'anthropic');
+  });
+
+  it('should return "openai" for openai-agent plugin', () => {
+    let participants = [{ agentID: 'agt_2', role: 'member' }];
+    let getAgent = (id) => (id === 'agt_2' ? { pluginID: 'openai-agent' } : null);
+    assert.equal(deriveServiceType(participants, getAgent), 'openai');
+  });
+
+  it('should return null when no participants', () => {
+    assert.equal(deriveServiceType(null, () => null), null);
+    assert.equal(deriveServiceType([], () => null), null);
+  });
+
+  it('should return null when agent has no pluginID', () => {
+    let participants = [{ agentID: 'agt_3', role: 'member' }];
+    let getAgent = () => ({ name: 'test' });
+    assert.equal(deriveServiceType(participants, getAgent), null);
+  });
+
+  it('should return null when agent is not found in store', () => {
+    let participants = [{ agentID: 'agt_4', role: 'member' }];
+    let getAgent = () => null;
+    assert.equal(deriveServiceType(participants, getAgent), null);
+  });
+
+  it('should use first participant with agentID', () => {
+    let participants = [
+      { agentID: 'agt_1', role: 'member' },
+      { agentID: 'agt_2', role: 'member' },
+    ];
+    let getAgent = (id) => {
+      if (id === 'agt_1') return { pluginID: 'claude-agent' };
+      if (id === 'agt_2') return { pluginID: 'openai-agent' };
+      return null;
+    };
+    assert.equal(deriveServiceType(participants, getAgent), 'anthropic');
+  });
+
+  it('should work with Participant model shape (no type field)', () => {
+    // Participant model: { id, sessionID, agentID, role }
+    // Previously broken: p.type === 'agent' was always false
+    let participants = [
+      { id: 'prt_abc', sessionID: 'ses_123', agentID: 'agt_1', role: 'member' },
+    ];
+    let getAgent = () => ({ pluginID: 'claude-agent' });
+    assert.equal(deriveServiceType(participants, getAgent), 'anthropic');
+  });
+});
+
+// =============================================================================
+// _handleUsage cost accumulation tests
+// =============================================================================
+// Tests the incremental cost accumulation logic from SSE usage events.
+// =============================================================================
+
+describe('_handleUsage cost accumulation', () => {
+  // Simulate the cost accumulation logic from _handleUsage
+  function handleUsage({ usage, serviceType, isFinal }, currentCosts) {
+    if (!usage)
+      return currentCosts;
+
+    // Partial events (non-final) don't update costs
+    if (!isFinal)
+      return currentCosts;
+
+    let cost = estimateCost(usage, serviceType);
+
+    return {
+      global:  currentCosts.global + cost,
+      service: currentCosts.service + cost,
+      session: currentCosts.session + cost,
+    };
+  }
+
+  let zeroCosts;
+
+  beforeEach(() => {
+    zeroCosts = { global: 0, service: 0, session: 0 };
+  });
+
+  it('should not update costs for partial (non-final) usage events', () => {
+    let result = handleUsage({
+      usage:       { inputTokens: 1000, outputTokens: 0 },
+      serviceType: 'anthropic',
+      isFinal:     false,
+    }, zeroCosts);
+
+    assert.deepEqual(result, zeroCosts);
+  });
+
+  it('should update costs for final usage events', () => {
+    let result = handleUsage({
+      usage:       { inputTokens: 1000, outputTokens: 500 },
+      serviceType: 'anthropic',
+      isFinal:     true,
+    }, zeroCosts);
+
+    assert.ok(result.global > 0);
+    assert.ok(result.service > 0);
+    assert.ok(result.session > 0);
+    assert.equal(result.global, result.service);
+    assert.equal(result.global, result.session);
+  });
+
+  it('should accumulate costs across multiple final events', () => {
+    let usage = { inputTokens: 1000, outputTokens: 500 };
+    let first = handleUsage({ usage, serviceType: 'anthropic', isFinal: true }, zeroCosts);
+    let second = handleUsage({ usage, serviceType: 'anthropic', isFinal: true }, first);
+
+    assert.ok(second.global > first.global);
+    assert.ok(Math.abs(second.global - first.global * 2) < 0.0000001);
+  });
+
+  it('should not update costs when usage is null', () => {
+    let result = handleUsage({ usage: null, serviceType: 'anthropic', isFinal: true }, zeroCosts);
+    assert.deepEqual(result, zeroCosts);
+  });
+
+  it('should use correct pricing based on serviceType from SSE', () => {
+    let usage = { inputTokens: 1_000_000 };
+
+    let anthropicResult = handleUsage({ usage, serviceType: 'anthropic', isFinal: true }, zeroCosts);
+    let openaiResult    = handleUsage({ usage, serviceType: 'openai', isFinal: true }, zeroCosts);
+
+    assert.ok(Math.abs(anthropicResult.global - 3.00) < 0.001);
+    assert.ok(Math.abs(openaiResult.global - 2.50) < 0.001);
+  });
 });
 
 // =============================================================================
