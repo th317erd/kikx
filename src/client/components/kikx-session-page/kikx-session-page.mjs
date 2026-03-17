@@ -177,6 +177,7 @@ const HIDDEN_TYPES = new Set([
   'permission-denied',
   'participant-joined',
   'participant-left',
+  // Note: 'tool-activity' is NOT hidden — it's in RENDERABLE_TYPES
 ]);
 
 // Frame types that produce visible DOM elements
@@ -188,6 +189,7 @@ const RENDERABLE_TYPES = new Set([
   'command-result',
   'error',
   'reflection',
+  'tool-activity',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -316,6 +318,47 @@ export function createFrameElement(frame) {
       reflectionBlock.content = (frame.content && frame.content.text) || '';
 
       interaction.appendChild(reflectionBlock);
+      break;
+    }
+
+    case 'tool-activity': {
+      let activityContent = frame.content || {};
+      let renderType      = activityContent.renderType;
+      let renderData      = activityContent.renderData || {};
+
+      if (renderType === 'file-read') {
+        let fileRead = document.createElement('kikx-file-read');
+        fileRead.setAttribute('file-path', renderData.filePath || '');
+
+        if (renderData.language)
+          fileRead.setAttribute('language', renderData.language);
+
+        fileRead.fileContent = renderData.content || '';
+        fileRead.lineCount   = renderData.lineCount || 0;
+        fileRead.totalLines  = renderData.totalLines || 0;
+        fileRead.offset      = renderData.offset || 0;
+
+        interaction.appendChild(fileRead);
+      } else if (renderType === 'file-write') {
+        let fileWrite = document.createElement('kikx-file-write');
+        fileWrite.setAttribute('file-path', renderData.filePath || '');
+
+        if (renderData.created)
+          fileWrite.setAttribute('created', '');
+
+        fileWrite.diff = renderData.diff || null;
+
+        interaction.appendChild(fileWrite);
+      } else {
+        // Fallback: render unknown tool-activity as a command-result
+        let commandResult = document.createElement('kikx-command-result');
+        commandResult.setAttribute('command-name', activityContent.toolName || 'tool');
+        commandResult.setAttribute('status', 'success');
+        commandResult.result = JSON.stringify(renderData, null, 2);
+
+        interaction.appendChild(commandResult);
+      }
+
       break;
     }
 

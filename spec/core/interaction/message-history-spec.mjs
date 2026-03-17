@@ -153,7 +153,7 @@ describe('Message History Utilities (C5)', () => {
     it('should exclude system frame types', () => {
       let excludedTypes = [
         'permission-request', 'permission-denied', 'hook-blocked',
-        'tool-error', 'error', 'reflection', 'command-result', 'stop',
+        'tool-error', 'error', 'reflection', 'command-result', 'tool-activity', 'stop',
       ];
 
       for (let type of excludedTypes) {

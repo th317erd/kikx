@@ -32,3 +32,5 @@ import './kikx-reflection-block/kikx-reflection-block.mjs';
 import './kikx-websearch-result/kikx-websearch-result.mjs';
 import './kikx-websocket-manager/kikx-websocket-manager.mjs';
 import './kikx-session-link/kikx-session-link.mjs';
+import './kikx-file-read/kikx-file-read.mjs';
+import './kikx-file-write/kikx-file-write.mjs';

@@ -556,6 +556,29 @@ export class InteractionLoop extends EventEmitter {
             toolOutput = hookResult.message;
           }
 
+          // Render hint → visible tool-activity frame (before stripping)
+          if (toolOutput && typeof toolOutput === 'object' && toolOutput._renderHint) {
+            let hint = toolOutput._renderHint;
+
+            await this._createFrame(sessionID, {
+              id:            generateID('frm_'),
+              type:          'tool-activity',
+              content:       { toolName: block.content.toolName, renderType: hint.renderType, renderData: hint.renderData },
+              timestamp:     Date.now(),
+              interactionID,
+              authorType:    'system',
+              authorID:      null,
+              parentID:      params.parentID || null,
+              hidden:        false,
+              deleted:       false,
+              processed:     false,
+            }, frameManager, { authorType: 'system' }, signingContext);
+
+            // Strip _renderHint before passing to agent
+            let { _renderHint, ...cleanOutput } = toolOutput;
+            toolOutput = cleanOutput;
+          }
+
           await this._createFrame(sessionID, {
             id: generateID('frm_'), type: 'tool-result',
             content: { output: toolOutput, toolUseID: block.content.toolUseId || block.content.toolUseID },

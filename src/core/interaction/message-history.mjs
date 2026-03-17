@@ -16,6 +16,7 @@ const EXCLUDED_TYPES = new Set([
   'error',
   'reflection',
   'command-result',
+  'tool-activity',
   'stop',
 ]);
 
