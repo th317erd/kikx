@@ -51,9 +51,20 @@ Important details to remember across sessions.
 - **Phase 3 (V2 Differentiators):** IN PROGRESS
 - **Phase C (Frame Event Router):** COMPLETE (C1-C4)
 - **E2E Integration:** VERIFIED (92 frames, 0 errors in comprehensive permission E2E)
-- **Test count:** 3275 tests, 0 new failures (2 pre-existing in multi-agent-streaming-spec)
+- **Test count:** 3355 tests, 0 new failures (2 pre-existing in multi-agent-streaming-spec)
 
-## Current Work: Instruction Re-injection + Concurrent Multi-Agent
+## Current Work: SSE Auto-Reconnection (completed 2026-03-17)
+
+- SSE stream now auto-reconnects after server restart, network hiccup, or stream drop
+- Exponential backoff: 2s → 4s → 8s → 16s → ... → 30s cap
+- Max 20 reconnect attempts before giving up
+- Backoff resets on successful reconnection
+- Intentional disconnect (`_disconnectStream()`) cancels all pending reconnects
+- New state: `_sseReconnectAttempts`, `_sseReconnectTimer`, `_sseSessionID`
+- Methods: `_openSSEConnection()`, `_scheduleReconnect()` (split from `_connectStream()`)
+- Test file: `spec/client/sse-reconnection-spec.mjs` (21 tests)
+
+## Previous Work: Instruction Re-injection + Concurrent Multi-Agent
 
 ### Instruction Re-injection (completed 2026-03-17)
 - Agent `instructions` field now re-injected after context truncation (same as abilities)

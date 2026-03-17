@@ -482,6 +482,11 @@ class KikxSessionPage extends HTMLElement {
     // Used instead of a boolean so concurrent agents don't prematurely clear state.
     this._activeInteractionCount = 0;
 
+    // SSE reconnection state
+    this._sseReconnectAttempts = 0;
+    this._sseReconnectTimer   = null;
+    this._sseSessionID        = null;
+
     this._onAddFriend       = this._onAddFriend.bind(this);
     this._onNearTop         = this._onNearTop.bind(this);
     this._onAddSession      = this._onAddSession.bind(this);
@@ -1162,6 +1167,13 @@ class KikxSessionPage extends HTMLElement {
   _connectStream(sessionID) {
     this._disconnectStream();
 
+    this._sseSessionID        = sessionID;
+    this._sseReconnectAttempts = 0;
+
+    this._openSSEConnection(sessionID);
+  }
+
+  _openSSEConnection(sessionID) {
     let token = getAuthToken();
     if (!token)
       return;
@@ -1180,9 +1192,13 @@ class KikxSessionPage extends HTMLElement {
         // eslint-disable-next-line no-console
         console.error('SSE stream failed:', response.status, response.statusText);
         connection.setStatus('disconnected');
+        this._scheduleReconnect();
+
         return;
       }
 
+      // Connected successfully — reset backoff
+      this._sseReconnectAttempts = 0;
       this._readSSEStream(response.body);
     }).catch((error) => {
       if (error.name === 'AbortError')
@@ -1191,6 +1207,7 @@ class KikxSessionPage extends HTMLElement {
       // eslint-disable-next-line no-console
       console.error('SSE connection error:', error);
       connection.setStatus('disconnected');
+      this._scheduleReconnect();
     });
   }
 
@@ -1198,6 +1215,7 @@ class KikxSessionPage extends HTMLElement {
     let reader  = body.getReader();
     let decoder = new TextDecoder();
     let buffer  = '';
+    let aborted = false;
 
     try {
       while (true) {
@@ -1229,14 +1247,42 @@ class KikxSessionPage extends HTMLElement {
         }
       }
     } catch (error) {
-      if (error.name === 'AbortError')
+      if (error.name === 'AbortError') {
+        aborted = true;
+
         return;
+      }
 
       // eslint-disable-next-line no-console
       console.error('SSE read error:', error);
+    } finally {
+      if (!aborted) {
+        connection.setStatus('disconnected');
+        this._scheduleReconnect();
+      }
     }
+  }
 
-    connection.setStatus('disconnected');
+  _scheduleReconnect() {
+    // Don't reconnect if intentionally disconnected or no session
+    if (!this._sseSessionID)
+      return;
+
+    // Cap at 20 attempts
+    if (this._sseReconnectAttempts >= 20)
+      return;
+
+    // Exponential backoff: 2s, 4s, 8s, 16s, capped at 30s
+    let delay = Math.min(2000 * Math.pow(2, this._sseReconnectAttempts), 30000);
+    this._sseReconnectAttempts++;
+
+    this._sseReconnectTimer = setTimeout(() => {
+      this._sseReconnectTimer = null;
+
+      // Only reconnect if still on the same session
+      if (this._sseSessionID)
+        this._openSSEConnection(this._sseSessionID);
+    }, delay);
   }
 
   _handleSSEEvent(eventType, data) {
@@ -1467,6 +1513,17 @@ class KikxSessionPage extends HTMLElement {
   }
 
   _disconnectStream() {
+    // Clear reconnection state first — prevents _readSSEStream's finally
+    // block from scheduling another reconnect after we abort.
+    this._sseSessionID = null;
+
+    if (this._sseReconnectTimer) {
+      clearTimeout(this._sseReconnectTimer);
+      this._sseReconnectTimer = null;
+    }
+
+    this._sseReconnectAttempts = 0;
+
     if (this._streamAbort) {
       this._streamAbort.abort();
       this._streamAbort = null;
