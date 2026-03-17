@@ -1694,10 +1694,10 @@ class KikxSessionPage extends HTMLElement {
       if (!el || el.getAttribute('participant-name') !== 'Agent')
         continue;
 
-      let name = this._getAgentDisplayName(frame.authorID);
-      if (name && name !== 'Agent') {
-        el.setAttribute('participant-name', name);
-        el.setAttribute('participant-initials', getInitials(name));
+      let agent = agents.getAgent(frame.authorID);
+      if (agent && agent.name) {
+        el.setAttribute('participant-name', agent.name);
+        el.setAttribute('participant-initials', getInitials(agent.name));
       }
     }
   }
