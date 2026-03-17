@@ -330,15 +330,15 @@ describe('_createFrameElement — common attributes', { timeout: 5000 }, () => {
     assert.equal(el.getAttribute('data-interaction-id'), 'frame-fallback');
   });
 
-  it('should set participant-name from frame.authorName', () => {
-    let frame = makeFrame({ type: 'message', authorName: 'Claude' });
+  it('should set participant-name from frame.authorName for agent messages', () => {
+    let frame = makeFrame({ type: 'message', authorType: 'agent', authorName: 'Claude' });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('participant-name'), 'Claude');
   });
 
   it('should set participant-initials derived from the author name', () => {
-    let frame = makeFrame({ type: 'message', authorName: 'Test Bot' });
+    let frame = makeFrame({ type: 'message', authorType: 'agent', authorName: 'Test Bot' });
     let el    = createFrameElement(frame);
 
     // "Test Bot" → "TB"
@@ -372,6 +372,100 @@ describe('_createFrameElement — common attributes', { timeout: 5000 }, () => {
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('alignment'), 'user');
+  });
+});
+
+// =============================================================================
+// Name resolution
+// =============================================================================
+
+describe('_createFrameElement — name resolution', { timeout: 5000 }, () => {
+
+  it('should always show "You" for user-message frames regardless of authorName', () => {
+    let frame = makeFrame({ type: 'user-message', authorType: 'user', authorName: 'John Smith' });
+    let el    = createFrameElement(frame);
+
+    assert.equal(el.getAttribute('participant-name'), 'You');
+  });
+
+  it('should always show "You" when authorType is "user" regardless of frame type', () => {
+    let frame = makeFrame({ type: 'message', authorType: 'user', authorName: 'John Smith' });
+    let el    = createFrameElement(frame);
+
+    assert.equal(el.getAttribute('participant-name'), 'You');
+  });
+
+  it('should show "System" for command-result frames', () => {
+    let frame = makeFrame({ type: 'command-result', authorType: 'system', authorName: 'SomeBot', content: { html: '<p>done</p>' } });
+    let el    = createFrameElement(frame);
+
+    assert.equal(el.getAttribute('participant-name'), 'System');
+  });
+
+  it('should show "System" for command-result frames even without authorType', () => {
+    let frame = makeFrame({ type: 'command-result', authorType: undefined, authorName: undefined, content: { html: '<p>done</p>' } });
+    let el    = createFrameElement(frame);
+
+    assert.equal(el.getAttribute('participant-name'), 'System');
+  });
+
+  it('should show "System" for session-link frames', () => {
+    let frame = makeFrame({ type: 'session-link', content: { targetSessionID: 'ses-1', title: 'Sub' } });
+    let el    = createFrameElement(frame);
+
+    assert.equal(el.getAttribute('participant-name'), 'System');
+  });
+
+  it('should show "System" for frames with authorType "system"', () => {
+    let frame = makeFrame({ type: 'message', authorType: 'system', authorName: 'Whatever', content: { html: '<p>hi</p>' } });
+    let el    = createFrameElement(frame);
+
+    assert.equal(el.getAttribute('participant-name'), 'System');
+  });
+
+  it('should use authorName for agent frames when set', () => {
+    let frame = makeFrame({ type: 'message', authorType: 'agent', authorID: 'agt_123', authorName: 'my-agent' });
+    let el    = createFrameElement(frame);
+
+    assert.equal(el.getAttribute('participant-name'), 'my-agent');
+  });
+
+  it('should fall back to "Agent" for agent frames without authorName or store entry', () => {
+    let frame = makeFrame({ type: 'message', authorType: 'agent', authorID: 'agt_unknown', authorName: undefined });
+    let el    = createFrameElement(frame);
+
+    assert.equal(el.getAttribute('participant-name'), 'Agent');
+  });
+
+  it('should fall back to "Agent" for frames with no authorType and no authorName', () => {
+    let frame = makeFrame({ type: 'message', authorType: undefined, authorName: undefined });
+    let el    = createFrameElement(frame);
+
+    assert.equal(el.getAttribute('participant-name'), 'Agent');
+  });
+});
+
+// =============================================================================
+// Reflection complete attribute
+// =============================================================================
+
+describe('_createFrameElement — reflection complete attribute', { timeout: 5000 }, () => {
+
+  it('should set complete attribute on persisted reflection blocks', () => {
+    let frame = makeFrame({ type: 'reflection', content: { text: 'Thinking about it...' } });
+    let el    = createFrameElement(frame);
+
+    let block = el.querySelector('kikx-reflection-block');
+    assert.ok(block, 'should contain reflection block');
+    assert.ok(block.hasAttribute('complete'), 'persisted reflection should have complete attribute');
+  });
+
+  it('should set complete attribute even when reflection has empty content', () => {
+    let frame = makeFrame({ type: 'reflection', content: { text: '' } });
+    let el    = createFrameElement(frame);
+
+    let block = el.querySelector('kikx-reflection-block');
+    assert.ok(block.hasAttribute('complete'), 'should still have complete attribute');
   });
 });
 

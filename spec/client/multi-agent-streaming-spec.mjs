@@ -300,5 +300,114 @@ describe('Multi-agent streaming', () => {
       let sg = page._streamingGroups.get('agt_alpha');
       assert.equal(sg.reflectionText, 'think more');
     });
+
+    it('marks reflection block as complete on interaction:end', () => {
+      let page = createSessionPage();
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('reflection-delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'thinking...' }, authorID: 'agt_alpha' }));
+
+      // Verify reflection block exists and is NOT complete yet
+      let sg      = page._streamingGroups.get('agt_alpha');
+      let groupEl = page._chatView.querySelector(`[data-frame-id="${sg.groupID}"]`);
+      let rb      = groupEl.querySelector('kikx-reflection-block');
+      assert.ok(rb, 'reflection block should exist during streaming');
+      assert.ok(!rb.hasAttribute('complete'), 'reflection block should not be complete during streaming');
+
+      // End the interaction
+      page._handleSSEEvent('interaction:end', JSON.stringify({ agentID: 'agt_alpha' }));
+
+      // Reflection block should now be marked complete
+      assert.ok(rb.hasAttribute('complete'), 'reflection block should be marked complete after interaction:end');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // _refreshAgentNames — direct store lookup
+  // ---------------------------------------------------------------------------
+
+  describe('_refreshAgentNames', () => {
+    it('should update agent name from store, not fall back to session name', () => {
+      let page = createSessionPage();
+
+      // Simulate a frame in the FrameManager with authorType=agent
+      page._frameManager.merge([{
+        id:         'frm_test1',
+        type:       'message',
+        content:    { html: '<p>Hello</p>' },
+        order:      1,
+        timestamp:  Date.now(),
+        authorType: 'agent',
+        authorID:   'agt_alpha',
+      }], { events: false });
+
+      // Create a DOM element with "Agent" as the name (simulating pre-agent-load render)
+      let doc         = getDocument();
+      let interaction = doc.createElement('kikx-interaction');
+      interaction.setAttribute('data-frame-id', 'frm_test1');
+      interaction.setAttribute('participant-name', 'Agent');
+      interaction.setAttribute('alignment', 'agent');
+      page._chatView.appendInteraction(interaction);
+
+      // Ensure the agent is in the store
+      store.agents.addAgent({ id: 'agt_alpha', name: 'Alpha Agent' });
+
+      // Call _refreshAgentNames
+      page._refreshAgentNames();
+
+      assert.equal(interaction.getAttribute('participant-name'), 'Alpha Agent');
+    });
+
+    it('should not update name if agent is not in store', () => {
+      let page = createSessionPage();
+
+      page._frameManager.merge([{
+        id:         'frm_test2',
+        type:       'message',
+        content:    { html: '<p>Hello</p>' },
+        order:      1,
+        timestamp:  Date.now(),
+        authorType: 'agent',
+        authorID:   'agt_unknown_xyz',
+      }], { events: false });
+
+      let doc         = getDocument();
+      let interaction = doc.createElement('kikx-interaction');
+      interaction.setAttribute('data-frame-id', 'frm_test2');
+      interaction.setAttribute('participant-name', 'Agent');
+      interaction.setAttribute('alignment', 'agent');
+      page._chatView.appendInteraction(interaction);
+
+      // Agent is NOT in the store — name should remain "Agent", NOT the session name
+      page._refreshAgentNames();
+
+      assert.equal(interaction.getAttribute('participant-name'), 'Agent');
+    });
+
+    it('should not touch elements that already have a real name', () => {
+      let page = createSessionPage();
+
+      page._frameManager.merge([{
+        id:         'frm_test3',
+        type:       'message',
+        content:    { html: '<p>Hello</p>' },
+        order:      1,
+        timestamp:  Date.now(),
+        authorType: 'agent',
+        authorID:   'agt_alpha',
+      }], { events: false });
+
+      let doc         = getDocument();
+      let interaction = doc.createElement('kikx-interaction');
+      interaction.setAttribute('data-frame-id', 'frm_test3');
+      interaction.setAttribute('participant-name', 'Already Named');
+      interaction.setAttribute('alignment', 'agent');
+      page._chatView.appendInteraction(interaction);
+
+      page._refreshAgentNames();
+
+      // Should not be changed since it's not "Agent"
+      assert.equal(interaction.getAttribute('participant-name'), 'Already Named');
+    });
   });
 });
