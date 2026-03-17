@@ -587,7 +587,7 @@ describe('KikxModal', { timeout: 5000 }, () => {
     assert.equal(title.textContent, 'Updated');
   });
 
-  it('should open via open() method and set attribute', () => {
+  it('should open via open() method and set attribute', async () => {
     let doc   = getDocument();
     let modal = doc.createElement('kikx-modal');
     doc.body.appendChild(modal);
@@ -598,6 +598,10 @@ describe('KikxModal', { timeout: 5000 }, () => {
     modal.open();
     assert.ok(modal.hasAttribute('open'), 'Should have open attribute');
     assert.ok(opened, 'modal-open event should fire');
+
+    // Flush the requestAnimationFrame callback scheduled by _autoFocus()
+    // so it runs while the DOM is still alive (avoids async teardown error).
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
   it('should close via close() method and remove attribute', () => {

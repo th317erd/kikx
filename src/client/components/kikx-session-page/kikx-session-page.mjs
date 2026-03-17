@@ -883,12 +883,13 @@ class KikxSessionPage extends HTMLElement {
 
         if (!rb) {
           rb = document.createElement('kikx-reflection-block');
-          let mc = el.querySelector('kikx-message-content');
+          let contentEl = el.querySelector('.content') || el;
+          let mc = contentEl.querySelector('kikx-message-content');
 
           if (mc)
-            el.insertBefore(rb, mc);
+            contentEl.insertBefore(rb, mc);
           else
-            el.appendChild(rb);
+            contentEl.appendChild(rb);
         }
 
         rb.content = frame.content.reflectionText;
