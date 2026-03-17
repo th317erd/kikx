@@ -148,6 +148,10 @@ export function deleteSession(sessionID) {
   return request('DELETE', `/sessions/${sessionID}`);
 }
 
+export function markSessionRead(sessionID) {
+  return request('POST', `/sessions/${sessionID}/read`);
+}
+
 export function addParticipant(sessionID, participantData) {
   return request('POST', `/sessions/${sessionID}/participants`, participantData);
 }

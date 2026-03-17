@@ -46,6 +46,10 @@ export class ControllerBase extends MythixControllerBase {
     return this.getCore().getContext().getProperty('streamRelay');
   }
 
+  getValueStoreService() {
+    return this.getCore().getContext().getProperty('valueStoreService');
+  }
+
   getCoreModels() {
     return this.getCore().getModels();
   }

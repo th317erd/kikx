@@ -142,6 +142,11 @@ export function getRoutes({ path }) {
             controller: 'SessionController.revive',
           });
 
+          endpoint('read', {
+            methods:    [ 'POST' ],
+            controller: 'SessionController.markRead',
+          });
+
           // Participants
           nestedPath('participants', ({ endpoint, capture }) => {
             endpoint('list', {

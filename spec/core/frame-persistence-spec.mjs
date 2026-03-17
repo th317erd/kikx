@@ -552,6 +552,69 @@ describe('FramePersistence', () => {
   });
 
   // ===========================================================================
+  // getMaxOrder
+  // ===========================================================================
+
+  describe('getMaxOrder', () => {
+    it('should return 0 for an empty session', async () => {
+      let maxOrder = await persistence.getMaxOrder(session.id);
+      assert.equal(maxOrder, 0);
+    });
+
+    it('should return the highest order among frames', async () => {
+      let now = Date.now();
+      let id1 = generateFrameID();
+      let id2 = generateFrameID();
+      let id3 = generateFrameID();
+
+      await persistence.saveFrames(session.id, [
+        { id: id1, type: 'message', order: 2, timestamp: now },
+        { id: id2, type: 'message', order: 7, timestamp: now + 1 },
+        { id: id3, type: 'message', order: 5, timestamp: now + 2 },
+      ]);
+
+      let maxOrder = await persistence.getMaxOrder(session.id);
+      assert.equal(maxOrder, 7);
+    });
+
+    it('should return correct order with a single frame', async () => {
+      let id = generateFrameID();
+
+      await persistence.saveFrames(session.id, [
+        { id, type: 'message', order: 42, timestamp: Date.now() },
+      ]);
+
+      let maxOrder = await persistence.getMaxOrder(session.id);
+      assert.equal(maxOrder, 42);
+    });
+
+    it('should not be affected by frames in other sessions', async () => {
+      let otherSession = await models.Session.create({ organizationID: org.id, name: 'Other Session' });
+
+      let id1 = generateFrameID();
+      let id2 = generateFrameID();
+
+      await persistence.saveFrames(session.id, [
+        { id: id1, type: 'message', order: 3, timestamp: Date.now() },
+      ]);
+
+      await persistence.saveFrames(otherSession.id, [
+        { id: id2, type: 'message', order: 100, timestamp: Date.now() },
+      ]);
+
+      let maxOrder = await persistence.getMaxOrder(session.id);
+      assert.equal(maxOrder, 3);
+    });
+
+    it('should throw if sessionID is missing', async () => {
+      await assert.rejects(
+        () => persistence.getMaxOrder(null),
+        /sessionID is required/,
+      );
+    });
+  });
+
+  // ===========================================================================
   // _frameToRecord / _recordToFrame
   // ===========================================================================
 

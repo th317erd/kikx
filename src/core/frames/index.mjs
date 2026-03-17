@@ -199,6 +199,28 @@ export class FramePersistence {
   }
 
   // ---------------------------------------------------------------------------
+  // getMaxOrder
+  // ---------------------------------------------------------------------------
+  // Returns the highest frame order for a session, or 0 if no frames exist.
+  // Uses descending ORDER + LIMIT(1) for efficiency.
+  // ---------------------------------------------------------------------------
+
+  async getMaxOrder(sessionID) {
+    if (!sessionID)
+      throw new Error('sessionID is required');
+
+    let { Frame } = this._models;
+    let frames    = await Frame.where.sessionID.EQ(sessionID)
+      .ORDER('+Frame:order')
+      .all();
+
+    if (frames.length === 0)
+      return 0;
+
+    return frames[frames.length - 1].order;
+  }
+
+  // ---------------------------------------------------------------------------
   // _frameToRecord
   // ---------------------------------------------------------------------------
   // Converts a FrameManager-style frame data object to a DB record.

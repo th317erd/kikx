@@ -3,7 +3,7 @@
 import { t } from '../../lib/i18n.mjs';
 import { BASE_PATH, API_BASE_URL } from '../../lib/config.mjs';
 import { navigate } from '../../lib/router.mjs';
-import { getAgents, createAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, getSessions, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken, getCost } from '../../lib/api.mjs';
+import { getAgents, createAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, getSessions, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken, getCost, markSessionRead } from '../../lib/api.mjs';
 import { agents, sessions, profile, connection } from '../../lib/store.mjs';
 import { estimateCost } from '../../lib/cost.mjs';
 import { FrameManager } from 'kikx/shared/frame-manager/frame-manager.mjs';
@@ -671,6 +671,14 @@ class KikxSessionPage extends HTMLElement {
       // Highlight the active session in the sidebar
       if (this._sidebar)
         this._sidebar.activeSessionID = sessionID;
+
+      // Mark session as read and clear unread badge
+      markSessionRead(sessionID)
+        .then(() => {
+          sessions.updateSession(sessionID, { unreadCount: 0 });
+          this._updateSessionsList();
+        })
+        .catch((err) => console.error('Failed to mark session read:', err));
 
       // Load persisted costs from the server
       this._loadCosts(sessionID);
