@@ -1665,6 +1665,28 @@ class KikxSessionPage extends HTMLElement {
     return 'Agent';
   }
 
+  _refreshAgentNames() {
+    if (!this._chatView || !this._frameManager)
+      return;
+
+    let allFrames = this._frameManager.toArray();
+
+    for (let frame of allFrames) {
+      if (frame.authorType !== 'agent' || !frame.authorID)
+        continue;
+
+      let el = this._chatView.querySelector(`[data-frame-id="${frame.id}"]`);
+      if (!el || el.getAttribute('participant-name') !== 'Agent')
+        continue;
+
+      let name = this._getAgentDisplayName(frame.authorID);
+      if (name && name !== 'Agent') {
+        el.setAttribute('participant-name', name);
+        el.setAttribute('participant-initials', getInitials(name));
+      }
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Send message
   // ---------------------------------------------------------------------------
@@ -1736,6 +1758,9 @@ class KikxSessionPage extends HTMLElement {
       // eslint-disable-next-line no-console
       console.error('Failed to load agents:', error);
     }
+
+    // Refresh agent names on any frames that rendered before agents loaded
+    this._refreshAgentNames();
 
     // Fetch sessions
     try {
