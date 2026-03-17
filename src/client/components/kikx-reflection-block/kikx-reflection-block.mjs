@@ -43,6 +43,10 @@ const TEMPLATE_HTML = `
       font-size: 1rem;
     }
 
+    kikx-reflection-block[complete] .thinking-dots {
+      display: none;
+    }
+
     kikx-reflection-block .thinking-dots {
       display: inline-flex;
       gap: 2px;

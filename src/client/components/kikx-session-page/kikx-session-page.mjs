@@ -222,18 +222,16 @@ export function createFrameElement(frame) {
   else
     alignment = 'agent';
 
-  let name = frame.authorName;
+  let name;
 
-  if (!name) {
-    if (isUser)
-      name = 'You';
-    else if (frame.type === 'session-link' || frame.type === 'command-result' || frame.authorType === 'system')
-      name = 'System';
-    else if (frame.authorType === 'agent' && frame.authorID)
-      name = agents.getAgent(frame.authorID)?.name || 'Agent';
-    else
-      name = 'Agent';
-  }
+  if (isUser)
+    name = 'You';
+  else if (frame.type === 'session-link' || frame.type === 'command-result' || frame.authorType === 'system')
+    name = 'System';
+  else if (frame.authorType === 'agent' && frame.authorID)
+    name = frame.authorName || agents.getAgent(frame.authorID)?.name || 'Agent';
+  else
+    name = frame.authorName || 'Agent';
 
   let interaction = document.createElement('kikx-interaction');
   interaction.setAttribute('alignment', alignment);
@@ -327,6 +325,7 @@ export function createFrameElement(frame) {
     case 'reflection': {
       let reflectionBlock = document.createElement('kikx-reflection-block');
       reflectionBlock.content = (frame.content && frame.content.text) || '';
+      reflectionBlock.setAttribute('complete', '');
 
       interaction.appendChild(reflectionBlock);
       break;
@@ -484,8 +483,10 @@ export function setupFrameRendering(frameManager, container) {
 
     // Patch reflection content
     let reflectionBlock = existing.querySelector('kikx-reflection-block');
-    if (reflectionBlock && frame.content && frame.content.text)
+    if (reflectionBlock && frame.content && frame.content.text) {
       reflectionBlock.content = frame.content.text;
+      reflectionBlock.setAttribute('complete', '');
+    }
   }
 
   frameManager.on('frame:added', onFrameAdded);
@@ -1528,6 +1529,17 @@ class KikxSessionPage extends HTMLElement {
               if (interactionID)
                 debug.snapshotComposed(interactionID);
             }
+          }
+        }
+
+        // Mark any streaming reflection blocks as complete (stop spinner)
+        let endSg = this._streamingGroups.get(endAgentID);
+        if (endSg && endSg.groupID) {
+          let endGroupEl = this._chatView.querySelector(`[data-frame-id="${endSg.groupID}"]`);
+          if (endGroupEl) {
+            let rb = endGroupEl.querySelector('kikx-reflection-block');
+            if (rb)
+              rb.setAttribute('complete', '');
           }
         }
 
