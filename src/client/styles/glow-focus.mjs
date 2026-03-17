@@ -17,7 +17,7 @@
 // transitions, which cost nothing at runtime.
 //
 // ::before  — conic-gradient ring (the border glow + dot peaks)
-// ::after   — conic-gradient bloom (soft ambient wash behind the ring)
+// ::after   — conic-gradient bloom (soft ambient wash inside the element)
 // ---------------------------------------------------------------------------
 
 // Register animatable custom properties via JS API.
@@ -51,7 +51,6 @@ export function glowInitCSS(baseSelector) {
       from { --glow-hue: 0deg; }
       to   { --glow-hue: 360deg; }
     }
-
     ${baseSelector} {
       animation:
         glow-rotate 20s linear infinite,
@@ -68,7 +67,7 @@ export const GLOW_KEYFRAMES = `
   }
 `;
 
-function glowBase(selector, borderWidth, opacity, bloomSpread) {
+function glowBase(selector, borderWidth, opacity) {
   // Wide, gradual transitions — "pre-softened" with no blur needed.
   // Each peak spreads over ~80deg instead of ~30deg for a diffuse look.
   let peak      = opacity.toFixed(2);
@@ -133,7 +132,7 @@ function glowBase(selector, borderWidth, opacity, bloomSpread) {
       position: absolute;
       pointer-events: none;
       border-radius: inherit;
-      inset: -${bloomSpread}px;
+      inset: 0;
       z-index: 0;
 
       background: conic-gradient(
@@ -167,7 +166,7 @@ function glowBase(selector, borderWidth, opacity, bloomSpread) {
 // ---------------------------------------------------------------------------
 export function glowHoverCSS(selector) {
   return `
-    ${glowBase(selector, 2, 0.35, 8)}
+    ${glowBase(selector, 2, 0.35)}
   `;
 }
 
@@ -176,6 +175,6 @@ export function glowHoverCSS(selector) {
 // ---------------------------------------------------------------------------
 export function glowCSS(selector) {
   return `
-    ${glowBase(selector, 3, 0.85, 12)}
+    ${glowBase(selector, 3, 0.85)}
   `;
 }
