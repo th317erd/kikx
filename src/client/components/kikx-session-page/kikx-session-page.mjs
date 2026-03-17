@@ -1241,6 +1241,23 @@ class KikxSessionPage extends HTMLElement {
         connection.setStatus('connected');
         break;
 
+      case 'frame': {
+        let frame;
+
+        try {
+          frame = JSON.parse(data);
+        } catch (_error) {
+          return;
+        }
+
+        // Raw frame events come from commands and other non-streaming paths.
+        // Merge as a single-element array so FrameManager handles rendering.
+        if (this._frameManager && frame)
+          this._frameManager.merge([frame]);
+
+        break;
+      }
+
       case 'commit': {
         let commit;
 
