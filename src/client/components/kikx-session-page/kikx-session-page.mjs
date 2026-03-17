@@ -1726,6 +1726,19 @@ class KikxSessionPage extends HTMLElement {
         agentID = this._currentSession.participants[0].agentID;
     }
 
+    // If no agent found, refresh session details — participants may have been
+    // added after the initial fetch (e.g., invited after session creation).
+    if (!agentID && sessionID) {
+      await this._fetchSessionDetails(sessionID);
+
+      if (this._currentSession) {
+        agentID = this._currentSession.dmAgentID || null;
+
+        if (!agentID && this._currentSession.participants && this._currentSession.participants.length > 0)
+          agentID = this._currentSession.participants[0].agentID;
+      }
+    }
+
     // Render user message immediately (optimistic)
     this._renderUserMessage(text, parentID);
 
