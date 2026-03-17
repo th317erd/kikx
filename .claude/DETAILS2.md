@@ -9,7 +9,7 @@ Important details to remember across sessions.
 - **Name:** Kikx (formerly Hero)
 - **Repo:** https://github.com/th317erd/kikx
 - **Branch:** v2
-- **Location:** ~/Projects/kikx-workspace/kikx (symlinked from ~/Projects/hero)
+- **Location:** ~/Projects/kikx-workspace/kikx2
 - **Standalone plugin:** ~/Projects/kikx-workspace/kikx-plugin-claude
 
 ## Planning Workflow
@@ -31,7 +31,7 @@ Important details to remember across sessions.
 - V2 database: `~/.config/kikx/kikx.db`
 - V2 server port: 8089
 - V2 server entry: `src/server/index.mjs`
-- V2 URL: `https://wyatt-desktop.mythix.info/kikx2/` (NOT /kikx/ — that's the kikx1 repo)
+- V2 URL: `https://wyatt-desktop.mythix.info/kikx2/`
 - nginx master config: `~/www/sites/wyatt-desktop.mythix.info.conf`
 - nginx include: `nginx/locations.nginx-include`
 - **Start server:** `KIKX_PLUGIN_PATHS=~/Projects/kikx-workspace node src/server/index.mjs` (requires Node 24)
@@ -51,45 +51,9 @@ Important details to remember across sessions.
 - **Phase 3 (V2 Differentiators):** IN PROGRESS
 - **Phase C (Frame Event Router):** COMPLETE (C1-C4)
 - **E2E Integration:** VERIFIED (92 frames, 0 errors in comprehensive permission E2E)
-- **Test count:** 3355 tests, 0 new failures (2 pre-existing in multi-agent-streaming-spec)
+- **Test count:** 3017 tests, 0 failures
 
-## Current Work: "Abilities" → "Behaviors" Rename (in progress 2026-03-17)
-
-- Renaming the "abilities" system to "behaviors" across all V2 code
-- Agent model methods: `getAbilities`→`getBehaviors`, `setAbilities`→`setBehaviors`, `hasAbilities`→`hasBehaviors`
-- Primer delimiters: `--- ABILITIES ---` → `--- BEHAVIORS ---`
-- Behaviors re-injection module renamed: `abilities-reinjection.mjs` → `behaviors-reinjection.mjs`
-- Client ability-list-modal and ability-wizard-modal components DROPPED (behavior management through agent tool calls)
-- Client abilities API endpoints, store scope, and i18n strings removed
-- Agent model `getBehaviors()` has backward compat fallback: `config.behaviors || config.abilities || null`
-
-## Previous Work: SSE Auto-Reconnection (completed 2026-03-17)
-
-- SSE stream now auto-reconnects after server restart, network hiccup, or stream drop
-- Exponential backoff: 2s → 4s → 8s → 16s → ... → 30s cap
-- Max 20 reconnect attempts before giving up
-- Backoff resets on successful reconnection
-- Intentional disconnect (`_disconnectStream()`) cancels all pending reconnects
-- New state: `_sseReconnectAttempts`, `_sseReconnectTimer`, `_sseSessionID`
-- Methods: `_openSSEConnection()`, `_scheduleReconnect()` (split from `_connectStream()`)
-- Test file: `spec/client/sse-reconnection-spec.mjs` (21 tests)
-
-## Previous Work: Instruction Re-injection + Concurrent Multi-Agent
-
-### Instruction Re-injection (completed 2026-03-17)
-- Agent `instructions` field now re-injected after context truncation (same as behaviors)
-- New module: `src/core/interaction/instructions-reinjection.mjs`
-- Integrated into `InteractionLoop.startInteraction()` after `reinjectBehaviors()`
-- Primer assembler now receives `participants` for multi-agent context section
-- `AgentResolver.resolve()` now preserves `hasBehaviors`/`getBehaviors`/`getConfig` methods
-
-### Concurrent Multi-Agent Execution (completed 2026-03-17)
-- `SchedulerOrchestrator._triggerNext()` now fires all available agents concurrently
-- Per-agent `isActive(sessionID, agentID)` check replaces session-level blocking
-- `_processCommit()` calls `_triggerNext()` immediately after queuing
-- Client-side `_activeInteractionCount` counter prevents premature state clearing
-
-## Previous Work: Event-Driven DOM Rendering Refactor — COMPLETE
+## Current Work: Event-Driven DOM Rendering Refactor — COMPLETE
 
 **Status:** ALL STEPS COMPLETE. Session page reduced from ~2463 to ~2046 lines.
 **Plan:** `bot-docs/future-plans/event-driven-rendering.yaml`
@@ -122,7 +86,7 @@ Important details to remember across sessions.
 |---------|-----------|
 | Markdown Conversion | 2026-03-13 |
 | Ed25519 Identity + ValueStore + Danger Level | 2026-03-14 |
-| Behaviors System (formerly Abilities) | 2026-03-12 |
+| Abilities System | 2026-03-12 |
 | Inter-Agent Streaming | 2026-03-10 |
 | Agent Memory Context | 2026-03-11 |
 | Agent Deliberation (child sessions) | 2026-03-11 |
@@ -163,7 +127,7 @@ Important details to remember across sessions.
 - **Interaction Loop:** `src/core/interaction/index.mjs`
 - **Context Truncation:** `src/core/interaction/context-truncation.mjs`
 - **Message History:** `src/core/interaction/message-history.mjs`
-- **Behaviors Re-injection:** `src/core/interaction/behaviors-reinjection.mjs`
+- **Abilities Re-injection:** `src/core/interaction/abilities-reinjection.mjs`
 - **Frame Signing Utility:** `src/core/crypto/frame-signing.mjs`
 - **Markdown Converter:** `src/core/lib/markdown-converter.mjs`
 - **Primer Assembler:** `src/core/primer/index.mjs`
