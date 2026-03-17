@@ -123,7 +123,7 @@ describe('InteractionLoop.postMessage', () => {
       assert.equal(content.text, 'Hello, world!');
     });
 
-    it('should set estimatedTokens on the frame content', async () => {
+    it('should not include estimatedTokens on the frame content', async () => {
       let loop    = createLoop();
       let session = await createTestSession();
       let text    = 'a'.repeat(100);
@@ -137,7 +137,7 @@ describe('InteractionLoop.postMessage', () => {
       if (typeof content === 'string')
         content = JSON.parse(content);
 
-      assert.equal(content.estimatedTokens, Math.ceil(100 / 4));
+      assert.equal(content.estimatedTokens, undefined);
     });
 
     it('should default authorType to user', async () => {
@@ -334,7 +334,7 @@ describe('InteractionLoop.postMessage', () => {
       assert.equal(content.text, undefined, 'content.text should not be set');
     });
 
-    it('should preserve estimatedTokens when converting markdown', async () => {
+    it('should not include estimatedTokens when converting markdown', async () => {
       let loop    = createLoopWithMarkdown();
       let session = await createTestSession();
       let text    = '**test** content';
@@ -352,7 +352,7 @@ describe('InteractionLoop.postMessage', () => {
       if (typeof content === 'string')
         content = JSON.parse(content);
 
-      assert.equal(content.estimatedTokens, Math.ceil(text.length / 4));
+      assert.equal(content.estimatedTokens, undefined);
     });
 
     it('should sanitize converted HTML', async () => {

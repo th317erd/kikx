@@ -321,9 +321,6 @@ export function createFrameElement(frame) {
 
     case 'message':
     case 'user-message': {
-      if (isUser && frame.content && frame.content.estimatedTokens)
-        interaction.setAttribute('token-count', String(frame.content.estimatedTokens));
-
       let html    = '';
       let content = frame.content;
 
@@ -370,9 +367,6 @@ export function setupFrameRendering(frameManager, container) {
         ghost.setAttribute('data-frame-id', frame.id);
         ghost.setAttribute('data-interaction-id', frame.interactionID || frame.id);
         ghost.classList.remove('pending');
-
-        if (frame.content && frame.content.estimatedTokens)
-          ghost.setAttribute('token-count', String(frame.content.estimatedTokens));
 
         return;
       }
@@ -794,10 +788,6 @@ class KikxSessionPage extends HTMLElement {
           optimistic.setAttribute('data-frame-id', frame.id);
           optimistic.setAttribute('data-interaction-id', frame.interactionID || frame.id);
           optimistic.classList.remove('pending');
-
-          let estimatedTokens = frame.content && frame.content.estimatedTokens;
-          if (estimatedTokens)
-            optimistic.setAttribute('token-count', String(estimatedTokens));
 
           if (frame.content && frame.content.html) {
             let messageContent = optimistic.querySelector('kikx-message-content');

@@ -296,18 +296,15 @@ export class InteractionLoop extends EventEmitter {
 
     // Create user message frame (unless replaying from permission approval)
     if (params.userMessage && !params.replayFromPermission) {
-      let agentCount      = params.agentCount || 1;
-      let estimatedTokens = Math.ceil(params.userMessage.length / 4) * agentCount;
-
       // Optionally convert markdown → sanitized HTML
       let frameContent;
 
       if (params.convertMarkdown) {
         let converter = this._getMarkdownConverter();
         let html      = (converter) ? converter.convert(params.userMessage) : params.userMessage;
-        frameContent  = { html, estimatedTokens };
+        frameContent  = { html };
       } else {
-        frameContent = { text: params.userMessage, estimatedTokens };
+        frameContent = { text: params.userMessage };
       }
 
       await this._createFrame(sessionID, {
@@ -769,9 +766,9 @@ export class InteractionLoop extends EventEmitter {
     if (convertMarkdown) {
       let converter = this._getMarkdownConverter();
       let html      = (converter) ? converter.convert(text) : text;
-      frameContent  = { html, estimatedTokens: Math.ceil(text.length / 4) };
+      frameContent  = { html };
     } else {
-      frameContent = { text, estimatedTokens: Math.ceil(text.length / 4) };
+      frameContent = { text };
     }
 
     let signingContext = (userPrivateKey) ? { userPrivateKey } : null;

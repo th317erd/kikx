@@ -136,15 +136,15 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
       assert.equal(el.getAttribute('alignment'), 'user');
     });
 
-    it('should set estimated token count if present in content', () => {
+    it('should not set token-count on user messages', () => {
       let frame = makeFrame({
         type:       'user-message',
         authorType: 'user',
-        content:    { text: 'Hi', estimatedTokens: 42 },
+        content:    { text: 'Hi' },
       });
       let el = createFrameElement(frame);
 
-      assert.equal(el.getAttribute('token-count'), '42');
+      assert.equal(el.getAttribute('token-count'), null);
     });
   });
 
