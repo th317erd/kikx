@@ -61,6 +61,16 @@ export function setup({ registerTool, PluginInterface }) {
       return MemoryPermissions;
     }
 
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'memory:getAgentConfig {}',
+        examples: [
+          { description: 'Read your current configuration' },
+        ],
+      };
+    }
+
     async _execute(params) {
       let models  = this._context.getProperty('models');
       let { Agent: AgentModel } = models;
@@ -94,6 +104,16 @@ export function setup({ registerTool, PluginInterface }) {
         config: { type: 'object', description: 'The new configuration object' },
       },
     };
+
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'memory:setAgentConfig { config: { ... } }',
+        examples: [
+          { config: { greeting: 'Hello!' }, description: 'Replace config with a new object' },
+        ],
+      };
+    }
 
     getPermissionsClass() {
       return MemoryPermissions;
@@ -136,6 +156,16 @@ export function setup({ registerTool, PluginInterface }) {
       },
     };
 
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'memory:updateAgentConfig { updates: { ... } }',
+        examples: [
+          { updates: { greeting: 'Hi!' }, description: 'Merge partial updates into existing config' },
+        ],
+      };
+    }
+
     getPermissionsClass() {
       return MemoryPermissions;
     }
@@ -176,6 +206,18 @@ export function setup({ registerTool, PluginInterface }) {
         effective: { type: 'boolean', default: false, description: 'If true, returns inherited context from parent chain' },
       },
     };
+
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'memory:getSessionContext { sessionID: "ses_..." }',
+        examples: [
+          { description: 'Read context for the current session' },
+          { sessionID: 'ses_abc', description: 'Read context for a specific session' },
+          { effective: true, description: 'Read inherited context from the parent chain' },
+        ],
+      };
+    }
 
     getPermissionsClass() {
       return MemoryPermissions;
@@ -220,6 +262,17 @@ export function setup({ registerTool, PluginInterface }) {
       },
     };
 
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'memory:setSessionContext { context: { ... } }',
+        examples: [
+          { context: { topic: 'planning' }, description: 'Replace session context' },
+          { sessionID: 'ses_abc', context: { topic: 'review' }, description: 'Set context on a specific session' },
+        ],
+      };
+    }
+
     getPermissionsClass() {
       return MemoryPermissions;
     }
@@ -260,6 +313,16 @@ export function setup({ registerTool, PluginInterface }) {
         updates:   { type: 'object', description: 'Partial context to merge' },
       },
     };
+
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'memory:updateSessionContext { updates: { ... } }',
+        examples: [
+          { updates: { topic: 'design' }, description: 'Merge updates into current session context' },
+        ],
+      };
+    }
 
     getPermissionsClass() {
       return MemoryPermissions;
@@ -307,6 +370,17 @@ export function setup({ registerTool, PluginInterface }) {
         },
       },
     };
+
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'memory:getValue { key: "my-key" }',
+        examples: [
+          { key: 'user-prefs', description: 'Retrieve a stored value by key' },
+          { key: 'notes', scopeID: 'ses_abc', description: 'Retrieve a value scoped to a specific session' },
+        ],
+      };
+    }
 
     getPermissionsClass() {
       return MemoryPermissions;
@@ -398,6 +472,17 @@ export function setup({ registerTool, PluginInterface }) {
         },
       },
     };
+
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'memory:setValue { key: "my-key", value: "my-value" }',
+        examples: [
+          { key: 'user-prefs', value: { theme: 'dark' }, description: 'Store a JSON value' },
+          { key: 'secret', value: 'data', sign: true, description: 'Store a cryptographically signed value' },
+        ],
+      };
+    }
 
     getPermissionsClass() {
       return MemoryPermissions;
@@ -535,6 +620,18 @@ export function setup({ registerTool, PluginInterface }) {
         },
       },
     };
+
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'memory:searchValues { query: "search-term" }',
+        examples: [
+          { query: 'prefs', description: 'Search memory by key or value content' },
+          { description: 'List all stored values' },
+          { query: 'notes', limit: 5, description: 'Search with a result limit' },
+        ],
+      };
+    }
 
     getPermissionsClass() {
       return MemoryPermissions;

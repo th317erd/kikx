@@ -42,6 +42,19 @@ export function setup({ registerTool, PluginInterface }) {
       },
     };
 
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'cross-session:listSessions { search: "keyword" }',
+        examples: [
+          { description: 'List all accessible sessions' },
+          { search: 'planning', description: 'Filter sessions by name' },
+          { type: 'dm', description: 'List only DM sessions' },
+          { parentSessionID: 'ses_abc', description: 'List sub-sessions of a parent' },
+        ],
+      };
+    }
+
     async _execute(params) {
       let models  = this._context.getProperty('models');
       let { Participant, Session } = models;
@@ -160,6 +173,18 @@ export function setup({ registerTool, PluginInterface }) {
 
     // Default maxInteractions for agent-created child sessions
     static DEFAULT_CHILD_MAX_INTERACTIONS = 20;
+
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'cross-session:createSession { title: "Session Name" }',
+        examples: [
+          { title: 'Research', description: 'Create a new top-level session' },
+          { title: 'Sub-task', parentSessionID: 'ses_abc', description: 'Create a sub-session' },
+          { title: 'Collab', participants: ['agent-name'], initialMessage: 'Hello!', description: 'Create a session with participants and an initial message' },
+        ],
+      };
+    }
 
     async _execute(params) {
       let sessionManager = this._context.getProperty('sessionManager');
@@ -313,6 +338,16 @@ export function setup({ registerTool, PluginInterface }) {
       },
     };
 
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'cross-session:postToSession { sessionID: "ses_...", message: "Hello" }',
+        examples: [
+          { sessionID: 'ses_abc', message: 'Update from the main session', description: 'Post a message to another session' },
+        ],
+      };
+    }
+
     async _execute(params) {
       if (!params.sessionID)
         throw new Error('sessionID is required');
@@ -386,6 +421,18 @@ export function setup({ registerTool, PluginInterface }) {
       },
     };
 
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'cross-session:readFromSession { sessionID: "ses_..." }',
+        examples: [
+          { sessionID: 'ses_abc', description: 'Read recent frames from a session' },
+          { sessionID: 'ses_abc', keyword: 'decision', description: 'Search for frames containing a keyword' },
+          { sessionID: 'ses_abc', types: ['message'], limit: 5, description: 'Read only message frames with a limit' },
+        ],
+      };
+    }
+
     async _execute(params) {
       if (!params.sessionID)
         throw new Error('sessionID is required');
@@ -456,6 +503,16 @@ export function setup({ registerTool, PluginInterface }) {
         agentName: { type: 'string' },
       },
     };
+
+    getHelp() {
+      return {
+        ...super.getHelp(),
+        usage:    'cross-session:inviteParticipant { sessionID: "ses_...", agentName: "agent-name" }',
+        examples: [
+          { sessionID: 'ses_abc', agentName: 'test-claude', description: 'Invite an agent to participate in a session' },
+        ],
+      };
+    }
 
     async _execute(params) {
       if (!params.sessionID)
