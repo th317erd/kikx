@@ -389,6 +389,12 @@ class KikxMessageInput extends HTMLElement {
     }
   }
 
+  resetInteractionState() {
+    this._isInteracting = false;
+    this._queue         = [];
+    this._updateQueueIndicator();
+  }
+
   focus() {
     this._textarea.focus();
   }

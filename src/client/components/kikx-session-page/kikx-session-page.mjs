@@ -592,6 +592,18 @@ class KikxSessionPage extends HTMLElement {
       this._chatView.clear();
       this._emptyStateElement = null;
 
+      // Reset interaction state — the SSE stream was aborted so
+      // interaction:end will never arrive to clear these.
+      if (this._messageInput)
+        this._messageInput.resetInteractionState();
+
+      let statusBar = this.querySelector('kikx-status-bar');
+      if (statusBar)
+        statusBar.setInteracting(false);
+
+      this._typingIndicators.clear();
+      this._streamingGroups.clear();
+
       this._topBar.removeAttribute('hide-back');
 
       // Use cached session name from the store to avoid flashing the raw ID
