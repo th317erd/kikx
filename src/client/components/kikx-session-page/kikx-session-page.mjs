@@ -832,6 +832,7 @@ class KikxSessionPage extends HTMLElement {
             let rb = groupEl.querySelector('kikx-reflection-block');
             if (rb) {
               rb.content = (frame.content && frame.content.text) || '';
+              rb.setAttribute('complete', '');
               sg.reflectionText = '';
             }
 
