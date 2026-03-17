@@ -3,7 +3,7 @@
 import { t } from '../../lib/i18n.mjs';
 import { BASE_PATH, API_BASE_URL } from '../../lib/config.mjs';
 import { navigate } from '../../lib/router.mjs';
-import { getAgents, createAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, getSessions, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken } from '../../lib/api.mjs';
+import { getAgents, createAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, getSessions, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken, getCost } from '../../lib/api.mjs';
 import { agents, sessions, profile, connection } from '../../lib/store.mjs';
 import { estimateCost } from '../../lib/cost.mjs';
 import { FrameManager } from 'kikx/shared/frame-manager/frame-manager.mjs';
@@ -614,9 +614,8 @@ class KikxSessionPage extends HTMLElement {
       if (this._sidebar)
         this._sidebar.activeSessionID = sessionID;
 
-      // Reset session cost when navigating to a new session
-      let currentCosts = connection.getCosts();
-      connection.updateCosts({ global: currentCosts.global, service: currentCosts.service, session: 0 });
+      // Load persisted costs from the server
+      this._loadCosts(sessionID);
 
       // Create client-side FrameManager for this session
       this._initFrameManager();
@@ -890,6 +889,44 @@ class KikxSessionPage extends HTMLElement {
     if (this._frameManager) {
       this._frameManager.removeAllListeners();
       this._frameManager = null;
+    }
+  }
+
+  async _loadCosts(sessionID) {
+    try {
+      // Determine serviceType from the session's agent if known
+      let serviceType = null;
+      let session     = this._currentSession;
+
+      if (session && session.participants) {
+        for (let p of session.participants) {
+          if (p.type === 'agent' && p.agentID) {
+            let agent = agents.getAgent(p.agentID);
+            if (agent && agent.pluginID) {
+              // Map pluginID to serviceType
+              if (agent.pluginID === 'claude-agent')
+                serviceType = 'anthropic';
+              else if (agent.pluginID === 'openai-agent')
+                serviceType = 'openai';
+            }
+            break;
+          }
+        }
+      }
+
+      let result = await getCost({ sessionID, serviceType });
+      let data   = (result && result.data) ? result.data : result;
+
+      let costs = {
+        global:  data.global  ? estimateCost(data.global) : 0,
+        service: data.service ? estimateCost(data.service) : 0,
+        session: data.session ? estimateCost(data.session) : 0,
+      };
+
+      connection.updateCosts(costs);
+    } catch (_error) {
+      // Non-fatal — costs will update incrementally from SSE events
+      connection.updateCosts({ global: 0, service: 0, session: 0 });
     }
   }
 
@@ -1632,7 +1669,7 @@ class KikxSessionPage extends HTMLElement {
   // Usage / cost tracking
   // ---------------------------------------------------------------------------
 
-  _handleUsage({ interactionID, usage }) {
+  _handleUsage({ interactionID, usage, serviceType, isFinal }) {
     if (!usage)
       return;
 
@@ -1651,8 +1688,13 @@ class KikxSessionPage extends HTMLElement {
         agentInteractions[agentInteractions.length - 1].setAttribute('token-count', String(outputTokens));
     }
 
-    // Update costs in the store
-    let cost         = estimateCost(usage);
+    // Only update cost totals on the final usage event (the 'done' block).
+    // Partial usage events contain cumulative snapshots and would cause
+    // double-counting if added incrementally.
+    if (!isFinal)
+      return;
+
+    let cost         = estimateCost(usage, serviceType);
     let currentCosts = connection.getCosts();
 
     connection.updateCosts({

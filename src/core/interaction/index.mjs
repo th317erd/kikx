@@ -398,10 +398,17 @@ export class InteractionLoop extends EventEmitter {
 
         if (block.type === 'done') {
           if (block.content && block.content.usage) {
+            let agentID     = (params.agent && params.agent.id) || null;
+            let serviceType = (params.agentPlugin && params.agentPlugin.constructor.serviceType) || 'unknown';
+
             this.emit('interaction:usage', {
-              sessionID, interactionID,
-              usage: block.content.usage,
+              sessionID, interactionID, agentID, serviceType,
+              usage:   block.content.usage,
+              isFinal: true,
             });
+
+            // Persist to tokens table
+            this._persistTokenUsage(sessionID, interactionID, params, block.content.usage);
           }
 
           break;
@@ -424,10 +431,18 @@ export class InteractionLoop extends EventEmitter {
           continue;
         }
 
-        // Partial usage updates
+        // Partial usage updates (cumulative snapshots — not persisted)
         if (block.type === 'usage') {
-          if (block.content && block.content.usage)
-            this.emit('interaction:usage', { sessionID, interactionID, usage: block.content.usage });
+          if (block.content && block.content.usage) {
+            let agentID     = (params.agent && params.agent.id) || null;
+            let serviceType = (params.agentPlugin && params.agentPlugin.constructor.serviceType) || 'unknown';
+
+            this.emit('interaction:usage', {
+              sessionID, interactionID, agentID, serviceType,
+              usage:   block.content.usage,
+              isFinal: false,
+            });
+          }
           continue;
         }
 
@@ -582,6 +597,41 @@ export class InteractionLoop extends EventEmitter {
         this.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
         await this._drainQueue(sessionID, params, agentID);
       }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // _persistTokenUsage — write a Token row for cost tracking
+  // ---------------------------------------------------------------------------
+
+  async _persistTokenUsage(sessionID, interactionID, params, usage) {
+    try {
+      let models = this._context.getProperty('models');
+      if (!models || !models.Token)
+        return;
+
+      let agent          = params.agent;
+      let organizationID = (agent && agent.organizationID) || null;
+      let agentID        = (agent && agent.id) || null;
+      let serviceType    = (params.agentPlugin && params.agentPlugin.constructor.serviceType) || 'unknown';
+
+      if (!organizationID)
+        return;
+
+      await models.Token.create({
+        organizationID,
+        sessionID,
+        agentID,
+        interactionID,
+        serviceType,
+        inputTokens:              usage.inputTokens || 0,
+        outputTokens:             usage.outputTokens || 0,
+        cacheReadInputTokens:     usage.cacheReadInputTokens || 0,
+        cacheCreationInputTokens: usage.cacheCreationInputTokens || 0,
+      });
+    } catch (error) {
+      // Non-fatal — don't break the interaction if token persistence fails
+      console.error('[InteractionLoop] Failed to persist token usage:', error.message);
     }
   }
 

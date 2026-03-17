@@ -36,6 +36,12 @@ export function getRoutes({ path }) {
         });
       });
 
+      // --- Cost Routes ---
+      endpoint('cost', {
+        methods:    [ 'GET' ],
+        controller: 'CostController.show',
+      });
+
       // --- Agent Routes ---
       // List + Create at /api/v2/agents
       endpoint('agents', {

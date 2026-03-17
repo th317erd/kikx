@@ -28,6 +28,7 @@ export class AgentInterface extends PluginInterface {
   static displayName  = null;
   static description  = null;
   static agentType    = null;
+  static serviceType  = null;  // e.g. 'anthropic', 'openai' — used for cost tracking
 
   // ---------------------------------------------------------------------------
   // Public API — entry point for the kernel

@@ -18,6 +18,7 @@ export { Participant }             from './participant-model.mjs';
 export { Frame }                   from './frame-model.mjs';
 export { PermissionRule }          from './permission-rule-model.mjs';
 export { ValueStore }             from './value-store-model.mjs';
+export { Token }                 from './token-model.mjs';
 
 import { Organization }   from './organization-model.mjs';
 import { User }           from './user-model.mjs';
@@ -28,6 +29,7 @@ import { Participant }    from './participant-model.mjs';
 import { Frame }          from './frame-model.mjs';
 import { PermissionRule } from './permission-rule-model.mjs';
 import { ValueStore }    from './value-store-model.mjs';
+import { Token }         from './token-model.mjs';
 
 // Default model set for core
 export const DEFAULT_MODELS = [
@@ -40,4 +42,5 @@ export const DEFAULT_MODELS = [
   Frame,
   PermissionRule,
   ValueStore,
+  Token,
 ];

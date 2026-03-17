@@ -28,8 +28,8 @@ async function createStartedCore() {
 // Model Definitions
 // =============================================================================
 describe('Model definitions', () => {
-  it('should export all 9 default models', () => {
-    assert.equal(DEFAULT_MODELS.length, 9);
+  it('should export all 10 default models', () => {
+    assert.equal(DEFAULT_MODELS.length, 10);
   });
 
   it('should include all expected model classes', () => {

@@ -76,11 +76,11 @@ export class StreamController extends ControllerAuthBase {
       response.write(`event: reflection-delta\ndata: ${JSON.stringify({ interactionID: iid, content, authorType: aType || null, authorID: aID || null })}\n\n`);
     };
 
-    let onUsage = ({ sessionID: sid, interactionID: iid, usage }) => {
+    let onUsage = ({ sessionID: sid, interactionID: iid, usage, serviceType, isFinal }) => {
       if (sid !== sessionID)
         return;
 
-      response.write(`event: usage\ndata: ${JSON.stringify({ interactionID: iid, usage })}\n\n`);
+      response.write(`event: usage\ndata: ${JSON.stringify({ interactionID: iid, usage, serviceType: serviceType || null, isFinal: !!isFinal })}\n\n`);
     };
 
     // Commit listener — enriched commits for client-side FrameManager

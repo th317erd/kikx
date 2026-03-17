@@ -245,6 +245,21 @@ export function cancelInteraction(sessionID) {
   return request('POST', `/sessions/${sessionID}/interact/cancel`);
 }
 
+// Cost endpoint
+
+export function getCost(options = {}) {
+  let params = new URLSearchParams();
+
+  if (options.sessionID)
+    params.set('sessionID', options.sessionID);
+
+  if (options.serviceType)
+    params.set('serviceType', options.serviceType);
+
+  let query = params.toString();
+  return request('GET', `/cost${query ? `?${query}` : ''}`);
+}
+
 // Health endpoint
 
 export function healthCheck() {
