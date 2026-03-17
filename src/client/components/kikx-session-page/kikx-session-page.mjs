@@ -227,7 +227,7 @@ export function createFrameElement(frame) {
   if (!name) {
     if (isUser)
       name = 'You';
-    else if (frame.type === 'session-link')
+    else if (frame.type === 'session-link' || frame.type === 'command-result' || frame.authorType === 'system')
       name = 'System';
     else if (frame.authorType === 'agent' && frame.authorID)
       name = agents.getAgent(frame.authorID)?.name || 'Agent';
@@ -1080,6 +1080,9 @@ class KikxSessionPage extends HTMLElement {
           this._chatView.appendInteraction(fragment);
         else
           this._showEmptyState();
+
+        // Resolve agent names if agents were loaded before frames
+        this._refreshAgentNames();
       }
     } catch (error) {
       // eslint-disable-next-line no-console
