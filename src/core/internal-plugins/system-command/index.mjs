@@ -1,5 +1,7 @@
 'use strict';
 
+import { SystemCommandPermissions } from './system-command-permissions.mjs';
+
 // =============================================================================
 // System Command Plugin
 // =============================================================================
@@ -26,6 +28,10 @@ export function setup({ registerTool, registerInstructions, PluginInterface, con
       },
       required: ['command'],
     };
+
+    getPermissionsClass() {
+      return SystemCommandPermissions;
+    }
 
     async _execute({ command, args, _sessionID, _authorID, _agent }) {
       if (!command || typeof command !== 'string')

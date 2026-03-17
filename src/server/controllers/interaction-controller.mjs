@@ -142,6 +142,12 @@ export class InteractionController extends ControllerAuthBase {
 
       let ToolClass = pluginRegistry.getTool(featureName);
 
+      // Translated command features (command:help → system:command) need
+      // the original tool class so the permission engine can find its
+      // Permissions subclass.
+      if (!ToolClass && featureName.startsWith('command:'))
+        ToolClass = pluginRegistry.getTool('system:command');
+
       // For capabilities, check if it exists for permission routing
       if (!ToolClass) {
         let capability = pluginRegistry.getCapability(featureName);

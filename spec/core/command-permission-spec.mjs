@@ -555,7 +555,89 @@ describe('Command Permissions (system:command)', () => {
   });
 
   // ===========================================================================
-  // 12. requestPrimerRefresh public accessor
+  // 12. SystemCommandPermissions — read-only commands auto-approved
+  // ===========================================================================
+
+  describe('SystemCommandPermissions', () => {
+    it('should have a getPermissionsClass() method on SystemCommandTool', () => {
+      let registry  = core.getPluginRegistry();
+      let ToolClass = registry.getTool('system:command');
+      let instance  = new ToolClass(context);
+
+      assert.equal(typeof instance.getPermissionsClass, 'function');
+      assert.ok(instance.getPermissionsClass());
+    });
+
+    it('should auto-approve command:help', async () => {
+      let registry         = core.getPluginRegistry();
+      let ToolClass        = registry.getTool('system:command');
+      let instance         = new ToolClass(context);
+      let PermissionsClass = instance.getPermissionsClass();
+      let permissions      = new PermissionsClass(context);
+
+      let result = await permissions.checkPermission('command:help', { command: 'help' }, {});
+      assert.equal(result, false, 'help should be auto-approved');
+    });
+
+    it('should defer to rules for non-read-only commands', async () => {
+      let registry         = core.getPluginRegistry();
+      let ToolClass        = registry.getTool('system:command');
+      let instance         = new ToolClass(context);
+      let PermissionsClass = instance.getPermissionsClass();
+      let permissions      = new PermissionsClass(context);
+
+      let result = await permissions.checkPermission('command:invite', { command: 'invite' }, {});
+      assert.equal(result, null, 'invite should defer to rules');
+    });
+
+    it('should defer to rules for command:reload', async () => {
+      let registry         = core.getPluginRegistry();
+      let ToolClass        = registry.getTool('system:command');
+      let instance         = new ToolClass(context);
+      let PermissionsClass = instance.getPermissionsClass();
+      let permissions      = new PermissionsClass(context);
+
+      let result = await permissions.checkPermission('command:reload', { command: 'reload' }, {});
+      assert.equal(result, null, 'reload should defer to rules');
+    });
+
+    it('should auto-approve help regardless of casing', async () => {
+      let registry         = core.getPluginRegistry();
+      let ToolClass        = registry.getTool('system:command');
+      let instance         = new ToolClass(context);
+      let PermissionsClass = instance.getPermissionsClass();
+      let permissions      = new PermissionsClass(context);
+
+      let result = await permissions.checkPermission('command:help', { command: 'HELP' }, {});
+      assert.equal(result, false, 'HELP should be auto-approved');
+    });
+
+    it('should auto-approve when featureName encodes the command name', async () => {
+      let registry         = core.getPluginRegistry();
+      let ToolClass        = registry.getTool('system:command');
+      let instance         = new ToolClass(context);
+      let PermissionsClass = instance.getPermissionsClass();
+      let permissions      = new PermissionsClass(context);
+
+      // featureName is the primary source
+      let result = await permissions.checkPermission('command:help', {}, {});
+      assert.equal(result, false, 'should extract command name from featureName');
+    });
+
+    it('should defer when featureName is not command-prefixed and args.command is non-safe', async () => {
+      let registry         = core.getPluginRegistry();
+      let ToolClass        = registry.getTool('system:command');
+      let instance         = new ToolClass(context);
+      let PermissionsClass = instance.getPermissionsClass();
+      let permissions      = new PermissionsClass(context);
+
+      let result = await permissions.checkPermission('system:command', { command: 'invite' }, {});
+      assert.equal(result, null, 'should defer for non-safe command');
+    });
+  });
+
+  // ===========================================================================
+  // 13. requestPrimerRefresh public accessor
   // ===========================================================================
 
   describe('requestPrimerRefresh', () => {
