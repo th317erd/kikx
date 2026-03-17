@@ -243,6 +243,9 @@ export function createFrameElement(frame) {
   if (frame.id)
     interaction.setAttribute('data-frame-id', frame.id);
 
+  if (frame.authorID)
+    interaction.setAttribute('data-author-id', frame.authorID);
+
   switch (frame.type) {
     case 'session-link': {
       let content     = frame.content || {};
@@ -876,6 +879,47 @@ class KikxSessionPage extends HTMLElement {
           return;
       }
 
+      // --- Merge message into preceding reflection-only bubble ---
+      // When a non-streaming message arrives right after a reflection from the
+      // same agent, fold the message content into the existing reflection
+      // interaction instead of creating a separate empty-looking bubble.
+      if (frame.type === 'message' && frame.authorID) {
+        let allInteractions = this._chatView.querySelectorAll('kikx-interaction');
+        let lastInteraction = allInteractions.length > 0 ? allInteractions[allInteractions.length - 1] : null;
+        if (lastInteraction) {
+          let hasReflection = lastInteraction.querySelector('kikx-reflection-block');
+          let hasMessage    = lastInteraction.querySelector('kikx-message-content');
+
+          if (hasReflection && !hasMessage) {
+            let lastAuthor = lastInteraction.getAttribute('data-author-id');
+            if (lastAuthor === frame.authorID) {
+              // Merge: update the existing interaction with the message content
+              lastInteraction.setAttribute('data-frame-id', frame.id);
+
+              let content = frame.content;
+              let html    = '';
+
+              if (content && typeof content === 'object') {
+                if (content.html)
+                  html = content.html;
+                else if (content.text)
+                  html = `<p>${escapeHTML(content.text)}</p>`;
+              } else if (typeof content === 'string') {
+                html = content;
+              }
+
+              if (html) {
+                let mc = document.createElement('kikx-message-content');
+                mc.content = html;
+                lastInteraction.appendChild(mc);
+              }
+
+              return;
+            }
+          }
+        }
+      }
+
       // --- Create and append new element ---
       let el = createFrameElement(frame);
       if (!el)
@@ -1058,21 +1102,45 @@ class KikxSessionPage extends HTMLElement {
         let allFrames  = this._frameManager.toArray();
 
         for (let i = 0; i < allFrames.length; i++) {
-          let el = createFrameElement(allFrames[i]);
+          let frame = allFrames[i];
+
+          // Merge reflection frames into the next message from the same agent
+          // instead of rendering them as standalone empty bubbles.
+          if (frame.type === 'reflection') {
+            let next = allFrames[i + 1];
+            if (next && next.authorID === frame.authorID && (next.type === 'message' || next.type === 'user-message'))
+              continue; // will be merged when the next frame is processed
+          }
+
+          let el = createFrameElement(frame);
 
           if (!el)
             continue;
 
+          // If the preceding frame was a reflection from the same agent,
+          // prepend its reflection block into this message's interaction.
+          if ((frame.type === 'message' || frame.type === 'user-message') && i > 0) {
+            let prev = allFrames[i - 1];
+            if (prev && prev.type === 'reflection' && prev.authorID === frame.authorID) {
+              let rb = document.createElement('kikx-reflection-block');
+              rb.content = (prev.content && prev.content.text) || '';
+              rb.setAttribute('complete', '');
+
+              // Prepend before existing children so reflection appears above message
+              el.insertBefore(rb, el.firstChild);
+            }
+          }
+
           // Thread: set reply context if this frame is a reply
-          if (allFrames[i].parentID) {
-            let preview = this._getParentPreview(allFrames[i].parentID);
+          if (frame.parentID) {
+            let preview = this._getParentPreview(frame.parentID);
             if (preview)
               el.setAttribute('parent-preview', preview);
           }
 
           if (debug.isEnabled()) {
-            debug.trackElement(allFrames[i].interactionID || allFrames[i].id, el);
-            debug.pushFrame(allFrames[i].interactionID || allFrames[i].id, allFrames[i]);
+            debug.trackElement(frame.interactionID || frame.id, el);
+            debug.pushFrame(frame.interactionID || frame.id, frame);
           }
 
           fragment.appendChild(el);
@@ -1716,29 +1784,7 @@ class KikxSessionPage extends HTMLElement {
     if (!sessionID)
       return;
 
-    // Determine agent ID from session data (may be null for agent-less sessions)
-    let agentID = null;
-
-    if (this._currentSession) {
-      agentID = this._currentSession.dmAgentID || null;
-
-      // For chat sessions, resolve agent from participants
-      if (!agentID && this._currentSession.participants && this._currentSession.participants.length > 0)
-        agentID = this._currentSession.participants[0].agentID;
-    }
-
-    // If no agent found, refresh session details — participants may have been
-    // added after the initial fetch (e.g., invited after session creation).
-    if (!agentID && sessionID) {
-      await this._fetchSessionDetails(sessionID);
-
-      if (this._currentSession) {
-        agentID = this._currentSession.dmAgentID || null;
-
-        if (!agentID && this._currentSession.participants && this._currentSession.participants.length > 0)
-          agentID = this._currentSession.participants[0].agentID;
-      }
-    }
+    let agentID = await this._resolveAgentID(sessionID);
 
     // Render user message immediately (optimistic)
     this._renderUserMessage(text, parentID);
@@ -2207,6 +2253,33 @@ class KikxSessionPage extends HTMLElement {
     return null;
   }
 
+  async _resolveAgentID(sessionID) {
+    let agentID = null;
+
+    if (this._currentSession) {
+      agentID = this._currentSession.dmAgentID || null;
+
+      // For chat sessions, resolve agent from participants
+      if (!agentID && this._currentSession.participants && this._currentSession.participants.length > 0)
+        agentID = this._currentSession.participants[0].agentID;
+    }
+
+    // If no agent found, refresh session details — participants may have been
+    // added after the initial fetch (e.g., invited after session creation).
+    if (!agentID && sessionID) {
+      await this._fetchSessionDetails(sessionID);
+
+      if (this._currentSession) {
+        agentID = this._currentSession.dmAgentID || null;
+
+        if (!agentID && this._currentSession.participants && this._currentSession.participants.length > 0)
+          agentID = this._currentSession.participants[0].agentID;
+      }
+    }
+
+    return agentID;
+  }
+
   async _onInteractionSubmit(event) {
     let interaction = this._findInteractionFromEvent(event);
     if (!interaction)
@@ -2218,10 +2291,7 @@ class KikxSessionPage extends HTMLElement {
     if (!sessionID)
       return;
 
-    let agentID = null;
-    if (this._currentSession)
-      agentID = this._currentSession.dmAgentID || this._currentSession.agentID || this._currentSession.agentID;
-
+    let agentID = await this._resolveAgentID(sessionID);
     if (!agentID)
       return;
 
@@ -2261,10 +2331,7 @@ class KikxSessionPage extends HTMLElement {
     if (!sessionID)
       return;
 
-    let agentID = null;
-    if (this._currentSession)
-      agentID = this._currentSession.dmAgentID || this._currentSession.agentID || this._currentSession.agentID;
-
+    let agentID = await this._resolveAgentID(sessionID);
     if (!agentID)
       return;
 

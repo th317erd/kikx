@@ -410,4 +410,55 @@ describe('Multi-agent streaming', () => {
       assert.equal(interaction.getAttribute('participant-name'), 'Already Named');
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // _resolveAgentID — resolves agent from session data
+  // ---------------------------------------------------------------------------
+
+  describe('_resolveAgentID', () => {
+    it('resolves agentID from dmAgentID for DM sessions', async () => {
+      let page = createSessionPage();
+      page._currentSession = { dmAgentID: 'agt_dm_bot' };
+
+      let agentID = await page._resolveAgentID('ses_test');
+      assert.equal(agentID, 'agt_dm_bot');
+    });
+
+    it('resolves agentID from participants when dmAgentID is null', async () => {
+      let page = createSessionPage();
+      page._currentSession = {
+        dmAgentID:    null,
+        participants: [{ agentID: 'agt_from_participant' }],
+      };
+
+      let agentID = await page._resolveAgentID('ses_test');
+      assert.equal(agentID, 'agt_from_participant');
+    });
+
+    it('returns null when no session and no participants', async () => {
+      let page = createSessionPage();
+      page._currentSession = null;
+
+      let agentID = await page._resolveAgentID('ses_test');
+      assert.equal(agentID, null);
+    });
+
+    it('re-fetches session details when agent not found initially', async () => {
+      let page = createSessionPage();
+      page._currentSession = { dmAgentID: null, participants: [] };
+
+      let fetchCalled = false;
+      page._fetchSessionDetails = async () => {
+        fetchCalled = true;
+        page._currentSession = {
+          dmAgentID:    null,
+          participants: [{ agentID: 'agt_late_join' }],
+        };
+      };
+
+      let agentID = await page._resolveAgentID('ses_test');
+      assert.ok(fetchCalled, 'should have called _fetchSessionDetails');
+      assert.equal(agentID, 'agt_late_join');
+    });
+  });
 });
