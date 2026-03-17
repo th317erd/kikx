@@ -8,6 +8,7 @@ import { CommandHandler }        from './command-handler.mjs';
 import { isFirstMessage, injectPrimer, buildMessages } from './message-history.mjs';
 import { truncateContent, truncateConversation }       from './context-truncation.mjs';
 import { reinjectAbilities }                           from './abilities-reinjection.mjs';
+import { reinjectInstructions }                        from './instructions-reinjection.mjs';
 import { signFrameContent, decryptAgentPrivateKey }    from '../crypto/frame-signing.mjs';
 
 // =============================================================================
@@ -339,7 +340,8 @@ export class InteractionLoop extends EventEmitter {
     if (needsPrimer) {
       let primerAssembler = this._context.getProperty('primerAssembler');
       if (primerAssembler) {
-        let primer = await primerAssembler.assemble(params.agent, { sessionID });
+        let participants = await sessionManager.getParticipants(sessionID);
+        let primer = await primerAssembler.assemble(params.agent, { sessionID, participants });
         if (primer)
           messages = injectPrimer(messages, primer);
       }
@@ -349,6 +351,11 @@ export class InteractionLoop extends EventEmitter {
     messages = await reinjectAbilities(messages, params.agent, {
       primerInjected: needsPrimer,
       isDMForAgent:   () => this._isDMForAgent(params.agent, sessionID),
+    });
+
+    // Re-inject instructions after truncation if primer was not injected this turn
+    messages = reinjectInstructions(messages, params.agent, {
+      primerInjected: needsPrimer,
     });
 
     // Ensure per-agent ref exists for scheduling/diff

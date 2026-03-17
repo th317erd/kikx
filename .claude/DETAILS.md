@@ -51,9 +51,24 @@ Important details to remember across sessions.
 - **Phase 3 (V2 Differentiators):** IN PROGRESS
 - **Phase C (Frame Event Router):** COMPLETE (C1-C4)
 - **E2E Integration:** VERIFIED (92 frames, 0 errors in comprehensive permission E2E)
-- **Test count:** 3017 tests, 0 failures
+- **Test count:** 3275 tests, 0 new failures (2 pre-existing in multi-agent-streaming-spec)
 
-## Current Work: Event-Driven DOM Rendering Refactor — COMPLETE
+## Current Work: Instruction Re-injection + Concurrent Multi-Agent
+
+### Instruction Re-injection (completed 2026-03-17)
+- Agent `instructions` field now re-injected after context truncation (same as abilities)
+- New module: `src/core/interaction/instructions-reinjection.mjs`
+- Integrated into `InteractionLoop.startInteraction()` after `reinjectAbilities()`
+- Primer assembler now receives `participants` for multi-agent context section
+- `AgentResolver.resolve()` now preserves `hasAbilities`/`getAbilities`/`getConfig` methods
+
+### Concurrent Multi-Agent Execution (completed 2026-03-17)
+- `SchedulerOrchestrator._triggerNext()` now fires all available agents concurrently
+- Per-agent `isActive(sessionID, agentID)` check replaces session-level blocking
+- `_processCommit()` calls `_triggerNext()` immediately after queuing
+- Client-side `_activeInteractionCount` counter prevents premature state clearing
+
+## Previous Work: Event-Driven DOM Rendering Refactor — COMPLETE
 
 **Status:** ALL STEPS COMPLETE. Session page reduced from ~2463 to ~2046 lines.
 **Plan:** `bot-docs/future-plans/event-driven-rendering.yaml`

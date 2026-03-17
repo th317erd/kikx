@@ -9,9 +9,14 @@ import { EventEmitter } from 'node:events';
 // flow. Listens to InteractionLoop events and coordinates the multi-agent
 // scheduling lifecycle:
 //
-//   commit          → calls scheduler.onCommit(), queues pending triggers
-//   interaction:end → calls scheduler.markComplete(), triggers next agent
+//   commit          → calls scheduler.onCommit(), queues pending triggers,
+//                     then fires available agents concurrently
+//   interaction:end → calls scheduler.markComplete(), fires remaining agents
 //   schedule:cancel → clears pending triggers for session
+//
+// Concurrency: agents in the same session run concurrently. Per-agent active
+// checks prevent double-triggering the same agent, while different agents
+// execute in parallel. This lets users see all agents "thinking" at once.
 //
 // Infinite loop prevention: only schedules agents on user-authored commits.
 // Agent and system commits are ignored to prevent ping-pong loops and
@@ -115,6 +120,10 @@ export class SchedulerOrchestrator extends EventEmitter {
 
     for (let entry of scheduled)
       queue.push({ agentID: entry.agentID });
+
+    // Trigger available agents immediately — secondary agents start
+    // concurrently with the primary agent (which is already running).
+    this._triggerNext(sessionID);
   }
 
   async _handleInteractionEnd({ sessionID, agentID }) {
@@ -132,8 +141,8 @@ export class SchedulerOrchestrator extends EventEmitter {
     if (agentID)
       this._scheduler.markComplete(sessionID, agentID);
 
-    // Trigger next queued agent
-    await this._triggerNext(sessionID);
+    // Trigger any remaining queued agents
+    this._triggerNext(sessionID);
   }
 
   _handleScheduleCancel({ sessionID }) {
@@ -142,41 +151,42 @@ export class SchedulerOrchestrator extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
-  // _triggerNext — pop next pending agent and start interaction
+  // _triggerNext — fire all available agents concurrently
   // ---------------------------------------------------------------------------
 
-  async _triggerNext(sessionID) {
+  _triggerNext(sessionID) {
     let queue = this._pendingTriggers.get(sessionID);
     if (!queue || queue.length === 0) {
       this._pendingTriggers.delete(sessionID);
       return;
     }
 
-    while (queue.length > 0) {
-      let entry = queue.shift();
+    // Partition: agents that can run now vs. those already active
+    let toTrigger = [];
+    let deferred  = [];
 
-      // Skip if the interaction loop already has an active interaction for
-      // this session — only one interaction runs at a time per session.
-      if (this._interactionLoop.isActive(sessionID)) {
-        // Put it back and wait — it will be retried on next interaction:end
-        queue.unshift(entry);
-        return;
-      }
-
-      try {
-        await this._triggerAgent(sessionID, entry.agentID);
-      } catch (error) {
-        this.emit('trigger:error', { sessionID, agentID: entry.agentID, error });
-        // Mark complete so the scheduler doesn't think this agent is still running
-        this._scheduler.markComplete(sessionID, entry.agentID);
-      }
-
-      // Only trigger one agent at a time — sequential execution
-      return;
+    for (let entry of queue) {
+      if (this._interactionLoop.isActive(sessionID, entry.agentID))
+        deferred.push(entry);
+      else
+        toTrigger.push(entry);
     }
 
-    // Queue exhausted
-    this._pendingTriggers.delete(sessionID);
+    // Update the queue with agents that must wait
+    if (deferred.length > 0)
+      this._pendingTriggers.set(sessionID, deferred);
+    else
+      this._pendingTriggers.delete(sessionID);
+
+    // Fire all available agents concurrently (non-blocking).
+    // Each agent's completion emits interaction:end which calls
+    // _handleInteractionEnd → _triggerNext to drain remaining deferred agents.
+    for (let entry of toTrigger) {
+      this._triggerAgent(sessionID, entry.agentID).catch((error) => {
+        this.emit('trigger:error', { sessionID, agentID: entry.agentID, error });
+        this._scheduler.markComplete(sessionID, entry.agentID);
+      });
+    }
   }
 
   // ---------------------------------------------------------------------------

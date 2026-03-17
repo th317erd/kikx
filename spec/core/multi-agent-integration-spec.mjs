@@ -233,10 +233,13 @@ describe('Multi-Agent Integration', () => {
 
       assert.ok(capturedMessages, 'Beta should have received messages');
 
-      // Find agent A's message in beta's context
+      // Find agent A's message in beta's context.
+      // Use sourceAgentID (preferred) or look for an actual <agent-message> tag
+      // with the agent's ID — not just the substring 'agent-message' which could
+      // match the multi-agent primer instructions.
       let alphaMsg = capturedMessages.find((m) =>
         m.sourceAgentID === agentA.id ||
-        (m.content && m.content.includes && m.content.includes('agent-message')),
+        (m.content && m.content.includes && m.content.includes(`<agent-message source="${agentA.id}"`)),
       );
 
       assert.ok(alphaMsg, 'Beta should see Alpha\'s message');

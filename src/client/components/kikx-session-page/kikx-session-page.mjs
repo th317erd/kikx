@@ -478,6 +478,9 @@ class KikxSessionPage extends HTMLElement {
     this._streamingGroups = new Map();
     // Map<relayKey, { interaction, content, html }> — cross-session relay streams
     this._relayStreams = new Map();
+    // Active interaction counter — tracks how many agents are currently interacting.
+    // Used instead of a boolean so concurrent agents don't prematurely clear state.
+    this._activeInteractionCount = 0;
 
     this._onAddFriend       = this._onAddFriend.bind(this);
     this._onNearTop         = this._onNearTop.bind(this);
@@ -594,6 +597,7 @@ class KikxSessionPage extends HTMLElement {
 
       // Reset interaction state — the SSE stream was aborted so
       // interaction:end will never arrive to clear these.
+      this._activeInteractionCount = 0;
       if (this._messageInput)
         this._messageInput.resetInteractionState();
 
@@ -1386,6 +1390,7 @@ class KikxSessionPage extends HTMLElement {
         try { startData = JSON.parse(data); } catch (_error) { startData = {}; }
 
         let startAgentID = startData.agentID || 'default';
+        this._activeInteractionCount++;
         this._messageInput.setInteracting(true);
 
         // Merge ephemeral phantom (no groupID) → frame:phantom handler creates typing dots
@@ -1434,10 +1439,14 @@ class KikxSessionPage extends HTMLElement {
         // Clean up streaming group
         this._streamingGroups.delete(endAgentID);
 
-        this._messageInput.setInteracting(false);
-        let endStatusBar = this.querySelector('kikx-status-bar');
-        if (endStatusBar)
-          endStatusBar.setInteracting(false);
+        // Only clear "interacting" state when ALL agents have finished
+        this._activeInteractionCount = Math.max(0, this._activeInteractionCount - 1);
+        if (this._activeInteractionCount === 0) {
+          this._messageInput.setInteracting(false);
+          let endStatusBar = this.querySelector('kikx-status-bar');
+          if (endStatusBar)
+            endStatusBar.setInteracting(false);
+        }
         break;
       }
 

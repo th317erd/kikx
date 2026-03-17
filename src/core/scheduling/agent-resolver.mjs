@@ -53,6 +53,14 @@ export class AgentResolver {
     // Build resolved agent record
     let resolvedAgent = { ...(agent.toJSON ? agent.toJSON() : agent) };
 
+    // Preserve abilities/config convenience methods for PrimerAssembler
+    // and post-truncation re-injection (same as InteractionController does)
+    if (typeof agent.hasAbilities === 'function') {
+      resolvedAgent.hasAbilities = () => agent.hasAbilities();
+      resolvedAgent.getAbilities = () => agent.getAbilities();
+      resolvedAgent.getConfig    = () => agent.getConfig();
+    }
+
     // Decrypt API key if encrypted and context provides keys
     if (agent.encryptedAPIKey && resolveContext.keystore && resolveContext.umk && resolveContext.userID) {
       try {

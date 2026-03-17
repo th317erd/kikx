@@ -121,6 +121,10 @@ describe('SchedulerOrchestrator', () => {
       let agentResolver = new AgentResolver(core);
       let orchestrator  = new SchedulerOrchestrator({ scheduler, agentResolver, interactionLoop });
 
+      // Stub _triggerAgent so it doesn't attempt real interaction
+      let triggeredAgents = [];
+      orchestrator._triggerAgent = async (sid, aid) => triggeredAgents.push({ sessionID: sid, agentID: aid });
+
       orchestrator.start();
 
       let frameManager = sessionManager.getFrameManager(session.id);
@@ -144,6 +148,10 @@ describe('SchedulerOrchestrator', () => {
 
       // The scheduler should have marked the agent as active
       assert.equal(scheduler.isAgentActive(session.id, agent.id), true);
+
+      // The agent should have been triggered concurrently
+      assert.equal(triggeredAgents.length, 1);
+      assert.equal(triggeredAgents[0].agentID, agent.id);
 
       orchestrator.stop();
     });
@@ -310,6 +318,10 @@ describe('SchedulerOrchestrator', () => {
       let agentResolver = new AgentResolver(core);
       let orchestrator  = new SchedulerOrchestrator({ scheduler, agentResolver, interactionLoop });
 
+      // Stub _triggerAgent to track calls without real interaction
+      let triggeredAgents = [];
+      orchestrator._triggerAgent = async (sid, aid) => triggeredAgents.push({ sessionID: sid, agentID: aid });
+
       orchestrator.start();
 
       let frameManager = sessionManager.getFrameManager(session.id);
@@ -328,10 +340,9 @@ describe('SchedulerOrchestrator', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Only 1 agent scheduled, and it's the only one — pending triggers should have 1 entry
-      let pending = orchestrator.getPendingTriggers(session.id);
-      assert.equal(pending.length, 1);
-      assert.equal(pending[0].agentID, agent.id);
+      // Only 1 agent triggered — no extra triggers for single-agent sessions
+      assert.equal(triggeredAgents.length, 1);
+      assert.equal(triggeredAgents[0].agentID, agent.id);
 
       orchestrator.stop();
     });
@@ -341,14 +352,14 @@ describe('SchedulerOrchestrator', () => {
   // Multi-agent queuing
   // ---------------------------------------------------------------------------
 
-  describe('multi-agent queuing', () => {
-    it('should queue multiple agents from a single commit', async () => {
+  describe('multi-agent concurrent triggering', () => {
+    it('should trigger multiple agents concurrently from a single commit', async () => {
       let org    = await createTestOrg();
       let agentA = await createTestAgent(org, 'test-orch-multi-a');
       let agentB = await createTestAgent(org, 'test-orch-multi-b');
       let agentC = await createTestAgent(org, 'test-orch-multi-c');
 
-      let session = await sessionManager.createSession(org.id, { name: 'Multi Queue Test' });
+      let session = await sessionManager.createSession(org.id, { name: 'Multi Concurrent Test' });
 
       await sessionManager.addParticipant(session.id, agentA.id);
       await sessionManager.addParticipant(session.id, agentB.id);
@@ -357,6 +368,10 @@ describe('SchedulerOrchestrator', () => {
       let scheduler     = createScheduler();
       let agentResolver = new AgentResolver(core);
       let orchestrator  = new SchedulerOrchestrator({ scheduler, agentResolver, interactionLoop });
+
+      // Stub _triggerAgent to track concurrent calls
+      let triggeredAgents = [];
+      orchestrator._triggerAgent = async (sid, aid) => triggeredAgents.push({ sessionID: sid, agentID: aid });
 
       orchestrator.start();
 
@@ -375,15 +390,70 @@ describe('SchedulerOrchestrator', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // All three should be queued
-      let pending  = orchestrator.getPendingTriggers(session.id);
-      let agentIds = pending.map((p) => p.agentID);
+      // All three agents should have been triggered concurrently
+      let triggeredIds = triggeredAgents.map((t) => t.agentID);
 
-      assert.equal(pending.length, 3);
-      assert.ok(agentIds.includes(agentA.id));
-      assert.ok(agentIds.includes(agentB.id));
-      assert.ok(agentIds.includes(agentC.id));
+      assert.equal(triggeredAgents.length, 3);
+      assert.ok(triggeredIds.includes(agentA.id));
+      assert.ok(triggeredIds.includes(agentB.id));
+      assert.ok(triggeredIds.includes(agentC.id));
 
+      // Pending queue should be empty (all agents fired)
+      assert.equal(orchestrator.hasPendingTriggers(session.id), false);
+
+      orchestrator.stop();
+    });
+
+    it('should defer agents that are already active', async () => {
+      let org    = await createTestOrg();
+      let agentA = await createTestAgent(org, 'test-orch-defer-a');
+      let agentB = await createTestAgent(org, 'test-orch-defer-b');
+
+      let session = await sessionManager.createSession(org.id, { name: 'Defer Active Test' });
+
+      await sessionManager.addParticipant(session.id, agentA.id);
+      await sessionManager.addParticipant(session.id, agentB.id);
+
+      let scheduler     = createScheduler();
+      let agentResolver = new AgentResolver(core);
+      let orchestrator  = new SchedulerOrchestrator({ scheduler, agentResolver, interactionLoop });
+
+      // Stub _triggerAgent to track calls
+      let triggeredAgents = [];
+      orchestrator._triggerAgent = async (sid, aid) => triggeredAgents.push({ sessionID: sid, agentID: aid });
+
+      orchestrator.start();
+
+      // Simulate agentA already being active in the interaction loop
+      let activeKey = `${session.id}:${agentA.id}`;
+      interactionLoop._active.set(activeKey, { generator: null, interactionID: 'int_1', params: {} });
+
+      let frameManager = sessionManager.getFrameManager(session.id);
+
+      frameManager.merge([{
+        id:         'frm_defer_1',
+        type:       'user-message',
+        content:    { text: 'Hello both' },
+        authorType: 'user',
+        authorID:   'usr_1',
+      }], { authorType: 'user', authorID: 'usr_1' });
+
+      let commit = frameManager.getLatestCommit();
+      interactionLoop.emit('commit', { sessionID: session.id, commit });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Only agentB should have been triggered (agentA is active)
+      assert.equal(triggeredAgents.length, 1);
+      assert.equal(triggeredAgents[0].agentID, agentB.id);
+
+      // agentA should still be deferred in the pending queue
+      let pending = orchestrator.getPendingTriggers(session.id);
+      assert.equal(pending.length, 1);
+      assert.equal(pending[0].agentID, agentA.id);
+
+      // Clean up
+      interactionLoop._active.delete(activeKey);
       orchestrator.stop();
     });
   });
