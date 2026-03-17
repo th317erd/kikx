@@ -98,7 +98,7 @@ Org-level role assignment. Tracks who has what role in which organization.
 
 **Config** is stored in ValueStore (namespace `config`, scopeID `''`). Methods: `getConfig()`, `setConfig()`, `updateConfig()`.
 
-**Abilities** are stored as `config.abilities`. Methods: `getAbilities()`, `setAbilities()`, `hasAbilities()`.
+**Behaviors** are stored as `config.behaviors`. Methods: `getBehaviors()`, `setBehaviors()`, `hasBehaviors()`.
 
 **Protected keys** (excluded from `getSafeConfig()`): `apiKey`, `encryptedAPIKey`, `riskLevel`.
 
@@ -193,7 +193,7 @@ Join table binding agents to sessions. An agent can be in multiple sessions; a s
 **Composite index**: `[ownerType, ownerID, namespace, scopeID, key]` for lookups.
 
 Unified key-value store replacing inline JSON blob columns. Supports Ed25519 signing for verified entries. Used by:
-- **Agents**: config (abilities, plugin settings)
+- **Agents**: config (behaviors, plugin settings)
 - **Sessions**: context (conversation metadata)
 - **Users**: settings (preferences like riskLevel)
 

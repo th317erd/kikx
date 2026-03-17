@@ -3,10 +3,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { reinjectAbilities } from '../../../src/core/interaction/abilities-reinjection.mjs';
+import { reinjectBehaviors } from '../../../src/core/interaction/behaviors-reinjection.mjs';
 
 // =============================================================================
-// Step 3 — Post-Truncation Abilities Re-injection Tests
+// Step 3 — Post-Truncation Behaviors Re-injection Tests
 // =============================================================================
 
 // Helper: build a truncation marker message (matches truncateConversation output)
@@ -17,82 +17,82 @@ function truncationMarker(count = 5) {
   };
 }
 
-// Helper: build a fake agent with abilities (async methods)
-function agentWithAbilities(text) {
+// Helper: build a fake agent with behaviors (async methods)
+function agentWithBehaviors(text) {
   return {
     id:           'agt_test',
-    hasAbilities: async () => true,
-    getAbilities: async () => text,
+    hasBehaviors: async () => true,
+    getBehaviors: async () => text,
   };
 }
 
-// Helper: build a fake agent without abilities (async methods)
-function agentWithoutAbilities() {
+// Helper: build a fake agent without behaviors (async methods)
+function agentWithoutBehaviors() {
   return {
     id:           'agt_test',
-    hasAbilities: async () => false,
-    getAbilities: async () => null,
+    hasBehaviors: async () => false,
+    getBehaviors: async () => null,
   };
 }
 
-describe('reinjectAbilities (Step 3)', () => {
+describe('reinjectBehaviors (Step 3)', () => {
 
   // ---------------------------------------------------------------------------
-  // Truncation occurred + agent has abilities => re-inject
+  // Truncation occurred + agent has behaviors => re-inject
   // ---------------------------------------------------------------------------
 
-  describe('when truncation occurred and agent has abilities', () => {
-    it('should concatenate abilities text onto the first user message', async () => {
+  describe('when truncation occurred and agent has behaviors', () => {
+    it('should concatenate behaviors text onto the first user message', async () => {
       let messages = [
         truncationMarker(),
         { role: 'user', content: 'Hello agent' },
         { role: 'assistant', content: 'Hi there' },
       ];
 
-      let agent  = agentWithAbilities('Never deploy on Fridays.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Never deploy on Fridays.');
+      let result = await reinjectBehaviors(messages, agent);
 
       assert.ok(result[1].content.includes('Hello agent'));
       assert.ok(result[1].content.includes('Never deploy on Fridays.'));
     });
 
-    it('should use --- ABILITIES --- / --- END ABILITIES --- delimiters', async () => {
+    it('should use --- BEHAVIORS --- / --- END BEHAVIORS --- delimiters', async () => {
       let messages = [
         truncationMarker(),
         { role: 'user', content: 'Help me' },
       ];
 
-      let agent  = agentWithAbilities('Rule 1: Check tests.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Rule 1: Check tests.');
+      let result = await reinjectBehaviors(messages, agent);
 
-      assert.ok(result[1].content.includes('--- ABILITIES ---'));
-      assert.ok(result[1].content.includes('--- END ABILITIES ---'));
+      assert.ok(result[1].content.includes('--- BEHAVIORS ---'));
+      assert.ok(result[1].content.includes('--- END BEHAVIORS ---'));
     });
 
-    it('should include the abilities mandate after the abilities block', async () => {
+    it('should include the behaviors mandate after the behaviors block', async () => {
       let messages = [
         truncationMarker(),
         { role: 'user', content: 'Question?' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent);
 
-      assert.ok(result[1].content.includes('ABILITIES ARE MANDATORY'));
-      assert.ok(result[1].content.includes('abilities override your default behavior'));
+      assert.ok(result[1].content.includes('BEHAVIORS ARE MANDATORY'));
+      assert.ok(result[1].content.includes('behaviors override your default behavior'));
     });
 
-    it('should format the abilities block correctly', async () => {
+    it('should format the behaviors block correctly', async () => {
       let messages = [
         truncationMarker(),
         { role: 'user', content: 'Original message' },
       ];
 
-      let agent  = agentWithAbilities('Rule A\nRule B');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Rule A\nRule B');
+      let result = await reinjectBehaviors(messages, agent);
 
-      assert.ok(result[1].content.includes('--- ABILITIES ---\nRule A\nRule B\n--- END ABILITIES ---'));
-      assert.ok(result[1].content.includes('ABILITIES ARE MANDATORY'));
+      assert.ok(result[1].content.includes('--- BEHAVIORS ---\nRule A\nRule B\n--- END BEHAVIORS ---'));
+      assert.ok(result[1].content.includes('BEHAVIORS ARE MANDATORY'));
     });
 
     it('should inject into the first user message even if truncation marker is also user role', async () => {
@@ -102,35 +102,35 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Continue please' },
       ];
 
-      let agent  = agentWithAbilities('Ability text.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Behavior text.');
+      let result = await reinjectBehaviors(messages, agent);
 
       // Truncation marker should be untouched
       assert.ok(result[0].content.startsWith('[Earlier conversation'));
-      assert.ok(!result[0].content.includes('--- ABILITIES ---'));
+      assert.ok(!result[0].content.includes('--- BEHAVIORS ---'));
 
       // The non-marker user message gets the injection
-      assert.ok(result[2].content.includes('Ability text.'));
+      assert.ok(result[2].content.includes('Behavior text.'));
       assert.ok(result[2].content.includes('Continue please'));
     });
   });
 
   // ---------------------------------------------------------------------------
-  // Truncation occurred + agent has NO abilities => unchanged
+  // Truncation occurred + agent has NO behaviors => unchanged
   // ---------------------------------------------------------------------------
 
-  describe('when truncation occurred but agent has no abilities', () => {
+  describe('when truncation occurred but agent has no behaviors', () => {
     it('should return messages unchanged', async () => {
       let messages = [
         truncationMarker(),
         { role: 'user', content: 'Hello' },
       ];
 
-      let agent  = agentWithoutAbilities();
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithoutBehaviors();
+      let result = await reinjectBehaviors(messages, agent);
 
       assert.equal(result[1].content, 'Hello');
-      assert.ok(!result[1].content.includes('--- ABILITIES ---'));
+      assert.ok(!result[1].content.includes('--- BEHAVIORS ---'));
     });
   });
 
@@ -145,11 +145,11 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'assistant', content: 'Hi' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent);
 
       assert.equal(result[0].content, 'Hello');
-      assert.ok(!result[0].content.includes('--- ABILITIES ---'));
+      assert.ok(!result[0].content.includes('--- BEHAVIORS ---'));
     });
 
     it('should return messages unchanged even with many messages', async () => {
@@ -160,8 +160,8 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'assistant', content: 'Another response' },
       ];
 
-      let agent  = agentWithAbilities('Ability text.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Behavior text.');
+      let result = await reinjectBehaviors(messages, agent);
 
       for (let i = 0; i < result.length; i++)
         assert.equal(result[i].content, messages[i].content);
@@ -179,11 +179,11 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent, { primerInjected: true });
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent, { primerInjected: true });
 
       assert.equal(result[1].content, 'Hello');
-      assert.ok(!result[1].content.includes('--- ABILITIES ---'));
+      assert.ok(!result[1].content.includes('--- BEHAVIORS ---'));
     });
 
     it('should inject when primerInjected is false', async () => {
@@ -192,11 +192,11 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent, { primerInjected: false });
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent, { primerInjected: false });
 
-      assert.ok(result[1].content.includes('--- ABILITIES ---'));
-      assert.ok(result[1].content.includes('Some ability.'));
+      assert.ok(result[1].content.includes('--- BEHAVIORS ---'));
+      assert.ok(result[1].content.includes('Some behavior.'));
     });
 
     it('should inject when primerInjected is not provided', async () => {
@@ -205,10 +205,10 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent);
 
-      assert.ok(result[1].content.includes('--- ABILITIES ---'));
+      assert.ok(result[1].content.includes('--- BEHAVIORS ---'));
     });
   });
 
@@ -223,7 +223,7 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let result = await reinjectAbilities(messages, null);
+      let result = await reinjectBehaviors(messages, null);
 
       assert.equal(result[1].content, 'Hello');
     });
@@ -234,22 +234,22 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let result = await reinjectAbilities(messages, undefined);
+      let result = await reinjectBehaviors(messages, undefined);
 
       assert.equal(result[1].content, 'Hello');
     });
 
-    it('should return messages unchanged when agent is a plain object without hasAbilities method', async () => {
+    it('should return messages unchanged when agent is a plain object without hasBehaviors method', async () => {
       let messages = [
         truncationMarker(),
         { role: 'user', content: 'Hello' },
       ];
 
       let agent  = { id: 'agt_plain', name: 'Plain Agent' };
-      let result = await reinjectAbilities(messages, agent);
+      let result = await reinjectBehaviors(messages, agent);
 
       assert.equal(result[1].content, 'Hello');
-      assert.ok(!result[1].content.includes('--- ABILITIES ---'));
+      assert.ok(!result[1].content.includes('--- BEHAVIORS ---'));
     });
   });
 
@@ -264,13 +264,13 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent, {
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent, {
         isDMForAgent: async () => true,
       });
 
       assert.equal(result[1].content, 'Hello');
-      assert.ok(!result[1].content.includes('--- ABILITIES ---'));
+      assert.ok(!result[1].content.includes('--- BEHAVIORS ---'));
     });
 
     it('should inject normally when isDMForAgent returns false', async () => {
@@ -279,12 +279,12 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent, {
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent, {
         isDMForAgent: async () => false,
       });
 
-      assert.ok(result[1].content.includes('--- ABILITIES ---'));
+      assert.ok(result[1].content.includes('--- BEHAVIORS ---'));
     });
 
     it('should inject normally when isDMForAgent is not provided', async () => {
@@ -293,10 +293,10 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent);
 
-      assert.ok(result[1].content.includes('--- ABILITIES ---'));
+      assert.ok(result[1].content.includes('--- BEHAVIORS ---'));
     });
   });
 
@@ -309,8 +309,8 @@ describe('reinjectAbilities (Step 3)', () => {
       let originalMessage = { role: 'user', content: 'Hello' };
       let messages        = [truncationMarker(), originalMessage];
 
-      let agent = agentWithAbilities('Some ability.');
-      await reinjectAbilities(messages, agent);
+      let agent = agentWithBehaviors('Some behavior.');
+      await reinjectBehaviors(messages, agent);
 
       assert.equal(originalMessage.content, 'Hello');
       assert.equal(messages.length, 2);
@@ -322,8 +322,8 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent);
 
       assert.notEqual(result, messages);
     });
@@ -335,22 +335,22 @@ describe('reinjectAbilities (Step 3)', () => {
 
   describe('edge cases', () => {
     it('should handle empty messages array', async () => {
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities([], agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors([], agent);
 
       assert.deepEqual(result, []);
     });
 
     it('should handle null messages', async () => {
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(null, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(null, agent);
 
       assert.deepEqual(result, []);
     });
 
     it('should handle undefined messages', async () => {
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(undefined, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(undefined, agent);
 
       assert.deepEqual(result, []);
     });
@@ -361,13 +361,13 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'assistant', content: 'Some response' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent);
 
       // No user message to inject into, so nothing changes
       assert.equal(result.length, 2);
-      assert.ok(!result[0].content.includes('--- ABILITIES ---'));
-      assert.ok(!result[1].content.includes('--- ABILITIES ---'));
+      assert.ok(!result[0].content.includes('--- BEHAVIORS ---'));
+      assert.ok(!result[1].content.includes('--- BEHAVIORS ---'));
     });
 
     it('should handle user message with null content after truncation', async () => {
@@ -376,11 +376,11 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: null },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent);
 
-      assert.ok(result[1].content.includes('--- ABILITIES ---'));
-      assert.ok(result[1].content.includes('Some ability.'));
+      assert.ok(result[1].content.includes('--- BEHAVIORS ---'));
+      assert.ok(result[1].content.includes('Some behavior.'));
     });
 
     it('should handle user message with empty string content after truncation', async () => {
@@ -389,18 +389,18 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: '' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent);
 
-      assert.ok(result[1].content.includes('--- ABILITIES ---'));
-      assert.ok(result[1].content.includes('Some ability.'));
+      assert.ok(result[1].content.includes('--- BEHAVIORS ---'));
+      assert.ok(result[1].content.includes('Some behavior.'));
     });
 
-    it('should handle agent with hasAbilities returning true but getAbilities returning empty string', async () => {
+    it('should handle agent with hasBehaviors returning true but getBehaviors returning empty string', async () => {
       let agent = {
         id:           'agt_test',
-        hasAbilities: async () => true,
-        getAbilities: async () => '',
+        hasBehaviors: async () => true,
+        getBehaviors: async () => '',
       };
 
       let messages = [
@@ -408,11 +408,11 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let result = await reinjectAbilities(messages, agent);
+      let result = await reinjectBehaviors(messages, agent);
 
-      // hasAbilities() is true, so we proceed — getAbilities returns empty string
+      // hasBehaviors() is true, so we proceed — getBehaviors returns empty string
       // The function should still inject the block with the empty content
-      assert.ok(result[1].content.includes('--- ABILITIES ---'));
+      assert.ok(result[1].content.includes('--- BEHAVIORS ---'));
     });
 
     it('should only inject into the first non-marker user message', async () => {
@@ -422,11 +422,11 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Second user msg' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent);
 
-      assert.ok(result[1].content.includes('--- ABILITIES ---'));
-      assert.ok(!result[2].content.includes('--- ABILITIES ---'));
+      assert.ok(result[1].content.includes('--- BEHAVIORS ---'));
+      assert.ok(!result[2].content.includes('--- BEHAVIORS ---'));
       assert.equal(result[2].content, 'Second user msg');
     });
 
@@ -436,10 +436,10 @@ describe('reinjectAbilities (Step 3)', () => {
         { role: 'user', content: 'Hello' },
       ];
 
-      let agent  = agentWithAbilities('Some ability.');
-      let result = await reinjectAbilities(messages, agent);
+      let agent  = agentWithBehaviors('Some behavior.');
+      let result = await reinjectBehaviors(messages, agent);
 
-      assert.ok(result[1].content.includes('--- ABILITIES ---'));
+      assert.ok(result[1].content.includes('--- BEHAVIORS ---'));
     });
   });
 });

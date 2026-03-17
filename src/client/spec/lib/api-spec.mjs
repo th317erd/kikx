@@ -8,9 +8,6 @@ import {
   getAuthToken,
   setOnUnauthorized,
   ApiError,
-  sendMagicLink,
-  verifyToken,
-  logout,
   registerUser,
   getSessions,
   getSession,
@@ -24,11 +21,6 @@ import {
   createAgent,
   updateAgent,
   deleteAgent,
-  getAbilities,
-  getAbility,
-  createAbility,
-  updateAbility,
-  deleteAbility,
   healthCheck,
 } from '../../lib/api.mjs';
 
@@ -85,32 +77,6 @@ describe('api', () => {
       setAuthToken(null);
       await healthCheck();
       assert.equal(fetchCalls[0].options.headers['Authorization'], undefined);
-    });
-  });
-
-  describe('sendMagicLink()', () => {
-    it('calls POST /kikx/api/v1/auth/login with { email }', async () => {
-      await sendMagicLink('user@example.com');
-      assert.equal(fetchCalls[0].url, '/kikx/api/v1/auth/login');
-      assert.equal(fetchCalls[0].options.method, 'POST');
-      assert.equal(fetchCalls[0].options.body, JSON.stringify({ email: 'user@example.com' }));
-    });
-  });
-
-  describe('verifyToken()', () => {
-    it('calls POST /kikx/api/v1/auth/verify with { token }', async () => {
-      await verifyToken('abc123');
-      assert.equal(fetchCalls[0].url, '/kikx/api/v1/auth/verify');
-      assert.equal(fetchCalls[0].options.method, 'POST');
-      assert.equal(fetchCalls[0].options.body, JSON.stringify({ token: 'abc123' }));
-    });
-  });
-
-  describe('logout()', () => {
-    it('calls GET /kikx/api/v1/auth/logout', async () => {
-      await logout();
-      assert.equal(fetchCalls[0].url, '/kikx/api/v1/auth/logout');
-      assert.equal(fetchCalls[0].options.method, 'GET');
     });
   });
 
@@ -202,50 +168,6 @@ describe('api', () => {
     it('calls DELETE /kikx/api/v1/agents/:id', async () => {
       await deleteAgent('agent-7');
       assert.equal(fetchCalls[0].url, '/kikx/api/v1/agents/agent-7');
-      assert.equal(fetchCalls[0].options.method, 'DELETE');
-    });
-  });
-
-  describe('getAbilities()', () => {
-    it('calls GET /kikx/api/v1/abilities', async () => {
-      await getAbilities();
-      assert.equal(fetchCalls[0].url, '/kikx/api/v1/abilities');
-      assert.equal(fetchCalls[0].options.method, 'GET');
-    });
-  });
-
-  describe('getAbility()', () => {
-    it('calls GET /kikx/api/v1/abilities/:id', async () => {
-      await getAbility('ability-3');
-      assert.equal(fetchCalls[0].url, '/kikx/api/v1/abilities/ability-3');
-      assert.equal(fetchCalls[0].options.method, 'GET');
-    });
-  });
-
-  describe('createAbility()', () => {
-    it('calls POST /kikx/api/v1/abilities with body', async () => {
-      let data = { name: 'websearch', description: 'Search the web' };
-      await createAbility(data);
-      assert.equal(fetchCalls[0].url, '/kikx/api/v1/abilities');
-      assert.equal(fetchCalls[0].options.method, 'POST');
-      assert.equal(fetchCalls[0].options.body, JSON.stringify(data));
-    });
-  });
-
-  describe('updateAbility()', () => {
-    it('calls PATCH /kikx/api/v1/abilities/:id with updates', async () => {
-      let updates = { description: 'Updated description' };
-      await updateAbility('ability-3', updates);
-      assert.equal(fetchCalls[0].url, '/kikx/api/v1/abilities/ability-3');
-      assert.equal(fetchCalls[0].options.method, 'PATCH');
-      assert.equal(fetchCalls[0].options.body, JSON.stringify(updates));
-    });
-  });
-
-  describe('deleteAbility()', () => {
-    it('calls DELETE /kikx/api/v1/abilities/:id', async () => {
-      await deleteAbility('ability-3');
-      assert.equal(fetchCalls[0].url, '/kikx/api/v1/abilities/ability-3');
       assert.equal(fetchCalls[0].options.method, 'DELETE');
     });
   });

@@ -8,7 +8,6 @@ import store, {
   resetStore,
   sessions,
   agents,
-  abilities,
   profile,
   theme,
   connection,
@@ -152,79 +151,6 @@ describe('store', () => {
     });
   });
 
-  // --------------------------------------------------------------- abilities
-  describe('abilities scope', () => {
-    it('default abilities has empty system and user arrays', () => {
-      assert.deepEqual(abilities.getSystemAbilities(), []);
-      assert.deepEqual(abilities.getUserAbilities(), []);
-    });
-
-    it('addAbility() with "system" category adds to the system list', () => {
-      abilities.addAbility({ id: 'ab1', name: 'Websearch' }, 'system');
-      assert.equal(abilities.getSystemAbilities().length, 1);
-      assert.equal(abilities.getUserAbilities().length, 0);
-    });
-
-    it('addAbility() with "user" category adds to the user list', () => {
-      abilities.addAbility({ id: 'ab2', name: 'Custom' }, 'user');
-      assert.equal(abilities.getUserAbilities().length, 1);
-      assert.equal(abilities.getSystemAbilities().length, 0);
-    });
-
-    it('addAbility() defaults to "user" category when none is specified', () => {
-      abilities.addAbility({ id: 'ab3', name: 'Default' });
-      assert.equal(abilities.getUserAbilities().length, 1);
-    });
-
-    it('removeAbility() removes the ability from whichever list it is in', () => {
-      abilities.addAbility({ id: 'ab1', name: 'System Ability' }, 'system');
-      abilities.addAbility({ id: 'ab2', name: 'User Ability' }, 'user');
-      abilities.removeAbility('ab1');
-      assert.equal(abilities.getSystemAbilities().length, 0);
-      assert.equal(abilities.getUserAbilities().length, 1);
-    });
-
-    it('updateAbility() merges updates into the matching ability', () => {
-      abilities.addAbility({ id: 'ab1', name: 'Original', enabled: false }, 'system');
-      abilities.updateAbility('ab1', { name: 'Updated', enabled: true });
-      const found = abilities.getAbility('ab1');
-      assert.equal(found.name, 'Updated');
-      assert.equal(found.enabled, true);
-    });
-
-    it('getAbility() finds an ability from the system list', () => {
-      abilities.addAbility({ id: 'ab1', name: 'Sys' }, 'system');
-      const found = abilities.getAbility('ab1');
-      assert.equal(found.id, 'ab1');
-    });
-
-    it('getAbility() finds an ability from the user list', () => {
-      abilities.addAbility({ id: 'ab2', name: 'Usr' }, 'user');
-      const found = abilities.getAbility('ab2');
-      assert.equal(found.id, 'ab2');
-    });
-
-    it('getAbility() returns null when the ID does not exist', () => {
-      assert.equal(abilities.getAbility('missing'), null);
-    });
-
-    it('getSystemAbilities() returns only system abilities', () => {
-      abilities.addAbility({ id: 'ab1' }, 'system');
-      abilities.addAbility({ id: 'ab2' }, 'user');
-      const sys = abilities.getSystemAbilities();
-      assert.equal(sys.length, 1);
-      assert.equal(sys[0].id, 'ab1');
-    });
-
-    it('getUserAbilities() returns only user abilities', () => {
-      abilities.addAbility({ id: 'ab1' }, 'system');
-      abilities.addAbility({ id: 'ab2' }, 'user');
-      const usr = abilities.getUserAbilities();
-      assert.equal(usr.length, 1);
-      assert.equal(usr[0].id, 'ab2');
-    });
-  });
-
   // ----------------------------------------------------------------- profile
   describe('profile scope', () => {
     it('default profile is not authenticated', () => {
@@ -353,13 +279,6 @@ describe('store', () => {
       agents.addAgent({ id: 'a1' });
       resetStore();
       assert.deepEqual(agents.getAllAgents(), []);
-    });
-
-    it('resetStore() resets abilities to empty system and user arrays', () => {
-      abilities.addAbility({ id: 'ab1' }, 'system');
-      resetStore();
-      assert.deepEqual(abilities.getSystemAbilities(), []);
-      assert.deepEqual(abilities.getUserAbilities(), []);
     });
 
     it('resetStore() resets profile to unauthenticated', () => {

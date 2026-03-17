@@ -84,31 +84,31 @@ export class PrimerAssembler {
     if (agent && agent.dmSummary)
       sections.push(agent.dmSummary);
 
-    // 6. Abilities section
-    // Skip abilities when the agent is in its own DM session — DMs are for
+    // 6. Behaviors section
+    // Skip behaviors when the agent is in its own DM session — DMs are for
     // configuring the agent, not for the agent to act on its behaviors.
     let isDMSession      = await this._isDMForAgent(agent, options.sessionID);
-    let agentHasAbilities = !isDMSession && agent && typeof agent.hasAbilities === 'function' && await agent.hasAbilities();
+    let agentHasBehaviors = !isDMSession && agent && typeof agent.hasBehaviors === 'function' && await agent.hasBehaviors();
 
-    if (agentHasAbilities) {
+    if (agentHasBehaviors) {
       sections.push(
-        `--- ABILITIES ---\n${await agent.getAbilities()}\n--- END ABILITIES ---`,
+        `--- BEHAVIORS ---\n${await agent.getBehaviors()}\n--- END BEHAVIORS ---`,
       );
     }
 
     // 7. Management note (always present when agent is provided)
     if (agent)
-      sections.push('You can manage your abilities (behavioral instructions) using the memory:updateAgentConfig tool.');
+      sections.push('You can manage your behaviors (behavioral rules and instructions) using the memory:updateAgentConfig tool.');
 
-    // 8. Abilities mandate (only when agent has abilities)
-    if (agentHasAbilities) {
+    // 8. Behaviors mandate (only when agent has behaviors)
+    if (agentHasBehaviors) {
       sections.push(
-        'ABILITIES ARE MANDATORY. Before responding to EVERY user message, you MUST:\n' +
-        '1. Review your ABILITIES section above.\n' +
-        '2. Check if any ability applies to the current message.\n' +
-        '3. If an ability applies, follow its instructions EXACTLY — abilities override your default behavior.\n' +
-        '4. If no ability applies, respond normally.\n' +
-        'Abilities are not suggestions — they are behavioral rules you must obey on every interaction.',
+        'BEHAVIORS ARE MANDATORY. Before responding to EVERY user message, you MUST:\n' +
+        '1. Review your BEHAVIORS section above.\n' +
+        '2. Check if any behavior applies to the current message.\n' +
+        '3. If a behavior applies, follow its instructions EXACTLY — behaviors override your default behavior.\n' +
+        '4. If no behavior applies, respond normally.\n' +
+        'Behaviors are not suggestions — they are behavioral rules you must obey on every interaction.',
       );
     }
 

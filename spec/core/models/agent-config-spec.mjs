@@ -302,70 +302,70 @@ describe('Agent Config Persistence', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Abilities convenience methods
+  // Behaviors convenience methods
   // ---------------------------------------------------------------------------
 
-  it('getAbilities() returns null when no abilities stored', async () => {
-    let agent = await createAgent('test-abilities-null');
-    assert.equal(await agent.getAbilities(), null);
+  it('getBehaviors() returns null when no behaviors stored', async () => {
+    let agent = await createAgent('test-behaviors-null');
+    assert.equal(await agent.getBehaviors(), null);
   });
 
-  it('getAbilities() returns the abilities string when stored', async () => {
-    let agent = await createAgent('test-abilities-get');
+  it('getBehaviors() falls back to config.abilities for backward compat', async () => {
+    let agent = await createAgent('test-behaviors-compat');
     await agent.updateConfig({ abilities: 'If merging to main, ask about production deploy.' });
-    assert.equal(await agent.getAbilities(), 'If merging to main, ask about production deploy.');
+    assert.equal(await agent.getBehaviors(), 'If merging to main, ask about production deploy.');
   });
 
-  it('setAbilities(text) persists abilities string in config', async () => {
-    let agent = await createAgent('test-abilities-set');
-    await agent.setAbilities('Always respond in Spanish.');
+  it('setBehaviors(text) persists behaviors string in config', async () => {
+    let agent = await createAgent('test-behaviors-set');
+    await agent.setBehaviors('Always respond in Spanish.');
 
     let { Agent } = models;
     let fetched = await Agent.where.id.EQ(agent.id).first();
-    assert.equal(await fetched.getAbilities(), 'Always respond in Spanish.');
+    assert.equal(await fetched.getBehaviors(), 'Always respond in Spanish.');
   });
 
-  it('setAbilities(null) clears abilities', async () => {
-    let agent = await createAgent('test-abilities-clear');
-    await agent.setAbilities('Some ability text');
-    await agent.setAbilities(null);
+  it('setBehaviors(null) clears behaviors', async () => {
+    let agent = await createAgent('test-behaviors-clear');
+    await agent.setBehaviors('Some behavior text');
+    await agent.setBehaviors(null);
 
     let { Agent } = models;
     let fetched = await Agent.where.id.EQ(agent.id).first();
-    assert.equal(await fetched.getAbilities(), null);
+    assert.equal(await fetched.getBehaviors(), null);
   });
 
-  it('getAbilities() round-trips through DB fetch', async () => {
-    let agent = await createAgent('test-abilities-roundtrip');
+  it('getBehaviors() round-trips through DB fetch', async () => {
+    let agent = await createAgent('test-behaviors-roundtrip');
     let text  = 'Rule 1: No deploys on Friday.\nRule 2: Always run tests.';
-    await agent.setAbilities(text);
+    await agent.setBehaviors(text);
 
     let { Agent } = models;
     let fetched = await Agent.where.id.EQ(agent.id).first();
-    assert.equal(await fetched.getAbilities(), text);
+    assert.equal(await fetched.getBehaviors(), text);
   });
 
-  it('hasAbilities() returns false when no abilities', async () => {
-    let agent = await createAgent('test-has-abilities-false');
-    assert.equal(await agent.hasAbilities(), false);
+  it('hasBehaviors() returns false when no behaviors', async () => {
+    let agent = await createAgent('test-has-behaviors-false');
+    assert.equal(await agent.hasBehaviors(), false);
   });
 
-  it('hasAbilities() returns true when abilities text is non-empty', async () => {
-    let agent = await createAgent('test-has-abilities-true');
-    await agent.setAbilities('Check for breaking changes before merge.');
-    assert.equal(await agent.hasAbilities(), true);
+  it('hasBehaviors() returns true when behaviors text is non-empty', async () => {
+    let agent = await createAgent('test-has-behaviors-true');
+    await agent.setBehaviors('Check for breaking changes before merge.');
+    assert.equal(await agent.hasBehaviors(), true);
   });
 
-  it('abilities are independent from other config keys', async () => {
-    let agent = await createAgent('test-abilities-independent');
+  it('behaviors are independent from other config keys', async () => {
+    let agent = await createAgent('test-behaviors-independent');
     await agent.setConfig({ riskLevel: 'high', model: 'claude-opus' });
-    await agent.setAbilities('Never auto-merge PRs.');
+    await agent.setBehaviors('Never auto-merge PRs.');
 
     let config = await agent.getConfig();
     assert.equal(config.riskLevel, 'high');
     assert.equal(config.model, 'claude-opus');
-    assert.equal(config.abilities, 'Never auto-merge PRs.');
-    assert.equal(await agent.getAbilities(), 'Never auto-merge PRs.');
+    assert.equal(config.behaviors, 'Never auto-merge PRs.');
+    assert.equal(await agent.getBehaviors(), 'Never auto-merge PRs.');
   });
 
   // ---------------------------------------------------------------------------

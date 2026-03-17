@@ -1,7 +1,7 @@
 'use strict';
 
 // =============================================================================
-// DmController — DM session management for agent abilities
+// DmController — DM session management for agent behaviors
 // =============================================================================
 // Manages direct message sessions that configure agent behavior.
 // DM conversations are summarized into instructions injected into

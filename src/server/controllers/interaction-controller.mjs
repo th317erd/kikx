@@ -55,10 +55,11 @@ export class InteractionController extends ControllerAuthBase {
     // Resolve API key if encrypted
     let resolvedAgent = { ...agent.toJSON ? agent.toJSON() : agent };
 
-    // Preserve abilities convenience methods for PrimerAssembler
-    if (typeof agent.hasAbilities === 'function') {
-      resolvedAgent.hasAbilities = () => agent.hasAbilities();
-      resolvedAgent.getAbilities = () => agent.getAbilities();
+    // Preserve behaviors/config convenience methods for PrimerAssembler
+    // and post-truncation re-injection (same as AgentResolver does)
+    if (typeof agent.hasBehaviors === 'function') {
+      resolvedAgent.hasBehaviors = () => agent.hasBehaviors();
+      resolvedAgent.getBehaviors = () => agent.getBehaviors();
       resolvedAgent.getConfig    = () => agent.getConfig();
     }
 

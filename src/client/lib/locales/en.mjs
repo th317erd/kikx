@@ -64,24 +64,6 @@ export default {
       cancelButton:   'Cancel',
     },
   },
-  ability: {
-    list: {
-      title:          'Abilities',
-      myAbilitiesTab: 'My Abilities',
-      addButton:      'New Ability',
-    },
-    wizard: {
-      nameStep:        'Name',
-      categoryStep:    'Category',
-      descriptionStep: 'Description',
-      whenToUseStep:   'When to Use',
-      contentStep:     'Content',
-      permissionsStep: 'Permissions',
-      nextButton:      'Next',
-      backButton:      'Back',
-      saveButton:      'Save',
-    },
-  },
   friends: {
     title:           'Friends',
     empty:           'No friends yet.',

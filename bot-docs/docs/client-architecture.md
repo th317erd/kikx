@@ -12,7 +12,7 @@ The Kikx client is a Web Components single-page application with a glass-morphis
 - **Reactive store** — Lightweight scoped state management
 - **WebSocket** — Real-time frame delivery
 - **CSS custom properties** — Theming with glass-morphism design
-- **~10,300 lines** across 32 components + libraries
+- **~10,300 lines** across 30 components + libraries
 
 ---
 
@@ -60,7 +60,7 @@ customElements.define('kikx-component-name', KikxComponentName);
 
 ---
 
-## Component Inventory (32 Components)
+## Component Inventory (30 Components)
 
 ### Pages (4)
 
@@ -114,23 +114,21 @@ customElements.define('kikx-component-name', KikxComponentName);
 | `kikx-user-avatar` | Circular avatar with initials and color |
 | `kikx-participant-list` | Session participants list |
 
-### Lists (4)
+### Lists (3)
 
 | Component | Purpose |
 |-----------|---------|
 | `kikx-session-list` | List of user's sessions in sidebar |
 | `kikx-session-link` | Single session list item |
 | `kikx-friends-list` | Agent shortcuts list |
-| `kikx-ability-list-modal` | Modal showing available abilities |
 
-### Modals (6)
+### Modals (5)
 
 | Component | Purpose |
 |-----------|---------|
 | `kikx-create-session-modal` | Create new session form |
 | `kikx-agent-list-modal` | Agent selection for sessions |
 | `kikx-agent-form-modal` | Create/edit agent form |
-| `kikx-ability-wizard-modal` | Step-by-step ability creation |
 | `kikx-add-friend-modal` | Add agent/friend shortcut |
 | `kikx-settings-tabs` | Tabbed settings content |
 
@@ -144,7 +142,6 @@ The store (`src/client/lib/store.mjs`) provides reactive state with scoped acces
 Scopes:
   sessions   — add, remove, update, getSession, getActiveSession, getAllSessions
   agents     — add, remove, update, getAgent, getAllAgents
-  abilities  — add, remove, update, getAbility, getSystemAbilities, getUserAbilities
   profile    — setUser, getUser, updateUser, isAuthenticated, logout
   theme      — setBase, setAccent, getBase, getAccent
   connection — setStatus, updateCosts, getStatus, getCosts

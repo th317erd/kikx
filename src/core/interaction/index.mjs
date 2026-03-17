@@ -7,7 +7,7 @@ import { PermissionHandler }     from './permission-handler.mjs';
 import { CommandHandler }        from './command-handler.mjs';
 import { isFirstMessage, injectPrimer, buildMessages } from './message-history.mjs';
 import { truncateContent, truncateConversation }       from './context-truncation.mjs';
-import { reinjectAbilities }                           from './abilities-reinjection.mjs';
+import { reinjectBehaviors }                            from './behaviors-reinjection.mjs';
 import { reinjectInstructions }                        from './instructions-reinjection.mjs';
 import { signFrameContent, decryptAgentPrivateKey }    from '../crypto/frame-signing.mjs';
 
@@ -344,8 +344,8 @@ export class InteractionLoop extends EventEmitter {
       }
     }
 
-    // Re-inject abilities after truncation if primer was not injected this turn
-    messages = await reinjectAbilities(messages, params.agent, {
+    // Re-inject behaviors after truncation if primer was not injected this turn
+    messages = await reinjectBehaviors(messages, params.agent, {
       primerInjected: needsPrimer,
       isDMForAgent:   () => this._isDMForAgent(params.agent, sessionID),
     });

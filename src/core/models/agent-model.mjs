@@ -170,21 +170,21 @@ export class Agent extends ModelBase {
   }
 
   // ---------------------------------------------------------------------------
-  // Abilities convenience methods (async)
+  // Behaviors convenience methods (async)
   // ---------------------------------------------------------------------------
 
-  async getAbilities() {
+  async getBehaviors() {
     let config = await this.getConfig();
-    return config.abilities || null;
+    return config.behaviors || config.abilities || null;
   }
 
-  async setAbilities(text) {
-    await this.updateConfig({ abilities: text });
+  async setBehaviors(text) {
+    await this.updateConfig({ behaviors: text });
   }
 
-  async hasAbilities() {
-    let abilities = await this.getAbilities();
-    return !!abilities;
+  async hasBehaviors() {
+    let behaviors = await this.getBehaviors();
+    return !!behaviors;
   }
 
   async getSafeConfig() {

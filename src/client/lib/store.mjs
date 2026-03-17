@@ -11,7 +11,6 @@ import { createStore } from 'kikx/shared/lib/create-store.mjs';
 const DEFAULTS = {
   sessions:   () => ([]),
   agents:     () => ([]),
-  abilities:  () => ({ system: [], user: [] }),
   profile:    () => ({ user: null, authenticated: false, token: null }),
   theme:      () => ({ base: 'black-glass', accent: 'cyan' }),
   connection: () => ({ status: 'disconnected', costs: { global: 0, service: 0, session: 0 } }),
@@ -89,57 +88,6 @@ const store = createStore({
 
     getAllAgents({ get }) {
       return get();
-    },
-  },
-
-  // ---------------------------------------------------------------- abilities
-  abilities: {
-    _: DEFAULTS.abilities(),
-
-    addAbility({ get, set }, ability, category = 'user') {
-      const current = get();
-      const categoryList = current[category] ?? [];
-      set({ ...current, [category]: [...categoryList, ability] });
-    },
-
-    removeAbility({ get, set }, abilityID) {
-      const current = get();
-      set({
-        system: current.system.filter((ability) => ability.id !== abilityID),
-        user:   current.user.filter((ability) => ability.id !== abilityID),
-      });
-    },
-
-    updateAbility({ get, set }, abilityID, updates) {
-      const current = get();
-      const updateInList = (list) => {
-        const index = list.findIndex((ability) => ability.id === abilityID);
-        if (index < 0) return list;
-        const updated = list.slice();
-        updated[index] = { ...list[index], ...updates };
-        return updated;
-      };
-      set({
-        system: updateInList(current.system),
-        user:   updateInList(current.user),
-      });
-    },
-
-    getAbility({ get }, abilityID) {
-      const current = get();
-      return (
-        current.system.find((ability) => ability.id === abilityID) ??
-        current.user.find((ability) => ability.id === abilityID) ??
-        null
-      );
-    },
-
-    getSystemAbilities({ get }) {
-      return get().system;
-    },
-
-    getUserAbilities({ get }) {
-      return get().user;
     },
   },
 
@@ -223,7 +171,6 @@ function resetStore() {
   store.hydrate({
     sessions:   DEFAULTS.sessions(),
     agents:     DEFAULTS.agents(),
-    abilities:  DEFAULTS.abilities(),
     profile:    DEFAULTS.profile(),
     theme:      DEFAULTS.theme(),
     connection: DEFAULTS.connection(),
@@ -233,7 +180,6 @@ function resetStore() {
 // Named scope accessors for ergonomic imports.
 const sessions   = store.sessions;
 const agents     = store.agents;
-const abilities  = store.abilities;
 const profile    = store.profile;
 const theme      = store.theme;
 const connection = store.connection;
@@ -243,7 +189,6 @@ export {
   resetStore,
   sessions,
   agents,
-  abilities,
   profile,
   theme,
   connection,

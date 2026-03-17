@@ -178,28 +178,6 @@ export function deleteAgent(agentID) {
   return request('DELETE', `/agents/${agentID}`);
 }
 
-// Ability endpoints
-
-export function getAbilities() {
-  return request('GET', '/abilities');
-}
-
-export function getAbility(abilityID) {
-  return request('GET', `/abilities/${abilityID}`);
-}
-
-export function createAbility(data) {
-  return request('POST', '/abilities', data);
-}
-
-export function updateAbility(abilityID, updates) {
-  return request('PATCH', `/abilities/${abilityID}`, updates);
-}
-
-export function deleteAbility(abilityID) {
-  return request('DELETE', `/abilities/${abilityID}`);
-}
-
 // Frame endpoints
 
 export function getFrames(sessionID, options = {}) {

@@ -53,7 +53,17 @@ Important details to remember across sessions.
 - **E2E Integration:** VERIFIED (92 frames, 0 errors in comprehensive permission E2E)
 - **Test count:** 3355 tests, 0 new failures (2 pre-existing in multi-agent-streaming-spec)
 
-## Current Work: SSE Auto-Reconnection (completed 2026-03-17)
+## Current Work: "Abilities" → "Behaviors" Rename (in progress 2026-03-17)
+
+- Renaming the "abilities" system to "behaviors" across all V2 code
+- Agent model methods: `getAbilities`→`getBehaviors`, `setAbilities`→`setBehaviors`, `hasAbilities`→`hasBehaviors`
+- Primer delimiters: `--- ABILITIES ---` → `--- BEHAVIORS ---`
+- Behaviors re-injection module renamed: `abilities-reinjection.mjs` → `behaviors-reinjection.mjs`
+- Client ability-list-modal and ability-wizard-modal components DROPPED (behavior management through agent tool calls)
+- Client abilities API endpoints, store scope, and i18n strings removed
+- Agent model `getBehaviors()` has backward compat fallback: `config.behaviors || config.abilities || null`
+
+## Previous Work: SSE Auto-Reconnection (completed 2026-03-17)
 
 - SSE stream now auto-reconnects after server restart, network hiccup, or stream drop
 - Exponential backoff: 2s → 4s → 8s → 16s → ... → 30s cap
@@ -67,11 +77,11 @@ Important details to remember across sessions.
 ## Previous Work: Instruction Re-injection + Concurrent Multi-Agent
 
 ### Instruction Re-injection (completed 2026-03-17)
-- Agent `instructions` field now re-injected after context truncation (same as abilities)
+- Agent `instructions` field now re-injected after context truncation (same as behaviors)
 - New module: `src/core/interaction/instructions-reinjection.mjs`
-- Integrated into `InteractionLoop.startInteraction()` after `reinjectAbilities()`
+- Integrated into `InteractionLoop.startInteraction()` after `reinjectBehaviors()`
 - Primer assembler now receives `participants` for multi-agent context section
-- `AgentResolver.resolve()` now preserves `hasAbilities`/`getAbilities`/`getConfig` methods
+- `AgentResolver.resolve()` now preserves `hasBehaviors`/`getBehaviors`/`getConfig` methods
 
 ### Concurrent Multi-Agent Execution (completed 2026-03-17)
 - `SchedulerOrchestrator._triggerNext()` now fires all available agents concurrently
@@ -112,7 +122,7 @@ Important details to remember across sessions.
 |---------|-----------|
 | Markdown Conversion | 2026-03-13 |
 | Ed25519 Identity + ValueStore + Danger Level | 2026-03-14 |
-| Abilities System | 2026-03-12 |
+| Behaviors System (formerly Abilities) | 2026-03-12 |
 | Inter-Agent Streaming | 2026-03-10 |
 | Agent Memory Context | 2026-03-11 |
 | Agent Deliberation (child sessions) | 2026-03-11 |
@@ -153,7 +163,7 @@ Important details to remember across sessions.
 - **Interaction Loop:** `src/core/interaction/index.mjs`
 - **Context Truncation:** `src/core/interaction/context-truncation.mjs`
 - **Message History:** `src/core/interaction/message-history.mjs`
-- **Abilities Re-injection:** `src/core/interaction/abilities-reinjection.mjs`
+- **Behaviors Re-injection:** `src/core/interaction/behaviors-reinjection.mjs`
 - **Frame Signing Utility:** `src/core/crypto/frame-signing.mjs`
 - **Markdown Converter:** `src/core/lib/markdown-converter.mjs`
 - **Primer Assembler:** `src/core/primer/index.mjs`

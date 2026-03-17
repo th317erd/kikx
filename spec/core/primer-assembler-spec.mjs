@@ -149,103 +149,103 @@ describe('PrimerAssembler', () => {
     });
 
     // -------------------------------------------------------------------------
-    // Abilities injection
+    // Behaviors injection
     // -------------------------------------------------------------------------
 
-    it('should include abilities section when agent has abilities', async () => {
+    it('should include behaviors section when agent has behaviors', async () => {
       let agent = {
         instructions:  'Be helpful.',
-        getAbilities:  async () => 'Never deploy on Fridays.',
-        hasAbilities:  async () => true,
+        getBehaviors:  async () => 'Never deploy on Fridays.',
+        hasBehaviors:  async () => true,
       };
 
       let result = await assembler.assemble(agent);
-      assert.ok(result.includes('--- ABILITIES ---'));
+      assert.ok(result.includes('--- BEHAVIORS ---'));
       assert.ok(result.includes('Never deploy on Fridays.'));
-      assert.ok(result.includes('--- END ABILITIES ---'));
+      assert.ok(result.includes('--- END BEHAVIORS ---'));
     });
 
-    it('should NOT include abilities section when agent has no abilities', async () => {
+    it('should NOT include behaviors section when agent has no behaviors', async () => {
       let agent = {
         instructions:  'Be helpful.',
-        getAbilities:  async () => null,
-        hasAbilities:  async () => false,
+        getBehaviors:  async () => null,
+        hasBehaviors:  async () => false,
       };
 
       let result = await assembler.assemble(agent);
-      assert.ok(!result.includes('--- ABILITIES ---'));
-      assert.ok(!result.includes('--- END ABILITIES ---'));
+      assert.ok(!result.includes('--- BEHAVIORS ---'));
+      assert.ok(!result.includes('--- END BEHAVIORS ---'));
     });
 
-    it('should place abilities section after agent instructions', async () => {
+    it('should place behaviors section after agent instructions', async () => {
       let agent = {
         instructions:  'AGENT INSTRUCTIONS HERE',
-        getAbilities:  async () => 'ABILITIES TEXT HERE',
-        hasAbilities:  async () => true,
+        getBehaviors:  async () => 'BEHAVIORS TEXT HERE',
+        hasBehaviors:  async () => true,
       };
 
-      let result        = await assembler.assemble(agent);
-      let instrIndex    = result.indexOf('AGENT INSTRUCTIONS HERE');
-      let abilitiesIndex = result.indexOf('ABILITIES TEXT HERE');
+      let result         = await assembler.assemble(agent);
+      let instrIndex     = result.indexOf('AGENT INSTRUCTIONS HERE');
+      let behaviorsIndex = result.indexOf('BEHAVIORS TEXT HERE');
 
       assert.ok(instrIndex >= 0, 'Agent instructions should be present');
-      assert.ok(abilitiesIndex >= 0, 'Abilities text should be present');
-      assert.ok(instrIndex < abilitiesIndex, 'Instructions should come before abilities');
+      assert.ok(behaviorsIndex >= 0, 'Behaviors text should be present');
+      assert.ok(instrIndex < behaviorsIndex, 'Instructions should come before behaviors');
     });
 
-    it('should wrap abilities text in clear delimiters', async () => {
+    it('should wrap behaviors text in clear delimiters', async () => {
       let agent = {
-        getAbilities:  async () => 'Rule 1: Check tests.\nRule 2: No force push.',
-        hasAbilities:  async () => true,
+        getBehaviors:  async () => 'Rule 1: Check tests.\nRule 2: No force push.',
+        hasBehaviors:  async () => true,
       };
 
       let result = await assembler.assemble(agent);
-      assert.ok(result.includes('--- ABILITIES ---\nRule 1: Check tests.\nRule 2: No force push.\n--- END ABILITIES ---'));
+      assert.ok(result.includes('--- BEHAVIORS ---\nRule 1: Check tests.\nRule 2: No force push.\n--- END BEHAVIORS ---'));
     });
 
-    it('should append abilities mandate when abilities exist', async () => {
+    it('should append behaviors mandate when behaviors exist', async () => {
       let agent = {
-        getAbilities:  async () => 'Some ability text.',
-        hasAbilities:  async () => true,
+        getBehaviors:  async () => 'Some behavior text.',
+        hasBehaviors:  async () => true,
       };
 
       let result = await assembler.assemble(agent);
-      assert.ok(result.includes('ABILITIES ARE MANDATORY'));
-      assert.ok(result.includes('abilities override your default behavior'));
+      assert.ok(result.includes('BEHAVIORS ARE MANDATORY'));
+      assert.ok(result.includes('behaviors override your default behavior'));
     });
 
-    it('should NOT append abilities mandate when no abilities', async () => {
+    it('should NOT append behaviors mandate when no behaviors', async () => {
       let agent = {
-        getAbilities:  async () => null,
-        hasAbilities:  async () => false,
+        getBehaviors:  async () => null,
+        hasBehaviors:  async () => false,
       };
 
       let result = await assembler.assemble(agent);
-      assert.ok(!result.includes('ABILITIES ARE MANDATORY'));
+      assert.ok(!result.includes('BEHAVIORS ARE MANDATORY'));
     });
 
-    it('should still work with null agent (no abilities section)', async () => {
+    it('should still work with null agent (no behaviors section)', async () => {
       let result = await assembler.assemble(null);
-      assert.ok(!result.includes('--- ABILITIES ---'));
+      assert.ok(!result.includes('--- BEHAVIORS ---'));
       assert.ok(result.includes('--- START OF INSTRUCTIONS ---'));
     });
 
-    it('should work with agent that has instructions but no abilities methods', async () => {
+    it('should work with agent that has instructions but no behaviors methods', async () => {
       let agent  = { instructions: 'Be helpful.' };
       let result = await assembler.assemble(agent);
       assert.ok(result.includes('Be helpful.'));
-      assert.ok(!result.includes('--- ABILITIES ---'));
+      assert.ok(!result.includes('--- BEHAVIORS ---'));
     });
 
     // -------------------------------------------------------------------------
     // DM session exclusion
     // -------------------------------------------------------------------------
 
-    it('should NOT include abilities in DM session for the same agent', async () => {
+    it('should NOT include behaviors in DM session for the same agent', async () => {
       let agent = {
         id:            'agt_test_dm',
-        getAbilities:  async () => 'Some ability.',
-        hasAbilities:  async () => true,
+        getBehaviors:  async () => 'Some behavior.',
+        hasBehaviors:  async () => true,
       };
 
       // Mock session lookup — session.dmAgentID matches agent.id
@@ -262,15 +262,15 @@ describe('PrimerAssembler', () => {
       });
 
       let result = await assembler.assemble(agent, { sessionID: 'ses_dm' });
-      assert.ok(!result.includes('--- ABILITIES ---'), 'Abilities should NOT appear in DM session');
-      assert.ok(!result.includes('ABILITIES ARE MANDATORY'), 'Mandate should NOT appear in DM session');
+      assert.ok(!result.includes('--- BEHAVIORS ---'), 'Behaviors should NOT appear in DM session');
+      assert.ok(!result.includes('BEHAVIORS ARE MANDATORY'), 'Mandate should NOT appear in DM session');
     });
 
-    it('should include abilities in non-DM session', async () => {
+    it('should include behaviors in non-DM session', async () => {
       let agent = {
         id:            'agt_test_nodm',
-        getAbilities:  async () => 'Some ability.',
-        hasAbilities:  async () => true,
+        getBehaviors:  async () => 'Some behavior.',
+        hasBehaviors:  async () => true,
       };
 
       // Mock session lookup — session.dmAgentID is null (normal chat)
@@ -287,15 +287,15 @@ describe('PrimerAssembler', () => {
       });
 
       let result = await assembler.assemble(agent, { sessionID: 'ses_chat' });
-      assert.ok(result.includes('--- ABILITIES ---'), 'Abilities should appear in normal session');
-      assert.ok(result.includes('ABILITIES ARE MANDATORY'), 'Mandate should appear in normal session');
+      assert.ok(result.includes('--- BEHAVIORS ---'), 'Behaviors should appear in normal session');
+      assert.ok(result.includes('BEHAVIORS ARE MANDATORY'), 'Mandate should appear in normal session');
     });
 
-    it('should include abilities in DM session for a different agent', async () => {
+    it('should include behaviors in DM session for a different agent', async () => {
       let agent = {
         id:            'agt_other',
-        getAbilities:  async () => 'Some ability.',
-        hasAbilities:  async () => true,
+        getBehaviors:  async () => 'Some behavior.',
+        hasBehaviors:  async () => true,
       };
 
       // DM session belongs to a different agent
@@ -312,29 +312,29 @@ describe('PrimerAssembler', () => {
       });
 
       let result = await assembler.assemble(agent, { sessionID: 'ses_dm' });
-      assert.ok(result.includes('--- ABILITIES ---'), 'Abilities should appear when DM is for a different agent');
+      assert.ok(result.includes('--- BEHAVIORS ---'), 'Behaviors should appear when DM is for a different agent');
     });
 
-    it('should include abilities when no sessionID is provided', async () => {
+    it('should include behaviors when no sessionID is provided', async () => {
       let agent = {
         id:            'agt_no_session',
-        getAbilities:  async () => 'Some ability.',
-        hasAbilities:  async () => true,
+        getBehaviors:  async () => 'Some behavior.',
+        hasBehaviors:  async () => true,
       };
 
       let result = await assembler.assemble(agent);
-      assert.ok(result.includes('--- ABILITIES ---'), 'Abilities should appear when no sessionID');
+      assert.ok(result.includes('--- BEHAVIORS ---'), 'Behaviors should appear when no sessionID');
     });
 
     // -------------------------------------------------------------------------
     // Management instructions (always present)
     // -------------------------------------------------------------------------
 
-    it('should always include management instructions even when agent has no abilities', async () => {
+    it('should always include management instructions even when agent has no behaviors', async () => {
       let agent = {
         instructions:  'Be helpful.',
-        getAbilities:  async () => null,
-        hasAbilities:  async () => false,
+        getBehaviors:  async () => null,
+        hasBehaviors:  async () => false,
       };
 
       let result = await assembler.assemble(agent);
@@ -344,13 +344,13 @@ describe('PrimerAssembler', () => {
     it('should mention memory:updateAgentConfig in management instructions', async () => {
       let agent = {
         instructions:  'Be helpful.',
-        getAbilities:  async () => 'Some ability.',
-        hasAbilities:  async () => true,
+        getBehaviors:  async () => 'Some behavior.',
+        hasBehaviors:  async () => true,
       };
 
       let result = await assembler.assemble(agent);
       assert.ok(result.includes('memory:updateAgentConfig'));
-      assert.ok(result.includes('abilities'));
+      assert.ok(result.includes('behaviors'));
     });
   });
 

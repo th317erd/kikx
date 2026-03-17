@@ -90,46 +90,46 @@ describe('AgentResolver', () => {
   // ---------------------------------------------------------------------------
 
   describe('resolve() convenience method preservation', () => {
-    it('should return hasAbilities, getAbilities, and getConfig as functions on resolvedAgent', async () => {
+    it('should return hasBehaviors, getBehaviors, and getConfig as functions on resolvedAgent', async () => {
       let org   = await createTestOrg();
       let agent = await createTestAgentRecord(org);
 
       let { resolvedAgent } = await resolver.resolve(agent.id);
 
-      assert.equal(typeof resolvedAgent.hasAbilities, 'function');
-      assert.equal(typeof resolvedAgent.getAbilities, 'function');
+      assert.equal(typeof resolvedAgent.hasBehaviors, 'function');
+      assert.equal(typeof resolvedAgent.getBehaviors, 'function');
       assert.equal(typeof resolvedAgent.getConfig, 'function');
     });
 
-    it('should delegate hasAbilities() to the original agent model', async () => {
+    it('should delegate hasBehaviors() to the original agent model', async () => {
       let org   = await createTestOrg();
       let agent = await createTestAgentRecord(org);
 
-      // No abilities set yet — hasAbilities should return false
+      // No behaviors set yet — hasBehaviors should return false
       let { resolvedAgent } = await resolver.resolve(agent.id);
-      let result = await resolvedAgent.hasAbilities();
+      let result = await resolvedAgent.hasBehaviors();
       assert.equal(result, false);
 
-      // Set abilities on the original agent model
-      await agent.setAbilities('Can search the web.\nCan write code.');
+      // Set behaviors on the original agent model
+      await agent.setBehaviors('Can search the web.\nCan write code.');
 
       // Re-resolve to get a fresh resolvedAgent (the delegate points to the
       // same DB-backed model, but let's be explicit)
       let { resolvedAgent: freshResolved } = await resolver.resolve(agent.id);
-      let freshResult = await freshResolved.hasAbilities();
+      let freshResult = await freshResolved.hasBehaviors();
       assert.equal(freshResult, true);
     });
 
-    it('should delegate getAbilities() to the original agent model', async () => {
+    it('should delegate getBehaviors() to the original agent model', async () => {
       let org            = await createTestOrg();
-      let agent          = await createTestAgentRecord(org, { name: 'test-resolver-abilities' });
-      let abilitiesText  = 'Can search the web.\nCan write code.';
+      let agent          = await createTestAgentRecord(org, { name: 'test-resolver-behaviors' });
+      let behaviorsText  = 'Can search the web.\nCan write code.';
 
-      await agent.setAbilities(abilitiesText);
+      await agent.setBehaviors(behaviorsText);
 
       let { resolvedAgent } = await resolver.resolve(agent.id);
-      let abilities = await resolvedAgent.getAbilities();
-      assert.equal(abilities, abilitiesText);
+      let behaviors = await resolvedAgent.getBehaviors();
+      assert.equal(behaviors, behaviorsText);
     });
 
     it('should delegate getConfig() to the original agent model', async () => {
@@ -145,13 +145,13 @@ describe('AgentResolver', () => {
       assert.equal(config.maxTokens, 1024);
     });
 
-    it('should return getAbilities() as null when no abilities are set', async () => {
+    it('should return getBehaviors() as null when no behaviors are set', async () => {
       let org   = await createTestOrg();
-      let agent = await createTestAgentRecord(org, { name: 'test-resolver-no-abilities' });
+      let agent = await createTestAgentRecord(org, { name: 'test-resolver-no-behaviors' });
 
       let { resolvedAgent } = await resolver.resolve(agent.id);
-      let abilities = await resolvedAgent.getAbilities();
-      assert.equal(abilities, null);
+      let behaviors = await resolvedAgent.getBehaviors();
+      assert.equal(behaviors, null);
     });
 
     it('should return correct config even when config is empty', async () => {
@@ -205,9 +205,9 @@ describe('AgentResolver', () => {
       let org   = await createTestOrg();
       let agent = await createTestAgentRecord(org, { name: 'test-resolver-plain' });
 
-      // Monkey-patch the model to remove hasAbilities so the guard fails
-      let originalHasAbilities = agent.hasAbilities;
-      delete agent.hasAbilities;
+      // Monkey-patch the model to remove hasBehaviors so the guard fails
+      let originalHasAbilities = agent.hasBehaviors;
+      delete agent.hasBehaviors;
 
       // We can't directly pass a plain object to resolve() because it fetches
       // from DB by ID, but we can verify the guard logic by temporarily
@@ -215,11 +215,11 @@ describe('AgentResolver', () => {
       //
       // Instead, we verify the behavior by checking that when the agent
       // retrieved from DB DOES have the methods, they are preserved.
-      // The plain object case is tested indirectly: if hasAbilities is not
+      // The plain object case is tested indirectly: if hasBehaviors is not
       // a function on the fetched agent, none of the methods are attached.
 
       // Restore for cleanup
-      agent.hasAbilities = originalHasAbilities;
+      agent.hasBehaviors = originalHasAbilities;
 
       // The real plain-object test: mock resolve() by subclassing
       class PlainObjectResolver extends AgentResolver {
@@ -239,9 +239,9 @@ describe('AgentResolver', () => {
           // Apply same logic as the real resolve()
           let resolvedAgent = { ...plainAgent };
 
-          if (typeof plainAgent.hasAbilities === 'function') {
-            resolvedAgent.hasAbilities = () => plainAgent.hasAbilities();
-            resolvedAgent.getAbilities = () => plainAgent.getAbilities();
+          if (typeof plainAgent.hasBehaviors === 'function') {
+            resolvedAgent.hasBehaviors = () => plainAgent.hasBehaviors();
+            resolvedAgent.getBehaviors = () => plainAgent.getBehaviors();
             resolvedAgent.getConfig    = () => plainAgent.getConfig();
           }
 
@@ -253,8 +253,8 @@ describe('AgentResolver', () => {
       let { resolvedAgent } = await plainResolver.resolve('agt_fake_plain');
 
       // No convenience methods should be present
-      assert.equal(resolvedAgent.hasAbilities, undefined);
-      assert.equal(resolvedAgent.getAbilities, undefined);
+      assert.equal(resolvedAgent.hasBehaviors, undefined);
+      assert.equal(resolvedAgent.getBehaviors, undefined);
       assert.equal(resolvedAgent.getConfig, undefined);
 
       // But data fields should still be there

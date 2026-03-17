@@ -93,7 +93,6 @@ function registerComponent() {
 
       this._onBackClick       = this._onBackClick.bind(this);
       this._onAgentsClick     = this._onAgentsClick.bind(this);
-      this._onAbilitiesClick  = this._onAbilitiesClick.bind(this);
       this._onNewSessionClick = this._onNewSessionClick.bind(this);
       this._onSettingsClick   = this._onSettingsClick.bind(this);
       this._onLogoutClick     = this._onLogoutClick.bind(this);
@@ -114,7 +113,6 @@ function registerComponent() {
           </div>
           <div class="right-group">
             <button class="agents-button" type="button"></button>
-            <button class="abilities-button" type="button"></button>
             <button class="new-session-button" type="button"></button>
             <button class="settings-button" type="button"></button>
             <button class="logout-button" type="button"></button>
@@ -125,7 +123,6 @@ function registerComponent() {
       this._backButton       = this.querySelector('.back-button');
       this._sessionName      = this.querySelector('.session-name');
       this._agentsButton     = this.querySelector('.agents-button');
-      this._abilitiesButton  = this.querySelector('.abilities-button');
       this._newSessionButton = this.querySelector('.new-session-button');
       this._settingsButton   = this.querySelector('.settings-button');
       this._logoutButton     = this.querySelector('.logout-button');
@@ -134,7 +131,6 @@ function registerComponent() {
 
       this._backButton.addEventListener('click', this._onBackClick);
       this._agentsButton.addEventListener('click', this._onAgentsClick);
-      this._abilitiesButton.addEventListener('click', this._onAbilitiesClick);
       this._newSessionButton.addEventListener('click', this._onNewSessionClick);
       this._settingsButton.addEventListener('click', this._onSettingsClick);
       this._logoutButton.addEventListener('click', this._onLogoutClick);
@@ -143,7 +139,6 @@ function registerComponent() {
     disconnectedCallback() {
       this._backButton.removeEventListener('click', this._onBackClick);
       this._agentsButton.removeEventListener('click', this._onAgentsClick);
-      this._abilitiesButton.removeEventListener('click', this._onAbilitiesClick);
       this._newSessionButton.removeEventListener('click', this._onNewSessionClick);
       this._settingsButton.removeEventListener('click', this._onSettingsClick);
       this._logoutButton.removeEventListener('click', this._onLogoutClick);
@@ -156,7 +151,6 @@ function registerComponent() {
     _render() {
       this._backButton.textContent       = mockT('topBar.backButton');
       this._agentsButton.textContent     = mockT('topBar.agents');
-      this._abilitiesButton.textContent  = mockT('topBar.abilities');
       this._newSessionButton.textContent = mockT('topBar.newSession');
       this._settingsButton.textContent   = mockT('topBar.settings');
       this._logoutButton.textContent     = mockT('topBar.logout');
@@ -180,10 +174,6 @@ function registerComponent() {
 
     _onAgentsClick() {
       this.dispatchEvent(new dom.window.CustomEvent('open-agents-modal', { bubbles: true, composed: true }));
-    }
-
-    _onAbilitiesClick() {
-      this.dispatchEvent(new dom.window.CustomEvent('open-abilities-modal', { bubbles: true, composed: true }));
     }
 
     _onNewSessionClick() {
@@ -291,17 +281,7 @@ describe('kikx-top-bar', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 7. Contains Abilities button
-  // -------------------------------------------------------------------------
-
-  it('contains an Abilities button', () => {
-    let abilitiesButton = element.querySelector('.abilities-button');
-    assert.ok(abilitiesButton, 'should have an Abilities button');
-    assert.equal(abilitiesButton.textContent, localeData.topBar.abilities);
-  });
-
-  // -------------------------------------------------------------------------
-  // 8. Contains New Session button
+  // 7. Contains New Session button
   // -------------------------------------------------------------------------
 
   it('contains a New Session button', () => {
@@ -344,18 +324,6 @@ describe('kikx-top-bar', () => {
     agentsButton.click();
 
     assert.ok(eventFired, 'open-agents-modal event should have been dispatched');
-  });
-
-  it('dispatches open-abilities-modal event when Abilities button is clicked', () => {
-    let eventFired = false;
-    element.addEventListener('open-abilities-modal', () => {
-      eventFired = true;
-    });
-
-    let abilitiesButton = element.querySelector('.abilities-button');
-    abilitiesButton.click();
-
-    assert.ok(eventFired, 'open-abilities-modal event should have been dispatched');
   });
 
   it('dispatches create-session event when New Session button is clicked', () => {

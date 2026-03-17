@@ -25,7 +25,7 @@ src/
               interaction loop, routing, crypto, primer assembly.
   server/     Thin HTTP wrapper (Mythix framework). REST API, WebSocket
               transport, auth middleware, controllers.
-  client/     Web Components SPA. 32+ components, reactive store,
+  client/     Web Components SPA. 30+ components, reactive store,
               WebSocket real-time updates, glass-morphism UI.
   shared/     Code shared between server and client. FrameManager,
               EventEmitter, deep-merge utilities.
@@ -55,7 +55,7 @@ The server adds HTTP/WebSocket transport on top of the core:
 A Web Components SPA served as static files through nginx:
 
 - **No build step** — ES modules loaded directly by the browser via import maps
-- **32 components** — Login, session chat, agent/session management, permissions UI, settings
+- **30 components** — Login, session chat, agent/session management, permissions UI, settings
 - **Reactive store** — Lightweight scoped state management with microtask batching
 - **WebSocket** — Real-time frame delivery with auto-reconnect
 
@@ -103,7 +103,7 @@ Agents are configured AI instances. Each agent has:
 - **Encrypted API key** — Stored encrypted with a per-user derived key
 - **Instructions** — Custom system prompt additions
 - **Ed25519 key pair** — For signing frames and value store entries
-- **Abilities** — Structured descriptions of what the agent can do
+- **Behaviors** — User-defined behavioral rules that customize the agent's behavior
 
 ### Plugins
 
@@ -133,7 +133,7 @@ The interaction loop drives agent communication:
 
 1. User sends a message
 2. Server loads session frames and builds message history
-3. Primer is injected into the first message (system prompt, plugin instructions, abilities)
+3. Primer is injected into the first message (system prompt, plugin instructions, behaviors)
 4. Agent plugin runs as an async generator, yielding text blocks and tool calls
 5. Tool calls are permission-checked; approved tools execute and return results
 6. All outputs become frames, signed and persisted

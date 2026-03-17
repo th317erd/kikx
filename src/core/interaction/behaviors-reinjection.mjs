@@ -1,10 +1,10 @@
 'use strict';
 
 // =============================================================================
-// Abilities Re-injection
+// Behaviors Re-injection
 // =============================================================================
-// After context truncation drops the primer (and the abilities within it),
-// this function re-injects the agent's abilities text into the first user
+// After context truncation drops the primer (and the behaviors within it),
+// this function re-injects the agent's behaviors text into the first user
 // message so the agent retains behavioral constraints across long conversations.
 //
 // Pure function — does not mutate input, returns a new array when changes apply.
@@ -13,11 +13,11 @@
 const TRUNCATION_MARKER_PREFIX = '[Earlier conversation history was truncated';
 
 /**
- * Re-inject agent abilities into messages after truncation.
+ * Re-inject agent behaviors into messages after truncation.
  *
  * Conditions for injection (ALL must be true):
- *   1. options.primerInjected is NOT true (primer already has abilities)
- *   2. agent is present and has abilities
+ *   1. options.primerInjected is NOT true (primer already has behaviors)
+ *   2. agent is present and has behaviors
  *   3. Truncation occurred (marker message detected)
  *   4. A non-marker user message exists to inject into
  *
@@ -28,24 +28,24 @@ const TRUNCATION_MARKER_PREFIX = '[Earlier conversation history was truncated';
  * @param {Function} [options.isDMForAgent] — async function that returns true if session is a DM for this agent
  * @returns {Promise<Array>}
  */
-export async function reinjectAbilities(messages, agent, options = {}) {
+export async function reinjectBehaviors(messages, agent, options = {}) {
   if (!messages || messages.length === 0)
     return messages || [];
 
   if (options.primerInjected)
     return messages;
 
-  if (agent == null || typeof agent.hasAbilities !== 'function' || !await agent.hasAbilities())
+  if (agent == null || typeof agent.hasBehaviors !== 'function' || !await agent.hasBehaviors())
     return messages;
 
-  // Skip abilities in DM sessions — DMs are for configuring the agent
+  // Skip behaviors in DM sessions — DMs are for configuring the agent
   if (options.isDMForAgent && await options.isDMForAgent())
     return messages;
 
   if (!hasTruncationMarker(messages))
     return messages;
 
-  let abilitiesBlock = buildAbilitiesBlock(await agent.getAbilities());
+  let behaviorsBlock = buildBehaviorsBlock(await agent.getBehaviors());
 
   // Find the first user message that is NOT the truncation marker
   let targetIndex = -1;
@@ -70,7 +70,7 @@ export async function reinjectAbilities(messages, agent, options = {}) {
   for (let i = 0; i < messages.length; i++) {
     if (i === targetIndex) {
       let original = messages[i];
-      let content  = (original.content || '') + '\n\n' + abilitiesBlock;
+      let content  = (original.content || '') + '\n\n' + behaviorsBlock;
       result.push({ ...original, content });
     } else {
       result.push(messages[i]);
@@ -106,18 +106,18 @@ function isTruncationMarker(message) {
 }
 
 /**
- * Build the abilities text block with delimiters and reminder.
+ * Build the behaviors text block with delimiters and reminder.
  */
-function buildAbilitiesBlock(abilitiesText) {
+function buildBehaviorsBlock(behaviorsText) {
   return (
-    '--- ABILITIES ---\n' +
-    abilitiesText + '\n' +
-    '--- END ABILITIES ---\n' +
-    'ABILITIES ARE MANDATORY. Before responding to EVERY user message, you MUST:\n' +
-    '1. Review your ABILITIES section above.\n' +
-    '2. Check if any ability applies to the current message.\n' +
-    '3. If an ability applies, follow its instructions EXACTLY — abilities override your default behavior.\n' +
-    '4. If no ability applies, respond normally.\n' +
-    'Abilities are not suggestions — they are behavioral rules you must obey on every interaction.'
+    '--- BEHAVIORS ---\n' +
+    behaviorsText + '\n' +
+    '--- END BEHAVIORS ---\n' +
+    'BEHAVIORS ARE MANDATORY. Before responding to EVERY user message, you MUST:\n' +
+    '1. Review your BEHAVIORS section above.\n' +
+    '2. Check if any behavior applies to the current message.\n' +
+    '3. If a behavior applies, follow its instructions EXACTLY — behaviors override your default behavior.\n' +
+    '4. If no behavior applies, respond normally.\n' +
+    'Behaviors are not suggestions — they are behavioral rules you must obey on every interaction.'
   );
 }

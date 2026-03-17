@@ -80,7 +80,7 @@ await this._createFrame(sessionID, {
 6. **buildMessages()** converts frames to LLM messages:
    - `user-message` → `{ role: 'user', content: frame.content.text }`
    - `message` (agent) → `{ role: 'assistant', content: frame.content.html }`
-7. Primer injected, abilities re-injected, then `agentPlugin.execute()` called
+7. Primer injected, behaviors re-injected, then `agentPlugin.execute()` called
 
 ### Agent response path (in `_iterateGenerator`)
 

@@ -9,17 +9,17 @@
 
 ## Summary
 
-The Kikx client has 32 components and 6 library modules. Before this audit, test coverage was limited to 6 spec files covering a subset of components and libraries. Many components had zero test coverage, and several tested components lacked edge case and failure path testing.
+The Kikx client has 30 components and 6 library modules. Before this audit, test coverage was limited to 6 spec files covering a subset of components and libraries. Many components had zero test coverage, and several tested components lacked edge case and failure path testing.
 
 ### Before Audit
 - **Test files:** 6 (`api-spec`, `components-spec`, `multi-agent-streaming-spec`, `debug-spec`, `cost-and-timestamps-spec`)
-- **Components with tests:** ~15 of 32 (but most are blocked by import issue)
+- **Components with tests:** ~15 of 30 (but most are blocked by import issue)
 - **Library modules with tests:** 1 of 6 (api.mjs partial)
 
 ### After Audit
 - **Test files:** 10 (4 new files added)
 - **New tests added:** 159 passing tests
-- **Components with tests:** 22 of 32
+- **Components with tests:** 22 of 30
 - **Library modules with tests:** 4 of 6 (store, router, i18n added)
 
 ---
@@ -30,7 +30,7 @@ The Kikx client has 32 components and 6 library modules. Before this audit, test
 
 | Module | File | Status | Tests Added | Notes |
 |--------|------|--------|-------------|-------|
-| **store.mjs** | `spec/client/store-spec.mjs` | NEW | 37 tests | All 6 scopes (sessions, agents, abilities, profile, theme, connection), resetStore, event batching, getState |
+| **store.mjs** | `spec/client/store-spec.mjs` | NEW | 37 tests | All 5 scopes (sessions, agents, profile, theme, connection), resetStore, event batching, getState |
 | **router.mjs** | `spec/client/router-spec.mjs` | NEW | 22 tests | defineRoute, navigate, resolve, auth guards, params, onRouteChange, reset |
 | **i18n.mjs** | `spec/client/i18n-spec.mjs` | NEW | 18 tests | t() key resolution, interpolation, pluralization, setLocale, getLocale |
 | **api.mjs** | `spec/client/api-spec.mjs` | Existing | 0 new | Auth persistence, token management well tested |
@@ -70,8 +70,6 @@ The Kikx client has 32 components and 6 library modules. Before this audit, test
 | **kikx-participant-list** | User | - | 0 | No tests |
 | **kikx-agent-list-modal** | Modals | - | 0 | No tests |
 | **kikx-agent-form-modal** | Modals | - | 0 | No tests |
-| **kikx-ability-wizard-modal** | Modals | - | 0 | No tests |
-| **kikx-ability-list-modal** | Modals | - | 0 | No tests |
 | **kikx-settings-tabs** | Modals | - | 0 | No tests |
 
 ---
@@ -133,9 +131,7 @@ This means:
 6. **kikx-participant-list** - Session participant display
 7. **kikx-agent-list-modal** - Agent selection modal
 8. **kikx-agent-form-modal** - Agent create/edit form
-9. **kikx-ability-wizard-modal** - Multi-step ability creation
-10. **kikx-ability-list-modal** - Ability browsing modal
-11. **kikx-settings-tabs** - Settings page tab navigation
+9. **kikx-settings-tabs** - Settings page tab navigation
 
 ### Low (nice-to-have improvements)
 12. **elements.mjs** - DOM utility functions
@@ -150,7 +146,7 @@ This means:
 The new tests specifically cover these edge cases that were previously untested:
 
 ### Store
-- Empty state defaults for all 6 scopes
+- Empty state defaults for all 5 scopes
 - Removing non-existent items (no error)
 - Updating non-existent items (silent ignore)
 - Reset after populating all scopes

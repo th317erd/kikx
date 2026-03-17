@@ -44,7 +44,7 @@ items:
     status: COMPLETE
     completed: "2026-03-11"
     description: |
-      Per-actor persisted JSON context stored in DB. Agent config (abilities,
+      Per-actor persisted JSON context stored in DB. Agent config (behaviors,
       preferences) and session context (inheritable through parent chain).
       6 memory tools, 91 tests.
     see_also: bot-docs/future-plans/agent-memory-context.yaml
@@ -60,16 +60,16 @@ items:
       maxInteractions constraint, parent context inheritance.
     see_also: bot-docs/future-plans/agent-deliberation.yaml
 
-  - id: abilities-system
-    title: "Abilities System"
+  - id: behaviors-system
+    title: "Behaviors System"
     priority: medium
     status: COMPLETE
     completed: "2026-03-12"
     description: |
       Users customize agent behavior through conversation in any session.
-      Agent stores abilities as plain text on config, injected into primer
+      Agent stores behaviors as plain text on config, injected into primer
       and re-injected after context truncation.
-    see_also: bot-docs/future-plans/abilities-system.yaml
+    see_also: bot-docs/future-plans/behaviors-system.yaml
     added: "2026-03-06"
 
   # ===========================================================================

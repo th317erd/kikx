@@ -23,8 +23,6 @@ import './kikx-modal/kikx-modal.mjs';
 import './kikx-create-session-modal/kikx-create-session-modal.mjs';
 import './kikx-agent-list-modal/kikx-agent-list-modal.mjs';
 import './kikx-agent-form-modal/kikx-agent-form-modal.mjs';
-import './kikx-ability-list-modal/kikx-ability-list-modal.mjs';
-import './kikx-ability-wizard-modal/kikx-ability-wizard-modal.mjs';
 import './kikx-settings-tabs/kikx-settings-tabs.mjs';
 import './kikx-permission-request/kikx-permission-request.mjs';
 import './kikx-hml-prompt/kikx-hml-prompt.mjs';

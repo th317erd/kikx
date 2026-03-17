@@ -53,11 +53,11 @@ export class AgentResolver {
     // Build resolved agent record
     let resolvedAgent = { ...(agent.toJSON ? agent.toJSON() : agent) };
 
-    // Preserve abilities/config convenience methods for PrimerAssembler
+    // Preserve behaviors/config convenience methods for PrimerAssembler
     // and post-truncation re-injection (same as InteractionController does)
-    if (typeof agent.hasAbilities === 'function') {
-      resolvedAgent.hasAbilities = () => agent.hasAbilities();
-      resolvedAgent.getAbilities = () => agent.getAbilities();
+    if (typeof agent.hasBehaviors === 'function') {
+      resolvedAgent.hasBehaviors = () => agent.hasBehaviors();
+      resolvedAgent.getBehaviors = () => agent.getBehaviors();
       resolvedAgent.getConfig    = () => agent.getConfig();
     }
 

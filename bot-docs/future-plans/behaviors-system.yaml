@@ -1,4 +1,4 @@
-# Abilities System
+# Behaviors System
 # Deferred from: Phase C (Event Routing Layer)
 # Priority: Medium
 # Complexity: Medium
@@ -8,38 +8,38 @@ summary: >
   A system where users customize agent behavior through natural language
   conversations in any session. The agent recognizes when users want to
   change its behavior and stores those instructions as plain-text
-  "abilities" on the agent config. Abilities are injected into the
+  "behaviors" on the agent config. Behaviors are injected into the
   agent's primer for all future interactions, and re-injected after
   context truncation to ensure they survive long conversations.
 
 current_state: >
   COMPLETE. All 4 steps implemented and tested. 2315 total tests,
   0 failures. Agent model convenience methods, PrimerAssembler
-  abilities injection, post-truncation re-injection, and full
+  behaviors injection, post-truncation re-injection, and full
   integration tests all passing.
 
 design_decisions:
-  - Abilities are plain text on agent config (config.abilities key)
-  - NOT DM-only — agent can update abilities in any session when it
+  - Behaviors are plain text on agent config (config.behaviors key)
+  - NOT DM-only — agent can update behaviors in any session when it
     recognizes user intent to change behavior
   - No scoping (per-user/per-org) for now — start simple, may revisit
   - Conditional triggers are natural language, not structured data
     (e.g. "If you are about to commit... do X")
-  - Agent stores abilities via memory:updateAgentConfig tool
+  - Agent stores behaviors via memory:updateAgentConfig tool
   - Management instructions live in the primer (always present)
   - Help system provides detailed docs for memory:updateAgentConfig
-  - Abilities re-injection after truncation is private text
+  - Behaviors re-injection after truncation is private text
     concatenation, not a frame or stored message
   - No session-type awareness needed — no isDM flag
 
 requirements:
-  - Users converse with agents in any session to define abilities
-  - Agent updates abilities via memory:updateAgentConfig
-  - Abilities are injected into the agent's primer context
-  - Abilities survive context truncation (re-injected after truncate)
-  - Users can review, edit, or remove abilities conversationally
-  - Agent confirms ability changes to user
-  - Management instructions always present in primer (even with no abilities)
+  - Users converse with agents in any session to define behaviors
+  - Agent updates behaviors via memory:updateAgentConfig
+  - Behaviors are injected into the agent's primer context
+  - Behaviors survive context truncation (re-injected after truncate)
+  - Users can review, edit, or remove behaviors conversationally
+  - Agent confirms behavior changes to user
+  - Management instructions always present in primer (even with no behaviors)
 
 implementation_plan:
   step_1:
@@ -50,12 +50,12 @@ implementation_plan:
     tests:
       - spec/core/models/agent-config-spec.mjs
     details: >
-      getAbilities(), setAbilities(), hasAbilities() on Agent model.
-      Stores abilities as plain text string under config.abilities.
+      getBehaviors(), setBehaviors(), hasBehaviors() on Agent model.
+      Stores behaviors as plain text string under config.behaviors.
       8 tests passing.
 
   step_2:
-    title: "PrimerAssembler — Abilities Injection"
+    title: "PrimerAssembler — Behaviors Injection"
     status: PLANNED
     files:
       - src/core/primer-assembler.mjs
@@ -63,35 +63,35 @@ implementation_plan:
       - spec/core/primer-assembler-spec.mjs
     details: >
       2A. Fix existing tests: remove 6 DM-specific tests, keep 8
-      non-DM abilities tests, add ~2 tests for always-present
+      non-DM behaviors tests, add ~2 tests for always-present
       management instructions.
       2B. Implement in PrimerAssembler.assemble(): append
-      --- ABILITIES --- delimited section when agent has abilities,
+      --- BEHAVIORS --- delimited section when agent has behaviors,
       append reminder line, always include brief management
       instruction mentioning memory:updateAgentConfig.
       No isDM parameter. No signature change.
       2C. Run tests, verify green.
     ordering: >
-      [instructions] → [abilities section] → [management note] → [reminder]
+      [instructions] → [behaviors section] → [management note] → [reminder]
 
   step_3:
-    title: "Post-Truncation Abilities Re-injection"
+    title: "Post-Truncation Behaviors Re-injection"
     status: PLANNED
     files:
       - src/core/interaction/index.mjs
       - src/core/interaction/message-history.mjs  # or new utility
     tests:
-      - spec/core/interaction/abilities-reinjection-spec.mjs
+      - spec/core/interaction/behaviors-reinjection-spec.mjs
     details: >
-      3A. Write tests: truncation + abilities → re-injected;
-      truncation + no abilities → nothing; no truncation → nothing;
+      3A. Write tests: truncation + behaviors → re-injected;
+      truncation + no behaviors → nothing; no truncation → nothing;
       primer already injected → no double-injection.
-      3B. Implement reinjectAbilities() function, called in
+      3B. Implement reinjectBehaviors() function, called in
       InteractionLoop._prepareMessages() after truncate calls.
-      Gated on: truncation occurred, agent has abilities, primer
+      Gated on: truncation occurred, agent has behaviors, primer
       NOT being injected this turn.
       3C. Injection mechanism: same as injectPrimer — concatenate
-      abilities text onto first user message content. Private,
+      behaviors text onto first user message content. Private,
       ephemeral, not a frame.
       3D. Run tests, verify green.
 
@@ -100,11 +100,11 @@ implementation_plan:
     status: PLANNED
     files: []
     tests:
-      - spec/core/integration/abilities-integration-spec.mjs
+      - spec/core/integration/behaviors-integration-spec.mjs
     details: >
       4A. Integration tests: full round-trip (create agent → set
-      abilities → assemble primer → verify); truncation round-trip
-      (set abilities → long history → truncate → verify re-injected).
+      behaviors → assemble primer → verify); truncation round-trip
+      (set behaviors → long history → truncate → verify re-injected).
       4B. Full test suite run — all existing + new tests pass.
       4C. Update this YAML to reflect completed state.
 
@@ -122,5 +122,5 @@ files:
   - src/core/interaction/message-history.mjs
   - spec/core/models/agent-config-spec.mjs
   - spec/core/primer-assembler-spec.mjs
-  - spec/core/interaction/abilities-reinjection-spec.mjs
-  - spec/core/integration/abilities-integration-spec.mjs
+  - spec/core/interaction/behaviors-reinjection-spec.mjs
+  - spec/core/integration/behaviors-integration-spec.mjs

@@ -1,34 +1,32 @@
-# TODO: Fix `/reload` Ghost Message Bug (SSE Auto-Reconnection)
+# TODO: Rename "abilities" → "behaviors"
 
-## Problem
+## Scope
+Rename the "abilities" system to "behaviors" across all V2 code. Drop the
+ability-list-modal component (behavior updates happen through the agent).
+Do NOT touch `old-app/`.
 
-The `/reload` command (and all other SSE-dependent features) breaks after a server
-restart because the SSE stream disconnects and never reconnects. The user sees:
-- Ghost message stays pending (faded)
-- No command-result appears
-- No agent streaming works
-- Status bar shows "Disconnected" but no recovery happens
+## Steps
 
-## Root Cause
-
-`_connectStream()` is called once per session load. When the SSE stream drops (server
-restart, network hiccup, timeout), `_readSSEStream()` exits and sets status to
-"disconnected" but never attempts to reconnect.
-
-## Fix: SSE Auto-Reconnection
-
-- [x] Step 1: Add reconnection logic to `_readSSEStream` / `_connectStream`
-  - When stream ends normally (reader.read() returns done:true), wait and reconnect
-  - Use exponential backoff (2s → 4s → 8s → max 30s)
-  - Reset backoff on successful reconnection
-  - Cap max reconnection attempts (e.g., 20)
-  - Don't reconnect if `_disconnectStream()` was called intentionally (abort signal)
-
-- [x] Step 2: Write unit tests for SSE reconnection logic
-  - Test: reconnects after stream drop
-  - Test: exponential backoff timing
-  - Test: stops after max attempts
-  - Test: doesn't reconnect after intentional disconnect
-  - Test: resets backoff after successful reconnection
+- [x] 1. Core: Agent model methods (`getAbilities`→`getBehaviors`, etc.)
+- [x] 2. Core: Primer assembler — delimiters, section text, mandate
+- [x] 3. Core: Rename `abilities-reinjection.mjs` → `behaviors-reinjection.mjs`
+- [x] 4. Core: InteractionLoop import + call site
+- [x] 5. Core: AgentResolver convenience method preservation
+- [x] 6. Server: InteractionController convenience method preservation
+- [x] 7. Delete old `abilities-reinjection.mjs`
+- [x] 8. Client: Drop ability API endpoints from api.mjs
+- [x] 9. Client: Drop abilities scope from store.mjs
+- [x] 10. Client: Drop ability i18n strings
+- [x] 11. Client: Drop kikx-ability-list-modal + kikx-ability-wizard-modal components
+- [x] 12. Client: Drop ability specs
+- [x] 13. Tests: Update primer-assembler-spec
+- [x] 14. Tests: Rename + update reinjection spec
+- [x] 15. Tests: Rename + update integration spec
+- [x] 16. Tests: Update agent-resolver-spec, agent-config-spec, agent-config-migration-spec
+- [x] 17. Docs: Update abilities-system.yaml → behaviors-system.yaml
+- [x] 18. Docs: Update data-models.md, future-plans.yaml, client-architecture.md, etc.
+- [x] 19. DETAILS.md update
+- [x] 20. Run full test suite — 0 regressions (23 pre-existing failures, same as baseline 33 minus deleted tests)
 
 ## Status: COMPLETE
+## Ready to commit

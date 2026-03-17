@@ -188,27 +188,27 @@ describe('Agent Config ValueStore Migration', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Abilities
+  // Behaviors
   // ---------------------------------------------------------------------------
 
-  it('getAbilities() returns null when no abilities set', async () => {
-    let agent = await createAgent('test-migration-abilities-null');
-    assert.equal(await agent.getAbilities(), null);
+  it('getBehaviors() returns null when no behaviors set', async () => {
+    let agent = await createAgent('test-migration-behaviors-null');
+    assert.equal(await agent.getBehaviors(), null);
   });
 
-  it('setAbilities(text) stores and getAbilities() retrieves', async () => {
-    let agent = await createAgent('test-migration-abilities-set');
-    await agent.setAbilities('Never auto-merge PRs.');
+  it('setBehaviors(text) stores and getBehaviors() retrieves', async () => {
+    let agent = await createAgent('test-migration-behaviors-set');
+    await agent.setBehaviors('Never auto-merge PRs.');
 
-    assert.equal(await agent.getAbilities(), 'Never auto-merge PRs.');
+    assert.equal(await agent.getBehaviors(), 'Never auto-merge PRs.');
   });
 
-  it('hasAbilities() returns false when no abilities, true when set', async () => {
-    let agent = await createAgent('test-migration-has-abilities');
-    assert.equal(await agent.hasAbilities(), false);
+  it('hasBehaviors() returns false when no behaviors, true when set', async () => {
+    let agent = await createAgent('test-migration-has-behaviors');
+    assert.equal(await agent.hasBehaviors(), false);
 
-    await agent.setAbilities('Check tests before merge.');
-    assert.equal(await agent.hasAbilities(), true);
+    await agent.setBehaviors('Check tests before merge.');
+    assert.equal(await agent.hasBehaviors(), true);
   });
 
   // ---------------------------------------------------------------------------
@@ -301,25 +301,25 @@ describe('Agent Config ValueStore Migration', () => {
     // Verify they return promises
     let getConfigResult    = agent.getConfig();
     let getSafeResult      = agent.getSafeConfig();
-    let getAbilitiesResult = agent.getAbilities();
-    let hasAbilitiesResult = agent.hasAbilities();
+    let getBehaviorsResult = agent.getBehaviors();
+    let hasBehaviorsResult = agent.hasBehaviors();
     let setConfigResult    = agent.setConfig({ test: true });
     let updateConfigResult = agent.updateConfig({ more: true });
-    let setAbilitiesResult = agent.setAbilities('text');
+    let setBehaviorsResult = agent.setBehaviors('text');
 
     assert.ok(getConfigResult instanceof Promise);
     assert.ok(getSafeResult instanceof Promise);
-    assert.ok(getAbilitiesResult instanceof Promise);
-    assert.ok(hasAbilitiesResult instanceof Promise);
+    assert.ok(getBehaviorsResult instanceof Promise);
+    assert.ok(hasBehaviorsResult instanceof Promise);
     assert.ok(setConfigResult instanceof Promise);
     assert.ok(updateConfigResult instanceof Promise);
-    assert.ok(setAbilitiesResult instanceof Promise);
+    assert.ok(setBehaviorsResult instanceof Promise);
 
     // Resolve them all
     await Promise.all([
-      getConfigResult, getSafeResult, getAbilitiesResult,
-      hasAbilitiesResult, setConfigResult, updateConfigResult,
-      setAbilitiesResult,
+      getConfigResult, getSafeResult, getBehaviorsResult,
+      hasBehaviorsResult, setConfigResult, updateConfigResult,
+      setBehaviorsResult,
     ]);
   });
 
