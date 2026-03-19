@@ -150,6 +150,3 @@ vite.config.ts.timestamp-*
 
 # Solr data volume
 data/solr/
-
-# Generated reference docs
-docs/solr/
