@@ -1,6 +1,12 @@
 'use strict';
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+const DEFAULT_COMPACTION_PROMPT = `Your job is to compact/compress the following memories/conversation. It is VITALLY IMPORTANT that you identify things of importance, and that these survive compaction/compression, things such as file paths, secrets, keys, how to execute commands, tool run ids, other important ids, and any other context-related important items that are vital, and ensure they SURVIVE your compression. Beyond that, I would like you to take an approach where the older the content the more aggressively you compress. Think of this as a gradient of resolution: recent memories/conversations have high resolution, and won't be compressed quite as much, whereas older things will be more aggressively compressed. Useless or unimportant things should undergo more compression, or be stripped altogether, regardless of where they are in the history. It is VITAL that the essence of the memory remains intact, such that agents can continue with their current tasks uninterrupted and without being confused. The context you need to compact/compress is as follows:`;
+
+// =============================================================================
 // BasePluginClass — Base class for all routing plugins
 // =============================================================================
 // Fresh instances are created per routing cycle (not long-lived singletons).
@@ -103,4 +109,36 @@ export class BasePluginClass {
       throw error;
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Compaction — override in agent plugins to enable rolling compaction
+  // ---------------------------------------------------------------------------
+
+  // stats: { totalChars, estimatedTokens, contextWindow, modelID, sessionID }
+  // Returns: { compact: boolean, reason: string }
+  // Override in agent plugins to determine when compaction should trigger.
+  shouldCompact(_stats) {
+    return { compact: false, reason: '' };
+  }
+
+  // Returns the prompt text sent to the compactor agent.
+  // Override in agent plugins to customize.
+  getCompactionPrompt(_stats) {
+    return DEFAULT_COMPACTION_PROMPT;
+  }
+
+  // Returns max tokens the compaction summary should use.
+  // Override in agent plugins to adjust based on context window.
+  getMaxCompactionTokens(_stats) {
+    return 8000;
+  }
+
+  // Makes a single non-streaming API call to the LLM.
+  // options: { maxTokens, systemPrompt }
+  // Must be overridden by agent plugins that support compaction.
+  async _createSingleTurn(_messages, _options) {
+    throw new Error('_createSingleTurn() not implemented — override in agent plugin');
+  }
 }
+
+export { DEFAULT_COMPACTION_PROMPT };

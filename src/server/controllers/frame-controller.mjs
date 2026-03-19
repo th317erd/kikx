@@ -42,6 +42,12 @@ export class FrameController extends ControllerAuthBase {
     let frameManager = await framePersistence.loadFrames(params.sessionID, options);
     let frames       = frameManager.toArray();
 
+    // Strip compaction summaries from list responses (lazy-loaded via single GET)
+    for (let frame of frames) {
+      if (frame.type === 'compaction' && frame.content)
+        frame.content = { ...frame.content, summary: null };
+    }
+
     return { data: { frames } };
   }
 
