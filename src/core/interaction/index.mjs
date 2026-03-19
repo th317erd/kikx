@@ -11,6 +11,7 @@ import { reinjectBehaviors }                            from './behaviors-reinje
 import { reinjectInstructions }                        from './instructions-reinjection.mjs';
 import { signFrameContent, decryptAgentPrivateKey }    from '../crypto/frame-signing.mjs';
 import { ToolLogService }                              from './tool-log-service.mjs';
+import CompactionRunner                                from '../compaction/index.mjs';
 
 // =============================================================================
 // InteractionLoop
@@ -58,6 +59,9 @@ export class InteractionLoop extends EventEmitter {
 
     // Tool log service (tool-log plan)
     this._toolLogService = new ToolLogService();
+
+    // --- Compaction: runner instance ---
+    this._compactionRunner = new CompactionRunner({ logger: console });
   }
 
   // ---------------------------------------------------------------------------
@@ -407,9 +411,20 @@ export class InteractionLoop extends EventEmitter {
     // Build message history from existing frames
     let allFrames  = frameManager.toArray();
     let forAgentID = params.agent && params.agent.id;
-    let messages   = buildMessages(allFrames, forAgentID);
-    messages       = truncateContent(messages);
-    messages       = truncateConversation(messages);
+
+    // --- Compaction: detect active compaction to filter message history ---
+    let activeCompaction = null;
+    for (let i = 0; i < allFrames.length; i++) {
+      let frame = allFrames[i];
+      if (frame.type === 'compaction' && frame.content && frame.content.status === 'started') {
+        activeCompaction = { order: frame.order, frameID: frame.id };
+        break;
+      }
+    }
+
+    let messages = buildMessages(allFrames, forAgentID, { activeCompaction });
+    messages     = truncateContent(messages);
+    messages     = truncateConversation(messages);
 
     // Inject primer for first message, explicit request, or new agent
     let primerRequested = this._primerNeeded.delete(sessionID);
@@ -436,6 +451,35 @@ export class InteractionLoop extends EventEmitter {
     messages = reinjectInstructions(messages, params.agent, {
       primerInjected: needsPrimer,
     });
+
+    // --- Compaction: trigger check ---
+    // Check if the agent plugin wants to compact the session history.
+    // This is fire-and-forget -- the current interaction proceeds with truncation.
+    let plugin = params.agentPlugin;
+    if (plugin && typeof plugin.shouldCompact === 'function') {
+      let totalChars      = messages.reduce((sum, m) => sum + JSON.stringify(m.content).length, 0);
+      let estimatedTokens = Math.ceil(totalChars / 3.5);
+      let contextWindow   = (plugin.getContextWindow && plugin.getContextWindow()) || 200000;
+      let modelID         = (plugin.getModelID && plugin.getModelID()) || 'unknown';
+
+      let stats  = { totalChars, estimatedTokens, contextWindow, modelID, sessionID };
+      let result = plugin.shouldCompact(stats);
+
+      if (result && result.compact) {
+        let canStart = await this._compactionRunner.canStartCompaction(sessionID, frameManager);
+        if (canStart) {
+          // Fire-and-forget -- do NOT await
+          this._compactionRunner.runCompaction(sessionID, {
+            agent: params.agent,
+            plugin,
+            frameManager,
+            interactionLoop: this,
+          }).catch((error) => {
+            console.error('[compaction] failed:', error);
+          });
+        }
+      }
+    }
 
     // Ensure per-agent ref exists for scheduling/diff
     if (agentID)
@@ -1010,7 +1054,19 @@ export class InteractionLoop extends EventEmitter {
     return injectPrimer(messages, primer);
   }
 
-  _buildMessages(frames, forAgentID) {
-    return buildMessages(frames, forAgentID);
+  _buildMessages(frames, forAgentID, options) {
+    return buildMessages(frames, forAgentID, options);
+  }
+
+  // ---------------------------------------------------------------------------
+  // --- Compaction: startup cleanup delegation ---
+  // ---------------------------------------------------------------------------
+  // Delegates to CompactionRunner.cleanupStaleCompactions() to mark any
+  // compaction frames stuck in 'started' status as 'abandoned'.
+  // Called from server startup flow for each session's FrameManager.
+  // ---------------------------------------------------------------------------
+
+  async cleanupStaleCompactions(frameManager) {
+    return this._compactionRunner.cleanupStaleCompactions(frameManager);
   }
 }

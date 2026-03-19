@@ -31,8 +31,15 @@ See `bot-docs/future-plans/compaction.yaml`
 - [x] Existing createFrameElement tests still pass — 65/65 pass
 
 ## Phase 4: Integration (git pull first!)
-- [ ] InteractionLoop trigger + message filter
-- [ ] /compact command
+- [x] InteractionLoop trigger — add CompactionRunner, fire-and-forget in startInteraction()
+- [x] Message filter — buildMessages() compaction-aware filtering via options.activeCompaction
+- [x] Pass activeCompaction state from startInteraction() to buildMessages()
+- [x] Startup cleanup — cleanupStaleCompactions() delegation method
+- [x] Integration tests — 17/17 pass (trigger, filter, cleanup, fire-and-forget error handling)
+- [x] /compact command — 19/19 tests pass
+  - [x] Fix CompactionRunner to pass agent.apiKey to _createSingleTurn
+  - [x] Create compaction command plugin (registerCapability pattern)
+  - [x] Write tests (spec/core/compaction/compact-command-spec.mjs)
 
 ## Phase 5: Wrap-up
 - [ ] Poll for tool-log bot completion

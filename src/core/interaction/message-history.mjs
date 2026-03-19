@@ -65,9 +65,15 @@ export function injectPrimer(messages, primer) {
  *
  * @param {Array} frames      — ordered frames from FrameManager.toArray()
  * @param {string} forAgentID — if set, multi-agent attribution wraps other agents' messages
+ * @param {Object} [options]  — optional configuration
+ * @param {Object} [options.activeCompaction] — if set, filters frames during active compaction
+ *   { order: <number>, frameID: <string> }
+ *   Include: all frames with order <= activeCompaction.order
+ *   Include: frames with order > activeCompaction.order AND authorType === 'user'
+ *   Exclude: all other frames after the compaction start frame
  * @returns {Array} messages suitable for agent execution
  */
-export function buildMessages(frames, forAgentID) {
+export function buildMessages(frames, forAgentID, options = {}) {
   // First pass: collect resolved tool IDs and map each to its result frame.
   // Only consider non-deleted, non-hidden tool-result frames so we don't
   // include a pending-action whose result was removed.
@@ -92,6 +98,9 @@ export function buildMessages(frames, forAgentID) {
   // prevents duplicate tool_result blocks that cause Anthropic API errors
   let emittedToolResults = new Set();
 
+  // --- Compaction: extract active compaction filter ---
+  let activeCompaction = options.activeCompaction || null;
+
   for (let frame of frames) {
     // Skip deleted and hidden frames (hidden = visible in UI but not in agent context)
     if (frame.deleted || frame.hidden)
@@ -102,6 +111,16 @@ export function buildMessages(frames, forAgentID) {
     // Skip excluded frame types explicitly
     if (EXCLUDED_TYPES.has(type))
       continue;
+
+    // --- Compaction: filter frames during active compaction ---
+    // When compaction is in progress, only include:
+    //   - All frames up to and including the compaction start frame (order <= activeCompaction.order)
+    //   - User-authored frames AFTER the compaction start frame
+    //   - Exclude everything else after the compaction start frame
+    if (activeCompaction && frame.order > activeCompaction.order) {
+      if (frame.authorType !== 'user')
+        continue;
+    }
 
     if (type === 'user-message') {
       let content = frame.content || {};

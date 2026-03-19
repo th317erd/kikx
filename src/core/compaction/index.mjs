@@ -153,7 +153,11 @@ class CompactionRunner {
     let responseText;
 
     try {
-      responseText = await plugin._createSingleTurn(messages, { maxTokens });
+      responseText = await plugin._createSingleTurn(messages, {
+        maxTokens,
+        apiKey: agent.apiKey,
+        model:  agent.model,
+      });
     } catch (error) {
       this._logger.error('[CompactionRunner] LLM call failed:', error.message);
 
