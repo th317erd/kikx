@@ -304,9 +304,10 @@ class KikxSidebar extends HTMLElement {
     this._addSessionButton.addEventListener('click', this._onAddSessionClick);
     this._sessionList.addEventListener('click', this._onSessionClick);
 
-    // Random glow offset for search wrapper
+    // Random glow phase so search doesn't sync with other glows
     let searchWrapper = this.querySelector('.search-wrapper');
-    searchWrapper.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
+    searchWrapper.style.setProperty('--glow-delay-rotate', `${-Math.random() * 20}s`);
+    searchWrapper.style.setProperty('--glow-delay-hue', `${-Math.random() * 30}s`);
   }
 
   disconnectedCallback() {
@@ -392,8 +393,9 @@ class KikxSidebar extends HTMLElement {
       row.className  = (session.id === this._activeSessionID) ? 'session-row active' : 'session-row';
       row.dataset.id = session.id;
 
-      // Random glow offset so rows don't all rotate in sync
-      row.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
+      // Random glow phase so rows don't all rotate in sync
+      row.style.setProperty('--glow-delay-rotate', `${-Math.random() * 20}s`);
+      row.style.setProperty('--glow-delay-hue', `${-Math.random() * 30}s`);
 
       let icon = document.createElement('div');
       icon.className = (session.unreadCount > 0) ? 'session-gem unread' : 'session-gem';

@@ -162,8 +162,9 @@ class KikxFriendsList extends HTMLElement {
       row.dataset.id    = friend.id;
       row.dataset.type  = friend.type || 'agent';
 
-      // Random glow offset so rows don't all rotate in sync
-      row.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
+      // Random glow phase so rows don't all rotate in sync
+      row.style.setProperty('--glow-delay-rotate', `${-Math.random() * 20}s`);
+      row.style.setProperty('--glow-delay-hue', `${-Math.random() * 30}s`);
 
       let avatar = document.createElement('kikx-user-avatar');
       avatar.setAttribute('size', '28');

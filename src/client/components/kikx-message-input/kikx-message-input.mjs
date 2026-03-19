@@ -192,9 +192,10 @@ class KikxMessageInput extends HTMLElement {
     this._replyCancelButton.addEventListener('click', this._onReplyCancel);
     this._textarea.addEventListener('focusin', this._onFocusIn);
 
-    // Random glow offset
+    // Random glow phase so input doesn't sync with other glows
     let inputArea = this.querySelector('.input-area');
-    inputArea.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
+    inputArea.style.setProperty('--glow-delay-rotate', `${-Math.random() * 20}s`);
+    inputArea.style.setProperty('--glow-delay-hue', `${-Math.random() * 30}s`);
   }
 
   disconnectedCallback() {

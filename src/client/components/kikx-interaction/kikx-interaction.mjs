@@ -430,8 +430,10 @@ class KikxInteraction extends HTMLElement {
     this._bubble.addEventListener('click', this._onBubbleClick);
     this.ownerDocument.addEventListener('interaction-focused', this._onPeerFocus);
 
-    // Random glow offset so bubbles don't all rotate in sync
-    this._bubble.style.animationDelay = `${-Math.random() * 20}s, ${-Math.random() * 30}s`;
+    // Random glow phase so bubbles don't all rotate in sync.
+    // These custom properties are read by the ::before/::after pseudo-elements.
+    this._bubble.style.setProperty('--glow-delay-rotate', `${-Math.random() * 20}s`);
+    this._bubble.style.setProperty('--glow-delay-hue', `${-Math.random() * 30}s`);
   }
 
   disconnectedCallback() {

@@ -4,43 +4,46 @@
 // Animated border glow — rotating conic-gradient border ring
 //
 // A conic-gradient with two bright spots (cyan + pink, 180° apart) is
-// masked to a thin ring around the element's border. Two custom properties
-// animate on the base element permanently (zero rendering cost):
+// masked to a thin ring around the element's border. Two animations run
+// directly on the pseudo-elements:
 //
-//   --glow-angle  — rotates the gradient around the border
-//   --glow-hue    — cycles colors through the rainbow via hue-rotate
+//   glow-rotate     — rotates the gradient via --glow-angle (non-inheriting)
+//   glow-hue-cycle  — cycles colors via filter: hue-rotate (compositor)
 //
-// The pseudo-elements only appear on hover/focus and read the parent's
-// properties, so neither animation restarts across state changes.
+// The --glow-angle custom property is registered with inherits: false so
+// animating it only restyles the pseudo-element itself — not every
+// descendant in the DOM tree.  The hue cycle animates the filter property
+// directly, which the compositor handles off-main-thread.
 //
-// NO filter: blur() is used — softness comes from wide gradient stop
-// transitions, which cost nothing at runtime.
+// Pseudo-elements read --glow-delay-rotate and --glow-delay-hue from
+// their parent for random phase offsets (set once in JS, no perf cost).
 //
 // ::before  — conic-gradient ring (the border glow + dot peaks)
 // ::after   — conic-gradient bloom (soft ambient wash inside the element)
 // ---------------------------------------------------------------------------
 
-// Register animatable custom properties via JS API.
-// CSS @property at-rules don't work inside shadow DOM <style> tags,
-// but CSS.registerProperty() registers globally and works everywhere.
+// Register --glow-angle as a non-inheriting animatable custom property.
+// inherits: false is critical — it confines style recalculation to the
+// pseudo-element that owns the animation, instead of triggering a full
+// restyle of every descendant in the DOM tree.
 if (typeof CSS !== 'undefined' && CSS.registerProperty) {
-  let properties = [
-    { name: '--glow-angle', syntax: '<angle>', initialValue: '0deg', inherits: true },
-    { name: '--glow-hue',   syntax: '<angle>', initialValue: '0deg', inherits: true },
-  ];
-
-  for (let prop of properties) {
-    try {
-      CSS.registerProperty(prop);
-    } catch (_) {
-      // Already registered — safe to ignore
-    }
+  try {
+    CSS.registerProperty({
+      name:         '--glow-angle',
+      syntax:       '<angle>',
+      initialValue: '0deg',
+      inherits:     false,
+    });
+  } catch (_) {
+    // Already registered — safe to ignore
   }
 }
 
-// Sets up the always-running animations on the base element.
-// Call with the element selector that will later receive hover/focus glow.
-export function glowInitCSS(baseSelector) {
+// Emits the shared @keyframes used by all glow pseudo-elements.
+// The baseSelector parameter is accepted for backward compatibility but
+// no animation is placed on the parent element — animations run on the
+// ::before / ::after pseudo-elements directly (see glowBase).
+export function glowInitCSS(_baseSelector) {
   return `
     @keyframes glow-rotate {
       from { --glow-angle: 0deg; }
@@ -48,13 +51,8 @@ export function glowInitCSS(baseSelector) {
     }
 
     @keyframes glow-hue-cycle {
-      from { --glow-hue: 0deg; }
-      to   { --glow-hue: 360deg; }
-    }
-    ${baseSelector} {
-      animation:
-        glow-rotate 20s linear infinite,
-        glow-hue-cycle 30s linear infinite;
+      from { filter: hue-rotate(0deg); }
+      to   { filter: hue-rotate(360deg); }
     }
   `;
 }
@@ -64,6 +62,11 @@ export const GLOW_KEYFRAMES = `
   @keyframes glow-rotate {
     from { --glow-angle: 0deg; }
     to   { --glow-angle: 360deg; }
+  }
+
+  @keyframes glow-hue-cycle {
+    from { filter: hue-rotate(0deg); }
+    to   { filter: hue-rotate(360deg); }
   }
 `;
 
@@ -112,9 +115,6 @@ function glowBase(selector, borderWidth, opacity) {
         rgba(0, 229, 255, ${low}) 360deg
       );
 
-      /* Hue cycle — no blur, just hue-rotate (cheap) */
-      filter: hue-rotate(var(--glow-hue, 0deg));
-
       /* Mask to ring — only border area visible */
       padding: ${borderWidth}px;
       -webkit-mask:
@@ -125,6 +125,16 @@ function glowBase(selector, borderWidth, opacity) {
         linear-gradient(#fff 0 0) content-box,
         linear-gradient(#fff 0 0);
       mask-composite: exclude;
+
+      /* Animations run on the pseudo-element itself — not the parent.
+         glow-rotate:    animates --glow-angle (main-thread, but only restyles this element)
+         glow-hue-cycle: animates filter: hue-rotate() (compositor-thread, zero cost) */
+      animation:
+        glow-rotate 20s linear infinite,
+        glow-hue-cycle 30s linear infinite;
+      animation-delay:
+        var(--glow-delay-rotate, 0s),
+        var(--glow-delay-hue, 0s);
     }
 
     ${selector}::after {
@@ -156,7 +166,12 @@ function glowBase(selector, borderWidth, opacity) {
         rgba(0, 229, 255, ${bloomLow}) 360deg
       );
 
-      filter: hue-rotate(var(--glow-hue, 0deg));
+      animation:
+        glow-rotate 20s linear infinite,
+        glow-hue-cycle 30s linear infinite;
+      animation-delay:
+        var(--glow-delay-rotate, 0s),
+        var(--glow-delay-hue, 0s);
     }
   `;
 }
