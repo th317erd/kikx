@@ -9,6 +9,44 @@ import { parseShellCommands }   from '../../core/internal-plugins/shell/command-
 
 export class InteractionController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
+  // _decryptUserPrivateKey — best-effort user key decryption for frame signing
+  // ---------------------------------------------------------------------------
+  // Attempts to load the authenticated user's Ed25519 private key by:
+  //   1. Looking up the User record by userID
+  //   2. Getting the UMK from the request vault claim
+  //   3. Decrypting encryptedPrivateKey with keystore.decryptUserPrivateKey()
+  //
+  // Returns the PEM private key string, or null if any step fails.
+  // Never throws — frame signing is best-effort and must not block delivery.
+  // ---------------------------------------------------------------------------
+
+  async _decryptUserPrivateKey() {
+    try {
+      let umk = this.request.getUMK();
+      if (!umk)
+        return null;
+
+      let userID = this.request.userID;
+      if (!userID)
+        return null;
+
+      let { User } = this.getCoreModels();
+      let user     = await User.where.id.EQ(userID).first();
+
+      if (!user || !user.encryptedPrivateKey)
+        return null;
+
+      let keystore = this.getKeystore();
+      let envelope = JSON.parse(user.encryptedPrivateKey);
+
+      return keystore.decryptUserPrivateKey(envelope, umk, userID);
+    } catch (_error) {
+      // Best-effort: decryption failure must not break message delivery
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // POST /api/v2/sessions/:sessionID/interact
   // ---------------------------------------------------------------------------
 
@@ -20,6 +58,9 @@ export class InteractionController extends ControllerAuthBase {
 
     let interactionLoop = this.getInteractionLoop();
 
+    // Decrypt user private key for frame signing (best-effort; null if unavailable)
+    let userPrivateKey = await this._decryptUserPrivateKey();
+
     // When no agent is specified, just persist the message and broadcast.
     // This supports sessions with no agents, or users chatting to each other.
     if (!agentID) {
@@ -29,6 +70,7 @@ export class InteractionController extends ControllerAuthBase {
         authorID:   this.request.userID,
         parentID,
         convertMarkdown,
+        userPrivateKey,
       });
 
       this.setStatusCode(201);
@@ -235,15 +277,16 @@ export class InteractionController extends ControllerAuthBase {
     // Start interaction (non-blocking — frames emitted via SSE)
     let interactionID = await interactionLoop.startInteraction(params.sessionID, {
       agentPlugin,
-      agent:       resolvedAgent,
-      userMessage: message,
-      authorType:  'user',
-      authorID:    this.request.userID,
+      agent:          resolvedAgent,
+      userMessage:    message,
+      authorType:     'user',
+      authorID:       this.request.userID,
       agentCount,
       parentID,
       convertMarkdown,
       checkPermission,
       executeTool,
+      userPrivateKey,
     });
 
     this.setStatusCode(202);
