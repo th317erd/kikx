@@ -1,6 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
+import { models as modelsStore } from '../../lib/store.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -98,6 +99,7 @@ const TEMPLATE_HTML = `
   </div>
   <div class="form-group">
     <label class="form-label model-label"></label>
+    <select class="form-select model-select" style="display:none"></select>
     <input class="form-input model-input" type="text" />
   </div>
   <div class="form-group">
@@ -148,6 +150,7 @@ class KikxAgentFormModal extends HTMLElement {
       this._providerInput    = this.querySelector('.provider-input');
       this._apiKeyInput      = this.querySelector('.api-key-input');
       this._modelInput       = this.querySelector('.model-input');
+      this._modelSelect      = this.querySelector('.model-select');
       this._riskLevelSelect  = this.querySelector('.risk-level-select');
 
       this._nameLabel        = this.querySelector('.name-label');
@@ -182,6 +185,7 @@ class KikxAgentFormModal extends HTMLElement {
     this._cancelButton.addEventListener('click', this._onCancelClick);
 
     this._updateDeleteVisibility();
+    this._updateModelSelector();
   }
 
   disconnectedCallback() {
@@ -203,29 +207,113 @@ class KikxAgentFormModal extends HTMLElement {
     if (!this._nameInput)
       return;
 
+    let modelValue = (value && value.model) || '';
+
     if (value) {
       this._nameInput.value        = value.name || '';
       this._providerInput.value    = value.provider || '';
       this._apiKeyInput.value      = value.apiKey || '';
-      this._modelInput.value       = value.model || '';
       this._riskLevelSelect.value  = value.riskLevel || '';
     } else {
       this._nameInput.value        = '';
       this._providerInput.value    = '';
       this._apiKeyInput.value      = '';
-      this._modelInput.value       = '';
       this._riskLevelSelect.value  = '';
+    }
+
+    // Refresh selector (models may have loaded since last render)
+    this._updateModelSelector();
+
+    // Set model on whichever control is visible
+    if (this._modelSelect && this._modelSelect.style.display !== 'none') {
+      this._modelSelect.value = modelValue;
+      // If value not in options, fall back to text input
+      if (this._modelSelect.value !== modelValue) {
+        this._modelSelect.style.display = 'none';
+        this._modelInput.style.display  = '';
+        this._modelInput.value          = modelValue;
+      }
+    } else if (this._modelInput) {
+      this._modelInput.value = modelValue;
     }
   }
 
   getValues() {
+    // Read model from whichever control is currently visible
+    let modelValue;
+    if (this._modelSelect && this._modelSelect.style.display !== 'none')
+      modelValue = this._modelSelect.value;
+    else
+      modelValue = this._modelInput ? this._modelInput.value : '';
+
     return {
       name:      this._nameInput.value,
       provider:  this._providerInput.value,
       apiKey:    this._apiKeyInput.value,
-      model:     this._modelInput.value,
+      model:     modelValue,
       riskLevel: this._riskLevelSelect.value,
     };
+  }
+
+  // Populate the model <select> from the store. If models are available,
+  // show the select and hide the text input. Otherwise show the text input.
+  _updateModelSelector() {
+    if (!this._modelSelect || !this._modelInput)
+      return;
+
+    let availableModels = (modelsStore && typeof modelsStore.getModels === 'function')
+      ? modelsStore.getModels()
+      : [];
+
+    if (!availableModels || availableModels.length === 0) {
+      // No models loaded — fall back to text input
+      this._modelSelect.style.display = 'none';
+      this._modelInput.style.display  = '';
+      return;
+    }
+
+    // Build grouped options (by pluginID)
+    let currentValue = this._modelInput.value || (this._agent && this._agent.model) || '';
+
+    // Clear existing options
+    this._modelSelect.innerHTML = '';
+
+    // Add blank option
+    let blankOption       = document.createElement('option');
+    blankOption.value     = '';
+    blankOption.textContent = '';
+    this._modelSelect.appendChild(blankOption);
+
+    // Group models by pluginID
+    let byPlugin = new Map();
+    for (let model of availableModels) {
+      let pluginID = model.pluginID || 'other';
+      if (!byPlugin.has(pluginID))
+        byPlugin.set(pluginID, []);
+
+      byPlugin.get(pluginID).push(model);
+    }
+
+    for (let [pluginID, pluginModels] of byPlugin) {
+      let group       = document.createElement('optgroup');
+      group.label     = pluginID;
+
+      for (let model of pluginModels) {
+        let option       = document.createElement('option');
+        option.value     = model.id;
+        option.textContent = model.displayName || model.id;
+        if (model.useWhen)
+          option.title = model.useWhen;
+        group.appendChild(option);
+      }
+
+      this._modelSelect.appendChild(group);
+    }
+
+    // Show select, hide text input
+    this._modelSelect.style.display = '';
+    this._modelInput.style.display  = 'none';
+    this._modelSelect.value         = currentValue;
   }
 
   _updateDeleteVisibility() {

@@ -10,7 +10,7 @@ import { ModelBase, Types } from './model-base.mjs';
 // =============================================================================
 
 export class Frame extends ModelBase {
-  static version = 2;
+  static version = 3;
 
   static fields = {
     ...(ModelBase.fields || {}),
@@ -105,6 +105,11 @@ export class Frame extends ModelBase {
     // Ed25519 signature hex string
     signature: {
       type:      Types.STRING(256),
+      allowNull: true,
+    },
+    // Fingerprint of the signing key (first 32 hex chars of SHA-256(publicKeyPEM))
+    signingKeyFingerprint: {
+      type:      Types.STRING(64),
       allowNull: true,
     },
     // Frame timestamp (milliseconds since epoch)

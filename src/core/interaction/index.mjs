@@ -10,6 +10,7 @@ import { truncateContent, truncateConversation }       from './context-truncatio
 import { reinjectBehaviors }                            from './behaviors-reinjection.mjs';
 import { reinjectInstructions }                        from './instructions-reinjection.mjs';
 import { signFrameContent, decryptAgentPrivateKey }    from '../crypto/frame-signing.mjs';
+import { computeKeyFingerprint }                       from '../crypto/value-signing.mjs';
 import { ToolLogService }                              from './tool-log-service.mjs';
 import CompactionRunner                                from '../compaction/index.mjs';
 
@@ -126,7 +127,14 @@ export class InteractionLoop extends EventEmitter {
   // ---------------------------------------------------------------------------
   // Determines the correct private key based on authorType and signs the frame
   // content. Uses cached agent/user keys from the signing context when available.
-  // Returns the hex signature, or null if signing is not possible.
+  // Also computes the signingKeyFingerprint (first 32 hex chars of SHA-256 of
+  // the signer's public key PEM) for tamper-detection and key lookup.
+  //
+  // Returns { signature, fingerprint } on success, or null if signing is not
+  // possible. Never throws.
+  //
+  // NOTE: This method is in the SIGNING CONTEXT section of InteractionLoop
+  // (lines ~125-185). The truncation section is separate (~329-340).
   // ---------------------------------------------------------------------------
 
   _signFrame(frameData, signingContext) {
@@ -137,14 +145,23 @@ export class InteractionLoop extends EventEmitter {
     let authorType = frameData.authorType;
     let content    = frameData.content;
 
-    if (authorType === 'system')
-      return signFrameContent(keystore, content, 'system', null);
+    if (authorType === 'system') {
+      let signature   = signFrameContent(keystore, content, 'system', null);
+      let fingerprint = computeKeyFingerprint(keystore.getSystemPublicKey());
+      return (signature) ? { signature, fingerprint } : null;
+    }
 
-    if (authorType === 'agent' && signingContext && signingContext.agentPrivateKey)
-      return signFrameContent(keystore, content, 'agent', signingContext.agentPrivateKey);
+    if (authorType === 'agent' && signingContext && signingContext.agentPrivateKey) {
+      let signature   = signFrameContent(keystore, content, 'agent', signingContext.agentPrivateKey);
+      let fingerprint = computeKeyFingerprint(signingContext.agentPublicKey || null);
+      return (signature) ? { signature, fingerprint } : null;
+    }
 
-    if (authorType === 'user' && signingContext && signingContext.userPrivateKey)
-      return signFrameContent(keystore, content, 'user', signingContext.userPrivateKey);
+    if (authorType === 'user' && signingContext && signingContext.userPrivateKey) {
+      let signature   = signFrameContent(keystore, content, 'user', signingContext.userPrivateKey);
+      let fingerprint = computeKeyFingerprint(signingContext.userPublicKey || null);
+      return (signature) ? { signature, fingerprint } : null;
+    }
 
     return null;
   }
@@ -154,7 +171,7 @@ export class InteractionLoop extends EventEmitter {
   // ---------------------------------------------------------------------------
   // Called once per startInteraction(). Decrypts the agent private key (if
   // available) so it can be reused for every frame in the interaction without
-  // repeated SMK-derived decryption.
+  // repeated SMK-derived decryption. Also caches public keys for fingerprinting.
   // ---------------------------------------------------------------------------
 
   _buildSigningContext(params) {
@@ -172,9 +189,17 @@ export class InteractionLoop extends EventEmitter {
         context.agentPrivateKey = agentPrivateKey;
     }
 
+    // Agent public key: cache for fingerprint computation
+    if (agent && agent.publicKey)
+      context.agentPublicKey = agent.publicKey;
+
     // User private key: passed in by caller (e.g., server decrypted via UMK)
     if (params.userPrivateKey)
       context.userPrivateKey = params.userPrivateKey;
+
+    // User public key: passed in by caller for fingerprint computation
+    if (params.userPublicKey)
+      context.userPublicKey = params.userPublicKey;
 
     return context;
   }
@@ -255,10 +280,13 @@ export class InteractionLoop extends EventEmitter {
 
   async _createFrame(sessionID, frameData, frameManager, mergeOptions = {}, signingContext) {
     // Sign the frame content before commit (best-effort)
+    // _signFrame returns { signature, fingerprint } or null.
     if (!frameData.signature) {
-      let signature = this._signFrame(frameData, signingContext);
-      if (signature)
-        frameData.signature = signature;
+      let signResult = this._signFrame(frameData, signingContext);
+      if (signResult) {
+        frameData.signature            = signResult.signature;
+        frameData.signingKeyFingerprint = signResult.fingerprint || null;
+      }
     }
 
     let framePersistence = this._getFramePersistence();
@@ -423,8 +451,40 @@ export class InteractionLoop extends EventEmitter {
     }
 
     let messages = buildMessages(allFrames, forAgentID, { activeCompaction });
-    messages     = truncateContent(messages);
-    messages     = truncateConversation(messages);
+
+    // =============================================================================
+    // TRUNCATION — plugin-model-registry plan
+    // Delegate truncation to plugin.truncate() for model-aware context budgeting.
+    // plugin.truncate() calls standalone truncateContent/truncateConversation internally.
+    // This section owns lines ~425-428. Frame-signing section owns lines ~132-181.
+    // =============================================================================
+    let truncPlugin = params.agentPlugin;
+    if (truncPlugin && typeof truncPlugin.truncate === 'function') {
+      messages = await truncPlugin.truncate(messages, {
+        systemPromptText: '',
+        behaviorsText:    (params.agent && params.agent.behaviors) || '',
+        instructionsText: (params.agent && params.agent.instructions) || '',
+        onOverflow:       async (_type) => {
+          await this._createFrame(sessionID, {
+            id:            generateID('frm_'),
+            type:          'system-error',
+            content:       { message: 'errors.behaviorsOverflow' },
+            timestamp:     Date.now(),
+            interactionID,
+            authorType:    'system',
+            authorID:      null,
+            parentID:      params.parentID || null,
+            hidden:        false,
+            deleted:       false,
+            processed:     false,
+          }, frameManager, { authorType: 'system' }, signingContext);
+        },
+      });
+    } else {
+      // Fallback for plugins that don't implement truncate() yet
+      messages = truncateContent(messages);
+      messages = truncateConversation(messages);
+    }
 
     // Inject primer for first message, explicit request, or new agent
     let primerRequested = this._primerNeeded.delete(sessionID);
@@ -455,7 +515,7 @@ export class InteractionLoop extends EventEmitter {
     // --- Compaction: trigger check ---
     // Check if the agent plugin wants to compact the session history.
     // This is fire-and-forget -- the current interaction proceeds with truncation.
-    let plugin = params.agentPlugin;
+    let plugin = truncPlugin;
     if (plugin && typeof plugin.shouldCompact === 'function') {
       let totalChars      = messages.reduce((sum, m) => sum + JSON.stringify(m.content).length, 0);
       let estimatedTokens = Math.ceil(totalChars / 3.5);
@@ -889,7 +949,7 @@ export class InteractionLoop extends EventEmitter {
   // and broadcast via SSE so all connected clients see it.
   // ---------------------------------------------------------------------------
 
-  async postMessage(sessionID, { text, authorType, authorID, parentID, convertMarkdown, userPrivateKey }) {
+  async postMessage(sessionID, { text, authorType, authorID, parentID, convertMarkdown, userPrivateKey, userPublicKey }) {
     if (!sessionID)
       throw new Error('sessionID is required');
 
@@ -933,7 +993,7 @@ export class InteractionLoop extends EventEmitter {
       frameContent = { text };
     }
 
-    let signingContext = (userPrivateKey) ? { userPrivateKey } : null;
+    let signingContext = (userPrivateKey) ? { userPrivateKey, userPublicKey: userPublicKey || null } : null;
 
     await this._createFrame(sessionID, {
       id:            frameID,

@@ -246,6 +246,12 @@ export function getCost(options = {}) {
   return request('GET', `/cost${query ? `?${query}` : ''}`);
 }
 
+// Models endpoint
+
+export function getModels() {
+  return request('GET', '/models');
+}
+
 // Health endpoint
 
 export function healthCheck() {

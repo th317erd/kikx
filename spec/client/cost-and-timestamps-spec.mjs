@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 // Cost estimation tests
 // =============================================================================
 
-import { estimateCost } from '../../src/client/lib/cost.mjs';
+import { estimateCost, getPricing, setPricingStore } from '../../src/client/lib/cost.mjs';
 
 describe('estimateCost', () => {
   it('should return 0 for null/undefined usage', () => {
@@ -256,6 +256,120 @@ describe('_handleUsage cost accumulation', () => {
 // and calling its internal function. Since it's module-private, we replicate
 // the logic here for unit testing.
 // =============================================================================
+
+// =============================================================================
+// getPricing — model registry integration
+// =============================================================================
+// Tests that getPricing() reads from model registry when available,
+// and falls back to hardcoded pricing when registry is absent.
+// =============================================================================
+
+describe('getPricing — model registry integration', () => {
+  // Reset store after each test to avoid cross-test pollution
+  let savedStore;
+
+  beforeEach(() => {
+    // Detach any store by default
+    savedStore = null;
+    setPricingStore(null);
+  });
+
+  it('should fall back to hardcoded Anthropic pricing when no store set', () => {
+    setPricingStore(null);
+    let pricing = getPricing('anthropic', 'claude-opus-4-6');
+    // Falls back to hardcoded Anthropic: input=3.0, output=15.0
+    assert.ok(Math.abs(pricing.input - 3.0) < 0.001);
+    assert.ok(Math.abs(pricing.output - 15.0) < 0.001);
+  });
+
+  it('should fall back to hardcoded pricing when model not found in registry', () => {
+    let mockStore = {
+      getModel: (_id) => null, // model not found
+    };
+
+    setPricingStore(mockStore);
+
+    let pricing = getPricing('anthropic', 'nonexistent-model');
+    // Falls back to Anthropic hardcoded pricing
+    assert.ok(Math.abs(pricing.input - 3.0) < 0.001);
+
+    setPricingStore(null);
+  });
+
+  it('should use model registry pricing when model is found', () => {
+    let mockStore = {
+      getModel: (id) => {
+        if (id === 'claude-opus-4-6')
+          return { pricePerToken: { input: 15.0, output: 75.0 } };
+
+        return null;
+      },
+    };
+
+    setPricingStore(mockStore);
+
+    let pricing = getPricing('anthropic', 'claude-opus-4-6');
+    assert.ok(Math.abs(pricing.input - 15.0) < 0.001);
+    assert.ok(Math.abs(pricing.output - 75.0) < 0.001);
+
+    setPricingStore(null);
+  });
+
+  it('should use registry pricing for cost estimation when model matches', () => {
+    let mockStore = {
+      getModel: (id) => {
+        if (id === 'claude-haiku-4-5-20251001')
+          return { pricePerToken: { input: 0.8, output: 4.0 } };
+
+        return null;
+      },
+    };
+
+    setPricingStore(mockStore);
+
+    // 1M input tokens at $0.80/M = $0.80
+    let cost = estimateCost({ inputTokens: 1_000_000 }, 'anthropic', 'claude-haiku-4-5-20251001');
+    assert.ok(Math.abs(cost - 0.8) < 0.001);
+
+    setPricingStore(null);
+  });
+
+  it('should fall back to hardcoded pricing when modelID is null', () => {
+    let mockStore = {
+      getModel: (id) => ({ pricePerToken: { input: 99.0, output: 99.0 } }),
+    };
+
+    setPricingStore(mockStore);
+
+    // No modelID passed — should NOT use registry
+    let pricing = getPricing('anthropic', null);
+    assert.ok(Math.abs(pricing.input - 3.0) < 0.001, 'Should use hardcoded when no modelID');
+
+    setPricingStore(null);
+  });
+
+  it('should fall back when store getModel() throws', () => {
+    let mockStore = {
+      getModel: () => { throw new Error('store error'); },
+    };
+
+    setPricingStore(mockStore);
+
+    // Should not crash — fall back to hardcoded
+    let pricing;
+    assert.doesNotThrow(() => {
+      pricing = getPricing('anthropic', 'claude-opus-4-6');
+    });
+
+    setPricingStore(null);
+  });
+
+  it('should use hardcoded pricing for estimateCost without modelID (backward compat)', () => {
+    // Calling estimateCost with 2 args (old signature) should still work
+    let cost = estimateCost({ inputTokens: 1_000_000 }, 'anthropic');
+    assert.ok(Math.abs(cost - 3.0) < 0.001);
+  });
+});
 
 describe('formatTimestamp (relative)', () => {
   // Replicate the formatTimestamp logic for isolated testing

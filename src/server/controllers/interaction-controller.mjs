@@ -9,40 +9,41 @@ import { parseShellCommands }   from '../../core/internal-plugins/shell/command-
 
 export class InteractionController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
-  // _decryptUserPrivateKey — best-effort user key decryption for frame signing
+  // _loadUserSigningKeys — best-effort user key loading for frame signing
   // ---------------------------------------------------------------------------
-  // Attempts to load the authenticated user's Ed25519 private key by:
+  // Attempts to load the authenticated user's Ed25519 signing keys by:
   //   1. Looking up the User record by userID
   //   2. Getting the UMK from the request vault claim
   //   3. Decrypting encryptedPrivateKey with keystore.decryptUserPrivateKey()
   //
-  // Returns the PEM private key string, or null if any step fails.
+  // Returns { privateKey, publicKey } or { privateKey: null, publicKey: null }.
   // Never throws — frame signing is best-effort and must not block delivery.
   // ---------------------------------------------------------------------------
 
-  async _decryptUserPrivateKey() {
+  async _loadUserSigningKeys() {
     try {
       let umk = this.request.getUMK();
       if (!umk)
-        return null;
+        return { privateKey: null, publicKey: null };
 
       let userID = this.request.userID;
       if (!userID)
-        return null;
+        return { privateKey: null, publicKey: null };
 
       let { User } = this.getCoreModels();
       let user     = await User.where.id.EQ(userID).first();
 
       if (!user || !user.encryptedPrivateKey)
-        return null;
+        return { privateKey: null, publicKey: user ? user.publicKey || null : null };
 
-      let keystore = this.getKeystore();
-      let envelope = JSON.parse(user.encryptedPrivateKey);
+      let keystore   = this.getKeystore();
+      let envelope   = JSON.parse(user.encryptedPrivateKey);
+      let privateKey = keystore.decryptUserPrivateKey(envelope, umk, userID);
 
-      return keystore.decryptUserPrivateKey(envelope, umk, userID);
+      return { privateKey, publicKey: user.publicKey || null };
     } catch (_error) {
       // Best-effort: decryption failure must not break message delivery
-      return null;
+      return { privateKey: null, publicKey: null };
     }
   }
 
@@ -58,8 +59,8 @@ export class InteractionController extends ControllerAuthBase {
 
     let interactionLoop = this.getInteractionLoop();
 
-    // Decrypt user private key for frame signing (best-effort; null if unavailable)
-    let userPrivateKey = await this._decryptUserPrivateKey();
+    // Load user signing keys for frame signing (best-effort; null if unavailable)
+    let { privateKey: userPrivateKey, publicKey: userPublicKey } = await this._loadUserSigningKeys();
 
     // When no agent is specified, just persist the message and broadcast.
     // This supports sessions with no agents, or users chatting to each other.
@@ -71,6 +72,7 @@ export class InteractionController extends ControllerAuthBase {
         parentID,
         convertMarkdown,
         userPrivateKey,
+        userPublicKey,
       });
 
       this.setStatusCode(201);
@@ -287,6 +289,7 @@ export class InteractionController extends ControllerAuthBase {
       checkPermission,
       executeTool,
       userPrivateKey,
+      userPublicKey,
     });
 
     this.setStatusCode(202);

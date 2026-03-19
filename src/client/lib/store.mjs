@@ -11,6 +11,7 @@ import { createStore } from 'kikx/shared/lib/create-store.mjs';
 const DEFAULTS = {
   sessions:   () => ([]),
   agents:     () => ([]),
+  models:     () => ([]),
   profile:    () => ({ user: null, authenticated: false, token: null }),
   theme:      () => ({ base: 'black-glass', accent: 'cyan' }),
   connection: () => ({ status: 'disconnected', costs: { global: 0, service: 0, session: 0 } }),
@@ -88,6 +89,23 @@ const store = createStore({
 
     getAllAgents({ get }) {
       return get();
+    },
+  },
+
+  // ------------------------------------------------------------------- models
+  models: {
+    _: DEFAULTS.models(),
+
+    setModels({ set }, list) {
+      set(Array.isArray(list) ? list : []);
+    },
+
+    getModels({ get }) {
+      return get();
+    },
+
+    getModel({ get }, modelID) {
+      return get().find((m) => m.id === modelID) ?? null;
     },
   },
 
@@ -171,6 +189,7 @@ function resetStore() {
   store.hydrate({
     sessions:   DEFAULTS.sessions(),
     agents:     DEFAULTS.agents(),
+    models:     DEFAULTS.models(),
     profile:    DEFAULTS.profile(),
     theme:      DEFAULTS.theme(),
     connection: DEFAULTS.connection(),
@@ -180,6 +199,7 @@ function resetStore() {
 // Named scope accessors for ergonomic imports.
 const sessions   = store.sessions;
 const agents     = store.agents;
+const models     = store.models;
 const profile    = store.profile;
 const theme      = store.theme;
 const connection = store.connection;
@@ -189,6 +209,7 @@ export {
   resetStore,
   sessions,
   agents,
+  models,
   profile,
   theme,
   connection,

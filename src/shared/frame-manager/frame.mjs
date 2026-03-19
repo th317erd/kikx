@@ -22,6 +22,7 @@ export class Frame {
     this.authorID    = (data.authorID !== undefined) ? data.authorID : null;
     this.processed   = (data.processed !== undefined) ? data.processed : null;
     this.processedAt = (data.processedAt !== undefined) ? data.processedAt : null;
-    this.signature   = (data.signature !== undefined) ? data.signature : null;
+    this.signature             = (data.signature !== undefined) ? data.signature : null;
+    this.signingKeyFingerprint = (data.signingKeyFingerprint !== undefined) ? data.signingKeyFingerprint : null;
   }
 }

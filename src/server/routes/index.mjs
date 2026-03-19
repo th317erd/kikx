@@ -42,6 +42,12 @@ export function getRoutes({ path }) {
         controller: 'CostController.show',
       });
 
+      // --- Models Routes ---
+      endpoint('models', {
+        methods:    [ 'GET' ],
+        controller: 'ModelsController.index',
+      });
+
       // --- Agent Routes ---
       // List + Create at /api/v2/agents
       endpoint('agents', {

@@ -11,9 +11,10 @@ import {
 } from '../../lib/router.mjs';
 
 import { BASE_PATH } from '../../lib/config.mjs';
-import { profile, theme } from '../../lib/store.mjs';
+import { profile, theme, models as modelsStore } from '../../lib/store.mjs';
 import { setLocale } from '../../lib/i18n.mjs';
-import { setAuthToken, loadPersistedAuth, clearPersistedAuth, setOnUnauthorized } from '../../lib/api.mjs';
+import { setAuthToken, loadPersistedAuth, clearPersistedAuth, setOnUnauthorized, getModels as fetchModels } from '../../lib/api.mjs';
+import { setPricingStore } from '../../lib/cost.mjs';
 import { init as initDebug } from '../../lib/debug.mjs';
 import en from '../../lib/locales/en.mjs';
 
@@ -53,12 +54,25 @@ class KikxApplication extends HTMLElement {
       }
     } catch (_e) { /* storage unavailable */ }
 
+    // Wire up cost.mjs pricing store so model-aware pricing works
+    setPricingStore(modelsStore);
+
     // On 401, clear persisted auth and redirect to login immediately
     setOnUnauthorized(() => {
       clearPersistedAuth();
       profile.logout();
       navigate(BASE_PATH + '/login', { replace: true });
     });
+
+    // Fetch model registry (best-effort — failure just leaves hardcoded pricing)
+    if (saved) {
+      fetchModels().then((result) => {
+        if (result && result.data && Array.isArray(result.data.models))
+          modelsStore.setModels(result.data.models);
+      }).catch(() => {
+        // Non-fatal: fall back to hardcoded pricing in cost.mjs
+      });
+    }
 
     defineRoute(BASE_PATH + '/login',        'login');
     defineRoute(BASE_PATH + '/',             'sessions', { requiresAuthentication: true });
