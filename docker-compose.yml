@@ -1,0 +1,11 @@
+services:
+  solr:
+    image: solr:9
+    container_name: kikx-solr
+    ports:
+      - '8983:8983'
+    volumes:
+      - ./data/solr:/var/solr
+      - ./solr/kikx:/opt/solr/server/solr/configsets/kikx
+    command: solr-precreate kikx /opt/solr/server/solr/configsets/kikx
+    restart: unless-stopped

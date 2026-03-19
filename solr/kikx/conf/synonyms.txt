@@ -1,0 +1,5 @@
+# Solr synonym mappings
+# Format: synonym1, synonym2 => canonical
+# Or: word1, word2, word3 (bidirectional)
+#
+# Add Kikx-specific synonyms here as needed.

@@ -1,56 +1,25 @@
-# TODO: Parallel Implementation — Tool-Log + Compaction
+# TODO: Add Solr Docker Container to Kikx
 
-## Tool-Log Bot (other bot)
-See `bot-docs/future-plans/tool-log.yaml`
+## Phase 1: File Creation — COMPLETE
+- [x] Create `docker-compose.yml` — Solr 9 service with persistent volume
+- [x] Create `scripts/solr-start.sh` — standalone quick-start script (includes auto-permission fix)
+- [x] Create `solr/kikx/conf/schema.xml` — schema with frame/tool-log/generic fields
+- [x] Create `solr/kikx/conf/solrconfig.xml` — minimal config with autocommit
+- [x] Create `solr/kikx/conf/stopwords.txt` — standard English stopwords
+- [x] Create `solr/kikx/conf/synonyms.txt` — empty synonyms placeholder
+- [x] Create `.dockerignore` — exclude node_modules, data, spec, etc.
+- [x] Update `.gitignore` — add `data/solr/`
 
-## Compaction Bot (this bot)
-See `bot-docs/future-plans/compaction.yaml`
+## Phase 2: Verification — COMPLETE
+- [x] `docker-compose up -d` — Solr starts without errors
+- [x] Verify kikx core exists via admin API — `initFailures: {}`, core status OK
+- [x] Verify all 17 schema fields present via `/solr/kikx/schema/fields`
+- [x] Test indexing a document — status 0, QTime 153ms
+- [x] Test searching for the document — found 1 result, correct content
+- [x] Test `scripts/solr-start.sh` standalone — starts correctly
+- [x] Verify data persists across container restart — test doc survived restart
 
----
-
-# Rolling Compaction — Implementation TODO
-
-## Phase 1: Core Infrastructure — COMPLETE
-- [x] Plugin interface on base-plugin-class.mjs (20/20 tests)
-- [x] CompactionRunner module (41/41 tests)
-- [x] Frame list API null-out (7/7 tests)
-
-## Phase 2: Claude Plugin — COMPLETE
-- [x] shouldCompact, getMaxCompactionTokens, _createSingleTurn (24/24 tests)
-
-## Phase 3: Client UI — COMPLETE
-- [x] Create kikx-compaction-frame directory
-- [x] Create kikx-compaction-frame web component
-- [x] Add `getFrame()` to api.mjs
-- [x] Add GET /sessions/:sessionID/frames/:frameID endpoint (controller + route)
-- [x] Register 'compaction' in RENDERABLE_TYPES
-- [x] Add compaction handler in createFrameElement()
-- [x] Handle compaction frame:updated in session-page
-- [x] Add i18n strings for compaction
-- [x] Write tests (spec/client/compaction-frame-spec.mjs) — 59/59 pass
-- [x] Existing createFrameElement tests still pass — 65/65 pass
-
-## Phase 4: Integration (git pull first!)
-- [x] InteractionLoop trigger — add CompactionRunner, fire-and-forget in startInteraction()
-- [x] Message filter — buildMessages() compaction-aware filtering via options.activeCompaction
-- [x] Pass activeCompaction state from startInteraction() to buildMessages()
-- [x] Startup cleanup — cleanupStaleCompactions() delegation method
-- [x] Integration tests — 17/17 pass (trigger, filter, cleanup, fire-and-forget error handling)
-- [x] /compact command — 19/19 tests pass
-  - [x] Fix CompactionRunner to pass agent.apiKey to _createSingleTurn
-  - [x] Create compaction command plugin (registerCapability pattern)
-  - [x] Write tests (spec/core/compaction/compact-command-spec.mjs)
-
-## Phase 5: Wrap-up — COMPLETE
-- [x] Polled for tool-log bot completion — tool-log finished (3 commits)
-- [x] Full test suite: 3653/3654 pass (1 pre-existing failure only)
-
----
-
-## Tool-Log Summary (tool-log bot)
-- e6a61ff: ValueStore note+type columns (8 new tests)
-- 6c439a9: ToolLogService + tool_log:get/search tools (75 new tests)
-- a7bfa2f: InteractionLoop tool output interception (wiring)
-- Total: 83 new tests
-
-## STATUS: BOTH BOTS COMPLETE — 3653/3654 tests passing
+## Notes
+- Schema file is `schema.xml` (not `managed-schema.xml`) — required by ClassicIndexSchemaFactory
+- Data volume at `./data/solr/` needs UID 8983 ownership — scripts handle this automatically
+- Solr 9.10.1 pulled and tested
