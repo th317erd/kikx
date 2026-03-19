@@ -418,6 +418,32 @@ describe('KikxReflectionBlock', { timeout: 5000 }, () => {
     let content = block.querySelector('.reflection-content');
     assert.ok(content.classList.contains('expanded'));
   });
+
+  it('should preserve content set before DOM connection (pending content bug)', () => {
+    let doc   = getDocument();
+    let block = doc.createElement('kikx-reflection-block');
+
+    // Set content BEFORE appending to DOM — this was previously lost
+    block.content = 'my reflection text';
+
+    // Now connect
+    doc.body.appendChild(block);
+
+    let content = block.querySelector('.reflection-content');
+    assert.equal(content.textContent, 'my reflection text', 'Content set before connection should survive');
+  });
+
+  it('should overwrite pending content with post-connection set', () => {
+    let doc   = getDocument();
+    let block = doc.createElement('kikx-reflection-block');
+
+    block.content = 'before connect';
+    doc.body.appendChild(block);
+    block.content = 'after connect';
+
+    let content = block.querySelector('.reflection-content');
+    assert.equal(content.textContent, 'after connect');
+  });
 });
 
 // =============================================================================

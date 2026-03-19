@@ -114,8 +114,9 @@ class KikxReflectionBlock extends HTMLElement {
 
   constructor() {
     super();
-    this._expanded = false;
-    this._onToggleClick = this._onToggleClick.bind(this);
+    this._expanded         = false;
+    this._pendingContent   = null;
+    this._onToggleClick    = this._onToggleClick.bind(this);
   }
 
   connectedCallback() {
@@ -126,6 +127,12 @@ class KikxReflectionBlock extends HTMLElement {
       this._toggleHeader      = this.querySelector('.toggle-header');
       this._collapseIndicator = this.querySelector('.collapse-indicator');
       this._reflectionContent = this.querySelector('.reflection-content');
+
+      // Apply content that was set before the element connected to the DOM
+      if (this._pendingContent !== null) {
+        this._reflectionContent.textContent = this._pendingContent;
+        this._pendingContent = null;
+      }
     }
 
     this._toggleHeader.addEventListener('click', this._onToggleClick);
@@ -154,6 +161,8 @@ class KikxReflectionBlock extends HTMLElement {
   set content(value) {
     if (this._reflectionContent)
       this._reflectionContent.textContent = value;
+    else
+      this._pendingContent = value;
   }
 
   toggle() {
