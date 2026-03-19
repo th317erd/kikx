@@ -1,0 +1,391 @@
+# Rolling Compaction
+# Priority: High
+# Complexity: High
+# Status: PLANNED
+# Created: 2026-03-19
+
+summary: >
+  Background AI-driven compaction of session history. When a session approaches
+  the context window limit, the coordinator agent is asked to compress older
+  messages into a summary. The summary is stored as a special compaction frame.
+  The agent is notified of compaction start/end. Users can expand the compaction
+  frame to read the summary. Truncation always runs as a fallback.
+
+motivation: >
+  Truncation (dropping oldest messages) loses context permanently. For long
+  sessions, agents lose track of earlier decisions, instructions, and context.
+  Compaction preserves the essence of older history in a compressed form while
+  keeping the recent context fully intact.
+
+design_decisions:
+  - Compaction is rolling — triggered automatically when approaching context limit
+  - Done by a second agent (coordinator role) in the background
+  - Non-blocking — user messages still reach the main agent during compaction
+  - Compaction uses DB frame creation as a cluster-safe lock
+  - Compaction frame is a normal frame (type: 'compaction') in the frames table
+  - Summary is stored in frame content but NULL in frame LIST responses
+    (only returned on single frame GET — lazy loaded)
+  - Plugin owns the compaction logic: shouldCompact(), getCompactionPrompt(),
+    getMaxCompactionTokens() — all instance methods on the agent plugin
+  - Plugin also gets _createSingleTurn() for single non-streaming API calls
+  - Compaction fallback: truncation always runs regardless of compaction state
+  - Stale compaction frames (status='started' after server restart) → 'abandoned'
+  - User can trigger manually via /compact command
+  - User messages during compaction: HEAD filter passes only authorType='user' frames
+    plus compaction notification frames
+
+compaction_prompt: >
+  Your job is to compact/compress the following memories/conversation. It is
+  VITALLY IMPORTANT that you identify things of importance, and that these
+  survive compaction/compression, things such as file paths, secrets, keys,
+  how to execute commands, tool run ids, other important ids, and any other
+  context-related important items that are vital, and ensure they SURVIVE your
+  compression. Beyond that, I would like you to take an approach where the
+  older the content the more aggressively you compress. Think of this as a
+  gradient of resolution: recent memories/conversations have high resolution,
+  and won't be compressed quite as much, whereas older things will be more
+  aggressively compressed. Useless or unimportant things should undergo more
+  compression, or be stripped altogether, regardless of where they are in the
+  history. It is VITAL that the essence of the memory remains intact, such that
+  agents can continue with their current tasks uninterrupted and without being
+  confused. The context you need to compact/compress is as follows:
+
+requirements:
+  plugin_interface:
+    - shouldCompact(stats) → { compact: boolean, reason: string }
+      stats: { totalChars, estimatedTokens, contextWindow, modelID, sessionID }
+      Default: return { compact: false } (base class stub)
+      Claude plugin: compact when estimated tokens approach contextWindow threshold
+    - getCompactionPrompt(stats) → STRING
+      Default: use the compaction_prompt text above
+      Claude plugin: can customize based on stats
+    - getMaxCompactionTokens(stats) → INTEGER
+      Default: Math.min(8000, model.maxOutputTokens)
+      Claude plugin: returns contextWindow * 0.30 or some appropriate fraction
+    - _createSingleTurn(messages, options) → STRING (response text)
+      options: { maxTokens, systemPrompt }
+      Makes a single non-streaming API call to the LLM
+      Returns the complete text response
+      Throws on API error
+
+  compaction_frame:
+    type: 'compaction'
+    content_fields:
+      status:            string — 'started' | 'finished' | 'abandoned'
+      compactionID:      string — same as the frame's own ID (self-referential)
+      startedAt:         string (ISO datetime)
+      finishedAt:        string or null — filled when finished
+      compactorAgentID:  string — which agent performed compaction
+      summary:           string or null — the compressed content (null until finished)
+                         NOTE: always null in frame LIST API responses;
+                         only returned in single frame GET
+      framesCompacted:   integer — how many frames were included in the input
+      firstFrameID:      string — oldest frame included in this compaction
+      lastFrameID:       string — newest frame included (= compactionStartFrameID)
+
+  notifications_to_agent:
+    - When compaction starts, a private message is injected into the agent's context:
+      "COMPACTION STARTED AT {ISO_TIMESTAMP} — ID({frameID})\n
+       ONLY USER MESSAGES WILL BE RECEIVED UNTIL COMPACTION COMPLETES — TRUNCATION ACTIVE"
+    - When compaction finishes, next interaction includes:
+      "COMPACTION FINISHED AT {ISO_TIMESTAMP} (STARTED AT {startedAt}) — ID({frameID})\n
+       FULL CONVERSATION HISTORY NOW AVAILABLE. USE frame:search WITH before={frameID}
+       TO READ PRE-COMPACTION HISTORY."
+    - These are injected as private context (like primer), not stored as frames
+
+  message_history_during_compaction:
+    - When a compaction is in progress for a session:
+      buildMessages() applies compaction filter:
+        Include: all frames up to and including compactionStartFrame
+        Include: user-authored frames AFTER compactionStartFrame
+        Include: compaction notification messages (injected)
+        Exclude: all other frames after compactionStartFrame (tool results, agent msgs)
+    - When compaction finishes:
+      Normal HEAD advancement resumes; all previously excluded frames now included
+
+  locking:
+    - Lock is the compaction frame itself in the DB
+    - Before starting: query frames WHERE sessionID=X AND type='compaction'
+      AND content.status='started'
+    - If found: skip (another process is handling it)
+    - If not found: create the compaction frame (status='started') — this is the lock
+    - On server restart: find all frames WHERE type='compaction' AND status='started'
+      and mark them status='abandoned'; affected sessions resume with truncation only
+
+  trigger:
+    - Checked in InteractionLoop._iterateGenerator() AFTER building message history,
+      BEFORE the API call
+    - Call plugin.shouldCompact(stats) where stats includes totalChars, estimatedTokens
+    - If shouldCompact returns { compact: true } AND no active compaction frame exists:
+      fire-and-forget: this._runCompaction(sessionID, coordinator, plugin)
+    - Current interaction proceeds with truncated context
+    - Future interactions see the compaction frame
+
+  user_command:
+    - /compact (or the system-command equivalent) triggers _runCompaction() immediately
+    - Ignores shouldCompact() threshold — always runs if no compaction already active
+    - Returns error frame if no coordinator agent found in session
+
+  client_ui:
+    - Compaction frames rendered as a distinct collapsed UI element
+    - Collapsed state shows: "Compacted {N} frames at {timestamp}"
+    - Expand button: triggers GET /api/v2/frames/:frameID → loads full summary
+    - Expanded state shows the full summary text
+    - In-progress compaction (status='started') shows loading indicator
+    - Abandoned compaction shows error state
+
+implementation_plan:
+  step_1:
+    title: "Plugin Interface — Compaction Instance Methods"
+    status: PLANNED
+    files:
+      - src/core/routing/base-plugin-class.mjs
+      - kikx-plugin-claude/index.mjs (external)
+    tests:
+      - spec/core/plugins/model-registry-spec.mjs (extend from plugin-model-registry)
+    details: >
+      Add to AgentInterface base class (if not done in plugin-model-registry):
+        shouldCompact(stats) { return { compact: false }; }
+        getCompactionPrompt(stats) { return DEFAULT_COMPACTION_PROMPT; }
+        getMaxCompactionTokens(stats) { return 8000; }
+        async _createSingleTurn(messages, options = {}) {
+          // Subclasses must override. Base throws NotImplementedError.
+          throw new Error('_createSingleTurn() not implemented');
+        }
+
+      Claude plugin implementation:
+        shouldCompact({ estimatedTokens, contextWindow }) {
+          // Compact when estimated tokens exceed threshold
+          // (contextWindow - compactionPromptLength) where compactionPromptLength
+          // is estimated from the default prompt text
+          let threshold = contextWindow - Math.ceil(DEFAULT_COMPACTION_PROMPT.length / 3.5) - 500;
+          return { compact: estimatedTokens >= threshold, reason: 'approaching context limit' };
+        }
+        getMaxCompactionTokens({ contextWindow }) {
+          return Math.floor(contextWindow * 0.30);
+        }
+        async _createSingleTurn(messages, { maxTokens, systemPrompt } = {}) {
+          // Use existing Anthropic client to make a single non-streaming call
+          let response = await this._anthropic.messages.create({
+            model:      this._model,
+            max_tokens: maxTokens || DEFAULT_MAX_TOKENS,
+            system:     systemPrompt || undefined,
+            messages,
+          });
+          return response.content[0].text;
+        }
+
+  step_2:
+    title: "Compaction Module — Core Logic"
+    status: PLANNED
+    files:
+      - src/core/compaction/index.mjs (new)
+    tests:
+      - spec/core/compaction/compaction-spec.mjs (new)
+    details: >
+      CompactionRunner class:
+
+      async canStartCompaction(sessionID, frameManager):
+        Query frames WHERE sessionID=sessionID AND type='compaction'
+        AND content.status IN ('started')
+        If found: return false (already in progress)
+        Return true
+
+      async runCompaction(sessionID, params):
+        params: { agent, plugin, interactionLoop, sessionManager, frameManager }
+
+        1. Double-check: query for existing started compaction frame
+           If found: return early (race condition catch)
+
+        2. Gather frames to compact:
+           Load all frames for session up to current HEAD
+           (These are what gets compressed)
+
+        3. Create compaction frame (THE LOCK):
+           { type: 'compaction', content: { status: 'started', compactionID: frameID,
+             startedAt: now, finishedAt: null, compactorAgentID: coordinator.id,
+             summary: null, framesCompacted: N, firstFrameID: ..., lastFrameID: ... } }
+           Emit frame event via interactionLoop
+
+        4. Build conversation content string from gathered frames
+           Format: each frame as "{authorType}: {plaintext content}\n---\n"
+
+        5. Build messages for coordinator:
+           [{ role: 'user', content: prompt + '\n\n' + conversationContent }]
+
+        6. Call coordinator's plugin._createSingleTurn(messages, { maxTokens })
+           On error: update frame to status='abandoned', emit, return
+
+        7. Update compaction frame:
+           content.status = 'finished'
+           content.summary = responseText
+           content.finishedAt = now
+           Commit update via FrameManager
+
+        8. Emit compaction-finished SSE event to connected clients
+
+      async cleanupStaleCompactions(sessionID):
+        Mark all status='started' compaction frames as 'abandoned'
+        Called on server startup for all sessions
+
+  step_3:
+    title: "InteractionLoop — Trigger + Message Filter Integration"
+    status: PLANNED
+    files:
+      - src/core/interaction/index.mjs
+    tests:
+      - spec/core/compaction/compaction-spec.mjs (extend)
+    details: >
+      1. On startup, call cleanupStaleCompactions() for all sessions.
+
+      2. In _iterateGenerator(), after message history is built:
+           let compactionStats = { totalChars, estimatedTokens, contextWindow,
+             modelID, sessionID };
+           if (plugin.shouldCompact(compactionStats).compact) {
+             let canStart = await compactionRunner.canStartCompaction(sessionID, frameManager);
+             if (canStart) {
+               // Fire-and-forget — do NOT await
+               compactionRunner.runCompaction(sessionID, { agent, plugin, ... })
+                 .catch(err => console.error('Compaction failed:', err));
+             }
+           }
+
+      3. In buildMessages(), detect active compaction:
+           Query for compaction frame with status='started' for this session
+           If found:
+             let compactionStartFrame = found frame
+             Apply filter: include frames with order <= compactionStartFrame.order
+               PLUS frames with order > compactionStartFrame.order
+               AND authorType === 'user'
+             Inject compaction notification into context
+           If not found: normal message building
+
+  step_4:
+    title: "Frame List API — Exclude Compaction Summary"
+    status: PLANNED
+    files:
+      - src/server/controllers/frame-controller.mjs
+    tests:
+      - spec/server/controllers/frame-controller-spec.mjs (extend)
+    details: >
+      In the frame list endpoint (GET /api/v2/sessions/:id/frames):
+      When serializing compaction frames, set content.summary = null.
+      The full summary is only returned by the single frame GET endpoint
+      (GET /api/v2/frames/:id).
+
+      This prevents megabytes of summary text from being included in
+      every session load.
+
+  step_5:
+    title: "Client — Compaction Frame Component"
+    status: PLANNED
+    files:
+      - src/client/components/kikx-compaction-frame/kikx-compaction-frame.mjs (new)
+      - src/client/components/kikx-session-page/kikx-session-page.mjs
+    tests:
+      - spec/client/components/kikx-compaction-frame-spec.mjs (new)
+    details: >
+      New web component: kikx-compaction-frame.
+      Attributes: frame-id, status, started-at, frames-compacted, compactor-name.
+
+      Renders:
+        Collapsed (default): "Compacted {N} messages at {timestamp}" + expand button
+        In-progress (status='started'): "Compacting..." + spinner
+        Abandoned: "Compaction failed" + error icon
+        Expanded: full summary text loaded via GET /api/v2/frames/:frameID
+
+      Expand behavior:
+        1. On expand button click: show loading state
+        2. Fetch GET /api/v2/frames/:frameID (full frame including summary)
+        3. Render summary text
+        4. Cache locally so re-expand is instant
+
+      Register in createFrameElement() factory in session-page so compaction
+      frames render via the normal frame:added event pipeline.
+
+  step_6:
+    title: "/compact Command"
+    status: PLANNED
+    files:
+      - src/core/internal-plugins/system-command/index.mjs (extend)
+    tests:
+      - spec/core/compaction/compaction-spec.mjs (extend)
+    details: >
+      Add /compact to the system-command plugin (or equivalent command handler).
+      Behavior:
+        1. Check for active compaction → if already running: emit error frame
+           "Compaction already in progress."
+        2. Find coordinator agent for the session
+           If none: emit error frame "No coordinator agent found."
+        3. Call compactionRunner.runCompaction() — awaited (blocks interaction
+           until done, since user explicitly requested it)
+        4. Normal compaction flow follows
+
+test_plan:
+  happy_paths:
+    - shouldCompact() returns false below threshold
+    - shouldCompact() returns true at/above threshold
+    - Compaction frame created with status='started' when triggered
+    - Coordinator produces summary; frame updated to status='finished'
+    - buildMessages() during compaction: user frames after start included
+    - buildMessages() during compaction: non-user frames excluded
+    - buildMessages() after compaction: all frames included
+    - Frame LIST returns summary=null for compaction frames
+    - Frame GET returns full summary text
+    - /compact command triggers compaction immediately
+    - Client renders collapsed compaction frame
+    - Client expands frame and shows summary after GET
+
+  failure_paths:
+    - No coordinator agent in session: compaction aborted, error frame emitted
+    - Coordinator API times out: status='abandoned', truncation runs
+    - Coordinator API returns 5xx: status='abandoned', truncation runs
+    - Coordinator returns empty summary: frame marked 'abandoned', not 'finished'
+    - _createSingleTurn() throws: caught, compaction abandoned
+    - /compact with no coordinator: error frame returned to user
+    - Compaction trigger fires but shouldCompact returns false: no compaction started
+    - Server restart with status='started' frame: marked 'abandoned' on restart
+
+  edge_cases:
+    - Compaction triggered twice simultaneously (two users, same session):
+      Second trigger finds existing started frame, skips — no double compaction
+    - /compact during active interaction: runs after current interaction (queued)
+    - New user message during compaction: passes through with truncation applied
+    - New agent message during compaction: held (HEAD not advanced)
+    - Empty session (no frames): compaction skips (nothing to compact)
+    - Compaction fires on first message (threshold not met in practice): skipped
+    - Compaction summary larger than maxCompactionTokens in practice: stored as-is
+      (we asked the model to stay under; it's a hint not a hard stop)
+    - User expands compaction frame before finished: shows loading state, retries
+
+  race_conditions:
+    - Two concurrent startInteraction() calls both pass shouldCompact() check:
+      First to create the compaction frame wins; second finds existing frame
+    - Server cluster: two servers both attempt to start compaction:
+      DB query for existing started frame is the guard; first INSERT wins
+      (relies on DB serialization — document this assumption)
+
+files_new:
+  - src/core/compaction/index.mjs
+  - src/client/components/kikx-compaction-frame/kikx-compaction-frame.mjs
+  - spec/core/compaction/compaction-spec.mjs
+  - spec/client/components/kikx-compaction-frame-spec.mjs
+
+files_modified:
+  - src/core/routing/base-plugin-class.mjs
+  - src/core/interaction/index.mjs
+  - src/core/interaction/message-history.mjs
+  - src/server/controllers/frame-controller.mjs
+  - src/core/internal-plugins/system-command/index.mjs
+  - spec/server/controllers/frame-controller-spec.mjs
+  - kikx-plugin-claude/index.mjs (external)
+
+dependencies:
+  - plugin-model-registry (plugin instance methods, _createSingleTurn)
+  - frame-search (agents need frame:search to navigate post-compaction history)
+  - tool-log (optional but recommended — tool outputs should be stored before compaction)
+
+build_order_note: >
+  Build last, after plugin-model-registry, tool-log, and frame-search are complete.
+  Step 1 (plugin interface) can be done alongside plugin-model-registry plan.
+  Steps 2-6 require the dependencies above.

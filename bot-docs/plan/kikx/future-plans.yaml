@@ -239,6 +239,66 @@ items:
     added: "2026-03-06"
     updated: "2026-03-14"
 
+  - id: plugin-model-registry
+    title: "Plugin Model Registry + Token-Aware Truncation"
+    priority: high
+    status: PLANNED
+    description: |
+      Plugins expose getModels() with context windows, pricing, and token
+      estimation. Truncation moves into the plugin (plugin.truncate()).
+      New GET /api/v2/models endpoint for client. Model selector UI in
+      agent config. cost.mjs uses plugin pricing.
+    see_also: bot-docs/future-plans/plugin-model-registry.yaml
+    added: "2026-03-19"
+
+  - id: tool-log
+    title: "Tool Log — Persistent Tool Output Storage"
+    priority: high
+    status: PLANNED
+    description: |
+      All tool outputs stored in ValueStore (namespace: tool_log).
+      Outputs <= 1024 chars also delivered inline; larger outputs
+      replaced with pointer message. New tools: tool_log:get and
+      tool_log:search with range slicing.
+    see_also: bot-docs/future-plans/tool-log.yaml
+    added: "2026-03-19"
+
+  - id: frame-search
+    title: "Frame / Conversation Search Tool"
+    priority: high
+    status: PLANNED
+    description: |
+      New internal tool frame:search for agents to query conversation
+      history with before/after frame anchors and pagination.
+      Prerequisite for compaction.
+    see_also: bot-docs/future-plans/frame-search.yaml
+    added: "2026-03-19"
+
+  - id: compaction
+    title: "Rolling Compaction"
+    priority: high
+    status: PLANNED
+    description: |
+      Background AI-driven compression of session history by the
+      coordinator agent. Non-blocking, cluster-safe DB lock, special
+      compaction frame type, user messages pass through during
+      compaction, /compact command for manual trigger.
+    see_also: bot-docs/future-plans/compaction.yaml
+    added: "2026-03-19"
+
+  - id: session-encryption-vault
+    title: "Session-Level Encryption Vault"
+    priority: medium
+    status: FUTURE
+    description: |
+      Per-session symmetric encryption keys wrapped per-participant (X25519 from
+      Ed25519 identity). Server stores wrapped keys only; decryption happens
+      client-side or in the agent runtime. Covers frames, ValueStore entries,
+      tool_log, and all other sensitive session content.
+      Deferred: tool_log currently stores plaintext; this plan hardens the posture.
+    see_also: bot-docs/future-plans/session-encryption-vault.yaml
+    added: "2026-03-19"
+
   # ===========================================================================
   # ARCHIVED
   # ===========================================================================

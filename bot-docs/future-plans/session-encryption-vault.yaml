@@ -1,0 +1,58 @@
+id: session-encryption-vault
+title: Session-Level Encryption Vault
+status: future
+priority: medium
+created: 2026-03-19
+motivation: >
+  Tool output storage (tool_log) raised the need to encrypt sensitive data at rest.
+  However, encrypting tool logs in isolation is inconsistent — all session frames
+  (user messages, agent responses) may also contain sensitive data. A holistic
+  solution is required: per-participant encryption keys with a secure vault for
+  session-level decryption keys.
+
+problem: >
+  Currently all session content (frames, ValueStore entries, tool logs) is stored
+  as plaintext in the database. This means anyone with DB access can read
+  conversation history including sensitive data passed to/from tools.
+
+  Encrypting only tool_log entries would be inconsistent — the same sensitive
+  data often appears in regular message frames as well.
+
+vision: >
+  Each session has a symmetric encryption key (AES-256-GCM) stored in an
+  "encryption vault." Each participant (user or agent) holds an encrypted copy
+  of the session key, wrapped with their own public key (X25519 derived from
+  their Ed25519 identity key). Only participants in a session can decrypt its
+  content. The server never holds decryption keys — it only stores wrapped keys.
+
+  Participants joining a session receive their wrapped key. They decrypt it
+  locally (client-side or in the agent runtime) and use it to decrypt frames
+  and other session content.
+
+scope:
+  - Session encryption key generation at session creation
+  - Per-participant key wrapping (X25519 + AES key wrap)
+  - Vault model: stores wrapped keys per (sessionID, participantID)
+  - Frame content encrypted before persistence, decrypted on delivery
+  - ValueStore entries encrypted with session key (or per-agent key)
+  - Key rotation on participant join/leave
+  - Key derivation from existing Ed25519 identity keys (RFC 8037 curve conversion)
+
+dependencies:
+  - Ed25519 Identity (COMPLETE 2026-03-14)
+  - ValueStore (COMPLETE 2026-03-14)
+  - Frame signing surface (COMPLETE)
+
+open_questions:
+  - Client-side vs server-side decryption? Server-side is simpler but server holds
+    decryption capability. Client-side (WASM crypto) is more secure but complex.
+  - What happens to historic frames when a participant is removed?
+  - Key rotation strategy for long-running sessions.
+  - How do agents running server-side access their decryption keys securely?
+
+deferred_reason: >
+  Full session encryption is a significant architectural undertaking and is out
+  of scope for the current work cycle. For now, tool_log and other sensitive
+  data are stored without encryption (plaintext), accepting the risk that
+  DB-level access can read this data. This future plan should be revisited
+  when the security posture needs to be hardened.

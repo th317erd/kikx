@@ -1286,3 +1286,221 @@ session-relationships:
       Captured in command-tool-unification.yaml. Cross-session
       tools use registerTool(), /invite stays as command. No
       blocking dependency.
+
+# =============================================================================
+# PLUGIN MODEL REGISTRY + TRUNCATION PLAN TESTS
+# Source: bot-docs/future-plans/plugin-model-registry.yaml
+# Evaluated: 2026-03-19
+# =============================================================================
+
+  - assert: "plugin-model-registry has-complete-acceptance-criteria"
+    severity: blocker
+    status: pass
+    notes: >
+      Criteria defined: getModels() shape, estimateTokens() signature,
+      truncate() instance method, overflow notification frame, API endpoint,
+      client cost.mjs update, model selector UI.
+
+  - assert: "plugin-model-registry has-test-strategy-defined"
+    severity: blocker
+    status: pass
+    notes: >
+      Happy paths, failure paths (null returns, throws, missing methods),
+      edge cases (50% boundary, zero contextWindow), adversarial
+      (SQL injection, malformed inputs) all defined.
+
+  - assert: "plugin-model-registry is-implementation-ready"
+    severity: blocker
+    status: pass
+    notes: >
+      Truncation in plugin via base class default impl. InteractionLoop
+      calls plugin.truncate(). Budget calculation in InteractionLoop.
+      All call sites identified. No implementation bot ambiguity.
+
+  - assert: "plugin-model-registry no-conflicts-with existing-truncation"
+    severity: high
+    status: pass
+    notes: >
+      Existing truncateContent/truncateConversation refactored INTO
+      plugin base class truncate(). Standalone functions become utilities
+      called by base class. No external callers remain.
+
+  - assert: "plugin-model-registry is-swarm-divisible"
+    severity: medium
+    status: pass
+    notes: >
+      6 steps, each independently buildable. Steps 1-3 are server-side,
+      step 4 is plugin (external repo), step 5 is new controller,
+      step 6 is client. Can be parallelized by 2-3 bots.
+
+# =============================================================================
+# TOOL LOG PLAN TESTS
+# Source: bot-docs/future-plans/tool-log.yaml
+# Evaluated: 2026-03-19
+# =============================================================================
+
+  - assert: "tool-log has-complete-acceptance-criteria"
+    severity: blocker
+    status: pass
+    notes: >
+      ValueStore columns, storage behavior, inline vs pointer delivery,
+      interception point, tool_log:get and tool_log:search signatures
+      with all arguments and return shapes fully defined.
+
+  - assert: "tool-log has-test-strategy-defined"
+    severity: blocker
+    status: pass
+    notes: >
+      Happy paths, failure paths (DB write fail, auth errors, invalid args),
+      edge cases (1024 boundary, empty output, binary content, duplicate calls),
+      adversarial (SQL injection, other-agent access) all defined.
+
+  - assert: "tool-log is-implementation-ready"
+    severity: blocker
+    status: pass
+    notes: >
+      Interception point in InteractionLoop._iterateGenerator() specified.
+      PluginInterface context.getProperty('models') access confirmed.
+      ValueStore schema additions (note, type) specified. Tool signatures
+      complete with all edge case behaviors defined.
+
+  - assert: "tool-log no-conflicts-with existing-ValueStore"
+    severity: high
+    status: pass
+    notes: >
+      Adds note and type columns (nullable). All existing entries
+      unaffected. No existing ValueStore queries broken.
+
+  - assert: "tool-log is-swarm-divisible"
+    severity: medium
+    status: pass
+    notes: >
+      5 steps. Step 1 (schema) is independent. Steps 2-3 (interception)
+      are coupled. Steps 4-5 (tools) are independent of each other.
+      2 bots can parallelize: one on schema+interception, one on tools.
+
+# =============================================================================
+# FRAME SEARCH PLAN TESTS
+# Source: bot-docs/future-plans/frame-search.yaml
+# Evaluated: 2026-03-19
+# =============================================================================
+
+  - assert: "frame-search has-complete-acceptance-criteria"
+    severity: blocker
+    status: pass
+    notes: >
+      Tool name, risk level, all argument shapes, before/after semantics
+      (frameID-based, order lookup), return shape, access control,
+      result ordering all specified. Query is raw wildcard — imperfect
+      but defined behavior (SOLR later).
+
+  - assert: "frame-search has-test-strategy-defined"
+    severity: blocker
+    status: pass
+    notes: >
+      Happy paths (wildcard, before/after, pagination), failure paths
+      (auth errors, invalid frameIDs, injection attempts), edge cases
+      (deleted frames, empty sessions, impossible date ranges) all defined.
+
+  - assert: "frame-search is-implementation-ready"
+    severity: blocker
+    status: pass
+    notes: >
+      Single step implementation. DB query pattern follows existing
+      internal plugins (context.getProperty('models')). All parameters
+      defined with defaults and validation rules.
+
+  - assert: "frame-search is-swarm-divisible"
+    severity: medium
+    status: pass
+    notes: >
+      Single self-contained internal plugin. One bot can implement it
+      fully independently.
+
+# =============================================================================
+# COMPACTION PLAN TESTS
+# Source: bot-docs/future-plans/compaction.yaml
+# Evaluated: 2026-03-19
+# =============================================================================
+
+  - assert: "compaction has-complete-acceptance-criteria"
+    severity: blocker
+    status: pass
+    notes: >
+      Trigger, locking, frame schema, notification messages, message
+      filter during compaction, HEAD advancement, single-turn API call,
+      client UI, /compact command, stale frame cleanup on restart —
+      all fully specified.
+
+  - assert: "compaction has-test-strategy-defined"
+    severity: blocker
+    status: pass
+    notes: >
+      Happy paths, failure paths (no coordinator, API failures, empty
+      summary), edge cases (double-trigger, user message during compaction,
+      server restart with stale frame), race conditions (two concurrent
+      triggers, server cluster) all defined.
+
+  - assert: "compaction is-implementation-ready"
+    severity: blocker
+    status: pass
+    notes: >
+      CompactionRunner module specified. DB-frame-based locking specified.
+      Message filter in buildMessages() specified. _createSingleTurn()
+      specified. Frame LIST exclusion of summary specified. /compact
+      command routing specified.
+
+  - assert: "compaction dependencies-exist-in-plan"
+    severity: blocker
+    status: pass
+    notes: >
+      Depends on plugin-model-registry (plugin methods, _createSingleTurn),
+      frame-search (agents navigate post-compaction history).
+      Both have plans. Build order enforced.
+
+  - assert: "compaction is-swarm-divisible"
+    severity: medium
+    status: pass
+    notes: >
+      6 steps. Step 1 (plugin interface) can parallel plugin-model-registry.
+      Steps 2-3 (core logic + InteractionLoop) are coupled.
+      Steps 4-6 (frame API, client, command) are independent.
+      3 bots after step 2 completes.
+
+# =============================================================================
+# CROSS-PLAN ASSERTIONS
+# Evaluated: 2026-03-19
+# =============================================================================
+
+  - assert: "no-circular-dependencies in new-plan-graph"
+    severity: blocker
+    status: pass
+    notes: >
+      plugin-model-registry → (nothing)
+      tool-log → plugin-model-registry
+      frame-search → (nothing)
+      compaction → plugin-model-registry, frame-search
+      No cycles.
+
+  - assert: "implementation-order-defined"
+    severity: high
+    status: pass
+    notes: >
+      Phase 1: plugin-model-registry (foundation)
+      Phase 2: tool-log + frame-search (parallel)
+      Phase 3: compaction (after phases 1+2)
+
+  - assert: "all-new-features have-adversarial-test-coverage"
+    severity: high
+    status: pass
+    notes: >
+      All four plans include: invalid inputs, auth failures, external
+      service failures (API errors), state machine edge cases,
+      race conditions, injection attempts.
+
+  - assert: "session-encryption-vault deferred-cleanly"
+    severity: medium
+    status: pass
+    notes: >
+      Documented in bot-docs/future-plans/session-encryption-vault.yaml.
+      tool_log proceeds with plaintext. Known security gap documented.

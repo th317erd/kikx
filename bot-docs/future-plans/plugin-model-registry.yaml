@@ -1,0 +1,287 @@
+# Plugin Model Registry + Token-Aware Truncation
+# Priority: High (prerequisite for tool-log, compaction)
+# Complexity: Medium
+# Status: PLANNED
+# Created: 2026-03-19
+
+summary: >
+  Plugins publish a static model manifest (available models, context windows,
+  pricing, token estimation). Truncation moves into the plugin so each plugin
+  can be context-window-aware. A new API endpoint exposes model data to the
+  client for model selection dropdowns and accurate cost estimation.
+
+motivation: >
+  Currently truncation uses hardcoded character limits with no awareness of the
+  active model's actual context window. Plugins hardcode model names with no
+  way for the system or UI to discover available models or pricing. This plan
+  makes model knowledge first-class, fixes truncation to be model-aware, and
+  enables proper model selection in the UI.
+
+design_decisions:
+  - Plugin exposes static getModels() returning array of model descriptors
+  - Truncation logic moves INTO the plugin via instance method truncate()
+  - Plugin base class provides default truncate() implementation
+  - Plugins may override truncate() for intelligent/model-aware truncation
+  - InteractionLoop calls plugin.truncate() instead of standalone modules
+  - Truncation marker format: prepend, minimal whitespace, timestamp in ms
+  - Tool-result messages now truncated (same limit as regular messages)
+  - Tool-call (request) messages still NOT truncated
+  - Behaviors/instructions capped at 50% of contextMaximum
+  - Overflow notification is a system-error frame pushed to the session
+  - Client pricing migrates from hardcoded cost.mjs to fetched model registry
+  - Fallback: if models endpoint fails, cost.mjs retains hardcoded pricing
+
+requirements:
+  plugin_interface:
+    - Plugin class has static getModels() returning array of model descriptors
+    - Model descriptor fields: id, contextWindow, maxOutputTokens, displayName,
+      description, pricePerToken (per 1M tokens), useWhen (agent instructions)
+    - Plugin instance has estimateTokens(text, options) method
+      options.cache (boolean) — some providers discount cached tokens
+    - Plugin instance has truncate(messages, options) method
+      options.systemPromptText, options.behaviorsText, options.instructionsText
+      Returns new messages array (no mutation)
+    - Plugin base class (AgentInterface) provides default implementations for
+      all optional methods so existing plugins keep working
+
+  truncation:
+    - truncate() enforces per-message cap (DEFAULT_MAX_CONTENT_LENGTH = 8000 chars)
+    - truncate() enforces tool-result cap (DEFAULT_MAX_TOOL_RESULT_LENGTH = 8000 chars)
+    - truncate() enforces conversation budget derived from model contextWindow
+    - truncate() subtracts estimated system prompt size from available budget
+    - truncate() enforces 50% cap on behaviors+instructions combined
+    - Truncation markers PREPENDED (not appended) to all truncated content
+    - Marker format: "[...truncated {N}bytes @{timestamp_ms}]\n{remaining content}"
+    - Tool-call messages (requests) remain exempt from truncation
+    - truncate() is the final pass — called AFTER re-injection of behaviors/instructions
+    - When behaviors+instructions exceed 50% cap: push system-error frame,
+      proceed without injection. i18n key: errors.behaviorsOverflow
+
+  api_endpoint:
+    - GET /api/v2/models returns aggregated model list from all loaded plugins
+    - Auth required (JWT)
+    - Response shape: { models: [{ pluginID, id, contextWindow, maxOutputTokens,
+      displayName, description, pricePerToken, useWhen }] }
+
+  client:
+    - Client fetches GET /api/v2/models on startup
+    - cost.mjs uses fetched pricing; falls back to hardcoded if fetch fails
+    - Agent config UI: model field is a dropdown populated from fetched models
+    - Dropdown groups models by plugin
+
+implementation_plan:
+  step_1:
+    title: "AgentInterface Base Class — Optional Method Stubs"
+    status: PLANNED
+    files:
+      - src/core/routing/base-plugin-class.mjs
+    tests:
+      - spec/core/plugins/model-registry-spec.mjs (new)
+    details: >
+      Add to AgentInterface base class:
+        static getModels() { return []; }
+        estimateTokens(text, _options) { return Math.ceil(text.length / 4); }
+        truncate(messages, options) { /* default impl — see step 2 */ }
+        shouldCompact(_stats) { return { compact: false }; }
+        getCompactionPrompt(_stats) { return DEFAULT_COMPACTION_PROMPT; }
+        getMaxCompactionTokens(_stats) { return 8000; }
+      These are non-breaking defaults. Existing plugins inherit them.
+
+  step_2:
+    title: "Default truncate() Implementation in Base Class"
+    status: PLANNED
+    files:
+      - src/core/routing/base-plugin-class.mjs
+      - src/core/interaction/context-truncation.mjs (refactored)
+    tests:
+      - spec/core/interaction/context-truncation-spec.mjs (extend)
+      - spec/core/plugins/model-registry-spec.mjs (extend)
+    details: >
+      Refactor existing context-truncation.mjs into a utility used by the
+      base class truncate() implementation. The standalone truncateContent()
+      and truncateConversation() functions remain but are called from inside
+      plugin.truncate() rather than directly from InteractionLoop.
+
+      Base class truncate(messages, options):
+        1. Get model from this.getModels() matching agent.model (or first model)
+        2. Estimate systemPrompt tokens via this.estimateTokens(options.systemPromptText)
+        3. Calculate budget: (model.contextWindow - systemPromptTokens) * 4 chars/token
+        4. Calculate maxBehaviorsChars: model.contextWindow * 4 * 0.50
+        5. Check behaviors+instructions combined length against maxBehaviorsChars
+           If over: emit system-error frame (via options.onOverflow callback),
+           proceed without behaviors/instructions
+        6. Call truncateContent(messages) — per-message cap
+        7. Call truncateConversation(messages, { maxTotalChars: budget }) — conversation budget
+        8. Return truncated messages array
+
+      Fix truncation markers: change APPEND to PREPEND in truncateContent().
+      Fix marker format: "[...truncated {N}bytes @{timestamp_ms}]\n{remaining}"
+      Add tool-result truncation in truncateContent() using DEFAULT_MAX_TOOL_RESULT_LENGTH.
+
+  step_3:
+    title: "InteractionLoop — Call plugin.truncate() Instead of Standalone"
+    status: PLANNED
+    files:
+      - src/core/interaction/index.mjs
+    tests:
+      - spec/core/interaction/context-truncation-spec.mjs (extend)
+    details: >
+      In startInteraction(), replace:
+        messages = truncateContent(messages);
+        messages = truncateConversation(messages);
+      With:
+        messages = plugin.truncate(messages, {
+          systemPromptText,
+          behaviorsText:    agent.behaviors || '',
+          instructionsText: agent.instructions || '',
+          onOverflow:       (type) => this._createFrame(sessionID, {
+            type: 'system-error',
+            content: { message: 'errors.behaviorsOverflow' },
+            ...
+          }),
+        });
+      Re-injection of behaviors/instructions still happens (post-truncation),
+      but truncate() now validates sizes before injection happens.
+
+  step_4:
+    title: "Claude Plugin — Override getModels() and estimateTokens()"
+    status: PLANNED
+    files:
+      - kikx-plugin-claude/index.mjs (external repo)
+    tests:
+      - kikx-plugin-claude/spec/claude-agent-spec.mjs (extend)
+    details: >
+      Add to ClaudeAgentPlugin:
+
+      static getModels() {
+        return [
+          {
+            id:               'claude-opus-4-6',
+            contextWindow:    200000,
+            maxOutputTokens:  32000,
+            displayName:      'Claude Opus 4.6',
+            description:      'Most capable Claude model. Best for complex reasoning.',
+            pricePerToken:    { input: 15.0, output: 75.0 },  // per 1M tokens
+            useWhen:          'Use for complex analysis, legal/financial work, long documents.',
+          },
+          {
+            id:               'claude-sonnet-4-6',
+            contextWindow:    200000,
+            maxOutputTokens:  16000,
+            displayName:      'Claude Sonnet 4.6',
+            description:      'Balanced performance and cost.',
+            pricePerToken:    { input: 3.0, output: 15.0 },
+            useWhen:          'Use for most tasks. Good balance of capability and speed.',
+          },
+          {
+            id:               'claude-haiku-4-5-20251001',
+            contextWindow:    200000,
+            maxOutputTokens:  8192,
+            displayName:      'Claude Haiku 4.5',
+            description:      'Fastest and most cost-efficient Claude model.',
+            pricePerToken:    { input: 0.8, output: 4.0 },
+            useWhen:          'Use for fast, simple tasks or high-volume applications.',
+          },
+        ];
+      }
+
+      estimateTokens(text, { cache = false } = {}) {
+        // Anthropic tokenizer approximation: ~3.5 chars per token for English
+        // With cache, tokens are effectively discounted (but count same for truncation)
+        return Math.ceil(text.length / 3.5);
+      }
+
+  step_5:
+    title: "Models API Endpoint"
+    status: PLANNED
+    files:
+      - src/server/controllers/models-controller.mjs (new)
+      - src/server/routes/index.mjs (register route)
+    tests:
+      - spec/server/controllers/models-controller-spec.mjs (new)
+    details: >
+      GET /api/v2/models — auth required.
+      Iterates all loaded plugins, calls pluginClass.getModels() on each,
+      prefixes each model with pluginID.
+      Returns { models: [...] }.
+      If a plugin throws from getModels(), that plugin is skipped (logged).
+      If no plugins loaded: returns { models: [] } — 200, not error.
+
+  step_6:
+    title: "Client — cost.mjs + Agent Config Model Selector"
+    status: PLANNED
+    files:
+      - src/client/lib/cost.mjs
+      - src/client/components/kikx-agent-config/kikx-agent-config.mjs (or equivalent)
+      - src/client/lib/store.mjs (models scope)
+    tests:
+      - spec/client/cost-and-timestamps-spec.mjs (extend)
+    details: >
+      1. Add models scope to store.mjs (similar to agents scope).
+      2. On app startup, fetch GET /api/v2/models and populate store.models.
+         On failure, log warning and use existing hardcoded pricing in cost.mjs.
+      3. cost.mjs getPricing(serviceType, modelID): first checks store.models
+         for exact model match, falls back to hardcoded DEFAULT_PRICING.
+      4. Agent config UI: locate the model text field, replace with a select
+         element. Populate options from store.models grouped by pluginID.
+         On change, save model ID to agent config.
+
+test_plan:
+  happy_paths:
+    - getModels() returns array with all required fields
+    - estimateTokens('hello world') returns reasonable integer
+    - truncate() returns messages with markers prepended
+    - truncate() with large behaviors: overflow callback fired, behaviors not injected
+    - truncate() with large tool-result: result truncated at 8000 chars
+    - truncate() leaves tool-call messages untouched
+    - GET /api/v2/models returns 200 with model array
+    - cost.mjs uses fetched pricing when available
+    - Agent config model dropdown shows fetched models
+
+  failure_paths:
+    - getModels() not defined on plugin: base class returns []
+    - getModels() throws: plugin skipped, others included, no crash
+    - getModels() returns model missing contextWindow: default fallback used
+    - estimateTokens() throws: caught, returns chars/4 fallback
+    - estimateTokens(null): returns 0
+    - estimateTokens() returns NaN: clamped to 0
+    - truncate() with contextWindow=0: uses DEFAULT_CONTEXT_WINDOW fallback
+    - truncate() with empty messages: returns []
+    - truncate() with null messages: returns []
+    - truncate() with behaviors text > 50% cap: overflow frame emitted
+    - GET /api/v2/models: unauthenticated → 401
+    - GET /api/v2/models: all plugins throw → returns { models: [] }
+    - cost.mjs fetch fails: falls back to hardcoded pricing, no crash
+
+  edge_cases:
+    - Behaviors text exactly at 50% boundary: no overflow
+    - Behaviors text at 50% + 1 char: overflow frame emitted
+    - Model ID not found in registry: use DEFAULT_MAX_TOTAL_CHARS fallback
+    - Two plugins both export a model with same ID: both included (different pluginIDs)
+    - Tool-result content exactly at 8000 chars: not truncated
+    - Tool-result content at 8001 chars: truncated, marker prepended
+
+files_new:
+  - src/server/controllers/models-controller.mjs
+  - spec/core/plugins/model-registry-spec.mjs
+  - spec/server/controllers/models-controller-spec.mjs
+
+files_modified:
+  - src/core/routing/base-plugin-class.mjs
+  - src/core/interaction/context-truncation.mjs
+  - src/core/interaction/index.mjs
+  - src/core/interaction/behaviors-reinjection.mjs
+  - src/core/interaction/instructions-reinjection.mjs
+  - src/server/routes/index.mjs
+  - src/client/lib/cost.mjs
+  - src/client/lib/store.mjs
+  - spec/core/interaction/context-truncation-spec.mjs
+  - spec/client/cost-and-timestamps-spec.mjs
+  - kikx-plugin-claude/index.mjs (external repo)
+  - kikx-plugin-claude/spec/claude-agent-spec.mjs (external repo)
+
+dependencies: []  # No dependencies — this is the foundation
+
+build_order_note: >
+  Build this first. tool-log and compaction both depend on plugin.truncate()
+  and plugin.estimateTokens() existing.

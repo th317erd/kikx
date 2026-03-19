@@ -1,0 +1,280 @@
+# Tool Log — Persistent Tool Output Storage
+# Priority: High
+# Complexity: Medium
+# Status: PLANNED
+# Created: 2026-03-19
+
+summary: >
+  All tool execution outputs are stored in ValueStore for permanent retrieval.
+  Outputs <= 1024 Unicode chars are also delivered inline to the agent.
+  Outputs > 1024 chars are stored-only; a JSON pointer message is delivered
+  instead. Two new internal tools (tool_log:get, tool_log:search) let agents
+  retrieve stored outputs with range slicing and search.
+
+motivation: >
+  Large tool outputs (shell commands, file reads) currently eat the entire
+  context budget when stored inline in message history. With tool_log, outputs
+  are stored once and agents fetch what they need, when they need it. This
+  enables truncation of tool-result frames in message history without losing
+  the underlying data.
+
+design_decisions:
+  - ValueStore is the backing store (reuses existing infrastructure)
+  - Two new columns added to ValueStore: note (STRING 256), type (STRING 64)
+  - ALL tool outputs stored — not just large ones — for complete audit trail
+  - Outputs <= 1024 Unicode chars also delivered inline (both paths)
+  - Outputs > 1024 Unicode chars: only pointer message delivered inline
+  - No encryption for now (future plan: session-encryption-vault)
+  - Ed25519 signature still applied via existing ValueStore mechanism
+  - tool_log entries are immutable (no update/delete by agents)
+  - Sharing via existing PermissionRule system (featureName: tool_log:read)
+  - Tool interception happens in InteractionLoop after tool execution
+  - Threshold is Unicode character count (not bytes, not tokens)
+  - Storage quotas deferred — future offloading system needed
+  - The type field format: "tool_log:{pluginID}:{toolName}"
+    e.g. "tool_log:shell:execute", "tool_log:websearch:search"
+
+requirements:
+  value_store:
+    - Add note column: STRING(256), nullable, unencrypted
+    - Add type column: STRING(64), nullable, unencrypted, indexed
+    - Existing entries unaffected (both columns nullable)
+
+  storage_behavior:
+    - Every tool execution result stored in ValueStore BEFORE delivering to agent
+    - namespace: 'tool_log'
+    - ownerType: 'agent'
+    - ownerID: agentID (calling agent)
+    - scopeID: sessionID
+    - key: generated XID with prefix 'tl_'
+    - value: plaintext JSON { args: {tool call arguments}, output: "full output string" }
+    - note: command name or short identifier (e.g. "ls -la /tmp")
+    - type: "tool_log:{pluginID}:{toolName}" (e.g. "tool_log:shell:execute")
+    - signature: Ed25519 signed (existing ValueStore mechanism)
+
+  inline_delivery:
+    - Output <= 1024 Unicode chars: deliver tool-result frame WITH the output inline
+      AND store in ValueStore (both happen)
+    - Output > 1024 Unicode chars: store in ValueStore only; deliver pointer JSON:
+      { stored: true, tool_log_id: "tl_ABC123", output_length: 58234,
+        message: "Output stored. Retrieve with tool_log:get." }
+
+  interception_point:
+    - In InteractionLoop._iterateGenerator(), after the tool executes and returns
+      its output string, before constructing the tool-result block delivered to agent
+    - All tools intercepted here (shell, websearch, help, etc.) — no tool opt-out
+
+  tool_log_get:
+    name: "tool_log:get"
+    risk_level: none
+    description: "Retrieve a stored tool output by ID with optional range slicing"
+    arguments:
+      id:            STRING required — the tl_ ID from the pointer message
+      content_start: INTEGER optional, default 0 — start char/line position
+      content_end:   INTEGER optional, default null — end position (null = all)
+      content_lines: BOOLEAN optional, default false — if true, start/end are line numbers
+    returns:
+      id:            STRING
+      toolName:      STRING
+      note:          STRING
+      outputLength:  INTEGER — total chars in stored output
+      content:       STRING — sliced output based on content_start/content_end/content_lines
+      content_start: INTEGER — actual start used
+      content_end:   INTEGER — actual end used
+      content_lines: BOOLEAN — echoed from input
+      createdAt:     DATETIME
+    errors:
+      - 404 if id not found
+      - 403 if entry not owned by calling agent (and no permission granted)
+      - 400 if content_end < content_start
+      - 400 if id is missing or empty
+
+  tool_log_search:
+    name: "tool_log:search"
+    risk_level: none
+    description: "Search stored tool outputs by tool name and metadata"
+    arguments:
+      query:         STRING optional — wildcard on type and note fields combined
+      toolName:      STRING optional — exact or wildcard match on type field
+      sessionID:     STRING optional — restrict to a specific session (scopeID)
+      before:        DATETIME optional — entries created before this timestamp
+      after:         DATETIME optional — entries created after this timestamp
+      limit:         INTEGER optional, default 10 — max rows returned
+      offset:        INTEGER optional, default 0 — pagination
+      content_start: INTEGER optional, default 0 — content slice start for each row
+      content_end:   INTEGER optional, default 256 — content slice end for each row
+      content_lines: BOOLEAN optional, default false — start/end as line numbers
+    returns:
+      Array of:
+        id:            STRING
+        toolName:      STRING
+        note:          STRING
+        outputLength:  INTEGER
+        content_preview: STRING — sliced output per content_start/content_end/content_lines
+        content_start: INTEGER
+        content_end:   INTEGER
+        content_lines: BOOLEAN
+        createdAt:     DATETIME
+    notes: >
+      Search operates on unencrypted note and type fields only.
+      Content is encrypted — cannot wildcard-search the actual output.
+      Search is scoped to calling agent's own entries by default.
+      To search another agent's entries, a PermissionRule must exist.
+      limit clamped to server maximum (100). offset with empty results returns [].
+
+implementation_plan:
+  step_1:
+    title: "ValueStore Schema — Add note and type Columns"
+    status: PLANNED
+    files:
+      - src/core/models/value-store-model.mjs
+    tests:
+      - spec/core/models/value-store-spec.mjs (new or extend)
+    details: >
+      Add to ValueStore.fields:
+        note: { type: Types.STRING(256), allowNull: true, index: true }
+        type: { type: Types.STRING(64),  allowNull: true, index: true }
+      Index both for search performance.
+      All existing ValueStore entries have null note and type (nullable).
+      Run migration to add columns to existing DB.
+      Write tests: create entry with note/type, query by type, query by note wildcard.
+
+  step_2:
+    title: "Tool Output Interception in InteractionLoop"
+    status: PLANNED
+    files:
+      - src/core/interaction/index.mjs
+    tests:
+      - spec/core/interaction/tool-log-interception-spec.mjs (new)
+    details: >
+      In _iterateGenerator(), when a tool-result block is received from the
+      agent plugin generator (block.type === 'tool-result'):
+
+        1. Extract output string from block.content.output
+        2. Call storeToolOutput(sessionID, interactionID, agentID, toolName, toolCallArgs, output)
+           (implemented in step 3 as ToolLogService)
+           storeToolOutput() returns the ValueStore entry { id, key }
+        3. Determine Unicode char count of output
+        4. If charCount <= 1024:
+             Deliver original tool-result block to agent (inline + stored)
+        5. If charCount > 1024:
+             Replace output in tool-result block with pointer JSON:
+             JSON.stringify({ stored: true, tool_log_id: entry.key, output_length: charCount,
+               message: 'Output stored. Retrieve with tool_log:get.' })
+             Deliver modified tool-result block to agent
+
+      storeToolOutput() failures must NOT block tool delivery — catch error, log, proceed.
+
+  step_3:
+    title: "ToolLogService — ValueStore Write Helper"
+    status: PLANNED
+    files:
+      - src/core/interaction/tool-log-service.mjs (new)
+    tests:
+      - spec/core/interaction/tool-log-interception-spec.mjs (extend)
+    details: >
+      ToolLogService.storeToolOutput(params):
+        params: { sessionID, interactionID, agentID, organizationID,
+                  toolName, pluginID, toolCallArgs, output, keystore }
+        1. Generate key: XID with prefix 'tl_'
+        2. Build value JSON: JSON.stringify({ args: toolCallArgs, output })
+        3. Create ValueStore entry with all fields
+        4. Sign the value using existing signing mechanism (keystore)
+        5. Save and return { id, key }
+
+      The 'note' field should be the first meaningful string from toolCallArgs
+      (e.g. for shell, use the command string; for websearch, use the query).
+      The 'type' field: "tool_log:{pluginID}:{toolName}"
+
+  step_4:
+    title: "tool_log:get Internal Tool"
+    status: PLANNED
+    files:
+      - src/core/internal-plugins/tool-log/index.mjs (new)
+    tests:
+      - spec/core/internal-plugins/tool-log-spec.mjs (new)
+    details: >
+      Create tool_log internal plugin with setup() function.
+      GetToolLogTool class:
+        - Validates id argument (required, non-empty)
+        - Loads ValueStore entry by key (ownerID = calling agentID)
+        - Returns 403 if ownerID doesn't match (and no PermissionRule allows)
+        - Parses value JSON to extract output string
+        - Applies content_start/content_end/content_lines slicing:
+            If content_lines=false: slice by char index
+            If content_lines=true: split by \n, slice by line number
+        - Returns structured response (see requirements above)
+
+      Register tool in src/core/routing/base-plugin-class.mjs or equivalent
+      internal plugin registry.
+
+  step_5:
+    title: "tool_log:search Internal Tool"
+    status: PLANNED
+    files:
+      - src/core/internal-plugins/tool-log/index.mjs (extend step 4)
+    tests:
+      - spec/core/internal-plugins/tool-log-spec.mjs (extend)
+    details: >
+      SearchToolLogTool class:
+        - Queries ValueStore WHERE ownerType='agent' AND ownerID=agentID
+          AND namespace='tool_log'
+        - Applies filters: type/note wildcard (toolName), scopeID (sessionID),
+          before/after timestamps
+        - Applies limit (clamped to 100) and offset
+        - For each result: parses value JSON, applies content slice,
+          returns content_preview (default first 256 chars)
+        - Returns empty array (not error) when no matches
+
+test_plan:
+  happy_paths:
+    - Tool output <= 1024 chars: delivered inline, stored in ValueStore
+    - Tool output > 1024 chars: pointer JSON delivered, full output in ValueStore
+    - tool_log:get returns correct content for owned entry
+    - tool_log:get with content_lines=true slices by line numbers
+    - tool_log:search returns matching entries
+    - tool_log:search with toolName filter finds correct entries
+    - tool_log:search with sessionID filter restricts results
+    - tool_log:search returns empty array for no matches
+
+  failure_paths:
+    - ValueStore write fails: tool output still delivered (best-effort storage)
+    - tool_log:get with non-existent id: 404
+    - tool_log:get with other agent's id (no permission): 403
+    - tool_log:get with missing id argument: 400 validation error
+    - tool_log:get with content_end < content_start: 400 error
+    - tool_log:search with limit=0: clamped to default (10)
+    - tool_log:search with limit=99999: clamped to max (100)
+    - tool_log:search with malformed before/after: 400 validation error
+    - tool_log:search with SQL injection in query: sanitized, no injection
+    - tool_log:get for entry where output was deleted: 404
+
+  edge_cases:
+    - Tool returns empty string output: stored (length=0), delivered inline
+    - Tool output exactly 1024 Unicode chars: inline delivery
+    - Tool output exactly 1025 Unicode chars: pointer delivery
+    - Tool output contains binary/non-UTF8: handled without crash
+    - Same tool called twice in one interaction: two separate entries, different keys
+    - Two agents call same tool in same session: separate entries (different ownerID)
+    - Agent calls tool_log:get with content_start > outputLength: returns empty string, no error
+    - Tool output has no newlines, content_lines=true requested: whole output = line 1
+    - Coordinator searches other agent's entries: only visible if PermissionRule exists
+
+files_new:
+  - src/core/interaction/tool-log-service.mjs
+  - src/core/internal-plugins/tool-log/index.mjs
+  - spec/core/interaction/tool-log-interception-spec.mjs
+  - spec/core/internal-plugins/tool-log-spec.mjs
+
+files_modified:
+  - src/core/models/value-store-model.mjs
+  - src/core/interaction/index.mjs
+  - src/core/routing/base-plugin-class.mjs (register tool-log plugin)
+  - spec/core/models/value-store-spec.mjs
+
+dependencies:
+  - plugin-model-registry (plugin.truncate() needed for tool-result handling)
+
+build_order_note: >
+  Build after plugin-model-registry. Step 1 (ValueStore schema) can be done
+  in parallel with plugin-model-registry. Steps 2-5 require the schema.

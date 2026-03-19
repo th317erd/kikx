@@ -1,0 +1,141 @@
+# Frame / Conversation Search Tool
+# Priority: High (prerequisite for compaction)
+# Complexity: Low-Medium
+# Status: PLANNED
+# Created: 2026-03-19
+
+summary: >
+  A new internal tool (frame:search) lets agents search conversation history
+  by content, with before/after frame anchors and pagination. Used by agents
+  to reconstruct context after compaction (e.g. "read history before
+  compaction frame ABCDE12345"). Prerequisite for the compaction plan.
+
+motivation: >
+  After compaction, the agent's context starts at the compaction frame. To
+  retrieve earlier history, the agent needs a search/retrieval tool. The
+  compaction messages explicitly reference frame IDs for this purpose.
+  No such tool currently exists in V2 internal plugins.
+
+design_decisions:
+  - New internal tool: frame:search
+  - Risk level: none (permission-free within sessions the agent is a participant of)
+  - before/after use frame order value (frameID → look up order → filter)
+  - Query is raw wildcard on content fields (HTML included — imperfect, SOLR later)
+  - Returns compact representation (256-char content preview, not full content)
+  - Only returns frames from sessions the calling agent has access to
+  - Result ordering: always chronological (ascending by frame order)
+  - No cross-session search without explicit sessionID and access
+  - Deleted frames excluded from results
+
+requirements:
+  tool_definition:
+    name: "frame:search"
+    risk_level: none
+    description: "Search conversation frames by content with pagination and anchoring"
+    arguments:
+      query:     STRING optional — wildcard pattern matched against frame content (raw)
+      sessionID: STRING optional — session to search (defaults to current session)
+      before:    STRING optional — frameID; only return frames with order < this frame's order
+      after:     STRING optional — frameID; only return frames with order > this frame's order
+      limit:     INTEGER optional, default 10, max 100
+      offset:    INTEGER optional, default 0
+    returns:
+      Array of:
+        id:              STRING — frame ID
+        type:            STRING — frame type (message, tool-call, tool-result, compaction, etc.)
+        authorType:      STRING — 'user', 'agent', 'system'
+        authorID:        STRING or null
+        timestamp:       DATETIME
+        content_preview: STRING — first 256 chars of content (raw, may include HTML)
+        order:           INTEGER — frame order in session
+    notes: >
+      If before= and after= are both provided, results are in the intersection
+      (frames ordered between the two anchors).
+      If before= or after= frameID doesn't exist in the session: 400 error.
+      Frames of type 'compaction' with summary=null are included (summary not
+      included in preview).
+      Access check: calling agent must be a participant in the target session.
+
+implementation_plan:
+  step_1:
+    title: "frame:search Internal Tool"
+    status: PLANNED
+    files:
+      - src/core/internal-plugins/frame-search/index.mjs (new)
+    tests:
+      - spec/core/internal-plugins/frame-search-spec.mjs (new)
+    details: >
+      Create frame-search internal plugin with setup() function.
+
+      SearchFramesTool class extends PluginInterface:
+        execute(args, context):
+          1. Resolve sessionID: use args.sessionID or context.sessionID
+          2. Verify calling agent is a participant of the session
+             (query Participant table). If not: 403.
+          3. If args.before provided:
+               Look up frame order for args.before in this session
+               If not found: 400 "before frame not found in session"
+          4. If args.after provided:
+               Look up frame order for args.after in this session
+               If not found: 400 "after frame not found in session"
+          5. Build DB query on frames table:
+               WHERE sessionID = :sessionID
+               AND deleted = false
+               AND (args.query ? content LIKE :pattern : true)
+               AND (args.before ? order < :beforeOrder : true)
+               AND (args.after  ? order > :afterOrder  : true)
+               ORDER BY order ASC
+               LIMIT :limit OFFSET :offset
+          6. Map results to return shape (content_preview = first 256 chars of
+             content field — raw, may contain HTML)
+          7. Return array (empty if no matches)
+
+      Register tool in internal plugin registry.
+
+      DB query note: use the mythix-orm where-clause API consistent with
+      how other internal plugins query the models (this._context.getProperty('models')).
+
+test_plan:
+  happy_paths:
+    - Search with no query returns all frames (up to limit)
+    - Search with query wildcard finds matching frames
+    - Search with before= frameID returns only earlier frames
+    - Search with after= frameID returns only later frames
+    - Search with both before= and after= returns frames in range
+    - Results always ordered chronologically (ascending order)
+    - limit and offset paginate correctly
+    - Empty session returns empty array
+    - Returns content_preview truncated at 256 chars
+
+  failure_paths:
+    - Calling agent not a participant: 403 forbidden
+    - before= frameID not in session: 400 with clear message
+    - after= frameID not in session: 400 with clear message
+    - before= and after= both set, before < after in order: empty results (valid)
+    - limit = 0: clamped to default (10) or returns 400
+    - limit = 1000000: clamped to 100
+    - offset beyond total results: returns empty array, not error
+    - SQL injection attempt in query: sanitized
+    - Unauthenticated request: 401
+
+  edge_cases:
+    - Deleted frames excluded from results
+    - Compaction frames with summary=null included (summary not in preview)
+    - Single-frame session: returns that frame if it matches
+    - before= is the very first frame: returns empty array
+    - after= is the very last frame: returns empty array
+    - Same frameID in both before= and after=: empty results
+    - Content field is null: frame still included, empty preview
+
+files_new:
+  - src/core/internal-plugins/frame-search/index.mjs
+  - spec/core/internal-plugins/frame-search-spec.mjs
+
+files_modified:
+  - src/core/routing/base-plugin-class.mjs (register frame-search plugin)
+
+dependencies: []  # No external plan dependencies — standalone
+
+build_order_note: >
+  Can be built in parallel with tool-log. Must be complete before compaction,
+  since compaction messages reference frame IDs for agents to search history.
