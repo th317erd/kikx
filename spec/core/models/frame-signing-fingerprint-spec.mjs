@@ -225,6 +225,59 @@ describe('computeKeyFingerprint utility', () => {
 });
 
 // =============================================================================
+// computeKeyFingerprint: invalid inputs
+// =============================================================================
+
+describe('computeKeyFingerprint: invalid inputs', () => {
+  it("non-PEM string → returns non-null 32-char hex (crypto hashes any string)", () => {
+    // Any truthy string is hashed — the impl does not validate PEM format
+    let fingerprint = computeKeyFingerprint('not-a-pem-string');
+    assert.ok(fingerprint !== null, 'should return non-null for any truthy string');
+    assert.equal(fingerprint.length, 32, 'should return 32-char hex');
+    assert.match(fingerprint, /^[0-9a-f]{32}$/, 'should be hex');
+  });
+
+  it("empty string '' → returns null (falsy guard triggers)", () => {
+    // Empty string is falsy in JS → !'' → true → returns null
+    let fingerprint = computeKeyFingerprint('');
+    assert.equal(fingerprint, null, 'empty string should return null');
+  });
+
+  it('number input (123) → throws TypeError (no type guard in impl)', () => {
+    // The impl only guards for falsy (!publicKeyPEM). 123 is truthy.
+    // crypto.createHash().update(123) throws TypeError for non-string/non-Buffer.
+    assert.throws(
+      () => computeKeyFingerprint(123),
+      (error) => error instanceof TypeError,
+      'number input should throw TypeError',
+    );
+  });
+
+  it('object input ({}) → throws TypeError (no type guard in impl)', () => {
+    // {} is truthy → passes falsy guard → crypto.update({}) throws TypeError
+    assert.throws(
+      () => computeKeyFingerprint({}),
+      (error) => error instanceof TypeError,
+      'object input should throw TypeError',
+    );
+  });
+
+  it('agent frame with agent.publicKey = null → signingKeyFingerprint is null, not crash', () => {
+    // This tests the calling code pattern: if agent.publicKey is null,
+    // computeKeyFingerprint(null) → returns null
+    let fingerprint = computeKeyFingerprint(null);
+    assert.equal(fingerprint, null, 'null publicKey should produce null fingerprint');
+  });
+
+  it("agent frame with agent.publicKey = '' (empty string) → returns null (falsy guard)", () => {
+    // Empty string is falsy → !'' → true → returns null
+    // Callers should not get a fingerprint for empty-string publicKey
+    let fingerprint = computeKeyFingerprint('');
+    assert.equal(fingerprint, null, 'empty publicKey should produce null fingerprint');
+  });
+});
+
+// =============================================================================
 // InteractionLoop — frames include signingKeyFingerprint
 // =============================================================================
 

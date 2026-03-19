@@ -387,3 +387,143 @@ describe('BasePluginClass — model registry interface', () => {
     });
   });
 });
+
+// =============================================================================
+// BasePluginClass.truncate: adversarial inputs
+// =============================================================================
+
+describe('BasePluginClass.truncate: adversarial inputs', () => {
+  it('truncate(messages, null) → options defaults apply, does not throw', async () => {
+    let plugin   = new BasePluginClass({});
+    let messages = [{ role: 'user', content: 'hello' }];
+
+    // options=null → destructuring uses (null || {}) fallback in the impl
+    let result = await plugin.truncate(messages, null);
+    assert.ok(Array.isArray(result), 'should return array when options is null');
+    assert.ok(result.length > 0, 'should return messages when options is null');
+  });
+
+  it('onOverflow throws → truncate still returns truncated messages (not rejected)', async () => {
+    let plugin = new BasePluginClass({});
+    // Trigger overflow: behaviors+instructions > 50% cap (400000 chars for default 200000 window)
+    let bigText  = 'x'.repeat(401000);
+    let messages = [{ role: 'user', content: 'hello' }];
+
+    // onOverflow throws — should be caught internally
+    let result = await plugin.truncate(messages, {
+      systemPromptText: '',
+      behaviorsText:    bigText,
+      instructionsText: '',
+      onOverflow:       async () => { throw new Error('boom'); },
+    });
+
+    // Must not reject — onOverflow is best-effort
+    assert.ok(Array.isArray(result), 'should still return array when onOverflow throws');
+  });
+
+  it('contextWindow=0 in getModels() → falls back to DEFAULT_CONTEXT_WINDOW', async () => {
+    class ZeroWindowPlugin extends BasePluginClass {
+      static getModels() {
+        return [{ id: 'zero-model', contextWindow: 0, maxOutputTokens: 256 }];
+      }
+    }
+
+    let plugin = new ZeroWindowPlugin({});
+    plugin._agent = { model: 'zero-model' };
+
+    // contextWindow=0 fails (> 0) check → falls back to 200000 → charBudget = 800000
+    // A small message should survive intact
+    let messages = [{ role: 'user', content: 'hello zero' }];
+    let result   = await plugin.truncate(messages, {});
+
+    assert.ok(Array.isArray(result), 'should return array with zero contextWindow');
+    assert.ok(result.length > 0, 'messages should survive fallback to DEFAULT_CONTEXT_WINDOW');
+  });
+
+  it('contextWindow=-1 → falls back to DEFAULT_CONTEXT_WINDOW', async () => {
+    class NegativeWindowPlugin extends BasePluginClass {
+      static getModels() {
+        return [{ id: 'neg-model', contextWindow: -1, maxOutputTokens: 256 }];
+      }
+    }
+
+    let plugin = new NegativeWindowPlugin({});
+    plugin._agent = { model: 'neg-model' };
+
+    let messages = [{ role: 'user', content: 'hello negative' }];
+    let result   = await plugin.truncate(messages, {});
+
+    assert.ok(Array.isArray(result), 'should return array with negative contextWindow');
+    assert.ok(result.length > 0, 'messages should survive fallback to DEFAULT_CONTEXT_WINDOW');
+  });
+
+  it("contextWindow='200000' (string) → falls back to DEFAULT_CONTEXT_WINDOW", async () => {
+    class StringWindowPlugin extends BasePluginClass {
+      static getModels() {
+        return [{ id: 'string-model', contextWindow: '200000', maxOutputTokens: 256 }];
+      }
+    }
+
+    let plugin = new StringWindowPlugin({});
+    plugin._agent = { model: 'string-model' };
+
+    // typeof '200000' === 'string' ≠ 'number' → fails the type guard → falls back
+    let messages = [{ role: 'user', content: 'hello string' }];
+    let result   = await plugin.truncate(messages, {});
+
+    assert.ok(Array.isArray(result), 'should return array with string contextWindow');
+    assert.ok(result.length > 0, 'messages should survive fallback to DEFAULT_CONTEXT_WINDOW');
+  });
+
+  it('systemPromptText so large charBudget would be negative → clamped to minimum 1024', async () => {
+    let plugin = new BasePluginClass({});
+    // Default contextWindow = 200000 → charBudget base = 800000 chars
+    // systemPromptText of 900000 chars would make budget = 800000 - 900000 = -100000
+    // Math.max(1024, -100000) → 1024
+    let hugeSystemPrompt = 's'.repeat(900000);
+    let messages         = [{ role: 'user', content: 'hi' }];
+
+    // Should not throw — charBudget is clamped to 1024
+    let result = await plugin.truncate(messages, {
+      systemPromptText: hugeSystemPrompt,
+      behaviorsText:    '',
+      instructionsText: '',
+    });
+
+    assert.ok(Array.isArray(result), 'should return array when systemPrompt is huge');
+  });
+
+  it('getModels() returns null → treated as empty array, uses DEFAULT_CONTEXT_WINDOW', async () => {
+    class NullModelsPlugin extends BasePluginClass {
+      static getModels() {
+        return null;
+      }
+    }
+
+    let plugin   = new NullModelsPlugin({});
+    let messages = [{ role: 'user', content: 'hello null models' }];
+
+    // Array.isArray(null) → false → models = [] → falls back to DEFAULT_CONTEXT_WINDOW
+    let result = await plugin.truncate(messages, {});
+
+    assert.ok(Array.isArray(result), 'should return array when getModels() returns null');
+    assert.ok(result.length > 0, 'messages should survive when getModels() returns null');
+  });
+
+  it('getModels() returns non-array object → treated as empty array, uses DEFAULT_CONTEXT_WINDOW', async () => {
+    class ObjectModelsPlugin extends BasePluginClass {
+      static getModels() {
+        return { id: 'some-model', contextWindow: 50000 }; // object, not array
+      }
+    }
+
+    let plugin   = new ObjectModelsPlugin({});
+    let messages = [{ role: 'user', content: 'hello object models' }];
+
+    // Array.isArray({...}) → false → models = [] → falls back to DEFAULT_CONTEXT_WINDOW
+    let result = await plugin.truncate(messages, {});
+
+    assert.ok(Array.isArray(result), 'should return array when getModels() returns a non-array object');
+    assert.ok(result.length > 0, 'messages should survive when getModels() returns a non-array object');
+  });
+});

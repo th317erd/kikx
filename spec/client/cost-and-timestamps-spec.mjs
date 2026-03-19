@@ -167,6 +167,26 @@ describe('_loadCosts serviceType derivation', () => {
     let getAgent = () => ({ pluginID: 'claude-agent' });
     assert.equal(deriveServiceType(participants, getAgent), 'anthropic');
   });
+
+  it("unknown pluginID ('custom-agent') → returns null", () => {
+    let participants = [{ agentID: 'agt_5', role: 'member' }];
+    let getAgent = () => ({ pluginID: 'custom-agent' });
+    assert.equal(deriveServiceType(participants, getAgent), null);
+  });
+
+  it('pluginID is empty string → returns null', () => {
+    let participants = [{ agentID: 'agt_6', role: 'member' }];
+    let getAgent = () => ({ pluginID: '' });
+    // agent.pluginID is '' → neither 'claude-agent' nor 'openai-agent' → null
+    assert.equal(deriveServiceType(participants, getAgent), null);
+  });
+
+  it('getAgent returns undefined (vs null) → returns null', () => {
+    let participants = [{ agentID: 'agt_7', role: 'member' }];
+    let getAgent = () => undefined;
+    // undefined is falsy → agent check fails → null
+    assert.equal(deriveServiceType(participants, getAgent), null);
+  });
 });
 
 // =============================================================================
@@ -246,6 +266,43 @@ describe('_handleUsage cost accumulation', () => {
 
     assert.ok(Math.abs(anthropicResult.global - 3.00) < 0.001);
     assert.ok(Math.abs(openaiResult.global - 2.50) < 0.001);
+  });
+
+  it('usage is undefined → returns currentCosts unchanged (same as null)', () => {
+    let result = handleUsage({ usage: undefined, serviceType: 'anthropic', isFinal: true }, zeroCosts);
+    assert.deepEqual(result, zeroCosts, 'undefined usage should return currentCosts unchanged');
+  });
+
+  it('isFinal is undefined → treated as falsy, no cost update', () => {
+    let result = handleUsage({
+      usage:       { inputTokens: 1000, outputTokens: 500 },
+      serviceType: 'anthropic',
+      isFinal:     undefined,
+    }, zeroCosts);
+    assert.deepEqual(result, zeroCosts, 'undefined isFinal should not update costs');
+  });
+
+  it('isFinal is null → treated as falsy, no cost update', () => {
+    let result = handleUsage({
+      usage:       { inputTokens: 1000, outputTokens: 500 },
+      serviceType: 'anthropic',
+      isFinal:     null,
+    }, zeroCosts);
+    assert.deepEqual(result, zeroCosts, 'null isFinal should not update costs');
+  });
+
+  it('negative token counts (inputTokens: -100) → cost calculation handles gracefully (not NaN)', () => {
+    let result = handleUsage({
+      usage:       { inputTokens: -100, outputTokens: -50 },
+      serviceType: 'anthropic',
+      isFinal:     true,
+    }, zeroCosts);
+
+    // Negative tokens produce negative cost — that is the actual behavior.
+    // The important thing is it does NOT produce NaN.
+    assert.ok(!isNaN(result.global), 'negative token cost should not be NaN');
+    assert.ok(!isNaN(result.service), 'negative token service cost should not be NaN');
+    assert.ok(!isNaN(result.session), 'negative token session cost should not be NaN');
   });
 });
 

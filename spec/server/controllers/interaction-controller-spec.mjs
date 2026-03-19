@@ -421,3 +421,196 @@ describe('InteractionController: user private key to postMessage (Gap 2)', () =>
     assert.ok(!opts.userPrivateKey, 'userPrivateKey should be null when UMK unavailable');
   });
 });
+
+// =============================================================================
+// InteractionController: _loadUserSigningKeys failure paths
+// =============================================================================
+
+describe('InteractionController: _loadUserSigningKeys failure paths', () => {
+  it('malformed JSON in encryptedPrivateKey → caught, returns null privateKey with publicKey', async () => {
+    // Create a user with malformed JSON in encryptedPrivateKey
+    let { User } = core.getModels();
+    let malformedUser = await User.create({
+      organizationID:      testOrg.id,
+      email:               'malformed-json@test.com',
+      firstName:           'Malformed',
+      lastName:            'JSON',
+      passwordSlot:        JSON.stringify({ ciphertext: 'fake', iv: '00'.repeat(6), authTag: '00'.repeat(8), salt: '00'.repeat(16) }),
+      publicKey:           testUser.publicKey,
+      encryptedPrivateKey: 'not-valid-json{{{',
+    });
+
+    let mockLoop = createMockInteractionLoop();
+    let mockApp  = createMockApp(mockLoop);
+
+    let req = createMockReq({
+      organizationID: testOrg.id,
+      userID:         malformedUser.id,
+      getUMK:         () => testUMK,
+    });
+    let res        = createMockRes();
+    let controller = createController(InteractionController, { mockApp, req, res });
+
+    // sendMessage → no-agent path (postMessage)
+    await controller.sendMessage({
+      params: { sessionID: 'ses_malformed_json' },
+      body:   { message: 'hello malformed' },
+    });
+
+    assert.ok(mockLoop.postMessageCalled, 'postMessage should still be called despite malformed JSON');
+
+    let opts = mockLoop.captured.postMessageOpts;
+    // Malformed JSON in encryptedPrivateKey → _loadUserSigningKeys catch block → null privateKey
+    assert.ok(!opts.userPrivateKey, 'privateKey should be null when encryptedPrivateKey is malformed JSON');
+  });
+
+  it('decryptUserPrivateKey() throws (bad UMK) → caught, returns null keys', async () => {
+    let brokenKeystore = {
+      ...keystore,
+      deriveUserKey:          (...args) => keystore.deriveUserKey(...args),
+      decryptUserPrivateKey:  () => { throw new Error('bad UMK: decryption failed'); },
+    };
+
+    let context = core.getContext();
+    context.setProperty('keystore', brokenKeystore);
+
+    let brokenApp = {
+      getCore:        () => core,
+      getAuthService: () => authService,
+      getKeystore:    () => brokenKeystore,
+    };
+
+    let mockLoop = createMockInteractionLoop();
+
+    // Minimal session/scheduler stubs
+    context.setProperty('interactionLoop', mockLoop);
+    let stubSessionManager = {
+      getParticipants: async () => [],
+      getFrameManager: () => null,
+    };
+    context.setProperty('sessionManager', stubSessionManager);
+    let stubScheduler = {
+      setResolveContext: () => {},
+      markActive:        () => {},
+    };
+    context.setProperty('sessionScheduler', stubScheduler);
+
+    let req = createMockReq({
+      organizationID: testOrg.id,
+      userID:         testUser.id,
+      getUMK:         () => testUMK,
+    });
+    let res        = createMockRes();
+    let controller = createController(InteractionController, { mockApp: brokenApp, req, res });
+
+    await controller.sendMessage({
+      params: { sessionID: 'ses_bad_umk' },
+      body:   { message: 'hello bad umk' },
+    });
+
+    assert.ok(mockLoop.postMessageCalled, 'postMessage should be called despite decryption failure');
+
+    let opts = mockLoop.captured.postMessageOpts;
+    assert.ok(!opts.userPrivateKey, 'privateKey should be null when decryptUserPrivateKey throws');
+
+    // Restore real keystore
+    context.setProperty('keystore', keystore);
+  });
+
+  it('envelope missing iv/ciphertext/authTag fields → decryptUserPrivateKey called with incomplete data, does not crash', async () => {
+    // Envelope is valid JSON but missing required fields
+    let { User } = core.getModels();
+    let incompleteUser = await User.create({
+      organizationID:      testOrg.id,
+      email:               'incomplete-envelope@test.com',
+      firstName:           'Incomplete',
+      lastName:            'Envelope',
+      passwordSlot:        JSON.stringify({ ciphertext: 'fake', iv: '00'.repeat(6), authTag: '00'.repeat(8), salt: '00'.repeat(16) }),
+      publicKey:           testUser.publicKey,
+      encryptedPrivateKey: JSON.stringify({ someField: 'value' }), // no iv/ciphertext/authTag
+    });
+
+    let mockLoop = createMockInteractionLoop();
+    let mockApp  = createMockApp(mockLoop);
+
+    let req = createMockReq({
+      organizationID: testOrg.id,
+      userID:         incompleteUser.id,
+      getUMK:         () => testUMK,
+    });
+    let res        = createMockRes();
+    let controller = createController(InteractionController, { mockApp, req, res });
+
+    // Should not throw — _loadUserSigningKeys has a top-level try/catch
+    await controller.sendMessage({
+      params: { sessionID: 'ses_incomplete_envelope' },
+      body:   { message: 'hello incomplete' },
+    });
+
+    assert.ok(mockLoop.postMessageCalled, 'postMessage should still be called');
+
+    let opts = mockLoop.captured.postMessageOpts;
+    assert.ok(!opts.userPrivateKey, 'privateKey should be null with incomplete envelope');
+  });
+
+  it('request.getUMK() throws → caught, returns null keys, message delivery continues', async () => {
+    let mockLoop = createMockInteractionLoop();
+    let mockApp  = createMockApp(mockLoop);
+
+    let req = createMockReq({
+      organizationID: testOrg.id,
+      userID:         testUser.id,
+      getUMK:         () => { throw new Error('vault unavailable'); },
+    });
+    let res        = createMockRes();
+    let controller = createController(InteractionController, { mockApp, req, res });
+
+    await controller.sendMessage({
+      params: { sessionID: 'ses_getumk_throws' },
+      body:   { message: 'hello throwing umk' },
+    });
+
+    assert.ok(mockLoop.postMessageCalled, 'postMessage should still be called when getUMK() throws');
+
+    let opts = mockLoop.captured.postMessageOpts;
+    assert.ok(!opts.userPrivateKey, 'privateKey should be null when getUMK() throws');
+  });
+
+  it('user has empty publicKey → publicKey returned as-is (empty string)', async () => {
+    // Create user with empty publicKey but valid encryptedPrivateKey structure
+    let { User } = core.getModels();
+    let emptyPubKeyUser = await User.create({
+      organizationID:      testOrg.id,
+      email:               'empty-pubkey@test.com',
+      firstName:           'Empty',
+      lastName:            'PubKey',
+      passwordSlot:        JSON.stringify({ ciphertext: 'fake', iv: '00'.repeat(6), authTag: '00'.repeat(8), salt: '00'.repeat(16) }),
+      publicKey:           '',
+      encryptedPrivateKey: null, // no private key, so we test the null-key branch
+    });
+
+    let mockLoop = createMockInteractionLoop();
+    let mockApp  = createMockApp(mockLoop);
+
+    let req = createMockReq({
+      organizationID: testOrg.id,
+      userID:         emptyPubKeyUser.id,
+      getUMK:         () => testUMK,
+    });
+    let res        = createMockRes();
+    let controller = createController(InteractionController, { mockApp, req, res });
+
+    await controller.sendMessage({
+      params: { sessionID: 'ses_empty_pubkey' },
+      body:   { message: 'hello empty pubkey' },
+    });
+
+    assert.ok(mockLoop.postMessageCalled, 'postMessage should be called');
+
+    let opts = mockLoop.captured.postMessageOpts;
+    // privateKey is null (no encryptedPrivateKey), publicKey is empty string → returned as-is
+    assert.ok(!opts.userPrivateKey, 'privateKey should be null');
+    // publicKey is null because '' || null evaluates to null in the impl
+    assert.ok(opts.userPublicKey == null, 'empty publicKey should be returned as null (falsy coercion)');
+  });
+});

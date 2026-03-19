@@ -309,3 +309,97 @@ describe('AgentController: Ed25519 key pair on create (Gap 1)', () => {
     assert.equal(result.data.agent.id, agent.id);
   });
 });
+
+// =============================================================================
+// AgentController: key generation failure paths
+// =============================================================================
+
+describe('AgentController: key generation failure paths', () => {
+  it('encryptActorPrivateKey() throws → create rejects (error propagates)', async () => {
+    // The impl does not catch errors from encryptActorPrivateKey() —
+    // if it throws, the create call will reject. Verify the behavior.
+    let brokenKeystore = {
+      ...keystore,
+      deriveUserKey:            (...args) => keystore.deriveUserKey(...args),
+      encrypt:                  (...args) => keystore.encrypt(...args),
+      generateSigningKeyPair:   () => keystore.generateSigningKeyPair(),
+      encryptActorPrivateKey:   () => { throw new Error('HSM unavailable'); },
+    };
+
+    let brokenMockApp = {
+      getCore:        () => core,
+      getAuthService: () => authService,
+      getKeystore:    () => brokenKeystore,
+    };
+
+    let req = createMockReq({
+      organizationID: testOrg.id,
+      userID:         testUser.id,
+      getUMK:         () => testUMK,
+    });
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp: brokenMockApp, req, res });
+
+    // The impl does NOT catch encryptActorPrivateKey errors — it propagates
+    await assert.rejects(
+      () => controller.create({ body: { name: 'test-broken-keystore', pluginID: 'claude-agent' } }),
+      (error) => error.message.includes('HSM unavailable'),
+      'encryptActorPrivateKey throw should propagate from create',
+    );
+  });
+
+  it('create rejects when pluginID is null', async () => {
+    let req = createMockReq({
+      organizationID: testOrg.id,
+      userID:         testUser.id,
+      getUMK:         () => testUMK,
+    });
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.create({ body: { name: 'test-null-plugin', pluginID: null } }),
+      (error) => error.message.includes('pluginID is required'),
+      'null pluginID should be rejected with 400',
+    );
+  });
+
+  it('create rejects when pluginID is empty string', async () => {
+    let req = createMockReq({
+      organizationID: testOrg.id,
+      userID:         testUser.id,
+      getUMK:         () => testUMK,
+    });
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp, req, res });
+
+    await assert.rejects(
+      () => controller.create({ body: { name: 'test-empty-plugin', pluginID: '' } }),
+      (error) => error.message.includes('pluginID is required'),
+      'empty string pluginID should be rejected with 400',
+    );
+  });
+
+  it('create rejects when no keystore on context (getKeystore returns null)', async () => {
+    let noKeystoreMockApp = {
+      getCore:        () => core,
+      getAuthService: () => authService,
+      getKeystore:    () => null,
+    };
+
+    let req = createMockReq({
+      organizationID: testOrg.id,
+      userID:         testUser.id,
+      getUMK:         () => testUMK,
+    });
+    let res        = createMockRes();
+    let controller = createController(AgentController, { mockApp: noKeystoreMockApp, req, res });
+
+    // Without a keystore, generateSigningKeyPair() would throw a TypeError
+    await assert.rejects(
+      () => controller.create({ body: { name: 'test-no-keystore', pluginID: 'claude-agent' } }),
+      (error) => error instanceof Error,
+      'missing keystore should cause create to reject',
+    );
+  });
+});

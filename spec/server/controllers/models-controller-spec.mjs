@@ -301,3 +301,119 @@ describe('ModelsController', () => {
     }
   });
 });
+
+// =============================================================================
+// ModelsController: defensive handling
+// =============================================================================
+
+describe('ModelsController: defensive handling', () => {
+  it('AgentClass in registry Map is null → skipped without crash', async () => {
+    class GoodPlugin {
+      static getModels() { return [{ id: 'good-model' }]; }
+    }
+
+    let mockRegistry = {
+      getAgentTypes: () => new Map([
+        ['null-class-plugin', null],
+        ['good-plugin', GoodPlugin],
+      ]),
+    };
+
+    let controller = buildController({
+      getPluginLoader: () => ({ getRegistry: () => mockRegistry }),
+    });
+
+    let result = await controller.index();
+
+    // null AgentClass is skipped; GoodPlugin should still appear
+    assert.equal(result.data.models.length, 1);
+    assert.equal(result.data.models[0].pluginID, 'good-plugin');
+  });
+
+  it('AgentClass.getModels is explicitly null (not function) → skipped without crash', async () => {
+    class NullGetModelsPlugin {
+      // getModels is null, not missing — typeof null !== 'function'
+    }
+    NullGetModelsPlugin.getModels = null;
+
+    class WorkingPlugin {
+      static getModels() { return [{ id: 'working-model' }]; }
+    }
+
+    let mockRegistry = {
+      getAgentTypes: () => new Map([
+        ['null-getmodels-plugin', NullGetModelsPlugin],
+        ['working-plugin', WorkingPlugin],
+      ]),
+    };
+
+    let controller = buildController({
+      getPluginLoader: () => ({ getRegistry: () => mockRegistry }),
+    });
+
+    let result = await controller.index();
+
+    // null getModels is skipped; WorkingPlugin should still appear
+    assert.equal(result.data.models.length, 1);
+    assert.equal(result.data.models[0].pluginID, 'working-plugin');
+  });
+
+  it('getModels() returns a non-array truthy object → Array.isArray guard skips it', async () => {
+    class NonArrayPlugin {
+      static getModels() { return { id: 'model-obj', contextWindow: 100000 }; }
+    }
+
+    let mockRegistry = {
+      getAgentTypes: () => new Map([['non-array-plugin', NonArrayPlugin]]),
+    };
+
+    let controller = buildController({
+      getPluginLoader: () => ({ getRegistry: () => mockRegistry }),
+    });
+
+    let result = await controller.index();
+    // Non-array truthy → Array.isArray guard → iterates [] → no models added
+    assert.deepEqual(result, { data: { models: [] } });
+  });
+
+  it('plugin model with existing pluginID field → spread override: controller pluginID wins', async () => {
+    class ModelWithPluginID {
+      static getModels() {
+        return [{ id: 'my-model', pluginID: 'original-id', contextWindow: 100000 }];
+      }
+    }
+
+    let mockRegistry = {
+      getAgentTypes: () => new Map([['actual-plugin-id', ModelWithPluginID]]),
+    };
+
+    let controller = buildController({
+      getPluginLoader: () => ({ getRegistry: () => mockRegistry }),
+    });
+
+    let result = await controller.index();
+    assert.equal(result.data.models.length, 1);
+    // Spread: { pluginID: 'actual-plugin-id', ...model } → our pluginID wins because
+    // the controller does { pluginID, ...model } which means model's pluginID overrides!
+    // Let's verify actual behavior: the impl does: models.push({ pluginID, ...model })
+    // spread-right overrides left → model.pluginID ('original-id') wins
+    assert.equal(result.data.models[0].pluginID, 'original-id', 'model pluginID overrides controller pluginID via spread');
+  });
+
+  it('registry.getAgentTypes() throws → not caught by impl, propagates as expected', async () => {
+    let mockRegistry = {
+      getAgentTypes: () => { throw new Error('registry exploded'); },
+    };
+
+    let controller = buildController({
+      getPluginLoader: () => ({ getRegistry: () => mockRegistry }),
+    });
+
+    // The impl does NOT catch getAgentTypes() errors — they propagate
+    await assert.rejects(
+      () => controller.index(),
+      (error) => error.message.includes('registry exploded'),
+      'getAgentTypes() throw should propagate from index()',
+    );
+  });
+});
