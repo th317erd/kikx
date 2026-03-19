@@ -25,16 +25,17 @@ export class ModelsController extends ControllerAuthBase {
 
       if (agentTypes) {
         for (let [pluginID, AgentClass] of agentTypes) {
-          if (typeof AgentClass.getModels === 'function') {
-            try {
-              let pluginModels = AgentClass.getModels();
+          if (!AgentClass || typeof AgentClass.getModels !== 'function')
+            continue;
 
-              for (let model of (pluginModels || []))
-                models.push({ pluginID, ...model });
-            } catch (error) {
-              // Plugin threw from getModels() — skip this plugin, log warning
-              console.warn(`[ModelsController] getModels() threw for plugin "${pluginID}":`, error.message || error);
-            }
+          try {
+            let pluginModels = AgentClass.getModels();
+
+            for (let model of (Array.isArray(pluginModels) ? pluginModels : []))
+              models.push({ pluginID, ...model });
+          } catch (error) {
+            // Plugin threw from getModels() — skip this plugin, log warning
+            console.warn(`[ModelsController] getModels() threw for plugin "${pluginID}":`, error.message || error);
           }
         }
       }

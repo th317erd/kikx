@@ -187,24 +187,36 @@ export class BasePluginClass {
     if (!messages || messages.length === 0)
       return messages || [];
 
-    let { systemPromptText = '', behaviorsText = '', instructionsText = '', onOverflow } = options;
+    let {
+      systemPromptText = '',
+      behaviorsText    = '',
+      instructionsText = '',
+      onOverflow,
+    } = (options || {});
 
     // 1. Determine context window from model info
-    let models        = this.constructor.getModels();
+    let modelList     = this.constructor.getModels();
+    let models        = Array.isArray(modelList) ? modelList : [];
     let agentModelID  = this._agent && this._agent.model;
     let modelInfo     = (agentModelID && models.find((m) => m.id === agentModelID)) || models[0];
-    let contextWindow = (modelInfo && modelInfo.contextWindow) || DEFAULT_CONTEXT_WINDOW;
+    let contextWindow = (modelInfo && typeof modelInfo.contextWindow === 'number' && modelInfo.contextWindow > 0)
+      ? modelInfo.contextWindow
+      : DEFAULT_CONTEXT_WINDOW;
 
-    // 2. Calculate character budget (subtract system prompt size)
-    let charBudget = (contextWindow * 4) - (systemPromptText || '').length;
+    // 2. Calculate character budget (subtract system prompt size); clamp to minimum
+    let charBudget = Math.max(1024, (contextWindow * 4) - (systemPromptText || '').length);
 
     // 3. Check behaviors + instructions against 50% cap
     let maxBehaviorsChars = Math.floor(contextWindow * 4 * 0.50);
     let behaviorsTotal    = (behaviorsText || '').length + (instructionsText || '').length;
 
-    if (behaviorsTotal > maxBehaviorsChars) {
-      if (typeof onOverflow === 'function')
+    if (behaviorsTotal > maxBehaviorsChars && typeof onOverflow === 'function') {
+      try {
         await onOverflow('behaviors');
+      } catch (overflowError) {
+        // Best-effort — overflow notification failure must not block message delivery
+        console.error('[truncate] onOverflow callback threw:', overflowError.message || overflowError);
+      }
     }
 
     // 4. Per-message cap (tool results, large agent/user messages)
