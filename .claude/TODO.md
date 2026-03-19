@@ -41,6 +41,16 @@ See `bot-docs/future-plans/compaction.yaml`
   - [x] Create compaction command plugin (registerCapability pattern)
   - [x] Write tests (spec/core/compaction/compact-command-spec.mjs)
 
-## Phase 5: Wrap-up
-- [ ] Poll for tool-log bot completion
-- [ ] Full test suite green
+## Phase 5: Wrap-up — COMPLETE
+- [x] Polled for tool-log bot completion — tool-log finished (3 commits)
+- [x] Full test suite: 3653/3654 pass (1 pre-existing failure only)
+
+---
+
+## Tool-Log Summary (tool-log bot)
+- e6a61ff: ValueStore note+type columns (8 new tests)
+- 6c439a9: ToolLogService + tool_log:get/search tools (75 new tests)
+- a7bfa2f: InteractionLoop tool output interception (wiring)
+- Total: 83 new tests
+
+## STATUS: BOTH BOTS COMPLETE — 3653/3654 tests passing
