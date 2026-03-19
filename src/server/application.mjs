@@ -26,6 +26,7 @@ import { SessionScheduler }      from '../core/scheduling/session-scheduler.mjs'
 import { AgentResolver }         from '../core/scheduling/agent-resolver.mjs';
 import { PermissionService }     from '../core/permissions/permission-service.mjs';
 import { ValueStoreService }     from '../core/lib/value-store-service.mjs';
+import { SolrService }           from '../core/lib/solr-service.mjs';
 
 export class Application extends MythixApplication {
   static getName() {
@@ -127,6 +128,11 @@ export class Application extends MythixApplication {
     this._keystore.loadSystemKeyPair(configDir);
 
     context.setProperty('keystore', this._keystore);
+
+    // Initialize Solr search service
+    let solrConfig  = (options && options.solr) || this.getOptions().solr || {};
+    let solrService = new SolrService({ context, ...solrConfig });
+    context.setProperty('solrService', solrService);
 
     // Initialize value store service
     let valueStoreService = new ValueStoreService({ context });

@@ -50,6 +50,10 @@ export class ControllerBase extends MythixControllerBase {
     return this.getCore().getContext().getProperty('valueStoreService');
   }
 
+  getSolrService() {
+    return this.getCore().getContext().getProperty('solrService');
+  }
+
   getCoreModels() {
     return this.getCore().getModels();
   }

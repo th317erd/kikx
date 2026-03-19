@@ -53,7 +53,21 @@ Important details to remember across sessions.
 - **E2E Integration:** VERIFIED (92 frames, 0 errors in comprehensive permission E2E)
 - **Test count:** 3355 tests, 0 new failures (2 pre-existing in multi-agent-streaming-spec)
 
-## Current Work: "Abilities" → "Behaviors" Rename (in progress 2026-03-17)
+## Current Work: Solr Full-Text Search Integration (2026-03-19)
+
+- **Solr 9.10.1** running via Docker (port 8983, core `kikx`)
+- **SolrService:** `src/core/lib/solr-service.mjs` — fetch-based, no external deps
+- **SolrError:** custom error class with `isRetryable()` for 408/429/503/504
+- **Methods:** ping, getCoreStatus, search (eDisMax), indexDocuments, deleteDocuments, deleteByQuery, commit, stream (cursor pagination)
+- **Application wiring:** `context.getProperty('solrService')`, `ControllerBase.getSolrService()`
+- **Config:** `options.solr = { host, core, timeout }` passed through Application constructor
+- **Schema:** `solr/kikx/conf/schema.xml` — 17 fields (frames, tool logs, generic)
+- **Docker:** `docker-compose up -d` or `scripts/solr-start.sh`
+- **Docs:** `docs/solr/` — 5 reference docs covering Node.js patterns, HTML indexing, batching, fuzzy search
+- **Tests:** 58 tests in `spec/core/lib/solr-service-spec.mjs`
+- **Test count:** 3758 tests, 0 failures
+
+## Previous Work: "Abilities" → "Behaviors" Rename (completed 2026-03-17)
 
 - Renaming the "abilities" system to "behaviors" across all V2 code
 - Agent model methods: `getAbilities`→`getBehaviors`, `setAbilities`→`setBehaviors`, `hasAbilities`→`hasBehaviors`
