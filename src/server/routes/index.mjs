@@ -197,6 +197,11 @@ export function getRoutes({ path }) {
             let frameID = capture('frameID');
 
             endpoint(frameID, {
+              methods:    [ 'GET' ],
+              controller: 'FrameController.show',
+            });
+
+            endpoint(frameID, {
               methods:    [ 'PATCH' ],
               controller: 'FrameController.update',
             });

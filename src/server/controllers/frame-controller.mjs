@@ -52,6 +52,47 @@ export class FrameController extends ControllerAuthBase {
   }
 
   // ---------------------------------------------------------------------------
+  // GET /api/v2/sessions/:sessionID/frames/:frameID
+  // ---------------------------------------------------------------------------
+  // Returns a single frame with full content (including compaction summary).
+  // ---------------------------------------------------------------------------
+
+  async show({ params }) {
+    let { Frame } = this.getCoreModels();
+
+    let frame = await Frame.where.id.EQ(params.frameID).first();
+    if (!frame)
+      this.throwNotFoundError('Frame not found');
+
+    if (frame.sessionID !== params.sessionID)
+      this.throwNotFoundError('Frame not found in this session');
+
+    // Deserialize content if stored as JSON string
+    let content = frame.content;
+    if (typeof content === 'string') {
+      try {
+        content = JSON.parse(content);
+      } catch (_e) { /* not JSON, use as-is */ }
+    }
+
+    return {
+      data: {
+        frame: {
+          id:            frame.id,
+          type:          frame.type,
+          sessionID:     frame.sessionID,
+          interactionID: frame.interactionID,
+          authorType:    frame.authorType,
+          authorID:      frame.authorID,
+          content,
+          order:         frame.order,
+          createdAt:     frame.createdAt,
+        },
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // PATCH /api/v2/sessions/:sessionID/frames/:frameID
   // ---------------------------------------------------------------------------
   // Updates a frame's content (e.g., persisting prompt answers).

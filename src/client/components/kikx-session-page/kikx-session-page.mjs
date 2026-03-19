@@ -190,6 +190,7 @@ const RENDERABLE_TYPES = new Set([
   'error',
   'reflection',
   'tool-activity',
+  'compaction',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -211,6 +212,34 @@ export function createFrameElement(frame) {
 
   if (!RENDERABLE_TYPES.has(frame.type))
     return null;
+
+  // Compaction frames render as a standalone divider — no interaction wrapper
+  if (frame.type === 'compaction') {
+    let compaction = document.createElement('kikx-compaction-frame');
+
+    if (frame.id)
+      compaction.setAttribute('data-frame-id', frame.id);
+
+    compaction.setAttribute('frame-id', frame.id || '');
+
+    if (frame.sessionID)
+      compaction.setAttribute('session-id', frame.sessionID);
+
+    let content = frame.content || {};
+
+    compaction.setAttribute('status', content.status || 'started');
+
+    if (content.startedAt)
+      compaction.setAttribute('started-at', content.startedAt);
+
+    if (content.framesCompacted != null)
+      compaction.setAttribute('frames-compacted', String(content.framesCompacted));
+
+    if (content.compactorAgentID)
+      compaction.setAttribute('compactor-name', content.compactorAgentID);
+
+    return compaction;
+  }
 
   let isUser    = (frame.type === 'user-message') || (frame.authorType === 'user');
   let alignment;
@@ -981,6 +1010,25 @@ class KikxSessionPage extends HTMLElement {
 
         if (html)
           mc.content = html;
+      }
+
+      // Update compaction frame attributes when status changes
+      if (el.tagName && el.tagName.toLowerCase() === 'kikx-compaction-frame' && frame.content) {
+        let content = frame.content;
+
+        if (content.status)
+          el.setAttribute('status', content.status);
+
+        if (content.startedAt)
+          el.setAttribute('started-at', content.startedAt);
+
+        if (content.framesCompacted != null)
+          el.setAttribute('frames-compacted', String(content.framesCompacted));
+
+        if (content.compactorAgentID)
+          el.setAttribute('compactor-name', content.compactorAgentID);
+
+        return;
       }
 
       // Update reflection content (streaming reflections stored in group frame)

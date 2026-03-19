@@ -218,6 +218,14 @@ export default {
     archiveShow:       '\u{1F435}',
     archiveHide:       '\u{1F648}',
   },
+  compaction: {
+    inProgress:   'Compacting session history...',
+    finished:     'Compacted {n} messages',
+    abandoned:    'Compaction failed',
+    loading:      'Loading summary...',
+    noSummary:    'No summary available.',
+    errorLoading: 'Unable to load summary.',
+  },
   common: {
     save:    'Save',
     cancel:  'Cancel',

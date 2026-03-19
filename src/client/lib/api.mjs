@@ -202,6 +202,10 @@ export function getFrames(sessionID, options = {}) {
   return request('GET', url);
 }
 
+export function getFrame(sessionID, frameID) {
+  return request('GET', `/sessions/${sessionID}/frames/${frameID}`);
+}
+
 export function updateFrameContent(sessionID, frameID, content) {
   return request('PATCH', `/sessions/${sessionID}/frames/${frameID}`, { content });
 }
