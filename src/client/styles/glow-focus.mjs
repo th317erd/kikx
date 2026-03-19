@@ -166,6 +166,11 @@ function glowBase(selector, borderWidth, opacity) {
         rgba(0, 229, 255, ${bloomLow}) 360deg
       );
 
+      /* Fade out center convergence point with a radial mask */
+      /* Fade out center convergence point with a radial mask */
+      -webkit-mask: radial-gradient(ellipse at center, transparent 0%, black 40%);
+      mask: radial-gradient(ellipse at center, transparent 0%, black 40%);
+
       animation:
         glow-rotate 20s linear infinite,
         glow-hue-cycle 30s linear infinite;
