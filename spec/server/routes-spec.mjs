@@ -12,6 +12,7 @@ import { AuthService }      from '../../src/server/auth/index.mjs';
 import { SessionManager }   from '../../src/core/session/index.mjs';
 import { FramePersistence } from '../../src/core/frames/index.mjs';
 import { InteractionLoop }  from '../../src/core/interaction/index.mjs';
+import { ValueStoreService } from '../../src/core/lib/value-store-service.mjs';
 
 import { AuthController }        from '../../src/server/controllers/auth-controller.mjs';
 import { SessionController }     from '../../src/server/controllers/session-controller.mjs';
@@ -105,6 +106,9 @@ before(async () => {
 
   interactionLoop = new InteractionLoop(context);
   context.setProperty('interactionLoop', interactionLoop);
+
+  let valueStoreService = new ValueStoreService({ context });
+  context.setProperty('valueStoreService', valueStoreService);
 
   mockApp = createMockApp({ core, authService, keystore });
 
