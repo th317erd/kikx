@@ -10,6 +10,7 @@ import { truncateContent, truncateConversation }       from './context-truncatio
 import { reinjectBehaviors }                            from './behaviors-reinjection.mjs';
 import { reinjectInstructions }                        from './instructions-reinjection.mjs';
 import { signFrameContent, decryptAgentPrivateKey }    from '../crypto/frame-signing.mjs';
+import { ToolLogService }                              from './tool-log-service.mjs';
 
 // =============================================================================
 // InteractionLoop
@@ -54,6 +55,9 @@ export class InteractionLoop extends EventEmitter {
     // Delegated subsystems
     this._permissionHandler = new PermissionHandler(this);
     this._commandHandler    = new CommandHandler(this);
+
+    // Tool log service (tool-log plan)
+    this._toolLogService = new ToolLogService();
   }
 
   // ---------------------------------------------------------------------------
@@ -91,6 +95,14 @@ export class InteractionLoop extends EventEmitter {
 
   _getKeystore() {
     return this._context.getProperty('keystore');
+  }
+
+  _getModels() {
+    return this._context.getProperty('models');
+  }
+
+  _getToolLogService() {
+    return this._toolLogService;
   }
 
   async _isDMForAgent(agent, sessionID) {
@@ -161,6 +173,76 @@ export class InteractionLoop extends EventEmitter {
       context.userPrivateKey = params.userPrivateKey;
 
     return context;
+  }
+
+  // ---------------------------------------------------------------------------
+  // _storeAndMaybeReplaceToolOutput — tool-log plan interception hook
+  // ---------------------------------------------------------------------------
+  // Called after every tool execution, BEFORE creating the tool-result frame.
+  // Stores the output in ValueStore via ToolLogService (best-effort).
+  // If output exceeds 1024 Unicode characters, replaces toolOutput inline with
+  // a JSON pointer message so the agent uses tool_log:get to retrieve it.
+  // ---------------------------------------------------------------------------
+
+  async _storeAndMaybeReplaceToolOutput(sessionID, interactionID, block, params, toolOutput, signingContext) {
+    try {
+      let toolLogService = this._getToolLogService();
+      if (!toolLogService)
+        return toolOutput;
+
+      // Extract pluginID and toolName from "pluginID:toolName" format
+      let fullToolName = block.content.toolName || '';
+      let colonIdx     = fullToolName.indexOf(':');
+      let pluginID     = colonIdx >= 0 ? fullToolName.slice(0, colonIdx) : '';
+      let toolName     = colonIdx >= 0 ? fullToolName.slice(colonIdx + 1) : fullToolName;
+
+      // Get agent info
+      let agent          = params.agent;
+      let agentID        = (agent && agent.id) || block.authorID || null;
+      let organizationID = (agent && agent.organizationID) || null;
+
+      // Get signing material from signingContext (agentPrivateKey) and agent model (publicKey)
+      let privateKeyPEM = (signingContext && signingContext.agentPrivateKey) || null;
+      let publicKeyPEM  = (agent && agent.publicKey) || null;
+      let keystore      = this._getKeystore();
+
+      // Get models
+      let models = this._getModels();
+
+      let storeResult = await toolLogService.storeToolOutput({
+        sessionID,
+        interactionID,
+        agentID,
+        organizationID,
+        toolName,
+        pluginID,
+        toolCallArgs: block.content.arguments || null,
+        output:       toolOutput,
+        models,
+        keystore,
+        privateKeyPEM,
+        publicKeyPEM,
+      });
+
+      // If output > 1024 Unicode chars, replace inline with pointer JSON
+      let outputStr = (typeof toolOutput === 'string') ? toolOutput : JSON.stringify(toolOutput);
+      let charCount = [ ...outputStr ].length;  // Unicode-aware character count
+
+      if (charCount > 1024 && storeResult) {
+        return JSON.stringify({
+          stored:        true,
+          tool_log_id:   storeResult.key,
+          output_length: charCount,
+          message:       'Output stored. Retrieve with tool_log:get.',
+        });
+      }
+
+      return toolOutput;
+    } catch (error) {
+      // Best-effort — never block tool delivery
+      console.error('[ToolLog] Failed to store tool output:', error.message || error);
+      return toolOutput;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -578,6 +660,19 @@ export class InteractionLoop extends EventEmitter {
             let { _renderHint, ...cleanOutput } = toolOutput;
             toolOutput = cleanOutput;
           }
+
+          // =============================================================================
+          // TOOL LOG INTERCEPTION — tool-log plan (tool-log.yaml)
+          // Stores ALL tool outputs in ValueStore. If output > 1024 Unicode chars,
+          // replace toolOutput with a JSON pointer message.
+          // Best-effort: failures do NOT block tool delivery.
+          // =============================================================================
+          // NOTE FOR COMPACTION BOT: Compaction trigger check should be added AFTER
+          // the tool-result frame is created (after the _createFrame call below), not here.
+          // =============================================================================
+          toolOutput = await this._storeAndMaybeReplaceToolOutput(
+            sessionID, interactionID, block, params, toolOutput, signingContext,
+          );
 
           await this._createFrame(sessionID, {
             id: generateID('frm_'), type: 'tool-result',
