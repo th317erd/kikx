@@ -73,5 +73,15 @@ export class ValueStore extends ModelBase {
       type:      Types.STRING(64),
       allowNull: true,
     },
+    note: {
+      type:      Types.STRING(256),
+      allowNull: true,
+      index:     true,
+    },
+    type: {
+      type:      Types.STRING(64),
+      allowNull: true,
+      index:     true,
+    },
   };
 }

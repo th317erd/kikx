@@ -248,3 +248,127 @@ describe('ValueStore Model', () => {
     assert.ok(fetched.value == null, 'value should be null or undefined');
   });
 });
+
+describe('ValueStore note and type columns', () => {
+  let core;
+  let models;
+  let organization;
+
+  before(async () => {
+    core = createKikxCore();
+    await core.start();
+    models = core.getModels();
+  });
+
+  after(async () => {
+    if (core && core.isStarted())
+      await core.stop();
+  });
+
+  beforeEach(async () => {
+    organization = await models.Organization.create({ name: 'ValueStore note/type Org' });
+  });
+
+  async function createEntry(overrides = {}) {
+    return models.ValueStore.create({
+      organizationID: organization.id,
+      ownerType:      'Agent',
+      ownerID:        'agt_notetype_test',
+      namespace:      'config',
+      key:            'setting',
+      value:          'value',
+      ...overrides,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Happy paths
+  // ---------------------------------------------------------------------------
+
+  it('can create a ValueStore entry with note and type set', async () => {
+    let entry = await createEntry({
+      key:  'tool-use',
+      note: 'used hammer.execute',
+      type: 'tool_call',
+    });
+
+    assert.ok(entry.id.startsWith('vs_'), 'id should have vs_ prefix');
+    assert.equal(entry.note, 'used hammer.execute');
+    assert.equal(entry.type, 'tool_call');
+  });
+
+  it('note and type are returned when fetching the entry', async () => {
+    let entry = await createEntry({
+      key:  'fetch-check',
+      note: 'fetch note',
+      type: 'fetch_type',
+    });
+
+    let fetched = await models.ValueStore.where.id.EQ(entry.id).first();
+    assert.equal(fetched.note, 'fetch note');
+    assert.equal(fetched.type, 'fetch_type');
+  });
+
+  it('can filter entries by type (exact match)', async () => {
+    let orgID = organization.id;
+
+    await createEntry({ key: 'a', type: 'tool_call', note: 'first' });
+    await createEntry({ key: 'b', type: 'tool_call', note: 'second' });
+    await createEntry({ key: 'c', type: 'memory',    note: 'third' });
+
+    let results = await models.ValueStore.where
+      .organizationID.EQ(orgID)
+      .AND.type.EQ('tool_call')
+      .all();
+
+    assert.ok(results.length >= 2, `expected at least 2 tool_call entries, got ${results.length}`);
+    for (let r of results)
+      assert.equal(r.type, 'tool_call');
+  });
+
+  it('can create entry without note/type (null values, existing behavior preserved)', async () => {
+    let entry = await createEntry({ key: 'no-metadata' });
+
+    assert.ok(entry.id.startsWith('vs_'), 'id should have vs_ prefix');
+    assert.equal(entry.value, 'value');
+    // note and type should be absent / null
+    assert.ok(entry.note == null, `note should be null, got: ${entry.note}`);
+    assert.ok(entry.type == null, `type should be null, got: ${entry.type}`);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Edge cases
+  // ---------------------------------------------------------------------------
+
+  it('note accepts up to 256 characters (boundary test)', async () => {
+    let longNote = 'n'.repeat(256);
+    let entry    = await createEntry({ key: 'note-boundary', note: longNote });
+
+    let fetched = await models.ValueStore.where.id.EQ(entry.id).first();
+    assert.equal(fetched.note.length, 256);
+    assert.equal(fetched.note, longNote);
+  });
+
+  it('type accepts up to 64 characters (boundary test)', async () => {
+    let longType = 't'.repeat(64);
+    let entry    = await createEntry({ key: 'type-boundary', type: longType });
+
+    let fetched = await models.ValueStore.where.id.EQ(entry.id).first();
+    assert.equal(fetched.type.length, 64);
+    assert.equal(fetched.type, longType);
+  });
+
+  it('note defaults to null when not specified', async () => {
+    let entry = await createEntry({ key: 'note-default' });
+
+    let fetched = await models.ValueStore.where.id.EQ(entry.id).first();
+    assert.ok(fetched.note == null, `note should default to null, got: ${fetched.note}`);
+  });
+
+  it('type defaults to null when not specified', async () => {
+    let entry = await createEntry({ key: 'type-default' });
+
+    let fetched = await models.ValueStore.where.id.EQ(entry.id).first();
+    assert.ok(fetched.type == null, `type should default to null, got: ${fetched.type}`);
+  });
+});
