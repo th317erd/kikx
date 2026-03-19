@@ -44,46 +44,51 @@ Important details to remember across sessions.
 
 ---
 
-## V2 Build Status (as of 2026-03-15)
+## V2 Build Status (as of 2026-03-19)
 
 - **Phase 1 (MVP, Steps 1-13):** COMPLETE
 - **Phase 2 (V1 Parity, Steps 14-19):** COMPLETE
 - **Phase 3 (V2 Differentiators):** IN PROGRESS
 - **Phase C (Frame Event Router):** COMPLETE (C1-C4)
 - **E2E Integration:** VERIFIED (92 frames, 0 errors in comprehensive permission E2E)
-- **Test count:** 3017 tests, 0 failures
+- **Test count:** 3745 tests, 1 pre-existing failure (SessionController.list)
 
-## Current Work: Event-Driven DOM Rendering Refactor — COMPLETE
+## Current Work: Rolling Compaction + Tool Log — COMPLETE
+
+**Status:** ALL STEPS COMPLETE. Both features implemented in parallel by coordinated bots.
+**Plans:** `bot-docs/future-plans/compaction.yaml`, `bot-docs/future-plans/tool-log.yaml`
+
+### Rolling Compaction (implemented 2026-03-19)
+- Plugin interface: `shouldCompact()`, `getCompactionPrompt()`, `getMaxCompactionTokens()`, `_createSingleTurn()` on base plugin class
+- CompactionRunner: `src/core/compaction/index.mjs` — core logic with DB locking
+- Frame list API: nulls out `content.summary` on compaction frames (lazy-load via GET)
+- Claude plugin: `shouldCompact()` at 80% context window, `_createSingleTurn()` for non-streaming API calls
+- Client: `kikx-compaction-frame` web component (started/finished/abandoned states, lazy-load expand)
+- InteractionLoop: fire-and-forget trigger, compaction-aware message filter, startup cleanup
+- `/compact` command: manual trigger via internal plugin
+- Frame GET endpoint: `GET /api/v2/sessions/:id/frames/:frameID`
+
+### Glow Animation Performance Fix (implemented 2026-03-19)
+- Rewrote `glow-focus.mjs`: `inherits:false` on `--glow-angle`, compositor-friendly `filter:hue-rotate()`
+- Fixed 61% frame drops caused by full-page restyle every animation frame
+- Radial mask on bloom layer to soften center convergence point
+
+**Key new files:**
+- `src/core/compaction/index.mjs` — CompactionRunner
+- `src/core/internal-plugins/compact/index.mjs` — /compact command
+- `src/client/components/kikx-compaction-frame/kikx-compaction-frame.mjs` — UI component
+
+## Previous Work: Event-Driven DOM Rendering Refactor — COMPLETE
 
 **Status:** ALL STEPS COMPLETE. Session page reduced from ~2463 to ~2046 lines.
-**Plan:** `bot-docs/future-plans/event-driven-rendering.yaml`
-**TODO:** `.claude/TODO.md` (detailed step-by-step with completion status)
-
-**Completed steps:**
-- Steps 1-3: `createFrameElement()` factory + `frame:added`/`frame:updated` event handlers
-- Step 5: Unified entry points (all data through `merge()`)
-- Step 6: Optimistic user messages with ghost styling (`.pending` class)
-- Step 4: Phantom frames for streaming (replaced manual DOM with FrameManager phantoms)
-- Step 7: Bulk load performance (DocumentFragment batch rendering)
-- Step 8: Cleanup (~417 lines of dead code removed)
-
-**Commits:**
-- `459d148` — Steps 1-3, 5, 6, 8
-- `644c2c7` — Steps 4, 7 (phantom streaming + batch load)
-
-**Key files modified:**
-- `src/client/components/kikx-session-page/kikx-session-page.mjs` — Main refactor target
-- `src/client/components/kikx-interaction/kikx-interaction.mjs` — Pending ghost CSS
-- `spec/client/multi-agent-streaming-spec.mjs` — Rewritten for phantom interface
-- `spec/client/create-frame-element-spec.mjs` — Pure factory TDD tests
-- `spec/client/event-driven-rendering-spec.mjs` — Event pipeline TDD tests
-
-**Test count:** ~3291 tests, 0 failures
 
 ### Completed Future Plans
 
 | Feature | Completed |
 |---------|-----------|
+| Rolling Compaction | 2026-03-19 |
+| Tool Log | 2026-03-19 |
+| Event-Driven DOM Rendering | 2026-03-17 |
 | Markdown Conversion | 2026-03-13 |
 | Ed25519 Identity + ValueStore + Danger Level | 2026-03-14 |
 | Abilities System | 2026-03-12 |
@@ -97,7 +102,6 @@ Important details to remember across sessions.
 
 | Feature | Priority |
 |---------|----------|
-| ~~Event-Driven DOM Rendering~~ | COMPLETE (all 8 steps) |
 | Device Approval Auth | Medium |
 | Key Rotation | Medium |
 | Applicable Permitters | Low |
@@ -117,7 +121,9 @@ Important details to remember across sessions.
 - **Auth system:** `src/server/auth/index.mjs` (AuthService, JWT helpers, middleware)
 - **Permissions:** `src/core/permissions/permission-engine.mjs` (PermissionEngine)
 - **Permission model:** `src/core/models/permission-rule-model.mjs` (PermissionRule)
-- **Internal plugins:** `src/core/internal-plugins/` (shell, websearch, help)
+- **Internal plugins:** `src/core/internal-plugins/` (shell, websearch, help, compact, tool-log)
+- **CompactionRunner:** `src/core/compaction/index.mjs`
+- **ToolLogService:** `src/core/interaction/tool-log-service.mjs`
 - **Help index:** `src/core/help/help-index.mjs`
 - **WebSocket transport:** `src/server/transport/websocket-transport.mjs`
 - **FrameManager:** `src/shared/frame-manager/frame-manager.mjs`

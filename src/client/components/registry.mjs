@@ -34,3 +34,4 @@ import './kikx-websocket-manager/kikx-websocket-manager.mjs';
 import './kikx-session-link/kikx-session-link.mjs';
 import './kikx-file-read/kikx-file-read.mjs';
 import './kikx-file-write/kikx-file-write.mjs';
+import './kikx-compaction-frame/kikx-compaction-frame.mjs';
