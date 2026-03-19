@@ -12,13 +12,18 @@
     <lockType>${solr.lock.type:native}</lockType>
   </indexConfig>
 
-  <!-- Autocommit: flush to disk every 15 seconds or 10,000 docs -->
+  <!-- Compression: BEST_COMPRESSION for text-heavy index -->
+  <codecFactory class="solr.SchemaCodecFactory">
+    <str name="compressionMode">BEST_COMPRESSION</str>
+  </codecFactory>
+
+  <!-- Autocommit: hard commit every 60s, soft commit every 1s for NRT visibility -->
   <updateHandler class="solr.DirectUpdateHandler2">
     <updateLog>
       <str name="dir">${solr.ulog.dir:}</str>
     </updateLog>
     <autoCommit>
-      <maxTime>15000</maxTime>
+      <maxTime>60000</maxTime>
       <maxDocs>10000</maxDocs>
       <openSearcher>false</openSearcher>
     </autoCommit>
@@ -27,13 +32,14 @@
     </autoSoftCommit>
   </updateHandler>
 
-  <!-- Query handler -->
+  <!-- Query handler — eDisMax default, search across _text_ catch-all -->
   <requestHandler name="/select" class="solr.SearchHandler">
     <lst name="defaults">
       <str name="echoParams">explicit</str>
       <str name="wt">json</str>
       <int name="rows">10</int>
       <str name="df">_text_</str>
+      <str name="defType">edismax</str>
     </lst>
   </requestHandler>
 
