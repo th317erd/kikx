@@ -317,11 +317,20 @@ export function createFrameElement(frame) {
         permRequest.description = descriptionTemplate.replace('{name}', name);
 
         let toolArgs = frame.content && frame.content.arguments;
-        if (toolArgs && toolName !== 'websearch:search') {
+        if (toolArgs) {
           try {
-            permRequest.fullCommand = `${toolName} ${JSON.stringify(toolArgs, null, 2)}`;
+            // Strip internal properties (prefixed with _) from display
+            let displayArgs = {};
+            for (let key of Object.keys(toolArgs)) {
+              if (!key.startsWith('_'))
+                displayArgs[key] = toolArgs[key];
+            }
+
+            let argKeys = Object.keys(displayArgs);
+            if (argKeys.length > 0)
+              permRequest.toolArgs = JSON.stringify(displayArgs, null, 2);
           } catch (_e) {
-            permRequest.fullCommand = toolName;
+            // Ignore serialization errors
           }
         }
 

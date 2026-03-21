@@ -57,6 +57,22 @@ const TEMPLATE_HTML = `
       line-height: 1.5;
     }
 
+    kikx-permission-request .permission-tool-args code {
+      font-family: 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.85em;
+      color: var(--text-muted, #606078);
+      display: block;
+      max-height: 120px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      padding: 4px 8px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+      margin-top: 4px;
+      margin-bottom: var(--spacing-sm, 8px);
+    }
+
     kikx-permission-request .command-table {
       display: flex; flex-direction: column; gap: 6px;
       margin-bottom: var(--spacing-sm, 8px);
@@ -206,6 +222,7 @@ const TEMPLATE_HTML = `
     <span class="title-text"></span>
   </div>
   <div class="permission-description"></div>
+  <div class="permission-tool-args" style="display:none;"><code></code></div>
   <code class="full-command" style="display:none;"></code>
   <div class="command-table"></div>
   <button class="confirm-button" disabled></button>
@@ -243,6 +260,8 @@ class KikxPermissionRequest extends HTMLElement {
 
       this._titleText      = this.querySelector('.title-text');
       this._descriptionEl  = this.querySelector('.permission-description');
+      this._toolArgsEl     = this.querySelector('.permission-tool-args');
+      this._toolArgsCodeEl = this._toolArgsEl.querySelector('code');
       this._fullCommandEl  = this.querySelector('.full-command');
       this._commandTable   = this.querySelector('.command-table');
       this._confirmButton  = this.querySelector('.confirm-button');
@@ -342,6 +361,23 @@ class KikxPermissionRequest extends HTMLElement {
   set description(value) {
     if (this._descriptionEl)
       this._descriptionEl.textContent = value || '';
+  }
+
+  get toolArgs() {
+    return (this._toolArgsCodeEl) ? this._toolArgsCodeEl.textContent : '';
+  }
+
+  set toolArgs(value) {
+    if (!this._toolArgsEl || !this._toolArgsCodeEl)
+      return;
+
+    if (value) {
+      this._toolArgsCodeEl.textContent  = value;
+      this._toolArgsEl.style.display    = '';
+    } else {
+      this._toolArgsCodeEl.textContent  = '';
+      this._toolArgsEl.style.display    = 'none';
+    }
   }
 
   get fullCommand() {
