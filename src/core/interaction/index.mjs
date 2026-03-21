@@ -680,7 +680,7 @@ export class InteractionLoop extends EventEmitter {
               context: { sessionID, interactionID, toolName: block.content.toolName },
             });
             if (hookResult.action === 'block') {
-              result = { type: 'tool-result', content: { output: `Blocked: ${hookResult.reason || 'hook blocked tool execution'}` } };
+              result = { type: 'tool-result', content: { output: `Blocked: ${hookResult.reason || 'hook blocked tool execution'}`, _sessionID: sessionID } };
               continue;
             }
           }
@@ -702,7 +702,7 @@ export class InteractionLoop extends EventEmitter {
                   parentID: params.parentID || null,
                   hidden: false, deleted: false, processed: false,
                 }, frameManager, { authorType: 'system' }, signingContext);
-                result = { type: 'tool-result', content: { output: `Error: ${permError.message}` } };
+                result = { type: 'tool-result', content: { output: `Error: ${permError.message}`, _sessionID: sessionID } };
                 continue;
               }
               throw permError;
@@ -790,14 +790,14 @@ export class InteractionLoop extends EventEmitter {
 
           await this._createFrame(sessionID, {
             id: generateID('frm_'), type: 'tool-result',
-            content: { output: toolOutput, toolUseID: block.content.toolUseId || block.content.toolUseID },
+            content: { output: toolOutput, toolUseID: block.content.toolUseId || block.content.toolUseID, _sessionID: sessionID },
             timestamp: Date.now(), interactionID,
             authorType: 'system', authorID: null,
             parentID: params.parentID || null,
             hidden: false, deleted: false, processed: false,
           }, frameManager, { authorType: 'system' }, signingContext);
 
-          result = { type: 'tool-result', content: { output: toolOutput } };
+          result = { type: 'tool-result', content: { output: toolOutput, _sessionID: sessionID } };
         } else if (block.type === 'reflection') {
           await this._createFrame(sessionID, {
             id: frameID, type: 'reflection', content: block.content, timestamp, interactionID,
