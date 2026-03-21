@@ -10,3 +10,4 @@ export { StreamController }      from './stream-controller.mjs';
 export { DmController }          from './dm-controller.mjs';
 export { CostController }       from './cost-controller.mjs';
 export { ModelsController }     from './models-controller.mjs';
+export { SearchController }     from './search-controller.mjs';

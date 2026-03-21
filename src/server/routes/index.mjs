@@ -48,6 +48,12 @@ export function getRoutes({ path }) {
         controller: 'ModelsController.index',
       });
 
+      // --- Search Routes (global) ---
+      endpoint('search', {
+        methods:    [ 'POST' ],
+        controller: 'SearchController.search',
+      });
+
       // --- Agent Routes ---
       // List + Create at /api/v2/agents
       endpoint('agents', {
@@ -151,6 +157,12 @@ export function getRoutes({ path }) {
           endpoint('read', {
             methods:    [ 'POST' ],
             controller: 'SessionController.markRead',
+          });
+
+          // Session-scoped search
+          endpoint('search', {
+            methods:    [ 'POST' ],
+            controller: 'SearchController.sessionSearch',
           });
 
           // Participants

@@ -243,6 +243,140 @@ export function setup({ registerTool, PluginInterface }) {
     };
 
     async _execute(params) {
+      let solrService = this._context.getProperty('solrService');
+
+      if (solrService) {
+        try {
+          return await this._executeWithSolr(solrService, params);
+        } catch (error) {
+          console.warn('[tool_log:search] Solr search failed, falling back to SQLite:', error.message);
+        }
+      }
+
+      // Fall back to existing SQLite implementation
+      return await this._executeWithSQLite(params);
+    }
+
+    // -----------------------------------------------------------------------
+    // Solr-backed search
+    // -----------------------------------------------------------------------
+
+    async _executeWithSolr(solrService, params) {
+      let models  = this._context.getProperty('models');
+      let agentID = params.agentID;
+
+      // Pagination params with defaults and clamping
+      let rawLimit = (typeof params.limit  === 'number') ? params.limit  : 10;
+      let offset   = (typeof params.offset === 'number') ? params.offset : 0;
+      let limit    = (rawLimit <= 0) ? 10 : Math.min(rawLimit, 100);
+
+      // Content slice defaults for search previews
+      let contentStart = (typeof params.content_start === 'number') ? params.content_start : 0;
+      let contentEnd   = (typeof params.content_end   === 'number') ? params.content_end   : 256;
+      let contentLines = !!params.content_lines;
+
+      // Build Solr query
+      let query = (params.query && params.query.trim()) ? params.query : '*:*';
+
+      // Build filter queries
+      let filterQueries = [
+        'doc_type:value_store',
+        'namespace:tool_log',
+        `authorID:${agentID}`,
+      ];
+
+      if (params.sessionID)
+        filterQueries.push(`sessionID:${params.sessionID}`);
+
+      if (params.toolName)
+        filterQueries.push(`type:"tool_log:${params.toolName}"`);
+
+      if (params.before) {
+        let beforeDate = new Date(params.before);
+        if (!isNaN(beforeDate.getTime()))
+          filterQueries.push(`timestamp:[* TO ${beforeDate.getTime()}]`);
+      }
+
+      if (params.after) {
+        let afterDate = new Date(params.after);
+        if (!isNaN(afterDate.getTime()))
+          filterQueries.push(`timestamp:[${afterDate.getTime()} TO *]`);
+      }
+
+      // Execute Solr search
+      let solrResult = await solrService.search(query, {
+        filterQueries,
+        fields:      'id',
+        rows:        limit,
+        start:       offset,
+        queryFields: 'content',
+      });
+
+      let docs = solrResult.response.docs;
+
+      if (docs.length === 0)
+        return [];
+
+      // Fetch full ValueStore records by key (Solr id = ValueStore key for value_store docs)
+      let docIDs = docs.map((d) => d.id);
+
+      // Mythix ORM lacks .IN(), so fetch each record individually
+      let entries = await Promise.all(
+        docIDs.map((key) =>
+          models.ValueStore.where.key.EQ(key).AND.namespace.EQ('tool_log').first(),
+        ),
+      );
+
+      // Build a map for O(1) lookup, preserving Solr ordering
+      let entryMap = new Map();
+      for (let entry of entries) {
+        if (entry)
+          entryMap.set(entry.key, entry);
+      }
+
+      // Build results in Solr's order
+      let results = [];
+
+      for (let docID of docIDs) {
+        let entry = entryMap.get(docID);
+
+        if (!entry)
+          continue;
+
+        let output = '';
+        try {
+          let parsed = JSON.parse(entry.value);
+          if (parsed && typeof parsed.output === 'string')
+            output = parsed.output;
+        } catch (_e) {
+          // Corrupted entry — return empty preview
+        }
+
+        let { content, actualStart, actualEnd } = applySlice(
+          output, contentStart, contentEnd, contentLines,
+        );
+
+        results.push({
+          id:              entry.key,
+          toolName:        toolNameFromType(entry.type),
+          note:            entry.note || null,
+          outputLength:    output.length,
+          content_preview: content,
+          content_start:   actualStart,
+          content_end:     actualEnd,
+          content_lines:   contentLines,
+          createdAt:       entry.createdAt,
+        });
+      }
+
+      return results;
+    }
+
+    // -----------------------------------------------------------------------
+    // SQLite fallback (original implementation)
+    // -----------------------------------------------------------------------
+
+    async _executeWithSQLite(params) {
       let models  = this._context.getProperty('models');
       let agentID = params.agentID;
 
