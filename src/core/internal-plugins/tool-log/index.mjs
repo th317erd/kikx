@@ -165,7 +165,12 @@ export function setup({ registerTool, PluginInterface }) {
         throw error;
       }
 
-      let output = (parsed && typeof parsed.output === 'string') ? parsed.output : '';
+      let output = '';
+      if (parsed && parsed.output != null) {
+        output = (typeof parsed.output === 'string')
+          ? parsed.output
+          : JSON.stringify(parsed.output, null, 2);
+      }
 
       // Apply content slicing
       let { content, actualStart, actualEnd } = applySlice(
