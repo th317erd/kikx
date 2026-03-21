@@ -28,5 +28,9 @@
 - [x] 3.1 Re-back tool_log:search with Solr (fallback to SQLite) — 25 tests
 - [x] 3.2 search:query agent tool — 27 tests
 
-## Phase 4: Client Wiring
-- [ ] 4.1 Wire sidebar search input to POST /api/v2/search
+## Phase 4: Client Wiring — COMPLETE
+- [x] 4.1 Wire sidebar search input to POST /api/v2/search
+
+---
+
+## ALL PHASES COMPLETE — 233 new tests, ~4000+ total, 0 failures
