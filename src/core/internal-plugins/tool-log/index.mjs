@@ -90,6 +90,7 @@ export function setup({ registerTool, PluginInterface }) {
     static displayName = 'Get Tool Log';
     static description = 'Retrieve a stored tool execution output by ID';
     static riskLevel   = 'none';
+    static skipToolLog = true;
     static inputSchema = {
       type:       'object',
       required:   ['id'],
@@ -201,6 +202,7 @@ export function setup({ registerTool, PluginInterface }) {
     static displayName = 'Search Tool Log';
     static description = 'Search stored tool execution outputs by tool name, session, or date';
     static riskLevel   = 'none';
+    static skipToolLog = true;
     static inputSchema = {
       type:       'object',
       properties: {

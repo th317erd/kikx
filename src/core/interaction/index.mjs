@@ -225,15 +225,15 @@ export class InteractionLoop extends EventEmitter {
       let pluginID     = colonIdx >= 0 ? fullToolName.slice(0, colonIdx) : '';
       let toolName     = colonIdx >= 0 ? fullToolName.slice(colonIdx + 1) : fullToolName;
 
-      // Skip storage for retrieval/search tools — their output should be
-      // delivered directly to the agent, not stored-and-replaced with a pointer.
-      // Storing them creates infinite recursion: search → store → pointer → get → store → ...
-      if (
-        (pluginID === 'tool-log' && toolName === 'get')    ||
-        (pluginID === 'tool-log' && toolName === 'search') ||
-        (pluginID === 'search'   && toolName === 'query')
-      )
-        return toolOutput;
+      // Check if the tool opts out of storage via static skipToolLog = true.
+      // Retrieval/search tools must skip storage to avoid infinite recursion:
+      // search → store → pointer → get → store → pointer → ...
+      let pluginRegistry = this._context.getProperty('pluginRegistry');
+      if (pluginRegistry) {
+        let ToolClass = pluginRegistry.getTool(fullToolName);
+        if (ToolClass && ToolClass.skipToolLog)
+          return toolOutput;
+      }
 
       // Get agent info
       let agent          = params.agent;
