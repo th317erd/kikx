@@ -38,11 +38,16 @@ export function mapFrameToSolrDocuments(frame, sessionID) {
   };
 
   // Extract content fields from the frame
+  // The frame may be an ORM model (has getContentForIndexing) or a plain
+  // FrameManager object (has content as parsed object). Handle both.
   let contentEntries;
 
   try {
-    if (typeof frame.getContentForIndexing === 'function')
+    if (typeof frame.getContentForIndexing === 'function') {
       contentEntries = frame.getContentForIndexing();
+    } else {
+      contentEntries = _extractContentFallback(frame);
+    }
   } catch (_error) {
     // Swallow — content is best-effort
   }
@@ -55,6 +60,44 @@ export function mapFrameToSolrDocuments(frame, sessionID) {
   }
 
   return [doc];
+}
+
+// ---------------------------------------------------------------------------
+// _extractContentFallback(frame) → Array<{ field, value }>
+// ---------------------------------------------------------------------------
+// Fallback content extraction for plain FrameManager frame objects that
+// don't have the ORM model's getContentForIndexing() method.
+// ---------------------------------------------------------------------------
+
+function _extractContentFallback(frame) {
+  let content = frame.content;
+
+  if (content == null)
+    return [];
+
+  // If content is a string, try to parse it as JSON
+  if (typeof content === 'string') {
+    try {
+      content = JSON.parse(content);
+    } catch (_error) {
+      return [{ field: 'content', value: content }];
+    }
+  }
+
+  if (typeof content !== 'object')
+    return [{ field: 'content', value: String(content) }];
+
+  // Extract text and/or html
+  let text = content.text || content.html || content.message || content.result || content.reason || content.error;
+
+  if (typeof text === 'string')
+    return [{ field: 'content', value: text }];
+
+  if (text != null)
+    return [{ field: 'content', value: JSON.stringify(text) }];
+
+  // Last resort: stringify the whole content
+  return [{ field: 'content', value: JSON.stringify(content) }];
 }
 
 // ---------------------------------------------------------------------------

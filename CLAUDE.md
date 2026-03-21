@@ -46,6 +46,22 @@ Use the `test-bot` user's `test-claude` agent which has a valid API key.
 
 ---
 
+## ⚠️ Server Management
+
+**ALWAYS run `npm run check_server` BEFORE starting or restarting the server.**
+
+- If the server is already running and you haven't changed server code → **do NOT restart it**
+- Only stop/restart the server if you made code changes that require it
+- The server runs on **port 8089**
+- Start: `npm start` (runs in foreground — use `&` or background agent)
+- Stop: `npm run stop`
+- Restart: `npm run restart`
+- Check: `npm run check_server`
+
+**Another developer or bot may have started the server.** Don't kill their process unless you need to reload code changes.
+
+---
+
 ## Project Documentation
 
 For a comprehensive understanding of the Kikx project — architecture, data models, plugin system, client, and more — see the **[Documentation Index](./bot-docs/docs/README.md)**.
