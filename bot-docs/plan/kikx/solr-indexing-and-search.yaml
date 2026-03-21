@@ -1,0 +1,826 @@
+# =============================================================================
+# Solr Indexing & Search Integration
+# =============================================================================
+# Wire Solr into the Kikx frame pipeline so frames and ValueStore records are
+# automatically indexed. Expose search via HTTP API and agent tools.
+#
+# Prerequisites (all COMPLETE):
+#   - Solr 9.10.1 Docker container (docker-compose.yml)
+#   - SolrService module (src/core/lib/solr-service.mjs, 58 tests)
+#   - Solr schema (solr/kikx/conf/schema.xml) — will be revised in Phase 1
+#   - FrameRouter + BasePluginClass
+#   - Internal plugin system (registerTool, registerSelector)
+#
+# Planning rounds: 7 (documented in .claude/conversation.md)
+# Status: PLANNING
+# Created: 2026-03-20
+# =============================================================================
+
+meta:
+  title: "Solr Indexing & Search Integration"
+  version: "1.0.0"
+  depends_on:
+    - "docker-compose.yml (Solr container)"
+    - "src/core/lib/solr-service.mjs (SolrService)"
+    - "solr/kikx/conf/schema.xml (Solr schema)"
+    - "src/core/routing/frame-router.mjs (FrameRouter)"
+
+# =============================================================================
+# 1. DESIGN DECISIONS
+# =============================================================================
+
+decisions:
+  indexing_strategy:
+    description: "Best-effort indexing — Solr failure never blocks DB writes"
+    rationale: |
+      The DB is the source of truth. Solr is a read-optimized index.
+      If Solr is down, frames and ValueStore records are still created in
+      SQLite. Recovery is via a re-indexing script (deferred, not MVP).
+
+  frame_indexing_hook:
+    choice: "FrameRouter plugin"
+    alternatives_rejected:
+      - "InteractionLoop event listener — less context (no commit, no changes)"
+      - "FramePersistence hook — too deep, fires before InteractionLoop events"
+      - "Frame.onAfterSave() — viable but FrameRouter has richer context (session, commit)"
+    rationale: |
+      FrameRouter is the existing event routing system designed for frame
+      processing. Selector-based, middleware chain, error isolation. Same
+      pattern used by SchedulingPlugin.
+
+  value_store_indexing_hook:
+    choice: "ValueStore.onAfterSave() model lifecycle hook"
+    rationale: |
+      Mythix ORM provides onAfterSave() on every model. This catches ALL
+      write paths — ValueStoreService.set(), ToolLogService.storeToolOutput(),
+      and any future direct model usage. Zero hookpoints to maintain.
+      ONE hook, total coverage.
+
+  storage_model:
+    description: "Index-only — Solr stores only id + doc_type"
+    rationale: |
+      All content retrieved from SQLite by ID. Solr is a search index, not
+      a document store. Eventually PostgreSQL replaces SQLite.
+
+  content_field_merge:
+    description: "Single 'content' field using text_html type"
+    rationale: |
+      HTMLStripCharFilter is a no-op on plain text. One field handles
+      both HTML and plain text content. Simpler schema, simpler mapper.
+
+  deleted_vs_archived:
+    description: "Frame.deleted maps to Solr 'archived' field"
+    rationale: |
+      The app uses 'archive' for soft-delete. Deleted sessions are actually
+      archived — one-click unarchive. Search excludes archived by default
+      (fq=-archived:true) but archived content remains searchable with
+      includeArchived:true parameter.
+
+  search_result_enrichment:
+    description: "Fetch content from DB, return previews (1024 char max)"
+    rationale: |
+      Returning only IDs forces callers to make N additional DB queries.
+      Returning enriched previews is more useful. Content truncated to
+      1024 chars with contentRange:[startByte, endByte] metadata so
+      consumers know if they need to chunk-fetch the full content.
+
+  value_store_scope:
+    description: "ALL ValueStore records are indexed, regardless of namespace"
+    rationale: |
+      User requirement. If future exclusions are needed, add a
+      'searchable: false' boolean to the ValueStore model.
+
+  tool_log_search_rebacking:
+    description: "Re-back existing tool_log:search with Solr NOW"
+    rationale: |
+      This is literally why Solr is being added. The existing tool does
+      in-JS LIKE filtering after loading all records from SQLite.
+      Falls back to SQLite if Solr is unavailable.
+
+# =============================================================================
+# 2. SCHEMA (REVISED)
+# =============================================================================
+
+schema:
+  description: |
+    13 fields. Clean, unified, no tool-specific naming.
+    Replaces the original schema from commit 0cc9ea8.
+    The index is currently empty — zero migration cost.
+
+  fields:
+    # Unique key
+    - name: id
+      type: string
+      indexed: true
+      stored: true
+      required: true
+      notes: "frm_xxx (frames) or vs_xxx (value store)"
+
+    - name: doc_type
+      type: string
+      indexed: true
+      stored: true
+      notes: "'frame' or 'value_store'"
+
+    # Classification
+    - name: type
+      type: string
+      indexed: true
+      stored: false
+      notes: "Frame type (message, tool-call, etc.) or ValueStore type (tool_log:shell:execute)"
+
+    - name: namespace
+      type: string
+      indexed: true
+      stored: false
+      notes: "ValueStore namespace (tool_log, agent_config, etc.). Null for frames."
+
+    # Ownership & scope
+    - name: sessionID
+      type: string
+      indexed: true
+      stored: false
+      notes: "Session scope. From Frame.sessionID or ValueStore.scopeID."
+
+    - name: interactionID
+      type: string
+      indexed: true
+      stored: false
+      notes: "Frame-specific. Null for ValueStore."
+
+    - name: authorType
+      type: string
+      indexed: true
+      stored: false
+      notes: "user/agent/system. From Frame.authorType or ValueStore.ownerType. ALWAYS server-populated."
+
+    - name: authorID
+      type: string
+      indexed: true
+      stored: false
+      notes: "User or agent ID. ALWAYS server-populated."
+
+    # Searchable content
+    - name: content
+      type: text_html
+      indexed: true
+      stored: false
+      notes: "All searchable content. HTMLStripCharFilter handles both plain text and HTML."
+
+    - name: note
+      type: text_html
+      indexed: true
+      stored: false
+      notes: "Human-readable summary. Stemmed and searchable."
+
+    # Metadata
+    - name: timestamp
+      type: plong
+      indexed: true
+      stored: false
+      notes: "Milliseconds since epoch"
+
+    - name: hidden
+      type: boolean
+      indexed: true
+      stored: false
+
+    - name: archived
+      type: boolean
+      indexed: true
+      stored: false
+      notes: "Maps from Frame.deleted. Default search filter: fq=-archived:true"
+
+  copy_fields:
+    - source: content
+      dest: _text_
+    - source: note
+      dest: _text_
+
+  dropped_fields:
+    - tool_note: "Renamed to 'note'"
+    - tool_name: "Removed — encoded in 'type' field"
+    - tool_output: "Removed — was fictional, content goes in 'content'"
+    - content_text: "Merged into 'content'"
+    - content_html: "Merged into 'content'"
+
+# =============================================================================
+# 3. COMPONENTS
+# =============================================================================
+
+components:
+  # ---------------------------------------------------------------------------
+  # 3.1 Frame.getContentForIndexing()
+  # ---------------------------------------------------------------------------
+  frame_content_extraction:
+    file: "src/core/models/frame-model.mjs"
+    action: "Add method to existing model"
+    description: |
+      Add getContentForIndexing() to the Frame model. Returns array of
+      { field, value } entries for Solr indexing. Switches on this.type.
+      Marked with TODO comment for future refactoring to class-based
+      frame system where each frame subclass overrides this method.
+
+    method_signature: "getContentForIndexing() → Array<{ field: string, value: string }>"
+
+    type_mapping:
+      user-message: "Extract content.text and/or content.html → { field: 'content', value }"
+      message: "Same as user-message"
+      reflection: "Extract content.text → { field: 'content', value }"
+      tool-call: "Serialize toolName + arguments → { field: 'content', value }"
+      tool-result: "Extract content.result as string → { field: 'content', value }"
+      tool-error: "Extract content.message || content.error || content.text"
+      error: "Extract content.message || content.text"
+      permission-denied: "Extract content.message || content.reason"
+      stop: "Extract content.text || content.message"
+      hook-blocked: "Extract content.text || content.message"
+      tool-activity: "Extract content.html"
+      default: "JSON.stringify(content)"
+
+    edge_cases:
+      - "null/undefined content → return []"
+      - "Non-JSON string content → return raw string as content"
+      - "Unknown frame type → default handler"
+      - "getContent() throws → catch, return []"
+
+    test_file: "spec/core/models/frame-model-indexing-spec.mjs"
+    estimated_tests: 38
+
+  # ---------------------------------------------------------------------------
+  # 3.2 Document Mapper
+  # ---------------------------------------------------------------------------
+  document_mapper:
+    file: "src/core/lib/solr-document-mapper.mjs"
+    action: "Create new module"
+    description: |
+      Thin mapping layer. Calls frame.getContentForIndexing() and assembles
+      Solr document from the results + metadata fields.
+
+    exports:
+      - name: "mapFrameToSolrDocuments"
+        signature: "(frame, sessionID) → Array<SolrDocument>"
+        description: |
+          Maps a Frame model instance to Solr document(s).
+          Calls frame.getContentForIndexing() for content fields.
+          Returns array (per plurality quirk). Skips phantoms.
+        field_mapping:
+          id: "frame.id"
+          doc_type: "'frame'"
+          type: "frame.type"
+          sessionID: "sessionID parameter"
+          interactionID: "frame.interactionID"
+          authorType: "frame.authorType"
+          authorID: "frame.authorID"
+          content: "from getContentForIndexing()"
+          timestamp: "frame.timestamp"
+          hidden: "frame.hidden"
+          archived: "frame.deleted (terminology translation)"
+
+    test_file: "spec/core/lib/solr-document-mapper-spec.mjs"
+    estimated_tests: 27
+
+  # ---------------------------------------------------------------------------
+  # 3.3 SolrIndexingPlugin (FrameRouter)
+  # ---------------------------------------------------------------------------
+  solr_indexing_plugin:
+    file: "src/core/internal-plugins/solr-indexing/index.mjs"
+    action: "Create new internal plugin"
+    description: |
+      FrameRouter plugin that indexes frames to Solr on every commit.
+      Same pattern as scheduling/index.mjs.
+      setup({ registerSelector, context }) — closure captures global context
+      for lazy SolrService resolution.
+
+    selector: "'*'"
+    base_class: "BasePluginClass"
+
+    behavior:
+      - "Resolve solrService from closure-captured context (lazy, per-invocation)"
+      - "If no solrService → call next(), return"
+      - "If frame.groupType === 'phantom' → call next(), return"
+      - "Map frame via mapFrameToSolrDocuments()"
+      - "Call solrService.indexDocuments() — best-effort"
+      - "ALWAYS call next() — even on error"
+
+    invariants:
+      - "next() called exactly once, regardless of success/failure/skip"
+      - "done() never called (never terminates chain)"
+      - "Errors caught, logged, swallowed"
+      - "Solr failure never blocks frame routing chain"
+
+    test_file: "spec/core/internal-plugins/solr-indexing-spec.mjs"
+    estimated_tests: 22
+
+  # ---------------------------------------------------------------------------
+  # 3.4 ValueStore.onAfterSave()
+  # ---------------------------------------------------------------------------
+  value_store_indexing:
+    file: "src/core/models/value-store-model.mjs"
+    action: "Add onAfterSave() to existing model"
+    description: |
+      Override onAfterSave() on ValueStore model. After every create/update,
+      index the record to Solr. Best-effort — errors logged, never thrown.
+      Uses this.getApplication() to reach SolrService.
+
+    field_mapping:
+      id: "this.id"
+      doc_type: "'value_store'"
+      type: "this.type"
+      namespace: "this.namespace"
+      sessionID: "this.scopeID"
+      authorType: "this.ownerType"
+      authorID: "this.ownerID"
+      note: "this.note"
+      content: "this.value"
+      timestamp: "this.createdAt (as epoch ms)"
+      hidden: "false"
+      archived: "false"
+
+    invariants:
+      - "DB save NEVER fails because of Solr"
+      - "getApplication() returning null → silent no-op"
+      - "SolrService not on context → silent no-op"
+      - "All Solr errors caught and logged"
+
+    test_file: "spec/core/models/value-store-indexing-spec.mjs"
+    estimated_tests: 19
+
+  # ---------------------------------------------------------------------------
+  # 3.5 Solr Schema Revision
+  # ---------------------------------------------------------------------------
+  schema_revision:
+    file: "solr/kikx/conf/schema.xml"
+    action: "Revise existing schema"
+    description: |
+      Replace current schema (commit 0cc9ea8) with unified schema from
+      Round 5. Drop tool_*, merge content_text/content_html into content,
+      add namespace field. Index is empty — no migration needed.
+      Wipe core data and restart: rm -rf data/solr/data/kikx, docker restart.
+
+  # ---------------------------------------------------------------------------
+  # 3.6 SearchController
+  # ---------------------------------------------------------------------------
+  search_controller:
+    file: "src/server/controllers/search-controller.mjs"
+    action: "Create new controller"
+    description: |
+      HTTP API for search. Extends ControllerAuthBase.
+      Two methods: search() (global) and sessionSearch() (session-scoped).
+
+    endpoints:
+      global_search:
+        method: POST
+        path: "/api/v2/search"
+        controller_method: "search"
+        request_body:
+          q: "string (required) — search query"
+          rows: "number (optional, default 10, max 100)"
+          start: "number (optional, default 0)"
+          sessionIDs: "string[] (optional) — scope to specific sessions"
+          includeArchived: "boolean (optional, default false)"
+          highlight: "boolean (optional, default false)"
+        response:
+          shape: |
+            { data: {
+                query:       string,
+                resultCount: number,
+                pagination:  { rows, start, total },
+                results: [{
+                  id, doc_type, type, sessionID, authorType, timestamp,
+                  preview, contentSize, contentRange
+                }]
+            }}
+          content_range_format: |
+            contentRange: null          — full content in preview
+            contentRange: [0, 1024]     — bytes 0-1024 of original content
+
+      session_search:
+        method: POST
+        path: "/api/v2/sessions/:sessionID/search"
+        controller_method: "sessionSearch"
+        description: "Same as global but sessionID from URL path"
+
+    permission_filtering:
+      description: |
+        Session-scoped access control. Server determines accessible
+        sessions from authenticated user. NEVER trust caller-provided
+        authorType/authorID for access control.
+      default_filter: "fq=-archived:true"
+      session_filter: "fq=sessionID:(ses_a OR ses_b OR ...)"
+
+    error_responses:
+      400: "Missing q parameter"
+      401: "No auth / expired token"
+      403: "User lacks access to requested sessionID"
+      404: "Session doesn't exist (session-scoped only)"
+      503: "Solr unavailable"
+
+    test_file: "spec/server/controllers/search-controller-spec.mjs"
+    estimated_tests: 36
+
+  # ---------------------------------------------------------------------------
+  # 3.7 Search Routes
+  # ---------------------------------------------------------------------------
+  search_routes:
+    file: "src/server/routes/index.mjs"
+    action: "Add to existing routes"
+    routes:
+      - "POST /api/v2/search → SearchController.search"
+      - "POST /api/v2/sessions/:sessionID/search → SearchController.sessionSearch"
+
+  # ---------------------------------------------------------------------------
+  # 3.8 Re-back tool_log:search with Solr
+  # ---------------------------------------------------------------------------
+  tool_log_search_rebacking:
+    file: "src/core/internal-plugins/tool-log/index.mjs"
+    action: "Modify existing SearchToolLogTool._execute()"
+    description: |
+      Replace in-JS LIKE filtering with SolrService.search().
+      Falls back to existing SQLite path if Solr is unavailable.
+      API surface (input schema, response shape) unchanged.
+
+    solr_filter_mapping:
+      toolName: "fq=type:tool_log\\:{toolName}"
+      sessionID: "fq=sessionID:{sessionID}"
+      before: "fq=timestamp:[* TO {epochMs}]"
+      after: "fq=timestamp:[{epochMs} TO *]"
+      query: "q={query} (eDisMax on content)"
+
+    fallback: "If SolrService throws or is null → fall back to current implementation"
+
+    test_file: "spec/core/internal-plugins/tool-log-search-solr-spec.mjs"
+    estimated_tests: 22
+
+  # ---------------------------------------------------------------------------
+  # 3.9 search:query Agent Tool
+  # ---------------------------------------------------------------------------
+  search_agent_tool:
+    file: "src/core/internal-plugins/search/index.mjs"
+    action: "Create new internal plugin"
+    description: |
+      Agent-facing search tool. Registered as search:query.
+      Returns enriched results with content previews and
+      chunk-fetch guidance for truncated content.
+
+    tool_metadata:
+      pluginID: "search"
+      featureName: "query"
+      displayName: "Search"
+      description: "Full-text search across session frames and tool logs"
+
+    input_schema:
+      query: "string (required) — eDisMax search query"
+      rows: "number (optional, default 10, max 50)"
+      sessionID: "string (optional, default: current session from _sessionID)"
+      docType: "string (optional) — 'frame' or 'value_store'"
+      frameType: "string (optional) — message, tool-call, etc."
+
+    response_shape: |
+      {
+        query, resultCount,
+        results: [{ id, doc_type, type, preview, contentSize, contentRange }],
+        message: "Found N results matching '...'"
+      }
+    truncation_guidance: |
+      When contentRange is not null, result message includes:
+      "Result N: {size} — use tool_log:get to fetch in chunks"
+
+    test_file: "spec/core/internal-plugins/search-tool-spec.mjs"
+    estimated_tests: 20
+
+  # ---------------------------------------------------------------------------
+  # 3.10 Client Sidebar Wiring
+  # ---------------------------------------------------------------------------
+  client_sidebar_search:
+    file: "src/client/components/kikx-sidebar/kikx-sidebar.mjs"
+    action: "Wire existing search input"
+    description: |
+      The search input already exists (styled, has placeholder text
+      "Search sessions...") but has zero event listeners. Wire it to
+      POST /api/v2/search and filter the session list from results.
+
+# =============================================================================
+# 4. IMPLEMENTATION ORDER
+# =============================================================================
+
+phases:
+  phase_1:
+    name: "Indexer"
+    description: "Get data INTO Solr"
+    steps:
+      - id: "1.1"
+        task: "Revise Solr schema"
+        component: schema_revision
+        description: "Deploy unified schema, wipe core, restart"
+
+      - id: "1.2"
+        task: "Frame.getContentForIndexing()"
+        component: frame_content_extraction
+        tdd: true
+        description: "Add method to Frame model with TODO for future class-based refactor"
+
+      - id: "1.3"
+        task: "Document mapper module"
+        component: document_mapper
+        tdd: true
+        depends_on: ["1.2"]
+
+      - id: "1.4"
+        task: "SolrIndexingPlugin"
+        component: solr_indexing_plugin
+        tdd: true
+        depends_on: ["1.3"]
+
+      - id: "1.5"
+        task: "ValueStore.onAfterSave()"
+        component: value_store_indexing
+        tdd: true
+
+      - id: "1.6"
+        task: "Verify indexing"
+        description: "Send a message, check Solr has frame + tool log indexed"
+        depends_on: ["1.4", "1.5"]
+
+  phase_2:
+    name: "Search API"
+    description: "Get data OUT of Solr via HTTP"
+    depends_on: ["phase_1"]
+    parallelizable_with: ["phase_3"]
+    steps:
+      - id: "2.1"
+        task: "SearchController"
+        component: search_controller
+        tdd: true
+
+      - id: "2.2"
+        task: "Search routes"
+        component: search_routes
+        depends_on: ["2.1"]
+
+  phase_3:
+    name: "Agent Tools"
+    description: "Get data OUT of Solr via agent tools"
+    depends_on: ["phase_1"]
+    parallelizable_with: ["phase_2"]
+    steps:
+      - id: "3.1"
+        task: "Re-back tool_log:search"
+        component: tool_log_search_rebacking
+        tdd: true
+
+      - id: "3.2"
+        task: "search:query agent tool"
+        component: search_agent_tool
+        tdd: true
+
+  phase_4:
+    name: "Client Wiring"
+    description: "Wire sidebar search to HTTP API"
+    depends_on: ["phase_2"]
+    steps:
+      - id: "4.1"
+        task: "Sidebar search input"
+        component: client_sidebar_search
+
+# =============================================================================
+# 5. TEST PLAN
+# =============================================================================
+
+tests:
+  strategy: |
+    TDD for all components. Sad paths outnumber happy paths.
+    Mock SolrService for unit tests. Real Solr for integration tests.
+    Every test suite covers: happy paths, sad paths, edge cases.
+
+  suites:
+    - file: "spec/core/models/frame-model-indexing-spec.mjs"
+      component: "Frame.getContentForIndexing()"
+      estimated_tests: 38
+      coverage:
+        happy_paths:
+          - "Each frame type (user-message, message, reflection, tool-call, tool-result, tool-error, error, permission-denied, stop, hook-blocked, tool-activity)"
+          - "Text-only content, HTML-only content, both"
+          - "String content (JSON) vs object content"
+        sad_paths:
+          - "Null/undefined/empty string content → []"
+          - "Broken JSON string → raw string as content"
+          - "Non-JSON string (plain text, HTML) → raw string"
+          - "Content is number, boolean, array → doesn't throw"
+          - "tool-call without toolName → no crash"
+          - "tool-result with undefined result → no 'undefined' string"
+          - "tool-error with none of message/error/text → empty content"
+          - "Null/undefined/empty this.type → default case"
+          - "getContent() throws → catch, return []"
+          - "Circular reference in content → catch JSON.stringify error"
+        edge_cases:
+          - "Unknown frame type → default handler"
+          - "Empty content object {} → []"
+          - "100KB+ text → returned fully (truncation is search layer's job)"
+          - "Unicode, emoji, RTL text"
+          - "Return format: always array, entries have { field, value }, value always string"
+
+    - file: "spec/core/lib/solr-document-mapper-spec.mjs"
+      component: "Document mapper"
+      estimated_tests: 27
+      coverage:
+        happy_paths:
+          - "Maps all metadata fields correctly"
+          - "deleted:true → archived:true (terminology)"
+          - "Spreads getContentForIndexing() into doc"
+          - "Returns array"
+        sad_paths:
+          - "Frame is null → [] without throw"
+          - "Frame has no id → handle (id required for Solr)"
+          - "getContentForIndexing() returns non-array → coerced"
+          - "getContentForIndexing() returns entries with missing field/value → skipped"
+          - "ValueStore with null for every field → doc with only id + doc_type"
+          - "Invalid createdAt → fallback timestamp"
+          - "Extremely large value (10MB) → passed through"
+        edge_cases:
+          - "No sessionID → field null"
+          - "Phantom frame → empty array"
+          - "getContentForIndexing() returns empty → metadata-only doc"
+
+    - file: "spec/core/internal-plugins/solr-indexing-spec.mjs"
+      component: "SolrIndexingPlugin"
+      estimated_tests: 22
+      coverage:
+        happy_paths:
+          - "setup() calls registerSelector"
+          - "process() indexes frame correctly"
+          - "process() calls next() after indexing"
+        sad_paths:
+          - "SolrError 400 → logged, next() called"
+          - "SolrError 408 (timeout) → logged, next() called"
+          - "SolrError 429 (rate limit) → logged, next() called"
+          - "SolrError 500 → logged, next() called"
+          - "SolrError 503 → logged, next() called"
+          - "Non-SolrError (TypeError, etc.) → logged, next() called"
+          - "mapFrameToSolrDocuments() throws → caught, logged, next() called"
+          - "frame.getContentForIndexing() throws → caught, logged, next() called"
+          - "context.newFrame is null → skip, next() called"
+          - "context.session is null → sessionID null, still indexes"
+        edge_cases:
+          - "solrService not on context → next() immediately"
+          - "Phantom frame → next() immediately"
+          - "next() always called exactly once"
+          - "done() never called"
+
+    - file: "spec/core/models/value-store-indexing-spec.mjs"
+      component: "ValueStore.onAfterSave()"
+      estimated_tests: 19
+      coverage:
+        happy_paths:
+          - "After create → indexDocuments() called"
+          - "After update (save) → indexDocuments() called"
+          - "Correct field mapping"
+        sad_paths:
+          - "SolrError 400 → logged, save unaffected"
+          - "SolrError 408 (timeout) → logged, save unaffected"
+          - "SolrError 429 → logged, save unaffected"
+          - "SolrError 503 → logged, save unaffected"
+          - "Network error (ECONNREFUSED) → logged, save unaffected"
+          - "DNS failure → logged, save unaffected"
+          - "getApplication() returns null → no crash"
+          - "getApplication() throws → no crash"
+          - "Context has no solrService → silent no-op"
+        edge_cases:
+          - "Application not initialized (startup race) → no crash"
+          - "DB write completed before Solr (onAfterSave guarantee)"
+          - "Critical invariant: DB save NEVER fails because of Solr"
+
+    - file: "spec/server/controllers/search-controller-spec.mjs"
+      component: "SearchController"
+      estimated_tests: 36
+      coverage:
+        happy_paths:
+          - "Basic search returns correct response shape"
+          - "contentRange null when content < 1024"
+          - "contentRange [0, 1024] when content > 1024"
+          - "Pagination matches Solr response"
+          - "Session-scoped search works"
+        sad_paths:
+          - "Missing q → 400"
+          - "Empty q → 400"
+          - "q is number/object → 400"
+          - "Body is not JSON → 400"
+          - "Body is null → 400"
+          - "No auth token → 401"
+          - "Expired token → 401"
+          - "User lacks session access → 403"
+          - "Session doesn't exist (scoped) → 404"
+          - "Solr connection refused → 503"
+          - "Solr timeout → 503"
+          - "Solr HTTP 500 → 500"
+          - "Solr HTTP 429 → 503"
+          - "Solr malformed JSON → 500"
+          - "DB record missing (deleted between Solr search and DB fetch) → excluded"
+          - "Partial DB failure (3/10 fail) → return 7"
+          - "All DB records fail → empty results (not 500)"
+          - "DB connection error → 500"
+        edge_cases:
+          - "rows: 999 → capped at 100"
+          - "rows: -1 → default"
+          - "sessionIDs as string → coerced to array"
+          - "sessionIDs empty array → all accessible sessions"
+          - "Mixed access sessionIDs → handle gracefully"
+          - "includeArchived:true → removes archive filter"
+          - "User with zero accessible sessions → empty results"
+          - "Solr returns 0 results → valid empty response, not error"
+
+    - file: "spec/core/internal-plugins/tool-log-search-solr-spec.mjs"
+      component: "tool_log:search re-backing"
+      estimated_tests: 22
+      coverage:
+        happy_paths:
+          - "Query → Solr eDisMax search"
+          - "toolName filter → fq=type:tool_log:..."
+          - "sessionID filter → fq=sessionID:..."
+          - "before/after → timestamp range"
+          - "limit/offset → rows/start"
+          - "Response shape backwards compatible"
+        sad_paths:
+          - "SolrService null → SQLite fallback"
+          - "SolrService.search() throws → SQLite fallback"
+          - "Both Solr AND SQLite fail → throw to agent"
+          - "Solr returns IDs not in DB → excluded"
+          - "SQLite fallback content parse failure → results without preview"
+        edge_cases:
+          - "Empty query → recent tool logs"
+          - "Special chars in toolName → escaped"
+          - "before < after (impossible range) → empty"
+          - "Solr query injection attempt → eDisMax prevents"
+          - "limit:0 → empty, limit:101 → capped at 100"
+
+    - file: "spec/core/internal-plugins/search-tool-spec.mjs"
+      component: "search:query agent tool"
+      estimated_tests: 20
+      coverage:
+        happy_paths:
+          - "Basic query → SolrService.search() → formatted results"
+          - "Content previews with contentRange"
+          - "Chunk-fetch hint for truncated content"
+        sad_paths:
+          - "Missing query → Error"
+          - "query not string → Error"
+          - "SolrService not on context → descriptive error"
+          - "SolrService throws → descriptive error"
+          - "SolrService timeout → descriptive error"
+          - "All result IDs missing from DB → empty results with message"
+          - "Partial DB failure → partial results"
+          - "_sessionID not in args → error or all sessions"
+          - "_agent not in args → error"
+        edge_cases:
+          - "rows:100 → capped at 50"
+          - "Solr injection attempt → eDisMax prevents"
+          - "10KB query string → handled"
+          - "Unknown docType → returns 0 results"
+
+  totals:
+    happy_paths: 58
+    sad_paths: 86
+    edge_cases: 40
+    estimated_total: 184
+
+# =============================================================================
+# 6. FUTURE PLANS
+# =============================================================================
+
+future_plans:
+  - id: frame-class-hierarchy
+    title: "Frame Type Subclasses"
+    priority: medium
+    description: |
+      Introduce frame-type subclasses (UserMessageFrame, ToolCallFrame, etc.)
+      that override getContentForIndexing(). Eliminates the type switch.
+      getContentForIndexing() already has the right API for this transition.
+
+  - id: value-store-searchable-field
+    title: "ValueStore searchable Boolean"
+    priority: low
+    description: |
+      Add a 'searchable' boolean to ValueStore model. Default true.
+      onAfterSave() checks this before indexing. Allows opting out
+      individual records from Solr.
+
+  - id: bulk-reindex-script
+    title: "Bulk Re-indexing Script"
+    priority: medium
+    description: |
+      scripts/solr-reindex.mjs — loads all frames and ValueStore records
+      from SQLite, indexes to Solr. For initial population or recovery
+      after Solr downtime.
+
+  - id: value-store-service-solr
+    title: "Re-back ValueStoreService.search() with Solr"
+    priority: medium
+    description: |
+      ValueStoreService.search() currently does in-JS LIKE filtering.
+      Replace with SolrService.search() for faster cross-namespace search.
+
+  - id: faceted-search
+    title: "Faceted Search API"
+    priority: low
+    description: |
+      Expose Solr faceting — search by type, author, date ranges.
+      Schema already supports it.

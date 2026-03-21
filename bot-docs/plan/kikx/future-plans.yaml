@@ -263,6 +263,29 @@ items:
     see_also: bot-docs/future-plans/tool-log.yaml
     added: "2026-03-19"
 
+  - id: solr-indexing-and-search
+    title: "Solr Indexing & Search Integration"
+    priority: high
+    status: PLANNING
+    description: |
+      Wire Solr into frame pipeline + ValueStore. Index all frames and
+      ValueStore records. Search via HTTP API + agent tools. Re-back
+      existing tool_log:search with Solr. Wire client sidebar search.
+    see_also: bot-docs/plan/kikx/solr-indexing-and-search.yaml
+    added: "2026-03-20"
+
+  - id: frame-class-hierarchy
+    title: "Frame Type Subclasses"
+    priority: medium
+    status: PLANNED
+    description: |
+      Introduce frame-type subclasses (UserMessageFrame, ToolCallFrame, etc.)
+      that override getContentForIndexing(). Eliminates the type switch in
+      Frame.getContentForIndexing(). The method already has the right API
+      for this transition — each subclass just overrides it.
+    see_also: bot-docs/plan/kikx/solr-indexing-and-search.yaml
+    added: "2026-03-20"
+
   - id: frame-search
     title: "Frame / Conversation Search Tool"
     priority: high
