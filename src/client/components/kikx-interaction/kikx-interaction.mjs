@@ -266,7 +266,8 @@ const TEMPLATE_HTML = `
     }
 
     kikx-interaction[alignment="system"] .reply-button,
-    kikx-interaction[bubble-type="permission"] .reply-button {
+    kikx-interaction[bubble-type="permission"] .reply-button,
+    kikx-interaction[data-author-type="system"] .reply-button {
       display: none;
     }
 

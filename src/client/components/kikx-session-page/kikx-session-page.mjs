@@ -244,10 +244,10 @@ export function createFrameElement(frame) {
   let isUser    = (frame.type === 'user-message') || (frame.authorType === 'user');
   let alignment;
 
-  if (frame.type === 'permission-request')
-    alignment = 'user';
-  else if (frame.type === 'session-link' || frame.authorType === 'system')
+  if (frame.type === 'session-link')
     alignment = 'system';
+  else if (frame.authorType === 'system')
+    alignment = 'agent';
   else if (isUser)
     alignment = 'user';
   else
@@ -276,6 +276,9 @@ export function createFrameElement(frame) {
 
   if (frame.authorID)
     interaction.setAttribute('data-author-id', frame.authorID);
+
+  if (frame.authorType)
+    interaction.setAttribute('data-author-type', frame.authorType);
 
   switch (frame.type) {
     case 'session-link': {
