@@ -26,6 +26,7 @@ export function setup({ registerTool, PluginInterface }) {
     static featureName = 'query';
     static displayName = 'Search';
     static description = 'Full-text search across session frames and tool logs';
+    static riskLevel   = 'none';
     static inputSchema = {
       type:       'object',
       properties: {
