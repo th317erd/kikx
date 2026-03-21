@@ -244,7 +244,7 @@ export function createFrameElement(frame) {
   let isUser    = (frame.type === 'user-message') || (frame.authorType === 'user');
   let alignment;
 
-  if (frame.type === 'session-link')
+  if (frame.type === 'session-link' || frame.authorType === 'system')
     alignment = 'system';
   else if (isUser)
     alignment = 'user';
