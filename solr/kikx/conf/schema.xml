@@ -50,7 +50,7 @@
     </analyzer>
   </fieldType>
 
-  <!-- ===== Fields ===== -->
+  <!-- ===== Fields (13 + _text_ + _version_) ===== -->
   <!-- Solr is index-only. All content is retrieved from SQLite by ID. -->
   <!-- Only id and doc_type are stored (needed to map results back to DB). -->
 
@@ -60,22 +60,24 @@
   <!-- Document type discriminator — stored (tells caller which DB table to query) -->
   <field name="doc_type" type="string" indexed="true" stored="true" multiValued="false" />
 
-  <!-- Frame fields — index only -->
+  <!-- Classification — index only -->
+  <field name="type" type="string" indexed="true" stored="false" multiValued="false" />
+  <field name="namespace" type="string" indexed="true" stored="false" multiValued="false" />
+
+  <!-- Ownership & scope — index only -->
   <field name="sessionID" type="string" indexed="true" stored="false" multiValued="false" />
   <field name="interactionID" type="string" indexed="true" stored="false" multiValued="false" />
-  <field name="type" type="string" indexed="true" stored="false" multiValued="false" />
   <field name="authorType" type="string" indexed="true" stored="false" multiValued="false" />
   <field name="authorID" type="string" indexed="true" stored="false" multiValued="false" />
-  <field name="content_text" type="text_en" indexed="true" stored="false" multiValued="false" />
-  <field name="content_html" type="text_html" indexed="true" stored="false" multiValued="false" />
+
+  <!-- Searchable content — index only, text_html strips HTML before analysis -->
+  <field name="content" type="text_html" indexed="true" stored="false" multiValued="false" />
+  <field name="note" type="text_html" indexed="true" stored="false" multiValued="false" />
+
+  <!-- Metadata — index only -->
   <field name="timestamp" type="plong" indexed="true" stored="false" multiValued="false" />
   <field name="hidden" type="boolean" indexed="true" stored="false" multiValued="false" />
-  <field name="deleted" type="boolean" indexed="true" stored="false" multiValued="false" />
-
-  <!-- Tool log fields — index only -->
-  <field name="tool_name" type="string" indexed="true" stored="false" multiValued="false" />
-  <field name="tool_note" type="string" indexed="true" stored="false" multiValued="false" />
-  <field name="tool_output" type="text_en" indexed="true" stored="false" multiValued="false" />
+  <field name="archived" type="boolean" indexed="true" stored="false" multiValued="false" />
 
   <!-- Solr internal version field -->
   <field name="_version_" type="plong" indexed="false" stored="false" />
@@ -87,10 +89,7 @@
   <uniqueKey>id</uniqueKey>
 
   <!-- ===== Copy Fields (feed into catch-all for broad search) ===== -->
-  <copyField source="content_text" dest="_text_" />
-  <copyField source="content_html" dest="_text_" />
-  <copyField source="tool_output" dest="_text_" />
-  <copyField source="tool_name" dest="_text_" />
-  <copyField source="tool_note" dest="_text_" />
+  <copyField source="content" dest="_text_" />
+  <copyField source="note" dest="_text_" />
 
 </schema>

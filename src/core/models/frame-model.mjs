@@ -140,6 +140,101 @@ export class Frame extends ModelBase {
     return this.content;
   }
 
+  // ---------------------------------------------------------------------------
+  // getContentForIndexing() → Array<{ field: string, value: string }>
+  // ---------------------------------------------------------------------------
+  // TODO: When frame subclasses are introduced (see future-plans.yaml: frame-class-hierarchy),
+  // each subclass should override this method instead of switching on type.
+  // ---------------------------------------------------------------------------
+
+  getContentForIndexing() {
+    let content;
+
+    try {
+      content = this.getContent();
+    } catch (_error) {
+      return [];
+    }
+
+    if (content == null)
+      return [];
+
+    // Non-object content (raw string from broken JSON, plain text, etc.)
+    if (typeof content !== 'object') {
+      let raw = String(content);
+      if (!raw)
+        return [];
+
+      return [{ field: 'content', value: raw }];
+    }
+
+    // Array content — stringify as default
+    if (Array.isArray(content))
+      return [{ field: 'content', value: JSON.stringify(content) }];
+
+    let value;
+
+    switch (this.type) {
+      case 'user-message':
+      case 'message':
+      case 'reflection':
+        value = content.text || content.html;
+        break;
+
+      case 'tool-call': {
+        let toolName  = content.toolName || '';
+        let args      = content.arguments || {};
+        value = `${toolName}: ${JSON.stringify(args)}`;
+        break;
+      }
+
+      case 'tool-result': {
+        let result = content.result;
+        if (result == null)
+          return [];
+
+        value = (typeof result === 'string') ? result : JSON.stringify(result);
+        break;
+      }
+
+      case 'tool-error':
+      case 'error':
+        value = content.message || content.error || content.text;
+        break;
+
+      case 'permission-denied':
+        value = content.message || content.reason;
+        break;
+
+      case 'stop':
+      case 'hook-blocked':
+        value = content.text || content.message;
+        break;
+
+      case 'tool-activity':
+        value = content.html;
+        break;
+
+      default:
+        try {
+          value = JSON.stringify(content);
+        } catch (_stringifyError) {
+          return [];
+        }
+
+        // Empty object {} stringifies to '{}' — treat as no content
+        if (value === '{}')
+          return [];
+
+        break;
+    }
+
+    if (!value)
+      return [];
+
+    return [{ field: 'content', value: String(value) }];
+  }
+
   getTargets() {
     if (!this.targets)
       return [];

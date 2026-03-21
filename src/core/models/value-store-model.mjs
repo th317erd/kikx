@@ -22,6 +22,41 @@ import { ModelBase, Types } from './model-base.mjs';
 export class ValueStore extends ModelBase {
   static version = 1;
 
+  // ---------------------------------------------------------------------------
+  // Solr indexing — best-effort, never blocks or fails the DB write
+  // ---------------------------------------------------------------------------
+
+  async onAfterSave(_context) {
+    try {
+      let application = this.constructor.getApplication?.();
+      if (!application)
+        return;
+
+      let solrService = application.getContext?.()?.getProperty?.('solrService');
+      if (!solrService)
+        return;
+
+      let document = {
+        id:         this.id,
+        doc_type:   'value_store',
+        type:       this.type || null,
+        namespace:  this.namespace || null,
+        sessionID:  this.scopeID || null,
+        authorType: this.ownerType || null,
+        authorID:   this.ownerID || null,
+        note:       this.note || null,
+        content:    this.value || null,
+        timestamp:  (this.createdAt) ? new Date(this.createdAt).getTime() : Date.now(),
+        hidden:     false,
+        archived:   false,
+      };
+
+      await solrService.indexDocuments(document);
+    } catch (error) {
+      console.error('[SolrIndexing] ValueStore index failed:', this.id, error.message);
+    }
+  }
+
   static fields = {
     ...(ModelBase.fields || {}),
     id: {
