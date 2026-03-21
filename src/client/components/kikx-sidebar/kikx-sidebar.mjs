@@ -2,6 +2,7 @@
 
 import { t } from '../../lib/i18n.mjs';
 import { glowInitCSS, glowCSS, glowHoverCSS } from '../../styles/glow-focus.mjs';
+import { search } from '../../lib/api.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -231,6 +232,10 @@ const TEMPLATE_HTML = `
       text-overflow: ellipsis;
     }
 
+    kikx-sidebar .session-row.search-hidden {
+      display: none;
+    }
+
     kikx-sidebar .sessions-empty {
       padding: var(--spacing-sm, 8px);
       font-size: 1rem;
@@ -277,6 +282,9 @@ class KikxSidebar extends HTMLElement {
     this._activeSessionID  = null;
     this._archiveVisible = false;
 
+    this._searchTimeout      = null;
+
+    this._onSearchInput      = this._onSearchInput.bind(this);
     this._onArchiveToggle    = this._onArchiveToggle.bind(this);
     this._onAddFriendClick   = this._onAddFriendClick.bind(this);
     this._onAddSessionClick  = this._onAddSessionClick.bind(this);
@@ -299,6 +307,7 @@ class KikxSidebar extends HTMLElement {
     }
 
     this._render();
+    this._searchInput.addEventListener('input', this._onSearchInput);
     this._archiveToggle.addEventListener('click', this._onArchiveToggle);
     this._addFriendButton.addEventListener('click', this._onAddFriendClick);
     this._addSessionButton.addEventListener('click', this._onAddSessionClick);
@@ -311,6 +320,8 @@ class KikxSidebar extends HTMLElement {
   }
 
   disconnectedCallback() {
+    clearTimeout(this._searchTimeout);
+    this._searchInput.removeEventListener('input', this._onSearchInput);
     this._archiveToggle.removeEventListener('click', this._onArchiveToggle);
     this._addFriendButton.removeEventListener('click', this._onAddFriendClick);
     this._addSessionButton.removeEventListener('click', this._onAddSessionClick);
@@ -422,6 +433,55 @@ class KikxSidebar extends HTMLElement {
     this._addFriendButton.textContent   = t('sidebar.addFriend');
     this._addSessionButton.textContent  = t('sidebar.addSession');
     this._archiveToggle.textContent     = t('sidebar.archiveHide');
+  }
+
+  _onSearchInput(event) {
+    clearTimeout(this._searchTimeout);
+
+    let query = event.target.value.trim();
+
+    if (!query) {
+      this._clearSearch();
+      return;
+    }
+
+    this._searchTimeout = setTimeout(async () => {
+      try {
+        let response = await search(query);
+        let matchingSessionIDs = new Set(
+          (response.data?.results || [])
+            .filter((r) => r.sessionID)
+            .map((r) => r.sessionID)
+        );
+        this._applySearchFilter(matchingSessionIDs);
+      } catch (error) {
+        console.error('[Search] Failed:', error.message);
+      }
+    }, 300);
+  }
+
+  _applySearchFilter(matchingSessionIDs) {
+    if (!this._sessionList)
+      return;
+
+    let rows = this._sessionList.querySelectorAll('.session-row');
+
+    for (let row of rows) {
+      if (matchingSessionIDs.has(row.dataset.id))
+        row.classList.remove('search-hidden');
+      else
+        row.classList.add('search-hidden');
+    }
+  }
+
+  _clearSearch() {
+    if (!this._sessionList)
+      return;
+
+    let rows = this._sessionList.querySelectorAll('.session-row');
+
+    for (let row of rows)
+      row.classList.remove('search-hidden');
   }
 
   _onArchiveToggle() {

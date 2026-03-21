@@ -252,6 +252,12 @@ export function getModels() {
   return request('GET', '/models');
 }
 
+// Search endpoint
+
+export function search(query, options = {}) {
+  return request('POST', '/search', { q: query, ...options });
+}
+
 // Health endpoint
 
 export function healthCheck() {
