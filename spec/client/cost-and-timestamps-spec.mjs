@@ -103,9 +103,9 @@ describe('_loadCosts serviceType derivation', () => {
         if (p.agentID) {
           let agent = getAgent(p.agentID);
           if (agent && agent.pluginID) {
-            if (agent.pluginID === 'claude-agent')
+            if (agent.pluginID === 'claude')
               serviceType = 'anthropic';
-            else if (agent.pluginID === 'openai-agent')
+            else if (agent.pluginID === 'openai')
               serviceType = 'openai';
           }
           break;
@@ -116,15 +116,15 @@ describe('_loadCosts serviceType derivation', () => {
     return serviceType;
   }
 
-  it('should return "anthropic" for claude-agent plugin', () => {
+  it('should return "anthropic" for claude plugin', () => {
     let participants = [{ agentID: 'agt_1', role: 'member' }];
-    let getAgent = (id) => (id === 'agt_1' ? { pluginID: 'claude-agent' } : null);
+    let getAgent = (id) => (id === 'agt_1' ? { pluginID: 'claude' } : null);
     assert.equal(deriveServiceType(participants, getAgent), 'anthropic');
   });
 
-  it('should return "openai" for openai-agent plugin', () => {
+  it('should return "openai" for openai plugin', () => {
     let participants = [{ agentID: 'agt_2', role: 'member' }];
-    let getAgent = (id) => (id === 'agt_2' ? { pluginID: 'openai-agent' } : null);
+    let getAgent = (id) => (id === 'agt_2' ? { pluginID: 'openai' } : null);
     assert.equal(deriveServiceType(participants, getAgent), 'openai');
   });
 
@@ -151,8 +151,8 @@ describe('_loadCosts serviceType derivation', () => {
       { agentID: 'agt_2', role: 'member' },
     ];
     let getAgent = (id) => {
-      if (id === 'agt_1') return { pluginID: 'claude-agent' };
-      if (id === 'agt_2') return { pluginID: 'openai-agent' };
+      if (id === 'agt_1') return { pluginID: 'claude' };
+      if (id === 'agt_2') return { pluginID: 'openai' };
       return null;
     };
     assert.equal(deriveServiceType(participants, getAgent), 'anthropic');
@@ -164,7 +164,7 @@ describe('_loadCosts serviceType derivation', () => {
     let participants = [
       { id: 'prt_abc', sessionID: 'ses_123', agentID: 'agt_1', role: 'member' },
     ];
-    let getAgent = () => ({ pluginID: 'claude-agent' });
+    let getAgent = () => ({ pluginID: 'claude' });
     assert.equal(deriveServiceType(participants, getAgent), 'anthropic');
   });
 
@@ -177,7 +177,7 @@ describe('_loadCosts serviceType derivation', () => {
   it('pluginID is empty string → returns null', () => {
     let participants = [{ agentID: 'agt_6', role: 'member' }];
     let getAgent = () => ({ pluginID: '' });
-    // agent.pluginID is '' → neither 'claude-agent' nor 'openai-agent' → null
+    // agent.pluginID is '' → neither 'claude' nor 'openai' → null
     assert.equal(deriveServiceType(participants, getAgent), null);
   });
 

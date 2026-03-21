@@ -1084,9 +1084,10 @@ class KikxSessionPage extends HTMLElement {
             let agent = agents.getAgent(p.agentID);
             if (agent && agent.pluginID) {
               // Map pluginID to serviceType
-              if (agent.pluginID === 'claude-agent')
+              // Plugin IDs match registerAgentType() names (e.g. 'claude', not 'claude-agent')
+              if (agent.pluginID === 'claude')
                 serviceType = 'anthropic';
-              else if (agent.pluginID === 'openai-agent')
+              else if (agent.pluginID === 'openai')
                 serviceType = 'openai';
             }
             break;
