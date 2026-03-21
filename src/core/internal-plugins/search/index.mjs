@@ -63,6 +63,16 @@ export function setup({ registerTool, PluginInterface }) {
       if (frameType)
         filterQueries.push(`type:${frameType}`);
 
+      // Wrap entire search in a timeout to prevent hanging the interaction loop
+      let result = await Promise.race([
+        this._searchAndEnrich(solrService, query, rows, filterQueries),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Search timed out after 10 seconds')), 10000)),
+      ]);
+
+      return result;
+    }
+
+    async _searchAndEnrich(solrService, query, rows, filterQueries) {
       // Search Solr
       let solrResponse = await solrService.search(query, {
         rows,
@@ -74,17 +84,21 @@ export function setup({ registerTool, PluginInterface }) {
       let numFound = solrResponse.response?.numFound || 0;
 
       // Enrich from DB
-      let models  = this._context.getProperty('models');
+      let models = this._context.getProperty('models');
+
+      // If models not available, return IDs only
+      if (!models)
+        return { query, resultCount: numFound, results: docs, message: `Found ${numFound} results (DB enrichment unavailable)` };
+
       let results = [];
 
       for (let doc of docs) {
         try {
           let record;
-          if (doc.doc_type === 'frame') {
+          if (doc.doc_type === 'frame' && models.Frame)
             record = await models.Frame.where.id.EQ(doc.id).first();
-          } else {
+          else if (models.ValueStore)
             record = await models.ValueStore.where.id.EQ(doc.id).first();
-          }
 
           if (!record)
             continue;
@@ -118,7 +132,7 @@ export function setup({ registerTool, PluginInterface }) {
 
       // Build message with chunk-fetch hints
       let message        = `Found ${numFound} results matching "${query}"`;
-      let truncatedCount = results.filter(r => r.contentRange !== null).length;
+      let truncatedCount = results.filter((r) => r.contentRange !== null).length;
       if (truncatedCount > 0)
         message += `. ${truncatedCount} result(s) truncated — use tool_log:get to fetch full content.`;
 
