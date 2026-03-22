@@ -56,8 +56,32 @@ export function setup({ registerCapability }) {
         }
       }
 
-      // 2. Participants
+      // 2. Participants (agents from Participant table + the user)
       let participants = [];
+
+      // The user is always an implicit participant
+      if (models && models.User && models.Session) {
+        try {
+          let session = await models.Session.where.id.EQ(sessionID).first();
+          if (session && session.organizationID && models.Organization) {
+            let org = await models.Organization.where.id.EQ(session.organizationID).first();
+            if (org && org.userID) {
+              let user = await models.User.where.id.EQ(org.userID).first();
+              participants.push({
+                id:   org.userID,
+                name: user ? (user.name || user.email || 'User') : 'User',
+                type: 'user',
+                role: 'owner',
+              });
+            }
+          }
+        } catch (_e) {
+          // If user lookup fails, add a generic user entry
+          participants.push({ id: '(unknown)', name: 'User', type: 'user', role: 'owner' });
+        }
+      }
+
+      // Agent participants
       if (models && models.Participant && models.Agent) {
         try {
           let entries = await models.Participant.where.sessionID.EQ(sessionID).all();
@@ -76,7 +100,7 @@ export function setup({ registerCapability }) {
             });
           }
         } catch (_e) {
-          // leave participants empty
+          // leave agent participants empty
         }
       }
 
