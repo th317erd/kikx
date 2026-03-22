@@ -387,7 +387,7 @@ describe('Cross-Session Permission Approval', () => {
   // 7. Permission request in session WITH a user → same session (backward compat)
   // ===========================================================================
 
-  describe('session with user — backward compatibility', () => {
+  describe('session with user — inline permission-request', () => {
     it('should keep permission-request in the same session when user is present', async () => {
       let session = await createTestSession();
 
@@ -402,18 +402,19 @@ describe('Cross-Session Permission Approval', () => {
         executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
       }));
 
-      // Permission-request should be in same session
+      // Permission-request should be in same session (inline, not via hardBreak)
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
       let requestFrames = frames.filter((f) => f.type === 'permission-request');
       assert.equal(requestFrames.length, 1, 'session should have 1 permission-request frame');
 
-      // Pending-action should also be in same session
-      let pendingFrames = frames.filter((f) => f.type === 'pending-action');
-      assert.equal(pendingFrames.length, 1, 'session should have 1 pending-action frame');
+      // Tool-result with PERMISSION REQUIRED should exist (inline behavior)
+      let toolResults = frames.filter((f) => f.type === 'tool-result');
+      let permResult  = toolResults.find((f) => f.content && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+      assert.ok(permResult, 'session should have a tool-result with PERMISSION REQUIRED');
 
-      // Should be waiting for permission
-      assert.ok(loop.isWaitingForPermission(session.id));
+      // No hardBreak => not waiting for permission (interaction completed inline)
+      assert.equal(loop.isWaitingForPermission(session.id), false);
     });
   });
 

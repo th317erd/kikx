@@ -581,8 +581,8 @@ describe('Integration: Tool Call Interaction', () => {
 // 6. Permission Hard-Break Flow
 // =============================================================================
 
-describe('Integration: Permission Hard-Break Flow', () => {
-  it('should create pending-action and permission-request frames when permission needed', async () => {
+describe('Integration: Permission Inline Flow', () => {
+  it('should create permission-request and tool-result frames when permission needed', async () => {
     let testUser = await createTestUser('perm-break@example.com');
     let setup    = await setupInteraction(testUser.organization.id);
 
@@ -602,15 +602,16 @@ describe('Integration: Permission Hard-Break Flow', () => {
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
 
-    let pendingFrame    = frames.find((f) => f.type === 'pending-action');
     let permissionFrame = frames.find((f) => f.type === 'permission-request');
-
-    assert.ok(pendingFrame, 'should have a pending-action frame');
     assert.ok(permissionFrame, 'should have a permission-request frame');
-    assert.equal(pendingFrame.content.toolName, 'danger');
+    assert.equal(permissionFrame.content.toolName, 'danger');
+
+    // New behavior: tool-result with PERMISSION REQUIRED is fed back inline
+    let toolResult = frames.find((f) => f.type === 'tool-result' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+    assert.ok(toolResult, 'should have a tool-result with PERMISSION REQUIRED');
   });
 
-  it('should end the interaction on permission hard-break', async () => {
+  it('should complete interaction inline (no hardBreak) when permission needed in normal session', async () => {
     let testUser = await createTestUser('perm-end@example.com');
     let setup    = await setupInteraction(testUser.organization.id);
 
@@ -627,49 +628,40 @@ describe('Integration: Permission Hard-Break Flow', () => {
       },
     });
 
+    // Interaction completes inline (no hardBreak in normal sessions)
     assert.equal(interactionLoop.isActive(setup.session.id), false, 'interaction should not be active');
-    assert.equal(interactionLoop.isWaitingForPermission(setup.session.id), true, 'should be waiting for permission');
+    assert.equal(interactionLoop.isWaitingForPermission(setup.session.id), false, 'should NOT be waiting for permission (inline path)');
   });
 
-  it('should execute tool and create new interaction on approval', async () => {
+  it('should create permission-request and tool-result inline without approval needed', async () => {
     let testUser = await createTestUser('perm-approve@example.com');
     let setup    = await setupInteraction(testUser.organization.id);
-    let toolExecuted = false;
 
     let mockAgent = new MockAgent(core.getContext(), [
       { type: 'tool-call', content: { toolName: 'deploy', arguments: { env: 'prod' } } },
     ]);
-
-    let callCount = 0;
 
     await interactionLoop.startInteraction(setup.session.id, {
       agentPlugin:     mockAgent,
       agent:           setup.agent,
       userMessage:     'Deploy to prod',
       executeTool:     async (toolName) => {
-        callCount++;
-        if (callCount === 1)
-          throw new PermissionRequiredError(toolName, { title: toolName });
-
-        toolExecuted = true;
-        return `deployed to ${toolName}`;
+        throw new PermissionRequiredError(toolName, { title: toolName });
       },
     });
 
-    // Now approve
-    await interactionLoop.approvePermission(setup.session.id);
-
-    assert.ok(toolExecuted, 'tool should have been executed after approval');
-
-    // Should have tool-result frame from approval
+    // Should have tool-result frame with PERMISSION REQUIRED inline
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let toolResult   = frames.find((f) => f.type === 'tool-result');
+    let toolResult   = frames.find((f) => f.type === 'tool-result' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
 
-    assert.ok(toolResult, 'should have a tool-result frame after approval');
+    assert.ok(toolResult, 'should have a tool-result frame with PERMISSION REQUIRED');
+
+    let permRequest = frames.find((f) => f.type === 'permission-request');
+    assert.ok(permRequest, 'should have a permission-request frame');
   });
 
-  it('should create permission-denied frame on denial and replay', async () => {
+  it('should create permission-request frame on permission error (no denial flow needed)', async () => {
     let testUser = await createTestUser('perm-deny@example.com');
     let setup    = await setupInteraction(testUser.organization.id);
 
@@ -686,24 +678,19 @@ describe('Integration: Permission Hard-Break Flow', () => {
       },
     });
 
-    // Deny — now triggers a replay interaction
-    await interactionLoop.denyPermission(setup.session.id);
-
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let denialFrame  = frames.find((f) => f.type === 'permission-denied');
 
-    assert.ok(denialFrame, 'should have a permission-denied frame');
+    // Permission-request frame should exist
+    let permFrame = frames.find((f) => f.type === 'permission-request');
+    assert.ok(permFrame, 'should have a permission-request frame');
 
-    // After deny-with-replay, the mock agent re-yields the same tool-call
-    // and hits permission-waiting again. In production the agent sees the
-    // denial in history and adjusts; mock agents don't, so permission-waiting
-    // returns to true.
-    assert.equal(interactionLoop.isWaitingForPermission(setup.session.id), true,
-      'replay agent re-yields tool-call, so permission-waiting again');
+    // Interaction completes inline (no waiting state)
+    assert.equal(interactionLoop.isWaitingForPermission(setup.session.id), false,
+      'should NOT be waiting for permission (inline path)');
   });
 
-  it('should mark pending-action and permission-request as processed on approval', async () => {
+  it('should create permission-request frame that is not yet processed', async () => {
     let testUser = await createTestUser('perm-processed@example.com');
     let setup    = await setupInteraction(testUser.organization.id);
 
@@ -711,31 +698,24 @@ describe('Integration: Permission Hard-Break Flow', () => {
       { type: 'tool-call', content: { toolName: 'update', arguments: {} } },
     ]);
 
-    let callCount = 0;
-
     await interactionLoop.startInteraction(setup.session.id, {
       agentPlugin:     mockAgent,
       agent:           setup.agent,
       userMessage:     'Update something',
       executeTool:     async (toolName) => {
-        callCount++;
-        if (callCount === 1)
-          throw new PermissionRequiredError(toolName, { title: toolName });
-
-        return 'updated';
+        throw new PermissionRequiredError(toolName, { title: toolName });
       },
     });
 
-    await interactionLoop.approvePermission(setup.session.id);
+    // Use framePersistence.loadFrames to get properly deserialized frames
+    let frameManager = await framePersistence.loadFrames(setup.session.id);
+    let frames       = frameManager.toArray();
 
-    let models   = core.getModels();
-    let dbFrames = await models.Frame.where.sessionID.EQ(setup.session.id).ORDER('+Frame:order').all();
+    let requestFrame = frames.find((f) => f.type === 'permission-request');
+    assert.ok(requestFrame, 'should have a permission-request frame');
 
-    let pendingFrame = dbFrames.find((f) => f.type === 'pending-action');
-    let requestFrame = dbFrames.find((f) => f.type === 'permission-request');
-
-    assert.ok(pendingFrame.processed, 'pending-action should be marked processed');
-    assert.ok(requestFrame.processed, 'permission-request should be marked processed');
+    // The permission-request frame should exist with the correct toolName
+    assert.equal(requestFrame.content.toolName, 'update');
   });
 });
 
@@ -1044,7 +1024,7 @@ describe('Integration: Event Emission', () => {
     interactionLoop.removeListener('frame', listener);
   });
 
-  it('should emit permission:request event on hard-break', async () => {
+  it('should emit permission:request event on inline permission handling', async () => {
     let testUser         = await createTestUser('events-perm@example.com');
     let setup            = await setupInteraction(testUser.organization.id);
     let permissionEvents = [];
@@ -1072,11 +1052,7 @@ describe('Integration: Event Emission', () => {
     assert.equal(permissionEvents.length, 1, 'should have exactly 1 permission:request event');
     assert.equal(permissionEvents[0].toolName, 'danger');
     assert.ok(permissionEvents[0].frameID);
-    assert.ok(permissionEvents[0].requestFrameID);
 
     interactionLoop.removeListener('permission:request', listener);
-
-    // Clean up waiting state
-    await interactionLoop.denyPermission(setup.session.id);
   });
 });

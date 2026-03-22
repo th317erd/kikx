@@ -146,7 +146,7 @@ describe('Shell Permission Flow (per-command)', () => {
   // ===========================================================================
 
   describe('permission-request frame enrichment', () => {
-    it('should include parsedCommands in permission-request frame for shell:execute', async () => {
+    it('should create permission-request frame with toolName and arguments for shell:execute', async () => {
       let { session } = await createTestSession();
       let loop        = createLoop();
       let emitted     = [];
@@ -173,14 +173,14 @@ describe('Shell Permission Flow (per-command)', () => {
       assert.equal(permFrames.length, 1);
 
       let content = permFrames[0].content;
-      // parsedCommands come from fallback parse in permission-handler
-      assert.ok(content.parsedCommands, 'Should have parsedCommands in frame content');
-      assert.equal(content.parsedCommands.length, 2);
-      assert.equal(content.parsedCommands[0].command, 'ls');
-      assert.equal(content.parsedCommands[1].command, 'grep');
+      // Inline path creates permission-request with toolName, arguments, and permissionContext
+      assert.equal(content.toolName, 'shell:execute');
+      assert.ok(content.arguments, 'Should have arguments in frame content');
+      assert.ok(content.permissionContext, 'Should have permissionContext in frame content');
+      assert.equal(content.permissionContext.title, 'permission.shell.executeTitle');
     });
 
-    it('should fall back to parsing from command string via PermissionRequiredError path', async () => {
+    it('should include permissionContext details in permission-request frame', async () => {
       let { session } = await createTestSession();
       let loop        = createLoop();
       let emitted     = [];
@@ -200,8 +200,8 @@ describe('Shell Permission Flow (per-command)', () => {
 
       let permFrames = emitted.filter((f) => f.type === 'permission-request');
       assert.equal(permFrames.length, 1);
-      assert.ok(permFrames[0].content.parsedCommands);
-      assert.equal(permFrames[0].content.parsedCommands[0].command, 'ls');
+      assert.equal(permFrames[0].content.toolName, 'shell:execute');
+      assert.equal(permFrames[0].content.permissionContext.title, 'permission.shell.executeTitle');
     });
   });
 
@@ -496,8 +496,8 @@ describe('Shell Permission Flow (per-command)', () => {
   // 5. Deny with replay
   // ===========================================================================
 
-  describe('deny with replay', () => {
-    it('should start new interaction after denyPermission', async () => {
+  describe('inline permission handling', () => {
+    it('should complete interaction inline when permission is needed (no hardBreak)', async () => {
       let { session } = await createTestSession();
       let loop        = createLoop();
       let emitted     = [];
@@ -508,7 +508,7 @@ describe('Shell Permission Flow (per-command)', () => {
 
       let agent = new MockAgent(context, [shellToolCall('ls -la')]);
 
-      // First interaction — will hit permission hard-break
+      // Interaction completes inline with permission-request + tool_result
       await loop.startInteraction(session.id, defaultParams(agent, {
         agentPlugin: agent,
         executeTool: async () => {
@@ -516,53 +516,48 @@ describe('Shell Permission Flow (per-command)', () => {
         },
       }));
 
-      assert.equal(interactionStarts, 1);
+      assert.equal(interactionStarts, 1, 'should have started 1 interaction');
 
-      // Now deny — should start a replay interaction
-      await loop.denyPermission(session.id);
+      // No hardBreak, no waiting state
+      assert.equal(loop.isWaitingForPermission(session.id), false);
 
-      // Interaction starts should be 2 (original + replay)
-      assert.equal(interactionStarts, 2);
+      // Permission-request frame should exist
+      let permFrames = emitted.filter((f) => f.type === 'permission-request');
+      assert.equal(permFrames.length, 1);
 
-      // Should have denial frame
-      let denialFrames = emitted.filter((f) => f.type === 'permission-denied');
-      assert.equal(denialFrames.length, 1);
+      // Tool-result with PERMISSION REQUIRED should exist
+      let toolResults = emitted.filter((f) => f.type === 'tool-result' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+      assert.equal(toolResults.length, 1);
     });
   });
 
   // ===========================================================================
-  // 6. Backward compatibility — no body = approve all
+  // 6. Inline permission — tool_result is fed back to agent
   // ===========================================================================
 
-  describe('backward compatibility', () => {
-    it('should approve when no decisions are provided', async () => {
+  describe('inline permission tool_result', () => {
+    it('should feed PERMISSION REQUIRED tool_result back to agent inline', async () => {
       let { session } = await createTestSession();
       let loop        = createLoop();
       let emitted     = [];
-      let toolExecuted = false;
 
       loop.on('frame', (ev) => emitted.push(ev.frame));
 
       let agent = new MockAgent(context, [shellToolCall('echo hello')]);
 
-      let callCount = 0;
-
       await loop.startInteraction(session.id, defaultParams(agent, {
         agentPlugin: agent,
         executeTool: async () => {
-          callCount++;
-          if (callCount === 1)
-            throw new PermissionRequiredError('shell:execute', { title: 'shell:execute' });
-
-          toolExecuted = true;
-          return 'hello';
+          throw new PermissionRequiredError('shell:execute', { title: 'shell:execute' });
         },
       }));
 
-      // Now approve without decisions (backward compat)
-      await loop.approvePermission(session.id);
+      // Tool-result with PERMISSION REQUIRED should be in emitted frames
+      let permResults = emitted.filter((f) => f.type === 'tool-result' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+      assert.ok(permResults.length >= 1, 'should have a tool-result with PERMISSION REQUIRED');
 
-      assert.ok(toolExecuted, 'Tool should have been executed via approvePermission');
+      // Interaction completed (no waiting state)
+      assert.equal(loop.isActive(session.id), false);
     });
   });
 });

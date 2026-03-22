@@ -438,12 +438,19 @@ describe('InteractionLoop', () => {
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
 
-      // Should NOT have a message frame (interaction ended before the message)
-      let messageFrames = frames.filter((f) => f.type === 'message');
-      assert.equal(messageFrames.length, 0);
+      // New behavior: inline permission-request frame + tool_result fed back
+      // The interaction continues, so the message block IS processed
+      let permRequestFrames = frames.filter((f) => f.type === 'permission-request');
+      assert.equal(permRequestFrames.length, 1, 'should have a permission-request frame');
+      assert.equal(permRequestFrames[0].content.toolName, 'dangerous-tool');
 
-      // Should be waiting for permission
-      assert.ok(loop.isWaitingForPermission(session.id));
+      let toolResultFrames = frames.filter((f) => f.type === 'tool-result');
+      assert.ok(toolResultFrames.length >= 1, 'should have a tool-result frame');
+      let permResult = toolResultFrames.find((f) => f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+      assert.ok(permResult, 'tool-result should contain PERMISSION REQUIRED message');
+
+      // Interaction completes naturally (not waiting for permission)
+      assert.equal(loop.isActive(session.id), false);
     });
   });
 
@@ -451,8 +458,8 @@ describe('InteractionLoop', () => {
   // 13. Permission hard-break persists pending-action frame
   // ===========================================================================
 
-  describe('permission hard-break — pending-action frame', () => {
-    it('should persist a pending-action frame', async () => {
+  describe('permission inline — permission-request frame', () => {
+    it('should persist a permission-request frame with tool details', async () => {
       let session = await createTestSession();
       let blocks  = [
         { type: 'tool-call', content: { toolName: 'rm', arguments: { path: '/etc' } }, authorType: 'agent', authorID: 'a1' },
@@ -468,11 +475,11 @@ describe('InteractionLoop', () => {
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let pendingFrames = frames.filter((f) => f.type === 'pending-action');
+      let requestFrames = frames.filter((f) => f.type === 'permission-request');
 
-      assert.equal(pendingFrames.length, 1);
-      assert.equal(pendingFrames[0].content.toolName, 'rm');
-      assert.deepEqual(pendingFrames[0].content.arguments, { path: '/etc' });
+      assert.equal(requestFrames.length, 1);
+      assert.equal(requestFrames[0].content.toolName, 'rm');
+      assert.deepEqual(requestFrames[0].content.arguments, { path: '/etc' });
     });
   });
 
@@ -684,10 +691,9 @@ describe('InteractionLoop', () => {
   // ===========================================================================
 
   describe('approvePermission', () => {
-    it('should execute tool and start a new interaction', async () => {
+    it('should create permission-request and tool-result inline (no hardBreak)', async () => {
       let session = await createTestSession();
       let interactionCount = 0;
-      let toolExecuted = false;
 
       class PermissionAgent extends AgentInterface {
         static pluginID    = 'perm-agent';
@@ -708,31 +714,34 @@ describe('InteractionLoop', () => {
       let agent = new PermissionAgent(context);
       let loop  = createLoop();
 
-      let callCount = 0;
-
-      // First interaction — hits permission hard-break
+      // PermissionRequiredError in normal session => inline permission-request + tool_result
       await loop.startInteraction(session.id, defaultParams(agent, {
         agentPlugin: agent,
         executeTool: (name) => {
-          callCount++;
-          if (callCount === 1 && name === 'rm')
-            throw new PermissionRequiredError(name, { title: name });
-
-          toolExecuted = true;
-          return 'deleted';
+          throw new PermissionRequiredError(name, { title: name });
         },
       }));
 
+      // Interaction completes naturally (no hardBreak, no waiting state)
       assert.equal(interactionCount, 1);
-      assert.ok(loop.isWaitingForPermission(session.id));
-
-      // Approve the permission
-      await loop.approvePermission(session.id);
-
-      // Should have started a new interaction
-      assert.equal(interactionCount, 2);
-      assert.ok(toolExecuted);
       assert.equal(loop.isWaitingForPermission(session.id), false);
+      assert.equal(loop.isActive(session.id), false);
+
+      // Permission-request frame and tool-result with PERMISSION REQUIRED should exist
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
+
+      let requestFrames = frames.filter((f) => f.type === 'permission-request');
+      assert.equal(requestFrames.length, 1);
+      assert.equal(requestFrames[0].content.toolName, 'rm');
+
+      let toolResults = frames.filter((f) => f.type === 'tool-result');
+      let permResult  = toolResults.find((f) => f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+      assert.ok(permResult, 'should have PERMISSION REQUIRED tool-result');
+
+      // The message after tool-call should still be processed (interaction continued)
+      let messageFrames = frames.filter((f) => f.type === 'message');
+      assert.equal(messageFrames.length, 1, 'agent message should be processed after permission-request');
     });
   });
 
@@ -741,7 +750,7 @@ describe('InteractionLoop', () => {
   // ===========================================================================
 
   describe('denyPermission', () => {
-    it('should mark pending-action frame as processed and store denial', async () => {
+    it('should create permission-request and tool-result inline when permission needed in normal session', async () => {
       let session = await createTestSession();
       let blocks  = [
         { type: 'tool-call', content: { toolName: 'sudo', arguments: {} }, authorType: 'agent', authorID: 'a1' },
@@ -755,30 +764,22 @@ describe('InteractionLoop', () => {
         },
       }));
 
-      assert.ok(loop.isWaitingForPermission(session.id));
+      // New behavior: no hardBreak in normal sessions, interaction completes inline
+      assert.equal(loop.isWaitingForPermission(session.id), false);
+      assert.equal(loop.isActive(session.id), false);
 
-      await loop.denyPermission(session.id);
-
-      // Deny triggers a replay — mock agent re-yields same tool-call,
-      // so permission-waiting returns to true after the replay.
-      assert.equal(loop.isWaitingForPermission(session.id), true);
-
-      // Check that denial frame was created
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let denialFrames = frames.filter((f) => f.type === 'permission-denied');
 
-      assert.ok(denialFrames.length >= 1, 'should have at least one permission-denied frame');
+      // Permission-request frame should exist
+      let requestFrames = frames.filter((f) => f.type === 'permission-request');
+      assert.ok(requestFrames.length >= 1, 'should have a permission-request frame');
+      assert.equal(requestFrames[0].content.toolName, 'sudo');
 
-      // The first pending-action frame should be processed (from the original deny).
-      // The replay creates a second pending-action (mock agent re-yields).
-      let { Frame } = models;
-      let pendingFrames = frames.filter((f) => f.type === 'pending-action');
-      assert.ok(pendingFrames.length >= 1, 'should have at least one pending-action frame');
-
-      let firstPendingRecord = await Frame.where.id.EQ(pendingFrames[0].id).first();
-      assert.equal(firstPendingRecord.processed, true);
-      assert.ok(firstPendingRecord.processedAt);
+      // Tool-result with PERMISSION REQUIRED should exist
+      let toolResults = frames.filter((f) => f.type === 'tool-result');
+      let permResult  = toolResults.find((f) => f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+      assert.ok(permResult, 'should have PERMISSION REQUIRED tool-result');
     });
   });
 
@@ -933,7 +934,7 @@ describe('InteractionLoop', () => {
   // ===========================================================================
 
   describe('permission:request event', () => {
-    it('should emit permission:request when hard-break occurs', async () => {
+    it('should emit permission:request when permission is needed', async () => {
       let session = await createTestSession();
       let blocks  = [
         { type: 'tool-call', content: { toolName: 'nuclear', arguments: {} }, authorType: 'agent', authorID: 'a1' },
@@ -954,7 +955,6 @@ describe('InteractionLoop', () => {
       assert.equal(events[0].sessionID, session.id);
       assert.equal(events[0].toolName, 'nuclear');
       assert.ok(events[0].frameID);
-      assert.ok(events[0].requestFrameID);
     });
   });
 
@@ -1156,30 +1156,45 @@ describe('InteractionLoop', () => {
     });
   });
 
-  describe('double denyPermission', () => {
-    it('should handle sequential denials via replay', async () => {
+  describe('double permission-request inline', () => {
+    it('should handle multiple permission-required errors inline', async () => {
       let session = await createTestSession();
-      let blocks  = [
-        { type: 'tool-call', content: { toolName: 'exec', arguments: {} }, authorType: 'agent', authorID: 'a1' },
-      ];
-      let agent = new MockAgent(context, blocks);
+      let permissionCount = 0;
+
+      // Agent that yields two tool-calls, both of which trigger permission errors
+      class DoubleToolAgent extends AgentInterface {
+        static pluginID    = 'double-tool';
+        static featureName = 'double-tool';
+        static agentType   = 'double-tool';
+
+        async *_createGenerator(_params) {
+          yield { type: 'tool-call', content: { toolName: 'exec', arguments: {} }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'tool-call', content: { toolName: 'exec2', arguments: {} }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'done', content: {} };
+        }
+      }
+
+      let agent = new DoubleToolAgent(context);
       let loop  = createLoop();
 
       await loop.startInteraction(session.id, defaultParams(agent, {
+        agentPlugin: agent,
         executeTool: (toolName) => {
+          permissionCount++;
           throw new PermissionRequiredError(toolName, { title: toolName });
         },
       }));
 
-      assert.ok(loop.isWaitingForPermission(session.id));
+      // Both tool-calls should have been handled inline (no hardBreak)
+      assert.equal(loop.isWaitingForPermission(session.id), false);
+      assert.equal(loop.isActive(session.id), false);
+      assert.equal(permissionCount, 2, 'both tool-calls should have triggered permission errors');
 
-      // First deny — triggers replay; mock agent re-yields tool-call -> permission-waiting
-      await loop.denyPermission(session.id);
-      assert.equal(loop.isWaitingForPermission(session.id), true, 'replay puts session back in permission-waiting');
+      let fm     = await framePersistence.loadFrames(session.id);
+      let frames = fm.toArray();
 
-      // Second deny — also triggers replay
-      await loop.denyPermission(session.id);
-      assert.equal(loop.isWaitingForPermission(session.id), true, 'second replay also results in permission-waiting');
+      let requestFrames = frames.filter((f) => f.type === 'permission-request');
+      assert.equal(requestFrames.length, 2, 'should have 2 permission-request frames');
     });
   });
 
