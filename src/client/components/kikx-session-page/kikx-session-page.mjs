@@ -157,6 +157,56 @@ function getInitials(name) {
 }
 
 // ---------------------------------------------------------------------------
+// Tool argument formatting for permission dialogs
+// ---------------------------------------------------------------------------
+
+function _formatToolArgs(toolArgs) {
+  if (!toolArgs)
+    return '';
+
+  if (typeof toolArgs === 'string')
+    return toolArgs;
+
+  if (typeof toolArgs !== 'object')
+    return String(toolArgs);
+
+  // Strip internal properties (prefixed with _)
+  let displayArgs = {};
+  for (let key of Object.keys(toolArgs)) {
+    if (!key.startsWith('_'))
+      displayArgs[key] = toolArgs[key];
+  }
+
+  let keys = Object.keys(displayArgs);
+  if (keys.length === 0)
+    return '';
+
+  // Single simple value — show inline without key name
+  if (keys.length === 1) {
+    let value = displayArgs[keys[0]];
+    if (typeof value === 'string' && value.length < 200)
+      return value;
+  }
+
+  // Multiple keys — format as key: value lines, truncate long values
+  let lines = [];
+  for (let key of keys) {
+    let value = displayArgs[key];
+
+    if (typeof value === 'string') {
+      if (value.length > 200)
+        value = value.slice(0, 200) + '...';
+    } else {
+      value = JSON.stringify(value);
+    }
+
+    lines.push(`${key}: ${value}`);
+  }
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // Pure DOM utilities
 // ---------------------------------------------------------------------------
 
@@ -319,22 +369,9 @@ export function createFrameElement(frame) {
         let toolArgs = frame.content && frame.content.arguments;
         if (toolArgs) {
           try {
-            if (typeof toolArgs === 'object' && toolArgs !== null) {
-              // Strip internal properties (prefixed with _) from display
-              let displayArgs = {};
-              for (let key of Object.keys(toolArgs)) {
-                if (!key.startsWith('_'))
-                  displayArgs[key] = toolArgs[key];
-              }
-
-              let argKeys = Object.keys(displayArgs);
-              if (argKeys.length > 0)
-                permRequest.toolArgs = JSON.stringify(displayArgs, null, 2);
-            } else if (typeof toolArgs === 'string' && toolArgs.length > 0) {
-              permRequest.toolArgs = toolArgs;
-            }
+            permRequest.toolArgs = _formatToolArgs(toolArgs);
           } catch (_e) {
-            // Ignore serialization errors
+            // Ignore formatting errors
           }
         }
 
