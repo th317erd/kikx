@@ -10,7 +10,8 @@ import { SessionManager }   from '../../src/core/session/index.mjs';
 import { FramePersistence } from '../../src/core/frames/index.mjs';
 import { InteractionLoop }  from '../../src/core/interaction/index.mjs';
 import { ContentSanitizer } from '../../src/core/lib/content-sanitizer.mjs';
-import { AgentInterface }   from '../../src/core/plugins/agent-interface.mjs';
+import { AgentInterface }          from '../../src/core/plugins/agent-interface.mjs';
+import { PermissionRequiredError } from '../../src/core/permissions/permission-required-error.mjs';
 
 // =============================================================================
 // MockAgent — controllable agent plugin for integration tests
@@ -593,8 +594,9 @@ describe('Integration: Permission Hard-Break Flow', () => {
       agentPlugin:     mockAgent,
       agent:           setup.agent,
       userMessage:     'Do something dangerous',
-      checkPermission: async () => true, // always needs permission
-      executeTool:     async () => 'done',
+      executeTool:     async (toolName) => {
+        throw new PermissionRequiredError(toolName, { title: toolName });
+      },
     });
 
     let frameManager = await framePersistence.loadFrames(setup.session.id);
@@ -620,8 +622,9 @@ describe('Integration: Permission Hard-Break Flow', () => {
       agentPlugin:     mockAgent,
       agent:           setup.agent,
       userMessage:     'Risky op',
-      checkPermission: async () => true,
-      executeTool:     async () => 'done',
+      executeTool:     async (toolName) => {
+        throw new PermissionRequiredError(toolName, { title: toolName });
+      },
     });
 
     assert.equal(interactionLoop.isActive(setup.session.id), false, 'interaction should not be active');
@@ -637,12 +640,17 @@ describe('Integration: Permission Hard-Break Flow', () => {
       { type: 'tool-call', content: { toolName: 'deploy', arguments: { env: 'prod' } } },
     ]);
 
+    let callCount = 0;
+
     await interactionLoop.startInteraction(setup.session.id, {
       agentPlugin:     mockAgent,
       agent:           setup.agent,
       userMessage:     'Deploy to prod',
-      checkPermission: async () => true,
       executeTool:     async (toolName) => {
+        callCount++;
+        if (callCount === 1)
+          throw new PermissionRequiredError(toolName, { title: toolName });
+
         toolExecuted = true;
         return `deployed to ${toolName}`;
       },
@@ -673,8 +681,9 @@ describe('Integration: Permission Hard-Break Flow', () => {
       agentPlugin:     mockAgent,
       agent:           setup.agent,
       userMessage:     'Launch nukes',
-      checkPermission: async () => true,
-      executeTool:     async () => 'boom',
+      executeTool:     async (toolName) => {
+        throw new PermissionRequiredError(toolName, { title: toolName });
+      },
     });
 
     // Deny — now triggers a replay interaction
@@ -702,12 +711,19 @@ describe('Integration: Permission Hard-Break Flow', () => {
       { type: 'tool-call', content: { toolName: 'update', arguments: {} } },
     ]);
 
+    let callCount = 0;
+
     await interactionLoop.startInteraction(setup.session.id, {
       agentPlugin:     mockAgent,
       agent:           setup.agent,
       userMessage:     'Update something',
-      checkPermission: async () => true,
-      executeTool:     async () => 'updated',
+      executeTool:     async (toolName) => {
+        callCount++;
+        if (callCount === 1)
+          throw new PermissionRequiredError(toolName, { title: toolName });
+
+        return 'updated';
+      },
     });
 
     await interactionLoop.approvePermission(setup.session.id);
@@ -1048,8 +1064,9 @@ describe('Integration: Event Emission', () => {
       agentPlugin:     mockAgent,
       agent:           setup.agent,
       userMessage:     'Permission event test',
-      checkPermission: async () => true,
-      executeTool:     async () => 'done',
+      executeTool:     async (toolName) => {
+        throw new PermissionRequiredError(toolName, { title: toolName });
+      },
     });
 
     assert.equal(permissionEvents.length, 1, 'should have exactly 1 permission:request event');

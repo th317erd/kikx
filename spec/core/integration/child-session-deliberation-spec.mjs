@@ -11,7 +11,8 @@ import { FramePersistence }  from '../../../src/core/frames/index.mjs';
 import { ContentSanitizer }  from '../../../src/core/lib/content-sanitizer.mjs';
 import { PluginInterface }   from '../../../src/core/plugin-loader/plugin-interface.mjs';
 import { PluginRegistry }    from '../../../src/core/plugin-loader/registry.mjs';
-import { AgentInterface }    from '../../../src/core/plugins/agent-interface.mjs';
+import { AgentInterface }          from '../../../src/core/plugins/agent-interface.mjs';
+import { PermissionRequiredError } from '../../../src/core/permissions/permission-required-error.mjs';
 import { setup as setupCrossSession } from '../../../src/core/internal-plugins/cross-session/index.mjs';
 
 // =============================================================================
@@ -273,7 +274,7 @@ describe('Child Session Deliberation — Integration', () => {
 
       await interactionLoop.startInteraction(childSession.id, defaultParams(mockAgent, {
         agent:           agent,
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        agent.id,
         userMessage:     null,
@@ -332,7 +333,7 @@ describe('Child Session Deliberation — Integration', () => {
 
       await interactionLoop.startInteraction(child.id, defaultParams(mockAgent, {
         agent:           agent,
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        agent.id,
         userMessage:     null,
@@ -366,7 +367,7 @@ describe('Child Session Deliberation — Integration', () => {
 
       await interactionLoop.startInteraction(session.id, defaultParams(mockAgent, {
         agent:           agent,
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        agent.id,
         userMessage:     null,

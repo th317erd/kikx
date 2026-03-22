@@ -9,7 +9,8 @@ import { InteractionLoop }    from '../../../src/core/interaction/index.mjs';
 import { SessionManager }     from '../../../src/core/session/index.mjs';
 import { FramePersistence }   from '../../../src/core/frames/index.mjs';
 import { ContentSanitizer }   from '../../../src/core/lib/content-sanitizer.mjs';
-import { AgentInterface }     from '../../../src/core/plugins/agent-interface.mjs';
+import { AgentInterface }          from '../../../src/core/plugins/agent-interface.mjs';
+import { PermissionRequiredError } from '../../../src/core/permissions/permission-required-error.mjs';
 
 // =============================================================================
 // Mock Agent
@@ -135,7 +136,7 @@ describe('Cross-Session Permission Approval', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(childSession.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        'a1',
         userMessage:     null,
@@ -176,7 +177,7 @@ describe('Cross-Session Permission Approval', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(child.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        'a1',
         userMessage:     null,
@@ -214,7 +215,7 @@ describe('Cross-Session Permission Approval', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        'a1',
         userMessage:     null,
@@ -267,15 +268,20 @@ describe('Cross-Session Permission Approval', () => {
       let agent = new PermissionAgent(context);
       let loop  = createLoop();
 
+      let callCount = 0;
+
       await loop.startInteraction(childSession.id, defaultParams(agent, {
-        agentPlugin:     agent,
-        checkPermission: (name) => name === 'rm',
-        executeTool:     () => {
+        agentPlugin: agent,
+        executeTool: (name) => {
+          callCount++;
+          if (callCount === 1 && name === 'rm')
+            throw new PermissionRequiredError(name, { title: name });
+
           toolExecuted = true;
           return 'deleted';
         },
-        authorType: 'agent',
-        authorID:   'a1',
+        authorType:  'agent',
+        authorID:    'a1',
         userMessage: null,
       }));
 
@@ -316,7 +322,7 @@ describe('Cross-Session Permission Approval', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(childSession.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        'a1',
         userMessage:     null,
@@ -356,7 +362,7 @@ describe('Cross-Session Permission Approval', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(childSession.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        'a1',
         userMessage:     null,
@@ -393,7 +399,7 @@ describe('Cross-Session Permission Approval', () => {
 
       // This interaction sends a userMessage, which creates a user-authored frame
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
       }));
 
       // Permission-request should be in same session
@@ -432,7 +438,7 @@ describe('Cross-Session Permission Approval', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(childSession.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        'a1',
         userMessage:     null,
@@ -464,7 +470,7 @@ describe('Cross-Session Permission Approval', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(childSession.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        'a1',
         userMessage:     null,
@@ -500,7 +506,7 @@ describe('Cross-Session Permission Approval', () => {
       loop.on('permission:request', (event) => events.push(event));
 
       await loop.startInteraction(childSession.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        'a1',
         userMessage:     null,
@@ -531,7 +537,7 @@ describe('Cross-Session Permission Approval', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(childSession.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
         authorType:      'agent',
         authorID:        'a1',
         userMessage:     null,

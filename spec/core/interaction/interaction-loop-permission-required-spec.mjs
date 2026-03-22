@@ -70,7 +70,6 @@ function makeParams(overrides = {}) {
     agent:           { id: 'agt_1', organizationID: 'org_1' },
     agentPlugin:     {},
     executeTool:     async () => 'ok',
-    checkPermission: null,
     parentID:        null,
     _signingContext:  null,
     ...overrides,
@@ -212,7 +211,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
       assert.equal(toolResults[0].content.output, 'tool output here');
     });
 
-    it('PermissionDeniedError from executeTool still creates tool-error frame (no regression)', async () => {
+    it('PermissionDeniedError from executeTool creates permission-denied frame', async () => {
       let error = new PermissionDeniedError('test:feature', 'not allowed');
 
       let params = makeParams({
@@ -226,8 +225,8 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       assert.equal(hardBreakCalls.length, 0, 'hardBreak should NOT be called for PermissionDeniedError');
 
-      let toolErrors = createdFrames.filter((f) => f.type === 'tool-error');
-      assert.equal(toolErrors.length, 1, 'tool-error frame should be created');
+      let deniedFrames = createdFrames.filter((f) => f.type === 'permission-denied');
+      assert.equal(deniedFrames.length, 1, 'permission-denied frame should be created');
     });
 
     it('tool-call frame is created before PermissionRequiredError catch', async () => {
@@ -369,17 +368,16 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
   });
 
   // ---------------------------------------------------------------------------
-  // Backwards compatibility
+  // Tool-owned permission handling (replaces external checkPermission)
   // ---------------------------------------------------------------------------
 
-  describe('backwards compatibility', () => {
+  describe('tool-owned permissions', () => {
 
-    it('external checkPermission still runs before executeTool', async () => {
+    it('executeTool runs directly when no permission error thrown', async () => {
       let callOrder = [];
 
       let params = makeParams({
-        checkPermission: async () => { callOrder.push('checkPermission'); return false; },
-        executeTool:     async () => { callOrder.push('executeTool'); return 'result'; },
+        executeTool: async () => { callOrder.push('executeTool'); return 'result'; },
       });
 
       let gen = toolCallGenerator('test:tool', {}, 'tu_1');
@@ -387,28 +385,10 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      assert.deepStrictEqual(callOrder, ['checkPermission', 'executeTool']);
+      assert.deepStrictEqual(callOrder, ['executeTool']);
     });
 
-    it('external checkPermission returning true triggers hardBreak, executeTool never runs', async () => {
-      let executeToolCalled = false;
-
-      let params = makeParams({
-        checkPermission: async () => true,
-        executeTool:     async () => { executeToolCalled = true; return 'result'; },
-      });
-
-      let gen = toolCallGenerator('test:tool', {}, 'tu_1');
-      loop._active.set(loop._activeKey('ses_1', 'agt_1'), { generator: gen, interactionID: 'int_1', params });
-
-      await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
-
-      assert.equal(executeToolCalled, false, 'executeTool should NOT be called');
-      assert.equal(hardBreakCalls.length, 1, 'hardBreak called from external check');
-    });
-
-    it('external checkPermission and internal PermissionRequiredError can coexist', async () => {
-      // External check passes (returns false), but executeTool throws PermissionRequiredError
+    it('PermissionRequiredError from executeTool triggers hardBreak with rich context', async () => {
       let error = new PermissionRequiredError('test:feature', {
         title:       'permission.test.title',
         description: 'permission.test.desc',
@@ -416,8 +396,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
       });
 
       let params = makeParams({
-        checkPermission: async () => false,
-        executeTool:     async () => { throw error; },
+        executeTool: async () => { throw error; },
       });
 
       let gen = toolCallGenerator('test:tool', {}, 'tu_1');
@@ -425,18 +404,17 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      assert.equal(hardBreakCalls.length, 1, 'hardBreak called from internal check');
+      assert.equal(hardBreakCalls.length, 1, 'hardBreak called from PermissionRequiredError');
 
       let [, , , , , , permCtx] = hardBreakCalls[0];
       assert.equal(permCtx.title, 'permission.test.title');
     });
 
-    it('PermissionDeniedError from external checkPermission still creates permission-denied frame', async () => {
+    it('PermissionDeniedError from executeTool creates permission-denied frame', async () => {
       let error = new PermissionDeniedError('test:feature', 'denied by policy');
 
       let params = makeParams({
-        checkPermission: async () => { throw error; },
-        executeTool:     async () => 'should not run',
+        executeTool: async () => { throw error; },
       });
 
       let gen = toolCallGenerator('test:tool', {}, 'tu_1');
@@ -445,7 +423,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
       let deniedFrames = createdFrames.filter((f) => f.type === 'permission-denied');
-      assert.equal(deniedFrames.length, 1, 'permission-denied frame created from external check');
+      assert.equal(deniedFrames.length, 1, 'permission-denied frame created from executeTool');
       assert.equal(hardBreakCalls.length, 0, 'hardBreak NOT called for denied');
     });
   });

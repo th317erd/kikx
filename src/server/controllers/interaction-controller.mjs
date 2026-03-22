@@ -5,7 +5,6 @@
 // =============================================================================
 
 import { ControllerAuthBase }   from './controller-auth-base.mjs';
-import { parseShellCommands }   from '../../core/internal-plugins/shell/command-parser.mjs';
 
 export class InteractionController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
@@ -119,94 +118,15 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
-    // Build permission + tool execution callbacks
-    let permissionEngine = core.getPermissionEngine();
-    let pluginRegistry   = core.getPluginRegistry();
+    // Build tool execution callback
+    let pluginRegistry = core.getPluginRegistry();
 
-    let checkPermission = async (featureName, toolArgs) => {
-      // Translate system:command tool calls to per-command feature names
-      if (featureName === 'system:command' && toolArgs && toolArgs.command)
-        featureName = `command:${toolArgs.command.toLowerCase().trim()}`;
-
-      // For now: authenticated users are always permitted for commands
-      if (featureName.startsWith('command:') && toolArgs && toolArgs.authorType === 'user')
-        return false; // allowed
-
-      if (!permissionEngine)
-        return true; // No engine = needs approval
-
-      // Per-command permission evaluation for shell:execute
-      if (featureName === 'shell:execute' && toolArgs && toolArgs.command) {
-        let parsed = parseShellCommands(toolArgs.command);
-
-        if (parsed.length > 0) {
-          // Look up ShellTool class so the engine can use ShellPermissions.matchesRule()
-          let ShellToolClass  = pluginRegistry.getTool('shell:execute');
-          let permissionOptions = {
-            organizationID: agent.organizationID,
-            scope:          'session',
-            scopeID:        params.sessionID,
-            toolClass:      ShellToolClass,
-            agent:          resolvedAgent,
-          };
-
-          let anyNeedsApproval = false;
-          let commandStatuses  = [];
-
-          for (let cmd of parsed) {
-            let perCommandFeature = `shell:${cmd.command}`;
-            let status            = 'needs-approval';
-
-            try {
-              let needsPermission = await permissionEngine.checkPermission(perCommandFeature, cmd, permissionOptions);
-
-              if (!needsPermission)
-                status = 'allowed';
-              else
-                anyNeedsApproval = true;
-            } catch (permError) {
-              if (permError.name === 'PermissionDeniedError')
-                throw permError; // Deny-forever rule — block entire pipeline
-
-              throw permError;
-            }
-
-            commandStatuses.push({ command: cmd.command, arguments: cmd.arguments, status });
-          }
-
-          // Attach parsed commands with statuses for frame enrichment
-          toolArgs._parsedCommands = commandStatuses;
-
-          // If all commands are allowed, no approval needed
-          if (!anyNeedsApproval)
-            return false;
-
-          return true;
-        }
-      }
-
-      let ToolClass = pluginRegistry.getTool(featureName);
-
-      // Translated command features (command:help → system:command) need
-      // the original tool class so the permission engine can find its
-      // Permissions subclass.
-      if (!ToolClass && featureName.startsWith('command:'))
-        ToolClass = pluginRegistry.getTool('system:command');
-
-      // For capabilities, check if it exists for permission routing
-      if (!ToolClass) {
-        let capability = pluginRegistry.getCapability(featureName);
-        if (capability && (capability.riskLevel === 'none' || capability.riskLevel === 'low'))
-          return false; // Safe capabilities auto-allowed
-      }
-
-      return permissionEngine.checkPermission(featureName, toolArgs, {
-        organizationID: agent.organizationID,
-        scope:          'session',
-        scopeID:        params.sessionID,
-        toolClass:      ToolClass,
-        agent:          resolvedAgent,
-      });
+    // Permission checking is now handled inside each tool's execute() ->
+    // _checkPermissions() pipeline (tool-owned permissions). This callback
+    // exists only as a passthrough for user-typed slash commands handled by
+    // CommandHandler, which don't go through PluginInterface.execute().
+    let checkPermission = async (_featureName, _toolArgs) => {
+      return false; // Always allow — tool internals handle permission gating
     };
 
     let executeTool = async (toolName, toolArgs) => {

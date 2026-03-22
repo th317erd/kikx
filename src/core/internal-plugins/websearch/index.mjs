@@ -1,6 +1,7 @@
 'use strict';
 
-import { htmlToMarkdown } from './html-to-markdown.mjs';
+import { htmlToMarkdown }        from './html-to-markdown.mjs';
+import { WebsearchPermissions } from './websearch-permissions.mjs';
 
 // =============================================================================
 // Websearch Plugin
@@ -121,6 +122,8 @@ export function setup({ registerTool, PluginInterface }) {
       required: ['url'],
     };
 
+    getPermissionsClass() { return WebsearchPermissions; }
+
     async _execute({ url }) {
       if (!url || typeof url !== 'string')
         throw new Error('url is required');
@@ -175,6 +178,8 @@ export function setup({ registerTool, PluginInterface }) {
       },
       required: ['query'],
     };
+
+    getPermissionsClass() { return WebsearchPermissions; }
 
     async _execute({ query, limit }) {
       if (!query || typeof query !== 'string')

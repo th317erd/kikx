@@ -685,36 +685,7 @@ export class InteractionLoop extends EventEmitter {
             }
           }
 
-          // Check permission
-          let checkPermission = params.checkPermission;
-          let needsPermission = false;
-
-          if (typeof checkPermission === 'function') {
-            try {
-              needsPermission = await checkPermission(block.content.toolName, block.content.arguments);
-            } catch (permError) {
-              if (permError.name === 'PermissionDeniedError') {
-                await this._createFrame(sessionID, {
-                  id: generateID('frm_'), type: 'permission-denied',
-                  content: { toolName: block.content.toolName, reason: permError.reason },
-                  timestamp: Date.now(), interactionID,
-                  authorType: 'system', authorID: null,
-                  parentID: params.parentID || null,
-                  hidden: false, deleted: false, processed: false,
-                }, frameManager, { authorType: 'system' }, signingContext);
-                result = { type: 'tool-result', content: { output: `Error: ${permError.message}`, _sessionID: sessionID } };
-                continue;
-              }
-              throw permError;
-            }
-          }
-
-          if (needsPermission) {
-            await this._permissionHandler.hardBreak(sessionID, generator, block, interactionID, params, frameManager);
-            return;
-          }
-
-          // Execute tool
+          // Execute tool (permission checking handled inside tool.execute())
           await this._createFrame(sessionID, {
             id: frameID, type: 'tool-call',
             content: { toolName: block.content.toolName, arguments: block.content.arguments, toolUseID: block.content.toolUseId || block.content.toolUseID },
@@ -732,7 +703,7 @@ export class InteractionLoop extends EventEmitter {
               toolOutput = await executeTool(block.content.toolName, block.content.arguments);
             } catch (toolError) {
               // PermissionRequiredError from tool's internal permission check
-              // → route to hardBreak() with rich context (Step 1.3)
+              // -> route to hardBreak() with rich context (Step 1.3)
               if (toolError.name === 'PermissionRequiredError') {
                 let permissionContext = {
                   title:       toolError.title,
@@ -745,6 +716,21 @@ export class InteractionLoop extends EventEmitter {
                   sessionID, generator, block, interactionID, params, frameManager, permissionContext,
                 );
                 return;
+              }
+
+              // PermissionDeniedError from PermissionEngine deny rules
+              // -> create permission-denied frame and feed error back to agent
+              if (toolError.name === 'PermissionDeniedError') {
+                await this._createFrame(sessionID, {
+                  id: generateID('frm_'), type: 'permission-denied',
+                  content: { toolName: block.content.toolName, reason: toolError.reason },
+                  timestamp: Date.now(), interactionID,
+                  authorType: 'system', authorID: null,
+                  parentID: params.parentID || null,
+                  hidden: false, deleted: false, processed: false,
+                }, frameManager, { authorType: 'system' }, signingContext);
+                result = { type: 'tool-result', content: { output: `Error: ${toolError.message}`, _sessionID: sessionID } };
+                continue;
               }
 
               toolOutput = `Error executing tool: ${toolError.message}`;

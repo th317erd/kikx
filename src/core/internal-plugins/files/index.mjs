@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { computeDiff } from './diff.mjs';
+import { FilesPermissions } from './files-permissions.mjs';
 
 // =============================================================================
 // Files Plugin
@@ -68,6 +69,8 @@ export function setup({ registerTool, PluginInterface }) {
         limit:    { type: 'integer', description: `Maximum number of lines to read (default ${MAX_LINES})` },
       },
     };
+
+    getPermissionsClass() { return FilesPermissions; }
 
     async _execute({ filePath, offset, limit }) {
       if (!filePath || typeof filePath !== 'string')
@@ -165,6 +168,8 @@ export function setup({ registerTool, PluginInterface }) {
       },
     };
 
+    getPermissionsClass() { return FilesPermissions; }
+
     async _execute({ filePath, content, createDirectories }) {
       if (!filePath || typeof filePath !== 'string')
         throw new Error('filePath is required');
@@ -239,6 +244,8 @@ export function setup({ registerTool, PluginInterface }) {
         newString: { type: 'string', description: 'The replacement string' },
       },
     };
+
+    getPermissionsClass() { return FilesPermissions; }
 
     async _execute({ filePath, oldString, newString }) {
       if (!filePath || typeof filePath !== 'string')

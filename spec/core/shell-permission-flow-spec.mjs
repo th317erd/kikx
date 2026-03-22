@@ -10,7 +10,8 @@ import { FramePersistence }        from '../../src/core/frames/index.mjs';
 import { ContentSanitizer }        from '../../src/core/lib/content-sanitizer.mjs';
 import { AgentInterface }          from '../../src/core/plugins/agent-interface.mjs';
 import { PermissionEngine }        from '../../src/core/permissions/permission-engine.mjs';
-import { PermissionDeniedError }   from '../../src/core/permissions/permission-denied-error.mjs';
+import { PermissionDeniedError }    from '../../src/core/permissions/permission-denied-error.mjs';
+import { PermissionRequiredError } from '../../src/core/permissions/permission-required-error.mjs';
 import { parseShellCommands }      from '../../src/core/internal-plugins/shell/command-parser.mjs';
 
 // =============================================================================
@@ -155,31 +156,31 @@ describe('Shell Permission Flow (per-command)', () => {
       let agent = new MockAgent(context, [shellToolCall('ls | grep tmp')]);
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        agentPlugin:     agent,
-        checkPermission: async (_featureName, toolArgs) => {
-          // Simulate controller: attach _parsedCommands
-          toolArgs._parsedCommands = [
-            { command: 'ls', arguments: [], status: 'needs-approval' },
-            { command: 'grep', arguments: ['tmp'], status: 'needs-approval' },
-          ];
-
-          return true; // needs approval
+        agentPlugin: agent,
+        executeTool: async () => {
+          throw new PermissionRequiredError('shell:execute', {
+            title:       'permission.shell.executeTitle',
+            description: 'permission.shell.executeDescription',
+            details: [
+              { label: 'permission.detail.pendingCommand', value: 'ls' },
+              { label: 'permission.detail.pendingCommand', value: 'grep tmp' },
+            ],
+          });
         },
-        executeTool: async () => 'ok',
       }));
 
       let permFrames = emitted.filter((f) => f.type === 'permission-request');
       assert.equal(permFrames.length, 1);
 
       let content = permFrames[0].content;
+      // parsedCommands come from fallback parse in permission-handler
       assert.ok(content.parsedCommands, 'Should have parsedCommands in frame content');
       assert.equal(content.parsedCommands.length, 2);
       assert.equal(content.parsedCommands[0].command, 'ls');
-      assert.equal(content.parsedCommands[0].status, 'needs-approval');
       assert.equal(content.parsedCommands[1].command, 'grep');
     });
 
-    it('should fall back to parsing from command string if _parsedCommands not set', async () => {
+    it('should fall back to parsing from command string via PermissionRequiredError path', async () => {
       let { session } = await createTestSession();
       let loop        = createLoop();
       let emitted     = [];
@@ -189,9 +190,12 @@ describe('Shell Permission Flow (per-command)', () => {
       let agent = new MockAgent(context, [shellToolCall('ls -la')]);
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        agentPlugin:     agent,
-        checkPermission: async () => true, // needs approval, no _parsedCommands attached
-        executeTool:     async () => 'ok',
+        agentPlugin: agent,
+        executeTool: async () => {
+          throw new PermissionRequiredError('shell:execute', {
+            title: 'permission.shell.executeTitle',
+          });
+        },
       }));
 
       let permFrames = emitted.filter((f) => f.type === 'permission-request');
@@ -506,9 +510,10 @@ describe('Shell Permission Flow (per-command)', () => {
 
       // First interaction — will hit permission hard-break
       await loop.startInteraction(session.id, defaultParams(agent, {
-        agentPlugin:     agent,
-        checkPermission: async () => true,
-        executeTool:     async () => 'ok',
+        agentPlugin: agent,
+        executeTool: async () => {
+          throw new PermissionRequiredError('shell:execute', { title: 'shell:execute' });
+        },
       }));
 
       assert.equal(interactionStarts, 1);
@@ -540,10 +545,15 @@ describe('Shell Permission Flow (per-command)', () => {
 
       let agent = new MockAgent(context, [shellToolCall('echo hello')]);
 
+      let callCount = 0;
+
       await loop.startInteraction(session.id, defaultParams(agent, {
-        agentPlugin:     agent,
-        checkPermission: async () => true,
-        executeTool:     async () => {
+        agentPlugin: agent,
+        executeTool: async () => {
+          callCount++;
+          if (callCount === 1)
+            throw new PermissionRequiredError('shell:execute', { title: 'shell:execute' });
+
           toolExecuted = true;
           return 'hello';
         },

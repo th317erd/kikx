@@ -8,7 +8,8 @@ import { InteractionLoop }    from '../../src/core/interaction/index.mjs';
 import { SessionManager }     from '../../src/core/session/index.mjs';
 import { FramePersistence }   from '../../src/core/frames/index.mjs';
 import { ContentSanitizer }   from '../../src/core/lib/content-sanitizer.mjs';
-import { AgentInterface }     from '../../src/core/plugins/agent-interface.mjs';
+import { AgentInterface }          from '../../src/core/plugins/agent-interface.mjs';
+import { PermissionRequiredError } from '../../src/core/permissions/permission-required-error.mjs';
 
 // =============================================================================
 // Mock Agent
@@ -356,8 +357,7 @@ describe('InteractionLoop', () => {
       let executedTools = [];
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => false,
-        executeTool:     (name, args) => {
+        executeTool: (name, args) => {
           executedTools.push({ name, args });
           return 'tool output';
         },
@@ -406,8 +406,7 @@ describe('InteractionLoop', () => {
 
       await loop.startInteraction(session.id, defaultParams(agent, {
         agentPlugin: agent,
-        checkPermission: () => false,
-        executeTool:     () => 'the result',
+        executeTool: () => 'the result',
       }));
 
       assert.ok(receivedResult);
@@ -431,8 +430,9 @@ describe('InteractionLoop', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => true,
-        executeTool:     () => 'should not run',
+        executeTool: (toolName) => {
+          throw new PermissionRequiredError(toolName, { title: toolName });
+        },
       }));
 
       let fm     = await framePersistence.loadFrames(session.id);
@@ -461,7 +461,9 @@ describe('InteractionLoop', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => {
+          throw new PermissionRequiredError(toolName, { title: toolName });
+        },
       }));
 
       let fm     = await framePersistence.loadFrames(session.id);
@@ -488,7 +490,9 @@ describe('InteractionLoop', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => {
+          throw new PermissionRequiredError(toolName, { title: toolName });
+        },
       }));
 
       let fm     = await framePersistence.loadFrames(session.id);
@@ -514,7 +518,9 @@ describe('InteractionLoop', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => {
+          throw new PermissionRequiredError(toolName, { title: toolName });
+        },
       }));
 
       // Interaction should NOT be active (generator destroyed)
@@ -556,9 +562,8 @@ describe('InteractionLoop', () => {
 
       // Start interaction but don't await — it will block on tool call
       let interactionPromise = loop.startInteraction(session.id, defaultParams(agent, {
-        agentPlugin:     agent,
-        checkPermission: () => false,
-        executeTool:     async () => {
+        agentPlugin:  agent,
+        executeTool:  async () => {
           // Cancel while tool is "running"
           let queued = await loop.cancelInteraction(session.id);
           assert.equal(queued, null);
@@ -703,11 +708,16 @@ describe('InteractionLoop', () => {
       let agent = new PermissionAgent(context);
       let loop  = createLoop();
 
+      let callCount = 0;
+
       // First interaction — hits permission hard-break
       await loop.startInteraction(session.id, defaultParams(agent, {
-        agentPlugin:     agent,
-        checkPermission: (name) => name === 'rm',
-        executeTool:     (name, args) => {
+        agentPlugin: agent,
+        executeTool: (name) => {
+          callCount++;
+          if (callCount === 1 && name === 'rm')
+            throw new PermissionRequiredError(name, { title: name });
+
           toolExecuted = true;
           return 'deleted';
         },
@@ -740,7 +750,9 @@ describe('InteractionLoop', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => {
+          throw new PermissionRequiredError(toolName, { title: toolName });
+        },
       }));
 
       assert.ok(loop.isWaitingForPermission(session.id));
@@ -933,7 +945,9 @@ describe('InteractionLoop', () => {
       loop.on('permission:request', (event) => events.push(event));
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => {
+          throw new PermissionRequiredError(toolName, { title: toolName });
+        },
       }));
 
       assert.equal(events.length, 1);
@@ -945,11 +959,11 @@ describe('InteractionLoop', () => {
   });
 
   // ===========================================================================
-  // 29. No checkPermission callback means no permission needed
+  // 29. Tool executes directly when no permission error thrown
   // ===========================================================================
 
-  describe('no checkPermission callback', () => {
-    it('should execute tool directly when no checkPermission provided', async () => {
+  describe('direct tool execution', () => {
+    it('should execute tool directly when no permission error thrown', async () => {
       let session = await createTestSession();
       let blocks  = [
         { type: 'tool-call', content: { toolName: 'test', arguments: {} }, authorType: 'agent', authorID: 'a1' },
@@ -1108,7 +1122,6 @@ describe('InteractionLoop', () => {
       loop.on('frame', ({ frame }) => emittedFrames.push(frame));
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => false,
         executeTool: () => null,
       }));
 
@@ -1127,7 +1140,6 @@ describe('InteractionLoop', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => false,
         executeTool: () => undefined,
       }));
 
@@ -1154,7 +1166,9 @@ describe('InteractionLoop', () => {
       let loop  = createLoop();
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: () => true,
+        executeTool: (toolName) => {
+          throw new PermissionRequiredError(toolName, { title: toolName });
+        },
       }));
 
       assert.ok(loop.isWaitingForPermission(session.id));
@@ -1261,7 +1275,7 @@ describe('InteractionLoop', () => {
 
       await loop.startInteraction(session.id, defaultParams(agent, {
         executeTool: () => { toolRan = true; return 'output'; },
-        checkPermission: async () => false,
+
       }));
 
       assert.equal(toolRan, false);
@@ -1289,7 +1303,7 @@ describe('InteractionLoop', () => {
 
       await loop.startInteraction(session.id, defaultParams(agent, {
         executeTool: () => 'file1.txt',
-        checkPermission: async () => false,
+
       }));
 
       let resultFrames = emittedFrames.filter((f) => f.type === 'tool-result');
@@ -1327,7 +1341,7 @@ describe('InteractionLoop', () => {
         registry._hooks.clear();
     });
 
-    it('should create permission-denied frame when checkPermission throws PermissionDeniedError', async () => {
+    it('should create permission-denied frame when executeTool throws PermissionDeniedError', async () => {
       let { PermissionDeniedError } = await import('../../src/core/permissions/permission-denied-error.mjs');
 
       let session = await createTestSession();
@@ -1342,10 +1356,9 @@ describe('InteractionLoop', () => {
       loop.on('frame', ({ frame }) => emittedFrames.push(frame));
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: async () => {
+        executeTool: () => {
           throw new PermissionDeniedError('dangerous:tool', 'explicit deny');
         },
-        executeTool: () => 'should not run',
       }));
 
       let deniedFrames = emittedFrames.filter((f) => f.type === 'permission-denied');
@@ -1365,10 +1378,9 @@ describe('InteractionLoop', () => {
       let agent = new MockAgent(context, blocks);
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: async () => {
+        executeTool: () => {
           throw new PermissionDeniedError('blocked:tool', 'deny rule');
         },
-        executeTool: () => 'unreachable',
       }));
 
       // The tool-call block should have received the error result
@@ -1377,7 +1389,7 @@ describe('InteractionLoop', () => {
       assert.ok(toolBlock._receivedResult.content.output.includes('Permission denied'));
     });
 
-    it('should propagate non-PermissionDeniedError from checkPermission', async () => {
+    it('should create tool-error frame for non-permission errors from executeTool', async () => {
       let session = await createTestSession();
       let loop    = createLoop();
 
@@ -1390,12 +1402,11 @@ describe('InteractionLoop', () => {
       loop.on('frame', ({ frame }) => emittedFrames.push(frame));
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: async () => { throw new Error('DB connection lost'); },
-        executeTool: () => 'unreachable',
+        executeTool: () => { throw new Error('DB connection lost'); },
       }));
 
-      // Should produce an error frame (from the catch block)
-      let errorFrames = emittedFrames.filter((f) => f.type === 'error');
+      // Should produce a tool-error frame (executeTool error handler)
+      let errorFrames = emittedFrames.filter((f) => f.type === 'tool-error');
       assert.ok(errorFrames.length >= 1);
       assert.ok(errorFrames[0].content.message.includes('DB connection lost'));
     });
@@ -1425,7 +1436,7 @@ describe('InteractionLoop', () => {
       loop.on('frame', ({ frame }) => emittedFrames.push(frame));
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: async () => false,
+
         executeTool: () => { throw new Error('command not found'); },
       }));
 
@@ -1445,7 +1456,7 @@ describe('InteractionLoop', () => {
       let agent = new MockAgent(context, blocks);
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: async () => false,
+
         executeTool: () => { throw new Error('exec failed'); },
       }));
 
@@ -1467,7 +1478,7 @@ describe('InteractionLoop', () => {
       loop.on('frame', ({ frame }) => emittedFrames.push(frame));
 
       await loop.startInteraction(session.id, defaultParams(agent, {
-        checkPermission: async () => false,
+
         executeTool: () => { throw new Error('tool fail'); },
       }));
 

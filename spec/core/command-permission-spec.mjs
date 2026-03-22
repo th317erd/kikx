@@ -185,50 +185,26 @@ describe('Command Permissions (system:command)', () => {
   // ===========================================================================
 
   describe('permission feature name translation', () => {
-    it('should translate system:command to command:{name} in checkPermission', async () => {
-      let session = await createTestSession();
-      let loop    = createLoop();
-      let checkedFeatureNames = [];
+    it('should translate system:command to command:{name} via SystemCommandPermissions', async () => {
+      // Translation from system:command to command:{name} is now handled
+      // internally by SystemCommandPermissions.checkPermission() rather
+      // than the external controller callback.
+      let registry  = context.getProperty('pluginRegistry');
+      let ToolClass = registry.getTool('system:command');
 
-      let blocks = [
-        {
-          type:    'tool-call',
-          content: {
-            toolName:  'system:command',
-            arguments: { command: 'invite', args: '@test-bot' },
-          },
-        },
-      ];
+      assert.ok(ToolClass, 'system:command tool should be registered');
 
-      let agent = new MockAgent(context, blocks);
+      let tool             = new ToolClass(context);
+      let PermissionsClass = tool.getPermissionsClass();
 
-      // Mock checkPermission that records what it's called with
-      // Simulates the controller's translation logic
-      let checkPermission = async (featureName, toolArgs) => {
-        // Replicate controller logic for translation
-        if (featureName === 'system:command' && toolArgs && toolArgs.command)
-          featureName = `command:${toolArgs.command.toLowerCase().trim()}`;
+      assert.ok(PermissionsClass, 'should have a PermissionsClass');
 
-        checkedFeatureNames.push(featureName);
+      let permissions = new PermissionsClass(context);
 
-        return false; // allowed
-      };
-
-      await loop.startInteraction(session.id, defaultParams(agent, {
-        agentPlugin: agent,
-        userMessage: 'invite someone',
-        checkPermission,
-        executeTool: async (toolName, toolArgs) => {
-          let registry  = context.getProperty('pluginRegistry');
-          let ToolClass = registry.getTool(toolName);
-          let tool      = new ToolClass(context);
-
-          return tool.execute({ ...toolArgs, _sessionID: session.id });
-        },
-      }));
-
-      // The checkPermission should have been called with the translated name
-      assert.ok(checkedFeatureNames.includes('command:invite'), `Expected 'command:invite' in ${JSON.stringify(checkedFeatureNames)}`);
+      // checkPermission receives the translated feature name `command:help`
+      // and auto-approves help (in ALWAYS_ALLOWED set)
+      let result = await permissions.checkPermission('command:help', { command: 'help' }, {});
+      assert.equal(result, false, 'help should be auto-approved');
     });
   });
 

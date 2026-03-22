@@ -100,7 +100,7 @@ describe('files:read', () => {
     let filePath     = path.join(testDir, 'test.txt');
     await fs.writeFile(filePath, 'line1\nline2\nline3\n', 'utf8');
 
-    let result = await readTool.execute({ filePath });
+    let result = await readTool._execute({ filePath });
 
     assert.equal(result.lineCount, 3);
     assert.equal(result.totalLines, 3);
@@ -116,7 +116,7 @@ describe('files:read', () => {
     let filePath     = path.join(testDir, 'test.mjs');
     await fs.writeFile(filePath, 'let x = 1;\n', 'utf8');
 
-    let result = await readTool.execute({ filePath });
+    let result = await readTool._execute({ filePath });
 
     assert.ok(result._renderHint, '_renderHint should be present');
     assert.equal(result._renderHint.renderType, 'file-read');
@@ -134,7 +134,7 @@ describe('files:read', () => {
 
     await fs.writeFile(filePath, lines.join('\n') + '\n', 'utf8');
 
-    let result = await readTool.execute({ filePath, offset: 10, limit: 5 });
+    let result = await readTool._execute({ filePath, offset: 10, limit: 5 });
 
     assert.equal(result.lineCount, 5);
     assert.equal(result.totalLines, 100);
@@ -148,7 +148,7 @@ describe('files:read', () => {
     let { readTool } = createFileTools();
 
     await assert.rejects(
-      () => readTool.execute({ filePath: path.join(testDir, 'nonexistent.txt') }),
+      () => readTool._execute({ filePath: path.join(testDir, 'nonexistent.txt') }),
       (error) => error.message.includes('File not found'),
     );
   });
@@ -157,7 +157,7 @@ describe('files:read', () => {
     let { readTool } = createFileTools();
 
     await assert.rejects(
-      () => readTool.execute({ filePath: testDir }),
+      () => readTool._execute({ filePath: testDir }),
       (error) => error.message.includes('directory'),
     );
   });
@@ -173,7 +173,7 @@ describe('files:read', () => {
     await fs.writeFile(filePath, buffer);
 
     await assert.rejects(
-      () => readTool.execute({ filePath }),
+      () => readTool._execute({ filePath }),
       (error) => error.message.includes('binary'),
     );
   });
@@ -182,7 +182,7 @@ describe('files:read', () => {
     let { readTool } = createFileTools();
 
     await assert.rejects(
-      () => readTool.execute({}),
+      () => readTool._execute({}),
       (error) => error.message.includes('filePath is required'),
     );
   });
@@ -196,7 +196,7 @@ describe('files:read', () => {
 
     await fs.writeFile(filePath, lines.join('\n') + '\n', 'utf8');
 
-    let result = await readTool.execute({ filePath });
+    let result = await readTool._execute({ filePath });
 
     assert.equal(result.lineCount, 2000);
     assert.equal(result.totalLines, 3000);
@@ -208,7 +208,7 @@ describe('files:read', () => {
     let filePath     = path.join(testDir, 'empty.txt');
     await fs.writeFile(filePath, '', 'utf8');
 
-    let result = await readTool.execute({ filePath });
+    let result = await readTool._execute({ filePath });
 
     assert.equal(result.lineCount, 0);
     assert.equal(result.truncated, false);
@@ -219,7 +219,7 @@ describe('files:read', () => {
     let filePath     = path.join(testDir, 'test.py');
     await fs.writeFile(filePath, 'print("hi")\n', 'utf8');
 
-    let result = await readTool.execute({ filePath });
+    let result = await readTool._execute({ filePath });
 
     assert.equal(result._renderHint.renderData.language, 'python');
   });
@@ -237,7 +237,7 @@ describe('files:write', () => {
     let { writeTool } = createFileTools();
     let filePath      = path.join(testDir, 'new.txt');
 
-    let result = await writeTool.execute({ filePath, content: 'hello world\n' });
+    let result = await writeTool._execute({ filePath, content: 'hello world\n' });
 
     assert.equal(result.created, true);
     assert.ok(result.message.includes('Created'));
@@ -251,7 +251,7 @@ describe('files:write', () => {
     let filePath      = path.join(testDir, 'existing.txt');
     await fs.writeFile(filePath, 'old content\n', 'utf8');
 
-    let result = await writeTool.execute({ filePath, content: 'new content\n' });
+    let result = await writeTool._execute({ filePath, content: 'new content\n' });
 
     assert.equal(result.created, false);
     assert.ok(result.message.includes('Updated'));
@@ -265,7 +265,7 @@ describe('files:write', () => {
     let filePath      = path.join(testDir, 'diffed.txt');
     await fs.writeFile(filePath, 'aaa\nbbb\nccc\n', 'utf8');
 
-    let result = await writeTool.execute({ filePath, content: 'aaa\nBBB\nccc\n' });
+    let result = await writeTool._execute({ filePath, content: 'aaa\nBBB\nccc\n' });
 
     assert.ok(result._renderHint);
     assert.equal(result._renderHint.renderType, 'file-write');
@@ -278,7 +278,7 @@ describe('files:write', () => {
     let { writeTool } = createFileTools();
     let filePath      = path.join(testDir, 'nested', 'deep', 'file.txt');
 
-    let result = await writeTool.execute({ filePath, content: 'nested\n', createDirectories: true });
+    let result = await writeTool._execute({ filePath, content: 'nested\n', createDirectories: true });
 
     assert.equal(result.created, true);
 
@@ -290,7 +290,7 @@ describe('files:write', () => {
     let { writeTool } = createFileTools();
 
     await assert.rejects(
-      () => writeTool.execute({ content: 'hello' }),
+      () => writeTool._execute({ content: 'hello' }),
       (error) => error.message.includes('filePath is required'),
     );
   });
@@ -299,7 +299,7 @@ describe('files:write', () => {
     let { writeTool } = createFileTools();
 
     await assert.rejects(
-      () => writeTool.execute({ filePath: path.join(testDir, 'x.txt') }),
+      () => writeTool._execute({ filePath: path.join(testDir, 'x.txt') }),
       (error) => error.message.includes('content is required'),
     );
   });
@@ -308,7 +308,7 @@ describe('files:write', () => {
     let { writeTool } = createFileTools();
 
     await assert.rejects(
-      () => writeTool.execute({ filePath: testDir, content: 'nope' }),
+      () => writeTool._execute({ filePath: testDir, content: 'nope' }),
       (error) => error.message.includes('directory'),
     );
   });
@@ -317,7 +317,7 @@ describe('files:write', () => {
     let { writeTool } = createFileTools();
     let filePath      = path.join(testDir, 'empty-write.txt');
 
-    let result = await writeTool.execute({ filePath, content: '' });
+    let result = await writeTool._execute({ filePath, content: '' });
     assert.equal(result.created, true);
 
     let written = await fs.readFile(filePath, 'utf8');
@@ -338,7 +338,7 @@ describe('files:edit', () => {
     let filePath     = path.join(testDir, 'edit.txt');
     await fs.writeFile(filePath, 'hello world\ngoodbye world\n', 'utf8');
 
-    let result = await editTool.execute({
+    let result = await editTool._execute({
       filePath,
       oldString: 'hello world',
       newString: 'HELLO WORLD',
@@ -356,7 +356,7 @@ describe('files:edit', () => {
     let filePath     = path.join(testDir, 'edit-hint.txt');
     await fs.writeFile(filePath, 'foo\nbar\nbaz\n', 'utf8');
 
-    let result = await editTool.execute({
+    let result = await editTool._execute({
       filePath,
       oldString: 'bar',
       newString: 'BAR',
@@ -374,7 +374,7 @@ describe('files:edit', () => {
     await fs.writeFile(filePath, 'hello world\n', 'utf8');
 
     await assert.rejects(
-      () => editTool.execute({ filePath, oldString: 'DOES NOT EXIST', newString: 'x' }),
+      () => editTool._execute({ filePath, oldString: 'DOES NOT EXIST', newString: 'x' }),
       (error) => error.message.includes('not found'),
     );
   });
@@ -385,7 +385,7 @@ describe('files:edit', () => {
     await fs.writeFile(filePath, 'abc\nabc\nabc\n', 'utf8');
 
     await assert.rejects(
-      () => editTool.execute({ filePath, oldString: 'abc', newString: 'xyz' }),
+      () => editTool._execute({ filePath, oldString: 'abc', newString: 'xyz' }),
       (error) => error.message.includes('not unique'),
     );
   });
@@ -396,7 +396,7 @@ describe('files:edit', () => {
     await fs.writeFile(filePath, 'hello\n', 'utf8');
 
     await assert.rejects(
-      () => editTool.execute({ filePath, oldString: 'hello', newString: 'hello' }),
+      () => editTool._execute({ filePath, oldString: 'hello', newString: 'hello' }),
       (error) => error.message.includes('identical'),
     );
   });
@@ -405,7 +405,7 @@ describe('files:edit', () => {
     let { editTool } = createFileTools();
 
     await assert.rejects(
-      () => editTool.execute({
+      () => editTool._execute({
         filePath:  path.join(testDir, 'ghost.txt'),
         oldString: 'a',
         newString: 'b',
@@ -418,7 +418,7 @@ describe('files:edit', () => {
     let { editTool } = createFileTools();
 
     await assert.rejects(
-      () => editTool.execute({ oldString: 'a', newString: 'b' }),
+      () => editTool._execute({ oldString: 'a', newString: 'b' }),
       (error) => error.message.includes('filePath is required'),
     );
   });
@@ -427,7 +427,7 @@ describe('files:edit', () => {
     let { editTool } = createFileTools();
 
     await assert.rejects(
-      () => editTool.execute({ filePath: path.join(testDir, 'x.txt'), newString: 'b' }),
+      () => editTool._execute({ filePath: path.join(testDir, 'x.txt'), newString: 'b' }),
       (error) => error.message.includes('oldString is required'),
     );
   });
@@ -436,7 +436,7 @@ describe('files:edit', () => {
     let { editTool } = createFileTools();
 
     await assert.rejects(
-      () => editTool.execute({ filePath: path.join(testDir, 'x.txt'), oldString: 'a' }),
+      () => editTool._execute({ filePath: path.join(testDir, 'x.txt'), oldString: 'a' }),
       (error) => error.message.includes('newString is required'),
     );
   });
@@ -446,7 +446,7 @@ describe('files:edit', () => {
     let filePath     = path.join(testDir, 'multiline.txt');
     await fs.writeFile(filePath, 'start\nold line 1\nold line 2\nend\n', 'utf8');
 
-    let result = await editTool.execute({
+    let result = await editTool._execute({
       filePath,
       oldString: 'old line 1\nold line 2',
       newString: 'new line 1\nnew line 2\nnew line 3',

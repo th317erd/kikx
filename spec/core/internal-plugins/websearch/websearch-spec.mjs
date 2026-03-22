@@ -127,7 +127,7 @@ describe('websearch:fetch', () => {
     let tool      = new ToolClass(noPermContext(core));
 
     await assert.rejects(
-      () => tool.execute({}),
+      () => tool._execute({}),
       { message: 'url is required' },
     );
   });
@@ -138,7 +138,7 @@ describe('websearch:fetch', () => {
     let tool      = new ToolClass(noPermContext(core));
 
     await assert.rejects(
-      () => tool.execute({ url: 123 }),
+      () => tool._execute({ url: 123 }),
       { message: 'url is required' },
     );
   });
@@ -188,7 +188,7 @@ describe('websearch:search', () => {
     let tool      = new ToolClass(noPermContext(core));
 
     await assert.rejects(
-      () => tool.execute({}),
+      () => tool._execute({}),
       { message: 'query is required' },
     );
   });
@@ -199,7 +199,7 @@ describe('websearch:search', () => {
     let tool      = new ToolClass(noPermContext(core));
 
     await assert.rejects(
-      () => tool.execute({ query: 42 }),
+      () => tool._execute({ query: 42 }),
       { message: 'query is required' },
     );
   });
@@ -210,7 +210,7 @@ describe('websearch:search', () => {
     let tool      = new ToolClass(noPermContext(core));
 
     await assert.rejects(
-      () => tool.execute({ query: 'test' }),
+      () => tool._execute({ query: 'test' }),
       (error) => {
         assert.ok(error.message.includes('kikx-plugin-puppeteer'));
         return true;
@@ -259,7 +259,7 @@ describe('websearch:search', () => {
 
     let ToolClass = registry.getTool('websearch:search');
     let tool      = new ToolClass(noPermContext(core));
-    let result    = await tool.execute({ query: 'test query' });
+    let result    = await tool._execute({ query: 'test query' });
 
     assert.ok(hookCalled, 'hook should have been called');
     assert.equal(result.query, 'test query');
@@ -302,7 +302,7 @@ describe('websearch:fetch rendering strategy', () => {
 
     // Use a URL that will fail markdown negotiation (no server)
     // but the hook should still be called as fallback
-    let result = await tool.execute({ url: 'http://localhost:99999/test' });
+    let result = await tool._execute({ url: 'http://localhost:99999/test' });
 
     assert.ok(hookCalled, 'renderPage hook should have been called');
     assert.equal(result.title, 'Test Page');
