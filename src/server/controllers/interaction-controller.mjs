@@ -196,8 +196,8 @@ export class InteractionController extends ControllerAuthBase {
       // For capabilities, check if it exists for permission routing
       if (!ToolClass) {
         let capability = pluginRegistry.getCapability(featureName);
-        if (capability && capability.riskLevel === 'low')
-          return false; // Low-risk capabilities auto-allowed
+        if (capability && (capability.riskLevel === 'none' || capability.riskLevel === 'low'))
+          return false; // Safe capabilities auto-allowed
       }
 
       return permissionEngine.checkPermission(featureName, toolArgs, {

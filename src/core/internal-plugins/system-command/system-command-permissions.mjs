@@ -9,12 +9,11 @@ import { Permissions } from '../../permissions/permissions-base.mjs';
 //
 // The interaction controller translates `system:command { command: 'help' }`
 // into a per-command feature name `command:help` before permission evaluation.
-// This class short-circuits for read-only commands that are always safe.
 //
-// Read-only commands (auto-approved):
-//   help — lists available commands and tools
-//
-// All other commands defer to normal rule matching.
+// Auto-approval logic:
+//   1. Check if the target capability has riskLevel 'none' or 'low' → auto-approve
+//   2. Fall back to ALWAYS_ALLOWED set for traditional commands (no capability)
+//   3. Everything else defers to normal rule matching
 // =============================================================================
 
 const ALWAYS_ALLOWED = new Set([
@@ -29,8 +28,28 @@ export class SystemCommandPermissions extends Permissions {
       ? featureName.slice(8)
       : (args && args.command);
 
-    if (commandName && ALWAYS_ALLOWED.has(commandName.toLowerCase().trim()))
-      return false; // Auto-approved — read-only, zero risk
+    if (!commandName)
+      return null;
+
+    commandName = commandName.toLowerCase().trim();
+
+    // Check if this is a registered capability with a declared risk level
+    let pluginRegistry = this._context && this._context.getProperty
+      ? this._context.getProperty('pluginRegistry')
+      : null;
+
+    if (pluginRegistry) {
+      let capability = (typeof pluginRegistry.getCapabilityBySlashCommand === 'function')
+        ? pluginRegistry.getCapabilityBySlashCommand(commandName)
+        : null;
+
+      if (capability && (capability.riskLevel === 'none' || capability.riskLevel === 'low'))
+        return false; // Auto-approved — capability declares itself safe
+    }
+
+    // Fallback: hard-coded always-allowed for traditional commands
+    if (ALWAYS_ALLOWED.has(commandName))
+      return false;
 
     return null; // Defer to normal rule matching
   }
