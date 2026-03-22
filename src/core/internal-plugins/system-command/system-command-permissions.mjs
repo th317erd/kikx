@@ -1,6 +1,7 @@
 'use strict';
 
-import { Permissions } from '../../permissions/permissions-base.mjs';
+import { Permissions }            from '../../permissions/permissions-base.mjs';
+import { PermissionRequiredError } from '../../permissions/permission-required-error.mjs';
 
 // =============================================================================
 // SystemCommandPermissions
@@ -51,6 +52,18 @@ export class SystemCommandPermissions extends Permissions {
     if (ALWAYS_ALLOWED.has(commandName))
       return false;
 
-    return null; // Defer to normal rule matching
+    // Needs approval — throw with rich context
+    let commandDisplay = `/${commandName}`;
+    if (args && args.args)
+      commandDisplay += ` ${args.args}`;
+
+    throw new PermissionRequiredError(`command:${commandName}`, {
+      title:       'permission.systemCommand.title',
+      titleParams: { command: commandName },
+      description: 'permission.systemCommand.description',
+      details: [
+        { label: 'permission.detail.command', value: commandDisplay.trim() },
+      ],
+    });
   }
 }

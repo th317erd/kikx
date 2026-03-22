@@ -472,7 +472,7 @@ describe('Command Permissions (system:command)', () => {
             throw new Error(`Unknown tool: ${toolName}`);
 
           let toolInstance = new ToolClass(noPermContext());
-          let result = await toolInstance.execute({
+          let result = await toolInstance._execute({
             ...toolArgs,
             _sessionID: session.id,
           });
@@ -553,7 +553,7 @@ describe('Command Permissions (system:command)', () => {
       let ToolClass    = registry.getTool('system:command');
       let toolInstance = new ToolClass(noPermContext());
 
-      await toolInstance.execute({
+      await toolInstance._execute({
         command:    'spy-auth-cmd-2',
         args:       '',
         _sessionID: session.id,
@@ -590,15 +590,17 @@ describe('Command Permissions (system:command)', () => {
       assert.equal(result, false, 'help should be auto-approved');
     });
 
-    it('should defer to rules for non-read-only commands', async () => {
+    it('should throw PermissionRequiredError for non-read-only commands', async () => {
       let registry         = core.getPluginRegistry();
       let ToolClass        = registry.getTool('system:command');
       let instance         = new ToolClass(context);
       let PermissionsClass = instance.getPermissionsClass();
       let permissions      = new PermissionsClass(context);
 
-      let result = await permissions.checkPermission('command:invite', { command: 'invite' }, {});
-      assert.equal(result, null, 'invite should defer to rules');
+      await assert.rejects(
+        () => permissions.checkPermission('command:invite', { command: 'invite' }, {}),
+        (err) => err.name === 'PermissionRequiredError',
+      );
     });
 
     it('should auto-approve command:reload (low-risk capability)', async () => {
@@ -635,15 +637,17 @@ describe('Command Permissions (system:command)', () => {
       assert.equal(result, false, 'should extract command name from featureName');
     });
 
-    it('should defer when featureName is not command-prefixed and args.command is non-safe', async () => {
+    it('should throw PermissionRequiredError when featureName is not command-prefixed and args.command is non-safe', async () => {
       let registry         = core.getPluginRegistry();
       let ToolClass        = registry.getTool('system:command');
       let instance         = new ToolClass(context);
       let PermissionsClass = instance.getPermissionsClass();
       let permissions      = new PermissionsClass(context);
 
-      let result = await permissions.checkPermission('system:command', { command: 'invite' }, {});
-      assert.equal(result, null, 'should defer for non-safe command');
+      await assert.rejects(
+        () => permissions.checkPermission('system:command', { command: 'invite' }, {}),
+        (err) => err.name === 'PermissionRequiredError',
+      );
     });
   });
 

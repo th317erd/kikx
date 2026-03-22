@@ -1,6 +1,8 @@
 'use strict';
 
-import { Permissions } from '../../permissions/permissions-base.mjs';
+import { Permissions }             from '../../permissions/permissions-base.mjs';
+import { PermissionRequiredError } from '../../permissions/permission-required-error.mjs';
+import { parseShellCommands }      from './command-parser.mjs';
 
 // =============================================================================
 // ShellPermissions
@@ -16,6 +18,55 @@ import { Permissions } from '../../permissions/permissions-base.mjs';
 // =============================================================================
 
 export class ShellPermissions extends Permissions {
+  async checkPermission(featureName, args, options) {
+    let command = args && args.command;
+    if (!command || typeof command !== 'string')
+      return null; // No command to check — defer
+
+    // Parse into individual commands
+    let commands = parseShellCommands(command);
+
+    if (!commands || commands.length === 0)
+      return null;
+
+    // Check each command against PermissionEngine
+    let permissionEngine = this._context?.getProperty?.('permissionEngine');
+    let needsApproval = false;
+    let details = [];
+
+    for (let cmd of commands) {
+      let perCommandFeature = `shell:${cmd.command}`;
+      let approved = false;
+
+      if (permissionEngine) {
+        try {
+          let needs = await permissionEngine.checkPermission(perCommandFeature, cmd, options);
+          approved = !needs;
+        } catch (error) {
+          if (error.name === 'PermissionDeniedError')
+            throw error; // Deny-forever — block everything
+        }
+      }
+
+      if (approved) {
+        details.push({ label: 'permission.detail.approvedCommand', value: cmd.raw || cmd.command });
+      } else {
+        needsApproval = true;
+        details.push({ label: 'permission.detail.pendingCommand', value: cmd.raw || cmd.command });
+      }
+    }
+
+    if (!needsApproval)
+      return false; // All commands approved
+
+    // Some commands need approval
+    throw new PermissionRequiredError('shell:execute', {
+      title:       'permission.shell.executeTitle',
+      description: 'permission.shell.executeDescription',
+      details,
+    });
+  }
+
   matchesRule(rule, args, metadata) {
     // If the rule has stored command + arguments, require exact argument match.
     // This prevents "allow forever ls -la /tmp/" from auto-allowing "ls /etc/shadow".

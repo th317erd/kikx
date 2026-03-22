@@ -13,9 +13,19 @@ import { ShellPermissions } from '../../../../src/core/internal-plugins/shell/sh
 // Helpers
 // =============================================================================
 
+/** Mock permissionEngine that approves everything (bypasses shell permissions). */
+const ALLOW_ALL_ENGINE = {
+  checkPermission: async () => false, // false = no approval needed
+};
+
 function createShellTool() {
   let registry = new PluginRegistry();
-  let context  = { getProperty: () => null };
+  let context  = {
+    getProperty: (key) => {
+      if (key === 'permissionEngine') return ALLOW_ALL_ENGINE;
+      return null;
+    },
+  };
 
   shellSetup({
     registerTool:    (name, cls) => registry.registerTool(name, cls),

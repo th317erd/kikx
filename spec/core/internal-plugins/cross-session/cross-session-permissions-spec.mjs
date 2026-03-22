@@ -8,17 +8,20 @@ import { PluginInterface } from '../../../../src/core/plugin-loader/plugin-inter
 import { PluginRegistry }  from '../../../../src/core/plugin-loader/registry.mjs';
 import { SessionManager }  from '../../../../src/core/session/index.mjs';
 import { Permissions }     from '../../../../src/core/permissions/permissions-base.mjs';
+import { PermissionRequiredError } from '../../../../src/core/permissions/permission-required-error.mjs';
 import { setup }           from '../../../../src/core/internal-plugins/cross-session/index.mjs';
 import { CrossSessionPermissions } from '../../../../src/core/internal-plugins/cross-session/cross-session-permissions.mjs';
 
 // =============================================================================
 // CrossSessionPermissions — TDD Tests
 // =============================================================================
-// Tests for the permission logic governing cross-session tools:
+// Tests for the permission logic governing cross-session tools.
 //
-//   - createSession:  ALWAYS requires explicit approval
-//   - postToSession:  Auto-approved if agent is participant in target session
-//   - Other tools:    Delegate to base Permissions behavior
+// After tool-owned permissions migration:
+//   - postToSession:  Auto-approved if participant, throws PermissionRequiredError otherwise
+//   - listSessions:   Throws PermissionRequiredError with rich context
+//   - createSession:  Throws PermissionRequiredError with rich context
+//   - Other tools:    Return null (defer to base default)
 // =============================================================================
 
 describe('CrossSessionPermissions', () => {
@@ -27,7 +30,6 @@ describe('CrossSessionPermissions', () => {
   let context;
   let sessionManager;
   let registry;
-  let org;
 
   let CreateSessionTool;
   let PostToSessionTool;
@@ -111,10 +113,9 @@ describe('CrossSessionPermissions', () => {
       assert.equal(tool.getPermissionsClass(), CrossSessionPermissions);
     });
 
-    it('should NOT return CrossSessionPermissions from ListSessionsTool', () => {
+    it('should return CrossSessionPermissions from ListSessionsTool', () => {
       let tool = new ListSessionsTool(context);
-      let result = tool.getPermissionsClass();
-      assert.ok(result === null || result === undefined);
+      assert.equal(tool.getPermissionsClass(), CrossSessionPermissions);
     });
 
     it('should NOT return CrossSessionPermissions from ReadFromSessionTool', () => {
@@ -131,28 +132,258 @@ describe('CrossSessionPermissions', () => {
   });
 
   // ===========================================================================
-  // createSession — always requires approval
+  // postToSession — throws PermissionRequiredError with rich context
   // ===========================================================================
 
-  describe('createSession — always requires approval', () => {
-    it('should require approval via checkPermission', async () => {
-      let permissions = new CrossSessionPermissions(context);
-      let result = await permissions.checkPermission(
-        'cross-session:createSession',
-        { title: 'Test Session' },
-        {},
-      );
-      assert.equal(result, true, 'createSession must always need approval');
+  describe('postToSession — rich PermissionRequiredError', () => {
+    let testOrg;
+    let agentA;
+    let agentB;
+    let parentSession;
+
+    beforeEach(async () => {
+      testOrg       = await createOrg('PostToSession Perms Org');
+      agentA        = await createAgent(testOrg.id, `perm-agent-a-${Date.now()}`);
+      agentB        = await createAgent(testOrg.id, `perm-agent-b-${Date.now()}`);
+      parentSession = await sessionManager.createSession(testOrg.id, { name: 'My Project' });
+
+      // agentA is a participant in the parent session
+      await sessionManager.addParticipant(parentSession.id, agentA.id);
     });
 
-    it('should require approval even with matching args', async () => {
+    it('should auto-approve postToSession when agent is a participant', async () => {
       let permissions = new CrossSessionPermissions(context);
       let result = await permissions.checkPermission(
-        'cross-session:createSession',
-        { title: 'Test', participants: ['agent-a'], parentSessionID: 'ses_123' },
+        'cross-session:postToSession',
+        { sessionID: parentSession.id, message: 'hello', agentID: agentA.id },
         {},
       );
-      assert.equal(result, true, 'createSession must always need approval regardless of args');
+      assert.equal(result, false, 'Agent that is participant should be auto-approved');
+    });
+
+    it('should throw PermissionRequiredError when agent is NOT a participant', async () => {
+      let permissions = new CrossSessionPermissions(context);
+      await assert.rejects(
+        () => permissions.checkPermission(
+          'cross-session:postToSession',
+          { sessionID: parentSession.id, message: 'hello world', agentID: agentB.id },
+          {},
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          assert.equal(err.title, 'permission.crossSession.postTitle');
+          assert.deepEqual(err.titleParams, { sessionName: 'My Project' });
+          assert.equal(err.description, 'permission.crossSession.postDescription');
+          assert.equal(err.featureName, 'cross-session:postToSession');
+
+          // Details should contain target session and message preview
+          assert.equal(err.details.length, 2);
+          assert.equal(err.details[0].label, 'permission.detail.targetSession');
+          assert.ok(err.details[0].value.includes('My Project'));
+          assert.ok(err.details[0].value.includes(parentSession.id));
+          assert.equal(err.details[1].label, 'permission.detail.messagePreview');
+          assert.equal(err.details[1].value, 'hello world');
+          return true;
+        },
+      );
+    });
+
+    it('should resolve session name from DB in error details', async () => {
+      let namedSession = await sessionManager.createSession(testOrg.id, { name: 'Design Review' });
+      let permissions = new CrossSessionPermissions(context);
+
+      await assert.rejects(
+        () => permissions.checkPermission(
+          'cross-session:postToSession',
+          { sessionID: namedSession.id, message: 'test', agentID: agentB.id },
+          {},
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          assert.deepEqual(err.titleParams, { sessionName: 'Design Review' });
+          assert.ok(err.details[0].value.includes('Design Review'));
+          return true;
+        },
+      );
+    });
+
+    it('should fall back to raw sessionID when session not found', async () => {
+      let permissions = new CrossSessionPermissions(context);
+
+      await assert.rejects(
+        () => permissions.checkPermission(
+          'cross-session:postToSession',
+          { sessionID: 'ses_nonexistent', message: 'test', agentID: 'agt_fake' },
+          {},
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          assert.deepEqual(err.titleParams, { sessionName: 'ses_nonexistent' });
+          assert.ok(err.details[0].value.includes('ses_nonexistent'));
+          return true;
+        },
+      );
+    });
+
+    it('should show (unnamed) when session name is empty string', async () => {
+      let unnamedSession = await sessionManager.createSession(testOrg.id, { name: '' });
+      let permissions = new CrossSessionPermissions(context);
+
+      await assert.rejects(
+        () => permissions.checkPermission(
+          'cross-session:postToSession',
+          { sessionID: unnamedSession.id, message: 'test', agentID: agentB.id },
+          {},
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          assert.deepEqual(err.titleParams, { sessionName: '(unnamed)' });
+          assert.ok(err.details[0].value.includes('(unnamed)'));
+          return true;
+        },
+      );
+    });
+
+    it('should truncate message preview when message > 200 chars', async () => {
+      let longMessage = 'x'.repeat(250);
+      let permissions = new CrossSessionPermissions(context);
+
+      await assert.rejects(
+        () => permissions.checkPermission(
+          'cross-session:postToSession',
+          { sessionID: parentSession.id, message: longMessage, agentID: agentB.id },
+          {},
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          let preview = err.details.find((d) => d.label === 'permission.detail.messagePreview');
+          assert.ok(preview, 'Should have messagePreview detail');
+          assert.equal(preview.value.length, 203); // 200 + '...'
+          assert.ok(preview.value.endsWith('...'));
+          return true;
+        },
+      );
+    });
+
+    it('should omit message preview when message is missing', async () => {
+      let permissions = new CrossSessionPermissions(context);
+
+      await assert.rejects(
+        () => permissions.checkPermission(
+          'cross-session:postToSession',
+          { sessionID: parentSession.id, agentID: agentB.id },
+          {},
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          let preview = err.details.find((d) => d.label === 'permission.detail.messagePreview');
+          assert.equal(preview, undefined, 'Should not have messagePreview when message is missing');
+          // Should still have target session
+          assert.equal(err.details.length, 1);
+          assert.equal(err.details[0].label, 'permission.detail.targetSession');
+          return true;
+        },
+      );
+    });
+
+    it('should omit target session detail when sessionID is missing', async () => {
+      let permissions = new CrossSessionPermissions(context);
+
+      await assert.rejects(
+        () => permissions.checkPermission(
+          'cross-session:postToSession',
+          { message: 'hello', agentID: 'agt_123' },
+          {},
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          let target = err.details.find((d) => d.label === 'permission.detail.targetSession');
+          assert.equal(target, undefined, 'Should not have targetSession when sessionID is missing');
+          // Should still have message preview
+          assert.equal(err.details.length, 1);
+          assert.equal(err.details[0].label, 'permission.detail.messagePreview');
+          return true;
+        },
+      );
+    });
+  });
+
+  // ===========================================================================
+  // listSessions — throws PermissionRequiredError with rich context
+  // ===========================================================================
+
+  describe('listSessions — rich PermissionRequiredError', () => {
+    it('should throw PermissionRequiredError with list title', async () => {
+      let permissions = new CrossSessionPermissions(context);
+      await assert.rejects(
+        () => permissions.checkPermission('cross-session:listSessions', {}, {}),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          assert.equal(err.featureName, 'cross-session:listSessions');
+          assert.equal(err.title, 'permission.crossSession.listTitle');
+          assert.equal(err.description, 'permission.crossSession.listDescription');
+          assert.deepEqual(err.details, []);
+          return true;
+        },
+      );
+    });
+  });
+
+  // ===========================================================================
+  // createSession — throws PermissionRequiredError with rich context
+  // ===========================================================================
+
+  describe('createSession — rich PermissionRequiredError', () => {
+    it('should throw PermissionRequiredError with create title', async () => {
+      let permissions = new CrossSessionPermissions(context);
+      await assert.rejects(
+        () => permissions.checkPermission(
+          'cross-session:createSession',
+          { title: 'Test Session' },
+          {},
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          assert.equal(err.featureName, 'cross-session:createSession');
+          assert.equal(err.title, 'permission.crossSession.createTitle');
+          assert.equal(err.description, 'permission.crossSession.createDescription');
+          return true;
+        },
+      );
+    });
+
+    it('should throw PermissionRequiredError even with full args', async () => {
+      let permissions = new CrossSessionPermissions(context);
+      await assert.rejects(
+        () => permissions.checkPermission(
+          'cross-session:createSession',
+          { title: 'Test', participants: ['agent-a'], parentSessionID: 'ses_123' },
+          {},
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          assert.equal(err.title, 'permission.crossSession.createTitle');
+          return true;
+        },
+      );
+    });
+
+    it('should include session title in details when provided', async () => {
+      let permissions = new CrossSessionPermissions(context);
+      await assert.rejects(
+        () => permissions.checkPermission(
+          'cross-session:createSession',
+          { title: 'Research Task' },
+          {},
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          let titleDetail = err.details.find((d) => d.label === 'permission.detail.sessionTitle');
+          assert.ok(titleDetail, 'Should have sessionTitle detail');
+          assert.equal(titleDetail.value, 'Research Task');
+          return true;
+        },
+      );
     });
 
     it('should bypass rule matching entirely (matchesRule always returns false for createSession)', () => {
@@ -164,111 +395,10 @@ describe('CrossSessionPermissions', () => {
   });
 
   // ===========================================================================
-  // postToSession — auto-approve when agent is participant in target session
-  // ===========================================================================
-
-  describe('postToSession — participant-based auto-approval', () => {
-    let testOrg;
-    let agentA;
-    let agentB;
-    let parentSession;
-
-    beforeEach(async () => {
-      testOrg       = await createOrg('PostToSession Perms Org');
-      agentA        = await createAgent(testOrg.id, `perm-agent-a-${Date.now()}`);
-      agentB        = await createAgent(testOrg.id, `perm-agent-b-${Date.now()}`);
-      parentSession = await sessionManager.createSession(testOrg.id, { name: 'Parent' });
-
-      // agentA is a participant in the parent session
-      await sessionManager.addParticipant(parentSession.id, agentA.id);
-    });
-
-    it('should auto-approve postToSession when agent is a participant in the target session', async () => {
-      let permissions = new CrossSessionPermissions(context);
-      let result = await permissions.checkPermission(
-        'cross-session:postToSession',
-        { sessionID: parentSession.id, message: 'hello', agentID: agentA.id },
-        {},
-      );
-      assert.equal(result, false, 'Agent that is participant should be auto-approved');
-    });
-
-    it('should require approval when agent is NOT a participant in the target session', async () => {
-      let permissions = new CrossSessionPermissions(context);
-      let result = await permissions.checkPermission(
-        'cross-session:postToSession',
-        { sessionID: parentSession.id, message: 'hello', agentID: agentB.id },
-        {},
-      );
-      assert.equal(result, null, 'Non-participant agent should defer to normal rule matching');
-    });
-
-    it('should handle agent being participant in a different session (not the target)', async () => {
-      let otherSession = await sessionManager.createSession(testOrg.id, { name: 'Other' });
-      await sessionManager.addParticipant(otherSession.id, agentB.id);
-
-      let permissions = new CrossSessionPermissions(context);
-      let result = await permissions.checkPermission(
-        'cross-session:postToSession',
-        { sessionID: parentSession.id, message: 'hello', agentID: agentB.id },
-        {},
-      );
-      assert.equal(result, null, 'Participant in different session should defer to normal matching');
-    });
-  });
-
-  // ===========================================================================
-  // postToSession — missing context handled gracefully
-  // ===========================================================================
-
-  describe('postToSession — missing context', () => {
-    it('should defer when agentID is missing', async () => {
-      let permissions = new CrossSessionPermissions(context);
-      let result = await permissions.checkPermission(
-        'cross-session:postToSession',
-        { sessionID: 'ses_123', message: 'hello' },
-        {},
-      );
-      assert.equal(result, null, 'Missing agentID should defer');
-    });
-
-    it('should defer when sessionID is missing', async () => {
-      let permissions = new CrossSessionPermissions(context);
-      let result = await permissions.checkPermission(
-        'cross-session:postToSession',
-        { message: 'hello', agentID: 'agt_123' },
-        {},
-      );
-      assert.equal(result, null, 'Missing sessionID should defer');
-    });
-
-    it('should defer when sessionManager is not on context', async () => {
-      let emptyContext = { getProperty: () => null };
-      let permissions = new CrossSessionPermissions(emptyContext);
-      let result = await permissions.checkPermission(
-        'cross-session:postToSession',
-        { sessionID: 'ses_123', message: 'hello', agentID: 'agt_123' },
-        {},
-      );
-      assert.equal(result, null, 'Missing sessionManager should defer gracefully');
-    });
-  });
-
-  // ===========================================================================
-  // Other tools — delegate to base class behavior
+  // Other tools — return null (defer to base default)
   // ===========================================================================
 
   describe('other tools — default behavior', () => {
-    it('should return null for listSessions (defer to base)', async () => {
-      let permissions = new CrossSessionPermissions(context);
-      let result = await permissions.checkPermission(
-        'cross-session:listSessions',
-        {},
-        {},
-      );
-      assert.equal(result, null, 'listSessions should defer to normal matching');
-    });
-
     it('should return null for readFromSession (defer to base)', async () => {
       let permissions = new CrossSessionPermissions(context);
       let result = await permissions.checkPermission(
@@ -336,7 +466,6 @@ describe('CrossSessionPermissions', () => {
       let permissions = new CrossSessionPermissions(context);
       let rule = { effect: 'allow', metadata: null };
       let result = permissions.matchesRule(rule, { toolName: 'postToSession' }, {});
-      // Base class returns { matches: true }
       assert.equal(result.matches, true);
     });
 
@@ -377,7 +506,6 @@ describe('CrossSessionPermissions', () => {
     });
 
     it('should always require permission for createSession even with allow rule', async () => {
-      // Create an allow rule for cross-session:createSession
       await engine.createRule({
         organizationID: testOrg.id,
         featureName:    'cross-session:createSession',
@@ -385,17 +513,22 @@ describe('CrossSessionPermissions', () => {
         createdBy:      'usr_test',
       });
 
-      let result = await engine.checkPermission(
-        'cross-session:createSession',
-        { title: 'New Session' },
-        {
-          organizationID: testOrg.id,
-          toolClass:      CreateSessionTool,
-          agent:          agentA,
+      await assert.rejects(
+        () => engine.checkPermission(
+          'cross-session:createSession',
+          { title: 'New Session' },
+          {
+            organizationID: testOrg.id,
+            toolClass:      CreateSessionTool,
+            agent:          agentA,
+          },
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          assert.equal(err.title, 'permission.crossSession.createTitle');
+          return true;
         },
       );
-
-      assert.equal(result, true, 'createSession must need permission even with allow rule');
     });
 
     it('should auto-approve postToSession when agent is participant', async () => {
@@ -413,17 +546,23 @@ describe('CrossSessionPermissions', () => {
     });
 
     it('should require permission for postToSession when agent is NOT participant', async () => {
-      let result = await engine.checkPermission(
-        'cross-session:postToSession',
-        { sessionID: parentSession.id, message: 'hello', agentID: agentB.id },
-        {
-          organizationID: testOrg.id,
-          toolClass:      PostToSessionTool,
-          agent:          agentB,
+      await assert.rejects(
+        () => engine.checkPermission(
+          'cross-session:postToSession',
+          { sessionID: parentSession.id, message: 'hello', agentID: agentB.id },
+          {
+            organizationID: testOrg.id,
+            toolClass:      PostToSessionTool,
+            agent:          agentB,
+          },
+        ),
+        (err) => {
+          assert.ok(err instanceof PermissionRequiredError);
+          assert.equal(err.title, 'permission.crossSession.postTitle');
+          assert.deepEqual(err.titleParams, { sessionName: 'Engine Parent' });
+          return true;
         },
       );
-
-      assert.equal(result, true, 'postToSession should need permission for non-participant');
     });
   });
 });

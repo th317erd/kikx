@@ -55,6 +55,10 @@ export function setup({ registerTool, PluginInterface }) {
       };
     }
 
+    getPermissionsClass() {
+      return CrossSessionPermissions;
+    }
+
     async _execute(params) {
       let models  = this._context.getProperty('models');
       let { Participant, Session } = models;
