@@ -1,0 +1,400 @@
+# =============================================================================
+# Tool-Owned Permissions — Final Design (5 Planning Rounds)
+# =============================================================================
+# Permission checking moves from centralized infrastructure into the tools.
+# The execute() wrapper on PluginInterface calls _checkPermissions() before
+# _execute(). Tools customize via PermissionsClass (existing pattern).
+# Base class provides deny-by-default. Plugin authors who do nothing are safe.
+#
+# Core principles:
+#   - execute() is framework-owned, never overridden
+#   - _execute() is tool-owned, the actual work
+#   - PermissionsClass is the customization point for security
+#   - Base class = deny-by-default (safe for lazy plugin authors)
+#   - Structured data for I18N — locale keys, not display strings
+#   - Stateless: no mid-flight suspension, full replay on approval
+#
+# Planning: 5 rounds documented in .claude/conversation.md
+# Status: APPROVED — ready for implementation
+# Created: 2026-03-21
+# =============================================================================
+
+meta:
+  title: "Tool-Owned Permissions"
+  version: "2.0.0"
+  depends_on:
+    - "src/core/permissions/permission-engine.mjs"
+    - "src/core/interaction/permission-handler.mjs"
+    - "src/core/plugin-loader/plugin-interface.mjs"
+    - "src/client/components/kikx-permission-request/kikx-permission-request.mjs"
+
+# =============================================================================
+# 1. DESIGN
+# =============================================================================
+
+design:
+  execute_wrapper:
+    description: |
+      execute() is framework-owned. Tool authors NEVER override it.
+      It orchestrates: store params → checkPermissions → _execute → error handling.
+
+    flow: |
+      execute(params)
+        → this._params = params
+        → await this._checkPermissions(params)
+          → riskLevel 'none'? → skip
+          → PermissionsClass registered? → delegate to it
+          → Base default: check PermissionEngine → throw PermissionRequiredError if needed
+        → await this._execute(params)
+        → return result
+
+  permission_checking:
+    description: |
+      _checkPermissions() delegates to the tool's PermissionsClass if one
+      is registered (via getPermissionsClass()). Otherwise falls back to
+      the base default which checks PermissionEngine rules.
+
+    base_default: |
+      - riskLevel 'none' → return immediately (no check)
+      - riskLevel undefined → deny-by-default (needs approval)
+      - riskLevel 'critical' → always needs approval
+      - Check PermissionEngine rules → approved or throw PermissionRequiredError
+      - Generic message with auto-formatted details (strips _ params)
+
+    custom_permissions_class: |
+      - Tool registers via getPermissionsClass() (existing pattern)
+      - PermissionsClass.checkPermissions(featureName, params) returns:
+        - false → approved
+        - true → needs approval (generic message)
+        - throws PermissionRequiredError → needs approval (rich context)
+        - null → defer to base default
+
+  permission_required_error:
+    description: |
+      Thrown by _checkPermissions() when approval is needed. Carries
+      structured context for the permission dialog. All user-facing
+      strings are locale keys with interpolation params.
+
+    shape:
+      name: "PermissionRequiredError"
+      featureName: "string — permission feature being requested"
+      title: "string — locale key (e.g., 'permission.crossSession.postTitle')"
+      titleParams: "object — interpolation params (e.g., { sessionName: 'My Project' })"
+      description: "string — locale key for explanation text"
+      details: "Array<{ label: string, value: string }> — label is locale key"
+
+  stateless_replay: |
+    When PermissionRequiredError is thrown:
+    1. Framework catches it, creates permission-request frame with rich context
+    2. Generator destroyed (same as current behavior)
+    3. User approves/denies in UI
+    4. On approval: new interaction replays the tool call
+    5. Tool runs from scratch → _checkPermissions() finds approval → _execute() runs
+    No stored execution state between request and replay.
+
+  security_model: |
+    DENY-BY-DEFAULT preserved. The base class _checkPermissions() always
+    runs (called by execute() which is never overridden). Plugin authors
+    who do nothing get the base default. The PermissionsClass override
+    IS the opt-in to custom permission logic — no flags needed.
+
+# =============================================================================
+# 2. I18N
+# =============================================================================
+
+i18n:
+  approach: |
+    All user-facing strings in PermissionRequiredError are LOCALE KEYS,
+    not display strings. The server stays locale-agnostic. The client
+    resolves keys via its I18N system.
+
+    Detail labels: 'permission.detail.targetSession' → t() → "Target Session"
+    Fallback for unknown keys: underscore → space, title case.
+    Title interpolation: 'Post to "{sessionName}"' with { sessionName } params.
+
+  locale_additions:
+    permission:
+      defaultTitle: "Permission Required"
+      defaultDescription: "{name} wants to use {tool}."
+      crossSession:
+        postTitle: 'Post to "{sessionName}"'
+        postDescription: "Send a message to another session."
+        listTitle: "List Sessions"
+        listDescription: "View available sessions."
+      shell:
+        executeTitle: "Execute Shell Command"
+        executeDescription: "Run commands in the system shell."
+      systemCommand:
+        title: 'Run /{command}'
+        description: 'Execute the /{command} command.'
+      detail:
+        targetSession: "Target Session"
+        messagePreview: "Message"
+        command: "Command"
+        arguments: "Arguments"
+        filePath: "File Path"
+        url: "URL"
+        query: "Query"
+        approvedCommand: "✅ Approved"
+        pendingCommand: "⏳ Pending"
+
+  future: |
+    Extract I18N to src/shared/lib/i18n.mjs for client + server.
+    Separate work item.
+
+# =============================================================================
+# 3. COMPONENTS
+# =============================================================================
+
+components:
+  permission_required_error:
+    file: "src/core/permissions/permission-required-error.mjs"
+    action: "Create new file"
+
+  plugin_interface_permissions:
+    file: "src/core/plugin-loader/plugin-interface.mjs"
+    action: "Add methods to existing class"
+    methods:
+      - "_checkPermissions(params) — delegates to PermissionsClass or base default"
+      - "_checkPermissionEngine(params) — base default: PermissionEngine rule check"
+      - "_featureName() — returns pluginID:featureName"
+      - "_permissionOptions(params) — extracts org/session/agent from params"
+      - "_defaultPermissionError(params) — builds generic PermissionRequiredError"
+      - "_formatDefaultDetails(params) — strips _ params, formats as label:value"
+    changes_to_execute: |
+      execute() modified to call _checkPermissions(params) before _execute(params).
+      Stores this._params = params before permission check.
+
+  interaction_loop:
+    file: "src/core/interaction/index.mjs"
+    changes:
+      - "Catch PermissionRequiredError from tool.execute() → route to hardBreak() with rich context"
+      - "Keep external checkPermission callback as fallback during transition"
+      - "Eventually remove external callback (Phase 3)"
+
+  permission_handler:
+    file: "src/core/interaction/permission-handler.mjs"
+    changes:
+      - "Accept optional permissionContext in hardBreak()"
+      - "Include permissionContext in permission-request frame content"
+
+  client_rendering:
+    files:
+      - "src/client/components/kikx-permission-request/kikx-permission-request.mjs"
+      - "src/client/components/kikx-session-page/kikx-session-page.mjs"
+      - "src/client/lib/locales/en.mjs"
+    changes:
+      - "Render permissionContext.details as labeled rows"
+      - "Resolve labels via I18N with fallback formatting"
+      - "Title interpolation with titleParams"
+      - "Batch display with approved/pending indicators"
+
+  tool_migrations:
+    cross_session:
+      tools: ["cross-session:postToSession", "cross-session:listSessions"]
+      description: "PermissionsClass with session name resolution"
+
+    system_command:
+      tools: ["system:command"]
+      description: "PermissionsClass with conditional check (safe capabilities skip)"
+
+    shell:
+      tools: ["shell:execute"]
+      description: "PermissionsClass with per-command batch details"
+
+    files:
+      tools: ["files:read", "files:write", "files:edit"]
+      description: "PermissionsClass with file path display"
+
+    websearch:
+      tools: ["websearch:fetch", "websearch:search"]
+      description: "PermissionsClass with URL/query display"
+
+    invite:
+      tools: ["invite"]
+      description: "PermissionsClass with agent name display"
+
+    no_migration:
+      tools:
+        - "search:query"
+        - "tool_log:get"
+        - "tool_log:search"
+        - "help:search"
+        - "status"
+        - "compact"
+        - "reload"
+        - "memory:getAgentConfig"
+        - "memory:setAgentConfig"
+      description: "riskLevel 'none' or 'low' — never trigger permission requests"
+
+# =============================================================================
+# 4. IMPLEMENTATION ORDER
+# =============================================================================
+
+phases:
+  phase_1:
+    name: "Foundation"
+    steps:
+      - id: "1.1"
+        task: "Create PermissionRequiredError"
+        tdd: true
+      - id: "1.2"
+        task: "Add _checkPermissions() + helpers to PluginInterface, modify execute()"
+        tdd: true
+      - id: "1.3"
+        task: "InteractionLoop: catch PermissionRequiredError → hardBreak() with rich context"
+        tdd: true
+      - id: "1.4"
+        task: "PermissionHandler: accept permissionContext in hardBreak()"
+        tdd: true
+      - id: "1.5"
+        task: "Client: render permissionContext details with I18N"
+      - id: "1.6"
+        task: "Locale: add permission detail labels and default messages"
+
+  phase_2:
+    name: "High-Priority Tool Migration"
+    depends_on: ["phase_1"]
+    steps:
+      - id: "2.1"
+        task: "Migrate cross-session tools"
+        tdd: true
+      - id: "2.2"
+        task: "Migrate system:command"
+        tdd: true
+      - id: "2.3"
+        task: "Migrate shell:execute (batch per-command details)"
+        tdd: true
+
+  phase_3:
+    name: "Remaining Migration + Cleanup"
+    depends_on: ["phase_2"]
+    steps:
+      - id: "3.1"
+        task: "Migrate files, websearch, invite"
+        tdd: true
+      - id: "3.2"
+        task: "Remove external checkPermission callback from InteractionController"
+      - id: "3.3"
+        task: "Remove SystemCommandPermissions, ShellPermissions (logic in tool PermissionsClasses)"
+      - id: "3.4"
+        task: "Remove _formatToolArgs and raw-args fallback from client"
+
+  phase_4:
+    name: "WebComponent Unit Tests (jsdom)"
+    description: "Full DOM/HTML testing for all WebComponents. Parallelizable."
+    steps:
+      - id: "4.1"
+        task: "Add jsdom devDependency, create spec/client/helpers/jsdom-setup.mjs"
+      - id: "4.2"
+        task: "High-priority: kikx-permission-request, kikx-interaction (~55 tests)"
+      - id: "4.3"
+        task: "Medium-priority: kikx-session-page, kikx-sidebar, kikx-message-content (~60 tests)"
+      - id: "4.4"
+        task: "Low-priority: remaining components — modals, login, avatar, session-link (~45 tests)"
+
+# =============================================================================
+# 5. TEST PLAN
+# =============================================================================
+
+tests:
+  strategy: |
+    TDD for all foundation and migration work. Sad paths outnumber happy paths.
+    WebComponent tests use jsdom — no browser needed.
+
+  suites:
+    - file: "spec/core/permissions/permission-required-error-spec.mjs"
+      component: "PermissionRequiredError"
+      estimated: 10
+
+    - file: "spec/core/plugin-loader/plugin-interface-permissions-spec.mjs"
+      component: "_checkPermissions() + helpers"
+      estimated: 30
+      coverage:
+        happy: "riskLevel none skip, engine approved, custom class approved/throws"
+        sad: "no engine, class constructor throws, non-permission error propagates"
+        edge: "riskLevel undefined (deny-by-default), riskLevel critical, null class, large params"
+
+    - file: "spec/core/plugin-loader/plugin-interface-execute-spec.mjs"
+      component: "execute() wrapper"
+      estimated: 12
+      coverage:
+        happy: "calls _checkPermissions before _execute, returns result"
+        sad: "PermissionRequiredError stops _execute, PermissionDeniedError propagates"
+        edge: "ordering guarantee, params stored on instance"
+
+    - file: "spec/core/interaction/permission-required-error-spec.mjs"
+      component: "InteractionLoop catch + routing"
+      estimated: 15
+
+    - file: "spec/core/interaction/permission-handler-rich-context-spec.mjs"
+      component: "hardBreak with permissionContext"
+      estimated: 6
+
+    - file: "spec/client/permission-request-details-spec.mjs"
+      component: "Client rendering with I18N"
+      estimated: 18
+
+    - files:
+        - "spec/core/internal-plugins/cross-session-permissions-spec.mjs"
+        - "spec/core/internal-plugins/system-command-permissions-spec.mjs"
+        - "spec/core/internal-plugins/shell-permissions-spec.mjs"
+      component: "Tool PermissionsClass migrations"
+      estimated: 35
+
+    - file: "spec/integration/permission-flow-spec.mjs"
+      component: "E2E permission cycle"
+      estimated: 8
+
+    - files:
+        - "spec/client/components/kikx-permission-request-spec.mjs"
+        - "spec/client/components/kikx-interaction-spec.mjs"
+        - "spec/client/components/kikx-session-page-spec.mjs"
+        - "spec/client/components/kikx-sidebar-spec.mjs"
+        - "spec/client/components/kikx-message-content-spec.mjs"
+        - "spec/client/components/kikx-user-avatar-spec.mjs"
+        - "spec/client/components/kikx-login-page-spec.mjs"
+        - "spec/client/components/kikx-session-link-spec.mjs"
+        - "spec/client/components/kikx-add-friend-modal-spec.mjs"
+        - "spec/client/components/kikx-agent-form-modal-spec.mjs"
+        - "spec/client/components/kikx-create-session-modal-spec.mjs"
+      component: "WebComponent unit tests (jsdom)"
+      estimated: 160
+      categories:
+        - "Pre-connection state (properties before connectedCallback)"
+        - "Connected rendering (template, query selectors)"
+        - "Attribute changes (attributeChangedCallback)"
+        - "Property setters (state + DOM updates)"
+        - "Event dispatch (correct events, correct detail)"
+        - "Event handling (response to child/parent events)"
+        - "CSS class toggling (conditional classes)"
+        - "Disconnection cleanup (listeners removed, timers cleared)"
+        - "Edge cases (null, empty, long content, special chars)"
+
+  totals:
+    permission_tests: 134
+    webcomponent_tests: 160
+    grand_total: 294
+
+# =============================================================================
+# 6. FUTURE PLANS
+# =============================================================================
+
+future_plans:
+  - id: shared-i18n
+    title: "Shared I18N System"
+    priority: medium
+    description: "Extract to src/shared/lib/i18n.mjs for client + server."
+
+  - id: permission-grouping
+    title: "Grouped Permission Requests"
+    priority: low
+    description: "Multiple permissions in one dialog with per-item approval."
+
+  - id: permission-manifest
+    title: "Plugin Permission Manifest"
+    priority: low
+    description: |
+      Static declaration of permission features a tool checks.
+      Framework validates at load time. Enables permission overview
+      UI showing what each plugin can request.
