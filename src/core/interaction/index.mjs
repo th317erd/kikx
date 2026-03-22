@@ -703,7 +703,8 @@ export class InteractionLoop extends EventEmitter {
               toolOutput = await executeTool(block.content.toolName, block.content.arguments);
             } catch (toolError) {
               // PermissionRequiredError from tool's internal permission check
-              // -> route to hardBreak() with rich context (Step 1.3)
+              // -> permission required: feed tool_result back to agent
+              // For child sessions (no user), fall back to hardBreak for routing
               if (toolError.name === 'PermissionRequiredError') {
                 let permissionContext = {
                   title:       toolError.title,
@@ -712,10 +713,62 @@ export class InteractionLoop extends EventEmitter {
                   details:     toolError.details,
                 };
 
-                await this._permissionHandler.hardBreak(
-                  sessionID, generator, block, interactionID, params, frameManager, permissionContext,
-                );
-                return;
+                // Check if this session has a user (can show permission dialog directly)
+                // If not, use hardBreak to route to the nearest user ancestor
+                let sessionManager = (typeof this._getSessionManager === 'function') ? this._getSessionManager() : null;
+                let needsRouting   = false;
+
+                if (sessionManager) {
+                  let nearestUserSessionID = await sessionManager.getNearestUserAncestor(sessionID);
+                  needsRouting = (nearestUserSessionID && nearestUserSessionID !== sessionID) || !nearestUserSessionID;
+                }
+
+                if (needsRouting) {
+                  // Child session — route permission to parent via hardBreak
+                  await this._permissionHandler.hardBreak(
+                    sessionID, generator, block, interactionID, params, frameManager, permissionContext,
+                  );
+                  return;
+                }
+
+                // Normal session with user — create permission-request frame inline
+                // and feed a tool_result back to keep the conversation valid
+                let requestFrameID = generateID('frm_');
+                let requestContent = {
+                  toolName:          block.content.toolName,
+                  arguments:         block.content.arguments,
+                  permissionContext,
+                };
+
+                await this._createFrame(sessionID, {
+                  id:            requestFrameID,
+                  type:          'permission-request',
+                  content:       requestContent,
+                  timestamp:     Date.now(),
+                  interactionID,
+                  authorType:    'system',
+                  authorID:      null,
+                  parentID:      params.parentID || null,
+                  hidden:        false,
+                  deleted:       false,
+                  processed:     false,
+                }, frameManager, { authorType: 'system' }, signingContext);
+
+                this.emit('permission:request', { sessionID, frameID: requestFrameID, toolName: block.content.toolName });
+
+                // Feed result back to agent — conversation stays valid
+                toolOutput = `PERMISSION REQUIRED for "${block.content.toolName}". A permission request (ID: ${requestFrameID}) has been sent to the user. Do NOT retry this tool call — wait for the user to approve or deny.`;
+                await this._createFrame(sessionID, {
+                  id: generateID('frm_'), type: 'tool-result',
+                  content: { output: toolOutput, toolUseID: block.content.toolUseId || block.content.toolUseID, _sessionID: sessionID },
+                  timestamp: Date.now(), interactionID,
+                  authorType: 'system', authorID: null,
+                  parentID: params.parentID || null,
+                  hidden: false, deleted: false, processed: false,
+                }, frameManager, { authorType: 'system' }, signingContext);
+
+                result = { type: 'tool-result', content: { output: toolOutput, _sessionID: sessionID } };
+                continue;
               }
 
               // PermissionDeniedError from PermissionEngine deny rules
