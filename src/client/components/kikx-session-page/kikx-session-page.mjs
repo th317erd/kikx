@@ -313,22 +313,26 @@ export function createFrameElement(frame) {
         permRequest.commands = parsedCommands;
       } else {
         let toolName            = (frame.content && frame.content.toolName) || 'unknown';
-        let descriptionTemplate = t('permission.wantsToUse') || '{name} wants to use:';
-        permRequest.description = descriptionTemplate.replace('{name}', name);
+        let descriptionTemplate = t('permission.wantsToUseTool') || '{name} wants to use {tool}:';
+        permRequest.description = descriptionTemplate.replace('{name}', name).replace('{tool}', toolName);
 
         let toolArgs = frame.content && frame.content.arguments;
         if (toolArgs) {
           try {
-            // Strip internal properties (prefixed with _) from display
-            let displayArgs = {};
-            for (let key of Object.keys(toolArgs)) {
-              if (!key.startsWith('_'))
-                displayArgs[key] = toolArgs[key];
-            }
+            if (typeof toolArgs === 'object' && toolArgs !== null) {
+              // Strip internal properties (prefixed with _) from display
+              let displayArgs = {};
+              for (let key of Object.keys(toolArgs)) {
+                if (!key.startsWith('_'))
+                  displayArgs[key] = toolArgs[key];
+              }
 
-            let argKeys = Object.keys(displayArgs);
-            if (argKeys.length > 0)
-              permRequest.toolArgs = JSON.stringify(displayArgs, null, 2);
+              let argKeys = Object.keys(displayArgs);
+              if (argKeys.length > 0)
+                permRequest.toolArgs = JSON.stringify(displayArgs, null, 2);
+            } else if (typeof toolArgs === 'string' && toolArgs.length > 0) {
+              permRequest.toolArgs = toolArgs;
+            }
           } catch (_e) {
             // Ignore serialization errors
           }

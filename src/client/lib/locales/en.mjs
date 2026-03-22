@@ -120,6 +120,7 @@ export default {
     deny:             'Deny',
     wantsToExecute:   '{name} wants to execute:',
     wantsToUse:       '{name} wants to use:',
+    wantsToUseTool:   '{name} wants to use {tool}:',
     allowForever:     'Allow forever',
     allowOnceShort:   'Allow once',
     denyOnce:         'Deny once',

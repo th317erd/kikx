@@ -249,6 +249,11 @@ class KikxPermissionRequest extends HTMLElement {
     this._decisions = new Map();
     this._commands  = [];
 
+    // Backing fields for properties that may be set before DOM connection
+    this._description      = '';
+    this._toolArgsValue    = '';
+    this._fullCommandValue = '';
+
     this._onConfirmClick    = this._onConfirmClick.bind(this);
     this._onDecisionClick   = this._onDecisionClick.bind(this);
   }
@@ -270,6 +275,20 @@ class KikxPermissionRequest extends HTMLElement {
 
     this._titleText.textContent    = t('permission.title');
     this._confirmButton.textContent = t('permission.confirmButton') || 'Confirm';
+
+    // Re-apply backing values that may have been set before DOM connection
+    if (this._description)
+      this._descriptionEl.textContent = this._description;
+
+    if (this._toolArgsValue) {
+      this._toolArgsCodeEl.textContent = this._toolArgsValue;
+      this._toolArgsEl.style.display   = '';
+    }
+
+    if (this._fullCommandValue) {
+      this._fullCommandEl.textContent  = this._fullCommandValue;
+      this._fullCommandEl.style.display = '';
+    }
 
     this._confirmButton.addEventListener('click', this._onConfirmClick);
     this._commandTable.addEventListener('click', this._onDecisionClick);
@@ -355,24 +374,28 @@ class KikxPermissionRequest extends HTMLElement {
   // ---------------------------------------------------------------------------
 
   get description() {
-    return (this._descriptionEl) ? this._descriptionEl.textContent : '';
+    return this._description;
   }
 
   set description(value) {
+    this._description = value || '';
+
     if (this._descriptionEl)
-      this._descriptionEl.textContent = value || '';
+      this._descriptionEl.textContent = this._description;
   }
 
   get toolArgs() {
-    return (this._toolArgsCodeEl) ? this._toolArgsCodeEl.textContent : '';
+    return this._toolArgsValue;
   }
 
   set toolArgs(value) {
+    this._toolArgsValue = value || '';
+
     if (!this._toolArgsEl || !this._toolArgsCodeEl)
       return;
 
-    if (value) {
-      this._toolArgsCodeEl.textContent  = value;
+    if (this._toolArgsValue) {
+      this._toolArgsCodeEl.textContent  = this._toolArgsValue;
       this._toolArgsEl.style.display    = '';
     } else {
       this._toolArgsCodeEl.textContent  = '';
@@ -381,15 +404,17 @@ class KikxPermissionRequest extends HTMLElement {
   }
 
   get fullCommand() {
-    return (this._fullCommandEl) ? this._fullCommandEl.textContent : '';
+    return this._fullCommandValue;
   }
 
   set fullCommand(value) {
+    this._fullCommandValue = value || '';
+
     if (!this._fullCommandEl)
       return;
 
-    if (value) {
-      this._fullCommandEl.textContent  = value;
+    if (this._fullCommandValue) {
+      this._fullCommandEl.textContent  = this._fullCommandValue;
       this._fullCommandEl.style.display = '';
     } else {
       this._fullCommandEl.textContent  = '';
