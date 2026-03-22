@@ -68,6 +68,17 @@ describe('Command Permissions (system:command)', () => {
   });
 
   // Helpers
+  /** Wrap context so permissionEngine returns null (bypass tool-level permissions). */
+  function noPermContext() {
+    return {
+      getProperty: (key) => {
+        if (key === 'permissionEngine') return null;
+        return context.getProperty(key);
+      },
+      setProperty: (key, val) => context.setProperty(key, val),
+    };
+  }
+
   async function createTestSession() {
     let org     = await models.Organization.create({ name: 'Perm Test Org' });
     let session = await sessionManager.createSession(org.id, { name: 'Perm Test Session' });
@@ -460,7 +471,7 @@ describe('Command Permissions (system:command)', () => {
           if (!ToolClass)
             throw new Error(`Unknown tool: ${toolName}`);
 
-          let toolInstance = new ToolClass(context);
+          let toolInstance = new ToolClass(noPermContext());
           let result = await toolInstance.execute({
             ...toolArgs,
             _sessionID: session.id,
@@ -480,7 +491,7 @@ describe('Command Permissions (system:command)', () => {
     it('should return error HTML when command is empty', async () => {
       let registry  = context.getProperty('pluginRegistry');
       let ToolClass = registry.getTool('system:command');
-      let tool      = new ToolClass(context);
+      let tool      = new ToolClass(noPermContext());
 
       let result = await tool.execute({ command: '', _sessionID: 'ses_test' });
       assert.ok(result.html.includes('required'));
@@ -489,7 +500,7 @@ describe('Command Permissions (system:command)', () => {
     it('should return error HTML when command is missing', async () => {
       let registry  = context.getProperty('pluginRegistry');
       let ToolClass = registry.getTool('system:command');
-      let tool      = new ToolClass(context);
+      let tool      = new ToolClass(noPermContext());
 
       let result = await tool.execute({ _sessionID: 'ses_test' });
       assert.ok(result.html.includes('required'));
@@ -540,7 +551,7 @@ describe('Command Permissions (system:command)', () => {
 
       // Execute directly via the tool
       let ToolClass    = registry.getTool('system:command');
-      let toolInstance = new ToolClass(context);
+      let toolInstance = new ToolClass(noPermContext());
 
       await toolInstance.execute({
         command:    'spy-auth-cmd-2',
@@ -590,7 +601,7 @@ describe('Command Permissions (system:command)', () => {
       assert.equal(result, null, 'invite should defer to rules');
     });
 
-    it('should defer to rules for command:reload', async () => {
+    it('should auto-approve command:reload (low-risk capability)', async () => {
       let registry         = core.getPluginRegistry();
       let ToolClass        = registry.getTool('system:command');
       let instance         = new ToolClass(context);
@@ -598,7 +609,7 @@ describe('Command Permissions (system:command)', () => {
       let permissions      = new PermissionsClass(context);
 
       let result = await permissions.checkPermission('command:reload', { command: 'reload' }, {});
-      assert.equal(result, null, 'reload should defer to rules');
+      assert.equal(result, false, 'reload is a low-risk capability — auto-approved');
     });
 
     it('should auto-approve help regardless of casing', async () => {

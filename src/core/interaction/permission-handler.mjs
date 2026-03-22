@@ -35,7 +35,7 @@ export class PermissionHandler {
   //   The pending-action frame always stays in the current (requesting) session.
   // ---------------------------------------------------------------------------
 
-  async hardBreak(sessionID, generator, block, interactionID, params, frameManager) {
+  async hardBreak(sessionID, generator, block, interactionID, params, frameManager, permissionContext) {
     let loop = this._loop;
 
     // 1. Persist pending-action frame (always in the current session)
@@ -106,6 +106,9 @@ export class PermissionHandler {
 
     if (parsedCommands && parsedCommands.length > 0)
       requestContent.parsedCommands = parsedCommands;
+
+    if (permissionContext)
+      requestContent.permissionContext = permissionContext;
 
     let requestFrame = {
       id:            requestFrameID,

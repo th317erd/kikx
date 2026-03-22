@@ -77,7 +77,7 @@ describe('PluginInterface', () => {
   });
 
   it('should throw on _execute if not overridden', async () => {
-    let instance = new PluginInterface({});
+    let instance = new PluginInterface({ getProperty: () => null });
     await assert.rejects(
       () => instance.execute({}),
       { message: 'PluginInterface._execute() not implemented' },
@@ -86,7 +86,7 @@ describe('PluginInterface', () => {
 
   it('should delegate execute to _execute', async () => {
     let TestTool = createTestToolClass();
-    let instance = new TestTool({});
+    let instance = new TestTool({ getProperty: () => null });
     let result   = await instance.execute({ x: 1 });
     assert.deepEqual(result, { result: 'ok', params: { x: 1 } });
   });
@@ -129,7 +129,7 @@ describe('PluginInterface', () => {
   it('should use subclass name in _execute error message', async () => {
     class MySpecialTool extends PluginInterface {}
 
-    let instance = new MySpecialTool({});
+    let instance = new MySpecialTool({ getProperty: () => null });
     await assert.rejects(
       () => instance.execute({}),
       { message: 'MySpecialTool._execute() not implemented' },

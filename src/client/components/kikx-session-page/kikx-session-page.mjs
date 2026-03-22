@@ -351,10 +351,19 @@ export function createFrameElement(frame) {
       let permRequest = document.createElement('kikx-permission-request');
       permRequest.setAttribute('permission-id', frame.id || '');
 
+      // Structured permissionContext takes priority when present
+      let permContext = frame.content && frame.content.permissionContext;
+      if (permContext) {
+        permRequest.permissionContext = permContext;
+      }
+
       let parsedCommands = frame.content && frame.content.parsedCommands;
       if (parsedCommands && parsedCommands.length > 0) {
-        let descriptionTemplate = t('permission.wantsToExecute') || '{name} wants to execute:';
-        permRequest.description = descriptionTemplate.replace('{name}', name);
+        // Only set description if permissionContext didn't already provide one
+        if (!permContext) {
+          let descriptionTemplate = t('permission.wantsToExecute') || '{name} wants to execute:';
+          permRequest.description = descriptionTemplate.replace('{name}', name);
+        }
 
         let fullCommandString = frame.content.arguments && frame.content.arguments.command;
         if (fullCommandString)
@@ -362,16 +371,20 @@ export function createFrameElement(frame) {
 
         permRequest.commands = parsedCommands;
       } else {
-        let toolName            = (frame.content && frame.content.toolName) || 'unknown';
-        let descriptionTemplate = t('permission.wantsToUseTool') || '{name} wants to use {tool}:';
-        permRequest.description = descriptionTemplate.replace('{name}', name).replace('{tool}', toolName);
+        let toolName = (frame.content && frame.content.toolName) || 'unknown';
 
-        let toolArgs = frame.content && frame.content.arguments;
-        if (toolArgs) {
-          try {
-            permRequest.toolArgs = _formatToolArgs(toolArgs);
-          } catch (_e) {
-            // Ignore formatting errors
+        // Only set description/toolArgs if permissionContext didn't already provide them
+        if (!permContext) {
+          let descriptionTemplate = t('permission.wantsToUseTool') || '{name} wants to use {tool}:';
+          permRequest.description = descriptionTemplate.replace('{name}', name).replace('{tool}', toolName);
+
+          let toolArgs = frame.content && frame.content.arguments;
+          if (toolArgs) {
+            try {
+              permRequest.toolArgs = _formatToolArgs(toolArgs);
+            } catch (_e) {
+              // Ignore formatting errors
+            }
           }
         }
 

@@ -93,11 +93,14 @@ describe('Cross-Session Plugin', () => {
   function instantiateTool(ToolClass, overrides = {}) {
     let toolContext = {
       getProperty: (key) => {
+        if (key === 'permissionEngine') return null; // bypass permissions in unit tests
         if (overrides[key] !== undefined) return overrides[key];
         return context.getProperty(key);
       },
     };
-    return new ToolClass(toolContext);
+    let tool = new ToolClass(toolContext);
+    tool.getPermissionsClass = () => null; // bypass custom permission classes in unit tests
+    return tool;
   }
 
   // ===========================================================================

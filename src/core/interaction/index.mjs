@@ -731,6 +731,22 @@ export class InteractionLoop extends EventEmitter {
             try {
               toolOutput = await executeTool(block.content.toolName, block.content.arguments);
             } catch (toolError) {
+              // PermissionRequiredError from tool's internal permission check
+              // → route to hardBreak() with rich context (Step 1.3)
+              if (toolError.name === 'PermissionRequiredError') {
+                let permissionContext = {
+                  title:       toolError.title,
+                  titleParams: toolError.titleParams,
+                  description: toolError.description,
+                  details:     toolError.details,
+                };
+
+                await this._permissionHandler.hardBreak(
+                  sessionID, generator, block, interactionID, params, frameManager, permissionContext,
+                );
+                return;
+              }
+
               toolOutput = `Error executing tool: ${toolError.message}`;
               await this._createFrame(sessionID, {
                 id: generateID('frm_'), type: 'tool-error',

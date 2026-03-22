@@ -73,6 +73,30 @@ const TEMPLATE_HTML = `
       margin-bottom: var(--spacing-sm, 8px);
     }
 
+    kikx-permission-request .permission-details {
+      margin-top: 4px;
+    }
+
+    kikx-permission-request .detail-row {
+      display: flex;
+      gap: 8px;
+      padding: 2px 0;
+      font-size: 0.9em;
+    }
+
+    kikx-permission-request .detail-label {
+      color: var(--text-muted, #606078);
+      white-space: nowrap;
+      min-width: 80px;
+    }
+
+    kikx-permission-request .detail-value {
+      color: var(--text-primary, #e0e0f0);
+      word-break: break-word;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+
     kikx-permission-request .command-table {
       display: flex; flex-direction: column; gap: 6px;
       margin-bottom: var(--spacing-sm, 8px);
@@ -222,6 +246,7 @@ const TEMPLATE_HTML = `
     <span class="title-text"></span>
   </div>
   <div class="permission-description"></div>
+  <div class="permission-details" style="display:none;"></div>
   <div class="permission-tool-args" style="display:none;"><code></code></div>
   <code class="full-command" style="display:none;"></code>
   <div class="command-table"></div>
@@ -229,6 +254,16 @@ const TEMPLATE_HTML = `
   <div class="processed-badge">\u2713 Processed</div>
   <div class="expired-badge">\u23F0 Expired — please resend your message</div>
 `;
+
+function _formatLabelFallback(key) {
+  // 'permission.detail.targetSession' → 'targetSession' → 'Target Session'
+  let lastPart = key.includes('.') ? key.split('.').pop() : key;
+  // camelCase or snake_case → Title Case
+  return lastPart
+    .replace(/([a-z])([A-Z])/g, '$1 $2')  // camelCase → words
+    .replace(/_/g, ' ')                      // snake_case → words
+    .replace(/\b\w/g, (c) => c.toUpperCase()); // Title Case
+}
 
 let cachedTemplate = null;
 
@@ -250,9 +285,10 @@ class KikxPermissionRequest extends HTMLElement {
     this._commands  = [];
 
     // Backing fields for properties that may be set before DOM connection
-    this._description      = '';
-    this._toolArgsValue    = '';
-    this._fullCommandValue = '';
+    this._description           = '';
+    this._toolArgsValue         = '';
+    this._fullCommandValue      = '';
+    this._permissionContextValue = null;
 
     this._onConfirmClick    = this._onConfirmClick.bind(this);
     this._onDecisionClick   = this._onDecisionClick.bind(this);
@@ -265,6 +301,7 @@ class KikxPermissionRequest extends HTMLElement {
 
       this._titleText      = this.querySelector('.title-text');
       this._descriptionEl  = this.querySelector('.permission-description');
+      this._detailsEl      = this.querySelector('.permission-details');
       this._toolArgsEl     = this.querySelector('.permission-tool-args');
       this._toolArgsCodeEl = this._toolArgsEl.querySelector('code');
       this._fullCommandEl  = this.querySelector('.full-command');
@@ -289,6 +326,9 @@ class KikxPermissionRequest extends HTMLElement {
       this._fullCommandEl.textContent  = this._fullCommandValue;
       this._fullCommandEl.style.display = '';
     }
+
+    if (this._permissionContextValue)
+      this._applyPermissionContext(this._permissionContextValue);
 
     this._confirmButton.addEventListener('click', this._onConfirmClick);
     this._commandTable.addEventListener('click', this._onDecisionClick);
@@ -419,6 +459,65 @@ class KikxPermissionRequest extends HTMLElement {
     } else {
       this._fullCommandEl.textContent  = '';
       this._fullCommandEl.style.display = 'none';
+    }
+  }
+
+  get permissionContext() {
+    return this._permissionContextValue;
+  }
+
+  set permissionContext(value) {
+    this._permissionContextValue = value || null;
+
+    if (this._detailsEl && this._permissionContextValue)
+      this._applyPermissionContext(this._permissionContextValue);
+  }
+
+  _applyPermissionContext(ctx) {
+    // Resolve title via I18N (fallback: use as-is)
+    if (ctx.title) {
+      let resolved = t(ctx.title, ctx.titleParams);
+      this._titleText.textContent = resolved;
+    }
+
+    // Resolve description via I18N
+    if (ctx.description) {
+      let resolved = t(ctx.description, ctx.titleParams);
+      this._descriptionEl.textContent = resolved;
+    }
+
+    // Hide toolArgs display — permissionContext takes priority
+    if (this._toolArgsEl)
+      this._toolArgsEl.style.display = 'none';
+
+    // Render detail rows
+    if (ctx.details && ctx.details.length > 0) {
+      this._detailsEl.innerHTML = '';
+
+      for (let detail of ctx.details) {
+        let row = document.createElement('div');
+        row.className = 'detail-row';
+
+        let labelEl = document.createElement('span');
+        labelEl.className = 'detail-label';
+        let labelText = t(detail.label);
+        // If t() returned the key itself (not found), use fallback formatting
+        if (labelText === detail.label)
+          labelText = _formatLabelFallback(detail.label);
+        labelEl.textContent = labelText + ':';
+
+        let valueEl = document.createElement('span');
+        valueEl.className = 'detail-value';
+        valueEl.textContent = detail.value || '';
+
+        row.appendChild(labelEl);
+        row.appendChild(valueEl);
+        this._detailsEl.appendChild(row);
+      }
+
+      this._detailsEl.style.display = '';
+    } else {
+      this._detailsEl.style.display = 'none';
     }
   }
 

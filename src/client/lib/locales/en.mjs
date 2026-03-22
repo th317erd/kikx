@@ -128,6 +128,33 @@ export default {
     preApproved:      'Pre-approved',
     confirmButton:    'Confirm',
     processed:        'Processed',
+    defaultTitle:       'Permission Required',
+    defaultDescription: '{name} wants to use {tool}.',
+    crossSession: {
+      postTitle:       'Post to "{sessionName}"',
+      postDescription: 'Send a message to another session.',
+      listTitle:       'List Sessions',
+      listDescription: 'View available sessions.',
+    },
+    shell: {
+      executeTitle:       'Execute Shell Command',
+      executeDescription: 'Run commands in the system shell.',
+    },
+    systemCommand: {
+      title:       'Run /{command}',
+      description: 'Execute the /{command} command.',
+    },
+    detail: {
+      targetSession:  'Target Session',
+      messagePreview: 'Message',
+      command:        'Command',
+      arguments:      'Arguments',
+      filePath:       'File Path',
+      url:            'URL',
+      query:          'Query',
+      approvedCommand: '\u2705 Approved',
+      pendingCommand:  '\u231B Pending',
+    },
   },
   status: {
     connected:    'Connected',
