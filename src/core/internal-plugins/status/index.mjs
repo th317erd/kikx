@@ -59,17 +59,16 @@ export function setup({ registerCapability }) {
       // 2. Participants (agents from Participant table + the user)
       let participants = [];
 
-      // The user is always an implicit participant
+      // The user is always an implicit participant (User.organizationID → Session.organizationID)
       if (models && models.User && models.Session) {
         try {
           let session = await models.Session.where.id.EQ(sessionID).first();
-          if (session && session.organizationID && models.Organization) {
-            let org = await models.Organization.where.id.EQ(session.organizationID).first();
-            if (org && org.userID) {
-              let user = await models.User.where.id.EQ(org.userID).first();
+          if (session && session.organizationID) {
+            let user = await models.User.where.organizationID.EQ(session.organizationID).first();
+            if (user) {
               participants.push({
-                id:   org.userID,
-                name: user ? (user.name || user.email || 'User') : 'User',
+                id:   user.id,
+                name: user.name || user.email || 'User',
                 type: 'user',
                 role: 'owner',
               });
