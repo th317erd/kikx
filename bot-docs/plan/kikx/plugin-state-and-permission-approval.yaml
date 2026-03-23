@@ -1,0 +1,297 @@
+# =============================================================================
+# Plugin State + Permission Approval via FrameRouter
+# =============================================================================
+# Adds this.state (frame-attached Proxy) to plugins and replaces the
+# in-memory permission approval flow with a FrameRouter-based approach.
+#
+# Core principles:
+#   - this.state is a Proxy that auto-persists to the frame (DB)
+#   - Survives server restarts (state in DB, not memory)
+#   - Approval is a signed frame update → FrameRouter catches → re-executes
+#   - pending-action frame type eliminated (context in state)
+#   - Controller just updates the frame, FrameRouter handles execution
+#
+# Prerequisites:
+#   - FrameRouter + BasePluginClass (exists)
+#   - Permission inline flow (just implemented)
+#   - PermissionRequiredError (just implemented)
+#   - Ed25519 signing (exists)
+#
+# Planning: documented in .claude/conversation.md
+# Status: APPROVED — ready for implementation
+# Created: 2026-03-22
+# =============================================================================
+
+meta:
+  title: "Plugin State + Permission Approval via FrameRouter"
+  version: "1.0.0"
+  depends_on:
+    - "src/core/routing/frame-router.mjs"
+    - "src/core/routing/base-plugin-class.mjs"
+    - "src/core/interaction/permission-handler.mjs"
+    - "src/core/permissions/permission-required-error.mjs"
+
+# =============================================================================
+# 1. DESIGN
+# =============================================================================
+
+design:
+  this_state:
+    description: |
+      A Proxy on the plugin instance that reads/writes state persisted
+      on the frame itself. When a FrameRouter plugin processes a frame,
+      this.state arrives pre-hydrated from the DB. Changes are
+      dirty-tracked and persisted after process() completes.
+
+    api: |
+      // WRITE — persisted to DB after process()
+      this.state.toolName = 'shell:execute';
+      this.state.step     = 'awaiting-approval';
+
+      // READ — hydrated from frame before process()
+      let step = this.state.step;
+
+    storage: |
+      New `state` TEXT column on Frame model. JSON-serialized.
+      FrameRouter hydrates before dispatch, persists after dispatch.
+      Per-frame scope (keyed by frame ID).
+
+    proxy_mechanics: |
+      - On get: reads from backing object (hydrated from frame)
+      - On set: writes to backing object, marks dirty
+      - After process(): if dirty, persist to DB
+      - If not dirty: no DB write (no-op)
+
+    serialization: |
+      JSON-serializable only. No functions, no circular references.
+      Corruption fallback: empty object.
+
+  permission_approval:
+    description: |
+      The approval IS a user interaction (authenticated, signed).
+      The controller creates a permission rule and updates the frame.
+      FrameRouter catches the commit → PermissionApprovalPlugin fires
+      → reads this.state → re-executes the tool.
+
+    flow_approval: |
+      1. User clicks approve → API call to server
+      2. Controller creates permission rule (allow) with user's signature
+      3. Controller updates permission-request frame (processed=true, approved)
+      4. Frame commit triggers FrameRouter
+      5. PermissionApprovalPlugin matches (permission-request + just approved)
+      6. Plugin reads this.state → { toolName, toolArguments, toolUseID, ... }
+      7. Plugin looks up tool class from pluginRegistry
+      8. Plugin calls tool.execute(storedArguments)
+         → _checkPermissions() finds allow rule → passes
+         → _execute() runs → output
+      9. Plugin creates tool-result frame
+      10. Plugin starts new interaction so agent sees result
+
+    flow_denial: |
+      1. User clicks deny → API call
+      2. Controller updates frame (processed=true, denied)
+      3. FrameRouter fires → plugin reads state
+      4. Plugin creates denial message frame
+      5. Plugin starts new interaction so agent sees denial
+
+    what_gets_removed: |
+      - _permissionWaiting in-memory Map
+      - PermissionHandler.approve() / deny()
+      - pending-action frame type
+      - InteractionLoop.approvePermission() / denyPermission()
+
+# =============================================================================
+# 2. COMPONENTS
+# =============================================================================
+
+components:
+  frame_state_column:
+    file: "src/core/models/frame-model.mjs"
+    action: "Add state field"
+    description: |
+      New TEXT column, nullable, JSON. Stores plugin state per frame.
+      Also update src/shared/frame-manager/frame.mjs if state needs
+      to flow through the FrameManager.
+
+  state_proxy:
+    file: "src/core/routing/base-plugin-class.mjs"
+    action: "Add this.state getter"
+    description: |
+      The FrameRouter creates the Proxy and sets it on the plugin
+      instance before calling process(). The plugin accesses it
+      via this.state (getter on BasePluginClass).
+
+  frame_router_hydration:
+    file: "src/core/routing/frame-router.mjs"
+    action: "Hydrate state before dispatch, persist after"
+    description: |
+      In _routeCommit() / _executeChain():
+      1. Before plugin.process(): parse frame.state → create Proxy → set on plugin
+      2. After plugin.process(): if dirty, persist state to DB
+      Needs FramePersistence access for DB writes.
+
+  permission_approval_plugin:
+    file: "src/core/internal-plugins/permission-approval/index.mjs"
+    action: "Create new internal plugin"
+    description: |
+      FrameRouter plugin that catches approved/denied permission-request
+      frames and re-executes the tool (or creates denial frame).
+      Registered via registerSelector for permission-request frames.
+
+  inline_state_storage:
+    file: "src/core/interaction/index.mjs"
+    action: "Store tool context in frame state"
+    description: |
+      When creating permission-request frame inline, attach state:
+      { toolName, toolArguments, toolUseID, sessionID, agentID, interactionID }
+
+  controller_approval:
+    file: "src/server/controllers/interaction-controller.mjs"
+    action: "Simplify approval endpoint"
+    description: |
+      approvePermission: create permission rule + update frame (approved)
+      denyPermission: update frame (denied)
+      No longer calls PermissionHandler.approve/deny.
+      The FrameRouter handles re-execution.
+
+  cleanup:
+    files:
+      - "src/core/interaction/permission-handler.mjs"
+      - "src/core/interaction/index.mjs"
+    action: "Remove legacy approval code"
+    description: |
+      Remove _permissionWaiting Map, approve(), deny(), _findWaiting(),
+      _deleteWaiting(). Remove approvePermission/denyPermission from
+      InteractionLoop. Remove pending-action frame creation from hardBreak
+      (keep hardBreak for child session routing only).
+
+# =============================================================================
+# 3. IMPLEMENTATION ORDER
+# =============================================================================
+
+phases:
+  phase_1:
+    name: "this.state Infrastructure"
+    steps:
+      - id: "1.1"
+        task: "Add state column to Frame model + FrameManager Frame class"
+        tdd: true
+
+      - id: "1.2"
+        task: "Implement state Proxy on BasePluginClass"
+        tdd: true
+
+      - id: "1.3"
+        task: "FrameRouter: hydrate state before dispatch, persist after"
+        tdd: true
+
+  phase_2:
+    name: "Permission Approval Plugin"
+    depends_on: ["phase_1"]
+    steps:
+      - id: "2.1"
+        task: "Store tool context in frame state when creating permission-request inline"
+        tdd: true
+
+      - id: "2.2"
+        task: "Create PermissionApprovalPlugin (FrameRouter plugin)"
+        tdd: true
+
+      - id: "2.3"
+        task: "Update controller: approval creates rule + updates frame"
+        tdd: true
+
+  phase_3:
+    name: "Cleanup + DOM Tests"
+    depends_on: ["phase_2"]
+    steps:
+      - id: "3.1"
+        task: "Remove legacy approval code (PermissionHandler.approve/deny, _permissionWaiting, pending-action)"
+        tdd: true
+
+      - id: "3.2"
+        task: "DOM tests: permission UI rendering with permissionContext (jsdom)"
+
+      - id: "3.3"
+        task: "DOM tests: session page permissionContext frame creation (jsdom)"
+
+# =============================================================================
+# 4. TEST PLAN
+# =============================================================================
+
+tests:
+  suites:
+    - file: "spec/core/routing/plugin-state-spec.mjs"
+      component: "this.state Proxy"
+      estimated: 18
+      coverage:
+        happy: "get/set primitives, nested objects, empty start, hydrated, dirty tracking, persist after process, no-op clean"
+        sad: "non-serializable, circular ref, corrupted JSON, null state, persist failure"
+        edge: "delete key, overwrite same value, large state, read after process"
+
+    - file: "spec/core/routing/frame-router-state-spec.mjs"
+      component: "FrameRouter state hydration"
+      estimated: 10
+      coverage:
+        happy: "hydrate before dispatch, persist after, skip clean, multiple plugins, cross-cycle persistence"
+        sad: "missing state field, persist failure, plugin throws"
+
+    - file: "spec/core/routing/plugins/permission-approval-plugin-spec.mjs"
+      component: "PermissionApprovalPlugin"
+      estimated: 20
+      coverage:
+        happy: "approved → re-execute, denied → message, allow rule created, new interaction started, frame marked processed"
+        sad: "missing state, tool not found, re-execution throws, PermissionRequiredError again, non-permission frame, not approved/denied"
+        edge: "concurrent approvals, server restart, child session"
+
+    - file: "spec/core/interaction/inline-permission-flow-spec.mjs"
+      component: "Inline permission flow integration"
+      estimated: 16
+      coverage:
+        happy: "PermissionRequiredError → frame with state, tool_result fed back, approval → re-execute → result"
+        sad: "empty context, re-execution fails, denial"
+        e2e: "full approve cycle, full deny cycle, restart survival, multiple permissions"
+
+    - file: "spec/server/controllers/permission-approval-spec.mjs"
+      component: "Controller approval endpoint"
+      estimated: 10
+      coverage:
+        happy: "approve → rule + frame update, deny → frame update"
+        sad: "non-existent frame, already processed, not permission-request, no auth"
+
+    - file: "spec/client/components/kikx-permission-request-approval-spec.mjs"
+      component: "Permission UI rendering (jsdom)"
+      estimated: 22
+      coverage:
+        happy: "permissionContext rendering, I18N resolution, detail rows, label fallback, priority over toolArgs"
+        sad: "null context, empty details, long values"
+        edge: "pre-connection safety, approve/deny events, status icons, expired state"
+
+    - file: "spec/client/components/kikx-session-page-spec.mjs"
+      component: "Session page permissionContext (additions)"
+      estimated: 6
+      coverage:
+        happy: "frame with permissionContext → component receives it, without → toolArgs fallback, both → context wins"
+
+  totals:
+    estimated: 102
+
+# =============================================================================
+# 5. FUTURE PLANS
+# =============================================================================
+
+future_plans:
+  - id: higher-level-state
+    title: "Session-Level or Agent-Level Plugin State"
+    priority: low
+    description: |
+      this.state is per-frame. If plugins need state scoped to a session
+      or agent (not tied to a single frame), that's a separate mechanism.
+      Discuss when needed.
+
+  - id: state-migration
+    title: "State Schema Versioning"
+    priority: low
+    description: |
+      If state structure changes between plugin versions, need a migration
+      strategy. For now, plugins handle unknown/missing keys gracefully.
