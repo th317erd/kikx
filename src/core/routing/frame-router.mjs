@@ -51,12 +51,14 @@ export class FrameRouter {
 
   // Subscribe to a FrameManager's commit events.
   // Returns a cleanup function to unsubscribe.
-  connectTo(frameManager, sessionContext) {
+  connectTo(frameManager, sessionContext, options) {
+    let connectOptions = options || {};
+
     let handler = ({ commit }) => {
       if (commit.silent)
         return;
 
-      this._enqueue(frameManager, commit, sessionContext || null);
+      this._enqueue(frameManager, commit, sessionContext || null, connectOptions);
     };
 
     frameManager.on('commit', handler);
@@ -68,8 +70,8 @@ export class FrameRouter {
   // Queue processing (re-entrant safety)
   // ---------------------------------------------------------------------------
 
-  _enqueue(frameManager, commit, sessionContext) {
-    this._queue.push({ frameManager, commit, sessionContext });
+  _enqueue(frameManager, commit, sessionContext, connectOptions) {
+    this._queue.push({ frameManager, commit, sessionContext, connectOptions });
 
     if (!this._processing)
       this._processQueue();
@@ -82,7 +84,7 @@ export class FrameRouter {
       let entry = this._queue.shift();
 
       try {
-        await this._routeCommit(entry.frameManager, entry.commit, entry.sessionContext);
+        await this._routeCommit(entry.frameManager, entry.commit, entry.sessionContext, entry.connectOptions);
       } catch (err) {
         this._logger.error('FrameRouter: uncaught error in _routeCommit:', err);
       }
@@ -95,7 +97,7 @@ export class FrameRouter {
   // Per-commit routing
   // ---------------------------------------------------------------------------
 
-  async _routeCommit(frameManager, commit, sessionContext) {
+  async _routeCommit(frameManager, commit, sessionContext, connectOptions) {
     let changes = commit.changes;
 
     if (!changes || changes.length === 0)
@@ -130,8 +132,8 @@ export class FrameRouter {
       // Build routing context
       let context = this._buildContext(frameManager, frame, change, commit, sessionContext);
 
-      // Execute the middleware chain
-      await this._executeChain(matching, context);
+      // Execute the middleware chain with state hydration/persistence
+      await this._executeChainWithState(matching, context, frame, connectOptions);
     }
   }
 
@@ -193,10 +195,72 @@ export class FrameRouter {
   }
 
   // ---------------------------------------------------------------------------
+  // State hydration + middleware chain + state persistence
+  // ---------------------------------------------------------------------------
+
+  async _executeChainWithState(matchingPlugins, context, frame, connectOptions) {
+    // Hydrate raw state from the frame
+    let rawState = {};
+
+    try {
+      if (frame.state) {
+        let parsed = (typeof frame.state === 'string') ? JSON.parse(frame.state) : frame.state;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+          rawState = parsed;
+      }
+    } catch (_e) {
+      rawState = {};
+    }
+
+    // Create a Proxy with dirty tracking
+    let dirty = false;
+
+    let stateProxy = new Proxy(rawState, {
+      set(target, prop, value) {
+        target[prop] = value;
+        dirty = true;
+        return true;
+      },
+      deleteProperty(target, prop) {
+        delete target[prop];
+        dirty = true;
+        return true;
+      },
+    });
+
+    // Side-channel error flag for plugin throws
+    let stateError = { value: false };
+    context._stateError = stateError;
+
+    // Execute the chain — pass stateProxy so _invokePlugin can set it on each instance
+    await this._executeChain(matchingPlugins, context, stateProxy);
+
+    {
+      // Persist state if dirty and no plugin threw
+      if (dirty && !stateError.value) {
+        // Update the in-memory frame
+        frame.state = JSON.stringify(rawState);
+
+        // Persist to DB if FramePersistence is available
+        let framePersistence = (connectOptions && connectOptions.framePersistence) || null;
+
+        if (framePersistence) {
+          try {
+            let frameID = frame.id || frame.frameID;
+            await framePersistence.updateFrameState(frameID, rawState);
+          } catch (persistErr) {
+            this._logger.error('FrameRouter: failed to persist plugin state:', persistErr);
+          }
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Middleware chain execution
   // ---------------------------------------------------------------------------
 
-  async _executeChain(matchingPlugins, context) {
+  async _executeChain(matchingPlugins, context, stateProxy) {
     let index     = 0;
     let chainDone = false;
 
@@ -208,7 +272,7 @@ export class FrameRouter {
         return;
 
       let registration = matchingPlugins[index++];
-      await this._invokePlugin(registration, ctx || context, advance, stop);
+      await this._invokePlugin(registration, ctx || context, advance, stop, stateProxy);
     };
 
     let stop = async () => {
@@ -218,7 +282,7 @@ export class FrameRouter {
     await advance(context);
   }
 
-  async _invokePlugin(registration, context, next, done) {
+  async _invokePlugin(registration, context, next, done, stateProxy) {
     let instance;
 
     try {
@@ -231,6 +295,10 @@ export class FrameRouter {
       await next(context);
       return;
     }
+
+    // Attach state proxy if available
+    if (stateProxy !== undefined)
+      instance._state = stateProxy;
 
     let called = false;
 
@@ -250,6 +318,10 @@ export class FrameRouter {
       this._logger.error(
         `FrameRouter: plugin "${registration.pluginName}" threw in process():`, err,
       );
+
+      // Mark chain as having encountered a plugin error (prevents state persistence)
+      if (context._stateError !== undefined)
+        context._stateError.value = true;
     } finally {
       if (!called) {
         this._logger.error(

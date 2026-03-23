@@ -10,7 +10,7 @@ import { ModelBase, Types } from './model-base.mjs';
 // =============================================================================
 
 export class Frame extends ModelBase {
-  static version = 3;
+  static version = 4;
 
   static fields = {
     ...(ModelBase.fields || {}),
@@ -110,6 +110,11 @@ export class Frame extends ModelBase {
     // Fingerprint of the signing key (first 32 hex chars of SHA-256(publicKeyPEM))
     signingKeyFingerprint: {
       type:      Types.STRING(64),
+      allowNull: true,
+    },
+    // Plugin state — JSON-serialized per-frame state bag
+    state: {
+      type:      Types.TEXT('long'),
       allowNull: true,
     },
     // Frame timestamp (milliseconds since epoch)

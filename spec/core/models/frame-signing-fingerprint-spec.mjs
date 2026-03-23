@@ -90,8 +90,8 @@ describe('Frame model — signingKeyFingerprint field (Gap 3)', () => {
     assert.equal(field.allowNull, true);
   });
 
-  it('Frame model version is 3 after adding signingKeyFingerprint', () => {
-    assert.equal(models.Frame.version, 3, 'Frame model version should be 3');
+  it('Frame model version is 4 after adding state field', () => {
+    assert.equal(models.Frame.version, 4, 'Frame model version should be 4');
   });
 
   it('creates a frame with signingKeyFingerprint null by default', async () => {

@@ -221,6 +221,23 @@ export class FramePersistence {
   }
 
   // ---------------------------------------------------------------------------
+  // updateFrameState
+  // ---------------------------------------------------------------------------
+  // Persists the plugin state (a JSON-serializable object) on a single frame.
+  // Called by FrameRouter after a plugin modifies this.state.
+  // ---------------------------------------------------------------------------
+
+  async updateFrameState(frameID, state) {
+    let { Frame } = this._models;
+    let record = await Frame.where.id.EQ(frameID).first();
+
+    if (record) {
+      record.state = (state != null) ? JSON.stringify(state) : null;
+      await record.save();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // _frameToRecord
   // ---------------------------------------------------------------------------
   // Converts a FrameManager-style frame data object to a DB record.
@@ -260,6 +277,9 @@ export class FramePersistence {
       processedAt:   (frameData.processedAt !== undefined) ? frameData.processedAt : null,
       signature:             (frameData.signature !== undefined) ? frameData.signature : null,
       signingKeyFingerprint: (frameData.signingKeyFingerprint !== undefined) ? frameData.signingKeyFingerprint : null,
+      state:                 (frameData.state !== undefined && frameData.state !== null)
+        ? (typeof frameData.state === 'string' ? frameData.state : JSON.stringify(frameData.state))
+        : null,
     };
 
     return record;
@@ -314,6 +334,7 @@ export class FramePersistence {
       authorID:      record.authorID || null,
       signature:             record.signature || null,
       signingKeyFingerprint: record.signingKeyFingerprint || null,
+      state:                 record.state || null,
       createdAt:             record.createdAt || null,
     };
   }

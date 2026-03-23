@@ -39,6 +39,12 @@ export class BasePluginClass {
     return this._context;
   }
 
+  // Returns the state Proxy set by FrameRouter before dispatch.
+  // Falls back to an empty object if not set.
+  get state() {
+    return this._state || {};
+  }
+
   // Returns the logger from context, falling back to the global console.
   get logger() {
     return this._context.logger || console;

@@ -367,8 +367,8 @@ describe('Frame Signature Field (C1)', () => {
   // ===========================================================================
 
   describe('Frame model version', () => {
-    it('should have model version 3', () => {
-      assert.equal(models.Frame.version, 3, 'Frame model version should be 3 after adding signingKeyFingerprint');
+    it('should have model version 4', () => {
+      assert.equal(models.Frame.version, 4, 'Frame model version should be 4 after adding state field');
     });
   });
 });
