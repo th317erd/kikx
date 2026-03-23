@@ -687,10 +687,10 @@ describe('InteractionLoop', () => {
   });
 
   // ===========================================================================
-  // 20. approvePermission executes tool and starts new interaction
+  // 20. Inline permission-request on PermissionRequiredError
   // ===========================================================================
 
-  describe('approvePermission', () => {
+  describe('inline permission-request', () => {
     it('should create permission-request and tool-result inline (no hardBreak)', async () => {
       let session = await createTestSession();
       let interactionCount = 0;
@@ -724,7 +724,6 @@ describe('InteractionLoop', () => {
 
       // Interaction completes naturally (no hardBreak, no waiting state)
       assert.equal(interactionCount, 1);
-      assert.equal(loop.isWaitingForPermission(session.id), false);
       assert.equal(loop.isActive(session.id), false);
 
       // Permission-request frame and tool-result with PERMISSION REQUIRED should exist
@@ -746,10 +745,10 @@ describe('InteractionLoop', () => {
   });
 
   // ===========================================================================
-  // 21. denyPermission marks frame as processed
+  // 21. Inline permission-request produces tool-result
   // ===========================================================================
 
-  describe('denyPermission', () => {
+  describe('inline permission denial', () => {
     it('should create permission-request and tool-result inline when permission needed in normal session', async () => {
       let session = await createTestSession();
       let blocks  = [
@@ -765,7 +764,6 @@ describe('InteractionLoop', () => {
       }));
 
       // New behavior: no hardBreak in normal sessions, interaction completes inline
-      assert.equal(loop.isWaitingForPermission(session.id), false);
       assert.equal(loop.isActive(session.id), false);
 
       let fm     = await framePersistence.loadFrames(session.id);
@@ -908,11 +906,6 @@ describe('InteractionLoop', () => {
       let loop = createLoop();
       assert.equal(loop.isActive('ses_nonexistent'), false);
     });
-
-    it('should report not waiting for permission when none pending', () => {
-      let loop = createLoop();
-      assert.equal(loop.isWaitingForPermission('ses_nonexistent'), false);
-    });
   });
 
   // ===========================================================================
@@ -980,33 +973,8 @@ describe('InteractionLoop', () => {
     });
   });
 
-  // ===========================================================================
-  // 30. denyPermission throws when no pending permission
-  // ===========================================================================
-
-  describe('denyPermission — no pending permission', () => {
-    it('should throw when no pending permission exists', async () => {
-      let loop = createLoop();
-      await assert.rejects(
-        () => loop.denyPermission('ses_fake'),
-        { message: /No pending permission/ },
-      );
-    });
-  });
-
-  // ===========================================================================
-  // 31. approvePermission throws when no pending permission
-  // ===========================================================================
-
-  describe('approvePermission — no pending permission', () => {
-    it('should throw when no pending permission exists', async () => {
-      let loop = createLoop();
-      await assert.rejects(
-        () => loop.approvePermission('ses_fake'),
-        { message: /No pending permission/ },
-      );
-    });
-  });
+  // Tests 30-31 (legacy approvePermission/denyPermission) removed — those
+  // flows are now handled by PermissionApprovalPlugin via FrameRouter.
 
   // ===========================================================================
   // Failure & adversarial tests
@@ -1186,7 +1154,6 @@ describe('InteractionLoop', () => {
       }));
 
       // Both tool-calls should have been handled inline (no hardBreak)
-      assert.equal(loop.isWaitingForPermission(session.id), false);
       assert.equal(loop.isActive(session.id), false);
       assert.equal(permissionCount, 2, 'both tool-calls should have triggered permission errors');
 

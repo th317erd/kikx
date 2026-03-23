@@ -518,8 +518,8 @@ describe('Shell Permission Flow (per-command)', () => {
 
       assert.equal(interactionStarts, 1, 'should have started 1 interaction');
 
-      // No hardBreak, no waiting state
-      assert.equal(loop.isWaitingForPermission(session.id), false);
+      // No hardBreak, interaction complete
+      assert.equal(loop.isActive(session.id), false);
 
       // Permission-request frame should exist
       let permFrames = emitted.filter((f) => f.type === 'permission-request');

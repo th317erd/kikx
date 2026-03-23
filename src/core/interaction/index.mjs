@@ -48,9 +48,6 @@ export class InteractionLoop extends EventEmitter {
     // Message queues: compositeKey -> string[]
     this._queues = new Map();
 
-    // Permission waiting: compositeKey -> { frameID, params }
-    this._permissionWaiting = new Map();
-
     // Sessions needing primer on next interaction (set by /reload command)
     this._primerNeeded = new Set();
 
@@ -348,22 +345,6 @@ export class InteractionLoop extends EventEmitter {
         this.queueMessage(sessionID, params.userMessage, agentID);
 
       return null;
-    }
-
-    // Clean up stale permission-waiting state for this session/agent.
-    // If the user sends a new message while a permission is pending, the old
-    // permission becomes orphaned. Clear it so the agent context stays clean.
-    if (!params.replayFromPermission && this._permissionWaiting.has(activeKey)) {
-      this._permissionWaiting.delete(activeKey);
-    } else if (!params.replayFromPermission) {
-      // Also check for composite key matches (session prefix scan)
-      let prefix = `${sessionID}:`;
-      for (let key of this._permissionWaiting.keys()) {
-        if (key === sessionID || key.startsWith(prefix)) {
-          this._permissionWaiting.delete(key);
-          break;
-        }
-      }
     }
 
     // Command dispatch: intercept /command messages
@@ -974,18 +955,6 @@ export class InteractionLoop extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
-  // Permission Delegation
-  // ---------------------------------------------------------------------------
-
-  async approvePermission(sessionID, frameID) {
-    return this._permissionHandler.approve(sessionID, frameID);
-  }
-
-  async denyPermission(sessionID, frameID) {
-    return this._permissionHandler.deny(sessionID, frameID);
-  }
-
-  // ---------------------------------------------------------------------------
   // Message Queue
   // ---------------------------------------------------------------------------
 
@@ -1105,27 +1074,6 @@ export class InteractionLoop extends EventEmitter {
     }
 
     return false;
-  }
-
-  isWaitingForPermission(sessionID, agentID) {
-    if (agentID)
-      return this._permissionWaiting.has(this._activeKey(sessionID, agentID));
-
-    // Session-level: true if any agent is waiting
-    if (this._permissionWaiting.has(sessionID))
-      return true;
-
-    let prefix = `${sessionID}:`;
-    for (let key of this._permissionWaiting.keys()) {
-      if (key.startsWith(prefix))
-        return true;
-    }
-
-    return false;
-  }
-
-  getPermissionWaiting(sessionID) {
-    return this._permissionHandler._findWaiting(sessionID);
   }
 
   getQueuedMessages(sessionID, agentID) {

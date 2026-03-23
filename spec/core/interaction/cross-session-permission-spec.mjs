@@ -221,9 +221,6 @@ describe('Cross-Session Permission Approval', () => {
         userMessage:     null,
       }));
 
-      // Should NOT be waiting for permission (denied immediately)
-      assert.equal(loop.isWaitingForPermission(session.id), false);
-
       // Should have a tool-result with denial message
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
@@ -236,113 +233,8 @@ describe('Cross-Session Permission Approval', () => {
     });
   });
 
-  // ===========================================================================
-  // 4. Approval in parent routes tool-result to child session's FrameManager
-  // ===========================================================================
-
-  describe('approval routes tool-result to child session', () => {
-    it('should commit tool-result to the child (requesting) session on approval', async () => {
-      let parentSession = await createTestSession();
-      await addUserFrame(parentSession.id);
-
-      let childSession = await createTestSession({ parentSessionID: parentSession.id });
-
-      let interactionCount = 0;
-      let toolExecuted     = false;
-
-      class PermissionAgent extends AgentInterface {
-        static pluginID    = 'perm-agent';
-        static featureName = 'perm';
-        static agentType   = 'perm';
-
-        async *_createGenerator(_params) {
-          interactionCount++;
-          if (interactionCount === 1)
-            yield { type: 'tool-call', content: { toolName: 'rm', arguments: { path: '/' }, toolUseID: 'tu_4' }, authorType: 'agent', authorID: 'a1' };
-
-          yield { type: 'message', content: { html: '<p>Continued</p>' }, authorType: 'agent', authorID: 'a1' };
-          yield { type: 'done', content: {} };
-        }
-      }
-
-      let agent = new PermissionAgent(context);
-      let loop  = createLoop();
-
-      let callCount = 0;
-
-      await loop.startInteraction(childSession.id, defaultParams(agent, {
-        agentPlugin: agent,
-        executeTool: (name) => {
-          callCount++;
-          if (callCount === 1 && name === 'rm')
-            throw new PermissionRequiredError(name, { title: name });
-
-          toolExecuted = true;
-          return 'deleted';
-        },
-        authorType:  'agent',
-        authorID:    'a1',
-        userMessage: null,
-      }));
-
-      assert.ok(loop.isWaitingForPermission(childSession.id), 'child should be waiting for permission');
-
-      // Approve via the CHILD session ID (that's where the waiting state is keyed)
-      await loop.approvePermission(childSession.id);
-
-      assert.ok(toolExecuted, 'tool should have been executed');
-      assert.equal(interactionCount, 2, 'should have started a new interaction');
-
-      // Tool-result should be in CHILD session, not parent
-      let childFM     = await framePersistence.loadFrames(childSession.id);
-      let childFrames = childFM.toArray();
-      let toolResults = childFrames.filter((f) => f.type === 'tool-result');
-      assert.ok(toolResults.length >= 1, 'child session should have tool-result frames');
-
-      let approvalResult = toolResults.find((f) => f.content && f.content.output === 'deleted');
-      assert.ok(approvalResult, 'child session should have the tool execution result');
-    });
-  });
-
-  // ===========================================================================
-  // 5. Denial in parent routes denial to child session
-  // ===========================================================================
-
-  describe('denial routes frames to child session', () => {
-    it('should commit denial frames to the child (requesting) session', async () => {
-      let parentSession = await createTestSession();
-      await addUserFrame(parentSession.id);
-
-      let childSession = await createTestSession({ parentSessionID: parentSession.id });
-
-      let blocks = [
-        { type: 'tool-call', content: { toolName: 'sudo', arguments: {}, toolUseID: 'tu_5' }, authorType: 'agent', authorID: 'a1' },
-      ];
-      let agent = new MockAgent(context, blocks);
-      let loop  = createLoop();
-
-      await loop.startInteraction(childSession.id, defaultParams(agent, {
-        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
-        authorType:      'agent',
-        authorID:        'a1',
-        userMessage:     null,
-      }));
-
-      assert.ok(loop.isWaitingForPermission(childSession.id));
-
-      await loop.denyPermission(childSession.id);
-
-      // Denial frames should be in CHILD session
-      let childFM     = await framePersistence.loadFrames(childSession.id);
-      let childFrames = childFM.toArray();
-
-      let denialFrames = childFrames.filter((f) => f.type === 'permission-denied');
-      assert.ok(denialFrames.length >= 1, 'child session should have permission-denied frame');
-
-      let denialResults = childFrames.filter((f) => f.type === 'tool-result' && f.content && f.content.output && f.content.output.includes('denied'));
-      assert.ok(denialResults.length >= 1, 'child session should have denial tool-result frame');
-    });
-  });
+  // Tests 4-5 (legacy approve/deny routes to child session) removed —
+  // approval/denial is now handled by PermissionApprovalPlugin via FrameRouter.
 
   // ===========================================================================
   // 6. Child session retains pending-action frame locally
@@ -413,8 +305,8 @@ describe('Cross-Session Permission Approval', () => {
       let permResult  = toolResults.find((f) => f.content && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
       assert.ok(permResult, 'session should have a tool-result with PERMISSION REQUIRED');
 
-      // No hardBreak => not waiting for permission (interaction completed inline)
-      assert.equal(loop.isWaitingForPermission(session.id), false);
+      // No hardBreak => interaction completed inline, not active
+      assert.equal(loop.isActive(session.id), false);
     });
   });
 
@@ -453,38 +345,8 @@ describe('Cross-Session Permission Approval', () => {
     });
   });
 
-  // ===========================================================================
-  // 9. requestingSessionID is stored in waiting state
-  // ===========================================================================
-
-  describe('requestingSessionID stored in waiting state', () => {
-    it('should store requestingSessionID in the permission-waiting entry', async () => {
-      let parentSession = await createTestSession();
-      await addUserFrame(parentSession.id);
-
-      let childSession = await createTestSession({ parentSessionID: parentSession.id });
-
-      let blocks = [
-        { type: 'tool-call', content: { toolName: 'deploy', arguments: {}, toolUseID: 'tu_9' }, authorType: 'agent', authorID: 'a1' },
-      ];
-      let agent = new MockAgent(context, blocks);
-      let loop  = createLoop();
-
-      await loop.startInteraction(childSession.id, defaultParams(agent, {
-        executeTool: (toolName) => { throw new PermissionRequiredError(toolName, { title: toolName }); },
-        authorType:      'agent',
-        authorID:        'a1',
-        userMessage:     null,
-      }));
-
-      assert.ok(loop.isWaitingForPermission(childSession.id));
-
-      // Inspect the internal permission-waiting state
-      let waiting = loop._permissionHandler._findWaiting(childSession.id);
-      assert.ok(waiting, 'should have a waiting entry');
-      assert.equal(waiting.requestingSessionID, childSession.id, 'requestingSessionID should be the child session');
-    });
-  });
+  // Test 9 (requestingSessionID in waiting state) removed —
+  // permission waiting state is now frame-based, not in-memory.
 
   // ===========================================================================
   // 10. permission:request event includes correct sessionIDs

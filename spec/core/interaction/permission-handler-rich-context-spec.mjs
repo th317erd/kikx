@@ -18,7 +18,6 @@ describe('PermissionHandler — rich permissionContext (Step 1.4)', () => {
     createdFrames = [];
 
     mockLoop = {
-      _permissionWaiting: new Map(),
       _active:            new Map(),
       _activeKey(sessionID, agentID) {
         return (agentID) ? `${sessionID}:${agentID}` : sessionID;

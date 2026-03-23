@@ -292,8 +292,8 @@ describe('Child Session Deliberation — Integration', () => {
       let childPending = childFrames.filter((f) => f.type === 'pending-action');
       assert.ok(childPending.length >= 1, 'Child should have the pending-action');
 
-      // Should be waiting for permission on child
-      assert.ok(interactionLoop.isWaitingForPermission(childSession.id));
+      // Interaction should have ended (hardBreak cleans up active state)
+      assert.equal(interactionLoop.isActive(childSession.id), false);
     });
   });
 
@@ -373,8 +373,8 @@ describe('Child Session Deliberation — Integration', () => {
         userMessage:     null,
       }));
 
-      // Should NOT be waiting — denied immediately
-      assert.equal(interactionLoop.isWaitingForPermission(session.id), false);
+      // Should NOT be active — denied immediately
+      assert.equal(interactionLoop.isActive(session.id), false);
 
       // Should have denial tool-result
       let fm     = await framePersistence.loadFrames(session.id);

@@ -8,8 +8,11 @@ import { parseShellCommands } from '../internal-plugins/shell/command-parser.mjs
 // =============================================================================
 // Manages the permission lifecycle for tool calls during agent interactions:
 //   - Permission hard-break (pause interaction, ask user)
-//   - Approve (execute tool, resume with replay)
-//   - Deny (store denial, resume with replay)
+//   - Immediate denial for agent-only sessions with no user ancestry
+//
+// Approve / deny flows are handled by PermissionApprovalPlugin via
+// FrameRouter (frame-based state). This handler only retains the
+// hard-break path needed for child sessions.
 //
 // Extracted from InteractionLoop to reduce file size.
 // =============================================================================
@@ -129,20 +132,13 @@ export class PermissionHandler {
     // 4. Destroy the generator
     await generator.return();
 
-    // 5. Store permission-waiting state (includes frameManager for approve/deny)
+    // 5. Clean up active interaction
+    //    Permission-waiting state is now entirely frame-based (pending-action +
+    //    permission-request frames). The FrameRouter + PermissionApprovalPlugin
+    //    handle approval/denial by watching for frame updates.
     let agentID   = params.agent && params.agent.id;
     let activeKey = loop._activeKey(sessionID, agentID);
 
-    loop._permissionWaiting.set(activeKey, {
-      pendingFrameID,
-      requestFrameID,
-      interactionID,
-      params,
-      frameManager,
-      requestingSessionID: sessionID,
-    });
-
-    // Clean up active interaction
     loop._active.delete(activeKey);
     loop.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
   }
@@ -192,211 +188,4 @@ export class PermissionHandler {
     loop.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
   }
 
-  // ---------------------------------------------------------------------------
-  // approve — user approved a pending permission request
-  // ---------------------------------------------------------------------------
-
-  async approve(sessionID, frameID) {
-    let loop    = this._loop;
-    let waiting = this._findWaiting(sessionID);
-
-    if (!waiting)
-      throw new Error(`No pending permission for session: ${sessionID}`);
-
-    // Atomically clear permission-waiting state BEFORE any async work.
-    // This prevents concurrent approve() calls from processing the same
-    // permission twice (which would create duplicate tool-result frames).
-    this._deleteWaiting(sessionID);
-
-    let { Frame } = loop._context.getProperty('models');
-
-    // Load the pending-action frame (always use the stored pending frame ID,
-    // not the frameID parameter which may be the permission-request frame)
-    let pendingRecord = await Frame.where.id.EQ(waiting.pendingFrameID).first();
-    if (!pendingRecord)
-      throw new Error(`Pending action frame not found: ${frameID || waiting.pendingFrameID}`);
-
-    let content = pendingRecord.getContent();
-
-    // Execute the tool
-    let executeTool = waiting.params.executeTool;
-    let toolOutput  = '';
-
-    if (typeof executeTool === 'function')
-      toolOutput = await executeTool(content.toolName, content.arguments);
-
-    // Store tool-result frame via FrameManager (use waiting.frameManager if available)
-    let approveFrameManager = waiting.frameManager || null;
-    let resultFrameID       = generateID('frm_');
-    let signingContext      = (waiting.params && waiting.params._signingContext) || null;
-
-    await loop._createFrame(sessionID, {
-      id:            resultFrameID,
-      type:          'tool-result',
-      content:       { output: toolOutput, toolUseID: content.toolUseID },
-      timestamp:     Date.now(),
-      interactionID: waiting.interactionID,
-      authorType:    'system',
-      authorID:      null,
-      hidden:        false,
-      deleted:       false,
-      processed:     false,
-    }, approveFrameManager, { authorType: 'system' }, signingContext);
-
-    // Mark pending-action and permission-request as processed
-    pendingRecord.processed   = true;
-    pendingRecord.processedAt = Date.now();
-    await pendingRecord.save();
-
-    if (waiting.requestFrameID) {
-      let requestRecord = await Frame.where.id.EQ(waiting.requestFrameID).first();
-      if (requestRecord) {
-        requestRecord.processed   = true;
-        requestRecord.processedAt = Date.now();
-        await requestRecord.save();
-      }
-    }
-
-    // Start NEW interaction with replay flag
-    let newParams = {
-      ...waiting.params,
-      replayFromPermission: true,
-    };
-
-    return await loop.startInteraction(sessionID, newParams);
-  }
-
-  // ---------------------------------------------------------------------------
-  // deny — user denied a pending permission request
-  // ---------------------------------------------------------------------------
-
-  async deny(sessionID, frameID) {
-    let loop    = this._loop;
-    let waiting = this._findWaiting(sessionID);
-
-    if (!waiting)
-      throw new Error(`No pending permission for session: ${sessionID}`);
-
-    // Atomically clear permission-waiting state BEFORE any async work.
-    // Prevents concurrent deny() calls from processing the same permission twice.
-    this._deleteWaiting(sessionID);
-
-    let { Frame } = loop._context.getProperty('models');
-
-    // Mark pending-action frame as processed (always use stored ID, not the
-    // frameID parameter which may be the permission-request frame)
-    let pendingRecord = await Frame.where.id.EQ(waiting.pendingFrameID).first();
-    if (pendingRecord) {
-      pendingRecord.processed   = true;
-      pendingRecord.processedAt = Date.now();
-      await pendingRecord.save();
-    }
-
-    // Mark permission-request frame as processed
-    if (waiting.requestFrameID) {
-      let requestRecord = await Frame.where.id.EQ(waiting.requestFrameID).first();
-      if (requestRecord) {
-        requestRecord.processed   = true;
-        requestRecord.processedAt = Date.now();
-        await requestRecord.save();
-      }
-    }
-
-    // Store denial frame via FrameManager (use waiting.frameManager if available)
-    let denyFrameManager = waiting.frameManager || null;
-    let signingContext   = (waiting.params && waiting.params._signingContext) || null;
-
-    await loop._createFrame(sessionID, {
-      id:            generateID('frm_'),
-      type:          'permission-denied',
-      content:       { pendingFrameID: waiting.pendingFrameID },
-      timestamp:     Date.now(),
-      interactionID: waiting.interactionID,
-      authorType:    'user',
-      authorID:      null,
-      hidden:        false,
-      deleted:       false,
-      processed:     false,
-    }, denyFrameManager, { authorType: 'user' }, signingContext);
-
-    // Create a tool-result frame so the agent sees the denial in its context.
-    // Without this, the pending-action has no matching tool-result, so
-    // buildMessages() excludes both — the agent has no idea the permission
-    // was denied and blindly retries the same command.
-    let pendingContent = pendingRecord
-      ? (typeof pendingRecord.getContent === 'function' ? pendingRecord.getContent() : pendingRecord.content)
-      : {};
-
-    if (pendingContent && typeof pendingContent === 'string') {
-      try { pendingContent = JSON.parse(pendingContent); }
-      catch (_error) { pendingContent = {}; }
-    }
-
-    let toolUseID = (pendingContent && pendingContent.toolUseID) || null;
-    let toolName  = (pendingContent && pendingContent.toolName) || 'unknown';
-
-    if (toolUseID) {
-      await loop._createFrame(sessionID, {
-        id:            generateID('frm_'),
-        type:          'tool-result',
-        content:       { output: `Permission denied: the user denied execution of "${toolName}". Do not retry this exact command unless the user explicitly asks you to.`, toolUseID },
-        timestamp:     Date.now(),
-        interactionID: waiting.interactionID,
-        authorType:    'system',
-        authorID:      null,
-        hidden:        false,
-        deleted:       false,
-        processed:     false,
-      }, denyFrameManager, { authorType: 'system' }, signingContext);
-    }
-
-    // Start NEW interaction with replay flag so the agent sees the denial
-    let newParams = {
-      ...waiting.params,
-      replayFromPermission: true,
-    };
-
-    return await loop.startInteraction(sessionID, newParams);
-  }
-
-  // ---------------------------------------------------------------------------
-  // _findWaiting / _deleteWaiting — composite key lookup helpers
-  // ---------------------------------------------------------------------------
-  // Permission waiting may be keyed by composite `${sessionID}:${agentID}` or
-  // plain `sessionID`. These helpers find/delete by sessionID, checking both.
-  // ---------------------------------------------------------------------------
-
-  _findWaiting(sessionID) {
-    let map = this._loop._permissionWaiting;
-
-    // Direct match (backward compat: no agent)
-    if (map.has(sessionID))
-      return map.get(sessionID);
-
-    // Scan composite keys
-    let prefix = `${sessionID}:`;
-    for (let [key, value] of map) {
-      if (key.startsWith(prefix))
-        return value;
-    }
-
-    return null;
-  }
-
-  _deleteWaiting(sessionID) {
-    let map = this._loop._permissionWaiting;
-
-    if (map.has(sessionID)) {
-      map.delete(sessionID);
-      return;
-    }
-
-    let prefix = `${sessionID}:`;
-    for (let key of map.keys()) {
-      if (key.startsWith(prefix)) {
-        map.delete(key);
-        return;
-      }
-    }
-  }
 }

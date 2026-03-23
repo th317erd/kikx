@@ -86,11 +86,8 @@ function createMockInteractionLoop(opts = {}) {
     },
 
     // Stub remaining methods
-    getPermissionWaiting()    { return null; },
     requestPrimerRefresh()    {},
     cancelInteraction()       { return null; },
-    approvePermission()       { return null; },
-    denyPermission()          {},
     isActive()                { return false; },
   };
 }

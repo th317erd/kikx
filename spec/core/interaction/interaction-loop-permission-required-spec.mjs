@@ -116,7 +116,6 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
       await generator.return();
       let agentID   = params.agent && params.agent.id;
       let activeKey = loop._activeKey(sessionID, agentID);
-      loop._permissionWaiting.set(activeKey, { interactionID, params });
       loop._active.delete(activeKey);
       loop.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
     };

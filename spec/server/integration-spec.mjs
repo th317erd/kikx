@@ -630,7 +630,7 @@ describe('Integration: Permission Inline Flow', () => {
 
     // Interaction completes inline (no hardBreak in normal sessions)
     assert.equal(interactionLoop.isActive(setup.session.id), false, 'interaction should not be active');
-    assert.equal(interactionLoop.isWaitingForPermission(setup.session.id), false, 'should NOT be waiting for permission (inline path)');
+    assert.equal(interactionLoop.isActive(setup.session.id), false, 'should not be active (inline path)');
   });
 
   it('should create permission-request and tool-result inline without approval needed', async () => {
@@ -686,8 +686,8 @@ describe('Integration: Permission Inline Flow', () => {
     assert.ok(permFrame, 'should have a permission-request frame');
 
     // Interaction completes inline (no waiting state)
-    assert.equal(interactionLoop.isWaitingForPermission(setup.session.id), false,
-      'should NOT be waiting for permission (inline path)');
+    assert.equal(interactionLoop.isActive(setup.session.id), false,
+      'should not be active (inline path)');
   });
 
   it('should create permission-request frame that is not yet processed', async () => {

@@ -489,28 +489,8 @@ describe('Per-Agent Interaction Loop', () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // isWaitingForPermission — per-agent keying
-  // ---------------------------------------------------------------------------
-
-  describe('per-agent permission waiting', () => {
-    it('isWaitingForPermission works with agent-level keys', () => {
-      // Directly manipulate _permissionWaiting to verify the key structure
-      let agentID   = 'agt_perm_1';
-      let sessionID = session.id;
-
-      assert.equal(interactionLoop.isWaitingForPermission(sessionID, agentID), false);
-
-      // Simulate permission waiting state (internal structure)
-      let key = `${sessionID}:${agentID}`;
-      interactionLoop._permissionWaiting.set(key, { pendingFrameID: 'frm_1' });
-
-      assert.equal(interactionLoop.isWaitingForPermission(sessionID, agentID), true);
-      assert.equal(interactionLoop.isWaitingForPermission(sessionID), true, 'Session-level check should detect any waiting agent');
-
-      interactionLoop._permissionWaiting.delete(key);
-    });
-  });
+  // isWaitingForPermission tests removed — permission waiting state is now
+  // entirely frame-based (handled by PermissionApprovalPlugin via FrameRouter).
 
   // ---------------------------------------------------------------------------
   // Edge cases

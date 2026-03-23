@@ -6,22 +6,22 @@ import fs     from 'node:fs';
 import path   from 'node:path';
 import os     from 'node:os';
 
+import XID                       from 'xid-js';
 import { KikxCore }              from '../../../src/core/kikx-core.mjs';
 import { Keystore }              from '../../../src/core/crypto/keystore.mjs';
 import { AuthService }           from '../../../src/server/auth/index.mjs';
 import { InteractionController } from '../../../src/server/controllers/interaction-controller.mjs';
 
 // =============================================================================
-// Step 2.3 — Controller permission approval endpoint
+// Step 3.1 — Controller permission approval (frame-based)
 // =============================================================================
 // Tests that the approve/deny endpoints:
-//   - Approve: create permission rules + update frame processed=true
-//   - Deny: update frame processed=true + denied marker
+//   - Approve: create permission rules + set frame processed=true
+//   - Deny: set frame processed=true + content.denied=true
 //   - Handle edge cases: non-existent frame, already processed, etc.
 //
-// Note: The controller still delegates to interactionLoop.approvePermission /
-// denyPermission for Phase 2 (legacy removal happens in Phase 3). These tests
-// verify that the frame-based state is updated for the FrameRouter to pick up.
+// The controller now operates directly on Frame records. The FrameRouter +
+// PermissionApprovalPlugin handle re-execution / denial after frame save.
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -62,55 +62,14 @@ function createController(ControllerClass, { mockApp, req, res }) {
   return new ControllerClass(mockApp, null, req, res);
 }
 
-function createMockInteractionLoop(opts = {}) {
-  let captured = {};
-  return {
-    captured,
-    approveCalled: false,
-    denyCalled:    false,
-
-    async startInteraction(sessionID, params) {
-      captured.startInteractionSessionID = sessionID;
-      captured.startInteractionParams    = params;
-      return 'int_new';
-    },
-
-    async postMessage(sessionID, opts) {
-      return { interactionID: 'int_post', frameID: 'frm_post' };
-    },
-
-    getPermissionWaiting(sessionID) {
-      return opts.waitingState || null;
-    },
-
-    requestPrimerRefresh() {},
-
-    async cancelInteraction() { return null; },
-
-    async approvePermission(sessionID, frameID) {
-      captured.approveSessionID = sessionID;
-      captured.approveFrameID   = frameID;
-      this.approveCalled        = true;
-      return 'int_approved';
-    },
-
-    async denyPermission(sessionID, frameID) {
-      captured.denySessionID = sessionID;
-      captured.denyFrameID   = frameID;
-      this.denyCalled        = true;
-    },
-
-    isActive() { return false; },
-  };
-}
-
 // =============================================================================
 // Tests
 // =============================================================================
 
-describe('InteractionController — permission approval (Step 2.3)', () => {
+describe('InteractionController — permission approval (Step 3.1, frame-based)', () => {
   let core, keystore, tempDir;
-  let testUser, testOrg;
+  let testUser, testOrg, testSession;
+  let Frame, Session;
 
   before(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kikx-perm-approval-test-'));
@@ -121,7 +80,7 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
     keystore.initialize();
     keystore.loadServerMasterKey(tempDir);
 
-    let context     = core.getContext();
+    let context = core.getContext();
     context.setProperty('keystore', keystore);
 
     let authService = new AuthService({ context, keystore });
@@ -133,6 +92,17 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
 
     testUser = regResult.user;
     testOrg  = regResult.organization;
+
+    let models = core.getModels();
+    Frame   = models.Frame;
+    Session = models.Session;
+
+    // Create a test session for frame creation
+    testSession = await Session.create({
+      id:             `ses_${XID.next()}`,
+      organizationID: testOrg.id,
+      name:           'Permission Approval Test Session',
+    });
   });
 
   after(async () => {
@@ -142,11 +112,55 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Helper: create a permission-request frame in the DB
+  // ---------------------------------------------------------------------------
+
+  async function createPermissionRequestFrame(overrides = {}) {
+    let frameID        = overrides.id || `frm_${XID.next()}`;
+    let pendingFrameID = `frm_${XID.next()}`;
+    await Frame.create({
+      id:            pendingFrameID,
+      sessionID:     overrides.sessionID || testSession.id,
+      type:          'pending-action',
+      content:       JSON.stringify({ toolName: 'shell:execute', arguments: { command: 'ls' }, toolUseID: 'tu_1' }),
+      timestamp:     Date.now(),
+      order:         Date.now(),
+      interactionID: `int_${XID.next()}`,
+      authorType:    'agent',
+      hidden:        false,
+      deleted:       false,
+      processed:     false,
+    });
+
+    await Frame.create({
+      id:            frameID,
+      sessionID:     overrides.sessionID || testSession.id,
+      type:          'permission-request',
+      content:       JSON.stringify({ toolName: 'shell:execute', arguments: { command: 'ls' }, pendingFrameID }),
+      timestamp:     Date.now(),
+      order:         Date.now() + 1,
+      interactionID: `int_${XID.next()}`,
+      authorType:    'system',
+      hidden:        false,
+      deleted:       false,
+      processed:     overrides.processed || false,
+    });
+
+    return { frameID, pendingFrameID };
+  }
+
+  // ---------------------------------------------------------------------------
   // Helper: build a controller with mocked dependencies
   // ---------------------------------------------------------------------------
 
   function buildController(overrides = {}) {
-    let interactionLoop = overrides.interactionLoop || createMockInteractionLoop(overrides);
+    let interactionLoop = overrides.interactionLoop || {
+      async startInteraction() { return 'int_new'; },
+      async postMessage() { return { interactionID: 'int_post', frameID: 'frm_post' }; },
+      requestPrimerRefresh() {},
+      async cancelInteraction() { return null; },
+      isActive() { return false; },
+    };
 
     // Permission engine mock
     let createdRules = [];
@@ -184,7 +198,7 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
     };
 
     let req = createMockReq({
-      params:         { sessionID: 'ses_1', frameID: 'frm_1' },
+      params:         { sessionID: testSession.id, frameID: overrides.frameID || 'frm_1' },
       userID:         testUser.id,
       organizationID: testOrg.id,
     });
@@ -201,23 +215,41 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
 
   describe('approve — happy paths', () => {
 
-    it('calls approvePermission on the interaction loop', async () => {
-      let { controller, interactionLoop } = buildController();
+    it('marks the permission-request frame as processed', async () => {
+      let { frameID } = await createPermissionRequestFrame();
+      let { controller } = buildController({ frameID });
 
       let result = await controller.approve({
-        params: { sessionID: 'ses_1', frameID: 'frm_1' },
+        params: { sessionID: 'ses_1', frameID },
         body:   {},
       });
 
-      assert.ok(interactionLoop.approveCalled, 'approvePermission should be called');
       assert.equal(result.data.approved, true);
+
+      // Verify frame is now processed
+      let frame = await Frame.where.id.EQ(frameID).first();
+      assert.equal(frame.processed, true, 'frame should be marked processed');
+    });
+
+    it('marks the associated pending-action frame as processed', async () => {
+      let { frameID, pendingFrameID } = await createPermissionRequestFrame();
+      let { controller } = buildController({ frameID });
+
+      await controller.approve({
+        params: { sessionID: 'ses_1', frameID },
+        body:   {},
+      });
+
+      let pendingFrame = await Frame.where.id.EQ(pendingFrameID).first();
+      assert.equal(pendingFrame.processed, true, 'pending-action should be marked processed');
     });
 
     it('creates permission rules for "allow-forever" decisions', async () => {
-      let { controller, createdRules } = buildController();
+      let { frameID } = await createPermissionRequestFrame();
+      let { controller, createdRules } = buildController({ frameID });
 
       await controller.approve({
-        params: { sessionID: 'ses_1', frameID: 'frm_1' },
+        params: { sessionID: 'ses_1', frameID },
         body: {
           decisions: [
             { command: 'ls', decision: 'allow-forever' },
@@ -232,10 +264,11 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
     });
 
     it('creates permission rules for "deny-forever" decisions', async () => {
-      let { controller, createdRules } = buildController();
+      let { frameID } = await createPermissionRequestFrame();
+      let { controller, createdRules } = buildController({ frameID });
 
       await controller.approve({
-        params: { sessionID: 'ses_1', frameID: 'frm_1' },
+        params: { sessionID: 'ses_1', frameID },
         body: {
           decisions: [
             { command: 'rm', decision: 'deny-forever' },
@@ -248,10 +281,11 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
     });
 
     it('does not create rules for "allow-once" decisions', async () => {
-      let { controller, createdRules } = buildController();
+      let { frameID } = await createPermissionRequestFrame();
+      let { controller, createdRules } = buildController({ frameID });
 
       await controller.approve({
-        params: { sessionID: 'ses_1', frameID: 'frm_1' },
+        params: { sessionID: 'ses_1', frameID },
         body: {
           decisions: [
             { command: 'ls', decision: 'allow-once' },
@@ -269,22 +303,29 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
 
   describe('deny — happy paths', () => {
 
-    it('calls denyPermission on the interaction loop', async () => {
-      let { controller, interactionLoop } = buildController();
+    it('marks the frame as processed with denied=true', async () => {
+      let { frameID } = await createPermissionRequestFrame();
+      let { controller } = buildController({ frameID });
 
       let result = await controller.deny({
-        params: { sessionID: 'ses_1', frameID: 'frm_1' },
+        params: { sessionID: 'ses_1', frameID },
       });
 
-      assert.ok(interactionLoop.denyCalled, 'denyPermission should be called');
       assert.equal(result.data.denied, true);
+
+      let frame = await Frame.where.id.EQ(frameID).first();
+      assert.equal(frame.processed, true, 'frame should be marked processed');
+
+      let content = (typeof frame.getContent === 'function') ? frame.getContent() : frame.content;
+      assert.equal(content.denied, true, 'content should have denied=true');
     });
 
-    it('deny-once in approve body triggers denyPermission', async () => {
-      let { controller, interactionLoop } = buildController();
+    it('deny-once in approve body sets denied marker on frame', async () => {
+      let { frameID } = await createPermissionRequestFrame();
+      let { controller } = buildController({ frameID });
 
       let result = await controller.approve({
-        params: { sessionID: 'ses_1', frameID: 'frm_1' },
+        params: { sessionID: 'ses_1', frameID },
         body: {
           decisions: [
             { command: 'rm', decision: 'deny-once' },
@@ -292,8 +333,23 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
         },
       });
 
-      assert.ok(interactionLoop.denyCalled, 'denyPermission should be called when any decision is deny');
       assert.equal(result.data.denied, true);
+
+      let frame = await Frame.where.id.EQ(frameID).first();
+      let content = (typeof frame.getContent === 'function') ? frame.getContent() : frame.content;
+      assert.equal(content.denied, true, 'content should have denied=true');
+    });
+
+    it('marks the associated pending-action frame as processed on deny', async () => {
+      let { frameID, pendingFrameID } = await createPermissionRequestFrame();
+      let { controller } = buildController({ frameID });
+
+      await controller.deny({
+        params: { sessionID: 'ses_1', frameID },
+      });
+
+      let pendingFrame = await Frame.where.id.EQ(pendingFrameID).first();
+      assert.equal(pendingFrame.processed, true, 'pending-action should be marked processed on deny');
     });
   });
 
@@ -303,16 +359,11 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
 
   describe('sad paths', () => {
 
-    it('returns 410 when no pending permission exists (expired)', async () => {
-      let interactionLoop = createMockInteractionLoop();
-      interactionLoop.approvePermission = async () => {
-        throw new Error('No pending permission for session: ses_1');
-      };
-
-      let { controller, res } = buildController({ interactionLoop });
+    it('returns 410 when frame does not exist', async () => {
+      let { controller, res } = buildController({ frameID: 'frm_nonexistent' });
 
       let result = await controller.approve({
-        params: { sessionID: 'ses_1', frameID: 'frm_1' },
+        params: { sessionID: 'ses_1', frameID: 'frm_nonexistent' },
         body:   {},
       });
 
@@ -320,32 +371,48 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
       assert.ok(result.data.message.includes('expired'));
     });
 
-    it('re-throws non-permission errors', async () => {
-      let interactionLoop = createMockInteractionLoop();
-      interactionLoop.approvePermission = async () => {
-        throw new Error('Something completely different');
-      };
+    it('returns 410 for deny when frame does not exist', async () => {
+      let { controller, res } = buildController({ frameID: 'frm_nonexistent' });
 
-      let { controller } = buildController({ interactionLoop });
+      let result = await controller.deny({
+        params: { sessionID: 'ses_1', frameID: 'frm_nonexistent' },
+      });
 
-      await assert.rejects(
-        () => controller.approve({
-          params: { sessionID: 'ses_1', frameID: 'frm_1' },
-          body:   {},
-        }),
-        { message: 'Something completely different' },
-      );
+      assert.equal(result.data.error, 'expired');
+    });
+
+    it('idempotent: approve on already-processed frame returns approved', async () => {
+      let { frameID } = await createPermissionRequestFrame({ processed: true });
+      let { controller } = buildController({ frameID });
+
+      let result = await controller.approve({
+        params: { sessionID: 'ses_1', frameID },
+        body:   {},
+      });
+
+      assert.equal(result.data.approved, true);
+    });
+
+    it('idempotent: deny on already-processed frame returns denied', async () => {
+      let { frameID } = await createPermissionRequestFrame({ processed: true });
+      let { controller } = buildController({ frameID });
+
+      let result = await controller.deny({
+        params: { sessionID: 'ses_1', frameID },
+      });
+
+      assert.equal(result.data.denied, true);
     });
 
     it('backward compat: no body / empty decisions is approve-all', async () => {
-      let { controller, interactionLoop, createdRules } = buildController();
+      let { frameID } = await createPermissionRequestFrame();
+      let { controller, createdRules } = buildController({ frameID });
 
       let result = await controller.approve({
-        params: { sessionID: 'ses_1', frameID: 'frm_1' },
+        params: { sessionID: 'ses_1', frameID },
         body:   null,
       });
 
-      assert.ok(interactionLoop.approveCalled, 'should call approvePermission');
       assert.equal(createdRules.length, 0, 'no rules created with empty body');
       assert.equal(result.data.approved, true);
     });
@@ -358,10 +425,11 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
   describe('edge cases', () => {
 
     it('handles mixed allow-forever and deny-once decisions', async () => {
-      let { controller, interactionLoop, createdRules } = buildController();
+      let { frameID } = await createPermissionRequestFrame();
+      let { controller, createdRules } = buildController({ frameID });
 
       let result = await controller.approve({
-        params: { sessionID: 'ses_1', frameID: 'frm_1' },
+        params: { sessionID: 'ses_1', frameID },
         body: {
           decisions: [
             { command: 'ls', decision: 'allow-forever' },
@@ -374,16 +442,21 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
       assert.equal(createdRules.length, 1, 'should create one rule (allow-forever)');
       assert.equal(createdRules[0].effect, 'allow');
 
-      // deny-once triggers denyPermission
-      assert.ok(interactionLoop.denyCalled, 'should call deny when any decision is deny-*');
+      // deny-once triggers denial
       assert.equal(result.data.denied, true);
+
+      // Frame should have denied marker
+      let frame = await Frame.where.id.EQ(frameID).first();
+      let content = (typeof frame.getContent === 'function') ? frame.getContent() : frame.content;
+      assert.equal(content.denied, true, 'frame content should have denied=true');
     });
 
     it('featureName includes colon prefix for bare commands', async () => {
-      let { controller, createdRules } = buildController();
+      let { frameID } = await createPermissionRequestFrame();
+      let { controller, createdRules } = buildController({ frameID });
 
       await controller.approve({
-        params: { sessionID: 'ses_1', frameID: 'frm_1' },
+        params: { sessionID: 'ses_1', frameID },
         body: {
           decisions: [
             { command: 'ls', decision: 'allow-forever' },
@@ -395,10 +468,11 @@ describe('InteractionController — permission approval (Step 2.3)', () => {
     });
 
     it('featureName preserved when command already has colon', async () => {
-      let { controller, createdRules } = buildController();
+      let { frameID } = await createPermissionRequestFrame();
+      let { controller, createdRules } = buildController({ frameID });
 
       await controller.approve({
-        params: { sessionID: 'ses_1', frameID: 'frm_1' },
+        params: { sessionID: 'ses_1', frameID },
         body: {
           decisions: [
             { command: 'memory:store', decision: 'allow-forever' },

@@ -236,16 +236,18 @@ export class InteractionController extends ControllerAuthBase {
   //
   // Decision values: 'allow-once', 'allow-forever', 'deny-once', 'deny-forever'
   //
-  // If any decision is deny-once or deny-forever → denyPermission()
-  // Otherwise → approvePermission() (existing flow)
+  // If any decision is deny-once or deny-forever → marks frame as denied
+  // Otherwise → marks frame as approved (processed=true)
   // Forever decisions create session-scoped permission rules.
   // No body / empty decisions → approve-all (backward compat)
+  //
+  // The FrameRouter + PermissionApprovalPlugin handle re-execution or denial
+  // after the frame is saved.
   // ---------------------------------------------------------------------------
 
   async approve({ params, body }) {
-    let interactionLoop  = this.getInteractionLoop();
-    let decisions        = (body && Array.isArray(body.decisions)) ? body.decisions : [];
-    let hasDeny          = decisions.some((d) => d.decision === 'deny-once' || d.decision === 'deny-forever');
+    let decisions = (body && Array.isArray(body.decisions)) ? body.decisions : [];
+    let hasDeny   = decisions.some((d) => d.decision === 'deny-once' || d.decision === 'deny-forever');
 
     // Create persistent rules for "forever" decisions
     if (decisions.length > 0) {
@@ -253,19 +255,8 @@ export class InteractionController extends ControllerAuthBase {
       let permissionEngine = core.getPermissionEngine();
 
       if (permissionEngine) {
-        let { Agent } = this.getCoreModels();
-
-        // Resolve organizationID — look up from permission-waiting state or agent
-        let organizationID = null;
-
-        // Try to get from waiting state's agent params (uses composite key lookup)
-        let waiting = interactionLoop.getPermissionWaiting(params.sessionID);
-        if (waiting && waiting.params && waiting.params.agent)
-          organizationID = waiting.params.agent.organizationID;
-
-        // Fallback: use the authenticated user's organization from JWT
-        if (!organizationID)
-          organizationID = this.request.organizationID;
+        // Use the authenticated user's organization from JWT
+        let organizationID = this.request.organizationID;
 
         for (let decision of decisions) {
           if (!decision.command || !decision.decision)
@@ -296,29 +287,52 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
-    try {
-      if (hasDeny) {
-        await interactionLoop.denyPermission(params.sessionID, params.frameID);
+    // Look up the permission-request frame
+    let { Frame } = this.getCoreModels();
+    let frame     = await Frame.where.id.EQ(params.frameID).first();
 
-        return { data: { denied: true } };
-      }
+    if (!frame || frame.type !== 'permission-request') {
+      this.setStatusCode(410);
 
-      let interactionID = await interactionLoop.approvePermission(
-        params.sessionID,
-        params.frameID,
-      );
-
-      return { data: { approved: true, interactionID } };
-    } catch (error) {
-      // Stale permission request (e.g., server restarted since the request was created)
-      if (error.message && error.message.includes('No pending permission')) {
-        this.setStatusCode(410);
-
-        return { data: { error: 'expired', message: 'This permission request has expired. Please resend your message to try again.' } };
-      }
-
-      throw error;
+      return { data: { error: 'expired', message: 'This permission request has expired. Please resend your message to try again.' } };
     }
+
+    // Already processed — idempotent
+    if (frame.processed)
+      return { data: hasDeny ? { denied: true } : { approved: true } };
+
+    // Mark the frame as processed; set denied marker for denials
+    frame.processed   = true;
+    frame.processedAt = Date.now();
+
+    if (hasDeny) {
+      let content    = (typeof frame.getContent === 'function') ? frame.getContent() : (frame.content || {});
+      content.denied = true;
+      frame.content  = JSON.stringify(content);
+    }
+
+    await frame.save();
+
+    // Also mark the associated pending-action frame as processed
+    let frameContent   = (typeof frame.getContent === 'function') ? frame.getContent() : null;
+    let pendingFrameID = frameContent && frameContent.pendingFrameID;
+    if (pendingFrameID) {
+      let pendingFrame = await Frame.where.id.EQ(pendingFrameID).first();
+      if (pendingFrame) {
+        pendingFrame.processed   = true;
+        pendingFrame.processedAt = Date.now();
+        await pendingFrame.save();
+      }
+    }
+
+    // The FrameRouter will pick up the saved frame and route it through
+    // the PermissionApprovalPlugin, which handles tool re-execution or
+    // denial frame creation + interaction restart.
+
+    if (hasDeny)
+      return { data: { denied: true } };
+
+    return { data: { approved: true } };
   }
 
   // ---------------------------------------------------------------------------
@@ -326,12 +340,37 @@ export class InteractionController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
 
   async deny({ params }) {
-    let interactionLoop = this.getInteractionLoop();
+    let { Frame } = this.getCoreModels();
+    let frame     = await Frame.where.id.EQ(params.frameID).first();
 
-    await interactionLoop.denyPermission(
-      params.sessionID,
-      params.frameID,
-    );
+    if (!frame || frame.type !== 'permission-request') {
+      this.setStatusCode(410);
+
+      return { data: { error: 'expired', message: 'This permission request has expired. Please resend your message to try again.' } };
+    }
+
+    // Already processed — idempotent
+    if (frame.processed)
+      return { data: { denied: true } };
+
+    // Mark as denied
+    let content    = (typeof frame.getContent === 'function') ? frame.getContent() : (frame.content || {});
+    content.denied = true;
+    frame.content  = JSON.stringify(content);
+    frame.processed   = true;
+    frame.processedAt = Date.now();
+    await frame.save();
+
+    // Also mark the associated pending-action frame as processed
+    let pendingFrameID = content.pendingFrameID;
+    if (pendingFrameID) {
+      let pendingFrame = await Frame.where.id.EQ(pendingFrameID).first();
+      if (pendingFrame) {
+        pendingFrame.processed   = true;
+        pendingFrame.processedAt = Date.now();
+        await pendingFrame.save();
+      }
+    }
 
     return { data: { denied: true } };
   }
