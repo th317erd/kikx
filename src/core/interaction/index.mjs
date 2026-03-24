@@ -365,6 +365,10 @@ export class InteractionLoop extends EventEmitter {
     let frameManager = sessionManager.getFrameManager(sessionID);
     await framePersistence.loadFramesInto(frameManager, sessionID);
 
+    // Auto-heal: hide orphaned tool-calls that have no matching tool-result.
+    // These cause API errors and poison the conversation. Best-effort.
+    await framePersistence.hideOrphanedFrames(sessionID);
+
     // Sync order counter with DB max to avoid order collisions
     let nextDbOrder = await framePersistence.getNextOrder(sessionID);
     frameManager.syncOrderCounter(nextDbOrder - 1);

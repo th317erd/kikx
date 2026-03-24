@@ -137,6 +137,71 @@ export class FramePersistence {
   }
 
   // ---------------------------------------------------------------------------
+  // hideOrphanedFrames
+  // ---------------------------------------------------------------------------
+  // Detects and hides orphaned tool-call and pending-action frames that
+  // have no matching tool-result. These cause API errors when sent to
+  // the LLM ("tool_use ids found without tool_result blocks").
+  //
+  // Best-effort: errors are logged, never thrown.
+  // Returns the number of frames hidden.
+  // ---------------------------------------------------------------------------
+
+  async hideOrphanedFrames(sessionID) {
+    if (!sessionID)
+      return 0;
+
+    try {
+      let { Frame } = this._models;
+
+      // Load all visible tool-call and tool-result frames for this session
+      let toolFrames = await Frame
+        .where.sessionID.EQ(sessionID)
+        .AND.hidden.EQ(false)
+        .AND.deleted.EQ(false)
+        .all();
+
+      // Build set of tool-result toolUseIDs
+      let resolvedToolIds = new Set();
+      for (let f of toolFrames) {
+        if (f.type !== 'tool-result')
+          continue;
+
+        let content = (typeof f.content === 'string') ? (() => { try { return JSON.parse(f.content); } catch (_e) { return {}; } })() : (f.content || {});
+        if (content.toolUseID)
+          resolvedToolIds.add(content.toolUseID);
+      }
+
+      // Find orphaned tool-calls and pending-actions
+      let orphans = [];
+      for (let f of toolFrames) {
+        if (f.type !== 'tool-call' && f.type !== 'pending-action')
+          continue;
+
+        let content = (typeof f.content === 'string') ? (() => { try { return JSON.parse(f.content); } catch (_e) { return {}; } })() : (f.content || {});
+        let toolUseID = content.toolUseID || content.toolUseId;
+
+        if (toolUseID && !resolvedToolIds.has(toolUseID))
+          orphans.push(f);
+      }
+
+      // Hide orphans
+      for (let orphan of orphans) {
+        orphan.hidden = true;
+        await orphan.save();
+      }
+
+      if (orphans.length > 0)
+        console.log(`[FramePersistence] Hidden ${orphans.length} orphaned frame(s) in session ${sessionID}`);
+
+      return orphans.length;
+    } catch (error) {
+      console.error('[FramePersistence] hideOrphanedFrames failed:', error.message);
+      return 0;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // deleteFrames
   // ---------------------------------------------------------------------------
   // Deletes frames from the DB for a session.
