@@ -558,7 +558,56 @@ export class InteractionLoop extends EventEmitter {
     });
 
     this.emit('interaction:start', { sessionID, interactionID, agentID: (params.agent && params.agent.id) || null });
-    await this._iterateGenerator(sessionID, generator, interactionID, params, frameManager);
+
+    // Interaction-level safety: warn after 120s, force-end after 300s.
+    // This prevents a single hung agent from permanently blocking a session.
+    // Timeouts configurable via params for testing.
+    let warnTimeout = params.interactionWarnTimeout || 120000;
+    let killTimeout = params.interactionKillTimeout || 300000;
+
+    let warningTimer = setTimeout(async () => {
+      try {
+        await this._createFrame(sessionID, {
+          id: generateID('frm_'), type: 'error',
+          content: { message: 'The agent is taking an unusually long time to respond. You may need to retry your message.' },
+          timestamp: Date.now(), interactionID,
+          authorType: 'system', authorID: null,
+          hidden: false, deleted: false, processed: false,
+        }, frameManager, { authorType: 'system' }, signingContext);
+      } catch (_e) {
+        // Best-effort warning
+      }
+    }, warnTimeout);
+
+    let killTimer = setTimeout(async () => {
+      try {
+        console.error(`[InteractionLoop] Force-ending interaction ${interactionID} after 300s timeout`);
+        await generator.return();
+
+        await this._createFrame(sessionID, {
+          id: generateID('frm_'), type: 'error',
+          content: { message: 'The interaction was ended after 5 minutes with no response from the agent. Please try sending your message again.' },
+          timestamp: Date.now(), interactionID,
+          authorType: 'system', authorID: null,
+          hidden: false, deleted: false, processed: false,
+        }, frameManager, { authorType: 'system' }, signingContext);
+
+        let agentID2   = params.agent && params.agent.id;
+        let activeKey2 = this._activeKey(sessionID, agentID2);
+
+        this._active.delete(activeKey2);
+        this.emit('interaction:end', { sessionID, interactionID, agentID: agentID2 || null });
+      } catch (_e) {
+        console.error('[InteractionLoop] Force-end failed:', _e.message);
+      }
+    }, killTimeout);
+
+    try {
+      await this._iterateGenerator(sessionID, generator, interactionID, params, frameManager);
+    } finally {
+      clearTimeout(warningTimer);
+      clearTimeout(killTimer);
+    }
 
     return interactionID;
   }
