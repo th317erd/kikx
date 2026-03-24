@@ -855,8 +855,21 @@ export class InteractionLoop extends EventEmitter {
     } catch (error) {
       console.error(`[InteractionLoop] Error in interaction ${interactionID} (session ${sessionID}):`, error);
 
+      // Build a user-friendly error message instead of dumping raw API errors
+      let errorMessage = error.message || 'An unexpected error occurred.';
+
+      // Detect common API errors and provide helpful messages
+      if (errorMessage.includes('tool_use') && errorMessage.includes('tool_result'))
+        errorMessage = 'The conversation history has inconsistent tool state. This is a known issue being fixed. Please try sending your message again.';
+      else if (errorMessage.includes('invalid_request_error'))
+        errorMessage = 'The AI service rejected the request. Please try again or start a new session.';
+      else if (errorMessage.includes('rate_limit') || errorMessage.includes('429'))
+        errorMessage = 'Rate limited — please wait a moment and try again.';
+      else if (errorMessage.includes('overloaded') || errorMessage.includes('529'))
+        errorMessage = 'The AI service is temporarily overloaded. Please try again in a few moments.';
+
       await this._createFrame(sessionID, {
-        id: generateID('frm_'), type: 'error', content: { message: error.message },
+        id: generateID('frm_'), type: 'error', content: { message: errorMessage },
         timestamp: Date.now(), interactionID,
         authorType: 'system', authorID: null,
         parentID: params.parentID || null,

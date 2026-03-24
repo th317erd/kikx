@@ -142,7 +142,15 @@ export function buildMessages(frames, forAgentID, options = {}) {
         messages.push({ role: 'assistant', content: html, frameID: frame.id });
       }
     } else if (type === 'tool-call') {
-      let content = frame.content || {};
+      let content   = frame.content || {};
+      let toolUseID = content.toolUseID || content.toolUseId;
+
+      // Only include tool-calls that have a matching tool-result.
+      // Orphaned tool-calls (from permission hardBreak, crashes, or errors)
+      // cause API errors: "tool_use ids found without tool_result blocks."
+      if (toolUseID && !resolvedToolIds.has(toolUseID))
+        continue;
+
       messages.push({ type: 'tool-call', content, authorType: 'agent', frameID: frame.id });
     } else if (type === 'pending-action') {
       // Only include pending-actions that were approved (have a matching tool-result)
