@@ -40,10 +40,16 @@ export class ShellPermissions extends Permissions {
 
       if (permissionEngine) {
         try {
+          // Strip toolClass to prevent infinite recursion — the PermissionEngine
+          // would see the toolClass, get its PermissionsClass (us), and call
+          // checkPermission again in an infinite loop.
+          let engineOptions = { ...options, toolClass: null };
+
           let needs = await Promise.race([
-            permissionEngine.checkPermission(perCommandFeature, cmd, options),
+            permissionEngine.checkPermission(perCommandFeature, cmd, engineOptions),
             new Promise((_, reject) => setTimeout(() => reject(new Error('Permission check timed out')), 5000)),
           ]);
+          console.log(`[ShellPerm] ${perCommandFeature} result: needs=${needs}`);
           approved = !needs;
         } catch (error) {
           if (error.name === 'PermissionDeniedError')
