@@ -43,7 +43,9 @@ export class ShellPermissions extends Permissions {
           // Strip toolClass to prevent infinite recursion — the PermissionEngine
           // would see the toolClass, get its PermissionsClass (us), and call
           // checkPermission again in an infinite loop.
-          let engineOptions = { ...options, toolClass: null };
+          // Pass permissionsInstance directly so the engine can still use
+          // matchesRule() for argument-level rule matching without re-discovering us.
+          let engineOptions = { ...options, toolClass: null, permissionsInstance: this };
 
           let needs = await Promise.race([
             permissionEngine.checkPermission(perCommandFeature, cmd, engineOptions),

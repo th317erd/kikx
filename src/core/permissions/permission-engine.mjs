@@ -121,20 +121,23 @@ export class PermissionEngine {
       activeRules.sort((a, b) => (b.priority || 0) - (a.priority || 0));
     }
 
-    // Custom matching via Permissions subclass if toolClass provides one
-    let permissionsInstance = null;
-    if (toolClass && typeof toolClass.prototype.getPermissionsClass === 'function') {
+    // Custom matching via Permissions subclass if toolClass provides one.
+    // Accept a pre-created permissionsInstance from options to avoid
+    // re-discovering the PermissionsClass (which causes infinite recursion
+    // when the PermissionsClass itself calls back into this engine).
+    let permissionsInstance = options.permissionsInstance || null;
+
+    if (!permissionsInstance && toolClass && typeof toolClass.prototype.getPermissionsClass === 'function') {
       let PermissionsClass = new toolClass(this._context).getPermissionsClass();
       if (PermissionsClass)
         permissionsInstance = new PermissionsClass(this._context);
     }
 
-    // Pre-rule logic: checkPermission() can short-circuit the entire rule loop
-    if (permissionsInstance) {
-      let preRuleResult = await permissionsInstance.checkPermission(featureName, args, options);
-      if (preRuleResult !== null)
-        return preRuleResult;
-    }
+    // NOTE: The PermissionEngine does NOT call checkPermission() on the
+    // PermissionsClass. That is PluginInterface._checkPermissions()'s job.
+    // The engine only uses matchesRule() for per-rule custom matching.
+    // Calling checkPermission() here caused infinite recursion when
+    // PermissionsClasses called back into the engine.
 
     // First match wins
     for (let rule of activeRules) {
