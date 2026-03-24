@@ -129,10 +129,34 @@ export class PermissionHandler {
     await loop._createFrame(targetSessionID, requestFrame, targetFrameManager, { authorType: 'system' }, signingContext);
     loop.emit('permission:request', { sessionID, frameID: pendingFrameID, requestFrameID, toolName: block.content.toolName });
 
-    // 4. Destroy the generator
+    // 4. Create a tool-result frame so the tool-call is never orphaned.
+    //    Without this, the tool-call has no matching tool-result, which
+    //    causes API errors on the next interaction ("tool_use ids found
+    //    without tool_result blocks").
+    let toolUseID = block.content.toolUseId || block.content.toolUseID;
+    if (toolUseID) {
+      await loop._createFrame(sessionID, {
+        id:            generateID('frm_'),
+        type:          'tool-result',
+        content:       {
+          output:    `PERMISSION REQUIRED for "${block.content.toolName}". Routed to parent session for approval.`,
+          toolUseID,
+          _sessionID: sessionID,
+        },
+        timestamp:     Date.now(),
+        interactionID,
+        authorType:    'system',
+        authorID:      null,
+        hidden:        false,
+        deleted:       false,
+        processed:     false,
+      }, frameManager, { authorType: 'system' }, signingContext);
+    }
+
+    // 5. Destroy the generator
     await generator.return();
 
-    // 5. Clean up active interaction
+    // 6. Clean up active interaction
     //    Permission-waiting state is now entirely frame-based (pending-action +
     //    permission-request frames). The FrameRouter + PermissionApprovalPlugin
     //    handle approval/denial by watching for frame updates.
