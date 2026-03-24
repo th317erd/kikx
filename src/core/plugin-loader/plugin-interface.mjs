@@ -37,7 +37,12 @@ export class PluginInterface {
   async execute(params) {
     this._params = params;
 
-    await this._checkPermissions(params);
+    // Permission check with safety timeout — never hang forever
+    await Promise.race([
+      this._checkPermissions(params),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Permission check timed out after 10s')), 10000)),
+    ]);
+
     return await this._execute(params);
   }
 

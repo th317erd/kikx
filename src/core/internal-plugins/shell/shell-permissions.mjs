@@ -40,11 +40,17 @@ export class ShellPermissions extends Permissions {
 
       if (permissionEngine) {
         try {
-          let needs = await permissionEngine.checkPermission(perCommandFeature, cmd, options);
+          let needs = await Promise.race([
+            permissionEngine.checkPermission(perCommandFeature, cmd, options),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Permission check timed out')), 5000)),
+          ]);
           approved = !needs;
         } catch (error) {
           if (error.name === 'PermissionDeniedError')
             throw error; // Deny-forever — block everything
+
+          // Timeout or other error — treat as needing approval
+          console.error('[ShellPermissions] Permission check error:', error.message);
         }
       }
 
