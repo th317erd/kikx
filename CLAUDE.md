@@ -62,6 +62,27 @@ Use the `test-bot` user's `test-claude` agent which has a valid API key.
 
 ---
 
+## ⚠️ Puppeteer / Chrome Cleanup — MANDATORY
+
+**After EVERY Puppeteer session, you MUST kill leftover Chrome processes.**
+
+Puppeteer launches headless Chrome instances that persist after your test. They consume 100-300% CPU and make the user's fans spin. **This has happened repeatedly and the user is tired of it.**
+
+**After finishing Puppeteer work, ALWAYS run:**
+```bash
+pkill -f "chrome.*puppeteer" 2>/dev/null; pkill -f "chrome.*headless.*no-sandbox" 2>/dev/null; echo "Chrome cleanup done"
+```
+
+**Then verify:**
+```bash
+ps aux | grep "puppeteer.*chrome\|chrome.*headless\|chrome.*no-sandbox" | grep -v grep | wc -l
+# Should be 0
+```
+
+**No exceptions. Every time. Even if you think you closed the browser.**
+
+---
+
 ## Project Documentation
 
 For a comprehensive understanding of the Kikx project — architecture, data models, plugin system, client, and more — see the **[Documentation Index](./bot-docs/docs/README.md)**.
