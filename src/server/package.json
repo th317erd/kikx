@@ -30,7 +30,7 @@
     "luxon": "^3.3.0",
     "mythix": "^4.1.0",
     "mythix-orm": "^1.15.0",
-    "mythix-orm-sqlite": "^3.0.0",
+    "mythix-orm-sqlite": "^3.1.0",
     "mythix-twt": "^1.0.1",
     "nife": "^1.12.1",
     "uuid": "^9.0.0",
