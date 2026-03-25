@@ -13,7 +13,7 @@ import { DEFAULT_MODELS }              from './models/index.mjs';
 import { PluginLoader, PluginInterface, FilesystemPluginProvider, InMemoryPluginProvider } from './plugin-loader/index.mjs';
 import { AgentInterface }     from './plugins/agent-interface.mjs';
 import { BasePluginClass }    from './routing/base-plugin-class.mjs';
-import { PermissionEngine }  from './permissions/index.mjs';
+import { Permissions }       from './permissions/index.mjs';
 import { HookRunner, HookService } from './hooks/index.mjs';
 import { PrimerAssembler }   from './primer/index.mjs';
 import { FrameRouter }      from './routing/frame-router.mjs';
@@ -30,7 +30,7 @@ export class KikxCore {
     this._models           = null;
     this._started          = false;
     this._pluginLoader     = null;
-    this._permissionEngine = null;
+    this._permissions      = null;
     this._frameRouter      = null;
 
     // Store core reference on context
@@ -48,9 +48,9 @@ export class KikxCore {
     // Initialize database connection
     await this._initializeDatabase();
 
-    // Initialize permission engine (after DB, before plugins)
-    this._permissionEngine = new PermissionEngine(this._context);
-    this._context.setProperty('permissionEngine', this._permissionEngine);
+    // Initialize permissions (after DB, before plugins)
+    this._permissions = new Permissions(this._context);
+    this._context.setProperty('permissions', this._permissions);
 
     // Load plugins
     await this._loadPlugins();
@@ -245,8 +245,8 @@ export class KikxCore {
     return this._started;
   }
 
-  getPermissionEngine() {
-    return this._permissionEngine;
+  getPermissions() {
+    return this._permissions;
   }
 
   // ---------------------------------------------------------------------------
@@ -294,7 +294,7 @@ export class KikxCore {
     registry.registerClass(AgentInterface,   { pluginName: 'core' });
     registry.registerClass(BasePluginClass,  { pluginName: 'core' });
     registry.registerClass(FrameRouter,      { pluginName: 'core' });
-    registry.registerClass(PermissionEngine, { pluginName: 'core' });
+    registry.registerClass(Permissions,      { pluginName: 'core' });
 
     // Register frame type classes — key = class name (e.g. 'FrameTypeUserMessage')
     registry.registerClass(FrameTypeBase,    { pluginName: 'core' });

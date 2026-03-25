@@ -19,7 +19,7 @@ import { PermissionDeniedError } from './permission-denied-error.mjs';
 //     Return null  = defer to normal rule matching (default).
 //
 //   evaluate(featureName, args, options) — full rule evaluation.
-//     Ports the PermissionEngine.checkPermission() logic directly into the
+//     Full rule evaluation logic. Each PermissionsClass can evaluate rules
 //     Permissions base class. Each PermissionsClass can evaluate rules
 //     without going through the engine.
 // =============================================================================
@@ -44,7 +44,7 @@ export class Permissions {
   }
 
   // ---------------------------------------------------------------------------
-  // evaluate — full rule evaluation (ported from PermissionEngine)
+  // evaluate — full rule evaluation
   // ---------------------------------------------------------------------------
   // Returns true  = needs approval (no matching allow rule)
   // Returns false = auto-approved (matching allow rule, or auto-allow)
@@ -58,10 +58,13 @@ export class Permissions {
   //   agent          — agent object with getConfig() for risk level resolution
   //   user           — user object with getSettings() for risk level resolution
   //   toolClass      — tool class with static riskLevel for safety net checks
+  //   verifyFingerprint — if true, validate rule fingerprints
+  //   userKey        — user key for fingerprint verification (HMAC)
+  //   publicKeyPEM   — Ed25519 public key for fingerprint verification
   // ---------------------------------------------------------------------------
 
   async evaluate(featureName, args, options = {}) {
-    let { organizationID, scope, scopeID, toolClass } = options;
+    let { organizationID, scope, scopeID, toolClass, verifyFingerprint, userKey, publicKeyPEM } = options;
 
     // Safety net: tools with riskLevel 'none' auto-allow
     if (toolClass && toolClass.riskLevel === 'none')
@@ -108,6 +111,10 @@ export class Permissions {
     // Filter by scope hierarchy with ancestry
     activeRules = this._filterByScopeWithAncestry(activeRules, scope, scopeID, ancestorSessionIDs);
 
+    // Verify fingerprints if requested
+    if (verifyFingerprint && (userKey || publicKeyPEM))
+      activeRules = this._filterByFingerprint(activeRules, userKey, publicKeyPEM);
+
     // Sort by ancestry distance (closer ancestors first), then by priority
     if (ancestorSessionIDs.length > 0) {
       let distanceMap = new Map();
@@ -127,11 +134,22 @@ export class Permissions {
       activeRules.sort((a, b) => (b.priority || 0) - (a.priority || 0));
     }
 
+    // Discover custom Permissions subclass from toolClass if available.
+    // This allows tool-specific matchesRule() logic (e.g., ShellPermissions
+    // matching command arguments).
+    let permissionsInstance = this;
+
+    if (toolClass && typeof toolClass.prototype.getPermissionsClass === 'function') {
+      let PermissionsClass = new toolClass(this._context).getPermissionsClass();
+      if (PermissionsClass)
+        permissionsInstance = new PermissionsClass(this._context);
+    }
+
     // First match wins
     for (let rule of activeRules) {
-      // Custom matching via this.matchesRule()
-      let metadata    = this._parseMetadata(rule);
-      let matchResult = this.matchesRule(rule, args, metadata);
+      // Custom matching via permissionsInstance.matchesRule()
+      let metadata    = permissionsInstance._parseMetadata(rule);
+      let matchResult = permissionsInstance.matchesRule(rule, args, metadata);
 
       if (matchResult && matchResult.matches === false)
         continue;
@@ -364,5 +382,34 @@ export class Permissions {
     }
 
     return rule.metadata;
+  }
+
+  _filterByFingerprint(rules, userKey, publicKeyPEM) {
+    let keystore = this._getKeystore();
+    if (!keystore)
+      return rules;
+
+    return rules.filter((rule) => {
+      // Rules without fingerprints are untrusted when verification is enabled
+      if (!rule.fingerprint)
+        return false;
+
+      let fingerprintData = `${rule.organizationID}:${rule.featureName}:${rule.effect}:${rule.scope}`;
+
+      // Try Ed25519 verification first
+      if (publicKeyPEM) {
+        let valid = keystore.verifyWithPublicKey(fingerprintData, publicKeyPEM, rule.fingerprint);
+        if (valid)
+          return true;
+      }
+
+      // Fallback to HMAC verification
+      if (userKey) {
+        let expected = keystore.fingerprint(fingerprintData, userKey);
+        return rule.fingerprint === expected;
+      }
+
+      return false;
+    });
   }
 }

@@ -255,7 +255,7 @@ export class InteractionController extends ControllerAuthBase {
       let core           = this.getCore();
       let organizationID = this.request.organizationID;
 
-      // Use Permissions base class for rule creation (not PermissionEngine)
+      // Use Permissions base class for rule creation
       let { Permissions } = await import('../../core/permissions/permissions-base.mjs');
       let permissions     = new Permissions(core.getContext());
 

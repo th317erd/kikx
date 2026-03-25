@@ -1013,7 +1013,7 @@ export class InteractionLoop extends EventEmitter {
                 continue;
               }
 
-              // PermissionDeniedError from PermissionEngine deny rules
+              // PermissionDeniedError from Permissions.evaluate() deny rules
               // -> create permission-denied frame and feed error back to agent
               if (toolError.name === 'PermissionDeniedError') {
                 await this._createFrame(sessionID, {

@@ -3,7 +3,7 @@
 // =============================================================================
 // PermissionDeniedError
 // =============================================================================
-// Thrown when a 'deny' rule matches in PermissionEngine.checkPermission().
+// Thrown when a 'deny' rule matches in Permissions.evaluate().
 // Unlike a regular "needs approval" result, a deny is final — no approval
 // can override it.
 // =============================================================================

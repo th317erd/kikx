@@ -244,7 +244,7 @@ describe('Tamper Detection — Integration', () => {
     let engine;
 
     beforeEach(() => {
-      engine = core.getPermissionEngine();
+      engine = core.getPermissions();
     });
 
     it('should create a rule with a valid Ed25519 fingerprint', async () => {
@@ -269,7 +269,7 @@ describe('Tamper Detection — Integration', () => {
         privateKeyPEM:  privateKey,
       });
 
-      let result = await engine.checkPermission('shell:execute', {}, {
+      let result = await engine.evaluate('shell:execute', {}, {
         organizationID:    organization.id,
         verifyFingerprint: true,
         publicKeyPEM:      publicKey,
@@ -295,7 +295,7 @@ describe('Tamper Detection — Integration', () => {
 
       // The fingerprint was signed over "allow", so verifying "deny" should fail.
       // The tampered rule is filtered out, leaving no matching rules -> default deny.
-      let result = await engine.checkPermission('shell:execute', {}, {
+      let result = await engine.evaluate('shell:execute', {}, {
         organizationID:    organization.id,
         verifyFingerprint: true,
         publicKeyPEM:      publicKey,
@@ -320,7 +320,7 @@ describe('Tamper Detection — Integration', () => {
       await loaded.save();
 
       // Query the original feature — no rules exist for it now
-      let result = await engine.checkPermission('shell:execute', {}, {
+      let result = await engine.evaluate('shell:execute', {}, {
         organizationID:    organization.id,
         verifyFingerprint: true,
         publicKeyPEM:      publicKey,
@@ -329,7 +329,7 @@ describe('Tamper Detection — Integration', () => {
       assert.equal(result, true, 'no rules match the original feature after tampering');
 
       // Query the tampered feature — fingerprint data won't match
-      let resultTampered = await engine.checkPermission('websearch:fetch', {}, {
+      let resultTampered = await engine.evaluate('websearch:fetch', {}, {
         organizationID:    organization.id,
         verifyFingerprint: true,
         publicKeyPEM:      publicKey,
@@ -355,7 +355,7 @@ describe('Tamper Detection — Integration', () => {
       await loaded.save();
 
       // Fingerprint was computed with "global", but rule now has "session"
-      let result = await engine.checkPermission('shell:execute', {}, {
+      let result = await engine.evaluate('shell:execute', {}, {
         organizationID:    organization.id,
         scope:             'session',
         scopeID:           null,
@@ -381,7 +381,7 @@ describe('Tamper Detection — Integration', () => {
       loaded.fingerprint     = 'ff'.repeat(64); // Valid hex but wrong signature
       await loaded.save();
 
-      let result = await engine.checkPermission('shell:execute', {}, {
+      let result = await engine.evaluate('shell:execute', {}, {
         organizationID:    organization.id,
         verifyFingerprint: true,
         publicKeyPEM:      publicKey,
@@ -400,7 +400,7 @@ describe('Tamper Detection — Integration', () => {
         // No privateKeyPEM, no userKey
       });
 
-      let result = await engine.checkPermission('shell:execute', {}, {
+      let result = await engine.evaluate('shell:execute', {}, {
         organizationID:    organization.id,
         verifyFingerprint: true,
         publicKeyPEM:      publicKey,
@@ -417,7 +417,7 @@ describe('Tamper Detection — Integration', () => {
         createdBy:      'usr_no_verify',
       });
 
-      let result = await engine.checkPermission('shell:execute', {}, {
+      let result = await engine.evaluate('shell:execute', {}, {
         organizationID:    organization.id,
         verifyFingerprint: false,
       });
@@ -760,7 +760,7 @@ describe('Tamper Detection — Integration', () => {
 
   describe('Cross-Component Integration', () => {
     it('should verify all components in a complete signing chain', async () => {
-      let engine  = core.getPermissionEngine();
+      let engine  = core.getPermissions();
       let service = new ValueStoreService({ context: core.getContext() });
 
       let agentKeys = keystore.generateSigningKeyPair();
@@ -780,7 +780,7 @@ describe('Tamper Detection — Integration', () => {
         privateKeyPEM:  privateKey,
       });
 
-      let ruleResult = await engine.checkPermission('shell:execute', {}, {
+      let ruleResult = await engine.evaluate('shell:execute', {}, {
         organizationID:    organization.id,
         verifyFingerprint: true,
         publicKeyPEM:      publicKey,
@@ -805,7 +805,7 @@ describe('Tamper Detection — Integration', () => {
       assert.equal(frameStillValid, false, 'tampered frame should be detected');
 
       // --- Verify the OTHER components remain valid ---
-      let ruleStillValid = await engine.checkPermission('shell:execute', {}, {
+      let ruleStillValid = await engine.evaluate('shell:execute', {}, {
         organizationID:    organization.id,
         verifyFingerprint: true,
         publicKeyPEM:      publicKey,
@@ -818,7 +818,7 @@ describe('Tamper Detection — Integration', () => {
     });
 
     it('should detect tampering in each component independently', async () => {
-      let engine  = core.getPermissionEngine();
+      let engine  = core.getPermissions();
       let service = new ValueStoreService({ context: core.getContext() });
 
       let agentKeys = keystore.generateSigningKeyPair();
@@ -851,7 +851,7 @@ describe('Tamper Detection — Integration', () => {
       await tamperedRule.save();
 
       // Permission rule should be detected as tampered
-      let permResult = await engine.checkPermission('websearch:fetch', {}, {
+      let permResult = await engine.evaluate('websearch:fetch', {}, {
         organizationID:    organization.id,
         verifyFingerprint: true,
         publicKeyPEM:      publicKey,

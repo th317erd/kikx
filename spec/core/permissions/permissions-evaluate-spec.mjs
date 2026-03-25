@@ -12,9 +12,8 @@ import { SessionManager }       from '../../../src/core/session/index.mjs';
 // Permissions.evaluate() — Rule Evaluation in Base Class
 // =============================================================================
 // Tests for the new evaluate() method on the Permissions base class.
-// This method ports the rule evaluation logic from PermissionEngine.checkPermission()
-// directly into the Permissions base class, so each PermissionsClass can
-// evaluate rules without going through the engine.
+// Full rule evaluation logic on the Permissions base class. Each PermissionsClass
+// can evaluate rules directly via evaluate().
 //
 // Semantics:
 //   evaluate() returns true  = needs approval (no matching allow rule)

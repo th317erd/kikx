@@ -141,11 +141,9 @@ export class Application extends MythixApplication {
     // Initialize auth service
     this._authService = new AuthService({ context, keystore: this._keystore });
 
-    // Initialize permission service (wraps PermissionEngine + signing)
-    let permissionEngine  = context.getProperty('permissionEngine');
+    // Initialize permission service (wraps Permissions.evaluate() + signing)
     let permissionService = new PermissionService({
       context,
-      permissionEngine,
       keystore: this._keystore,
     });
 

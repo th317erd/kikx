@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { createKikxCore }        from '../../../src/core/index.mjs';
 import { Keystore }              from '../../../src/core/crypto/keystore.mjs';
-import { PermissionEngine }      from '../../../src/core/permissions/permission-engine.mjs';
+import { Permissions }           from '../../../src/core/permissions/permissions-base.mjs';
 import { PermissionService }     from '../../../src/core/permissions/permission-service.mjs';
 
 // =============================================================================
@@ -20,7 +20,7 @@ describe('PermissionService Ed25519 (C2)', () => {
   let models;
   let context;
   let keystore;
-  let permissionEngine;
+  let permissions;
   let keyPair;
   let otherKeyPair;
 
@@ -34,7 +34,7 @@ describe('PermissionService Ed25519 (C2)', () => {
     keystore.initialize();
     context.setProperty('keystore', keystore);
 
-    permissionEngine = new PermissionEngine(context);
+    permissions = new Permissions(context);
 
     // Generate key pairs for Ed25519 testing
     keyPair      = keystore.generateSigningKeyPair();
@@ -52,7 +52,6 @@ describe('PermissionService Ed25519 (C2)', () => {
   function createService() {
     return new PermissionService({
       context,
-      permissionEngine,
       keystore,
     });
   }
@@ -279,7 +278,7 @@ describe('PermissionService Ed25519 (C2)', () => {
       let service = createService();
 
       // Create an allow rule
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID: org.id,
         featureName:    'test:ed25519-check',
         effect:         'allow',
@@ -305,7 +304,7 @@ describe('PermissionService Ed25519 (C2)', () => {
       let org     = await createTestOrg();
       let service = createService();
 
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID: org.id,
         featureName:    'test:hmac-check',
         effect:         'allow',
@@ -330,7 +329,7 @@ describe('PermissionService Ed25519 (C2)', () => {
       let org     = await createTestOrg();
       let service = createService();
 
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID: org.id,
         featureName:    'test:ed25519-session',
         effect:         'allow',

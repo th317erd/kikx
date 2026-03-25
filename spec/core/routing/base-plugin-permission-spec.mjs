@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { createKikxCore }        from '../../../src/core/index.mjs';
 import { Keystore }              from '../../../src/core/crypto/keystore.mjs';
-import { PermissionEngine }      from '../../../src/core/permissions/permission-engine.mjs';
+import { Permissions }           from '../../../src/core/permissions/permissions-base.mjs';
 import { PermissionService }     from '../../../src/core/permissions/permission-service.mjs';
 import { BasePluginClass }       from '../../../src/core/routing/base-plugin-class.mjs';
 
@@ -18,6 +18,7 @@ describe('BasePluginClass.checkPermission() (C3)', () => {
   let models;
   let context;
   let keystore;
+  let permissions;
   let permissionService;
 
   before(async () => {
@@ -30,8 +31,8 @@ describe('BasePluginClass.checkPermission() (C3)', () => {
     keystore.initialize();
     context.setProperty('keystore', keystore);
 
-    let permissionEngine = new PermissionEngine(context);
-    permissionService = new PermissionService({ context, permissionEngine, keystore });
+    permissions       = new Permissions(context);
+    permissionService = new PermissionService({ context, keystore });
   });
 
   after(async () => {
@@ -57,8 +58,7 @@ describe('BasePluginClass.checkPermission() (C3)', () => {
     let org = await createTestOrg();
 
     // Create allow rule
-    let engine = new PermissionEngine(context);
-    await engine.createRule({
+    await permissions.createRule({
       organizationID: org.id,
       featureName:    'test:base-allowed',
       effect:         'allow',
@@ -94,8 +94,7 @@ describe('BasePluginClass.checkPermission() (C3)', () => {
   it('should return approved: false with reason for deny rules', async () => {
     let org = await createTestOrg();
 
-    let engine = new PermissionEngine(context);
-    await engine.createRule({
+    await permissions.createRule({
       organizationID: org.id,
       featureName:    'test:base-denied',
       effect:         'deny',

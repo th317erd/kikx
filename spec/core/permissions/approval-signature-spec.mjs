@@ -226,10 +226,9 @@ describe('Approval Signature (Phase 4)', () => {
 
   // --- 11. PermissionService._buildApprovalBlob includes all fields ---
   it('PermissionService._buildApprovalBlob includes frameID and all fields', () => {
-    // Create a minimal PermissionService (permissionEngine optional for Phase 4)
+    // Create a minimal PermissionService
     let service = new PermissionService({
-      context:          { getProperty: () => null },
-      permissionEngine: { checkPermission: () => false },
+      context:  { getProperty: () => null },
       keystore,
     });
 

@@ -9,7 +9,7 @@ import { SessionManager }          from '../../src/core/session/index.mjs';
 import { FramePersistence }        from '../../src/core/frames/index.mjs';
 import { ContentSanitizer }        from '../../src/core/lib/content-sanitizer.mjs';
 import { AgentInterface }          from '../../src/core/plugins/agent-interface.mjs';
-import { PermissionEngine }        from '../../src/core/permissions/permission-engine.mjs';
+import { Permissions }             from '../../src/core/permissions/permissions-base.mjs';
 import { PermissionDeniedError }    from '../../src/core/permissions/permission-denied-error.mjs';
 import { PermissionRequiredError } from '../../src/core/permissions/permission-required-error.mjs';
 import { parseShellCommands }      from '../../src/core/internal-plugins/shell/command-parser.mjs';
@@ -49,7 +49,7 @@ describe('Shell Permission Flow (per-command)', () => {
   let sessionManager;
   let framePersistence;
   let sanitizer;
-  let permissionEngine;
+  let permissions;
 
   before(async () => {
     core    = createKikxCore();
@@ -60,7 +60,7 @@ describe('Shell Permission Flow (per-command)', () => {
     sessionManager   = new SessionManager(context);
     framePersistence = new FramePersistence(context);
     sanitizer        = new ContentSanitizer();
-    permissionEngine = new PermissionEngine(context);
+    permissions      = new Permissions(context);
 
     context.setProperty('sessionManager', sessionManager);
     context.setProperty('framePersistence', framePersistence);
@@ -214,7 +214,7 @@ describe('Shell Permission Flow (per-command)', () => {
       let { session, organizationID } = await createTestSession();
 
       // Create allow rules for both commands
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:ls',
         effect:      'allow',
@@ -223,7 +223,7 @@ describe('Shell Permission Flow (per-command)', () => {
         createdBy:   'user_test',
       });
 
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:grep',
         effect:      'allow',
@@ -239,7 +239,7 @@ describe('Shell Permission Flow (per-command)', () => {
       let anyNeedsApproval = false;
 
       for (let cmd of parsed) {
-        let needs = await permissionEngine.checkPermission(`shell:${cmd.command}`, cmd, options);
+        let needs = await permissions.evaluate(`shell:${cmd.command}`, cmd, options);
         if (needs)
           anyNeedsApproval = true;
       }
@@ -251,7 +251,7 @@ describe('Shell Permission Flow (per-command)', () => {
       let { session, organizationID } = await createTestSession();
 
       // Only create allow rule for ls, NOT for grep
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:ls',
         effect:      'allow',
@@ -267,7 +267,7 @@ describe('Shell Permission Flow (per-command)', () => {
       let statuses = [];
 
       for (let cmd of parsed) {
-        let needs = await permissionEngine.checkPermission(`shell:${cmd.command}`, cmd, options);
+        let needs = await permissions.evaluate(`shell:${cmd.command}`, cmd, options);
         statuses.push({ command: cmd.command, status: needs ? 'needs-approval' : 'allowed' });
         if (needs)
           anyNeedsApproval = true;
@@ -282,7 +282,7 @@ describe('Shell Permission Flow (per-command)', () => {
       let { session, organizationID } = await createTestSession();
 
       // Create deny rule for rm
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:rm',
         effect:      'deny',
@@ -297,7 +297,7 @@ describe('Shell Permission Flow (per-command)', () => {
 
       await assert.rejects(async () => {
         for (let cmd of parsed)
-          await permissionEngine.checkPermission(`shell:${cmd.command}`, cmd, options);
+          await permissions.evaluate(`shell:${cmd.command}`, cmd, options);
       }, (error) => {
         assert.equal(error.name, 'PermissionDeniedError');
         return true;
@@ -313,7 +313,7 @@ describe('Shell Permission Flow (per-command)', () => {
     it('should create allow rule for allow-forever decision', async () => {
       let { session, organizationID } = await createTestSession();
 
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:cat',
         effect:      'allow',
@@ -324,7 +324,7 @@ describe('Shell Permission Flow (per-command)', () => {
 
       // Verify the rule works
       let options = { organizationID, scope: 'session', scopeID: session.id };
-      let needs   = await permissionEngine.checkPermission('shell:cat', {}, options);
+      let needs   = await permissions.evaluate('shell:cat', {}, options);
 
       assert.equal(needs, false, 'cat should be auto-allowed after allow rule creation');
     });
@@ -332,7 +332,7 @@ describe('Shell Permission Flow (per-command)', () => {
     it('should create deny rule for deny-forever decision', async () => {
       let { session, organizationID } = await createTestSession();
 
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:rm',
         effect:      'deny',
@@ -345,7 +345,7 @@ describe('Shell Permission Flow (per-command)', () => {
       let options = { organizationID, scope: 'session', scopeID: session.id };
 
       await assert.rejects(
-        () => permissionEngine.checkPermission('shell:rm', {}, options),
+        () => permissions.evaluate('shell:rm', {}, options),
         (error) => {
           assert.equal(error.name, 'PermissionDeniedError');
           return true;
@@ -369,7 +369,7 @@ describe('Shell Permission Flow (per-command)', () => {
     it('should auto-allow when command AND arguments match exactly', async () => {
       let { session, organizationID } = await createTestSession();
 
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:ls',
         effect:      'allow',
@@ -380,7 +380,7 @@ describe('Shell Permission Flow (per-command)', () => {
       });
 
       let options = { organizationID, scope: 'session', scopeID: session.id, toolClass: ShellToolClass };
-      let needs   = await permissionEngine.checkPermission('shell:ls', { command: 'ls', arguments: ['-la', '/tmp/'] }, options);
+      let needs   = await permissions.evaluate('shell:ls', { command: 'ls', arguments: ['-la', '/tmp/'] }, options);
 
       assert.equal(needs, false, 'Exact match should be auto-allowed');
     });
@@ -388,7 +388,7 @@ describe('Shell Permission Flow (per-command)', () => {
     it('should NOT auto-allow when arguments differ', async () => {
       let { session, organizationID } = await createTestSession();
 
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:ls',
         effect:      'allow',
@@ -399,7 +399,7 @@ describe('Shell Permission Flow (per-command)', () => {
       });
 
       let options = { organizationID, scope: 'session', scopeID: session.id, toolClass: ShellToolClass };
-      let needs   = await permissionEngine.checkPermission('shell:ls', { command: 'ls', arguments: ['/etc/shadow'] }, options);
+      let needs   = await permissions.evaluate('shell:ls', { command: 'ls', arguments: ['/etc/shadow'] }, options);
 
       assert.equal(needs, true, 'Different arguments should still need approval');
     });
@@ -407,7 +407,7 @@ describe('Shell Permission Flow (per-command)', () => {
     it('should NOT auto-allow when argument count differs', async () => {
       let { session, organizationID } = await createTestSession();
 
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:ls',
         effect:      'allow',
@@ -418,7 +418,7 @@ describe('Shell Permission Flow (per-command)', () => {
       });
 
       let options = { organizationID, scope: 'session', scopeID: session.id, toolClass: ShellToolClass };
-      let needs   = await permissionEngine.checkPermission('shell:ls', { command: 'ls', arguments: [] }, options);
+      let needs   = await permissions.evaluate('shell:ls', { command: 'ls', arguments: [] }, options);
 
       assert.equal(needs, true, 'No-argument ls should not be covered by ls -la /tmp/ rule');
     });
@@ -426,7 +426,7 @@ describe('Shell Permission Flow (per-command)', () => {
     it('should deny-forever with argument matching', async () => {
       let { session, organizationID } = await createTestSession();
 
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:rm',
         effect:      'deny',
@@ -440,7 +440,7 @@ describe('Shell Permission Flow (per-command)', () => {
 
       // Exact match should be denied
       await assert.rejects(
-        () => permissionEngine.checkPermission('shell:rm', { command: 'rm', arguments: ['-rf', '/'] }, options),
+        () => permissions.evaluate('shell:rm', { command: 'rm', arguments: ['-rf', '/'] }, options),
         (error) => {
           assert.equal(error.name, 'PermissionDeniedError');
           return true;
@@ -448,14 +448,14 @@ describe('Shell Permission Flow (per-command)', () => {
       );
 
       // Different arguments should NOT be denied by this rule
-      let needs = await permissionEngine.checkPermission('shell:rm', { command: 'rm', arguments: ['file.txt'] }, options);
+      let needs = await permissions.evaluate('shell:rm', { command: 'rm', arguments: ['file.txt'] }, options);
       assert.equal(needs, true, 'rm file.txt should need approval (not auto-denied by rm -rf / rule)');
     });
 
     it('should NOT match when arguments are in different order', async () => {
       let { session, organizationID } = await createTestSession();
 
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:ls',
         effect:      'allow',
@@ -468,7 +468,7 @@ describe('Shell Permission Flow (per-command)', () => {
       let options = { organizationID, scope: 'session', scopeID: session.id, toolClass: ShellToolClass };
 
       // Same args, different order — should NOT match (argument order is semantically meaningful)
-      let needs = await permissionEngine.checkPermission('shell:ls', { command: 'ls', arguments: ['/tmp/', '-la'] }, options);
+      let needs = await permissions.evaluate('shell:ls', { command: 'ls', arguments: ['/tmp/', '-la'] }, options);
       assert.equal(needs, true, 'Different argument order should require fresh approval');
     });
 
@@ -476,7 +476,7 @@ describe('Shell Permission Flow (per-command)', () => {
       let { session, organizationID } = await createTestSession();
 
       // Rule WITHOUT metadata (legacy style) — matches everything
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID,
         featureName: 'shell:cat',
         effect:      'allow',
@@ -486,7 +486,7 @@ describe('Shell Permission Flow (per-command)', () => {
       });
 
       let options = { organizationID, scope: 'session', scopeID: session.id, toolClass: ShellToolClass };
-      let needs   = await permissionEngine.checkPermission('shell:cat', { command: 'cat', arguments: ['/etc/passwd'] }, options);
+      let needs   = await permissions.evaluate('shell:cat', { command: 'cat', arguments: ['/etc/passwd'] }, options);
 
       assert.equal(needs, false, 'Rule without metadata should match any arguments (legacy compat)');
     });

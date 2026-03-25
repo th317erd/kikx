@@ -432,18 +432,18 @@ describe('KikxCore plugin loading', () => {
     assert.ok(context.getProperty('pluginRegistry'));
   });
 
-  it('should set permissionEngine on context after start', async () => {
+  it('should set permissions on context after start', async () => {
     core = createKikxCore();
     await core.start();
     let context = core.getContext();
-    assert.ok(context.getProperty('permissionEngine'));
+    assert.ok(context.getProperty('permissions'));
   });
 
-  it('should expose permissionEngine via getPermissionEngine()', async () => {
+  it('should expose permissions via getPermissions()', async () => {
     core = createKikxCore();
     await core.start();
-    assert.ok(core.getPermissionEngine());
-    assert.equal(typeof core.getPermissionEngine().checkPermission, 'function');
+    assert.ok(core.getPermissions());
+    assert.equal(typeof core.getPermissions().evaluate, 'function');
   });
 
   it('should set hookRunner on context after start', async () => {

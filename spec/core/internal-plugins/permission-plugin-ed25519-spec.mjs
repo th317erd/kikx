@@ -8,7 +8,6 @@ import os     from 'node:os';
 
 import { KikxCore }              from '../../../src/core/kikx-core.mjs';
 import { Keystore }              from '../../../src/core/crypto/keystore.mjs';
-import { PermissionEngine }      from '../../../src/core/permissions/permission-engine.mjs';
 import { PermissionService }     from '../../../src/core/permissions/permission-service.mjs';
 import { setup }                 from '../../../src/core/internal-plugins/permissions/index.mjs';
 import { FrameManager }          from '../../../src/shared/frame-manager/frame-manager.mjs';
@@ -48,8 +47,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
     keystore.loadServerMasterKey(tempDir);
     context.setProperty('keystore', keystore);
 
-    let permissionEngine = new PermissionEngine(context);
-    permissionService = new PermissionService({ context, permissionEngine, keystore });
+    permissionService = new PermissionService({ context, keystore });
     context.setProperty('permissionService', permissionService);
   });
 

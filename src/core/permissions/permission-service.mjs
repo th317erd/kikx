@@ -1,9 +1,11 @@
 'use strict';
 
+import { Permissions } from './permissions-base.mjs';
+
 // =============================================================================
 // PermissionService
 // =============================================================================
-// High-level permission service wrapping PermissionEngine + Keystore signing.
+// High-level permission service wrapping Permissions.evaluate() + Keystore signing.
 // Provides a unified interface for:
 //   - Checking permissions (with optional signing on approval)
 //   - Creating standing approvals (session-scoped allow rules)
@@ -18,17 +20,27 @@
 export class PermissionService {
   constructor(options = {}) {
     this._context          = options.context;
-    this._permissionEngine = options.permissionEngine;
     this._keystore         = options.keystore;
 
     if (!this._context)
       throw new Error('PermissionService requires context');
 
-    if (!this._permissionEngine)
-      throw new Error('PermissionService requires permissionEngine');
-
     if (!this._keystore)
       throw new Error('PermissionService requires keystore');
+
+    // Lazy-initialized Permissions instance for rule evaluation
+    this._permissions = null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // _getPermissions — lazy Permissions instance
+  // ---------------------------------------------------------------------------
+
+  _getPermissions() {
+    if (!this._permissions)
+      this._permissions = new Permissions(this._context);
+
+    return this._permissions;
   }
 
   // ---------------------------------------------------------------------------
@@ -37,7 +49,6 @@ export class PermissionService {
   // Returns:
   //   { decision: 'allow', signature }   — tool call is approved
   //   { decision: 'needs-approval' }     — manual approval required
-  //   { decision: 'no-engine' }          — no permission engine available
   //
   // Throws PermissionDeniedError for explicit deny rules.
   // ---------------------------------------------------------------------------
@@ -49,7 +60,7 @@ export class PermissionService {
     if (!toolClass && pluginRegistry)
       toolClass = pluginRegistry.getTool(featureName);
 
-    let needsPermission = await this._permissionEngine.checkPermission(featureName, args, {
+    let needsPermission = await this._getPermissions().evaluate(featureName, args, {
       organizationID,
       scope:   sessionID ? 'session' : 'global',
       scopeID: sessionID || null,
@@ -97,7 +108,7 @@ export class PermissionService {
     // Sign the standing approval
     let signature = this._signApproval('approve', null, effectiveFeature, { standing: true, sessionID }, sessionID, privateKeyPEM);
 
-    let rule = await this._permissionEngine.createRule({
+    let rule = await this._getPermissions().createRule({
       organizationID,
       featureName: effectiveFeature,
       effect:      'allow',
@@ -125,7 +136,7 @@ export class PermissionService {
     if (!sessionID)
       throw new Error('sessionID is required');
 
-    let rules = await this._permissionEngine.getRules(organizationID, {
+    let rules = await this._getPermissions().getRules(organizationID, {
       featureName: featureName || undefined,
       scope:       'session',
     });
@@ -143,7 +154,7 @@ export class PermissionService {
       if (featureName && rule.featureName !== featureName)
         continue;
 
-      await this._permissionEngine.deleteRule(rule.id);
+      await this._getPermissions().deleteRule(rule.id);
       revoked++;
     }
 

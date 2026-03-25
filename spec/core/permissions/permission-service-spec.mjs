@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { createKikxCore }        from '../../../src/core/index.mjs';
 import { Keystore }              from '../../../src/core/crypto/keystore.mjs';
-import { PermissionEngine }      from '../../../src/core/permissions/permission-engine.mjs';
+import { Permissions }           from '../../../src/core/permissions/permissions-base.mjs';
 import { PermissionService }     from '../../../src/core/permissions/permission-service.mjs';
 import { PermissionDeniedError } from '../../../src/core/permissions/permission-denied-error.mjs';
 
@@ -18,7 +18,7 @@ describe('PermissionService (C3)', () => {
   let models;
   let context;
   let keystore;
-  let permissionEngine;
+  let permissions;
 
   before(async () => {
     core = createKikxCore();
@@ -30,7 +30,7 @@ describe('PermissionService (C3)', () => {
     keystore.initialize();
     context.setProperty('keystore', keystore);
 
-    permissionEngine = new PermissionEngine(context);
+    permissions = new Permissions(context);
   });
 
   after(async () => {
@@ -44,7 +44,6 @@ describe('PermissionService (C3)', () => {
   function createService() {
     return new PermissionService({
       context,
-      permissionEngine,
       keystore,
     });
   }
@@ -65,21 +64,14 @@ describe('PermissionService (C3)', () => {
 
     it('should throw without context', () => {
       assert.throws(
-        () => new PermissionService({ permissionEngine, keystore }),
+        () => new PermissionService({ keystore }),
         /requires context/,
-      );
-    });
-
-    it('should throw without permissionEngine', () => {
-      assert.throws(
-        () => new PermissionService({ context, keystore }),
-        /requires permissionEngine/,
       );
     });
 
     it('should throw without keystore', () => {
       assert.throws(
-        () => new PermissionService({ context, permissionEngine }),
+        () => new PermissionService({ context }),
         /requires keystore/,
       );
     });
@@ -107,7 +99,7 @@ describe('PermissionService (C3)', () => {
       let service = createService();
 
       // Create an allow rule
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID: org.id,
         featureName:    'test:allowed',
         effect:         'allow',
@@ -129,7 +121,7 @@ describe('PermissionService (C3)', () => {
       let service = createService();
 
       // Create a deny rule
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID: org.id,
         featureName:    'test:denied',
         effect:         'deny',
@@ -148,7 +140,7 @@ describe('PermissionService (C3)', () => {
       let service = createService();
 
       // Create a session-scoped allow rule
-      await permissionEngine.createRule({
+      await permissions.createRule({
         organizationID: org.id,
         featureName:    'test:session-scoped',
         effect:         'allow',

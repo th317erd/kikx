@@ -12,7 +12,7 @@ import { PermissionDeniedError }    from '../../../src/core/permissions/permissi
 // PluginInterface — Permission Checking
 // =============================================================================
 // Tests for the rewritten _checkPermissions() flow that uses
-// Permissions.evaluate() directly (no PermissionEngine).
+// Permissions.evaluate() directly.
 //
 // Flow:
 //   1. riskLevel 'none' → skip everything
