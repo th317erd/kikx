@@ -22,42 +22,81 @@ meta:
 #
 # 1. Tool executes → _checkPermissions()
 #    a. riskLevel 'none' → proceed (no check)
-#    b. PermissionsClass.evaluate() checks standing rules (DB query, no engine)
-#    c. Standing allow rule with valid signature → proceed
-#    d. Standing deny rule → throw PermissionDeniedError
+#    b. PermissionsClass.evaluate() checks:
+#       - Standing PermissionRule records (DB query, no engine)
+#       - One-time approval rules (from approved PermissionRequest frames)
+#    c. Allow rule found → proceed
+#    d. Deny rule found → throw PermissionDeniedError
 #    e. No rule match + risk is permissive → proceed
 #    f. No rule match + risk is normal/strict → throw PermissionRequiredError
 #
 # 2. InteractionLoop catches PermissionRequiredError
-#    a. Creates PermissionRequest frame (signed by system)
-#    b. Creates ToolResult frame: "Permission requested. Request ID = frm_xxx"
-#    c. Agent continues running — NO hardBreak for same-session user
-#    d. Cross-session: routes request to nearest ancestor with user
-#    e. No user in ancestry → immediate denial ToolResult
+#    a. Dedup check: hash(toolName, args, agentID, sessionID)
+#       - If matching unprocessed PermissionRequest exists → reuse it
+#    b. Creates PermissionRequest frame (signed by system)
+#    c. Creates ToolResult: "Permission required for {tool}. Request ID: {id}"
+#    d. Interaction ends (generator destroyed for server resilience)
+#       Permission requests can live for weeks — generators can't.
+#    e. Cross-session: routes to nearest ancestor session with user
+#    f. No user in ancestry → immediate denial ToolResult
 #
 # 3. Client renders PermissionRequest → user clicks Approve/Deny
-#    a. Client sends signed approval/denial to server
-#    b. Server verifies user is session participant
+#    a. Client sends approval/denial to server (JWT carries UMK)
+#    b. Server: request.getUMK() → decryptUserPrivateKey() → sign
 #    c. Server writes approval signature onto PermissionRequest frame
 #    d. For "forever" decisions, creates standing PermissionRule
 #
 # 4. FrameRouter fires on PermissionRequest frame update
 #    a. PermissionApprovalPlugin verifies approval signature (Ed25519)
-#    b. On valid approval: re-executes tool, creates ToolResult frame
-#    c. On valid denial: creates denial ToolResult frame
-#    d. Starts new interaction so agent sees the result
+#    b. On valid approval:
+#       - Creates one-time allow rule (session-scoped PermissionRule)
+#       - Hides the placeholder "awaiting" ToolResult
+#       - Starts new interaction
+#    c. On valid denial:
+#       - Hides the placeholder "awaiting" ToolResult
+#       - Creates denial ToolResult
+#       - Starts new interaction
+#    d. The approval plugin does NOT execute the tool directly.
 #
-# 5. PermissionEngine is deleted. All rule evaluation lives in
+# 5. New interaction replays from history
+#    a. InteractionLoop detects approved-but-unexecuted tool call
+#    b. Feeds the tool call back through the NORMAL execution path
+#    c. _checkPermissions() → evaluate() → finds one-time allow rule → proceeds
+#    d. Tool executes through its standard execute() → _execute() pipeline
+#    e. Real ToolResult created, agent sees actual output and continues
+#
+# 6. PermissionEngine is deleted. All rule evaluation lives in
 #    Permissions base class (query PermissionRule model directly).
 #    PermissionService is simplified (no engine dependency).
+#
+# No expiry. Permission requests live until acted on or session deleted.
 
 # =============================================================================
 # 2. DESIGN DECISIONS
 # =============================================================================
 
 design:
+  re_execution_through_normal_path: |
+    The approval plugin NEVER calls toolInstance.execute() directly.
+    Instead, it ensures the approval is discoverable as a rule, then
+    starts a new interaction. The tool goes through its normal
+    execute() → _checkPermissions() → evaluate() → _execute() pipeline.
+
+    On approval:
+      1. Plugin creates a one-time allow rule (PermissionRule, session-scoped)
+      2. Plugin hides the placeholder "awaiting" ToolResult
+      3. Plugin starts new interaction
+      4. InteractionLoop detects the approved-but-unexecuted tool call
+      5. Feeds it through the normal tool execution path
+      6. _checkPermissions() → evaluate() → finds one-time rule → proceeds
+      7. Tool executes normally → real ToolResult created
+
+    This is provably correct: the tool's own permission checking validates
+    the approval. No backdoor, no special path. The same code runs
+    whether the tool is called fresh or replayed after approval.
+
   approval_signature_binding: |
-    The approval signature MUST cryptographically bind to:
+    The approval signature cryptographically binds to:
       - frameID of the PermissionRequest (prevents replay across requests)
       - toolName (prevents tool swap)
       - toolArguments (prevents argument escalation)
@@ -65,27 +104,49 @@ design:
     Payload: canonicalize({ action, frameID, toolName, arguments, sessionID })
     Signed with user's Ed25519 private key.
 
-  no_hardbreak_for_same_session: |
-    When the requesting session HAS a user, the interaction should NOT be
-    destroyed. Instead, feed a ToolResult back to the agent:
-      "Permission required for {toolName}. Request sent to user. Request ID: {frameID}"
-    The agent continues and can do other work while waiting.
+  signing_uses_existing_umk_flow: |
+    The signing infrastructure already exists:
+      request.getUMK() → keystore.decryptUserPrivateKey(envelope, umk, userID)
+      → keystore.signWithPrivateKey(payload, privateKey)
+    The JWT carries the UMK (wrapped by REK). Every authenticated request
+    can sign. The approve endpoint just uses the same pattern as
+    sendMessage and agent-controller already use.
 
-    hardBreak is ONLY used for cross-session routing (child agent session
-    where the user is in a parent session). In that case the child interaction
-    must pause because it has no user to approve locally.
+  interaction_ends_on_permission_request: |
+    Permission requests can live for weeks (user steps away, comes back
+    days later). Generators are in-memory and can't survive server
+    restarts. Therefore: the interaction ALWAYS ends when permission is
+    needed. The generator is destroyed. On approval, a new interaction
+    replays from frame history.
+
+    This applies to BOTH same-session and cross-session flows. The only
+    difference is WHERE the PermissionRequest frame is routed (same
+    session vs ancestor session).
+
+  deterministic_dedup: |
+    Before creating a PermissionRequest, compute:
+      hash = sha256(toolName + canonicalize(arguments) + agentID + sessionID)
+    Store as content.requestHash on the PermissionRequest frame.
+    If an unprocessed PermissionRequest with the same hash exists in the
+    session, don't create a duplicate. Return the existing request ID:
+      "Permission already requested. Request ID: {existingFrameID}"
 
   pending_action_removed: |
     PendingAction frames are removed from the flow. The PermissionRequest
     frame IS the pending action. The toolUseID, toolName, and arguments
     live on the PermissionRequest frame's content and state.
 
+  no_expiry: |
+    Permission requests never expire. They live until acted on (approved
+    or denied) or until the session is deleted. No expiry system, no
+    timeout logic, no cleanup jobs. Simple.
+
   agent_informed: |
     At every state transition, the agent gets a ToolResult:
     - Permission requested: "Permission required for {tool}. Request ID: {id}"
-    - Permission approved: actual tool output
+    - Permission approved: actual tool output (from normal execution path)
     - Permission denied: "Permission denied for {tool}. User denied execution."
-    - Permission expired: "Permission request {id} expired after {timeout}"
+    - Duplicate request: "Permission already requested. Request ID: {id}"
 
   permission_engine_removed: |
     PermissionEngine is deleted entirely. Its rule evaluation logic moves
@@ -96,12 +157,13 @@ design:
     Permissions base class gains:
       evaluate(featureName, args, options) — full rule evaluation
         1. Query PermissionRule records for org + feature
-        2. Filter expired, filter by scope hierarchy
+        2. Filter by scope hierarchy (frame → session → global)
         3. Walk up session ancestry for session-scoped rules
         4. Call this.matchesRule() for custom matching
         5. First match: deny → throw, allow → return false
         6. No match: check risk level → return true/false
-      This replaces PermissionEngine.checkPermission() entirely.
+      Also absorbs: createRule(), deleteRule(), getRules(), pruneExpired()
+      This replaces PermissionEngine entirely.
 
 # =============================================================================
 # 3. FILE CHANGES
@@ -362,47 +424,54 @@ phases:
         description: "feat: wire PluginInterface to Permissions.evaluate(), remove PermissionEngine dependency"
 
   phase_3:
-    name: "Inline Permission Request Cleanup"
+    name: "Permission Request Flow + Dedup + PendingAction Removal"
     description: |
-      NOTE: The inline permission flow already exists in InteractionLoop
-      (lines 760-814). Same-session requests already create PermissionRequest
-      + ToolResult and continue the loop. hardBreak is already only used for
-      cross-session routing.
-
-      This phase cleans up: removes PendingAction from the cross-session
-      hardBreak path, verifies the agent gets correct messages, and ensures
-      the existing flow works with the new Permissions.evaluate() from Phase 2.
+      Unify the permission request flow. Both same-session and cross-session
+      end the interaction (generator destroyed — permissions can take weeks).
+      Add deterministic dedup hash. Remove PendingAction frames.
     steps:
       - id: "3.1"
-        task: "Verify existing inline flow tests pass with new evaluate()"
+        task: "Write tests for dedup hash"
+        tdd: true
         file: "spec/core/interaction/inline-permission-flow-spec.mjs"
         description: |
-          This file already exists. Run the tests — they should pass since
-          Phase 2 only changed HOW permissions are evaluated, not the
-          InteractionLoop catch behavior. If any fail, fix them.
-
-          Add tests if missing:
-          - ToolResult content includes frame ID for the permission request
-          - Agent receives informative message at each state transition
+          This file already exists. Add tests:
+          - Same tool+args+agent+session → same hash → no duplicate request
+          - Different args → different hash → new request created
+          - Existing request already processed → new request allowed
+          - Dedup returns existing request frame ID in ToolResult message
+          - ToolResult includes "Permission already requested" for dedup hits
 
       - id: "3.2"
-        task: "Remove PendingAction from hardBreak path"
-        file: "src/core/interaction/permission-handler.mjs"
+        task: "Add dedup hash to permission request creation"
+        file: "src/core/interaction/index.mjs"
         description: |
-          hardBreak currently creates both PendingAction and PermissionRequest.
-          Remove PendingAction frame creation. The PermissionRequest frame
-          content already includes toolName, arguments, toolUseID.
+          Before creating PermissionRequest frame:
+            1. Compute hash: sha256(toolName + canonicalize(args) + agentID + sessionID)
+            2. Query: PermissionRequest frames in session with matching hash + processed=false
+            3. If found: create ToolResult("Permission already requested. Request ID: {id}")
+               and continue (don't create duplicate)
+            4. If not found: create PermissionRequest with content.requestHash = hash
 
-          Also remove PendingAction processing from the approve controller
-          (interaction-controller.mjs lines 316-326).
+          Both same-session and cross-session flows end the interaction.
+          The inline "continue" path is removed — interaction always ends.
 
       - id: "3.3"
+        task: "Remove PendingAction from all paths"
+        file: "src/core/interaction/permission-handler.mjs"
+        description: |
+          hardBreak: remove PendingAction frame creation.
+          interaction-controller.mjs: remove PendingAction processing (lines 316-326).
+          PermissionRequest frame content includes everything:
+            toolName, arguments, toolUseID, requestHash, permissionContext.
+
+      - id: "3.4"
         task: "Run tests, verify"
         description: "Run inline-permission-flow tests + permission-handler tests + full suite"
 
-      - id: "3.4"
+      - id: "3.5"
         task: "Commit"
-        description: "refactor: remove PendingAction from permission flow, PermissionRequest is the single source"
+        description: "feat: dedup hash on permission requests, remove PendingAction, unify same/cross-session flow"
 
   phase_4:
     name: "Signature-Based Approval"
@@ -467,16 +536,50 @@ phases:
             Query PermissionRule model directly (no permissionEngine).
 
       - id: "4.4"
-        task: "Update PermissionApprovalPlugin to verify signature"
+        task: "Update PermissionApprovalPlugin — verify signature, create rule, start interaction"
         file: "src/core/internal-plugins/permission-approval/index.mjs"
         description: |
-          Before re-executing the tool:
+          The plugin NO LONGER executes tools directly. New flow:
+
+          On approval (signature verified):
             1. Read approval signature from frame content
-            2. Rebuild the expected payload from frame state
+            2. Rebuild expected payload from frame state
             3. Look up approver's public key via fingerprint
-            4. Verify signature with Ed25519
+            4. Verify Ed25519 signature
             5. If invalid → log warning, set state.step = 'signature-invalid', skip
-            6. If valid → proceed with tool re-execution
+            6. If valid:
+               a. Create one-time allow rule (PermissionRule, session-scoped,
+                  metadata: { oneTime: true, permissionRequestID: frameID })
+               b. Hide the placeholder "awaiting" ToolResult
+                  (find by toolUseID in same session, set hidden=true)
+               c. Set state.step = 'completed'
+               d. Start new interaction
+
+          On denial (signature verified):
+            1. Verify denial signature same as above
+            2. Hide placeholder ToolResult
+            3. Create denial ToolResult: "Permission denied for {tool}."
+            4. Set state.step = 'denied'
+            5. Start new interaction
+
+      - id: "4.5"
+        task: "Add approved-tool-call replay to InteractionLoop"
+        file: "src/core/interaction/index.mjs"
+        description: |
+          At interaction start (startInteraction), detect if there are
+          approved-but-unexecuted tool calls:
+
+            1. Query: PermissionRequest frames in session where
+               state.step = 'completed' AND no visible ToolResult exists
+               for the matching toolUseID
+            2. For each: feed the tool call (toolName, arguments, toolUseID)
+               into the normal execution pipeline
+            3. _checkPermissions() → evaluate() → finds one-time allow rule → ok
+            4. Tool executes → ToolResult created
+            5. Continue interaction normally (send to LLM with full history)
+
+          The one-time rule is consumed after use: mark it with
+          metadata.consumed = true (or delete it) after successful execution.
 
       - id: "4.5"
         task: "Run tests, verify"
@@ -518,14 +621,19 @@ phases:
           - Permission request frame deleted before approval → 410 error
           - Approval for frame that is not PermissionRequest type → rejected
 
-          Timeouts (~3):
-          - Permission request with configurable expiry
-          - Expired request → rejection with informative message
-          - evaluate() timeout protection (inherited from existing 10s race)
+          Dedup (~3):
+          - Same tool+args+agent+session → returns existing request, no duplicate
+          - Different args → different hash → new request created
+          - Existing request already processed → new request allowed
 
           Race conditions (~2):
           - Two approvals arriving simultaneously → only one executes
           - Standing rule created then revoked between check and execution
+
+          Re-execution through normal path (~3):
+          - One-time rule found by evaluate() during replay → tool proceeds
+          - One-time rule consumed after successful execution
+          - Tool failure during replay → error ToolResult, rule NOT consumed
 
       - id: "5.2"
         task: "Implement any missing guards surfaced by tests"
@@ -653,14 +761,14 @@ tests:
       description: "Approval signature creation, verification, cryptographic binding"
 
     - file: "spec/core/permissions/adversarial-permissions-spec.mjs"
-      count: 20
-      description: "Replay, injection, escalation, timeout, authorization boundary"
+      count: 23
+      description: "Replay, injection, dedup, race conditions, re-execution through normal path"
 
     - file: "spec/core/permissions/permission-integration-spec.mjs"
       count: 6
       description: "End-to-end lifecycle tests"
 
-  total_new: 66
+  total_new: 69
   existing_rewrites: "~8 test files that reference PermissionEngine directly need updating"
   existing_fixes: 4
   note: |
@@ -671,6 +779,8 @@ tests:
     NOTE on Phase 3 vs Phase 4 security window: Between Phase 3 and Phase 4,
     approvals are unsigned. This is acceptable for development but the
     intermediate state should not be shipped.
+
+    No expiry system. Permission requests live forever until acted on.
 
 # =============================================================================
 # 6. RISK ASSESSMENT
@@ -684,7 +794,7 @@ risks:
     mitigation: "Phase 4.3 changes to direct PermissionRule model queries. Same SQL, no engine middleman."
 
   - risk: "User private key may not be available for signing approvals"
-    mitigation: "Controller has access to auth context. If no key available, fall back to system signing with user attribution. Log warning."
+    mitigation: "request.getUMK() → decryptUserPrivateKey() is the existing pattern used by sendMessage and agent-controller. Same JWT, same vault. If user has no signing key (legacy user), generate one on first approval."
 
   - risk: "Cross-session permission routing is complex"
     mitigation: "Cross-session flow is mostly unchanged — hardBreak still handles it. Only same-session changes to inline."
@@ -693,7 +803,13 @@ risks:
     mitigation: "Phase 1.2 moves these into Permissions base class as instance methods. They query PermissionRule model directly. The Ed25519 fingerprinting logic from createRule() moves with it."
 
   - risk: "Approval blob format change (_buildApprovalBlob now includes frameID) breaks existing standing rules"
-    mitigation: "Standing rules use a different mechanism (PermissionRule model with metadata.standing flag) and are not verified via the approval blob. No backward compatibility issue."
+    mitigation: "Standing rules use a different mechanism (PermissionRule model with metadata.standing flag) and are not verified via the approval blob. No backward compatibility issue. Sessions/frames were already wiped."
+
+  - risk: "Re-execution through normal path requires InteractionLoop to detect approved-but-unexecuted tool calls"
+    mitigation: "Phase 4.5 adds detection at interaction start. Query is simple: PermissionRequest frames with step=completed and no visible ToolResult for the toolUseID. This is a one-time check at interaction start, not a hot path."
+
+  - risk: "One-time allow rules accumulate in the database"
+    mitigation: "Consumed after successful execution (metadata.consumed=true). Can be periodically pruned. Not a performance concern — they're session-scoped."
 
   - risk: "agent-resolver.mjs has a parallel permission architecture (duplicate of ShellPermissions logic)"
     mitigation: "Phase 2.5 addresses this. Tools now handle their own permissions via execute() → _checkPermissions(). The scheduler's pre-flight check is redundant and should be removed."
