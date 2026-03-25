@@ -202,7 +202,24 @@ export class Permissions {
       }
     }
 
-    return await PermissionRule.create(data);
+    // Workaround: Mythix ORM's PermissionRule.create() silently drops
+    // `createdBy` from the INSERT (possibly a field resolution bug).
+    // Use new PermissionRule().save() with explicit data assignment.
+    let { default: XID } = await import('xid-js');
+    let rule      = new PermissionRule();
+    rule.id             = `prm_${XID.next()}`;
+    rule.organizationID = data.organizationID;
+    rule.featureName    = data.featureName;
+    rule.effect         = data.effect;
+    rule.scope          = data.scope || 'global';
+    rule.scopeID        = data.scopeID || null;
+    rule.metadata       = data.metadata || null;
+    rule.priority       = data.priority || 0;
+    rule.createdBy      = data.createdBy;
+    rule.fingerprint    = data.fingerprint || null;
+    rule.expiresAt      = data.expiresAt || null;
+    await rule.save();
+    return rule;
   }
 
   // ---------------------------------------------------------------------------

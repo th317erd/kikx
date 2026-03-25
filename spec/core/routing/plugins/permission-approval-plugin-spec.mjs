@@ -272,7 +272,8 @@ describe('PermissionApprovalPlugin', () => {
           step: 'awaiting-approval',
         }),
       }]);
-      await tick();
+      // The plugin defers startInteraction via setTimeout(200ms), so we need to wait longer
+      await tick(300);
 
       let startCalls = interactionLoop.calls.filter((c) => c.method === 'startInteraction');
       assert.ok(startCalls.length >= 1, 'should call startInteraction after approval');
@@ -694,7 +695,8 @@ describe('PermissionApprovalPlugin', () => {
           step: 'awaiting-approval',
         }),
       }]);
-      await tick();
+      // The plugin defers startInteraction via setTimeout(200ms), so we need to wait longer
+      await tick(300);
 
       let startCallsBefore = interactionLoop.calls.filter((c) => c.method === 'startInteraction').length;
       assert.ok(startCallsBefore >= 1, 'should start interaction after first approval');

@@ -352,7 +352,31 @@ export class InteractionLoop extends EventEmitter {
       if (!models || !models.Frame || !models.PermissionRule)
         return;
 
-      // Find all visible ToolCall frames in the session
+      // Strategy: find unconsumed one-time rules and match them to ToolCall
+      // frames. This avoids race conditions with ToolResult hiding — the rule
+      // itself is the authoritative signal that a tool call was approved.
+      let rules = await models.PermissionRule.where
+        .scope.EQ('session')
+        .AND.scopeID.EQ(sessionID)
+        .all();
+
+      // Filter to unconsumed one-time allow rules
+      let pendingRules = [];
+      for (let rule of rules) {
+        if (rule.effect !== 'allow')
+          continue;
+
+        let metadata = rule.metadata ? (() => { try { return JSON.parse(rule.metadata); } catch (_e) { return {}; } })() : {};
+        if (!metadata.oneTime || metadata.consumed)
+          continue;
+
+        pendingRules.push({ rule, metadata });
+      }
+
+      if (pendingRules.length === 0)
+        return;
+
+      // Find ToolCall frames that match pending rules by toolUseID
       let toolCallFrames = await models.Frame.where
         .sessionID.EQ(sessionID)
         .AND.type.EQ('ToolCall')
@@ -362,75 +386,48 @@ export class InteractionLoop extends EventEmitter {
       if (!toolCallFrames || toolCallFrames.length === 0)
         return;
 
-      // Find all visible ToolResult frames in the session
-      let toolResultFrames = await models.Frame.where
-        .sessionID.EQ(sessionID)
-        .AND.type.EQ('ToolResult')
-        .AND.hidden.EQ(false)
-        .all();
-
-      // Build a set of toolUseIDs that have results
-      let resultToolUseIDs = new Set();
-      for (let resultFrame of toolResultFrames) {
-        let resultContent = (typeof resultFrame.content === 'string')
-          ? (() => { try { return JSON.parse(resultFrame.content); } catch (_e) { return {}; } })()
-          : (resultFrame.content || {});
-
-        if (resultContent.toolUseID)
-          resultToolUseIDs.add(resultContent.toolUseID);
-      }
-
-      // Find orphaned tool calls (no matching result)
-      let orphanedCalls = [];
-      for (let callFrame of toolCallFrames) {
-        let callContent = (typeof callFrame.content === 'string')
-          ? (() => { try { return JSON.parse(callFrame.content); } catch (_e) { return {}; } })()
-          : (callFrame.content || {});
-
-        let toolUseID = callContent.toolUseID;
-        if (toolUseID && !resultToolUseIDs.has(toolUseID))
-          orphanedCalls.push({ frame: callFrame, content: callContent });
-      }
-
-      if (orphanedCalls.length === 0)
-        return;
-
-      // Check for one-time rules matching each orphaned call
       let executeTool = params.executeTool;
       if (typeof executeTool !== 'function')
         return;
 
-      for (let { frame: callFrame, content: callContent } of orphanedCalls) {
-        let toolName  = callContent.toolName;
-        let toolArgs  = callContent.arguments || {};
-        let toolUseID = callContent.toolUseID;
+      for (let { rule: oneTimeRule, metadata } of pendingRules) {
+        let ruleToolUseID = metadata.toolUseID;
+        if (!ruleToolUseID)
+          continue;
 
-        // Look for a matching one-time rule
-        let rules = await models.PermissionRule.where
-          .featureName.EQ(toolName)
-          .AND.scope.EQ('session')
-          .AND.scopeID.EQ(sessionID)
-          .all();
+        // Find the matching ToolCall frame
+        let matchedCall = null;
+        for (let callFrame of toolCallFrames) {
+          let callContent = (typeof callFrame.content === 'string')
+            ? (() => { try { return JSON.parse(callFrame.content); } catch (_e) { return {}; } })()
+            : (callFrame.content || {});
 
-        let oneTimeRule = null;
-        for (let rule of rules) {
-          if (rule.effect !== 'allow')
-            continue;
-
-          let metadata = rule.metadata ? (() => { try { return JSON.parse(rule.metadata); } catch (_e) { return {}; } })() : {};
-          if (!metadata.oneTime || metadata.consumed)
-            continue;
-
-          // Match by toolUseID if available
-          if (metadata.toolUseID && metadata.toolUseID !== toolUseID)
-            continue;
-
-          oneTimeRule = rule;
-          break;
+          if (callContent.toolUseID === ruleToolUseID) {
+            matchedCall = { frame: callFrame, content: callContent };
+            break;
+          }
         }
 
-        if (!oneTimeRule)
+        if (!matchedCall)
           continue;
+
+        let toolName  = matchedCall.content.toolName;
+        let toolArgs  = matchedCall.content.arguments || {};
+        let toolUseID = matchedCall.content.toolUseID;
+
+        // Hide the placeholder "PERMISSION REQUIRED" ToolResult in the
+        // FrameManager so buildMessages() doesn't include it (prevents
+        // duplicate tool_result blocks for the same tool_use_id).
+        let allFmFrames = (typeof frameManager.toArray === 'function') ? frameManager.toArray() : [];
+        for (let fmFrame of allFmFrames) {
+          if (fmFrame.type !== 'ToolResult' || fmFrame.hidden)
+            continue;
+          let fmContent = (typeof fmFrame.content === 'string')
+            ? (() => { try { return JSON.parse(fmFrame.content); } catch (_e) { return {}; } })()
+            : (fmFrame.content || {});
+          if (fmContent.toolUseID === toolUseID)
+            fmFrame.hidden = true;
+        }
 
         // Execute through the normal tool execution pipeline
         let toolOutput = '';
@@ -460,12 +457,13 @@ export class InteractionLoop extends EventEmitter {
           processed:     false,
         }, frameManager, { authorType: 'system' }, signingContext);
 
-        // Mark the one-time rule as consumed
+        // Mark the one-time rule as consumed via raw SQL
+        // (Mythix ORM save() on persisted models silently drops changes)
         try {
-          let metadata = oneTimeRule.metadata ? JSON.parse(oneTimeRule.metadata) : {};
-          metadata.consumed   = true;
-          oneTimeRule.metadata = JSON.stringify(metadata);
-          await oneTimeRule.save();
+          let consumedMetadata = { ...metadata, consumed: true };
+          let metaJSON = JSON.stringify(consumedMetadata).replace(/'/g, "''");
+          let connection = models.PermissionRule.getConnection();
+          await connection.query(`UPDATE permission_rules SET metadata = '${metaJSON}', "updatedAt" = ${Date.now()} WHERE id = '${oneTimeRule.id}'`);
         } catch (_consumeError) {
           // Best-effort
         }

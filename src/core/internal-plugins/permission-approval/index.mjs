@@ -207,28 +207,50 @@ export function setup(provide) {
         if (!toolUseID)
           return;
 
-        let models = context.getProperty('models');
-        if (!models || !models.Frame)
+        // Hide all frames between the ToolCall and the PermissionRequest in the
+        // FrameManager. This includes the placeholder "PERMISSION REQUIRED"
+        // ToolResult and any agent Messages about needing permission. These
+        // frames would confuse the LLM conversation after the tool is replayed.
+        let frameManager = this.context.frames;
+        if (!frameManager)
           return;
 
-        try {
-          let toolResults = await models.Frame.where
-            .sessionID.EQ(sessionID)
-            .AND.type.EQ('ToolResult')
-            .all();
+        let allFrames = (typeof frameManager.toArray === 'function') ? frameManager.toArray() : [];
 
-          for (let resultFrame of toolResults) {
-            let resultContent = (typeof resultFrame.content === 'string')
-              ? (() => { try { return JSON.parse(resultFrame.content); } catch (_e) { return {}; } })()
-              : (resultFrame.content || {});
-
-            if (resultContent.toolUseID === toolUseID && !resultFrame.hidden) {
-              resultFrame.hidden = true;
-              await resultFrame.save();
-            }
+        // Find the ToolCall frame for this toolUseID
+        let toolCallOrder = -1;
+        for (let fm of allFrames) {
+          if (fm.type !== 'ToolCall')
+            continue;
+          let fmContent = (typeof fm.content === 'string')
+            ? (() => { try { return JSON.parse(fm.content); } catch (_e) { return {}; } })()
+            : (fm.content || {});
+          if (fmContent.toolUseID === toolUseID) {
+            toolCallOrder = fm.order;
+            break;
           }
-        } catch (_error) {
-          // Best-effort
+        }
+
+        if (toolCallOrder < 0)
+          return;
+
+        // Hide all frames after the ToolCall that are:
+        // - ToolResult with matching toolUseID (the placeholder)
+        // - Message frames from the agent (the "needs permission" message)
+        // But NOT PermissionRequest (already handled separately)
+        for (let fm of allFrames) {
+          if (fm.order <= toolCallOrder || fm.hidden)
+            continue;
+
+          if (fm.type === 'ToolResult') {
+            let fmContent = (typeof fm.content === 'string')
+              ? (() => { try { return JSON.parse(fm.content); } catch (_e) { return {}; } })()
+              : (fm.content || {});
+            if (fmContent.toolUseID === toolUseID)
+              fm.hidden = true;
+          } else if (fm.type === 'Message' && fm.authorType === 'agent') {
+            fm.hidden = true;
+          }
         }
       }
 
@@ -260,20 +282,46 @@ export function setup(provide) {
           }
 
           if (organizationID) {
-            await permissions.createRule({
-              organizationID,
-              featureName: toolName,
-              effect:      'allow',
-              scope:       'session',
-              scopeID:     sessionID,
-              createdBy:   content.approvedBy || 'system',
-              metadata:    {
-                oneTime:               true,
-                permissionRequestID:   frame.id,
-                toolArguments:         toolArguments || {},
-                toolUseID:             toolUseID || null,
-              },
-            });
+            // Shell tools check per-command features (e.g., 'shell:echo')
+            // rather than the top-level 'shell:execute'. Create rules that
+            // match the per-command evaluation in ShellPermissions.
+            if (toolName === 'shell:execute' && toolArguments && toolArguments.command) {
+              let { parseShellCommands } = await import('../../internal-plugins/shell/command-parser.mjs');
+              let parsed = parseShellCommands(toolArguments.command);
+
+              for (let cmd of parsed) {
+                await permissions.createRule({
+                  organizationID,
+                  featureName: `shell:${cmd.command}`,
+                  effect:      'allow',
+                  scope:       'session',
+                  scopeID:     sessionID,
+                  createdBy:   content.approvedBy || 'system',
+                  metadata:    {
+                    oneTime:             true,
+                    permissionRequestID: frame.id,
+                    command:             cmd.command,
+                    arguments:           cmd.arguments || [],
+                    toolUseID:           toolUseID || null,
+                  },
+                });
+              }
+            } else {
+              await permissions.createRule({
+                organizationID,
+                featureName: toolName,
+                effect:      'allow',
+                scope:       'session',
+                scopeID:     sessionID,
+                createdBy:   content.approvedBy || 'system',
+                metadata:    {
+                  oneTime:               true,
+                  permissionRequestID:   frame.id,
+                  toolArguments:         toolArguments || {},
+                  toolUseID:             toolUseID || null,
+                },
+              });
+            }
           }
         } catch (ruleError) {
           this.logger.error('[PermissionApproval] Failed to create one-time rule:', ruleError);
@@ -286,8 +334,17 @@ export function setup(provide) {
         // Hide the placeholder "awaiting" ToolResult
         await this._hideAwaitingToolResult(interactionLoop, sessionID, toolUseID);
 
-        // Start new interaction — InteractionLoop will detect approved-but-unexecuted tool call
-        await this._resolveAndStartInteraction(interactionLoop, sessionID);
+        // Defer the replay interaction so the controller's saveFrames() can
+        // persist the hidden/processed state to DB before the interaction
+        // reloads frames. Without this, startInteraction loads stale data.
+        let self = this;
+        setTimeout(async () => {
+          try {
+            await self._resolveAndStartInteraction(interactionLoop, sessionID);
+          } catch (err) {
+            console.error('[PermissionApproval] Deferred startInteraction failed:', err.message);
+          }
+        }, 200);
       }
 
       async _handleDenial(interactionLoop, sessionID, toolName, toolUseID, frame, content) {

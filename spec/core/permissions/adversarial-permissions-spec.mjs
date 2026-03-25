@@ -730,15 +730,15 @@ describe('Adversarial: Re-execution Through Normal Path', () => {
     assert.ok(results[0].content.output.includes('output of shell:execute'));
   });
 
-  // 20. One-time rule consumed after execution
+  // 20. One-time rule consumed after execution (via raw SQL UPDATE)
   it('one-time rule has metadata.consumed=true after successful execution', async () => {
-    let savedMetadata = null;
+    let executedQueries = [];
 
     let ruleRecord = {
       id: 'rule_consume', featureName: 'shell:execute', scope: 'session', scopeID: 'ses_1',
       effect: 'allow',
       metadata: JSON.stringify({ oneTime: true, toolUseID: 'tu_consume' }),
-      save: async function() { savedMetadata = this.metadata; },
+      save: async function() {},
     };
 
     let mockFrameModel = makeMockFrameModel([
@@ -751,6 +751,11 @@ describe('Adversarial: Re-execution Through Normal Path', () => {
     let mockRuleModel = makeMockPermissionRuleModel();
     mockRuleModel._store.push(ruleRecord);
 
+    // The code now uses raw SQL via getConnection().query() to mark rules consumed
+    mockRuleModel.getConnection = () => ({
+      query: async (sql) => { executedQueries.push(sql); },
+    });
+
     let loop = new InteractionLoop(makeContext({
       models: { Frame: mockFrameModel, PermissionRule: mockRuleModel },
     }));
@@ -760,9 +765,9 @@ describe('Adversarial: Re-execution Through Normal Path', () => {
     let params = makeParams({ executeTool: async () => 'ok', replayFromPermission: true });
     await loop._replayApprovedToolCalls('ses_1', 'int_1', params, makeFrameManager(), null);
 
-    assert.ok(savedMetadata, 'rule metadata should have been saved');
-    let parsed = JSON.parse(savedMetadata);
-    assert.equal(parsed.consumed, true, 'consumed flag must be true after execution');
+    // Verify raw SQL UPDATE was issued for the rule with consumed=true in metadata
+    let consumeQuery = executedQueries.find((q) => q.includes('rule_consume') && q.includes('"consumed":true'));
+    assert.ok(consumeQuery, 'should issue raw SQL UPDATE with consumed=true in metadata');
   });
 
   // 21. Tool failure during replay: error ToolResult created, rule still consumed

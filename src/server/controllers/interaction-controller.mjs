@@ -364,39 +364,131 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
-    // Save through the FrameManager so the commit event triggers the
-    // FrameRouter → PermissionApprovalPlugin. Direct ORM saves bypass
-    // the router, which is how the approval was getting lost.
+    // Persist the approval directly via raw SQL to avoid Mythix ORM save() issues.
+    // Do NOT use the FrameRouter here — the async routing causes race conditions
+    // where state changes are overwritten by concurrent saveFrames calls.
     let framePersistence = core.getContext().getProperty('framePersistence');
-    let frameRouter      = core.getFrameRouter();
 
-    if (framePersistence && frameRouter) {
-      let fm = await framePersistence.loadFrames(params.sessionID);
-      let disconnect = frameRouter.connectTo(fm, { sessionID: params.sessionID });
+    // Parse state from the frame
+    let stateObj = null;
+    try {
+      stateObj = (typeof frame.state === 'string') ? JSON.parse(frame.state) : (frame.state || {});
+    } catch (_e) {
+      stateObj = {};
+    }
 
-      try {
-        fm.merge([{
-          id:          frame.id,
-          type:        frame.type,
-          content,
-          processed:   true,
-          processedAt: Date.now(),
-          state:       frame.state,
-        }]);
+    // Update frame: processed=true, hidden=true (no longer visible in UI after approval)
+    // Also update state.step to 'completed' or 'denied'
+    stateObj.step = hasDeny ? 'denied' : 'completed';
+    let stateJSON   = JSON.stringify(stateObj).replace(/'/g, "''");
+    let contentJSON = JSON.stringify(content).replace(/'/g, "''");
+    let now         = Date.now();
 
-        // Persist the merged state
-        await framePersistence.saveFrames(params.sessionID, fm.toArray());
-      } finally {
-        disconnect();
+    let { Frame: FrameModel } = this.getCoreModels();
+    let connection = FrameModel.getConnection();
+
+    await connection.query(`UPDATE frames SET processed = 1, "processedAt" = ${now}, hidden = 1, state = '${stateJSON}', content = '${contentJSON}', "updatedAt" = ${now} WHERE id = '${frame.id}'`);
+
+    // Hide the placeholder ToolResult and the agent's "needs permission" Message
+    let toolUseID = stateObj.toolUseID;
+    if (toolUseID && !hasDeny) {
+      // Hide the "PERMISSION REQUIRED" ToolResult
+      await connection.query(`UPDATE frames SET hidden = 1, "updatedAt" = ${now} WHERE sessionID = '${params.sessionID}' AND type = 'ToolResult' AND content LIKE '%${toolUseID}%' AND content LIKE '%PERMISSION REQUIRED%'`);
+
+      // Hide agent Messages that came after the ToolCall (permission-related messages)
+      let toolCallOrder = await connection.query(`SELECT "order" FROM frames WHERE sessionID = '${params.sessionID}' AND type = 'ToolCall' AND content LIKE '%${toolUseID}%'`);
+      if (toolCallOrder && toolCallOrder.rows && toolCallOrder.rows.length > 0) {
+        let order = toolCallOrder.rows[0][0];
+        await connection.query(`UPDATE frames SET hidden = 1, "updatedAt" = ${now} WHERE sessionID = '${params.sessionID}' AND type = 'Message' AND authorType = 'agent' AND "order" > ${order}`);
       }
-    } else {
-      // Fallback: direct save (router won't fire, but data is persisted)
-      frame.content = JSON.stringify(content);
-      await frame.save();
     }
 
     if (hasDeny)
       return { data: { denied: true } };
+
+    // For approvals: create one-time rule and start replay interaction
+    if (!hasDeny) {
+      let toolName      = stateObj.toolName;
+      let toolArguments = stateObj.toolArguments;
+      let sessionID     = stateObj.sessionID || params.sessionID;
+      let agentID       = stateObj.agentID;
+
+      // Create per-command one-time rules for shell tools
+      try {
+        let { Permissions } = await import('../../core/permissions/permissions-base.mjs');
+        let permissions = new Permissions(core.getContext());
+        let organizationID = this.request.organizationID;
+
+        if (organizationID && toolName === 'shell:execute' && toolArguments && toolArguments.command) {
+          let { parseShellCommands } = await import('../../core/internal-plugins/shell/command-parser.mjs');
+          let parsed = parseShellCommands(toolArguments.command);
+
+          for (let cmd of parsed) {
+            await permissions.createRule({
+              organizationID,
+              featureName: `shell:${cmd.command}`,
+              effect:      'allow',
+              scope:       'session',
+              scopeID:     sessionID,
+              createdBy:   this.request.userID || 'system',
+              metadata:    {
+                oneTime:             true,
+                permissionRequestID: frame.id,
+                command:             cmd.command,
+                arguments:           cmd.arguments || [],
+                toolUseID:           toolUseID || null,
+              },
+            });
+          }
+        } else if (organizationID && toolName) {
+          await permissions.createRule({
+            organizationID,
+            featureName: toolName,
+            effect:      'allow',
+            scope:       'session',
+            scopeID:     sessionID,
+            createdBy:   this.request.userID || 'system',
+            metadata:    {
+              oneTime:             true,
+              permissionRequestID: frame.id,
+              toolArguments:       toolArguments || {},
+              toolUseID:           toolUseID || null,
+            },
+          });
+        }
+      } catch (ruleError) {
+        console.error('[approve] Failed to create one-time rule:', ruleError.message);
+      }
+
+      // Start the replay interaction
+      try {
+        let agentResolver    = core.getContext().getProperty('agentResolver');
+        let interactionLoop  = core.getContext().getProperty('interactionLoop');
+        let sessionScheduler = core.getContext().getProperty('sessionScheduler');
+
+        if (agentResolver && interactionLoop && agentID) {
+          let resolveContext = (sessionScheduler && sessionScheduler.getResolveContext)
+            ? (sessionScheduler.getResolveContext(sessionID) || {})
+            : {};
+
+          let { agentPlugin, resolvedAgent } = await agentResolver.resolve(agentID, resolveContext);
+          let { checkPermission, executeTool } = agentResolver.buildCallbacks(resolvedAgent, sessionID);
+
+          await interactionLoop.startInteraction(sessionID, {
+            agentPlugin,
+            agent:               resolvedAgent,
+            userMessage:         null,
+            authorType:          'agent',
+            authorID:            agentID,
+            checkPermission,
+            executeTool,
+            replayFromPermission: true,
+          });
+        }
+      } catch (replayError) {
+        console.error('[approve] Failed to start replay interaction:', replayError.message);
+      }
+    }
 
     return { data: { approved: true } };
   }

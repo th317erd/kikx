@@ -148,23 +148,13 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
       isActive() { return false; },
     };
 
-    // Track created rules for test assertions
-    let createdRules = [];
-    let models       = core.getModels();
+    let models = core.getModels();
 
-    // Wrap PermissionRule.create to capture created rules
-    let originalCreate = models.PermissionRule.create.bind(models.PermissionRule);
-    let wrappedModels  = {
-      ...models,
-      PermissionRule: {
-        ...models.PermissionRule,
-        create: async (data) => {
-          createdRules.push(data);
-          return originalCreate(data);
-        },
-        where: models.PermissionRule.where,
-      },
-    };
+    // Permissions.createRule() uses `new PermissionRule()` (the actual ORM model
+    // constructor). We must pass the real models object — not a spread copy — so
+    // the constructor is available. We track created rules by querying the DB
+    // after the controller call instead of wrapping create().
+    let ruleSnapshotBefore = null;
 
     let mockApp = {
       getCore() {
@@ -179,7 +169,7 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
                 if (name === 'streamRelay')      return null;
                 if (name === 'valueStoreService') return null;
                 if (name === 'solrService')      return null;
-                if (name === 'models')           return wrappedModels;
+                if (name === 'models')           return models;
                 if (name === 'keystore')         return keystore;
                 return null;
               },
@@ -204,7 +194,19 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
 
     let controller = createController(InteractionController, { mockApp, req, res });
 
-    return { controller, interactionLoop, createdRules, req, res };
+    // Helper to snapshot existing rules before the test action
+    let snapshotRules = async () => {
+      let existing = await models.PermissionRule.where.organizationID.EQ(testOrg.id).all();
+      ruleSnapshotBefore = new Set(existing.map((r) => r.id));
+    };
+
+    // Helper to get newly created rules since the snapshot
+    let getNewRules = async () => {
+      let all = await models.PermissionRule.where.organizationID.EQ(testOrg.id).all();
+      return all.filter((r) => !ruleSnapshotBefore.has(r.id));
+    };
+
+    return { controller, interactionLoop, snapshotRules, getNewRules, req, res };
   }
 
   // ---------------------------------------------------------------------------
@@ -231,8 +233,9 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
 
     it('creates permission rules for "allow-forever" decisions', async () => {
       let { frameID } = await createPermissionRequestFrame();
-      let { controller, createdRules } = buildController({ frameID });
+      let { controller, snapshotRules, getNewRules } = buildController({ frameID });
 
+      await snapshotRules();
       await controller.approve({
         params: { sessionID: 'ses_1', frameID },
         body: {
@@ -242,16 +245,20 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
         },
       });
 
-      assert.equal(createdRules.length, 1, 'should create one rule');
-      assert.equal(createdRules[0].effect, 'allow');
-      assert.equal(createdRules[0].scope, 'session');
-      assert.equal(createdRules[0].scopeID, 'ses_1');
+      let createdRules = await getNewRules();
+      assert.ok(createdRules.length >= 1, 'should create at least one rule');
+      let foreverRule = createdRules.find((r) => r.featureName === 'shell:ls');
+      assert.ok(foreverRule, 'should create a shell:ls rule');
+      assert.equal(foreverRule.effect, 'allow');
+      assert.equal(foreverRule.scope, 'session');
+      assert.equal(foreverRule.scopeID, 'ses_1');
     });
 
     it('creates permission rules for "deny-forever" decisions', async () => {
       let { frameID } = await createPermissionRequestFrame();
-      let { controller, createdRules } = buildController({ frameID });
+      let { controller, snapshotRules, getNewRules } = buildController({ frameID });
 
+      await snapshotRules();
       await controller.approve({
         params: { sessionID: 'ses_1', frameID },
         body: {
@@ -261,14 +268,18 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
         },
       });
 
-      assert.equal(createdRules.length, 1, 'should create one deny rule');
-      assert.equal(createdRules[0].effect, 'deny');
+      let createdRules = await getNewRules();
+      assert.ok(createdRules.length >= 1, 'should create at least one deny rule');
+      let denyRule = createdRules.find((r) => r.featureName === 'shell:rm');
+      assert.ok(denyRule, 'should create a shell:rm rule');
+      assert.equal(denyRule.effect, 'deny');
     });
 
     it('does not create rules for "allow-once" decisions', async () => {
       let { frameID } = await createPermissionRequestFrame();
-      let { controller, createdRules } = buildController({ frameID });
+      let { controller, snapshotRules, getNewRules } = buildController({ frameID });
 
+      await snapshotRules();
       await controller.approve({
         params: { sessionID: 'ses_1', frameID },
         body: {
@@ -278,7 +289,14 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
         },
       });
 
-      assert.equal(createdRules.length, 0, 'should not create rules for allow-once');
+      let createdRules = await getNewRules();
+      // allow-once creates no "forever" rules, but the controller still creates
+      // a one-time rule for the replay. Filter to only "forever" rules (no oneTime in metadata).
+      let foreverRules = createdRules.filter((r) => {
+        let meta = r.metadata ? (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) : {};
+        return !meta.oneTime;
+      });
+      assert.equal(foreverRules.length, 0, 'should not create forever rules for allow-once');
     });
   });
 
@@ -380,14 +398,22 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
 
     it('backward compat: no body / empty decisions is approve-all', async () => {
       let { frameID } = await createPermissionRequestFrame();
-      let { controller, createdRules } = buildController({ frameID });
+      let { controller, snapshotRules, getNewRules } = buildController({ frameID });
 
+      await snapshotRules();
       let result = await controller.approve({
         params: { sessionID: 'ses_1', frameID },
         body:   null,
       });
 
-      assert.equal(createdRules.length, 0, 'no rules created with empty body');
+      let createdRules = await getNewRules();
+      // No "forever" decisions, but the controller creates a one-time rule for replay.
+      // Filter to only "forever" rules (no oneTime in metadata).
+      let foreverRules = createdRules.filter((r) => {
+        let meta = r.metadata ? (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) : {};
+        return !meta.oneTime;
+      });
+      assert.equal(foreverRules.length, 0, 'no forever rules created with empty body');
       assert.equal(result.data.approved, true);
     });
   });
@@ -400,8 +426,9 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
 
     it('handles mixed allow-forever and deny-once decisions', async () => {
       let { frameID } = await createPermissionRequestFrame();
-      let { controller, createdRules } = buildController({ frameID });
+      let { controller, snapshotRules, getNewRules } = buildController({ frameID });
 
+      await snapshotRules();
       let result = await controller.approve({
         params: { sessionID: 'ses_1', frameID },
         body: {
@@ -412,9 +439,14 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
         },
       });
 
-      // allow-forever creates a rule
-      assert.equal(createdRules.length, 1, 'should create one rule (allow-forever)');
-      assert.equal(createdRules[0].effect, 'allow');
+      let createdRules = await getNewRules();
+      // allow-forever creates a rule (deny-once does not)
+      let foreverRules = createdRules.filter((r) => {
+        let meta = r.metadata ? (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) : {};
+        return !meta.oneTime;
+      });
+      assert.ok(foreverRules.length >= 1, 'should create at least one forever rule (allow-forever)');
+      assert.equal(foreverRules[0].effect, 'allow');
 
       // deny-once triggers denial
       assert.equal(result.data.denied, true);
@@ -427,8 +459,9 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
 
     it('featureName includes colon prefix for bare commands', async () => {
       let { frameID } = await createPermissionRequestFrame();
-      let { controller, createdRules } = buildController({ frameID });
+      let { controller, snapshotRules, getNewRules } = buildController({ frameID });
 
+      await snapshotRules();
       await controller.approve({
         params: { sessionID: 'ses_1', frameID },
         body: {
@@ -438,13 +471,17 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
         },
       });
 
-      assert.equal(createdRules[0].featureName, 'shell:ls');
+      let createdRules = await getNewRules();
+      let foreverRule = createdRules.find((r) => r.featureName === 'shell:ls');
+      assert.ok(foreverRule, 'should create a rule with featureName shell:ls');
+      assert.equal(foreverRule.featureName, 'shell:ls');
     });
 
     it('featureName preserved when command already has colon', async () => {
       let { frameID } = await createPermissionRequestFrame();
-      let { controller, createdRules } = buildController({ frameID });
+      let { controller, snapshotRules, getNewRules } = buildController({ frameID });
 
+      await snapshotRules();
       await controller.approve({
         params: { sessionID: 'ses_1', frameID },
         body: {
@@ -454,7 +491,10 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
         },
       });
 
-      assert.equal(createdRules[0].featureName, 'memory:store');
+      let createdRules = await getNewRules();
+      let foreverRule = createdRules.find((r) => r.featureName === 'memory:store');
+      assert.ok(foreverRule, 'should create a rule with featureName memory:store');
+      assert.equal(foreverRule.featureName, 'memory:store');
     });
   });
 });

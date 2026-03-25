@@ -187,22 +187,22 @@ export class AgentResolver {
 
       let toolInstance = new ToolClass(core.getContext());
 
-      if (toolName === 'system:command') {
-        let augmentedArgs = {
-          ...toolArgs,
-          _sessionID: sessionID,
-          _agent:     resolvedAgent,
-        };
+      // Always augment with _sessionID and _agent so that
+      // PluginInterface._permissionOptions() can locate session-scoped
+      // permission rules (e.g., one-time allow rules from approval flow).
+      let augmentedArgs = {
+        ...toolArgs,
+        _sessionID: sessionID,
+        _agent:     resolvedAgent,
+      };
 
-        let result = await toolInstance.execute(augmentedArgs);
+      let result = await toolInstance.execute(augmentedArgs);
 
-        if (result && result.injectPrimer && interactionLoop)
-          interactionLoop.requestPrimerRefresh(sessionID);
+      // system:command may request a primer refresh after execution
+      if (toolName === 'system:command' && result && result.injectPrimer && interactionLoop)
+        interactionLoop.requestPrimerRefresh(sessionID);
 
-        return result;
-      }
-
-      return toolInstance.execute(toolArgs);
+      return result;
     };
 
     return { checkPermission, executeTool };
