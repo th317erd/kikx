@@ -62,7 +62,10 @@ export class FrameManager {
         continue;
 
       frameData.order     = ++this._orderCounter;
-      frameData.timestamp = frameData.timestamp || Date.now();
+
+      // Timestamps are mandatory — enforce at the engine level
+      if (!frameData.timestamp || typeof frameData.timestamp !== 'number')
+        frameData.timestamp = Date.now();
 
       // Propagate signature from merge options if not already set on frameData
       if (options.signature && !frameData.signature)
