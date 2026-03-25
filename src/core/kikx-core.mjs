@@ -17,6 +17,7 @@ import { PermissionEngine }  from './permissions/index.mjs';
 import { HookRunner, HookService } from './hooks/index.mjs';
 import { PrimerAssembler }   from './primer/index.mjs';
 import { FrameRouter }      from './routing/frame-router.mjs';
+import { FrameTypeBase, FrameTypeDefault, FRAME_TYPE_CLASSES } from '../shared/frame-types/index.mjs';
 import { mkdir }            from 'node:fs/promises';
 import { join }             from 'node:path';
 import { fileURLToPath }    from 'node:url';
@@ -294,6 +295,13 @@ export class KikxCore {
     registry.registerClass(BasePluginClass,  { pluginName: 'core' });
     registry.registerClass(FrameRouter,      { pluginName: 'core' });
     registry.registerClass(PermissionEngine, { pluginName: 'core' });
+
+    // Register frame type classes — key = class name (e.g. 'FrameTypeUserMessage')
+    registry.registerClass(FrameTypeBase,    { pluginName: 'core' });
+    registry.registerClass(FrameTypeDefault, { pluginName: 'core' });
+
+    for (let [ , FrameTypeClass ] of Object.entries(FRAME_TYPE_CLASSES))
+      registry.registerClass(FrameTypeClass, { pluginName: 'core' });
 
     let provider = new FilesystemPluginProvider(pluginDirs);
     loader.addProvider(provider);
