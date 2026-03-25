@@ -68,42 +68,31 @@ export class PluginInterface {
       ? this.getPermissionsClass()
       : null;
 
-    if (PermissionsClass) {
-      let permissions = new PermissionsClass(this._context);
-      let result = await permissions.checkPermission(this._featureName(), params, this._permissionOptions(params));
+    // Use tool's PermissionsClass or base Permissions class
+    let { Permissions } = await import('../permissions/permissions-base.mjs');
+    let PermClass   = PermissionsClass || Permissions;
+    let permissions = new PermClass(this._context);
 
-      if (result === false)
-        return; // Approved by custom class
-
-      if (result === true) {
-        // Custom class says needs approval but didn't provide rich context
-        throw this._defaultPermissionError(params);
-      }
-
-      // result === null → defer to base default (fall through)
-    }
-
-    // Base default: check PermissionEngine rules
-    await this._checkPermissionEngine(params);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Base default: PermissionEngine rule check
-  // ---------------------------------------------------------------------------
-
-  async _checkPermissionEngine(params) {
-    let permissionEngine = this._context.getProperty('permissionEngine');
-    if (!permissionEngine)
-      return; // No engine = allow (development mode)
-
-    let needsApproval = await permissionEngine.checkPermission(
+    // First: check custom checkPermission() if the class overrides it
+    let customResult = await permissions.checkPermission(
       this._featureName(), params, this._permissionOptions(params),
     );
 
-    if (!needsApproval)
-      return; // Approved by rule
+    if (customResult === false)
+      return; // Custom class says approved
 
-    throw this._defaultPermissionError(params);
+    if (customResult === true) {
+      // Custom class says needs approval but didn't throw rich error
+      throw this._defaultPermissionError(params);
+    }
+
+    // customResult === null → defer to evaluate()
+    let needsApproval = await permissions.evaluate(
+      this._featureName(), params, this._permissionOptions(params),
+    );
+
+    if (needsApproval)
+      throw this._defaultPermissionError(params);
   }
 
   // ---------------------------------------------------------------------------

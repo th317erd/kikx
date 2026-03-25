@@ -482,28 +482,30 @@ describe('CrossSessionPermissions', () => {
   });
 
   // ===========================================================================
-  // Integration: PermissionEngine + CrossSessionPermissions
+  // Integration: Full permission flow (checkPermission → evaluate)
   // ===========================================================================
 
-  describe('PermissionEngine integration', () => {
-    let engine;
+  describe('full permission flow integration', () => {
     let testOrg;
     let agentA;
     let agentB;
     let parentSession;
 
     beforeEach(async () => {
-      engine        = core.getPermissionEngine();
-      testOrg       = await createOrg('Engine Integration Org');
-      agentA        = await createAgent(testOrg.id, `engine-agent-a-${Date.now()}`);
-      agentB        = await createAgent(testOrg.id, `engine-agent-b-${Date.now()}`);
-      parentSession = await sessionManager.createSession(testOrg.id, { name: 'Engine Parent' });
+      testOrg       = await createOrg('Flow Integration Org');
+      agentA        = await createAgent(testOrg.id, `flow-agent-a-${Date.now()}`);
+      agentB        = await createAgent(testOrg.id, `flow-agent-b-${Date.now()}`);
+      parentSession = await sessionManager.createSession(testOrg.id, { name: 'Flow Parent' });
 
       await sessionManager.addParticipant(parentSession.id, agentA.id);
     });
 
-    it('should always require permission for createSession even with allow rule', async () => {
-      await engine.createRule({
+    it('should always require permission for createSession (checkPermission throws)', async () => {
+      let permissions = new CrossSessionPermissions(context);
+
+      // Create an allow rule — should be ignored because checkPermission
+      // throws before evaluate() is ever reached
+      await permissions.createRule({
         organizationID: testOrg.id,
         featureName:    'cross-session:createSession',
         effect:         'allow',
@@ -511,7 +513,7 @@ describe('CrossSessionPermissions', () => {
       });
 
       await assert.rejects(
-        () => engine.checkPermission(
+        () => permissions.checkPermission(
           'cross-session:createSession',
           { title: 'New Session' },
           {
@@ -529,7 +531,9 @@ describe('CrossSessionPermissions', () => {
     });
 
     it('should auto-approve postToSession when agent is participant', async () => {
-      let result = await engine.checkPermission(
+      let permissions = new CrossSessionPermissions(context);
+
+      let result = await permissions.checkPermission(
         'cross-session:postToSession',
         { sessionID: parentSession.id, message: 'hello', agentID: agentA.id },
         {
@@ -543,8 +547,10 @@ describe('CrossSessionPermissions', () => {
     });
 
     it('should require permission for postToSession when agent is NOT participant', async () => {
+      let permissions = new CrossSessionPermissions(context);
+
       await assert.rejects(
-        () => engine.checkPermission(
+        () => permissions.checkPermission(
           'cross-session:postToSession',
           { sessionID: parentSession.id, message: 'hello', agentID: agentB.id },
           {
@@ -556,7 +562,7 @@ describe('CrossSessionPermissions', () => {
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
           assert.equal(err.title, 'permission.crossSession.postTitle');
-          assert.deepEqual(err.titleParams, { sessionName: 'Engine Parent' });
+          assert.deepEqual(err.titleParams, { sessionName: 'Flow Parent' });
           return true;
         },
       );

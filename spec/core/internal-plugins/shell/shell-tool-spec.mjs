@@ -188,63 +188,9 @@ describe('ShellTool integration', () => {
 // =============================================================================
 
 describe('ShellPermissions', () => {
-  it('should check each command individually', async () => {
-    let checked = [];
+  // checkCommands() static was removed in Phase 2 (replaced by evaluate() flow)
 
-    let mockEngine = {
-      checkPermission: async (featureName, _args, _options) => {
-        checked.push(featureName);
-
-        return featureName === 'shell:rm'; // Only rm needs permission
-      },
-    };
-
-    let commands = [
-      { command: 'ls', arguments: [] },
-      { command: 'rm', arguments: ['-rf', '/'] },
-    ];
-
-    let result = await ShellPermissions.checkCommands(commands, mockEngine, {});
-
-    assert.equal(result, true); // rm needs permission
-    assert.ok(checked.includes('shell:ls'));
-    assert.ok(checked.includes('shell:rm'));
-  });
-
-  it('should return false when all commands are allowed', async () => {
-    let mockEngine = {
-      checkPermission: async () => false, // All allowed
-    };
-
-    let commands = [
-      { command: 'ls', arguments: [] },
-      { command: 'echo', arguments: ['hello'] },
-    ];
-
-    let result = await ShellPermissions.checkCommands(commands, mockEngine, {});
-
-    assert.equal(result, false); // All allowed
-  });
-
-  it('should block entire pipeline if any command needs permission', async () => {
-    let mockEngine = {
-      checkPermission: async (featureName) => {
-        return featureName === 'shell:sudo'; // Only sudo blocked
-      },
-    };
-
-    let commands = [
-      { command: 'echo', arguments: ['hello'] },
-      { command: 'sudo', arguments: ['rm', '-rf', '/'] },
-      { command: 'ls', arguments: [] },
-    ];
-
-    let result = await ShellPermissions.checkCommands(commands, mockEngine, {});
-
-    assert.equal(result, true); // Blocked because sudo needs permission
-  });
-
-  // ---- Phase 3: Permissions base class integration ----
+  // ---- Permissions base class integration ----
 
   it('should extend the Permissions base class', async () => {
     let { Permissions } = await import('../../../../src/core/permissions/permissions-base.mjs');

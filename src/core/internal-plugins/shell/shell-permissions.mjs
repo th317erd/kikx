@@ -13,8 +13,6 @@ import { parseShellCommands }      from './command-parser.mjs';
 // Rule metadata can include { allowedCommands: ['ls', 'cat'] } to restrict
 // which commands a rule applies to. If no allowedCommands, the rule matches
 // all commands.
-//
-// Also provides the legacy static checkCommands() method for backward compat.
 // =============================================================================
 
 export class ShellPermissions extends Permissions {
@@ -29,8 +27,7 @@ export class ShellPermissions extends Permissions {
     if (!commands || commands.length === 0)
       return null;
 
-    // Check each command against PermissionEngine
-    let permissionEngine = this._context?.getProperty?.('permissionEngine');
+    // Check each command against permission rules via evaluate()
     let needsApproval = false;
     let details = [];
 
@@ -38,28 +35,14 @@ export class ShellPermissions extends Permissions {
       let perCommandFeature = `shell:${cmd.command}`;
       let approved = false;
 
-      if (permissionEngine) {
-        try {
-          // Strip toolClass to prevent infinite recursion — the PermissionEngine
-          // would see the toolClass, get its PermissionsClass (us), and call
-          // checkPermission again in an infinite loop.
-          // Pass permissionsInstance directly so the engine can still use
-          // matchesRule() for argument-level rule matching without re-discovering us.
-          let engineOptions = { ...options, toolClass: null, permissionsInstance: this };
+      try {
+        let needs = await this.evaluate(perCommandFeature, cmd, options);
+        approved = !needs;
+      } catch (error) {
+        if (error.name === 'PermissionDeniedError')
+          throw error; // Deny-forever — block everything
 
-          let needs = await Promise.race([
-            permissionEngine.checkPermission(perCommandFeature, cmd, engineOptions),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Permission check timed out')), 5000)),
-          ]);
-          console.log(`[ShellPerm] ${perCommandFeature} result: needs=${needs}`);
-          approved = !needs;
-        } catch (error) {
-          if (error.name === 'PermissionDeniedError')
-            throw error; // Deny-forever — block everything
-
-          // Timeout or other error — treat as needing approval
-          console.error('[ShellPermissions] Permission check error:', error.message);
-        }
+        // Other error — treat as needing approval
       }
 
       if (approved) {
@@ -115,19 +98,4 @@ export class ShellPermissions extends Permissions {
     return { matches: true }; // no metadata filter = rule matches
   }
 
-  // Legacy static method (backward compat with existing tests)
-  static async checkCommands(commands, permissionEngine, options) {
-    for (let command of commands) {
-      let needsPermission = await permissionEngine.checkPermission(
-        `shell:${command.command}`,
-        command,
-        options,
-      );
-
-      if (needsPermission)
-        return true;
-    }
-
-    return false;
-  }
 }

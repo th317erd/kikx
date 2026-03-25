@@ -4,10 +4,21 @@ import { describe, it, beforeEach } from 'node:test';
 import assert                        from 'node:assert/strict';
 
 import { PluginInterface }          from '../../../src/core/plugin-loader/plugin-interface.mjs';
+import { Permissions }              from '../../../src/core/permissions/permissions-base.mjs';
 import { PermissionRequiredError }  from '../../../src/core/permissions/permission-required-error.mjs';
+import { PermissionDeniedError }    from '../../../src/core/permissions/permission-denied-error.mjs';
 
 // =============================================================================
 // PluginInterface — Permission Checking
+// =============================================================================
+// Tests for the rewritten _checkPermissions() flow that uses
+// Permissions.evaluate() directly (no PermissionEngine).
+//
+// Flow:
+//   1. riskLevel 'none' → skip everything
+//   2. Instantiate PermissionsClass (or base Permissions)
+//   3. Call checkPermission() — false=approve, true=deny, null=defer
+//   4. Call evaluate() — false=approve, true=deny, throws=denied
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -31,8 +42,11 @@ function createMockTool(overrides = {}) {
 
   let context = {
     getProperty: (name) => {
-      if (name === 'permissionEngine')
-        return overrides.permissionEngine || null;
+      if (overrides.contextProperties && name in overrides.contextProperties)
+        return overrides.contextProperties[name];
+
+      if (name === 'models')
+        return overrides.models || null;
 
       return null;
     },
@@ -41,9 +55,11 @@ function createMockTool(overrides = {}) {
   return new MockTool(context);
 }
 
-function createMockPermissionEngine(checkResult) {
-  return {
-    checkPermission: async () => checkResult,
+// A mock Permissions class that stubs evaluate() to return a controlled result
+function createMockPermissionsClass({ checkResult = null, evaluateResult = false } = {}) {
+  return class MockPermissions extends Permissions {
+    async checkPermission() { return checkResult; }
+    async evaluate()        { return evaluateResult; }
   };
 }
 
@@ -54,116 +70,76 @@ function createMockPermissionEngine(checkResult) {
 describe('PluginInterface — Permission Checking', () => {
 
   // ===========================================================================
-  // Happy paths: base default (no PermissionsClass)
+  // riskLevel 'none' — no permission check
   // ===========================================================================
 
-  describe('base default (no PermissionsClass)', () => {
-
-    it('riskLevel "none" should return immediately without calling PermissionEngine', async () => {
-      let engineCalled = false;
-      let engine = {
-        checkPermission: async () => {
-          engineCalled = true;
-          return true;
-        },
+  describe('riskLevel "none" — skip permission check', () => {
+    it('should return immediately without calling evaluate()', async () => {
+      let evaluateCalled = false;
+      let PermClass = class extends Permissions {
+        async evaluate() { evaluateCalled = true; return true; }
       };
 
-      let tool = createMockTool({ riskLevel: 'none', permissionEngine: engine });
+      let tool = createMockTool({ riskLevel: 'none', PermissionsClass: PermClass });
       let result = await tool.execute({ input: 'test' });
 
-      assert.equal(engineCalled, false);
+      assert.equal(evaluateCalled, false);
+      assert.deepEqual(result, { executed: true, params: { input: 'test' } });
+    });
+  });
+
+  // ===========================================================================
+  // No PermissionsClass on tool — uses base Permissions.evaluate()
+  // ===========================================================================
+
+  describe('no PermissionsClass — uses base Permissions', () => {
+    it('evaluate() returns false → proceeds (approved)', async () => {
+      let PermClass = createMockPermissionsClass({ evaluateResult: false });
+      // Tool has no getPermissionsClass, so base Permissions is used.
+      // We need to override the dynamic import to use our mock — but since
+      // the base class is used, we actually test through Permissions.evaluate().
+      // For unit testing, use PermissionsClass override to simulate base behavior.
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
+      let result = await tool.execute({ input: 'test' });
+
       assert.deepEqual(result, { executed: true, params: { input: 'test' } });
     });
 
-    it('riskLevel "high" + PermissionEngine approved should run _execute', async () => {
-      let engine = createMockPermissionEngine(false); // false = approved
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: engine });
-      let result = await tool.execute({ input: 'test' });
-
-      assert.deepEqual(result, { executed: true, params: { input: 'test' } });
-    });
-
-    it('riskLevel "high" + PermissionEngine needs approval should throw PermissionRequiredError', async () => {
-      let engine = createMockPermissionEngine(true); // true = needs approval
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: engine });
+    it('evaluate() returns true → throws PermissionRequiredError', async () => {
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
 
       await assert.rejects(
         () => tool.execute({ input: 'test' }),
         (error) => {
           assert.ok(error instanceof PermissionRequiredError);
-          assert.equal(error.name, 'PermissionRequiredError');
           return true;
         },
       );
     });
+  });
 
-    it('should strip _ params and format as label/value in default details', async () => {
-      let engine = createMockPermissionEngine(true);
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: engine });
+  // ===========================================================================
+  // Custom PermissionsClass — checkPermission() returns false (approved)
+  // ===========================================================================
 
-      try {
-        await tool.execute({ command: 'ls', _sessionID: 'secret', path: '/tmp' });
-        assert.fail('should have thrown');
-      } catch (error) {
-        assert.ok(error instanceof PermissionRequiredError);
-        let labels = error.details.map((d) => d.label);
-        assert.ok(labels.includes('command'));
-        assert.ok(labels.includes('path'));
-        assert.ok(!labels.includes('_sessionID'));
-      }
-    });
-
-    it('_featureName() should return "pluginID:featureName"', async () => {
-      let engine = createMockPermissionEngine(true);
-      let tool   = createMockTool({
-        pluginID:         'myPlugin',
-        featureName:      'myFeature',
-        riskLevel:        'high',
-        permissionEngine: engine,
-      });
-
-      try {
-        await tool.execute({});
-        assert.fail('should have thrown');
-      } catch (error) {
-        assert.ok(error instanceof PermissionRequiredError);
-        assert.equal(error.featureName, 'myPlugin:myFeature');
-      }
+  describe('PermissionsClass.evaluate() returns false → proceeds', () => {
+    it('should approve and run _execute', async () => {
+      let PermClass = createMockPermissionsClass({ evaluateResult: false });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
+      let result = await tool.execute({ input: 'test' });
+      assert.deepEqual(result, { executed: true, params: { input: 'test' } });
     });
   });
 
   // ===========================================================================
-  // Happy paths: custom PermissionsClass
+  // PermissionsClass.evaluate() returns true → throws PermissionRequiredError
   // ===========================================================================
 
-  describe('custom PermissionsClass', () => {
-
-    it('checkPermission returns false should approve (no throw)', async () => {
-      class MockPermissions {
-        constructor() {}
-        async checkPermission() { return false; }
-      }
-
-      let tool = createMockTool({
-        riskLevel:        'high',
-        PermissionsClass: MockPermissions,
-        permissionEngine: createMockPermissionEngine(true), // engine would deny
-      });
-
-      let result = await tool.execute({ input: 'test' });
-      assert.deepEqual(result, { executed: true, params: { input: 'test' } });
-    });
-
-    it('checkPermission returns true should throw default PermissionRequiredError', async () => {
-      class MockPermissions {
-        constructor() {}
-        async checkPermission() { return true; }
-      }
-
-      let tool = createMockTool({
-        riskLevel:        'high',
-        PermissionsClass: MockPermissions,
-      });
+  describe('PermissionsClass.evaluate() returns true → throws', () => {
+    it('should throw PermissionRequiredError', async () => {
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
 
       await assert.rejects(
         () => tool.execute({ command: 'test' }),
@@ -173,10 +149,144 @@ describe('PluginInterface — Permission Checking', () => {
         },
       );
     });
+  });
 
-    it('checkPermission throws PermissionRequiredError should rethrow with rich context', async () => {
-      class MockPermissions {
-        constructor() {}
+  // ===========================================================================
+  // PermissionsClass.evaluate() throws PermissionDeniedError → propagates
+  // ===========================================================================
+
+  describe('PermissionsClass.evaluate() throws PermissionDeniedError → propagates', () => {
+    it('should propagate PermissionDeniedError from evaluate()', async () => {
+      let PermClass = class extends Permissions {
+        async checkPermission() { return null; }
+        async evaluate() { throw new PermissionDeniedError('test:tool', 'explicit deny'); }
+      };
+
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
+
+      await assert.rejects(
+        () => tool.execute({}),
+        (error) => {
+          assert.ok(error instanceof PermissionDeniedError);
+          assert.equal(error.featureName, 'test:tool');
+          return true;
+        },
+      );
+    });
+  });
+
+  // ===========================================================================
+  // Timeout: evaluate() hangs → times out after 10s
+  // ===========================================================================
+
+  describe('timeout — evaluate() hangs', () => {
+    it('should time out after 10s', async () => {
+      let PermClass = class extends Permissions {
+        async checkPermission() { return null; }
+        async evaluate() { return new Promise(() => {}); } // never resolves
+      };
+
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
+
+      await assert.rejects(
+        () => tool.execute({}),
+        (error) => {
+          assert.ok(error.message.includes('timed out'));
+          return true;
+        },
+      );
+    }, { timeout: 15000 });
+  });
+
+  // ===========================================================================
+  // PermissionsClass.checkPermission() returns null → falls through to evaluate()
+  // ===========================================================================
+
+  describe('checkPermission() returns null → falls through to evaluate()', () => {
+    it('evaluate() returns false → approved', async () => {
+      let evaluateCalled = false;
+      let PermClass = class extends Permissions {
+        async checkPermission() { return null; }
+        async evaluate() { evaluateCalled = true; return false; }
+      };
+
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
+      let result = await tool.execute({ input: 'test' });
+
+      assert.equal(evaluateCalled, true);
+      assert.deepEqual(result, { executed: true, params: { input: 'test' } });
+    });
+
+    it('evaluate() returns true → denied', async () => {
+      let PermClass = class extends Permissions {
+        async checkPermission() { return null; }
+        async evaluate() { return true; }
+      };
+
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
+
+      await assert.rejects(
+        () => tool.execute({}),
+        (error) => {
+          assert.ok(error instanceof PermissionRequiredError);
+          return true;
+        },
+      );
+    });
+  });
+
+  // ===========================================================================
+  // PermissionsClass.checkPermission() returns false → short-circuit approve
+  // ===========================================================================
+
+  describe('checkPermission() returns false → short-circuit approve', () => {
+    it('should approve without calling evaluate()', async () => {
+      let evaluateCalled = false;
+      let PermClass = class extends Permissions {
+        async checkPermission() { return false; }
+        async evaluate() { evaluateCalled = true; return true; }
+      };
+
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
+      let result = await tool.execute({ input: 'test' });
+
+      assert.equal(evaluateCalled, false);
+      assert.deepEqual(result, { executed: true, params: { input: 'test' } });
+    });
+  });
+
+  // ===========================================================================
+  // PermissionsClass.checkPermission() returns true → short-circuit deny
+  // ===========================================================================
+
+  describe('checkPermission() returns true → short-circuit deny', () => {
+    it('should throw default PermissionRequiredError without calling evaluate()', async () => {
+      let evaluateCalled = false;
+      let PermClass = class extends Permissions {
+        async checkPermission() { return true; }
+        async evaluate() { evaluateCalled = true; return false; }
+      };
+
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
+
+      await assert.rejects(
+        () => tool.execute({ command: 'test' }),
+        (error) => {
+          assert.ok(error instanceof PermissionRequiredError);
+          assert.equal(evaluateCalled, false);
+          return true;
+        },
+      );
+    });
+  });
+
+  // ===========================================================================
+  // checkPermission throws PermissionRequiredError → rethrows with rich context
+  // ===========================================================================
+
+  describe('checkPermission throws PermissionRequiredError', () => {
+    it('should rethrow with rich context intact', async () => {
+      let PermClass = class extends Permissions {
         async checkPermission() {
           throw new PermissionRequiredError('shell:execute', {
             title:       'Run dangerous command',
@@ -184,12 +294,9 @@ describe('PluginInterface — Permission Checking', () => {
             details:     [{ label: 'command', value: 'rm -rf /' }],
           });
         }
-      }
+      };
 
-      let tool = createMockTool({
-        riskLevel:        'high',
-        PermissionsClass: MockPermissions,
-      });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
 
       try {
         await tool.execute({});
@@ -200,31 +307,6 @@ describe('PluginInterface — Permission Checking', () => {
         assert.equal(error.description, 'This command is dangerous.');
         assert.deepEqual(error.details, [{ label: 'command', value: 'rm -rf /' }]);
       }
-    });
-
-    it('checkPermission returns null should fall through to PermissionEngine', async () => {
-      let engineCalled = false;
-      let engine = {
-        checkPermission: async () => {
-          engineCalled = true;
-          return false; // approved
-        },
-      };
-
-      class MockPermissions {
-        constructor() {}
-        async checkPermission() { return null; }
-      }
-
-      let tool = createMockTool({
-        riskLevel:        'high',
-        PermissionsClass: MockPermissions,
-        permissionEngine: engine,
-      });
-
-      let result = await tool.execute({ input: 'test' });
-      assert.equal(engineCalled, true);
-      assert.deepEqual(result, { executed: true, params: { input: 'test' } });
     });
   });
 
@@ -260,8 +342,8 @@ describe('PluginInterface — Permission Checking', () => {
     });
 
     it('should store _params on instance', async () => {
-      let engine = createMockPermissionEngine(false);
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: engine });
+      let PermClass = createMockPermissionsClass({ evaluateResult: false });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
 
       let params = { command: 'ls', _sessionID: 'sess123' };
       await tool.execute(params);
@@ -270,8 +352,8 @@ describe('PluginInterface — Permission Checking', () => {
     });
 
     it('should return _execute() result', async () => {
-      let engine = createMockPermissionEngine(false);
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: engine });
+      let PermClass = createMockPermissionsClass({ evaluateResult: false });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
       let result = await tool.execute({ input: 'test' });
 
       assert.deepEqual(result, { executed: true, params: { input: 'test' } });
@@ -291,8 +373,11 @@ describe('PluginInterface — Permission Checking', () => {
         }
       }
 
-      let engine  = createMockPermissionEngine(true); // needs approval
-      let context = { getProperty: (name) => name === 'permissionEngine' ? engine : null };
+      // Provide a PermissionsClass whose evaluate() returns true (needs approval)
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      BlockedTool.prototype.getPermissionsClass = () => PermClass;
+
+      let context = { getProperty: () => null };
       let tool    = new BlockedTool(context);
 
       await assert.rejects(
@@ -308,48 +393,38 @@ describe('PluginInterface — Permission Checking', () => {
   });
 
   // ===========================================================================
+  // _featureName()
+  // ===========================================================================
+
+  describe('_featureName()', () => {
+    it('should return "pluginID:featureName"', async () => {
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      let tool = createMockTool({
+        pluginID:         'myPlugin',
+        featureName:      'myFeature',
+        riskLevel:        'high',
+        PermissionsClass: PermClass,
+      });
+
+      try {
+        await tool.execute({});
+        assert.fail('should have thrown');
+      } catch (error) {
+        assert.ok(error instanceof PermissionRequiredError);
+        assert.equal(error.featureName, 'myPlugin:myFeature');
+      }
+    });
+  });
+
+  // ===========================================================================
   // Sad paths
   // ===========================================================================
 
   describe('sad paths', () => {
 
-    it('no PermissionEngine on context should allow (dev mode)', async () => {
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: null });
-      let result = await tool.execute({ input: 'test' });
-
-      assert.deepEqual(result, { executed: true, params: { input: 'test' } });
-    });
-
-    it('PermissionEngine throws unexpected error should propagate', async () => {
-      let engine = {
-        checkPermission: async () => { throw new Error('Database connection lost'); },
-      };
-
-      let tool = createMockTool({ riskLevel: 'high', permissionEngine: engine });
-
-      await assert.rejects(
-        () => tool.execute({}),
-        { message: 'Database connection lost' },
-      );
-    });
-
-    it('getPermissionsClass returns null should use base default', async () => {
-      class NullPermissions {
-        constructor() {}
-      }
-
-      // Override getPermissionsClass to return null explicitly
-      let engine = createMockPermissionEngine(false);
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: engine });
-      tool.getPermissionsClass = () => null;
-
-      let result = await tool.execute({ input: 'test' });
-      assert.deepEqual(result, { executed: true, params: { input: 'test' } });
-    });
-
     it('riskLevel undefined should be treated as needing permission (deny-by-default)', async () => {
-      let engine = createMockPermissionEngine(true); // needs approval
-      let tool   = createMockTool({ riskLevel: undefined, permissionEngine: engine });
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      let tool = createMockTool({ riskLevel: undefined, PermissionsClass: PermClass });
 
       await assert.rejects(
         () => tool.execute({}),
@@ -360,11 +435,10 @@ describe('PluginInterface — Permission Checking', () => {
       );
     });
 
-    it('riskLevel "critical" should always need approval', async () => {
-      // Even if engine says approved, critical means the engine itself returns true
-      // (per PermissionEngine logic). We test that _checkPermissions passes through.
-      let engine = createMockPermissionEngine(true);
-      let tool   = createMockTool({ riskLevel: 'critical', permissionEngine: engine });
+    it('riskLevel "critical" should always need approval (evaluate safety net)', async () => {
+      // evaluate() has a safety net: toolClass.riskLevel === 'critical' → always true
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      let tool = createMockTool({ riskLevel: 'critical', PermissionsClass: PermClass });
 
       await assert.rejects(
         () => tool.execute({}),
@@ -373,11 +447,27 @@ describe('PluginInterface — Permission Checking', () => {
           return true;
         },
       );
+    });
+
+    it('should strip _ params and format as label/value in default details', async () => {
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
+
+      try {
+        await tool.execute({ command: 'ls', _sessionID: 'secret', path: '/tmp' });
+        assert.fail('should have thrown');
+      } catch (error) {
+        assert.ok(error instanceof PermissionRequiredError);
+        let labels = error.details.map((d) => d.label);
+        assert.ok(labels.includes('command'));
+        assert.ok(labels.includes('path'));
+        assert.ok(!labels.includes('_sessionID'));
+      }
     });
 
     it('params with only _ keys should produce empty details', async () => {
-      let engine = createMockPermissionEngine(true);
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: engine });
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
 
       try {
         await tool.execute({ _sessionID: 'sess', _agent: { organizationID: 'org' } });
@@ -389,8 +479,8 @@ describe('PluginInterface — Permission Checking', () => {
     });
 
     it('params with large values should be truncated to 200 chars', async () => {
-      let engine = createMockPermissionEngine(true);
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: engine });
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
 
       let longValue = 'x'.repeat(300);
       try {
@@ -406,8 +496,8 @@ describe('PluginInterface — Permission Checking', () => {
     });
 
     it('params with object values should be JSON.stringified', async () => {
-      let engine = createMockPermissionEngine(true);
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: engine });
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
 
       try {
         await tool.execute({ config: { key: 'value', nested: true } });
@@ -421,8 +511,8 @@ describe('PluginInterface — Permission Checking', () => {
     });
 
     it('params is null should produce empty details', async () => {
-      let engine = createMockPermissionEngine(true);
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: engine });
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
 
       try {
         await tool.execute(null);
@@ -434,8 +524,8 @@ describe('PluginInterface — Permission Checking', () => {
     });
 
     it('params with null values should be excluded from details', async () => {
-      let engine = createMockPermissionEngine(true);
-      let tool   = createMockTool({ riskLevel: 'high', permissionEngine: engine });
+      let PermClass = createMockPermissionsClass({ evaluateResult: true });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
 
       try {
         await tool.execute({ command: 'ls', optional: null });
@@ -449,15 +539,11 @@ describe('PluginInterface — Permission Checking', () => {
     });
 
     it('custom PermissionsClass throws non-permission error should propagate', async () => {
-      class BrokenPermissions {
-        constructor() {}
+      let PermClass = class extends Permissions {
         async checkPermission() { throw new TypeError('Cannot read property of undefined'); }
-      }
+      };
 
-      let tool = createMockTool({
-        riskLevel:        'high',
-        PermissionsClass: BrokenPermissions,
-      });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
 
       await assert.rejects(
         () => tool.execute({}),
@@ -465,18 +551,30 @@ describe('PluginInterface — Permission Checking', () => {
       );
     });
 
+    it('getPermissionsClass returns null should use base Permissions class', async () => {
+      // When getPermissionsClass returns null, the base Permissions class is used.
+      // Base Permissions.checkPermission() returns null (defer to evaluate).
+      // Base evaluate() needs models to query PermissionRule. When models is null
+      // (no DB context), evaluate() returns false (allow — dev/test mode).
+      let tool = createMockTool({ riskLevel: 'high' });
+      tool.getPermissionsClass = () => null;
+
+      let result = await tool.execute({ input: 'test' });
+      assert.deepEqual(result, { executed: true, params: { input: 'test' } });
+    });
+
     it('_permissionOptions should extract organizationID, scope, and scopeID', async () => {
-      // We test this indirectly by verifying the engine receives the right options
       let capturedOptions;
-      let engine = {
-        checkPermission: async (_feat, _args, opts) => {
+      let PermClass = class extends Permissions {
+        async checkPermission() { return null; }
+        async evaluate(_feat, _args, opts) {
           capturedOptions = opts;
-          return false; // approved
-        },
+          return false;
+        }
       };
 
       let agent = { organizationID: 'org_123' };
-      let tool  = createMockTool({ riskLevel: 'high', permissionEngine: engine });
+      let tool = createMockTool({ riskLevel: 'high', PermissionsClass: PermClass });
 
       await tool.execute({ _agent: agent, _sessionID: 'sess_456', command: 'ls' });
 

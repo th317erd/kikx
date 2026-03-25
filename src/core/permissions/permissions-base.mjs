@@ -75,7 +75,11 @@ export class Permissions {
     let riskLevel = await this._resolveRiskLevel(options);
 
     // Load matching rules
-    let { PermissionRule } = this._getModels();
+    let models = this._getModels();
+    if (!models || !models.PermissionRule)
+      return false; // No models available — allow (development/test mode)
+
+    let { PermissionRule } = models;
     let rules = await PermissionRule.where
       .organizationID.EQ(organizationID)
       .featureName.EQ(featureName)

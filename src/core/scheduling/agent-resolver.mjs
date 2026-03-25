@@ -1,6 +1,8 @@
 'use strict';
 
-import { parseShellCommands } from '../internal-plugins/shell/command-parser.mjs';
+import { parseShellCommands }  from '../internal-plugins/shell/command-parser.mjs';
+import { Permissions }         from '../permissions/permissions-base.mjs';
+import { ShellPermissions }    from '../internal-plugins/shell/shell-permissions.mjs';
 
 // =============================================================================
 // Agent Resolver
@@ -87,10 +89,10 @@ export class AgentResolver {
   // ---------------------------------------------------------------------------
 
   buildCallbacks(resolvedAgent, sessionID) {
-    let core             = this._core;
-    let permissionEngine = core.getPermissionEngine();
-    let pluginRegistry   = core.getPluginRegistry();
-    let interactionLoop  = core.getContext().getProperty('interactionLoop');
+    let core            = this._core;
+    let pluginRegistry  = core.getPluginRegistry();
+    let interactionLoop = core.getContext().getProperty('interactionLoop');
+    let context         = core.getContext();
 
     let checkPermission = async (featureName, toolArgs) => {
       if (featureName === 'system:command' && toolArgs && toolArgs.command)
@@ -99,22 +101,21 @@ export class AgentResolver {
       if (featureName.startsWith('command:') && toolArgs && toolArgs.authorType === 'user')
         return false;
 
-      if (!permissionEngine)
-        return true;
+      let permissionOptions = {
+        organizationID: resolvedAgent.organizationID,
+        scope:          'session',
+        scopeID:        sessionID,
+        agent:          resolvedAgent,
+      };
 
       // Per-command permission evaluation for shell:execute
       if (featureName === 'shell:execute' && toolArgs && toolArgs.command) {
         let parsed = parseShellCommands(toolArgs.command);
 
         if (parsed.length > 0) {
-          let ShellToolClass    = pluginRegistry.getTool('shell:execute');
-          let permissionOptions = {
-            organizationID: resolvedAgent.organizationID,
-            scope:          'session',
-            scopeID:        sessionID,
-            toolClass:      ShellToolClass,
-            agent:          resolvedAgent,
-          };
+          let ShellToolClass = pluginRegistry.getTool('shell:execute');
+          let shellOptions   = { ...permissionOptions, toolClass: ShellToolClass };
+          let shellPerms     = new ShellPermissions(context);
 
           let anyNeedsApproval = false;
           let commandStatuses  = [];
@@ -124,7 +125,7 @@ export class AgentResolver {
             let status            = 'needs-approval';
 
             try {
-              let needsPermission = await permissionEngine.checkPermission(perCommandFeature, cmd, permissionOptions);
+              let needsPermission = await shellPerms.evaluate(perCommandFeature, cmd, shellOptions);
 
               if (!needsPermission)
                 status = 'allowed';
@@ -149,15 +150,34 @@ export class AgentResolver {
         }
       }
 
-      let ToolClass = pluginRegistry.getTool(featureName);
+      let ToolClass   = pluginRegistry.getTool(featureName);
+      let PermClass   = null;
 
-      return permissionEngine.checkPermission(featureName, toolArgs, {
-        organizationID: resolvedAgent.organizationID,
-        scope:          'session',
-        scopeID:        sessionID,
-        toolClass:      ToolClass,
-        agent:          resolvedAgent,
-      });
+      // Discover the PermissionsClass from the tool if available
+      if (ToolClass) {
+        let tempInstance = new ToolClass(context);
+        PermClass = (typeof tempInstance.getPermissionsClass === 'function')
+          ? tempInstance.getPermissionsClass()
+          : null;
+      }
+
+      let permissions = new (PermClass || Permissions)(context);
+
+      // Check custom checkPermission first
+      let customResult = await permissions.checkPermission(
+        featureName, toolArgs, { ...permissionOptions, toolClass: ToolClass },
+      );
+
+      if (customResult === false)
+        return false;
+
+      if (customResult === true)
+        return true;
+
+      // Defer to evaluate()
+      return permissions.evaluate(
+        featureName, toolArgs, { ...permissionOptions, toolClass: ToolClass },
+      );
     };
 
     let executeTool = async (toolName, toolArgs) => {

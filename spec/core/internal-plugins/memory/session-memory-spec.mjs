@@ -60,12 +60,9 @@ describe('Memory Plugin — Session Tools', () => {
   }
 
   function instantiateTool(ToolClass) {
-    return new ToolClass({
-      getProperty: (key) => {
-        if (key === 'permissionEngine') return null; // bypass permissions in unit tests
-        return context.getProperty(key);
-      },
-    });
+    let tool = new ToolClass(context);
+    tool._checkPermissions = async () => {}; // bypass permissions in unit tests
+    return tool;
   }
 
   // ---------------------------------------------------------------------------

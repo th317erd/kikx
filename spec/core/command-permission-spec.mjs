@@ -68,15 +68,11 @@ describe('Command Permissions (system:command)', () => {
   });
 
   // Helpers
-  /** Wrap context so permissionEngine returns null (bypass tool-level permissions). */
-  function noPermContext() {
-    return {
-      getProperty: (key) => {
-        if (key === 'permissionEngine') return null;
-        return context.getProperty(key);
-      },
-      setProperty: (key, val) => context.setProperty(key, val),
-    };
+  /** Create a tool instance that bypasses permission checks. */
+  function createBypassedTool(ToolClass) {
+    let tool = new ToolClass(context);
+    tool._checkPermissions = async () => {}; // bypass permissions in unit tests
+    return tool;
   }
 
   async function createTestSession() {
@@ -447,7 +443,7 @@ describe('Command Permissions (system:command)', () => {
           if (!ToolClass)
             throw new Error(`Unknown tool: ${toolName}`);
 
-          let toolInstance = new ToolClass(noPermContext());
+          let toolInstance = createBypassedTool(ToolClass);
           let result = await toolInstance._execute({
             ...toolArgs,
             _sessionID: session.id,
@@ -467,7 +463,7 @@ describe('Command Permissions (system:command)', () => {
     it('should return error HTML when command is empty', async () => {
       let registry  = context.getProperty('pluginRegistry');
       let ToolClass = registry.getTool('system:command');
-      let tool      = new ToolClass(noPermContext());
+      let tool      = createBypassedTool(ToolClass);
 
       let result = await tool.execute({ command: '', _sessionID: 'ses_test' });
       assert.ok(result.html.includes('required'));
@@ -476,7 +472,7 @@ describe('Command Permissions (system:command)', () => {
     it('should return error HTML when command is missing', async () => {
       let registry  = context.getProperty('pluginRegistry');
       let ToolClass = registry.getTool('system:command');
-      let tool      = new ToolClass(noPermContext());
+      let tool      = createBypassedTool(ToolClass);
 
       let result = await tool.execute({ _sessionID: 'ses_test' });
       assert.ok(result.html.includes('required'));
@@ -527,7 +523,7 @@ describe('Command Permissions (system:command)', () => {
 
       // Execute directly via the tool
       let ToolClass    = registry.getTool('system:command');
-      let toolInstance = new ToolClass(noPermContext());
+      let toolInstance = createBypassedTool(ToolClass);
 
       await toolInstance._execute({
         command:    'spy-auth-cmd-2',

@@ -460,28 +460,29 @@ describe('MemoryPermissions', () => {
   });
 
   // ===========================================================================
-  // PermissionEngine integration
+  // Full permission flow integration (checkPermission → evaluate)
   // ===========================================================================
 
-  describe('PermissionEngine integration', () => {
-    let engine;
+  describe('full permission flow integration', () => {
     let models;
     let organization;
 
     before(async () => {
-      engine = core.getPermissionEngine();
       models = core.getModels();
     });
 
-    it('auto-approves getAgentConfig for self-access through PermissionEngine', async () => {
-      organization = await models.Organization.create({ name: 'MemPerm Engine Org' });
+    it('auto-approves getAgentConfig for self-access via checkPermission()', async () => {
+      organization = await models.Organization.create({ name: 'MemPerm Flow Org' });
       let agent = await models.Agent.create({
         organizationID: organization.id,
-        name:           'test-engine-agent',
+        name:           'test-flow-agent',
         pluginID:       'mock-agent',
       });
 
-      let result = await engine.checkPermission(
+      let permissions = new MemoryPermissions(context);
+
+      // checkPermission returns false (auto-approved for self-access)
+      let result = await permissions.checkPermission(
         'memory:getAgentConfig',
         { agentID: agent.id },
         {
@@ -491,23 +492,26 @@ describe('MemoryPermissions', () => {
         },
       );
 
-      assert.equal(result, false, 'Self-access getAgentConfig should be auto-approved via engine');
+      assert.equal(result, false, 'Self-access getAgentConfig should be auto-approved');
     });
 
-    it('defers cross-agent getValue through PermissionEngine (falls through to rules)', async () => {
-      organization = await models.Organization.create({ name: 'MemPerm Engine Org 2' });
+    it('defers cross-agent getValue — checkPermission returns null, evaluate denies', async () => {
+      organization = await models.Organization.create({ name: 'MemPerm Flow Org 2' });
       let callerAgent = await models.Agent.create({
         organizationID: organization.id,
-        name:           'test-engine-caller',
+        name:           'test-flow-caller',
         pluginID:       'mock-agent',
       });
       let targetAgent = await models.Agent.create({
         organizationID: organization.id,
-        name:           'test-engine-target',
+        name:           'test-flow-target',
         pluginID:       'mock-agent',
       });
 
-      let result = await engine.checkPermission(
+      let permissions = new MemoryPermissions(context);
+
+      // checkPermission returns null (defer to evaluate)
+      let customResult = await permissions.checkPermission(
         'memory:getValue',
         { agentID: targetAgent.id, key: 'secret' },
         {
@@ -516,20 +520,32 @@ describe('MemoryPermissions', () => {
           agent:          callerAgent,
         },
       );
+      assert.equal(customResult, null, 'Cross-agent getValue should defer');
 
-      // No allow rules exist, so should require approval
-      assert.equal(result, true, 'Cross-agent getValue should require approval');
+      // evaluate returns true (no allow rules = needs approval)
+      let needsApproval = await permissions.evaluate(
+        'memory:getValue',
+        { agentID: targetAgent.id, key: 'secret' },
+        {
+          organizationID: organization.id,
+          toolClass:      GetMemoryValueTool,
+          agent:          callerAgent,
+        },
+      );
+      assert.equal(needsApproval, true, 'Cross-agent getValue should require approval');
     });
 
-    it('defers setSessionContext through PermissionEngine (not agent-owned)', async () => {
-      organization = await models.Organization.create({ name: 'MemPerm Engine Org 3' });
+    it('defers setSessionContext — checkPermission returns null, evaluate denies', async () => {
+      organization = await models.Organization.create({ name: 'MemPerm Flow Org 3' });
       let agent = await models.Agent.create({
         organizationID: organization.id,
-        name:           'test-engine-session',
+        name:           'test-flow-session',
         pluginID:       'mock-agent',
       });
 
-      let result = await engine.checkPermission(
+      let permissions = new MemoryPermissions(context);
+
+      let customResult = await permissions.checkPermission(
         'memory:setSessionContext',
         { sessionID: 'ses_123', context: { foo: 'bar' } },
         {
@@ -538,9 +554,18 @@ describe('MemoryPermissions', () => {
           agent,
         },
       );
+      assert.equal(customResult, null, 'setSessionContext should defer to evaluate');
 
-      // Should defer to rules; no allow rule → needs approval
-      assert.equal(result, true, 'setSessionContext should require approval via engine');
+      let needsApproval = await permissions.evaluate(
+        'memory:setSessionContext',
+        { sessionID: 'ses_123', context: { foo: 'bar' } },
+        {
+          organizationID: organization.id,
+          toolClass:      SetSessionContextTool,
+          agent,
+        },
+      );
+      assert.equal(needsApproval, true, 'setSessionContext should require approval');
     });
   });
 });

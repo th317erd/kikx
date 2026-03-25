@@ -3,8 +3,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { Permissions }           from '../../../src/core/permissions/permissions-base.mjs';
-import { ShellPermissions }      from '../../../src/core/internal-plugins/shell/shell-permissions.mjs';
+import { Permissions }            from '../../../src/core/permissions/permissions-base.mjs';
+import { ShellPermissions }       from '../../../src/core/internal-plugins/shell/shell-permissions.mjs';
 import { PermissionRequiredError } from '../../../src/core/permissions/permission-required-error.mjs';
 import { PermissionDeniedError }   from '../../../src/core/permissions/permission-denied-error.mjs';
 
@@ -14,7 +14,7 @@ import { PermissionDeniedError }   from '../../../src/core/permissions/permissio
 // Tests for the batch per-command permission checking in ShellPermissions.
 //
 // The checkPermission() override parses a shell command string into individual
-// commands, checks each against the PermissionEngine, and:
+// commands, checks each against evaluate() (via the Permissions base class), and:
 //   - returns false if ALL commands are approved
 //   - throws PermissionRequiredError with per-command details if any need approval
 //   - rethrows PermissionDeniedError (deny-forever blocks everything)
@@ -24,38 +24,40 @@ import { PermissionDeniedError }   from '../../../src/core/permissions/permissio
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeMockPermissionEngine(approvedFeatures) {
-  // approvedFeatures: Set or array of feature names that are "approved"
-  // e.g. ['shell:ls', 'shell:cat'] means those return false (no permission needed)
+// Stub evaluate() on ShellPermissions to return controlled results per feature
+function makeShellPermissions(approvedFeatures) {
   let approved = new Set(approvedFeatures || []);
 
-  return {
-    async checkPermission(featureName, _args, _options) {
-      if (approved.has(featureName))
-        return false; // approved
-      return true; // needs approval
-    },
+  let context = {
+    getProperty() { return null; },
   };
+
+  let perms = new ShellPermissions(context);
+
+  // Override evaluate() to simulate rule matching without a real database
+  perms.evaluate = async (featureName) => {
+    if (approved.has(featureName))
+      return false; // approved — no approval needed
+    return true; // needs approval
+  };
+
+  return perms;
 }
 
-function makeDenyingPermissionEngine(denyFeature) {
-  return {
-    async checkPermission(featureName, _args, _options) {
-      if (featureName === denyFeature)
-        throw new PermissionDeniedError(featureName, 'explicit deny rule');
-      return true;
-    },
+function makeDenyingShellPermissions(denyFeature) {
+  let context = {
+    getProperty() { return null; },
   };
-}
 
-function makeContext(permissionEngine) {
-  return {
-    getProperty(name) {
-      if (name === 'permissionEngine')
-        return permissionEngine || null;
-      return null;
-    },
+  let perms = new ShellPermissions(context);
+
+  perms.evaluate = async (featureName) => {
+    if (featureName === denyFeature)
+      throw new PermissionDeniedError(featureName, 'explicit deny rule');
+    return true;
   };
+
+  return perms;
 }
 
 // =============================================================================
@@ -70,7 +72,8 @@ describe('ShellPermissions.checkPermission()', () => {
 
   describe('class structure', () => {
     it('extends the base Permissions class', () => {
-      let instance = new ShellPermissions(makeContext());
+      let context = { getProperty() { return null; } };
+      let instance = new ShellPermissions(context);
       assert.ok(instance instanceof Permissions);
     });
 
@@ -81,6 +84,11 @@ describe('ShellPermissions.checkPermission()', () => {
         'checkPermission should be overridden',
       );
     });
+
+    it('does not have a static checkCommands method (removed)', () => {
+      assert.equal(typeof ShellPermissions.checkCommands, 'undefined',
+        'checkCommands static should be removed');
+    });
   });
 
   // ===========================================================================
@@ -89,8 +97,7 @@ describe('ShellPermissions.checkPermission()', () => {
 
   describe('happy paths', () => {
     it('single command, not approved — throws PermissionRequiredError with 1 pending detail', async () => {
-      let engine      = makeMockPermissionEngine([]); // nothing approved
-      let permissions = new ShellPermissions(makeContext(engine));
+      let permissions = makeShellPermissions([]); // nothing approved
 
       await assert.rejects(
         () => permissions.checkPermission('shell:execute', { command: 'rm -rf /tmp/test' }, {}),
@@ -105,24 +112,21 @@ describe('ShellPermissions.checkPermission()', () => {
     });
 
     it('single command, already approved — returns false', async () => {
-      let engine      = makeMockPermissionEngine(['shell:ls']);
-      let permissions = new ShellPermissions(makeContext(engine));
+      let permissions = makeShellPermissions(['shell:ls']);
 
       let result = await permissions.checkPermission('shell:execute', { command: 'ls' }, {});
       assert.equal(result, false);
     });
 
     it('multiple commands, all approved — returns false', async () => {
-      let engine      = makeMockPermissionEngine(['shell:ls', 'shell:cat']);
-      let permissions = new ShellPermissions(makeContext(engine));
+      let permissions = makeShellPermissions(['shell:ls', 'shell:cat']);
 
       let result = await permissions.checkPermission('shell:execute', { command: 'ls && cat foo.txt' }, {});
       assert.equal(result, false);
     });
 
     it('multiple commands, some approved some pending — throws with mixed details', async () => {
-      let engine      = makeMockPermissionEngine(['shell:ls']); // ls approved, cat not
-      let permissions = new ShellPermissions(makeContext(engine));
+      let permissions = makeShellPermissions(['shell:ls']); // ls approved, cat not
 
       await assert.rejects(
         () => permissions.checkPermission('shell:execute', { command: 'ls && cat secret.txt' }, {}),
@@ -143,8 +147,7 @@ describe('ShellPermissions.checkPermission()', () => {
     });
 
     it('details show per-command status (approvedCommand vs pendingCommand)', async () => {
-      let engine      = makeMockPermissionEngine(['shell:echo', 'shell:ls']);
-      let permissions = new ShellPermissions(makeContext(engine));
+      let permissions = makeShellPermissions(['shell:echo', 'shell:ls']);
 
       await assert.rejects(
         () => permissions.checkPermission('shell:execute', { command: 'echo hi && ls -la && rm -rf /' }, {}),
@@ -163,8 +166,7 @@ describe('ShellPermissions.checkPermission()', () => {
     });
 
     it('command string preserved in detail values', async () => {
-      let engine      = makeMockPermissionEngine([]); // nothing approved
-      let permissions = new ShellPermissions(makeContext(engine));
+      let permissions = makeShellPermissions([]); // nothing approved
 
       await assert.rejects(
         () => permissions.checkPermission('shell:execute', { command: 'ls -la /tmp' }, {}),
@@ -185,28 +187,32 @@ describe('ShellPermissions.checkPermission()', () => {
 
   describe('sad paths', () => {
     it('no command in args — returns null', async () => {
-      let permissions = new ShellPermissions(makeContext());
+      let context = { getProperty() { return null; } };
+      let permissions = new ShellPermissions(context);
 
       let result = await permissions.checkPermission('shell:execute', {}, {});
       assert.equal(result, null);
     });
 
     it('args is null — returns null', async () => {
-      let permissions = new ShellPermissions(makeContext());
+      let context = { getProperty() { return null; } };
+      let permissions = new ShellPermissions(context);
 
       let result = await permissions.checkPermission('shell:execute', null, {});
       assert.equal(result, null);
     });
 
     it('empty command string — returns null', async () => {
-      let permissions = new ShellPermissions(makeContext());
+      let context = { getProperty() { return null; } };
+      let permissions = new ShellPermissions(context);
 
       let result = await permissions.checkPermission('shell:execute', { command: '' }, {});
       assert.equal(result, null);
     });
 
     it('parseShellCommands returns empty — returns null', async () => {
-      let permissions = new ShellPermissions(makeContext());
+      let context = { getProperty() { return null; } };
+      let permissions = new ShellPermissions(context);
 
       // Whitespace-only command should produce empty parsed results
       let result = await permissions.checkPermission('shell:execute', { command: '   ' }, {});
@@ -214,8 +220,7 @@ describe('ShellPermissions.checkPermission()', () => {
     });
 
     it('PermissionDeniedError from one command — rethrows (blocks all)', async () => {
-      let engine      = makeDenyingPermissionEngine('shell:rm');
-      let permissions = new ShellPermissions(makeContext(engine));
+      let permissions = makeDenyingShellPermissions('shell:rm');
 
       await assert.rejects(
         () => permissions.checkPermission('shell:execute', { command: 'ls && rm -rf /' }, {}),
@@ -227,8 +232,12 @@ describe('ShellPermissions.checkPermission()', () => {
       );
     });
 
-    it('no PermissionEngine — all commands need approval', async () => {
-      let permissions = new ShellPermissions(makeContext(null)); // no engine
+    it('evaluate() errors (non-deny) — treats command as needing approval', async () => {
+      let context = { getProperty() { return null; } };
+      let permissions = new ShellPermissions(context);
+
+      // Override evaluate to throw a generic error
+      permissions.evaluate = async () => { throw new Error('Database connection lost'); };
 
       await assert.rejects(
         () => permissions.checkPermission('shell:execute', { command: 'ls' }, {}),
@@ -248,8 +257,7 @@ describe('ShellPermissions.checkPermission()', () => {
 
   describe('edge cases', () => {
     it('single piped command — parsed correctly, each segment checked', async () => {
-      let engine      = makeMockPermissionEngine(['shell:ls']); // ls approved, grep not
-      let permissions = new ShellPermissions(makeContext(engine));
+      let permissions = makeShellPermissions(['shell:ls']); // ls approved, grep not
 
       await assert.rejects(
         () => permissions.checkPermission('shell:execute', { command: 'ls | grep foo' }, {}),
@@ -266,8 +274,7 @@ describe('ShellPermissions.checkPermission()', () => {
     });
 
     it('PermissionRequiredError has correct locale keys', async () => {
-      let engine      = makeMockPermissionEngine([]);
-      let permissions = new ShellPermissions(makeContext(engine));
+      let permissions = makeShellPermissions([]);
 
       await assert.rejects(
         () => permissions.checkPermission('shell:execute', { command: 'whoami' }, {}),
@@ -287,7 +294,8 @@ describe('ShellPermissions.checkPermission()', () => {
 
   describe('matchesRule() still works', () => {
     it('matches when metadata has command + arguments that match args', () => {
-      let permissions = new ShellPermissions(makeContext());
+      let context = { getProperty() { return null; } };
+      let permissions = new ShellPermissions(context);
       let result = permissions.matchesRule(
         {},
         { command: 'ls', arguments: ['-la'] },
@@ -297,7 +305,8 @@ describe('ShellPermissions.checkPermission()', () => {
     });
 
     it('does not match when arguments differ', () => {
-      let permissions = new ShellPermissions(makeContext());
+      let context = { getProperty() { return null; } };
+      let permissions = new ShellPermissions(context);
       let result = permissions.matchesRule(
         {},
         { command: 'ls', arguments: ['-la'] },

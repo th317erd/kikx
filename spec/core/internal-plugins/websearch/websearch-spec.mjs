@@ -10,15 +10,11 @@ import { createKikxCore } from '../../../../src/core/index.mjs';
 // Helpers
 // =============================================================================
 
-/** Wrap core context so permissionEngine returns null (bypass permissions). */
-function noPermContext(core) {
-  let real = core.getContext();
-  return {
-    getProperty: (key) => {
-      if (key === 'permissionEngine') return null;
-      return real.getProperty(key);
-    },
-  };
+/** Create a tool instance that bypasses permission checks. */
+function createBypassedTool(ToolClass, core) {
+  let tool = new ToolClass(core.getContext());
+  tool._checkPermissions = async () => {}; // bypass permissions in unit tests
+  return tool;
 }
 
 // =============================================================================
@@ -124,7 +120,7 @@ describe('websearch:fetch', () => {
   it('should throw if url is missing', async () => {
     let registry  = core.getPluginRegistry();
     let ToolClass = registry.getTool('websearch:fetch');
-    let tool      = new ToolClass(noPermContext(core));
+    let tool      = createBypassedTool(ToolClass, core);
 
     await assert.rejects(
       () => tool._execute({}),
@@ -135,7 +131,7 @@ describe('websearch:fetch', () => {
   it('should throw if url is not a string', async () => {
     let registry  = core.getPluginRegistry();
     let ToolClass = registry.getTool('websearch:fetch');
-    let tool      = new ToolClass(noPermContext(core));
+    let tool      = createBypassedTool(ToolClass, core);
 
     await assert.rejects(
       () => tool._execute({ url: 123 }),
@@ -146,7 +142,7 @@ describe('websearch:fetch', () => {
   it('should provide help information', () => {
     let registry  = core.getPluginRegistry();
     let ToolClass = registry.getTool('websearch:fetch');
-    let tool      = new ToolClass(noPermContext(core));
+    let tool      = createBypassedTool(ToolClass, core);
     let help      = tool.getHelp();
 
     assert.equal(help.name, 'websearch:fetch');
@@ -185,7 +181,7 @@ describe('websearch:search', () => {
   it('should throw if query is missing', async () => {
     let registry  = core.getPluginRegistry();
     let ToolClass = registry.getTool('websearch:search');
-    let tool      = new ToolClass(noPermContext(core));
+    let tool      = createBypassedTool(ToolClass, core);
 
     await assert.rejects(
       () => tool._execute({}),
@@ -196,7 +192,7 @@ describe('websearch:search', () => {
   it('should throw if query is not a string', async () => {
     let registry  = core.getPluginRegistry();
     let ToolClass = registry.getTool('websearch:search');
-    let tool      = new ToolClass(noPermContext(core));
+    let tool      = createBypassedTool(ToolClass, core);
 
     await assert.rejects(
       () => tool._execute({ query: 42 }),
@@ -207,7 +203,7 @@ describe('websearch:search', () => {
   it('should throw when puppeteer plugin is not installed', async () => {
     let registry  = core.getPluginRegistry();
     let ToolClass = registry.getTool('websearch:search');
-    let tool      = new ToolClass(noPermContext(core));
+    let tool      = createBypassedTool(ToolClass, core);
 
     await assert.rejects(
       () => tool._execute({ query: 'test' }),
@@ -221,7 +217,7 @@ describe('websearch:search', () => {
   it('should provide help information', () => {
     let registry  = core.getPluginRegistry();
     let ToolClass = registry.getTool('websearch:search');
-    let tool      = new ToolClass(noPermContext(core));
+    let tool      = createBypassedTool(ToolClass, core);
     let help      = tool.getHelp();
 
     assert.equal(help.name, 'websearch:search');
@@ -258,7 +254,7 @@ describe('websearch:search', () => {
     });
 
     let ToolClass = registry.getTool('websearch:search');
-    let tool      = new ToolClass(noPermContext(core));
+    let tool      = createBypassedTool(ToolClass, core);
     let result    = await tool._execute({ query: 'test query' });
 
     assert.ok(hookCalled, 'hook should have been called');
@@ -298,7 +294,7 @@ describe('websearch:fetch rendering strategy', () => {
     });
 
     let ToolClass = registry.getTool('websearch:fetch');
-    let tool      = new ToolClass(noPermContext(core));
+    let tool      = createBypassedTool(ToolClass, core);
 
     // Use a URL that will fail markdown negotiation (no server)
     // but the hook should still be called as fallback
