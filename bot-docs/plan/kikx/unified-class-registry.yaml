@@ -1,0 +1,471 @@
+# =============================================================================
+# Unified Class Registry + Frame Type Hierarchy
+# =============================================================================
+# One registry. One pattern. Everything is a class. Everything is overridable.
+#
+# The provide() pattern enables hot-reloadable plugins. Plugins register
+# factory callbacks that the engine can re-invoke to rebuild the entire
+# class inheritance chain on demand.
+#
+# Frame types become typed class instances — like React components where
+# the frame data is state and the class defines behavior.
+#
+# Prerequisite for: Permission Architecture Refactor
+# Driven by: code-smell audit, infinite recursion bug, plugin extensibility
+# Planning: 4 rounds documented in .claude/conversation.md
+#
+# Status: APPROVED — ready for implementation
+# Created: 2026-03-24
+# =============================================================================
+
+meta:
+  title: "Unified Class Registry + Frame Type Hierarchy"
+  version: "1.0.0"
+
+# =============================================================================
+# 1. DESIGN
+# =============================================================================
+
+design:
+  class_registry:
+    description: |
+      A single registry for ALL classes in the system. Tools, frame types,
+      permissions, core systems — all registered under their class name.
+      Stack-based override: plugins extend and re-register, disable pops.
+      Version tracking for hot reload detection.
+
+    key_convention: |
+      Registry keys ARE class names. No namespaces, no colons, no conversion.
+      FrameTypeUserMessage, ShellPermissions, InteractionLoop, FrameRouter.
+      Frame type class lookup: registry.getClass('FrameType' + frame.type)
+
+    overridability: |
+      The engine authors opt-in to overridability by using registry.getClass()
+      to instantiate classes. Hardcoded instantiation = locked down.
+      Security-critical code (crypto, auth) is NOT loaded from the registry.
+
+  provide_pattern:
+    description: |
+      Plugins export setup(provide). The provide() function registers a
+      factory callback. The engine stores callbacks per-plugin and can
+      re-invoke them in load order at any time to rebuild the registry.
+
+    hot_reload: |
+      On reload: clear registry → register core defaults → re-invoke
+      provide callbacks in order (skipping disabled plugins) → bump version.
+      Each callback calls registry.getClass() at invocation time, so
+      inheritance chains are always fresh and correct.
+
+    example: |
+      export function setup(provide) {
+        provide(({ registry, context }) => {
+          registry.registerClass(class MyTool extends registry.getClass('PluginInterface') {
+            // ...
+          });
+        });
+      }
+
+  frame_types:
+    description: |
+      Each frame type has a class (FrameTypeBase subclass) that defines
+      behavior for indexing, agent messages, client rendering, alignment,
+      compaction summarization, etc. Registered in the class registry.
+
+    type_strings: |
+      PascalCase everywhere — yield protocol, DB storage, registry lookup.
+      UserMessage, ToolCall, ToolResult, Message, Reflection, etc.
+      No mapping layers. One source of truth.
+
+    default_fallback: |
+      Unknown frame types get FrameTypeDefault, which renders a
+      "this feature is not supported" notice on the client.
+
+    base_class_methods:
+      - "getContentForIndexing() — Solr indexing (server)"
+      - "toAgentMessage(options) — LLM API message assembly (server)"
+      - "toMessage() — human-readable summary for compaction"
+      - "isRenderable() — should this appear in the UI?"
+      - "createElement(helpers) — DOM creation (client)"
+      - "getAlignment() — user/agent/system"
+      - "getAuthorDisplayName(ctx) — You/System/Agent name"
+      - "showReplyButton() — hide for system frames"
+
+  session_enhancement:
+    description: |
+      Enhance FrameManager/FramePersistence with lazy loading:
+      metadata eager, content lazy, beyond-context-window excluded.
+      Registry version tracking for hot reload molt.
+      Frame type instances are ephemeral — state lives on frames (DB).
+
+# =============================================================================
+# 2. TYPE STRING MIGRATION
+# =============================================================================
+
+type_migration:
+  description: |
+    All frame type strings change from kebab-case to PascalCase.
+    DB migration, yield protocol, InteractionLoop, client, tests.
+
+  mapping:
+    - old: "user-message"
+      new: "UserMessage"
+      class: "FrameTypeUserMessage"
+    - old: "message"
+      new: "Message"
+      class: "FrameTypeMessage"
+    - old: "tool-call"
+      new: "ToolCall"
+      class: "FrameTypeToolCall"
+    - old: "tool-result"
+      new: "ToolResult"
+      class: "FrameTypeToolResult"
+    - old: "tool-error"
+      new: "ToolError"
+      class: "FrameTypeToolError"
+    - old: "tool-activity"
+      new: "ToolActivity"
+      class: "FrameTypeToolActivity"
+    - old: "permission-request"
+      new: "PermissionRequest"
+      class: "FrameTypePermissionRequest"
+    - old: "permission-denied"
+      new: "PermissionDenied"
+      class: "FrameTypePermissionDenied"
+    - old: "command-result"
+      new: "CommandResult"
+      class: "FrameTypeCommandResult"
+    - old: "session-link"
+      new: "SessionLink"
+      class: "FrameTypeSessionLink"
+    - old: "hook-blocked"
+      new: "HookBlocked"
+      class: "FrameTypeHookBlocked"
+    - old: "pending-action"
+      new: "PendingAction"
+      class: "FrameTypePendingAction"
+    - old: "system-error"
+      new: "SystemError"
+      class: "FrameTypeSystemError"
+    - old: "participant-joined"
+      new: "ParticipantJoined"
+      class: "FrameTypeParticipantJoined"
+    - old: "participant-left"
+      new: "ParticipantLeft"
+      class: "FrameTypeParticipantLeft"
+    - old: "error"
+      new: "Error"
+      class: "FrameTypeError"
+    - old: "reflection"
+      new: "Reflection"
+      class: "FrameTypeReflection"
+    - old: "compaction"
+      new: "Compaction"
+      class: "FrameTypeCompaction"
+    - old: "stop"
+      new: "Stop"
+      class: "FrameTypeStop"
+
+  affected_files:
+    - "src/core/interaction/index.mjs — _iterateGenerator() block.type checks"
+    - "src/core/interaction/message-history.mjs — buildMessages() type filtering"
+    - "src/core/interaction/command-handler.mjs — frame creation"
+    - "src/core/interaction/permission-handler.mjs — frame creation"
+    - "src/core/compaction/index.mjs — compaction frame types"
+    - "src/core/frames/index.mjs — hideOrphanedFrames() type checks"
+    - "src/core/models/frame-model.mjs — getContentForIndexing() switch"
+    - "src/core/routing/selector-compiler.mjs — type:* selectors"
+    - "src/core/internal-plugins/ — all plugins that create frames or check types"
+    - "src/client/components/kikx-session-page/ — createFrameElement(), HIDDEN_TYPES, RENDERABLE_TYPES"
+    - "src/client/components/kikx-interaction/ — CSS selectors for bubble-type"
+    - "src/server/controllers/ — frame type references"
+    - "kikx-plugin-claude/index.mjs — yield types in _createGenerator()"
+    - "spec/ — ~4500 tests with hardcoded type strings"
+    - "Database — UPDATE frames SET type = 'NewType' WHERE type = 'old-type'"
+
+# =============================================================================
+# 3. IMPLEMENTATION ORDER
+# =============================================================================
+
+phases:
+  phase_1:
+    name: "ClassRegistry + provide() Pattern"
+    description: "Foundation — the universal class registry and plugin factory callbacks."
+    steps:
+      - id: "1.1"
+        task: "Create ClassRegistry class"
+        tdd: true
+        description: |
+          Stack-based class registration. registerClass(key_or_class, classRef?),
+          getClass(key), getClassAtIndex(key, index), hasClass(key),
+          getRegisteredKeys(), unregisterPlugin(name), clear(), bumpVersion().
+          Version counter. Plugin tracking per registration.
+
+      - id: "1.2"
+        task: "Create provide() mechanism in PluginLoader"
+        tdd: true
+        description: |
+          setup(provide) signature. provide() stores factory callback.
+          PluginLoader stores callbacks per-plugin. reload() clears registry,
+          re-registers core, re-invokes provide callbacks in order.
+
+      - id: "1.3"
+        task: "Register core system classes"
+        description: |
+          During KikxCore.start(), register InteractionLoop, FrameRouter,
+          FrameManager, FramePersistence, etc. via registry.
+          Framework instantiates via registry.getClass() where overridable.
+
+      - id: "1.4"
+        task: "Migrate all internal plugins to setup(provide) pattern"
+        description: |
+          Each plugin in src/core/internal-plugins/ updated from
+          setup({ registerTool, registerSelector, ... }) to setup(provide).
+          All registration goes through registry inside the provide callback.
+
+      - id: "1.5"
+        task: "Tests for Phase 1"
+        tdd: true
+
+  phase_2:
+    name: "Unify Type Strings"
+    depends_on: ["phase_1"]
+    description: |
+      Change all frame type strings from kebab-case to PascalCase.
+      DB migration, yield protocol, all consumers, all tests.
+      NOTE: 5 existing test failures from the recursion fix need
+      updating here (shell-permission-flow argument matching tests).
+    steps:
+      - id: "2.1"
+        task: "DB migration script"
+        description: "UPDATE frames SET type for each mapping."
+
+      - id: "2.2"
+        task: "Update InteractionLoop type checks"
+        description: |
+          _iterateGenerator() block.type comparisons.
+          All frame creation calls (type: 'ToolCall' etc.)
+
+      - id: "2.3"
+        task: "Update kikx-plugin-claude yield types"
+        description: "Generator yield block.type → PascalCase."
+
+      - id: "2.4"
+        task: "Update all internal plugins"
+        description: "Frame creation, type checks in all plugins."
+
+      - id: "2.5"
+        task: "Update client"
+        description: |
+          createFrameElement(), HIDDEN_TYPES, RENDERABLE_TYPES,
+          SSE handling, CSS selectors.
+
+      - id: "2.6"
+        task: "Update all tests"
+        description: |
+          Bulk find-and-replace across ~4500 tests.
+          Fix the 5 existing failing shell-permission-flow tests.
+
+      - id: "2.7"
+        task: "Update FrameRouter selectors"
+        description: "type:* becomes Type:* or equivalent."
+
+  phase_3:
+    name: "Frame Type Classes"
+    depends_on: ["phase_2"]
+    description: "Create typed frame classes with all override points."
+    steps:
+      - id: "3.1"
+        task: "Create FrameTypeBase"
+        tdd: true
+        file: "src/shared/frame-types/frame-type-base.mjs"
+        description: |
+          Base class with all override points: getContentForIndexing(),
+          toAgentMessage(), toMessage(), isRenderable(), createElement(),
+          getAlignment(), getAuthorDisplayName(), showReplyButton().
+          Data accessors for all 22 frame properties.
+
+      - id: "3.2"
+        task: "Create FrameTypeDefault"
+        tdd: true
+        file: "src/shared/frame-types/frame-type-default.mjs"
+        description: "Fallback — renders 'unsupported feature' on client."
+
+      - id: "3.3"
+        task: "Implement all 19 concrete frame type classes"
+        tdd: true
+        description: |
+          Each class in src/shared/frame-types/. Server methods
+          (getContentForIndexing, toAgentMessage, toMessage) and
+          client methods (isRenderable, createElement, getAlignment,
+          getAuthorDisplayName, showReplyButton).
+
+      - id: "3.4"
+        task: "Register all frame types during core init"
+        description: "In KikxCore provide() callback."
+
+      - id: "3.5"
+        task: "Frame factory function"
+        description: |
+          createTypedFrame(frameData, context) → uses
+          registry.getClass('FrameType' + frame.type) || FrameTypeDefault.
+
+  phase_4:
+    name: "Wire Frame Types Into Consumers"
+    depends_on: ["phase_3"]
+    description: "Replace switch statements with per-class dispatch."
+    steps:
+      - id: "4.1"
+        task: "Migrate buildMessages()"
+        tdd: true
+        description: "Use toAgentMessage() per class instead of type switch."
+
+      - id: "4.2"
+        task: "Migrate getContentForIndexing()"
+        tdd: true
+        description: "Move from Frame model switch to per-class."
+
+      - id: "4.3"
+        task: "Migrate createFrameElement()"
+        tdd: true
+        description: "Use createElement() per class instead of type switch."
+
+      - id: "4.4"
+        task: "Migrate compaction"
+        tdd: true
+        description: "Use toMessage() per class for summarization."
+
+  phase_5:
+    name: "Session / FrameManager Enhancement"
+    depends_on: ["phase_4"]
+    steps:
+      - id: "5.1"
+        task: "Lazy frame loading"
+        tdd: true
+        description: "Metadata eager, content lazy, beyond-window excluded."
+
+      - id: "5.2"
+        task: "Registry version tracking for hot reload"
+        tdd: true
+        description: "Sessions detect version change, clear cached instances."
+
+  phase_6:
+    name: "Cleanup"
+    depends_on: ["phase_5"]
+    steps:
+      - id: "6.1"
+        task: "Remove switch statements, type sets, type conditionals"
+
+      - id: "6.2"
+        task: "Remove old plugin setup functions"
+        description: "registerTool, registerSelector, registerCommand, etc."
+
+      - id: "6.3"
+        task: "Remove dead code, final test pass"
+
+  phase_7:
+    name: "Permission Integration (separate plan)"
+    depends_on: ["phase_6"]
+    description: |
+      PermissionsClass as full lifecycle owner, discovered via
+      frame type class → tool class → PermissionsClass.
+      Remove PermissionEngine. Full OOP permissions.
+
+# =============================================================================
+# 4. TEST PLAN
+# =============================================================================
+
+tests:
+  suites:
+    - file: "spec/core/class-registry-spec.mjs"
+      component: "ClassRegistry"
+      estimated: 25
+      coverage: |
+        Register/get/override, stack push/pop, version tracking,
+        plugin tracking, unregisterPlugin + rebuild, clear,
+        idempotent re-register, sad paths (null class, missing key)
+
+    - file: "spec/core/plugin-loader-provide-spec.mjs"
+      component: "provide() pattern + PluginLoader"
+      estimated: 15
+      coverage: |
+        setup(provide) signature, callback storage, reload clears
+        and re-invokes, plugin disable/enable, inheritance chain
+        rebuilds correctly after remove
+
+    - file: "spec/shared/frame-types/frame-type-base-spec.mjs"
+      component: "FrameTypeBase"
+      estimated: 20
+      coverage: |
+        All 22 property getters, default method return values,
+        null frameData handling, null context handling
+
+    - file: "spec/shared/frame-types/frame-type-*-spec.mjs"
+      component: "19 concrete frame type classes — server"
+      estimated: 40
+      coverage: |
+        Per-type getContentForIndexing(), toAgentMessage(), toMessage().
+        Orphan detection for ToolCall. Multi-agent attribution for Message.
+        Malformed content handling. Null content.
+
+    - file: "spec/client/components/frame-type-*-spec.mjs"
+      component: "Frame type classes — client (jsdom)"
+      estimated: 35
+      coverage: |
+        Per-type isRenderable(), createElement(), getAlignment(),
+        getAuthorDisplayName(), showReplyButton().
+        FrameTypeDefault "unsupported feature" rendering.
+
+    - file: "spec/core/plugin-integration-spec.mjs"
+      component: "Plugin integration with registry"
+      estimated: 15
+      coverage: |
+        Plugin registers tool, frame type, override.
+        Plugin disabled → registrations removed.
+        Hot reload rebuilds chain.
+
+    - file: "spec/core/session-enhancement-spec.mjs"
+      component: "Lazy loading + registry version"
+      estimated: 20
+      coverage: |
+        Metadata eager, content lazy. Registry version molt.
+        State persists across molt. Concurrent sessions.
+
+    - file: "spec/scripts/migration-spec.mjs"
+      component: "Type string migration"
+      estimated: 10
+      coverage: |
+        All 19 type conversions. Both old and new work during transition.
+        buildMessages handles both. createFrameElement handles both.
+
+  totals:
+    estimated: 180
+
+# =============================================================================
+# 5. FUTURE PLANS
+# =============================================================================
+
+future_plans:
+  - id: client-plugin-assets
+    title: "Dynamic Client Plugin Assets"
+    priority: medium
+    description: |
+      Plugins declare client assets (JS/CSS) via static property.
+      Server serves manifest. Client loads dynamically.
+      Not blocking for permissions refactor.
+
+  - id: client-registry-sync
+    title: "Client Registry Sync via SSE"
+    priority: low
+    description: |
+      Notify client when server registry changes (plugin add/remove).
+      Client re-syncs frame type registry. For now, browser reload suffices.
+
+  - id: permission-refactor
+    title: "Permission Architecture Refactor"
+    priority: high
+    description: |
+      PermissionsClass as full lifecycle owner. Load rules, check,
+      request, approve/deny — all on the class. Discovered via
+      frame type → tool class → PermissionsClass. Remove PermissionEngine.
+      Depends on this plan (frame class hierarchy + registry).
+    see_also: ".claude/conversation.md (permission discussion)"
