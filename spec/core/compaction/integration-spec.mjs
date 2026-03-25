@@ -228,7 +228,7 @@ describe('Compaction Integration', () => {
       let messages = buildMessages(frames, null, { activeCompaction });
 
       // Frames before compaction (f1-f4) should be included
-      // f5 (compaction) is type 'compaction' — not in buildMessages output (excluded by EXCLUDED_TYPES? No, but also not handled by any type branch)
+      // f5 (compaction) is type 'Compaction' — excluded by its frame type class (isIncludedInAgentContext() returns false)
       // f6 (user-message, authorType 'user', order 6 > 5) — should be included (user frame)
       // f7 (message, authorType 'agent', order 7 > 5) — should be EXCLUDED
 
@@ -400,7 +400,7 @@ describe('Compaction Integration', () => {
       assert.equal(messages.length, 2);
     });
 
-    it('should still exclude EXCLUDED_TYPES even during compaction', () => {
+    it('should still exclude non-agent-context types even during compaction', () => {
       let frames = [
         { id: 'f1', type: 'UserMessage', authorType: 'user', content: { text: 'msg' }, order: 1, hidden: false, deleted: false },
         { id: 'f2', type: 'Error', authorType: 'system', content: { message: 'oops' }, order: 2, hidden: false, deleted: false },

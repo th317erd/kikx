@@ -129,11 +129,110 @@ export class FramePersistence {
     if (options.limit !== undefined && records.length > options.limit)
       records = records.slice(0, options.limit);
 
-    let frameDataArray = records.map((record) => this._recordToFrame(record));
+    let frameDataArray = (options.metadataOnly)
+      ? records.map((record) => this._recordToFrameMetadataOnly(record))
+      : records.map((record) => this._recordToFrame(record));
 
     frameManager.merge(frameDataArray, { events: false });
 
+    // Stamp the current class registry version onto the FrameManager so
+    // sessions can detect when the registry changes (plugin hot reload).
+    let registry = this._context && this._context.getProperty('pluginRegistry');
+    if (registry && typeof registry.version === 'number')
+      frameManager.setRegistryVersion(registry.version);
+
     return frameDataArray;
+  }
+
+  // ---------------------------------------------------------------------------
+  // loadContent
+  // ---------------------------------------------------------------------------
+  // Loads the full content for a single frame by ID.
+  // Returns the parsed content object, or null if the frame does not exist.
+  // ---------------------------------------------------------------------------
+
+  async loadContent(frameID) {
+    if (!frameID)
+      return null;
+
+    let { Frame } = this._models;
+    let record    = await Frame.where.id.EQ(frameID).first();
+
+    if (!record)
+      return null;
+
+    let content = record.content;
+
+    if (typeof content === 'string') {
+      try {
+        content = JSON.parse(content);
+      } catch (_error) {
+        // Leave as string if not valid JSON
+      }
+    }
+
+    return (content != null) ? content : {};
+  }
+
+  // ---------------------------------------------------------------------------
+  // loadContentBulk
+  // ---------------------------------------------------------------------------
+  // Loads the full content for multiple frames by ID.
+  // Returns a Map of frameID → parsed content object.
+  // Mythix ORM lacks .IN(), so each record is fetched individually.
+  // ---------------------------------------------------------------------------
+
+  async loadContentBulk(frameIDs) {
+    if (!frameIDs || frameIDs.length === 0)
+      return new Map();
+
+    let { Frame } = this._models;
+    let records   = await Promise.all(
+      frameIDs.map((id) => Frame.where.id.EQ(id).first()),
+    );
+
+    let result = new Map();
+
+    for (let record of records) {
+      if (!record)
+        continue;
+
+      let content = record.content;
+
+      if (typeof content === 'string') {
+        try {
+          content = JSON.parse(content);
+        } catch (_error) {
+          // Leave as string if not valid JSON
+        }
+      }
+
+      result.set(record.id, (content != null) ? content : {});
+    }
+
+    return result;
+  }
+
+  // ---------------------------------------------------------------------------
+  // loadFramesInWindow
+  // ---------------------------------------------------------------------------
+  // Loads full frames (with content) for a specific order range within a
+  // session. Useful for loading only the frames in the context window.
+  // ---------------------------------------------------------------------------
+
+  async loadFramesInWindow(sessionID, fromOrder, toOrder) {
+    if (!sessionID)
+      throw new Error('sessionID is required');
+
+    let options = {};
+
+    if (fromOrder !== undefined)
+      options.afterOrder = fromOrder;
+
+    if (toOrder !== undefined)
+      options.beforeOrder = toOrder;
+
+    return this.loadFrames(sessionID, options);
   }
 
   // ---------------------------------------------------------------------------
@@ -385,6 +484,49 @@ export class FramePersistence {
       interactionID: record.interactionID || null,
       type:          record.type,
       content:       (content !== undefined && content !== null) ? content : {},
+      targets:       (targets !== undefined && targets !== null) ? targets : [],
+      parentID:      record.parentID || null,
+      groupID:       record.groupID || null,
+      groupType:     record.groupType || null,
+      order:         record.order,
+      timestamp:     record.timestamp,
+      hidden:        record.hidden,
+      deleted:       record.deleted,
+      processed:     record.processed,
+      processedAt:   record.processedAt,
+      authorType:    record.authorType || null,
+      authorID:      record.authorID || null,
+      signature:             record.signature || null,
+      signingKeyFingerprint: record.signingKeyFingerprint || null,
+      state:                 record.state || null,
+      createdAt:             record.createdAt || null,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // _recordToFrameMetadataOnly
+  // ---------------------------------------------------------------------------
+  // Like _recordToFrame but skips content parsing — sets content to null.
+  // Used for lazy loading: metadata is loaded eagerly, content on demand.
+  // ---------------------------------------------------------------------------
+
+  _recordToFrameMetadataOnly(record) {
+    let targets = record.targets;
+
+    // Deserialize targets from JSON string (targets are metadata, not content)
+    if (typeof targets === 'string') {
+      try {
+        targets = JSON.parse(targets);
+      } catch (_error) {
+        targets = [];
+      }
+    }
+
+    return {
+      id:            record.id,
+      interactionID: record.interactionID || null,
+      type:          record.type,
+      content:       null,
       targets:       (targets !== undefined && targets !== null) ? targets : [],
       parentID:      record.parentID || null,
       groupID:       record.groupID || null,

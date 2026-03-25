@@ -752,6 +752,90 @@ describe('FramePersistence', () => {
   });
 
   // ===========================================================================
+  // Registry version stamping
+  // ===========================================================================
+
+  describe('registry version stamping', () => {
+    it('should stamp the registry version on the FrameManager after loadFramesInto', async () => {
+      let { FrameManager } = await import('../../src/shared/frame-manager/frame-manager.mjs');
+      let frameManager     = new FrameManager({ history: true });
+      let frameID          = generateFrameID();
+
+      await persistence.saveFrames(session.id, [
+        { id: frameID, type: 'Message', content: { text: 'test' }, order: 1, timestamp: Date.now() },
+      ]);
+
+      await persistence.loadFramesInto(frameManager, session.id);
+
+      // The registry should be on the context; its version should be stamped
+      let registry = core.getContext().getProperty('pluginRegistry');
+      assert.ok(registry, 'registry should exist on context');
+      assert.equal(typeof registry.version, 'number');
+      assert.equal(frameManager.registryVersion, registry.version);
+    });
+
+    it('should stamp the registry version on the FrameManager returned by loadFrames', async () => {
+      let frameID = generateFrameID();
+
+      await persistence.saveFrames(session.id, [
+        { id: frameID, type: 'Message', content: { text: 'test' }, order: 1, timestamp: Date.now() },
+      ]);
+
+      let frameManager = await persistence.loadFrames(session.id);
+
+      let registry = core.getContext().getProperty('pluginRegistry');
+      assert.ok(registry, 'registry should exist on context');
+      assert.equal(frameManager.registryVersion, registry.version);
+    });
+
+    it('should reflect updated registry version after class registration', async () => {
+      let { FrameManager } = await import('../../src/shared/frame-manager/frame-manager.mjs');
+      let frameID          = generateFrameID();
+
+      await persistence.saveFrames(session.id, [
+        { id: frameID, type: 'Message', content: { text: 'test' }, order: 1, timestamp: Date.now() },
+      ]);
+
+      let registry       = core.getContext().getProperty('pluginRegistry');
+      let versionBefore  = registry.version;
+
+      // Register a dummy class to bump the version
+      registry.registerClass('TestDummyClass', class TestDummyClass {});
+
+      let versionAfter = registry.version;
+      assert.ok(versionAfter > versionBefore, 'version should have incremented');
+
+      // Load again — should get the new version
+      let frameManager = new FrameManager({ history: true });
+      await persistence.loadFramesInto(frameManager, session.id);
+      assert.equal(frameManager.registryVersion, versionAfter);
+    });
+
+    it('should detect stale registry after loading', async () => {
+      let { FrameManager } = await import('../../src/shared/frame-manager/frame-manager.mjs');
+      let frameID          = generateFrameID();
+
+      await persistence.saveFrames(session.id, [
+        { id: frameID, type: 'Message', content: { text: 'test' }, order: 1, timestamp: Date.now() },
+      ]);
+
+      let frameManager = new FrameManager({ history: true });
+      await persistence.loadFramesInto(frameManager, session.id);
+
+      let registry = core.getContext().getProperty('pluginRegistry');
+
+      // At this point, versions should match
+      assert.equal(frameManager.isRegistryStale(registry.version), false);
+
+      // Bump the registry version
+      registry.registerClass('AnotherDummy', class AnotherDummy {});
+
+      // Now the frame manager should be stale
+      assert.equal(frameManager.isRegistryStale(registry.version), true);
+    });
+  });
+
+  // ===========================================================================
   // Round-trip
   // ===========================================================================
 

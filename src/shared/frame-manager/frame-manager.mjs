@@ -7,10 +7,11 @@ import { FramePointer } from './frame-pointer.mjs';
 
 export class FrameManager {
   constructor(options = {}) {
-    this.history          = options.history !== false;
-    this._orderCounter    = 0;
-    this._commitCounter   = 0;
-    this._commitValidator = options.commitValidator || null;
+    this.history           = options.history !== false;
+    this._orderCounter     = 0;
+    this._commitCounter    = 0;
+    this._commitValidator  = options.commitValidator || null;
+    this._registryVersion  = options.registryVersion || 0;
 
     this._frames   = new Map();   // frameID → Frame
     this._pointers = new Map();   // frameID → FramePointer
@@ -560,6 +561,20 @@ export class FrameManager {
   syncOrderCounter(minOrder) {
     if (minOrder > this._orderCounter)
       this._orderCounter = minOrder;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Registry version tracking (hot reload detection)
+  // ---------------------------------------------------------------------------
+
+  get registryVersion() { return this._registryVersion; }
+
+  setRegistryVersion(version) {
+    this._registryVersion = version;
+  }
+
+  isRegistryStale(currentVersion) {
+    return this._registryVersion !== currentVersion;
   }
 
   // ---------------------------------------------------------------------------
