@@ -4,7 +4,8 @@
 // InteractionController — sendMessage, cancel, approve, deny
 // =============================================================================
 
-import { ControllerAuthBase }   from './controller-auth-base.mjs';
+import { ControllerAuthBase }     from './controller-auth-base.mjs';
+import { computeKeyFingerprint } from '../../core/crypto/value-signing.mjs';
 
 export class InteractionController extends ControllerAuthBase {
   // ---------------------------------------------------------------------------
@@ -251,39 +252,38 @@ export class InteractionController extends ControllerAuthBase {
 
     // Create persistent rules for "forever" decisions
     if (decisions.length > 0) {
-      let core             = this.getCore();
-      let permissionEngine = core.getPermissionEngine();
+      let core           = this.getCore();
+      let organizationID = this.request.organizationID;
 
-      if (permissionEngine) {
-        // Use the authenticated user's organization from JWT
-        let organizationID = this.request.organizationID;
+      // Use Permissions base class for rule creation (not PermissionEngine)
+      let { Permissions } = await import('../../core/permissions/permissions-base.mjs');
+      let permissions     = new Permissions(core.getContext());
 
-        for (let decision of decisions) {
-          if (!decision.command || !decision.decision)
-            continue;
+      for (let decision of decisions) {
+        if (!decision.command || !decision.decision)
+          continue;
 
-          let effect = null;
-          if (decision.decision === 'allow-forever')
-            effect = 'allow';
-          else if (decision.decision === 'deny-forever')
-            effect = 'deny';
+        let effect = null;
+        if (decision.decision === 'allow-forever')
+          effect = 'allow';
+        else if (decision.decision === 'deny-forever')
+          effect = 'deny';
 
-          if (!effect)
-            continue; // allow-once / deny-once create no rules
+        if (!effect)
+          continue; // allow-once / deny-once create no rules
 
-          await permissionEngine.createRule({
-            organizationID,
-            featureName: (decision.command.includes(':')) ? decision.command : `shell:${decision.command}`,
-            effect,
-            scope:       'session',
-            scopeID:     params.sessionID,
-            createdBy:   this.request.userID,
-            metadata:    {
-              command:   decision.command,
-              arguments: decision.arguments || [],
-            },
-          });
-        }
+        await permissions.createRule({
+          organizationID,
+          featureName: (decision.command.includes(':')) ? decision.command : `shell:${decision.command}`,
+          effect,
+          scope:       'session',
+          scopeID:     params.sessionID,
+          createdBy:   this.request.userID,
+          metadata:    {
+            command:   decision.command,
+            arguments: decision.arguments || [],
+          },
+        });
       }
     }
 
@@ -301,20 +301,54 @@ export class InteractionController extends ControllerAuthBase {
     if (frame.processed)
       return { data: hasDeny ? { denied: true } : { approved: true } };
 
+    // Read frame content for signing
+    let content = (typeof frame.getContent === 'function') ? frame.getContent() : (frame.content || {});
+
+    // Sign the approval/denial with user's Ed25519 private key (best-effort)
+    let action = (hasDeny) ? 'deny' : 'approve';
+
+    try {
+      let keystore = this.getKeystore();
+      let { privateKey, publicKey } = await this._loadUserSigningKeys();
+
+      if (privateKey && keystore) {
+        let payload = JSON.stringify(keystore.canonicalize({
+          action,
+          frameID:   params.frameID,
+          toolName:  content.toolName || null,
+          arguments: content.arguments || {},
+          sessionID: params.sessionID,
+        }));
+
+        let signature   = keystore.signWithPrivateKey(payload, privateKey);
+        let fingerprint = computeKeyFingerprint(publicKey);
+
+        if (hasDeny) {
+          content.denialSignature   = signature;
+          content.denialFingerprint = fingerprint;
+          content.deniedBy          = this.request.userID;
+        } else {
+          content.approvalSignature   = signature;
+          content.approvalFingerprint = fingerprint;
+          content.approvedBy          = this.request.userID;
+        }
+      }
+    } catch (_signError) {
+      // Best-effort: signing failure must not block approval/denial
+    }
+
     // Mark the frame as processed; set denied marker for denials
     frame.processed   = true;
     frame.processedAt = Date.now();
 
-    if (hasDeny) {
-      let content    = (typeof frame.getContent === 'function') ? frame.getContent() : (frame.content || {});
+    if (hasDeny)
       content.denied = true;
-      frame.content  = JSON.stringify(content);
-    }
 
+    frame.content = JSON.stringify(content);
     await frame.save();
 
     // The FrameRouter will pick up the saved frame and route it through
-    // the PermissionApprovalPlugin, which handles tool re-execution or
+    // the PermissionApprovalPlugin, which handles rule creation or
     // denial frame creation + interaction restart.
 
     if (hasDeny)
@@ -342,9 +376,35 @@ export class InteractionController extends ControllerAuthBase {
       return { data: { denied: true } };
 
     // Mark as denied
-    let content    = (typeof frame.getContent === 'function') ? frame.getContent() : (frame.content || {});
-    content.denied = true;
-    frame.content  = JSON.stringify(content);
+    let content = (typeof frame.getContent === 'function') ? frame.getContent() : (frame.content || {});
+
+    // Sign denial with user's Ed25519 private key (best-effort)
+    try {
+      let keystore = this.getKeystore();
+      let { privateKey, publicKey } = await this._loadUserSigningKeys();
+
+      if (privateKey && keystore) {
+        let payload = JSON.stringify(keystore.canonicalize({
+          action:    'deny',
+          frameID:   params.frameID,
+          toolName:  content.toolName || null,
+          arguments: content.arguments || {},
+          sessionID: params.sessionID,
+        }));
+
+        let signature   = keystore.signWithPrivateKey(payload, privateKey);
+        let fingerprint = computeKeyFingerprint(publicKey);
+
+        content.denialSignature   = signature;
+        content.denialFingerprint = fingerprint;
+        content.deniedBy          = this.request.userID;
+      }
+    } catch (_signError) {
+      // Best-effort: signing failure must not block denial
+    }
+
+    content.denied    = true;
+    frame.content     = JSON.stringify(content);
     frame.processed   = true;
     frame.processedAt = Date.now();
     await frame.save();

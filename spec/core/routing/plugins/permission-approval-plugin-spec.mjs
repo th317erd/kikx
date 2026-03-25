@@ -8,14 +8,15 @@ import { BasePluginClass } from '../../../../src/core/routing/base-plugin-class.
 import { FrameManager }   from '../../../../src/shared/frame-manager/frame-manager.mjs';
 
 // =============================================================================
-// PermissionApprovalPlugin — Step 2.2
+// PermissionApprovalPlugin — Phase 4
 // =============================================================================
 // Tests that the FrameRouter plugin correctly:
-//   - Detects approved permission-request frames (step=awaiting-approval + processed=true)
-//   - Re-executes the tool and creates a tool-result frame
-//   - Handles denied frames
+//   - Verifies approval/denial signatures (when present)
+//   - Creates one-time allow PermissionRule on approval
+//   - Hides placeholder ToolResult frames
+//   - Creates denial ToolResult on denial
+//   - Starts new interaction via agentResolver
 //   - Skips already-handled or initial-creation frames
-//   - Handles missing state, missing tools, execution errors
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -79,12 +80,69 @@ function createMockInteractionLoop() {
   };
 }
 
+// Mock models for rule creation and frame lookup
+function createMockModels() {
+  let rules   = [];
+  let frames  = [];
+  return {
+    rules,
+    frames,
+    PermissionRule: {
+      async create(data) {
+        let rule = { ...data, id: 'rule_' + Math.random().toString(36).slice(2, 8) };
+        rules.push(rule);
+        return rule;
+      },
+    },
+    User: {
+      where: {
+        id: {
+          EQ: () => ({
+            first: async () => null,
+          }),
+        },
+      },
+    },
+    Frame: {
+      where: {
+        sessionID: {
+          EQ: (sid) => ({
+            AND: {
+              type: {
+                EQ: (type) => ({
+                  all: async () => frames.filter((f) => f.sessionID === sid && f.type === type),
+                  AND: {
+                    processed: {
+                      EQ: () => ({
+                        all: async () => frames.filter((f) => f.sessionID === sid && f.type === type),
+                      }),
+                    },
+                    hidden: {
+                      EQ: (hidden) => ({
+                        all: async () => frames.filter((f) => f.sessionID === sid && f.type === type && f.hidden === hidden),
+                      }),
+                    },
+                  },
+                }),
+              },
+            },
+          }),
+        },
+      },
+    },
+  };
+}
+
 // Create a mock global context with configurable properties
 function createMockContext(overrides = {}) {
   let props = {
     pluginRegistry:  null,
     interactionLoop: null,
     framePersistence: null,
+    models:          null,
+    keystore:        null,
+    agentResolver:   null,
+    sessionScheduler: null,
     ...overrides,
   };
   return {
@@ -141,108 +199,12 @@ describe('PermissionApprovalPlugin', () => {
 
   describe('approval — happy paths', () => {
 
-    it('re-executes tool when step=awaiting-approval and processed becomes true', async () => {
-      let toolExecuted = false;
-      let ToolClass    = createToolClass('re-executed-output');
-      ToolClass.prototype.execute = async function(args) { toolExecuted = true; return 're-executed-output'; };
-
-      let pluginRegistry  = createMockPluginRegistry({ 'shell:execute': ToolClass });
-      let interactionLoop = createMockInteractionLoop();
-      let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
-
-      let router = createRouter();
-      let fm     = new FrameManager();
-
-      await registerPlugin(router, globalContext);
-      router.connectTo(fm, { id: 'ses_1' });
-
-      // Create initial frame (step = awaiting-approval, processed = false)
-      fm.merge([{
-        id:        'frm_1',
-        type:      'PermissionRequest',
-        content:   { toolName: 'shell:execute' },
-        processed: false,
-        state:     JSON.stringify({
-          toolName:      'shell:execute',
-          toolArguments: { command: 'ls' },
-          toolUseID:     'tu_1',
-          sessionID:     'ses_1',
-          agentID:       'agt_1',
-          interactionID: 'int_1',
-          step:          'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      // Now "approve" — update processed to true
-      fm.merge([{
-        id:        'frm_1',
-        type:      'PermissionRequest',
-        content:   { toolName: 'shell:execute' },
-        processed: true,
-        state:     JSON.stringify({
-          toolName:      'shell:execute',
-          toolArguments: { command: 'ls' },
-          toolUseID:     'tu_1',
-          sessionID:     'ses_1',
-          agentID:       'agt_1',
-          interactionID: 'int_1',
-          step:          'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      assert.ok(toolExecuted, 'tool should have been re-executed');
-    });
-
-    it('creates tool-result frame after re-execution', async () => {
-      let ToolClass       = createToolClass('result-content');
-      let pluginRegistry  = createMockPluginRegistry({ 'test:tool': ToolClass });
-      let interactionLoop = createMockInteractionLoop();
-      let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
-
-      let router = createRouter();
-      let fm     = new FrameManager();
-
-      await registerPlugin(router, globalContext);
-      router.connectTo(fm, { id: 'ses_1' });
-
-      // Initial creation
-      fm.merge([{
-        id: 'frm_1', type: 'PermissionRequest',
-        content: { toolName: 'test:tool' }, processed: false,
-        state: JSON.stringify({
-          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
-          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
-          step: 'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      // Approve
-      fm.merge([{
-        id: 'frm_1', type: 'PermissionRequest',
-        content: { toolName: 'test:tool' }, processed: true,
-        state: JSON.stringify({
-          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
-          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
-          step: 'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      let frameCreates = interactionLoop.calls.filter((c) => c.method === '_createFrame');
-      assert.ok(frameCreates.length >= 1, 'should create at least one frame (tool-result)');
-      let toolResultFrame = frameCreates.find((c) => c.frameData.type === 'ToolResult');
-      assert.ok(toolResultFrame, 'should create a tool-result frame');
-    });
-
-    it('updates state step to "completed" after approval', async () => {
-      let ToolClass       = createToolClass('output');
-      let pluginRegistry  = createMockPluginRegistry({ 'test:tool': ToolClass });
+    it('sets state.step to "completed" on approval', async () => {
+      let pluginRegistry  = createMockPluginRegistry({});
       let interactionLoop = createMockInteractionLoop();
       let persistence     = createMockPersistence();
-      let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
+      let mockModels      = createMockModels();
+      let globalContext    = createMockContext({ pluginRegistry, interactionLoop, models: mockModels });
 
       let router = createRouter();
       let fm     = new FrameManager();
@@ -272,102 +234,17 @@ describe('PermissionApprovalPlugin', () => {
       }]);
       await tick();
 
-      // The plugin should have set state.step = 'completed' — check persistence
       let statePersists = persistence.calls.filter((c) => c.frameID === 'frm_1');
       assert.ok(statePersists.length >= 1, 'state should be persisted');
       let lastPersist = statePersists[statePersists.length - 1];
       assert.equal(lastPersist.state.step, 'completed');
     });
 
-    it('looks up tool class from pluginRegistry by toolName', async () => {
-      let lookups = [];
-      let ToolClass = createToolClass('ok');
-      let pluginRegistry = {
-        getTool(name) { lookups.push(name); return ToolClass; },
-      };
+    it('starts a new interaction after approval', async () => {
+      let pluginRegistry  = createMockPluginRegistry({});
       let interactionLoop = createMockInteractionLoop();
-      let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
-
-      let router = createRouter();
-      let fm     = new FrameManager();
-
-      await registerPlugin(router, globalContext);
-      router.connectTo(fm, { id: 'ses_1' });
-
-      fm.merge([{
-        id: 'frm_1', type: 'PermissionRequest',
-        content: {}, processed: false,
-        state: JSON.stringify({
-          toolName: 'custom:mytool', toolArguments: {}, toolUseID: 'tu_1',
-          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
-          step: 'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      fm.merge([{
-        id: 'frm_1', type: 'PermissionRequest',
-        content: {}, processed: true,
-        state: JSON.stringify({
-          toolName: 'custom:mytool', toolArguments: {}, toolUseID: 'tu_1',
-          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
-          step: 'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      assert.ok(lookups.includes('custom:mytool'), 'should look up "custom:mytool" from registry');
-    });
-
-    it('calls tool.execute with stored arguments', async () => {
-      let executedArgs = null;
-      let ToolClass = createToolClass('ok');
-      ToolClass.prototype.execute = async function(args) { executedArgs = args; return 'ok'; };
-
-      let pluginRegistry  = createMockPluginRegistry({ 'test:tool': ToolClass });
-      let interactionLoop = createMockInteractionLoop();
-      let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
-
-      let router = createRouter();
-      let fm     = new FrameManager();
-
-      await registerPlugin(router, globalContext);
-      router.connectTo(fm, { id: 'ses_1' });
-
-      let storedArgs = { command: 'ls -la', flag: true };
-
-      fm.merge([{
-        id: 'frm_1', type: 'PermissionRequest',
-        content: {}, processed: false,
-        state: JSON.stringify({
-          toolName: 'test:tool', toolArguments: storedArgs, toolUseID: 'tu_1',
-          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
-          step: 'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      fm.merge([{
-        id: 'frm_1', type: 'PermissionRequest',
-        content: {}, processed: true,
-        state: JSON.stringify({
-          toolName: 'test:tool', toolArguments: storedArgs, toolUseID: 'tu_1',
-          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
-          step: 'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      assert.ok(executedArgs, 'tool should have been called');
-      assert.equal(executedArgs.command, 'ls -la');
-      assert.equal(executedArgs.flag, true);
-    });
-
-    it('starts a new interaction after re-execution so agent sees result', async () => {
-      let ToolClass       = createToolClass('output');
-      let pluginRegistry  = createMockPluginRegistry({ 'test:tool': ToolClass });
-      let interactionLoop = createMockInteractionLoop();
-      let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
+      let mockModels      = createMockModels();
+      let globalContext    = createMockContext({ pluginRegistry, interactionLoop, models: mockModels });
 
       let router = createRouter();
       let fm     = new FrameManager();
@@ -398,18 +275,94 @@ describe('PermissionApprovalPlugin', () => {
       await tick();
 
       let startCalls = interactionLoop.calls.filter((c) => c.method === 'startInteraction');
-      assert.ok(startCalls.length >= 1, 'should call startInteraction after re-execution');
+      assert.ok(startCalls.length >= 1, 'should call startInteraction after approval');
       assert.equal(startCalls[0].sessionID, 'ses_1');
+    });
+
+    it('does not directly execute the tool (deferred to InteractionLoop replay)', async () => {
+      let toolExecuted = false;
+      let ToolClass    = createToolClass('output');
+      ToolClass.prototype.execute = async function() { toolExecuted = true; return 'output'; };
+
+      let pluginRegistry  = createMockPluginRegistry({ 'test:tool': ToolClass });
+      let interactionLoop = createMockInteractionLoop();
+      let mockModels      = createMockModels();
+      let globalContext    = createMockContext({ pluginRegistry, interactionLoop, models: mockModels });
+
+      let router = createRouter();
+      let fm     = new FrameManager();
+
+      await registerPlugin(router, globalContext);
+      router.connectTo(fm, { id: 'ses_1' });
+
+      fm.merge([{
+        id: 'frm_1', type: 'PermissionRequest',
+        content: {}, processed: false,
+        state: JSON.stringify({
+          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
+          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
+          step: 'awaiting-approval',
+        }),
+      }]);
+      await tick();
+
+      fm.merge([{
+        id: 'frm_1', type: 'PermissionRequest',
+        content: {}, processed: true,
+        state: JSON.stringify({
+          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
+          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
+          step: 'awaiting-approval',
+        }),
+      }]);
+      await tick();
+
+      // Plugin no longer directly executes tools — that's deferred to the InteractionLoop replay
+      assert.equal(toolExecuted, false, 'plugin should NOT directly execute tools (deferred to replay)');
+    });
+
+    it('does not create tool-result frame on approval (deferred to replay)', async () => {
+      let pluginRegistry  = createMockPluginRegistry({});
+      let interactionLoop = createMockInteractionLoop();
+      let mockModels      = createMockModels();
+      let globalContext    = createMockContext({ pluginRegistry, interactionLoop, models: mockModels });
+
+      let router = createRouter();
+      let fm     = new FrameManager();
+
+      await registerPlugin(router, globalContext);
+      router.connectTo(fm, { id: 'ses_1' });
+
+      fm.merge([{
+        id: 'frm_1', type: 'PermissionRequest',
+        content: {}, processed: false,
+        state: JSON.stringify({
+          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
+          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
+          step: 'awaiting-approval',
+        }),
+      }]);
+      await tick();
+
+      fm.merge([{
+        id: 'frm_1', type: 'PermissionRequest',
+        content: {}, processed: true,
+        state: JSON.stringify({
+          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
+          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
+          step: 'awaiting-approval',
+        }),
+      }]);
+      await tick();
+
+      let frameCreates = interactionLoop.calls.filter((c) => c.method === '_createFrame');
+      let toolResultFrame = frameCreates.find((c) => c.frameData.type === 'ToolResult');
+      assert.equal(toolResultFrame, undefined, 'should NOT create tool-result frame on approval (deferred)');
     });
   });
 
   // ---------------------------------------------------------------------------
   // Happy paths — Denial
-  // ---------------------------------------------------------------------------
-  // Note: In Phase 2, denial is distinguished by content.denied=true on the
-  // frame (the content object IS preserved by FrameManager, unlike top-level
-  // custom properties). Full denial flow via frame update replaces legacy
-  // PermissionHandler in Phase 3.
   // ---------------------------------------------------------------------------
 
   describe('denial — happy paths', () => {
@@ -417,7 +370,8 @@ describe('PermissionApprovalPlugin', () => {
     it('creates denial tool-result frame when content.denied is set', async () => {
       let pluginRegistry  = createMockPluginRegistry({});
       let interactionLoop = createMockInteractionLoop();
-      let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
+      let mockModels      = createMockModels();
+      let globalContext    = createMockContext({ pluginRegistry, interactionLoop, models: mockModels });
 
       let router = createRouter();
       let fm     = new FrameManager();
@@ -462,7 +416,8 @@ describe('PermissionApprovalPlugin', () => {
       let pluginRegistry  = createMockPluginRegistry({});
       let interactionLoop = createMockInteractionLoop();
       let persistence     = createMockPersistence();
-      let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
+      let mockModels      = createMockModels();
+      let globalContext    = createMockContext({ pluginRegistry, interactionLoop, models: mockModels });
 
       let router = createRouter();
       let fm     = new FrameManager();
@@ -506,11 +461,7 @@ describe('PermissionApprovalPlugin', () => {
   describe('sad paths', () => {
 
     it('skips when step is already "completed"', async () => {
-      let toolExecuted    = false;
-      let ToolClass       = createToolClass('ok');
-      ToolClass.prototype.execute = async function() { toolExecuted = true; return 'ok'; };
-
-      let pluginRegistry  = createMockPluginRegistry({ 'test:tool': ToolClass });
+      let pluginRegistry  = createMockPluginRegistry({});
       let interactionLoop = createMockInteractionLoop();
       let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
 
@@ -531,15 +482,12 @@ describe('PermissionApprovalPlugin', () => {
       }]);
       await tick();
 
-      assert.equal(toolExecuted, false, 'tool should NOT be re-executed');
+      let startCalls = interactionLoop.calls.filter((c) => c.method === 'startInteraction');
+      assert.equal(startCalls.length, 0, 'should NOT start interaction when step=completed');
     });
 
     it('skips when step is already "denied"', async () => {
-      let toolExecuted    = false;
-      let ToolClass       = createToolClass('ok');
-      ToolClass.prototype.execute = async function() { toolExecuted = true; return 'ok'; };
-
-      let pluginRegistry  = createMockPluginRegistry({ 'test:tool': ToolClass });
+      let pluginRegistry  = createMockPluginRegistry({});
       let interactionLoop = createMockInteractionLoop();
       let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
 
@@ -560,15 +508,12 @@ describe('PermissionApprovalPlugin', () => {
       }]);
       await tick();
 
-      assert.equal(toolExecuted, false, 'tool should NOT be re-executed');
+      let startCalls = interactionLoop.calls.filter((c) => c.method === 'startInteraction');
+      assert.equal(startCalls.length, 0, 'should NOT start interaction when step=denied');
     });
 
     it('skips initial creation (processed=false, step=awaiting-approval)', async () => {
-      let toolExecuted    = false;
-      let ToolClass       = createToolClass('ok');
-      ToolClass.prototype.execute = async function() { toolExecuted = true; return 'ok'; };
-
-      let pluginRegistry  = createMockPluginRegistry({ 'test:tool': ToolClass });
+      let pluginRegistry  = createMockPluginRegistry({});
       let interactionLoop = createMockInteractionLoop();
       let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
 
@@ -589,92 +534,8 @@ describe('PermissionApprovalPlugin', () => {
       }]);
       await tick();
 
-      assert.equal(toolExecuted, false, 'tool should NOT execute on initial creation');
-    });
-
-    it('creates error frame when toolName not found in registry', async () => {
-      let pluginRegistry  = createMockPluginRegistry({}); // empty — no tools
-      let interactionLoop = createMockInteractionLoop();
-      let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
-
-      let router = createRouter();
-      let fm     = new FrameManager();
-
-      await registerPlugin(router, globalContext);
-      router.connectTo(fm, { id: 'ses_1' });
-
-      fm.merge([{
-        id: 'frm_1', type: 'PermissionRequest',
-        content: {}, processed: false,
-        state: JSON.stringify({
-          toolName: 'nonexistent:tool', toolArguments: {}, toolUseID: 'tu_1',
-          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
-          step: 'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      fm.merge([{
-        id: 'frm_1', type: 'PermissionRequest',
-        content: {}, processed: true,
-        state: JSON.stringify({
-          toolName: 'nonexistent:tool', toolArguments: {}, toolUseID: 'tu_1',
-          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
-          step: 'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      let frameCreates = interactionLoop.calls.filter((c) => c.method === '_createFrame');
-      let errorFrame = frameCreates.find((c) =>
-        c.frameData.type === 'ToolResult' &&
-        c.frameData.content.output &&
-        (c.frameData.content.output.includes('not found') || c.frameData.content.output.includes('Unknown tool')),
-      );
-      assert.ok(errorFrame, 'should create an error tool-result frame when tool is not found');
-    });
-
-    it('creates error frame when tool re-execution throws', async () => {
-      let ToolClass       = createToolClass(null, 'Boom! Tool exploded');
-      let pluginRegistry  = createMockPluginRegistry({ 'test:tool': ToolClass });
-      let interactionLoop = createMockInteractionLoop();
-      let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
-
-      let router = createRouter();
-      let fm     = new FrameManager();
-
-      await registerPlugin(router, globalContext);
-      router.connectTo(fm, { id: 'ses_1' });
-
-      fm.merge([{
-        id: 'frm_1', type: 'PermissionRequest',
-        content: {}, processed: false,
-        state: JSON.stringify({
-          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
-          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
-          step: 'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      fm.merge([{
-        id: 'frm_1', type: 'PermissionRequest',
-        content: {}, processed: true,
-        state: JSON.stringify({
-          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
-          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
-          step: 'awaiting-approval',
-        }),
-      }]);
-      await tick();
-
-      let frameCreates = interactionLoop.calls.filter((c) => c.method === '_createFrame');
-      let errorFrame = frameCreates.find((c) =>
-        c.frameData.type === 'ToolResult' &&
-        c.frameData.content.output &&
-        c.frameData.content.output.includes('Boom! Tool exploded'),
-      );
-      assert.ok(errorFrame, 'should create an error tool-result frame when tool throws');
+      let startCalls = interactionLoop.calls.filter((c) => c.method === 'startInteraction');
+      assert.equal(startCalls.length, 0, 'should NOT start interaction on initial creation');
     });
 
     it('skips with no crash when pluginRegistry is missing', async () => {
@@ -710,7 +571,6 @@ describe('PermissionApprovalPlugin', () => {
       }]);
       await tick();
 
-      // Just verify no crash — no assertions needed beyond this point
       assert.ok(true, 'should not crash when pluginRegistry is missing');
     });
 
@@ -735,6 +595,62 @@ describe('PermissionApprovalPlugin', () => {
 
       assert.ok(true, 'should not crash with missing state fields');
     });
+
+    it('sets state to signature-invalid when signature verification fails', async () => {
+      let pluginRegistry  = createMockPluginRegistry({});
+      let interactionLoop = createMockInteractionLoop();
+      let persistence     = createMockPersistence();
+
+      // Create a mock user with a public key that will cause verification to fail
+      let mockModels = createMockModels();
+      let fakeUser   = { id: 'usr_bad', publicKey: 'fake-public-key', organizationID: 'org_1' };
+      mockModels.User.where.id.EQ = () => ({
+        first: async () => fakeUser,
+      });
+
+      let globalContext = createMockContext({ pluginRegistry, interactionLoop, models: mockModels, keystore: {
+        canonicalize: (d) => JSON.stringify(d),
+        verifyWithPublicKey: () => false, // Always fail verification
+      } });
+
+      let router = createRouter();
+      let fm     = new FrameManager();
+
+      await registerPlugin(router, globalContext);
+      router.connectTo(fm, { id: 'ses_1' }, { framePersistence: persistence });
+
+      fm.merge([{
+        id: 'frm_1', type: 'PermissionRequest',
+        content: {}, processed: false,
+        state: JSON.stringify({
+          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
+          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
+          step: 'awaiting-approval',
+        }),
+      }]);
+      await tick();
+
+      fm.merge([{
+        id: 'frm_1', type: 'PermissionRequest',
+        content: {
+          approvalSignature:   'bad-signature',
+          approvalFingerprint: 'bad-fingerprint',
+          approvedBy:          'usr_bad',
+        },
+        processed: true,
+        state: JSON.stringify({
+          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
+          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
+          step: 'awaiting-approval',
+        }),
+      }]);
+      await tick();
+
+      let statePersists = persistence.calls.filter((c) => c.frameID === 'frm_1');
+      assert.ok(statePersists.length >= 1, 'state should be persisted');
+      let lastPersist = statePersists[statePersists.length - 1];
+      assert.equal(lastPersist.state.step, 'signature-invalid');
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -744,14 +660,11 @@ describe('PermissionApprovalPlugin', () => {
   describe('edge cases', () => {
 
     it('concurrent approval — second sees step=completed and skips', async () => {
-      let executionCount  = 0;
-      let ToolClass       = createToolClass('ok');
-      ToolClass.prototype.execute = async function() { executionCount++; return 'ok'; };
-
-      let pluginRegistry  = createMockPluginRegistry({ 'test:tool': ToolClass });
+      let pluginRegistry  = createMockPluginRegistry({});
       let interactionLoop = createMockInteractionLoop();
       let persistence     = createMockPersistence();
-      let globalContext    = createMockContext({ pluginRegistry, interactionLoop });
+      let mockModels      = createMockModels();
+      let globalContext    = createMockContext({ pluginRegistry, interactionLoop, models: mockModels });
 
       let router = createRouter();
       let fm     = new FrameManager();
@@ -783,10 +696,10 @@ describe('PermissionApprovalPlugin', () => {
       }]);
       await tick();
 
-      assert.equal(executionCount, 1, 'tool should execute once after first approval');
+      let startCallsBefore = interactionLoop.calls.filter((c) => c.method === 'startInteraction').length;
+      assert.ok(startCallsBefore >= 1, 'should start interaction after first approval');
 
       // Second "approval" attempt — state should already be 'completed'
-      // The frame's state on disk was updated; merge a frame with step=completed
       fm.merge([{
         id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
@@ -798,7 +711,8 @@ describe('PermissionApprovalPlugin', () => {
       }]);
       await tick();
 
-      assert.equal(executionCount, 1, 'tool should NOT execute again — step is already completed');
+      let startCallsAfter = interactionLoop.calls.filter((c) => c.method === 'startInteraction').length;
+      assert.equal(startCallsAfter, startCallsBefore, 'should NOT start another interaction — step is already completed');
     });
 
     it('non-permission-request frame is passed to next()', async () => {
@@ -828,11 +742,49 @@ describe('PermissionApprovalPlugin', () => {
       }]);
       await tick();
 
-      // The permission-approval plugin only matches permission-request,
-      // so user-message should pass straight through to sentinel.
-      // Note: the plugin won't even fire for user-message frames.
-      // This test validates that non-matching frames are unaffected.
       assert.ok(true, 'non-permission-request frame should not cause errors');
+    });
+
+    it('allows legacy approval without signature (no signature in content)', async () => {
+      let pluginRegistry  = createMockPluginRegistry({});
+      let interactionLoop = createMockInteractionLoop();
+      let persistence     = createMockPersistence();
+      let mockModels      = createMockModels();
+      let globalContext    = createMockContext({ pluginRegistry, interactionLoop, models: mockModels });
+
+      let router = createRouter();
+      let fm     = new FrameManager();
+
+      await registerPlugin(router, globalContext);
+      router.connectTo(fm, { id: 'ses_1' }, { framePersistence: persistence });
+
+      fm.merge([{
+        id: 'frm_1', type: 'PermissionRequest',
+        content: {}, processed: false,
+        state: JSON.stringify({
+          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
+          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
+          step: 'awaiting-approval',
+        }),
+      }]);
+      await tick();
+
+      // Approve without any signature fields (legacy)
+      fm.merge([{
+        id: 'frm_1', type: 'PermissionRequest',
+        content: {}, processed: true,
+        state: JSON.stringify({
+          toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
+          sessionID: 'ses_1', agentID: 'agt_1', interactionID: 'int_1',
+          step: 'awaiting-approval',
+        }),
+      }]);
+      await tick();
+
+      let statePersists = persistence.calls.filter((c) => c.frameID === 'frm_1');
+      assert.ok(statePersists.length >= 1, 'state should be persisted');
+      let lastPersist = statePersists[statePersists.length - 1];
+      assert.equal(lastPersist.state.step, 'completed', 'legacy approval (no signature) should still complete');
     });
   });
 });

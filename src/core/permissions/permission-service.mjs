@@ -60,7 +60,7 @@ export class PermissionService {
 
     if (!needsPermission) {
       // Approved — sign the approval envelope
-      let signature = this._signApproval(featureName, args, sessionID, privateKeyPEM);
+      let signature = this._signApproval('approve', null, featureName, args, sessionID, privateKeyPEM);
       return { decision: 'allow', signature };
     }
 
@@ -95,7 +95,7 @@ export class PermissionService {
     let effectivePriority = priority !== undefined ? priority : 100;
 
     // Sign the standing approval
-    let signature = this._signApproval(effectiveFeature, { standing: true, sessionID }, sessionID, privateKeyPEM);
+    let signature = this._signApproval('approve', null, effectiveFeature, { standing: true, sessionID }, sessionID, privateKeyPEM);
 
     let rule = await this._permissionEngine.createRule({
       organizationID,
@@ -154,12 +154,12 @@ export class PermissionService {
   // signApproval / verifyApproval — Envelope signing
   // ---------------------------------------------------------------------------
 
-  signApproval(featureName, args, sessionID, privateKeyPEM) {
-    return this._signApproval(featureName, args, sessionID || null, privateKeyPEM);
+  signApproval(action, frameID, toolName, args, sessionID, privateKeyPEM) {
+    return this._signApproval(action, frameID, toolName, args, sessionID || null, privateKeyPEM);
   }
 
-  verifyApproval(featureName, args, signature, sessionID, publicKeyPEM) {
-    let blob = this._buildApprovalBlob(featureName, args, sessionID);
+  verifyApproval(action, frameID, toolName, args, signature, sessionID, publicKeyPEM) {
+    let blob = this._buildApprovalBlob(action, frameID, toolName, args, sessionID);
     try {
       if (publicKeyPEM)
         return this._keystore.verifyWithPublicKey(blob, publicKeyPEM, signature);
@@ -175,8 +175,8 @@ export class PermissionService {
   // Internal
   // ---------------------------------------------------------------------------
 
-  _signApproval(featureName, args, sessionID, privateKeyPEM) {
-    let blob = this._buildApprovalBlob(featureName, args, sessionID);
+  _signApproval(action, frameID, toolName, args, sessionID, privateKeyPEM) {
+    let blob = this._buildApprovalBlob(action, frameID, toolName, args, sessionID);
     if (privateKeyPEM)
       return this._keystore.signWithPrivateKey(blob, privateKeyPEM);
 
@@ -184,12 +184,13 @@ export class PermissionService {
     return this._keystore.sign(blob);
   }
 
-  _buildApprovalBlob(featureName, args, sessionID) {
+  _buildApprovalBlob(action, frameID, toolName, args, sessionID) {
     return {
-      action:      'approve',
-      featureName,
-      args:        args || {},
-      sessionID:   sessionID || null,
+      action:    action || 'approve',
+      frameID:   frameID || null,
+      toolName:  toolName || null,
+      arguments: args || {},
+      sessionID: sessionID || null,
     };
   }
 }

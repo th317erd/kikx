@@ -68,7 +68,7 @@ describe('PermissionService Ed25519 (C2)', () => {
   describe('signApproval with Ed25519', () => {
     it('should return a hex signature when given a private key', () => {
       let service   = createService();
-      let signature = service.signApproval('shell:execute', { command: 'ls' }, null, keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_1', 'shell:execute', { command: 'ls' }, null, keyPair.privateKey);
 
       assert.equal(typeof signature, 'string');
       assert.match(signature, /^[0-9a-f]+$/, 'Signature should be hex');
@@ -76,55 +76,55 @@ describe('PermissionService Ed25519 (C2)', () => {
 
     it('should return a 128-character hex string (64-byte Ed25519 signature)', () => {
       let service   = createService();
-      let signature = service.signApproval('shell:execute', { command: 'ls' }, null, keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_2', 'shell:execute', { command: 'ls' }, null, keyPair.privateKey);
 
       assert.equal(signature.length, 128, 'Ed25519 signature should be 64 bytes = 128 hex chars');
     });
 
     it('should produce deterministic signatures for identical data', () => {
       let service = createService();
-      let sig1    = service.signApproval('test:tool', { a: 1, b: 2 }, null, keyPair.privateKey);
-      let sig2    = service.signApproval('test:tool', { a: 1, b: 2 }, null, keyPair.privateKey);
+      let sig1    = service.signApproval('approve', 'frm_3', 'test:tool', { a: 1, b: 2 }, null, keyPair.privateKey);
+      let sig2    = service.signApproval('approve', 'frm_3', 'test:tool', { a: 1, b: 2 }, null, keyPair.privateKey);
 
       assert.equal(sig1, sig2);
     });
 
     it('should produce deterministic signatures regardless of arg key order', () => {
       let service = createService();
-      let sig1    = service.signApproval('test:tool', { a: 1, b: 2 }, null, keyPair.privateKey);
-      let sig2    = service.signApproval('test:tool', { b: 2, a: 1 }, null, keyPair.privateKey);
+      let sig1    = service.signApproval('approve', 'frm_4', 'test:tool', { a: 1, b: 2 }, null, keyPair.privateKey);
+      let sig2    = service.signApproval('approve', 'frm_4', 'test:tool', { b: 2, a: 1 }, null, keyPair.privateKey);
 
       assert.equal(sig1, sig2);
     });
 
     it('should produce different signatures for different feature names', () => {
       let service = createService();
-      let sig1    = service.signApproval('tool:a', { x: 1 }, null, keyPair.privateKey);
-      let sig2    = service.signApproval('tool:b', { x: 1 }, null, keyPair.privateKey);
+      let sig1    = service.signApproval('approve', 'frm_5', 'tool:a', { x: 1 }, null, keyPair.privateKey);
+      let sig2    = service.signApproval('approve', 'frm_5', 'tool:b', { x: 1 }, null, keyPair.privateKey);
 
       assert.notEqual(sig1, sig2);
     });
 
     it('should produce different signatures for different args', () => {
       let service = createService();
-      let sig1    = service.signApproval('test:tool', { command: 'ls' }, null, keyPair.privateKey);
-      let sig2    = service.signApproval('test:tool', { command: 'rm' }, null, keyPair.privateKey);
+      let sig1    = service.signApproval('approve', 'frm_6', 'test:tool', { command: 'ls' }, null, keyPair.privateKey);
+      let sig2    = service.signApproval('approve', 'frm_6', 'test:tool', { command: 'rm' }, null, keyPair.privateKey);
 
       assert.notEqual(sig1, sig2);
     });
 
     it('should produce different signatures for different session IDs', () => {
       let service = createService();
-      let sig1    = service.signApproval('test:tool', {}, 'ses_1', keyPair.privateKey);
-      let sig2    = service.signApproval('test:tool', {}, 'ses_2', keyPair.privateKey);
+      let sig1    = service.signApproval('approve', 'frm_7', 'test:tool', {}, 'ses_1', keyPair.privateKey);
+      let sig2    = service.signApproval('approve', 'frm_7', 'test:tool', {}, 'ses_2', keyPair.privateKey);
 
       assert.notEqual(sig1, sig2);
     });
 
     it('should produce different signatures with different private keys', () => {
       let service = createService();
-      let sig1    = service.signApproval('test:tool', { a: 1 }, null, keyPair.privateKey);
-      let sig2    = service.signApproval('test:tool', { a: 1 }, null, otherKeyPair.privateKey);
+      let sig1    = service.signApproval('approve', 'frm_8', 'test:tool', { a: 1 }, null, keyPair.privateKey);
+      let sig2    = service.signApproval('approve', 'frm_8', 'test:tool', { a: 1 }, null, otherKeyPair.privateKey);
 
       assert.notEqual(sig1, sig2);
     });
@@ -137,72 +137,72 @@ describe('PermissionService Ed25519 (C2)', () => {
   describe('verifyApproval with Ed25519', () => {
     it('should return true with matching public key', () => {
       let service   = createService();
-      let signature = service.signApproval('shell:execute', { command: 'ls' }, null, keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_v1', 'shell:execute', { command: 'ls' }, null, keyPair.privateKey);
 
-      let valid = service.verifyApproval('shell:execute', { command: 'ls' }, signature, null, keyPair.publicKey);
+      let valid = service.verifyApproval('approve', 'frm_v1', 'shell:execute', { command: 'ls' }, signature, null, keyPair.publicKey);
       assert.equal(valid, true);
     });
 
     it('should return false with wrong public key', () => {
       let service   = createService();
-      let signature = service.signApproval('shell:execute', { command: 'ls' }, null, keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_v2', 'shell:execute', { command: 'ls' }, null, keyPair.privateKey);
 
-      let valid = service.verifyApproval('shell:execute', { command: 'ls' }, signature, null, otherKeyPair.publicKey);
+      let valid = service.verifyApproval('approve', 'frm_v2', 'shell:execute', { command: 'ls' }, signature, null, otherKeyPair.publicKey);
       assert.equal(valid, false);
     });
 
     it('should return false with tampered feature name', () => {
       let service   = createService();
-      let signature = service.signApproval('shell:execute', { command: 'ls' }, null, keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_v3', 'shell:execute', { command: 'ls' }, null, keyPair.privateKey);
 
-      let valid = service.verifyApproval('shell:malicious', { command: 'ls' }, signature, null, keyPair.publicKey);
+      let valid = service.verifyApproval('approve', 'frm_v3', 'shell:malicious', { command: 'ls' }, signature, null, keyPair.publicKey);
       assert.equal(valid, false);
     });
 
     it('should return false with tampered args', () => {
       let service   = createService();
-      let signature = service.signApproval('shell:execute', { command: 'ls' }, null, keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_v4', 'shell:execute', { command: 'ls' }, null, keyPair.privateKey);
 
-      let valid = service.verifyApproval('shell:execute', { command: 'rm -rf /' }, signature, null, keyPair.publicKey);
+      let valid = service.verifyApproval('approve', 'frm_v4', 'shell:execute', { command: 'rm -rf /' }, signature, null, keyPair.publicKey);
       assert.equal(valid, false);
     });
 
     it('should return false with tampered session ID', () => {
       let service   = createService();
-      let signature = service.signApproval('test:tool', {}, 'ses_original', keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_v5', 'test:tool', {}, 'ses_original', keyPair.privateKey);
 
-      let valid = service.verifyApproval('test:tool', {}, signature, 'ses_tampered', keyPair.publicKey);
+      let valid = service.verifyApproval('approve', 'frm_v5', 'test:tool', {}, signature, 'ses_tampered', keyPair.publicKey);
       assert.equal(valid, false);
     });
 
     it('should return false with tampered signature', () => {
       let service   = createService();
-      let signature = service.signApproval('test:tool', {}, null, keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_v6', 'test:tool', {}, null, keyPair.privateKey);
 
       // Flip a character in the hex signature
       let tampered = signature.slice(0, -2) + ((signature.slice(-2) === 'ff') ? '00' : 'ff');
 
-      let valid = service.verifyApproval('test:tool', {}, tampered, null, keyPair.publicKey);
+      let valid = service.verifyApproval('approve', 'frm_v6', 'test:tool', {}, tampered, null, keyPair.publicKey);
       assert.equal(valid, false);
     });
 
     it('should return false with completely invalid signature', () => {
       let service = createService();
-      let valid   = service.verifyApproval('test:tool', {}, 'not-a-valid-hex-signature', null, keyPair.publicKey);
+      let valid   = service.verifyApproval('approve', 'frm_v7', 'test:tool', {}, 'not-a-valid-hex-signature', null, keyPair.publicKey);
       assert.equal(valid, false);
     });
 
     it('should return false with empty signature', () => {
       let service = createService();
-      let valid   = service.verifyApproval('test:tool', {}, '', null, keyPair.publicKey);
+      let valid   = service.verifyApproval('approve', 'frm_v8', 'test:tool', {}, '', null, keyPair.publicKey);
       assert.equal(valid, false);
     });
 
     it('should verify with session ID when it was included in signing', () => {
       let service   = createService();
-      let signature = service.signApproval('test:tool', { x: 1 }, 'ses_abc', keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_v9', 'test:tool', { x: 1 }, 'ses_abc', keyPair.privateKey);
 
-      let valid = service.verifyApproval('test:tool', { x: 1 }, signature, 'ses_abc', keyPair.publicKey);
+      let valid = service.verifyApproval('approve', 'frm_v9', 'test:tool', { x: 1 }, signature, 'ses_abc', keyPair.publicKey);
       assert.equal(valid, true);
     });
   });
@@ -214,7 +214,7 @@ describe('PermissionService Ed25519 (C2)', () => {
   describe('HMAC fallback', () => {
     it('should sign with HMAC when no private key provided', () => {
       let service   = createService();
-      let signature = service.signApproval('test:tool', { a: 1 });
+      let signature = service.signApproval('approve', 'frm_h1', 'test:tool', { a: 1 });
 
       assert.equal(typeof signature, 'string');
       assert.match(signature, /^[0-9a-f]{64}$/, 'HMAC-SHA256 produces 64-char hex');
@@ -222,26 +222,26 @@ describe('PermissionService Ed25519 (C2)', () => {
 
     it('should verify HMAC signature when no public key provided', () => {
       let service   = createService();
-      let signature = service.signApproval('test:tool', { a: 1 });
+      let signature = service.signApproval('approve', 'frm_h2', 'test:tool', { a: 1 });
 
-      let valid = service.verifyApproval('test:tool', { a: 1 }, signature);
+      let valid = service.verifyApproval('approve', 'frm_h2', 'test:tool', { a: 1 }, signature);
       assert.equal(valid, true);
     });
 
     it('should not verify HMAC signature with Ed25519 public key', () => {
       let service       = createService();
-      let hmacSignature = service.signApproval('test:tool', { a: 1 });
+      let hmacSignature = service.signApproval('approve', 'frm_h3', 'test:tool', { a: 1 });
 
-      let valid = service.verifyApproval('test:tool', { a: 1 }, hmacSignature, null, keyPair.publicKey);
+      let valid = service.verifyApproval('approve', 'frm_h3', 'test:tool', { a: 1 }, hmacSignature, null, keyPair.publicKey);
       assert.equal(valid, false);
     });
 
     it('should not verify Ed25519 signature with HMAC (no public key)', () => {
-      let service        = createService();
-      let ed25519Signature = service.signApproval('test:tool', { a: 1 }, null, keyPair.privateKey);
+      let service          = createService();
+      let ed25519Signature = service.signApproval('approve', 'frm_h4', 'test:tool', { a: 1 }, null, keyPair.privateKey);
 
       // Try to verify Ed25519 signature with HMAC path (no publicKeyPEM)
-      let valid = service.verifyApproval('test:tool', { a: 1 }, ed25519Signature);
+      let valid = service.verifyApproval('approve', 'frm_h4', 'test:tool', { a: 1 }, ed25519Signature);
       assert.equal(valid, false);
     });
   });
@@ -253,16 +253,16 @@ describe('PermissionService Ed25519 (C2)', () => {
   describe('Ed25519 vs HMAC signatures', () => {
     it('should produce different signatures for the same data', () => {
       let service      = createService();
-      let hmacSig      = service.signApproval('test:tool', { a: 1 });
-      let ed25519Sig   = service.signApproval('test:tool', { a: 1 }, null, keyPair.privateKey);
+      let hmacSig      = service.signApproval('approve', 'frm_c1', 'test:tool', { a: 1 });
+      let ed25519Sig   = service.signApproval('approve', 'frm_c1', 'test:tool', { a: 1 }, null, keyPair.privateKey);
 
       assert.notEqual(hmacSig, ed25519Sig);
     });
 
     it('should produce different-length signatures (HMAC=64 hex, Ed25519=128 hex)', () => {
       let service    = createService();
-      let hmacSig    = service.signApproval('test:tool', {});
-      let ed25519Sig = service.signApproval('test:tool', {}, null, keyPair.privateKey);
+      let hmacSig    = service.signApproval('approve', 'frm_c2', 'test:tool', {});
+      let ed25519Sig = service.signApproval('approve', 'frm_c2', 'test:tool', {}, null, keyPair.privateKey);
 
       assert.equal(hmacSig.length, 64, 'HMAC-SHA256 = 32 bytes = 64 hex chars');
       assert.equal(ed25519Sig.length, 128, 'Ed25519 = 64 bytes = 128 hex chars');
@@ -296,8 +296,8 @@ describe('PermissionService Ed25519 (C2)', () => {
       assert.ok(result.signature);
       assert.equal(result.signature.length, 128, 'Should be Ed25519 signature');
 
-      // Verify the signature with Ed25519
-      let valid = service.verifyApproval('test:ed25519-check', {}, result.signature, null, keyPair.publicKey);
+      // Verify the signature with Ed25519 (check() uses null frameID)
+      let valid = service.verifyApproval('approve', null, 'test:ed25519-check', {}, result.signature, null, keyPair.publicKey);
       assert.equal(valid, true);
     });
 
@@ -322,7 +322,7 @@ describe('PermissionService Ed25519 (C2)', () => {
       assert.equal(result.signature.length, 64, 'Should be HMAC signature');
 
       // Verify the signature with HMAC
-      let valid = service.verifyApproval('test:hmac-check', {}, result.signature);
+      let valid = service.verifyApproval('approve', null, 'test:hmac-check', {}, result.signature);
       assert.equal(valid, true);
     });
 
@@ -349,11 +349,11 @@ describe('PermissionService Ed25519 (C2)', () => {
       assert.equal(result.signature.length, 128);
 
       // Verify with correct sessionID
-      let valid = service.verifyApproval('test:ed25519-session', {}, result.signature, 'ses_ed25519_check', keyPair.publicKey);
+      let valid = service.verifyApproval('approve', null, 'test:ed25519-session', {}, result.signature, 'ses_ed25519_check', keyPair.publicKey);
       assert.equal(valid, true);
 
       // Should fail with wrong sessionID
-      let invalid = service.verifyApproval('test:ed25519-session', {}, result.signature, 'ses_wrong', keyPair.publicKey);
+      let invalid = service.verifyApproval('approve', null, 'test:ed25519-session', {}, result.signature, 'ses_wrong', keyPair.publicKey);
       assert.equal(invalid, false);
     });
   });
@@ -414,8 +414,10 @@ describe('PermissionService Ed25519 (C2)', () => {
 
       let metadata = JSON.parse(rule.metadata);
 
-      // Verify the standing approval signature
+      // Verify the standing approval signature (standing approvals use null frameID)
       let valid = service.verifyApproval(
+        'approve',
+        null,
         'file:read',
         { standing: true, sessionID: 'ses_verify_standing' },
         metadata.signature,
@@ -434,10 +436,10 @@ describe('PermissionService Ed25519 (C2)', () => {
   describe('round-trip Ed25519 sign/verify', () => {
     it('should round-trip with minimal data', () => {
       let service   = createService();
-      let signature = service.signApproval('test:min', {}, null, keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_r1', 'test:min', {}, null, keyPair.privateKey);
 
       assert.equal(
-        service.verifyApproval('test:min', {}, signature, null, keyPair.publicKey),
+        service.verifyApproval('approve', 'frm_r1', 'test:min', {}, signature, null, keyPair.publicKey),
         true,
       );
     });
@@ -450,40 +452,40 @@ describe('PermissionService Ed25519 (C2)', () => {
         empty:  {},
       };
 
-      let signature = service.signApproval('test:complex', args, 'ses_complex', keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_r2', 'test:complex', args, 'ses_complex', keyPair.privateKey);
 
       assert.equal(
-        service.verifyApproval('test:complex', args, signature, 'ses_complex', keyPair.publicKey),
+        service.verifyApproval('approve', 'frm_r2', 'test:complex', args, signature, 'ses_complex', keyPair.publicKey),
         true,
       );
     });
 
     it('should round-trip with special characters in feature name', () => {
       let service   = createService();
-      let signature = service.signApproval('ns:tool/sub-tool', { path: '/usr/local' }, null, keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_r3', 'ns:tool/sub-tool', { path: '/usr/local' }, null, keyPair.privateKey);
 
       assert.equal(
-        service.verifyApproval('ns:tool/sub-tool', { path: '/usr/local' }, signature, null, keyPair.publicKey),
+        service.verifyApproval('approve', 'frm_r3', 'ns:tool/sub-tool', { path: '/usr/local' }, signature, null, keyPair.publicKey),
         true,
       );
     });
 
     it('should round-trip with null sessionID', () => {
       let service   = createService();
-      let signature = service.signApproval('test:null-session', { a: 1 }, null, keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_r4', 'test:null-session', { a: 1 }, null, keyPair.privateKey);
 
       assert.equal(
-        service.verifyApproval('test:null-session', { a: 1 }, signature, null, keyPair.publicKey),
+        service.verifyApproval('approve', 'frm_r4', 'test:null-session', { a: 1 }, signature, null, keyPair.publicKey),
         true,
       );
     });
 
     it('should round-trip with explicit sessionID', () => {
       let service   = createService();
-      let signature = service.signApproval('test:with-session', { a: 1 }, 'ses_roundtrip', keyPair.privateKey);
+      let signature = service.signApproval('approve', 'frm_r5', 'test:with-session', { a: 1 }, 'ses_roundtrip', keyPair.privateKey);
 
       assert.equal(
-        service.verifyApproval('test:with-session', { a: 1 }, signature, 'ses_roundtrip', keyPair.publicKey),
+        service.verifyApproval('approve', 'frm_r5', 'test:with-session', { a: 1 }, signature, 'ses_roundtrip', keyPair.publicKey),
         true,
       );
     });

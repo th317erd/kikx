@@ -10,16 +10,18 @@ import { BasePluginClass } from '../../routing/base-plugin-class.mjs';
 // When a permission-request frame is updated (processed=true), this plugin:
 //
 //   - On approval (processed=true, no denied marker):
-//     1. Looks up the tool class from pluginRegistry
-//     2. Re-executes the tool with stored arguments
-//     3. Creates a tool-result frame with the output
+//     1. Verifies the Ed25519 approval signature (if present)
+//     2. Creates a one-time allow PermissionRule (NOT direct tool execution)
+//     3. Hides the placeholder "awaiting" ToolResult
 //     4. Updates state.step to 'completed'
-//     5. Starts a new interaction so the agent sees the result
+//     5. Starts a new interaction (InteractionLoop detects approved tool call)
 //
 //   - On denial (processed=true, denied=true):
-//     1. Creates a tool-result frame with denial message
-//     2. Updates state.step to 'denied'
-//     3. Starts a new interaction so the agent sees the denial
+//     1. Verifies the Ed25519 denial signature (if present)
+//     2. Hides the placeholder "awaiting" ToolResult
+//     3. Creates a denial ToolResult frame
+//     4. Updates state.step to 'denied'
+//     5. Starts a new interaction so the agent sees the denial
 //
 //   - Skips if step is already 'completed' or 'denied'
 //   - Skips if frame is not yet processed (initial creation)
@@ -81,71 +83,275 @@ export function setup(provide) {
         let isDenied = !!content.denied;
 
         if (isDenied) {
-          await this._handleDenial(interactionLoop, sessionID, toolName, toolUseID);
+          await this._handleDenial(interactionLoop, sessionID, toolName, toolUseID, frame, content);
         } else {
-          await this._handleApproval(interactionLoop, pluginRegistry, sessionID, toolName, toolArguments, toolUseID);
+          await this._handleApproval(interactionLoop, pluginRegistry, sessionID, toolName, toolArguments, toolUseID, frame, content);
         }
 
         return await next(this.context);
       }
 
-      async _handleApproval(interactionLoop, pluginRegistry, sessionID, toolName, toolArguments, toolUseID) {
-        let ToolClass = pluginRegistry.getTool(toolName);
+      // -----------------------------------------------------------------------
+      // _verifySignature — verify Ed25519 signature on approval/denial
+      // -----------------------------------------------------------------------
+      // Returns true if signature is valid (or if no signature is present —
+      // legacy approvals without signatures are still accepted).
+      // Returns false only when a signature IS present but is invalid.
+      // -----------------------------------------------------------------------
 
-        if (!ToolClass) {
-          // Tool not found — create error frame
-          let errorOutput = `Error: tool "${toolName}" not found in registry. Cannot re-execute after approval.`;
-          await this._createToolResultFrame(interactionLoop, sessionID, errorOutput, toolUseID);
-          this.state.step = 'completed';
+      _verifySignature(frame, content, action) {
+        let signatureField    = (action === 'deny') ? 'denialSignature' : 'approvalSignature';
+        let fingerprintField  = (action === 'deny') ? 'denialFingerprint' : 'approvalFingerprint';
+        let signature         = content[signatureField];
+        let fingerprint       = content[fingerprintField];
+
+        // No signature → legacy approval, allow it
+        if (!signature)
+          return true;
+
+        let keystore = context.getProperty('keystore');
+        if (!keystore)
+          return true; // No keystore → can't verify, allow it
+
+        // Look up approver's public key
+        let approverID = content.approvedBy || content.deniedBy;
+        let publicKey  = null;
+
+        // Try to find the user's public key from the models
+        // (synchronous lookup not possible here — we cache it in content or look up by fingerprint)
+        // For now, skip verification if we can't find the public key
+        // The InteractionController wrote the fingerprint; we need the public key.
+        // Best-effort: if we have models, try lookup.
+        // Note: This is a synchronous method to keep the plugin simple.
+        // The controller already verified by signing with the correct key.
+        // We do a basic structural check here.
+
+        if (!fingerprint)
+          return true; // No fingerprint → can't verify, allow it
+
+        // Rebuild the payload and verify
+        try {
+          let payload = JSON.stringify(keystore.canonicalize({
+            action,
+            frameID:   frame.id,
+            toolName:  this.state.toolName,
+            arguments: this.state.toolArguments || {},
+            sessionID: this.state.sessionID,
+          }));
+
+          // We need the public key for verification. The approver's public key
+          // can be looked up from User model, but that's async. For the sync
+          // fast path, we store the verification result from the controller.
+          // For the async path, use _verifySignatureAsync.
+          return { needsAsyncVerification: true, payload, signature, fingerprint };
+        } catch (_error) {
+          return false;
+        }
+      }
+
+      async _verifySignatureAsync(frame, content, action) {
+        let signatureField    = (action === 'deny') ? 'denialSignature' : 'approvalSignature';
+        let fingerprintField  = (action === 'deny') ? 'denialFingerprint' : 'approvalFingerprint';
+        let signature         = content[signatureField];
+        let fingerprint       = content[fingerprintField];
+
+        // No signature → legacy approval, allow it
+        if (!signature)
+          return true;
+
+        let keystore = context.getProperty('keystore');
+        if (!keystore)
+          return true;
+
+        // Look up approver's public key via userID or fingerprint
+        let approverID = content.approvedBy || content.deniedBy;
+        let publicKey  = null;
+
+        if (approverID) {
+          let models = context.getProperty('models');
+          if (models && models.User) {
+            try {
+              let approver = await models.User.where.id.EQ(approverID).first();
+              if (approver)
+                publicKey = approver.publicKey;
+            } catch (_lookupError) {
+              // Best-effort
+            }
+          }
+        }
+
+        if (!publicKey)
+          return true; // Can't find public key → allow (legacy user without signing key)
+
+        // Rebuild and verify the payload
+        try {
+          let payload = JSON.stringify(keystore.canonicalize({
+            action,
+            frameID:   frame.id,
+            toolName:  this.state.toolName,
+            arguments: this.state.toolArguments || {},
+            sessionID: this.state.sessionID,
+          }));
+
+          return keystore.verifyWithPublicKey(payload, publicKey, signature);
+        } catch (_error) {
+          return false;
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // _hideAwaitingToolResult — hide placeholder ToolResult frames
+      // -----------------------------------------------------------------------
+
+      async _hideAwaitingToolResult(interactionLoop, sessionID, toolUseID) {
+        if (!toolUseID)
+          return;
+
+        let models = context.getProperty('models');
+        if (!models || !models.Frame)
+          return;
+
+        try {
+          let toolResults = await models.Frame.where
+            .sessionID.EQ(sessionID)
+            .AND.type.EQ('ToolResult')
+            .all();
+
+          for (let resultFrame of toolResults) {
+            let resultContent = (typeof resultFrame.content === 'string')
+              ? (() => { try { return JSON.parse(resultFrame.content); } catch (_e) { return {}; } })()
+              : (resultFrame.content || {});
+
+            if (resultContent.toolUseID === toolUseID && !resultFrame.hidden) {
+              resultFrame.hidden = true;
+              await resultFrame.save();
+            }
+          }
+        } catch (_error) {
+          // Best-effort
+        }
+      }
+
+      async _handleApproval(interactionLoop, pluginRegistry, sessionID, toolName, toolArguments, toolUseID, frame, content) {
+        // Verify approval signature
+        let signatureValid = await this._verifySignatureAsync(frame, content, 'approve');
+
+        if (signatureValid === false) {
+          this.logger.warn(`[PermissionApproval] Invalid approval signature on frame ${frame.id} — skipping`);
+          this.state.step = 'signature-invalid';
           return;
         }
 
-        // Re-execute the tool
-        let toolOutput;
+        // Create one-time allow PermissionRule
         try {
-          let toolInstance = new ToolClass(context);
-          toolOutput = await toolInstance.execute(toolArguments || {});
-        } catch (execError) {
-          toolOutput = `Error executing tool after approval: ${execError.message}`;
+          let { Permissions } = await import('../../permissions/permissions-base.mjs');
+          let permissions     = new Permissions(context);
+
+          // Resolve organizationID from state or approver
+          let organizationID = this.state.organizationID || null;
+
+          if (!organizationID && content.approvedBy) {
+            let models = context.getProperty('models');
+            if (models && models.User) {
+              let approver = await models.User.where.id.EQ(content.approvedBy).first();
+              if (approver)
+                organizationID = approver.organizationID;
+            }
+          }
+
+          if (organizationID) {
+            await permissions.createRule({
+              organizationID,
+              featureName: toolName,
+              effect:      'allow',
+              scope:       'session',
+              scopeID:     sessionID,
+              metadata:    {
+                oneTime:               true,
+                permissionRequestID:   frame.id,
+                toolArguments:         toolArguments || {},
+                toolUseID:             toolUseID || null,
+              },
+            });
+          }
+        } catch (ruleError) {
+          this.logger.error('[PermissionApproval] Failed to create one-time rule:', ruleError);
         }
 
-        // Normalize output
-        if (toolOutput && typeof toolOutput === 'object' && toolOutput.content)
-          toolOutput = toolOutput.content;
-        if (typeof toolOutput !== 'string')
-          toolOutput = JSON.stringify(toolOutput);
-
-        // Create tool-result frame
-        await this._createToolResultFrame(interactionLoop, sessionID, toolOutput, toolUseID);
+        // Hide the placeholder "awaiting" ToolResult
+        await this._hideAwaitingToolResult(interactionLoop, sessionID, toolUseID);
 
         // Update state
         this.state.step = 'completed';
 
-        // Start new interaction so agent sees the result
-        try {
-          await interactionLoop.startInteraction(sessionID, {
-            replayFromPermission: true,
-          });
-        } catch (startError) {
-          this.logger.error('[PermissionApproval] Failed to start interaction after approval:', startError);
-        }
+        // Start new interaction — InteractionLoop will detect approved-but-unexecuted tool call
+        await this._resolveAndStartInteraction(interactionLoop, sessionID);
       }
 
-      async _handleDenial(interactionLoop, sessionID, toolName, toolUseID) {
-        let denialOutput = `Permission denied: the user denied execution of "${toolName}". Do not retry this exact command unless the user explicitly asks you to.`;
+      async _handleDenial(interactionLoop, sessionID, toolName, toolUseID, frame, content) {
+        // Verify denial signature
+        let signatureValid = await this._verifySignatureAsync(frame, content, 'deny');
 
+        if (signatureValid === false) {
+          this.logger.warn(`[PermissionApproval] Invalid denial signature on frame ${frame.id} — skipping`);
+          this.state.step = 'signature-invalid';
+          return;
+        }
+
+        // Hide the placeholder "awaiting" ToolResult
+        await this._hideAwaitingToolResult(interactionLoop, sessionID, toolUseID);
+
+        // Create denial ToolResult
+        let denialOutput = `Permission denied for "${toolName}". User denied execution.`;
         await this._createToolResultFrame(interactionLoop, sessionID, denialOutput, toolUseID);
 
         // Update state
         this.state.step = 'denied';
 
         // Start new interaction so agent sees the denial
+        await this._resolveAndStartInteraction(interactionLoop, sessionID);
+      }
+
+      // -----------------------------------------------------------------------
+      // _resolveAndStartInteraction — resolve agent and start interaction
+      // -----------------------------------------------------------------------
+      // Uses the agentResolver (same pattern as SessionScheduler) to resolve
+      // the agent from the state's agentID, then starts a new interaction.
+      // Falls back to starting without agent (best-effort) if resolution fails.
+      // -----------------------------------------------------------------------
+
+      async _resolveAndStartInteraction(interactionLoop, sessionID) {
         try {
-          await interactionLoop.startInteraction(sessionID, {
-            replayFromPermission: true,
-          });
+          let agentResolver    = context.getProperty('agentResolver');
+          let sessionScheduler = context.getProperty('sessionScheduler');
+          let agentID          = this.state.agentID;
+
+          if (agentResolver && agentID) {
+            let resolveContext = (sessionScheduler && sessionScheduler.getResolveContext)
+              ? (sessionScheduler.getResolveContext(sessionID) || {})
+              : {};
+
+            let { agentPlugin, resolvedAgent } = await agentResolver.resolve(agentID, resolveContext);
+            let { checkPermission, executeTool } = agentResolver.buildCallbacks(resolvedAgent, sessionID);
+
+            await interactionLoop.startInteraction(sessionID, {
+              agentPlugin,
+              agent:               resolvedAgent,
+              userMessage:         null,
+              authorType:          'agent',
+              authorID:            agentID,
+              checkPermission,
+              executeTool,
+              replayFromPermission: true,
+            });
+          } else {
+            // Fallback: start without agent (will use existing session agent)
+            await interactionLoop.startInteraction(sessionID, {
+              replayFromPermission: true,
+            });
+          }
         } catch (startError) {
-          this.logger.error('[PermissionApproval] Failed to start interaction after denial:', startError);
+          this.logger.error('[PermissionApproval] Failed to start interaction:', startError);
         }
       }
 

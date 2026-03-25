@@ -75,6 +75,8 @@ export function setup(provide) {
           } else {
             // Fallback: try HMAC verification via permission service (backward compat)
             let valid = permissionService.verifyApproval(
+              'approve',
+              frame.id,
               frame.content.toolName,
               frame.content.arguments || {},
               signature,

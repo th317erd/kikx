@@ -148,12 +148,21 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
       isActive() { return false; },
     };
 
-    // Permission engine mock
+    // Track created rules for test assertions
     let createdRules = [];
-    let permissionEngine = {
-      async createRule(ruleData) {
-        createdRules.push(ruleData);
-        return { id: 'rule_1', ...ruleData };
+    let models       = core.getModels();
+
+    // Wrap PermissionRule.create to capture created rules
+    let originalCreate = models.PermissionRule.create.bind(models.PermissionRule);
+    let wrappedModels  = {
+      ...models,
+      PermissionRule: {
+        ...models.PermissionRule,
+        create: async (data) => {
+          createdRules.push(data);
+          return originalCreate(data);
+        },
+        where: models.PermissionRule.where,
       },
     };
 
@@ -170,13 +179,15 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
                 if (name === 'streamRelay')      return null;
                 if (name === 'valueStoreService') return null;
                 if (name === 'solrService')      return null;
+                if (name === 'models')           return wrappedModels;
+                if (name === 'keystore')         return keystore;
                 return null;
               },
             };
           },
           getModels() { return core.getModels(); },
           getPluginRegistry() { return core.getPluginRegistry(); },
-          getPermissionEngine() { return permissionEngine; },
+          getPermissionEngine() { return null; },
           getAgentType() { return null; },
         };
       },

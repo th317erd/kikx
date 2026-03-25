@@ -463,7 +463,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
         pluginID:       'mock-agent',
       });
 
-      let hmacSignature = permissionService.signApproval('shell:execute', { command: 'ls' }, 'ses_8');
+      let hmacSignature = permissionService.signApproval('approve', 'frm_hmac_fallback', 'shell:execute', { command: 'ls' }, 'ses_8');
       let frameManager  = new FrameManager({ history: true });
 
       frameManager.merge([{
@@ -547,7 +547,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
     it('should fall back to HMAC when author not found in database', async () => {
       let PluginClass = getPluginClass();
 
-      let hmacSignature = permissionService.signApproval('shell:execute', { command: 'pwd' }, 'ses_10');
+      let hmacSignature = permissionService.signApproval('approve', 'frm_missing_author', 'shell:execute', { command: 'pwd' }, 'ses_10');
       let frameManager  = new FrameManager({ history: true });
 
       frameManager.merge([{
@@ -585,7 +585,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
     it('should fall back to HMAC when authorType is system', async () => {
       let PluginClass = getPluginClass();
 
-      let hmacSignature = permissionService.signApproval('shell:execute', { command: 'date' }, 'ses_11');
+      let hmacSignature = permissionService.signApproval('approve', 'frm_system_author', 'shell:execute', { command: 'date' }, 'ses_11');
       let frameManager  = new FrameManager({ history: true });
 
       frameManager.merge([{
@@ -863,7 +863,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
         passwordHash:   'test-hash',
       });
 
-      let hmacSignature = permissionService.signApproval('shell:execute', { command: 'ls' }, 'ses_19');
+      let hmacSignature = permissionService.signApproval('approve', 'frm_user_no_key', 'shell:execute', { command: 'ls' }, 'ses_19');
       let frameManager  = new FrameManager({ history: true });
 
       frameManager.merge([{

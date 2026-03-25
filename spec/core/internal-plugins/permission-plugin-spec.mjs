@@ -118,7 +118,7 @@ describe('PermissionPlugin (C3)', () => {
     it('should verify valid signatures on tool-call frames', async () => {
       let PluginClass = setupAndGetPluginClass(context);
 
-      let signature    = permissionService.signApproval('shell:execute', { command: 'ls' }, 'ses_1');
+      let signature    = permissionService.signApproval('approve', 'frm_tc_valid', 'shell:execute', { command: 'ls' }, 'ses_1');
       let frameManager = new FrameManager({ history: true });
 
       // Signature on frame.signature (HMAC fallback — no author public key in DB)

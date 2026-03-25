@@ -330,6 +330,151 @@ export class InteractionLoop extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
+  // _replayApprovedToolCalls — execute tool calls approved via permission flow
+  // ---------------------------------------------------------------------------
+  // When a permission request is approved, the PermissionApprovalPlugin:
+  //   1. Creates a one-time allow rule
+  //   2. Hides the placeholder "awaiting" ToolResult
+  //   3. Starts a new interaction (replayFromPermission: true)
+  //
+  // This method finds ToolCall frames with no visible ToolResult (orphaned by
+  // the hidden placeholder) that have a matching one-time allow rule, and
+  // executes them through the normal tool execution pipeline. The tool's
+  // _checkPermissions() → evaluate() will find the one-time rule and proceed.
+  //
+  // After execution, the one-time rule is consumed (metadata.consumed = true).
+  // ---------------------------------------------------------------------------
+
+  async _replayApprovedToolCalls(sessionID, interactionID, params, frameManager, signingContext) {
+    try {
+      let models = this._getModels();
+      if (!models || !models.Frame || !models.PermissionRule)
+        return;
+
+      // Find all visible ToolCall frames in the session
+      let toolCallFrames = await models.Frame.where
+        .sessionID.EQ(sessionID)
+        .AND.type.EQ('ToolCall')
+        .AND.hidden.EQ(false)
+        .all();
+
+      if (!toolCallFrames || toolCallFrames.length === 0)
+        return;
+
+      // Find all visible ToolResult frames in the session
+      let toolResultFrames = await models.Frame.where
+        .sessionID.EQ(sessionID)
+        .AND.type.EQ('ToolResult')
+        .AND.hidden.EQ(false)
+        .all();
+
+      // Build a set of toolUseIDs that have results
+      let resultToolUseIDs = new Set();
+      for (let resultFrame of toolResultFrames) {
+        let resultContent = (typeof resultFrame.content === 'string')
+          ? (() => { try { return JSON.parse(resultFrame.content); } catch (_e) { return {}; } })()
+          : (resultFrame.content || {});
+
+        if (resultContent.toolUseID)
+          resultToolUseIDs.add(resultContent.toolUseID);
+      }
+
+      // Find orphaned tool calls (no matching result)
+      let orphanedCalls = [];
+      for (let callFrame of toolCallFrames) {
+        let callContent = (typeof callFrame.content === 'string')
+          ? (() => { try { return JSON.parse(callFrame.content); } catch (_e) { return {}; } })()
+          : (callFrame.content || {});
+
+        let toolUseID = callContent.toolUseID;
+        if (toolUseID && !resultToolUseIDs.has(toolUseID))
+          orphanedCalls.push({ frame: callFrame, content: callContent });
+      }
+
+      if (orphanedCalls.length === 0)
+        return;
+
+      // Check for one-time rules matching each orphaned call
+      let executeTool = params.executeTool;
+      if (typeof executeTool !== 'function')
+        return;
+
+      for (let { frame: callFrame, content: callContent } of orphanedCalls) {
+        let toolName  = callContent.toolName;
+        let toolArgs  = callContent.arguments || {};
+        let toolUseID = callContent.toolUseID;
+
+        // Look for a matching one-time rule
+        let rules = await models.PermissionRule.where
+          .featureName.EQ(toolName)
+          .AND.scope.EQ('session')
+          .AND.scopeID.EQ(sessionID)
+          .all();
+
+        let oneTimeRule = null;
+        for (let rule of rules) {
+          if (rule.effect !== 'allow')
+            continue;
+
+          let metadata = rule.metadata ? (() => { try { return JSON.parse(rule.metadata); } catch (_e) { return {}; } })() : {};
+          if (!metadata.oneTime || metadata.consumed)
+            continue;
+
+          // Match by toolUseID if available
+          if (metadata.toolUseID && metadata.toolUseID !== toolUseID)
+            continue;
+
+          oneTimeRule = rule;
+          break;
+        }
+
+        if (!oneTimeRule)
+          continue;
+
+        // Execute through the normal tool execution pipeline
+        let toolOutput = '';
+        try {
+          toolOutput = await executeTool(toolName, toolArgs);
+        } catch (toolError) {
+          toolOutput = `Error executing tool after approval: ${toolError.message}`;
+        }
+
+        // Normalize output
+        if (toolOutput && typeof toolOutput === 'object' && toolOutput.content)
+          toolOutput = toolOutput.content;
+        if (typeof toolOutput !== 'string')
+          toolOutput = JSON.stringify(toolOutput);
+
+        // Create tool-result frame
+        await this._createFrame(sessionID, {
+          id:            generateID('frm_'),
+          type:          'ToolResult',
+          content:       { output: toolOutput, toolUseID: toolUseID || null, _sessionID: sessionID },
+          timestamp:     Date.now(),
+          interactionID,
+          authorType:    'system',
+          authorID:      null,
+          hidden:        false,
+          deleted:       false,
+          processed:     false,
+        }, frameManager, { authorType: 'system' }, signingContext);
+
+        // Mark the one-time rule as consumed
+        try {
+          let metadata = oneTimeRule.metadata ? JSON.parse(oneTimeRule.metadata) : {};
+          metadata.consumed   = true;
+          oneTimeRule.metadata = JSON.stringify(metadata);
+          await oneTimeRule.save();
+        } catch (_consumeError) {
+          // Best-effort
+        }
+      }
+    } catch (error) {
+      console.error('[InteractionLoop] Failed to replay approved tool calls:', error.message || error);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // startInteraction
   // ---------------------------------------------------------------------------
 
@@ -365,6 +510,14 @@ export class InteractionLoop extends EventEmitter {
     // Load FrameManager BEFORE creating any frames
     let frameManager = sessionManager.getFrameManager(sessionID);
     await framePersistence.loadFramesInto(frameManager, sessionID);
+
+    // Approved tool call replay: when replayFromPermission is true, check for
+    // approved-but-unexecuted tool calls (ToolCall frames with no visible ToolResult).
+    // Execute them through the normal pipeline so _checkPermissions() → evaluate()
+    // finds the one-time allow rule created by PermissionApprovalPlugin.
+    if (params.replayFromPermission && params.executeTool) {
+      await this._replayApprovedToolCalls(sessionID, interactionID, params, frameManager, signingContext);
+    }
 
     // Auto-heal: hide orphaned tool-calls that have no matching tool-result.
     // These cause API errors and poison the conversation. Best-effort.

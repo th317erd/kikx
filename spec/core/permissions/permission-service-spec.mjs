@@ -289,33 +289,33 @@ describe('PermissionService (C3)', () => {
   describe('envelope signing', () => {
     it('should sign and verify an approval', () => {
       let service   = createService();
-      let signature = service.signApproval('shell:execute', { command: 'ls' });
+      let signature = service.signApproval('approve', 'frm_1', 'shell:execute', { command: 'ls' });
 
       assert.ok(signature);
       assert.match(signature, /^[0-9a-f]{64}$/);
 
-      let valid = service.verifyApproval('shell:execute', { command: 'ls' }, signature);
+      let valid = service.verifyApproval('approve', 'frm_1', 'shell:execute', { command: 'ls' }, signature);
       assert.equal(valid, true);
     });
 
     it('should reject tampered data', () => {
       let service   = createService();
-      let signature = service.signApproval('shell:execute', { command: 'ls' });
+      let signature = service.signApproval('approve', 'frm_2', 'shell:execute', { command: 'ls' });
 
-      let valid = service.verifyApproval('shell:execute', { command: 'rm -rf /' }, signature);
+      let valid = service.verifyApproval('approve', 'frm_2', 'shell:execute', { command: 'rm -rf /' }, signature);
       assert.equal(valid, false);
     });
 
     it('should reject invalid signatures', () => {
       let service = createService();
-      let valid   = service.verifyApproval('test', {}, 'a'.repeat(64));
+      let valid   = service.verifyApproval('approve', 'frm_3', 'test', {}, 'a'.repeat(64));
       assert.equal(valid, false);
     });
 
     it('should produce deterministic signatures', () => {
       let service = createService();
-      let sig1    = service.signApproval('test:tool', { a: 1, b: 2 });
-      let sig2    = service.signApproval('test:tool', { b: 2, a: 1 });
+      let sig1    = service.signApproval('approve', 'frm_4', 'test:tool', { a: 1, b: 2 });
+      let sig2    = service.signApproval('approve', 'frm_4', 'test:tool', { b: 2, a: 1 });
       assert.equal(sig1, sig2);
     });
   });
