@@ -1,0 +1,699 @@
+# =============================================================================
+# Permission Integration — Frame-Based, Signature-Driven Permissions
+# =============================================================================
+# Remove PermissionEngine. PermissionsClass owns the full lifecycle.
+# Approvals and denials are cryptographically signed frames.
+# The FrameRouter is the only dispatch mechanism.
+#
+# Prerequisite: Unified Class Registry (Phases 1-6) — COMPLETE
+# Fixes: Infinite recursion bug (ShellPermissions → PermissionEngine → ShellPermissions)
+# Fixes: 4 pre-existing test failures in cross-session/memory permissions
+#
+# Created: 2026-03-24
+# =============================================================================
+
+meta:
+  title: "Permission Integration — Frame-Based Signature-Driven Permissions"
+  version: "1.0.0"
+
+# =============================================================================
+# 1. THE NEW PERMISSION LIFECYCLE
+# =============================================================================
+#
+# 1. Tool executes → _checkPermissions()
+#    a. riskLevel 'none' → proceed (no check)
+#    b. PermissionsClass.evaluate() checks standing rules (DB query, no engine)
+#    c. Standing allow rule with valid signature → proceed
+#    d. Standing deny rule → throw PermissionDeniedError
+#    e. No rule match + risk is permissive → proceed
+#    f. No rule match + risk is normal/strict → throw PermissionRequiredError
+#
+# 2. InteractionLoop catches PermissionRequiredError
+#    a. Creates PermissionRequest frame (signed by system)
+#    b. Creates ToolResult frame: "Permission requested. Request ID = frm_xxx"
+#    c. Agent continues running — NO hardBreak for same-session user
+#    d. Cross-session: routes request to nearest ancestor with user
+#    e. No user in ancestry → immediate denial ToolResult
+#
+# 3. Client renders PermissionRequest → user clicks Approve/Deny
+#    a. Client sends signed approval/denial to server
+#    b. Server verifies user is session participant
+#    c. Server writes approval signature onto PermissionRequest frame
+#    d. For "forever" decisions, creates standing PermissionRule
+#
+# 4. FrameRouter fires on PermissionRequest frame update
+#    a. PermissionApprovalPlugin verifies approval signature (Ed25519)
+#    b. On valid approval: re-executes tool, creates ToolResult frame
+#    c. On valid denial: creates denial ToolResult frame
+#    d. Starts new interaction so agent sees the result
+#
+# 5. PermissionEngine is deleted. All rule evaluation lives in
+#    Permissions base class (query PermissionRule model directly).
+#    PermissionService is simplified (no engine dependency).
+
+# =============================================================================
+# 2. DESIGN DECISIONS
+# =============================================================================
+
+design:
+  approval_signature_binding: |
+    The approval signature MUST cryptographically bind to:
+      - frameID of the PermissionRequest (prevents replay across requests)
+      - toolName (prevents tool swap)
+      - toolArguments (prevents argument escalation)
+      - sessionID (prevents cross-session replay)
+    Payload: canonicalize({ action, frameID, toolName, arguments, sessionID })
+    Signed with user's Ed25519 private key.
+
+  no_hardbreak_for_same_session: |
+    When the requesting session HAS a user, the interaction should NOT be
+    destroyed. Instead, feed a ToolResult back to the agent:
+      "Permission required for {toolName}. Request sent to user. Request ID: {frameID}"
+    The agent continues and can do other work while waiting.
+
+    hardBreak is ONLY used for cross-session routing (child agent session
+    where the user is in a parent session). In that case the child interaction
+    must pause because it has no user to approve locally.
+
+  pending_action_removed: |
+    PendingAction frames are removed from the flow. The PermissionRequest
+    frame IS the pending action. The toolUseID, toolName, and arguments
+    live on the PermissionRequest frame's content and state.
+
+  agent_informed: |
+    At every state transition, the agent gets a ToolResult:
+    - Permission requested: "Permission required for {tool}. Request ID: {id}"
+    - Permission approved: actual tool output
+    - Permission denied: "Permission denied for {tool}. User denied execution."
+    - Permission expired: "Permission request {id} expired after {timeout}"
+
+  permission_engine_removed: |
+    PermissionEngine is deleted entirely. Its rule evaluation logic moves
+    into the Permissions base class. The Permissions class queries
+    PermissionRule records directly via the models on context.
+
+  permissions_class_lifecycle: |
+    Permissions base class gains:
+      evaluate(featureName, args, options) — full rule evaluation
+        1. Query PermissionRule records for org + feature
+        2. Filter expired, filter by scope hierarchy
+        3. Walk up session ancestry for session-scoped rules
+        4. Call this.matchesRule() for custom matching
+        5. First match: deny → throw, allow → return false
+        6. No match: check risk level → return true/false
+      This replaces PermissionEngine.checkPermission() entirely.
+
+# =============================================================================
+# 3. FILE CHANGES
+# =============================================================================
+
+files:
+  create:
+    - path: "spec/core/permissions/permissions-evaluate-spec.mjs"
+      description: "Tests for Permissions.evaluate() — rule evaluation without engine"
+
+    - path: "spec/core/permissions/approval-signature-spec.mjs"
+      description: "Tests for approval signature creation, verification, binding, and adversarial cases"
+
+    - path: "spec/core/permissions/permission-request-flow-spec.mjs"
+      description: "Tests for the full permission request lifecycle (request → approve → execute)"
+
+    - path: "spec/core/permissions/adversarial-permissions-spec.mjs"
+      description: "Tests for replay, injection, escalation, timeout, and authorization failures"
+
+  modify:
+    - path: "src/core/permissions/permissions-base.mjs"
+      description: "Add evaluate() method — full rule evaluation (moved from PermissionEngine). Also absorb createRule(), deleteRule(), getRules(), pruneExpired() as instance methods."
+
+    - path: "src/core/plugin-loader/plugin-interface.mjs"
+      description: "Rewrite _checkPermissions() to use PermissionsClass.evaluate() directly"
+
+    - path: "src/core/interaction/index.mjs"
+      description: "Scope check: inline permission flow already exists (lines 760-814). Only change: remove PendingAction references if any remain, verify agent gets correct message."
+
+    - path: "src/core/interaction/permission-handler.mjs"
+      description: "Simplify — only cross-session routing remains. Remove PendingAction frame creation."
+
+    - path: "src/core/internal-plugins/permission-approval/index.mjs"
+      description: "Add signature verification before re-executing tool"
+
+    - path: "src/server/controllers/interaction-controller.mjs"
+      description: "Sign approval/denial with user's Ed25519 key, write signature to frame. Replace permissionEngine.createRule() with direct PermissionRule model queries."
+
+    - path: "src/server/application.mjs"
+      description: "Remove permissionEngine from PermissionService construction. Update PermissionService instantiation after constructor simplification."
+
+    - path: "src/core/permissions/permission-service.mjs"
+      description: "Remove PermissionEngine dependency. Simplify to signing utilities. Standing rule creation uses Permissions.createRule() or PermissionRule model directly."
+
+    - path: "src/core/internal-plugins/shell/shell-permissions.mjs"
+      description: "Call this.evaluate() instead of permissionEngine.checkPermission(). Remove static checkCommands() method (takes engine as param — no longer valid)."
+
+    - path: "src/core/scheduling/agent-resolver.mjs"
+      description: "Remove permissionEngine usage in buildCallbacks(). The checkPermission callback should use the tool's own _checkPermissions() pipeline (PluginInterface.execute() already handles this). If the scheduler needs pre-flight permission checks, use Permissions.evaluate() directly."
+
+    - path: "src/core/kikx-core.mjs"
+      description: "Remove PermissionEngine import, instantiation, context.setProperty('permissionEngine'), and getPermissionEngine() accessor. Remove from ClassRegistry registration."
+
+    - path: "src/core/index.mjs"
+      description: "Remove PermissionEngine from public API exports."
+
+    - path: "src/core/permissions/index.mjs"
+      description: "Remove PermissionEngine re-export."
+
+    - path: "src/client/components/kikx-permission-request/kikx-permission-request.mjs"
+      description: "No major changes — approval payload already correct"
+
+  modify_tests:
+    - path: "spec/core/permissions/permission-engine-risklevel-spec.mjs"
+      description: "Rewrite to test Permissions.evaluate() risk level behavior instead of PermissionEngine"
+
+    - path: "spec/core/permissions/permission-service-spec.mjs"
+      description: "Remove PermissionEngine instantiation, update for simplified PermissionService"
+
+    - path: "spec/core/permissions/permission-service-ed25519-spec.mjs"
+      description: "Remove PermissionEngine instantiation, update for simplified PermissionService"
+
+    - path: "spec/core/permissions/fingerprint-spec.mjs"
+      description: "Replace core.getPermissionEngine() with Permissions class"
+
+    - path: "spec/core/routing/base-plugin-permission-spec.mjs"
+      description: "Remove PermissionEngine import/instantiation"
+
+    - path: "spec/core/plugin-loader/plugin-interface-permissions-spec.mjs"
+      description: "Remove 44+ permissionEngine mock references, update for new flow"
+
+    - path: "spec/core/internal-plugins/cross-session/cross-session-permissions-spec.mjs"
+      description: "Update for Permissions.evaluate() — fixes pre-existing failures"
+
+    - path: "spec/core/internal-plugins/memory-permissions-spec.mjs"
+      description: "Update for Permissions.evaluate() — fixes pre-existing failures"
+
+  delete:
+    - path: "src/core/permissions/permission-engine.mjs"
+      description: "Entire file removed — logic moved to Permissions.evaluate()"
+
+    - path: "spec/core/permissions/permission-engine-spec.mjs"
+      description: "Tests replaced by permissions-evaluate-spec.mjs"
+
+  # Complete list of all PermissionEngine consumers (from code review):
+  #
+  # src/core/permissions/permission-engine.mjs         — THE CLASS (delete)
+  # src/core/permissions/index.mjs                     — export (modify)
+  # src/core/permissions/permission-service.mjs        — constructor dep (modify)
+  # src/core/permissions/permission-denied-error.mjs   — comment only (trivial)
+  # src/core/kikx-core.mjs                             — import/create/register/accessor (modify)
+  # src/core/index.mjs                                 — public API export (modify)
+  # src/core/plugin-loader/plugin-interface.mjs        — _checkPermissionEngine() (modify)
+  # src/core/internal-plugins/shell/shell-permissions.mjs — instance + static method (modify)
+  # src/core/interaction/index.mjs                     — comment only (trivial)
+  # src/core/scheduling/agent-resolver.mjs             — getPermissionEngine() + 2 calls (modify)
+  # src/server/application.mjs                         — PermissionService construction (modify)
+  # src/server/controllers/interaction-controller.mjs  — getPermissionEngine() + createRule() (modify)
+
+# =============================================================================
+# 4. IMPLEMENTATION PHASES
+# =============================================================================
+
+phases:
+  phase_1:
+    name: "Permissions.evaluate() — Rule Evaluation Without Engine"
+    description: |
+      Move PermissionEngine's rule evaluation logic into the Permissions
+      base class as evaluate(). TDD — write tests first, then implement.
+      This is the foundation that everything else builds on.
+    steps:
+      - id: "1.1"
+        task: "Write failing tests for Permissions.evaluate()"
+        tdd: true
+        file: "spec/core/permissions/permissions-evaluate-spec.mjs"
+        description: |
+          Tests need the full core started (for PermissionRule model access).
+
+          Test cases (~15):
+          - evaluate() with no rules → returns true (needs approval) for strict
+          - evaluate() with no rules → returns false (auto-allow) for permissive
+          - evaluate() with allow rule → returns false
+          - evaluate() with deny rule → throws PermissionDeniedError
+          - evaluate() with expired rule → ignores it
+          - evaluate() with session-scoped rule matching current session → matches
+          - evaluate() with session-scoped rule for different session → no match
+          - evaluate() with global-scoped rule → matches any session
+          - evaluate() priority: higher priority rule wins
+          - evaluate() with riskLevel 'critical' → always needs approval (ignores allow)
+          - evaluate() with custom matchesRule() returning false → rule skipped
+          - evaluate() with custom matchesRule() returning true → rule applies
+          - evaluate() ancestry walk-up: rule on parent session matches child
+          - evaluate() ancestry walk-up disabled for strict risk level
+          - evaluate() with riskLevel 'none' → returns false (auto-allow)
+
+      - id: "1.2"
+        task: "Implement Permissions.evaluate()"
+        file: "src/core/permissions/permissions-base.mjs"
+        description: |
+          Add evaluate(featureName, args, options) method to the Permissions
+          base class. Options: { organizationID, scope, scopeID, agent, user,
+          sessionManager, riskLevel }.
+
+          Implementation: port PermissionEngine.checkPermission() logic
+          directly, but query PermissionRule model from context instead
+          of going through an engine instance.
+
+          Key: the Permissions class now queries the DB directly:
+            let { PermissionRule } = this._context.getProperty('models');
+            let rules = await PermissionRule.where.organizationID.EQ(orgID)
+              .AND.featureName.EQ(featureName).all();
+
+      - id: "1.3"
+        task: "Run tests, verify all pass"
+        description: "Run spec/core/permissions/permissions-evaluate-spec.mjs"
+
+      - id: "1.4"
+        task: "Commit"
+        description: "feat: add Permissions.evaluate() — rule evaluation without PermissionEngine"
+
+  phase_2:
+    name: "Wire PluginInterface to Permissions.evaluate()"
+    description: |
+      Rewrite _checkPermissions() on PluginInterface to call
+      PermissionsClass.evaluate() directly instead of PermissionEngine.
+      This eliminates the infinite recursion path.
+    steps:
+      - id: "2.1"
+        task: "Write failing tests for new _checkPermissions() flow"
+        tdd: true
+        file: "spec/core/plugin-loader/plugin-interface-permissions-spec.mjs"
+        description: |
+          Unit tests (mock context, no core start needed):
+          - riskLevel 'none' → no permission check
+          - No PermissionsClass → default deny-by-default (needs approval)
+          - PermissionsClass.evaluate() returns false → proceeds
+          - PermissionsClass.evaluate() returns true → throws PermissionRequiredError
+          - PermissionsClass.evaluate() throws PermissionDeniedError → propagates
+          - Timeout: evaluate() hangs → times out after 10s
+          - PermissionsClass.evaluate() returns null → falls back to base evaluate()
+
+      - id: "2.2"
+        task: "Rewrite PluginInterface._checkPermissions()"
+        file: "src/core/plugin-loader/plugin-interface.mjs"
+        description: |
+          Remove _checkPermissionEngine(). The new flow:
+            1. riskLevel 'none' → return
+            2. Get PermissionsClass from tool (getPermissionsClass())
+            3. If PermissionsClass: call permissions.evaluate(featureName, args, options)
+               - returns false → return (approved)
+               - returns true → throw PermissionRequiredError
+               - throws → propagate
+            4. If no PermissionsClass: use new Permissions(context).evaluate()
+               as the default (base class provides deny-by-default)
+
+          Remove ALL references to permissionEngine from PluginInterface.
+
+      - id: "2.3"
+        task: "Update ShellPermissions to use this.evaluate()"
+        file: "src/core/internal-plugins/shell/shell-permissions.mjs"
+        description: |
+          ShellPermissions.checkPermission() currently calls
+          permissionEngine.checkPermission() for each parsed command.
+          Change to: this.evaluate() for each command (inherited from base).
+          Remove the permissionEngine lookup and the infinite recursion guards.
+
+      - id: "2.4"
+        task: "Update other PermissionsClasses"
+        description: |
+          Check CrossSessionPermissions, SystemCommandPermissions,
+          FilesPermissions, WebsearchPermissions — update any that
+          reference permissionEngine to use this.evaluate() instead.
+
+      - id: "2.5"
+        task: "Update agent-resolver.mjs"
+        file: "src/core/scheduling/agent-resolver.mjs"
+        description: |
+          buildCallbacks() constructs a checkPermission closure that calls
+          permissionEngine.checkPermission() directly (including per-command
+          shell parsing). This is a duplicate of ShellPermissions logic.
+
+          Options:
+          a) Remove the pre-flight permission check entirely — tools now
+             handle their own permissions via execute() → _checkPermissions().
+             The scheduler doesn't need to pre-check.
+          b) If pre-flight is still needed, use Permissions.evaluate() directly.
+
+          Also remove: getPermissionEngine() call, permissionEngine variable.
+
+      - id: "2.6"
+        task: "Remove ShellPermissions.checkCommands() static method"
+        file: "src/core/internal-plugins/shell/shell-permissions.mjs"
+        description: |
+          Static checkCommands(commands, permissionEngine, options) takes
+          the engine as an explicit parameter. This method is a legacy
+          entry point. Remove it — callers should use the instance method
+          checkPermission() which now delegates to this.evaluate().
+
+      - id: "2.7"
+        task: "Run full test suite, fix failures"
+        description: |
+          npm test — the 4 pre-existing failures should now be fixed
+          because the infinite recursion path is eliminated.
+          Also update test files that reference PermissionEngine.
+
+      - id: "2.8"
+        task: "Commit"
+        description: "feat: wire PluginInterface to Permissions.evaluate(), remove PermissionEngine dependency"
+
+  phase_3:
+    name: "Inline Permission Request Cleanup"
+    description: |
+      NOTE: The inline permission flow already exists in InteractionLoop
+      (lines 760-814). Same-session requests already create PermissionRequest
+      + ToolResult and continue the loop. hardBreak is already only used for
+      cross-session routing.
+
+      This phase cleans up: removes PendingAction from the cross-session
+      hardBreak path, verifies the agent gets correct messages, and ensures
+      the existing flow works with the new Permissions.evaluate() from Phase 2.
+    steps:
+      - id: "3.1"
+        task: "Verify existing inline flow tests pass with new evaluate()"
+        file: "spec/core/interaction/inline-permission-flow-spec.mjs"
+        description: |
+          This file already exists. Run the tests — they should pass since
+          Phase 2 only changed HOW permissions are evaluated, not the
+          InteractionLoop catch behavior. If any fail, fix them.
+
+          Add tests if missing:
+          - ToolResult content includes frame ID for the permission request
+          - Agent receives informative message at each state transition
+
+      - id: "3.2"
+        task: "Remove PendingAction from hardBreak path"
+        file: "src/core/interaction/permission-handler.mjs"
+        description: |
+          hardBreak currently creates both PendingAction and PermissionRequest.
+          Remove PendingAction frame creation. The PermissionRequest frame
+          content already includes toolName, arguments, toolUseID.
+
+          Also remove PendingAction processing from the approve controller
+          (interaction-controller.mjs lines 316-326).
+
+      - id: "3.3"
+        task: "Run tests, verify"
+        description: "Run inline-permission-flow tests + permission-handler tests + full suite"
+
+      - id: "3.4"
+        task: "Commit"
+        description: "refactor: remove PendingAction from permission flow, PermissionRequest is the single source"
+
+  phase_4:
+    name: "Signature-Based Approval"
+    description: |
+      The approval endpoint signs the approval with the user's Ed25519 key.
+      The signature is bound to the specific request (frameID, tool, args, session).
+      The PermissionApprovalPlugin verifies the signature before re-executing.
+    steps:
+      - id: "4.1"
+        task: "Write approval signature tests"
+        tdd: true
+        file: "spec/core/permissions/approval-signature-spec.mjs"
+        description: |
+          Tests (~12):
+          - buildApprovalPayload() includes frameID, toolName, arguments, sessionID
+          - signApproval() produces valid Ed25519 signature
+          - verifyApproval() returns true for valid signature
+          - verifyApproval() returns false for tampered payload
+          - verifyApproval() returns false for wrong key
+          - Approval with different frameID → verification fails (anti-replay)
+          - Approval with different toolName → verification fails (anti-swap)
+          - Approval with different arguments → verification fails (anti-escalation)
+          - Approval with different sessionID → verification fails (anti-cross-session)
+          - Denial signature works the same way (action: 'deny')
+          - Signature is written to PermissionRequest frame content
+          - Multiple approvals on same request → idempotent
+
+      - id: "4.2"
+        task: "Update approval payload format"
+        file: "src/core/permissions/permission-service.mjs"
+        description: |
+          Update _buildApprovalBlob() to include frameID:
+            { action: 'approve'|'deny', frameID, toolName, arguments, sessionID }
+
+          Remove PermissionEngine dependency from PermissionService.
+          PermissionService becomes a signing/verification utility only.
+          Rule creation for standing approvals queries PermissionRule directly.
+
+      - id: "4.3"
+        task: "Update interaction controller to sign approvals"
+        file: "src/server/controllers/interaction-controller.mjs"
+        description: |
+          In approve():
+            1. Look up user's private key (from auth context or keystore)
+            2. Build approval payload: { action, frameID, toolName, arguments, sessionID }
+            3. Sign with user's Ed25519 private key
+            4. Write signature + fingerprint to PermissionRequest frame:
+               frame.content.approvalSignature = signature
+               frame.content.approvalFingerprint = fingerprint
+               frame.content.approvedBy = userID
+            5. Mark frame processed, save
+            6. FrameRouter picks it up
+
+          In deny():
+            Same signing flow but action = 'deny':
+               frame.content.denialSignature = signature
+               frame.content.denialFingerprint = fingerprint
+               frame.content.deniedBy = userID
+               frame.content.denied = true
+
+          For standing rules (allow-forever/deny-forever):
+            Query PermissionRule model directly (no permissionEngine).
+
+      - id: "4.4"
+        task: "Update PermissionApprovalPlugin to verify signature"
+        file: "src/core/internal-plugins/permission-approval/index.mjs"
+        description: |
+          Before re-executing the tool:
+            1. Read approval signature from frame content
+            2. Rebuild the expected payload from frame state
+            3. Look up approver's public key via fingerprint
+            4. Verify signature with Ed25519
+            5. If invalid → log warning, set state.step = 'signature-invalid', skip
+            6. If valid → proceed with tool re-execution
+
+      - id: "4.5"
+        task: "Run tests, verify"
+        description: "Run approval-signature-spec + full suite"
+
+      - id: "4.6"
+        task: "Commit"
+        description: "feat: signature-based approval — cryptographic binding of approval to request"
+
+  phase_5:
+    name: "Adversarial & Failure Mode Tests"
+    description: |
+      Comprehensive testing of attack vectors, timeouts, bad input,
+      race conditions, and authorization boundary violations.
+    steps:
+      - id: "5.1"
+        task: "Write adversarial tests"
+        tdd: true
+        file: "spec/core/permissions/adversarial-permissions-spec.mjs"
+        description: |
+          Replay attacks (~5):
+          - Reuse approval signature from request A on request B → rejected
+          - Reuse approval with different arguments → rejected
+          - Reuse approval in different session → rejected
+          - Reuse approval with different tool → rejected
+          - Replay old expired approval → rejected
+
+          Authorization boundary (~5):
+          - Agent-signed approval (agent key, not user key) → rejected
+          - Unsigned approval (no signature at all) → rejected
+          - Approval from non-participant user → rejected
+          - State injection (step=completed in DB, no signature) → rejected
+          - Forged fingerprint (key fingerprint != actual signer) → rejected
+
+          Failure modes (~5):
+          - Tool class unregistered between request and approval → graceful error
+          - Double approval (already completed) → idempotent, no re-execution
+          - Malformed approval payload (missing fields) → rejected gracefully
+          - Permission request frame deleted before approval → 410 error
+          - Approval for frame that is not PermissionRequest type → rejected
+
+          Timeouts (~3):
+          - Permission request with configurable expiry
+          - Expired request → rejection with informative message
+          - evaluate() timeout protection (inherited from existing 10s race)
+
+          Race conditions (~2):
+          - Two approvals arriving simultaneously → only one executes
+          - Standing rule created then revoked between check and execution
+
+      - id: "5.2"
+        task: "Implement any missing guards surfaced by tests"
+        description: |
+          Fix any failures from 5.1 by adding guards:
+          - Expiry check on PermissionRequest frames
+          - Participant verification on approval endpoint
+          - Signature-required guard in PermissionApprovalPlugin
+          - Idempotency check (already completed/denied)
+
+      - id: "5.3"
+        task: "Run full test suite"
+        description: "npm test — ALL tests must pass (including the previously-failing 4)"
+
+      - id: "5.4"
+        task: "Commit"
+        description: "test: adversarial permission tests — replay, injection, timeout, authorization"
+
+  phase_6:
+    name: "Delete PermissionEngine & Cleanup"
+    description: |
+      Remove PermissionEngine entirely. Clean up all references.
+      Simplify PermissionService. Final test pass.
+    steps:
+      - id: "6.1"
+        task: "Delete PermissionEngine and all references"
+        description: |
+          Delete:
+            - src/core/permissions/permission-engine.mjs
+            - spec/core/permissions/permission-engine-spec.mjs
+
+          Remove PermissionEngine from:
+            - src/core/permissions/index.mjs (re-export)
+            - src/core/index.mjs (public API export)
+            - src/core/kikx-core.mjs (import, instantiation, context.setProperty, getPermissionEngine() accessor, ClassRegistry registration)
+            - src/core/plugin-loader/registry.mjs (if registered)
+            - src/core/permissions/permission-denied-error.mjs (comment reference)
+
+          Update test files that import/instantiate PermissionEngine:
+            - spec/core/permissions/permission-engine-risklevel-spec.mjs (rewrite for evaluate())
+            - spec/core/permissions/permission-service-spec.mjs (remove engine instantiation)
+            - spec/core/permissions/permission-service-ed25519-spec.mjs (remove engine)
+            - spec/core/permissions/fingerprint-spec.mjs (replace getPermissionEngine())
+            - spec/core/routing/base-plugin-permission-spec.mjs (remove engine import)
+            - spec/core/plugin-loader/plugin-interface-permissions-spec.mjs (remove 44+ mocks)
+            - spec/core/internal-plugins/cross-session/cross-session-permissions-spec.mjs
+            - spec/core/internal-plugins/memory-permissions-spec.mjs
+
+      - id: "6.2"
+        task: "Simplify PermissionService"
+        file: "src/core/permissions/permission-service.mjs"
+        description: |
+          Remove _permissionEngine from constructor.
+          PermissionService is now just signing/verification utilities:
+            - signApproval(payload, privateKey)
+            - verifyApproval(payload, signature, publicKey)
+            - buildApprovalPayload(frameID, toolName, args, sessionID)
+          Standing rule creation uses PermissionRule model directly.
+
+      - id: "6.3"
+        task: "Remove all permissionEngine references"
+        description: |
+          grep -r 'permissionEngine\|PermissionEngine' src/ spec/
+          Remove or replace every remaining reference.
+          Update tests that mock or reference the engine.
+
+      - id: "6.4"
+        task: "Run full test suite — all must pass"
+        description: "npm test — zero new failures"
+
+      - id: "6.5"
+        task: "Commit"
+        description: "feat: remove PermissionEngine — all rule evaluation now in Permissions.evaluate()"
+
+  phase_7:
+    name: "Integration Verification"
+    description: |
+      End-to-end verification of the complete permission flow.
+    steps:
+      - id: "7.1"
+        task: "Write end-to-end integration tests"
+        file: "spec/core/permissions/permission-integration-spec.mjs"
+        description: |
+          Full lifecycle tests (~6):
+          - Tool → request → user approves → tool executes → result to agent
+          - Tool → request → user denies → denial result to agent
+          - Tool → standing allow rule → no request needed → tool executes
+          - Tool → standing deny rule → PermissionDeniedError → denial frame
+          - Cross-session: child agent → parent user approves → child tool executes
+          - Agent receives informative message at each step ("Permission required...",
+            then actual output or denial)
+
+      - id: "7.2"
+        task: "Run full test suite — final verification"
+        description: "npm test — ALL tests pass, zero failures"
+
+      - id: "7.3"
+        task: "Update DETAILS.md and TODO.md"
+
+      - id: "7.4"
+        task: "Commit"
+        description: "test: end-to-end permission integration tests"
+
+# =============================================================================
+# 5. TEST PLAN SUMMARY
+# =============================================================================
+
+tests:
+  suites:
+    - file: "spec/core/permissions/permissions-evaluate-spec.mjs"
+      count: 15
+      description: "Permissions.evaluate() — rule evaluation, scope, ancestry, risk levels"
+
+    - file: "spec/core/plugin-loader/plugin-interface-permissions-spec.mjs"
+      count: 7
+      description: "PluginInterface._checkPermissions() → Permissions.evaluate() wiring"
+
+    - file: "spec/core/interaction/inline-permission-flow-spec.mjs"
+      count: 6
+      description: "Inline permission request — agent informed, no hardBreak"
+      note: "File exists, tests added/modified"
+
+    - file: "spec/core/permissions/approval-signature-spec.mjs"
+      count: 12
+      description: "Approval signature creation, verification, cryptographic binding"
+
+    - file: "spec/core/permissions/adversarial-permissions-spec.mjs"
+      count: 20
+      description: "Replay, injection, escalation, timeout, authorization boundary"
+
+    - file: "spec/core/permissions/permission-integration-spec.mjs"
+      count: 6
+      description: "End-to-end lifecycle tests"
+
+  total_new: 66
+  existing_rewrites: "~8 test files that reference PermissionEngine directly need updating"
+  existing_fixes: 4
+  note: |
+    The 4 pre-existing test failures (cross-session, memory-permissions) should be
+    fixed by Phase 2. Phase 6 includes a comprehensive grep + fix pass for all
+    remaining PermissionEngine references in test files.
+
+    NOTE on Phase 3 vs Phase 4 security window: Between Phase 3 and Phase 4,
+    approvals are unsigned. This is acceptable for development but the
+    intermediate state should not be shipped.
+
+# =============================================================================
+# 6. RISK ASSESSMENT
+# =============================================================================
+
+risks:
+  - risk: "ShellPermissions per-command flow is complex"
+    mitigation: "Phase 2.3 specifically addresses this. The per-command loop just calls this.evaluate() instead of permissionEngine.checkPermission()."
+
+  - risk: "Existing approval controller creates rules via permissionEngine.createRule()"
+    mitigation: "Phase 4.3 changes to direct PermissionRule model queries. Same SQL, no engine middleman."
+
+  - risk: "User private key may not be available for signing approvals"
+    mitigation: "Controller has access to auth context. If no key available, fall back to system signing with user attribution. Log warning."
+
+  - risk: "Cross-session permission routing is complex"
+    mitigation: "Cross-session flow is mostly unchanged — hardBreak still handles it. Only same-session changes to inline."
+
+  - risk: "PermissionEngine has utility methods (createRule, deleteRule, getRules, pruneExpired) used by PermissionService and controllers"
+    mitigation: "Phase 1.2 moves these into Permissions base class as instance methods. They query PermissionRule model directly. The Ed25519 fingerprinting logic from createRule() moves with it."
+
+  - risk: "Approval blob format change (_buildApprovalBlob now includes frameID) breaks existing standing rules"
+    mitigation: "Standing rules use a different mechanism (PermissionRule model with metadata.standing flag) and are not verified via the approval blob. No backward compatibility issue."
+
+  - risk: "agent-resolver.mjs has a parallel permission architecture (duplicate of ShellPermissions logic)"
+    mitigation: "Phase 2.5 addresses this. Tools now handle their own permissions via execute() → _checkPermissions(). The scheduler's pre-flight check is redundant and should be removed."
