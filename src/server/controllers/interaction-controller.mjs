@@ -344,10 +344,29 @@ export class InteractionController extends ControllerAuthBase {
     if (hasDeny)
       content.denied = true;
 
+    // Set the resolve context so the PermissionApprovalPlugin can decrypt
+    // the agent's API key when it starts the replay interaction. The UMK
+    // is only available during HTTP requests (from the JWT), so we must
+    // stash it before the FrameRouter fires.
+    let core             = this.getCore();
+    let sessionScheduler = core.getContext().getProperty('sessionScheduler');
+
+    if (sessionScheduler) {
+      let keystore = this.getKeystore();
+      let umk      = this.request.getUMK();
+
+      if (umk && keystore) {
+        sessionScheduler.setResolveContext(params.sessionID, {
+          keystore,
+          umk,
+          userID: this.request.userID,
+        });
+      }
+    }
+
     // Save through the FrameManager so the commit event triggers the
     // FrameRouter → PermissionApprovalPlugin. Direct ORM saves bypass
     // the router, which is how the approval was getting lost.
-    let core             = this.getCore();
     let framePersistence = core.getContext().getProperty('framePersistence');
     let frameRouter      = core.getFrameRouter();
 
@@ -430,8 +449,24 @@ export class InteractionController extends ControllerAuthBase {
 
     content.denied = true;
 
-    // Save through FrameManager to trigger FrameRouter
+    // Set resolve context for API key decryption during replay
     let core             = this.getCore();
+    let sessionScheduler = core.getContext().getProperty('sessionScheduler');
+
+    if (sessionScheduler) {
+      let keystore = this.getKeystore();
+      let umk      = this.request.getUMK();
+
+      if (umk && keystore) {
+        sessionScheduler.setResolveContext(params.sessionID, {
+          keystore,
+          umk,
+          userID: this.request.userID,
+        });
+      }
+    }
+
+    // Save through FrameManager to trigger FrameRouter
     let framePersistence = core.getContext().getProperty('framePersistence');
     let frameRouter      = core.getFrameRouter();
 
