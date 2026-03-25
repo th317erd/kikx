@@ -147,8 +147,13 @@ export class Permissions {
 
     // First match wins
     for (let rule of activeRules) {
+      let metadata = permissionsInstance._parseMetadata(rule);
+
+      // Skip consumed one-time rules — they've been used and should not match again
+      if (metadata.oneTime && metadata.consumed)
+        continue;
+
       // Custom matching via permissionsInstance.matchesRule()
-      let metadata    = permissionsInstance._parseMetadata(rule);
       let matchResult = permissionsInstance.matchesRule(rule, args, metadata);
 
       if (matchResult && matchResult.matches === false)

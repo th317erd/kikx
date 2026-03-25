@@ -376,11 +376,12 @@ export class InteractionLoop extends EventEmitter {
       if (pendingRules.length === 0)
         return;
 
-      // Find ToolCall frames that match pending rules by toolUseID
+      // Find ToolCall frames that match pending rules by toolUseID.
+      // Include hidden ToolCalls — the orphan healer may have hidden them
+      // before the replay had a chance to execute them.
       let toolCallFrames = await models.Frame.where
         .sessionID.EQ(sessionID)
         .AND.type.EQ('ToolCall')
-        .AND.hidden.EQ(false)
         .all();
 
       if (!toolCallFrames || toolCallFrames.length === 0)
@@ -414,6 +415,12 @@ export class InteractionLoop extends EventEmitter {
         let toolName  = matchedCall.content.toolName;
         let toolArgs  = matchedCall.content.arguments || {};
         let toolUseID = matchedCall.content.toolUseID;
+
+        // Unhide the ToolCall if it was hidden by the orphan healer
+        if (matchedCall.frame.hidden) {
+          matchedCall.frame.hidden = false;
+          await matchedCall.frame.save();
+        }
 
         // Hide the placeholder "PERMISSION REQUIRED" ToolResult in the
         // FrameManager so buildMessages() doesn't include it (prevents
