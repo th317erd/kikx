@@ -457,13 +457,11 @@ export class InteractionLoop extends EventEmitter {
           processed:     false,
         }, frameManager, { authorType: 'system' }, signingContext);
 
-        // Mark the one-time rule as consumed via raw SQL
-        // (Mythix ORM save() on persisted models silently drops changes)
+        // Mark the one-time rule as consumed
         try {
           let consumedMetadata = { ...metadata, consumed: true };
-          let metaJSON = JSON.stringify(consumedMetadata).replace(/'/g, "''");
-          let connection = models.PermissionRule.getConnection();
-          await connection.query(`UPDATE permission_rules SET metadata = '${metaJSON}', "updatedAt" = ${Date.now()} WHERE id = '${oneTimeRule.id}'`);
+          oneTimeRule.metadata = JSON.stringify(consumedMetadata);
+          await oneTimeRule.save();
         } catch (_consumeError) {
           // Best-effort
         }

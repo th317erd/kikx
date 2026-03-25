@@ -54,34 +54,17 @@ export class FramePersistence {
       let existing = await Frame.where.id.EQ(frameData.id).first();
 
       if (existing) {
-        // Workaround: Mythix ORM save() on persisted models silently fails to
-        // persist field changes. Use raw SQL UPDATE to ensure all fields are written.
-        let connection = Frame.getConnection();
-        let setParts   = [];
-        let keys       = Object.keys(record);
+        // Update existing frame — set each field from the record
+        let keys = Object.keys(record);
 
         for (let key of keys) {
           if (key === 'id')
             continue;
 
-          let val = record[key];
-          if (val === null || val === undefined) {
-            setParts.push(`"${key}" = NULL`);
-          } else if (typeof val === 'boolean') {
-            setParts.push(`"${key}" = ${val ? 1 : 0}`);
-          } else if (typeof val === 'number') {
-            setParts.push(`"${key}" = ${val}`);
-          } else {
-            let escaped = String(val).replace(/'/g, "''");
-            setParts.push(`"${key}" = '${escaped}'`);
-          }
+          existing[key] = record[key];
         }
 
-        if (setParts.length > 0) {
-          let sql = `UPDATE frames SET ${setParts.join(', ')} WHERE id = '${record.id}'`;
-          await connection.query(sql);
-        }
-
+        await existing.save();
         results.push(existing);
       } else {
         // Create new record
@@ -412,12 +395,12 @@ export class FramePersistence {
   async updateFrameState(frameID, state) {
     let { Frame } = this._models;
 
-    // Workaround: Mythix ORM save() on persisted models silently fails to
-    // persist field changes. Use raw SQL UPDATE to ensure state is written.
-    let stateJSON = (state != null) ? JSON.stringify(state).replace(/'/g, "''") : null;
-    let connection = Frame.getConnection();
-    let stateClause = (stateJSON != null) ? `'${stateJSON}'` : 'NULL';
-    await connection.query(`UPDATE frames SET state = ${stateClause}, "updatedAt" = ${Date.now()} WHERE id = '${frameID}'`);
+    let frame = await Frame.where.id.EQ(frameID).first();
+    if (!frame)
+      return;
+
+    frame.state = (state != null) ? JSON.stringify(state) : null;
+    await frame.save();
   }
 
   // ---------------------------------------------------------------------------

@@ -364,12 +364,7 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
-    // Persist the approval directly via raw SQL to avoid Mythix ORM save() issues.
-    // Do NOT use the FrameRouter here — the async routing causes race conditions
-    // where state changes are overwritten by concurrent saveFrames calls.
-    let framePersistence = core.getContext().getProperty('framePersistence');
-
-    // Parse state from the frame
+    // Parse state and update the frame
     let stateObj = null;
     try {
       stateObj = (typeof frame.state === 'string') ? JSON.parse(frame.state) : (frame.state || {});
@@ -377,29 +372,59 @@ export class InteractionController extends ControllerAuthBase {
       stateObj = {};
     }
 
-    // Update frame: processed=true, hidden=true (no longer visible in UI after approval)
-    // Also update state.step to 'completed' or 'denied'
-    stateObj.step = hasDeny ? 'denied' : 'completed';
-    let stateJSON   = JSON.stringify(stateObj).replace(/'/g, "''");
-    let contentJSON = JSON.stringify(content).replace(/'/g, "''");
-    let now         = Date.now();
+    stateObj.step   = hasDeny ? 'denied' : 'completed';
+    frame.processed   = true;
+    frame.processedAt = Date.now();
+    frame.hidden      = true;
+    frame.state       = JSON.stringify(stateObj);
+    frame.content     = JSON.stringify(content);
+    await frame.save();
 
-    let { Frame: FrameModel } = this.getCoreModels();
-    let connection = FrameModel.getConnection();
-
-    await connection.query(`UPDATE frames SET processed = 1, "processedAt" = ${now}, hidden = 1, state = '${stateJSON}', content = '${contentJSON}', "updatedAt" = ${now} WHERE id = '${frame.id}'`);
-
-    // Hide the placeholder ToolResult and the agent's "needs permission" Message
+    // Hide the placeholder ToolResult and permission-related agent Messages
     let toolUseID = stateObj.toolUseID;
     if (toolUseID && !hasDeny) {
-      // Hide the "PERMISSION REQUIRED" ToolResult
-      await connection.query(`UPDATE frames SET hidden = 1, "updatedAt" = ${now} WHERE sessionID = '${params.sessionID}' AND type = 'ToolResult' AND content LIKE '%${toolUseID}%' AND content LIKE '%PERMISSION REQUIRED%'`);
+      let { Frame: FrameModel } = this.getCoreModels();
 
-      // Hide agent Messages that came after the ToolCall (permission-related messages)
-      let toolCallOrder = await connection.query(`SELECT "order" FROM frames WHERE sessionID = '${params.sessionID}' AND type = 'ToolCall' AND content LIKE '%${toolUseID}%'`);
-      if (toolCallOrder && toolCallOrder.rows && toolCallOrder.rows.length > 0) {
-        let order = toolCallOrder.rows[0][0];
-        await connection.query(`UPDATE frames SET hidden = 1, "updatedAt" = ${now} WHERE sessionID = '${params.sessionID}' AND type = 'Message' AND authorType = 'agent' AND "order" > ${order}`);
+      // Hide "PERMISSION REQUIRED" ToolResult frames
+      let toolResults = await FrameModel.where
+        .sessionID.EQ(params.sessionID)
+        .AND.type.EQ('ToolResult')
+        .AND.hidden.EQ(false)
+        .all();
+
+      for (let tr of toolResults) {
+        let trContent = (typeof tr.content === 'string') ? tr.content : JSON.stringify(tr.content || {});
+        if (trContent.includes(toolUseID) && trContent.includes('PERMISSION REQUIRED')) {
+          tr.hidden = true;
+          await tr.save();
+        }
+      }
+
+      // Hide agent Messages after the ToolCall (permission-related chatter)
+      let toolCall = await FrameModel.where
+        .sessionID.EQ(params.sessionID)
+        .AND.type.EQ('ToolCall')
+        .all();
+
+      let matchingCall = toolCall.find((tc) => {
+        let tcContent = (typeof tc.content === 'string') ? tc.content : JSON.stringify(tc.content || {});
+        return tcContent.includes(toolUseID);
+      });
+
+      if (matchingCall) {
+        let agentMessages = await FrameModel.where
+          .sessionID.EQ(params.sessionID)
+          .AND.type.EQ('Message')
+          .AND.authorType.EQ('agent')
+          .AND.hidden.EQ(false)
+          .all();
+
+        for (let msg of agentMessages) {
+          if (msg.order > matchingCall.order) {
+            msg.hidden = true;
+            await msg.save();
+          }
+        }
       }
     }
 
