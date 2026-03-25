@@ -4,13 +4,16 @@
 // Plugin Registry
 // =============================================================================
 // In-memory registries for tools, commands, and custom elements.
+// Extends ClassRegistry for universal class registration + stack-based override.
 // Conflict policy: implicit override with console warning (not error).
 // =============================================================================
 
 import { PluginInterface } from './plugin-interface.mjs';
+import { ClassRegistry }   from '../class-registry.mjs';
 
-export class PluginRegistry {
+export class PluginRegistry extends ClassRegistry {
   constructor() {
+    super();
     this._tools          = new Map();
     this._commands       = new Map();
     this._capabilities   = new Map();

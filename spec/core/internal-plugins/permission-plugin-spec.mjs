@@ -9,10 +9,24 @@ import { PermissionEngine }      from '../../../src/core/permissions/permission-
 import { PermissionService }     from '../../../src/core/permissions/permission-service.mjs';
 import { setup }                 from '../../../src/core/internal-plugins/permissions/index.mjs';
 import { FrameManager }          from '../../../src/shared/frame-manager/frame-manager.mjs';
+import { PluginRegistry }        from '../../../src/core/plugin-loader/registry.mjs';
 
 // =============================================================================
 // Phase C3 — Permission Plugin Tests
 // =============================================================================
+
+// Helper: call setup(provide) and return the registered selectors
+function setupAndCapture(ctx) {
+  let registry = new PluginRegistry();
+  setup((cb) => cb({ registry, context: ctx }));
+  return registry.getSelectors();
+}
+
+// Helper: call setup(provide), return the PluginClass from registered selectors
+function setupAndGetPluginClass(ctx) {
+  let selectors = setupAndCapture(ctx);
+  return selectors.length > 0 ? selectors[0].PluginClass : null;
+}
 
 describe('PermissionPlugin (C3)', () => {
   let core;
@@ -48,12 +62,7 @@ describe('PermissionPlugin (C3)', () => {
 
   describe('setup()', () => {
     it('should register a selector for type:tool-call', () => {
-      let selectors = [];
-      let registerSelector = (selector, PluginClass) => {
-        selectors.push({ selector, PluginClass });
-      };
-
-      setup({ registerSelector, context });
+      let selectors = setupAndCapture(context);
 
       assert.equal(selectors.length, 1);
       assert.equal(selectors[0].selector, 'type:tool-call');
@@ -65,12 +74,7 @@ describe('PermissionPlugin (C3)', () => {
         getProperty: (key) => undefined,
       };
 
-      let selectors = [];
-      let registerSelector = (selector, PluginClass) => {
-        selectors.push({ selector, PluginClass });
-      };
-
-      setup({ registerSelector, context: mockContext });
+      let selectors = setupAndCapture(mockContext);
 
       assert.equal(selectors.length, 0);
     });
@@ -82,9 +86,7 @@ describe('PermissionPlugin (C3)', () => {
 
   describe('process()', () => {
     it('should pass through tool-call frames without signatures', async () => {
-      let PluginClass;
-      let registerSelector = (_selector, PC) => { PluginClass = PC; };
-      setup({ registerSelector, context });
+      let PluginClass = setupAndGetPluginClass(context);
 
       let frameManager = new FrameManager({ history: true });
 
@@ -114,9 +116,7 @@ describe('PermissionPlugin (C3)', () => {
     });
 
     it('should verify valid signatures on tool-call frames', async () => {
-      let PluginClass;
-      let registerSelector = (_selector, PC) => { PluginClass = PC; };
-      setup({ registerSelector, context });
+      let PluginClass = setupAndGetPluginClass(context);
 
       let signature    = permissionService.signApproval('shell:execute', { command: 'ls' }, 'ses_1');
       let frameManager = new FrameManager({ history: true });
@@ -150,9 +150,7 @@ describe('PermissionPlugin (C3)', () => {
     });
 
     it('should warn on invalid signatures', async () => {
-      let PluginClass;
-      let registerSelector = (_selector, PC) => { PluginClass = PC; };
-      setup({ registerSelector, context });
+      let PluginClass = setupAndGetPluginClass(context);
 
       let frameManager = new FrameManager({ history: true });
 
@@ -191,9 +189,7 @@ describe('PermissionPlugin (C3)', () => {
     });
 
     it('should handle commits with no changes', async () => {
-      let PluginClass;
-      let registerSelector = (_selector, PC) => { PluginClass = PC; };
-      setup({ registerSelector, context });
+      let PluginClass = setupAndGetPluginClass(context);
 
       let plugin = new PluginClass({
         commit:  { changes: [] },
@@ -210,9 +206,7 @@ describe('PermissionPlugin (C3)', () => {
     });
 
     it('should handle null commit', async () => {
-      let PluginClass;
-      let registerSelector = (_selector, PC) => { PluginClass = PC; };
-      setup({ registerSelector, context });
+      let PluginClass = setupAndGetPluginClass(context);
 
       let plugin = new PluginClass({
         commit:  null,

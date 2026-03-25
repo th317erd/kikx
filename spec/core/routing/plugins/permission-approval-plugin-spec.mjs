@@ -117,17 +117,16 @@ async function loadPlugin() {
 // Register the plugin on a router via its setup function
 async function registerPlugin(router, globalContext) {
   let setup = await loadPlugin();
-  let registered = [];
+  let { PluginRegistry } = await import('../../../../src/core/plugin-loader/registry.mjs');
+  let registry = new PluginRegistry();
 
-  setup({
-    registerSelector: (selector, PluginClass) => {
-      registered.push({ selector, PluginClass });
-      router.registerSelector(selector, PluginClass, 'permission-approval');
-    },
-    context: globalContext,
-  });
+  setup((cb) => cb({ registry, context: globalContext }));
 
-  return registered;
+  let selectors = registry.getSelectors();
+  for (let s of selectors)
+    router.registerSelector(s.selector, s.PluginClass, 'permission-approval');
+
+  return selectors.map(s => ({ selector: s.selector, PluginClass: s.PluginClass }));
 }
 
 // =============================================================================

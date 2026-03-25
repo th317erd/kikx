@@ -48,11 +48,8 @@ describe('Memory Plugin — Signed Values', () => {
     context.setProperty('keystore', keystore);
 
     registry = new PluginRegistry();
-    setup({
-      registerTool: (name, cls) => registry.registerTool(name, cls),
-      PluginInterface,
-      context,
-    });
+    registry.registerClass(PluginInterface, { pluginName: 'core' });
+    setup((cb) => cb({ registry, context }));
 
     GetMemoryValueTool     = registry.getTool('memory:getValue');
     SetMemoryValueTool     = registry.getTool('memory:setValue');

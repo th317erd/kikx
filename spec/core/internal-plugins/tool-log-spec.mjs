@@ -31,11 +31,8 @@ describe('Tool Log Plugin', { timeout: 30000 }, () => {
     context = core.getContext();
 
     registry = new PluginRegistry();
-    setup({
-      registerTool: (name, cls) => registry.registerTool(name, cls),
-      PluginInterface,
-      context,
-    });
+    registry.registerClass(PluginInterface, { pluginName: 'core' });
+    setup((cb) => cb({ registry, context }));
 
     GetToolLogTool    = registry.getTool('tool_log:get');
     SearchToolLogTool = registry.getTool('tool_log:search');

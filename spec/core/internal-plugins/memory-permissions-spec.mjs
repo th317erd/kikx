@@ -42,11 +42,8 @@ describe('MemoryPermissions', () => {
     context = core.getContext();
 
     registry = new PluginRegistry();
-    setup({
-      registerTool: (name, cls) => registry.registerTool(name, cls),
-      PluginInterface,
-      context,
-    });
+    registry.registerClass(PluginInterface, { pluginName: 'core' });
+    setup((cb) => cb({ registry, context }));
 
     GetAgentConfigTool      = registry.getTool('memory:getAgentConfig');
     SetAgentConfigTool      = registry.getTool('memory:setAgentConfig');

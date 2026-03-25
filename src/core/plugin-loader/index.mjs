@@ -4,8 +4,10 @@
 // Plugin Loader — Main Entry Point
 // =============================================================================
 // Ties together providers, registry, and plugin lifecycle.
-// Plugins export setup(context) which receives registerTool, registerCommand,
-// PluginInterface, etc. setup() may return a teardown closure.
+// Plugins export setup(provide) which receives a provide() function.
+// The provide callback receives { registry, context } and registers classes
+// and domain-specific tools/commands/selectors via the unified PluginRegistry.
+// setup() may return a teardown closure.
 // =============================================================================
 
 import { PluginInterface }          from './plugin-interface.mjs';
@@ -17,13 +19,14 @@ import { FilesystemPluginProvider } from './providers/filesystem-provider.mjs';
 
 export class PluginLoader {
   constructor(context, options) {
-    this._context   = context || null;
-    this._options   = options || {};
-    this._providers = [];
-    this._registry  = new PluginRegistry();
-    this._teardowns = new Map(); // pluginName -> teardown closure
-    this._loaded    = new Set(); // track loaded plugin names
-    this._failed    = new Map(); // pluginName -> error
+    this._context    = context || null;
+    this._options    = options || {};
+    this._providers  = [];
+    this._registry   = new PluginRegistry();
+    this._teardowns  = new Map(); // pluginName -> teardown closure
+    this._loaded     = new Set(); // track loaded plugin names
+    this._failed     = new Map(); // pluginName -> error
+    this._provideCallbacks = new Map(); // pluginName -> callback (for future hot-reload)
   }
 
   // ---------------------------------------------------------------------------
@@ -78,11 +81,34 @@ export class PluginLoader {
       await this.unloadPlugin(name);
     }
 
-    // Build the context object passed to setup()
-    let pluginContext = this._buildPluginContext(name);
+    // Build the provide function for setup(provide) pattern
+    let provideCallback = null;
+    let registry = this._registry;
+    let context  = this._context;
+
+    let provide = (callback) => {
+      if (typeof callback !== 'function')
+        throw new Error(`Plugin "${name}" provide() argument must be a function`);
+
+      provideCallback = callback;
+    };
 
     // Call setup — may return a teardown closure
-    let teardown = await module.setup(pluginContext);
+    let teardown = await module.setup(provide);
+
+    // If a provide callback was registered, invoke it immediately
+    if (provideCallback) {
+      try {
+        await provideCallback({ registry, context });
+      } catch (error) {
+        console.error(`Plugin "${name}" provide callback error:`, error.message);
+        this._failed.set(name, error);
+        return;
+      }
+
+      // Store for future hot-reload
+      this._provideCallbacks.set(name, provideCallback);
+    }
 
     if (teardown != null && typeof teardown !== 'function')
       throw new Error(`Plugin "${name}" setup() must return a function or nothing`);
@@ -108,32 +134,18 @@ export class PluginLoader {
     }
 
     this._teardowns.delete(name);
+    this._provideCallbacks.delete(name);
     this._loaded.delete(name);
 
     return true;
   }
 
   // ---------------------------------------------------------------------------
-  // Context Builder
+  // Provide Callbacks (for future hot-reload)
   // ---------------------------------------------------------------------------
 
-  _buildPluginContext(pluginName) {
-    let registry = this._registry;
-
-    return {
-      pluginName,
-      context:              this._context,
-      PluginInterface,
-      AgentInterface,
-      registerTool:          (name, ToolClass) => registry.registerTool(name, ToolClass),
-      registerCommand:       (name, handler)   => registry.registerCommand(name, handler),
-      registerCapability:    (name, options)   => registry.registerCapability(name, options),
-      registerCustomElement: (tagName)         => registry.registerCustomElement(tagName),
-      registerAgentType:     (id, AgentClass)  => registry.registerAgentType(id, AgentClass),
-      registerHook:          (hookName, handler) => registry.registerHook(hookName, handler),
-      registerInstructions:  (content, options) => registry.registerInstructions(pluginName, content, options),
-      registerSelector:      (selector, PluginClass) => registry.registerSelector(selector, PluginClass, pluginName),
-    };
+  getProvideCallbacks() {
+    return new Map(this._provideCallbacks);
   }
 
   // ---------------------------------------------------------------------------

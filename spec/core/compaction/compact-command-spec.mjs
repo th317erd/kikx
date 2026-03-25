@@ -113,22 +113,18 @@ function createMockContext(overrides = {}) {
  */
 async function loadCompactCommand(contextOverrides = {}) {
   let { setup } = await import('../../../src/core/internal-plugins/compact/index.mjs');
-
-  let registered = {};
+  let { PluginRegistry } = await import('../../../src/core/plugin-loader/registry.mjs');
 
   let mockContext = createMockContext(contextOverrides);
+  let registry = new PluginRegistry();
 
-  setup({
-    context: mockContext,
-    registerCapability: (name, options) => {
-      registered[name] = options;
-    },
-    registerInstructions: () => {},
-  });
+  setup((cb) => cb({ registry, context: mockContext }));
+
+  let cap = registry.getCapability('compact');
 
   return {
-    registration: registered.compact,
-    handler:      registered.compact ? registered.compact.handler : null,
+    registration: cap,
+    handler:      cap ? cap.handler : null,
     context:      mockContext,
   };
 }
@@ -564,11 +560,9 @@ describe('/compact command', () => {
     it('should return a teardown function', async () => {
       let { setup } = await import('../../../src/core/internal-plugins/compact/index.mjs');
 
-      let teardown = setup({
-        context: createMockContext(),
-        registerCapability:   () => {},
-        registerInstructions: () => {},
-      });
+      let { PluginRegistry } = await import('../../../src/core/plugin-loader/registry.mjs');
+      let registry = new PluginRegistry();
+      let teardown = setup((cb) => cb({ registry, context: createMockContext() }));
 
       assert.equal(typeof teardown, 'function', 'setup() should return a teardown function');
     });

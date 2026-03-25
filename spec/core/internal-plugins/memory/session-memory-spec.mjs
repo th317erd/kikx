@@ -38,11 +38,8 @@ describe('Memory Plugin — Session Tools', () => {
     context.setProperty('sessionManager', sessionManager);
 
     registry = new PluginRegistry();
-    setup({
-      registerTool: (name, cls) => registry.registerTool(name, cls),
-      PluginInterface,
-      context,
-    });
+    registry.registerClass(PluginInterface, { pluginName: 'core' });
+    setup((cb) => cb({ registry, context }));
 
     GetSessionContextTool    = registry.getTool('memory:getSessionContext');
     SetSessionContextTool    = registry.getTool('memory:setSessionContext');

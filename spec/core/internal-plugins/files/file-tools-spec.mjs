@@ -15,13 +15,10 @@ import { setup as filesSetup } from '../../../../src/core/internal-plugins/files
 
 function createFileTools() {
   let registry = new PluginRegistry();
+  registry.registerClass(PluginInterface, { pluginName: 'core' });
   let context  = { getProperty: () => null };
 
-  filesSetup({
-    registerTool:    (name, cls) => registry.registerTool(name, cls),
-    PluginInterface,
-    context,
-  });
+  filesSetup((cb) => cb({ registry, context }));
 
   let ReadClass  = registry.getTool('files:read');
   let WriteClass = registry.getTool('files:write');

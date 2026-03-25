@@ -4,6 +4,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { PluginInterface } from '../../../src/core/plugin-loader/plugin-interface.mjs';
+import { PluginRegistry }  from '../../../src/core/plugin-loader/registry.mjs';
 import { setup }           from '../../../src/core/internal-plugins/search/index.mjs';
 
 // =============================================================================
@@ -64,12 +65,10 @@ describe('Search Plugin — search:query', () => {
   // ---------------------------------------------------------------------------
 
   beforeEach(() => {
-    let registered = {};
-    setup({
-      registerTool: (name, cls) => { registered[name] = cls; },
-      PluginInterface,
-    });
-    SearchQueryTool = registered['search:query'];
+    let registry = new PluginRegistry();
+    registry.registerClass(PluginInterface, { pluginName: 'core' });
+    setup((cb) => cb({ registry, context: null }));
+    SearchQueryTool = registry.getTool('search:query');
     assert.ok(SearchQueryTool, 'search:query tool should be registered');
   });
 

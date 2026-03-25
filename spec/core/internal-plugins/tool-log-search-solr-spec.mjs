@@ -29,11 +29,8 @@ describe('tool_log:search — Solr rebacking', { timeout: 30000 }, () => {
     baseContext = core.getContext();
 
     let registry = new PluginRegistry();
-    setup({
-      registerTool: (name, cls) => registry.registerTool(name, cls),
-      PluginInterface,
-      context: baseContext,
-    });
+    registry.registerClass(PluginInterface, { pluginName: 'core' });
+    setup((cb) => cb({ registry, context: baseContext }));
 
     SearchToolLogTool = registry.getTool('tool_log:search');
   });

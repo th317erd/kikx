@@ -10,6 +10,14 @@ import { FramePersistence }    from '../../../src/core/frames/index.mjs';
 import { ContentSanitizer }    from '../../../src/core/lib/content-sanitizer.mjs';
 import { SessionScheduler }    from '../../../src/core/scheduling/session-scheduler.mjs';
 import { setup }               from '../../../src/core/internal-plugins/scheduling/index.mjs';
+import { PluginRegistry }      from '../../../src/core/plugin-loader/registry.mjs';
+
+function setupPlugin(ctx) {
+  let r = new PluginRegistry();
+  setup((cb) => cb({ registry: r, context: ctx }));
+  let selectors = r.getSelectors();
+  return { selectors, PluginClass: selectors.length > 0 ? selectors[0].PluginClass : null };
+}
 
 // =============================================================================
 // Phase C2 — Scheduling Plugin Tests
@@ -65,12 +73,7 @@ describe('SchedulingPlugin (C2)', () => {
       let scheduler = new SessionScheduler({ sessionManager, interactionLoop });
       context.setProperty('sessionScheduler', scheduler);
 
-      let selectors = [];
-      let registerSelector = (selector, PluginClass) => {
-        selectors.push({ selector, PluginClass });
-      };
-
-      setup({ registerSelector, context });
+      let { selectors } = setupPlugin(context);
 
       assert.equal(selectors.length, 1);
       assert.equal(selectors[0].selector, 'type:user-message');
@@ -87,12 +90,7 @@ describe('SchedulingPlugin (C2)', () => {
         },
       };
 
-      let selectors = [];
-      let registerSelector = (selector, PluginClass) => {
-        selectors.push({ selector, PluginClass });
-      };
-
-      setup({ registerSelector, context: mockContext });
+      let { selectors } = setupPlugin(mockContext);
 
       assert.equal(selectors.length, 1, 'Should register selector (lazy resolution)');
       assert.equal(selectors[0].selector, 'type:user-message');
@@ -114,9 +112,7 @@ describe('SchedulingPlugin (C2)', () => {
       let scheduler = new SessionScheduler({ sessionManager, interactionLoop });
       context.setProperty('sessionScheduler', scheduler);
 
-      let PluginClass;
-      let registerSelector = (_selector, PC) => { PluginClass = PC; };
-      setup({ registerSelector, context });
+      let { PluginClass } = setupPlugin(context);
 
       let frameManager = sessionManager.getFrameManager(session.id);
 
@@ -157,9 +153,7 @@ describe('SchedulingPlugin (C2)', () => {
       let scheduler = new SessionScheduler({ sessionManager, interactionLoop });
       context.setProperty('sessionScheduler', scheduler);
 
-      let PluginClass;
-      let registerSelector = (_selector, PC) => { PluginClass = PC; };
-      setup({ registerSelector, context });
+      let { PluginClass } = setupPlugin(context);
 
       let frameManager = sessionManager.getFrameManager(session.id);
 
@@ -195,9 +189,7 @@ describe('SchedulingPlugin (C2)', () => {
       let scheduler = new SessionScheduler({ sessionManager, interactionLoop });
       context.setProperty('sessionScheduler', scheduler);
 
-      let PluginClass;
-      let registerSelector = (_selector, PC) => { PluginClass = PC; };
-      setup({ registerSelector, context });
+      let { PluginClass } = setupPlugin(context);
 
       let plugin = new PluginClass({
         commit:  { authorType: 'user' },
@@ -217,9 +209,7 @@ describe('SchedulingPlugin (C2)', () => {
       let scheduler = new SessionScheduler({ sessionManager, interactionLoop });
       context.setProperty('sessionScheduler', scheduler);
 
-      let PluginClass;
-      let registerSelector = (_selector, PC) => { PluginClass = PC; };
-      setup({ registerSelector, context });
+      let { PluginClass } = setupPlugin(context);
 
       let plugin = new PluginClass({
         commit:  null,
@@ -243,9 +233,7 @@ describe('SchedulingPlugin (C2)', () => {
       let originalOnCommit = scheduler.onCommit.bind(scheduler);
       scheduler.onCommit = async () => { throw new Error('boom'); };
 
-      let PluginClass;
-      let registerSelector = (_selector, PC) => { PluginClass = PC; };
-      setup({ registerSelector, context });
+      let { PluginClass } = setupPlugin(context);
 
       let plugin = new PluginClass({
         commit:  { authorType: 'user', changes: [] },

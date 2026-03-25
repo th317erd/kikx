@@ -14,36 +14,38 @@ import { BasePluginClass } from '../../routing/base-plugin-class.mjs';
 // is registered on context AFTER plugins load.
 // =============================================================================
 
-export function setup({ registerSelector, context }) {
-  class SchedulingPlugin extends BasePluginClass {
-    async process(next, done) {
-      // Resolve scheduler lazily — it may not exist at setup time
-      let sessionScheduler = context.getProperty('sessionScheduler');
-      if (!sessionScheduler)
-        return await next(this.context);
+export function setup(provide) {
+  provide(({ registry, context }) => {
+    class SchedulingPlugin extends BasePluginClass {
+      async process(next, done) {
+        // Resolve scheduler lazily — it may not exist at setup time
+        let sessionScheduler = context.getProperty('sessionScheduler');
+        if (!sessionScheduler)
+          return await next(this.context);
 
-      let commit    = this.context.commit;
-      let sessionID = this.context.session && this.context.session.id;
+        let commit    = this.context.commit;
+        let sessionID = this.context.session && this.context.session.id;
 
-      // Only schedule agents on user-authored commits. Agent and system
-      // commits must be ignored to prevent ping-pong loops.
-      if (!sessionID || !commit || commit.authorType !== 'user')
-        return await next(this.context);
+        // Only schedule agents on user-authored commits. Agent and system
+        // commits must be ignored to prevent ping-pong loops.
+        if (!sessionID || !commit || commit.authorType !== 'user')
+          return await next(this.context);
 
-      try {
-        let scheduled = await sessionScheduler.onCommit(sessionID, commit);
+        try {
+          let scheduled = await sessionScheduler.onCommit(sessionID, commit);
 
-        if (scheduled && scheduled.length > 0) {
-          for (let entry of scheduled)
-            sessionScheduler.queueTrigger(sessionID, entry.agentID);
+          if (scheduled && scheduled.length > 0) {
+            for (let entry of scheduled)
+              sessionScheduler.queueTrigger(sessionID, entry.agentID);
+          }
+        } catch (err) {
+          this.logger.error('SchedulingPlugin: error in onCommit:', err);
         }
-      } catch (err) {
-        this.logger.error('SchedulingPlugin: error in onCommit:', err);
+
+        return await next(this.context);
       }
-
-      return await next(this.context);
     }
-  }
 
-  registerSelector('type:user-message', SchedulingPlugin);
+    registry.registerSelector('type:user-message', SchedulingPlugin);
+  });
 }

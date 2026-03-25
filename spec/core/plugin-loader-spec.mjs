@@ -905,18 +905,18 @@ describe('PluginLoader', () => {
 
   // ---- loadPlugin ----
 
-  it('should load a plugin via setup()', async () => {
+  it('should load a plugin via setup(provide)', async () => {
     let setupCalled = false;
 
     let module = {
-      setup: (context) => {
+      setup: (provide) => {
         setupCalled = true;
-        assert.ok(context.pluginName);
-        assert.ok(context.registerTool);
-        assert.ok(context.registerCommand);
-        assert.ok(context.registerCustomElement);
-        assert.ok(context.registerAgentType);
-        assert.equal(context.PluginInterface, PluginInterface);
+        assert.equal(typeof provide, 'function');
+        provide(({ registry, context }) => {
+          assert.ok(registry);
+          assert.ok(registry.registerTool);
+          assert.ok(registry.registerClass);
+        });
       },
     };
 
@@ -925,14 +925,16 @@ describe('PluginLoader', () => {
     assert.ok(loader.isLoaded('test-plugin'));
   });
 
-  it('should pass the core context through to plugin context', async () => {
+  it('should pass the core context through to provide callback', async () => {
     let receivedContext = null;
     let coreContext     = { type: 'core-context', value: 42 };
 
     let instance = new PluginLoader(coreContext);
     let module   = {
-      setup: (context) => {
-        receivedContext = context.context;
+      setup: (provide) => {
+        provide(({ context }) => {
+          receivedContext = context;
+        });
       },
     };
 
@@ -989,12 +991,14 @@ describe('PluginLoader', () => {
     );
   });
 
-  it('should allow plugin to register tools via context', async () => {
+  it('should allow plugin to register tools via provide callback', async () => {
     let TestTool = createTestToolClass();
 
     let module = {
-      setup: (context) => {
-        context.registerTool('my-tool', TestTool);
+      setup: (provide) => {
+        provide(({ registry }) => {
+          registry.registerTool('my-tool', TestTool);
+        });
       },
     };
 
@@ -1004,12 +1008,14 @@ describe('PluginLoader', () => {
     assert.equal(registry.getTool('my-tool'), TestTool);
   });
 
-  it('should allow plugin to register commands via context', async () => {
+  it('should allow plugin to register commands via provide', async () => {
     let handler = () => 'hello';
 
     let module = {
-      setup: (context) => {
-        context.registerCommand('greet', handler);
+      setup: (provide) => {
+        provide(({ registry }) => {
+          registry.registerCommand('greet', handler);
+        });
       },
     };
 
@@ -1019,15 +1025,17 @@ describe('PluginLoader', () => {
     assert.equal(registry.getCommand('greet'), handler);
   });
 
-  it('should allow plugin to register capabilities via context', async () => {
+  it('should allow plugin to register capabilities via provide', async () => {
     let handler = async () => ({ content: { html: 'ok' } });
 
     let module = {
-      setup: (context) => {
-        context.registerCapability('test-cap', {
-          handler,
-          description:  'A test capability',
-          slashCommand: 'testcap',
+      setup: (provide) => {
+        provide(({ registry }) => {
+          registry.registerCapability('test-cap', {
+            handler,
+            description:  'A test capability',
+            slashCommand: 'testcap',
+          });
         });
       },
     };
@@ -1036,15 +1044,17 @@ describe('PluginLoader', () => {
 
     let registry = loader.getRegistry();
     let cap      = registry.getCapability('test-cap');
-    assert.ok(cap, 'Capability should be registered via plugin context');
+    assert.ok(cap, 'Capability should be registered via provide callback');
     assert.equal(cap.handler, handler);
     assert.equal(cap.slashCommand, 'testcap');
   });
 
-  it('should allow plugin to register custom elements via context', async () => {
+  it('should allow plugin to register custom elements via provide', async () => {
     let module = {
-      setup: (context) => {
-        context.registerCustomElement('kikx-chart');
+      setup: (provide) => {
+        provide(({ registry }) => {
+          registry.registerCustomElement('kikx-chart');
+        });
       },
     };
 
@@ -1054,14 +1064,16 @@ describe('PluginLoader', () => {
     assert.ok(registry.getCustomElements().has('kikx-chart'));
   });
 
-  it('should allow plugin to register agent types via context', async () => {
+  it('should allow plugin to register agent types via provide', async () => {
     class TestAgent extends AgentInterface {
       static pluginID = 'test-agent';
     }
 
     let module = {
-      setup: (context) => {
-        context.registerAgentType('test', TestAgent);
+      setup: (provide) => {
+        provide(({ registry }) => {
+          registry.registerAgentType('test', TestAgent);
+        });
       },
     };
 
@@ -1071,17 +1083,17 @@ describe('PluginLoader', () => {
     assert.equal(registry.getAgentType('test'), TestAgent);
   });
 
-  it('should set pluginName on context passed to setup', async () => {
-    let receivedName = null;
+  it('should pass provide function to setup', async () => {
+    let receivedProvide = null;
 
     let module = {
-      setup: (context) => {
-        receivedName = context.pluginName;
+      setup: (provide) => {
+        receivedProvide = provide;
       },
     };
 
     await loader.loadPlugin('named-plugin', module);
-    assert.equal(receivedName, 'named-plugin');
+    assert.equal(typeof receivedProvide, 'function');
   });
 
   // ---- unloadPlugin ----
@@ -1157,12 +1169,14 @@ describe('PluginLoader', () => {
 
   // ---- registerHook via context ----
 
-  it('should allow plugin to register hooks via context', async () => {
+  it('should allow plugin to register hooks via provide', async () => {
     let handler = () => ({ action: 'pass' });
 
     let module = {
-      setup: (context) => {
-        context.registerHook('prepareMessage', handler);
+      setup: (provide) => {
+        provide(({ registry }) => {
+          registry.registerHook('prepareMessage', handler);
+        });
       },
     };
 
@@ -1174,17 +1188,19 @@ describe('PluginLoader', () => {
     assert.equal(handlers[0], handler);
   });
 
-  it('should expose registerHook in plugin context', async () => {
-    let receivedContext = null;
+  it('should pass provide function to setup that exposes registry', async () => {
+    let receivedRegistry = null;
 
     let module = {
-      setup: (context) => {
-        receivedContext = context;
+      setup: (provide) => {
+        provide(({ registry }) => {
+          receivedRegistry = registry;
+        });
       },
     };
 
     await loader.loadPlugin('ctx-hook-test', module);
-    assert.ok(typeof receivedContext.registerHook === 'function');
+    assert.ok(typeof receivedRegistry.registerHook === 'function');
   });
 
   // ---- loadAll resilience ----
@@ -1407,8 +1423,10 @@ describe('PluginLoader', () => {
       await writeFile(
         join(pluginDirectory, 'index.mjs'),
         `
-          export function setup(context) {
-            context.registerCommand('fs-cmd', () => 'from-fs');
+          export function setup(provide) {
+            provide(({ registry }) => {
+              registry.registerCommand('fs-cmd', () => 'from-fs');
+            });
             return () => {};
           }
         `,

@@ -327,8 +327,10 @@ describe('KikxCore plugin loading', () => {
       plugins: {
         modules: {
           'test-agent-plugin': {
-            setup: (ctx) => {
-              ctx.registerAgentType('test-agent', TestAgent);
+            setup: (provide) => {
+              provide(({ registry }) => {
+                registry.registerAgentType('test-agent', TestAgent);
+              });
             },
           },
         },

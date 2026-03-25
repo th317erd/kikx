@@ -12,6 +12,7 @@ import { PermissionEngine }      from '../../../src/core/permissions/permission-
 import { PermissionService }     from '../../../src/core/permissions/permission-service.mjs';
 import { setup }                 from '../../../src/core/internal-plugins/permissions/index.mjs';
 import { FrameManager }          from '../../../src/shared/frame-manager/frame-manager.mjs';
+import { PluginRegistry }        from '../../../src/core/plugin-loader/registry.mjs';
 
 // =============================================================================
 // C4 — PermissionPlugin Ed25519 Tests
@@ -72,11 +73,10 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
   // ---------------------------------------------------------------------------
 
   function getPluginClass() {
-    let PluginClass;
-    let registerSelector = (_selector, PC) => { PluginClass = PC; };
-    setup({ registerSelector, context });
-
-    return PluginClass;
+    let registry = new PluginRegistry();
+    setup((cb) => cb({ registry, context }));
+    let selectors = registry.getSelectors();
+    return selectors.length > 0 ? selectors[0].PluginClass : null;
   }
 
   // ---------------------------------------------------------------------------

@@ -27,11 +27,8 @@ function createShellTool() {
     },
   };
 
-  shellSetup({
-    registerTool:    (name, cls) => registry.registerTool(name, cls),
-    PluginInterface,
-    context,
-  });
+  registry.registerClass(PluginInterface, { pluginName: 'core' });
+  shellSetup((cb) => cb({ registry, context }));
 
   let ToolClass = registry.getTool('shell:execute');
   let tool      = new ToolClass(context);

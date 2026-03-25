@@ -48,11 +48,8 @@ describe('CrossSessionPermissions', () => {
 
     // Register the cross-session plugin
     registry = new PluginRegistry();
-    setup({
-      registerTool: (name, cls) => registry.registerTool(name, cls),
-      PluginInterface,
-      context,
-    });
+    registry.registerClass(PluginInterface, { pluginName: 'core' });
+    setup((cb) => cb({ registry, context }));
 
     CreateSessionTool      = registry.getTool('cross-session:createSession');
     PostToSessionTool      = registry.getTool('cross-session:postToSession');

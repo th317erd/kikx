@@ -4,6 +4,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { setup } from '../../../../src/core/internal-plugins/solr-indexing/index.mjs';
+import { PluginRegistry } from '../../../../src/core/plugin-loader/registry.mjs';
 
 // =============================================================================
 // Solr Indexing Plugin Tests (Step 1.4)
@@ -44,15 +45,17 @@ function capturePlugin(globalContextOverrides = {}) {
     },
   };
 
+  let registry = new PluginRegistry();
+  setup((cb) => cb({ registry, context: globalContext }));
+
+  let selectors = registry.getSelectors();
   let captured = {};
-  let registerSelector = (selector, PluginClass) => {
-    captured.selector    = selector;
-    captured.PluginClass = PluginClass;
-  };
+  if (selectors.length > 0) {
+    captured.selector    = selectors[0].selector;
+    captured.PluginClass = selectors[0].PluginClass;
+  }
 
-  let result = setup({ registerSelector, context: globalContext });
-
-  captured.setupResult   = result;
+  captured.setupResult   = undefined;
   captured.globalContext = globalContext;
 
   return captured;

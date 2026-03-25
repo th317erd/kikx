@@ -193,102 +193,107 @@ function buildHmlPromptReference() {
 // Plugin setup
 // ---------------------------------------------------------------------------
 
-export function setup({ registerTool, registerCommand, registerInstructions, PluginInterface, context }) {
-  class HelpTool extends PluginInterface {
-    static pluginID    = 'help';
-    static featureName = 'search';
-    static displayName = 'Help';
-    static description = 'Search available tools, commands, and interactive prompt types';
-    static riskLevel   = 'none';
-    static inputSchema = {
-      type:       'object',
-      properties: {
-        query: { type: 'string', description: 'Optional search query to filter tools and commands' },
-      },
-    };
+export function setup(provide) {
+  provide(({ registry, context }) => {
+    let PluginInterface = registry.getClass('PluginInterface');
 
-    async _execute({ query }) {
-      let registry  = context.getProperty('pluginRegistry');
-      let helpIndex = new HelpIndex(registry);
+    class HelpTool extends PluginInterface {
+      static pluginID    = 'help';
+      static featureName = 'search';
+      static displayName = 'Help';
+      static description = 'Search available tools, commands, and interactive prompt types';
+      static riskLevel   = 'none';
+      static inputSchema = {
+        type:       'object',
+        properties: {
+          query: { type: 'string', description: 'Optional search query to filter tools and commands' },
+        },
+      };
+
+      async _execute({ query }) {
+        let registry  = context.getProperty('pluginRegistry');
+        let helpIndex = new HelpIndex(registry);
+        let entries   = (query) ? helpIndex.search(query) : helpIndex.getEntries();
+
+        // Include HML prompt reference as a synthetic entry when no query or when searching for "prompt"
+        if (!query || 'prompt'.includes(query.toLowerCase()) || 'hml'.includes(query.toLowerCase()))
+          entries.push(this._getHmlPromptEntry());
+
+        return { entries };
+      }
+
+      _getHmlPromptEntry() {
+        return {
+          category:    'reference',
+          name:        'kikx-hml-prompt',
+          displayName: 'Interactive Prompts',
+          description: 'Embed interactive form elements in HTML responses to collect structured user input. ' +
+            'All configuration via HTML attributes — NO JSON config blobs. ' +
+            'Attributes: name (required, unique id), type (text|textarea|select|checkbox|radio|number|range|color|date|time), ' +
+            'label, placeholder, value (default), options (comma-separated for select/radio), min, max, step, required. ' +
+            'For select/radio with label/value pairs, use child <kikx-hml-option value="..." label="..."> elements. ' +
+            'Checkbox value should be "true" or "false".',
+          usage: '<kikx-hml-prompt name="unique-id" type="text" label="..." placeholder="..."></kikx-hml-prompt>',
+          examples: [
+            { input: '<kikx-hml-prompt name="username" type="text" label="Your Name" placeholder="Enter name"></kikx-hml-prompt>',    description: 'Text input' },
+            { input: '<kikx-hml-prompt name="color" type="select" label="Pick a Color" options="Red,Blue,Green"></kikx-hml-prompt>',  description: 'Dropdown select' },
+            { input: '<kikx-hml-prompt name="agree" type="checkbox" label="I agree to the terms" value="false"></kikx-hml-prompt>',   description: 'Checkbox (boolean)' },
+            { input: '<kikx-hml-prompt name="rating" type="range" label="Rating" min="1" max="10" step="1" value="5"></kikx-hml-prompt>', description: 'Range slider' },
+          ],
+        };
+      }
+
+      getHelp() {
+        return {
+          ...super.getHelp(),
+          usage:   'help:search { query: "shell" }',
+          examples: [
+            { query: '',        description: 'List all available tools, commands, and prompt types' },
+            { query: 'shell',   description: 'Search for shell-related tools' },
+            { query: 'prompt',  description: 'Get interactive prompt (hml-prompt) documentation' },
+            { query: 'invite',  description: 'Search for the invite command' },
+          ],
+        };
+      }
+    }
+
+    registry.registerTool('help:search', HelpTool);
+
+    // /help command — user-facing slash command
+    registry.registerCommand('help', async ({ arguments: query }) => {
+      let reg       = context.getProperty('pluginRegistry');
+      let helpIndex = new HelpIndex(reg);
       let entries   = (query) ? helpIndex.search(query) : helpIndex.getEntries();
 
-      // Include HML prompt reference as a synthetic entry when no query or when searching for "prompt"
-      if (!query || 'prompt'.includes(query.toLowerCase()) || 'hml'.includes(query.toLowerCase()))
-        entries.push(this._getHmlPromptEntry());
+      if (entries.length === 0)
+        return { content: { html: '<p>No matching tools or commands found.</p>' } };
 
-      return { entries };
-    }
+      let html = buildHelpHtml(entries);
+      return { content: { html } };
+    }, {
+      description: 'Show available commands, tools, and interactive prompt types with detailed usage information.',
+      usage:       '/help [query]',
+      parameters:  [
+        { name: 'query', required: false, description: 'Optional search term to filter results' },
+      ],
+      examples: [
+        { input: '/help',       description: 'Show all available commands and tools' },
+        { input: '/help shell', description: 'Show help for shell-related features' },
+        { input: '/help prompt', description: 'Show interactive prompt documentation' },
+      ],
+    });
 
-    _getHmlPromptEntry() {
-      return {
-        category:    'reference',
-        name:        'kikx-hml-prompt',
-        displayName: 'Interactive Prompts',
-        description: 'Embed interactive form elements in HTML responses to collect structured user input. ' +
-          'All configuration via HTML attributes — NO JSON config blobs. ' +
-          'Attributes: name (required, unique id), type (text|textarea|select|checkbox|radio|number|range|color|date|time), ' +
-          'label, placeholder, value (default), options (comma-separated for select/radio), min, max, step, required. ' +
-          'For select/radio with label/value pairs, use child <kikx-hml-option value="..." label="..."> elements. ' +
-          'Checkbox value should be "true" or "false".',
-        usage: '<kikx-hml-prompt name="unique-id" type="text" label="..." placeholder="..."></kikx-hml-prompt>',
-        examples: [
-          { input: '<kikx-hml-prompt name="username" type="text" label="Your Name" placeholder="Enter name"></kikx-hml-prompt>',    description: 'Text input' },
-          { input: '<kikx-hml-prompt name="color" type="select" label="Pick a Color" options="Red,Blue,Green"></kikx-hml-prompt>',  description: 'Dropdown select' },
-          { input: '<kikx-hml-prompt name="agree" type="checkbox" label="I agree to the terms" value="false"></kikx-hml-prompt>',   description: 'Checkbox (boolean)' },
-          { input: '<kikx-hml-prompt name="rating" type="range" label="Rating" min="1" max="10" step="1" value="5"></kikx-hml-prompt>', description: 'Range slider' },
-        ],
-      };
-    }
-
-    getHelp() {
-      return {
-        ...super.getHelp(),
-        usage:   'help:search { query: "shell" }',
-        examples: [
-          { query: '',        description: 'List all available tools, commands, and prompt types' },
-          { query: 'shell',   description: 'Search for shell-related tools' },
-          { query: 'prompt',  description: 'Get interactive prompt (hml-prompt) documentation' },
-          { query: 'invite',  description: 'Search for the invite command' },
-        ],
-      };
-    }
-  }
-
-  registerTool('help:search', HelpTool);
-
-  // /help command — user-facing slash command
-  registerCommand('help', async ({ arguments: query }) => {
-    let registry  = context.getProperty('pluginRegistry');
-    let helpIndex = new HelpIndex(registry);
-    let entries   = (query) ? helpIndex.search(query) : helpIndex.getEntries();
-
-    if (entries.length === 0)
-      return { content: { html: '<p>No matching tools or commands found.</p>' } };
-
-    let html = buildHelpHtml(entries);
-    return { content: { html } };
-  }, {
-    description: 'Show available commands, tools, and interactive prompt types with detailed usage information.',
-    usage:       '/help [query]',
-    parameters:  [
-      { name: 'query', required: false, description: 'Optional search term to filter results' },
-    ],
-    examples: [
-      { input: '/help',       description: 'Show all available commands and tools' },
-      { input: '/help shell', description: 'Show help for shell-related features' },
-      { input: '/help prompt', description: 'Show interactive prompt documentation' },
-    ],
+    // Register instructions so the agent knows about the help system and hml-prompts
+    registry.registerInstructions(
+      'help',
+      'Use the help:search tool to discover all available tools, commands, and interactive prompt types. ' +
+      'Call it with no query to list everything, or with a query string to filter. ' +
+      'When you need structured input from the user, use <kikx-hml-prompt> elements inline in your HTML. ' +
+      'Configure via attributes: name, type, label, placeholder, value, options, min, max, step. ' +
+      'Example: <kikx-hml-prompt name="color" type="select" label="Color" options="Red,Blue,Green"></kikx-hml-prompt>',
+      { priority: 50 },
+    );
   });
-
-  // Register instructions so the agent knows about the help system and hml-prompts
-  registerInstructions(
-    'Use the help:search tool to discover all available tools, commands, and interactive prompt types. ' +
-    'Call it with no query to list everything, or with a query string to filter. ' +
-    'When you need structured input from the user, use <kikx-hml-prompt> elements inline in your HTML. ' +
-    'Configure via attributes: name, type, label, placeholder, value, options, min, max, step. ' +
-    'Example: <kikx-hml-prompt name="color" type="select" label="Color" options="Red,Blue,Green"></kikx-hml-prompt>',
-    { priority: 50 },
-  );
 
   return () => {};
 }

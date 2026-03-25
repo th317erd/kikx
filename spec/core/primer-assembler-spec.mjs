@@ -654,25 +654,29 @@ describe('PluginLoader — registerInstructions via context', () => {
     PluginRegistry = module.PluginRegistry;
   });
 
-  it('should expose registerInstructions in plugin context', async () => {
-    let receivedContext = null;
+  it('should expose registerInstructions on registry via provide', async () => {
+    let receivedRegistry = null;
 
     let loader = new PluginLoader({ type: 'test-context' });
     let module = {
-      setup: (context) => {
-        receivedContext = context;
+      setup: (provide) => {
+        provide(({ registry }) => {
+          receivedRegistry = registry;
+        });
       },
     };
 
     await loader.loadPlugin('instruction-test', module);
-    assert.ok(typeof receivedContext.registerInstructions === 'function');
+    assert.ok(typeof receivedRegistry.registerInstructions === 'function');
   });
 
-  it('should curry pluginName into registerInstructions', async () => {
+  it('should register instructions via provide callback', async () => {
     let loader = new PluginLoader({ type: 'test-context' });
     let module = {
-      setup: (context) => {
-        context.registerInstructions('Test instruction content.');
+      setup: (provide) => {
+        provide(({ registry }) => {
+          registry.registerInstructions('my-plugin', 'Test instruction content.');
+        });
       },
     };
 
@@ -689,8 +693,10 @@ describe('PluginLoader — registerInstructions via context', () => {
   it('should pass options through to registerInstructions', async () => {
     let loader = new PluginLoader({ type: 'test-context' });
     let module = {
-      setup: (context) => {
-        context.registerInstructions('High priority content.', { priority: 10 });
+      setup: (provide) => {
+        provide(({ registry }) => {
+          registry.registerInstructions('priority-plugin', 'High priority content.', { priority: 10 });
+        });
       },
     };
 

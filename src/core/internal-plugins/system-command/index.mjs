@@ -13,114 +13,119 @@ import { SystemCommandPermissions } from './system-command-permissions.mjs';
 // executes it with the injected session context (_sessionID, _authorID, _agent).
 // =============================================================================
 
-export function setup({ registerTool, registerInstructions, PluginInterface, context }) {
-  class SystemCommandTool extends PluginInterface {
-    static pluginID    = 'system';
-    static featureName = 'command';
-    static displayName = 'System Command';
-    static description = 'Execute slash commands on behalf of the agent';
-    static riskLevel   = 'high';
-    static inputSchema = {
-      type:       'object',
-      properties: {
-        command: { type: 'string', description: 'The slash command name (without the leading /)' },
-        args:    { type: 'string', description: 'Arguments to pass to the command' },
-      },
-      required: ['command'],
-    };
+export function setup(provide) {
+  provide(({ registry, context }) => {
+    let PluginInterface = registry.getClass('PluginInterface');
 
-    getPermissionsClass() {
-      return SystemCommandPermissions;
-    }
+    class SystemCommandTool extends PluginInterface {
+      static pluginID    = 'system';
+      static featureName = 'command';
+      static displayName = 'System Command';
+      static description = 'Execute slash commands on behalf of the agent';
+      static riskLevel   = 'high';
+      static inputSchema = {
+        type:       'object',
+        properties: {
+          command: { type: 'string', description: 'The slash command name (without the leading /)' },
+          args:    { type: 'string', description: 'Arguments to pass to the command' },
+        },
+        required: ['command'],
+      };
 
-    async _execute({ command, args, _sessionID, _authorID, _agent }) {
-      if (!command || typeof command !== 'string')
-        return { html: '<p>Error: <code>command</code> is required and must be a string.</p>' };
+      getPermissionsClass() {
+        return SystemCommandPermissions;
+      }
 
-      let commandName = command.toLowerCase().trim();
-      let registry    = this._context.getProperty('pluginRegistry');
+      async _execute({ command, args, _sessionID, _authorID, _agent }) {
+        if (!command || typeof command !== 'string')
+          return { html: '<p>Error: <code>command</code> is required and must be a string.</p>' };
 
-      if (!registry)
-        return { html: '<p>Error: plugin registry not available.</p>' };
+        let commandName = command.toLowerCase().trim();
+        let reg         = this._context.getProperty('pluginRegistry');
 
-      // Try traditional command first, then capability by slash command
-      let handler    = registry.getCommand(commandName);
-      let capability = !handler ? registry.getCapabilityBySlashCommand(commandName) : null;
+        if (!reg)
+          return { html: '<p>Error: plugin registry not available.</p>' };
 
-      if (!handler && !capability)
-        return { html: `<p>Unknown command: <code>/${commandName}</code></p>` };
+        // Try traditional command first, then capability by slash command
+        let handler    = reg.getCommand(commandName);
+        let capability = !handler ? reg.getCapabilityBySlashCommand(commandName) : null;
 
-      try {
-        let result;
+        if (!handler && !capability)
+          return { html: `<p>Unknown command: <code>/${commandName}</code></p>` };
 
-        if (capability) {
-          // Execute as capability — parse args if parseArgs is available
-          let structuredParams;
+        try {
+          let result;
 
-          if (typeof capability.parseArgs === 'function')
-            structuredParams = capability.parseArgs(args || '');
-          else
-            structuredParams = { text: args || '' };
+          if (capability) {
+            // Execute as capability — parse args if parseArgs is available
+            let structuredParams;
 
-          if (!structuredParams)
-            return { html: `<p>Usage: <code>/${commandName}</code> — could not parse arguments.</p>` };
+            if (typeof capability.parseArgs === 'function')
+              structuredParams = capability.parseArgs(args || '');
+            else
+              structuredParams = { text: args || '' };
 
-          result = await capability.handler({
-            params:     structuredParams,
-            sessionID:  _sessionID,
-            context:    this._context,
-            authorType: 'agent',
-            authorID:   _authorID || null,
-            agent:      _agent || null,
-          });
-        } else {
-          result = await handler({
-            sessionID:  _sessionID,
-            arguments:  args || '',
-            context:    this._context,
-            authorType: 'agent',
-            authorID:   _authorID || null,
-            agent:      _agent || null,
-          });
+            if (!structuredParams)
+              return { html: `<p>Usage: <code>/${commandName}</code> — could not parse arguments.</p>` };
+
+            result = await capability.handler({
+              params:     structuredParams,
+              sessionID:  _sessionID,
+              context:    this._context,
+              authorType: 'agent',
+              authorID:   _authorID || null,
+              agent:      _agent || null,
+            });
+          } else {
+            result = await handler({
+              sessionID:  _sessionID,
+              arguments:  args || '',
+              context:    this._context,
+              authorType: 'agent',
+              authorID:   _authorID || null,
+              agent:      _agent || null,
+            });
+          }
+
+          let content     = (result && result.content) || { html: '<p>Command executed.</p>' };
+          let injectPrimer = !!(result && result.injectPrimer);
+
+          return {
+            html:         content.html,
+            injectPrimer,
+            commandName,
+          };
+        } catch (error) {
+          return { html: `<p>Command error: ${error.message}</p>` };
         }
+      }
 
-        let content     = (result && result.content) || { html: '<p>Command executed.</p>' };
-        let injectPrimer = !!(result && result.injectPrimer);
-
+      getHelp() {
         return {
-          html:         content.html,
-          injectPrimer,
-          commandName,
+          ...super.getHelp(),
+          inputSchema: SystemCommandTool.inputSchema,
+          usage:       'system:command { command: "invite", args: "@agent-name" }',
+          examples:    [
+            { command: 'reload', args: '',              description: 'Reload agent instructions' },
+            { command: 'invite', args: '@test-claude',  description: 'Invite an agent to the session' },
+            { command: 'help',   args: '',              description: 'List all available commands and tools' },
+          ],
         };
-      } catch (error) {
-        return { html: `<p>Command error: ${error.message}</p>` };
       }
     }
 
-    getHelp() {
-      return {
-        ...super.getHelp(),
-        inputSchema: SystemCommandTool.inputSchema,
-        usage:       'system:command { command: "invite", args: "@agent-name" }',
-        examples:    [
-          { command: 'reload', args: '',              description: 'Reload agent instructions' },
-          { command: 'invite', args: '@test-claude',  description: 'Invite an agent to the session' },
-          { command: 'help',   args: '',              description: 'List all available commands and tools' },
-        ],
-      };
-    }
-  }
+    registry.registerTool('system:command', SystemCommandTool);
 
-  registerTool('system:command', SystemCommandTool);
-
-  registerInstructions(
-    'Some capabilities are available as direct tools: `invite` (invite an agent, e.g. `{ agentName: "agent-name" }`) ' +
-    'and `reload` (reload instructions). Prefer calling these tools directly. ' +
-    'For commands not yet available as direct tools, use the `system:command` bridge tool: ' +
-    '`{ command: "help", args: "" }`. ' +
-    'Do not use `system:command` in response to a user typing a slash command — the server handles those automatically.',
-    { priority: 200 },
-  );
+    registry.registerInstructions(
+      'system-command',
+      'Some capabilities are available as direct tools: `invite` (invite an agent, e.g. `{ agentName: "agent-name" }`) ' +
+      'and `reload` (reload instructions). Prefer calling these tools directly. ' +
+      'For commands not yet available as direct tools, use the `system:command` bridge tool: ' +
+      '`{ command: "help", args: "" }`. ' +
+      'Do not use `system:command` in response to a user typing a slash command — the server handles those automatically.',
+      { priority: 200 },
+    );
+  });
 
   return () => {};
 }

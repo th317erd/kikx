@@ -10,7 +10,9 @@
 import { CascadingContext }             from './context/index.mjs';
 import { DEFAULT_CONFIG, mergeConfig } from './config/index.mjs';
 import { DEFAULT_MODELS }              from './models/index.mjs';
-import { PluginLoader, FilesystemPluginProvider, InMemoryPluginProvider } from './plugin-loader/index.mjs';
+import { PluginLoader, PluginInterface, FilesystemPluginProvider, InMemoryPluginProvider } from './plugin-loader/index.mjs';
+import { AgentInterface }     from './plugins/agent-interface.mjs';
+import { BasePluginClass }    from './routing/base-plugin-class.mjs';
 import { PermissionEngine }  from './permissions/index.mjs';
 import { HookRunner, HookService } from './hooks/index.mjs';
 import { PrimerAssembler }   from './primer/index.mjs';
@@ -284,6 +286,15 @@ export class KikxCore {
 
     // Create loader
     let loader   = new PluginLoader(this._context, { disabled });
+
+    // Register core system classes on the registry before plugins load
+    let registry = loader.getRegistry();
+    registry.registerClass(PluginInterface,  { pluginName: 'core' });
+    registry.registerClass(AgentInterface,   { pluginName: 'core' });
+    registry.registerClass(BasePluginClass,  { pluginName: 'core' });
+    registry.registerClass(FrameRouter,      { pluginName: 'core' });
+    registry.registerClass(PermissionEngine, { pluginName: 'core' });
+
     let provider = new FilesystemPluginProvider(pluginDirs);
     loader.addProvider(provider);
 
