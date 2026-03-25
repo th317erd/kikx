@@ -15,22 +15,18 @@ export class FrameTypeMessage extends FrameTypeBase {
 
   toAgentMessage(options) {
     let content     = this._frameData.content || {};
-    let text        = content.html || content.text || '';
+    let html        = content.html || '';
     let forAgentID  = (options && options.forAgentID) ? options.forAgentID : null;
     let authorID    = this._frameData.authorID;
 
     // Multi-agent attribution: wrap other agents' messages in XML
     if (forAgentID && authorID && authorID !== forAgentID) {
-      return {
-        role:    'user',
-        content: `<agent-message from="${authorID}">${text}</agent-message>`,
-      };
+      let agentName = authorID;
+      let wrapped   = `<agent-message source="${authorID}" name="${agentName}">${html}</agent-message>`;
+      return { role: 'user', content: wrapped, frameID: this._frameData.id, sourceAgentID: authorID };
     }
 
-    return {
-      role:    'assistant',
-      content: [{ type: 'text', text }],
-    };
+    return { role: 'assistant', content: html, frameID: this._frameData.id };
   }
 
   toMessage() {

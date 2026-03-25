@@ -7,18 +7,7 @@
 // Extracted from InteractionLoop to reduce file size.
 // =============================================================================
 
-// Frame types excluded from the agent's message history
-const EXCLUDED_TYPES = new Set([
-  'PermissionRequest',
-  'PermissionDenied',
-  'HookBlocked',
-  'ToolError',
-  'Error',
-  'Reflection',
-  'CommandResult',
-  'ToolActivity',
-  'Stop',
-]);
+import { createTypedFrame } from '../../shared/frame-types/index.mjs';
 
 /**
  * Check if this is the first real message in the session
@@ -101,15 +90,23 @@ export function buildMessages(frames, forAgentID, options = {}) {
   // --- Compaction: extract active compaction filter ---
   let activeCompaction = options.activeCompaction || null;
 
+  // Options passed to each frame type's toAgentMessage()
+  let msgOptions = {
+    forAgentID,
+    toolResultMap:    resolvedToolIds,
+    emittedToolResults,
+    toolResultFrames,
+  };
+
   for (let frame of frames) {
     // Skip deleted and hidden frames (hidden = visible in UI but not in agent context)
     if (frame.deleted || frame.hidden)
       continue;
 
-    let type = frame.type;
+    let typed = createTypedFrame(frame);
 
-    // Skip excluded frame types explicitly
-    if (EXCLUDED_TYPES.has(type))
+    // Use frame type class to determine if this type belongs in agent context
+    if (!typed.isIncludedInAgentContext())
       continue;
 
     // --- Compaction: filter frames during active compaction ---
@@ -122,72 +119,18 @@ export function buildMessages(frames, forAgentID, options = {}) {
         continue;
     }
 
-    if (type === 'UserMessage') {
-      let content = frame.content || {};
-      messages.push({ role: 'user', content: content.html || content.text || '', frameID: frame.id });
-    } else if (type === 'Message') {
-      let content = frame.content || {};
-      let html    = content.html || '';
+    let msg = typed.toAgentMessage(msgOptions);
+    if (!msg)
+      continue;
 
-      // Multi-agent attribution: if forAgentID is set, determine whether this
-      // message is from the target agent (role:assistant) or another agent
-      // (role:user with XML wrapper).
-      if (forAgentID && frame.authorID && frame.authorID !== forAgentID) {
-        // Other agent's message → wrap in attribution tag, present as user role
-        let agentName = frame.authorID;
-        let wrapped   = `<agent-message source="${frame.authorID}" name="${agentName}">${html}</agent-message>`;
-        messages.push({ role: 'user', content: wrapped, frameID: frame.id, sourceAgentID: frame.authorID });
-      } else {
-        // Own message or single-agent → standard assistant role
-        messages.push({ role: 'assistant', content: html, frameID: frame.id });
-      }
-    } else if (type === 'ToolCall') {
-      let content   = frame.content || {};
-      let toolUseID = content.toolUseID || content.toolUseId;
+    messages.push(msg);
 
-      // Only include tool-calls that have a matching tool-result.
-      // Orphaned tool-calls (from permission hardBreak, crashes, or errors)
-      // cause API errors: "tool_use ids found without tool_result blocks."
-      if (toolUseID && !resolvedToolIds.has(toolUseID))
-        continue;
-
-      messages.push({ type: 'ToolCall', content, authorType: 'agent', frameID: frame.id });
-    } else if (type === 'PendingAction') {
-      // Only include pending-actions that were approved (have a matching tool-result)
-      let content = frame.content || {};
-      if (content.toolUseID && resolvedToolIds.has(content.toolUseID)) {
-        // Strip internal fields (e.g. _parsedCommands) from arguments before
-        // exposing to the agent — they are UI/permission-system metadata.
-        let cleanContent = content;
-        if (content.arguments && content.arguments._parsedCommands) {
-          let { _parsedCommands, ...cleanArgs } = content.arguments;
-          cleanContent = { ...content, arguments: cleanArgs };
-        }
-
-        messages.push({ type: 'ToolCall', content: cleanContent, authorType: 'agent', frameID: frame.id });
-
-        // Immediately emit the matching tool-result so the tool_use / tool_result
-        // pair stays adjacent. Without this, user messages sent while a permission
-        // was pending would land between the pair, causing API errors (e.g.
-        // "tool_use ids found without tool_result blocks immediately after").
-        let resultFrame = toolResultFrames.get(content.toolUseID);
-        if (resultFrame && !emittedToolResults.has(content.toolUseID)) {
-          emittedToolResults.add(content.toolUseID);
-          messages.push({ type: 'ToolResult', content: resultFrame.content || {}, frameID: resultFrame.id });
-        }
-      }
-    } else if (type === 'ToolResult') {
-      let content  = frame.content || {};
-      let resultID = content.toolUseID;
-
-      // Deduplicate: only include the first tool-result per toolUseID
-      if (resultID && emittedToolResults.has(resultID))
-        continue;
-
-      if (resultID)
-        emittedToolResults.add(resultID);
-
-      messages.push({ type: 'ToolResult', content, frameID: frame.id });
+    // PendingAction: immediately emit the matching tool-result so the
+    // tool_use / tool_result pair stays adjacent.
+    if (frame.type === 'PendingAction' && typeof typed.emitAdjacentToolResult === 'function') {
+      let adjacentResult = typed.emitAdjacentToolResult(msgOptions);
+      if (adjacentResult)
+        messages.push(adjacentResult);
     }
   }
 

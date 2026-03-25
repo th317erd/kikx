@@ -13,7 +13,7 @@ export class FrameTypePendingAction extends FrameTypeBase {
 
   toAgentMessage(options) {
     let content       = this._frameData.content || {};
-    let toolUseID     = content.toolUseId || content.toolUseID;
+    let toolUseID     = content.toolUseID || content.toolUseId;
     let toolResultMap = (options && options.toolResultMap) ? options.toolResultMap : null;
 
     // Only include pending-actions that were approved (have a matching tool-result)
@@ -21,21 +21,41 @@ export class FrameTypePendingAction extends FrameTypeBase {
       return null;
 
     // Strip internal fields (e.g. _parsedCommands) from arguments
-    let args = content.arguments || {};
-    if (args._parsedCommands) {
-      let { _parsedCommands, ...cleanArgs } = args;
-      args = cleanArgs;
+    let cleanContent = content;
+    if (content.arguments && content.arguments._parsedCommands) {
+      let { _parsedCommands, ...cleanArgs } = content.arguments;
+      cleanContent = { ...content, arguments: cleanArgs };
     }
 
-    return {
-      role:    'assistant',
-      content: [{
-        type:  'tool_use',
-        id:    toolUseID,
-        name:  content.toolName,
-        input: args,
-      }],
-    };
+    return { type: 'ToolCall', content: cleanContent, authorType: 'agent', frameID: this._frameData.id };
+  }
+
+  /**
+   * After emitting the tool-call, immediately emit the matching tool-result
+   * to keep the pair adjacent. Returns a ToolResult message or null.
+   * @param {Object} options - { toolResultMap, emittedToolResults, toolResultFrames }
+   * @returns {Object|null}
+   */
+  emitAdjacentToolResult(options) {
+    let content            = this._frameData.content || {};
+    let toolUseID          = content.toolUseID || content.toolUseId;
+    let toolResultFrames   = (options && options.toolResultFrames) ? options.toolResultFrames : null;
+    let emittedToolResults = (options && options.emittedToolResults) ? options.emittedToolResults : null;
+
+    if (!toolUseID || !toolResultFrames)
+      return null;
+
+    let resultFrame = toolResultFrames.get(toolUseID);
+    if (!resultFrame)
+      return null;
+
+    if (emittedToolResults && emittedToolResults.has(toolUseID))
+      return null;
+
+    if (emittedToolResults)
+      emittedToolResults.add(toolUseID);
+
+    return { type: 'ToolResult', content: resultFrame.content || {}, frameID: resultFrame.id };
   }
 
   getToolUseID() {

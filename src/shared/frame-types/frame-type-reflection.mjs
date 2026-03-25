@@ -5,11 +5,12 @@ import { FrameTypeBase } from './frame-type-base.mjs';
 export class FrameTypeReflection extends FrameTypeBase {
   getContentForIndexing() {
     let content = this._frameData.content || {};
+    let text    = content.text || content.html;
 
-    if (!content.text)
+    if (!text)
       return [];
 
-    return [{ content_text: content.text }];
+    return [{ content_text: text }];
   }
 
   isRenderable() {

@@ -13,23 +13,20 @@ export class FrameTypeToolCall extends FrameTypeBase {
 
   toAgentMessage(options) {
     let content       = this._frameData.content || {};
-    let toolUseID     = content.toolUseId || content.toolUseID;
+    let toolUseID     = content.toolUseID || content.toolUseId;
     let toolResultMap = (options && options.toolResultMap) ? options.toolResultMap : null;
 
     // Only include tool-calls that have a matching tool-result.
-    // Orphaned tool-calls cause API errors.
-    if (!toolUseID || !toolResultMap || !toolResultMap.has(toolUseID))
+    // Orphaned tool-calls (from permission hardBreak, crashes, or errors)
+    // cause API errors: "tool_use ids found without tool_result blocks."
+    // But if there's no toolUseID at all, let it through (no orphan check possible).
+    if (toolUseID && !toolResultMap)
       return null;
 
-    return {
-      role:    'assistant',
-      content: [{
-        type:  'tool_use',
-        id:    toolUseID,
-        name:  content.toolName,
-        input: content.arguments || {},
-      }],
-    };
+    if (toolUseID && toolResultMap && !toolResultMap.has(toolUseID))
+      return null;
+
+    return { type: 'ToolCall', content, authorType: 'agent', frameID: this._frameData.id };
   }
 
   toMessage() {

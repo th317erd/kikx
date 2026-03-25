@@ -15,7 +15,7 @@ export class FrameTypeUserMessage extends FrameTypeBase {
 
   toAgentMessage(_options) {
     let content = this._frameData.content || {};
-    return { role: 'user', content: content.html || content.text || '' };
+    return { role: 'user', content: content.html || content.text || '', frameID: this._frameData.id };
   }
 
   toMessage() {

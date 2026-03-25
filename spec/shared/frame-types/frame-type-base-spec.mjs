@@ -186,7 +186,7 @@ describe('FrameTypeBase', () => {
 
     it('toMessage() — handles null content', () => {
       instance = new FrameTypeBase({});
-      assert.equal(instance.toMessage(), '{}');
+      assert.equal(instance.toMessage(), '');
     });
 
     it('isRenderable() — returns false', () => {

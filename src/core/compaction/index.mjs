@@ -1,6 +1,7 @@
 'use strict';
 
 import XID from 'xid-js';
+import { createTypedFrame } from '../../shared/frame-types/index.mjs';
 
 function generateID(prefix) {
   return `${prefix}${XID.next()}`;
@@ -263,39 +264,12 @@ class CompactionRunner {
   // ---------------------------------------------------------------------------
   // _extractText — pull readable text from frame content
   // ---------------------------------------------------------------------------
+  // Delegates to frame type class toMessage() for type-aware text extraction.
+  // ---------------------------------------------------------------------------
 
   _extractText(frame) {
-    let content = frame.content;
-
-    if (!content)
-      return '';
-
-    // Direct text field
-    if (typeof content.text === 'string')
-      return content.text;
-
-    // HTML field (strip tags for compaction input)
-    if (typeof content.html === 'string')
-      return content.html;
-
-    // Tool call: format as readable text
-    if (content.toolName)
-      return `[tool-call: ${content.toolName}]`;
-
-    // Tool result: extract output
-    if (content.output !== undefined) {
-      if (typeof content.output === 'string')
-        return content.output;
-
-      return JSON.stringify(content.output);
-    }
-
-    // Generic: stringify if non-empty
-    let keys = Object.keys(content);
-    if (keys.length > 0)
-      return JSON.stringify(content);
-
-    return '';
+    let typed = createTypedFrame(frame, null);
+    return typed.toMessage();
   }
 
   // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 'use strict';
 
 import { ModelBase, Types } from './model-base.mjs';
+import { createTypedFrame } from '../../shared/frame-types/index.mjs';
 
 // =============================================================================
 // Frame
@@ -148,8 +149,9 @@ export class Frame extends ModelBase {
   // ---------------------------------------------------------------------------
   // getContentForIndexing() → Array<{ field: string, value: string }>
   // ---------------------------------------------------------------------------
-  // TODO: When frame subclasses are introduced (see future-plans.yaml: frame-class-hierarchy),
-  // each subclass should override this method instead of switching on type.
+  // Delegates to frame type classes for type-specific extraction logic.
+  // Keeps structural guards for DB-level content parsing (null, non-object,
+  // broken JSON, arrays) since typed frames expect pre-parsed object content.
   // ---------------------------------------------------------------------------
 
   getContentForIndexing() {
@@ -177,67 +179,23 @@ export class Frame extends ModelBase {
     if (Array.isArray(content))
       return [{ field: 'content', value: JSON.stringify(content) }];
 
-    let value;
+    // Delegate to frame type class for type-specific extraction
+    let typed   = createTypedFrame({ type: this.type, content }, null);
+    let entries = typed.getContentForIndexing();
 
-    switch (this.type) {
-      case 'UserMessage':
-      case 'Message':
-      case 'Reflection':
-        value = content.text || content.html;
-        break;
-
-      case 'ToolCall': {
-        let toolName  = content.toolName || '';
-        let args      = content.arguments || {};
-        value = `${toolName}: ${JSON.stringify(args)}`;
-        break;
-      }
-
-      case 'ToolResult': {
-        let result = content.result;
-        if (result == null)
-          return [];
-
-        value = (typeof result === 'string') ? result : JSON.stringify(result);
-        break;
-      }
-
-      case 'ToolError':
-      case 'Error':
-        value = content.message || content.error || content.text;
-        break;
-
-      case 'PermissionDenied':
-        value = content.message || content.reason;
-        break;
-
-      case 'Stop':
-      case 'HookBlocked':
-        value = content.text || content.message;
-        break;
-
-      case 'ToolActivity':
-        value = content.html;
-        break;
-
-      default:
-        try {
-          value = JSON.stringify(content);
-        } catch (_stringifyError) {
-          return [];
-        }
-
-        // Empty object {} stringifies to '{}' — treat as no content
-        if (value === '{}')
-          return [];
-
-        break;
-    }
-
-    if (!value)
+    if (!entries || entries.length === 0)
       return [];
 
-    return [{ field: 'content', value: String(value) }];
+    // Map { content_text, content_html } → { field, value }
+    return entries
+      .map((entry) => {
+        let value = entry.content_text || entry.content_html;
+        if (!value)
+          return null;
+
+        return { field: 'content', value: String(value) };
+      })
+      .filter(Boolean);
   }
 
   getTargets() {

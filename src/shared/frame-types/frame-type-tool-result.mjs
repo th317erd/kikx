@@ -15,28 +15,18 @@ export class FrameTypeToolResult extends FrameTypeBase {
   }
 
   toAgentMessage(options) {
-    let content           = this._frameData.content || {};
-    let toolUseID         = content.toolUseID || content.toolUseId;
+    let content            = this._frameData.content || {};
+    let toolUseID          = content.toolUseID || content.toolUseId;
     let emittedToolResults = (options && options.emittedToolResults) ? options.emittedToolResults : null;
 
-    if (!toolUseID)
-      return null;
-
     // Deduplicate: skip if already emitted
-    if (emittedToolResults && emittedToolResults.has(toolUseID))
+    if (toolUseID && emittedToolResults && emittedToolResults.has(toolUseID))
       return null;
 
-    if (emittedToolResults)
+    if (toolUseID && emittedToolResults)
       emittedToolResults.add(toolUseID);
 
-    return {
-      role:    'user',
-      content: [{
-        type:        'tool_result',
-        tool_use_id: toolUseID,
-        content:     content.output,
-      }],
-    };
+    return { type: 'ToolResult', content, frameID: this._frameData.id };
   }
 
   toMessage() {

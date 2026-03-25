@@ -131,17 +131,17 @@ describe('FrameTypeUserMessage', () => {
 
   it('toAgentMessage() returns user role with html preferred', () => {
     let instance = new FrameTypeUserMessage(frame);
-    assert.deepEqual(instance.toAgentMessage(), { role: 'user', content: '<p>hello world</p>' });
+    assert.deepEqual(instance.toAgentMessage(), { role: 'user', content: '<p>hello world</p>', frameID: 'f1' });
   });
 
   it('toAgentMessage() falls back to text', () => {
     let instance = new FrameTypeUserMessage({ content: { text: 'plain' } });
-    assert.deepEqual(instance.toAgentMessage(), { role: 'user', content: 'plain' });
+    assert.deepEqual(instance.toAgentMessage(), { role: 'user', content: 'plain', frameID: undefined });
   });
 
   it('toAgentMessage() returns empty string for missing content', () => {
     let instance = new FrameTypeUserMessage({ content: {} });
-    assert.deepEqual(instance.toAgentMessage(), { role: 'user', content: '' });
+    assert.deepEqual(instance.toAgentMessage(), { role: 'user', content: '', frameID: undefined });
   });
 
   it('toMessage() returns text', () => {
@@ -221,37 +221,30 @@ describe('FrameTypeMessage', () => {
   it('toAgentMessage() — single agent (no forAgentID) returns assistant role', () => {
     let instance = new FrameTypeMessage(agentFrame);
     let result   = instance.toAgentMessage({});
-    assert.deepEqual(result, {
-      role:    'assistant',
-      content: [{ type: 'text', text: '<p>I can help</p>' }],
-    });
+    assert.deepEqual(result, { role: 'assistant', content: '<p>I can help</p>', frameID: 'f2' });
   });
 
   it('toAgentMessage() — same agent returns assistant role', () => {
     let instance = new FrameTypeMessage(agentFrame);
     let result   = instance.toAgentMessage({ forAgentID: 'agent-001' });
-    assert.deepEqual(result, {
-      role:    'assistant',
-      content: [{ type: 'text', text: '<p>I can help</p>' }],
-    });
+    assert.deepEqual(result, { role: 'assistant', content: '<p>I can help</p>', frameID: 'f2' });
   });
 
   it('toAgentMessage() — different agent wraps in XML', () => {
     let instance = new FrameTypeMessage(agentFrame);
     let result   = instance.toAgentMessage({ forAgentID: 'agent-002' });
     assert.deepEqual(result, {
-      role:    'user',
-      content: '<agent-message from="agent-001"><p>I can help</p></agent-message>',
+      role:          'user',
+      content:       '<agent-message source="agent-001" name="agent-001"><p>I can help</p></agent-message>',
+      frameID:       'f2',
+      sourceAgentID: 'agent-001',
     });
   });
 
   it('toAgentMessage() — no authorID returns assistant role', () => {
     let instance = new FrameTypeMessage({ content: { html: 'hi' }, authorType: 'agent' });
     let result   = instance.toAgentMessage({ forAgentID: 'agent-002' });
-    assert.deepEqual(result, {
-      role:    'assistant',
-      content: [{ type: 'text', text: 'hi' }],
-    });
+    assert.deepEqual(result, { role: 'assistant', content: 'hi', frameID: undefined });
   });
 
   it('toMessage() returns text', () => {
@@ -344,13 +337,10 @@ describe('FrameTypeToolCall', () => {
     let result        = instance.toAgentMessage({ toolResultMap });
 
     assert.deepEqual(result, {
-      role:    'assistant',
-      content: [{
-        type:  'tool_use',
-        id:    'tu-001',
-        name:  'readFile',
-        input: { path: '/tmp/test.txt' },
-      }],
+      type:       'ToolCall',
+      content:    frame.content,
+      authorType: 'agent',
+      frameID:    'f3',
     });
   });
 
@@ -366,10 +356,11 @@ describe('FrameTypeToolCall', () => {
     assert.equal(instance.toAgentMessage({ toolResultMap }), null);
   });
 
-  it('toAgentMessage() returns null when toolUseID is missing', () => {
+  it('toAgentMessage() passes through tool-calls without toolUseID', () => {
     let instance      = new FrameTypeToolCall({ content: { toolName: 'test' } });
     let toolResultMap = new Map();
-    assert.equal(instance.toAgentMessage({ toolResultMap }), null);
+    let result        = instance.toAgentMessage({ toolResultMap });
+    assert.deepEqual(result, { type: 'ToolCall', content: { toolName: 'test' }, authorType: 'agent', frameID: undefined });
   });
 
   it('toMessage() returns formatted tool call', () => {
@@ -444,14 +435,7 @@ describe('FrameTypeToolResult', () => {
     let instance           = new FrameTypeToolResult(frame);
     let result             = instance.toAgentMessage({ emittedToolResults });
 
-    assert.deepEqual(result, {
-      role:    'user',
-      content: [{
-        type:        'tool_result',
-        tool_use_id: 'tu-001',
-        content:     'file contents here',
-      }],
-    });
+    assert.deepEqual(result, { type: 'ToolResult', content: frame.content, frameID: 'f4' });
     assert.ok(emittedToolResults.has('tu-001'));
   });
 
@@ -461,36 +445,22 @@ describe('FrameTypeToolResult', () => {
     assert.equal(instance.toAgentMessage({ emittedToolResults }), null);
   });
 
-  it('toAgentMessage() returns null for missing toolUseID', () => {
-    let instance = new FrameTypeToolResult({ content: { output: 'test' } });
-    assert.equal(instance.toAgentMessage({ emittedToolResults: new Set() }), null);
+  it('toAgentMessage() still returns result for missing toolUseID (no dedup possible)', () => {
+    let instance = new FrameTypeToolResult({ id: 'f99', content: { output: 'test' } });
+    let result   = instance.toAgentMessage({ emittedToolResults: new Set() });
+    assert.deepEqual(result, { type: 'ToolResult', content: { output: 'test' }, frameID: 'f99' });
   });
 
   it('toAgentMessage() works without emittedToolResults set', () => {
     let instance = new FrameTypeToolResult(frame);
     let result   = instance.toAgentMessage({});
-    // No emittedToolResults provided — still returns the result, just can't track
-    assert.deepEqual(result, {
-      role:    'user',
-      content: [{
-        type:        'tool_result',
-        tool_use_id: 'tu-001',
-        content:     'file contents here',
-      }],
-    });
+    assert.deepEqual(result, { type: 'ToolResult', content: frame.content, frameID: 'f4' });
   });
 
   it('toAgentMessage() handles null options', () => {
     let instance = new FrameTypeToolResult(frame);
     let result   = instance.toAgentMessage();
-    assert.deepEqual(result, {
-      role:    'user',
-      content: [{
-        type:        'tool_result',
-        tool_use_id: 'tu-001',
-        content:     'file contents here',
-      }],
-    });
+    assert.deepEqual(result, { type: 'ToolResult', content: frame.content, frameID: 'f4' });
   });
 
   it('toMessage() returns string output', () => {
@@ -830,19 +800,16 @@ describe('FrameTypePendingAction', () => {
     assert.equal(new FrameTypePendingAction(frame).isIncludedInAgentContext(), true);
   });
 
-  it('toAgentMessage() returns tool_use when approved (in toolResultMap)', () => {
+  it('toAgentMessage() returns ToolCall when approved (in toolResultMap)', () => {
     let toolResultMap = new Map([['tu-002', true]]);
     let instance      = new FrameTypePendingAction(frame);
     let result        = instance.toAgentMessage({ toolResultMap });
 
     assert.deepEqual(result, {
-      role:    'assistant',
-      content: [{
-        type:  'tool_use',
-        id:    'tu-002',
-        name:  'executeCommand',
-        input: { command: 'ls -la' }, // _parsedCommands stripped
-      }],
+      type:       'ToolCall',
+      content:    { toolName: 'executeCommand', toolUseID: 'tu-002', arguments: { command: 'ls -la' } },
+      authorType: 'agent',
+      frameID:    'f12',
     });
   });
 
@@ -851,8 +818,8 @@ describe('FrameTypePendingAction', () => {
     let instance      = new FrameTypePendingAction(frame);
     let result        = instance.toAgentMessage({ toolResultMap });
 
-    assert.equal(result.content[0].input._parsedCommands, undefined);
-    assert.equal(result.content[0].input.command, 'ls -la');
+    assert.equal(result.content.arguments._parsedCommands, undefined);
+    assert.equal(result.content.arguments.command, 'ls -la');
   });
 
   it('toAgentMessage() returns null when not approved (not in toolResultMap)', () => {
@@ -868,12 +835,12 @@ describe('FrameTypePendingAction', () => {
   });
 
   it('toAgentMessage() handles arguments without _parsedCommands', () => {
-    let cleanFrame    = { content: { toolName: 'test', toolUseID: 'tu-003', arguments: { key: 'val' } } };
+    let cleanFrame    = { id: 'f99', content: { toolName: 'test', toolUseID: 'tu-003', arguments: { key: 'val' } } };
     let toolResultMap = new Map([['tu-003', true]]);
     let instance      = new FrameTypePendingAction(cleanFrame);
     let result        = instance.toAgentMessage({ toolResultMap });
 
-    assert.deepEqual(result.content[0].input, { key: 'val' });
+    assert.deepEqual(result.content.arguments, { key: 'val' });
   });
 
   it('getToolUseID() returns toolUseID', () => {

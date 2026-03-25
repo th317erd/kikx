@@ -110,16 +110,23 @@ export class FrameTypeBase {
    * @returns {string}
    */
   toMessage() {
-    let content = this._frameData.content || {};
+    let content = this._frameData.content;
+
+    if (!content)
+      return '';
 
     if (typeof content === 'string')
       return content;
 
-    if (content.text)
+    if (typeof content.text === 'string')
       return content.text;
 
-    if (content.html)
+    if (typeof content.html === 'string')
       return content.html;
+
+    let keys = Object.keys(content);
+    if (keys.length === 0)
+      return '';
 
     try {
       return JSON.stringify(content);
