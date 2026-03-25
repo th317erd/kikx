@@ -55,7 +55,7 @@ describe('PermissionHandler', () => {
   // ---------------------------------------------------------------------------
 
   describe('hardBreak', () => {
-    it('should create pending-action, permission-request, and tool-result frames', async () => {
+    it('should create permission-request and tool-result frames (no PendingAction)', async () => {
       let generator = { return: async () => {} };
       let block     = { content: { toolName: 'shell:execute', arguments: { command: 'ls' }, toolUseID: 'tu_1' } };
 
@@ -63,12 +63,12 @@ describe('PermissionHandler', () => {
 
       await handler.hardBreak('ses_1', generator, block, 'int_1', {}, null);
 
-      assert.equal(createdFrames.length, 3);
-      assert.equal(createdFrames[0].type, 'PendingAction');
-      assert.equal(createdFrames[1].type, 'PermissionRequest');
-      assert.equal(createdFrames[2].type, 'ToolResult');
-      assert.ok(createdFrames[2].content.output.includes('PERMISSION REQUIRED'));
-      assert.equal(createdFrames[2].content.toolUseID, 'tu_1');
+      assert.equal(createdFrames.length, 2);
+      assert.equal(createdFrames[0].type, 'PermissionRequest');
+      assert.equal(createdFrames[0].content.toolUseID, 'tu_1');
+      assert.equal(createdFrames[1].type, 'ToolResult');
+      assert.ok(createdFrames[1].content.output.includes('PERMISSION REQUIRED'));
+      assert.equal(createdFrames[1].content.toolUseID, 'tu_1');
     });
 
     it('should clean up active interaction after hardBreak', async () => {

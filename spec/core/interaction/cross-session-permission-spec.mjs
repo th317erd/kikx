@@ -237,11 +237,11 @@ describe('Cross-Session Permission Approval', () => {
   // approval/denial is now handled by PermissionApprovalPlugin via FrameRouter.
 
   // ===========================================================================
-  // 6. Child session retains pending-action frame locally
+  // 6. Child session retains tool-result frame locally (no PendingAction)
   // ===========================================================================
 
-  describe('pending-action stays in child session', () => {
-    it('should keep the pending-action frame in the child session', async () => {
+  describe('tool-result stays in child session (no PendingAction)', () => {
+    it('should keep the tool-result frame in the child session', async () => {
       let parentSession = await createTestSession();
       await addUserFrame(parentSession.id);
 
@@ -260,18 +260,22 @@ describe('Cross-Session Permission Approval', () => {
         userMessage:     null,
       }));
 
-      // Pending-action should be in CHILD session
+      // ToolResult with PERMISSION REQUIRED should be in CHILD session
       let childFM     = await framePersistence.loadFrames(childSession.id);
       let childFrames = childFM.toArray();
-      let pendingFrames = childFrames.filter((f) => f.type === 'PendingAction');
-      assert.equal(pendingFrames.length, 1, 'child should have 1 pending-action frame');
-      assert.equal(pendingFrames[0].content.toolName, 'exec');
+      let toolResults = childFrames.filter((f) => f.type === 'ToolResult');
+      let permResult  = toolResults.find((f) => f.content && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+      assert.ok(permResult, 'child should have a tool-result with PERMISSION REQUIRED');
 
-      // Pending-action should NOT be in parent session
+      // No PendingAction frames should exist (Phase 3 removal)
+      let pendingFrames = childFrames.filter((f) => f.type === 'PendingAction');
+      assert.equal(pendingFrames.length, 0, 'child should have 0 PendingAction frames');
+
+      // PendingAction should NOT be in parent session either
       let parentFM     = await framePersistence.loadFrames(parentSession.id);
       let parentFrames = parentFM.toArray();
       let parentPending = parentFrames.filter((f) => f.type === 'PendingAction');
-      assert.equal(parentPending.length, 0, 'parent should have 0 pending-action frames');
+      assert.equal(parentPending.length, 0, 'parent should have 0 PendingAction frames');
     });
   });
 
@@ -411,10 +415,11 @@ describe('Cross-Session Permission Approval', () => {
       let parentRequests = parentFM.toArray().filter((f) => f.type === 'PermissionRequest');
       assert.equal(parentRequests.length, 1, 'parent should have the permission-request');
 
-      // Pending-action in child
+      // ToolResult with PERMISSION REQUIRED in child (no PendingAction — Phase 3)
       let childFM = await framePersistence.loadFrames(childSession.id);
-      let childPending = childFM.toArray().filter((f) => f.type === 'PendingAction');
-      assert.equal(childPending.length, 1, 'child should have the pending-action');
+      let childResults = childFM.toArray().filter((f) => f.type === 'ToolResult');
+      let permResult   = childResults.find((f) => f.content && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+      assert.ok(permResult, 'child should have a tool-result with PERMISSION REQUIRED');
     });
   });
 });

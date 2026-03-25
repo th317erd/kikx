@@ -286,11 +286,12 @@ describe('Child Session Deliberation — Integration', () => {
       let parentRequests = parentFrames.filter((f) => f.type === 'PermissionRequest');
       assert.ok(parentRequests.length >= 1, 'Parent should have the permission-request');
 
-      // Pending-action should be in child
+      // ToolResult with PERMISSION REQUIRED should be in child (no PendingAction — Phase 3)
       let childFM     = await framePersistence.loadFrames(childSession.id);
       let childFrames = childFM.toArray();
-      let childPending = childFrames.filter((f) => f.type === 'PendingAction');
-      assert.ok(childPending.length >= 1, 'Child should have the pending-action');
+      let childResults = childFrames.filter((f) => f.type === 'ToolResult');
+      let permResult   = childResults.find((f) => f.content && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+      assert.ok(permResult, 'Child should have a tool-result with PERMISSION REQUIRED');
 
       // Interaction should have ended (hardBreak cleans up active state)
       assert.equal(interactionLoop.isActive(childSession.id), false);

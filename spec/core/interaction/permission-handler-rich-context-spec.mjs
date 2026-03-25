@@ -115,7 +115,8 @@ describe('PermissionHandler — rich permissionContext (Step 1.4)', () => {
     let requestFrame = createdFrames.find((f) => f.type === 'PermissionRequest');
     assert.equal(requestFrame.content.toolName, 'shell:execute');
     assert.deepStrictEqual(requestFrame.content.arguments, { command: 'echo hi' });
-    assert.ok(requestFrame.content.pendingFrameID, 'pendingFrameID should be present');
+    // pendingFrameID removed in Phase 3 — PermissionRequest IS the pending action
+    assert.equal(requestFrame.content.toolUseID, 'tu_1', 'toolUseID should be present');
   });
 
   // ---------------------------------------------------------------------------

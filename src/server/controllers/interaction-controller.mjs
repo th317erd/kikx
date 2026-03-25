@@ -313,18 +313,6 @@ export class InteractionController extends ControllerAuthBase {
 
     await frame.save();
 
-    // Also mark the associated pending-action frame as processed
-    let frameContent   = (typeof frame.getContent === 'function') ? frame.getContent() : null;
-    let pendingFrameID = frameContent && frameContent.pendingFrameID;
-    if (pendingFrameID) {
-      let pendingFrame = await Frame.where.id.EQ(pendingFrameID).first();
-      if (pendingFrame) {
-        pendingFrame.processed   = true;
-        pendingFrame.processedAt = Date.now();
-        await pendingFrame.save();
-      }
-    }
-
     // The FrameRouter will pick up the saved frame and route it through
     // the PermissionApprovalPlugin, which handles tool re-execution or
     // denial frame creation + interaction restart.
@@ -360,17 +348,6 @@ export class InteractionController extends ControllerAuthBase {
     frame.processed   = true;
     frame.processedAt = Date.now();
     await frame.save();
-
-    // Also mark the associated pending-action frame as processed
-    let pendingFrameID = content.pendingFrameID;
-    if (pendingFrameID) {
-      let pendingFrame = await Frame.where.id.EQ(pendingFrameID).first();
-      if (pendingFrame) {
-        pendingFrame.processed   = true;
-        pendingFrame.processedAt = Date.now();
-        await pendingFrame.save();
-      }
-    }
 
     return { data: { denied: true } };
   }

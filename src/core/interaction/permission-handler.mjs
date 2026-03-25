@@ -35,35 +35,16 @@ export class PermissionHandler {
   //   has a user. If no user exists anywhere in the ancestry, the tool call
   //   is denied immediately without waiting.
   //
-  //   The pending-action frame always stays in the current (requesting) session.
+  //   The PermissionRequest frame IS the pending action (no separate
+  //   PendingAction frame is created).
   // ---------------------------------------------------------------------------
 
   async hardBreak(sessionID, generator, block, interactionID, params, frameManager, permissionContext) {
     let loop = this._loop;
 
-    // 1. Persist pending-action frame (always in the current session)
-    let pendingFrameID = generateID('frm_');
-    let pendingFrame   = {
-      id:            pendingFrameID,
-      type:          'PendingAction',
-      content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseID: block.content.toolUseId || block.content.toolUseID },
-      timestamp:     Date.now(),
-      interactionID,
-      authorType:    block.authorType || 'agent',
-      authorID:      block.authorID || null,
-      hidden:        false,
-      deleted:       false,
-      processed:     false,
-    };
-
     let signingContext = (params && params._signingContext) || null;
 
-    await loop._createFrame(sessionID, pendingFrame, frameManager, {
-      authorType: block.authorType || 'agent',
-      authorID:   block.authorID || null,
-    }, signingContext);
-
-    // 2. Determine where to route the permission-request
+    // 1. Determine where to route the permission-request
     //    - If the current session has a user → same session (backward compat)
     //    - If not → walk up ancestry to find nearest user session
     //    - If no user anywhere → deny immediately
@@ -76,7 +57,7 @@ export class PermissionHandler {
 
       if (!nearestUserSessionID) {
         // No user in ancestry — deny immediately
-        await this._denyNoUser(sessionID, generator, block, interactionID, params, frameManager, pendingFrameID);
+        await this._denyNoUser(sessionID, generator, block, interactionID, params, frameManager);
         return;
       }
 
@@ -94,7 +75,8 @@ export class PermissionHandler {
       }
     }
 
-    // 3. Create permission-request frame (in the target session)
+    // 2. Create permission-request frame (in the target session)
+    // The PermissionRequest frame IS the pending action — no separate PendingAction needed.
     // For shell:execute, include per-command data for the permission UI.
     // Prefer _parsedCommands (enriched with status by checkPermission callback),
     // fall back to fresh parse for contexts without per-command checking.
@@ -105,7 +87,11 @@ export class PermissionHandler {
       parsedCommands = parseShellCommands(toolArgs.command);
 
     let requestFrameID = generateID('frm_');
-    let requestContent = { toolName: block.content.toolName, arguments: block.content.arguments, pendingFrameID };
+    let requestContent = {
+      toolName:  block.content.toolName,
+      arguments: block.content.arguments,
+      toolUseID: block.content.toolUseId || block.content.toolUseID,
+    };
 
     if (parsedCommands && parsedCommands.length > 0)
       requestContent.parsedCommands = parsedCommands;
@@ -127,7 +113,7 @@ export class PermissionHandler {
     };
 
     await loop._createFrame(targetSessionID, requestFrame, targetFrameManager, { authorType: 'system' }, signingContext);
-    loop.emit('permission:request', { sessionID, frameID: pendingFrameID, requestFrameID, toolName: block.content.toolName });
+    loop.emit('permission:request', { sessionID, requestFrameID, toolName: block.content.toolName });
 
     // 4. Create a tool-result frame so the tool-call is never orphaned.
     //    Without this, the tool-call has no matching tool-result, which
@@ -171,18 +157,9 @@ export class PermissionHandler {
   // _denyNoUser — immediate denial when no user exists in session ancestry
   // ---------------------------------------------------------------------------
 
-  async _denyNoUser(sessionID, generator, block, interactionID, params, frameManager, pendingFrameID) {
+  async _denyNoUser(sessionID, generator, block, interactionID, params, frameManager) {
     let loop           = this._loop;
-    let { Frame }      = loop._context.getProperty('models');
     let signingContext = (params && params._signingContext) || null;
-
-    // Mark pending-action as processed (it was already persisted)
-    let pendingRecord = await Frame.where.id.EQ(pendingFrameID).first();
-    if (pendingRecord) {
-      pendingRecord.processed   = true;
-      pendingRecord.processedAt = Date.now();
-      await pendingRecord.save();
-    }
 
     // Create tool-result frame with denial message
     let toolName = block.content.toolName || 'unknown';

@@ -238,9 +238,9 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // hideOrphanedFrames
   // ---------------------------------------------------------------------------
-  // Detects and hides orphaned tool-call and pending-action frames that
-  // have no matching tool-result. These cause API errors when sent to
-  // the LLM ("tool_use ids found without tool_result blocks").
+  // Detects and hides orphaned tool-call frames that have no matching
+  // tool-result. These cause API errors when sent to the LLM
+  // ("tool_use ids found without tool_result blocks").
   //
   // Best-effort: errors are logged, never thrown.
   // Returns the number of frames hidden.
@@ -271,10 +271,10 @@ export class FramePersistence {
           resolvedToolIds.add(content.toolUseID);
       }
 
-      // Find orphaned tool-calls and pending-actions
+      // Find orphaned tool-calls
       let orphans = [];
       for (let f of toolFrames) {
-        if (f.type !== 'ToolCall' && f.type !== 'PendingAction')
+        if (f.type !== 'ToolCall')
           continue;
 
         let content = (typeof f.content === 'string') ? (() => { try { return JSON.parse(f.content); } catch (_e) { return {}; } })() : (f.content || {});

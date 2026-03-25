@@ -455,7 +455,7 @@ describe('InteractionLoop', () => {
   });
 
   // ===========================================================================
-  // 13. Permission hard-break persists pending-action frame
+  // 13. Permission inline — permission-request frame
   // ===========================================================================
 
   describe('permission inline — permission-request frame', () => {

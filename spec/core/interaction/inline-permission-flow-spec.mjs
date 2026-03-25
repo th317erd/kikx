@@ -2,22 +2,31 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash }               from 'node:crypto';
 
 import { InteractionLoop }          from '../../../src/core/interaction/index.mjs';
 import { PermissionRequiredError }  from '../../../src/core/permissions/permission-required-error.mjs';
 
 // =============================================================================
-// Step 2.1 — permission-request frame stores tool context in state
+// Inline permission flow tests
 // =============================================================================
-// When the inline PermissionRequiredError handler creates a permission-request
-// frame, it must include a `state` field (JSON string) with the tool execution
-// context: toolName, toolArguments, toolUseID, sessionID, agentID,
-// interactionID, step.
+// Step 2.1: permission-request frame stores tool context in state
+// Step 3.1: dedup hash prevents duplicate permission requests
 // =============================================================================
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function computeExpectedHash(toolName, args, agentID, sessionID) {
+  let input = JSON.stringify({
+    toolName,
+    arguments: args || {},
+    agentID:   agentID || null,
+    sessionID,
+  });
+  return createHash('sha256').update(input).digest('hex').slice(0, 32);
+}
 
 function makeContext(overrides = {}) {
   let props = {
@@ -31,6 +40,53 @@ function makeContext(overrides = {}) {
   return {
     getProperty(name) { return props[name] || null; },
     setProperty(name, val) { props[name] = val; },
+  };
+}
+
+/**
+ * Create a mock Frame model that stores frames in-memory.
+ * Supports .where.sessionID.EQ().AND.type.EQ().AND.processed.EQ().all()
+ */
+function makeMockFrameModel(existingFrames = []) {
+  let store = [...existingFrames];
+
+  function buildQuery() {
+    let filters = [];
+
+    let query = {
+      get AND() { return query; },
+    };
+
+    // Create chainable .field.EQ(val) accessors
+    for (let field of ['sessionID', 'type', 'processed', 'id']) {
+      Object.defineProperty(query, field, {
+        get() {
+          return {
+            EQ(val) {
+              filters.push((f) => {
+                let fVal = f[field];
+                return fVal === val;
+              });
+              return query;
+            },
+          };
+        },
+      });
+    }
+
+    query.all = async () => store.filter((f) => filters.every((fn) => fn(f)));
+    query.first = async () => {
+      let results = store.filter((f) => filters.every((fn) => fn(f)));
+      return results[0] || null;
+    };
+
+    return query;
+  }
+
+  return {
+    get where() { return buildQuery(); },
+    _store: store,
+    create: async (data) => { store.push(data); return data; },
   };
 }
 
@@ -375,6 +431,307 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
       for (let key of expectedKeys) {
         assert.ok(key in state, `state should contain key "${key}"`);
       }
+    });
+  });
+});
+
+// =============================================================================
+// Step 3.1 — Dedup hash prevents duplicate permission requests
+// =============================================================================
+
+describe('Inline permission flow — dedup hash (Step 3.1)', () => {
+  let loop;
+  let createdFrames;
+  let mockFrame;
+
+  beforeEach(() => {
+    createdFrames = [];
+    mockFrame     = makeMockFrameModel();
+
+    loop = new InteractionLoop(makeContext({
+      models: { Frame: mockFrame },
+    }));
+
+    loop._createFrame = async (_sid, frameData, _fm, _opts, _sigCtx) => {
+      createdFrames.push(frameData);
+      return frameData;
+    };
+
+    loop._storeAndMaybeReplaceToolOutput = async (_sid, _iid, _block, _params, output) => output;
+
+    // Stub hardBreak so it never fires (no sessionManager means inline path)
+    loop._permissionHandler.hardBreak = async (...args) => {
+      let [sessionID, generator, block, interactionID, params] = args;
+      await generator.return();
+      let agentID   = params.agent && params.agent.id;
+      let activeKey = loop._activeKey(sessionID, agentID);
+      loop._active.delete(activeKey);
+      loop.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
+    };
+  });
+
+  // ---------------------------------------------------------------------------
+  // Happy paths
+  // ---------------------------------------------------------------------------
+
+  describe('requestHash is stored in content', () => {
+
+    it('permission-request frame content includes requestHash', async () => {
+      let error  = new PermissionRequiredError('test:feature', { title: 't' });
+      let params = makeParams({ executeTool: async () => { throw error; } });
+      let gen    = toolCallGenerator('test:tool', { arg: 1 }, 'tu_1');
+      loop._active.set(loop._activeKey('ses_1', 'agt_1'), { generator: gen, interactionID: 'int_1', params });
+
+      await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
+
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
+      assert.ok(frame, 'should create PermissionRequest');
+      assert.ok(frame.content.requestHash, 'content should include requestHash');
+      assert.equal(frame.content.requestHash.length, 32, 'hash should be 32 hex chars');
+    });
+
+    it('requestHash is deterministic for same inputs', async () => {
+      let error  = new PermissionRequiredError('test:feature', { title: 't' });
+      let args   = { command: 'ls -la' };
+      let expected = computeExpectedHash('shell:execute', args, 'agt_1', 'ses_1');
+
+      let params = makeParams({ executeTool: async () => { throw error; } });
+      let gen    = toolCallGenerator('shell:execute', args, 'tu_1');
+      loop._active.set(loop._activeKey('ses_1', 'agt_1'), { generator: gen, interactionID: 'int_1', params });
+
+      await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
+
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
+      assert.equal(frame.content.requestHash, expected);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Dedup: same tool+args+agent+session → no duplicate
+  // ---------------------------------------------------------------------------
+
+  describe('dedup prevents duplicate requests', () => {
+
+    it('same tool+args+agent+session returns existing request, no new PermissionRequest', async () => {
+      let args         = { command: 'rm -rf /' };
+      let requestHash  = computeExpectedHash('shell:execute', args, 'agt_1', 'ses_1');
+
+      // Pre-populate an unprocessed PermissionRequest with matching hash
+      let existingID = 'frm_existing_123';
+      mockFrame._store.push({
+        id:        existingID,
+        sessionID: 'ses_1',
+        type:      'PermissionRequest',
+        processed: false,
+        content:   { toolName: 'shell:execute', arguments: args, requestHash },
+      });
+
+      let error  = new PermissionRequiredError('test:feature', { title: 't' });
+      let params = makeParams({ executeTool: async () => { throw error; } });
+      let gen    = toolCallGenerator('shell:execute', args, 'tu_1');
+      loop._active.set(loop._activeKey('ses_1', 'agt_1'), { generator: gen, interactionID: 'int_1', params });
+
+      await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
+
+      let newRequests = createdFrames.filter((f) => f.type === 'PermissionRequest');
+      assert.equal(newRequests.length, 0, 'should NOT create a new PermissionRequest');
+    });
+
+    it('dedup hit creates ToolResult with "Permission already requested" message', async () => {
+      let args         = { command: 'rm -rf /' };
+      let requestHash  = computeExpectedHash('shell:execute', args, 'agt_1', 'ses_1');
+      let existingID   = 'frm_existing_456';
+
+      mockFrame._store.push({
+        id:        existingID,
+        sessionID: 'ses_1',
+        type:      'PermissionRequest',
+        processed: false,
+        content:   { toolName: 'shell:execute', arguments: args, requestHash },
+      });
+
+      let error  = new PermissionRequiredError('test:feature', { title: 't' });
+      let params = makeParams({ executeTool: async () => { throw error; } });
+      let gen    = toolCallGenerator('shell:execute', args, 'tu_2');
+      loop._active.set(loop._activeKey('ses_1', 'agt_1'), { generator: gen, interactionID: 'int_1', params });
+
+      await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
+
+      let toolResults = createdFrames.filter((f) => f.type === 'ToolResult');
+      assert.ok(toolResults.length >= 1, 'should create ToolResult');
+      assert.ok(toolResults[0].content.output.includes('Permission already requested'), 'output should mention dedup');
+      assert.ok(toolResults[0].content.output.includes(existingID), 'output should include existing frame ID');
+    });
+
+    it('dedup hit ToolResult includes correct toolUseID', async () => {
+      let args         = { command: 'ls' };
+      let requestHash  = computeExpectedHash('shell:execute', args, 'agt_1', 'ses_1');
+
+      mockFrame._store.push({
+        id:        'frm_dedup_1',
+        sessionID: 'ses_1',
+        type:      'PermissionRequest',
+        processed: false,
+        content:   { toolName: 'shell:execute', arguments: args, requestHash },
+      });
+
+      let error  = new PermissionRequiredError('test:feature', { title: 't' });
+      let params = makeParams({ executeTool: async () => { throw error; } });
+      let gen    = toolCallGenerator('shell:execute', args, 'tu_special');
+      loop._active.set(loop._activeKey('ses_1', 'agt_1'), { generator: gen, interactionID: 'int_1', params });
+
+      await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
+
+      let toolResult = createdFrames.find((f) => f.type === 'ToolResult');
+      assert.equal(toolResult.content.toolUseID, 'tu_special');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Different args → different hash → new request
+  // ---------------------------------------------------------------------------
+
+  describe('different args produce different hash', () => {
+
+    it('different arguments create a new PermissionRequest', async () => {
+      let existingArgs = { command: 'ls' };
+      let newArgs      = { command: 'rm -rf /' };
+      let existingHash = computeExpectedHash('shell:execute', existingArgs, 'agt_1', 'ses_1');
+
+      mockFrame._store.push({
+        id:        'frm_old',
+        sessionID: 'ses_1',
+        type:      'PermissionRequest',
+        processed: false,
+        content:   { toolName: 'shell:execute', arguments: existingArgs, requestHash: existingHash },
+      });
+
+      let error  = new PermissionRequiredError('test:feature', { title: 't' });
+      let params = makeParams({ executeTool: async () => { throw error; } });
+      let gen    = toolCallGenerator('shell:execute', newArgs, 'tu_1');
+      loop._active.set(loop._activeKey('ses_1', 'agt_1'), { generator: gen, interactionID: 'int_1', params });
+
+      await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
+
+      let newRequests = createdFrames.filter((f) => f.type === 'PermissionRequest');
+      assert.equal(newRequests.length, 1, 'should create a new PermissionRequest for different args');
+      assert.notEqual(newRequests[0].content.requestHash, existingHash);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Existing request already processed → new request allowed
+  // ---------------------------------------------------------------------------
+
+  describe('processed requests do not block new ones', () => {
+
+    it('already-processed request with same hash allows new request', async () => {
+      let args        = { command: 'ls' };
+      let requestHash = computeExpectedHash('shell:execute', args, 'agt_1', 'ses_1');
+
+      // Existing request is processed (approved/denied)
+      mockFrame._store.push({
+        id:        'frm_processed',
+        sessionID: 'ses_1',
+        type:      'PermissionRequest',
+        processed: true,
+        content:   { toolName: 'shell:execute', arguments: args, requestHash },
+      });
+
+      let error  = new PermissionRequiredError('test:feature', { title: 't' });
+      let params = makeParams({ executeTool: async () => { throw error; } });
+      let gen    = toolCallGenerator('shell:execute', args, 'tu_1');
+      loop._active.set(loop._activeKey('ses_1', 'agt_1'), { generator: gen, interactionID: 'int_1', params });
+
+      await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
+
+      let newRequests = createdFrames.filter((f) => f.type === 'PermissionRequest');
+      assert.equal(newRequests.length, 1, 'should create new request when existing is processed');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Edge cases
+  // ---------------------------------------------------------------------------
+
+  describe('dedup edge cases', () => {
+
+    it('no models on context still creates PermissionRequest (graceful fallback)', async () => {
+      // Create loop with no models
+      let loopNoModels = new InteractionLoop(makeContext({ models: null }));
+      let noModelFrames = [];
+
+      loopNoModels._createFrame = async (_sid, frameData, _fm, _opts, _sigCtx) => {
+        noModelFrames.push(frameData);
+        return frameData;
+      };
+      loopNoModels._storeAndMaybeReplaceToolOutput = async (_sid, _iid, _block, _params, output) => output;
+      loopNoModels._permissionHandler.hardBreak = async (...args) => {
+        let [sessionID, generator, block, interactionID, params] = args;
+        await generator.return();
+        let agentID   = params.agent && params.agent.id;
+        let activeKey = loopNoModels._activeKey(sessionID, agentID);
+        loopNoModels._active.delete(activeKey);
+        loopNoModels.emit('interaction:end', { sessionID, interactionID, agentID: agentID || null });
+      };
+
+      let error  = new PermissionRequiredError('test:feature', { title: 't' });
+      let params = makeParams({ executeTool: async () => { throw error; } });
+      let gen    = toolCallGenerator('test:tool', {}, 'tu_1');
+      loopNoModels._active.set(loopNoModels._activeKey('ses_1', 'agt_1'), { generator: gen, interactionID: 'int_1', params });
+
+      await loopNoModels._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
+
+      let requests = noModelFrames.filter((f) => f.type === 'PermissionRequest');
+      assert.equal(requests.length, 1, 'should still create PermissionRequest when models unavailable');
+    });
+
+    it('existing request in different session does not trigger dedup', async () => {
+      let args        = { command: 'ls' };
+      let requestHash = computeExpectedHash('shell:execute', args, 'agt_1', 'ses_other');
+
+      // Request exists in different session
+      mockFrame._store.push({
+        id:        'frm_other_session',
+        sessionID: 'ses_other',
+        type:      'PermissionRequest',
+        processed: false,
+        content:   { toolName: 'shell:execute', arguments: args, requestHash },
+      });
+
+      let error  = new PermissionRequiredError('test:feature', { title: 't' });
+      let params = makeParams({ executeTool: async () => { throw error; } });
+      let gen    = toolCallGenerator('shell:execute', args, 'tu_1');
+      loop._active.set(loop._activeKey('ses_1', 'agt_1'), { generator: gen, interactionID: 'int_1', params });
+
+      await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
+
+      let newRequests = createdFrames.filter((f) => f.type === 'PermissionRequest');
+      assert.equal(newRequests.length, 1, 'different session should not trigger dedup');
+    });
+
+    it('existing request with string content (JSON) is correctly parsed for dedup', async () => {
+      let args        = { command: 'ls' };
+      let requestHash = computeExpectedHash('shell:execute', args, 'agt_1', 'ses_1');
+
+      // Store content as JSON string (as it would be in DB)
+      mockFrame._store.push({
+        id:        'frm_json_string',
+        sessionID: 'ses_1',
+        type:      'PermissionRequest',
+        processed: false,
+        content:   JSON.stringify({ toolName: 'shell:execute', arguments: args, requestHash }),
+      });
+
+      let error  = new PermissionRequiredError('test:feature', { title: 't' });
+      let params = makeParams({ executeTool: async () => { throw error; } });
+      let gen    = toolCallGenerator('shell:execute', args, 'tu_1');
+      loop._active.set(loop._activeKey('ses_1', 'agt_1'), { generator: gen, interactionID: 'int_1', params });
+
+      await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
+
+      let newRequests = createdFrames.filter((f) => f.type === 'PermissionRequest');
+      assert.equal(newRequests.length, 0, 'JSON string content should be parsed for dedup matching');
     });
   });
 });

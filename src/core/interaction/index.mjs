@@ -1,6 +1,7 @@
 'use strict';
 
 import { EventEmitter }          from 'node:events';
+import { createHash }            from 'node:crypto';
 import XID                       from 'xid-js';
 import { PermissionDeniedError } from '../permissions/permission-denied-error.mjs';
 import { PermissionHandler }     from './permission-handler.mjs';
@@ -767,11 +768,56 @@ export class InteractionLoop extends EventEmitter {
 
                 // Normal session with user — create permission-request frame inline
                 // and feed a tool_result back to keep the conversation valid
+
+                // --- Dedup hash: prevent duplicate permission requests for the same tool call ---
+                let requestHashInput = JSON.stringify({
+                  toolName:  block.content.toolName,
+                  arguments: block.content.arguments || {},
+                  agentID:   (params.agent && params.agent.id) || null,
+                  sessionID,
+                });
+                let requestHash = createHash('sha256').update(requestHashInput).digest('hex').slice(0, 32);
+
+                // Check for existing unprocessed PermissionRequest with same hash
+                let models         = this._context.getProperty('models');
+                let dedupMatch     = null;
+
+                if (models && models.Frame) {
+                  let existingRequests = await models.Frame.where
+                    .sessionID.EQ(sessionID)
+                    .AND.type.EQ('PermissionRequest')
+                    .AND.processed.EQ(false)
+                    .all();
+
+                  dedupMatch = existingRequests.find((f) => {
+                    let existingContent = (typeof f.content === 'string') ? (() => { try { return JSON.parse(f.content); } catch (_e) { return {}; } })() : (f.content || {});
+                    return existingContent && existingContent.requestHash === requestHash;
+                  }) || null;
+                }
+
+                if (dedupMatch) {
+                  // Duplicate — return existing request ID without creating a new frame
+                  toolOutput = `Permission already requested. Request ID: ${dedupMatch.id}. Awaiting user approval.`;
+                  await this._createFrame(sessionID, {
+                    id: generateID('frm_'), type: 'ToolResult',
+                    content: { output: toolOutput, toolUseID: block.content.toolUseId || block.content.toolUseID, _sessionID: sessionID },
+                    timestamp: Date.now(), interactionID,
+                    authorType: 'system', authorID: null,
+                    parentID: params.parentID || null,
+                    hidden: false, deleted: false, processed: false,
+                  }, frameManager, { authorType: 'system' }, signingContext);
+
+                  result = { type: 'ToolResult', content: { output: toolOutput, _sessionID: sessionID } };
+                  continue;
+                }
+
+                // No duplicate — create new permission request
                 let requestFrameID = generateID('frm_');
                 let requestContent = {
                   toolName:          block.content.toolName,
                   arguments:         block.content.arguments,
                   permissionContext,
+                  requestHash,
                 };
 
                 await this._createFrame(sessionID, {

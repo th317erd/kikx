@@ -65,7 +65,7 @@ export function injectPrimer(messages, primer) {
 export function buildMessages(frames, forAgentID, options = {}) {
   // First pass: collect resolved tool IDs and map each to its result frame.
   // Only consider non-deleted, non-hidden tool-result frames so we don't
-  // include a pending-action whose result was removed.
+  // include a tool-call whose result was removed.
   let resolvedToolIds  = new Set();
   let toolResultFrames = new Map(); // toolUseID → first matching tool-result frame
 
@@ -125,9 +125,11 @@ export function buildMessages(frames, forAgentID, options = {}) {
 
     messages.push(msg);
 
-    // PendingAction: immediately emit the matching tool-result so the
-    // tool_use / tool_result pair stays adjacent.
-    if (frame.type === 'PendingAction' && typeof typed.emitAdjacentToolResult === 'function') {
+    // Backward compat: when a PendingAction is converted to a ToolCall,
+    // immediately emit its adjacent ToolResult to keep the pair together.
+    // This prevents user messages inserted between PendingAction and
+    // ToolResult from splitting the tool-call/tool-result pair.
+    if (typeof typed.emitAdjacentToolResult === 'function') {
       let adjacentResult = typed.emitAdjacentToolResult(msgOptions);
       if (adjacentResult)
         messages.push(adjacentResult);

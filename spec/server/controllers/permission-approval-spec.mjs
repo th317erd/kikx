@@ -116,27 +116,13 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
   // ---------------------------------------------------------------------------
 
   async function createPermissionRequestFrame(overrides = {}) {
-    let frameID        = overrides.id || `frm_${XID.next()}`;
-    let pendingFrameID = `frm_${XID.next()}`;
-    await Frame.create({
-      id:            pendingFrameID,
-      sessionID:     overrides.sessionID || testSession.id,
-      type:          'PendingAction',
-      content:       JSON.stringify({ toolName: 'shell:execute', arguments: { command: 'ls' }, toolUseID: 'tu_1' }),
-      timestamp:     Date.now(),
-      order:         Date.now(),
-      interactionID: `int_${XID.next()}`,
-      authorType:    'agent',
-      hidden:        false,
-      deleted:       false,
-      processed:     false,
-    });
+    let frameID = overrides.id || `frm_${XID.next()}`;
 
     await Frame.create({
       id:            frameID,
       sessionID:     overrides.sessionID || testSession.id,
       type:          'PermissionRequest',
-      content:       JSON.stringify({ toolName: 'shell:execute', arguments: { command: 'ls' }, pendingFrameID }),
+      content:       JSON.stringify({ toolName: 'shell:execute', arguments: { command: 'ls' }, toolUseID: 'tu_1' }),
       timestamp:     Date.now(),
       order:         Date.now() + 1,
       interactionID: `int_${XID.next()}`,
@@ -146,7 +132,7 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
       processed:     overrides.processed || false,
     });
 
-    return { frameID, pendingFrameID };
+    return { frameID };
   }
 
   // ---------------------------------------------------------------------------
@@ -229,19 +215,6 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
       // Verify frame is now processed
       let frame = await Frame.where.id.EQ(frameID).first();
       assert.equal(frame.processed, true, 'frame should be marked processed');
-    });
-
-    it('marks the associated pending-action frame as processed', async () => {
-      let { frameID, pendingFrameID } = await createPermissionRequestFrame();
-      let { controller } = buildController({ frameID });
-
-      await controller.approve({
-        params: { sessionID: 'ses_1', frameID },
-        body:   {},
-      });
-
-      let pendingFrame = await Frame.where.id.EQ(pendingFrameID).first();
-      assert.equal(pendingFrame.processed, true, 'pending-action should be marked processed');
     });
 
     it('creates permission rules for "allow-forever" decisions', async () => {
@@ -340,17 +313,6 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
       assert.equal(content.denied, true, 'content should have denied=true');
     });
 
-    it('marks the associated pending-action frame as processed on deny', async () => {
-      let { frameID, pendingFrameID } = await createPermissionRequestFrame();
-      let { controller } = buildController({ frameID });
-
-      await controller.deny({
-        params: { sessionID: 'ses_1', frameID },
-      });
-
-      let pendingFrame = await Frame.where.id.EQ(pendingFrameID).first();
-      assert.equal(pendingFrame.processed, true, 'pending-action should be marked processed on deny');
-    });
   });
 
   // ---------------------------------------------------------------------------
