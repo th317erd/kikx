@@ -314,7 +314,7 @@ describe('Cross-Session Plugin', () => {
       // Add a frame with searchable content
       let fm = sessionManager.getFrameManager(session.id);
       fm.merge([
-        { id: 'frm_search1', type: 'message', content: { text: 'The quick brown fox' }, authorType: 'agent', authorID: agent.id },
+        { id: 'frm_search1', type: 'Message', content: { text: 'The quick brown fox' }, authorType: 'agent', authorID: agent.id },
       ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ListSessionsTool);
@@ -331,7 +331,7 @@ describe('Cross-Session Plugin', () => {
 
       let fm = sessionManager.getFrameManager(session.id);
       fm.merge([
-        { id: 'frm_search2', type: 'message', content: { text: 'Hello world' }, authorType: 'agent', authorID: agent.id },
+        { id: 'frm_search2', type: 'Message', content: { text: 'Hello world' }, authorType: 'agent', authorID: agent.id },
       ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ListSessionsTool);
@@ -352,7 +352,7 @@ describe('Cross-Session Plugin', () => {
       let sessionB = await createSessionWithParticipant(org.id, agent.id, { name: 'General' });
       let fm = sessionManager.getFrameManager(sessionB.id);
       fm.merge([
-        { id: 'frm_search3', type: 'message', content: { text: 'Discussion about Project Alpha requirements' }, authorType: 'agent', authorID: agent.id },
+        { id: 'frm_search3', type: 'Message', content: { text: 'Discussion about Project Alpha requirements' }, authorType: 'agent', authorID: agent.id },
       ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ListSessionsTool);
@@ -413,7 +413,7 @@ describe('Cross-Session Plugin', () => {
       // The parent's FrameManager should have a session-link frame
       let fm     = sessionManager.getFrameManager(parent.id);
       let frames = fm.toArray();
-      let linkFrame = frames.find((f) => f.type === 'session-link');
+      let linkFrame = frames.find((f) => f.type === 'SessionLink');
       assert.ok(linkFrame, 'parent should contain a session-link frame');
       assert.equal(linkFrame.content.targetSessionID, result.sessionID);
     });
@@ -672,8 +672,8 @@ describe('Cross-Session Plugin', () => {
       // Add frames to the session
       let fm = sessionManager.getFrameManager(session.id);
       fm.merge([
-        { id: 'frm_r1', type: 'message', content: { text: 'First message' }, authorType: 'agent', authorID: agent.id },
-        { id: 'frm_r2', type: 'message', content: { text: 'Second message' }, authorType: 'agent', authorID: agent.id },
+        { id: 'frm_r1', type: 'Message', content: { text: 'First message' }, authorType: 'agent', authorID: agent.id },
+        { id: 'frm_r2', type: 'Message', content: { text: 'Second message' }, authorType: 'agent', authorID: agent.id },
       ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ReadFromSessionTool);
@@ -693,8 +693,8 @@ describe('Cross-Session Plugin', () => {
 
       let fm = sessionManager.getFrameManager(session.id);
       fm.merge([
-        { id: 'frm_k1', type: 'message', content: { text: 'The deployment was successful' }, authorType: 'agent', authorID: agent.id },
-        { id: 'frm_k2', type: 'message', content: { text: 'Let us discuss testing' }, authorType: 'agent', authorID: agent.id },
+        { id: 'frm_k1', type: 'Message', content: { text: 'The deployment was successful' }, authorType: 'agent', authorID: agent.id },
+        { id: 'frm_k2', type: 'Message', content: { text: 'Let us discuss testing' }, authorType: 'agent', authorID: agent.id },
       ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ReadFromSessionTool);
@@ -717,19 +717,19 @@ describe('Cross-Session Plugin', () => {
 
       let fm = sessionManager.getFrameManager(session.id);
       fm.merge([
-        { id: 'frm_t1', type: 'message', content: { text: 'Chat text' }, authorType: 'agent', authorID: agent.id },
-        { id: 'frm_t2', type: 'tool-call', content: { toolName: 'shell:execute', arguments: {} }, authorType: 'agent', authorID: agent.id },
+        { id: 'frm_t1', type: 'Message', content: { text: 'Chat text' }, authorType: 'agent', authorID: agent.id },
+        { id: 'frm_t2', type: 'ToolCall', content: { toolName: 'shell:execute', arguments: {} }, authorType: 'agent', authorID: agent.id },
       ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ReadFromSessionTool);
       let result = await tool.execute({
         agentID:   agent.id,
         sessionID: session.id,
-        types:     ['tool-call'],
+        types:     ['ToolCall'],
       });
 
       assert.ok(result.frames.length >= 1);
-      assert.ok(result.frames.every((f) => f.type === 'tool-call'));
+      assert.ok(result.frames.every((f) => f.type === 'ToolCall'));
     });
 
     // ---- Test 33 ----
@@ -740,7 +740,7 @@ describe('Cross-Session Plugin', () => {
       let fm = sessionManager.getFrameManager(session.id);
       let frameBatch = [];
       for (let i = 0; i < 8; i++)
-        frameBatch.push({ id: `frm_p${i}`, type: 'message', content: { text: `Message ${i}` }, authorType: 'agent', authorID: agent.id });
+        frameBatch.push({ id: `frm_p${i}`, type: 'Message', content: { text: `Message ${i}` }, authorType: 'agent', authorID: agent.id });
       fm.merge(frameBatch, { authorType: 'agent', authorID: agent.id });
 
       let tool  = instantiateTool(ReadFromSessionTool);
@@ -775,7 +775,7 @@ describe('Cross-Session Plugin', () => {
 
       let fm = sessionManager.getFrameManager(session.id);
       fm.merge([
-        { id: 'frm_nm1', type: 'message', content: { text: 'Hello world' }, authorType: 'agent', authorID: agent.id },
+        { id: 'frm_nm1', type: 'Message', content: { text: 'Hello world' }, authorType: 'agent', authorID: agent.id },
       ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ReadFromSessionTool);
@@ -811,7 +811,7 @@ describe('Cross-Session Plugin', () => {
 
       let fm = sessionManager.getFrameManager(session.id);
       fm.merge([
-        { id: 'frm_j1', type: 'tool-result', content: { exitCode: 0, stdout: 'ok' }, authorType: 'agent', authorID: agent.id },
+        { id: 'frm_j1', type: 'ToolResult', content: { exitCode: 0, stdout: 'ok' }, authorType: 'agent', authorID: agent.id },
       ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ReadFromSessionTool);

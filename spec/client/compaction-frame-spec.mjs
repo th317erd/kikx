@@ -65,7 +65,7 @@ function createElement(attributes = {}) {
 function makeCompactionFrame(overrides = {}) {
   return {
     id:            overrides.id || 'frame-compaction-001',
-    type:          'compaction',
+    type: 'Compaction',
     sessionID:     overrides.sessionID || 'session-001',
     content:       overrides.content || {
       status:           'finished',
@@ -510,7 +510,7 @@ describe('kikx-compaction-frame — expand triggers fetch', { timeout: 5000 }, (
           data: {
             frame: {
               id:      'frame-compaction-001',
-              type:    'compaction',
+              type: 'Compaction',
               content: {
                 status:          'finished',
                 summary:         'This is the compacted summary text.',
@@ -597,7 +597,7 @@ describe('kikx-compaction-frame — expand triggers fetch', { timeout: 5000 }, (
           data: {
             frame: {
               id:      'frame-compaction-001',
-              type:    'compaction',
+              type: 'Compaction',
               content: {
                 status:          'finished',
                 summary:         null,

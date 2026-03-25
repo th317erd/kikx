@@ -42,7 +42,7 @@ class ToolCallingAgent extends AgentInterface {
 
   async *_createGenerator(_params) {
     let result = yield {
-      type:    'tool-call',
+      type:    'ToolCall',
       content: {
         toolName:  this._toolName,
         toolUseId: 'tu_test_render_hint',
@@ -53,8 +53,8 @@ class ToolCallingAgent extends AgentInterface {
     // Capture the tool result so the test can inspect what the agent received
     this._toolResult = result;
 
-    yield { type: 'message', content: { html: '<p>done</p>' }, authorType: 'agent' };
-    yield { type: 'done', content: {} };
+    yield { type: 'Message', content: { html: '<p>done</p>' }, authorType: 'agent' };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -136,7 +136,7 @@ describe('InteractionLoop render hints', () => {
     // Load all frames and check for tool-activity
     let frameManager  = await framePersistence.loadFrames(session.id);
     let allFrames     = frameManager.toArray();
-    let activityFrame = allFrames.find((f) => f.type === 'tool-activity');
+    let activityFrame = allFrames.find((f) => f.type === 'ToolActivity');
 
     assert.ok(activityFrame, 'A tool-activity frame should be created');
     assert.equal(activityFrame.content.renderType, 'file-read');
@@ -183,7 +183,7 @@ describe('InteractionLoop render hints', () => {
     // Check tool-result frame — _renderHint should NOT be in the output
     let frameManager  = await framePersistence.loadFrames(session.id);
     let allFrames     = frameManager.toArray();
-    let toolResult    = allFrames.find((f) => f.type === 'tool-result');
+    let toolResult    = allFrames.find((f) => f.type === 'ToolResult');
 
     assert.ok(toolResult, 'A tool-result frame should exist');
 
@@ -231,7 +231,7 @@ describe('InteractionLoop render hints', () => {
 
     let frameManager    = await framePersistence.loadFrames(session.id);
     let allFrames       = frameManager.toArray();
-    let activityFrames  = allFrames.filter((f) => f.type === 'tool-activity');
+    let activityFrames  = allFrames.filter((f) => f.type === 'ToolActivity');
 
     assert.equal(activityFrames.length, 0, 'No tool-activity frame should be created without _renderHint');
   });
@@ -260,7 +260,7 @@ describe('InteractionLoop render hints', () => {
 
     let frameManager   = await framePersistence.loadFrames(session.id);
     let allFrames      = frameManager.toArray();
-    let activityFrames = allFrames.filter((f) => f.type === 'tool-activity');
+    let activityFrames = allFrames.filter((f) => f.type === 'ToolActivity');
 
     assert.equal(activityFrames.length, 0, 'No tool-activity frame for string output');
   });
@@ -296,9 +296,9 @@ describe('InteractionLoop render hints', () => {
 
     let frameManager  = await framePersistence.loadFrames(session.id);
     let allFrames     = frameManager.toArray();
-    let activityFrame = allFrames.find((f) => f.type === 'tool-activity');
-    let toolCallFrame = allFrames.find((f) => f.type === 'tool-call');
-    let toolResult    = allFrames.find((f) => f.type === 'tool-result');
+    let activityFrame = allFrames.find((f) => f.type === 'ToolActivity');
+    let toolCallFrame = allFrames.find((f) => f.type === 'ToolCall');
+    let toolResult    = allFrames.find((f) => f.type === 'ToolResult');
 
     assert.ok(activityFrame);
     assert.ok(toolCallFrame);
@@ -336,8 +336,8 @@ describe('InteractionLoop render hints', () => {
 
     let frameManager   = await framePersistence.loadFrames(session.id);
     let allFrames      = frameManager.toArray();
-    let activityFrames = allFrames.filter((f) => f.type === 'tool-activity');
-    let resultFrames   = allFrames.filter((f) => f.type === 'tool-result');
+    let activityFrames = allFrames.filter((f) => f.type === 'ToolActivity');
+    let resultFrames   = allFrames.filter((f) => f.type === 'ToolResult');
 
     assert.equal(activityFrames.length, 1, 'Exactly 1 tool-activity frame');
     assert.equal(resultFrames.length, 1, 'Exactly 1 tool-result frame');

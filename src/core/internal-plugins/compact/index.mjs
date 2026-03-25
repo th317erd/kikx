@@ -84,7 +84,7 @@ export function setup(provide) {
         // 7. Evaluate result
         if (frameID === null) {
           // Check if session had no frames to compact
-          let compactable = frameManager.toArray().filter((f) => f.type !== 'compaction' && !f.deleted);
+          let compactable = frameManager.toArray().filter((f) => f.type !== 'Compaction' && !f.deleted);
 
           if (compactable.length === 0) {
             return {

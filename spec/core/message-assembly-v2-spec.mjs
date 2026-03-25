@@ -46,8 +46,8 @@ describe('Message Assembly v2 (B6)', () => {
   describe('single-agent (no forAgentID)', () => {
     it('should produce identical output to v1 when no forAgentID', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', content: { text: 'Hello' }, hidden: false, deleted: false },
-        { id: 'f2', type: 'message', content: { html: '<p>Hi</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_1' },
+        { id: 'f1', type: 'UserMessage', content: { text: 'Hello' }, hidden: false, deleted: false },
+        { id: 'f2', type: 'Message', content: { html: '<p>Hi</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_1' },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -61,7 +61,7 @@ describe('Message Assembly v2 (B6)', () => {
 
     it('should include frameID on messages', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', content: { text: 'Hi' }, hidden: false, deleted: false },
+        { id: 'f1', type: 'UserMessage', content: { text: 'Hi' }, hidden: false, deleted: false },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -70,11 +70,11 @@ describe('Message Assembly v2 (B6)', () => {
 
     it('should skip hidden/deleted/excluded frames', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', content: { text: 'Hi' }, hidden: false, deleted: false },
-        { id: 'f2', type: 'user-message', content: { text: 'Hidden' }, hidden: true, deleted: false },
-        { id: 'f3', type: 'user-message', content: { text: 'Deleted' }, hidden: false, deleted: true },
-        { id: 'f4', type: 'error', content: { message: 'oops' }, hidden: false, deleted: false },
-        { id: 'f5', type: 'stop', content: {}, hidden: false, deleted: false },
+        { id: 'f1', type: 'UserMessage', content: { text: 'Hi' }, hidden: false, deleted: false },
+        { id: 'f2', type: 'UserMessage', content: { text: 'Hidden' }, hidden: true, deleted: false },
+        { id: 'f3', type: 'UserMessage', content: { text: 'Deleted' }, hidden: false, deleted: true },
+        { id: 'f4', type: 'Error', content: { message: 'oops' }, hidden: false, deleted: false },
+        { id: 'f5', type: 'Stop', content: {}, hidden: false, deleted: false },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -89,7 +89,7 @@ describe('Message Assembly v2 (B6)', () => {
   describe('multi-agent (with forAgentID)', () => {
     it('should render own messages as role:assistant', () => {
       let frames = [
-        { id: 'f1', type: 'message', content: { html: '<p>My msg</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_me' },
+        { id: 'f1', type: 'Message', content: { html: '<p>My msg</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_me' },
       ];
 
       let messages = loop._buildMessages(frames, 'agt_me');
@@ -101,7 +101,7 @@ describe('Message Assembly v2 (B6)', () => {
 
     it('should wrap other agent messages in attribution tags', () => {
       let frames = [
-        { id: 'f1', type: 'message', content: { html: '<p>Other says hi</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_other' },
+        { id: 'f1', type: 'Message', content: { html: '<p>Other says hi</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_other' },
       ];
 
       let messages = loop._buildMessages(frames, 'agt_me');
@@ -116,7 +116,7 @@ describe('Message Assembly v2 (B6)', () => {
 
     it('should keep user messages as role:user without wrapping', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', content: { text: 'User msg' }, hidden: false, deleted: false, authorType: 'user', authorID: 'usr_1' },
+        { id: 'f1', type: 'UserMessage', content: { text: 'User msg' }, hidden: false, deleted: false, authorType: 'user', authorID: 'usr_1' },
       ];
 
       let messages = loop._buildMessages(frames, 'agt_me');
@@ -129,10 +129,10 @@ describe('Message Assembly v2 (B6)', () => {
 
     it('should handle mixed conversation with multiple agents', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', content: { text: 'Hello all' }, hidden: false, deleted: false },
-        { id: 'f2', type: 'message', content: { html: '<p>Agent A says hi</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_A' },
-        { id: 'f3', type: 'message', content: { html: '<p>Agent B says hi</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_B' },
-        { id: 'f4', type: 'message', content: { html: '<p>I respond</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_me' },
+        { id: 'f1', type: 'UserMessage', content: { text: 'Hello all' }, hidden: false, deleted: false },
+        { id: 'f2', type: 'Message', content: { html: '<p>Agent A says hi</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_A' },
+        { id: 'f3', type: 'Message', content: { html: '<p>Agent B says hi</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_B' },
+        { id: 'f4', type: 'Message', content: { html: '<p>I respond</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_me' },
       ];
 
       let messages = loop._buildMessages(frames, 'agt_me');
@@ -158,7 +158,7 @@ describe('Message Assembly v2 (B6)', () => {
 
     it('should treat messages without authorID as assistant (backward compat)', () => {
       let frames = [
-        { id: 'f1', type: 'message', content: { html: '<p>Old msg</p>' }, hidden: false, deleted: false },
+        { id: 'f1', type: 'Message', content: { html: '<p>Old msg</p>' }, hidden: false, deleted: false },
       ];
 
       let messages = loop._buildMessages(frames, 'agt_me');
@@ -169,8 +169,8 @@ describe('Message Assembly v2 (B6)', () => {
 
     it('should include tool-call and tool-result with frameID', () => {
       let frames = [
-        { id: 'f1', type: 'tool-call', content: { toolName: 'test', toolUseID: 'tu_1' }, hidden: false, deleted: false },
-        { id: 'f2', type: 'tool-result', content: { output: 'done', toolUseID: 'tu_1' }, hidden: false, deleted: false },
+        { id: 'f1', type: 'ToolCall', content: { toolName: 'test', toolUseID: 'tu_1' }, hidden: false, deleted: false },
+        { id: 'f2', type: 'ToolResult', content: { output: 'done', toolUseID: 'tu_1' }, hidden: false, deleted: false },
       ];
 
       let messages = loop._buildMessages(frames, 'agt_me');

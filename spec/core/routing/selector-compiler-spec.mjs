@@ -10,7 +10,7 @@ import { SelectorCompiler } from '../../../src/core/routing/selector-compiler.mj
 // =============================================================================
 
 function makeFrame(overrides) {
-  return { id: 'f1', type: 'user-message', content: {}, ...overrides };
+  return { id: 'f1', type: 'UserMessage', content: {}, ...overrides };
 }
 
 // =============================================================================
@@ -24,22 +24,22 @@ describe('SelectorCompiler', () => {
   // ---------------------------------------------------------------------------
 
   describe('type selectors', () => {
-    it('should match frame.type for type:user-message', () => {
-      let matcher = SelectorCompiler.compile('type:user-message');
-      assert.strictEqual(matcher(makeFrame({ type: 'user-message' })), true);
-      assert.strictEqual(matcher(makeFrame({ type: 'tool-call' })), false);
+    it('should match frame.type for type:UserMessage', () => {
+      let matcher = SelectorCompiler.compile('type:UserMessage');
+      assert.strictEqual(matcher(makeFrame({ type: 'UserMessage' })), true);
+      assert.strictEqual(matcher(makeFrame({ type: 'ToolCall' })), false);
     });
 
-    it('should match frame.type for type:tool-call', () => {
-      let matcher = SelectorCompiler.compile('type:tool-call');
-      assert.strictEqual(matcher(makeFrame({ type: 'tool-call' })), true);
-      assert.strictEqual(matcher(makeFrame({ type: 'user-message' })), false);
+    it('should match frame.type for type:ToolCall', () => {
+      let matcher = SelectorCompiler.compile('type:ToolCall');
+      assert.strictEqual(matcher(makeFrame({ type: 'ToolCall' })), true);
+      assert.strictEqual(matcher(makeFrame({ type: 'UserMessage' })), false);
     });
 
     it('should match frame.type for type:agent-response', () => {
       let matcher = SelectorCompiler.compile('type:agent-response');
       assert.strictEqual(matcher(makeFrame({ type: 'agent-response' })), true);
-      assert.strictEqual(matcher(makeFrame({ type: 'user-message' })), false);
+      assert.strictEqual(matcher(makeFrame({ type: 'UserMessage' })), false);
     });
 
     it('should handle hyphenated type names correctly', () => {
@@ -56,8 +56,8 @@ describe('SelectorCompiler', () => {
   describe('wildcard type:*', () => {
     it('should match any frame', () => {
       let matcher = SelectorCompiler.compile('type:*');
-      assert.strictEqual(matcher(makeFrame({ type: 'user-message' })), true);
-      assert.strictEqual(matcher(makeFrame({ type: 'tool-call' })), true);
+      assert.strictEqual(matcher(makeFrame({ type: 'UserMessage' })), true);
+      assert.strictEqual(matcher(makeFrame({ type: 'ToolCall' })), true);
       assert.strictEqual(matcher(makeFrame({ type: 'anything' })), true);
     });
 
@@ -116,60 +116,60 @@ describe('SelectorCompiler', () => {
 
   describe('property matchers [prop=value]', () => {
     it('should match type + content property', () => {
-      let matcher = SelectorCompiler.compile('type:tool-call[toolName=shell:execute]');
+      let matcher = SelectorCompiler.compile('type:ToolCall[toolName=shell:execute]');
       let frame   = makeFrame({
-        type:    'tool-call',
+        type:    'ToolCall',
         content: { toolName: 'shell:execute' },
       });
       assert.strictEqual(matcher(frame), true);
     });
 
     it('should reject when type matches but property does not', () => {
-      let matcher = SelectorCompiler.compile('type:tool-call[toolName=shell:execute]');
+      let matcher = SelectorCompiler.compile('type:ToolCall[toolName=shell:execute]');
       let frame   = makeFrame({
-        type:    'tool-call',
+        type:    'ToolCall',
         content: { toolName: 'web:fetch' },
       });
       assert.strictEqual(matcher(frame), false);
     });
 
     it('should reject when type does not match', () => {
-      let matcher = SelectorCompiler.compile('type:tool-call[toolName=shell:execute]');
+      let matcher = SelectorCompiler.compile('type:ToolCall[toolName=shell:execute]');
       let frame   = makeFrame({
-        type:    'user-message',
+        type:    'UserMessage',
         content: { toolName: 'shell:execute' },
       });
       assert.strictEqual(matcher(frame), false);
     });
 
     it('should reject when content is null', () => {
-      let matcher = SelectorCompiler.compile('type:tool-call[toolName=shell:execute]');
-      let frame   = makeFrame({ type: 'tool-call', content: null });
+      let matcher = SelectorCompiler.compile('type:ToolCall[toolName=shell:execute]');
+      let frame   = makeFrame({ type: 'ToolCall', content: null });
       assert.strictEqual(matcher(frame), false);
     });
 
     it('should reject when content is undefined', () => {
-      let matcher = SelectorCompiler.compile('type:tool-call[toolName=shell:execute]');
-      let frame   = makeFrame({ type: 'tool-call', content: undefined });
+      let matcher = SelectorCompiler.compile('type:ToolCall[toolName=shell:execute]');
+      let frame   = makeFrame({ type: 'ToolCall', content: undefined });
       assert.strictEqual(matcher(frame), false);
     });
 
     it('should reject when content is a non-object', () => {
-      let matcher = SelectorCompiler.compile('type:tool-call[toolName=shell:execute]');
-      let frame   = makeFrame({ type: 'tool-call', content: 'string' });
+      let matcher = SelectorCompiler.compile('type:ToolCall[toolName=shell:execute]');
+      let frame   = makeFrame({ type: 'ToolCall', content: 'string' });
       assert.strictEqual(matcher(frame), false);
     });
 
     it('should reject when content property is missing', () => {
-      let matcher = SelectorCompiler.compile('type:tool-call[toolName=shell:execute]');
-      let frame   = makeFrame({ type: 'tool-call', content: { other: 'value' } });
+      let matcher = SelectorCompiler.compile('type:ToolCall[toolName=shell:execute]');
+      let frame   = makeFrame({ type: 'ToolCall', content: { other: 'value' } });
       assert.strictEqual(matcher(frame), false);
     });
 
     it('should handle colons in property values', () => {
-      let matcher = SelectorCompiler.compile('type:tool-call[toolName=shell:execute]');
+      let matcher = SelectorCompiler.compile('type:ToolCall[toolName=shell:execute]');
       let frame   = makeFrame({
-        type:    'tool-call',
+        type:    'ToolCall',
         content: { toolName: 'shell:execute' },
       });
       assert.strictEqual(matcher(frame), true);
@@ -236,7 +236,7 @@ describe('SelectorCompiler', () => {
 
     it('should throw on malformed string (no dimension)', () => {
       assert.throws(
-        () => SelectorCompiler.compile('user-message'),
+        () => SelectorCompiler.compile('UserMessage'),
         { message: /Invalid selector syntax/ },
       );
     });
@@ -262,13 +262,13 @@ describe('SelectorCompiler', () => {
 
   describe('edge cases', () => {
     it('should return a new function each time (no shared state)', () => {
-      let m1 = SelectorCompiler.compile('type:user-message');
-      let m2 = SelectorCompiler.compile('type:user-message');
+      let m1 = SelectorCompiler.compile('type:UserMessage');
+      let m2 = SelectorCompiler.compile('type:UserMessage');
       assert.notStrictEqual(m1, m2);
     });
 
     it('should handle frame with missing type gracefully', () => {
-      let matcher = SelectorCompiler.compile('type:user-message');
+      let matcher = SelectorCompiler.compile('type:UserMessage');
       assert.strictEqual(matcher({}), false);
       assert.strictEqual(matcher({ type: undefined }), false);
     });

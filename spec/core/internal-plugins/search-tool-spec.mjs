@@ -106,7 +106,7 @@ describe('Search Plugin — search:query', () => {
       });
 
       let frameRecord = {
-        id: 'frame-1', type: 'message', sessionID: 'sess-1',
+        id: 'frame-1', type: 'Message', sessionID: 'sess-1',
         getContent: () => ({ text: 'Hello world' }),
         content: 'Hello world',
       };
@@ -140,7 +140,7 @@ describe('Search Plugin — search:query', () => {
       });
 
       let frameRecord = {
-        id: 'frame-1', type: 'message', sessionID: 'sess-1',
+        id: 'frame-1', type: 'Message', sessionID: 'sess-1',
         getContent: () => ({ text: 'Hello world preview content' }),
         content: 'Hello world preview content',
       };
@@ -159,7 +159,7 @@ describe('Search Plugin — search:query', () => {
       let r = result.results[0];
       assert.equal(r.id, 'frame-1');
       assert.equal(r.doc_type, 'frame');
-      assert.equal(r.type, 'message');
+      assert.equal(r.type, 'Message');
       assert.equal(r.sessionID, 'sess-1');
       assert.equal(r.preview, 'Hello world preview content');
       assert.equal(r.contentSize, 27);
@@ -179,7 +179,7 @@ describe('Search Plugin — search:query', () => {
       });
 
       let frameRecord = {
-        id: 'frame-1', type: 'message', sessionID: 'sess-1',
+        id: 'frame-1', type: 'Message', sessionID: 'sess-1',
         getContent: () => ({ text: longContent }),
         content: longContent,
       };
@@ -214,7 +214,7 @@ describe('Search Plugin — search:query', () => {
       });
 
       let frameRecord = {
-        id: 'frame-1', type: 'message', sessionID: 'sess-1',
+        id: 'frame-1', type: 'Message', sessionID: 'sess-1',
         getContent: () => ({ text: shortContent }),
         content: shortContent,
       };
@@ -246,7 +246,7 @@ describe('Search Plugin — search:query', () => {
       });
 
       let frameRecord = {
-        id: 'frame-1', type: 'message', sessionID: 'sess-1',
+        id: 'frame-1', type: 'Message', sessionID: 'sess-1',
         getContent: () => ({ text: longContent }),
         content: longContent,
       };
@@ -295,11 +295,11 @@ describe('Search Plugin — search:query', () => {
 
       let context = createContext({ solrService });
       let tool    = instantiate(context);
-      await tool.execute({ query: 'test', frameType: 'tool-call' });
+      await tool.execute({ query: 'test', frameType: 'ToolCall' });
 
       assert.equal(searchCalls.length, 1);
       let fq = searchCalls[0].options.filterQueries;
-      assert.ok(fq.some(f => f === 'type:tool-call'));
+      assert.ok(fq.some(f => f === 'type:ToolCall'));
     });
 
     it('default sessionID from _sessionID', async () => {
@@ -498,7 +498,7 @@ describe('Search Plugin — search:query', () => {
                   callCount++;
                   if (callCount === 1) throw new Error('DB error');
                   return {
-                    id: 'frame-2', type: 'message', sessionID: 'sess-1',
+                    id: 'frame-2', type: 'Message', sessionID: 'sess-1',
                     getContent: () => ({ text: 'good result' }),
                     content: 'good result',
                   };
@@ -605,7 +605,7 @@ describe('Search Plugin — search:query', () => {
       });
 
       let frameRecord = {
-        id: 'frame-1', type: 'message', sessionID: 'sess-1',
+        id: 'frame-1', type: 'Message', sessionID: 'sess-1',
         getContent: () => ({ text: { nested: 'object' } }),
         content: { nested: 'object' },
       };
@@ -635,7 +635,7 @@ describe('Search Plugin — search:query', () => {
       });
 
       let frameRecord = {
-        id: 'frame-1', type: 'message', sessionID: 'sess-1',
+        id: 'frame-1', type: 'Message', sessionID: 'sess-1',
         content: 'fallback content string',
       };
 

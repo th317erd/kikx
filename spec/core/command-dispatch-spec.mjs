@@ -30,7 +30,7 @@ class MockAgent extends AgentInterface {
     for (let block of this._blocks)
       yield block;
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -186,8 +186,8 @@ describe('Command Dispatch', () => {
       assert.ok(interactionID);
       assert.ok(interactionID.startsWith('int_'));
 
-      let userFrames   = emitted.filter((f) => f.type === 'user-message');
-      let resultFrames = emitted.filter((f) => f.type === 'command-result');
+      let userFrames   = emitted.filter((f) => f.type === 'UserMessage');
+      let resultFrames = emitted.filter((f) => f.type === 'CommandResult');
 
       assert.equal(userFrames.length, 1);
       assert.equal(userFrames[0].content.text, '/reload');
@@ -231,8 +231,8 @@ describe('Command Dispatch', () => {
       ));
 
       assert.equal(events.length, 2);
-      assert.equal(events[0].frame.type, 'user-message');
-      assert.equal(events[1].frame.type, 'command-result');
+      assert.equal(events[0].frame.type, 'UserMessage');
+      assert.equal(events[1].frame.type, 'CommandResult');
     });
 
     it('should NOT invoke the agent for commands', async () => {
@@ -247,7 +247,7 @@ describe('Command Dispatch', () => {
 
         async *_createGenerator() {
           agentRan = true;
-          yield { type: 'done', content: {} };
+          yield { type: 'Done', content: {} };
         }
       }
 
@@ -279,7 +279,7 @@ describe('Command Dispatch', () => {
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
 
-      let resultFrames = frames.filter((f) => f.type === 'command-result');
+      let resultFrames = frames.filter((f) => f.type === 'CommandResult');
       assert.equal(resultFrames.length, 1);
       assert.ok(resultFrames[0].content.html.includes('Unknown command'));
       assert.ok(resultFrames[0].content.html.includes('nonexistent'));
@@ -318,7 +318,7 @@ describe('Command Dispatch', () => {
 
       // Send a normal message — should clear _primerNeeded
       let agent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>Hi</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>Hi</p>' }, authorType: 'agent', authorID: 'a1' },
       ]);
 
       await loop.startInteraction(session.id, defaultParams(agent, {
@@ -354,7 +354,7 @@ describe('Command Dispatch', () => {
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
 
-      let resultFrames = frames.filter((f) => f.type === 'command-result');
+      let resultFrames = frames.filter((f) => f.type === 'CommandResult');
       assert.equal(resultFrames.length, 1);
       assert.ok(resultFrames[0].content.html.includes('Invited'));
       assert.ok(resultFrames[0].content.html.includes('test-invitee'));
@@ -376,7 +376,7 @@ describe('Command Dispatch', () => {
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let resultFrames = frames.filter((f) => f.type === 'command-result');
+      let resultFrames = frames.filter((f) => f.type === 'CommandResult');
 
       assert.equal(resultFrames.length, 1);
       assert.ok(resultFrames[0].content.html.includes('not found'));
@@ -393,7 +393,7 @@ describe('Command Dispatch', () => {
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let resultFrames = frames.filter((f) => f.type === 'command-result');
+      let resultFrames = frames.filter((f) => f.type === 'CommandResult');
 
       assert.equal(resultFrames.length, 1);
       assert.ok(resultFrames[0].content.html.includes('Usage'));
@@ -416,7 +416,7 @@ describe('Command Dispatch', () => {
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let resultFrames = frames.filter((f) => f.type === 'command-result');
+      let resultFrames = frames.filter((f) => f.type === 'CommandResult');
 
       assert.ok(resultFrames[0].content.html.includes('Invited'));
     });
@@ -430,10 +430,10 @@ describe('Command Dispatch', () => {
     it('should exclude command-result frames from message history', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: '/reload' }, hidden: true },
-        { type: 'command-result', content: { html: '<p>Done</p>' } },
-        { type: 'user-message', content: { text: 'hello' } },
-        { type: 'message', content: { html: '<p>hi</p>' } },
+        { type: 'UserMessage', content: { text: '/reload' }, hidden: true },
+        { type: 'CommandResult', content: { html: '<p>Done</p>' } },
+        { type: 'UserMessage', content: { text: 'hello' } },
+        { type: 'Message', content: { html: '<p>hi</p>' } },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -447,10 +447,10 @@ describe('Command Dispatch', () => {
     it('should exclude hidden frames from message history', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: '/invite @bot' }, hidden: true },
-        { type: 'command-result', content: { html: '<p>Invited</p>' } },
-        { type: 'user-message', content: { text: 'hello' }, hidden: false },
-        { type: 'message', content: { html: '<p>hi</p>' } },
+        { type: 'UserMessage', content: { text: '/invite @bot' }, hidden: true },
+        { type: 'CommandResult', content: { html: '<p>Invited</p>' } },
+        { type: 'UserMessage', content: { text: 'hello' }, hidden: false },
+        { type: 'Message', content: { html: '<p>hi</p>' } },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -510,7 +510,7 @@ describe('Command Dispatch', () => {
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let resultFrames = frames.filter((f) => f.type === 'command-result');
+      let resultFrames = frames.filter((f) => f.type === 'CommandResult');
 
       assert.equal(resultFrames.length, 1);
       assert.ok(resultFrames[0].content.html.includes('Command error'));

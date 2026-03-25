@@ -15,9 +15,9 @@
 // Frame types each authorType is allowed to CREATE
 const ALLOWED_TYPES = {
   system: null, // null = any type
-  user:   new Set(['user-message', 'hml-prompt-value']),
-  agent:  new Set(['message', 'tool-call', 'reflection']),
-  tool:   new Set(['tool-result', 'tool-error']),
+  user:   new Set(['UserMessage', 'hml-prompt-value']),
+  agent:  new Set(['Message', 'ToolCall', 'Reflection']),
+  tool:   new Set(['ToolResult', 'ToolError']),
 };
 
 // Fields that can never change after a frame is created

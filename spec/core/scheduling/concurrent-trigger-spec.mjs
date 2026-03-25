@@ -81,7 +81,7 @@ describe('SessionScheduler concurrent triggers', () => {
 
       frameManager.merge([{
         id:         'frm_conc_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello all agents' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -120,7 +120,7 @@ describe('SessionScheduler concurrent triggers', () => {
 
       frameManager.merge([{
         id:         'frm_evt_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hi agents' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -160,7 +160,7 @@ describe('SessionScheduler concurrent triggers', () => {
       // First: user message to give both agents something to process
       frameManager.merge([{
         id:         'frm_sa_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -176,7 +176,7 @@ describe('SessionScheduler concurrent triggers', () => {
       // Now agent A replies — agent A should be skipped, agent B should be scheduled
       frameManager.merge([{
         id:         'frm_sa_2',
-        type:       'message',
+        type: 'Message',
         content:    { html: '<p>Reply from A</p>' },
         authorType: 'agent',
         authorID:   agentA.id,
@@ -218,7 +218,7 @@ describe('SessionScheduler concurrent triggers', () => {
       // First commit — schedules both
       frameManager.merge([{
         id:         'frm_as_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -233,7 +233,7 @@ describe('SessionScheduler concurrent triggers', () => {
       // Second commit — should only schedule B, skip A (still active)
       frameManager.merge([{
         id:         'frm_as_2',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Another message' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -269,7 +269,7 @@ describe('SessionScheduler concurrent triggers', () => {
       // First commit — schedules both (marks them active)
       frameManager.merge([{
         id:         'frm_aa_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -280,7 +280,7 @@ describe('SessionScheduler concurrent triggers', () => {
       // Second commit while both active — should schedule zero
       frameManager.merge([{
         id:         'frm_aa_2',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'More' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -365,7 +365,7 @@ describe('SessionScheduler concurrent triggers', () => {
 
       frameManager.merge([{
         id:         'frm_single_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -392,7 +392,7 @@ describe('SessionScheduler concurrent triggers', () => {
 
       frameManager.merge([{
         id:         'frm_mix_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',

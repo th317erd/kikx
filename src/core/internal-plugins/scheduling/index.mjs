@@ -46,6 +46,6 @@ export function setup(provide) {
       }
     }
 
-    registry.registerSelector('type:user-message', SchedulingPlugin);
+    registry.registerSelector('type:UserMessage', SchedulingPlugin);
   });
 }

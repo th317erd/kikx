@@ -180,20 +180,20 @@ export class Frame extends ModelBase {
     let value;
 
     switch (this.type) {
-      case 'user-message':
-      case 'message':
-      case 'reflection':
+      case 'UserMessage':
+      case 'Message':
+      case 'Reflection':
         value = content.text || content.html;
         break;
 
-      case 'tool-call': {
+      case 'ToolCall': {
         let toolName  = content.toolName || '';
         let args      = content.arguments || {};
         value = `${toolName}: ${JSON.stringify(args)}`;
         break;
       }
 
-      case 'tool-result': {
+      case 'ToolResult': {
         let result = content.result;
         if (result == null)
           return [];
@@ -202,21 +202,21 @@ export class Frame extends ModelBase {
         break;
       }
 
-      case 'tool-error':
-      case 'error':
+      case 'ToolError':
+      case 'Error':
         value = content.message || content.error || content.text;
         break;
 
-      case 'permission-denied':
+      case 'PermissionDenied':
         value = content.message || content.reason;
         break;
 
-      case 'stop':
-      case 'hook-blocked':
+      case 'Stop':
+      case 'HookBlocked':
         value = content.text || content.message;
         break;
 
-      case 'tool-activity':
+      case 'ToolActivity':
         value = content.html;
         break;
 

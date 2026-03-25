@@ -41,7 +41,7 @@ class MockAgent extends AgentInterface {
 
   async *_createGenerator(_params) {
     for (let block of this._blocks) {
-      if (block.type === 'tool-call') {
+      if (block.type === 'ToolCall') {
         let result = yield block;
         block._receivedResult = result;
       } else {
@@ -49,7 +49,7 @@ class MockAgent extends AgentInterface {
       }
     }
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -166,12 +166,12 @@ describe('Child Session Deliberation — Integration', () => {
       // Verify initial message frame exists
       let childFM = await framePersistence.loadFrames(childSessionID);
       let childFrames = childFM.toArray();
-      let messageFrames = childFrames.filter((f) => f.type === 'message');
+      let messageFrames = childFrames.filter((f) => f.type === 'Message');
       assert.ok(messageFrames.some((f) => f.content && f.content.text === 'Let me discuss this bug with agent B.'));
 
       // Run an interaction in the child session
       let agentBlocks = [
-        { type: 'message', content: { html: '<p>I think the bug is in the parser.</p>' }, authorType: 'agent', authorID: agentA.id },
+        { type: 'Message', content: { html: '<p>I think the bug is in the parser.</p>' }, authorType: 'agent', authorID: agentA.id },
       ];
       let mockAgent = new MockAgent(context, agentBlocks);
 
@@ -185,7 +185,7 @@ describe('Child Session Deliberation — Integration', () => {
       // Verify interaction produced frames in child
       let updatedChildFM = await framePersistence.loadFrames(childSessionID);
       let allChildFrames = updatedChildFM.toArray();
-      let agentMessages  = allChildFrames.filter((f) => f.type === 'message' && f.authorID === agentA.id);
+      let agentMessages  = allChildFrames.filter((f) => f.type === 'Message' && f.authorID === agentA.id);
       assert.ok(agentMessages.length >= 1, 'Child should have agent message frames');
     });
   });
@@ -205,10 +205,10 @@ describe('Child Session Deliberation — Integration', () => {
 
       // Both agents produce messages
       let blocksX = [
-        { type: 'message', content: { html: '<p>Agent X response</p>' }, authorType: 'agent', authorID: agentX.id },
+        { type: 'Message', content: { html: '<p>Agent X response</p>' }, authorType: 'agent', authorID: agentX.id },
       ];
       let blocksY = [
-        { type: 'message', content: { html: '<p>Agent Y response</p>' }, authorType: 'agent', authorID: agentY.id },
+        { type: 'Message', content: { html: '<p>Agent Y response</p>' }, authorType: 'agent', authorID: agentY.id },
       ];
 
       let agentMockX = new MockAgent(context, blocksX);
@@ -236,8 +236,8 @@ describe('Child Session Deliberation — Integration', () => {
       // Both agents' frames should be in the session
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let xMsgs  = frames.filter((f) => f.type === 'message' && f.authorID === agentX.id);
-      let yMsgs  = frames.filter((f) => f.type === 'message' && f.authorID === agentY.id);
+      let xMsgs  = frames.filter((f) => f.type === 'Message' && f.authorID === agentX.id);
+      let yMsgs  = frames.filter((f) => f.type === 'Message' && f.authorID === agentY.id);
 
       assert.ok(xMsgs.length >= 1, 'Agent X should have messages');
       assert.ok(yMsgs.length >= 1, 'Agent Y should have messages');
@@ -268,7 +268,7 @@ describe('Child Session Deliberation — Integration', () => {
 
       // Agent tries to use a tool that needs permission
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'dangerous-tool', arguments: {}, toolUseID: 'tu_int_1' }, authorType: 'agent', authorID: agent.id },
+        { type: 'ToolCall', content: { toolName: 'dangerous-tool', arguments: {}, toolUseID: 'tu_int_1' }, authorType: 'agent', authorID: agent.id },
       ];
       let mockAgent = new MockAgent(context, blocks);
 
@@ -283,13 +283,13 @@ describe('Child Session Deliberation — Integration', () => {
       // Permission-request should be in parent
       let parentFM     = await framePersistence.loadFrames(parentSession.id);
       let parentFrames = parentFM.toArray();
-      let parentRequests = parentFrames.filter((f) => f.type === 'permission-request');
+      let parentRequests = parentFrames.filter((f) => f.type === 'PermissionRequest');
       assert.ok(parentRequests.length >= 1, 'Parent should have the permission-request');
 
       // Pending-action should be in child
       let childFM     = await framePersistence.loadFrames(childSession.id);
       let childFrames = childFM.toArray();
-      let childPending = childFrames.filter((f) => f.type === 'pending-action');
+      let childPending = childFrames.filter((f) => f.type === 'PendingAction');
       assert.ok(childPending.length >= 1, 'Child should have the pending-action');
 
       // Interaction should have ended (hardBreak cleans up active state)
@@ -327,7 +327,7 @@ describe('Child Session Deliberation — Integration', () => {
 
       // Agent in child needs permission
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'risky-op', arguments: {}, toolUseID: 'tu_int_2' }, authorType: 'agent', authorID: agent.id },
+        { type: 'ToolCall', content: { toolName: 'risky-op', arguments: {}, toolUseID: 'tu_int_2' }, authorType: 'agent', authorID: agent.id },
       ];
       let mockAgent = new MockAgent(context, blocks);
 
@@ -341,12 +341,12 @@ describe('Child Session Deliberation — Integration', () => {
 
       // Permission-request should be in grandparent (nearest user ancestor)
       let gpFM = await framePersistence.loadFrames(grandparent.id);
-      let gpRequests = gpFM.toArray().filter((f) => f.type === 'permission-request');
+      let gpRequests = gpFM.toArray().filter((f) => f.type === 'PermissionRequest');
       assert.ok(gpRequests.length >= 1, 'Grandparent should have the permission-request');
 
       // Not in parent or child
       let parentFM = await framePersistence.loadFrames(parent.id);
-      assert.equal(parentFM.toArray().filter((f) => f.type === 'permission-request').length, 0);
+      assert.equal(parentFM.toArray().filter((f) => f.type === 'PermissionRequest').length, 0);
     });
   });
 
@@ -361,7 +361,7 @@ describe('Child Session Deliberation — Integration', () => {
       let session = await sessionManager.createSession(org.id, { name: 'Orphan Agent Session' });
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'rm-rf', arguments: { path: '/' }, toolUseID: 'tu_int_3' }, authorType: 'agent', authorID: agent.id },
+        { type: 'ToolCall', content: { toolName: 'rm-rf', arguments: { path: '/' }, toolUseID: 'tu_int_3' }, authorType: 'agent', authorID: agent.id },
       ];
       let mockAgent = new MockAgent(context, blocks);
 
@@ -380,7 +380,7 @@ describe('Child Session Deliberation — Integration', () => {
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
       let denialResults = frames.filter((f) =>
-        f.type === 'tool-result' && f.content && f.content.output && f.content.output.includes('denied'),
+        f.type === 'ToolResult' && f.content && f.content.output && f.content.output.includes('denied'),
       );
       assert.ok(denialResults.length >= 1, 'Should have a denial tool-result');
     });

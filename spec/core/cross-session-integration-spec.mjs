@@ -78,7 +78,7 @@ describe('Cross-Session Integration', () => {
     await persistence.saveFrames(sessionA.id, [
       {
         id:         toolCallID,
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    {
           name:            'cross_session_post',
           targetSessionID: sessionB.id,
@@ -96,7 +96,7 @@ describe('Cross-Session Integration', () => {
     await persistence.saveFrames(sessionB.id, [
       {
         id:         messageID,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'Hello from session A!' },
         authorType: 'agent',
         authorID:   agent.id,
@@ -110,14 +110,14 @@ describe('Cross-Session Integration', () => {
     let framesB = (await persistence.loadFrames(sessionB.id)).toArray();
 
     // Verify session A has the tool-call frame
-    let toolCallFrames = framesA.filter((frame) => frame.type === 'tool-call');
+    let toolCallFrames = framesA.filter((frame) => frame.type === 'ToolCall');
     assert.equal(toolCallFrames.length, 1, 'Session A should have exactly one tool-call frame');
     assert.equal(toolCallFrames[0].id, toolCallID);
     assert.equal(toolCallFrames[0].authorType, 'agent');
     assert.equal(toolCallFrames[0].authorID, agent.id);
 
     // Verify session B has the message frame
-    let messageFrames = framesB.filter((frame) => frame.type === 'message');
+    let messageFrames = framesB.filter((frame) => frame.type === 'Message');
     assert.equal(messageFrames.length, 1, 'Session B should have exactly one message frame');
     assert.equal(messageFrames[0].id, messageID);
     assert.equal(messageFrames[0].authorType, 'agent');
@@ -142,7 +142,7 @@ describe('Cross-Session Integration', () => {
     await persistence.saveFrames(sessionA.id, [
       {
         id:         toolCallID,
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    {
           name:            'cross_session_post',
           targetSessionID: sessionB.id,
@@ -160,7 +160,7 @@ describe('Cross-Session Integration', () => {
     await persistence.saveFrames(sessionB.id, [
       {
         id:         messageID,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'Question for session B' },
         authorType: 'agent',
         authorID:   agent.id,
@@ -174,7 +174,7 @@ describe('Cross-Session Integration', () => {
     await persistence.saveFrames(sessionA.id, [
       {
         id:         toolResultID,
-        type:       'tool-result',
+        type:       'ToolResult',
         content:    {
           name:     'cross_session_post',
           result:   { status: 'delivered', targetSessionID: sessionB.id },
@@ -191,8 +191,8 @@ describe('Cross-Session Integration', () => {
     let framesA = (await persistence.loadFrames(sessionA.id)).toArray();
     assert.equal(framesA.length, 2, 'Session A should have exactly 2 frames');
 
-    let toolCallFrame  = framesA.find((frame) => frame.type === 'tool-call');
-    let toolResultFrame = framesA.find((frame) => frame.type === 'tool-result');
+    let toolCallFrame  = framesA.find((frame) => frame.type === 'ToolCall');
+    let toolResultFrame = framesA.find((frame) => frame.type === 'ToolResult');
     assert.ok(toolCallFrame, 'tool-call frame should exist in session A');
     assert.ok(toolResultFrame, 'tool-result frame should exist in session A');
     assert.ok(
@@ -203,7 +203,7 @@ describe('Cross-Session Integration', () => {
     // Verify session B has only the message frame
     let framesB = (await persistence.loadFrames(sessionB.id)).toArray();
     assert.equal(framesB.length, 1, 'Session B should have exactly 1 frame');
-    assert.equal(framesB[0].type, 'message');
+    assert.equal(framesB[0].type, 'Message');
     assert.equal(framesB[0].id, messageID);
   });
 
@@ -223,14 +223,14 @@ describe('Cross-Session Integration', () => {
     let frameB3 = 'frm_' + XID.next();
 
     await persistence.saveFrames(sessionA.id, [
-      { id: frameA1, type: 'message', content: { text: 'A-one' }, order: 1, timestamp: now },
-      { id: frameA2, type: 'message', content: { text: 'A-two' }, order: 2, timestamp: now + 1 },
+      { id: frameA1, type: 'Message', content: { text: 'A-one' }, order: 1, timestamp: now },
+      { id: frameA2, type: 'Message', content: { text: 'A-two' }, order: 2, timestamp: now + 1 },
     ]);
 
     await persistence.saveFrames(sessionB.id, [
-      { id: frameB1, type: 'message', content: { text: 'B-one' },   order: 1, timestamp: now },
-      { id: frameB2, type: 'message', content: { text: 'B-two' },   order: 2, timestamp: now + 1 },
-      { id: frameB3, type: 'message', content: { text: 'B-three' }, order: 3, timestamp: now + 2 },
+      { id: frameB1, type: 'Message', content: { text: 'B-one' },   order: 1, timestamp: now },
+      { id: frameB2, type: 'Message', content: { text: 'B-two' },   order: 2, timestamp: now + 1 },
+      { id: frameB3, type: 'Message', content: { text: 'B-three' }, order: 3, timestamp: now + 2 },
     ]);
 
     // Load frames for session A -- should NOT include session B's frames

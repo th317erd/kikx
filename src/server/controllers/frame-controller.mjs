@@ -44,7 +44,7 @@ export class FrameController extends ControllerAuthBase {
 
     // Strip compaction summaries from list responses (lazy-loaded via single GET)
     for (let frame of frames) {
-      if (frame.type === 'compaction' && frame.content)
+      if (frame.type === 'Compaction' && frame.content)
         frame.content = { ...frame.content, summary: null };
     }
 

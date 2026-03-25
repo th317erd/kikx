@@ -36,7 +36,7 @@ describe('Frame author fields', () => {
   it('should preserve both authorType and authorID together', () => {
     let frame = new Frame({
       id:         'f1',
-      type:       'user-message',
+      type:       'UserMessage',
       authorType: 'user',
       authorID:   'usr_abc',
     });

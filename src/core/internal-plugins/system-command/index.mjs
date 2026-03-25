@@ -7,7 +7,7 @@ import { SystemCommandPermissions } from './system-command-permissions.mjs';
 // =============================================================================
 // Registers `system:command` tool that lets agents invoke slash commands
 // through the tool-call protocol. The agent yields:
-//   { type: 'tool-call', content: { toolName: 'system:command', arguments: { command: 'invite', args: '@name' } } }
+//   { type: 'ToolCall', content: { toolName: 'system:command', arguments: { command: 'invite', args: '@name' } } }
 //
 // The tool resolves the command handler from the plugin registry and
 // executes it with the injected session context (_sessionID, _authorID, _agent).

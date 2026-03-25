@@ -66,8 +66,8 @@ describe('Session Unread Enrichment', () => {
 
       // Add some frames
       await persistence.saveFrames(session.id, [
-        { id: generateFrameID(), type: 'message', content: { text: 'hello' }, order: 1, timestamp: Date.now() },
-        { id: generateFrameID(), type: 'message', content: { text: 'world' }, order: 2, timestamp: Date.now() + 1 },
+        { id: generateFrameID(), type: 'Message', content: { text: 'hello' }, order: 1, timestamp: Date.now() },
+        { id: generateFrameID(), type: 'Message', content: { text: 'world' }, order: 2, timestamp: Date.now() + 1 },
       ]);
 
       let maxOrder      = await persistence.getMaxOrder(session.id);
@@ -85,9 +85,9 @@ describe('Session Unread Enrichment', () => {
       let session = await manager.createSession(org.id, { name: 'Caught Up Session' });
 
       await persistence.saveFrames(session.id, [
-        { id: generateFrameID(), type: 'message', order: 1, timestamp: Date.now() },
-        { id: generateFrameID(), type: 'message', order: 2, timestamp: Date.now() + 1 },
-        { id: generateFrameID(), type: 'message', order: 3, timestamp: Date.now() + 2 },
+        { id: generateFrameID(), type: 'Message', order: 1, timestamp: Date.now() },
+        { id: generateFrameID(), type: 'Message', order: 2, timestamp: Date.now() + 1 },
+        { id: generateFrameID(), type: 'Message', order: 3, timestamp: Date.now() + 2 },
       ]);
 
       // User marks read at order 3
@@ -108,8 +108,8 @@ describe('Session Unread Enrichment', () => {
 
       // Initial frames
       await persistence.saveFrames(session.id, [
-        { id: generateFrameID(), type: 'message', order: 1, timestamp: Date.now() },
-        { id: generateFrameID(), type: 'message', order: 2, timestamp: Date.now() + 1 },
+        { id: generateFrameID(), type: 'Message', order: 1, timestamp: Date.now() },
+        { id: generateFrameID(), type: 'Message', order: 2, timestamp: Date.now() + 1 },
       ]);
 
       // User marks read at order 2
@@ -120,9 +120,9 @@ describe('Session Unread Enrichment', () => {
 
       // New frames arrive
       await persistence.saveFrames(session.id, [
-        { id: generateFrameID(), type: 'message', order: 3, timestamp: Date.now() + 2 },
-        { id: generateFrameID(), type: 'message', order: 4, timestamp: Date.now() + 3 },
-        { id: generateFrameID(), type: 'message', order: 5, timestamp: Date.now() + 4 },
+        { id: generateFrameID(), type: 'Message', order: 3, timestamp: Date.now() + 2 },
+        { id: generateFrameID(), type: 'Message', order: 4, timestamp: Date.now() + 3 },
+        { id: generateFrameID(), type: 'Message', order: 5, timestamp: Date.now() + 4 },
       ]);
 
       let maxOrder      = await persistence.getMaxOrder(session.id);
@@ -138,9 +138,9 @@ describe('Session Unread Enrichment', () => {
       let userB   = `usr_${XID.next()}`;
 
       await persistence.saveFrames(session.id, [
-        { id: generateFrameID(), type: 'message', order: 1, timestamp: Date.now() },
-        { id: generateFrameID(), type: 'message', order: 2, timestamp: Date.now() + 1 },
-        { id: generateFrameID(), type: 'message', order: 3, timestamp: Date.now() + 2 },
+        { id: generateFrameID(), type: 'Message', order: 1, timestamp: Date.now() },
+        { id: generateFrameID(), type: 'Message', order: 2, timestamp: Date.now() + 1 },
+        { id: generateFrameID(), type: 'Message', order: 3, timestamp: Date.now() + 2 },
       ]);
 
       // User A reads up to 3, user B reads up to 1
@@ -164,13 +164,13 @@ describe('Session Unread Enrichment', () => {
       let sessionB = await manager.createSession(org.id, { name: 'Session B' });
 
       await persistence.saveFrames(sessionA.id, [
-        { id: generateFrameID(), type: 'message', order: 1, timestamp: Date.now() },
-        { id: generateFrameID(), type: 'message', order: 2, timestamp: Date.now() + 1 },
+        { id: generateFrameID(), type: 'Message', order: 1, timestamp: Date.now() },
+        { id: generateFrameID(), type: 'Message', order: 2, timestamp: Date.now() + 1 },
       ]);
 
       await persistence.saveFrames(sessionB.id, [
-        { id: generateFrameID(), type: 'message', order: 1, timestamp: Date.now() },
-        { id: generateFrameID(), type: 'message', order: 5, timestamp: Date.now() + 1 },
+        { id: generateFrameID(), type: 'Message', order: 1, timestamp: Date.now() },
+        { id: generateFrameID(), type: 'Message', order: 5, timestamp: Date.now() + 1 },
       ]);
 
       // Mark session A as fully read, leave session B at order 1
@@ -210,9 +210,9 @@ describe('Session Unread Enrichment', () => {
       let session = await manager.createSession(org.id, { name: 'Mark-Read Session' });
 
       await persistence.saveFrames(session.id, [
-        { id: generateFrameID(), type: 'message', order: 1, timestamp: Date.now() },
-        { id: generateFrameID(), type: 'message', order: 2, timestamp: Date.now() + 1 },
-        { id: generateFrameID(), type: 'message', order: 3, timestamp: Date.now() + 2 },
+        { id: generateFrameID(), type: 'Message', order: 1, timestamp: Date.now() },
+        { id: generateFrameID(), type: 'Message', order: 2, timestamp: Date.now() + 1 },
+        { id: generateFrameID(), type: 'Message', order: 3, timestamp: Date.now() + 2 },
       ]);
 
       // Simulate markRead
@@ -230,8 +230,8 @@ describe('Session Unread Enrichment', () => {
       let session = await manager.createSession(org.id, { name: 'Update-Read Session' });
 
       await persistence.saveFrames(session.id, [
-        { id: generateFrameID(), type: 'message', order: 1, timestamp: Date.now() },
-        { id: generateFrameID(), type: 'message', order: 2, timestamp: Date.now() + 1 },
+        { id: generateFrameID(), type: 'Message', order: 1, timestamp: Date.now() },
+        { id: generateFrameID(), type: 'Message', order: 2, timestamp: Date.now() + 1 },
       ]);
 
       // First mark-read
@@ -242,8 +242,8 @@ describe('Session Unread Enrichment', () => {
 
       // New frames arrive
       await persistence.saveFrames(session.id, [
-        { id: generateFrameID(), type: 'message', order: 3, timestamp: Date.now() + 2 },
-        { id: generateFrameID(), type: 'message', order: 4, timestamp: Date.now() + 3 },
+        { id: generateFrameID(), type: 'Message', order: 3, timestamp: Date.now() + 2 },
+        { id: generateFrameID(), type: 'Message', order: 4, timestamp: Date.now() + 3 },
       ]);
 
       // Second mark-read

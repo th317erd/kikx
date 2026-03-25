@@ -18,7 +18,7 @@ class MockAgent extends AgentInterface {
   static description = 'Mock agent for testing';
 
   async *_createGenerator() {
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 

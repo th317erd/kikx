@@ -219,28 +219,28 @@ function escapeHTML(text) {
 
 // Frame types that are internal plumbing — never rendered in the DOM
 const HIDDEN_TYPES = new Set([
-  'pending-action',
-  'tool-call',
-  'tool-result',
-  'tool-error',
-  'hook-blocked',
-  'permission-denied',
-  'participant-joined',
-  'participant-left',
-  // Note: 'tool-activity' is NOT hidden — it's in RENDERABLE_TYPES
+  'PendingAction',
+  'ToolCall',
+  'ToolResult',
+  'ToolError',
+  'HookBlocked',
+  'PermissionDenied',
+  'ParticipantJoined',
+  'ParticipantLeft',
+  // Note: 'ToolActivity' is NOT hidden — it's in RENDERABLE_TYPES
 ]);
 
 // Frame types that produce visible DOM elements
 const RENDERABLE_TYPES = new Set([
-  'message',
-  'user-message',
-  'permission-request',
-  'session-link',
-  'command-result',
-  'error',
-  'reflection',
-  'tool-activity',
-  'compaction',
+  'Message',
+  'UserMessage',
+  'PermissionRequest',
+  'SessionLink',
+  'CommandResult',
+  'Error',
+  'Reflection',
+  'ToolActivity',
+  'Compaction',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -264,7 +264,7 @@ export function createFrameElement(frame) {
     return null;
 
   // Compaction frames render as a standalone divider — no interaction wrapper
-  if (frame.type === 'compaction') {
+  if (frame.type === 'Compaction') {
     let compaction = document.createElement('kikx-compaction-frame');
 
     if (frame.id)
@@ -291,10 +291,10 @@ export function createFrameElement(frame) {
     return compaction;
   }
 
-  let isUser    = (frame.type === 'user-message') || (frame.authorType === 'user');
+  let isUser    = (frame.type === 'UserMessage') || (frame.authorType === 'user');
   let alignment;
 
-  if (frame.type === 'session-link')
+  if (frame.type === 'SessionLink')
     alignment = 'system';
   else if (frame.authorType === 'system')
     alignment = 'agent';
@@ -307,7 +307,7 @@ export function createFrameElement(frame) {
 
   if (isUser)
     name = 'You';
-  else if (frame.type === 'session-link' || frame.type === 'command-result' || frame.authorType === 'system')
+  else if (frame.type === 'SessionLink' || frame.type === 'CommandResult' || frame.authorType === 'system')
     name = 'System';
   else if (frame.authorType === 'agent' && frame.authorID)
     name = frame.authorName || agents.getAgent(frame.authorID)?.name || 'Agent';
@@ -331,7 +331,7 @@ export function createFrameElement(frame) {
     interaction.setAttribute('data-author-type', frame.authorType);
 
   switch (frame.type) {
-    case 'session-link': {
+    case 'SessionLink': {
       let content     = frame.content || {};
       let sessionLink = document.createElement('kikx-session-link');
 
@@ -345,7 +345,7 @@ export function createFrameElement(frame) {
       break;
     }
 
-    case 'permission-request': {
+    case 'PermissionRequest': {
       interaction.setAttribute('bubble-type', 'permission');
 
       let permRequest = document.createElement('kikx-permission-request');
@@ -403,7 +403,7 @@ export function createFrameElement(frame) {
       break;
     }
 
-    case 'command-result': {
+    case 'CommandResult': {
       let messageContent = document.createElement('kikx-message-content');
       messageContent.content = (frame.content && frame.content.html) || '';
 
@@ -411,7 +411,7 @@ export function createFrameElement(frame) {
       break;
     }
 
-    case 'error': {
+    case 'Error': {
       interaction.setAttribute('bubble-type', 'error');
 
       let messageContent = document.createElement('kikx-message-content');
@@ -422,7 +422,7 @@ export function createFrameElement(frame) {
       break;
     }
 
-    case 'reflection': {
+    case 'Reflection': {
       let reflectionBlock = document.createElement('kikx-reflection-block');
       reflectionBlock.content = (frame.content && frame.content.text) || '';
       reflectionBlock.setAttribute('complete', '');
@@ -431,7 +431,7 @@ export function createFrameElement(frame) {
       break;
     }
 
-    case 'tool-activity': {
+    case 'ToolActivity': {
       let activityContent = frame.content || {};
       let renderType      = activityContent.renderType;
       let renderData      = activityContent.renderData || {};
@@ -472,8 +472,8 @@ export function createFrameElement(frame) {
       break;
     }
 
-    case 'message':
-    case 'user-message': {
+    case 'Message':
+    case 'UserMessage': {
       let html    = '';
       let content = frame.content;
 
@@ -512,7 +512,7 @@ export function setupFrameRendering(frameManager, container) {
       return;
 
     // For user-message frames, check for ghost element to adopt
-    if (frame.type === 'user-message' || frame.authorType === 'user') {
+    if (frame.type === 'UserMessage' || frame.authorType === 'user') {
       let ghosts = container.querySelectorAll('kikx-interaction[alignment="user"]:not([data-frame-id])');
       let ghost  = (ghosts.length > 0) ? ghosts[ghosts.length - 1] : null;
 
@@ -857,7 +857,7 @@ class KikxSessionPage extends HTMLElement {
       // --- Streaming finalization ---
       // When a commit frame arrives while we have a streaming group, adopt
       // the group frame's DOM element instead of creating a new one.
-      if (frame.type === 'message') {
+      if (frame.type === 'Message') {
         let agentID = frame.authorID || null;
         let sg = null;
 
@@ -916,7 +916,7 @@ class KikxSessionPage extends HTMLElement {
       }
 
       // --- Reflection finalization ---
-      if (frame.type === 'reflection') {
+      if (frame.type === 'Reflection') {
         // Find a streaming group that has this reflection's interaction
         for (let [agentID, sg] of this._streamingGroups) {
           if (!sg.groupID)
@@ -940,7 +940,7 @@ class KikxSessionPage extends HTMLElement {
       }
 
       // --- User-message optimistic adoption ---
-      if (frame.type === 'user-message') {
+      if (frame.type === 'UserMessage') {
         let allGhosts = this._chatView.querySelectorAll(
           'kikx-interaction[alignment="user"]:not([data-frame-id])',
         );
@@ -978,7 +978,7 @@ class KikxSessionPage extends HTMLElement {
       // When a non-streaming message arrives right after a reflection from the
       // same agent, fold the message content into the existing reflection
       // interaction instead of creating a separate empty-looking bubble.
-      if (frame.type === 'message' && frame.authorID) {
+      if (frame.type === 'Message' && frame.authorID) {
         let allInteractions = this._chatView.querySelectorAll('kikx-interaction');
         let lastInteraction = allInteractions.length > 0 ? allInteractions[allInteractions.length - 1] : null;
         if (lastInteraction) {
@@ -1221,9 +1221,9 @@ class KikxSessionPage extends HTMLElement {
 
           // Merge reflection frames into the next message from the same agent
           // instead of rendering them as standalone empty bubbles.
-          if (frame.type === 'reflection') {
+          if (frame.type === 'Reflection') {
             let next = allFrames[i + 1];
-            if (next && next.authorID === frame.authorID && (next.type === 'message' || next.type === 'user-message'))
+            if (next && next.authorID === frame.authorID && (next.type === 'Message' || next.type === 'UserMessage'))
               continue; // will be merged when the next frame is processed
           }
 
@@ -1234,9 +1234,9 @@ class KikxSessionPage extends HTMLElement {
 
           // If the preceding frame was a reflection from the same agent,
           // prepend its reflection block into this message's interaction.
-          if ((frame.type === 'message' || frame.type === 'user-message') && i > 0) {
+          if ((frame.type === 'Message' || frame.type === 'UserMessage') && i > 0) {
             let prev = allFrames[i - 1];
-            if (prev && prev.type === 'reflection' && prev.authorID === frame.authorID) {
+            if (prev && prev.type === 'Reflection' && prev.authorID === frame.authorID) {
               let rb = document.createElement('kikx-reflection-block');
               rb.content = (prev.content && prev.content.text) || '';
               rb.setAttribute('complete', '');
@@ -1565,7 +1565,7 @@ class KikxSessionPage extends HTMLElement {
         break;
       }
 
-      case 'delta': {
+      case 'Delta': {
         let parsed;
 
         try {
@@ -1600,7 +1600,7 @@ class KikxSessionPage extends HTMLElement {
         // Merge phantom with groupID — FrameManager creates/updates group frame
         this._frameManager.merge([{
           id:      `delta-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          type:    'message',
+          type:    'Message',
           phantom: true,
           groupID: sg.groupID,
           content: { html: sg.html },
@@ -1612,7 +1612,7 @@ class KikxSessionPage extends HTMLElement {
         break;
       }
 
-      case 'reflection-delta': {
+      case 'ReflectionDelta': {
         let parsed;
 
         try {
@@ -1647,7 +1647,7 @@ class KikxSessionPage extends HTMLElement {
         // Merge phantom into same group — reflectionText merges alongside html
         this._frameManager.merge([{
           id:      `refl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          type:    'message',
+          type:    'Message',
           phantom: true,
           groupID: reflSg.groupID,
           content: { reflectionText: reflSg.reflectionText },
@@ -1748,14 +1748,14 @@ class KikxSessionPage extends HTMLElement {
         break;
       }
 
-      case 'relay:delta': {
+      case 'relay:Delta': {
         let relayParsed;
         try { relayParsed = JSON.parse(data); } catch (_error) { return; }
         this._handleRelayDelta(relayParsed);
         break;
       }
 
-      case 'relay:reflection-delta': {
+      case 'relay:ReflectionDelta': {
         let relayReflectionParsed;
         try { relayReflectionParsed = JSON.parse(data); } catch (_error) { return; }
         this._handleRelayDelta(relayReflectionParsed);

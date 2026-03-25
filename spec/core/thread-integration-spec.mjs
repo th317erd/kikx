@@ -69,7 +69,7 @@ describe('Thread Integration', () => {
     frameManager.merge([
       {
         id:         mainID,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'This is the main message' },
         parentID:   null,
         authorType: 'user',
@@ -83,7 +83,7 @@ describe('Thread Integration', () => {
     frameManager.merge([
       {
         id:         replyID,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'This is a reply' },
         parentID:   mainID,
         authorType: 'user',
@@ -121,7 +121,7 @@ describe('Thread Integration', () => {
     frameManager.merge([
       {
         id:         mainID,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'Root message' },
         parentID:   null,
         authorType: 'user',
@@ -139,7 +139,7 @@ describe('Thread Integration', () => {
       frameManager.merge([
         {
           id:         replyID,
-          type:       'message',
+          type: 'Message',
           content:    { text: `Reply #${index + 1}` },
           parentID:   mainID,
           authorType: 'user',
@@ -179,7 +179,7 @@ describe('Thread Integration', () => {
     frameManager.merge([
       {
         id:         mainA,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'Thread A root' },
         parentID:   null,
         authorType: 'user',
@@ -191,7 +191,7 @@ describe('Thread Integration', () => {
     frameManager.merge([
       {
         id:         mainB,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'Thread B root' },
         parentID:   null,
         authorType: 'user',
@@ -206,7 +206,7 @@ describe('Thread Integration', () => {
     frameManager.merge([
       {
         id:         replyA1,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'Reply A1' },
         parentID:   mainA,
         authorType: 'user',
@@ -217,7 +217,7 @@ describe('Thread Integration', () => {
     frameManager.merge([
       {
         id:         replyA2,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'Reply A2' },
         parentID:   mainA,
         authorType: 'user',
@@ -231,7 +231,7 @@ describe('Thread Integration', () => {
     frameManager.merge([
       {
         id:         replyB1,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'Reply B1' },
         parentID:   mainB,
         authorType: 'user',
@@ -270,7 +270,7 @@ describe('Thread Integration', () => {
     frameManager.merge([
       {
         id:         mainID,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'Main message' },
         parentID:   null,
         authorType: 'user',
@@ -282,7 +282,7 @@ describe('Thread Integration', () => {
     frameManager.merge([
       {
         id:         reply1ID,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'First reply (to main)' },
         parentID:   mainID,
         authorType: 'user',
@@ -294,7 +294,7 @@ describe('Thread Integration', () => {
     frameManager.merge([
       {
         id:         reply2ID,
-        type:       'message',
+        type: 'Message',
         content:    { text: 'Second reply (to reply1)' },
         parentID:   reply1ID,
         authorType: 'user',

@@ -132,7 +132,7 @@ describe('SchedulerOrchestrator', () => {
       // Create a user-message commit
       frameManager.merge([{
         id:         'frm_orch_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -176,7 +176,7 @@ describe('SchedulerOrchestrator', () => {
       // Create a system-authored commit (e.g. error frame)
       frameManager.merge([{
         id:         'frm_orch_sys_1',
-        type:       'error',
+        type: 'Error',
         content:    { text: 'Something went wrong' },
         authorType: 'system',
         authorID:   null,
@@ -216,7 +216,7 @@ describe('SchedulerOrchestrator', () => {
       // Create an agent-authored commit
       frameManager.merge([{
         id:         'frm_orch_agent_1',
-        type:       'message',
+        type: 'Message',
         content:    { html: '<p>Agent reply</p>' },
         authorType: 'agent',
         authorID:   agentA.id,
@@ -329,7 +329,7 @@ describe('SchedulerOrchestrator', () => {
       // Create user message
       frameManager.merge([{
         id:         'frm_single_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -379,7 +379,7 @@ describe('SchedulerOrchestrator', () => {
 
       frameManager.merge([{
         id:         'frm_multi_q_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello all three' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -432,7 +432,7 @@ describe('SchedulerOrchestrator', () => {
 
       frameManager.merge([{
         id:         'frm_defer_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello both' },
         authorType: 'user',
         authorID:   'usr_1',

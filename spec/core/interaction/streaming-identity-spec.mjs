@@ -32,7 +32,7 @@ class MockAgent extends AgentInterface {
     for (let block of this._blocks)
       yield block;
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -83,7 +83,7 @@ describe('Streaming identity in InteractionLoop events', () => {
     });
 
     let mockAgent = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>hello</p>' }, authorType: 'agent', authorID: agent.id },
+      { type: 'Message', content: { html: '<p>hello</p>' }, authorType: 'agent', authorID: agent.id },
     ]);
 
     await interactionLoop.startInteraction(session.id, {
@@ -106,7 +106,7 @@ describe('Streaming identity in InteractionLoop events', () => {
     });
 
     let mockAgent = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>hello</p>' }, authorType: 'agent', authorID: null },
+      { type: 'Message', content: { html: '<p>hello</p>' }, authorType: 'agent', authorID: null },
     ]);
 
     await interactionLoop.startInteraction(session.id, {
@@ -125,13 +125,13 @@ describe('Streaming identity in InteractionLoop events', () => {
   it('delta event carries authorType and authorID', async () => {
     let deltas = [];
 
-    interactionLoop.on('delta', (event) => {
+    interactionLoop.on('Delta', (event) => {
       deltas.push(event);
     });
 
     let mockAgent = new MockAgent(context, [
-      { type: 'delta', content: { text: 'hello' }, authorType: 'agent', authorID: agent.id },
-      { type: 'message', content: { html: '<p>hello</p>' }, authorType: 'agent', authorID: agent.id },
+      { type: 'Delta', content: { text: 'hello' }, authorType: 'agent', authorID: agent.id },
+      { type: 'Message', content: { html: '<p>hello</p>' }, authorType: 'agent', authorID: agent.id },
     ]);
 
     await interactionLoop.startInteraction(session.id, {
@@ -152,13 +152,13 @@ describe('Streaming identity in InteractionLoop events', () => {
   it('delta event authorType/authorID default to undefined when not set', async () => {
     let deltas = [];
 
-    interactionLoop.on('delta', (event) => {
+    interactionLoop.on('Delta', (event) => {
       deltas.push(event);
     });
 
     let mockAgent = new MockAgent(context, [
-      { type: 'delta', content: { text: 'bare' } },
-      { type: 'message', content: { html: '<p>bare</p>' } },
+      { type: 'Delta', content: { text: 'bare' } },
+      { type: 'Message', content: { html: '<p>bare</p>' } },
     ]);
 
     await interactionLoop.startInteraction(session.id, {
@@ -185,7 +185,7 @@ describe('Streaming identity in InteractionLoop events', () => {
     });
 
     let mockAgent = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>done</p>' }, authorType: 'agent', authorID: agent.id },
+      { type: 'Message', content: { html: '<p>done</p>' }, authorType: 'agent', authorID: agent.id },
     ]);
 
     await interactionLoop.startInteraction(session.id, {
@@ -208,7 +208,7 @@ describe('Streaming identity in InteractionLoop events', () => {
     });
 
     let mockAgent = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>done</p>' } },
+      { type: 'Message', content: { html: '<p>done</p>' } },
     ]);
 
     await interactionLoop.startInteraction(session.id, {
@@ -227,13 +227,13 @@ describe('Streaming identity in InteractionLoop events', () => {
   it('reflection-delta event carries authorType and authorID', async () => {
     let reflections = [];
 
-    interactionLoop.on('reflection-delta', (event) => {
+    interactionLoop.on('ReflectionDelta', (event) => {
       reflections.push(event);
     });
 
     let mockAgent = new MockAgent(context, [
-      { type: 'reflection-delta', content: { text: 'thinking...' }, authorType: 'agent', authorID: agent.id },
-      { type: 'message', content: { html: '<p>result</p>' }, authorType: 'agent', authorID: agent.id },
+      { type: 'ReflectionDelta', content: { text: 'thinking...' }, authorType: 'agent', authorID: agent.id },
+      { type: 'Message', content: { html: '<p>result</p>' }, authorType: 'agent', authorID: agent.id },
     ]);
 
     await interactionLoop.startInteraction(session.id, {

@@ -47,7 +47,7 @@ class MockAgent extends AgentInterface {
     for (let block of this._blocks)
       yield block;
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -102,14 +102,14 @@ describe('Per-Agent Interaction Loop', () => {
       let agentBStarted = false;
 
       let mockAgentA = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>from A</p>' }, authorType: 'agent', authorID: agentA.id },
+        { type: 'Message', content: { html: '<p>from A</p>' }, authorType: 'agent', authorID: agentA.id },
       ], {
         onStarted: () => { agentAStarted = true; },
         hangUntil: hangA,
       });
 
       let mockAgentB = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>from B</p>' }, authorType: 'agent', authorID: agentB.id },
+        { type: 'Message', content: { html: '<p>from B</p>' }, authorType: 'agent', authorID: agentB.id },
       ], {
         onStarted: () => { agentBStarted = true; },
         hangUntil: hangB,
@@ -169,14 +169,14 @@ describe('Per-Agent Interaction Loop', () => {
       let startCount = 0;
 
       let mockAgent1 = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>first</p>' }, authorType: 'agent', authorID: agent.id },
+        { type: 'Message', content: { html: '<p>first</p>' }, authorType: 'agent', authorID: agent.id },
       ], {
         onStarted: () => { startCount++; },
         hangUntil: hang,
       });
 
       let mockAgent2 = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>second</p>' }, authorType: 'agent', authorID: agent.id },
+        { type: 'Message', content: { html: '<p>second</p>' }, authorType: 'agent', authorID: agent.id },
       ], {
         onStarted: () => { startCount++; },
       });
@@ -211,7 +211,7 @@ describe('Per-Agent Interaction Loop', () => {
       let hang = new Promise((resolve) => { resolveHang = resolve; });
 
       let mockAgent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>reply</p>' }, authorType: 'agent', authorID: agent.id },
+        { type: 'Message', content: { html: '<p>reply</p>' }, authorType: 'agent', authorID: agent.id },
       ], { hangUntil: hang });
 
       // Start first interaction
@@ -251,7 +251,7 @@ describe('Per-Agent Interaction Loop', () => {
       let hang = new Promise((resolve) => { resolveHang = resolve; });
 
       let mockAgent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>hi</p>' }, authorType: 'agent', authorID: agent.id },
+        { type: 'Message', content: { html: '<p>hi</p>' }, authorType: 'agent', authorID: agent.id },
       ], { hangUntil: hang });
 
       assert.equal(interactionLoop.isActive(session.id), false, 'Session should be inactive initially');
@@ -280,7 +280,7 @@ describe('Per-Agent Interaction Loop', () => {
       let hangA = new Promise((resolve) => { resolveA = resolve; });
 
       let mockAgentA = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: agentA.id },
+        { type: 'Message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: agentA.id },
       ], { hangUntil: hangA });
 
       let promise = interactionLoop.startInteraction(session.id, {
@@ -322,11 +322,11 @@ describe('Per-Agent Interaction Loop', () => {
       let hangB = new Promise((resolve) => { resolveB = resolve; });
 
       let mockAgentA = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: agentA.id },
+        { type: 'Message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: agentA.id },
       ], { hangUntil: hangA });
 
       let mockAgentB = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>B</p>' }, authorType: 'agent', authorID: agentB.id },
+        { type: 'Message', content: { html: '<p>B</p>' }, authorType: 'agent', authorID: agentB.id },
       ], { hangUntil: hangB });
 
       // Start both agents
@@ -383,12 +383,12 @@ describe('Per-Agent Interaction Loop', () => {
 
       // Agent A completes immediately
       let mockAgentA = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>fast A</p>' }, authorType: 'agent', authorID: agentA.id },
+        { type: 'Message', content: { html: '<p>fast A</p>' }, authorType: 'agent', authorID: agentA.id },
       ]);
 
       // Agent B hangs
       let mockAgentB = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>slow B</p>' }, authorType: 'agent', authorID: agentB.id },
+        { type: 'Message', content: { html: '<p>slow B</p>' }, authorType: 'agent', authorID: agentB.id },
       ], { hangUntil: hangB });
 
       let promiseB = interactionLoop.startInteraction(session.id, {
@@ -429,7 +429,7 @@ describe('Per-Agent Interaction Loop', () => {
   describe('backward compatibility', () => {
     it('interaction without agent context uses sessionID as key', async () => {
       let mockAgent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>no agent</p>' } },
+        { type: 'Message', content: { html: '<p>no agent</p>' } },
       ]);
 
       let interactionID = await interactionLoop.startInteraction(session.id, {
@@ -446,7 +446,7 @@ describe('Per-Agent Interaction Loop', () => {
       let hang = new Promise((resolve) => { resolveHang = resolve; });
 
       let mockAgent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>agentless</p>' } },
+        { type: 'Message', content: { html: '<p>agentless</p>' } },
       ], { hangUntil: hang });
 
       let promise = interactionLoop.startInteraction(session.id, {
@@ -467,7 +467,7 @@ describe('Per-Agent Interaction Loop', () => {
       let hang = new Promise((resolve) => { resolveHang = resolve; });
 
       let mockAgent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>first</p>' } },
+        { type: 'Message', content: { html: '<p>first</p>' } },
       ], { hangUntil: hang });
 
       let promise = interactionLoop.startInteraction(session.id, {
@@ -507,7 +507,7 @@ describe('Per-Agent Interaction Loop', () => {
       let hang = new Promise((resolve) => { resolveHang = resolve; });
 
       let mockAgent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>cancel me</p>' } },
+        { type: 'Message', content: { html: '<p>cancel me</p>' } },
       ], { hangUntil: hang });
 
       let promise = interactionLoop.startInteraction(session.id, {

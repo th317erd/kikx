@@ -121,7 +121,7 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
     await Frame.create({
       id:            pendingFrameID,
       sessionID:     overrides.sessionID || testSession.id,
-      type:          'pending-action',
+      type:          'PendingAction',
       content:       JSON.stringify({ toolName: 'shell:execute', arguments: { command: 'ls' }, toolUseID: 'tu_1' }),
       timestamp:     Date.now(),
       order:         Date.now(),
@@ -135,7 +135,7 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
     await Frame.create({
       id:            frameID,
       sessionID:     overrides.sessionID || testSession.id,
-      type:          'permission-request',
+      type:          'PermissionRequest',
       content:       JSON.stringify({ toolName: 'shell:execute', arguments: { command: 'ls' }, pendingFrameID }),
       timestamp:     Date.now(),
       order:         Date.now() + 1,

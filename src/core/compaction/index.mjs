@@ -60,7 +60,7 @@ class CompactionRunner {
     for (let i = 0; i < frames.length; i++) {
       let frame = frames[i];
 
-      if (frame.type === 'compaction' && frame.content && frame.content.status === 'started')
+      if (frame.type === 'Compaction' && frame.content && frame.content.status === 'started')
         return false;
     }
 
@@ -93,7 +93,7 @@ class CompactionRunner {
 
     // 2. Gather all frames for this session (excluding compaction frames)
     let allFrames       = frameManager.toArray();
-    let compactable     = allFrames.filter((f) => f.type !== 'compaction' && !f.deleted);
+    let compactable     = allFrames.filter((f) => f.type !== 'Compaction' && !f.deleted);
     let framesCompacted = compactable.length;
 
     // Edge case: nothing to compact
@@ -111,7 +111,7 @@ class CompactionRunner {
 
     let compactionFrame = {
       id:         frameID,
-      type:       'compaction',
+      type:       'Compaction',
       authorType: 'system',
       authorID:   null,
       parentID:   null,
@@ -211,7 +211,7 @@ class CompactionRunner {
     for (let i = 0; i < frames.length; i++) {
       let frame = frames[i];
 
-      if (frame.type === 'compaction' && frame.content && frame.content.status === 'started') {
+      if (frame.type === 'Compaction' && frame.content && frame.content.status === 'started') {
         this._updateCompactionFrame(frameManager, frame.id, {
           status:     'abandoned',
           finishedAt: new Date().toISOString(),
@@ -242,7 +242,7 @@ class CompactionRunner {
       let frame = frames[i];
 
       // Skip compaction frames
-      if (frame.type === 'compaction')
+      if (frame.type === 'Compaction')
         continue;
 
       // Skip deleted frames

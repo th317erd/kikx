@@ -104,7 +104,7 @@ class MockAgentPlugin extends AgentInterface {
   static agentType   = 'mock';
 
   async *_createGenerator(_params) {
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 

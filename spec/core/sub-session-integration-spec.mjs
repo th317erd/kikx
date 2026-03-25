@@ -74,7 +74,7 @@ describe('Sub-Session Integration', () => {
     // Create the session-link frame in the parent (caller's responsibility)
     await persistence.saveFrames(parent.id, [{
       id:         linkFrameID,
-      type:       'session-link',
+      type:       'SessionLink',
       content:    { targetSessionID: child.id, title: 'Child Session' },
       order:      1,
       timestamp:  Date.now(),
@@ -88,7 +88,7 @@ describe('Sub-Session Integration', () => {
     let parentFrames       = parentFrameManager.toArray();
 
     // Verify a session-link frame exists
-    let linkFrames = parentFrames.filter((frame) => frame.type === 'session-link');
+    let linkFrames = parentFrames.filter((frame) => frame.type === 'SessionLink');
     assert.ok(linkFrames.length >= 1, 'Expected at least one session-link frame in the parent session');
 
     // Verify the session-link frame references the child session
@@ -126,7 +126,7 @@ describe('Sub-Session Integration', () => {
     await persistence.saveFrames(parent.id, [
       {
         id:        frameID,
-        type:      'session-link',
+        type:      'SessionLink',
         content:   { targetSessionID: sessionID },
         order:     1,
         timestamp: Date.now(),
@@ -141,7 +141,7 @@ describe('Sub-Session Integration', () => {
     let parentFrameManager = await persistence.loadFrames(parent.id);
     let linkFrame          = parentFrameManager.get(frameID);
     assert.ok(linkFrame, 'session-link frame should exist in parent');
-    assert.equal(linkFrame.type, 'session-link');
+    assert.equal(linkFrame.type, 'SessionLink');
     assert.equal(linkFrame.content.targetSessionID, sessionID);
 
     // The cross-reference is complete: session -> frame via linkedFrameID,

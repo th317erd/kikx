@@ -6,27 +6,27 @@ import { Frame }           from '../../../src/shared/frame-manager/frame.mjs';
 
 describe('Frame', () => {
   it('should set parentID from data', () => {
-    let frame = new Frame({ id: 'f1', type: 'user-message', parentID: 'f0' });
+    let frame = new Frame({ id: 'f1', type: 'UserMessage', parentID: 'f0' });
     assert.equal(frame.parentID, 'f0');
   });
 
   it('should default parentID to null when not provided', () => {
-    let frame = new Frame({ id: 'f1', type: 'user-message' });
+    let frame = new Frame({ id: 'f1', type: 'UserMessage' });
     assert.equal(frame.parentID, null);
   });
 
   it('should set groupID from data', () => {
-    let frame = new Frame({ id: 'f1', type: 'delta', groupID: 'g1' });
+    let frame = new Frame({ id: 'f1', type: 'Delta', groupID: 'g1' });
     assert.equal(frame.groupID, 'g1');
   });
 
   it('should default groupID to null when not provided', () => {
-    let frame = new Frame({ id: 'f1', type: 'delta' });
+    let frame = new Frame({ id: 'f1', type: 'Delta' });
     assert.equal(frame.groupID, null);
   });
 
   it('should set all default values', () => {
-    let frame = new Frame({ id: 'f1', type: 'user-message' });
+    let frame = new Frame({ id: 'f1', type: 'UserMessage' });
     assert.deepEqual(frame.targets, []);
     assert.equal(frame.phantom, false);
     assert.deepEqual(frame.content, {});

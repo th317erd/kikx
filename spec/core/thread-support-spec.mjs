@@ -37,7 +37,7 @@ class MockAgent extends AgentInterface {
 
   async *_createGenerator(_params) {
     for (let block of this._blocks) {
-      if (block.type === 'tool-call') {
+      if (block.type === 'ToolCall') {
         let result = yield block;
         block._receivedResult = result;
       } else {
@@ -45,7 +45,7 @@ class MockAgent extends AgentInterface {
       }
     }
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -123,7 +123,7 @@ describe('Thread Support', () => {
       await framePersistence.saveFrames(session.id, [
         {
           id:         parentID,
-          type:       'user-message',
+          type:       'UserMessage',
           content:    { text: 'This is the parent message' },
           order:      1,
           timestamp:  now,
@@ -139,7 +139,7 @@ describe('Thread Support', () => {
       await framePersistence.saveFrames(session.id, [
         {
           id:         childID,
-          type:       'user-message',
+          type:       'UserMessage',
           content:    { text: 'This is a reply' },
           parentID:   parentID,
           order:      2,
@@ -175,18 +175,18 @@ describe('Thread Support', () => {
 
       // Parent frame (top-level)
       await framePersistence.saveFrames(session.id, [
-        { id: parentID, type: 'user-message', content: { text: 'Parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: parentID, type: 'UserMessage', content: { text: 'Parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
       ]);
 
       // Two replies to the parent
       await framePersistence.saveFrames(session.id, [
-        { id: replyA, type: 'message', content: { html: '<p>Reply A</p>' }, parentID: parentID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
-        { id: replyB, type: 'message', content: { html: '<p>Reply B</p>' }, parentID: parentID, order: 3, timestamp: now + 2, hidden: false, deleted: false, processed: false },
+        { id: replyA, type: 'Message', content: { html: '<p>Reply A</p>' }, parentID: parentID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
+        { id: replyB, type: 'Message', content: { html: '<p>Reply B</p>' }, parentID: parentID, order: 3, timestamp: now + 2, hidden: false, deleted: false, processed: false },
       ]);
 
       // Another top-level frame (no parentID)
       await framePersistence.saveFrames(session.id, [
-        { id: topLevel, type: 'user-message', content: { text: 'Unrelated' }, order: 4, timestamp: now + 3, hidden: false, deleted: false, processed: false },
+        { id: topLevel, type: 'UserMessage', content: { text: 'Unrelated' }, order: 4, timestamp: now + 3, hidden: false, deleted: false, processed: false },
       ]);
 
       // Load with parentID filter — should return only the two replies
@@ -213,7 +213,7 @@ describe('Thread Support', () => {
 
       // Parent
       await framePersistence.saveFrames(session.id, [
-        { id: parentID, type: 'user-message', content: { text: 'Parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: parentID, type: 'UserMessage', content: { text: 'Parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
       ]);
 
       // Create replies out of insertion order but with ascending order values
@@ -222,9 +222,9 @@ describe('Thread Support', () => {
       let reply3 = generateID('frm_');
 
       await framePersistence.saveFrames(session.id, [
-        { id: reply3, type: 'message', content: { html: '<p>Third</p>' }, parentID: parentID, order: 10, timestamp: now + 3, hidden: false, deleted: false, processed: false },
-        { id: reply1, type: 'message', content: { html: '<p>First</p>' }, parentID: parentID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
-        { id: reply2, type: 'message', content: { html: '<p>Second</p>' }, parentID: parentID, order: 5, timestamp: now + 2, hidden: false, deleted: false, processed: false },
+        { id: reply3, type: 'Message', content: { html: '<p>Third</p>' }, parentID: parentID, order: 10, timestamp: now + 3, hidden: false, deleted: false, processed: false },
+        { id: reply1, type: 'Message', content: { html: '<p>First</p>' }, parentID: parentID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
+        { id: reply2, type: 'Message', content: { html: '<p>Second</p>' }, parentID: parentID, order: 5, timestamp: now + 2, hidden: false, deleted: false, processed: false },
       ]);
 
       // Load thread — should be sorted by order ascending
@@ -248,11 +248,11 @@ describe('Thread Support', () => {
 
       // Create a parent message frame first (so parentID references something real)
       await framePersistence.saveFrames(session.id, [
-        { id: parentID, type: 'user-message', content: { text: 'Thread starter' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: parentID, type: 'UserMessage', content: { text: 'Thread starter' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
       ]);
 
       let agent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>Thread reply from agent</p>' }, authorType: 'agent', authorID: 'agent_1' },
+        { type: 'Message', content: { html: '<p>Thread reply from agent</p>' }, authorType: 'agent', authorID: 'agent_1' },
       ]);
       let loop = createLoop();
 
@@ -266,12 +266,12 @@ describe('Thread Support', () => {
       let frames       = frameManager.toArray();
 
       // Find the user-message frame that was created by startInteraction (order > 1)
-      let userMessages = frames.filter((f) => f.type === 'user-message' && f.order > 1);
+      let userMessages = frames.filter((f) => f.type === 'UserMessage' && f.order > 1);
       assert.ok(userMessages.length >= 1, 'should have created a user-message frame');
       assert.equal(userMessages[0].parentID, parentID, 'user-message frame should have parentID set');
 
       // Agent response frames should also get parentID
-      let agentMessages = frames.filter((f) => f.type === 'message');
+      let agentMessages = frames.filter((f) => f.type === 'Message');
       assert.ok(agentMessages.length >= 1, 'should have created an agent message frame');
       assert.equal(agentMessages[0].parentID, parentID, 'agent message frame should have parentID set');
     });
@@ -289,22 +289,22 @@ describe('Thread Support', () => {
 
       // Create two parent frames
       await framePersistence.saveFrames(session.id, [
-        { id: parentA, type: 'user-message', content: { text: 'Thread A root' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
-        { id: parentB, type: 'user-message', content: { text: 'Thread B root' }, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
+        { id: parentA, type: 'UserMessage', content: { text: 'Thread A root' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: parentB, type: 'UserMessage', content: { text: 'Thread B root' }, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
       ]);
 
       // Replies in thread A
       let replyA1 = generateID('frm_');
       let replyA2 = generateID('frm_');
       await framePersistence.saveFrames(session.id, [
-        { id: replyA1, type: 'message', content: { html: '<p>A reply 1</p>' }, parentID: parentA, order: 3, timestamp: now + 2, hidden: false, deleted: false, processed: false },
-        { id: replyA2, type: 'message', content: { html: '<p>A reply 2</p>' }, parentID: parentA, order: 4, timestamp: now + 3, hidden: false, deleted: false, processed: false },
+        { id: replyA1, type: 'Message', content: { html: '<p>A reply 1</p>' }, parentID: parentA, order: 3, timestamp: now + 2, hidden: false, deleted: false, processed: false },
+        { id: replyA2, type: 'Message', content: { html: '<p>A reply 2</p>' }, parentID: parentA, order: 4, timestamp: now + 3, hidden: false, deleted: false, processed: false },
       ]);
 
       // Replies in thread B
       let replyB1 = generateID('frm_');
       await framePersistence.saveFrames(session.id, [
-        { id: replyB1, type: 'message', content: { html: '<p>B reply 1</p>' }, parentID: parentB, order: 5, timestamp: now + 4, hidden: false, deleted: false, processed: false },
+        { id: replyB1, type: 'Message', content: { html: '<p>B reply 1</p>' }, parentID: parentB, order: 5, timestamp: now + 4, hidden: false, deleted: false, processed: false },
       ]);
 
       // Query thread A — should get 2 replies
@@ -345,8 +345,8 @@ describe('Thread Support', () => {
 
       // Create parent and reply in session A
       await framePersistence.saveFrames(sessionA.id, [
-        { id: parentInA, type: 'user-message', content: { text: 'Session A parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
-        { id: replyInA, type: 'message', content: { html: '<p>Reply in A</p>' }, parentID: parentInA, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
+        { id: parentInA, type: 'UserMessage', content: { text: 'Session A parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: replyInA, type: 'Message', content: { html: '<p>Reply in A</p>' }, parentID: parentInA, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
       ]);
 
       // Query session B with parentID from session A — should return nothing
@@ -389,17 +389,17 @@ describe('Thread Support', () => {
 
       // Root message
       await framePersistence.saveFrames(session.id, [
-        { id: rootID, type: 'user-message', content: { text: 'Root' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: rootID, type: 'UserMessage', content: { text: 'Root' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
       ]);
 
       // First-level reply
       await framePersistence.saveFrames(session.id, [
-        { id: replyID, type: 'message', content: { html: '<p>Reply to root</p>' }, parentID: rootID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
+        { id: replyID, type: 'Message', content: { html: '<p>Reply to root</p>' }, parentID: rootID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
       ]);
 
       // Nested reply (reply to the reply)
       await framePersistence.saveFrames(session.id, [
-        { id: nestedID, type: 'message', content: { html: '<p>Reply to reply</p>' }, parentID: replyID, order: 3, timestamp: now + 2, hidden: false, deleted: false, processed: false },
+        { id: nestedID, type: 'Message', content: { html: '<p>Reply to reply</p>' }, parentID: replyID, order: 3, timestamp: now + 2, hidden: false, deleted: false, processed: false },
       ]);
 
       // Query for replies to the root — should only get the first-level reply
@@ -429,12 +429,12 @@ describe('Thread Support', () => {
 
       // Hidden parent frame
       await framePersistence.saveFrames(session.id, [
-        { id: hiddenParent, type: 'reflection', content: { text: 'Hidden thinking' }, order: 1, timestamp: now, hidden: true, deleted: false, processed: false },
+        { id: hiddenParent, type: 'Reflection', content: { text: 'Hidden thinking' }, order: 1, timestamp: now, hidden: true, deleted: false, processed: false },
       ]);
 
       // Reply to the hidden frame
       await framePersistence.saveFrames(session.id, [
-        { id: replyID, type: 'message', content: { html: '<p>Replying to hidden</p>' }, parentID: hiddenParent, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
+        { id: replyID, type: 'Message', content: { html: '<p>Replying to hidden</p>' }, parentID: hiddenParent, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
       ]);
 
       // Query for thread replies — should still return the reply
@@ -459,12 +459,12 @@ describe('Thread Support', () => {
 
       // Session-link frame (a special non-standard type)
       await framePersistence.saveFrames(session.id, [
-        { id: linkFrameID, type: 'session-link', content: { sessionID: 'ses_other', name: 'Linked session' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: linkFrameID, type: 'SessionLink', content: { sessionID: 'ses_other', name: 'Linked session' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
       ]);
 
       // Reply to the session-link frame
       await framePersistence.saveFrames(session.id, [
-        { id: replyID, type: 'user-message', content: { text: 'Comment on the link' }, parentID: linkFrameID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
+        { id: replyID, type: 'UserMessage', content: { text: 'Comment on the link' }, parentID: linkFrameID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
       ]);
 
       // Query thread — should return the reply
@@ -489,9 +489,9 @@ describe('Thread Support', () => {
       let topLevel = generateID('frm_');
 
       await framePersistence.saveFrames(session.id, [
-        { id: parentID, type: 'user-message', content: { text: 'Parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
-        { id: replyID, type: 'message', content: { html: '<p>Reply</p>' }, parentID: parentID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
-        { id: topLevel, type: 'user-message', content: { text: 'Top level' }, order: 3, timestamp: now + 2, hidden: false, deleted: false, processed: false },
+        { id: parentID, type: 'UserMessage', content: { text: 'Parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: replyID, type: 'Message', content: { html: '<p>Reply</p>' }, parentID: parentID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
+        { id: topLevel, type: 'UserMessage', content: { text: 'Top level' }, order: 3, timestamp: now + 2, hidden: false, deleted: false, processed: false },
       ]);
 
       // Load without parentID filter — all 3 should come back
@@ -517,12 +517,12 @@ describe('Thread Support', () => {
 
       // Create parent message
       await framePersistence.saveFrames(session.id, [
-        { id: parentID, type: 'user-message', content: { text: 'Original message' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: parentID, type: 'UserMessage', content: { text: 'Original message' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
       ]);
 
       // Agent that replies with a message and a tool call
       let agent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>Agent reply</p>' }, authorType: 'agent', authorID: 'agent_1' },
+        { type: 'Message', content: { html: '<p>Agent reply</p>' }, authorType: 'agent', authorID: 'agent_1' },
       ]);
       let loop = createLoop();
 
@@ -553,12 +553,12 @@ describe('Thread Support', () => {
 
       // Create parent message
       await framePersistence.saveFrames(session.id, [
-        { id: parentID, type: 'user-message', content: { text: 'Original' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: parentID, type: 'UserMessage', content: { text: 'Original' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
       ]);
 
       let agent = new MockAgent(context, [
-        { type: 'tool-call', content: { toolName: 'echo', arguments: { text: 'hi' }, toolUseID: 'toolu_test' }, authorType: 'agent', authorID: 'agent_1' },
-        { type: 'message', content: { html: '<p>Done</p>' }, authorType: 'agent', authorID: 'agent_1' },
+        { type: 'ToolCall', content: { toolName: 'echo', arguments: { text: 'hi' }, toolUseID: 'toolu_test' }, authorType: 'agent', authorID: 'agent_1' },
+        { type: 'Message', content: { html: '<p>Done</p>' }, authorType: 'agent', authorID: 'agent_1' },
       ]);
       let loop = createLoop();
 
@@ -572,8 +572,8 @@ describe('Thread Support', () => {
       let frameManager = await framePersistence.loadFrames(session.id);
       let frames       = frameManager.toArray();
 
-      let toolCallFrames  = frames.filter((f) => f.type === 'tool-call');
-      let toolResultFrames = frames.filter((f) => f.type === 'tool-result');
+      let toolCallFrames  = frames.filter((f) => f.type === 'ToolCall');
+      let toolResultFrames = frames.filter((f) => f.type === 'ToolResult');
 
       assert.ok(toolCallFrames.length >= 1, 'should have tool-call frame');
       assert.equal(toolCallFrames[0].parentID, parentID, 'tool-call frame should have parentID');
@@ -593,7 +593,7 @@ describe('Thread Support', () => {
 
       // Parent
       await framePersistence.saveFrames(session.id, [
-        { id: parentID, type: 'user-message', content: { text: 'Parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: parentID, type: 'UserMessage', content: { text: 'Parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
       ]);
 
       // Three replies with different orders
@@ -602,9 +602,9 @@ describe('Thread Support', () => {
       let reply3 = generateID('frm_');
 
       await framePersistence.saveFrames(session.id, [
-        { id: reply1, type: 'message', content: { html: '<p>R1</p>' }, parentID: parentID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
-        { id: reply2, type: 'message', content: { html: '<p>R2</p>' }, parentID: parentID, order: 5, timestamp: now + 2, hidden: false, deleted: false, processed: false },
-        { id: reply3, type: 'message', content: { html: '<p>R3</p>' }, parentID: parentID, order: 8, timestamp: now + 3, hidden: false, deleted: false, processed: false },
+        { id: reply1, type: 'Message', content: { html: '<p>R1</p>' }, parentID: parentID, order: 2, timestamp: now + 1, hidden: false, deleted: false, processed: false },
+        { id: reply2, type: 'Message', content: { html: '<p>R2</p>' }, parentID: parentID, order: 5, timestamp: now + 2, hidden: false, deleted: false, processed: false },
+        { id: reply3, type: 'Message', content: { html: '<p>R3</p>' }, parentID: parentID, order: 8, timestamp: now + 3, hidden: false, deleted: false, processed: false },
       ]);
 
       // Load with parentID + afterOrder=4 — should return only reply2 and reply3
@@ -630,7 +630,7 @@ describe('Thread Support', () => {
 
       // Parent
       await framePersistence.saveFrames(session.id, [
-        { id: parentID, type: 'user-message', content: { text: 'Parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
+        { id: parentID, type: 'UserMessage', content: { text: 'Parent' }, order: 1, timestamp: now, hidden: false, deleted: false, processed: false },
       ]);
 
       // Five replies
@@ -639,7 +639,7 @@ describe('Thread Support', () => {
         let id = generateID('frm_');
         replyIds.push(id);
         await framePersistence.saveFrames(session.id, [
-          { id, type: 'message', content: { html: `<p>Reply ${i}</p>` }, parentID: parentID, order: 2 + i, timestamp: now + 1 + i, hidden: false, deleted: false, processed: false },
+          { id, type: 'Message', content: { html: `<p>Reply ${i}</p>` }, parentID: parentID, order: 2 + i, timestamp: now + 1 + i, hidden: false, deleted: false, processed: false },
         ]);
       }
 

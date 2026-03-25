@@ -72,7 +72,7 @@ describe('Frame Signature Field (C1)', () => {
         id:            frameID,
         sessionID:     session.id,
         interactionID: 'int_001',
-        type:          'message',
+        type: 'Message',
         order:         1,
         timestamp:     Date.now(),
       });
@@ -88,7 +88,7 @@ describe('Frame Signature Field (C1)', () => {
         id:            frameID,
         sessionID:     session.id,
         interactionID: 'int_002',
-        type:          'message',
+        type: 'Message',
         order:         1,
         timestamp:     Date.now(),
         signature:     signature,
@@ -105,7 +105,7 @@ describe('Frame Signature Field (C1)', () => {
         id:            frameID,
         sessionID:     session.id,
         interactionID: 'int_003',
-        type:          'message',
+        type: 'Message',
         order:         1,
         timestamp:     Date.now(),
         signature:     signature,
@@ -124,7 +124,7 @@ describe('Frame Signature Field (C1)', () => {
         id:            frameID,
         sessionID:     session.id,
         interactionID: 'int_004',
-        type:          'message',
+        type: 'Message',
         order:         1,
         timestamp:     Date.now(),
         signature:     signature,
@@ -141,7 +141,7 @@ describe('Frame Signature Field (C1)', () => {
         id:            frameID,
         sessionID:     session.id,
         interactionID: 'int_005',
-        type:          'message',
+        type: 'Message',
         order:         1,
         timestamp:     Date.now(),
         signature:     null,
@@ -164,25 +164,25 @@ describe('Frame Signature Field (C1)', () => {
   describe('In-memory Frame class', () => {
     it('should have a signature property', async () => {
       let { Frame } = await import('../../../src/shared/frame-manager/frame.mjs');
-      let frame     = new Frame({ id: 'frm_test', type: 'message' });
+      let frame     = new Frame({ id: 'frm_test', type: 'Message' });
       assert.ok('signature' in frame, 'Frame instance should have a signature property');
     });
 
     it('should default signature to null', async () => {
       let { Frame } = await import('../../../src/shared/frame-manager/frame.mjs');
-      let frame     = new Frame({ id: 'frm_test', type: 'message' });
+      let frame     = new Frame({ id: 'frm_test', type: 'Message' });
       assert.equal(frame.signature, null);
     });
 
     it('should accept a signature value via constructor', async () => {
       let { Frame } = await import('../../../src/shared/frame-manager/frame.mjs');
-      let frame     = new Frame({ id: 'frm_test', type: 'message', signature: 'sig_abc' });
+      let frame     = new Frame({ id: 'frm_test', type: 'Message', signature: 'sig_abc' });
       assert.equal(frame.signature, 'sig_abc');
     });
 
     it('should preserve empty string signature', async () => {
       let { Frame } = await import('../../../src/shared/frame-manager/frame.mjs');
-      let frame     = new Frame({ id: 'frm_test', type: 'message', signature: '' });
+      let frame     = new Frame({ id: 'frm_test', type: 'Message', signature: '' });
       assert.equal(frame.signature, '');
     });
   });
@@ -206,7 +206,7 @@ describe('Frame Signature Field (C1)', () => {
       await persistence.saveFrames(session.id, [
         {
           id:        frameID,
-          type:      'message',
+          type: 'Message',
           content:   { text: 'signed message' },
           order:     1,
           timestamp: Date.now(),
@@ -227,7 +227,7 @@ describe('Frame Signature Field (C1)', () => {
       await persistence.saveFrames(session.id, [
         {
           id:        frameID,
-          type:      'message',
+          type: 'Message',
           content:   { text: 'unsigned' },
           order:     1,
           timestamp: Date.now(),
@@ -244,7 +244,7 @@ describe('Frame Signature Field (C1)', () => {
     it('should include signature in _frameToRecord output', () => {
       let record = persistence._frameToRecord('ses_001', 'int_001', {
         id:        'frm_test',
-        type:      'message',
+        type: 'Message',
         order:     1,
         signature: 'test_sig_hex',
       });
@@ -255,7 +255,7 @@ describe('Frame Signature Field (C1)', () => {
     it('should default signature to null in _frameToRecord when not provided', () => {
       let record = persistence._frameToRecord('ses_001', 'int_001', {
         id:    'frm_test',
-        type:  'message',
+        type: 'Message',
         order: 1,
       });
 
@@ -265,7 +265,7 @@ describe('Frame Signature Field (C1)', () => {
     it('should include signature in _recordToFrame output', () => {
       let frame = persistence._recordToFrame({
         id:        'frm_test',
-        type:      'message',
+        type: 'Message',
         order:     1,
         timestamp: Date.now(),
         signature: 'record_sig',
@@ -277,7 +277,7 @@ describe('Frame Signature Field (C1)', () => {
     it('should default signature to null in _recordToFrame when not on record', () => {
       let frame = persistence._recordToFrame({
         id:        'frm_test',
-        type:      'message',
+        type: 'Message',
         order:     1,
         timestamp: Date.now(),
       });
@@ -296,7 +296,7 @@ describe('Frame Signature Field (C1)', () => {
       let frameManager     = new FrameManager({ history: true });
 
       let results = frameManager.merge(
-        [{ id: 'frm_sig1', type: 'message', content: { text: 'hello' } }],
+        [{ id: 'frm_sig1', type: 'Message', content: { text: 'hello' } }],
         { signature: 'merge_option_sig' },
       );
 
@@ -309,7 +309,7 @@ describe('Frame Signature Field (C1)', () => {
       let frameManager     = new FrameManager({ history: true });
 
       let results = frameManager.merge(
-        [{ id: 'frm_sig2', type: 'message', content: {}, signature: 'frame_level_sig' }],
+        [{ id: 'frm_sig2', type: 'Message', content: {}, signature: 'frame_level_sig' }],
         { signature: 'merge_option_sig' },
       );
 
@@ -322,7 +322,7 @@ describe('Frame Signature Field (C1)', () => {
       let frameManager     = new FrameManager({ history: true });
 
       let results = frameManager.merge(
-        [{ id: 'frm_sig3', type: 'message', content: {} }],
+        [{ id: 'frm_sig3', type: 'Message', content: {} }],
         {},
       );
 
@@ -335,7 +335,7 @@ describe('Frame Signature Field (C1)', () => {
       let frameManager     = new FrameManager({ history: true });
 
       frameManager.merge(
-        [{ id: 'frm_sig4', type: 'message', content: {} }],
+        [{ id: 'frm_sig4', type: 'Message', content: {} }],
         { signature: 'retrievable_sig' },
       );
 
@@ -350,8 +350,8 @@ describe('Frame Signature Field (C1)', () => {
 
       let results = frameManager.merge(
         [
-          { id: 'frm_multi1', type: 'message', content: {} },
-          { id: 'frm_multi2', type: 'message', content: {} },
+          { id: 'frm_multi1', type: 'Message', content: {} },
+          { id: 'frm_multi2', type: 'Message', content: {} },
         ],
         { signature: 'batch_sig' },
       );

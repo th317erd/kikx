@@ -16,7 +16,7 @@ const DEFAULT_MAX_TOTAL_CHARS    = 600000; // ~150K tokens total
  * Get the character length of a message's content for budgeting purposes.
  */
 function getContentLength(message) {
-  if (message.type === 'tool-result') {
+  if (message.type === 'ToolResult') {
     let output = message.content && message.content.output;
     if (output == null)
       return 0;
@@ -29,7 +29,7 @@ function getContentLength(message) {
     return serialized.length;
   }
 
-  if (message.type === 'tool-call') {
+  if (message.type === 'ToolCall') {
     let content = message.content;
     if (content == null)
       return 0;
@@ -83,7 +83,7 @@ export function truncateContent(messages, options = {}) {
  * Returns a new message object if truncated, or the original if unchanged.
  */
 function truncateMessageContent(message, maxLength) {
-  if (message.type === 'tool-result') {
+  if (message.type === 'ToolResult') {
     let output = message.content && message.content.output;
     if (output == null)
       return message;
@@ -111,7 +111,7 @@ function truncateMessageContent(message, maxLength) {
     };
   }
 
-  if (message.type === 'tool-call')
+  if (message.type === 'ToolCall')
     return message; // Don't truncate tool calls — they need full arguments
 
   // Role-based messages (user / assistant)
@@ -232,7 +232,7 @@ function buildToolPairMap(messages) {
   let toolCallsByUseID = new Map();
   for (let i = 0; i < messages.length; i++) {
     let message = messages[i];
-    if (message.type === 'tool-call') {
+    if (message.type === 'ToolCall') {
       let toolUseID = message.content && message.content.toolUseID;
       if (toolUseID)
         toolCallsByUseID.set(toolUseID, i);
@@ -242,7 +242,7 @@ function buildToolPairMap(messages) {
   // Match tool-results to their tool-calls
   for (let i = 0; i < messages.length; i++) {
     let message = messages[i];
-    if (message.type === 'tool-result') {
+    if (message.type === 'ToolResult') {
       let toolUseID = message.content && message.content.toolUseID;
       if (toolUseID && toolCallsByUseID.has(toolUseID)) {
         let callIndex = toolCallsByUseID.get(toolUseID);

@@ -36,13 +36,13 @@ function makeContext(overrides = {}) {
 
 async function* toolCallGenerator(toolName, args, toolUseID) {
   let result = yield {
-    type:       'tool-call',
+    type:       'ToolCall',
     content:    { toolName: toolName || 'test:tool', arguments: args || {}, toolUseID: toolUseID || 'tu_1' },
     authorType: 'agent',
     authorID:   'agt_1',
   };
 
-  yield { type: 'done', content: {} };
+  yield { type: 'Done', content: {} };
 }
 
 function makeFrameManager() {
@@ -118,7 +118,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let requestFrames = createdFrames.filter((f) => f.type === 'permission-request');
+      let requestFrames = createdFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(requestFrames.length, 1);
       assert.ok(requestFrames[0].state, 'permission-request frame must have a state field');
     });
@@ -131,7 +131,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       let state = parseState(frame);
       assert.equal(state.toolName, 'shell:execute');
     });
@@ -145,7 +145,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       let state = parseState(frame);
       assert.deepStrictEqual(state.toolArguments, toolArgs);
     });
@@ -158,7 +158,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       let state = parseState(frame);
       assert.equal(state.toolUseID, 'tu_custom_42');
     });
@@ -171,7 +171,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_42', gen, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       let state = parseState(frame);
       assert.equal(state.sessionID, 'ses_42');
     });
@@ -187,7 +187,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       let state = parseState(frame);
       assert.equal(state.agentID, 'agt_special');
     });
@@ -200,7 +200,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_777', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       let state = parseState(frame);
       assert.equal(state.interactionID, 'int_777');
     });
@@ -213,7 +213,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       let state = parseState(frame);
       assert.equal(state.step, 'awaiting-approval');
     });
@@ -226,7 +226,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       assert.equal(typeof frame.state, 'string', 'state should be a JSON string');
       assert.doesNotThrow(() => JSON.parse(frame.state), 'state should be valid JSON');
     });
@@ -239,7 +239,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let toolResults = createdFrames.filter((f) => f.type === 'tool-result');
+      let toolResults = createdFrames.filter((f) => f.type === 'ToolResult');
       assert.equal(toolResults.length, 1);
       assert.ok(toolResults[0].content.output.includes('PERMISSION REQUIRED'));
     });
@@ -262,7 +262,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       let state = parseState(frame);
       assert.equal(state.agentID, null);
     });
@@ -278,7 +278,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       let state = parseState(frame);
       assert.equal(state.agentID, null);
     });
@@ -290,12 +290,12 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
       // Generator yields a tool-call with undefined arguments
       async function* gen() {
         yield {
-          type:       'tool-call',
+          type:       'ToolCall',
           content:    { toolName: 'test:tool', arguments: undefined, toolUseID: 'tu_1' },
           authorType: 'agent',
           authorID:   'agt_1',
         };
-        yield { type: 'done', content: {} };
+        yield { type: 'Done', content: {} };
       }
 
       let g = gen();
@@ -303,7 +303,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', g, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       if (frame) {
         let state = parseState(frame);
         // toolArguments should be undefined or null (reflecting what was passed)
@@ -325,12 +325,12 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
       // Generator yields a tool-call with toolUseId (not toolUseID)
       async function* gen() {
         yield {
-          type:       'tool-call',
+          type:       'ToolCall',
           content:    { toolName: 'test:tool', arguments: {}, toolUseId: 'tu_camel' },
           authorType: 'agent',
           authorID:   'agt_1',
         };
-        yield { type: 'done', content: {} };
+        yield { type: 'Done', content: {} };
       }
 
       let g = gen();
@@ -338,7 +338,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', g, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       let state = parseState(frame);
       assert.equal(state.toolUseID, 'tu_camel');
     });
@@ -351,8 +351,8 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
-      assert.equal(frame.type, 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
+      assert.equal(frame.type, 'PermissionRequest');
       assert.equal(frame.processed, false);
       assert.equal(frame.hidden, false);
       assert.equal(frame.deleted, false);
@@ -368,7 +368,7 @@ describe('Inline permission flow — state storage (Step 2.1)', () => {
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let frame = createdFrames.find((f) => f.type === 'permission-request');
+      let frame = createdFrames.find((f) => f.type === 'PermissionRequest');
       let state = parseState(frame);
 
       let expectedKeys = ['toolName', 'toolArguments', 'toolUseID', 'sessionID', 'agentID', 'interactionID', 'step'];

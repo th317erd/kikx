@@ -32,7 +32,7 @@ class MockAgent extends AgentInterface {
 
   async *_createGenerator() {
     for (let block of this._blocks) {
-      if (block.type === 'tool-call') {
+      if (block.type === 'ToolCall') {
         let result = yield block;
         block._receivedResult = result;
       } else {
@@ -40,7 +40,7 @@ class MockAgent extends AgentInterface {
       }
     }
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -109,7 +109,7 @@ describe('Streaming Integration (D6)', () => {
       });
 
       let agentPlugin = createAgentPlugin([
-        { type: 'message', content: { html: '<p>Hello from agent</p>' }, authorType: 'agent' },
+        { type: 'Message', content: { html: '<p>Hello from agent</p>' }, authorType: 'agent' },
       ]);
 
       await loop.startInteraction(session.id, {
@@ -126,8 +126,8 @@ describe('Streaming Integration (D6)', () => {
 
       // Should have user-message and agent message
       let types = allFrames.map((f) => f.type);
-      assert.ok(types.includes('user-message'), 'Should have user-message frame');
-      assert.ok(types.includes('message'), 'Should have agent message frame');
+      assert.ok(types.includes('UserMessage'), 'Should have user-message frame');
+      assert.ok(types.includes('Message'), 'Should have agent message frame');
 
       // frame:added events should have fired
       assert.ok(addedFrames.length >= 2, `Expected at least 2 frame:added events, got ${addedFrames.length}`);
@@ -144,7 +144,7 @@ describe('Streaming Integration (D6)', () => {
 
       // First interaction
       let agentPlugin1 = createAgentPlugin([
-        { type: 'message', content: { html: '<p>Response 1</p>' }, authorType: 'agent' },
+        { type: 'Message', content: { html: '<p>Response 1</p>' }, authorType: 'agent' },
       ]);
 
       await loop.startInteraction(session.id, {
@@ -158,7 +158,7 @@ describe('Streaming Integration (D6)', () => {
 
       // Second interaction (same session)
       let agentPlugin2 = createAgentPlugin([
-        { type: 'message', content: { html: '<p>Response 2</p>' }, authorType: 'agent' },
+        { type: 'Message', content: { html: '<p>Response 2</p>' }, authorType: 'agent' },
       ]);
 
       await loop.startInteraction(session.id, {
@@ -189,7 +189,7 @@ describe('Streaming Integration (D6)', () => {
       // Run 3 interactions sequentially
       for (let i = 1; i <= 3; i++) {
         let agentPlugin = createAgentPlugin([
-          { type: 'message', content: { html: `<p>Response ${i}</p>` }, authorType: 'agent' },
+          { type: 'Message', content: { html: `<p>Response ${i}</p>` }, authorType: 'agent' },
         ]);
 
         await loop.startInteraction(session.id, {
@@ -225,7 +225,7 @@ describe('Streaming Integration (D6)', () => {
 
       // First interaction: create some historical frames
       let agentPlugin1 = createAgentPlugin([
-        { type: 'message', content: { html: '<p>Historical response</p>' }, authorType: 'agent' },
+        { type: 'Message', content: { html: '<p>Historical response</p>' }, authorType: 'agent' },
       ]);
 
       await loop.startInteraction(session.id, {
@@ -256,7 +256,7 @@ describe('Streaming Integration (D6)', () => {
 
       // Second interaction: live frames
       let agentPlugin2 = createAgentPlugin([
-        { type: 'message', content: { html: '<p>Live response</p>' }, authorType: 'agent' },
+        { type: 'Message', content: { html: '<p>Live response</p>' }, authorType: 'agent' },
       ]);
 
       await loop.startInteraction(session.id, {
@@ -285,7 +285,7 @@ describe('Streaming Integration (D6)', () => {
       loop.on('commit', ({ commit }) => commits.push(commit));
 
       let agentPlugin = createAgentPlugin([
-        { type: 'message', content: { html: '<p>test</p>' }, authorType: 'agent' },
+        { type: 'Message', content: { html: '<p>test</p>' }, authorType: 'agent' },
       ]);
 
       await loop.startInteraction(session.id, {

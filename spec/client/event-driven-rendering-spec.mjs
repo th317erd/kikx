@@ -60,7 +60,7 @@ after(() => {
 function makeFrame(overrides = {}) {
   return {
     id:            overrides.id || `frame-${Math.random().toString(36).slice(2, 8)}`,
-    type:          overrides.type || 'message',
+    type:          overrides.type || 'Message',
     content:       overrides.content || { html: '<p>Hello</p>' },
     order:         overrides.order ?? 1,
     timestamp:     overrides.timestamp || Date.now(),
@@ -123,7 +123,7 @@ describe('Event-driven rendering — frame:added', { timeout: 5000 }, () => {
   });
 
   it('should create a DOM element when frame:added fires', () => {
-    fm.merge([makeFrame({ id: 'f1', type: 'message' })]);
+    fm.merge([makeFrame({ id: 'f1', type: 'Message' })]);
 
     let el = getByFrameId(container, 'f1');
     assert.ok(el, 'element should exist in the container');
@@ -131,7 +131,7 @@ describe('Event-driven rendering — frame:added', { timeout: 5000 }, () => {
   });
 
   it('should append element to the container', () => {
-    fm.merge([makeFrame({ id: 'f1', type: 'message' })]);
+    fm.merge([makeFrame({ id: 'f1', type: 'Message' })]);
 
     let interactions = getInteractions(container);
     assert.equal(interactions.length, 1);
@@ -139,9 +139,9 @@ describe('Event-driven rendering — frame:added', { timeout: 5000 }, () => {
 
   it('should create multiple elements in order for multiple frames', () => {
     fm.merge([
-      makeFrame({ id: 'f1', type: 'message', content: { html: '<p>First</p>' } }),
-      makeFrame({ id: 'f2', type: 'message', content: { html: '<p>Second</p>' } }),
-      makeFrame({ id: 'f3', type: 'message', content: { html: '<p>Third</p>' } }),
+      makeFrame({ id: 'f1', type: 'Message', content: { html: '<p>First</p>' } }),
+      makeFrame({ id: 'f2', type: 'Message', content: { html: '<p>Second</p>' } }),
+      makeFrame({ id: 'f3', type: 'Message', content: { html: '<p>Third</p>' } }),
     ]);
 
     let interactions = getInteractions(container);
@@ -154,8 +154,8 @@ describe('Event-driven rendering — frame:added', { timeout: 5000 }, () => {
 
   it('should insert frames at correct DOM position based on frame.order', () => {
     // Merge high-order frame first, then lower-order frame
-    fm.merge([makeFrame({ id: 'f-high', type: 'message', content: { html: '<p>Later</p>' } })]);
-    fm.merge([makeFrame({ id: 'f-low', type: 'message', content: { html: '<p>Earlier</p>' } })]);
+    fm.merge([makeFrame({ id: 'f-high', type: 'Message', content: { html: '<p>Later</p>' } })]);
+    fm.merge([makeFrame({ id: 'f-low', type: 'Message', content: { html: '<p>Earlier</p>' } })]);
 
     let interactions = getInteractions(container);
     assert.equal(interactions.length, 2);
@@ -169,7 +169,7 @@ describe('Event-driven rendering — frame:added', { timeout: 5000 }, () => {
 
   it('should handle out-of-order frames by inserting at correct DOM position', () => {
     // First, insert a frame with a high order
-    fm.merge([makeFrame({ id: 'f3', type: 'message' })]);
+    fm.merge([makeFrame({ id: 'f3', type: 'Message' })]);
 
     // Now simulate merging an older frame (which would happen during scroll-up load)
     // The FrameManager reassigns orders internally, but the DOM insertion
@@ -181,7 +181,7 @@ describe('Event-driven rendering — frame:added', { timeout: 5000 }, () => {
   });
 
   it('should NOT create a second element for a duplicate frame:added', () => {
-    fm.merge([makeFrame({ id: 'dup-1', type: 'message' })]);
+    fm.merge([makeFrame({ id: 'dup-1', type: 'Message' })]);
     assert.equal(getInteractions(container).length, 1);
 
     // Merging the same frame ID again should be a no-op at the FrameManager
@@ -193,7 +193,7 @@ describe('Event-driven rendering — frame:added', { timeout: 5000 }, () => {
   });
 
   it('should not create DOM elements for hidden frame types', () => {
-    fm.merge([makeFrame({ id: 'hidden-1', type: 'tool-call' })]);
+    fm.merge([makeFrame({ id: 'hidden-1', type: 'ToolCall' })]);
 
     let interactions = getInteractions(container);
     assert.equal(interactions.length, 0, 'tool-call should not create a DOM element');
@@ -202,7 +202,7 @@ describe('Event-driven rendering — frame:added', { timeout: 5000 }, () => {
   it('should work when merging frames with events enabled (no manual loops)', () => {
     // This is the core assertion: merge() with events causes rendering automatically
     fm.merge([
-      makeFrame({ id: 'auto-1', type: 'message', content: { html: '<p>Auto rendered</p>' } }),
+      makeFrame({ id: 'auto-1', type: 'Message', content: { html: '<p>Auto rendered</p>' } }),
     ]);
 
     let el = getByFrameId(container, 'auto-1');
@@ -231,7 +231,7 @@ describe('Event-driven rendering — frame:updated', { timeout: 5000 }, () => {
 
   it('should update content of existing element on frame:updated (no new element)', () => {
     // Create the initial frame
-    fm.merge([makeFrame({ id: 'upd-1', type: 'message', content: { html: '<p>Original</p>' } })]);
+    fm.merge([makeFrame({ id: 'upd-1', type: 'Message', content: { html: '<p>Original</p>' } })]);
 
     let interactionsBefore = getInteractions(container);
     assert.equal(interactionsBefore.length, 1);
@@ -243,7 +243,7 @@ describe('Event-driven rendering — frame:updated', { timeout: 5000 }, () => {
     // Now update the frame via targets (which triggers frame:updated)
     fm.merge([{
       id:      'update-source-1',
-      type:    'message',
+      type: 'Message',
       targets: ['upd-1'],
       content: { html: '<p>Updated</p>' },
       hidden:  false,
@@ -315,7 +315,7 @@ describe('Event-driven rendering — optimistic user messages', { timeout: 5000 
     // Step 2: Server confirms — merge a user-message frame
     fm.merge([makeFrame({
       id:         'confirmed-user-msg',
-      type:       'user-message',
+      type:       'UserMessage',
       authorType: 'user',
       content:    { text: 'Hello' },
     })]);
@@ -338,7 +338,7 @@ describe('Event-driven rendering — optimistic user messages', { timeout: 5000 
 
     fm.merge([makeFrame({
       id:         'fresh-user-msg',
-      type:       'user-message',
+      type:       'UserMessage',
       authorType: 'user',
       content:    { text: 'Hello from history' },
     })]);
@@ -373,7 +373,7 @@ describe('Event-driven rendering — phantom frames', { timeout: 5000 }, () => {
   it('should create a persistent group frame on first phantom with groupID', () => {
     fm.merge([{
       id:       'phantom-1',
-      type:     'message',
+      type: 'Message',
       phantom:  true,
       groupID:  'group-1',
       content:  { html: '<p>Streaming...</p>' },
@@ -388,7 +388,7 @@ describe('Event-driven rendering — phantom frames', { timeout: 5000 }, () => {
     // First phantom → creates group frame
     fm.merge([{
       id:       'phantom-1',
-      type:     'message',
+      type: 'Message',
       phantom:  true,
       groupID:  'group-2',
       content:  { html: '<p>First chunk</p>' },
@@ -400,7 +400,7 @@ describe('Event-driven rendering — phantom frames', { timeout: 5000 }, () => {
     // Second phantom → deep-merge → frame:updated
     fm.merge([{
       id:       'phantom-2',
-      type:     'message',
+      type: 'Message',
       phantom:  true,
       groupID:  'group-2',
       content:  { html: '<p>First chunk more text</p>' },
@@ -422,7 +422,7 @@ describe('Event-driven rendering — phantom frames', { timeout: 5000 }, () => {
 
     fm.merge([{
       id:       'ephemeral-1',
-      type:     'message',
+      type: 'Message',
       phantom:  true,
       content:  { text: 'Typing...' },
     }]);
@@ -459,7 +459,7 @@ describe('Event-driven rendering — failure paths', { timeout: 5000 }, () => {
     // Manually emit frame:updated for a frame that was never rendered
     assert.doesNotThrow(() => {
       fm.emit('frame:updated', {
-        frame: makeFrame({ id: 'ghost-frame', type: 'message' }),
+        frame: makeFrame({ id: 'ghost-frame', type: 'Message' }),
       });
     });
 
@@ -470,12 +470,12 @@ describe('Event-driven rendering — failure paths', { timeout: 5000 }, () => {
 
   it('should skip silently when frame:added fires for frame already in DOM (dedup)', () => {
     // Insert a frame manually first
-    fm.merge([makeFrame({ id: 'already-here', type: 'message' })]);
+    fm.merge([makeFrame({ id: 'already-here', type: 'Message' })]);
     assert.equal(getInteractions(container).length, 1);
 
     // Manually emit frame:added again for the same ID
     fm.emit('frame:added', {
-      frame: makeFrame({ id: 'already-here', type: 'message' }),
+      frame: makeFrame({ id: 'already-here', type: 'Message' }),
     });
 
     // Still just 1 element
@@ -495,7 +495,7 @@ describe('Event-driven rendering — failure paths', { timeout: 5000 }, () => {
     let addedFired = false;
     fm.on('frame:added', () => { addedFired = true; });
 
-    fm.merge([{ type: 'message', content: { html: '<p>no id</p>' } }]);
+    fm.merge([{ type: 'Message', content: { html: '<p>no id</p>' } }]);
 
     assert.ok(!addedFired, 'frame:added should not fire for frame without id');
     assert.equal(getInteractions(container).length, 0);
@@ -523,7 +523,7 @@ describe('Event-driven rendering — failure paths', { timeout: 5000 }, () => {
 
   it('should handle frame with order 0', () => {
     assert.doesNotThrow(() => {
-      fm.merge([makeFrame({ id: 'zero-order', type: 'message' })]);
+      fm.merge([makeFrame({ id: 'zero-order', type: 'Message' })]);
     });
 
     // FrameManager reassigns orders starting from 1, so order 0 in the input
@@ -534,7 +534,7 @@ describe('Event-driven rendering — failure paths', { timeout: 5000 }, () => {
 
   it('should handle frame with negative order', () => {
     assert.doesNotThrow(() => {
-      fm.merge([makeFrame({ id: 'neg-order', type: 'message' })]);
+      fm.merge([makeFrame({ id: 'neg-order', type: 'Message' })]);
     });
 
     let el = getByFrameId(container, 'neg-order');
@@ -546,7 +546,7 @@ describe('Event-driven rendering — failure paths', { timeout: 5000 }, () => {
     for (let i = 0; i < 120; i++) {
       frames.push(makeFrame({
         id:      `rapid-${i}`,
-        type:    'message',
+        type: 'Message',
         content: { html: `<p>Message ${i}</p>` },
       }));
     }
@@ -572,7 +572,7 @@ describe('Event-driven rendering — failure paths', { timeout: 5000 }, () => {
     for (let i = 0; i < 100; i++) {
       frames.push(makeFrame({
         id:      `order-${String(i).padStart(3, '0')}`,
-        type:    'message',
+        type: 'Message',
         content: { html: `<p>Message ${i}</p>` },
       }));
     }
@@ -622,9 +622,9 @@ describe('Event-driven rendering — scroll behavior', { timeout: 5000 }, () => 
     // should still execute without errors
     assert.doesNotThrow(() => {
       fm.merge([
-        makeFrame({ id: 'scroll-1', type: 'message' }),
-        makeFrame({ id: 'scroll-2', type: 'message' }),
-        makeFrame({ id: 'scroll-3', type: 'message' }),
+        makeFrame({ id: 'scroll-1', type: 'Message' }),
+        makeFrame({ id: 'scroll-2', type: 'Message' }),
+        makeFrame({ id: 'scroll-3', type: 'Message' }),
       ]);
     });
 
@@ -638,7 +638,7 @@ describe('Event-driven rendering — scroll behavior', { timeout: 5000 }, () => 
     let scrollBefore = container.scrollTop;
 
     // Insert a frame that would go at the top
-    fm.merge([makeFrame({ id: 'prepend-1', type: 'message' })]);
+    fm.merge([makeFrame({ id: 'prepend-1', type: 'Message' })]);
 
     // In a real browser, scrollTop should be adjusted to maintain position.
     // In jsdom, scrollTop may stay 0. We just verify no crash.
@@ -648,8 +648,8 @@ describe('Event-driven rendering — scroll behavior', { timeout: 5000 }, () => 
   it('should auto-scroll to bottom when anchored and new element appended', () => {
     // This tests the auto-scroll behavior when the user is at the bottom.
     // In jsdom, we can't truly test visual scroll, but we verify the path runs.
-    fm.merge([makeFrame({ id: 'autoscroll-1', type: 'message' })]);
-    fm.merge([makeFrame({ id: 'autoscroll-2', type: 'message' })]);
+    fm.merge([makeFrame({ id: 'autoscroll-1', type: 'Message' })]);
+    fm.merge([makeFrame({ id: 'autoscroll-2', type: 'Message' })]);
 
     assert.equal(getInteractions(container).length, 2, 'both elements should exist');
   });
@@ -678,9 +678,9 @@ describe('Event-driven rendering — integration', { timeout: 5000 }, () => {
     // The ENTIRE rendering pipeline is driven by events.
     // Calling merge() with events enabled should result in DOM elements.
     fm.merge([
-      makeFrame({ id: 'int-a', type: 'message', content: { html: '<p>A</p>' } }),
-      makeFrame({ id: 'int-b', type: 'user-message', authorType: 'user', content: { text: 'B' } }),
-      makeFrame({ id: 'int-c', type: 'error', content: { message: 'Oops' } }),
+      makeFrame({ id: 'int-a', type: 'Message', content: { html: '<p>A</p>' } }),
+      makeFrame({ id: 'int-b', type: 'UserMessage', authorType: 'user', content: { text: 'B' } }),
+      makeFrame({ id: 'int-c', type: 'Error', content: { message: 'Oops' } }),
     ]);
 
     assert.equal(getInteractions(container).length, 3, 'all 3 renderable frames should be in DOM');
@@ -691,11 +691,11 @@ describe('Event-driven rendering — integration', { timeout: 5000 }, () => {
 
   it('should mix renderable and non-renderable frames correctly', () => {
     fm.merge([
-      makeFrame({ id: 'vis-1', type: 'message', content: { html: '<p>Visible</p>' } }),
-      makeFrame({ id: 'inv-1', type: 'tool-call', content: {} }),
-      makeFrame({ id: 'vis-2', type: 'error', content: { message: 'Visible error' } }),
-      makeFrame({ id: 'inv-2', type: 'tool-result', content: {} }),
-      makeFrame({ id: 'vis-3', type: 'reflection', content: { text: 'Thinking' } }),
+      makeFrame({ id: 'vis-1', type: 'Message', content: { html: '<p>Visible</p>' } }),
+      makeFrame({ id: 'inv-1', type: 'ToolCall', content: {} }),
+      makeFrame({ id: 'vis-2', type: 'Error', content: { message: 'Visible error' } }),
+      makeFrame({ id: 'inv-2', type: 'ToolResult', content: {} }),
+      makeFrame({ id: 'vis-3', type: 'Reflection', content: { text: 'Thinking' } }),
     ]);
 
     // Only 3 renderable frames should produce DOM elements
@@ -713,7 +713,7 @@ describe('Event-driven rendering — integration', { timeout: 5000 }, () => {
     // Step 1: First phantom with groupID → creates group frame (hidden)
     fm.merge([{
       id:       'delta-1',
-      type:     'message',
+      type: 'Message',
       phantom:  true,
       groupID:  'stream-group',
       content:  { html: '<p>Hello</p>' },
@@ -725,7 +725,7 @@ describe('Event-driven rendering — integration', { timeout: 5000 }, () => {
     // Step 2: Subsequent phantom → deep-merge → frame:updated
     fm.merge([{
       id:       'delta-2',
-      type:     'message',
+      type: 'Message',
       phantom:  true,
       groupID:  'stream-group',
       content:  { html: '<p>Hello world</p>' },
@@ -738,7 +738,7 @@ describe('Event-driven rendering — integration', { timeout: 5000 }, () => {
     // Step 3: Final commit frame targets the group frame → frame:updated finalizes
     fm.merge([{
       id:      'final-msg',
-      type:    'message',
+      type: 'Message',
       targets: ['stream-group'],
       content: { html: '<p>Hello world! Final.</p>' },
       hidden:  false,
@@ -754,7 +754,7 @@ describe('Event-driven rendering — integration', { timeout: 5000 }, () => {
     // Agent A starts streaming
     fm.merge([{
       id:       'a-delta-1',
-      type:     'message',
+      type: 'Message',
       phantom:  true,
       groupID:  'stream-agent-a',
       content:  { html: '<p>Agent A says</p>' },
@@ -763,7 +763,7 @@ describe('Event-driven rendering — integration', { timeout: 5000 }, () => {
     // Agent B starts streaming
     fm.merge([{
       id:       'b-delta-1',
-      type:     'message',
+      type: 'Message',
       phantom:  true,
       groupID:  'stream-agent-b',
       content:  { html: '<p>Agent B says</p>' },
@@ -776,7 +776,7 @@ describe('Event-driven rendering — integration', { timeout: 5000 }, () => {
     // Agent A continues
     fm.merge([{
       id:       'a-delta-2',
-      type:     'message',
+      type: 'Message',
       phantom:  true,
       groupID:  'stream-agent-a',
       content:  { html: '<p>Agent A says hello</p>' },

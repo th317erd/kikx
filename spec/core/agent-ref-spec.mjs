@@ -28,7 +28,7 @@ class MockAgent extends AgentInterface {
 
   async *_createGenerator(_params) {
     for (let block of this._blocks) {
-      if (block.type === 'tool-call') {
+      if (block.type === 'ToolCall') {
         let result = yield block;
         block._receivedResult = result;
       } else {
@@ -36,7 +36,7 @@ class MockAgent extends AgentInterface {
       }
     }
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -80,7 +80,7 @@ describe('Per-agent refs (B4)', () => {
     let session = await createTestSession();
     let loop    = createLoop();
     let agent   = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>Hi</p>' }, authorType: 'agent', authorID: 'agt_b4' },
+      { type: 'Message', content: { html: '<p>Hi</p>' }, authorType: 'agent', authorID: 'agt_b4' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -101,7 +101,7 @@ describe('Per-agent refs (B4)', () => {
     let session = await createTestSession();
     let loop    = createLoop();
     let agent   = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>Reply</p>' }, authorType: 'agent', authorID: 'agt_adv' },
+      { type: 'Message', content: { html: '<p>Reply</p>' }, authorType: 'agent', authorID: 'agt_adv' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -125,7 +125,7 @@ describe('Per-agent refs (B4)', () => {
 
     // First interaction
     let agent1 = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>First</p>' }, authorType: 'agent', authorID: 'agt_nr' },
+      { type: 'Message', content: { html: '<p>First</p>' }, authorType: 'agent', authorID: 'agt_nr' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -141,7 +141,7 @@ describe('Per-agent refs (B4)', () => {
 
     // Second interaction — ref should already exist, not recreated
     let agent2 = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>Second</p>' }, authorType: 'agent', authorID: 'agt_nr' },
+      { type: 'Message', content: { html: '<p>Second</p>' }, authorType: 'agent', authorID: 'agt_nr' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -190,7 +190,7 @@ describe('Per-agent refs (B4)', () => {
 
     // First interaction — agent processes everything
     let agent1 = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>Got it</p>' }, authorType: 'agent', authorID: 'agt_diff' },
+      { type: 'Message', content: { html: '<p>Got it</p>' }, authorType: 'agent', authorID: 'agt_diff' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -208,7 +208,7 @@ describe('Per-agent refs (B4)', () => {
     // (normally the scheduler would trigger agent on this)
     frameManager.merge([{
       id:         'frm_new_user_msg',
-      type:       'user-message',
+      type:       'UserMessage',
       content:    { text: 'Second message' },
       authorType: 'user',
       authorID:   'usr_1',
@@ -218,7 +218,7 @@ describe('Per-agent refs (B4)', () => {
     let changes = frameManager.diff(`processed/agent-agt_diff`, 'heads/main');
     assert.ok(changes.length > 0, 'Should have new frames since agent last processed');
 
-    let hasUserMessage = changes.some((c) => c.frame.type === 'user-message');
+    let hasUserMessage = changes.some((c) => c.frame.type === 'UserMessage');
     assert.ok(hasUserMessage, 'Diff should include the new user message');
   });
 
@@ -228,7 +228,7 @@ describe('Per-agent refs (B4)', () => {
 
     // Agent A interaction
     let agentA = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>A says hi</p>' }, authorType: 'agent', authorID: 'agt_A' },
+      { type: 'Message', content: { html: '<p>A says hi</p>' }, authorType: 'agent', authorID: 'agt_A' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -241,7 +241,7 @@ describe('Per-agent refs (B4)', () => {
 
     // Agent B interaction
     let agentB = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>B says hi</p>' }, authorType: 'agent', authorID: 'agt_B' },
+      { type: 'Message', content: { html: '<p>B says hi</p>' }, authorType: 'agent', authorID: 'agt_B' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -270,7 +270,7 @@ describe('Per-agent refs (B4)', () => {
     let session = await createTestSession();
     let loop    = createLoop();
     let agent   = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>No id</p>' }, authorType: 'agent', authorID: null },
+      { type: 'Message', content: { html: '<p>No id</p>' }, authorType: 'agent', authorID: null },
     ]);
 
     await loop.startInteraction(session.id, {

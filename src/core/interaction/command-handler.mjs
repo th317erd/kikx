@@ -84,7 +84,7 @@ export class CommandHandler {
     // the agent's message history (the agent should never see "/reload" etc.)
     let userFrame = {
       id:            generateID('frm_'),
-      type:          'user-message',
+      type:          'UserMessage',
       content:       { text: params.userMessage },
       order:         order++,
       timestamp:     Date.now(),
@@ -120,7 +120,7 @@ export class CommandHandler {
           // Permission hard-break for commands
           let requestFrame = {
             id:            generateID('frm_'),
-            type:          'permission-request',
+            type:          'PermissionRequest',
             content:       { commandName: commandMatch.commandName, arguments: commandMatch.arguments, featureName },
             order:         order++,
             timestamp:     Date.now(),
@@ -211,7 +211,7 @@ export class CommandHandler {
     // Create command-result frame
     let resultFrame = {
       id:            generateID('frm_'),
-      type:          'command-result',
+      type:          'CommandResult',
       content:       resultContent,
       order:         order++,
       timestamp:     Date.now(),

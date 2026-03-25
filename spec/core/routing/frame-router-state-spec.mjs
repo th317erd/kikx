@@ -61,13 +61,13 @@ describe('FrameRouter — plugin state integration', () => {
       }
     }
 
-    router.registerSelector('type:user-message', StateReader, 'reader');
+    router.registerSelector('type:UserMessage', StateReader, 'reader');
     router.connectTo(fm);
 
     // Merge a frame with pre-existing state
     fm.merge([{
       id:      'f1',
-      type:    'user-message',
+      type:    'UserMessage',
       content: { text: 'hello' },
       state:   JSON.stringify({ step: 'ready', count: 5 }),
     }]);
@@ -91,10 +91,10 @@ describe('FrameRouter — plugin state integration', () => {
       }
     }
 
-    router.registerSelector('type:user-message', StateWriter, 'writer');
+    router.registerSelector('type:UserMessage', StateWriter, 'writer');
     router.connectTo(fm, null, { framePersistence: persistence });
 
-    fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+    fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
     await tick();
 
     // State should have been persisted
@@ -115,12 +115,12 @@ describe('FrameRouter — plugin state integration', () => {
       }
     }
 
-    router.registerSelector('type:user-message', ReadOnly, 'reader');
+    router.registerSelector('type:UserMessage', ReadOnly, 'reader');
     router.connectTo(fm, null, { framePersistence: persistence });
 
     fm.merge([{
       id:      'f1',
-      type:    'user-message',
+      type:    'UserMessage',
       content: { text: 'hello' },
       state:   JSON.stringify({ step: 'ready' }),
     }]);
@@ -145,11 +145,11 @@ describe('FrameRouter — plugin state integration', () => {
       }
     }
 
-    router.registerSelector('type:user-message', RoundTrip, 'roundtrip');
+    router.registerSelector('type:UserMessage', RoundTrip, 'roundtrip');
     router.connectTo(fm, null, { framePersistence: persistence });
 
     // First routing cycle
-    fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+    fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
     await tick();
 
     assert.deepStrictEqual(captured[0], {}); // starts empty
@@ -160,7 +160,7 @@ describe('FrameRouter — plugin state integration', () => {
     // Update the frame with the state that was persisted
     fm.merge([{
       id:      'f1',
-      type:    'user-message',
+      type:    'UserMessage',
       content: { text: 'hello again' },
       state:   JSON.stringify({ visits: 1 }),
     }]);
@@ -187,10 +187,10 @@ describe('FrameRouter — plugin state integration', () => {
       }
     }
 
-    router.registerSelector('type:user-message', StateReader, 'reader');
+    router.registerSelector('type:UserMessage', StateReader, 'reader');
     router.connectTo(fm);
 
-    fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+    fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
     await tick();
 
     assert.ok(captured);
@@ -209,10 +209,10 @@ describe('FrameRouter — plugin state integration', () => {
       }
     }
 
-    router.registerSelector('type:user-message', CrashPlugin, 'crasher');
+    router.registerSelector('type:UserMessage', CrashPlugin, 'crasher');
     router.connectTo(fm, null, { framePersistence: persistence });
 
-    fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+    fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
     await tick();
 
     // State should NOT be persisted on error
@@ -230,11 +230,11 @@ describe('FrameRouter — plugin state integration', () => {
       }
     }
 
-    router.registerSelector('type:user-message', StateWriter, 'writer');
+    router.registerSelector('type:UserMessage', StateWriter, 'writer');
     router.connectTo(fm); // no persistence passed
 
     // Should not throw
-    fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+    fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
     await tick();
 
     // Frame should still have state updated in memory
@@ -255,12 +255,12 @@ describe('FrameRouter — plugin state integration', () => {
       }
     }
 
-    router.registerSelector('type:user-message', StateReader, 'reader');
+    router.registerSelector('type:UserMessage', StateReader, 'reader');
     router.connectTo(fm);
 
     fm.merge([{
       id:      'f1',
-      type:    'user-message',
+      type:    'UserMessage',
       content: { text: 'hello' },
       state:   '{corrupted-json!!!',
     }]);
@@ -297,11 +297,11 @@ describe('FrameRouter — plugin state integration', () => {
       }
     }
 
-    router.registerSelector('type:user-message', PluginA, 'A');
-    router.registerSelector('type:user-message', PluginB, 'B');
+    router.registerSelector('type:UserMessage', PluginA, 'A');
+    router.registerSelector('type:UserMessage', PluginB, 'B');
     router.connectTo(fm, null, { framePersistence: persistence });
 
-    fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+    fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
     await tick();
 
     // PluginA sets a='from-A'

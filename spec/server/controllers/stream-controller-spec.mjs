@@ -77,21 +77,21 @@ function wireStreamListeners(interactionLoop, sessionID, response) {
     if (sid !== sessionID)
       return;
 
-    response.write(`event: delta\ndata: ${JSON.stringify({ interactionID: iid, content, authorType: aType || null, authorID: aID || null })}\n\n`);
+    response.write(`event: Delta\ndata: ${JSON.stringify({ interactionID: iid, content, authorType: aType || null, authorID: aID || null })}\n\n`);
   };
 
   interactionLoop.on('frame', onFrame);
   interactionLoop.on('commit', onCommit);
   interactionLoop.on('interaction:start', onInteractionStart);
   interactionLoop.on('interaction:end', onInteractionEnd);
-  interactionLoop.on('delta', onDelta);
+  interactionLoop.on('Delta', onDelta);
 
   return () => {
     interactionLoop.off('frame', onFrame);
     interactionLoop.off('commit', onCommit);
     interactionLoop.off('interaction:start', onInteractionStart);
     interactionLoop.off('interaction:end', onInteractionEnd);
-    interactionLoop.off('delta', onDelta);
+    interactionLoop.off('Delta', onDelta);
   };
 }
 
@@ -121,7 +121,7 @@ describe('StreamController commit forwarding', () => {
         timestamp:   Date.now(),
         parentOrder: null,
         silent:      false,
-        frames:      [{ id: 'frm_1', type: 'user-message', content: { text: 'hello' } }],
+        frames:      [{ id: 'frm_1', type: 'UserMessage', content: { text: 'hello' } }],
       };
 
       interactionLoop.emit('commit', { sessionID: 'ses_abc', commit });
@@ -137,7 +137,7 @@ describe('StreamController commit forwarding', () => {
     it('filters commit events by sessionID', () => {
       let commit = {
         order:  1,
-        frames: [{ id: 'frm_1', type: 'message', content: { html: 'hi' } }],
+        frames: [{ id: 'frm_1', type: 'Message', content: { html: 'hi' } }],
       };
 
       interactionLoop.emit('commit', { sessionID: 'ses_other', commit });
@@ -149,7 +149,7 @@ describe('StreamController commit forwarding', () => {
     it('includes enriched frame data in commit payload', () => {
       let frameData = {
         id:         'frm_enriched',
-        type:       'message',
+        type: 'Message',
         content:    { html: '<p>enriched</p>' },
         timestamp:  Date.now(),
         authorType: 'agent',
@@ -184,7 +184,7 @@ describe('StreamController commit forwarding', () => {
 
   describe('frame event backward compatibility', () => {
     it('still forwards frame events alongside commit events', () => {
-      let frame = { id: 'frm_1', type: 'message', content: { html: 'test' } };
+      let frame = { id: 'frm_1', type: 'Message', content: { html: 'test' } };
 
       interactionLoop.emit('frame', { sessionID: 'ses_abc', frame });
 
@@ -193,7 +193,7 @@ describe('StreamController commit forwarding', () => {
     });
 
     it('both frame and commit events are forwarded for same interaction', () => {
-      let frame  = { id: 'frm_1', type: 'message', content: { html: 'test' } };
+      let frame  = { id: 'frm_1', type: 'Message', content: { html: 'test' } };
       let commit = { order: 1, frames: [frame], changes: [{ frameID: 'frm_1', operation: 'create' }] };
 
       interactionLoop.emit('frame', { sessionID: 'ses_abc', frame });
@@ -258,7 +258,7 @@ describe('StreamController commit forwarding', () => {
     });
 
     it('delta SSE includes authorType and authorID', () => {
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_abc',
         interactionID: 'int_4',
         content:       { text: 'hello' },
@@ -266,7 +266,7 @@ describe('StreamController commit forwarding', () => {
         authorID:      'agt_55',
       });
 
-      let deltaChunks = response.chunks.filter((chunk) => chunk.startsWith('event: delta'));
+      let deltaChunks = response.chunks.filter((chunk) => chunk.startsWith('event: Delta'));
       assert.equal(deltaChunks.length, 1);
 
       let data = JSON.parse(deltaChunks[0].split('data: ')[1].trim());
@@ -277,13 +277,13 @@ describe('StreamController commit forwarding', () => {
     });
 
     it('delta SSE authorType/authorID are null when not provided', () => {
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_abc',
         interactionID: 'int_5',
         content:       { text: 'bare' },
       });
 
-      let deltaChunks = response.chunks.filter((chunk) => chunk.startsWith('event: delta'));
+      let deltaChunks = response.chunks.filter((chunk) => chunk.startsWith('event: Delta'));
       let data = JSON.parse(deltaChunks[0].split('data: ')[1].trim());
       assert.equal(data.authorType, null);
       assert.equal(data.authorID, null);
@@ -292,7 +292,7 @@ describe('StreamController commit forwarding', () => {
     it('filters streaming identity events by sessionID', () => {
       interactionLoop.emit('interaction:start', { sessionID: 'ses_other', interactionID: 'int_x', agentID: 'agt_1' });
       interactionLoop.emit('interaction:end', { sessionID: 'ses_other', interactionID: 'int_x', agentID: 'agt_1' });
-      interactionLoop.emit('delta', { sessionID: 'ses_other', interactionID: 'int_x', content: { text: 'hi' }, authorType: 'agent', authorID: 'agt_1' });
+      interactionLoop.emit('Delta', { sessionID: 'ses_other', interactionID: 'int_x', content: { text: 'hi' }, authorType: 'agent', authorID: 'agt_1' });
 
       assert.equal(response.chunks.length, 0);
     });

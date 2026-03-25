@@ -136,7 +136,7 @@ describe('Multi-agent streaming', () => {
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
       assert.ok(page._typingIndicators.has('agt_alpha'));
 
-      page._handleSSEEvent('delta', JSON.stringify({
+      page._handleSSEEvent('Delta', JSON.stringify({
         interactionID: 'int_1',
         content:       { text: 'Hello' },
         authorID:      'agt_alpha',
@@ -163,7 +163,7 @@ describe('Multi-agent streaming', () => {
     it('creates streaming group on first delta', () => {
       let page = createSessionPage();
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
-      page._handleSSEEvent('delta', JSON.stringify({
+      page._handleSSEEvent('Delta', JSON.stringify({
         interactionID: 'int_1',
         content:       { text: 'Hello' },
         authorID:      'agt_alpha',
@@ -178,8 +178,8 @@ describe('Multi-agent streaming', () => {
     it('accumulates deltas for same agent', () => {
       let page = createSessionPage();
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
-      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hello ' }, authorID: 'agt_alpha' }));
-      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'World' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('Delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hello ' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('Delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'World' }, authorID: 'agt_alpha' }));
 
       let sg = page._streamingGroups.get('agt_alpha');
       assert.equal(sg.html, 'Hello World');
@@ -188,7 +188,7 @@ describe('Multi-agent streaming', () => {
     it('merges phantom into FrameManager group frame', () => {
       let page = createSessionPage();
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
-      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('Delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
 
       let groupFrame = page._frameManager.get('int_1');
       assert.ok(groupFrame, 'group frame should exist in FrameManager');
@@ -198,7 +198,7 @@ describe('Multi-agent streaming', () => {
     it('creates DOM element for streaming bubble', () => {
       let page = createSessionPage();
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
-      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('Delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
 
       let el = page._chatView.querySelector('[data-frame-id="int_1"]');
       assert.ok(el, 'streaming bubble should exist in DOM');
@@ -223,7 +223,7 @@ describe('Multi-agent streaming', () => {
     it('interaction:end clears both typing indicator and streaming group', () => {
       let page = createSessionPage();
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
-      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Test' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('Delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Test' }, authorID: 'agt_alpha' }));
 
       page._handleSSEEvent('interaction:end', JSON.stringify({ agentID: 'agt_alpha' }));
       assert.ok(!page._streamingGroups.has('agt_alpha'), 'streaming group should be cleared');
@@ -236,7 +236,7 @@ describe('Multi-agent streaming', () => {
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
       assert.ok(page._typingIndicators.has('agt_alpha'), 'typing indicator after start');
 
-      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hello' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('Delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hello' }, authorID: 'agt_alpha' }));
       assert.ok(!page._typingIndicators.has('agt_alpha'), 'typing indicator removed after delta');
       assert.ok(page._streamingGroups.has('agt_alpha'), 'streaming group created');
 
@@ -258,7 +258,7 @@ describe('Multi-agent streaming', () => {
       assert.ok(page._typingIndicators.has('default'), 'typing indicator under "default" key');
 
       // delta without authorID → uses 'default'
-      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'hello' } }));
+      page._handleSSEEvent('Delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'hello' } }));
       let sg = page._streamingGroups.get('default');
       assert.ok(sg, 'streaming group under "default" key');
       assert.equal(sg.html, 'hello');
@@ -277,9 +277,9 @@ describe('Multi-agent streaming', () => {
     it('accumulates reflection text in streaming group', () => {
       let page = createSessionPage();
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
-      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('Delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
 
-      page._handleSSEEvent('reflection-delta', JSON.stringify({
+      page._handleSSEEvent('ReflectionDelta', JSON.stringify({
         interactionID: 'int_1',
         content:       { text: 'thinking...' },
         authorID:      'agt_alpha',
@@ -292,10 +292,10 @@ describe('Multi-agent streaming', () => {
     it('accumulates multiple reflection deltas', () => {
       let page = createSessionPage();
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
-      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'msg' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('Delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'msg' }, authorID: 'agt_alpha' }));
 
-      page._handleSSEEvent('reflection-delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'think ' }, authorID: 'agt_alpha' }));
-      page._handleSSEEvent('reflection-delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'more' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('ReflectionDelta', JSON.stringify({ interactionID: 'int_1', content: { text: 'think ' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('ReflectionDelta', JSON.stringify({ interactionID: 'int_1', content: { text: 'more' }, authorID: 'agt_alpha' }));
 
       let sg = page._streamingGroups.get('agt_alpha');
       assert.equal(sg.reflectionText, 'think more');
@@ -304,8 +304,8 @@ describe('Multi-agent streaming', () => {
     it('marks reflection block as complete on interaction:end', () => {
       let page = createSessionPage();
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
-      page._handleSSEEvent('delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
-      page._handleSSEEvent('reflection-delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'thinking...' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('Delta', JSON.stringify({ interactionID: 'int_1', content: { text: 'Hi' }, authorID: 'agt_alpha' }));
+      page._handleSSEEvent('ReflectionDelta', JSON.stringify({ interactionID: 'int_1', content: { text: 'thinking...' }, authorID: 'agt_alpha' }));
 
       // Verify reflection block exists and is NOT complete yet
       let sg      = page._streamingGroups.get('agt_alpha');
@@ -333,7 +333,7 @@ describe('Multi-agent streaming', () => {
       // Simulate a frame in the FrameManager with authorType=agent
       page._frameManager.merge([{
         id:         'frm_test1',
-        type:       'message',
+        type: 'Message',
         content:    { html: '<p>Hello</p>' },
         order:      1,
         timestamp:  Date.now(),
@@ -363,7 +363,7 @@ describe('Multi-agent streaming', () => {
 
       page._frameManager.merge([{
         id:         'frm_test2',
-        type:       'message',
+        type: 'Message',
         content:    { html: '<p>Hello</p>' },
         order:      1,
         timestamp:  Date.now(),
@@ -389,7 +389,7 @@ describe('Multi-agent streaming', () => {
 
       page._frameManager.merge([{
         id:         'frm_test3',
-        type:       'message',
+        type: 'Message',
         content:    { html: '<p>Hello</p>' },
         order:      1,
         timestamp:  Date.now(),

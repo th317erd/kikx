@@ -411,13 +411,13 @@ describe('Frame model', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       timestamp:     Date.now(),
     });
 
     assert.ok(frame.id);
     assert.ok(frame.id.startsWith('frm_'));
-    assert.equal(frame.type, 'message');
+    assert.equal(frame.type, 'Message');
     assert.equal(frame.hidden, true);  // default
     assert.equal(frame.deleted, false);
     assert.equal(frame.processed, false);
@@ -429,7 +429,7 @@ describe('Frame model', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       content:       JSON.stringify(contentData),
       timestamp:     Date.now(),
     });
@@ -459,7 +459,7 @@ describe('Frame model', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       timestamp:     Date.now(),
     });
 
@@ -467,20 +467,20 @@ describe('Frame model', () => {
   });
 
   it('should query frames by session and order', async () => {
-    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 1, type: 'message', timestamp: Date.now() });
-    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 2, type: 'message', timestamp: Date.now() });
-    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 3, type: 'tool-call', timestamp: Date.now() });
+    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 1, type: 'Message', timestamp: Date.now() });
+    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 2, type: 'Message', timestamp: Date.now() });
+    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 3, type: 'ToolCall', timestamp: Date.now() });
 
     let frames = await models.Frame.where.sessionID.EQ(session.id).all();
     assert.equal(frames.length, 3);
   });
 
   it('should filter frames by type', async () => {
-    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 1, type: 'message', timestamp: Date.now() });
-    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 2, type: 'tool-call', timestamp: Date.now() });
-    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 3, type: 'message', timestamp: Date.now() });
+    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 1, type: 'Message', timestamp: Date.now() });
+    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 2, type: 'ToolCall', timestamp: Date.now() });
+    await models.Frame.create({ sessionID: session.id, interactionID: 'int_001', order: 3, type: 'Message', timestamp: Date.now() });
 
-    let messages = await models.Frame.where.type.EQ('message').all();
+    let messages = await models.Frame.where.type.EQ('Message').all();
     assert.equal(messages.length, 2);
   });
 
@@ -489,7 +489,7 @@ describe('Frame model', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'tool-call',
+      type:          'ToolCall',
       timestamp:     Date.now(),
     });
 
@@ -507,7 +507,7 @@ describe('Frame model', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       authorType:    'agent',
       authorID:      'agt_test123',
       timestamp:     Date.now(),
@@ -522,7 +522,7 @@ describe('Frame model', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'reflection',
+      type: 'Reflection',
       groupID:       'grp_abc',
       groupType:     'thinking',
       timestamp:     Date.now(),
@@ -605,7 +605,7 @@ describe('Frame model — failure paths', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       content:       null,
       timestamp:     Date.now(),
     });
@@ -619,7 +619,7 @@ describe('Frame model — failure paths', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       content:       '{bad json!!!',
       timestamp:     Date.now(),
     });
@@ -635,7 +635,7 @@ describe('Frame model — failure paths', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       targets:       'not-json[[[',
       timestamp:     Date.now(),
     });
@@ -650,7 +650,7 @@ describe('Frame model — failure paths', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       content:       '',
       timestamp:     Date.now(),
     });
@@ -667,7 +667,7 @@ describe('Frame model — failure paths', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       content:       JSON.stringify({ text: longText }),
       timestamp:     Date.now(),
     });
@@ -682,7 +682,7 @@ describe('Frame model — failure paths', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       timestamp:     Date.now(),
     });
 
@@ -694,7 +694,7 @@ describe('Frame model — failure paths', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       timestamp:     Date.now(),
     });
 
@@ -706,7 +706,7 @@ describe('Frame model — failure paths', () => {
       sessionID:     session.id,
       interactionID: 'int_001',
       order:         1,
-      type:          'message',
+      type: 'Message',
       timestamp:     Date.now(),
     });
 

@@ -6,11 +6,11 @@
 // Parses selector strings into matcher functions at registration time.
 //
 // Supported selectors:
-//   type:user-message        → frame.type === 'user-message'
+//   type:UserMessage         → frame.type === 'UserMessage'
 //   type:*                   → catch-all (matches any frame)
 //   author:agent             → frame.authorType === 'agent'
-//   type:tool-call[toolName=shell:execute]
-//                            → frame.type === 'tool-call' AND
+//   type:ToolCall[toolName=shell:execute]
+//                            → frame.type === 'ToolCall' AND
 //                              frame.content.toolName === 'shell:execute'
 //   (function)               → pass through as-is
 // =============================================================================
@@ -35,7 +35,7 @@ export class SelectorCompiler {
       throw new Error(`Invalid selector syntax: "${selector}"`);
 
     let dimension = match[1];  // 'type' or 'author'
-    let value     = match[2];  // e.g. 'user-message', '*', 'agent'
+    let value     = match[2];  // e.g. 'UserMessage', '*', 'agent'
     let propName  = match[3];  // e.g. 'toolName' (optional)
     let propValue = match[4];  // e.g. 'shell:execute' (optional)
 

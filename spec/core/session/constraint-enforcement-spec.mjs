@@ -60,7 +60,7 @@ describe('Session constraint enforcement', () => {
       setupConstrainedSession(frameManager, { maxInteractions: 3 });
 
       let results = frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'hello' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'hello' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -77,7 +77,7 @@ describe('Session constraint enforcement', () => {
       // Three agent commits should all succeed
       for (let i = 1; i <= 3; i++) {
         let results = frameManager.merge(
-          [{ id: `f${i}`, type: 'message', content: { text: `msg ${i}` } }],
+          [{ id: `f${i}`, type: 'Message', content: { text: `msg ${i}` } }],
           { authorType: 'agent', authorID: 'agt_1' },
         );
         assert.equal(results.length, 1, `commit ${i} should succeed`);
@@ -98,18 +98,18 @@ describe('Session constraint enforcement', () => {
 
       // Two agent commits succeed
       frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'first' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'first' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
       frameManager.merge(
-        [{ id: 'f2', type: 'message', content: { text: 'second' } }],
+        [{ id: 'f2', type: 'Message', content: { text: 'second' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
       // Third agent commit should be rejected
       let results = frameManager.merge(
-        [{ id: 'f3', type: 'message', content: { text: 'third' } }],
+        [{ id: 'f3', type: 'Message', content: { text: 'third' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -124,7 +124,7 @@ describe('Session constraint enforcement', () => {
       setupConstrainedSession(frameManager, { maxInteractions: 1 });
 
       frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'first' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'first' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -132,7 +132,7 @@ describe('Session constraint enforcement', () => {
       frameManager.on('commit:rejected', (data) => { rejectedEvent = data; });
 
       frameManager.merge(
-        [{ id: 'f2', type: 'message', content: { text: 'over limit' } }],
+        [{ id: 'f2', type: 'Message', content: { text: 'over limit' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -151,12 +151,12 @@ describe('Session constraint enforcement', () => {
       });
 
       frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'first' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'first' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
       frameManager.merge(
-        [{ id: 'f2', type: 'message', content: { text: 'over' } }],
+        [{ id: 'f2', type: 'Message', content: { text: 'over' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -178,13 +178,13 @@ describe('Session constraint enforcement', () => {
       setupConstrainedSession(frameManager, { maxInteractions: 1 });
 
       frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'first' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'first' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
       // This should be rejected, and a session-constrained frame should be created
       frameManager.merge(
-        [{ id: 'f2', type: 'message', content: { text: 'over' } }],
+        [{ id: 'f2', type: 'Message', content: { text: 'over' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -206,7 +206,7 @@ describe('Session constraint enforcement', () => {
       setupConstrainedSession(frameManager, { endsAt: pastDate });
 
       frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'expired' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'expired' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -232,7 +232,7 @@ describe('Session constraint enforcement', () => {
       setupConstrainedSession(frameManager, { endsAt: futureDate });
 
       let results = frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'on time' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'on time' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -254,7 +254,7 @@ describe('Session constraint enforcement', () => {
       setupConstrainedSession(frameManager, { endsAt: pastDate });
 
       let results = frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'too late' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'too late' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -273,7 +273,7 @@ describe('Session constraint enforcement', () => {
       frameManager.on('commit:rejected', (data) => { rejectedEvent = data; });
 
       frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'expired' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'expired' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -293,7 +293,7 @@ describe('Session constraint enforcement', () => {
       });
 
       frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'late' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'late' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -315,30 +315,30 @@ describe('Session constraint enforcement', () => {
 
       // These user commits should not count
       frameManager.merge(
-        [{ id: 'u1', type: 'user-message', content: { text: 'user msg 1' } }],
+        [{ id: 'u1', type: 'UserMessage', content: { text: 'user msg 1' } }],
         { authorType: 'user', authorID: 'usr_1' },
       );
 
       frameManager.merge(
-        [{ id: 'u2', type: 'user-message', content: { text: 'user msg 2' } }],
+        [{ id: 'u2', type: 'UserMessage', content: { text: 'user msg 2' } }],
         { authorType: 'user', authorID: 'usr_1' },
       );
 
       frameManager.merge(
-        [{ id: 'u3', type: 'user-message', content: { text: 'user msg 3' } }],
+        [{ id: 'u3', type: 'UserMessage', content: { text: 'user msg 3' } }],
         { authorType: 'user', authorID: 'usr_1' },
       );
 
       // Agent commits should still be allowed (only 0 agent commits so far)
       let results = frameManager.merge(
-        [{ id: 'a1', type: 'message', content: { text: 'agent msg 1' } }],
+        [{ id: 'a1', type: 'Message', content: { text: 'agent msg 1' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
       assert.equal(results.length, 1, 'first agent commit should succeed');
 
       results = frameManager.merge(
-        [{ id: 'a2', type: 'message', content: { text: 'agent msg 2' } }],
+        [{ id: 'a2', type: 'Message', content: { text: 'agent msg 2' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -346,7 +346,7 @@ describe('Session constraint enforcement', () => {
 
       // Third agent commit should be rejected (limit is 2)
       results = frameManager.merge(
-        [{ id: 'a3', type: 'message', content: { text: 'agent msg 3' } }],
+        [{ id: 'a3', type: 'Message', content: { text: 'agent msg 3' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -361,18 +361,18 @@ describe('Session constraint enforcement', () => {
 
       // System commits should not count
       frameManager.merge(
-        [{ id: 's1', type: 'participant-joined', content: { agentID: 'agt_1' } }],
+        [{ id: 's1', type: 'ParticipantJoined', content: { agentID: 'agt_1' } }],
         { authorType: 'system' },
       );
 
       frameManager.merge(
-        [{ id: 's2', type: 'participant-left', content: { agentID: 'agt_2' } }],
+        [{ id: 's2', type: 'ParticipantLeft', content: { agentID: 'agt_2' } }],
         { authorType: 'system' },
       );
 
       // First agent commit should succeed (system commits didn't count)
       let results = frameManager.merge(
-        [{ id: 'a1', type: 'message', content: { text: 'agent msg' } }],
+        [{ id: 'a1', type: 'Message', content: { text: 'agent msg' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -380,7 +380,7 @@ describe('Session constraint enforcement', () => {
 
       // Second agent commit should be rejected (limit is 1)
       results = frameManager.merge(
-        [{ id: 'a2', type: 'message', content: { text: 'over' } }],
+        [{ id: 'a2', type: 'Message', content: { text: 'over' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -395,13 +395,13 @@ describe('Session constraint enforcement', () => {
 
       // Tool commits should not count
       frameManager.merge(
-        [{ id: 't1', type: 'tool-result', content: { result: 'done' } }],
+        [{ id: 't1', type: 'ToolResult', content: { result: 'done' } }],
         { authorType: 'tool', authorID: null },
       );
 
       // Agent commit should succeed (tool commit didn't count)
       let results = frameManager.merge(
-        [{ id: 'a1', type: 'message', content: { text: 'agent msg' } }],
+        [{ id: 'a1', type: 'Message', content: { text: 'agent msg' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -416,13 +416,13 @@ describe('Session constraint enforcement', () => {
 
       // Use up the agent limit
       frameManager.merge(
-        [{ id: 'a1', type: 'message', content: { text: 'agent msg' } }],
+        [{ id: 'a1', type: 'Message', content: { text: 'agent msg' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
       // Agent commit rejected
       let agentResults = frameManager.merge(
-        [{ id: 'a2', type: 'message', content: { text: 'over' } }],
+        [{ id: 'a2', type: 'Message', content: { text: 'over' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -445,7 +445,7 @@ describe('Session constraint enforcement', () => {
       setupConstrainedSession(frameManager, { endsAt: pastDate });
 
       let results = frameManager.merge(
-        [{ id: 'u1', type: 'user-message', content: { text: 'late user msg' } }],
+        [{ id: 'u1', type: 'UserMessage', content: { text: 'late user msg' } }],
         { authorType: 'user', authorID: 'usr_1' },
       );
 
@@ -467,7 +467,7 @@ describe('Session constraint enforcement', () => {
 
       // Use up maxInteractions
       frameManager.merge(
-        [{ id: 'a1', type: 'message', content: { text: 'first' } }],
+        [{ id: 'a1', type: 'Message', content: { text: 'first' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -475,7 +475,7 @@ describe('Session constraint enforcement', () => {
       frameManager.on('commit:rejected', (data) => { rejectedEvent = data; });
 
       frameManager.merge(
-        [{ id: 'a2', type: 'message', content: { text: 'over' } }],
+        [{ id: 'a2', type: 'Message', content: { text: 'over' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -495,7 +495,7 @@ describe('Session constraint enforcement', () => {
       frameManager.on('commit:rejected', (data) => { rejectedEvent = data; });
 
       frameManager.merge(
-        [{ id: 'a1', type: 'message', content: { text: 'first' } }],
+        [{ id: 'a1', type: 'Message', content: { text: 'first' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -519,7 +519,7 @@ describe('Session constraint enforcement', () => {
       // Many agent commits should all succeed
       for (let i = 1; i <= 20; i++) {
         let results = frameManager.merge(
-          [{ id: `f${i}`, type: 'message', content: { text: `msg ${i}` } }],
+          [{ id: `f${i}`, type: 'Message', content: { text: `msg ${i}` } }],
           { authorType: 'agent', authorID: 'agt_1' },
         );
         assert.equal(results.length, 1, `commit ${i} should succeed`);
@@ -533,7 +533,7 @@ describe('Session constraint enforcement', () => {
       setupConstrainedSession(frameManager, { maxInteractions: null, endsAt: null });
 
       let results = frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'no deadline' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'no deadline' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -553,7 +553,7 @@ describe('Session constraint enforcement', () => {
       setupConstrainedSession(frameManager, { maxInteractions: 0 });
 
       let results = frameManager.merge(
-        [{ id: 'f1', type: 'message', content: { text: 'nope' } }],
+        [{ id: 'f1', type: 'Message', content: { text: 'nope' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -571,18 +571,18 @@ describe('Session constraint enforcement', () => {
       });
 
       frameManager.merge(
-        [{ id: 'a1', type: 'message', content: { text: 'first' } }],
+        [{ id: 'a1', type: 'Message', content: { text: 'first' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
       // Multiple rejected commits should each trigger onConstrained
       frameManager.merge(
-        [{ id: 'a2', type: 'message', content: { text: 'rejected 1' } }],
+        [{ id: 'a2', type: 'Message', content: { text: 'rejected 1' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
       frameManager.merge(
-        [{ id: 'a3', type: 'message', content: { text: 'rejected 2' } }],
+        [{ id: 'a3', type: 'Message', content: { text: 'rejected 2' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -598,19 +598,19 @@ describe('Session constraint enforcement', () => {
 
       // Agent 1 uses one interaction
       frameManager.merge(
-        [{ id: 'a1', type: 'message', content: { text: 'agent 1' } }],
+        [{ id: 'a1', type: 'Message', content: { text: 'agent 1' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
       // Agent 2 uses one interaction
       frameManager.merge(
-        [{ id: 'a2', type: 'message', content: { text: 'agent 2' } }],
+        [{ id: 'a2', type: 'Message', content: { text: 'agent 2' } }],
         { authorType: 'agent', authorID: 'agt_2' },
       );
 
       // Agent 1 tries again — should be rejected (total is 2, limit is 2)
       let results = frameManager.merge(
-        [{ id: 'a3', type: 'message', content: { text: 'over' } }],
+        [{ id: 'a3', type: 'Message', content: { text: 'over' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
@@ -625,18 +625,18 @@ describe('Session constraint enforcement', () => {
 
       // Use 2 agent interactions
       frameManager.merge(
-        [{ id: 'a1', type: 'message', content: { text: 'one' } }],
+        [{ id: 'a1', type: 'Message', content: { text: 'one' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
       frameManager.merge(
-        [{ id: 'a2', type: 'message', content: { text: 'two' } }],
+        [{ id: 'a2', type: 'Message', content: { text: 'two' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 
       // Rejected commit should not count
       frameManager.merge(
-        [{ id: 'a3', type: 'message', content: { text: 'rejected' } }],
+        [{ id: 'a3', type: 'Message', content: { text: 'rejected' } }],
         { authorType: 'agent', authorID: 'agt_1' },
       );
 

@@ -194,7 +194,7 @@ export class SessionManager {
     let frameManager = this.getFrameManager(sessionID);
     let frameData = {
       id:         `frm_${XID.next()}`,
-      type:       'participant-joined',
+      type:       'ParticipantJoined',
       content:    { agentID, agentName: agent.name },
       timestamp:  Date.now(),
       authorType: 'system',
@@ -240,7 +240,7 @@ export class SessionManager {
     let frameManager = this.getFrameManager(sessionID);
     let frameData = {
       id:         `frm_${XID.next()}`,
-      type:       'participant-left',
+      type:       'ParticipantLeft',
       content:    { agentID, agentName, reason: 'removed' },
       timestamp:  Date.now(),
       authorType: 'system',

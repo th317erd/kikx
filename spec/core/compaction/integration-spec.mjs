@@ -54,7 +54,7 @@ function seedConversation(frameManager, count = 6) {
 
     frames.push({
       id:         `frm_seed_${i}`,
-      type:       isUser ? 'user-message' : 'message',
+      type:       isUser ? 'UserMessage' : 'Message',
       authorType: isUser ? 'user' : 'agent',
       authorID:   isUser ? 'usr_001' : 'agt_test123',
       content:    isUser ? { text: `User message ${i}` } : { html: `<p>Agent reply ${i}</p>` },
@@ -115,7 +115,7 @@ describe('Compaction Integration', () => {
       assert.equal(compactionRan, true, 'Compaction should have run');
 
       // Verify compaction frame exists
-      let compactionFrames = frameManager.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = frameManager.toArray().filter((f) => f.type === 'Compaction');
       assert.ok(compactionFrames.length >= 1);
       assert.equal(compactionFrames[0].content.status, 'finished');
     });
@@ -138,7 +138,7 @@ describe('Compaction Integration', () => {
       // Add an active compaction frame
       frameManager.merge([{
         id:         'frm_active_compact',
-        type:       'compaction',
+        type: 'Compaction',
         authorType: 'system',
         content:    { status: 'started', compactionID: 'frm_active_compact' },
         hidden:     false,
@@ -174,7 +174,7 @@ describe('Compaction Integration', () => {
       assert.equal(errorCaught, false, 'Error should be caught internally by CompactionRunner, not propagated');
 
       // Verify the frame was marked abandoned
-      let compactionFrames = frameManager.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = frameManager.toArray().filter((f) => f.type === 'Compaction');
       assert.ok(compactionFrames.length >= 1);
       assert.equal(compactionFrames[0].content.status, 'abandoned');
     });
@@ -188,9 +188,9 @@ describe('Compaction Integration', () => {
 
     it('should return normal results when no activeCompaction is set (backward compatibility)', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', authorType: 'user', content: { text: 'Hello' }, order: 1, hidden: false, deleted: false },
-        { id: 'f2', type: 'message', authorType: 'agent', content: { html: 'Hi' }, order: 2, hidden: false, deleted: false },
-        { id: 'f3', type: 'user-message', authorType: 'user', content: { text: 'How?' }, order: 3, hidden: false, deleted: false },
+        { id: 'f1', type: 'UserMessage', authorType: 'user', content: { text: 'Hello' }, order: 1, hidden: false, deleted: false },
+        { id: 'f2', type: 'Message', authorType: 'agent', content: { html: 'Hi' }, order: 2, hidden: false, deleted: false },
+        { id: 'f3', type: 'UserMessage', authorType: 'user', content: { text: 'How?' }, order: 3, hidden: false, deleted: false },
       ];
 
       // No options — backward compat
@@ -203,8 +203,8 @@ describe('Compaction Integration', () => {
 
     it('should return normal results when options is empty object', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', authorType: 'user', content: { text: 'Hello' }, order: 1, hidden: false, deleted: false },
-        { id: 'f2', type: 'message', authorType: 'agent', content: { html: 'Hi' }, order: 2, hidden: false, deleted: false },
+        { id: 'f1', type: 'UserMessage', authorType: 'user', content: { text: 'Hello' }, order: 1, hidden: false, deleted: false },
+        { id: 'f2', type: 'Message', authorType: 'agent', content: { html: 'Hi' }, order: 2, hidden: false, deleted: false },
       ];
 
       let messages = buildMessages(frames, null, {});
@@ -213,15 +213,15 @@ describe('Compaction Integration', () => {
 
     it('should include all frames before compaction start frame', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', authorType: 'user', content: { text: 'msg 1' }, order: 1, hidden: false, deleted: false },
-        { id: 'f2', type: 'message', authorType: 'agent', content: { html: 'reply 1' }, order: 2, hidden: false, deleted: false },
-        { id: 'f3', type: 'user-message', authorType: 'user', content: { text: 'msg 2' }, order: 3, hidden: false, deleted: false },
-        { id: 'f4', type: 'message', authorType: 'agent', content: { html: 'reply 2' }, order: 4, hidden: false, deleted: false },
+        { id: 'f1', type: 'UserMessage', authorType: 'user', content: { text: 'msg 1' }, order: 1, hidden: false, deleted: false },
+        { id: 'f2', type: 'Message', authorType: 'agent', content: { html: 'reply 1' }, order: 2, hidden: false, deleted: false },
+        { id: 'f3', type: 'UserMessage', authorType: 'user', content: { text: 'msg 2' }, order: 3, hidden: false, deleted: false },
+        { id: 'f4', type: 'Message', authorType: 'agent', content: { html: 'reply 2' }, order: 4, hidden: false, deleted: false },
         // Compaction starts at order 5
-        { id: 'f5', type: 'compaction', authorType: 'system', content: { status: 'started' }, order: 5, hidden: false, deleted: false },
+        { id: 'f5', type: 'Compaction', authorType: 'system', content: { status: 'started' }, order: 5, hidden: false, deleted: false },
         // After compaction start
-        { id: 'f6', type: 'user-message', authorType: 'user', content: { text: 'msg 3' }, order: 6, hidden: false, deleted: false },
-        { id: 'f7', type: 'message', authorType: 'agent', content: { html: 'reply 3' }, order: 7, hidden: false, deleted: false },
+        { id: 'f6', type: 'UserMessage', authorType: 'user', content: { text: 'msg 3' }, order: 6, hidden: false, deleted: false },
+        { id: 'f7', type: 'Message', authorType: 'agent', content: { html: 'reply 3' }, order: 7, hidden: false, deleted: false },
       ];
 
       let activeCompaction = { order: 5, frameID: 'f5' };
@@ -249,10 +249,10 @@ describe('Compaction Integration', () => {
 
     it('should include user frames after compaction start', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', authorType: 'user', content: { text: 'before' }, order: 1, hidden: false, deleted: false },
-        { id: 'f2', type: 'compaction', authorType: 'system', content: { status: 'started' }, order: 2, hidden: false, deleted: false },
-        { id: 'f3', type: 'user-message', authorType: 'user', content: { text: 'during 1' }, order: 3, hidden: false, deleted: false },
-        { id: 'f4', type: 'user-message', authorType: 'user', content: { text: 'during 2' }, order: 4, hidden: false, deleted: false },
+        { id: 'f1', type: 'UserMessage', authorType: 'user', content: { text: 'before' }, order: 1, hidden: false, deleted: false },
+        { id: 'f2', type: 'Compaction', authorType: 'system', content: { status: 'started' }, order: 2, hidden: false, deleted: false },
+        { id: 'f3', type: 'UserMessage', authorType: 'user', content: { text: 'during 1' }, order: 3, hidden: false, deleted: false },
+        { id: 'f4', type: 'UserMessage', authorType: 'user', content: { text: 'during 2' }, order: 4, hidden: false, deleted: false },
       ];
 
       let activeCompaction = { order: 2, frameID: 'f2' };
@@ -270,12 +270,12 @@ describe('Compaction Integration', () => {
 
     it('should exclude non-user frames after compaction start', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', authorType: 'user', content: { text: 'before' }, order: 1, hidden: false, deleted: false },
-        { id: 'f2', type: 'compaction', authorType: 'system', content: { status: 'started' }, order: 2, hidden: false, deleted: false },
-        { id: 'f3', type: 'message', authorType: 'agent', content: { html: 'agent after' }, order: 3, hidden: false, deleted: false },
-        { id: 'f4', type: 'tool-call', authorType: 'agent', content: { toolName: 'search' }, order: 4, hidden: false, deleted: false },
-        { id: 'f5', type: 'tool-result', authorType: 'system', content: { output: 'result' }, order: 5, hidden: false, deleted: false },
-        { id: 'f6', type: 'user-message', authorType: 'user', content: { text: 'user after' }, order: 6, hidden: false, deleted: false },
+        { id: 'f1', type: 'UserMessage', authorType: 'user', content: { text: 'before' }, order: 1, hidden: false, deleted: false },
+        { id: 'f2', type: 'Compaction', authorType: 'system', content: { status: 'started' }, order: 2, hidden: false, deleted: false },
+        { id: 'f3', type: 'Message', authorType: 'agent', content: { html: 'agent after' }, order: 3, hidden: false, deleted: false },
+        { id: 'f4', type: 'ToolCall', authorType: 'agent', content: { toolName: 'search' }, order: 4, hidden: false, deleted: false },
+        { id: 'f5', type: 'ToolResult', authorType: 'system', content: { output: 'result' }, order: 5, hidden: false, deleted: false },
+        { id: 'f6', type: 'UserMessage', authorType: 'user', content: { text: 'user after' }, order: 6, hidden: false, deleted: false },
       ];
 
       let activeCompaction = { order: 2, frameID: 'f2' };
@@ -296,9 +296,9 @@ describe('Compaction Integration', () => {
       // The compaction frame itself sits at the boundary order.
       // Frames AT that order (order === activeCompaction.order) should be included.
       let frames = [
-        { id: 'f1', type: 'user-message', authorType: 'user', content: { text: 'at boundary' }, order: 5, hidden: false, deleted: false },
-        { id: 'f2', type: 'message', authorType: 'agent', content: { html: 'also at boundary' }, order: 5, hidden: false, deleted: false },
-        { id: 'f3', type: 'message', authorType: 'agent', content: { html: 'after boundary' }, order: 6, hidden: false, deleted: false },
+        { id: 'f1', type: 'UserMessage', authorType: 'user', content: { text: 'at boundary' }, order: 5, hidden: false, deleted: false },
+        { id: 'f2', type: 'Message', authorType: 'agent', content: { html: 'also at boundary' }, order: 5, hidden: false, deleted: false },
+        { id: 'f3', type: 'Message', authorType: 'agent', content: { html: 'after boundary' }, order: 6, hidden: false, deleted: false },
       ];
 
       let activeCompaction = { order: 5, frameID: 'compact_id' };
@@ -314,8 +314,8 @@ describe('Compaction Integration', () => {
 
     it('should handle activeCompaction with no frames after the compaction order', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', authorType: 'user', content: { text: 'only before' }, order: 1, hidden: false, deleted: false },
-        { id: 'f2', type: 'message', authorType: 'agent', content: { html: 'reply' }, order: 2, hidden: false, deleted: false },
+        { id: 'f1', type: 'UserMessage', authorType: 'user', content: { text: 'only before' }, order: 1, hidden: false, deleted: false },
+        { id: 'f2', type: 'Message', authorType: 'agent', content: { html: 'reply' }, order: 2, hidden: false, deleted: false },
       ];
 
       let activeCompaction = { order: 10, frameID: 'compact_id' };
@@ -327,13 +327,13 @@ describe('Compaction Integration', () => {
 
     it('should work correctly with forAgentID and activeCompaction combined', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', authorType: 'user', authorID: 'usr_001', content: { text: 'hello' }, order: 1, hidden: false, deleted: false },
-        { id: 'f2', type: 'message', authorType: 'agent', authorID: 'agt_A', content: { html: 'hi from A' }, order: 2, hidden: false, deleted: false },
-        { id: 'f3', type: 'message', authorType: 'agent', authorID: 'agt_B', content: { html: 'hi from B' }, order: 3, hidden: false, deleted: false },
+        { id: 'f1', type: 'UserMessage', authorType: 'user', authorID: 'usr_001', content: { text: 'hello' }, order: 1, hidden: false, deleted: false },
+        { id: 'f2', type: 'Message', authorType: 'agent', authorID: 'agt_A', content: { html: 'hi from A' }, order: 2, hidden: false, deleted: false },
+        { id: 'f3', type: 'Message', authorType: 'agent', authorID: 'agt_B', content: { html: 'hi from B' }, order: 3, hidden: false, deleted: false },
         // Compaction starts here
-        { id: 'f4', type: 'compaction', authorType: 'system', content: { status: 'started' }, order: 4, hidden: false, deleted: false },
-        { id: 'f5', type: 'user-message', authorType: 'user', authorID: 'usr_001', content: { text: 'new user msg' }, order: 5, hidden: false, deleted: false },
-        { id: 'f6', type: 'message', authorType: 'agent', authorID: 'agt_A', content: { html: 'agent A after' }, order: 6, hidden: false, deleted: false },
+        { id: 'f4', type: 'Compaction', authorType: 'system', content: { status: 'started' }, order: 4, hidden: false, deleted: false },
+        { id: 'f5', type: 'UserMessage', authorType: 'user', authorID: 'usr_001', content: { text: 'new user msg' }, order: 5, hidden: false, deleted: false },
+        { id: 'f6', type: 'Message', authorType: 'agent', authorID: 'agt_A', content: { html: 'agent A after' }, order: 6, hidden: false, deleted: false },
       ];
 
       let activeCompaction = { order: 4, frameID: 'f4' };
@@ -368,7 +368,7 @@ describe('Compaction Integration', () => {
       // Add a stale compaction
       frameManager.merge([{
         id:         'frm_stale',
-        type:       'compaction',
+        type: 'Compaction',
         authorType: 'system',
         content:    { status: 'started', compactionID: 'frm_stale' },
         hidden:     false,
@@ -379,7 +379,7 @@ describe('Compaction Integration', () => {
       assert.equal(cleaned, 1, 'Should clean up 1 stale compaction');
 
       // Verify it was marked abandoned
-      let compactionFrames = frameManager.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = frameManager.toArray().filter((f) => f.type === 'Compaction');
       assert.equal(compactionFrames[0].content.status, 'abandoned');
     });
   });
@@ -392,8 +392,8 @@ describe('Compaction Integration', () => {
 
     it('should pass activeCompaction=null through without filtering (explicit null)', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', authorType: 'user', content: { text: 'a' }, order: 1, hidden: false, deleted: false },
-        { id: 'f2', type: 'message', authorType: 'agent', content: { html: 'b' }, order: 2, hidden: false, deleted: false },
+        { id: 'f1', type: 'UserMessage', authorType: 'user', content: { text: 'a' }, order: 1, hidden: false, deleted: false },
+        { id: 'f2', type: 'Message', authorType: 'agent', content: { html: 'b' }, order: 2, hidden: false, deleted: false },
       ];
 
       let messages = buildMessages(frames, null, { activeCompaction: null });
@@ -402,9 +402,9 @@ describe('Compaction Integration', () => {
 
     it('should still exclude EXCLUDED_TYPES even during compaction', () => {
       let frames = [
-        { id: 'f1', type: 'user-message', authorType: 'user', content: { text: 'msg' }, order: 1, hidden: false, deleted: false },
-        { id: 'f2', type: 'error', authorType: 'system', content: { message: 'oops' }, order: 2, hidden: false, deleted: false },
-        { id: 'f3', type: 'reflection', authorType: 'agent', content: { text: 'thinking' }, order: 2, hidden: true, deleted: false },
+        { id: 'f1', type: 'UserMessage', authorType: 'user', content: { text: 'msg' }, order: 1, hidden: false, deleted: false },
+        { id: 'f2', type: 'Error', authorType: 'system', content: { message: 'oops' }, order: 2, hidden: false, deleted: false },
+        { id: 'f3', type: 'Reflection', authorType: 'agent', content: { text: 'thinking' }, order: 2, hidden: true, deleted: false },
       ];
 
       let activeCompaction = { order: 10, frameID: 'x' };

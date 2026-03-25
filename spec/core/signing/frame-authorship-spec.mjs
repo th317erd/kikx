@@ -52,7 +52,7 @@ class MockAgent extends AgentInterface {
     for (let block of this._blocks)
       yield block;
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -375,7 +375,7 @@ describe('InteractionLoop frame authorship signing', () => {
       interactionLoop.on('frame', (event) => capturedFrames.push(event.frame));
 
       let mockAgent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>hello from agent</p>' }, authorType: 'agent', authorID: agent.id },
+        { type: 'Message', content: { html: '<p>hello from agent</p>' }, authorType: 'agent', authorID: agent.id },
       ]);
 
       await interactionLoop.startInteraction(session.id, {
@@ -401,7 +401,7 @@ describe('InteractionLoop frame authorship signing', () => {
 
       let mockAgent = new MockAgent(context, [
         {
-          type:       'tool-call',
+          type:       'ToolCall',
           content:    { toolName: 'test:tool', arguments: { foo: 'bar' }, toolUseId: 'tu_1' },
           authorType: 'agent',
           authorID:   agent.id,
@@ -414,7 +414,7 @@ describe('InteractionLoop frame authorship signing', () => {
         userMessage: 'test tool call',
       });
 
-      let toolCallFrames = capturedFrames.filter((f) => f.type === 'tool-call');
+      let toolCallFrames = capturedFrames.filter((f) => f.type === 'ToolCall');
       assert.ok(toolCallFrames.length > 0, 'should have tool-call frames');
 
       for (let frame of toolCallFrames) {
@@ -430,7 +430,7 @@ describe('InteractionLoop frame authorship signing', () => {
       interactionLoop.on('frame', (event) => capturedFrames.push(event.frame));
 
       let mockAgent = new MockAgent(context, [
-        { type: 'reflection', content: { thinking: 'deep thoughts' }, authorType: 'agent', authorID: agent.id },
+        { type: 'Reflection', content: { thinking: 'deep thoughts' }, authorType: 'agent', authorID: agent.id },
       ]);
 
       await interactionLoop.startInteraction(session.id, {
@@ -439,7 +439,7 @@ describe('InteractionLoop frame authorship signing', () => {
         userMessage: 'think about this',
       });
 
-      let reflectionFrames = capturedFrames.filter((f) => f.type === 'reflection');
+      let reflectionFrames = capturedFrames.filter((f) => f.type === 'Reflection');
       assert.ok(reflectionFrames.length > 0, 'should have reflection frames');
 
       for (let frame of reflectionFrames) {
@@ -472,7 +472,7 @@ describe('InteractionLoop frame authorship signing', () => {
 
       let mockAgent = new MockAgent(context, [
         {
-          type:       'tool-call',
+          type:       'ToolCall',
           content:    { toolName: 'test:tool', arguments: {}, toolUseId: 'tu_sys' },
           authorType: 'agent',
           authorID:   'agt_sys_test',
@@ -514,7 +514,7 @@ describe('InteractionLoop frame authorship signing', () => {
         userMessage: 'trigger error',
       });
 
-      let errorFrames = capturedFrames.filter((f) => f.type === 'error');
+      let errorFrames = capturedFrames.filter((f) => f.type === 'Error');
       assert.ok(errorFrames.length > 0, 'should have error frames');
 
       for (let frame of errorFrames) {
@@ -549,7 +549,7 @@ describe('InteractionLoop frame authorship signing', () => {
       interactionLoop.on('frame', (event) => capturedFrames.push(event.frame));
 
       let mockAgent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>reply</p>' }, authorType: 'agent', authorID: 'agt_user_test' },
+        { type: 'Message', content: { html: '<p>reply</p>' }, authorType: 'agent', authorID: 'agt_user_test' },
       ]);
 
       await interactionLoop.startInteraction(session.id, {
@@ -577,7 +577,7 @@ describe('InteractionLoop frame authorship signing', () => {
       interactionLoop.on('frame', (event) => capturedFrames.push(event.frame));
 
       let mockAgent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>reply</p>' }, authorType: 'agent', authorID: 'agt_no_user_key' },
+        { type: 'Message', content: { html: '<p>reply</p>' }, authorType: 'agent', authorID: 'agt_no_user_key' },
       ]);
 
       await interactionLoop.startInteraction(session.id, {
@@ -646,7 +646,7 @@ describe('InteractionLoop frame authorship signing', () => {
       bareLoop.on('frame', (event) => capturedFrames.push(event.frame));
 
       let mockAgent = new MockAgent(bareContext, [
-        { type: 'message', content: { html: '<p>reply</p>' }, authorType: 'agent', authorID: 'agt_bare' },
+        { type: 'Message', content: { html: '<p>reply</p>' }, authorType: 'agent', authorID: 'agt_bare' },
       ]);
 
       await bareLoop.startInteraction(session.id, {
@@ -679,7 +679,7 @@ describe('InteractionLoop frame authorship signing', () => {
       interactionLoop.on('frame', (event) => capturedFrames.push(event.frame));
 
       let mockAgent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>agent without key</p>' }, authorType: 'agent', authorID: 'agt_nokey' },
+        { type: 'Message', content: { html: '<p>agent without key</p>' }, authorType: 'agent', authorID: 'agt_nokey' },
       ]);
 
       await interactionLoop.startInteraction(session.id, {
@@ -728,7 +728,7 @@ describe('InteractionLoop frame authorship signing', () => {
       await agent.save();
 
       let mockAgent = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>persist test</p>' }, authorType: 'agent', authorID: agent.id },
+        { type: 'Message', content: { html: '<p>persist test</p>' }, authorType: 'agent', authorID: agent.id },
       ]);
 
       await interactionLoop.startInteraction(session.id, {
@@ -774,7 +774,7 @@ describe('InteractionLoop frame authorship signing', () => {
       let preExistingSignature = 'deadbeef1234';
       let frameData = {
         id:            `frm_${XID.next()}`,
-        type:          'message',
+        type: 'Message',
         content:       { html: '<p>pre-signed</p>' },
         timestamp:     Date.now(),
         interactionID: 'int_pre_sig',

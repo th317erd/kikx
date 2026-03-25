@@ -247,7 +247,7 @@ export function setup(provide) {
           let frameManager = sessionManager.getFrameManager(params.parentSessionID);
           let linkFrame = {
             id:         frameID,
-            type:       'session-link',
+            type:       'SessionLink',
             content:    { targetSessionID: session.id, title: params.title, participants: params.participants || [] },
             timestamp:  Date.now(),
             authorType: 'system',
@@ -304,7 +304,7 @@ export function setup(provide) {
         let frameManager = sessionManager.getFrameManager(sessionID);
         let frameData    = {
           id:         `frm_${XID.next()}`,
-          type:       'message',
+          type:       'Message',
           content:    { text: initialMessage },
           timestamp:  Date.now(),
           authorType: 'agent',
@@ -382,7 +382,7 @@ export function setup(provide) {
         let frameManager = sessionManager.getFrameManager(params.sessionID);
         let frameData = {
           id:         frameID,
-          type:       'message',
+          type:       'Message',
           content:    { text: params.message },
           timestamp:  Date.now(),
           authorType: 'agent',
@@ -434,7 +434,7 @@ export function setup(provide) {
           examples: [
             { sessionID: 'ses_abc', description: 'Read recent frames from a session' },
             { sessionID: 'ses_abc', keyword: 'decision', description: 'Search for frames containing a keyword' },
-            { sessionID: 'ses_abc', types: ['message'], limit: 5, description: 'Read only message frames with a limit' },
+            { sessionID: 'ses_abc', types: ['Message'], limit: 5, description: 'Read only message frames with a limit' },
           ],
         };
       }

@@ -100,7 +100,7 @@ describe('SessionScheduler (B5)', () => {
       // Simulate a user message commit
       let results = frameManager.merge([{
         id:   'frm_user_1',
-        type: 'user-message',
+        type: 'UserMessage',
         content: { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -128,7 +128,7 @@ describe('SessionScheduler (B5)', () => {
       scheduler.on('schedule', (data) => events.push(data));
 
       frameManager.merge([{
-        id: 'frm_ev_1', type: 'user-message', content: { text: 'Hi' },
+        id: 'frm_ev_1', type: 'UserMessage', content: { text: 'Hi' },
         authorType: 'user', authorID: 'usr_1',
       }], { authorType: 'user', authorID: 'usr_1' });
 
@@ -157,7 +157,7 @@ describe('SessionScheduler (B5)', () => {
       let frameManager = sessionManager.getFrameManager(session.id);
 
       frameManager.merge([{
-        id: 'frm_multi_1', type: 'user-message', content: { text: 'Hello both' },
+        id: 'frm_multi_1', type: 'UserMessage', content: { text: 'Hello both' },
         authorType: 'user', authorID: 'usr_1',
       }], { authorType: 'user', authorID: 'usr_1' });
 
@@ -188,7 +188,7 @@ describe('SessionScheduler (B5)', () => {
 
       // First: user message → agent should be triggered
       frameManager.merge([{
-        id: 'frm_self_1', type: 'user-message', content: { text: 'Hi' },
+        id: 'frm_self_1', type: 'UserMessage', content: { text: 'Hi' },
         authorType: 'user', authorID: 'usr_1',
       }], { authorType: 'user', authorID: 'usr_1' });
 
@@ -198,7 +198,7 @@ describe('SessionScheduler (B5)', () => {
 
       // Then: agent's own message → should NOT trigger
       frameManager.merge([{
-        id: 'frm_self_2', type: 'message', content: { html: '<p>Reply</p>' },
+        id: 'frm_self_2', type: 'Message', content: { html: '<p>Reply</p>' },
         authorType: 'agent', authorID: agent.id,
       }], { authorType: 'agent', authorID: agent.id });
 
@@ -220,7 +220,7 @@ describe('SessionScheduler (B5)', () => {
       scheduler.on('schedule:skip', (data) => skips.push(data));
 
       frameManager.merge([{
-        id: 'frm_ss_1', type: 'message', content: { html: '<p>Self</p>' },
+        id: 'frm_ss_1', type: 'Message', content: { html: '<p>Self</p>' },
         authorType: 'agent', authorID: agent.id,
       }], { authorType: 'agent', authorID: agent.id });
 
@@ -246,7 +246,7 @@ describe('SessionScheduler (B5)', () => {
       let frameManager = sessionManager.getFrameManager(session.id);
 
       frameManager.merge([{
-        id: 'frm_act_1', type: 'user-message', content: { text: 'Hello' },
+        id: 'frm_act_1', type: 'UserMessage', content: { text: 'Hello' },
         authorType: 'user', authorID: 'usr_1',
       }], { authorType: 'user', authorID: 'usr_1' });
 
@@ -256,7 +256,7 @@ describe('SessionScheduler (B5)', () => {
 
       // Second commit while agent still active — should skip
       frameManager.merge([{
-        id: 'frm_act_2', type: 'user-message', content: { text: 'Another' },
+        id: 'frm_act_2', type: 'UserMessage', content: { text: 'Another' },
         authorType: 'user', authorID: 'usr_1',
       }], { authorType: 'user', authorID: 'usr_1' });
 
@@ -285,7 +285,7 @@ describe('SessionScheduler (B5)', () => {
       let frameManager = sessionManager.getFrameManager(session.id);
 
       frameManager.merge([{
-        id: 'frm_cu_1', type: 'user-message', content: { text: 'Hi' },
+        id: 'frm_cu_1', type: 'UserMessage', content: { text: 'Hi' },
         authorType: 'user', authorID: 'usr_1',
       }], { authorType: 'user', authorID: 'usr_1' });
 
@@ -312,7 +312,7 @@ describe('SessionScheduler (B5)', () => {
       let frameManager = sessionManager.getFrameManager(session.id);
 
       frameManager.merge([{
-        id: 'frm_np_1', type: 'user-message', content: { text: 'Hello?' },
+        id: 'frm_np_1', type: 'UserMessage', content: { text: 'Hello?' },
         authorType: 'user', authorID: 'usr_1',
       }], { authorType: 'user', authorID: 'usr_1' });
 

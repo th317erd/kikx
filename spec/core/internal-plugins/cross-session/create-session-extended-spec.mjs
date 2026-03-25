@@ -148,7 +148,7 @@ describe('CreateSession Tool Extension', () => {
       let fm     = await framePersistence.loadFrames(result.sessionID);
       let frames = fm.toArray();
 
-      let messageFrames = frames.filter((f) => f.type === 'message');
+      let messageFrames = frames.filter((f) => f.type === 'Message');
       assert.ok(messageFrames.length >= 1, 'Should have at least 1 message frame');
 
       let initialFrame = messageFrames.find((f) => f.content && f.content.text === 'Hello, this is the first message!');
@@ -167,7 +167,7 @@ describe('CreateSession Tool Extension', () => {
       let fm     = await framePersistence.loadFrames(result.sessionID);
       let frames = fm.toArray();
 
-      let messageFrames = frames.filter((f) => f.type === 'message');
+      let messageFrames = frames.filter((f) => f.type === 'Message');
       assert.equal(messageFrames.length, 0, 'Should have no message frames without initialMessage');
     });
 
@@ -182,7 +182,7 @@ describe('CreateSession Tool Extension', () => {
       let fm     = await framePersistence.loadFrames(result.sessionID);
       let frames = fm.toArray();
 
-      let messageFrames = frames.filter((f) => f.type === 'message');
+      let messageFrames = frames.filter((f) => f.type === 'Message');
       assert.equal(messageFrames.length, 0, 'Empty string initialMessage should produce no frames');
     });
   });
@@ -329,11 +329,11 @@ describe('CreateSession Tool Extension', () => {
 
       // Message should be in child, not parent
       let childFM = await framePersistence.loadFrames(result.sessionID);
-      let childMsgs = childFM.toArray().filter((f) => f.type === 'message');
+      let childMsgs = childFM.toArray().filter((f) => f.type === 'Message');
       assert.ok(childMsgs.length >= 1, 'Child should have the initial message');
 
       let parentFM = await framePersistence.loadFrames(parentSession.id);
-      let parentMsgs = parentFM.toArray().filter((f) => f.type === 'message');
+      let parentMsgs = parentFM.toArray().filter((f) => f.type === 'Message');
       assert.equal(parentMsgs.length, 0, 'Parent should not have the initial message');
     });
   });

@@ -48,11 +48,11 @@ describe('StreamRelay', () => {
   describe('createRelay', () => {
     it('forwards delta events from target session to relay:delta', () => {
       let captured = [];
-      relay.on('relay:delta', (event) => captured.push(event));
+      relay.on('relay:Delta', (event) => captured.push(event));
 
       relay.createRelay('ses_source', 'ses_target');
 
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_target',
         interactionID: 'int_1',
         content:       { text: 'hello' },
@@ -71,11 +71,11 @@ describe('StreamRelay', () => {
 
     it('forwards reflection-delta events', () => {
       let captured = [];
-      relay.on('relay:reflection-delta', (event) => captured.push(event));
+      relay.on('relay:ReflectionDelta', (event) => captured.push(event));
 
       relay.createRelay('ses_source', 'ses_target');
 
-      interactionLoop.emit('reflection-delta', {
+      interactionLoop.emit('ReflectionDelta', {
         sessionID:     'ses_target',
         interactionID: 'int_1',
         content:       { text: 'thinking' },
@@ -90,11 +90,11 @@ describe('StreamRelay', () => {
 
     it('does not forward deltas from unrelated sessions', () => {
       let captured = [];
-      relay.on('relay:delta', (event) => captured.push(event));
+      relay.on('relay:Delta', (event) => captured.push(event));
 
       relay.createRelay('ses_source', 'ses_target');
 
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_other',
         interactionID: 'int_1',
         content:       { text: 'nope' },
@@ -105,11 +105,11 @@ describe('StreamRelay', () => {
 
     it('does not forward deltas from the source session itself', () => {
       let captured = [];
-      relay.on('relay:delta', (event) => captured.push(event));
+      relay.on('relay:Delta', (event) => captured.push(event));
 
       relay.createRelay('ses_source', 'ses_target');
 
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_source',
         interactionID: 'int_1',
         content:       { text: 'nope' },
@@ -120,12 +120,12 @@ describe('StreamRelay', () => {
 
     it('is idempotent — creating same relay twice does not duplicate events', () => {
       let captured = [];
-      relay.on('relay:delta', (event) => captured.push(event));
+      relay.on('relay:Delta', (event) => captured.push(event));
 
       relay.createRelay('ses_source', 'ses_target');
       relay.createRelay('ses_source', 'ses_target');
 
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_target',
         interactionID: 'int_1',
         content:       { text: 'hello' },
@@ -144,11 +144,11 @@ describe('StreamRelay', () => {
 
     it('includes null authorType/authorID when not provided', () => {
       let captured = [];
-      relay.on('relay:delta', (event) => captured.push(event));
+      relay.on('relay:Delta', (event) => captured.push(event));
 
       relay.createRelay('ses_source', 'ses_target');
 
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_target',
         interactionID: 'int_1',
         content:       { text: 'bare' },
@@ -174,7 +174,7 @@ describe('StreamRelay', () => {
 
     it('stops forwarding after auto-destroy', () => {
       let captured = [];
-      relay.on('relay:delta', (event) => captured.push(event));
+      relay.on('relay:Delta', (event) => captured.push(event));
 
       relay.createRelay('ses_source', 'ses_target');
 
@@ -182,7 +182,7 @@ describe('StreamRelay', () => {
       interactionLoop.emit('interaction:end', { sessionID: 'ses_target', interactionID: 'int_1' });
 
       // Should no longer forward
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_target',
         interactionID: 'int_2',
         content:       { text: 'after destroy' },
@@ -206,12 +206,12 @@ describe('StreamRelay', () => {
   describe('destroyRelay', () => {
     it('stops forwarding after manual destroy', () => {
       let captured = [];
-      relay.on('relay:delta', (event) => captured.push(event));
+      relay.on('relay:Delta', (event) => captured.push(event));
 
       relay.createRelay('ses_source', 'ses_target');
       relay.destroyRelay('ses_source', 'ses_target');
 
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_target',
         interactionID: 'int_1',
         content:       { text: 'nope' },
@@ -239,12 +239,12 @@ describe('StreamRelay', () => {
   describe('multiple relays', () => {
     it('supports multiple relays from different source sessions', () => {
       let captured = [];
-      relay.on('relay:delta', (event) => captured.push(event));
+      relay.on('relay:Delta', (event) => captured.push(event));
 
       relay.createRelay('ses_a', 'ses_target');
       relay.createRelay('ses_b', 'ses_target');
 
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_target',
         interactionID: 'int_1',
         content:       { text: 'shared' },
@@ -257,12 +257,12 @@ describe('StreamRelay', () => {
 
     it('supports multiple relays to different target sessions', () => {
       let captured = [];
-      relay.on('relay:delta', (event) => captured.push(event));
+      relay.on('relay:Delta', (event) => captured.push(event));
 
       relay.createRelay('ses_source', 'ses_target_1');
       relay.createRelay('ses_source', 'ses_target_2');
 
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_target_1',
         interactionID: 'int_1',
         content:       { text: 'for target 1' },
@@ -271,7 +271,7 @@ describe('StreamRelay', () => {
       assert.equal(captured.length, 1);
       assert.equal(captured[0].targetSessionID, 'ses_target_1');
 
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_target_2',
         interactionID: 'int_2',
         content:       { text: 'for target 2' },
@@ -311,12 +311,12 @@ describe('StreamRelay', () => {
 
     it('stops all forwarding after destroyAll', () => {
       let captured = [];
-      relay.on('relay:delta', (event) => captured.push(event));
+      relay.on('relay:Delta', (event) => captured.push(event));
 
       relay.createRelay('ses_a', 'ses_target');
       relay.destroyAll();
 
-      interactionLoop.emit('delta', {
+      interactionLoop.emit('Delta', {
         sessionID:     'ses_target',
         interactionID: 'int_1',
         content:       { text: 'nope' },

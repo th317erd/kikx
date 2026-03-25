@@ -35,10 +35,10 @@ export class DmSummarizer {
       if (!frame || !frame.type)
         continue;
 
-      if (frame.type === 'user-message') {
+      if (frame.type === 'UserMessage') {
         let text = (frame.content && frame.content.text) || '';
         lines.push(`User: ${text}`);
-      } else if (frame.type === 'message') {
+      } else if (frame.type === 'Message') {
         let html = (frame.content && frame.content.html) || '';
         lines.push(`Agent: ${html}`);
       }
@@ -101,10 +101,10 @@ export class DmSummarizer {
     let summaryParts = [];
 
     for await (let block of generator) {
-      if (!block || block.type === 'done')
+      if (!block || block.type === 'Done')
         break;
 
-      if (block.type === 'message' && block.content && block.content.html)
+      if (block.type === 'Message' && block.content && block.content.html)
         summaryParts.push(block.content.html);
     }
 

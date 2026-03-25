@@ -668,7 +668,7 @@ describe('FrameController: list', () => {
     await framePersistence.saveFrames(session.id, [
       {
         id:            frmID1,
-        type:          'user-message',
+        type:          'UserMessage',
         content:       { text: 'Hello' },
         order:         1,
         timestamp:     Date.now(),
@@ -680,7 +680,7 @@ describe('FrameController: list', () => {
       },
       {
         id:            frmID2,
-        type:          'message',
+        type: 'Message',
         content:       { html: '<p>Hi there!</p>' },
         order:         2,
         timestamp:     Date.now(),
@@ -766,7 +766,7 @@ describe('StreamController: connect', () => {
 
     let connectPromise = controller.connect({ params: { sessionID } });
 
-    let testFrame = { id: 'frm_sse_1', type: 'message', content: { html: '<p>Test</p>' } };
+    let testFrame = { id: 'frm_sse_1', type: 'Message', content: { html: '<p>Test</p>' } };
     interactionLoop.emit('frame', { sessionID: sessionID, frame: testFrame });
 
     assert.ok(res._written.includes('event: frame'));
@@ -1071,7 +1071,7 @@ describe('FrameController: update', () => {
     await framePersistence.saveFrames(session.id, [
       {
         id:            frameID,
-        type:          'message',
+        type: 'Message',
         content:       { html: '<p>Original</p><kikx-hml-prompt name="color" type="text" label="Color"></kikx-hml-prompt>' },
         order:         1,
         timestamp:     Date.now(),
@@ -1140,7 +1140,7 @@ describe('FrameController: update', () => {
     await framePersistence.saveFrames(session1.id, [
       {
         id:            frameID,
-        type:          'message',
+        type: 'Message',
         content:       { html: '<p>Mine</p>' },
         order:         1,
         timestamp:     Date.now(),

@@ -188,7 +188,7 @@ describe('CommandHandler (C5)', () => {
       assert.equal(receivedParams.params.agentName, 'test-agent');
       assert.equal(receivedParams.sessionID, 'ses_1');
       assert.equal(receivedParams.authorType, 'user');
-      assert.equal(savedFrames[1].type, 'command-result');
+      assert.equal(savedFrames[1].type, 'CommandResult');
       assert.ok(savedFrames[1].content.html.includes('Invited!'));
     });
 
@@ -214,7 +214,7 @@ describe('CommandHandler (C5)', () => {
       }, { commandName: 'invite', arguments: '' });
 
       // Should produce an error frame, not call the handler
-      assert.equal(savedFrames[1].type, 'command-result');
+      assert.equal(savedFrames[1].type, 'CommandResult');
       assert.ok(savedFrames[1].content.html.includes('Usage'));
     });
 
@@ -283,9 +283,9 @@ describe('CommandHandler (C5)', () => {
 
       assert.ok(interactionID);
       assert.equal(savedFrames.length, 2);
-      assert.equal(savedFrames[0].type, 'user-message');
+      assert.equal(savedFrames[0].type, 'UserMessage');
       assert.equal(savedFrames[0].hidden, true);
-      assert.equal(savedFrames[1].type, 'command-result');
+      assert.equal(savedFrames[1].type, 'CommandResult');
       assert.ok(savedFrames[1].content.html.includes('Unknown command'));
     });
 

@@ -112,7 +112,7 @@ describe('InteractionLoop.postMessage', () => {
       let frame = await Frame.where.id.EQ(result.frameID).first();
 
       assert.ok(frame);
-      assert.equal(frame.type, 'user-message');
+      assert.equal(frame.type, 'UserMessage');
       assert.equal(frame.authorType, 'user');
       assert.equal(frame.authorID, 'user_abc');
 
@@ -178,7 +178,7 @@ describe('InteractionLoop.postMessage', () => {
 
       assert.equal(emitted.length, 1);
       assert.equal(emitted[0].sessionID, session.id);
-      assert.equal(emitted[0].frame.type, 'user-message');
+      assert.equal(emitted[0].frame.type, 'UserMessage');
     });
 
     it('should emit a commit event', async () => {
@@ -195,7 +195,7 @@ describe('InteractionLoop.postMessage', () => {
       assert.ok(commits[0].commit);
       assert.ok(Array.isArray(commits[0].commit.frames));
       assert.equal(commits[0].commit.frames.length, 1);
-      assert.equal(commits[0].commit.frames[0].type, 'user-message');
+      assert.equal(commits[0].commit.frames[0].type, 'UserMessage');
     });
 
     it('should NOT emit interaction:start or interaction:end', async () => {

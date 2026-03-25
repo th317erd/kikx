@@ -23,7 +23,7 @@ function createMockSolrService(overrides = {}) {
 function createMockFrame(overrides = {}) {
   return {
     id:            overrides.id || 'frm_test_123',
-    type:          overrides.type || 'message',
+    type:          overrides.type || 'Message',
     groupType:     overrides.groupType || null,
     interactionID: overrides.interactionID || 'int_test_1',
     authorType:    overrides.authorType || 'user',
@@ -171,7 +171,7 @@ describe('SolrIndexingPlugin', () => {
 
       let frame = createMockFrame({
         id:            'frm_field_test',
-        type:          'user-message',
+        type:          'UserMessage',
         interactionID: 'int_42',
         authorType:    'user',
         authorID:      'usr_77',
@@ -193,7 +193,7 @@ describe('SolrIndexingPlugin', () => {
       let doc = indexedDocs[0];
       assert.equal(doc.id, 'frm_field_test');
       assert.equal(doc.doc_type, 'frame');
-      assert.equal(doc.type, 'user-message');
+      assert.equal(doc.type, 'UserMessage');
       assert.equal(doc.sessionID, 'ses_field_test');
       assert.equal(doc.interactionID, 'int_42');
       assert.equal(doc.authorType, 'user');

@@ -9,15 +9,15 @@
 
 // Frame types excluded from the agent's message history
 const EXCLUDED_TYPES = new Set([
-  'permission-request',
-  'permission-denied',
-  'hook-blocked',
-  'tool-error',
-  'error',
-  'reflection',
-  'command-result',
-  'tool-activity',
-  'stop',
+  'PermissionRequest',
+  'PermissionDenied',
+  'HookBlocked',
+  'ToolError',
+  'Error',
+  'Reflection',
+  'CommandResult',
+  'ToolActivity',
+  'Stop',
 ]);
 
 /**
@@ -32,10 +32,10 @@ export function isFirstMessage(frames) {
     if (frame.deleted || frame.hidden)
       continue;
 
-    if (frame.type === 'user-message')
+    if (frame.type === 'UserMessage')
       userMessageCount++;
 
-    if (frame.type === 'message')
+    if (frame.type === 'Message')
       hasAssistantMessage = true;
   }
 
@@ -84,7 +84,7 @@ export function buildMessages(frames, forAgentID, options = {}) {
     if (frame.deleted || frame.hidden)
       continue;
 
-    if (frame.type === 'tool-result' && frame.content && frame.content.toolUseID) {
+    if (frame.type === 'ToolResult' && frame.content && frame.content.toolUseID) {
       resolvedToolIds.add(frame.content.toolUseID);
 
       if (!toolResultFrames.has(frame.content.toolUseID))
@@ -122,10 +122,10 @@ export function buildMessages(frames, forAgentID, options = {}) {
         continue;
     }
 
-    if (type === 'user-message') {
+    if (type === 'UserMessage') {
       let content = frame.content || {};
       messages.push({ role: 'user', content: content.html || content.text || '', frameID: frame.id });
-    } else if (type === 'message') {
+    } else if (type === 'Message') {
       let content = frame.content || {};
       let html    = content.html || '';
 
@@ -141,7 +141,7 @@ export function buildMessages(frames, forAgentID, options = {}) {
         // Own message or single-agent → standard assistant role
         messages.push({ role: 'assistant', content: html, frameID: frame.id });
       }
-    } else if (type === 'tool-call') {
+    } else if (type === 'ToolCall') {
       let content   = frame.content || {};
       let toolUseID = content.toolUseID || content.toolUseId;
 
@@ -151,8 +151,8 @@ export function buildMessages(frames, forAgentID, options = {}) {
       if (toolUseID && !resolvedToolIds.has(toolUseID))
         continue;
 
-      messages.push({ type: 'tool-call', content, authorType: 'agent', frameID: frame.id });
-    } else if (type === 'pending-action') {
+      messages.push({ type: 'ToolCall', content, authorType: 'agent', frameID: frame.id });
+    } else if (type === 'PendingAction') {
       // Only include pending-actions that were approved (have a matching tool-result)
       let content = frame.content || {};
       if (content.toolUseID && resolvedToolIds.has(content.toolUseID)) {
@@ -164,7 +164,7 @@ export function buildMessages(frames, forAgentID, options = {}) {
           cleanContent = { ...content, arguments: cleanArgs };
         }
 
-        messages.push({ type: 'tool-call', content: cleanContent, authorType: 'agent', frameID: frame.id });
+        messages.push({ type: 'ToolCall', content: cleanContent, authorType: 'agent', frameID: frame.id });
 
         // Immediately emit the matching tool-result so the tool_use / tool_result
         // pair stays adjacent. Without this, user messages sent while a permission
@@ -173,10 +173,10 @@ export function buildMessages(frames, forAgentID, options = {}) {
         let resultFrame = toolResultFrames.get(content.toolUseID);
         if (resultFrame && !emittedToolResults.has(content.toolUseID)) {
           emittedToolResults.add(content.toolUseID);
-          messages.push({ type: 'tool-result', content: resultFrame.content || {}, frameID: resultFrame.id });
+          messages.push({ type: 'ToolResult', content: resultFrame.content || {}, frameID: resultFrame.id });
         }
       }
-    } else if (type === 'tool-result') {
+    } else if (type === 'ToolResult') {
       let content  = frame.content || {};
       let resultID = content.toolUseID;
 
@@ -187,7 +187,7 @@ export function buildMessages(frames, forAgentID, options = {}) {
       if (resultID)
         emittedToolResults.add(resultID);
 
-      messages.push({ type: 'tool-result', content, frameID: frame.id });
+      messages.push({ type: 'ToolResult', content, frameID: frame.id });
     }
   }
 

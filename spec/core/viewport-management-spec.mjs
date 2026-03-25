@@ -57,7 +57,7 @@ describe('Viewport Management (D5)', () => {
       frames.push({
         id:            `frm_${XID.next()}`,
         sessionID:     sessionID,
-        type:          'message',
+        type: 'Message',
         content:       JSON.stringify({ text: `Message ${i}` }),
         order:         i,
         timestamp:     Date.now() + i,
@@ -162,8 +162,8 @@ describe('Viewport Management (D5)', () => {
       manager.on('frames:bulk-loaded', () => events.push('bulk'));
 
       manager.loadWindow([
-        { id: 'f1', type: 'message', content: { text: 'a' } },
-        { id: 'f2', type: 'message', content: { text: 'b' } },
+        { id: 'f1', type: 'Message', content: { text: 'a' } },
+        { id: 'f2', type: 'Message', content: { text: 'b' } },
       ]);
 
       // frame:added should NOT fire; bulk-loaded should
@@ -178,11 +178,11 @@ describe('Viewport Management (D5)', () => {
       let manager = new FrameManager({ history: false });
 
       manager.merge([
-        { id: 'f1', type: 'message', content: {}, order: 1 },
-        { id: 'f2', type: 'message', content: {}, order: 2 },
-        { id: 'f3', type: 'message', content: {}, order: 3 },
-        { id: 'f4', type: 'message', content: {}, order: 4 },
-        { id: 'f5', type: 'message', content: {}, order: 5 },
+        { id: 'f1', type: 'Message', content: {}, order: 1 },
+        { id: 'f2', type: 'Message', content: {}, order: 2 },
+        { id: 'f3', type: 'Message', content: {}, order: 3 },
+        { id: 'f4', type: 'Message', content: {}, order: 4 },
+        { id: 'f5', type: 'Message', content: {}, order: 5 },
       ], { events: false });
 
       // Note: merge reassigns orders sequentially, so actual orders are 1-5
@@ -199,7 +199,7 @@ describe('Viewport Management (D5)', () => {
       let manager = new FrameManager({ history: false });
 
       manager.merge([
-        { id: 'f1', type: 'message', content: {} },
+        { id: 'f1', type: 'Message', content: {} },
       ], { events: false });
 
       let evicted = manager.evict(0);
@@ -219,9 +219,9 @@ describe('Viewport Management (D5)', () => {
       let manager = new FrameManager({ history: false });
 
       manager.merge([
-        { id: 'f1', type: 'message', content: {} },
-        { id: 'f2', type: 'message', content: {} },
-        { id: 'f3', type: 'message', content: {} },
+        { id: 'f1', type: 'Message', content: {} },
+        { id: 'f2', type: 'Message', content: {} },
+        { id: 'f3', type: 'Message', content: {} },
       ], { events: false });
 
       let bounds = manager.getWindowBounds();
@@ -234,14 +234,14 @@ describe('Viewport Management (D5)', () => {
       let manager = new FrameManager({ history: false });
 
       manager.merge([
-        { id: 'f3', type: 'message', content: {} },
+        { id: 'f3', type: 'Message', content: {} },
       ], { events: false });
 
       let before = manager.getWindowBounds();
 
       manager.loadWindow([
-        { id: 'f1', type: 'message', content: {} },
-        { id: 'f2', type: 'message', content: {} },
+        { id: 'f1', type: 'Message', content: {} },
+        { id: 'f2', type: 'Message', content: {} },
       ]);
 
       let after = manager.getWindowBounds();

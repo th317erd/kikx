@@ -33,7 +33,7 @@ class MockAgent extends AgentInterface {
 
   async *_createGenerator(_params) {
     for (let block of this._blocks) {
-      if (block.type === 'tool-call') {
+      if (block.type === 'ToolCall') {
         let result = yield block;
         // Store result so tests can verify it was passed back
         block._receivedResult = result;
@@ -42,7 +42,7 @@ class MockAgent extends AgentInterface {
       }
     }
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -144,7 +144,7 @@ describe('InteractionLoop', () => {
       // Check that a user-message frame was persisted
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let userFrames = frames.filter((f) => f.type === 'user-message');
+      let userFrames = frames.filter((f) => f.type === 'UserMessage');
 
       assert.equal(userFrames.length, 1);
       assert.equal(userFrames[0].content.text, 'Hello, agent!');
@@ -161,7 +161,7 @@ describe('InteractionLoop', () => {
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let userFrames = frames.filter((f) => f.type === 'user-message');
+      let userFrames = frames.filter((f) => f.type === 'UserMessage');
 
       assert.equal(userFrames.length, 0);
     });
@@ -175,7 +175,7 @@ describe('InteractionLoop', () => {
     it('should process a single message block', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'message', content: { html: '<p>Hello!</p>' }, authorType: 'agent', authorID: 'agent_1' },
+        { type: 'Message', content: { html: '<p>Hello!</p>' }, authorType: 'agent', authorID: 'agent_1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -186,7 +186,7 @@ describe('InteractionLoop', () => {
       let frames = fm.toArray();
 
       // user-message + message + (done not persisted)
-      let messageFrames = frames.filter((f) => f.type === 'message');
+      let messageFrames = frames.filter((f) => f.type === 'Message');
       assert.equal(messageFrames.length, 1);
       assert.equal(messageFrames[0].content.html, '<p>Hello!</p>');
     });
@@ -200,9 +200,9 @@ describe('InteractionLoop', () => {
     it('should process multiple message blocks', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'message', content: { html: '<p>First</p>' }, authorType: 'agent', authorID: 'a1' },
-        { type: 'message', content: { html: '<p>Second</p>' }, authorType: 'agent', authorID: 'a1' },
-        { type: 'message', content: { html: '<p>Third</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>First</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>Second</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>Third</p>' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -211,7 +211,7 @@ describe('InteractionLoop', () => {
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let messageFrames = frames.filter((f) => f.type === 'message');
+      let messageFrames = frames.filter((f) => f.type === 'Message');
 
       assert.equal(messageFrames.length, 3);
       assert.equal(messageFrames[0].content.html, '<p>First</p>');
@@ -228,8 +228,8 @@ describe('InteractionLoop', () => {
     it('should create hidden reflection frames', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'reflection', content: { text: 'Thinking...' }, hidden: true, authorType: 'agent', authorID: 'a1' },
-        { type: 'message', content: { html: '<p>Answer</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Reflection', content: { text: 'Thinking...' }, hidden: true, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>Answer</p>' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -238,7 +238,7 @@ describe('InteractionLoop', () => {
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let reflections = frames.filter((f) => f.type === 'reflection');
+      let reflections = frames.filter((f) => f.type === 'Reflection');
 
       assert.equal(reflections.length, 1);
       assert.equal(reflections[0].content.text, 'Thinking...');
@@ -254,7 +254,7 @@ describe('InteractionLoop', () => {
     it('should sanitize HTML in message content', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'message', content: { html: '<p>Hello</p><script>alert("xss")</script>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>Hello</p><script>alert("xss")</script>' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -263,7 +263,7 @@ describe('InteractionLoop', () => {
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let messageFrames = frames.filter((f) => f.type === 'message');
+      let messageFrames = frames.filter((f) => f.type === 'Message');
 
       assert.equal(messageFrames.length, 1);
       // Script tag should be stripped
@@ -280,8 +280,8 @@ describe('InteractionLoop', () => {
     it('should assign monotonically increasing order values', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: 'a1' },
-        { type: 'message', content: { html: '<p>B</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>B</p>' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -306,7 +306,7 @@ describe('InteractionLoop', () => {
       let session = await createTestSession();
       let before  = Date.now();
       let blocks  = [
-        { type: 'message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -348,8 +348,8 @@ describe('InteractionLoop', () => {
     it('should execute the tool and persist tool-call + tool-result frames', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'tool-call', content: { toolName: 'echo', arguments: { text: 'hi' } }, authorType: 'agent', authorID: 'a1' },
-        { type: 'message', content: { html: '<p>Done</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'echo', arguments: { text: 'hi' } }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>Done</p>' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -366,8 +366,8 @@ describe('InteractionLoop', () => {
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
 
-      let toolCallFrames  = frames.filter((f) => f.type === 'tool-call');
-      let toolResultFrames = frames.filter((f) => f.type === 'tool-result');
+      let toolCallFrames  = frames.filter((f) => f.type === 'ToolCall');
+      let toolResultFrames = frames.filter((f) => f.type === 'ToolResult');
 
       assert.equal(toolCallFrames.length, 1);
       assert.equal(toolCallFrames[0].content.toolName, 'echo');
@@ -394,10 +394,10 @@ describe('InteractionLoop', () => {
         static agentType   = 'capture';
 
         async *_createGenerator(_params) {
-          let result = yield { type: 'tool-call', content: { toolName: 'test', arguments: {} }, authorType: 'agent', authorID: 'a1' };
+          let result = yield { type: 'ToolCall', content: { toolName: 'test', arguments: {} }, authorType: 'agent', authorID: 'a1' };
           receivedResult = result;
-          yield { type: 'message', content: { html: `<p>Got: ${result.content.output}</p>` }, authorType: 'agent', authorID: 'a1' };
-          yield { type: 'done', content: {} };
+          yield { type: 'Message', content: { html: `<p>Got: ${result.content.output}</p>` }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'Done', content: {} };
         }
       }
 
@@ -410,7 +410,7 @@ describe('InteractionLoop', () => {
       }));
 
       assert.ok(receivedResult);
-      assert.equal(receivedResult.type, 'tool-result');
+      assert.equal(receivedResult.type, 'ToolResult');
       assert.equal(receivedResult.content.output, 'the result');
     });
   });
@@ -423,8 +423,8 @@ describe('InteractionLoop', () => {
     it('should end interaction when permission is needed', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'tool-call', content: { toolName: 'dangerous-tool', arguments: { x: 1 } }, authorType: 'agent', authorID: 'a1' },
-        { type: 'message', content: { html: '<p>After tool</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'dangerous-tool', arguments: { x: 1 } }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>After tool</p>' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -440,11 +440,11 @@ describe('InteractionLoop', () => {
 
       // New behavior: inline permission-request frame + tool_result fed back
       // The interaction continues, so the message block IS processed
-      let permRequestFrames = frames.filter((f) => f.type === 'permission-request');
+      let permRequestFrames = frames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(permRequestFrames.length, 1, 'should have a permission-request frame');
       assert.equal(permRequestFrames[0].content.toolName, 'dangerous-tool');
 
-      let toolResultFrames = frames.filter((f) => f.type === 'tool-result');
+      let toolResultFrames = frames.filter((f) => f.type === 'ToolResult');
       assert.ok(toolResultFrames.length >= 1, 'should have a tool-result frame');
       let permResult = toolResultFrames.find((f) => f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
       assert.ok(permResult, 'tool-result should contain PERMISSION REQUIRED message');
@@ -462,7 +462,7 @@ describe('InteractionLoop', () => {
     it('should persist a permission-request frame with tool details', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'tool-call', content: { toolName: 'rm', arguments: { path: '/etc' } }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'rm', arguments: { path: '/etc' } }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -475,7 +475,7 @@ describe('InteractionLoop', () => {
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let requestFrames = frames.filter((f) => f.type === 'permission-request');
+      let requestFrames = frames.filter((f) => f.type === 'PermissionRequest');
 
       assert.equal(requestFrames.length, 1);
       assert.equal(requestFrames[0].content.toolName, 'rm');
@@ -491,7 +491,7 @@ describe('InteractionLoop', () => {
     it('should create a permission-request frame', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'tool-call', content: { toolName: 'sudo', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'sudo', arguments: {} }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -504,7 +504,7 @@ describe('InteractionLoop', () => {
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let requestFrames = frames.filter((f) => f.type === 'permission-request');
+      let requestFrames = frames.filter((f) => f.type === 'PermissionRequest');
 
       assert.equal(requestFrames.length, 1);
       assert.equal(requestFrames[0].content.toolName, 'sudo');
@@ -519,7 +519,7 @@ describe('InteractionLoop', () => {
     it('should not be active after permission hard-break', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'tool-call', content: { toolName: 'exec', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'exec', arguments: {} }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -554,10 +554,10 @@ describe('InteractionLoop', () => {
         static agentType   = 'slow';
 
         async *_createGenerator(_params) {
-          yield { type: 'message', content: { html: '<p>Starting...</p>' }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'Message', content: { html: '<p>Starting...</p>' }, authorType: 'agent', authorID: 'a1' };
           // This will block until generator.return() is called
           try {
-            yield { type: 'tool-call', content: { toolName: 'long-running', arguments: {} }, authorType: 'agent', authorID: 'a1' };
+            yield { type: 'ToolCall', content: { toolName: 'long-running', arguments: {} }, authorType: 'agent', authorID: 'a1' };
           } finally {
             cancelledResolve(true);
           }
@@ -600,8 +600,8 @@ describe('InteractionLoop', () => {
         static agentType   = 'queue-test';
 
         async *_createGenerator(_params) {
-          yield { type: 'message', content: { html: '<p>Working...</p>' }, authorType: 'agent', authorID: 'a1' };
-          yield { type: 'done', content: {} };
+          yield { type: 'Message', content: { html: '<p>Working...</p>' }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'Done', content: {} };
         }
       }
 
@@ -665,8 +665,8 @@ describe('InteractionLoop', () => {
 
         async *_createGenerator(params) {
           interactionCount++;
-          yield { type: 'message', content: { html: `<p>Response ${interactionCount}</p>` }, authorType: 'agent', authorID: 'a1' };
-          yield { type: 'done', content: {} };
+          yield { type: 'Message', content: { html: `<p>Response ${interactionCount}</p>` }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'Done', content: {} };
         }
       }
 
@@ -703,11 +703,11 @@ describe('InteractionLoop', () => {
         async *_createGenerator(params) {
           interactionCount++;
           if (interactionCount === 1) {
-            yield { type: 'tool-call', content: { toolName: 'rm', arguments: { path: '/' } }, authorType: 'agent', authorID: 'a1' };
+            yield { type: 'ToolCall', content: { toolName: 'rm', arguments: { path: '/' } }, authorType: 'agent', authorID: 'a1' };
           }
 
-          yield { type: 'message', content: { html: '<p>Continued</p>' }, authorType: 'agent', authorID: 'a1' };
-          yield { type: 'done', content: {} };
+          yield { type: 'Message', content: { html: '<p>Continued</p>' }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'Done', content: {} };
         }
       }
 
@@ -730,16 +730,16 @@ describe('InteractionLoop', () => {
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
 
-      let requestFrames = frames.filter((f) => f.type === 'permission-request');
+      let requestFrames = frames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(requestFrames.length, 1);
       assert.equal(requestFrames[0].content.toolName, 'rm');
 
-      let toolResults = frames.filter((f) => f.type === 'tool-result');
+      let toolResults = frames.filter((f) => f.type === 'ToolResult');
       let permResult  = toolResults.find((f) => f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
       assert.ok(permResult, 'should have PERMISSION REQUIRED tool-result');
 
       // The message after tool-call should still be processed (interaction continued)
-      let messageFrames = frames.filter((f) => f.type === 'message');
+      let messageFrames = frames.filter((f) => f.type === 'Message');
       assert.equal(messageFrames.length, 1, 'agent message should be processed after permission-request');
     });
   });
@@ -752,7 +752,7 @@ describe('InteractionLoop', () => {
     it('should create permission-request and tool-result inline when permission needed in normal session', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'tool-call', content: { toolName: 'sudo', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'sudo', arguments: {} }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -770,12 +770,12 @@ describe('InteractionLoop', () => {
       let frames = fm.toArray();
 
       // Permission-request frame should exist
-      let requestFrames = frames.filter((f) => f.type === 'permission-request');
+      let requestFrames = frames.filter((f) => f.type === 'PermissionRequest');
       assert.ok(requestFrames.length >= 1, 'should have a permission-request frame');
       assert.equal(requestFrames[0].content.toolName, 'sudo');
 
       // Tool-result with PERMISSION REQUIRED should exist
-      let toolResults = frames.filter((f) => f.type === 'tool-result');
+      let toolResults = frames.filter((f) => f.type === 'ToolResult');
       let permResult  = toolResults.find((f) => f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
       assert.ok(permResult, 'should have PERMISSION REQUIRED tool-result');
     });
@@ -789,7 +789,7 @@ describe('InteractionLoop', () => {
     it('should emit frame events for each created frame', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'message', content: { html: '<p>Hello</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>Hello</p>' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent  = new MockAgent(context, blocks);
       let loop   = createLoop();
@@ -801,8 +801,8 @@ describe('InteractionLoop', () => {
 
       // Should have at least 2 frame events: user-message + message
       assert.ok(events.length >= 2, `Expected >= 2 frame events, got ${events.length}`);
-      assert.equal(events[0].frame.type, 'user-message');
-      assert.equal(events[1].frame.type, 'message');
+      assert.equal(events[0].frame.type, 'UserMessage');
+      assert.equal(events[1].frame.type, 'Message');
 
       // All events should have sessionID
       for (let event of events)
@@ -854,10 +854,10 @@ describe('InteractionLoop', () => {
       // Only user-message frame should exist
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let userFrames = frames.filter((f) => f.type === 'user-message');
+      let userFrames = frames.filter((f) => f.type === 'UserMessage');
 
       assert.equal(userFrames.length, 1);
-      assert.equal(frames.filter((f) => f.type === 'message').length, 0);
+      assert.equal(frames.filter((f) => f.type === 'Message').length, 0);
     });
   });
 
@@ -869,7 +869,7 @@ describe('InteractionLoop', () => {
     it('should support multiple interactions on the same session', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'message', content: { html: '<p>Response</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>Response</p>' }, authorType: 'agent', authorID: 'a1' },
       ];
 
       let loop = createLoop();
@@ -889,8 +889,8 @@ describe('InteractionLoop', () => {
       // Both interactions' frames should be persisted
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let userFrames    = frames.filter((f) => f.type === 'user-message');
-      let messageFrames = frames.filter((f) => f.type === 'message');
+      let userFrames    = frames.filter((f) => f.type === 'UserMessage');
+      let messageFrames = frames.filter((f) => f.type === 'Message');
 
       assert.equal(userFrames.length, 2);
       assert.equal(messageFrames.length, 2);
@@ -930,7 +930,7 @@ describe('InteractionLoop', () => {
     it('should emit permission:request when permission is needed', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'tool-call', content: { toolName: 'nuclear', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'nuclear', arguments: {} }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent  = new MockAgent(context, blocks);
       let loop   = createLoop();
@@ -959,7 +959,7 @@ describe('InteractionLoop', () => {
     it('should execute tool directly when no permission error thrown', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'tool-call', content: { toolName: 'test', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'test', arguments: {} }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -991,7 +991,7 @@ describe('InteractionLoop', () => {
         static agentType   = 'throwing';
 
         async *_createGenerator(_params) {
-          yield { type: 'message', content: { html: '<p>Starting</p>' }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'Message', content: { html: '<p>Starting</p>' }, authorType: 'agent', authorID: 'a1' };
           throw new Error('generator exploded');
         }
       }
@@ -1002,7 +1002,7 @@ describe('InteractionLoop', () => {
 
       await loop.startInteraction(session.id, defaultParams(agent, { agentPlugin: agent }));
 
-      let errorFrames = emittedFrames.filter((f) => f.type === 'error');
+      let errorFrames = emittedFrames.filter((f) => f.type === 'Error');
       assert.ok(errorFrames.length >= 1);
       assert.ok(errorFrames[0].content.message.includes('generator exploded'));
     });
@@ -1037,7 +1037,7 @@ describe('InteractionLoop', () => {
       let session = await createTestSession();
       let blocks  = [
         { type: 'unknown-type', content: { data: 'mystery' }, authorType: 'agent', authorID: 'a1' },
-        { type: 'message', content: { html: '<p>After unknown</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>After unknown</p>' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -1048,7 +1048,7 @@ describe('InteractionLoop', () => {
       await loop.startInteraction(session.id, defaultParams(agent));
 
       // Should still process the message after the unknown type
-      let messageFrames = emittedFrames.filter((f) => f.type === 'message');
+      let messageFrames = emittedFrames.filter((f) => f.type === 'Message');
       assert.ok(messageFrames.length >= 1);
       assert.ok(messageFrames[0].content.html.includes('After unknown'));
     });
@@ -1081,7 +1081,7 @@ describe('InteractionLoop', () => {
     it('should handle executeTool returning null', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'tool-call', content: { toolName: 'null-tool', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'null-tool', arguments: {} }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -1093,7 +1093,7 @@ describe('InteractionLoop', () => {
         executeTool: () => null,
       }));
 
-      let resultFrames = emittedFrames.filter((f) => f.type === 'tool-result');
+      let resultFrames = emittedFrames.filter((f) => f.type === 'ToolResult');
       assert.ok(resultFrames.length >= 1);
       // null should be converted to something passable to generator
       assert.equal(resultFrames[0].content.output, null);
@@ -1102,7 +1102,7 @@ describe('InteractionLoop', () => {
     it('should handle executeTool returning undefined', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'tool-call', content: { toolName: 'void-tool', arguments: {} }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'void-tool', arguments: {} }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -1136,9 +1136,9 @@ describe('InteractionLoop', () => {
         static agentType   = 'double-tool';
 
         async *_createGenerator(_params) {
-          yield { type: 'tool-call', content: { toolName: 'exec', arguments: {} }, authorType: 'agent', authorID: 'a1' };
-          yield { type: 'tool-call', content: { toolName: 'exec2', arguments: {} }, authorType: 'agent', authorID: 'a1' };
-          yield { type: 'done', content: {} };
+          yield { type: 'ToolCall', content: { toolName: 'exec', arguments: {} }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'ToolCall', content: { toolName: 'exec2', arguments: {} }, authorType: 'agent', authorID: 'a1' };
+          yield { type: 'Done', content: {} };
         }
       }
 
@@ -1160,7 +1160,7 @@ describe('InteractionLoop', () => {
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
 
-      let requestFrames = frames.filter((f) => f.type === 'permission-request');
+      let requestFrames = frames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(requestFrames.length, 2, 'should have 2 permission-request frames');
     });
   });
@@ -1191,7 +1191,7 @@ describe('InteractionLoop', () => {
       });
 
       let blocks = [
-        { type: 'message', content: { html: '<p>Should not run</p>' }, authorType: 'agent' },
+        { type: 'Message', content: { html: '<p>Should not run</p>' }, authorType: 'agent' },
       ];
       let agent = new MockAgent(context, blocks);
 
@@ -1201,12 +1201,12 @@ describe('InteractionLoop', () => {
       await loop.startInteraction(session.id, defaultParams(agent));
 
       // Should have a hook-blocked frame
-      let blockedFrames = emittedFrames.filter((f) => f.type === 'hook-blocked');
+      let blockedFrames = emittedFrames.filter((f) => f.type === 'HookBlocked');
       assert.ok(blockedFrames.length >= 1);
       assert.ok(blockedFrames[0].content.reason.includes('filtered'));
 
       // Should NOT have agent message frames
-      let messageFrames = emittedFrames.filter((f) => f.type === 'message');
+      let messageFrames = emittedFrames.filter((f) => f.type === 'Message');
       assert.equal(messageFrames.length, 0);
     });
 
@@ -1223,7 +1223,7 @@ describe('InteractionLoop', () => {
       });
 
       let blocks = [
-        { type: 'message', content: { html: '<p>Hello</p>' }, authorType: 'agent' },
+        { type: 'Message', content: { html: '<p>Hello</p>' }, authorType: 'agent' },
       ];
       let agent = new MockAgent(context, blocks);
 
@@ -1232,7 +1232,7 @@ describe('InteractionLoop', () => {
 
       await loop.startInteraction(session.id, defaultParams(agent));
 
-      let messageFrames = emittedFrames.filter((f) => f.type === 'message');
+      let messageFrames = emittedFrames.filter((f) => f.type === 'Message');
       assert.ok(messageFrames.length >= 1);
       assert.ok(messageFrames[0].content.html.includes('[hooked]'));
     });
@@ -1251,7 +1251,7 @@ describe('InteractionLoop', () => {
       });
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'shell:execute', arguments: { command: 'ls' } }, authorType: 'agent' },
+        { type: 'ToolCall', content: { toolName: 'shell:execute', arguments: { command: 'ls' } }, authorType: 'agent' },
       ];
       let agent = new MockAgent(context, blocks);
 
@@ -1276,7 +1276,7 @@ describe('InteractionLoop', () => {
       });
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'shell:execute', arguments: { command: 'ls' } }, authorType: 'agent' },
+        { type: 'ToolCall', content: { toolName: 'shell:execute', arguments: { command: 'ls' } }, authorType: 'agent' },
       ];
       let agent = new MockAgent(context, blocks);
 
@@ -1288,7 +1288,7 @@ describe('InteractionLoop', () => {
 
       }));
 
-      let resultFrames = emittedFrames.filter((f) => f.type === 'tool-result');
+      let resultFrames = emittedFrames.filter((f) => f.type === 'ToolResult');
       assert.ok(resultFrames.length >= 1);
       assert.ok(resultFrames[0].content.output.includes('[filtered]'));
     });
@@ -1298,7 +1298,7 @@ describe('InteractionLoop', () => {
       let loop    = createLoop();
 
       let blocks = [
-        { type: 'message', content: { html: '<p>Hello</p>' }, authorType: 'agent' },
+        { type: 'Message', content: { html: '<p>Hello</p>' }, authorType: 'agent' },
       ];
       let agent = new MockAgent(context, blocks);
 
@@ -1307,7 +1307,7 @@ describe('InteractionLoop', () => {
 
       await loop.startInteraction(session.id, defaultParams(agent));
 
-      let messageFrames = emittedFrames.filter((f) => f.type === 'message');
+      let messageFrames = emittedFrames.filter((f) => f.type === 'Message');
       assert.ok(messageFrames.length >= 1);
     });
   });
@@ -1330,7 +1330,7 @@ describe('InteractionLoop', () => {
       let loop    = createLoop();
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'dangerous:tool', arguments: {} }, authorType: 'agent' },
+        { type: 'ToolCall', content: { toolName: 'dangerous:tool', arguments: {} }, authorType: 'agent' },
       ];
       let agent = new MockAgent(context, blocks);
 
@@ -1343,7 +1343,7 @@ describe('InteractionLoop', () => {
         },
       }));
 
-      let deniedFrames = emittedFrames.filter((f) => f.type === 'permission-denied');
+      let deniedFrames = emittedFrames.filter((f) => f.type === 'PermissionDenied');
       assert.ok(deniedFrames.length >= 1);
       assert.equal(deniedFrames[0].content.toolName, 'dangerous:tool');
     });
@@ -1355,7 +1355,7 @@ describe('InteractionLoop', () => {
       let loop    = createLoop();
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'blocked:tool', arguments: {} }, authorType: 'agent' },
+        { type: 'ToolCall', content: { toolName: 'blocked:tool', arguments: {} }, authorType: 'agent' },
       ];
       let agent = new MockAgent(context, blocks);
 
@@ -1376,7 +1376,7 @@ describe('InteractionLoop', () => {
       let loop    = createLoop();
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'test:tool', arguments: {} }, authorType: 'agent' },
+        { type: 'ToolCall', content: { toolName: 'test:tool', arguments: {} }, authorType: 'agent' },
       ];
       let agent = new MockAgent(context, blocks);
 
@@ -1388,7 +1388,7 @@ describe('InteractionLoop', () => {
       }));
 
       // Should produce a tool-error frame (executeTool error handler)
-      let errorFrames = emittedFrames.filter((f) => f.type === 'tool-error');
+      let errorFrames = emittedFrames.filter((f) => f.type === 'ToolError');
       assert.ok(errorFrames.length >= 1);
       assert.ok(errorFrames[0].content.message.includes('DB connection lost'));
     });
@@ -1410,7 +1410,7 @@ describe('InteractionLoop', () => {
       let loop    = createLoop();
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'shell:execute', arguments: { command: 'ls' } }, authorType: 'agent' },
+        { type: 'ToolCall', content: { toolName: 'shell:execute', arguments: { command: 'ls' } }, authorType: 'agent' },
       ];
       let agent = new MockAgent(context, blocks);
 
@@ -1422,7 +1422,7 @@ describe('InteractionLoop', () => {
         executeTool: () => { throw new Error('command not found'); },
       }));
 
-      let errorFrames = emittedFrames.filter((f) => f.type === 'tool-error');
+      let errorFrames = emittedFrames.filter((f) => f.type === 'ToolError');
       assert.ok(errorFrames.length >= 1);
       assert.equal(errorFrames[0].content.toolName, 'shell:execute');
       assert.ok(errorFrames[0].content.message.includes('command not found'));
@@ -1433,7 +1433,7 @@ describe('InteractionLoop', () => {
       let loop    = createLoop();
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'shell:execute', arguments: { command: 'bad' } }, authorType: 'agent' },
+        { type: 'ToolCall', content: { toolName: 'shell:execute', arguments: { command: 'bad' } }, authorType: 'agent' },
       ];
       let agent = new MockAgent(context, blocks);
 
@@ -1452,7 +1452,7 @@ describe('InteractionLoop', () => {
       let loop    = createLoop();
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'shell:execute', arguments: { command: 'x' } }, authorType: 'agent' },
+        { type: 'ToolCall', content: { toolName: 'shell:execute', arguments: { command: 'x' } }, authorType: 'agent' },
       ];
       let agent = new MockAgent(context, blocks);
 
@@ -1465,8 +1465,8 @@ describe('InteractionLoop', () => {
       }));
 
       // Should have tool-error but NOT interaction-level error
-      let toolErrors = emittedFrames.filter((f) => f.type === 'tool-error');
-      let errors     = emittedFrames.filter((f) => f.type === 'error');
+      let toolErrors = emittedFrames.filter((f) => f.type === 'ToolError');
+      let errors     = emittedFrames.filter((f) => f.type === 'Error');
       assert.ok(toolErrors.length >= 1);
       assert.equal(errors.length, 0);
     });
@@ -1484,8 +1484,8 @@ describe('InteractionLoop', () => {
     it('should emit interaction:usage when done block has usage data', async () => {
       let session = await createTestSession();
       let blocks  = [
-        { type: 'message', content: { html: '<p>Hello!</p>' }, authorType: 'agent', authorID: 'agent_1' },
-        { type: 'done', content: { usage: { inputTokens: 100, outputTokens: 50 } } },
+        { type: 'Message', content: { html: '<p>Hello!</p>' }, authorType: 'agent', authorID: 'agent_1' },
+        { type: 'Done', content: { usage: { inputTokens: 100, outputTokens: 50 } } },
       ];
 
       // Override MockAgent to yield done with usage instead of default empty done
@@ -1497,8 +1497,8 @@ describe('InteractionLoop', () => {
         static agentType   = 'mock';
 
         async *_createGenerator(_params) {
-          yield { type: 'message', content: { html: '<p>Hello!</p>' }, authorType: 'agent', authorID: 'agent_1' };
-          yield { type: 'done', content: { usage: { inputTokens: 100, outputTokens: 50, cacheReadInputTokens: 80, cacheCreationInputTokens: 20 } } };
+          yield { type: 'Message', content: { html: '<p>Hello!</p>' }, authorType: 'agent', authorID: 'agent_1' };
+          yield { type: 'Done', content: { usage: { inputTokens: 100, outputTokens: 50, cacheReadInputTokens: 80, cacheCreationInputTokens: 20 } } };
         }
       }
 
@@ -1522,7 +1522,7 @@ describe('InteractionLoop', () => {
     it('should NOT emit interaction:usage when done block has no usage', async () => {
       let session = await createTestSession();
       let agent   = new MockAgent(context, [
-        { type: 'message', content: { html: '<p>Hi</p>' }, authorType: 'agent' },
+        { type: 'Message', content: { html: '<p>Hi</p>' }, authorType: 'agent' },
       ]);
       let loop = createLoop();
 
@@ -1539,9 +1539,9 @@ describe('InteractionLoop', () => {
     it('should skip deleted frames', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: 'hello' }, deleted: false },
-        { type: 'message', content: { html: '<p>hi</p>' }, deleted: true },
-        { type: 'user-message', content: { text: 'world' }, deleted: false },
+        { type: 'UserMessage', content: { text: 'hello' }, deleted: false },
+        { type: 'Message', content: { html: '<p>hi</p>' }, deleted: true },
+        { type: 'UserMessage', content: { text: 'world' }, deleted: false },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -1553,26 +1553,26 @@ describe('InteractionLoop', () => {
     it('should include pending-action frames as tool-call messages when resolved', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: 'hello' } },
-        { type: 'pending-action', content: { toolName: 'shell', arguments: {}, toolUseID: 'toolu_123' } },
-        { type: 'tool-result', content: { output: 'done', toolUseID: 'toolu_123' } },
-        { type: 'message', content: { html: '<p>hi</p>' } },
+        { type: 'UserMessage', content: { text: 'hello' } },
+        { type: 'PendingAction', content: { toolName: 'shell', arguments: {}, toolUseID: 'toolu_123' } },
+        { type: 'ToolResult', content: { output: 'done', toolUseID: 'toolu_123' } },
+        { type: 'Message', content: { html: '<p>hi</p>' } },
       ];
 
       let messages = loop._buildMessages(frames);
       assert.equal(messages.length, 4);
-      assert.equal(messages[1].type, 'tool-call');
+      assert.equal(messages[1].type, 'ToolCall');
       assert.equal(messages[1].content.toolName, 'shell');
       assert.equal(messages[1].content.toolUseID, 'toolu_123');
-      assert.equal(messages[2].type, 'tool-result');
+      assert.equal(messages[2].type, 'ToolResult');
     });
 
     it('should skip pending-action frames without matching tool-result', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: 'hello' } },
-        { type: 'pending-action', content: { toolName: 'shell', arguments: {}, toolUseID: 'toolu_orphan' } },
-        { type: 'message', content: { html: '<p>hi</p>' } },
+        { type: 'UserMessage', content: { text: 'hello' } },
+        { type: 'PendingAction', content: { toolName: 'shell', arguments: {}, toolUseID: 'toolu_orphan' } },
+        { type: 'Message', content: { html: '<p>hi</p>' } },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -1584,8 +1584,8 @@ describe('InteractionLoop', () => {
     it('should skip permission-request frames', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: 'hello' } },
-        { type: 'permission-request', content: { toolName: 'shell' } },
+        { type: 'UserMessage', content: { text: 'hello' } },
+        { type: 'PermissionRequest', content: { toolName: 'shell' } },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -1595,8 +1595,8 @@ describe('InteractionLoop', () => {
     it('should skip permission-denied frames', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: 'hello' } },
-        { type: 'permission-denied', content: { pendingFrameID: 'frm_123' } },
+        { type: 'UserMessage', content: { text: 'hello' } },
+        { type: 'PermissionDenied', content: { pendingFrameID: 'frm_123' } },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -1606,8 +1606,8 @@ describe('InteractionLoop', () => {
     it('should skip hook-blocked frames', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: 'hello' } },
-        { type: 'hook-blocked', content: { reason: 'test' } },
+        { type: 'UserMessage', content: { text: 'hello' } },
+        { type: 'HookBlocked', content: { reason: 'test' } },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -1617,8 +1617,8 @@ describe('InteractionLoop', () => {
     it('should skip tool-error frames', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: 'hello' } },
-        { type: 'tool-error', content: { message: 'fail' } },
+        { type: 'UserMessage', content: { text: 'hello' } },
+        { type: 'ToolError', content: { message: 'fail' } },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -1628,21 +1628,21 @@ describe('InteractionLoop', () => {
     it('should include tool-call and tool-result frames', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'tool-call', content: { toolName: 'shell', arguments: {} } },
-        { type: 'tool-result', content: { output: 'result' } },
+        { type: 'ToolCall', content: { toolName: 'shell', arguments: {} } },
+        { type: 'ToolResult', content: { output: 'result' } },
       ];
 
       let messages = loop._buildMessages(frames);
       assert.equal(messages.length, 2);
-      assert.equal(messages[0].type, 'tool-call');
-      assert.equal(messages[1].type, 'tool-result');
+      assert.equal(messages[0].type, 'ToolCall');
+      assert.equal(messages[1].type, 'ToolResult');
     });
 
     it('should skip error frames', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: 'hello' } },
-        { type: 'error', content: { message: 'oops' } },
+        { type: 'UserMessage', content: { text: 'hello' } },
+        { type: 'Error', content: { message: 'oops' } },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -1652,8 +1652,8 @@ describe('InteractionLoop', () => {
     it('should skip reflection frames', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: 'hello' } },
-        { type: 'reflection', content: { text: 'thinking' } },
+        { type: 'UserMessage', content: { text: 'hello' } },
+        { type: 'Reflection', content: { text: 'thinking' } },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -1669,12 +1669,12 @@ describe('InteractionLoop', () => {
     it('should return empty array when all frames are excluded types', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'permission-request', content: { toolName: 'shell' } },
-        { type: 'permission-denied', content: {} },
-        { type: 'hook-blocked', content: { reason: 'test' } },
-        { type: 'tool-error', content: { message: 'fail' } },
-        { type: 'error', content: { message: 'oops' } },
-        { type: 'reflection', content: { text: 'thinking' } },
+        { type: 'PermissionRequest', content: { toolName: 'shell' } },
+        { type: 'PermissionDenied', content: {} },
+        { type: 'HookBlocked', content: { reason: 'test' } },
+        { type: 'ToolError', content: { message: 'fail' } },
+        { type: 'Error', content: { message: 'oops' } },
+        { type: 'Reflection', content: { text: 'thinking' } },
       ];
 
       let messages = loop._buildMessages(frames);

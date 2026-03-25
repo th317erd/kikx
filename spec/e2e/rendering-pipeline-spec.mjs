@@ -506,7 +506,7 @@ describe('E2E: DOM structure', { skip: !serverAvailable && 'Server not running' 
       let hasContent = await msg.evaluate((el) => {
         // Some frame types (like permission-request) might not have message-content
         let bubbleType = el.getAttribute('bubble-type');
-        if (bubbleType === 'permission' || bubbleType === 'error')
+        if (bubbleType === 'permission' || bubbleType === 'Error')
           return true; // Skip these
 
         let content = el.querySelector('kikx-message-content');

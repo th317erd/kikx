@@ -51,7 +51,7 @@ describe('FrameRouter', () => {
   describe('registration', () => {
     it('should accept string selectors', () => {
       let router = createRouter();
-      router.registerSelector('type:user-message', BasePluginClass, 'test');
+      router.registerSelector('type:UserMessage', BasePluginClass, 'test');
       assert.strictEqual(router.getRegistrations().length, 1);
     });
 
@@ -74,8 +74,8 @@ describe('FrameRouter', () => {
 
       let registry = {
         getSelectors: () => [
-          { selector: 'type:user-message', PluginClass: BasePluginClass, pluginName: 'a' },
-          { selector: 'type:tool-call', PluginClass: BasePluginClass, pluginName: 'b' },
+          { selector: 'type:UserMessage', PluginClass: BasePluginClass, pluginName: 'a' },
+          { selector: 'type:ToolCall', PluginClass: BasePluginClass, pluginName: 'b' },
         ],
       };
 
@@ -94,10 +94,10 @@ describe('FrameRouter', () => {
       let fm     = new FrameManager();
       let calls  = [];
 
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'matched'), 'test');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'matched'), 'test');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.strictEqual(calls.length, 1);
@@ -109,10 +109,10 @@ describe('FrameRouter', () => {
       let fm     = new FrameManager();
       let calls  = [];
 
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'matched'), 'test');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'matched'), 'test');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }], { silent: true });
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }], { silent: true });
       await tick();
 
       assert.strictEqual(calls.length, 0);
@@ -123,10 +123,10 @@ describe('FrameRouter', () => {
       let fm     = new FrameManager();
       let calls  = [];
 
-      router.registerSelector('type:tool-call', createTrackerPlugin(calls, 'tool'), 'test');
+      router.registerSelector('type:ToolCall', createTrackerPlugin(calls, 'tool'), 'test');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.strictEqual(calls.length, 0);
@@ -138,11 +138,11 @@ describe('FrameRouter', () => {
       let calls     = [];
       let disconnect = router.connectTo(fm);
 
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'matched'), 'test');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'matched'), 'test');
 
       disconnect();
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.strictEqual(calls.length, 0);
@@ -159,12 +159,12 @@ describe('FrameRouter', () => {
       let fm     = new FrameManager();
       let calls  = [];
 
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'A'), 'pluginA');
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'B'), 'pluginB');
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'C'), 'pluginC');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'A'), 'pluginA');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'B'), 'pluginB');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'C'), 'pluginC');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.deepStrictEqual(calls, ['A', 'B', 'C']);
@@ -182,12 +182,12 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'A'), 'pluginA');
-      router.registerSelector('type:user-message', StopPlugin, 'stopper');
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'C'), 'pluginC');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'A'), 'pluginA');
+      router.registerSelector('type:UserMessage', StopPlugin, 'stopper');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'C'), 'pluginC');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.deepStrictEqual(calls, ['A', 'stop']);
@@ -205,11 +205,11 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', ForgetPlugin, 'forgetful');
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'B'), 'pluginB');
+      router.registerSelector('type:UserMessage', ForgetPlugin, 'forgetful');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'B'), 'pluginB');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.deepStrictEqual(calls, ['forget', 'B']);
@@ -227,11 +227,11 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', CrashPlugin, 'crasher');
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'B'), 'pluginB');
+      router.registerSelector('type:UserMessage', CrashPlugin, 'crasher');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'B'), 'pluginB');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.deepStrictEqual(calls, ['crash', 'B']);
@@ -249,11 +249,11 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', BadConstructor, 'bad');
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'B'), 'pluginB');
+      router.registerSelector('type:UserMessage', BadConstructor, 'bad');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'B'), 'pluginB');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.deepStrictEqual(calls, ['B']);
@@ -277,15 +277,15 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', CapPlugin, 'cap');
+      router.registerSelector('type:UserMessage', CapPlugin, 'cap');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.ok(captured);
       assert.strictEqual(captured.newFrame.id, 'f1');
-      assert.strictEqual(captured.newFrame.type, 'user-message');
+      assert.strictEqual(captured.newFrame.type, 'UserMessage');
     });
 
     it('should provide null previousFrame for new frames', async () => {
@@ -300,10 +300,10 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', CapPlugin, 'cap');
+      router.registerSelector('type:UserMessage', CapPlugin, 'cap');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.strictEqual(captured.previousFrame, null);
@@ -321,17 +321,17 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', CapPlugin, 'cap');
+      router.registerSelector('type:UserMessage', CapPlugin, 'cap');
 
       // Create the frame first (silently so router doesn't fire)
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }], { silent: true });
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }], { silent: true });
 
       // Now connect and update it via a different source frame targeting f1
       router.connectTo(fm);
 
       fm.merge([{
         id:      'f1-patch',
-        type:    'user-message',
+        type:    'UserMessage',
         targets: ['f1'],
         content: { text: 'updated' },
       }]);
@@ -357,10 +357,10 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', CapPlugin, 'cap');
+      router.registerSelector('type:UserMessage', CapPlugin, 'cap');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.ok(captured.commit);
@@ -379,10 +379,10 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', CapPlugin, 'cap');
+      router.registerSelector('type:UserMessage', CapPlugin, 'cap');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.strictEqual(captured.engine, fm);
@@ -402,10 +402,10 @@ describe('FrameRouter', () => {
       }
 
       let session = { id: 'session-1', participants: ['agent-a'] };
-      router.registerSelector('type:user-message', CapPlugin, 'cap');
+      router.registerSelector('type:UserMessage', CapPlugin, 'cap');
       router.connectTo(fm, session);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.strictEqual(captured.session, session);
@@ -423,10 +423,10 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', CapPlugin, 'cap');
+      router.registerSelector('type:UserMessage', CapPlugin, 'cap');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.ok(captured.logger);
@@ -448,7 +448,7 @@ describe('FrameRouter', () => {
         async process(next, done) {
           calls.push('creator');
 
-          if (this.context.newFrame.type === 'user-message') {
+          if (this.context.newFrame.type === 'UserMessage') {
             // This will trigger a new commit, queued for later
             fm.merge([{
               id:      'f-response',
@@ -468,11 +468,11 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', CreatorPlugin, 'creator');
+      router.registerSelector('type:UserMessage', CreatorPlugin, 'creator');
       router.registerSelector('type:agent-response', ResponsePlugin, 'responder');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       // Creator fires for user-message, then response-handler fires for agent-response
@@ -498,19 +498,19 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', TypeTracker, 'tracker');
-      router.registerSelector('type:tool-call', TypeTracker, 'tracker');
+      router.registerSelector('type:UserMessage', TypeTracker, 'tracker');
+      router.registerSelector('type:ToolCall', TypeTracker, 'tracker');
       router.connectTo(fm);
 
       fm.merge([
-        { id: 'f1', type: 'user-message', content: { text: 'hello' } },
-        { id: 'f2', type: 'tool-call', content: { toolName: 'test' } },
+        { id: 'f1', type: 'UserMessage', content: { text: 'hello' } },
+        { id: 'f2', type: 'ToolCall', content: { toolName: 'test' } },
       ]);
       await tick();
 
       assert.strictEqual(calls.length, 2);
-      assert.ok(calls.includes('user-message'));
-      assert.ok(calls.includes('tool-call'));
+      assert.ok(calls.includes('UserMessage'));
+      assert.ok(calls.includes('ToolCall'));
     });
   });
 
@@ -525,10 +525,10 @@ describe('FrameRouter', () => {
       let calls  = [];
 
       router.registerSelector(() => { throw new Error('boom'); }, BasePluginClass, 'bad-matcher');
-      router.registerSelector('type:user-message', createTrackerPlugin(calls, 'good'), 'good');
+      router.registerSelector('type:UserMessage', createTrackerPlugin(calls, 'good'), 'good');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.deepStrictEqual(calls, ['good']);
@@ -543,8 +543,8 @@ describe('FrameRouter', () => {
       router.connectTo(fm);
 
       fm.merge([
-        { id: 'f1', type: 'user-message', content: {} },
-        { id: 'f2', type: 'tool-call', content: {} },
+        { id: 'f1', type: 'UserMessage', content: {} },
+        { id: 'f2', type: 'ToolCall', content: {} },
       ]);
       await tick();
 
@@ -569,10 +569,10 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', CapPlugin, 'cap');
+      router.registerSelector('type:UserMessage', CapPlugin, 'cap');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
 
       assert.ok(captured);
@@ -597,13 +597,13 @@ describe('FrameRouter', () => {
         }
       }
 
-      router.registerSelector('type:user-message', TrackInstances, 'tracker');
+      router.registerSelector('type:UserMessage', TrackInstances, 'tracker');
       router.connectTo(fm);
 
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'first' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'first' } }]);
       await tick();
 
-      fm.merge([{ id: 'f2', type: 'user-message', content: { text: 'second' } }]);
+      fm.merge([{ id: 'f2', type: 'UserMessage', content: { text: 'second' } }]);
       await tick();
 
       assert.strictEqual(instances.length, 2);
@@ -623,7 +623,7 @@ describe('FrameRouter', () => {
       router.connectTo(fm);
 
       // Should not throw
-      fm.merge([{ id: 'f1', type: 'user-message', content: { text: 'hello' } }]);
+      fm.merge([{ id: 'f1', type: 'UserMessage', content: { text: 'hello' } }]);
       await tick();
     });
   });

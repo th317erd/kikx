@@ -51,7 +51,7 @@ export class StreamRelay extends EventEmitter {
       if (sessionID !== targetSessionID)
         return;
 
-      this.emit('relay:delta', {
+      this.emit('relay:Delta', {
         sourceSessionID,
         targetSessionID,
         interactionID,
@@ -65,7 +65,7 @@ export class StreamRelay extends EventEmitter {
       if (sessionID !== targetSessionID)
         return;
 
-      this.emit('relay:reflection-delta', {
+      this.emit('relay:ReflectionDelta', {
         sourceSessionID,
         targetSessionID,
         interactionID,
@@ -82,8 +82,8 @@ export class StreamRelay extends EventEmitter {
       this.destroyRelay(sourceSessionID, targetSessionID);
     };
 
-    this._interactionLoop.on('delta', onDelta);
-    this._interactionLoop.on('reflection-delta', onReflectionDelta);
+    this._interactionLoop.on('Delta', onDelta);
+    this._interactionLoop.on('ReflectionDelta', onReflectionDelta);
     this._interactionLoop.on('interaction:end', onEnd);
 
     this._relays.set(key, { onDelta, onReflectionDelta, onEnd });
@@ -100,8 +100,8 @@ export class StreamRelay extends EventEmitter {
     if (!relay)
       return false;
 
-    this._interactionLoop.off('delta', relay.onDelta);
-    this._interactionLoop.off('reflection-delta', relay.onReflectionDelta);
+    this._interactionLoop.off('Delta', relay.onDelta);
+    this._interactionLoop.off('ReflectionDelta', relay.onReflectionDelta);
     this._interactionLoop.off('interaction:end', relay.onEnd);
 
     this._relays.delete(key);
@@ -114,8 +114,8 @@ export class StreamRelay extends EventEmitter {
 
   destroyAll() {
     for (let [key, relay] of this._relays) {
-      this._interactionLoop.off('delta', relay.onDelta);
-      this._interactionLoop.off('reflection-delta', relay.onReflectionDelta);
+      this._interactionLoop.off('Delta', relay.onDelta);
+      this._interactionLoop.off('ReflectionDelta', relay.onReflectionDelta);
       this._interactionLoop.off('interaction:end', relay.onEnd);
     }
 

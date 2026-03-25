@@ -210,7 +210,7 @@ describe('WebSocketTransport', () => {
     assert.equal(subMsg.type, 'subscribed');
 
     // Emit a frame from the interaction loop
-    let testFrame = { id: 'frm_ws_1', type: 'message', content: { html: '<p>Hello</p>' } };
+    let testFrame = { id: 'frm_ws_1', type: 'Message', content: { html: '<p>Hello</p>' } };
     interactionLoop.emit('frame', { sessionID: 'ses_frames', frame: testFrame });
 
     let frameMsg = await waitForMessage(ws);
@@ -231,7 +231,7 @@ describe('WebSocketTransport', () => {
     interactionLoop.emit('frame', { sessionID: 'ses_other', frame: { id: 'frm_other' } });
 
     // Emit frame for our session (should arrive)
-    let ourFrame = { id: 'frm_ours', type: 'message', content: {} };
+    let ourFrame = { id: 'frm_ours', type: 'Message', content: {} };
     interactionLoop.emit('frame', { sessionID: 'ses_mine', frame: ourFrame });
 
     let msg = await waitForMessage(ws);
@@ -244,9 +244,9 @@ describe('WebSocketTransport', () => {
 
   it('should replay missed frames on reconnection', async () => {
     // Seed some frames
-    framePersistence.addFrame({ sessionID: 'ses_replay', id: 'frm_1', order: 1, type: 'message', content: {} });
-    framePersistence.addFrame({ sessionID: 'ses_replay', id: 'frm_2', order: 2, type: 'message', content: {} });
-    framePersistence.addFrame({ sessionID: 'ses_replay', id: 'frm_3', order: 3, type: 'message', content: {} });
+    framePersistence.addFrame({ sessionID: 'ses_replay', id: 'frm_1', order: 1, type: 'Message', content: {} });
+    framePersistence.addFrame({ sessionID: 'ses_replay', id: 'frm_2', order: 2, type: 'Message', content: {} });
+    framePersistence.addFrame({ sessionID: 'ses_replay', id: 'frm_3', order: 3, type: 'Message', content: {} });
 
     let ws = await createWSClient(port, 'valid-token');
     clients.push(ws);
@@ -286,7 +286,7 @@ describe('WebSocketTransport', () => {
     assert.equal(transport.getConnectedPeers('ses_multi'), 2);
 
     // Emit frame — both should get it
-    let testFrame = { id: 'frm_multi', type: 'message', content: {} };
+    let testFrame = { id: 'frm_multi', type: 'Message', content: {} };
     interactionLoop.emit('frame', { sessionID: 'ses_multi', frame: testFrame });
 
     let msg1 = await waitForMessage(ws1);
@@ -463,10 +463,10 @@ describe('WebSocketTransport', () => {
     assert.equal(sub2.sessionID, 'ses_second');
 
     // Emit frame for first session — should NOT be received
-    interactionLoop.emit('frame', { sessionID: 'ses_first', frame: { id: 'frm_old', type: 'message' } });
+    interactionLoop.emit('frame', { sessionID: 'ses_first', frame: { id: 'frm_old', type: 'Message' } });
 
     // Emit frame for second session — should be received
-    interactionLoop.emit('frame', { sessionID: 'ses_second', frame: { id: 'frm_new', type: 'message' } });
+    interactionLoop.emit('frame', { sessionID: 'ses_second', frame: { id: 'frm_new', type: 'Message' } });
 
     let msg = await waitForMessage(ws);
     assert.equal(msg.frame.id, 'frm_new');
@@ -519,7 +519,7 @@ describe('WebSocketTransport', () => {
     // Emit frame — should not throw, just silently fail
     interactionLoop.emit('frame', {
       sessionID: 'ses_close_test',
-      frame:     { id: 'frm_orphan', type: 'message', content: {} },
+      frame:     { id: 'frm_orphan', type: 'Message', content: {} },
     });
 
     // No error thrown is success

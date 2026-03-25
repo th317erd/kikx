@@ -18,8 +18,8 @@ class TestAgent extends AgentInterface {
   static agentType   = 'test';
 
   async *_createGenerator(params) {
-    yield { type: 'message', content: { html: '<p>Hello from test agent</p>' }, authorType: 'agent', authorID: 'test-id' };
-    yield { type: 'done', content: {} };
+    yield { type: 'Message', content: { html: '<p>Hello from test agent</p>' }, authorType: 'agent', authorID: 'test-id' };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -124,11 +124,11 @@ describe('AgentInterface — execute()', () => {
       blocks.push(block);
 
     assert.equal(blocks.length, 2);
-    assert.equal(blocks[0].type, 'message');
+    assert.equal(blocks[0].type, 'Message');
     assert.equal(blocks[0].content.html, '<p>Hello from test agent</p>');
     assert.equal(blocks[0].authorType, 'agent');
     assert.equal(blocks[0].authorID, 'test-id');
-    assert.equal(blocks[1].type, 'done');
+    assert.equal(blocks[1].type, 'Done');
   });
 
   it('should complete (done=true) after all blocks are yielded', async () => {
@@ -179,7 +179,7 @@ describe('AgentInterface — _createGenerator()', () => {
     let generator = await agent.execute({ messages: [], agent: createMockAgent(), session: {}, context: null });
 
     let first = await generator.next();
-    assert.equal(first.value.type, 'message');
+    assert.equal(first.value.type, 'Message');
     assert.equal(first.done, false);
   });
 });
@@ -196,9 +196,9 @@ describe('AgentInterface — yield protocol', () => {
       static agentType   = 'tool-test';
 
       async *_createGenerator(params) {
-        let result = yield { type: 'tool-call', content: { toolName: 'bash', arguments: { command: 'echo hi' } }, authorType: 'agent', authorID: 'tool-id' };
-        yield { type: 'message', content: { html: `<p>Tool said: ${result.content.output}</p>` }, authorType: 'agent', authorID: 'tool-id' };
-        yield { type: 'done', content: {} };
+        let result = yield { type: 'ToolCall', content: { toolName: 'bash', arguments: { command: 'echo hi' } }, authorType: 'agent', authorID: 'tool-id' };
+        yield { type: 'Message', content: { html: `<p>Tool said: ${result.content.output}</p>` }, authorType: 'agent', authorID: 'tool-id' };
+        yield { type: 'Done', content: {} };
       }
     }
 
@@ -206,16 +206,16 @@ describe('AgentInterface — yield protocol', () => {
     let generator = await agent.execute({ messages: [], agent: createMockAgent({ pluginID: 'tool-agent' }), session: {}, context: null });
 
     let first = await generator.next();
-    assert.equal(first.value.type, 'tool-call');
+    assert.equal(first.value.type, 'ToolCall');
     assert.equal(first.value.content.toolName, 'bash');
 
     // Pass tool result back
-    let second = await generator.next({ type: 'tool-result', content: { output: 'hello' } });
-    assert.equal(second.value.type, 'message');
+    let second = await generator.next({ type: 'ToolResult', content: { output: 'hello' } });
+    assert.equal(second.value.type, 'Message');
     assert.ok(second.value.content.html.includes('hello'));
 
     let third = await generator.next();
-    assert.equal(third.value.type, 'done');
+    assert.equal(third.value.type, 'Done');
 
     let fourth = await generator.next();
     assert.equal(fourth.done, true);
@@ -228,10 +228,10 @@ describe('AgentInterface — yield protocol', () => {
       static agentType   = 'multi-tool';
 
       async *_createGenerator(params) {
-        let result1 = yield { type: 'tool-call', content: { toolName: 'bash', arguments: { command: 'ls' } }, authorType: 'agent', authorID: 'mt-id' };
-        let result2 = yield { type: 'tool-call', content: { toolName: 'bash', arguments: { command: 'pwd' } }, authorType: 'agent', authorID: 'mt-id' };
-        yield { type: 'message', content: { html: `<p>${result1.content.output} + ${result2.content.output}</p>` }, authorType: 'agent', authorID: 'mt-id' };
-        yield { type: 'done', content: {} };
+        let result1 = yield { type: 'ToolCall', content: { toolName: 'bash', arguments: { command: 'ls' } }, authorType: 'agent', authorID: 'mt-id' };
+        let result2 = yield { type: 'ToolCall', content: { toolName: 'bash', arguments: { command: 'pwd' } }, authorType: 'agent', authorID: 'mt-id' };
+        yield { type: 'Message', content: { html: `<p>${result1.content.output} + ${result2.content.output}</p>` }, authorType: 'agent', authorID: 'mt-id' };
+        yield { type: 'Done', content: {} };
       }
     }
 
@@ -242,17 +242,17 @@ describe('AgentInterface — yield protocol', () => {
     assert.equal(first.value.content.toolName, 'bash');
     assert.equal(first.value.content.arguments.command, 'ls');
 
-    let second = await generator.next({ type: 'tool-result', content: { output: 'file.txt' } });
+    let second = await generator.next({ type: 'ToolResult', content: { output: 'file.txt' } });
     assert.equal(second.value.content.toolName, 'bash');
     assert.equal(second.value.content.arguments.command, 'pwd');
 
-    let third = await generator.next({ type: 'tool-result', content: { output: '/home' } });
-    assert.equal(third.value.type, 'message');
+    let third = await generator.next({ type: 'ToolResult', content: { output: '/home' } });
+    assert.equal(third.value.type, 'Message');
     assert.ok(third.value.content.html.includes('file.txt'));
     assert.ok(third.value.content.html.includes('/home'));
 
     let fourth = await generator.next();
-    assert.equal(fourth.value.type, 'done');
+    assert.equal(fourth.value.type, 'Done');
   });
 
   it('should support reflection blocks', async () => {
@@ -262,9 +262,9 @@ describe('AgentInterface — yield protocol', () => {
       static agentType   = 'reflective';
 
       async *_createGenerator(params) {
-        yield { type: 'reflection', content: { text: 'Let me think about this...' }, hidden: true, authorType: 'agent', authorID: 'r-id' };
-        yield { type: 'message', content: { html: '<p>I have an answer.</p>' }, authorType: 'agent', authorID: 'r-id' };
-        yield { type: 'done', content: {} };
+        yield { type: 'Reflection', content: { text: 'Let me think about this...' }, hidden: true, authorType: 'agent', authorID: 'r-id' };
+        yield { type: 'Message', content: { html: '<p>I have an answer.</p>' }, authorType: 'agent', authorID: 'r-id' };
+        yield { type: 'Done', content: {} };
       }
     }
 
@@ -272,12 +272,12 @@ describe('AgentInterface — yield protocol', () => {
     let generator = await agent.execute({ messages: [], agent: createMockAgent(), session: {}, context: null });
 
     let first = await generator.next();
-    assert.equal(first.value.type, 'reflection');
+    assert.equal(first.value.type, 'Reflection');
     assert.equal(first.value.content.text, 'Let me think about this...');
     assert.equal(first.value.hidden, true);
 
     let second = await generator.next();
-    assert.equal(second.value.type, 'message');
+    assert.equal(second.value.type, 'Message');
   });
 });
 
@@ -412,7 +412,7 @@ describe('AgentInterface — getCapabilities()', () => {
       static agentType   = 'advanced';
 
       async *_createGenerator() {
-        yield { type: 'done', content: {} };
+        yield { type: 'Done', content: {} };
       }
 
       getCapabilities() {
@@ -451,16 +451,16 @@ describe('AgentInterface — multiple interactions', () => {
     let first1 = await generator1.next();
     let first2 = await generator2.next();
 
-    assert.equal(first1.value.type, 'message');
-    assert.equal(first2.value.type, 'message');
+    assert.equal(first1.value.type, 'Message');
+    assert.equal(first2.value.type, 'Message');
 
     // Advancing one should not affect the other
     let second1 = await generator1.next();
-    assert.equal(second1.value.type, 'done');
+    assert.equal(second1.value.type, 'Done');
 
     // generator2 should still be at its second position
     let second2 = await generator2.next();
-    assert.equal(second2.value.type, 'done');
+    assert.equal(second2.value.type, 'Done');
   });
 });
 
@@ -475,7 +475,7 @@ describe('AgentInterface — generator cleanup', () => {
 
     // Start iterating
     let first = await generator.next();
-    assert.equal(first.value.type, 'message');
+    assert.equal(first.value.type, 'Message');
 
     // Hard-break — kernel destroys generator (e.g., permission needed)
     let result = await generator.return();

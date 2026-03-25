@@ -80,7 +80,7 @@ export class SessionScheduler extends EventEmitter {
 
     for (let change of (commit.changes || [])) {
       let frame = frameManager.getHead(change.frameID);
-      if (frame && frame.type === 'stop')
+      if (frame && frame.type === 'Stop')
         stopFrames.push(frame);
     }
 

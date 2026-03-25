@@ -61,11 +61,11 @@ describe('PermissionPlugin (C3)', () => {
   // ---------------------------------------------------------------------------
 
   describe('setup()', () => {
-    it('should register a selector for type:tool-call', () => {
+    it('should register a selector for type:ToolCall', () => {
       let selectors = setupAndCapture(context);
 
       assert.equal(selectors.length, 1);
-      assert.equal(selectors[0].selector, 'type:tool-call');
+      assert.equal(selectors[0].selector, 'type:ToolCall');
       assert.ok(selectors[0].PluginClass);
     });
 
@@ -92,7 +92,7 @@ describe('PermissionPlugin (C3)', () => {
 
       frameManager.merge([{
         id:         'frm_tc_1',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
         authorType: 'agent',
         authorID:   'agt_1',
@@ -124,7 +124,7 @@ describe('PermissionPlugin (C3)', () => {
       // Signature on frame.signature (HMAC fallback — no author public key in DB)
       frameManager.merge([{
         id:         'frm_tc_valid',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
         signature,
         authorType: 'agent',
@@ -157,7 +157,7 @@ describe('PermissionPlugin (C3)', () => {
       // Invalid signature on frame.signature (HMAC fallback path — no author in DB)
       frameManager.merge([{
         id:         'frm_tc_invalid',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
         signature:  'a'.repeat(64),
         authorType: 'agent',

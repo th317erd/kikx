@@ -41,7 +41,7 @@ describe('FrameController.list() compaction summary stripping', () => {
     let frames = [
       {
         id:      'frm_1',
-        type:    'compaction',
+        type: 'Compaction',
         content: { summary: 'A very long summary...', tokenCount: 42 },
       },
     ];
@@ -59,7 +59,7 @@ describe('FrameController.list() compaction summary stripping', () => {
     let frames = [
       {
         id:      'frm_2',
-        type:    'user-message',
+        type:    'UserMessage',
         content: originalContent,
       },
     ];
@@ -75,22 +75,22 @@ describe('FrameController.list() compaction summary stripping', () => {
     let frames = [
       {
         id:      'frm_a',
-        type:    'user-message',
+        type:    'UserMessage',
         content: { html: '<p>hi</p>' },
       },
       {
         id:      'frm_b',
-        type:    'compaction',
+        type: 'Compaction',
         content: { summary: 'huge text', tokenCount: 100 },
       },
       {
         id:      'frm_c',
-        type:    'agent-message',
+        type:    'Message',
         content: { html: '<p>reply</p>' },
       },
       {
         id:      'frm_d',
-        type:    'compaction',
+        type: 'Compaction',
         content: { summary: 'another huge text', tokenCount: 200, extra: true },
       },
     ];
@@ -120,7 +120,7 @@ describe('FrameController.list() compaction summary stripping', () => {
     let frames = [
       {
         id:      'frm_e',
-        type:    'compaction',
+        type: 'Compaction',
         content: null,
       },
     ];
@@ -136,7 +136,7 @@ describe('FrameController.list() compaction summary stripping', () => {
     let frames = [
       {
         id:   'frm_f',
-        type: 'compaction',
+        type: 'Compaction',
       },
     ];
 
@@ -151,7 +151,7 @@ describe('FrameController.list() compaction summary stripping', () => {
     let frames = [
       {
         id:      'frm_g',
-        type:    'compaction',
+        type: 'Compaction',
         content: { tokenCount: 50 },
       },
     ];

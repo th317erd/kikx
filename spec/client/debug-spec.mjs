@@ -75,7 +75,7 @@ describe('debug module', () => {
   it('should accumulate deep-cloned frames via pushFrame', () => {
     let document = getDocument();
     let element  = document.createElement('div');
-    let frame    = { type: 'message', content: { html: '<p>hello</p>' } };
+    let frame    = { type: 'Message', content: { html: '<p>hello</p>' } };
 
     debug.enable();
     debug.trackElement('int_test3', element);
@@ -178,7 +178,7 @@ describe('debug module', () => {
     assert.equal(results[1].element, element2);
 
     // pushFrame should propagate to both
-    debug.pushFrame('int_shared', { type: 'message' });
+    debug.pushFrame('int_shared', { type: 'Message' });
     assert.equal(debug.getMetadata(element1).frames.length, 1);
     assert.equal(debug.getMetadata(element2).frames.length, 1);
   });

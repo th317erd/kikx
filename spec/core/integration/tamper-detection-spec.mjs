@@ -209,7 +209,7 @@ describe('Tamper Detection — Integration', () => {
       let frame = await models.Frame.create({
         sessionID:     session.id,
         interactionID: 'int_tamper_test_001',
-        type:          'message',
+        type: 'Message',
         content:       JSON.stringify(content),
         order:         1,
         timestamp:     Date.now(),

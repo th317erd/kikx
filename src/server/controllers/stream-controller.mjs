@@ -66,14 +66,14 @@ export class StreamController extends ControllerAuthBase {
       if (sid !== sessionID)
         return;
 
-      response.write(`event: delta\ndata: ${JSON.stringify({ interactionID: iid, content, authorType: aType || null, authorID: aID || null })}\n\n`);
+      response.write(`event: Delta\ndata: ${JSON.stringify({ interactionID: iid, content, authorType: aType || null, authorID: aID || null })}\n\n`);
     };
 
     let onReflectionDelta = ({ sessionID: sid, interactionID: iid, content, authorType: aType, authorID: aID }) => {
       if (sid !== sessionID)
         return;
 
-      response.write(`event: reflection-delta\ndata: ${JSON.stringify({ interactionID: iid, content, authorType: aType || null, authorID: aID || null })}\n\n`);
+      response.write(`event: ReflectionDelta\ndata: ${JSON.stringify({ interactionID: iid, content, authorType: aType || null, authorID: aID || null })}\n\n`);
     };
 
     let onUsage = ({ sessionID: sid, interactionID: iid, usage, serviceType, isFinal }) => {
@@ -98,14 +98,14 @@ export class StreamController extends ControllerAuthBase {
       if (sourceSessionID !== sessionID)
         return;
 
-      response.write(`event: relay:delta\ndata: ${JSON.stringify({ sourceSessionID, targetSessionID, interactionID, content, authorType: authorType || null, authorID: authorID || null })}\n\n`);
+      response.write(`event: relay:Delta\ndata: ${JSON.stringify({ sourceSessionID, targetSessionID, interactionID, content, authorType: authorType || null, authorID: authorID || null })}\n\n`);
     };
 
     let onRelayReflectionDelta = ({ sourceSessionID, targetSessionID, interactionID, content, authorType, authorID }) => {
       if (sourceSessionID !== sessionID)
         return;
 
-      response.write(`event: relay:reflection-delta\ndata: ${JSON.stringify({ sourceSessionID, targetSessionID, interactionID, content, authorType: authorType || null, authorID: authorID || null })}\n\n`);
+      response.write(`event: relay:ReflectionDelta\ndata: ${JSON.stringify({ sourceSessionID, targetSessionID, interactionID, content, authorType: authorType || null, authorID: authorID || null })}\n\n`);
     };
 
     // Attach listeners
@@ -114,13 +114,13 @@ export class StreamController extends ControllerAuthBase {
     interactionLoop.on('interaction:start', onInteractionStart);
     interactionLoop.on('interaction:end', onInteractionEnd);
     interactionLoop.on('permission:request', onPermissionRequest);
-    interactionLoop.on('delta', onDelta);
-    interactionLoop.on('reflection-delta', onReflectionDelta);
+    interactionLoop.on('Delta', onDelta);
+    interactionLoop.on('ReflectionDelta', onReflectionDelta);
     interactionLoop.on('interaction:usage', onUsage);
 
     if (streamRelay) {
-      streamRelay.on('relay:delta', onRelayDelta);
-      streamRelay.on('relay:reflection-delta', onRelayReflectionDelta);
+      streamRelay.on('relay:Delta', onRelayDelta);
+      streamRelay.on('relay:ReflectionDelta', onRelayReflectionDelta);
     }
 
     // Clean up on disconnect
@@ -130,13 +130,13 @@ export class StreamController extends ControllerAuthBase {
       interactionLoop.off('interaction:start', onInteractionStart);
       interactionLoop.off('interaction:end', onInteractionEnd);
       interactionLoop.off('permission:request', onPermissionRequest);
-      interactionLoop.off('delta', onDelta);
-      interactionLoop.off('reflection-delta', onReflectionDelta);
+      interactionLoop.off('Delta', onDelta);
+      interactionLoop.off('ReflectionDelta', onReflectionDelta);
       interactionLoop.off('interaction:usage', onUsage);
 
       if (streamRelay) {
-        streamRelay.off('relay:delta', onRelayDelta);
-        streamRelay.off('relay:reflection-delta', onRelayReflectionDelta);
+        streamRelay.off('relay:Delta', onRelayDelta);
+        streamRelay.off('relay:ReflectionDelta', onRelayReflectionDelta);
       }
     };
 

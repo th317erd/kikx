@@ -30,7 +30,7 @@ function makeFrame({ id, sessionID, type, authorType, content, createdAt } = {})
   return {
     id:        id || 'frm_001',
     sessionID: sessionID || 'ses_001',
-    type:      type || 'message',
+    type:      type || 'Message',
     authorType: authorType || 'user',
     createdAt: createdAt || '2025-06-01T00:00:00.000Z',
     getContent() {
@@ -156,7 +156,7 @@ describe('SearchController: happy paths', () => {
     let frame = makeFrame({
       id: 'frm_001',
       sessionID: 'ses_001',
-      type: 'message',
+      type: 'Message',
       authorType: 'user',
       content: 'Hello from the database',
       createdAt: '2025-06-01T12:00:00.000Z',
@@ -173,7 +173,7 @@ describe('SearchController: happy paths', () => {
     let r = result.data.results[0];
     assert.equal(r.id, 'frm_001');
     assert.equal(r.doc_type, 'frame');
-    assert.equal(r.type, 'message');
+    assert.equal(r.type, 'Message');
     assert.equal(r.sessionID, 'ses_001');
     assert.equal(r.authorType, 'user');
     assert.ok(r.preview, 'should have preview');

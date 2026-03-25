@@ -32,7 +32,7 @@ class MockAgent extends AgentInterface {
 
   async *_createGenerator(_params) {
     for (let block of this._blocks) {
-      if (block.type === 'tool-call') {
+      if (block.type === 'ToolCall') {
         let result = yield block;
         block._receivedResult = result;
       } else {
@@ -40,7 +40,7 @@ class MockAgent extends AgentInterface {
       }
     }
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -97,7 +97,7 @@ describe('Scheduler Integration (B7)', () => {
   it('should work identically for single-agent sessions', async () => {
     let { agent, session } = await createTestSetup();
     let mockPlugin = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>Hello</p>' }, authorType: 'agent', authorID: agent.id },
+      { type: 'Message', content: { html: '<p>Hello</p>' }, authorType: 'agent', authorID: agent.id },
     ]);
 
     // Use InteractionLoop directly (single-agent path unchanged)
@@ -113,8 +113,8 @@ describe('Scheduler Integration (B7)', () => {
     let allFrames    = frameManager.toArray();
 
     // Should have user-message + agent message
-    let userFrame  = allFrames.find((f) => f.type === 'user-message');
-    let agentFrame = allFrames.find((f) => f.type === 'message');
+    let userFrame  = allFrames.find((f) => f.type === 'UserMessage');
+    let agentFrame = allFrames.find((f) => f.type === 'Message');
 
     assert.ok(userFrame);
     assert.ok(agentFrame);
@@ -132,7 +132,7 @@ describe('Scheduler Integration (B7)', () => {
     // Simulate user message
     let frameManager = sessionManager.getFrameManager(session.id);
     frameManager.merge([{
-      id: 'frm_b7m_1', type: 'user-message', content: { text: 'Hello agents' },
+      id: 'frm_b7m_1', type: 'UserMessage', content: { text: 'Hello agents' },
       authorType: 'user', authorID: 'usr_1',
     }], { authorType: 'user', authorID: 'usr_1', silent: true });
 
@@ -144,7 +144,7 @@ describe('Scheduler Integration (B7)', () => {
   it('should not trigger agent on its own commit after interaction', async () => {
     let { agent, session } = await createTestSetup();
     let mockPlugin = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>Reply</p>' }, authorType: 'agent', authorID: agent.id },
+      { type: 'Message', content: { html: '<p>Reply</p>' }, authorType: 'agent', authorID: agent.id },
     ]);
 
     // Run interaction — produces user-message and agent-message commits
@@ -210,7 +210,7 @@ describe('Scheduler Integration (B7)', () => {
     let frameManager = sessionManager.getFrameManager(session.id);
     frameManager.merge([{
       id:         'frm_b7_ma_1',
-      type:       'user-message',
+      type:       'UserMessage',
       content:    { text: 'Should not double-trigger' },
       authorType: 'user',
       authorID:   'usr_1',
@@ -239,7 +239,7 @@ describe('Scheduler Integration (B7)', () => {
     let frameManager = sessionManager.getFrameManager(session.id);
     frameManager.merge([{
       id:         'frm_b7_mam_1',
-      type:       'user-message',
+      type:       'UserMessage',
       content:    { text: 'Only agentB should be scheduled' },
       authorType: 'user',
       authorID:   'usr_1',
@@ -307,7 +307,7 @@ describe('Scheduler Integration (B7)', () => {
 
     // Create a user message commit
     frameManager.merge([{
-      id: 'frm_b7e_1', type: 'user-message', content: { text: 'Event test' },
+      id: 'frm_b7e_1', type: 'UserMessage', content: { text: 'Event test' },
       authorType: 'user', authorID: 'usr_1',
     }], { authorType: 'user', authorID: 'usr_1', silent: true });
 

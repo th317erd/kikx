@@ -34,7 +34,7 @@ class MockAgent extends AgentInterface {
     for (let block of this._blocks)
       yield block;
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -86,7 +86,7 @@ describe('Shell Permission Flow (per-command)', () => {
 
   function shellToolCall(command) {
     return {
-      type:    'tool-call',
+      type:    'ToolCall',
       content: {
         toolName:  'shell:execute',
         arguments: { command },
@@ -169,7 +169,7 @@ describe('Shell Permission Flow (per-command)', () => {
         },
       }));
 
-      let permFrames = emitted.filter((f) => f.type === 'permission-request');
+      let permFrames = emitted.filter((f) => f.type === 'PermissionRequest');
       assert.equal(permFrames.length, 1);
 
       let content = permFrames[0].content;
@@ -198,7 +198,7 @@ describe('Shell Permission Flow (per-command)', () => {
         },
       }));
 
-      let permFrames = emitted.filter((f) => f.type === 'permission-request');
+      let permFrames = emitted.filter((f) => f.type === 'PermissionRequest');
       assert.equal(permFrames.length, 1);
       assert.equal(permFrames[0].content.toolName, 'shell:execute');
       assert.equal(permFrames[0].content.permissionContext.title, 'permission.shell.executeTitle');
@@ -522,11 +522,11 @@ describe('Shell Permission Flow (per-command)', () => {
       assert.equal(loop.isActive(session.id), false);
 
       // Permission-request frame should exist
-      let permFrames = emitted.filter((f) => f.type === 'permission-request');
+      let permFrames = emitted.filter((f) => f.type === 'PermissionRequest');
       assert.equal(permFrames.length, 1);
 
       // Tool-result with PERMISSION REQUIRED should exist
-      let toolResults = emitted.filter((f) => f.type === 'tool-result' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+      let toolResults = emitted.filter((f) => f.type === 'ToolResult' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
       assert.equal(toolResults.length, 1);
     });
   });
@@ -553,7 +553,7 @@ describe('Shell Permission Flow (per-command)', () => {
       }));
 
       // Tool-result with PERMISSION REQUIRED should be in emitted frames
-      let permResults = emitted.filter((f) => f.type === 'tool-result' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+      let permResults = emitted.filter((f) => f.type === 'ToolResult' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
       assert.ok(permResults.length >= 1, 'should have a tool-result with PERMISSION REQUIRED');
 
       // Interaction completed (no waiting state)

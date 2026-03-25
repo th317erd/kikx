@@ -291,7 +291,7 @@ export class InteractionController extends ControllerAuthBase {
     let { Frame } = this.getCoreModels();
     let frame     = await Frame.where.id.EQ(params.frameID).first();
 
-    if (!frame || frame.type !== 'permission-request') {
+    if (!frame || frame.type !== 'PermissionRequest') {
       this.setStatusCode(410);
 
       return { data: { error: 'expired', message: 'This permission request has expired. Please resend your message to try again.' } };
@@ -343,7 +343,7 @@ export class InteractionController extends ControllerAuthBase {
     let { Frame } = this.getCoreModels();
     let frame     = await Frame.where.id.EQ(params.frameID).first();
 
-    if (!frame || frame.type !== 'permission-request') {
+    if (!frame || frame.type !== 'PermissionRequest') {
       this.setStatusCode(410);
 
       return { data: { error: 'expired', message: 'This permission request has expired. Please resend your message to try again.' } };

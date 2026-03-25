@@ -23,7 +23,7 @@ import { FramePersistence } from '../../../src/core/frames/index.mjs';
 async function createUserFrame(framePersistence, sessionID) {
   await framePersistence.saveFrames(sessionID, [{
     id:         `frm_${XID.next()}`,
-    type:       'user-message',
+    type:       'UserMessage',
     content:    { text: 'Hello from a user' },
     authorType: 'user',
     authorID:   'usr_test_user',
@@ -39,7 +39,7 @@ async function createUserFrame(framePersistence, sessionID) {
 async function createAgentFrame(framePersistence, sessionID) {
   await framePersistence.saveFrames(sessionID, [{
     id:         `frm_${XID.next()}`,
-    type:       'agent-message',
+    type:       'Message',
     content:    { text: 'Hello from an agent' },
     authorType: 'agent',
     authorID:   'agt_test_agent',
@@ -205,7 +205,7 @@ describe('SessionManager.getNearestUserAncestor', () => {
     // Create a system-authored frame
     await framePersistence.saveFrames(session.id, [{
       id:         `frm_${XID.next()}`,
-      type:       'participant-joined',
+      type:       'ParticipantJoined',
       content:    { agentID: 'agt_test', agentName: 'Test Agent' },
       authorType: 'system',
       authorID:   null,

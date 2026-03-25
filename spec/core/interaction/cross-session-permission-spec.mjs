@@ -30,7 +30,7 @@ class MockAgent extends AgentInterface {
 
   async *_createGenerator(_params) {
     for (let block of this._blocks) {
-      if (block.type === 'tool-call') {
+      if (block.type === 'ToolCall') {
         let result = yield block;
         block._receivedResult = result;
       } else {
@@ -38,7 +38,7 @@ class MockAgent extends AgentInterface {
       }
     }
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -103,7 +103,7 @@ describe('Cross-Session Permission Approval', () => {
     _orderCounter++;
     await framePersistence.saveFrames(sessionID, [{
       id:            `frm_${XID.next()}`,
-      type:          'user-message',
+      type:          'UserMessage',
       content:       { text: 'I am a user' },
       timestamp:     Date.now(),
       order:         _orderCounter,
@@ -130,7 +130,7 @@ describe('Cross-Session Permission Approval', () => {
       let childSession = await createTestSession({ parentSessionID: parentSession.id });
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'dangerous-tool', arguments: { x: 1 }, toolUseID: 'tu_1' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'dangerous-tool', arguments: { x: 1 }, toolUseID: 'tu_1' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -145,14 +145,14 @@ describe('Cross-Session Permission Approval', () => {
       // Permission-request should be in PARENT session
       let parentFM     = await framePersistence.loadFrames(parentSession.id);
       let parentFrames = parentFM.toArray();
-      let parentRequests = parentFrames.filter((f) => f.type === 'permission-request');
+      let parentRequests = parentFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(parentRequests.length, 1, 'parent should have 1 permission-request frame');
       assert.equal(parentRequests[0].content.toolName, 'dangerous-tool');
 
       // Permission-request should NOT be in child session
       let childFM     = await framePersistence.loadFrames(childSession.id);
       let childFrames = childFM.toArray();
-      let childRequests = childFrames.filter((f) => f.type === 'permission-request');
+      let childRequests = childFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(childRequests.length, 0, 'child should have 0 permission-request frames');
     });
   });
@@ -171,7 +171,7 @@ describe('Cross-Session Permission Approval', () => {
       let child  = await createTestSession({ parentSessionID: parent.id });
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'risky-op', arguments: {}, toolUseID: 'tu_2' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'risky-op', arguments: {}, toolUseID: 'tu_2' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -186,15 +186,15 @@ describe('Cross-Session Permission Approval', () => {
       // Permission-request should be in GRANDPARENT session
       let gpFM     = await framePersistence.loadFrames(grandparent.id);
       let gpFrames = gpFM.toArray();
-      let gpRequests = gpFrames.filter((f) => f.type === 'permission-request');
+      let gpRequests = gpFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(gpRequests.length, 1, 'grandparent should have 1 permission-request frame');
 
       // Not in parent or child
       let parentFM = await framePersistence.loadFrames(parent.id);
-      assert.equal(parentFM.toArray().filter((f) => f.type === 'permission-request').length, 0);
+      assert.equal(parentFM.toArray().filter((f) => f.type === 'PermissionRequest').length, 0);
 
       let childFM = await framePersistence.loadFrames(child.id);
-      assert.equal(childFM.toArray().filter((f) => f.type === 'permission-request').length, 0);
+      assert.equal(childFM.toArray().filter((f) => f.type === 'PermissionRequest').length, 0);
     });
   });
 
@@ -208,8 +208,8 @@ describe('Cross-Session Permission Approval', () => {
       let session = await createTestSession();
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'rm', arguments: { path: '/' }, toolUseID: 'tu_3' }, authorType: 'agent', authorID: 'a1' },
-        { type: 'message', content: { html: '<p>After denial</p>' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'rm', arguments: { path: '/' }, toolUseID: 'tu_3' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'Message', content: { html: '<p>After denial</p>' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -225,7 +225,7 @@ describe('Cross-Session Permission Approval', () => {
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
 
-      let toolResults = frames.filter((f) => f.type === 'tool-result');
+      let toolResults = frames.filter((f) => f.type === 'ToolResult');
       assert.ok(toolResults.length >= 1, 'should have at least one tool-result frame');
 
       let denialResult = toolResults.find((f) => f.content && f.content.output && f.content.output.includes('denied'));
@@ -248,7 +248,7 @@ describe('Cross-Session Permission Approval', () => {
       let childSession = await createTestSession({ parentSessionID: parentSession.id });
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'exec', arguments: { cmd: 'ls' }, toolUseID: 'tu_6' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'exec', arguments: { cmd: 'ls' }, toolUseID: 'tu_6' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -263,14 +263,14 @@ describe('Cross-Session Permission Approval', () => {
       // Pending-action should be in CHILD session
       let childFM     = await framePersistence.loadFrames(childSession.id);
       let childFrames = childFM.toArray();
-      let pendingFrames = childFrames.filter((f) => f.type === 'pending-action');
+      let pendingFrames = childFrames.filter((f) => f.type === 'PendingAction');
       assert.equal(pendingFrames.length, 1, 'child should have 1 pending-action frame');
       assert.equal(pendingFrames[0].content.toolName, 'exec');
 
       // Pending-action should NOT be in parent session
       let parentFM     = await framePersistence.loadFrames(parentSession.id);
       let parentFrames = parentFM.toArray();
-      let parentPending = parentFrames.filter((f) => f.type === 'pending-action');
+      let parentPending = parentFrames.filter((f) => f.type === 'PendingAction');
       assert.equal(parentPending.length, 0, 'parent should have 0 pending-action frames');
     });
   });
@@ -284,7 +284,7 @@ describe('Cross-Session Permission Approval', () => {
       let session = await createTestSession();
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'sudo', arguments: {}, toolUseID: 'tu_7' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'sudo', arguments: {}, toolUseID: 'tu_7' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -297,11 +297,11 @@ describe('Cross-Session Permission Approval', () => {
       // Permission-request should be in same session (inline, not via hardBreak)
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let requestFrames = frames.filter((f) => f.type === 'permission-request');
+      let requestFrames = frames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(requestFrames.length, 1, 'session should have 1 permission-request frame');
 
       // Tool-result with PERMISSION REQUIRED should exist (inline behavior)
-      let toolResults = frames.filter((f) => f.type === 'tool-result');
+      let toolResults = frames.filter((f) => f.type === 'ToolResult');
       let permResult  = toolResults.find((f) => f.content && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
       assert.ok(permResult, 'session should have a tool-result with PERMISSION REQUIRED');
 
@@ -325,7 +325,7 @@ describe('Cross-Session Permission Approval', () => {
       sessionManager._frameManagers.delete(parentSession.id);
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'install', arguments: {}, toolUseID: 'tu_8' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'install', arguments: {}, toolUseID: 'tu_8' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -340,7 +340,7 @@ describe('Cross-Session Permission Approval', () => {
       // Permission-request should still appear in parent despite uncached FrameManager
       let parentFM     = await framePersistence.loadFrames(parentSession.id);
       let parentFrames = parentFM.toArray();
-      let parentRequests = parentFrames.filter((f) => f.type === 'permission-request');
+      let parentRequests = parentFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(parentRequests.length, 1, 'parent should have 1 permission-request frame even when FrameManager was uncached');
     });
   });
@@ -360,7 +360,7 @@ describe('Cross-Session Permission Approval', () => {
       let childSession = await createTestSession({ parentSessionID: parentSession.id });
 
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'nuke', arguments: {}, toolUseID: 'tu_10' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'nuke', arguments: {}, toolUseID: 'tu_10' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent  = new MockAgent(context, blocks);
       let loop   = createLoop();
@@ -394,7 +394,7 @@ describe('Cross-Session Permission Approval', () => {
       let childSession = await createTestSession({ parentSessionID: session.id });
       // Child has NO user, but parent does. Create a separate child interaction without user message.
       let blocks = [
-        { type: 'tool-call', content: { toolName: 'build', arguments: {}, toolUseID: 'tu_11' }, authorType: 'agent', authorID: 'a1' },
+        { type: 'ToolCall', content: { toolName: 'build', arguments: {}, toolUseID: 'tu_11' }, authorType: 'agent', authorID: 'a1' },
       ];
       let agent = new MockAgent(context, blocks);
       let loop  = createLoop();
@@ -408,12 +408,12 @@ describe('Cross-Session Permission Approval', () => {
 
       // Permission-request in parent (which is the nearest user ancestor)
       let parentFM = await framePersistence.loadFrames(session.id);
-      let parentRequests = parentFM.toArray().filter((f) => f.type === 'permission-request');
+      let parentRequests = parentFM.toArray().filter((f) => f.type === 'PermissionRequest');
       assert.equal(parentRequests.length, 1, 'parent should have the permission-request');
 
       // Pending-action in child
       let childFM = await framePersistence.loadFrames(childSession.id);
-      let childPending = childFM.toArray().filter((f) => f.type === 'pending-action');
+      let childPending = childFM.toArray().filter((f) => f.type === 'PendingAction');
       assert.equal(childPending.length, 1, 'child should have the pending-action');
     });
   });

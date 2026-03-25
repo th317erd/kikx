@@ -51,7 +51,7 @@ function seedConversation(fm, count = 5) {
 
     frames.push({
       id:         `frm_seed_${i}`,
-      type:       isUser ? 'user-message' : 'message',
+      type:       isUser ? 'UserMessage' : 'Message',
       authorType: isUser ? 'user' : 'agent',
       authorID:   isUser ? 'usr_001' : 'agt_test123',
       content:    isUser ? { text: `User message ${i}` } : { html: `<p>Agent reply ${i}</p>` },
@@ -257,7 +257,7 @@ describe('/compact command', () => {
         agent:     createMockAgent(),
       });
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       assert.ok(compactionFrames.length >= 1, 'Should have a compaction frame');
       assert.equal(compactionFrames[0].content.status, 'finished');
     });
@@ -275,7 +275,7 @@ describe('/compact command', () => {
       // Inject an active compaction frame
       fm.merge([{
         id:         'frm_active_compact',
-        type:       'compaction',
+        type: 'Compaction',
         authorType: 'system',
         content:    { status: 'started', compactionID: 'frm_active_compact' },
         hidden:     false,
@@ -306,7 +306,7 @@ describe('/compact command', () => {
 
       fm.merge([{
         id:         'frm_active_compact',
-        type:       'compaction',
+        type: 'Compaction',
         authorType: 'system',
         content:    { status: 'started', compactionID: 'frm_active_compact' },
         hidden:     false,

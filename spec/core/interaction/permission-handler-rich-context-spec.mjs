@@ -61,7 +61,7 @@ describe('PermissionHandler — rich permissionContext (Step 1.4)', () => {
 
     await handler.hardBreak('ses_1', makeGenerator(), makeBlock(), 'int_1', {}, null, permissionContext);
 
-    let requestFrame = createdFrames.find((f) => f.type === 'permission-request');
+    let requestFrame = createdFrames.find((f) => f.type === 'PermissionRequest');
     assert.ok(requestFrame, 'permission-request frame should exist');
     assert.deepStrictEqual(requestFrame.content.permissionContext, permissionContext);
   });
@@ -81,7 +81,7 @@ describe('PermissionHandler — rich permissionContext (Step 1.4)', () => {
 
     await handler.hardBreak('ses_1', makeGenerator(), makeBlock(), 'int_1', {}, null, permissionContext);
 
-    let requestFrame = createdFrames.find((f) => f.type === 'permission-request');
+    let requestFrame = createdFrames.find((f) => f.type === 'PermissionRequest');
     assert.equal(requestFrame.content.permissionContext.details.length, 3);
     assert.deepStrictEqual(requestFrame.content.permissionContext.details, details);
   });
@@ -96,7 +96,7 @@ describe('PermissionHandler — rich permissionContext (Step 1.4)', () => {
 
     await handler.hardBreak('ses_1', makeGenerator(), makeBlock(), 'int_1', {}, null, permissionContext);
 
-    let requestFrame = createdFrames.find((f) => f.type === 'permission-request');
+    let requestFrame = createdFrames.find((f) => f.type === 'PermissionRequest');
     assert.equal(requestFrame.content.permissionContext.title, 'permission.crossSession.postTitle');
     assert.equal(requestFrame.content.permissionContext.description, 'permission.crossSession.postDescription');
     assert.deepStrictEqual(requestFrame.content.permissionContext.titleParams, { sessionName: 'Test Session' });
@@ -112,7 +112,7 @@ describe('PermissionHandler — rich permissionContext (Step 1.4)', () => {
     let block = makeBlock('shell:execute', { command: 'echo hi' });
     await handler.hardBreak('ses_1', makeGenerator(), block, 'int_1', {}, null, permissionContext);
 
-    let requestFrame = createdFrames.find((f) => f.type === 'permission-request');
+    let requestFrame = createdFrames.find((f) => f.type === 'PermissionRequest');
     assert.equal(requestFrame.content.toolName, 'shell:execute');
     assert.deepStrictEqual(requestFrame.content.arguments, { command: 'echo hi' });
     assert.ok(requestFrame.content.pendingFrameID, 'pendingFrameID should be present');
@@ -125,7 +125,7 @@ describe('PermissionHandler — rich permissionContext (Step 1.4)', () => {
   it('hardBreak without permissionContext does not add the key to frame content', async () => {
     await handler.hardBreak('ses_1', makeGenerator(), makeBlock(), 'int_1', {}, null);
 
-    let requestFrame = createdFrames.find((f) => f.type === 'permission-request');
+    let requestFrame = createdFrames.find((f) => f.type === 'PermissionRequest');
     assert.ok(requestFrame, 'permission-request frame should exist');
     assert.equal(requestFrame.content.permissionContext, undefined, 'permissionContext should not be present');
     assert.equal('permissionContext' in requestFrame.content, false, 'key should not exist on content');
@@ -134,7 +134,7 @@ describe('PermissionHandler — rich permissionContext (Step 1.4)', () => {
   it('permissionContext as null is not included in frame content', async () => {
     await handler.hardBreak('ses_1', makeGenerator(), makeBlock(), 'int_1', {}, null, null);
 
-    let requestFrame = createdFrames.find((f) => f.type === 'permission-request');
+    let requestFrame = createdFrames.find((f) => f.type === 'PermissionRequest');
     assert.ok(requestFrame, 'permission-request frame should exist');
     assert.equal('permissionContext' in requestFrame.content, false, 'null permissionContext should not appear');
   });

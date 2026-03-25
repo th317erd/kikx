@@ -164,7 +164,7 @@ export class FramePersistence {
       // Build set of tool-result toolUseIDs
       let resolvedToolIds = new Set();
       for (let f of toolFrames) {
-        if (f.type !== 'tool-result')
+        if (f.type !== 'ToolResult')
           continue;
 
         let content = (typeof f.content === 'string') ? (() => { try { return JSON.parse(f.content); } catch (_e) { return {}; } })() : (f.content || {});
@@ -175,7 +175,7 @@ export class FramePersistence {
       // Find orphaned tool-calls and pending-actions
       let orphans = [];
       for (let f of toolFrames) {
-        if (f.type !== 'tool-call' && f.type !== 'pending-action')
+        if (f.type !== 'ToolCall' && f.type !== 'PendingAction')
           continue;
 
         let content = (typeof f.content === 'string') ? (() => { try { return JSON.parse(f.content); } catch (_e) { return {}; } })() : (f.content || {});

@@ -33,7 +33,7 @@ class MockAgent extends AgentInterface {
     for (let block of this._blocks)
       yield block;
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -83,7 +83,7 @@ describe('InteractionLoop enriched commit events (D3)', () => {
     let agentPlugin = {
       async execute(params) {
         let agent = new MockAgent(context, [
-          { type: 'message', content: { html: '<p>hello</p>' }, authorType: 'agent', authorID: 'agt_1' },
+          { type: 'Message', content: { html: '<p>hello</p>' }, authorType: 'agent', authorID: 'agt_1' },
         ]);
 
         return agent.execute(params);
@@ -110,7 +110,7 @@ describe('InteractionLoop enriched commit events (D3)', () => {
     // The first commit should be the user-message
     let firstCommit = commits[0];
     assert.equal(firstCommit.sessionID, session.id);
-    assert.equal(firstCommit.commit.frames[0].type, 'user-message');
+    assert.equal(firstCommit.commit.frames[0].type, 'UserMessage');
     assert.ok(firstCommit.commit.frames[0].id, 'frame should have an id');
   });
 
@@ -124,7 +124,7 @@ describe('InteractionLoop enriched commit events (D3)', () => {
     let agentPlugin = {
       async execute(params) {
         let agent = new MockAgent(context, [
-          { type: 'message', content: { html: '<p>test</p>' }, authorType: 'agent' },
+          { type: 'Message', content: { html: '<p>test</p>' }, authorType: 'agent' },
         ]);
 
         return agent.execute(params);

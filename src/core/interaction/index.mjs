@@ -385,7 +385,7 @@ export class InteractionLoop extends EventEmitter {
       if (hookResult.action === 'block') {
         await this._createFrame(sessionID, {
           id:            generateID('frm_'),
-          type:          'hook-blocked',
+          type:          'HookBlocked',
           content:       { reason: hookResult.reason || 'Message blocked by hook' },
           timestamp:     Date.now(),
           interactionID,
@@ -418,7 +418,7 @@ export class InteractionLoop extends EventEmitter {
 
       await this._createFrame(sessionID, {
         id:            generateID('frm_'),
-        type:          'user-message',
+        type:          'UserMessage',
         content:       frameContent,
         timestamp:     Date.now(),
         interactionID,
@@ -439,7 +439,7 @@ export class InteractionLoop extends EventEmitter {
     let activeCompaction = null;
     for (let i = 0; i < allFrames.length; i++) {
       let frame = allFrames[i];
-      if (frame.type === 'compaction' && frame.content && frame.content.status === 'started') {
+      if (frame.type === 'Compaction' && frame.content && frame.content.status === 'started') {
         activeCompaction = { order: frame.order, frameID: frame.id };
         break;
       }
@@ -462,7 +462,7 @@ export class InteractionLoop extends EventEmitter {
         onOverflow:       async (_type) => {
           await this._createFrame(sessionID, {
             id:            generateID('frm_'),
-            type:          'system-error',
+            type:          'SystemError',
             content:       { message: 'errors.behaviorsOverflow' },
             timestamp:     Date.now(),
             interactionID,
@@ -568,7 +568,7 @@ export class InteractionLoop extends EventEmitter {
     let warningTimer = setTimeout(async () => {
       try {
         await this._createFrame(sessionID, {
-          id: generateID('frm_'), type: 'error',
+          id: generateID('frm_'), type: 'Error',
           content: { message: 'The agent is taking an unusually long time to respond. You may need to retry your message.' },
           timestamp: Date.now(), interactionID,
           authorType: 'system', authorID: null,
@@ -585,7 +585,7 @@ export class InteractionLoop extends EventEmitter {
         await generator.return();
 
         await this._createFrame(sessionID, {
-          id: generateID('frm_'), type: 'error',
+          id: generateID('frm_'), type: 'Error',
           content: { message: 'The interaction was ended after 5 minutes with no response from the agent. Please try sending your message again.' },
           timestamp: Date.now(), interactionID,
           authorType: 'system', authorID: null,
@@ -630,7 +630,7 @@ export class InteractionLoop extends EventEmitter {
         if (done || !block)
           break;
 
-        if (block.type === 'done') {
+        if (block.type === 'Done') {
           if (block.content && block.content.usage) {
             let agentID     = (params.agent && params.agent.id) || null;
             let serviceType = (params.agentPlugin && params.agentPlugin.constructor.serviceType) || 'unknown';
@@ -649,16 +649,16 @@ export class InteractionLoop extends EventEmitter {
         }
 
         // Transient streaming events — not persisted, just forwarded
-        if (block.type === 'delta') {
-          this.emit('delta', {
+        if (block.type === 'Delta') {
+          this.emit('Delta', {
             sessionID, interactionID,
             content: block.content, authorType: block.authorType, authorID: block.authorID,
           });
           continue;
         }
 
-        if (block.type === 'reflection-delta') {
-          this.emit('reflection-delta', {
+        if (block.type === 'ReflectionDelta') {
+          this.emit('ReflectionDelta', {
             sessionID, interactionID,
             content: block.content, authorType: block.authorType, authorID: block.authorID,
           });
@@ -666,7 +666,7 @@ export class InteractionLoop extends EventEmitter {
         }
 
         // Partial usage updates (cumulative snapshots — not persisted)
-        if (block.type === 'usage') {
+        if (block.type === 'Usage') {
           if (block.content && block.content.usage) {
             let agentID     = (params.agent && params.agent.id) || null;
             let serviceType = (params.agentPlugin && params.agentPlugin.constructor.serviceType) || 'unknown';
@@ -684,7 +684,7 @@ export class InteractionLoop extends EventEmitter {
         let frameID   = generateID('frm_');
         let timestamp = Date.now();
 
-        if (block.type === 'message') {
+        if (block.type === 'Message') {
           let html = block.content && block.content.html;
 
           // Hook: agent → user
@@ -701,12 +701,12 @@ export class InteractionLoop extends EventEmitter {
             html = sanitizer.sanitize(html);
 
           await this._createFrame(sessionID, {
-            id: frameID, type: 'message', content: { html }, timestamp, interactionID,
+            id: frameID, type: 'Message', content: { html }, timestamp, interactionID,
             authorType: block.authorType || 'agent', authorID: block.authorID || null,
             parentID: params.parentID || null,
             hidden: false, deleted: false, processed: false,
           }, frameManager, { authorType: block.authorType || 'agent', authorID: block.authorID || null }, signingContext);
-        } else if (block.type === 'tool-call') {
+        } else if (block.type === 'ToolCall') {
           // Hook: agent → tool
           if (hookRunner) {
             let hookResult = await hookRunner.run('prepareMessage', {
@@ -714,14 +714,14 @@ export class InteractionLoop extends EventEmitter {
               context: { sessionID, interactionID, toolName: block.content.toolName },
             });
             if (hookResult.action === 'block') {
-              result = { type: 'tool-result', content: { output: `Blocked: ${hookResult.reason || 'hook blocked tool execution'}`, _sessionID: sessionID } };
+              result = { type: 'ToolResult', content: { output: `Blocked: ${hookResult.reason || 'hook blocked tool execution'}`, _sessionID: sessionID } };
               continue;
             }
           }
 
           // Execute tool (permission checking handled inside tool.execute())
           await this._createFrame(sessionID, {
-            id: frameID, type: 'tool-call',
+            id: frameID, type: 'ToolCall',
             content: { toolName: block.content.toolName, arguments: block.content.arguments, toolUseID: block.content.toolUseId || block.content.toolUseID },
             timestamp, interactionID,
             authorType: block.authorType || 'agent', authorID: block.authorID || null,
@@ -776,7 +776,7 @@ export class InteractionLoop extends EventEmitter {
 
                 await this._createFrame(sessionID, {
                   id:            requestFrameID,
-                  type:          'permission-request',
+                  type:          'PermissionRequest',
                   content:       requestContent,
                   state:         JSON.stringify({
                     toolName:      block.content.toolName,
@@ -802,7 +802,7 @@ export class InteractionLoop extends EventEmitter {
                 // Feed result back to agent — conversation stays valid
                 toolOutput = `PERMISSION REQUIRED for "${block.content.toolName}". A permission request (ID: ${requestFrameID}) has been sent to the user. Do NOT retry this tool call — wait for the user to approve or deny.`;
                 await this._createFrame(sessionID, {
-                  id: generateID('frm_'), type: 'tool-result',
+                  id: generateID('frm_'), type: 'ToolResult',
                   content: { output: toolOutput, toolUseID: block.content.toolUseId || block.content.toolUseID, _sessionID: sessionID },
                   timestamp: Date.now(), interactionID,
                   authorType: 'system', authorID: null,
@@ -810,7 +810,7 @@ export class InteractionLoop extends EventEmitter {
                   hidden: false, deleted: false, processed: false,
                 }, frameManager, { authorType: 'system' }, signingContext);
 
-                result = { type: 'tool-result', content: { output: toolOutput, _sessionID: sessionID } };
+                result = { type: 'ToolResult', content: { output: toolOutput, _sessionID: sessionID } };
                 continue;
               }
 
@@ -818,20 +818,20 @@ export class InteractionLoop extends EventEmitter {
               // -> create permission-denied frame and feed error back to agent
               if (toolError.name === 'PermissionDeniedError') {
                 await this._createFrame(sessionID, {
-                  id: generateID('frm_'), type: 'permission-denied',
+                  id: generateID('frm_'), type: 'PermissionDenied',
                   content: { toolName: block.content.toolName, reason: toolError.reason },
                   timestamp: Date.now(), interactionID,
                   authorType: 'system', authorID: null,
                   parentID: params.parentID || null,
                   hidden: false, deleted: false, processed: false,
                 }, frameManager, { authorType: 'system' }, signingContext);
-                result = { type: 'tool-result', content: { output: `Error: ${toolError.message}`, _sessionID: sessionID } };
+                result = { type: 'ToolResult', content: { output: `Error: ${toolError.message}`, _sessionID: sessionID } };
                 continue;
               }
 
               toolOutput = `Error executing tool: ${toolError.message}`;
               await this._createFrame(sessionID, {
-                id: generateID('frm_'), type: 'tool-error',
+                id: generateID('frm_'), type: 'ToolError',
                 content: { toolName: block.content.toolName, message: toolError.message },
                 timestamp: Date.now(), interactionID,
                 authorType: 'system', authorID: null,
@@ -856,7 +856,7 @@ export class InteractionLoop extends EventEmitter {
 
             await this._createFrame(sessionID, {
               id:            generateID('frm_'),
-              type:          'tool-activity',
+              type:          'ToolActivity',
               content:       { toolName: block.content.toolName, renderType: hint.renderType, renderData: hint.renderData },
               timestamp:     Date.now(),
               interactionID,
@@ -887,7 +887,7 @@ export class InteractionLoop extends EventEmitter {
           );
 
           await this._createFrame(sessionID, {
-            id: generateID('frm_'), type: 'tool-result',
+            id: generateID('frm_'), type: 'ToolResult',
             content: { output: toolOutput, toolUseID: block.content.toolUseId || block.content.toolUseID, _sessionID: sessionID },
             timestamp: Date.now(), interactionID,
             authorType: 'system', authorID: null,
@@ -895,10 +895,10 @@ export class InteractionLoop extends EventEmitter {
             hidden: false, deleted: false, processed: false,
           }, frameManager, { authorType: 'system' }, signingContext);
 
-          result = { type: 'tool-result', content: { output: toolOutput, _sessionID: sessionID } };
-        } else if (block.type === 'reflection') {
+          result = { type: 'ToolResult', content: { output: toolOutput, _sessionID: sessionID } };
+        } else if (block.type === 'Reflection') {
           await this._createFrame(sessionID, {
-            id: frameID, type: 'reflection', content: block.content, timestamp, interactionID,
+            id: frameID, type: 'Reflection', content: block.content, timestamp, interactionID,
             authorType: block.authorType || 'agent', authorID: block.authorID || null,
             parentID: params.parentID || null,
             hidden: true, deleted: false, processed: false,
@@ -922,7 +922,7 @@ export class InteractionLoop extends EventEmitter {
         errorMessage = 'The AI service is temporarily overloaded. Please try again in a few moments.';
 
       await this._createFrame(sessionID, {
-        id: generateID('frm_'), type: 'error', content: { message: errorMessage },
+        id: generateID('frm_'), type: 'Error', content: { message: errorMessage },
         timestamp: Date.now(), interactionID,
         authorType: 'system', authorID: null,
         parentID: params.parentID || null,
@@ -1007,7 +1007,7 @@ export class InteractionLoop extends EventEmitter {
     let frameManager   = active.frameManager || null;
     let signingContext = (active.params && active.params._signingContext) || null;
     await this._createFrame(sessionID, {
-      id: generateID('frm_'), type: 'stop',
+      id: generateID('frm_'), type: 'Stop',
       content: { targetAgentID }, authorType, authorID,
     }, frameManager, { authorType, authorID: authorID }, signingContext);
 
@@ -1106,7 +1106,7 @@ export class InteractionLoop extends EventEmitter {
 
     await this._createFrame(sessionID, {
       id:            frameID,
-      type:          'user-message',
+      type:          'UserMessage',
       content:       frameContent,
       timestamp:     Date.now(),
       interactionID,

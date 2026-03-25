@@ -30,7 +30,7 @@ class MockAgent extends AgentInterface {
 
   async *_createGenerator(_params) {
     for (let block of this._blocks) {
-      if (block.type === 'tool-call') {
+      if (block.type === 'ToolCall') {
         let result = yield block;
         this._lastToolResult = result;
       } else {
@@ -38,7 +38,7 @@ class MockAgent extends AgentInterface {
       }
     }
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 
   getCapabilities() {
@@ -67,7 +67,7 @@ class SlowMockAgent extends AgentInterface {
       yield block;
     }
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 
   getCapabilities() {
@@ -283,7 +283,7 @@ describe('Integration: Simple Interaction', () => {
 
   it('should create user-message and agent-message frames', async () => {
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>Hello!</p>' } },
+      { type: 'Message', content: { html: '<p>Hello!</p>' } },
     ]);
 
     let interactionID = await interactionLoop.startInteraction(session.id, {
@@ -298,8 +298,8 @@ describe('Integration: Simple Interaction', () => {
     let frames       = frameManager.toArray();
 
     // Should have at least a user-message and an agent message
-    let userFrame  = frames.find((f) => f.type === 'user-message');
-    let agentFrame = frames.find((f) => f.type === 'message');
+    let userFrame  = frames.find((f) => f.type === 'UserMessage');
+    let agentFrame = frames.find((f) => f.type === 'Message');
 
     assert.ok(userFrame, 'should have a user-message frame');
     assert.ok(agentFrame, 'should have an agent message frame');
@@ -312,8 +312,8 @@ describe('Integration: Simple Interaction', () => {
     let setup     = await setupInteraction(testUser2.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>First</p>' } },
-      { type: 'message', content: { html: '<p>Second</p>' } },
+      { type: 'Message', content: { html: '<p>First</p>' } },
+      { type: 'Message', content: { html: '<p>Second</p>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -335,7 +335,7 @@ describe('Integration: Simple Interaction', () => {
     let setup     = await setupInteraction(testUser2.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>Same interaction</p>' } },
+      { type: 'Message', content: { html: '<p>Same interaction</p>' } },
     ]);
 
     let interactionID = await interactionLoop.startInteraction(setup.session.id, {
@@ -347,7 +347,7 @@ describe('Integration: Simple Interaction', () => {
     // Load frames from DB (exclude participant lifecycle frames which have their own IDs)
     let models   = core.getModels();
     let dbFrames = await models.Frame.where.sessionID.EQ(setup.session.id).all();
-    let interactionFrames = dbFrames.filter((f) => f.type !== 'participant-joined' && f.type !== 'participant-left');
+    let interactionFrames = dbFrames.filter((f) => f.type !== 'ParticipantJoined' && f.type !== 'ParticipantLeft');
 
     for (let frame of interactionFrames)
       assert.equal(frame.interactionID, interactionID, 'All frames should have same interactionID');
@@ -358,7 +358,7 @@ describe('Integration: Simple Interaction', () => {
     let setup     = await setupInteraction(testUser2.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>Agent reply</p>' } },
+      { type: 'Message', content: { html: '<p>Agent reply</p>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -372,8 +372,8 @@ describe('Integration: Simple Interaction', () => {
     let models   = core.getModels();
     let dbFrames = await models.Frame.where.sessionID.EQ(setup.session.id).ORDER('+Frame:order').all();
 
-    let userFrame  = dbFrames.find((f) => f.type === 'user-message');
-    let agentFrame = dbFrames.find((f) => f.type === 'message');
+    let userFrame  = dbFrames.find((f) => f.type === 'UserMessage');
+    let agentFrame = dbFrames.find((f) => f.type === 'Message');
 
     assert.equal(userFrame.authorType, 'user');
     assert.equal(userFrame.authorID, testUser2.user.id);
@@ -385,7 +385,7 @@ describe('Integration: Simple Interaction', () => {
     let setup     = await setupInteraction(testUser2.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>Safe</p><script>alert("xss")</script>' } },
+      { type: 'Message', content: { html: '<p>Safe</p><script>alert("xss")</script>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -396,7 +396,7 @@ describe('Integration: Simple Interaction', () => {
 
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let agentFrame   = frames.find((f) => f.type === 'message');
+    let agentFrame   = frames.find((f) => f.type === 'Message');
 
     assert.ok(agentFrame);
     assert.ok(!agentFrame.content.html.includes('<script>'), 'script tag should be stripped');
@@ -414,9 +414,9 @@ describe('Integration: Multi-Message Interaction', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>First reply</p>' } },
-      { type: 'message', content: { html: '<p>Second reply</p>' } },
-      { type: 'message', content: { html: '<p>Third reply</p>' } },
+      { type: 'Message', content: { html: '<p>First reply</p>' } },
+      { type: 'Message', content: { html: '<p>Second reply</p>' } },
+      { type: 'Message', content: { html: '<p>Third reply</p>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -427,7 +427,7 @@ describe('Integration: Multi-Message Interaction', () => {
 
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let agentFrames  = frames.filter((f) => f.type === 'message');
+    let agentFrames  = frames.filter((f) => f.type === 'Message');
 
     assert.equal(agentFrames.length, 3, 'should have 3 agent message frames');
     assert.equal(agentFrames[0].content.html, '<p>First reply</p>');
@@ -440,8 +440,8 @@ describe('Integration: Multi-Message Interaction', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'reflection', content: { text: 'Thinking...' } },
-      { type: 'message', content: { html: '<p>Answer</p>' } },
+      { type: 'Reflection', content: { text: 'Thinking...' } },
+      { type: 'Message', content: { html: '<p>Answer</p>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -453,8 +453,8 @@ describe('Integration: Multi-Message Interaction', () => {
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
 
-    let reflectionFrame = frames.find((f) => f.type === 'reflection');
-    let messageFrame    = frames.find((f) => f.type === 'message');
+    let reflectionFrame = frames.find((f) => f.type === 'Reflection');
+    let messageFrame    = frames.find((f) => f.type === 'Message');
 
     assert.ok(reflectionFrame, 'should have a reflection frame');
     assert.ok(messageFrame, 'should have a message frame');
@@ -467,8 +467,8 @@ describe('Integration: Multi-Message Interaction', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>A</p>' } },
-      { type: 'message', content: { html: '<p>B</p>' } },
+      { type: 'Message', content: { html: '<p>A</p>' } },
+      { type: 'Message', content: { html: '<p>B</p>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -495,8 +495,8 @@ describe('Integration: Tool Call Interaction', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'tool-call', content: { toolName: 'calculator', arguments: { expr: '2+2' } } },
-      { type: 'message', content: { html: '<p>The answer is 4</p>' } },
+      { type: 'ToolCall', content: { toolName: 'calculator', arguments: { expr: '2+2' } } },
+      { type: 'Message', content: { html: '<p>The answer is 4</p>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -514,9 +514,9 @@ describe('Integration: Tool Call Interaction', () => {
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
 
-    let toolCallFrame   = frames.find((f) => f.type === 'tool-call');
-    let toolResultFrame = frames.find((f) => f.type === 'tool-result');
-    let messageFrame    = frames.filter((f) => f.type === 'message');
+    let toolCallFrame   = frames.find((f) => f.type === 'ToolCall');
+    let toolResultFrame = frames.find((f) => f.type === 'ToolResult');
+    let messageFrame    = frames.filter((f) => f.type === 'Message');
 
     assert.ok(toolCallFrame, 'should have a tool-call frame');
     assert.ok(toolResultFrame, 'should have a tool-result frame');
@@ -531,8 +531,8 @@ describe('Integration: Tool Call Interaction', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'tool-call', content: { toolName: 'lookup', arguments: { key: 'foo' } } },
-      { type: 'message', content: { html: '<p>Got the result</p>' } },
+      { type: 'ToolCall', content: { toolName: 'lookup', arguments: { key: 'foo' } } },
+      { type: 'Message', content: { html: '<p>Got the result</p>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -544,7 +544,7 @@ describe('Integration: Tool Call Interaction', () => {
 
     // Verify the agent received the tool result
     assert.ok(mockAgent._lastToolResult);
-    assert.equal(mockAgent._lastToolResult.type, 'tool-result');
+    assert.equal(mockAgent._lastToolResult.type, 'ToolResult');
     assert.equal(mockAgent._lastToolResult.content.output, 'bar');
   });
 
@@ -553,8 +553,8 @@ describe('Integration: Tool Call Interaction', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'tool-call', content: { toolName: 'search', arguments: { q: 'test' } } },
-      { type: 'message', content: { html: '<p>Found it</p>' } },
+      { type: 'ToolCall', content: { toolName: 'search', arguments: { q: 'test' } } },
+      { type: 'Message', content: { html: '<p>Found it</p>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -568,12 +568,12 @@ describe('Integration: Tool Call Interaction', () => {
     let allFrames    = frameManager.toArray();
 
     // Filter out participant lifecycle frames (created by addParticipant in setup)
-    let frames = allFrames.filter((f) => f.type !== 'participant-joined' && f.type !== 'participant-left');
+    let frames = allFrames.filter((f) => f.type !== 'ParticipantJoined' && f.type !== 'ParticipantLeft');
 
-    assert.equal(frames[0].type, 'user-message');
-    assert.equal(frames[1].type, 'tool-call');
-    assert.equal(frames[2].type, 'tool-result');
-    assert.equal(frames[3].type, 'message');
+    assert.equal(frames[0].type, 'UserMessage');
+    assert.equal(frames[1].type, 'ToolCall');
+    assert.equal(frames[2].type, 'ToolResult');
+    assert.equal(frames[3].type, 'Message');
   });
 });
 
@@ -587,7 +587,7 @@ describe('Integration: Permission Inline Flow', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'tool-call', content: { toolName: 'danger', arguments: { action: 'delete' } } },
+      { type: 'ToolCall', content: { toolName: 'danger', arguments: { action: 'delete' } } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -602,12 +602,12 @@ describe('Integration: Permission Inline Flow', () => {
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
 
-    let permissionFrame = frames.find((f) => f.type === 'permission-request');
+    let permissionFrame = frames.find((f) => f.type === 'PermissionRequest');
     assert.ok(permissionFrame, 'should have a permission-request frame');
     assert.equal(permissionFrame.content.toolName, 'danger');
 
     // New behavior: tool-result with PERMISSION REQUIRED is fed back inline
-    let toolResult = frames.find((f) => f.type === 'tool-result' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+    let toolResult = frames.find((f) => f.type === 'ToolResult' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
     assert.ok(toolResult, 'should have a tool-result with PERMISSION REQUIRED');
   });
 
@@ -616,7 +616,7 @@ describe('Integration: Permission Inline Flow', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'tool-call', content: { toolName: 'risky', arguments: {} } },
+      { type: 'ToolCall', content: { toolName: 'risky', arguments: {} } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -638,7 +638,7 @@ describe('Integration: Permission Inline Flow', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'tool-call', content: { toolName: 'deploy', arguments: { env: 'prod' } } },
+      { type: 'ToolCall', content: { toolName: 'deploy', arguments: { env: 'prod' } } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -653,11 +653,11 @@ describe('Integration: Permission Inline Flow', () => {
     // Should have tool-result frame with PERMISSION REQUIRED inline
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let toolResult   = frames.find((f) => f.type === 'tool-result' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
+    let toolResult   = frames.find((f) => f.type === 'ToolResult' && f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
 
     assert.ok(toolResult, 'should have a tool-result frame with PERMISSION REQUIRED');
 
-    let permRequest = frames.find((f) => f.type === 'permission-request');
+    let permRequest = frames.find((f) => f.type === 'PermissionRequest');
     assert.ok(permRequest, 'should have a permission-request frame');
   });
 
@@ -666,7 +666,7 @@ describe('Integration: Permission Inline Flow', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'tool-call', content: { toolName: 'nuke', arguments: {} } },
+      { type: 'ToolCall', content: { toolName: 'nuke', arguments: {} } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -682,7 +682,7 @@ describe('Integration: Permission Inline Flow', () => {
     let frames       = frameManager.toArray();
 
     // Permission-request frame should exist
-    let permFrame = frames.find((f) => f.type === 'permission-request');
+    let permFrame = frames.find((f) => f.type === 'PermissionRequest');
     assert.ok(permFrame, 'should have a permission-request frame');
 
     // Interaction completes inline (no waiting state)
@@ -695,7 +695,7 @@ describe('Integration: Permission Inline Flow', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'tool-call', content: { toolName: 'update', arguments: {} } },
+      { type: 'ToolCall', content: { toolName: 'update', arguments: {} } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -711,7 +711,7 @@ describe('Integration: Permission Inline Flow', () => {
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
 
-    let requestFrame = frames.find((f) => f.type === 'permission-request');
+    let requestFrame = frames.find((f) => f.type === 'PermissionRequest');
     assert.ok(requestFrame, 'should have a permission-request frame');
 
     // The permission-request frame should exist with the correct toolName
@@ -730,7 +730,7 @@ describe('Integration: Message Queue Flow', () => {
 
     // Use slow agent to give us time to queue
     let slowAgent = new SlowMockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>Slow reply</p>' } },
+      { type: 'Message', content: { html: '<p>Slow reply</p>' } },
     ], 100);
 
     // Start interaction (don't await — it runs async)
@@ -760,7 +760,7 @@ describe('Integration: Message Queue Flow', () => {
 
     // Use slow agent with blocks
     let slowAgent = new SlowMockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>First response</p>' } },
+      { type: 'Message', content: { html: '<p>First response</p>' } },
     ], 50);
 
     // Start the first interaction
@@ -789,7 +789,7 @@ describe('Integration: Message Queue Flow', () => {
     // Verify both user messages are in the frames
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let userFrames   = frames.filter((f) => f.type === 'user-message');
+    let userFrames   = frames.filter((f) => f.type === 'UserMessage');
 
     assert.ok(userFrames.length >= 2, 'should have at least 2 user-message frames');
   });
@@ -799,7 +799,7 @@ describe('Integration: Message Queue Flow', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let slowAgent = new SlowMockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>Response</p>' } },
+      { type: 'Message', content: { html: '<p>Response</p>' } },
     ], 100);
 
     let interactionPromise = interactionLoop.startInteraction(setup.session.id, {
@@ -904,7 +904,7 @@ describe('Integration: Content Sanitization in Interaction', () => {
     let setup    = await setupInteraction(testUser.organization.id);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>Hello</p><script>alert("xss")</script><b>World</b>' } },
+      { type: 'Message', content: { html: '<p>Hello</p><script>alert("xss")</script><b>World</b>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -915,7 +915,7 @@ describe('Integration: Content Sanitization in Interaction', () => {
 
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let agentFrame   = frames.find((f) => f.type === 'message');
+    let agentFrame   = frames.find((f) => f.type === 'Message');
 
     assert.ok(agentFrame);
     assert.ok(!agentFrame.content.html.includes('script'), 'should not contain script');
@@ -930,7 +930,7 @@ describe('Integration: Content Sanitization in Interaction', () => {
 
     let mockAgent = new MockAgent(core.getContext(), [
       {
-        type:    'message',
+        type: 'Message',
         content: {
           html: '<h1>Title</h1><iframe src="evil.com"></iframe><style>body{display:none}</style><p>Content</p>',
         },
@@ -945,7 +945,7 @@ describe('Integration: Content Sanitization in Interaction', () => {
 
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let agentFrame   = frames.find((f) => f.type === 'message');
+    let agentFrame   = frames.find((f) => f.type === 'Message');
 
     assert.ok(agentFrame);
     assert.ok(!agentFrame.content.html.includes('iframe'), 'should not contain iframe');
@@ -969,7 +969,7 @@ describe('Integration: Event Emission', () => {
     interactionLoop.on('interaction:end', (ev) => events.push({ type: 'end', ...ev }));
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>Event test</p>' } },
+      { type: 'Message', content: { html: '<p>Event test</p>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -1004,8 +1004,8 @@ describe('Integration: Event Emission', () => {
     interactionLoop.on('frame', listener);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'message', content: { html: '<p>Frame 1</p>' } },
-      { type: 'message', content: { html: '<p>Frame 2</p>' } },
+      { type: 'Message', content: { html: '<p>Frame 1</p>' } },
+      { type: 'Message', content: { html: '<p>Frame 2</p>' } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {
@@ -1018,8 +1018,8 @@ describe('Integration: Event Emission', () => {
     assert.ok(frameEvents.length >= 3, `should have at least 3 frame events, got ${frameEvents.length}`);
 
     let types = frameEvents.map((e) => e.frame.type);
-    assert.ok(types.includes('user-message'), 'should have user-message frame event');
-    assert.ok(types.includes('message'), 'should have message frame event');
+    assert.ok(types.includes('UserMessage'), 'should have user-message frame event');
+    assert.ok(types.includes('Message'), 'should have message frame event');
 
     interactionLoop.removeListener('frame', listener);
   });
@@ -1037,7 +1037,7 @@ describe('Integration: Event Emission', () => {
     interactionLoop.on('permission:request', listener);
 
     let mockAgent = new MockAgent(core.getContext(), [
-      { type: 'tool-call', content: { toolName: 'danger', arguments: {} } },
+      { type: 'ToolCall', content: { toolName: 'danger', arguments: {} } },
     ]);
 
     await interactionLoop.startInteraction(setup.session.id, {

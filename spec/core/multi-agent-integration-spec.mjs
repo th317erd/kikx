@@ -54,7 +54,7 @@ class MockAgent extends AgentInterface {
     for (let block of blocks)
       yield block;
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -73,7 +73,7 @@ class CrashingAgent extends AgentInterface {
 
   async *_createGenerator(params) {
     yield {
-      type:       'message',
+      type: 'Message',
       content:    { html: '<p>Starting before crash...</p>' },
       authorType: 'agent',
       authorID:   params.agent.id,
@@ -174,11 +174,11 @@ describe('Multi-Agent Integration', () => {
       let [agentA, agentB] = agents;
 
       let pluginA = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Alpha responds</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Alpha responds</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       let pluginB = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Beta responds</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Beta responds</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       // Agent A runs first
@@ -190,8 +190,8 @@ describe('Multi-Agent Integration', () => {
       let frameManager = sessionManager.getFrameManager(session.id);
       let allFrames    = frameManager.toArray();
 
-      let userFrames  = allFrames.filter((f) => f.type === 'user-message');
-      let agentFrames = allFrames.filter((f) => f.type === 'message');
+      let userFrames  = allFrames.filter((f) => f.type === 'UserMessage');
+      let agentFrames = allFrames.filter((f) => f.type === 'Message');
 
       assert.equal(userFrames.length, 1, 'Should have one user message');
       assert.equal(agentFrames.length, 2, 'Should have two agent messages');
@@ -213,7 +213,7 @@ describe('Multi-Agent Integration', () => {
       let [agentA, agentB] = agents;
 
       let pluginA = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Alpha says hello</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Alpha says hello</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       // Agent B's factory captures the messages it was given
@@ -221,7 +221,7 @@ describe('Multi-Agent Integration', () => {
       let pluginB = new MockAgent(context, (params) => {
         capturedMessages = params.messages;
         return [
-          { type: 'message', content: { html: '<p>Beta acknowledges</p>' }, authorType: 'agent', authorID: params.agent.id },
+          { type: 'Message', content: { html: '<p>Beta acknowledges</p>' }, authorType: 'agent', authorID: params.agent.id },
         ];
       });
 
@@ -257,12 +257,12 @@ describe('Multi-Agent Integration', () => {
       let [agentA, agentB] = agents;
 
       let pluginA1 = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Alpha first</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Alpha first</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       // Agent B responds
       let pluginB = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Beta responds</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Beta responds</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       // Agent A runs again — should see its own message as assistant and beta's as user
@@ -270,7 +270,7 @@ describe('Multi-Agent Integration', () => {
       let pluginA2 = new MockAgent(context, (params) => {
         capturedMessages = params.messages;
         return [
-          { type: 'message', content: { html: '<p>Alpha second</p>' }, authorType: 'agent', authorID: params.agent.id },
+          { type: 'Message', content: { html: '<p>Alpha second</p>' }, authorType: 'agent', authorID: params.agent.id },
         ];
       });
 
@@ -299,11 +299,11 @@ describe('Multi-Agent Integration', () => {
       let [agentA, agentB] = agents;
 
       let pluginA = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       let pluginB = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>B</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>B</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       await runInteraction(session.id, agentA, pluginA, 'Test refs');
@@ -335,18 +335,18 @@ describe('Multi-Agent Integration', () => {
       let [alice, bob, carol] = agents;
 
       let pluginAlice = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Alice here</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Alice here</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       let pluginBob = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Bob here</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Bob here</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       let capturedCarolMessages = null;
       let pluginCarol = new MockAgent(context, (params) => {
         capturedCarolMessages = params.messages;
         return [
-          { type: 'message', content: { html: '<p>Carol here</p>' }, authorType: 'agent', authorID: params.agent.id },
+          { type: 'Message', content: { html: '<p>Carol here</p>' }, authorType: 'agent', authorID: params.agent.id },
         ];
       });
 
@@ -368,7 +368,7 @@ describe('Multi-Agent Integration', () => {
       // All frames present
       let frameManager = sessionManager.getFrameManager(session.id);
       let allFrames    = frameManager.toArray();
-      let agentFrames  = allFrames.filter((f) => f.type === 'message');
+      let agentFrames  = allFrames.filter((f) => f.type === 'Message');
 
       assert.equal(agentFrames.length, 3, 'Should have three agent messages');
     });
@@ -384,15 +384,15 @@ describe('Multi-Agent Integration', () => {
 
       // All three run, then we check message assembly from each perspective
       let pluginAlice = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Alice</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Alice</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       let pluginBob = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Bob</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Bob</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       let pluginCarol = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Carol</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Carol</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       await runInteraction(session.id, alice, pluginAlice, 'Check perspectives');
@@ -437,11 +437,11 @@ describe('Multi-Agent Integration', () => {
       let [alice, bob, carol] = agents;
 
       let pluginAlice = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>A</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       let pluginBob = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>B</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>B</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       // Run only Alice and Bob — Carol hasn't run yet
@@ -466,7 +466,7 @@ describe('Multi-Agent Integration', () => {
 
       // Now run Carol
       let pluginCarol = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>C</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>C</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       await runInteraction(session.id, carol, pluginCarol, null, { replayFromPermission: true });
@@ -494,7 +494,7 @@ describe('Multi-Agent Integration', () => {
       // Create a user message
       frameManager.merge([{
         id:         `frm_3party_${Date.now()}`,
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello team' },
         authorType: 'user',
         authorID:   'usr_test',
@@ -526,7 +526,7 @@ describe('Multi-Agent Integration', () => {
 
       let crashPlugin = new CrashingAgent(context, 'Deliberate crash');
       let survivorPlugin = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Survivor persists</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Survivor persists</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       // Crasher runs — should produce error frame but not throw to caller
@@ -539,12 +539,12 @@ describe('Multi-Agent Integration', () => {
       let allFrames    = frameManager.toArray();
 
       // Crasher should have produced a partial message + error frame
-      let errorFrame = allFrames.find((f) => f.type === 'error');
+      let errorFrame = allFrames.find((f) => f.type === 'Error');
       assert.ok(errorFrame, 'Should have an error frame from crasher');
       assert.ok(errorFrame.content.message.includes('Deliberate crash'), 'Error should contain crash message');
 
       // Survivor should have produced its message
-      let survivorMsg = allFrames.find((f) => f.type === 'message' && f.authorID === survivor.id);
+      let survivorMsg = allFrames.find((f) => f.type === 'Message' && f.authorID === survivor.id);
       assert.ok(survivorMsg, 'Survivor should have produced a message');
     });
 
@@ -580,7 +580,7 @@ describe('Multi-Agent Integration', () => {
       let survivorPlugin = new MockAgent(context, (params) => {
         capturedMessages = params.messages;
         return [
-          { type: 'message', content: { html: '<p>I saw the crash</p>' }, authorType: 'agent', authorID: params.agent.id },
+          { type: 'Message', content: { html: '<p>I saw the crash</p>' }, authorType: 'agent', authorID: params.agent.id },
         ];
       });
 
@@ -623,7 +623,7 @@ describe('Multi-Agent Integration', () => {
       let frameManager = sessionManager.getFrameManager(session.id);
       frameManager.merge([{
         id:         `frm_postcrash_${Date.now()}`,
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'After crash' },
         authorType: 'user',
         authorID:   'usr_test',
@@ -647,13 +647,13 @@ describe('Multi-Agent Integration', () => {
       let [alice, crasher, carol] = agents;
 
       let pluginAlice = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Alice OK</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Alice OK</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       let crashPlugin = new CrashingAgent(context, 'Mid-session crash');
 
       let pluginCarol = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Carol OK</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Carol OK</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       await runInteraction(session.id, alice, pluginAlice, 'Three-agent crash test');
@@ -663,9 +663,9 @@ describe('Multi-Agent Integration', () => {
       let frameManager = sessionManager.getFrameManager(session.id);
       let allFrames    = frameManager.toArray();
 
-      let aliceMsg = allFrames.find((f) => f.type === 'message' && f.authorID === alice.id);
-      let carolMsg = allFrames.find((f) => f.type === 'message' && f.authorID === carol.id);
-      let errorFrame = allFrames.find((f) => f.type === 'error');
+      let aliceMsg = allFrames.find((f) => f.type === 'Message' && f.authorID === alice.id);
+      let carolMsg = allFrames.find((f) => f.type === 'Message' && f.authorID === carol.id);
+      let errorFrame = allFrames.find((f) => f.type === 'Error');
 
       assert.ok(aliceMsg, 'Alice should have produced a message');
       assert.ok(carolMsg, 'Carol should have produced a message despite crasher');
@@ -696,7 +696,7 @@ describe('Multi-Agent Integration', () => {
       let frameManager = sessionManager.getFrameManager(session.id);
       frameManager.merge([{
         id:         `frm_sel_cancel_${Date.now()}`,
-        type:       'stop',
+        type: 'Stop',
         content:    { targetAgentID: beta.id },
         authorType: 'user',
         authorID:   'usr_test',
@@ -729,7 +729,7 @@ describe('Multi-Agent Integration', () => {
       let frameManager = sessionManager.getFrameManager(session.id);
       frameManager.merge([{
         id:         `frm_cancel_all_${Date.now()}`,
-        type:       'stop',
+        type: 'Stop',
         content:    { targetAgentID: null },
         authorType: 'user',
         authorID:   'usr_test',
@@ -763,7 +763,7 @@ describe('Multi-Agent Integration', () => {
       let [alpha] = agents;
 
       let pluginA = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Done</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Done</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       // Run interaction — this advances alpha's ref to heads/main
@@ -789,7 +789,7 @@ describe('Multi-Agent Integration', () => {
       let frameManager = sessionManager.getFrameManager(session.id);
       frameManager.merge([{
         id:         `frm_cycle_${Date.now()}`,
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Start the cycle' },
         authorType: 'user',
         authorID:   'usr_test',
@@ -803,7 +803,7 @@ describe('Multi-Agent Integration', () => {
 
       // Step 3: Agent A runs
       let pluginA = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Alpha done</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Alpha done</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       scheduler.markComplete(session.id, alpha.id);
@@ -811,7 +811,7 @@ describe('Multi-Agent Integration', () => {
 
       // Step 4: Agent B runs
       let pluginB = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>Beta done</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>Beta done</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       scheduler.markComplete(session.id, beta.id);
@@ -844,11 +844,11 @@ describe('Multi-Agent Integration', () => {
 
       // First cycle: user → both agents respond
       let pluginA1 = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>A1</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>A1</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       let pluginB1 = new MockAgent(context, (params) => [
-        { type: 'message', content: { html: '<p>B1</p>' }, authorType: 'agent', authorID: params.agent.id },
+        { type: 'Message', content: { html: '<p>B1</p>' }, authorType: 'agent', authorID: params.agent.id },
       ]);
 
       await runInteraction(session.id, alpha, pluginA1, 'First message');
@@ -863,7 +863,7 @@ describe('Multi-Agent Integration', () => {
       let frameManager = sessionManager.getFrameManager(session.id);
       frameManager.merge([{
         id:         `frm_round2_${Date.now()}`,
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Second message' },
         authorType: 'user',
         authorID:   'usr_test',

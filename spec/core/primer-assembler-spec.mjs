@@ -511,7 +511,7 @@ describe('InteractionLoop — Primer Helpers', () => {
     it('should return true for single user-message with no assistant reply', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', deleted: false },
+        { type: 'UserMessage', deleted: false },
       ];
 
       assert.equal(loop._isFirstMessage(frames), true);
@@ -520,8 +520,8 @@ describe('InteractionLoop — Primer Helpers', () => {
     it('should return false when assistant message exists', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', deleted: false },
-        { type: 'message', deleted: false },
+        { type: 'UserMessage', deleted: false },
+        { type: 'Message', deleted: false },
       ];
 
       assert.equal(loop._isFirstMessage(frames), false);
@@ -530,9 +530,9 @@ describe('InteractionLoop — Primer Helpers', () => {
     it('should return false for multiple user messages', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', deleted: false },
-        { type: 'message', deleted: false },
-        { type: 'user-message', deleted: false },
+        { type: 'UserMessage', deleted: false },
+        { type: 'Message', deleted: false },
+        { type: 'UserMessage', deleted: false },
       ];
 
       assert.equal(loop._isFirstMessage(frames), false);
@@ -541,9 +541,9 @@ describe('InteractionLoop — Primer Helpers', () => {
     it('should ignore deleted frames', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', deleted: true },
-        { type: 'message', deleted: true },
-        { type: 'user-message', deleted: false },
+        { type: 'UserMessage', deleted: true },
+        { type: 'Message', deleted: true },
+        { type: 'UserMessage', deleted: false },
       ];
 
       assert.equal(loop._isFirstMessage(frames), true);
@@ -552,9 +552,9 @@ describe('InteractionLoop — Primer Helpers', () => {
     it('should not count non-message frame types', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'tool-call', deleted: false },
-        { type: 'tool-result', deleted: false },
-        { type: 'user-message', deleted: false },
+        { type: 'ToolCall', deleted: false },
+        { type: 'ToolResult', deleted: false },
+        { type: 'UserMessage', deleted: false },
       ];
 
       assert.equal(loop._isFirstMessage(frames), true);

@@ -94,7 +94,7 @@ describe('SessionManager FrameRouter auto-connection (C2)', () => {
       }
     }
 
-    router.registerSelector('type:user-message', TestPlugin);
+    router.registerSelector('type:UserMessage', TestPlugin);
     context.setProperty('frameRouter', router);
 
     let sessionManager = new SessionManager(context);
@@ -103,7 +103,7 @@ describe('SessionManager FrameRouter auto-connection (C2)', () => {
     // Create a user-message frame
     frameManager.merge([{
       id:         'frm_route_1',
-      type:       'user-message',
+      type:       'UserMessage',
       content:    { text: 'Test routing' },
       authorType: 'user',
       authorID:   'usr_1',

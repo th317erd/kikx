@@ -51,7 +51,7 @@ class MockAgent extends AgentInterface {
     for (let block of this._blocks)
       yield block;
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -100,7 +100,7 @@ describe('Frame model — signingKeyFingerprint field (Gap 3)', () => {
       id:            frameID,
       sessionID:     session.id,
       interactionID: 'int_001',
-      type:          'message',
+      type: 'Message',
       order:         1,
       timestamp:     Date.now(),
     });
@@ -116,7 +116,7 @@ describe('Frame model — signingKeyFingerprint field (Gap 3)', () => {
       id:                  frameID,
       sessionID:           session.id,
       interactionID:       'int_002',
-      type:                'message',
+      type: 'Message',
       order:               1,
       timestamp:           Date.now(),
       signingKeyFingerprint: fingerprint,
@@ -133,7 +133,7 @@ describe('Frame model — signingKeyFingerprint field (Gap 3)', () => {
       id:                  frameID,
       sessionID:           session.id,
       interactionID:       'int_003',
-      type:                'message',
+      type: 'Message',
       order:               1,
       timestamp:           Date.now(),
       signingKeyFingerprint: fingerprint,
@@ -152,7 +152,7 @@ describe('Frame model — signingKeyFingerprint field (Gap 3)', () => {
       id:                  frameID,
       sessionID:           session.id,
       interactionID:       'int_004',
-      type:                'message',
+      type: 'Message',
       order:               1,
       timestamp:           Date.now(),
       signingKeyFingerprint: fingerprint,
@@ -346,7 +346,7 @@ describe('InteractionLoop — signingKeyFingerprint on frames (Gap 3)', () => {
     interactionLoop.on('frame', (event) => capturedFrames.push(event.frame));
 
     let mockPlugin = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>hi</p>' }, authorType: 'agent', authorID: agent.id },
+      { type: 'Message', content: { html: '<p>hi</p>' }, authorType: 'agent', authorID: agent.id },
     ]);
 
     await interactionLoop.startInteraction(session.id, {
@@ -384,7 +384,7 @@ describe('InteractionLoop — signingKeyFingerprint on frames (Gap 3)', () => {
 
     let mockPlugin = new MockAgent(context, [
       {
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'test:tool', arguments: {}, toolUseId: 'tu_fp' },
         authorType: 'agent',
         authorID:   'agt_sys_fp',
@@ -420,7 +420,7 @@ describe('InteractionLoop — signingKeyFingerprint on frames (Gap 3)', () => {
     interactionLoop.on('frame', (event) => capturedFrames.push(event.frame));
 
     let mockPlugin = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>reply</p>' }, authorType: 'agent', authorID: 'agt_user_fp' },
+      { type: 'Message', content: { html: '<p>reply</p>' }, authorType: 'agent', authorID: 'agt_user_fp' },
     ]);
 
     await interactionLoop.startInteraction(session.id, {
@@ -453,7 +453,7 @@ describe('InteractionLoop — signingKeyFingerprint on frames (Gap 3)', () => {
     interactionLoop.on('frame', (event) => capturedFrames.push(event.frame));
 
     let mockPlugin = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>no sig</p>' }, authorType: 'agent', authorID: 'agt_no_fp' },
+      { type: 'Message', content: { html: '<p>no sig</p>' }, authorType: 'agent', authorID: 'agt_no_fp' },
     ]);
 
     // No encryptedPrivateKey on agent, no keystore system key
@@ -492,7 +492,7 @@ describe('InteractionLoop — signingKeyFingerprint on frames (Gap 3)', () => {
     await agent.save();
 
     let mockPlugin = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>persist</p>' }, authorType: 'agent', authorID: agent.id },
+      { type: 'Message', content: { html: '<p>persist</p>' }, authorType: 'agent', authorID: agent.id },
     ]);
 
     await interactionLoop.startInteraction(session.id, {

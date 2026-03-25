@@ -152,7 +152,7 @@ export function setup(provide) {
       async _createToolResultFrame(interactionLoop, sessionID, output, toolUseID) {
         let frameData = {
           id:            generateID('frm_'),
-          type:          'tool-result',
+          type:          'ToolResult',
           content:       { output: output, toolUseID: toolUseID || null },
           timestamp:     Date.now(),
           interactionID: this.state.interactionID || null,
@@ -171,6 +171,6 @@ export function setup(provide) {
       }
     }
 
-    registry.registerSelector('type:permission-request', PermissionApprovalPlugin);
+    registry.registerSelector('type:PermissionRequest', PermissionApprovalPlugin);
   });
 }

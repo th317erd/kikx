@@ -45,7 +45,7 @@ export class PermissionHandler {
     let pendingFrameID = generateID('frm_');
     let pendingFrame   = {
       id:            pendingFrameID,
-      type:          'pending-action',
+      type:          'PendingAction',
       content:       { toolName: block.content.toolName, arguments: block.content.arguments, toolUseID: block.content.toolUseId || block.content.toolUseID },
       timestamp:     Date.now(),
       interactionID,
@@ -115,7 +115,7 @@ export class PermissionHandler {
 
     let requestFrame = {
       id:            requestFrameID,
-      type:          'permission-request',
+      type:          'PermissionRequest',
       content:       requestContent,
       timestamp:     Date.now(),
       interactionID,
@@ -137,7 +137,7 @@ export class PermissionHandler {
     if (toolUseID) {
       await loop._createFrame(sessionID, {
         id:            generateID('frm_'),
-        type:          'tool-result',
+        type:          'ToolResult',
         content:       {
           output:    `PERMISSION REQUIRED for "${block.content.toolName}". Routed to parent session for approval.`,
           toolUseID,
@@ -188,7 +188,7 @@ export class PermissionHandler {
     let toolName = block.content.toolName || 'unknown';
     await loop._createFrame(sessionID, {
       id:            generateID('frm_'),
-      type:          'tool-result',
+      type:          'ToolResult',
       content:       {
         output:    `Permission denied: no user session found in ancestry to approve "${toolName}". Tool execution was automatically denied.`,
         toolUseID: block.content.toolUseId || block.content.toolUseID,

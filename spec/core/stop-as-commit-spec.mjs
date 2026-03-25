@@ -84,7 +84,7 @@ describe('Stop as Commit (B8)', () => {
     });
 
     let allFrames = frameManager.toArray();
-    let stopFrame = allFrames.find((f) => f.type === 'stop');
+    let stopFrame = allFrames.find((f) => f.type === 'Stop');
 
     assert.ok(stopFrame, 'Should have a stop frame');
     assert.equal(stopFrame.content.targetAgentID, null, 'targetAgentID should be null for blanket cancel');
@@ -114,7 +114,7 @@ describe('Stop as Commit (B8)', () => {
     });
 
     let allFrames = frameManager.toArray();
-    let stopFrame = allFrames.find((f) => f.type === 'stop');
+    let stopFrame = allFrames.find((f) => f.type === 'Stop');
 
     assert.ok(stopFrame, 'Should have a stop frame');
     assert.equal(stopFrame.content.targetAgentID, agent.id, 'targetAgentID should match agent');
@@ -149,7 +149,7 @@ describe('Stop as Commit (B8)', () => {
     // Commit changes are { frameID, operation } records — resolve the frame
     let stopChangeEntry = latestCommit.changes.find((c) => {
       let frame = frameManager.getHead(c.frameID);
-      return frame && frame.type === 'stop';
+      return frame && frame.type === 'Stop';
     });
 
     assert.ok(stopChangeEntry, 'Commit should reference a stop frame');
@@ -161,9 +161,9 @@ describe('Stop as Commit (B8)', () => {
 
   it('should exclude stop frames from message assembly', () => {
     let frames = [
-      { id: 'f1', type: 'user-message', content: { text: 'Hello' }, hidden: false, deleted: false },
-      { id: 'f2', type: 'stop', content: { targetAgentID: null }, hidden: false, deleted: false },
-      { id: 'f3', type: 'message', content: { html: '<p>Reply</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_1' },
+      { id: 'f1', type: 'UserMessage', content: { text: 'Hello' }, hidden: false, deleted: false },
+      { id: 'f2', type: 'Stop', content: { targetAgentID: null }, hidden: false, deleted: false },
+      { id: 'f3', type: 'Message', content: { html: '<p>Reply</p>' }, hidden: false, deleted: false, authorType: 'agent', authorID: 'agt_1' },
     ];
 
     let messages = interactionLoop._buildMessages(frames);
@@ -184,7 +184,7 @@ describe('Stop as Commit (B8)', () => {
     let stopFrameID = `frm_stop_test_1_${Date.now()}`;
     frameManager.merge([{
       id:         stopFrameID,
-      type:       'stop',
+      type: 'Stop',
       content:    { targetAgentID: agent.id },
       authorType: 'user',
       authorID:   'usr_1',
@@ -226,7 +226,7 @@ describe('Stop as Commit (B8)', () => {
     let stopFrameID = `frm_stop_all_${Date.now()}`;
     frameManager.merge([{
       id:         stopFrameID,
-      type:       'stop',
+      type: 'Stop',
       content:    { targetAgentID: null },
       authorType: 'user',
       authorID:   'usr_1',
@@ -257,7 +257,7 @@ describe('Stop as Commit (B8)', () => {
     let stopFrameID = `frm_stop_noop_${Date.now()}`;
     frameManager.merge([{
       id:         stopFrameID,
-      type:       'stop',
+      type: 'Stop',
       content:    { targetAgentID: agent.id },
       authorType: 'user',
       authorID:   'usr_1',

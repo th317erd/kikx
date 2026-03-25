@@ -321,7 +321,7 @@ describe('createFrameElement — tool-activity routing', () => {
   it('rejects tool-result frames (hidden type)', () => {
     let frame = {
       id:            'frm_hidden',
-      type:          'tool-result',
+      type:          'ToolResult',
       interactionID: 'int_hidden',
       content:       { output: 'some output' },
     };

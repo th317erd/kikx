@@ -36,24 +36,24 @@ function makeContext(overrides = {}) {
 // A generator that yields a single tool-call block, then done.
 async function* toolCallGenerator(toolName, args, toolUseID) {
   let result = yield {
-    type:       'tool-call',
+    type:       'ToolCall',
     content:    { toolName: toolName || 'test:tool', arguments: args || {}, toolUseID: toolUseID || 'tu_1' },
     authorType: 'agent',
     authorID:   'agt_1',
   };
 
-  yield { type: 'done', content: {} };
+  yield { type: 'Done', content: {} };
 }
 
 // A generator that yields a message block (no tool call).
 async function* messageGenerator() {
   yield {
-    type:       'message',
+    type: 'Message',
     content:    { html: '<p>hello</p>' },
     authorType: 'agent',
     authorID:   'agt_1',
   };
-  yield { type: 'done', content: {} };
+  yield { type: 'Done', content: {} };
 }
 
 function makeFrameManager() {
@@ -146,7 +146,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       // No sessionManager => needsRouting=false => inline permission-request + tool_result
       assert.equal(hardBreakCalls.length, 0, 'hardBreak should NOT be called (no sessionManager, inline path)');
-      let requestFrames = createdFrames.filter((f) => f.type === 'permission-request');
+      let requestFrames = createdFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(requestFrames.length, 1, 'should have 1 permission-request frame');
       assert.equal(requestFrames[0].content.toolName, 'test:tool');
     });
@@ -168,7 +168,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let requestFrames = createdFrames.filter((f) => f.type === 'permission-request');
+      let requestFrames = createdFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(requestFrames.length, 1);
       assert.deepStrictEqual(requestFrames[0].content.permissionContext, {
         title:       'permission.test.title',
@@ -193,7 +193,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
       // New inline path: creates tool-result with PERMISSION REQUIRED message
-      let toolResults = createdFrames.filter((f) => f.type === 'tool-result');
+      let toolResults = createdFrames.filter((f) => f.type === 'ToolResult');
       assert.equal(toolResults.length, 1, 'should have a tool-result frame');
       assert.ok(toolResults[0].content.output.includes('PERMISSION REQUIRED'), 'tool-result should contain PERMISSION REQUIRED');
     });
@@ -210,7 +210,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       assert.equal(hardBreakCalls.length, 0, 'hardBreak should NOT be called');
 
-      let toolResults = createdFrames.filter((f) => f.type === 'tool-result');
+      let toolResults = createdFrames.filter((f) => f.type === 'ToolResult');
       assert.equal(toolResults.length, 1, 'tool-result frame should be created');
       assert.equal(toolResults[0].content.output, 'tool output here');
     });
@@ -229,7 +229,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       assert.equal(hardBreakCalls.length, 0, 'hardBreak should NOT be called for PermissionDeniedError');
 
-      let deniedFrames = createdFrames.filter((f) => f.type === 'permission-denied');
+      let deniedFrames = createdFrames.filter((f) => f.type === 'PermissionDenied');
       assert.equal(deniedFrames.length, 1, 'permission-denied frame should be created');
     });
 
@@ -247,7 +247,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let toolCalls = createdFrames.filter((f) => f.type === 'tool-call');
+      let toolCalls = createdFrames.filter((f) => f.type === 'ToolCall');
       assert.equal(toolCalls.length, 1, 'tool-call frame should still be created before executeTool');
     });
 
@@ -263,7 +263,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let requestFrames = createdFrames.filter((f) => f.type === 'permission-request');
+      let requestFrames = createdFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(requestFrames.length, 1);
       assert.equal(requestFrames[0].content.toolName, 'test:tool');
     });
@@ -283,7 +283,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
       let permEvents = emitted.filter((e) => e.event === 'permission:request');
       // The permission:request event is emitted directly (not via emitted spy which only watches interaction:end/start)
       // Instead verify via the created frames
-      let requestFrames = createdFrames.filter((f) => f.type === 'permission-request');
+      let requestFrames = createdFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(requestFrames.length, 1);
       assert.ok(requestFrames[0].content.toolName, 'test:tool');
     });
@@ -309,7 +309,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
       assert.equal(hardBreakCalls.length, 0, 'hardBreak should NOT be called (inline path)');
-      let requestFrames = createdFrames.filter((f) => f.type === 'permission-request');
+      let requestFrames = createdFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(requestFrames.length, 1, 'permission-request frame created even with null context');
 
       assert.deepStrictEqual(requestFrames[0].content.permissionContext, {
@@ -338,7 +338,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
       assert.equal(hardBreakCalls.length, 0, 'hardBreak should NOT be called (inline path)');
-      let requestFrames = createdFrames.filter((f) => f.type === 'permission-request');
+      let requestFrames = createdFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(requestFrames.length, 1, 'permission-request frame created with empty-string context');
     });
 
@@ -354,7 +354,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       assert.equal(hardBreakCalls.length, 0, 'hardBreak NOT called for generic error');
 
-      let toolErrors = createdFrames.filter((f) => f.type === 'tool-error');
+      let toolErrors = createdFrames.filter((f) => f.type === 'ToolError');
       assert.equal(toolErrors.length, 1, 'tool-error frame created');
       assert.equal(toolErrors[0].content.message, 'something broke');
     });
@@ -369,7 +369,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let toolResults = createdFrames.filter((f) => f.type === 'tool-result');
+      let toolResults = createdFrames.filter((f) => f.type === 'ToolResult');
       assert.equal(toolResults.length, 1, 'tool-result frame created with error message');
       assert.ok(toolResults[0].content.output.includes('oops'), 'output contains error message');
     });
@@ -414,7 +414,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       assert.equal(hardBreakCalls.length, 0, 'hardBreak should NOT be called (inline path)');
 
-      let requestFrames = createdFrames.filter((f) => f.type === 'permission-request');
+      let requestFrames = createdFrames.filter((f) => f.type === 'PermissionRequest');
       assert.equal(requestFrames.length, 1, 'permission-request frame created from PermissionRequiredError');
       assert.equal(requestFrames[0].content.permissionContext.title, 'permission.test.title');
     });
@@ -431,7 +431,7 @@ describe('InteractionLoop — PermissionRequiredError routing (Step 1.3)', () =>
 
       await loop._iterateGenerator('ses_1', gen, 'int_1', params, makeFrameManager());
 
-      let deniedFrames = createdFrames.filter((f) => f.type === 'permission-denied');
+      let deniedFrames = createdFrames.filter((f) => f.type === 'PermissionDenied');
       assert.equal(deniedFrames.length, 1, 'permission-denied frame created from executeTool');
       assert.equal(hardBreakCalls.length, 0, 'hardBreak NOT called for denied');
     });

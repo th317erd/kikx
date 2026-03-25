@@ -159,7 +159,7 @@ describe('PermissionApprovalPlugin', () => {
       // Create initial frame (step = awaiting-approval, processed = false)
       fm.merge([{
         id:        'frm_1',
-        type:      'permission-request',
+        type:      'PermissionRequest',
         content:   { toolName: 'shell:execute' },
         processed: false,
         state:     JSON.stringify({
@@ -177,7 +177,7 @@ describe('PermissionApprovalPlugin', () => {
       // Now "approve" — update processed to true
       fm.merge([{
         id:        'frm_1',
-        type:      'permission-request',
+        type:      'PermissionRequest',
         content:   { toolName: 'shell:execute' },
         processed: true,
         state:     JSON.stringify({
@@ -209,7 +209,7 @@ describe('PermissionApprovalPlugin', () => {
 
       // Initial creation
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: { toolName: 'test:tool' }, processed: false,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -221,7 +221,7 @@ describe('PermissionApprovalPlugin', () => {
 
       // Approve
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: { toolName: 'test:tool' }, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -233,7 +233,7 @@ describe('PermissionApprovalPlugin', () => {
 
       let frameCreates = interactionLoop.calls.filter((c) => c.method === '_createFrame');
       assert.ok(frameCreates.length >= 1, 'should create at least one frame (tool-result)');
-      let toolResultFrame = frameCreates.find((c) => c.frameData.type === 'tool-result');
+      let toolResultFrame = frameCreates.find((c) => c.frameData.type === 'ToolResult');
       assert.ok(toolResultFrame, 'should create a tool-result frame');
     });
 
@@ -251,7 +251,7 @@ describe('PermissionApprovalPlugin', () => {
       router.connectTo(fm, { id: 'ses_1' }, { framePersistence: persistence });
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: false,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -262,7 +262,7 @@ describe('PermissionApprovalPlugin', () => {
       await tick();
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -295,7 +295,7 @@ describe('PermissionApprovalPlugin', () => {
       router.connectTo(fm, { id: 'ses_1' });
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: false,
         state: JSON.stringify({
           toolName: 'custom:mytool', toolArguments: {}, toolUseID: 'tu_1',
@@ -306,7 +306,7 @@ describe('PermissionApprovalPlugin', () => {
       await tick();
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({
           toolName: 'custom:mytool', toolArguments: {}, toolUseID: 'tu_1',
@@ -337,7 +337,7 @@ describe('PermissionApprovalPlugin', () => {
       let storedArgs = { command: 'ls -la', flag: true };
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: false,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: storedArgs, toolUseID: 'tu_1',
@@ -348,7 +348,7 @@ describe('PermissionApprovalPlugin', () => {
       await tick();
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: storedArgs, toolUseID: 'tu_1',
@@ -376,7 +376,7 @@ describe('PermissionApprovalPlugin', () => {
       router.connectTo(fm, { id: 'ses_1' });
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: false,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -387,7 +387,7 @@ describe('PermissionApprovalPlugin', () => {
       await tick();
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -426,7 +426,7 @@ describe('PermissionApprovalPlugin', () => {
       router.connectTo(fm, { id: 'ses_1' });
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: { toolName: 'test:tool' }, processed: false,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -438,7 +438,7 @@ describe('PermissionApprovalPlugin', () => {
 
       // Deny — processed=true + content.denied=true
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: { toolName: 'test:tool', denied: true }, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -449,7 +449,7 @@ describe('PermissionApprovalPlugin', () => {
       await tick();
 
       let frameCreates = interactionLoop.calls.filter((c) => c.method === '_createFrame');
-      let toolResultFrame = frameCreates.find((c) => c.frameData.type === 'tool-result');
+      let toolResultFrame = frameCreates.find((c) => c.frameData.type === 'ToolResult');
       assert.ok(toolResultFrame, 'should create a tool-result frame for denial');
       assert.ok(
         toolResultFrame.frameData.content.output.toLowerCase().includes('denied') ||
@@ -471,7 +471,7 @@ describe('PermissionApprovalPlugin', () => {
       router.connectTo(fm, { id: 'ses_1' }, { framePersistence: persistence });
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: { toolName: 'test:tool' }, processed: false,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -482,7 +482,7 @@ describe('PermissionApprovalPlugin', () => {
       await tick();
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: { toolName: 'test:tool', denied: true }, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -521,7 +521,7 @@ describe('PermissionApprovalPlugin', () => {
       router.connectTo(fm, { id: 'ses_1' });
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -550,7 +550,7 @@ describe('PermissionApprovalPlugin', () => {
       router.connectTo(fm, { id: 'ses_1' });
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -579,7 +579,7 @@ describe('PermissionApprovalPlugin', () => {
       router.connectTo(fm, { id: 'ses_1' });
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: false,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -604,7 +604,7 @@ describe('PermissionApprovalPlugin', () => {
       router.connectTo(fm, { id: 'ses_1' });
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: false,
         state: JSON.stringify({
           toolName: 'nonexistent:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -615,7 +615,7 @@ describe('PermissionApprovalPlugin', () => {
       await tick();
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({
           toolName: 'nonexistent:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -627,7 +627,7 @@ describe('PermissionApprovalPlugin', () => {
 
       let frameCreates = interactionLoop.calls.filter((c) => c.method === '_createFrame');
       let errorFrame = frameCreates.find((c) =>
-        c.frameData.type === 'tool-result' &&
+        c.frameData.type === 'ToolResult' &&
         c.frameData.content.output &&
         (c.frameData.content.output.includes('not found') || c.frameData.content.output.includes('Unknown tool')),
       );
@@ -647,7 +647,7 @@ describe('PermissionApprovalPlugin', () => {
       router.connectTo(fm, { id: 'ses_1' });
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: false,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -658,7 +658,7 @@ describe('PermissionApprovalPlugin', () => {
       await tick();
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -670,7 +670,7 @@ describe('PermissionApprovalPlugin', () => {
 
       let frameCreates = interactionLoop.calls.filter((c) => c.method === '_createFrame');
       let errorFrame = frameCreates.find((c) =>
-        c.frameData.type === 'tool-result' &&
+        c.frameData.type === 'ToolResult' &&
         c.frameData.content.output &&
         c.frameData.content.output.includes('Boom! Tool exploded'),
       );
@@ -689,7 +689,7 @@ describe('PermissionApprovalPlugin', () => {
 
       // Should not throw
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: false,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -700,7 +700,7 @@ describe('PermissionApprovalPlugin', () => {
       await tick();
 
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -727,7 +727,7 @@ describe('PermissionApprovalPlugin', () => {
 
       // State with missing fields (no toolName, no step)
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({ someRandom: 'data' }),
       }]);
@@ -761,7 +761,7 @@ describe('PermissionApprovalPlugin', () => {
 
       // Initial
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: false,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -773,7 +773,7 @@ describe('PermissionApprovalPlugin', () => {
 
       // First approval
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -788,7 +788,7 @@ describe('PermissionApprovalPlugin', () => {
       // Second "approval" attempt — state should already be 'completed'
       // The frame's state on disk was updated; merge a frame with step=completed
       fm.merge([{
-        id: 'frm_1', type: 'permission-request',
+        id: 'frm_1', type: 'PermissionRequest',
         content: {}, processed: true,
         state: JSON.stringify({
           toolName: 'test:tool', toolArguments: {}, toolUseID: 'tu_1',
@@ -819,11 +819,11 @@ describe('PermissionApprovalPlugin', () => {
           return await next(this.context);
         }
       }
-      router.registerSelector('type:user-message', Sentinel, 'sentinel');
+      router.registerSelector('type:UserMessage', Sentinel, 'sentinel');
       router.connectTo(fm, { id: 'ses_1' });
 
       fm.merge([{
-        id: 'frm_2', type: 'user-message',
+        id: 'frm_2', type: 'UserMessage',
         content: { text: 'hello' },
       }]);
       await tick();

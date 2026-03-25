@@ -50,7 +50,7 @@ function seedConversation(fm, count = 5) {
 
     frames.push({
       id:         `frm_seed_${i}`,
-      type:       isUser ? 'user-message' : 'message',
+      type:       isUser ? 'UserMessage' : 'Message',
       authorType: isUser ? 'user' : 'agent',
       authorID:   isUser ? 'usr_001' : 'agt_test123',
       content:    isUser ? { text: `User message ${i}` } : { html: `<p>Agent reply ${i}</p>` },
@@ -96,7 +96,7 @@ describe('CompactionRunner', () => {
 
       fm.merge([{
         id:         'frm_compact_done',
-        type:       'compaction',
+        type: 'Compaction',
         authorType: 'system',
         content:    { status: 'finished', summary: 'old summary' },
         hidden:     false,
@@ -112,7 +112,7 @@ describe('CompactionRunner', () => {
 
       fm.merge([{
         id:         'frm_compact_abandoned',
-        type:       'compaction',
+        type: 'Compaction',
         authorType: 'system',
         content:    { status: 'abandoned' },
         hidden:     false,
@@ -128,7 +128,7 @@ describe('CompactionRunner', () => {
 
       fm.merge([{
         id:         'frm_compact_active',
-        type:       'compaction',
+        type: 'Compaction',
         authorType: 'system',
         content:    { status: 'started', compactionID: 'frm_compact_active' },
         hidden:     false,
@@ -158,7 +158,7 @@ describe('CompactionRunner', () => {
       await runner.runCompaction('ses_001', { agent, plugin, frameManager: fm });
 
       // A compaction frame should exist
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       assert.ok(compactionFrames.length >= 1, 'Should have at least one compaction frame');
 
       // The compaction frame content should have been updated to 'finished'
@@ -198,7 +198,7 @@ describe('CompactionRunner', () => {
 
       await runner.runCompaction('ses_001', { agent, plugin, frameManager: fm });
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       assert.ok(compactionFrames.length >= 1);
 
       let compFrame = compactionFrames[0];
@@ -213,7 +213,7 @@ describe('CompactionRunner', () => {
 
       await runner.runCompaction('ses_001', { agent, plugin, frameManager: fm });
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       let compFrame        = compactionFrames[0];
 
       assert.equal(compFrame.content.framesCompacted, 7);
@@ -224,7 +224,7 @@ describe('CompactionRunner', () => {
 
       await runner.runCompaction('ses_001', { agent, plugin, frameManager: fm });
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       let compFrame        = compactionFrames[0];
 
       assert.equal(compFrame.content.firstFrameID, 'frm_seed_0');
@@ -292,7 +292,7 @@ describe('CompactionRunner', () => {
 
       assert.equal(result, null, 'Should return null on failure');
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       assert.ok(compactionFrames.length >= 1);
       assert.equal(compactionFrames[0].content.status, 'abandoned');
       assert.ok(compactionFrames[0].content.finishedAt, 'Should have finishedAt even on abandon');
@@ -307,7 +307,7 @@ describe('CompactionRunner', () => {
 
       assert.equal(result, null);
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       assert.equal(compactionFrames[0].content.status, 'abandoned');
     });
 
@@ -320,7 +320,7 @@ describe('CompactionRunner', () => {
 
       assert.equal(result, null);
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       assert.equal(compactionFrames[0].content.status, 'abandoned');
     });
 
@@ -333,7 +333,7 @@ describe('CompactionRunner', () => {
 
       assert.equal(result, null);
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       assert.equal(compactionFrames[0].content.status, 'abandoned');
     });
 
@@ -343,7 +343,7 @@ describe('CompactionRunner', () => {
       // Simulate an in-progress compaction
       fm.merge([{
         id:         'frm_existing_compact',
-        type:       'compaction',
+        type: 'Compaction',
         authorType: 'system',
         content:    { status: 'started', compactionID: 'frm_existing_compact' },
         hidden:     false,
@@ -387,7 +387,7 @@ describe('CompactionRunner', () => {
     it('should return null when session has only compaction frames (nothing to compact)', async () => {
       fm.merge([{
         id:         'frm_old_compact',
-        type:       'compaction',
+        type: 'Compaction',
         authorType: 'system',
         content:    { status: 'finished', summary: 'old' },
         hidden:     false,
@@ -408,21 +408,21 @@ describe('CompactionRunner', () => {
 
     it('should skip deleted frames when counting framesCompacted', async () => {
       fm.merge([
-        { id: 'frm_a', type: 'user-message', authorType: 'user', content: { text: 'hi' }, hidden: false, deleted: false },
-        { id: 'frm_b', type: 'message', authorType: 'agent', content: { html: 'hey' }, hidden: false, deleted: true },
-        { id: 'frm_c', type: 'user-message', authorType: 'user', content: { text: 'ok' }, hidden: false, deleted: false },
+        { id: 'frm_a', type: 'UserMessage', authorType: 'user', content: { text: 'hi' }, hidden: false, deleted: false },
+        { id: 'frm_b', type: 'Message', authorType: 'agent', content: { html: 'hey' }, hidden: false, deleted: true },
+        { id: 'frm_c', type: 'UserMessage', authorType: 'user', content: { text: 'ok' }, hidden: false, deleted: false },
       ], { authorType: 'system' });
 
       await runner.runCompaction('ses_001', { agent, plugin, frameManager: fm });
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       // frm_b is deleted, so only frm_a and frm_c are compacted
       assert.equal(compactionFrames[0].content.framesCompacted, 2);
     });
 
     it('should handle single-frame session', async () => {
       fm.merge([{
-        id: 'frm_only', type: 'user-message', authorType: 'user',
+        id: 'frm_only', type: 'UserMessage', authorType: 'user',
         content: { text: 'Hello' }, hidden: false, deleted: false,
       }], { authorType: 'system' });
 
@@ -430,7 +430,7 @@ describe('CompactionRunner', () => {
 
       assert.ok(result, 'Should succeed even with a single frame');
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       assert.equal(compactionFrames[0].content.framesCompacted, 1);
       assert.equal(compactionFrames[0].content.firstFrameID, 'frm_only');
       assert.equal(compactionFrames[0].content.lastFrameID, 'frm_only');
@@ -445,12 +445,12 @@ describe('CompactionRunner', () => {
     it('should mark started compaction frames as abandoned', async () => {
       fm.merge([
         {
-          id: 'frm_stale_1', type: 'compaction', authorType: 'system',
+          id: 'frm_stale_1', type: 'Compaction', authorType: 'system',
           content: { status: 'started', compactionID: 'frm_stale_1' },
           hidden: false, deleted: false,
         },
         {
-          id: 'frm_stale_2', type: 'compaction', authorType: 'system',
+          id: 'frm_stale_2', type: 'Compaction', authorType: 'system',
           content: { status: 'started', compactionID: 'frm_stale_2' },
           hidden: false, deleted: false,
         },
@@ -460,7 +460,7 @@ describe('CompactionRunner', () => {
 
       assert.equal(cleaned, 2);
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
 
       for (let frame of compactionFrames) {
         assert.equal(frame.content.status, 'abandoned');
@@ -470,7 +470,7 @@ describe('CompactionRunner', () => {
 
     it('should not touch finished compaction frames', async () => {
       fm.merge([{
-        id: 'frm_done', type: 'compaction', authorType: 'system',
+        id: 'frm_done', type: 'Compaction', authorType: 'system',
         content: { status: 'finished', summary: 'Complete.' },
         hidden: false, deleted: false,
       }], { authorType: 'system' });
@@ -479,13 +479,13 @@ describe('CompactionRunner', () => {
 
       assert.equal(cleaned, 0);
 
-      let compactionFrames = fm.toArray().filter((f) => f.type === 'compaction');
+      let compactionFrames = fm.toArray().filter((f) => f.type === 'Compaction');
       assert.equal(compactionFrames[0].content.status, 'finished');
     });
 
     it('should not touch abandoned compaction frames', async () => {
       fm.merge([{
-        id: 'frm_aband', type: 'compaction', authorType: 'system',
+        id: 'frm_aband', type: 'Compaction', authorType: 'system',
         content: { status: 'abandoned' },
         hidden: false, deleted: false,
       }], { authorType: 'system' });
@@ -501,17 +501,17 @@ describe('CompactionRunner', () => {
 
     it('should handle mix of started, finished, and abandoned', async () => {
       fm.merge([
-        { id: 'frm_c1', type: 'compaction', authorType: 'system', content: { status: 'started' }, hidden: false, deleted: false },
-        { id: 'frm_c2', type: 'compaction', authorType: 'system', content: { status: 'finished', summary: 'ok' }, hidden: false, deleted: false },
-        { id: 'frm_c3', type: 'compaction', authorType: 'system', content: { status: 'abandoned' }, hidden: false, deleted: false },
-        { id: 'frm_c4', type: 'compaction', authorType: 'system', content: { status: 'started' }, hidden: false, deleted: false },
+        { id: 'frm_c1', type: 'Compaction', authorType: 'system', content: { status: 'started' }, hidden: false, deleted: false },
+        { id: 'frm_c2', type: 'Compaction', authorType: 'system', content: { status: 'finished', summary: 'ok' }, hidden: false, deleted: false },
+        { id: 'frm_c3', type: 'Compaction', authorType: 'system', content: { status: 'abandoned' }, hidden: false, deleted: false },
+        { id: 'frm_c4', type: 'Compaction', authorType: 'system', content: { status: 'started' }, hidden: false, deleted: false },
       ], { authorType: 'system' });
 
       let cleaned = await runner.cleanupStaleCompactions(fm);
 
       assert.equal(cleaned, 2, 'Should clean up exactly the 2 started frames');
 
-      let all = fm.toArray().filter((f) => f.type === 'compaction');
+      let all = fm.toArray().filter((f) => f.type === 'Compaction');
       let statuses = all.map((f) => f.content.status);
 
       assert.ok(!statuses.includes('started'), 'No frames should be in started status');
@@ -525,8 +525,8 @@ describe('CompactionRunner', () => {
   describe('_buildConversationContent()', () => {
     it('should format frames as authorType: text separated by ---', () => {
       let frames = [
-        { type: 'user-message', authorType: 'user', content: { text: 'Hello' }, deleted: false },
-        { type: 'message', authorType: 'agent', content: { html: '<p>Hi there</p>' }, deleted: false },
+        { type: 'UserMessage', authorType: 'user', content: { text: 'Hello' }, deleted: false },
+        { type: 'Message', authorType: 'agent', content: { html: '<p>Hi there</p>' }, deleted: false },
       ];
 
       let result = runner._buildConversationContent(frames);
@@ -538,9 +538,9 @@ describe('CompactionRunner', () => {
 
     it('should skip compaction frames', () => {
       let frames = [
-        { type: 'user-message', authorType: 'user', content: { text: 'Hello' }, deleted: false },
-        { type: 'compaction', authorType: 'system', content: { status: 'finished', summary: 'old' }, deleted: false },
-        { type: 'message', authorType: 'agent', content: { html: 'Reply' }, deleted: false },
+        { type: 'UserMessage', authorType: 'user', content: { text: 'Hello' }, deleted: false },
+        { type: 'Compaction', authorType: 'system', content: { status: 'finished', summary: 'old' }, deleted: false },
+        { type: 'Message', authorType: 'agent', content: { html: 'Reply' }, deleted: false },
       ];
 
       let result = runner._buildConversationContent(frames);
@@ -553,8 +553,8 @@ describe('CompactionRunner', () => {
 
     it('should skip deleted frames', () => {
       let frames = [
-        { type: 'user-message', authorType: 'user', content: { text: 'Keep' }, deleted: false },
-        { type: 'message', authorType: 'agent', content: { html: 'Drop' }, deleted: true },
+        { type: 'UserMessage', authorType: 'user', content: { text: 'Keep' }, deleted: false },
+        { type: 'Message', authorType: 'agent', content: { html: 'Drop' }, deleted: true },
       ];
 
       let result = runner._buildConversationContent(frames);
@@ -565,7 +565,7 @@ describe('CompactionRunner', () => {
 
     it('should handle tool-call frames', () => {
       let frames = [
-        { type: 'tool-call', authorType: 'agent', content: { toolName: 'search' }, deleted: false },
+        { type: 'ToolCall', authorType: 'agent', content: { toolName: 'search' }, deleted: false },
       ];
 
       let result = runner._buildConversationContent(frames);
@@ -574,7 +574,7 @@ describe('CompactionRunner', () => {
 
     it('should handle tool-result frames', () => {
       let frames = [
-        { type: 'tool-result', authorType: 'system', content: { output: 'Found 3 results' }, deleted: false },
+        { type: 'ToolResult', authorType: 'system', content: { output: 'Found 3 results' }, deleted: false },
       ];
 
       let result = runner._buildConversationContent(frames);
@@ -583,8 +583,8 @@ describe('CompactionRunner', () => {
 
     it('should handle frames with no content', () => {
       let frames = [
-        { type: 'user-message', authorType: 'user', content: null, deleted: false },
-        { type: 'message', authorType: 'agent', content: {}, deleted: false },
+        { type: 'UserMessage', authorType: 'user', content: null, deleted: false },
+        { type: 'Message', authorType: 'agent', content: {}, deleted: false },
       ];
 
       let result = runner._buildConversationContent(frames);
@@ -600,7 +600,7 @@ describe('CompactionRunner', () => {
 
     it('should use unknown for frames without authorType', () => {
       let frames = [
-        { type: 'user-message', content: { text: 'anon' }, deleted: false },
+        { type: 'UserMessage', content: { text: 'anon' }, deleted: false },
       ];
 
       let result = runner._buildConversationContent(frames);
@@ -609,7 +609,7 @@ describe('CompactionRunner', () => {
 
     it('should handle tool-result with object output', () => {
       let frames = [
-        { type: 'tool-result', authorType: 'system', content: { output: { key: 'value' } }, deleted: false },
+        { type: 'ToolResult', authorType: 'system', content: { output: { key: 'value' } }, deleted: false },
       ];
 
       let result = runner._buildConversationContent(frames);

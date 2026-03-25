@@ -38,7 +38,7 @@ export function setup(provide) {
 
         for (let change of changes) {
           let frame = frameManager && frameManager.getHead(change.frameID);
-          if (!frame || frame.type !== 'tool-call')
+          if (!frame || frame.type !== 'ToolCall')
             continue;
 
           // Read signature from the frame's top-level signature field (Ed25519)
@@ -90,6 +90,6 @@ export function setup(provide) {
       }
     }
 
-    registry.registerSelector('type:tool-call', PermissionPlugin);
+    registry.registerSelector('type:ToolCall', PermissionPlugin);
   });
 }

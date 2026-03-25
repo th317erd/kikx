@@ -372,11 +372,11 @@ describe('SSETransport', () => {
     let writer = createMockWriter();
     transport.registerConnection('conn-1', writer);
 
-    await transport.send('conn-1', { type: 'message', body: 'hello' });
+    await transport.send('conn-1', { type: 'Message', body: 'hello' });
 
     let written = writer.getWritten();
     assert.equal(written.length, 1);
-    assert.equal(written[0], 'data: {"type":"message","body":"hello"}\n\n');
+    assert.equal(written[0], 'data: {"type":"Message","body":"hello"}\n\n');
   });
 
   it('should format string data as SSE', async () => {

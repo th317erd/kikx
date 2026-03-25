@@ -58,7 +58,7 @@ beforeEach(() => {
 function makeFrame(overrides = {}) {
   return {
     id:            overrides.id || 'frame-001',
-    type:          overrides.type || 'message',
+    type:          overrides.type || 'Message',
     content:       overrides.content || { html: '<p>Hello world</p>' },
     order:         overrides.order ?? 1,
     timestamp:     overrides.timestamp || Date.now(),
@@ -85,7 +85,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
 
   describe('message frames', () => {
     it('should return a kikx-interaction element for type "message"', () => {
-      let frame = makeFrame({ type: 'message', content: { html: '<p>Agent reply</p>' } });
+      let frame = makeFrame({ type: 'Message', content: { html: '<p>Agent reply</p>' } });
       let el    = createFrameElement(frame);
 
       assert.ok(el, 'should return an element');
@@ -93,14 +93,14 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
     });
 
     it('should set alignment="agent" for agent message frames', () => {
-      let frame = makeFrame({ type: 'message', authorType: 'agent' });
+      let frame = makeFrame({ type: 'Message', authorType: 'agent' });
       let el    = createFrameElement(frame);
 
       assert.equal(el.getAttribute('alignment'), 'agent');
     });
 
     it('should contain a kikx-message-content child with the HTML content', () => {
-      let frame = makeFrame({ type: 'message', content: { html: '<p>Some content</p>' } });
+      let frame = makeFrame({ type: 'Message', content: { html: '<p>Some content</p>' } });
       let el    = createFrameElement(frame);
 
       let messageContent = el.querySelector('kikx-message-content');
@@ -108,7 +108,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
     });
 
     it('should render plain text content via escaping when no html key', () => {
-      let frame = makeFrame({ type: 'message', content: { text: 'Plain text message' } });
+      let frame = makeFrame({ type: 'Message', content: { text: 'Plain text message' } });
       let el    = createFrameElement(frame);
 
       let messageContent = el.querySelector('kikx-message-content');
@@ -122,7 +122,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
 
   describe('user-message frames', () => {
     it('should return a kikx-interaction element for type "user-message"', () => {
-      let frame = makeFrame({ type: 'user-message', authorType: 'user', content: { text: 'Hello' } });
+      let frame = makeFrame({ type: 'UserMessage', authorType: 'user', content: { text: 'Hello' } });
       let el    = createFrameElement(frame);
 
       assert.ok(el, 'should return an element');
@@ -130,7 +130,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
     });
 
     it('should set alignment="user" for user-message frames', () => {
-      let frame = makeFrame({ type: 'user-message', authorType: 'user' });
+      let frame = makeFrame({ type: 'UserMessage', authorType: 'user' });
       let el    = createFrameElement(frame);
 
       assert.equal(el.getAttribute('alignment'), 'user');
@@ -138,7 +138,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
 
     it('should not set token-count on user messages', () => {
       let frame = makeFrame({
-        type:       'user-message',
+        type:       'UserMessage',
         authorType: 'user',
         content:    { text: 'Hi' },
       });
@@ -155,7 +155,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
   describe('permission-request frames', () => {
     it('should return a kikx-interaction element for type "permission-request"', () => {
       let frame = makeFrame({
-        type:    'permission-request',
+        type:    'PermissionRequest',
         content: { toolName: 'shell:execute', parsedCommands: [{ command: 'ls', arguments: [], status: 'needs-approval' }] },
       });
       let el = createFrameElement(frame);
@@ -166,7 +166,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
 
     it('should set bubble-type="permission"', () => {
       let frame = makeFrame({
-        type:    'permission-request',
+        type:    'PermissionRequest',
         content: { toolName: 'shell:execute', parsedCommands: [] },
       });
       let el = createFrameElement(frame);
@@ -176,7 +176,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
 
     it('should contain a kikx-permission-request child element', () => {
       let frame = makeFrame({
-        type:    'permission-request',
+        type:    'PermissionRequest',
         content: { toolName: 'shell:execute', parsedCommands: [] },
       });
       let el = createFrameElement(frame);
@@ -193,7 +193,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
   describe('session-link frames', () => {
     it('should return a kikx-interaction element for type "session-link"', () => {
       let frame = makeFrame({
-        type:    'session-link',
+        type:    'SessionLink',
         content: { targetSessionID: 'session-abc', title: 'Sub-session' },
       });
       let el = createFrameElement(frame);
@@ -204,7 +204,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
 
     it('should set alignment="system" for session-link frames', () => {
       let frame = makeFrame({
-        type:    'session-link',
+        type:    'SessionLink',
         content: { targetSessionID: 'session-abc', title: 'Sub-session' },
       });
       let el = createFrameElement(frame);
@@ -214,7 +214,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
 
     it('should contain a kikx-session-link child element', () => {
       let frame = makeFrame({
-        type:    'session-link',
+        type:    'SessionLink',
         content: { targetSessionID: 'session-abc', title: 'Sub-session' },
       });
       let el = createFrameElement(frame);
@@ -230,7 +230,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
 
   describe('command-result frames', () => {
     it('should return a kikx-interaction element for type "command-result"', () => {
-      let frame = makeFrame({ type: 'command-result', content: { html: '<pre>output</pre>' } });
+      let frame = makeFrame({ type: 'CommandResult', content: { html: '<pre>output</pre>' } });
       let el    = createFrameElement(frame);
 
       assert.ok(el, 'should return an element');
@@ -238,7 +238,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
     });
 
     it('should set alignment="agent" for command-result frames', () => {
-      let frame = makeFrame({ type: 'command-result', content: { html: '<pre>output</pre>' } });
+      let frame = makeFrame({ type: 'CommandResult', content: { html: '<pre>output</pre>' } });
       let el    = createFrameElement(frame);
 
       assert.equal(el.getAttribute('alignment'), 'agent');
@@ -251,7 +251,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
 
   describe('error frames', () => {
     it('should return a kikx-interaction element for type "error"', () => {
-      let frame = makeFrame({ type: 'error', content: { message: 'Something broke' } });
+      let frame = makeFrame({ type: 'Error', content: { message: 'Something broke' } });
       let el    = createFrameElement(frame);
 
       assert.ok(el, 'should return an element');
@@ -259,14 +259,14 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
     });
 
     it('should set bubble-type="error"', () => {
-      let frame = makeFrame({ type: 'error', content: { message: 'Something broke' } });
+      let frame = makeFrame({ type: 'Error', content: { message: 'Something broke' } });
       let el    = createFrameElement(frame);
 
       assert.equal(el.getAttribute('bubble-type'), 'error');
     });
 
     it('should set alignment="agent" for error frames', () => {
-      let frame = makeFrame({ type: 'error', content: { message: 'Something broke' } });
+      let frame = makeFrame({ type: 'Error', content: { message: 'Something broke' } });
       let el    = createFrameElement(frame);
 
       assert.equal(el.getAttribute('alignment'), 'agent');
@@ -279,7 +279,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
 
   describe('reflection frames', () => {
     it('should return a kikx-interaction element for type "reflection"', () => {
-      let frame = makeFrame({ type: 'reflection', content: { text: 'Thinking...' } });
+      let frame = makeFrame({ type: 'Reflection', content: { text: 'Thinking...' } });
       let el    = createFrameElement(frame);
 
       assert.ok(el, 'should return an element');
@@ -287,7 +287,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
     });
 
     it('should contain a kikx-reflection-block child element', () => {
-      let frame = makeFrame({ type: 'reflection', content: { text: 'Thinking...' } });
+      let frame = makeFrame({ type: 'Reflection', content: { text: 'Thinking...' } });
       let el    = createFrameElement(frame);
 
       let block = el.querySelector('kikx-reflection-block');
@@ -295,7 +295,7 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
     });
 
     it('should set alignment="agent" for reflection frames', () => {
-      let frame = makeFrame({ type: 'reflection', content: { text: 'Thinking...' } });
+      let frame = makeFrame({ type: 'Reflection', content: { text: 'Thinking...' } });
       let el    = createFrameElement(frame);
 
       assert.equal(el.getAttribute('alignment'), 'agent');
@@ -310,35 +310,35 @@ describe('_createFrameElement — renderable types', { timeout: 5000 }, () => {
 describe('_createFrameElement — common attributes', { timeout: 5000 }, () => {
 
   it('should set data-frame-id to the frame ID', () => {
-    let frame = makeFrame({ id: 'frame-xyz-123', type: 'message' });
+    let frame = makeFrame({ id: 'frame-xyz-123', type: 'Message' });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('data-frame-id'), 'frame-xyz-123');
   });
 
   it('should set data-interaction-id from frame.interactionID', () => {
-    let frame = makeFrame({ interactionID: 'int-456', type: 'message' });
+    let frame = makeFrame({ interactionID: 'int-456', type: 'Message' });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('data-interaction-id'), 'int-456');
   });
 
   it('should fall back to frame.id for data-interaction-id when interactionID is missing', () => {
-    let frame = makeFrame({ id: 'frame-fallback', interactionID: undefined, type: 'message' });
+    let frame = makeFrame({ id: 'frame-fallback', interactionID: undefined, type: 'Message' });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('data-interaction-id'), 'frame-fallback');
   });
 
   it('should set participant-name from frame.authorName for agent messages', () => {
-    let frame = makeFrame({ type: 'message', authorType: 'agent', authorName: 'Claude' });
+    let frame = makeFrame({ type: 'Message', authorType: 'agent', authorName: 'Claude' });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('participant-name'), 'Claude');
   });
 
   it('should set participant-initials derived from the author name', () => {
-    let frame = makeFrame({ type: 'message', authorType: 'agent', authorName: 'Test Bot' });
+    let frame = makeFrame({ type: 'Message', authorType: 'agent', authorName: 'Test Bot' });
     let el    = createFrameElement(frame);
 
     // "Test Bot" → "TB"
@@ -346,7 +346,7 @@ describe('_createFrameElement — common attributes', { timeout: 5000 }, () => {
   });
 
   it('should set a timestamp attribute', () => {
-    let frame = makeFrame({ type: 'message', createdAt: Date.now() });
+    let frame = makeFrame({ type: 'Message', createdAt: Date.now() });
     let el    = createFrameElement(frame);
 
     let ts = el.getAttribute('timestamp');
@@ -354,21 +354,21 @@ describe('_createFrameElement — common attributes', { timeout: 5000 }, () => {
   });
 
   it('should set alignment="user" for user-message type', () => {
-    let frame = makeFrame({ type: 'user-message', authorType: 'user' });
+    let frame = makeFrame({ type: 'UserMessage', authorType: 'user' });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('alignment'), 'user');
   });
 
   it('should set alignment="agent" for agent message type', () => {
-    let frame = makeFrame({ type: 'message', authorType: 'agent' });
+    let frame = makeFrame({ type: 'Message', authorType: 'agent' });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('alignment'), 'agent');
   });
 
   it('should set alignment="user" when authorType is "user" regardless of frame type', () => {
-    let frame = makeFrame({ type: 'message', authorType: 'user' });
+    let frame = makeFrame({ type: 'Message', authorType: 'user' });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('alignment'), 'user');
@@ -382,63 +382,63 @@ describe('_createFrameElement — common attributes', { timeout: 5000 }, () => {
 describe('_createFrameElement — name resolution', { timeout: 5000 }, () => {
 
   it('should always show "You" for user-message frames regardless of authorName', () => {
-    let frame = makeFrame({ type: 'user-message', authorType: 'user', authorName: 'John Smith' });
+    let frame = makeFrame({ type: 'UserMessage', authorType: 'user', authorName: 'John Smith' });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('participant-name'), 'You');
   });
 
   it('should always show "You" when authorType is "user" regardless of frame type', () => {
-    let frame = makeFrame({ type: 'message', authorType: 'user', authorName: 'John Smith' });
+    let frame = makeFrame({ type: 'Message', authorType: 'user', authorName: 'John Smith' });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('participant-name'), 'You');
   });
 
   it('should show "System" for command-result frames', () => {
-    let frame = makeFrame({ type: 'command-result', authorType: 'system', authorName: 'SomeBot', content: { html: '<p>done</p>' } });
+    let frame = makeFrame({ type: 'CommandResult', authorType: 'system', authorName: 'SomeBot', content: { html: '<p>done</p>' } });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('participant-name'), 'System');
   });
 
   it('should show "System" for command-result frames even without authorType', () => {
-    let frame = makeFrame({ type: 'command-result', authorType: undefined, authorName: undefined, content: { html: '<p>done</p>' } });
+    let frame = makeFrame({ type: 'CommandResult', authorType: undefined, authorName: undefined, content: { html: '<p>done</p>' } });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('participant-name'), 'System');
   });
 
   it('should show "System" for session-link frames', () => {
-    let frame = makeFrame({ type: 'session-link', content: { targetSessionID: 'ses-1', title: 'Sub' } });
+    let frame = makeFrame({ type: 'SessionLink', content: { targetSessionID: 'ses-1', title: 'Sub' } });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('participant-name'), 'System');
   });
 
   it('should show "System" for frames with authorType "system"', () => {
-    let frame = makeFrame({ type: 'message', authorType: 'system', authorName: 'Whatever', content: { html: '<p>hi</p>' } });
+    let frame = makeFrame({ type: 'Message', authorType: 'system', authorName: 'Whatever', content: { html: '<p>hi</p>' } });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('participant-name'), 'System');
   });
 
   it('should use authorName for agent frames when set', () => {
-    let frame = makeFrame({ type: 'message', authorType: 'agent', authorID: 'agt_123', authorName: 'my-agent' });
+    let frame = makeFrame({ type: 'Message', authorType: 'agent', authorID: 'agt_123', authorName: 'my-agent' });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('participant-name'), 'my-agent');
   });
 
   it('should fall back to "Agent" for agent frames without authorName or store entry', () => {
-    let frame = makeFrame({ type: 'message', authorType: 'agent', authorID: 'agt_unknown', authorName: undefined });
+    let frame = makeFrame({ type: 'Message', authorType: 'agent', authorID: 'agt_unknown', authorName: undefined });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('participant-name'), 'Agent');
   });
 
   it('should fall back to "Agent" for frames with no authorType and no authorName', () => {
-    let frame = makeFrame({ type: 'message', authorType: undefined, authorName: undefined });
+    let frame = makeFrame({ type: 'Message', authorType: undefined, authorName: undefined });
     let el    = createFrameElement(frame);
 
     assert.equal(el.getAttribute('participant-name'), 'Agent');
@@ -452,7 +452,7 @@ describe('_createFrameElement — name resolution', { timeout: 5000 }, () => {
 describe('_createFrameElement — reflection complete attribute', { timeout: 5000 }, () => {
 
   it('should set complete attribute on persisted reflection blocks', () => {
-    let frame = makeFrame({ type: 'reflection', content: { text: 'Thinking about it...' } });
+    let frame = makeFrame({ type: 'Reflection', content: { text: 'Thinking about it...' } });
     let el    = createFrameElement(frame);
 
     let block = el.querySelector('kikx-reflection-block');
@@ -461,7 +461,7 @@ describe('_createFrameElement — reflection complete attribute', { timeout: 500
   });
 
   it('should set complete attribute even when reflection has empty content', () => {
-    let frame = makeFrame({ type: 'reflection', content: { text: '' } });
+    let frame = makeFrame({ type: 'Reflection', content: { text: '' } });
     let el    = createFrameElement(frame);
 
     let block = el.querySelector('kikx-reflection-block');
@@ -475,14 +475,14 @@ describe('_createFrameElement — reflection complete attribute', { timeout: 500
 
 describe('_createFrameElement — hidden types return null', { timeout: 5000 }, () => {
   let hiddenTypes = [
-    'pending-action',
-    'tool-call',
-    'tool-result',
-    'tool-error',
-    'hook-blocked',
-    'permission-denied',
-    'participant-joined',
-    'participant-left',
+    'PendingAction',
+    'ToolCall',
+    'ToolResult',
+    'ToolError',
+    'HookBlocked',
+    'PermissionDenied',
+    'ParticipantJoined',
+    'ParticipantLeft',
   ];
 
   for (let type of hiddenTypes) {
@@ -502,14 +502,14 @@ describe('_createFrameElement — hidden types return null', { timeout: 5000 }, 
 describe('_createFrameElement — malformed frames', { timeout: 5000 }, () => {
 
   it('should return null for a frame with missing content (undefined)', () => {
-    let frame = makeFrame({ type: 'message', content: undefined });
+    let frame = makeFrame({ type: 'Message', content: undefined });
     let el    = createFrameElement(frame);
 
     assert.equal(el, null);
   });
 
   it('should return null for a frame with null content', () => {
-    let frame = makeFrame({ type: 'message', content: null });
+    let frame = makeFrame({ type: 'Message', content: null });
     let el    = createFrameElement(frame);
 
     assert.equal(el, null);
@@ -523,7 +523,7 @@ describe('_createFrameElement — malformed frames', { timeout: 5000 }, () => {
   });
 
   it('should not throw for a frame with missing id', () => {
-    let frame = makeFrame({ id: undefined, type: 'message' });
+    let frame = makeFrame({ id: undefined, type: 'Message' });
 
     assert.doesNotThrow(() => {
       createFrameElement(frame);
@@ -580,7 +580,7 @@ describe('_createFrameElement — XSS sanitization', { timeout: 5000 }, () => {
 
   it('should not contain <script> tags in the output element', () => {
     let frame = makeFrame({
-      type:    'message',
+      type: 'Message',
       content: { html: '<p>Hello</p><script>alert("xss")</script>' },
     });
     let el = createFrameElement(frame);
@@ -600,7 +600,7 @@ describe('_createFrameElement — XSS sanitization', { timeout: 5000 }, () => {
 
   it('should strip event handler attributes from content HTML', () => {
     let frame = makeFrame({
-      type:    'message',
+      type: 'Message',
       content: { html: '<p onmouseover="alert(1)">hover me</p>' },
     });
     let el = createFrameElement(frame);
@@ -616,7 +616,7 @@ describe('_createFrameElement — XSS sanitization', { timeout: 5000 }, () => {
 
   it('should strip javascript: URIs from href attributes', () => {
     let frame = makeFrame({
-      type:    'message',
+      type: 'Message',
       content: { html: '<a href="javascript:alert(1)">click</a>' },
     });
     let el = createFrameElement(frame);
@@ -633,7 +633,7 @@ describe('_createFrameElement — XSS sanitization', { timeout: 5000 }, () => {
 
   it('should not contain <iframe> tags in the output element', () => {
     let frame = makeFrame({
-      type:    'message',
+      type: 'Message',
       content: { html: '<p>Hello</p><iframe src="http://evil.com"></iframe>' },
     });
     let el = createFrameElement(frame);
@@ -647,7 +647,7 @@ describe('_createFrameElement — XSS sanitization', { timeout: 5000 }, () => {
 
   it('should not contain <form> or <input> tags in the output element', () => {
     let frame = makeFrame({
-      type:    'message',
+      type: 'Message',
       content: { html: '<form action="http://evil.com"><input type="text" name="password"></form>' },
     });
     let el = createFrameElement(frame);

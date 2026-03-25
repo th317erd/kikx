@@ -163,10 +163,10 @@ describe('SolrService', () => {
     });
 
     it('appends array params as multiple values', () => {
-      let url = service._buildURL('/select', { fq: ['type:message', 'hidden:false'] });
+      let url = service._buildURL('/select', { fq: ['type:Message', 'hidden:false'] });
       let parsed = new URL(url);
       let fqValues = parsed.searchParams.getAll('fq');
-      assert.deepEqual(fqValues, ['type:message', 'hidden:false']);
+      assert.deepEqual(fqValues, ['type:Message', 'hidden:false']);
     });
 
     it('skips null and undefined values', () => {

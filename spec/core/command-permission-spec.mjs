@@ -31,7 +31,7 @@ class MockAgent extends AgentInterface {
     for (let block of this._blocks)
       yield block;
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -136,7 +136,7 @@ describe('Command Permissions (system:command)', () => {
 
       let blocks = [
         {
-          type:    'tool-call',
+          type:    'ToolCall',
           content: {
             toolName:  'system:command',
             arguments: { command: 'reload' },
@@ -259,7 +259,7 @@ describe('Command Permissions (system:command)', () => {
         },
       ));
 
-      let resultFrames = emitted.filter((f) => f.type === 'command-result');
+      let resultFrames = emitted.filter((f) => f.type === 'CommandResult');
       assert.equal(resultFrames.length, 1);
       assert.ok(resultFrames[0].content.html.includes('Instructions reloaded'));
     });
@@ -288,7 +288,7 @@ describe('Command Permissions (system:command)', () => {
         },
       ));
 
-      let permFrames = emitted.filter((f) => f.type === 'permission-request');
+      let permFrames = emitted.filter((f) => f.type === 'PermissionRequest');
       assert.equal(permFrames.length, 1);
       assert.equal(permFrames[0].content.commandName, 'invite');
       assert.equal(permFrames[0].content.featureName, 'command:invite');
@@ -298,7 +298,7 @@ describe('Command Permissions (system:command)', () => {
       assert.equal(permEvents[0].commandName, 'invite');
 
       // No command-result frame should exist (handler not executed)
-      let resultFrames = emitted.filter((f) => f.type === 'command-result');
+      let resultFrames = emitted.filter((f) => f.type === 'CommandResult');
       assert.equal(resultFrames.length, 0);
     });
   });
@@ -325,7 +325,7 @@ describe('Command Permissions (system:command)', () => {
         },
       ));
 
-      let resultFrames = emitted.filter((f) => f.type === 'command-result');
+      let resultFrames = emitted.filter((f) => f.type === 'CommandResult');
       assert.equal(resultFrames.length, 1);
       assert.ok(resultFrames[0].content.html.includes('Permission denied'));
       assert.ok(resultFrames[0].content.html.includes('/invite'));
@@ -353,7 +353,7 @@ describe('Command Permissions (system:command)', () => {
         },
       ));
 
-      let resultFrames = emitted.filter((f) => f.type === 'command-result');
+      let resultFrames = emitted.filter((f) => f.type === 'CommandResult');
       assert.equal(resultFrames.length, 1);
       assert.ok(resultFrames[0].content.html.includes('Instructions reloaded'));
     });
@@ -370,7 +370,7 @@ describe('Command Permissions (system:command)', () => {
 
       let blocks = [
         {
-          type:    'tool-call',
+          type:    'ToolCall',
           content: {
             toolName:  'system:command',
             arguments: { command: 'reload' },
@@ -426,7 +426,7 @@ describe('Command Permissions (system:command)', () => {
 
       let blocks = [
         {
-          type:    'tool-call',
+          type:    'ToolCall',
           content: {
             toolName:  'system:command',
             arguments: { command: 'nonexistent-cmd-xyz' },
@@ -673,7 +673,7 @@ describe('Command Permissions (system:command)', () => {
       // Should still produce the unknown command result
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
-      let resultFrames = frames.filter((f) => f.type === 'command-result');
+      let resultFrames = frames.filter((f) => f.type === 'CommandResult');
 
       assert.equal(resultFrames.length, 1);
       assert.ok(resultFrames[0].content.html.includes('Unknown command'));
@@ -729,7 +729,7 @@ describe('Command Permissions (system:command)', () => {
         },
       ));
 
-      let userFrames = emitted.filter((f) => f.type === 'user-message');
+      let userFrames = emitted.filter((f) => f.type === 'UserMessage');
       assert.equal(userFrames.length, 1);
       assert.equal(userFrames[0].hidden, true, 'Command user-message must be hidden');
     });
@@ -737,10 +737,10 @@ describe('Command Permissions (system:command)', () => {
     it('should exclude hidden command frames from _buildMessages', () => {
       let loop   = createLoop();
       let frames = [
-        { type: 'user-message', content: { text: '/reload' }, hidden: true },
-        { type: 'command-result', content: { html: '<p>Reloaded</p>' } },
-        { type: 'user-message', content: { text: 'Hello' }, hidden: false },
-        { type: 'message', content: { html: '<p>Hi there</p>' } },
+        { type: 'UserMessage', content: { text: '/reload' }, hidden: true },
+        { type: 'CommandResult', content: { html: '<p>Reloaded</p>' } },
+        { type: 'UserMessage', content: { text: 'Hello' }, hidden: false },
+        { type: 'Message', content: { html: '<p>Hi there</p>' } },
       ];
 
       let messages = loop._buildMessages(frames);
@@ -795,8 +795,8 @@ describe('Command Permissions (system:command)', () => {
 
         async *_createGenerator(params) {
           capturedMessages = params.messages;
-          yield { type: 'message', content: { html: '<p>Response</p>' }, authorType: 'agent' };
-          yield { type: 'done', content: {} };
+          yield { type: 'Message', content: { html: '<p>Response</p>' }, authorType: 'agent' };
+          yield { type: 'Done', content: {} };
         }
       }
 

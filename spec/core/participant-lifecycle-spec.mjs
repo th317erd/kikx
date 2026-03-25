@@ -82,7 +82,7 @@ describe('Participant Lifecycle Frames', () => {
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrames = frames.filter((frame) => frame.type === 'participant-joined');
+    let joinedFrames = frames.filter((frame) => frame.type === 'ParticipantJoined');
 
     assert.equal(joinedFrames.length, 1, 'Expected exactly one participant-joined frame');
   });
@@ -95,10 +95,10 @@ describe('Participant Lifecycle Frames', () => {
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrame  = frames.find((frame) => frame.type === 'participant-joined');
+    let joinedFrame  = frames.find((frame) => frame.type === 'ParticipantJoined');
 
     assert.ok(joinedFrame, 'participant-joined frame should exist');
-    assert.equal(joinedFrame.type, 'participant-joined');
+    assert.equal(joinedFrame.type, 'ParticipantJoined');
     assert.equal(joinedFrame.hidden, false);
     assert.equal(joinedFrame.authorType, 'system');
     assert.equal(joinedFrame.authorID, null);
@@ -116,7 +116,7 @@ describe('Participant Lifecycle Frames', () => {
     // Load frames from the database using a fresh FrameManager
     let loadedFrameManager = await persistence.loadFrames(session.id);
     let loadedFrames       = loadedFrameManager.toArray();
-    let joinedFrames       = loadedFrames.filter((frame) => frame.type === 'participant-joined');
+    let joinedFrames       = loadedFrames.filter((frame) => frame.type === 'ParticipantJoined');
 
     assert.equal(joinedFrames.length, 1, 'Persisted participant-joined frame should be loadable');
     assert.equal(joinedFrames[0].content.agentID, agent.id);
@@ -144,7 +144,7 @@ describe('Participant Lifecycle Frames', () => {
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrames = frames.filter((frame) => frame.type === 'participant-joined');
+    let joinedFrames = frames.filter((frame) => frame.type === 'ParticipantJoined');
 
     assert.equal(joinedFrames.length, 2, 'Expected two participant-joined frames');
     assert.ok(
@@ -177,10 +177,10 @@ describe('Participant Lifecycle Frames', () => {
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let leftFrame    = frames.find((frame) => frame.type === 'participant-left');
+    let leftFrame    = frames.find((frame) => frame.type === 'ParticipantLeft');
 
     assert.ok(leftFrame, 'participant-left frame should exist');
-    assert.equal(leftFrame.type, 'participant-left');
+    assert.equal(leftFrame.type, 'ParticipantLeft');
     assert.equal(leftFrame.hidden, false);
     assert.equal(leftFrame.authorType, 'system');
     assert.equal(leftFrame.authorID, null);
@@ -209,7 +209,7 @@ describe('Participant Lifecycle Frames', () => {
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrames = frames.filter((frame) => frame.type === 'participant-joined');
+    let joinedFrames = frames.filter((frame) => frame.type === 'ParticipantJoined');
 
     assert.equal(joinedFrames.length, 2, 'Should have two participant-joined frames (original + re-add)');
   });
@@ -229,7 +229,7 @@ describe('Participant Lifecycle Frames', () => {
     let frameManager    = manager.getFrameManager(session.id);
     let frames          = frameManager.toArray();
     let lifecycleFrames = frames.filter(
-      (frame) => frame.type === 'participant-joined' || frame.type === 'participant-left',
+      (frame) => frame.type === 'ParticipantJoined' || frame.type === 'ParticipantLeft',
     );
 
     assert.equal(lifecycleFrames.length, 4, 'Expected 4 lifecycle frames (2 joined + 2 left)');
@@ -243,10 +243,10 @@ describe('Participant Lifecycle Frames', () => {
     }
 
     // Verify the sequence: joined, left, joined, left
-    assert.equal(lifecycleFrames[0].type, 'participant-joined');
-    assert.equal(lifecycleFrames[1].type, 'participant-left');
-    assert.equal(lifecycleFrames[2].type, 'participant-joined');
-    assert.equal(lifecycleFrames[3].type, 'participant-left');
+    assert.equal(lifecycleFrames[0].type, 'ParticipantJoined');
+    assert.equal(lifecycleFrames[1].type, 'ParticipantLeft');
+    assert.equal(lifecycleFrames[2].type, 'ParticipantJoined');
+    assert.equal(lifecycleFrames[3].type, 'ParticipantLeft');
   });
 
   // ===========================================================================
@@ -311,7 +311,7 @@ describe('Participant Lifecycle Frames', () => {
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let leftFrames   = frames.filter((frame) => frame.type === 'participant-left');
+    let leftFrames   = frames.filter((frame) => frame.type === 'ParticipantLeft');
 
     assert.equal(leftFrames.length, 0, 'No participant-left frame should be created for a non-participant');
   });
@@ -335,7 +335,7 @@ describe('Participant Lifecycle Frames', () => {
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrames = frames.filter((frame) => frame.type === 'participant-joined');
+    let joinedFrames = frames.filter((frame) => frame.type === 'ParticipantJoined');
 
     assert.equal(joinedFrames.length, 1, 'Should not create a duplicate participant-joined frame');
   });
@@ -370,7 +370,7 @@ describe('Participant Lifecycle Frames', () => {
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrame  = frames.find((frame) => frame.type === 'participant-joined');
+    let joinedFrame  = frames.find((frame) => frame.type === 'ParticipantJoined');
 
     assert.ok(joinedFrame, 'participant-joined frame must exist');
 

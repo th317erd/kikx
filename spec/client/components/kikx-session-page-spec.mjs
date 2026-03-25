@@ -58,7 +58,7 @@ beforeEach(() => {
 function makeFrame(overrides = {}) {
   return {
     id:            overrides.id || 'frame-001',
-    type:          overrides.type || 'message',
+    type:          overrides.type || 'Message',
     content:       overrides.content || { html: '<p>Hello world</p>' },
     order:         overrides.order ?? 1,
     timestamp:     overrides.timestamp || Date.now(),
@@ -87,7 +87,7 @@ describe('createFrameElement — permission-request with permissionContext', { t
       details: [{ label: 'permission.detail.command', value: 'ls -la' }],
     };
     let frame = makeFrame({
-      type: 'permission-request',
+      type: 'PermissionRequest',
       content: { toolName: 'shell:execute', parsedCommands: [], permissionContext: ctx },
     });
     let el = createFrameElement(frame);
@@ -104,7 +104,7 @@ describe('createFrameElement — permission-request with permissionContext', { t
       details: [],
     };
     let frame = makeFrame({
-      type: 'permission-request',
+      type: 'PermissionRequest',
       content: { toolName: 'shell:execute', permissionContext: ctx },
     });
     let el = createFrameElement(frame);
@@ -121,7 +121,7 @@ describe('createFrameElement — permission-request with permissionContext', { t
       details: [{ label: 'permission.detail.command', value: 'rm -rf /tmp' }],
     };
     let frame = makeFrame({
-      type: 'permission-request',
+      type: 'PermissionRequest',
       content: {
         toolName: 'shell:execute',
         parsedCommands: [{ command: 'rm', arguments: ['-rf', '/tmp'], status: 'needs-approval' }],
@@ -143,7 +143,7 @@ describe('createFrameElement — permission-request with permissionContext', { t
       details: [],
     };
     let frame = makeFrame({
-      type: 'permission-request',
+      type: 'PermissionRequest',
       content: {
         toolName: 'shell:execute',
         arguments: { command: 'echo hello' },
@@ -166,7 +166,7 @@ describe('createFrameElement — permission-request with toolArgs fallback', { t
 
   it('should set description from template when no permissionContext (no parsedCommands)', () => {
     let frame = makeFrame({
-      type: 'permission-request',
+      type: 'PermissionRequest',
       authorType: 'agent',
       authorName: 'Claude',
       content: { toolName: 'file:read' },
@@ -181,7 +181,7 @@ describe('createFrameElement — permission-request with toolArgs fallback', { t
 
   it('should set toolArgs when arguments are present and no permissionContext', () => {
     let frame = makeFrame({
-      type: 'permission-request',
+      type: 'PermissionRequest',
       content: {
         toolName: 'file:read',
         arguments: { path: '/etc/passwd' },
@@ -196,7 +196,7 @@ describe('createFrameElement — permission-request with toolArgs fallback', { t
 
   it('should set fullCommand when parsedCommands and arguments.command present', () => {
     let frame = makeFrame({
-      type: 'permission-request',
+      type: 'PermissionRequest',
       content: {
         toolName: 'shell:execute',
         parsedCommands: [{ command: 'ls', arguments: ['-la'], status: 'needs-approval' }],
@@ -211,7 +211,7 @@ describe('createFrameElement — permission-request with toolArgs fallback', { t
 
   it('should create single-command entry when no parsedCommands', () => {
     let frame = makeFrame({
-      type: 'permission-request',
+      type: 'PermissionRequest',
       content: { toolName: 'db:query' },
     });
     let el = createFrameElement(frame);
@@ -224,7 +224,7 @@ describe('createFrameElement — permission-request with toolArgs fallback', { t
 
   it('should set processed attribute when frame.processed is true', () => {
     let frame = makeFrame({
-      type: 'permission-request',
+      type: 'PermissionRequest',
       processed: true,
       content: {
         toolName: 'shell:execute',
@@ -247,7 +247,7 @@ describe('createFrameElement — system authorType', { timeout: 5000 }, () => {
 
   it('should set data-author-type="system" for system frames', () => {
     let frame = makeFrame({
-      type: 'message',
+      type: 'Message',
       authorType: 'system',
       content: { html: '<p>System message</p>' },
     });
@@ -258,7 +258,7 @@ describe('createFrameElement — system authorType', { timeout: 5000 }, () => {
 
   it('should set alignment="agent" for system authorType messages', () => {
     let frame = makeFrame({
-      type: 'message',
+      type: 'Message',
       authorType: 'system',
       content: { html: '<p>System notice</p>' },
     });
@@ -269,7 +269,7 @@ describe('createFrameElement — system authorType', { timeout: 5000 }, () => {
 
   it('should set data-author-type="agent" for agent frames', () => {
     let frame = makeFrame({
-      type: 'message',
+      type: 'Message',
       authorType: 'agent',
       content: { html: '<p>Agent reply</p>' },
     });
@@ -280,7 +280,7 @@ describe('createFrameElement — system authorType', { timeout: 5000 }, () => {
 
   it('should set data-author-type="user" for user frames', () => {
     let frame = makeFrame({
-      type: 'user-message',
+      type: 'UserMessage',
       authorType: 'user',
       content: { text: 'Hello' },
     });
@@ -291,7 +291,7 @@ describe('createFrameElement — system authorType', { timeout: 5000 }, () => {
 
   it('should NOT set data-author-type when authorType is undefined', () => {
     let frame = makeFrame({
-      type: 'message',
+      type: 'Message',
       authorType: undefined,
       content: { html: '<p>No author type</p>' },
     });
@@ -309,7 +309,7 @@ describe('createFrameElement — data-author-id', { timeout: 5000 }, () => {
 
   it('should set data-author-id when authorID is present', () => {
     let frame = makeFrame({
-      type: 'message',
+      type: 'Message',
       authorID: 'agt_abc123',
       content: { html: '<p>Hi</p>' },
     });
@@ -320,7 +320,7 @@ describe('createFrameElement — data-author-id', { timeout: 5000 }, () => {
 
   it('should NOT set data-author-id when authorID is null', () => {
     let frame = makeFrame({
-      type: 'message',
+      type: 'Message',
       authorID: null,
       content: { html: '<p>Hi</p>' },
     });
@@ -331,7 +331,7 @@ describe('createFrameElement — data-author-id', { timeout: 5000 }, () => {
 
   it('should NOT set data-author-id when authorID is undefined', () => {
     let frame = makeFrame({
-      type: 'message',
+      type: 'Message',
       authorID: undefined,
       content: { html: '<p>Hi</p>' },
     });
@@ -349,7 +349,7 @@ describe('createFrameElement — compaction frames', { timeout: 5000 }, () => {
 
   it('should return a kikx-compaction-frame element for type "compaction"', () => {
     let frame = makeFrame({
-      type: 'compaction',
+      type: 'Compaction',
       content: { status: 'started' },
     });
     let el = createFrameElement(frame);
@@ -361,7 +361,7 @@ describe('createFrameElement — compaction frames', { timeout: 5000 }, () => {
   it('should set data-frame-id on compaction frames', () => {
     let frame = makeFrame({
       id: 'compaction-001',
-      type: 'compaction',
+      type: 'Compaction',
       content: { status: 'completed' },
     });
     let el = createFrameElement(frame);
@@ -371,7 +371,7 @@ describe('createFrameElement — compaction frames', { timeout: 5000 }, () => {
 
   it('should set status attribute from content.status', () => {
     let frame = makeFrame({
-      type: 'compaction',
+      type: 'Compaction',
       content: { status: 'completed' },
     });
     let el = createFrameElement(frame);
@@ -381,7 +381,7 @@ describe('createFrameElement — compaction frames', { timeout: 5000 }, () => {
 
   it('should default status to "started" when not specified', () => {
     let frame = makeFrame({
-      type: 'compaction',
+      type: 'Compaction',
       content: {},
     });
     let el = createFrameElement(frame);
@@ -391,7 +391,7 @@ describe('createFrameElement — compaction frames', { timeout: 5000 }, () => {
 
   it('should set session-id attribute when sessionID is present', () => {
     let frame = makeFrame({
-      type: 'compaction',
+      type: 'Compaction',
       sessionID: 'sess-abc',
       content: { status: 'started' },
     });
@@ -402,7 +402,7 @@ describe('createFrameElement — compaction frames', { timeout: 5000 }, () => {
 
   it('should set frames-compacted attribute', () => {
     let frame = makeFrame({
-      type: 'compaction',
+      type: 'Compaction',
       content: { status: 'completed', framesCompacted: 42 },
     });
     let el = createFrameElement(frame);
@@ -412,7 +412,7 @@ describe('createFrameElement — compaction frames', { timeout: 5000 }, () => {
 
   it('should set compactor-name from compactorAgentID', () => {
     let frame = makeFrame({
-      type: 'compaction',
+      type: 'Compaction',
       content: { status: 'completed', compactorAgentID: 'agt_compactor' },
     });
     let el = createFrameElement(frame);
@@ -422,7 +422,7 @@ describe('createFrameElement — compaction frames', { timeout: 5000 }, () => {
 
   it('should set started-at attribute when present', () => {
     let frame = makeFrame({
-      type: 'compaction',
+      type: 'Compaction',
       content: { status: 'completed', startedAt: '2026-03-21T00:00:00Z' },
     });
     let el = createFrameElement(frame);
@@ -432,7 +432,7 @@ describe('createFrameElement — compaction frames', { timeout: 5000 }, () => {
 
   it('should NOT be a kikx-interaction — compaction is a standalone element', () => {
     let frame = makeFrame({
-      type: 'compaction',
+      type: 'Compaction',
       content: { status: 'started' },
     });
     let el = createFrameElement(frame);
@@ -449,7 +449,7 @@ describe('createFrameElement — session-link alignment', { timeout: 5000 }, () 
 
   it('should set alignment="system" on session-link frames', () => {
     let frame = makeFrame({
-      type: 'session-link',
+      type: 'SessionLink',
       content: { targetSessionID: 'sess-123', title: 'Sub-session' },
     });
     let el = createFrameElement(frame);
@@ -459,7 +459,7 @@ describe('createFrameElement — session-link alignment', { timeout: 5000 }, () 
 
   it('should set participant-name="System" on session-link frames', () => {
     let frame = makeFrame({
-      type: 'session-link',
+      type: 'SessionLink',
       authorType: 'agent',
       authorName: 'Claude',
       content: { targetSessionID: 'sess-123', title: 'Sub-session' },
@@ -471,7 +471,7 @@ describe('createFrameElement — session-link alignment', { timeout: 5000 }, () 
 
   it('should set participant-count on session-link when participants provided', () => {
     let frame = makeFrame({
-      type: 'session-link',
+      type: 'SessionLink',
       content: {
         targetSessionID: 'sess-123',
         title: 'Group sub-session',
@@ -493,7 +493,7 @@ describe('createFrameElement — message content edge cases', { timeout: 5000 },
 
   it('should handle string content directly (not object)', () => {
     let frame = makeFrame({
-      type: 'message',
+      type: 'Message',
       content: '<p>Direct string content</p>',
     });
     let el = createFrameElement(frame);
@@ -504,7 +504,7 @@ describe('createFrameElement — message content edge cases', { timeout: 5000 },
 
   it('should escape text content with HTML entities', () => {
     let frame = makeFrame({
-      type: 'message',
+      type: 'Message',
       content: { text: 'Hello <world> & "friends"' },
     });
     let el = createFrameElement(frame);

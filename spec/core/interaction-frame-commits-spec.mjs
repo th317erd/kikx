@@ -31,7 +31,7 @@ class MockAgent extends AgentInterface {
 
   async *_createGenerator(_params) {
     for (let block of this._blocks) {
-      if (block.type === 'tool-call') {
+      if (block.type === 'ToolCall') {
         let result = yield block;
         block._receivedResult = result;
       } else {
@@ -39,7 +39,7 @@ class MockAgent extends AgentInterface {
       }
     }
 
-    yield { type: 'done', content: {} };
+    yield { type: 'Done', content: {} };
   }
 }
 
@@ -87,7 +87,7 @@ describe('Frame creation through FrameManager (B3)', () => {
     let session = await createTestSession();
     let loop    = createLoop();
     let agent   = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>Hello</p>' }, authorType: 'agent', authorID: 'agt_1' },
+      { type: 'Message', content: { html: '<p>Hello</p>' }, authorType: 'agent', authorID: 'agt_1' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -120,7 +120,7 @@ describe('Frame creation through FrameManager (B3)', () => {
     let session = await createTestSession();
     let loop    = createLoop();
     let agent   = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>Response</p>' }, authorType: 'agent', authorID: 'agt_1' },
+      { type: 'Message', content: { html: '<p>Response</p>' }, authorType: 'agent', authorID: 'agt_1' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -144,7 +144,7 @@ describe('Frame creation through FrameManager (B3)', () => {
     let loop    = createLoop();
     let agent   = new MockAgent(context, [
       {
-        type:    'tool-call',
+        type:    'ToolCall',
         content: { toolName: 'test:echo', arguments: { text: 'hello' }, toolUseID: 'tu_1' },
         authorType: 'agent',
         authorID:   'agt_1',
@@ -171,8 +171,8 @@ describe('Frame creation through FrameManager (B3)', () => {
     let session = await createTestSession();
     let loop    = createLoop();
     let agent   = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>One</p>' }, authorType: 'agent', authorID: 'agt_1' },
-      { type: 'message', content: { html: '<p>Two</p>' }, authorType: 'agent', authorID: 'agt_1' },
+      { type: 'Message', content: { html: '<p>One</p>' }, authorType: 'agent', authorID: 'agt_1' },
+      { type: 'Message', content: { html: '<p>Two</p>' }, authorType: 'agent', authorID: 'agt_1' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -195,7 +195,7 @@ describe('Frame creation through FrameManager (B3)', () => {
     let session = await createTestSession();
     let loop    = createLoop();
     let agent   = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>Reply</p>' }, authorType: 'agent', authorID: 'agt_1' },
+      { type: 'Message', content: { html: '<p>Reply</p>' }, authorType: 'agent', authorID: 'agt_1' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -221,7 +221,7 @@ describe('Frame creation through FrameManager (B3)', () => {
     let session = await createTestSession();
     let loop    = createLoop();
     let agent   = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>Test</p>' }, authorType: 'agent', authorID: 'agt_test' },
+      { type: 'Message', content: { html: '<p>Test</p>' }, authorType: 'agent', authorID: 'agt_test' },
     ]);
 
     await loop.startInteraction(session.id, {
@@ -236,13 +236,13 @@ describe('Frame creation through FrameManager (B3)', () => {
     let allFrames    = frameManager.toArray();
 
     // Find the user-message frame
-    let userFrame = allFrames.find((f) => f.type === 'user-message');
+    let userFrame = allFrames.find((f) => f.type === 'UserMessage');
     assert.ok(userFrame);
     assert.equal(userFrame.authorType, 'user');
     assert.equal(userFrame.authorID, 'usr_test');
 
     // Find the agent message frame
-    let agentFrame = allFrames.find((f) => f.type === 'message');
+    let agentFrame = allFrames.find((f) => f.type === 'Message');
     assert.ok(agentFrame);
     assert.equal(agentFrame.authorType, 'agent');
     assert.equal(agentFrame.authorID, 'agt_test');
@@ -252,7 +252,7 @@ describe('Frame creation through FrameManager (B3)', () => {
     let session = await createTestSession();
     let loop    = createLoop();
     let agent   = new MockAgent(context, [
-      { type: 'message', content: { html: '<p>OK</p>' }, authorType: 'agent', authorID: 'agt_1' },
+      { type: 'Message', content: { html: '<p>OK</p>' }, authorType: 'agent', authorID: 'agt_1' },
     ]);
 
     await loop.startInteraction(session.id, {

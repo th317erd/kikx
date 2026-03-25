@@ -64,9 +64,9 @@ describe('PermissionHandler', () => {
       await handler.hardBreak('ses_1', generator, block, 'int_1', {}, null);
 
       assert.equal(createdFrames.length, 3);
-      assert.equal(createdFrames[0].type, 'pending-action');
-      assert.equal(createdFrames[1].type, 'permission-request');
-      assert.equal(createdFrames[2].type, 'tool-result');
+      assert.equal(createdFrames[0].type, 'PendingAction');
+      assert.equal(createdFrames[1].type, 'PermissionRequest');
+      assert.equal(createdFrames[2].type, 'ToolResult');
       assert.ok(createdFrames[2].content.output.includes('PERMISSION REQUIRED'));
       assert.equal(createdFrames[2].content.toolUseID, 'tu_1');
     });

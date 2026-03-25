@@ -21,7 +21,7 @@ import {
 function mockFrame(overrides = {}) {
   return {
     id:            'frm_test123',
-    type:          'message',
+    type: 'Message',
     interactionID: 'int_test',
     authorType:    'agent',
     authorID:      'agt_test',
@@ -69,7 +69,7 @@ describe('mapFrameToSolrDocuments', () => {
       let doc = docs[0];
       assert.equal(doc.id, 'frm_test123');
       assert.equal(doc.doc_type, 'frame');
-      assert.equal(doc.type, 'message');
+      assert.equal(doc.type, 'Message');
       assert.equal(doc.sessionID, 'ses_abc');
       assert.equal(doc.interactionID, 'int_test');
       assert.equal(doc.authorType, 'agent');

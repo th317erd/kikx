@@ -69,14 +69,14 @@ describe('SchedulingPlugin (C2)', () => {
   // ---------------------------------------------------------------------------
 
   describe('setup()', () => {
-    it('should register a selector for type:user-message', () => {
+    it('should register a selector for type:UserMessage', () => {
       let scheduler = new SessionScheduler({ sessionManager, interactionLoop });
       context.setProperty('sessionScheduler', scheduler);
 
       let { selectors } = setupPlugin(context);
 
       assert.equal(selectors.length, 1);
-      assert.equal(selectors[0].selector, 'type:user-message');
+      assert.equal(selectors[0].selector, 'type:UserMessage');
       assert.ok(selectors[0].PluginClass);
     });
 
@@ -93,7 +93,7 @@ describe('SchedulingPlugin (C2)', () => {
       let { selectors } = setupPlugin(mockContext);
 
       assert.equal(selectors.length, 1, 'Should register selector (lazy resolution)');
-      assert.equal(selectors[0].selector, 'type:user-message');
+      assert.equal(selectors[0].selector, 'type:UserMessage');
     });
   });
 
@@ -118,7 +118,7 @@ describe('SchedulingPlugin (C2)', () => {
 
       frameManager.merge([{
         id:         'frm_plg_1',
-        type:       'user-message',
+        type:       'UserMessage',
         content:    { text: 'Hello' },
         authorType: 'user',
         authorID:   'usr_1',
@@ -159,7 +159,7 @@ describe('SchedulingPlugin (C2)', () => {
 
       frameManager.merge([{
         id:         'frm_plg_agent_1',
-        type:       'message',
+        type: 'Message',
         content:    { html: '<p>Reply</p>' },
         authorType: 'agent',
         authorID:   agent.id,

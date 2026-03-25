@@ -134,7 +134,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
       // frame.signature has the valid Ed25519 signature
       frameManager.merge([{
         id:         'frm_ed25519_1',
-        type:       'tool-call',
+        type:       'ToolCall',
         content,
         signature,
         authorType: 'agent',
@@ -172,7 +172,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
       // Only _signature on content, no frame.signature
       frameManager.merge([{
         id:         'frm_legacy_sig',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' }, _signature: 'a'.repeat(64) },
         authorType: 'agent',
         authorID:   'agt_nonexistent',
@@ -219,7 +219,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
 
       frameManager.merge([{
         id:         'frm_user_ed25519',
-        type:       'tool-call',
+        type:       'ToolCall',
         content,
         signature,
         authorType: 'user',
@@ -260,7 +260,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
 
       frameManager.merge([{
         id:         'frm_agent_ed25519',
-        type:       'tool-call',
+        type:       'ToolCall',
         content,
         signature,
         authorType: 'agent',
@@ -299,7 +299,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
 
       frameManager.merge([{
         id:         'frm_bad_ed25519',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'rm -rf /' } },
         signature:  'deadbeef'.repeat(8),  // invalid signature
         authorType: 'agent',
@@ -343,7 +343,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
       // Frame has different content than what was signed
       frameManager.merge([{
         id:         'frm_tampered',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'rm -rf /' } },
         signature,
         authorType: 'agent',
@@ -387,7 +387,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
 
       frameManager.merge([{
         id:         'frm_no_sig',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
         authorType: 'agent',
         authorID:   'agt_1',
@@ -424,7 +424,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
       // Explicitly don't set signature — it'll be undefined which Frame normalizes to null
       frameManager.merge([{
         id:         'frm_undef_sig',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: {} },
         authorType: 'agent',
         authorID:   'agt_2',
@@ -468,7 +468,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
 
       frameManager.merge([{
         id:         'frm_hmac_fallback',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
         signature:  hmacSignature,
         authorType: 'agent',
@@ -512,7 +512,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
 
       frameManager.merge([{
         id:         'frm_bad_hmac',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
         signature:  'bogus-hmac-signature',
         authorType: 'agent',
@@ -552,7 +552,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
 
       frameManager.merge([{
         id:         'frm_missing_author',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'pwd' } },
         signature:  hmacSignature,
         authorType: 'agent',
@@ -590,7 +590,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
 
       frameManager.merge([{
         id:         'frm_system_author',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'date' } },
         signature:  hmacSignature,
         authorType: 'system',
@@ -635,7 +635,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
 
       frameManager.merge([{
         id:         'frm_fail_next',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
         signature:  'invalid-signature-hex',
         authorType: 'agent',
@@ -672,7 +672,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
 
       frameManager.merge([{
         id:         'frm_hmac_fail_next',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
         signature:  'not-a-valid-hmac',
         authorType: 'system',
@@ -812,7 +812,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
       frameManager.merge([
         {
           id:         'frm_multi_1',
-          type:       'tool-call',
+          type:       'ToolCall',
           content:    content1,
           signature:  signature1,
           authorType: 'agent',
@@ -820,7 +820,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
         },
         {
           id:         'frm_multi_2',
-          type:       'tool-call',
+          type:       'ToolCall',
           content:    content2,
           signature:  signature2,
           authorType: 'agent',
@@ -868,7 +868,7 @@ describe('PermissionPlugin Ed25519 (C4)', () => {
 
       frameManager.merge([{
         id:         'frm_user_no_key',
-        type:       'tool-call',
+        type:       'ToolCall',
         content:    { toolName: 'shell:execute', arguments: { command: 'ls' } },
         signature:  hmacSignature,
         authorType: 'user',

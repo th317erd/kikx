@@ -43,14 +43,14 @@ export class AgentInterface extends PluginInterface {
   // ---------------------------------------------------------------------------
   // Must return an async generator that yields frame-like block objects:
   //
-  //   { type: 'message',    content: { html: '...' },                authorType, authorID }
-  //   { type: 'tool-call',  content: { toolName: '...', arguments }, authorType, authorID }
-  //   { type: 'reflection', content: { text: '...' }, hidden: true,  authorType, authorID }
-  //   { type: 'done',       content: {} }
+  //   { type: 'Message',    content: { html: '...' },                authorType, authorID }
+  //   { type: 'ToolCall',   content: { toolName: '...', arguments }, authorType, authorID }
+  //   { type: 'Reflection', content: { text: '...' }, hidden: true,  authorType, authorID }
+  //   { type: 'Done',       content: {} }
   //
   // Tool results are passed back via generator.next(result):
-  //   let result = yield { type: 'tool-call', ... };
-  //   // result === { type: 'tool-result', content: { output: '...' } }
+  //   let result = yield { type: 'ToolCall', ... };
+  //   // result === { type: 'ToolResult', content: { output: '...' } }
   // ---------------------------------------------------------------------------
 
   async *_createGenerator(_params) {

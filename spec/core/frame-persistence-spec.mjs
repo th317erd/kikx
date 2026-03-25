@@ -74,13 +74,13 @@ describe('FramePersistence', () => {
     it('should save a single frame', async () => {
       let frameID = generateFrameID();
       let frames  = [
-        { id: frameID, type: 'message', content: { text: 'hello' }, targets: [], order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', content: { text: 'hello' }, targets: [], order: 1, timestamp: Date.now() },
       ];
 
       let results = await persistence.saveFrames(session.id, frames);
       assert.equal(results.length, 1);
       assert.equal(results[0].id, frameID);
-      assert.equal(results[0].type, 'message');
+      assert.equal(results[0].type, 'Message');
       assert.equal(results[0].sessionID, session.id);
     });
 
@@ -91,9 +91,9 @@ describe('FramePersistence', () => {
       let id3 = generateFrameID();
 
       let frames = [
-        { id: id1, type: 'message', content: { text: 'one' }, order: 1, timestamp: now },
-        { id: id2, type: 'message', content: { text: 'two' }, order: 2, timestamp: now + 1 },
-        { id: id3, type: 'tool-call', content: { name: 'search' }, order: 3, timestamp: now + 2 },
+        { id: id1, type: 'Message', content: { text: 'one' }, order: 1, timestamp: now },
+        { id: id2, type: 'Message', content: { text: 'two' }, order: 2, timestamp: now + 1 },
+        { id: id3, type: 'ToolCall', content: { name: 'search' }, order: 3, timestamp: now + 2 },
       ];
 
       let results = await persistence.saveFrames(session.id, frames);
@@ -103,14 +103,14 @@ describe('FramePersistence', () => {
     it('should update existing frames (upsert)', async () => {
       let frameID = generateFrameID();
       let frames  = [
-        { id: frameID, type: 'message', content: { text: 'original' }, order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', content: { text: 'original' }, order: 1, timestamp: Date.now() },
       ];
 
       await persistence.saveFrames(session.id, frames);
 
       // Save again with updated content
       let updatedFrames = [
-        { id: frameID, type: 'message', content: { text: 'updated' }, order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', content: { text: 'updated' }, order: 1, timestamp: Date.now() },
       ];
 
       let results = await persistence.saveFrames(session.id, updatedFrames);
@@ -131,7 +131,7 @@ describe('FramePersistence', () => {
       let frameID = generateFrameID();
       let content = { text: 'hello', format: 'html', nested: { a: 1 } };
       let frames  = [
-        { id: frameID, type: 'message', content, order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', content, order: 1, timestamp: Date.now() },
       ];
 
       await persistence.saveFrames(session.id, frames);
@@ -159,7 +159,7 @@ describe('FramePersistence', () => {
     it('should handle missing optional fields', async () => {
       let frameID = generateFrameID();
       let frames  = [
-        { id: frameID, type: 'message', order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', order: 1, timestamp: Date.now() },
       ];
 
       let results = await persistence.saveFrames(session.id, frames);
@@ -176,7 +176,7 @@ describe('FramePersistence', () => {
     it('should default interactionID to frame id when not provided', async () => {
       let frameID = generateFrameID();
       let frames  = [
-        { id: frameID, type: 'message', order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', order: 1, timestamp: Date.now() },
       ];
 
       await persistence.saveFrames(session.id, frames);
@@ -188,7 +188,7 @@ describe('FramePersistence', () => {
     it('should use provided interactionID when present', async () => {
       let frameID = generateFrameID();
       let frames  = [
-        { id: frameID, type: 'message', interactionID: 'int_root', order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', interactionID: 'int_root', order: 1, timestamp: Date.now() },
       ];
 
       await persistence.saveFrames(session.id, frames);
@@ -205,8 +205,8 @@ describe('FramePersistence', () => {
     it('should skip frames without an id', async () => {
       let frameID = generateFrameID();
       let frames  = [
-        { type: 'message', order: 1, timestamp: Date.now() },
-        { id: frameID, type: 'message', order: 2, timestamp: Date.now() },
+        { type: 'Message', order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', order: 2, timestamp: Date.now() },
       ];
 
       let results = await persistence.saveFrames(session.id, frames);
@@ -216,7 +216,7 @@ describe('FramePersistence', () => {
 
     it('should throw if sessionID is missing', async () => {
       await assert.rejects(
-        () => persistence.saveFrames(null, [{ id: generateFrameID(), type: 'message' }]),
+        () => persistence.saveFrames(null, [{ id: generateFrameID(), type: 'Message' }]),
         /sessionID is required/,
       );
     });
@@ -225,7 +225,7 @@ describe('FramePersistence', () => {
       let frameID    = generateFrameID();
       let contentStr = '{"text":"already serialized"}';
       let frames     = [
-        { id: frameID, type: 'message', content: contentStr, order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', content: contentStr, order: 1, timestamp: Date.now() },
       ];
 
       await persistence.saveFrames(session.id, frames);
@@ -246,8 +246,8 @@ describe('FramePersistence', () => {
       let id2 = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id: id1, type: 'message', content: { text: 'one' }, order: 1, timestamp: now },
-        { id: id2, type: 'message', content: { text: 'two' }, order: 2, timestamp: now + 1 },
+        { id: id1, type: 'Message', content: { text: 'one' }, order: 1, timestamp: now },
+        { id: id2, type: 'Message', content: { text: 'two' }, order: 2, timestamp: now + 1 },
       ]);
 
       let frameManager = await persistence.loadFrames(session.id);
@@ -266,9 +266,9 @@ describe('FramePersistence', () => {
 
       // Save in reverse order
       await persistence.saveFrames(session.id, [
-        { id: id3, type: 'message', content: { text: 'three' }, order: 3, timestamp: now + 2 },
-        { id: id1, type: 'message', content: { text: 'one' }, order: 1, timestamp: now },
-        { id: id2, type: 'message', content: { text: 'two' }, order: 2, timestamp: now + 1 },
+        { id: id3, type: 'Message', content: { text: 'three' }, order: 3, timestamp: now + 2 },
+        { id: id1, type: 'Message', content: { text: 'one' }, order: 1, timestamp: now },
+        { id: id2, type: 'Message', content: { text: 'two' }, order: 2, timestamp: now + 1 },
       ]);
 
       let frameManager = await persistence.loadFrames(session.id);
@@ -287,9 +287,9 @@ describe('FramePersistence', () => {
       let id3 = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id: id1, type: 'message', interactionID: 'int_A', order: 1, timestamp: now },
-        { id: id2, type: 'message', interactionID: 'int_B', order: 2, timestamp: now + 1 },
-        { id: id3, type: 'message', interactionID: 'int_A', order: 3, timestamp: now + 2 },
+        { id: id1, type: 'Message', interactionID: 'int_A', order: 1, timestamp: now },
+        { id: id2, type: 'Message', interactionID: 'int_B', order: 2, timestamp: now + 1 },
+        { id: id3, type: 'Message', interactionID: 'int_A', order: 3, timestamp: now + 2 },
       ]);
 
       let frameManager = await persistence.loadFrames(session.id, { interactionID: 'int_A' });
@@ -308,10 +308,10 @@ describe('FramePersistence', () => {
       let id4 = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id: id1, type: 'message', order: 1, timestamp: now },
-        { id: id2, type: 'message', order: 2, timestamp: now + 1 },
-        { id: id3, type: 'message', order: 3, timestamp: now + 2 },
-        { id: id4, type: 'message', order: 4, timestamp: now + 3 },
+        { id: id1, type: 'Message', order: 1, timestamp: now },
+        { id: id2, type: 'Message', order: 2, timestamp: now + 1 },
+        { id: id3, type: 'Message', order: 3, timestamp: now + 2 },
+        { id: id4, type: 'Message', order: 4, timestamp: now + 3 },
       ]);
 
       let frameManager = await persistence.loadFrames(session.id, { afterOrder: 2 });
@@ -327,7 +327,7 @@ describe('FramePersistence', () => {
       let frameID          = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id: frameID, type: 'message', content: { text: 'test' }, order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', content: { text: 'test' }, order: 1, timestamp: Date.now() },
       ]);
 
       let frameManager = await persistence.loadFrames(session.id);
@@ -346,7 +346,7 @@ describe('FramePersistence', () => {
       let content = { text: 'hello', nested: { deep: true } };
 
       await persistence.saveFrames(session.id, [
-        { id: frameID, type: 'message', content, order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', content, order: 1, timestamp: Date.now() },
       ]);
 
       let frameManager = await persistence.loadFrames(session.id);
@@ -382,11 +382,11 @@ describe('FramePersistence', () => {
 
       // Pre-populate with a frame
       frameManager.merge([
-        { id: 'existing_001', type: 'message', content: { text: 'existing' } },
+        { id: 'existing_001', type: 'Message', content: { text: 'existing' } },
       ]);
 
       await persistence.saveFrames(session.id, [
-        { id: frameID, type: 'message', content: { text: 'from db' }, order: 1, timestamp: Date.now() },
+        { id: frameID, type: 'Message', content: { text: 'from db' }, order: 1, timestamp: Date.now() },
       ]);
 
       let loadedFrames = await persistence.loadFramesInto(frameManager, session.id);
@@ -401,8 +401,8 @@ describe('FramePersistence', () => {
       let id2 = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id: id1, type: 'message', order: 1, timestamp: Date.now() },
-        { id: id2, type: 'message', order: 2, timestamp: Date.now() + 1 },
+        { id: id1, type: 'Message', order: 1, timestamp: Date.now() },
+        { id: id2, type: 'Message', order: 2, timestamp: Date.now() + 1 },
       ]);
 
       let { FrameManager } = await import('../../src/shared/frame-manager/frame-manager.mjs');
@@ -436,8 +436,8 @@ describe('FramePersistence', () => {
       let id2 = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id: id1, type: 'message', order: 1, timestamp: now },
-        { id: id2, type: 'message', order: 2, timestamp: now + 1 },
+        { id: id1, type: 'Message', order: 1, timestamp: now },
+        { id: id2, type: 'Message', order: 2, timestamp: now + 1 },
       ]);
 
       let deleted = await persistence.deleteFrames(session.id);
@@ -454,9 +454,9 @@ describe('FramePersistence', () => {
       let id3 = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id: id1, type: 'message', interactionID: 'int_A', order: 1, timestamp: now },
-        { id: id2, type: 'message', interactionID: 'int_B', order: 2, timestamp: now + 1 },
-        { id: id3, type: 'message', interactionID: 'int_A', order: 3, timestamp: now + 2 },
+        { id: id1, type: 'Message', interactionID: 'int_A', order: 1, timestamp: now },
+        { id: id2, type: 'Message', interactionID: 'int_B', order: 2, timestamp: now + 1 },
+        { id: id3, type: 'Message', interactionID: 'int_A', order: 3, timestamp: now + 2 },
       ]);
 
       let deleted = await persistence.deleteFrames(session.id, { interactionID: 'int_A' });
@@ -500,9 +500,9 @@ describe('FramePersistence', () => {
       let id3 = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id: id1, type: 'message', order: 1, timestamp: now },
-        { id: id2, type: 'message', order: 5, timestamp: now + 1 },
-        { id: id3, type: 'message', order: 3, timestamp: now + 2 },
+        { id: id1, type: 'Message', order: 1, timestamp: now },
+        { id: id2, type: 'Message', order: 5, timestamp: now + 1 },
+        { id: id3, type: 'Message', order: 3, timestamp: now + 2 },
       ]);
 
       let nextOrder = await persistence.getNextOrder(session.id);
@@ -534,9 +534,9 @@ describe('FramePersistence', () => {
       let id3 = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id: id1, type: 'message', order: 1, timestamp: now },
-        { id: id2, type: 'message', order: 2, timestamp: now + 1 },
-        { id: id3, type: 'tool-call', order: 3, timestamp: now + 2 },
+        { id: id1, type: 'Message', order: 1, timestamp: now },
+        { id: id2, type: 'Message', order: 2, timestamp: now + 1 },
+        { id: id3, type: 'ToolCall', order: 3, timestamp: now + 2 },
       ]);
 
       let count = await persistence.getFrameCount(session.id);
@@ -568,9 +568,9 @@ describe('FramePersistence', () => {
       let id3 = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id: id1, type: 'message', order: 2, timestamp: now },
-        { id: id2, type: 'message', order: 7, timestamp: now + 1 },
-        { id: id3, type: 'message', order: 5, timestamp: now + 2 },
+        { id: id1, type: 'Message', order: 2, timestamp: now },
+        { id: id2, type: 'Message', order: 7, timestamp: now + 1 },
+        { id: id3, type: 'Message', order: 5, timestamp: now + 2 },
       ]);
 
       let maxOrder = await persistence.getMaxOrder(session.id);
@@ -581,7 +581,7 @@ describe('FramePersistence', () => {
       let id = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id, type: 'message', order: 42, timestamp: Date.now() },
+        { id, type: 'Message', order: 42, timestamp: Date.now() },
       ]);
 
       let maxOrder = await persistence.getMaxOrder(session.id);
@@ -595,11 +595,11 @@ describe('FramePersistence', () => {
       let id2 = generateFrameID();
 
       await persistence.saveFrames(session.id, [
-        { id: id1, type: 'message', order: 3, timestamp: Date.now() },
+        { id: id1, type: 'Message', order: 3, timestamp: Date.now() },
       ]);
 
       await persistence.saveFrames(otherSession.id, [
-        { id: id2, type: 'message', order: 100, timestamp: Date.now() },
+        { id: id2, type: 'Message', order: 100, timestamp: Date.now() },
       ]);
 
       let maxOrder = await persistence.getMaxOrder(session.id);
@@ -622,7 +622,7 @@ describe('FramePersistence', () => {
     it('should map parentID to parentID', () => {
       let record = persistence._frameToRecord('ses_001', 'int_001', {
         id:       'frm_test',
-        type:     'message',
+        type: 'Message',
         parentID: 'frm_parent',
         order:    1,
       });
@@ -633,7 +633,7 @@ describe('FramePersistence', () => {
     it('should map groupID to groupID', () => {
       let record = persistence._frameToRecord('ses_001', 'int_001', {
         id:      'frm_test',
-        type:    'message',
+        type: 'Message',
         groupID: 'grp_001',
         order:   1,
       });
@@ -644,7 +644,7 @@ describe('FramePersistence', () => {
     it('should serialize content object to JSON string', () => {
       let record = persistence._frameToRecord('ses_001', 'int_001', {
         id:      'frm_test',
-        type:    'message',
+        type: 'Message',
         content: { text: 'hello' },
         order:   1,
       });
@@ -656,7 +656,7 @@ describe('FramePersistence', () => {
     it('should serialize targets array to JSON string', () => {
       let record = persistence._frameToRecord('ses_001', 'int_001', {
         id:      'frm_test',
-        type:    'message',
+        type: 'Message',
         targets: ['frm_a', 'frm_b'],
         order:   1,
       });
@@ -668,7 +668,7 @@ describe('FramePersistence', () => {
     it('should set sessionID and interactionID', () => {
       let record = persistence._frameToRecord('ses_123', 'int_456', {
         id:    'frm_test',
-        type:  'message',
+        type: 'Message',
         order: 1,
       });
 
@@ -681,7 +681,7 @@ describe('FramePersistence', () => {
     it('should map parentID to parentID', () => {
       let frame = persistence._recordToFrame({
         id:        'frm_test',
-        type:      'message',
+        type: 'Message',
         parentID:  'frm_parent',
         order:     1,
         timestamp: Date.now(),
@@ -693,7 +693,7 @@ describe('FramePersistence', () => {
     it('should map groupID to groupID', () => {
       let frame = persistence._recordToFrame({
         id:        'frm_test',
-        type:      'message',
+        type: 'Message',
         groupID:   'grp_001',
         order:     1,
         timestamp: Date.now(),
@@ -705,7 +705,7 @@ describe('FramePersistence', () => {
     it('should deserialize content JSON string to object', () => {
       let frame = persistence._recordToFrame({
         id:        'frm_test',
-        type:      'message',
+        type: 'Message',
         content:   '{"text":"hello"}',
         order:     1,
         timestamp: Date.now(),
@@ -717,7 +717,7 @@ describe('FramePersistence', () => {
     it('should deserialize targets JSON string to array', () => {
       let frame = persistence._recordToFrame({
         id:        'frm_test',
-        type:      'message',
+        type: 'Message',
         targets:   '["frm_a","frm_b"]',
         order:     1,
         timestamp: Date.now(),
@@ -729,7 +729,7 @@ describe('FramePersistence', () => {
     it('should default content to empty object when null', () => {
       let frame = persistence._recordToFrame({
         id:        'frm_test',
-        type:      'message',
+        type: 'Message',
         content:   null,
         order:     1,
         timestamp: Date.now(),
@@ -741,7 +741,7 @@ describe('FramePersistence', () => {
     it('should default targets to empty array when null', () => {
       let frame = persistence._recordToFrame({
         id:        'frm_test',
-        type:      'message',
+        type: 'Message',
         targets:   null,
         order:     1,
         timestamp: Date.now(),
@@ -765,7 +765,7 @@ describe('FramePersistence', () => {
       let frames = [
         {
           id:            frameID,
-          type:          'message',
+          type: 'Message',
           content:       content,
           targets:       targets,
           parentID:      'frm_parent_id',
@@ -791,7 +791,7 @@ describe('FramePersistence', () => {
 
       let frame = loaded[0];
       assert.equal(frame.id, frameID);
-      assert.equal(frame.type, 'message');
+      assert.equal(frame.type, 'Message');
       assert.deepEqual(frame.content, content);
       assert.deepEqual(frame.targets, targets);
       assert.equal(frame.parentID, 'frm_parent_id');
@@ -808,12 +808,12 @@ describe('FramePersistence', () => {
 
       // First batch
       await persistence.saveFrames(session.id, [
-        { id: id1, type: 'message', content: { text: 'first' }, order: 1, timestamp: now },
+        { id: id1, type: 'Message', content: { text: 'first' }, order: 1, timestamp: now },
       ]);
 
       // Second batch
       await persistence.saveFrames(session.id, [
-        { id: id2, type: 'message', content: { text: 'second' }, order: 2, timestamp: now + 1 },
+        { id: id2, type: 'Message', content: { text: 'second' }, order: 2, timestamp: now + 1 },
       ]);
 
       // Load all

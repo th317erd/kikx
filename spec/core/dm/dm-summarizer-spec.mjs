@@ -34,7 +34,7 @@ function createMockAgentPlugin(responseBlocks = []) {
         for (let block of responseBlocks)
           yield block;
 
-        yield { type: 'done', content: {} };
+        yield { type: 'Done', content: {} };
       })();
     },
   };
@@ -85,10 +85,10 @@ describe('DmSummarizer', () => {
       let summarizer = new DmSummarizer(context);
 
       let frames = [
-        { type: 'user-message', content: { text: 'Always respond in JSON' } },
-        { type: 'message', content: { html: 'Understood, I will respond in JSON format.' } },
-        { type: 'user-message', content: { text: 'Be concise' } },
-        { type: 'message', content: { html: 'Got it, I will keep responses short.' } },
+        { type: 'UserMessage', content: { text: 'Always respond in JSON' } },
+        { type: 'Message', content: { html: 'Understood, I will respond in JSON format.' } },
+        { type: 'UserMessage', content: { text: 'Be concise' } },
+        { type: 'Message', content: { html: 'Got it, I will keep responses short.' } },
       ];
 
       let text = summarizer.framesToConversation(frames);
@@ -103,11 +103,11 @@ describe('DmSummarizer', () => {
       let summarizer = new DmSummarizer(context);
 
       let frames = [
-        { type: 'user-message', content: { text: 'Hello' } },
-        { type: 'tool-call', content: { toolName: 'search' } },
-        { type: 'tool-result', content: { output: 'results' } },
-        { type: 'message', content: { html: 'Response' } },
-        { type: 'reflection', content: { text: 'thinking' } },
+        { type: 'UserMessage', content: { text: 'Hello' } },
+        { type: 'ToolCall', content: { toolName: 'search' } },
+        { type: 'ToolResult', content: { output: 'results' } },
+        { type: 'Message', content: { html: 'Response' } },
+        { type: 'Reflection', content: { text: 'thinking' } },
       ];
 
       let text = summarizer.framesToConversation(frames);
@@ -129,8 +129,8 @@ describe('DmSummarizer', () => {
       let context    = createMockContext();
       let summarizer = new DmSummarizer(context);
       let frames     = [
-        { type: 'user-message', content: null },
-        { type: 'message' },
+        { type: 'UserMessage', content: null },
+        { type: 'Message' },
       ];
       let text = summarizer.framesToConversation(frames);
       assert.ok(text.includes('User: '));
@@ -166,8 +166,8 @@ describe('DmSummarizer', () => {
 
     it('should return summary from agent response', async () => {
       let frames = [
-        { type: 'user-message', content: { text: 'Always use JSON' } },
-        { type: 'message', content: { html: 'I will use JSON' } },
+        { type: 'UserMessage', content: { text: 'Always use JSON' } },
+        { type: 'Message', content: { html: 'I will use JSON' } },
       ];
 
       let persistence = createMockFramePersistence(frames);
@@ -182,7 +182,7 @@ describe('DmSummarizer', () => {
 
       let summarizer  = new DmSummarizer(context);
       let agentPlugin = createMockAgentPlugin([
-        { type: 'message', content: { html: '1. Always respond in JSON format' } },
+        { type: 'Message', content: { html: '1. Always respond in JSON format' } },
       ]);
 
       let result = await summarizer.summarize(agentPlugin, { id: 'agt_test' }, 'ses_dm');
@@ -191,8 +191,8 @@ describe('DmSummarizer', () => {
 
     it('should save summary to agent record', async () => {
       let frames = [
-        { type: 'user-message', content: { text: 'Be brief' } },
-        { type: 'message', content: { html: 'OK' } },
+        { type: 'UserMessage', content: { text: 'Be brief' } },
+        { type: 'Message', content: { html: 'OK' } },
       ];
 
       let persistence = createMockFramePersistence(frames);
@@ -213,7 +213,7 @@ describe('DmSummarizer', () => {
 
       let summarizer  = new DmSummarizer(context);
       let agentPlugin = createMockAgentPlugin([
-        { type: 'message', content: { html: 'Keep responses brief' } },
+        { type: 'Message', content: { html: 'Keep responses brief' } },
       ]);
 
       await summarizer.summarize(agentPlugin, { id: 'agt_test' }, 'ses_dm');
@@ -223,8 +223,8 @@ describe('DmSummarizer', () => {
 
     it('should concatenate multiple agent response blocks', async () => {
       let frames = [
-        { type: 'user-message', content: { text: 'Configure me' } },
-        { type: 'message', content: { html: 'OK' } },
+        { type: 'UserMessage', content: { text: 'Configure me' } },
+        { type: 'Message', content: { html: 'OK' } },
       ];
 
       let persistence = createMockFramePersistence(frames);
@@ -239,8 +239,8 @@ describe('DmSummarizer', () => {
 
       let summarizer  = new DmSummarizer(context);
       let agentPlugin = createMockAgentPlugin([
-        { type: 'message', content: { html: 'Part 1' } },
-        { type: 'message', content: { html: 'Part 2' } },
+        { type: 'Message', content: { html: 'Part 1' } },
+        { type: 'Message', content: { html: 'Part 2' } },
       ]);
 
       let result = await summarizer.summarize(agentPlugin, { id: 'agt_test' }, 'ses_dm');
