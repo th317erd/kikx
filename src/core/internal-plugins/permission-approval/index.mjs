@@ -279,11 +279,12 @@ export function setup(provide) {
           this.logger.error('[PermissionApproval] Failed to create one-time rule:', ruleError);
         }
 
+        // Update state FIRST — prevents re-entrancy if startInteraction
+        // fails and re-triggers the FrameRouter on the same session
+        this.state.step = 'completed';
+
         // Hide the placeholder "awaiting" ToolResult
         await this._hideAwaitingToolResult(interactionLoop, sessionID, toolUseID);
-
-        // Update state
-        this.state.step = 'completed';
 
         // Start new interaction — InteractionLoop will detect approved-but-unexecuted tool call
         await this._resolveAndStartInteraction(interactionLoop, sessionID);
@@ -299,15 +300,15 @@ export function setup(provide) {
           return;
         }
 
+        // Update state FIRST — prevents re-entrancy loop
+        this.state.step = 'denied';
+
         // Hide the placeholder "awaiting" ToolResult
         await this._hideAwaitingToolResult(interactionLoop, sessionID, toolUseID);
 
         // Create denial ToolResult
         let denialOutput = `Permission denied for "${toolName}". User denied execution.`;
         await this._createToolResultFrame(interactionLoop, sessionID, denialOutput, toolUseID);
-
-        // Update state
-        this.state.step = 'denied';
 
         // Start new interaction so agent sees the denial
         await this._resolveAndStartInteraction(interactionLoop, sessionID);
