@@ -523,6 +523,7 @@ describe('Inline permission flow — dedup hash (Step 3.1)', () => {
         sessionID: 'ses_1',
         type:      'PermissionRequest',
         processed: false,
+        timestamp: Date.now(),
         content:   { toolName: 'shell:execute', arguments: args, requestHash },
       });
 
@@ -547,6 +548,7 @@ describe('Inline permission flow — dedup hash (Step 3.1)', () => {
         sessionID: 'ses_1',
         type:      'PermissionRequest',
         processed: false,
+        timestamp: Date.now(),
         content:   { toolName: 'shell:execute', arguments: args, requestHash },
       });
 
@@ -572,6 +574,7 @@ describe('Inline permission flow — dedup hash (Step 3.1)', () => {
         sessionID: 'ses_1',
         type:      'PermissionRequest',
         processed: false,
+        timestamp: Date.now(),
         content:   { toolName: 'shell:execute', arguments: args, requestHash },
       });
 
@@ -603,6 +606,7 @@ describe('Inline permission flow — dedup hash (Step 3.1)', () => {
         sessionID: 'ses_1',
         type:      'PermissionRequest',
         processed: false,
+        timestamp: Date.now(),
         content:   { toolName: 'shell:execute', arguments: existingArgs, requestHash: existingHash },
       });
 
@@ -696,6 +700,7 @@ describe('Inline permission flow — dedup hash (Step 3.1)', () => {
         sessionID: 'ses_other',
         type:      'PermissionRequest',
         processed: false,
+        timestamp: Date.now(),
         content:   { toolName: 'shell:execute', arguments: args, requestHash },
       });
 
@@ -720,6 +725,7 @@ describe('Inline permission flow — dedup hash (Step 3.1)', () => {
         sessionID: 'ses_1',
         type:      'PermissionRequest',
         processed: false,
+        timestamp: Date.now(),
         content:   JSON.stringify({ toolName: 'shell:execute', arguments: args, requestHash }),
       });
 

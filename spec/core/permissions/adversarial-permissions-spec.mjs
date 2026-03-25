@@ -460,6 +460,7 @@ describe('Adversarial: Dedup Hash', () => {
       sessionID: 'ses_1',
       type:      'PermissionRequest',
       processed: false,
+      timestamp: Date.now(),
       content:   firstRequests[0].content,
     });
 

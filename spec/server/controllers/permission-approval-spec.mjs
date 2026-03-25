@@ -188,6 +188,7 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
           getModels() { return core.getModels(); },
           getPluginRegistry() { return core.getPluginRegistry(); },
           getPermissions() { return null; },
+          getFrameRouter() { return null; },
           getAgentType() { return null; },
         };
       },

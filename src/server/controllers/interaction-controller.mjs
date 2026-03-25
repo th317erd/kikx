@@ -344,12 +344,37 @@ export class InteractionController extends ControllerAuthBase {
     if (hasDeny)
       content.denied = true;
 
-    frame.content = JSON.stringify(content);
-    await frame.save();
+    // Save through the FrameManager so the commit event triggers the
+    // FrameRouter → PermissionApprovalPlugin. Direct ORM saves bypass
+    // the router, which is how the approval was getting lost.
+    let core             = this.getCore();
+    let framePersistence = core.getContext().getProperty('framePersistence');
+    let frameRouter      = core.getFrameRouter();
 
-    // The FrameRouter will pick up the saved frame and route it through
-    // the PermissionApprovalPlugin, which handles rule creation or
-    // denial frame creation + interaction restart.
+    if (framePersistence && frameRouter) {
+      let fm = await framePersistence.loadFrames(params.sessionID);
+      let disconnect = frameRouter.connectTo(fm, { sessionID: params.sessionID });
+
+      try {
+        fm.merge([{
+          id:          frame.id,
+          type:        frame.type,
+          content,
+          processed:   true,
+          processedAt: Date.now(),
+          state:       frame.state,
+        }]);
+
+        // Persist the merged state
+        await framePersistence.saveFrames(params.sessionID, fm.toArray());
+      } finally {
+        disconnect();
+      }
+    } else {
+      // Fallback: direct save (router won't fire, but data is persisted)
+      frame.content = JSON.stringify(content);
+      await frame.save();
+    }
 
     if (hasDeny)
       return { data: { denied: true } };
@@ -403,11 +428,37 @@ export class InteractionController extends ControllerAuthBase {
       // Best-effort: signing failure must not block denial
     }
 
-    content.denied    = true;
-    frame.content     = JSON.stringify(content);
-    frame.processed   = true;
-    frame.processedAt = Date.now();
-    await frame.save();
+    content.denied = true;
+
+    // Save through FrameManager to trigger FrameRouter
+    let core             = this.getCore();
+    let framePersistence = core.getContext().getProperty('framePersistence');
+    let frameRouter      = core.getFrameRouter();
+
+    if (framePersistence && frameRouter) {
+      let fm = await framePersistence.loadFrames(params.sessionID);
+      let disconnect = frameRouter.connectTo(fm, { sessionID: params.sessionID });
+
+      try {
+        fm.merge([{
+          id:          frame.id,
+          type:        frame.type,
+          content,
+          processed:   true,
+          processedAt: Date.now(),
+          state:       frame.state,
+        }]);
+
+        await framePersistence.saveFrames(params.sessionID, fm.toArray());
+      } finally {
+        disconnect();
+      }
+    } else {
+      frame.content     = JSON.stringify(content);
+      frame.processed   = true;
+      frame.processedAt = Date.now();
+      await frame.save();
+    }
 
     return { data: { denied: true } };
   }

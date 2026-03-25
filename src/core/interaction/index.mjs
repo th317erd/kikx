@@ -13,6 +13,7 @@ import { reinjectInstructions }                        from './instructions-rein
 import { signFrameContent, decryptAgentPrivateKey }    from '../crypto/frame-signing.mjs';
 import { computeKeyFingerprint }                       from '../crypto/value-signing.mjs';
 import { ToolLogService }                              from './tool-log-service.mjs';
+import { parseShellCommands }                          from '../internal-plugins/shell/command-parser.mjs';
 import CompactionRunner                                from '../compaction/index.mjs';
 
 // =============================================================================
@@ -942,9 +943,19 @@ export class InteractionLoop extends EventEmitter {
                     .AND.processed.EQ(false)
                     .all();
 
+                  // Only dedup within a short time window (30s) — repeated identical
+                  // commands (e.g., monitoring ls /tmp/) should get fresh requests
+                  let dedupWindowMs = 30000;
+                  let now           = Date.now();
+
                   dedupMatch = existingRequests.find((f) => {
                     let existingContent = (typeof f.content === 'string') ? (() => { try { return JSON.parse(f.content); } catch (_e) { return {}; } })() : (f.content || {});
-                    return existingContent && existingContent.requestHash === requestHash;
+                    if (!existingContent || existingContent.requestHash !== requestHash)
+                      return false;
+
+                    // Check time window
+                    let createdAt = f.timestamp || f.createdAt || 0;
+                    return (now - createdAt) < dedupWindowMs;
                   }) || null;
                 }
 
@@ -966,12 +977,22 @@ export class InteractionLoop extends EventEmitter {
 
                 // No duplicate — create new permission request
                 let requestFrameID = generateID('frm_');
+                // Parse shell commands for the permission UI (command + arguments table)
+                let toolArgs       = block.content.arguments || {};
+                let parsedCommands = toolArgs._parsedCommands || null;
+
+                if (!parsedCommands && block.content.toolName === 'shell:execute' && toolArgs.command)
+                  parsedCommands = parseShellCommands(toolArgs.command);
+
                 let requestContent = {
                   toolName:          block.content.toolName,
                   arguments:         block.content.arguments,
                   permissionContext,
                   requestHash,
                 };
+
+                if (parsedCommands && parsedCommands.length > 0)
+                  requestContent.parsedCommands = parsedCommands;
 
                 await this._createFrame(sessionID, {
                   id:            requestFrameID,
