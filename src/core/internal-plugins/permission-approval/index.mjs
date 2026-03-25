@@ -266,6 +266,7 @@ export function setup(provide) {
               effect:      'allow',
               scope:       'session',
               scopeID:     sessionID,
+              createdBy:   content.approvedBy || 'system',
               metadata:    {
                 oneTime:               true,
                 permissionRequestID:   frame.id,
