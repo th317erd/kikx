@@ -83,11 +83,8 @@ describe('Child Session Deliberation — Integration', () => {
 
     // Register cross-session plugin
     registry = new PluginRegistry();
-    setupCrossSession({
-      registerTool: (name, cls) => registry.registerTool(name, cls),
-      PluginInterface,
-      context,
-    });
+    registry.registerClass(PluginInterface, { pluginName: 'core' });
+    setupCrossSession((cb) => cb({ registry, context }));
 
     CreateSessionTool = registry.getTool('cross-session:createSession');
     PostToSessionTool = registry.getTool('cross-session:postToSession');

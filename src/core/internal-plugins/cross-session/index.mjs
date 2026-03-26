@@ -63,22 +63,24 @@ export function setup(provide) {
 
       async _execute(params) {
         let models  = this._context.getProperty('models');
-        let { Participant, Session } = models;
-        let agentID = params.agentID;
+        let { Session, Participant } = models;
 
-        // Get session IDs where agent is participant
-        let participantRecords = await Participant.where.agentID.EQ(agentID).all();
-        let sessionIDs = participantRecords.map((p) => p.sessionID);
+        // List ALL sessions in the organization — reading is free,
+        // agents can see any session they have organizational access to.
+        let organizationID = params._agent && params._agent.organizationID;
+        let allSessions;
 
-        if (sessionIDs.length === 0)
+        if (organizationID)
+          allSessions = await Session.where.organizationID.EQ(organizationID).all();
+        else
+          allSessions = await Session.all();
+
+        if (!allSessions || allSessions.length === 0)
           return { sessions: [] };
 
-        // Load sessions and apply filters
+        // Apply filters
         let sessions = [];
-        for (let sessionID of sessionIDs) {
-          let session = await Session.where.id.EQ(sessionID).first();
-          if (!session)
-            continue;
+        for (let session of allSessions) {
 
           // Type filter
           if (params.type && session.type !== params.type)

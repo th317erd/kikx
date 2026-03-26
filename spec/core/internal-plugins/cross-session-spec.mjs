@@ -149,34 +149,35 @@ describe('Cross-Session Plugin', () => {
     });
 
     // ---- Test 5 ----
-    it('should return sessions where the agent is a participant', async () => {
+    it('should return ALL sessions in the organization', async () => {
       let agent   = await createAgent(org.id, 'test-ls-agent-1');
       let session = await createSessionWithParticipant(org.id, agent.id, { name: 'Visible Session' });
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id } });
 
       assert.ok(Array.isArray(result.sessions));
       assert.ok(result.sessions.length >= 1);
 
       let found = result.sessions.find((s) => s.id === session.id);
-      assert.ok(found, 'should include the session the agent participates in');
+      assert.ok(found, 'should include sessions in the organization');
       assert.ok(found.name);
       assert.ok(found.lastActivityAt);
     });
 
     // ---- Test 6 ----
-    it('should exclude sessions where agent is NOT a participant', async () => {
+    it('should return sessions where agent is NOT a participant (reading is free)', async () => {
       let agent  = await createAgent(org.id, 'test-ls-agent-2');
       let other  = await createAgent(org.id, 'test-ls-agent-3');
 
-      await createSessionWithParticipant(org.id, other.id, { name: 'Other Agent Session' });
+      let otherSession = await createSessionWithParticipant(org.id, other.id, { name: 'Other Agent Session' });
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id } });
 
       assert.ok(Array.isArray(result.sessions));
-      assert.equal(result.sessions.length, 0, 'should not see sessions it does not participate in');
+      let found = result.sessions.find((s) => s.id === otherSession.id);
+      assert.ok(found, 'should see all org sessions regardless of participation');
     });
 
     // ---- Test 7 ----
@@ -186,7 +187,7 @@ describe('Cross-Session Plugin', () => {
       await createSessionWithParticipant(org.id, agent.id, { name: 'Code Sprint' });
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id, search: 'design' });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id }, search: 'design' });
 
       assert.equal(result.sessions.length, 1);
       assert.ok(result.sessions[0].name.toLowerCase().includes('design'));
@@ -199,7 +200,7 @@ describe('Cross-Session Plugin', () => {
       await createSessionWithParticipant(org.id, agent.id, { name: 'DM B', type: 'dm' });
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id, type: 'dm' });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id }, type: 'dm' });
 
       assert.ok(result.sessions.every((s) => s.type === 'dm'));
       assert.equal(result.sessions.length, 1);
@@ -212,7 +213,7 @@ describe('Cross-Session Plugin', () => {
       await sessionManager.archiveSession(ses.id);
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id } });
 
       let found = result.sessions.find((s) => s.id === ses.id);
       assert.equal(found, undefined, 'archived session should be excluded by default');
@@ -225,7 +226,7 @@ describe('Cross-Session Plugin', () => {
       await sessionManager.archiveSession(ses.id);
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id, archived: true });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id }, archived: true });
 
       let found = result.sessions.find((s) => s.id === ses.id);
       assert.ok(found, 'archived session should be included when archived=true');
@@ -238,8 +239,8 @@ describe('Cross-Session Plugin', () => {
         await createSessionWithParticipant(org.id, agent.id, { name: `Paginated ${i}` });
 
       let tool    = instantiateTool(ListSessionsTool);
-      let page1   = await tool.execute({ agentID: agent.id, limit: 2, offset: 0 });
-      let page2   = await tool.execute({ agentID: agent.id, limit: 2, offset: 2 });
+      let page1   = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id }, limit: 2, offset: 0 });
+      let page2   = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id }, limit: 2, offset: 2 });
 
       assert.equal(page1.sessions.length, 2);
       assert.equal(page2.sessions.length, 2);
@@ -260,7 +261,7 @@ describe('Cross-Session Plugin', () => {
       await createSessionWithParticipant(org.id, agent.id, { name: 'Top Level' });
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id, parentSessionID: parent.id });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id }, parentSessionID: parent.id });
 
       assert.equal(result.sessions.length, 1);
       assert.equal(result.sessions[0].name, 'Sub-Session');
@@ -276,17 +277,17 @@ describe('Cross-Session Plugin', () => {
       });
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id, topLevelOnly: true });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id }, topLevelOnly: true });
 
       assert.ok(result.sessions.every((s) => !s.parentSessionID));
     });
 
     // ---- Test 14 ----
-    it('should return empty array when agent has no sessions', async () => {
+    it('should return empty array when organization has no sessions', async () => {
       let agent  = await createAgent(org.id, 'test-ls-agent-11');
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id } });
 
       assert.ok(Array.isArray(result.sessions));
       assert.equal(result.sessions.length, 0);
@@ -298,7 +299,7 @@ describe('Cross-Session Plugin', () => {
       let session = await createSessionWithParticipant(org.id, agent.id, { name: 'Empty Session' });
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id } });
 
       let found = result.sessions.find((s) => s.id === session.id);
       assert.ok(found);
@@ -317,7 +318,7 @@ describe('Cross-Session Plugin', () => {
       ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id, search: 'brown fox' });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id }, search: 'brown fox' });
 
       assert.equal(result.sessions.length, 1);
       assert.equal(result.sessions[0].id, session.id);
@@ -334,7 +335,7 @@ describe('Cross-Session Plugin', () => {
       ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id, search: 'nonexistent term' });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id }, search: 'nonexistent term' });
 
       assert.ok(Array.isArray(result.sessions));
       assert.equal(result.sessions.length, 0);
@@ -355,7 +356,7 @@ describe('Cross-Session Plugin', () => {
       ], { authorType: 'agent', authorID: agent.id });
 
       let tool   = instantiateTool(ListSessionsTool);
-      let result = await tool.execute({ agentID: agent.id, search: 'Project Alpha' });
+      let result = await tool.execute({ agentID: agent.id, _agent: { organizationID: org.id }, search: 'Project Alpha' });
 
       assert.equal(result.sessions.length, 2);
       let ids = result.sessions.map((s) => s.id);

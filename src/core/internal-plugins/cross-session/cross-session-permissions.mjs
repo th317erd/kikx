@@ -16,24 +16,40 @@ import { PermissionRequiredError } from '../../permissions/permission-required-e
 // =============================================================================
 
 export class CrossSessionPermissions extends Permissions {
-  // Logic-based permission decisions that bypass rule matching
-  async checkPermission(featureName, args, _options) {
-    if (featureName === 'cross-session:createSession')
-      return this._throwCreateSession(args);
-
+  // Logic-based permission decisions — checks standing rules first,
+  // only throws rich PermissionRequiredError if no rule approves.
+  async checkPermission(featureName, args, options) {
     if (featureName === 'cross-session:postToSession')
-      return await this._checkPostToSession(args);
+      return await this._checkPostToSession(args, options);
 
     if (featureName === 'cross-session:listSessions')
-      return this._throwListSessions(args);
+      return await this._checkWithRichError(featureName, args, options, () => this._throwListSessions(args));
+
+    if (featureName === 'cross-session:createSession')
+      return await this._checkWithRichError(featureName, args, options, () => this._throwCreateSession(args));
 
     // All other tools: defer to normal rule matching
     return null;
   }
 
+  // Check standing rules first — if approved, return false.
+  // If not, throw the rich error from the callback.
+  async _checkWithRichError(featureName, args, options, throwRichError) {
+    try {
+      let needsApproval = await this.evaluate(featureName, args, options);
+      if (!needsApproval)
+        return false; // Standing rule approved
+    } catch (err) {
+      throw err; // PermissionDeniedError — propagate
+    }
+
+    // No standing rule — throw rich error for the permission dialog
+    return throwRichError();
+  }
+
   // createSession never matches rules — always requires explicit approval
   matchesRule(rule, args, metadata) {
-    if (args && args.toolName === 'createSession')
+    if ((args && args.toolName === 'createSession') || (rule && rule.featureName === 'cross-session:createSession'))
       return { matches: false };
 
     return super.matchesRule(rule, args, metadata);
@@ -43,9 +59,18 @@ export class CrossSessionPermissions extends Permissions {
   // postToSession — auto-approve if participant, rich error otherwise
   // ---------------------------------------------------------------------------
 
-  async _checkPostToSession(args) {
+  async _checkPostToSession(args, options) {
     let sessionID = args && args.sessionID;
     let agentID   = args && args.agentID;
+
+    // Check standing rules first (e.g., allow-forever from a previous approval)
+    try {
+      let needsApproval = await this.evaluate('cross-session:postToSession', args, options);
+      if (!needsApproval)
+        return false; // Standing rule approved
+    } catch (err) {
+      throw err; // PermissionDeniedError — propagate
+    }
 
     // Check participant status if we have both IDs
     if (sessionID && agentID) {

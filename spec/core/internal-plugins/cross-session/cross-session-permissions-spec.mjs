@@ -508,8 +508,8 @@ describe('CrossSessionPermissions', () => {
     it('should always require permission for createSession (checkPermission throws)', async () => {
       let permissions = new CrossSessionPermissions(context);
 
-      // Create an allow rule — should be ignored because checkPermission
-      // throws before evaluate() is ever reached
+      // Create an allow rule — should be ignored because matchesRule()
+      // always returns { matches: false } for createSession rules
       await permissions.createRule({
         organizationID: testOrg.id,
         featureName:    'cross-session:createSession',
