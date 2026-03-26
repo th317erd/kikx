@@ -149,10 +149,6 @@ export class Permissions {
     for (let rule of activeRules) {
       let metadata = permissionsInstance._parseMetadata(rule);
 
-      // Skip consumed one-time rules — they've been used and should not match again
-      if (metadata.oneTime && metadata.consumed)
-        continue;
-
       // Custom matching via permissionsInstance.matchesRule()
       let matchResult = permissionsInstance.matchesRule(rule, args, metadata);
 

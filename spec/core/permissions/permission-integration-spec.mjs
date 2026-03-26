@@ -163,9 +163,10 @@ describe('Permission Integration — Full Lifecycle', () => {
 
       assert.ok(requestFrame.id, 'Step 2: permission request frame should be created');
 
-      // Step 3: Simulate approval — create one-time allow rule
-      //   (This is what PermissionApprovalPlugin._handleApproval() does)
-      let oneTimeRule = await perms.createRule({
+      // Step 3: Simulate approval — create a "forever" allow rule
+      //   (The approval controller now creates only "forever" rules and executes
+      //    tools directly. One-time rules are no longer used.)
+      let foreverRule = await perms.createRule({
         organizationID: orgID,
         featureName,
         effect:         'allow',
@@ -173,22 +174,21 @@ describe('Permission Integration — Full Lifecycle', () => {
         scopeID:        sessionID,
         createdBy:      'system',
         metadata:       {
-          oneTime:             true,
           permissionRequestID: requestFrame.id,
           toolArguments:       { command: 'do-thing' },
           toolUseID:           'tu_test_001',
         },
       });
-      assert.ok(oneTimeRule.id, 'Step 3: one-time allow rule should be created');
+      assert.ok(foreverRule.id, 'Step 3: forever allow rule should be created');
 
-      // Step 4: Re-evaluate — the one-time allow rule should now match
+      // Step 4: Re-evaluate — the forever allow rule should now match
       let reEvalResult = await perms.evaluate(featureName, { command: 'do-thing' }, {
         organizationID: orgID,
         scope:          'session',
         scopeID:        sessionID,
         riskLevel:      'strict',
       });
-      assert.equal(reEvalResult, false, 'Step 4: re-evaluation should return false (approved) with one-time rule');
+      assert.equal(reEvalResult, false, 'Step 4: re-evaluation should return false (approved) with forever rule');
 
       // Step 5: Tool executes through normal path
       let TestTool = createTestToolClass({ pluginID: 'test', featureName: 'action' });
@@ -924,7 +924,7 @@ describe('Permission Integration — Full Lifecycle', () => {
       assert.equal(result, true, 'Expired rule should be ignored');
     });
 
-    it('one-time rule + standing deny should respect priority', async () => {
+    it('low-priority allow + high-priority standing deny should respect priority', async () => {
       let featureName = 'test:priority-battle';
 
       // High-priority deny
@@ -937,7 +937,7 @@ describe('Permission Integration — Full Lifecycle', () => {
         createdBy:      'usr_admin',
       });
 
-      // Lower-priority one-time allow
+      // Lower-priority allow
       await models.PermissionRule.create({
         organizationID: orgID,
         featureName,
@@ -946,7 +946,6 @@ describe('Permission Integration — Full Lifecycle', () => {
         scopeID:        sessionID,
         priority:       1,
         createdBy:      'system',
-        metadata:       JSON.stringify({ oneTime: true }),
       });
 
       let perms = createPermissions();
@@ -961,7 +960,7 @@ describe('Permission Integration — Full Lifecycle', () => {
           assert.ok(error instanceof PermissionDeniedError);
           return true;
         },
-        'High-priority deny should win over low-priority one-time allow',
+        'High-priority deny should win over low-priority allow',
       );
     });
 

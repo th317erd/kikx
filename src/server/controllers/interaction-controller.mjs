@@ -428,107 +428,136 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
-    if (hasDeny) {
-      // Create a denial ToolResult so the agent sees it on the next interaction.
-      // Do NOT start a new interaction — there's no tool to re-fire.
-      // The agent will see ToolCall → ToolResult("denied") naturally.
-      let toolName = stateObj.toolName || 'unknown';
-      try {
-        let framePersistence = core.getContext().getProperty('framePersistence');
+    // -----------------------------------------------------------------------
+    // Execute the decision
+    // -----------------------------------------------------------------------
+    // Every tool call gets a ToolResult — either the actual output (approval)
+    // or a denial message. The agent sees coherent context on next interaction:
+    //   ToolCall → ToolResult(output) or ToolCall → ToolResult("denied")
+    //
+    // For "forever" decisions, a PermissionRule is created so future identical
+    // requests auto-approve/deny without asking.
+    // No one-time rules. The signed PermissionRequest frame IS the audit trail.
+    // -----------------------------------------------------------------------
 
-        if (framePersistence) {
-          let fm  = await framePersistence.loadFrames(params.sessionID);
-          let XID = (await import('xid-js')).default;
+    let toolName      = stateObj.toolName || 'unknown';
+    let toolArguments = stateObj.toolArguments || {};
+    let sessionID     = stateObj.sessionID || params.sessionID;
+    let agentID       = stateObj.agentID;
 
-          fm.merge([{
-            id:            `frm_${XID.next()}`,
-            type:          'ToolResult',
-            content:       {
-              output:    `Permission denied for "${toolName}". User denied execution. Do not retry this exact command unless the user explicitly asks you to.`,
-              toolUseID: toolUseID || null,
-              _sessionID: params.sessionID,
-            },
-            timestamp:     Date.now(),
-            interactionID: stateObj.interactionID || null,
-            authorType:    'system',
-            authorID:      null,
-            hidden:        false,
-            deleted:       false,
-            processed:     false,
-          }]);
+    // Create "forever" PermissionRules for allow-forever / deny-forever decisions
+    try {
+      let { Permissions } = await import('../../core/permissions/permissions-base.mjs');
+      let permissions     = new Permissions(core.getContext());
+      let organizationID  = this.request.organizationID;
 
-          await framePersistence.saveFrames(params.sessionID, fm.toArray());
-        }
-      } catch (_denialError) {
-        console.error('[deny-in-approve] Failed to create denial ToolResult:', _denialError.message);
+      for (let decision of decisions) {
+        if (!decision.command || !decision.decision)
+          continue;
+
+        let effect = null;
+        if (decision.decision === 'allow-forever')
+          effect = 'allow';
+        else if (decision.decision === 'deny-forever')
+          effect = 'deny';
+
+        if (!effect)
+          continue;
+
+        let featureName = decision.command.includes(':') ? decision.command : `shell:${decision.command}`;
+
+        await permissions.createRule({
+          organizationID,
+          featureName,
+          effect,
+          scope:     'session',
+          scopeID:   sessionID,
+          createdBy: this.request.userID || 'system',
+          metadata:  {
+            command:   decision.command,
+            arguments: decision.arguments || [],
+            permissionRequestID: frame.id,
+          },
+        });
       }
-
-      return { data: { denied: true } };
+    } catch (ruleError) {
+      console.error('[approve] Failed to create permission rule:', ruleError.message);
     }
 
-    // For approvals: create one-time rule and start replay interaction
-    if (!hasDeny) {
-      let toolName      = stateObj.toolName;
-      let toolArguments = stateObj.toolArguments;
-      let sessionID     = stateObj.sessionID || params.sessionID;
-      let agentID       = stateObj.agentID;
+    // Create the ToolResult — either tool output (approval) or denial message
+    let framePersistence = core.getContext().getProperty('framePersistence');
+    let XID             = (await import('xid-js')).default;
+    let toolResultOutput;
 
-      // Create per-command one-time rules for shell tools
-      try {
-        let { Permissions } = await import('../../core/permissions/permissions-base.mjs');
-        let permissions = new Permissions(core.getContext());
-        let organizationID = this.request.organizationID;
+    if (hasDeny) {
+      // Denial: tell the agent the request was denied
+      let isDenyForever = decisions.some((d) => d.decision === 'deny-forever');
+      toolResultOutput  = isDenyForever
+        ? `Permission permanently denied for "${toolName}". User denied execution for this tool in this session.`
+        : `Permission denied for "${toolName}". User denied this specific request. Do not retry unless the user explicitly asks.`;
+    } else {
+      // Approval: execute the tool directly
+      // The user's authenticated request IS the authorization — no permission re-check needed.
+      let pluginRegistry = core.getPluginRegistry();
+      let ToolClass      = pluginRegistry.getTool(toolName);
 
-        if (organizationID && toolName === 'shell:execute' && toolArguments && toolArguments.command) {
-          let { parseShellCommands } = await import('../../core/internal-plugins/shell/command-parser.mjs');
-          let parsed = parseShellCommands(toolArguments.command);
+      if (!ToolClass) {
+        toolResultOutput = `Error: tool "${toolName}" not found. Cannot execute after approval.`;
+      } else {
+        try {
+          let toolInstance = new ToolClass(core.getContext());
+          let result       = await toolInstance._execute(toolArguments);
 
-          for (let cmd of parsed) {
-            await permissions.createRule({
-              organizationID,
-              featureName: `shell:${cmd.command}`,
-              effect:      'allow',
-              scope:       'session',
-              scopeID:     sessionID,
-              createdBy:   this.request.userID || 'system',
-              metadata:    {
-                oneTime:             true,
-                permissionRequestID: frame.id,
-                command:             cmd.command,
-                arguments:           cmd.arguments || [],
-                toolUseID:           toolUseID || null,
-              },
-            });
-          }
-        } else if (organizationID && toolName) {
-          await permissions.createRule({
-            organizationID,
-            featureName: toolName,
-            effect:      'allow',
-            scope:       'session',
-            scopeID:     sessionID,
-            createdBy:   this.request.userID || 'system',
-            metadata:    {
-              oneTime:             true,
-              permissionRequestID: frame.id,
-              toolArguments:       toolArguments || {},
-              toolUseID:           toolUseID || null,
-            },
-          });
+          // Normalize output
+          if (result && typeof result === 'object' && result.content)
+            result = result.content;
+
+          toolResultOutput = (typeof result === 'string') ? result : JSON.stringify(result);
+        } catch (execError) {
+          toolResultOutput = `Error executing "${toolName}" after approval: ${execError.message}`;
         }
-      } catch (ruleError) {
-        console.error('[approve] Failed to create one-time rule:', ruleError.message);
       }
+    }
 
-      // Start the replay interaction
+    // Persist the ToolResult frame
+    try {
+      if (framePersistence) {
+        let fm = await framePersistence.loadFrames(sessionID);
+
+        fm.merge([{
+          id:            `frm_${XID.next()}`,
+          type:          'ToolResult',
+          content:       {
+            output:    toolResultOutput,
+            toolUseID: toolUseID || null,
+            _sessionID: sessionID,
+          },
+          timestamp:     Date.now(),
+          interactionID: stateObj.interactionID || null,
+          authorType:    'system',
+          authorID:      null,
+          hidden:        false,
+          deleted:       false,
+          processed:     false,
+        }]);
+
+        await framePersistence.saveFrames(sessionID, fm.toArray());
+      }
+    } catch (frameError) {
+      console.error('[approve] Failed to create ToolResult frame:', frameError.message);
+    }
+
+    // For approvals: start a new interaction so the agent sees the tool output
+    // For denials: don't start — agent sees it on the next user message
+    if (!hasDeny) {
       try {
-        let agentResolver    = core.getContext().getProperty('agentResolver');
-        let interactionLoop  = core.getContext().getProperty('interactionLoop');
-        let sessionScheduler = core.getContext().getProperty('sessionScheduler');
+        let agentResolver   = core.getContext().getProperty('agentResolver');
+        let interactionLoop = core.getContext().getProperty('interactionLoop');
 
         if (agentResolver && interactionLoop && agentID) {
-          let resolveContext = (sessionScheduler && sessionScheduler.getResolveContext)
-            ? (sessionScheduler.getResolveContext(sessionID) || {})
+          let sessionSchedulerCtx = core.getContext().getProperty('sessionScheduler');
+          let resolveContext = (sessionSchedulerCtx && sessionSchedulerCtx.getResolveContext)
+            ? (sessionSchedulerCtx.getResolveContext(sessionID) || {})
             : {};
 
           let { agentPlugin, resolvedAgent } = await agentResolver.resolve(agentID, resolveContext);
@@ -536,21 +565,20 @@ export class InteractionController extends ControllerAuthBase {
 
           await interactionLoop.startInteraction(sessionID, {
             agentPlugin,
-            agent:               resolvedAgent,
-            userMessage:         null,
-            authorType:          'agent',
-            authorID:            agentID,
+            agent:       resolvedAgent,
+            userMessage: null,
+            authorType:  'agent',
+            authorID:    agentID,
             checkPermission,
             executeTool,
-            replayFromPermission: true,
           });
         }
       } catch (replayError) {
-        console.error('[approve] Failed to start replay interaction:', replayError.message);
+        console.error('[approve] Failed to start interaction after approval:', replayError.message);
       }
     }
 
-    return { data: { approved: true } };
+    return { data: hasDeny ? { denied: true } : { approved: true } };
   }
 
   // ---------------------------------------------------------------------------
@@ -636,7 +664,6 @@ export class InteractionController extends ControllerAuthBase {
     await frame.save();
 
     // Create denial ToolResult — agent sees it on the next interaction.
-    // No new interaction started — there's no tool to re-fire on denial.
     let toolName         = stateObj.toolName || content.toolName || 'unknown';
     let toolUseID        = stateObj.toolUseID || null;
     let framePersistence = core.getContext().getProperty('framePersistence');
@@ -650,7 +677,7 @@ export class InteractionController extends ControllerAuthBase {
           id:            `frm_${XID.next()}`,
           type:          'ToolResult',
           content:       {
-            output:    `Permission denied for "${toolName}". User denied execution. Do not retry this exact command unless the user explicitly asks you to.`,
+            output:    `Permission denied for "${toolName}". User denied this specific request. Do not retry unless the user explicitly asks.`,
             toolUseID,
             _sessionID: params.sessionID,
           },

@@ -12,7 +12,7 @@ import { FrameManager }   from '../../../../src/shared/frame-manager/frame-manag
 // =============================================================================
 // Tests that the FrameRouter plugin correctly:
 //   - Verifies approval/denial signatures (when present)
-//   - Creates one-time allow PermissionRule on approval
+//   - Creates allow PermissionRule on approval
 //   - Hides placeholder ToolResult frames
 //   - Creates denial ToolResult on denial
 //   - Starts new interaction via agentResolver

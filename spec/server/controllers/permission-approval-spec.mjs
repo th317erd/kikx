@@ -290,13 +290,9 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
       });
 
       let createdRules = await getNewRules();
-      // allow-once creates no "forever" rules, but the controller still creates
-      // a one-time rule for the replay. Filter to only "forever" rules (no oneTime in metadata).
-      let foreverRules = createdRules.filter((r) => {
-        let meta = r.metadata ? (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) : {};
-        return !meta.oneTime;
-      });
-      assert.equal(foreverRules.length, 0, 'should not create forever rules for allow-once');
+      // allow-once creates no rules at all — the controller only creates rules
+      // for "forever" decisions. The tool is executed directly on approval.
+      assert.equal(createdRules.length, 0, 'should not create any rules for allow-once');
     });
   });
 
@@ -407,13 +403,9 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
       });
 
       let createdRules = await getNewRules();
-      // No "forever" decisions, but the controller creates a one-time rule for replay.
-      // Filter to only "forever" rules (no oneTime in metadata).
-      let foreverRules = createdRules.filter((r) => {
-        let meta = r.metadata ? (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) : {};
-        return !meta.oneTime;
-      });
-      assert.equal(foreverRules.length, 0, 'no forever rules created with empty body');
+      // No "forever" decisions and no body — no rules created at all.
+      // The tool is executed directly on approval.
+      assert.equal(createdRules.length, 0, 'no rules created with empty body');
       assert.equal(result.data.approved, true);
     });
   });
@@ -440,13 +432,9 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
       });
 
       let createdRules = await getNewRules();
-      // allow-forever creates a rule (deny-once does not)
-      let foreverRules = createdRules.filter((r) => {
-        let meta = r.metadata ? (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) : {};
-        return !meta.oneTime;
-      });
-      assert.ok(foreverRules.length >= 1, 'should create at least one forever rule (allow-forever)');
-      assert.equal(foreverRules[0].effect, 'allow');
+      // allow-forever creates a rule (deny-once does not create any rule)
+      assert.ok(createdRules.length >= 1, 'should create at least one rule (allow-forever)');
+      assert.equal(createdRules[0].effect, 'allow');
 
       // deny-once triggers denial
       assert.equal(result.data.denied, true);

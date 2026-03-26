@@ -7,7 +7,6 @@ import { createHash }  from 'node:crypto';
 import { Keystore }                from '../../../src/core/crypto/keystore.mjs';
 import { PermissionService }       from '../../../src/core/permissions/permission-service.mjs';
 import { PermissionRequiredError } from '../../../src/core/permissions/permission-required-error.mjs';
-import { PermissionDeniedError }   from '../../../src/core/permissions/permission-denied-error.mjs';
 import { InteractionLoop }         from '../../../src/core/interaction/index.mjs';
 
 // =============================================================================
@@ -552,49 +551,6 @@ describe('Adversarial: Failure Modes', () => {
     if (keystore) keystore.destroy();
   });
 
-  // 14. Tool class unregistered between request and approval
-  it('tool unregistered between request and approval produces graceful error on replay', async () => {
-    let mockFrameModel = makeMockFrameModel([
-      {
-        id: 'frm_tc_1', sessionID: 'ses_1', type: 'ToolCall', hidden: false,
-        content: { toolName: 'test:removed-tool', arguments: { arg: 1 }, toolUseID: 'tu_orphan' },
-      },
-    ]);
-
-    let mockRuleModel = makeMockPermissionRuleModel([
-      {
-        id: 'rule_1', featureName: 'test:removed-tool', scope: 'session', scopeID: 'ses_1',
-        effect: 'allow', metadata: JSON.stringify({ oneTime: true, toolUseID: 'tu_orphan' }),
-      },
-    ]);
-
-    // executeTool that simulates "tool not found"
-    let executeTool = async (toolName) => {
-      throw new Error(`Unknown tool: ${toolName}`);
-    };
-
-    let createdFrames = [];
-    let loop = new InteractionLoop(makeContext({
-      models: { Frame: mockFrameModel, PermissionRule: mockRuleModel },
-    }));
-
-    loop._createFrame = async (_sid, frameData, _fm, _opts, _sigCtx) => {
-      createdFrames.push(frameData);
-      return frameData;
-    };
-
-    let params = makeParams({ executeTool, replayFromPermission: true });
-
-    // Should not throw — errors caught internally
-    await loop._replayApprovedToolCalls('ses_1', 'int_1', params, makeFrameManager(), null);
-
-    // Should create a ToolResult with the error message
-    let toolResults = createdFrames.filter((f) => f.type === 'ToolResult');
-    assert.equal(toolResults.length, 1, 'should create error ToolResult');
-    assert.ok(toolResults[0].content.output.includes('Error executing tool after approval'), 'output should contain error message');
-    assert.ok(toolResults[0].content.output.includes('Unknown tool'), 'output should mention unknown tool');
-  });
-
   // 15. Double approval: second approval is idempotent
   it('double approval on already-completed frame is idempotent', () => {
     // This tests the PermissionApprovalPlugin's guard: step === 'completed' → skip
@@ -672,142 +628,9 @@ describe('Adversarial: Failure Modes', () => {
 // =============================================================================
 // 5. RE-EXECUTION THROUGH NORMAL PATH
 // =============================================================================
-
-describe('Adversarial: Re-execution Through Normal Path', () => {
-  let keystore;
-
-  before(() => {
-    keystore = new Keystore({ devMode: true, devSeed: 'adversarial-reexec-' + Date.now() });
-    keystore.initialize();
-  });
-
-  after(() => {
-    if (keystore) keystore.destroy();
-  });
-
-  // 19. One-time rule found → replay executes the tool
-  it('one-time allow rule causes replay to execute the tool', async () => {
-    let toolExecuted = false;
-
-    let mockFrameModel = makeMockFrameModel([
-      {
-        id: 'frm_tc_replay', sessionID: 'ses_1', type: 'ToolCall', hidden: false,
-        content: { toolName: 'shell:execute', arguments: { command: 'ls' }, toolUseID: 'tu_replay' },
-      },
-    ]);
-
-    let mockRuleModel = makeMockPermissionRuleModel([
-      {
-        id: 'rule_onetimeA', featureName: 'shell:execute', scope: 'session', scopeID: 'ses_1',
-        effect: 'allow',
-        metadata: JSON.stringify({ oneTime: true, toolUseID: 'tu_replay' }),
-        save:    async function() {},
-      },
-    ]);
-
-    let executeTool = async (toolName, toolArgs) => {
-      toolExecuted = true;
-      return `output of ${toolName}`;
-    };
-
-    let createdFrames = [];
-    let loop = new InteractionLoop(makeContext({
-      models: { Frame: mockFrameModel, PermissionRule: mockRuleModel },
-    }));
-
-    loop._createFrame = async (_sid, frameData, _fm, _opts, _sigCtx) => {
-      createdFrames.push(frameData);
-      return frameData;
-    };
-
-    let params = makeParams({ executeTool, replayFromPermission: true });
-    await loop._replayApprovedToolCalls('ses_1', 'int_1', params, makeFrameManager(), null);
-
-    assert.equal(toolExecuted, true, 'tool should have been executed during replay');
-
-    let results = createdFrames.filter((f) => f.type === 'ToolResult');
-    assert.equal(results.length, 1, 'should create exactly one ToolResult');
-    assert.ok(results[0].content.output.includes('output of shell:execute'));
-  });
-
-  // 20. One-time rule consumed after execution (via raw SQL UPDATE)
-  it('one-time rule has metadata.consumed=true after successful execution', async () => {
-    let saveCalled = false;
-
-    let ruleRecord = {
-      id: 'rule_consume', featureName: 'shell:execute', scope: 'session', scopeID: 'ses_1',
-      effect: 'allow',
-      metadata: JSON.stringify({ oneTime: true, toolUseID: 'tu_consume' }),
-      save: async function() { saveCalled = true; },
-    };
-
-    let mockFrameModel = makeMockFrameModel([
-      {
-        id: 'frm_tc_consume', sessionID: 'ses_1', type: 'ToolCall', hidden: false,
-        content: { toolName: 'shell:execute', arguments: { command: 'ls' }, toolUseID: 'tu_consume' },
-      },
-    ]);
-
-    let mockRuleModel = makeMockPermissionRuleModel();
-    mockRuleModel._store.push(ruleRecord);
-
-    let loop = new InteractionLoop(makeContext({
-      models: { Frame: mockFrameModel, PermissionRule: mockRuleModel },
-    }));
-
-    loop._createFrame = async (_sid, frameData) => frameData;
-
-    let params = makeParams({ executeTool: async () => 'ok', replayFromPermission: true });
-    await loop._replayApprovedToolCalls('ses_1', 'int_1', params, makeFrameManager(), null);
-
-    // Verify save() was called on the rule and metadata now has consumed=true
-    assert.ok(saveCalled, 'should call save() on the one-time rule');
-    let updatedMeta = JSON.parse(ruleRecord.metadata);
-    assert.equal(updatedMeta.consumed, true, 'metadata should have consumed=true');
-  });
-
-  // 21. Tool failure during replay: error ToolResult created, rule still consumed
-  it('tool failure during replay creates error ToolResult', async () => {
-    let ruleRecord = {
-      id: 'rule_fail', featureName: 'shell:execute', scope: 'session', scopeID: 'ses_1',
-      effect: 'allow',
-      metadata: JSON.stringify({ oneTime: true, toolUseID: 'tu_fail' }),
-      save: async function() {},
-    };
-
-    let mockFrameModel = makeMockFrameModel([
-      {
-        id: 'frm_tc_fail', sessionID: 'ses_1', type: 'ToolCall', hidden: false,
-        content: { toolName: 'shell:execute', arguments: { command: 'bad-cmd' }, toolUseID: 'tu_fail' },
-      },
-    ]);
-
-    let mockRuleModel = makeMockPermissionRuleModel();
-    mockRuleModel._store.push(ruleRecord);
-
-    let createdFrames = [];
-    let loop = new InteractionLoop(makeContext({
-      models: { Frame: mockFrameModel, PermissionRule: mockRuleModel },
-    }));
-
-    loop._createFrame = async (_sid, frameData) => {
-      createdFrames.push(frameData);
-      return frameData;
-    };
-
-    let params = makeParams({
-      executeTool: async () => { throw new Error('command not found: bad-cmd'); },
-      replayFromPermission: true,
-    });
-
-    await loop._replayApprovedToolCalls('ses_1', 'int_1', params, makeFrameManager(), null);
-
-    let results = createdFrames.filter((f) => f.type === 'ToolResult');
-    assert.equal(results.length, 1, 'should still create ToolResult on failure');
-    assert.ok(results[0].content.output.includes('Error executing tool after approval'), 'should contain error prefix');
-    assert.ok(results[0].content.output.includes('command not found'), 'should contain error details');
-  });
-});
+// (Removed: The approval controller now executes tools directly. There is no
+//  replay mechanism or _replayApprovedToolCalls. One-time rules are gone —
+//  only "forever" rules are created.)
 
 // =============================================================================
 // 6. RACE CONDITIONS
@@ -968,81 +791,4 @@ describe('Adversarial: Additional Edge Cases', () => {
     assert.equal(sig1, sig2, 'null and {} args should normalize to same signature (no normalization attack surface)');
   });
 
-  // Consumed one-time rule is skipped during replay
-  it('consumed one-time rule is skipped (not re-executed)', async () => {
-    let toolExecuted = false;
-
-    let mockFrameModel = makeMockFrameModel([
-      {
-        id: 'frm_tc_skip', sessionID: 'ses_1', type: 'ToolCall', hidden: false,
-        content: { toolName: 'shell:execute', arguments: { command: 'ls' }, toolUseID: 'tu_skip' },
-      },
-    ]);
-
-    let mockRuleModel = makeMockPermissionRuleModel([
-      {
-        id: 'rule_consumed', featureName: 'shell:execute', scope: 'session', scopeID: 'ses_1',
-        effect: 'allow',
-        metadata: JSON.stringify({ oneTime: true, toolUseID: 'tu_skip', consumed: true }),
-      },
-    ]);
-
-    let loop = new InteractionLoop(makeContext({
-      models: { Frame: mockFrameModel, PermissionRule: mockRuleModel },
-    }));
-
-    loop._createFrame = async (_sid, frameData) => frameData;
-
-    let params = makeParams({
-      executeTool: async () => { toolExecuted = true; return 'ok'; },
-      replayFromPermission: true,
-    });
-
-    await loop._replayApprovedToolCalls('ses_1', 'int_1', params, makeFrameManager(), null);
-
-    assert.equal(toolExecuted, false, 'consumed rule must not trigger re-execution');
-  });
-
-  // No models available: _replayApprovedToolCalls returns early, no crash
-  it('_replayApprovedToolCalls with no models returns gracefully', async () => {
-    let loop = new InteractionLoop(makeContext({ models: null }));
-
-    // Should not throw
-    await loop._replayApprovedToolCalls('ses_1', 'int_1', makeParams(), makeFrameManager(), null);
-  });
-
-  // No PermissionRule model: _replayApprovedToolCalls returns early
-  it('_replayApprovedToolCalls with Frame but no PermissionRule returns gracefully', async () => {
-    let mockFrameModel = makeMockFrameModel([]);
-    let loop = new InteractionLoop(makeContext({ models: { Frame: mockFrameModel } }));
-
-    await loop._replayApprovedToolCalls('ses_1', 'int_1', makeParams(), makeFrameManager(), null);
-    // No crash = pass
-  });
-
-  // executeTool not a function: _replayApprovedToolCalls exits early
-  it('_replayApprovedToolCalls with non-function executeTool returns gracefully', async () => {
-    let mockFrameModel = makeMockFrameModel([
-      {
-        id: 'frm_tc_nofn', sessionID: 'ses_1', type: 'ToolCall', hidden: false,
-        content: { toolName: 'test:tool', arguments: {}, toolUseID: 'tu_nofn' },
-      },
-    ]);
-
-    let mockRuleModel = makeMockPermissionRuleModel([
-      {
-        id: 'rule_nofn', featureName: 'test:tool', scope: 'session', scopeID: 'ses_1',
-        effect: 'allow', metadata: JSON.stringify({ oneTime: true, toolUseID: 'tu_nofn' }),
-      },
-    ]);
-
-    let loop = new InteractionLoop(makeContext({
-      models: { Frame: mockFrameModel, PermissionRule: mockRuleModel },
-    }));
-
-    let params = makeParams({ executeTool: 'not-a-function', replayFromPermission: true });
-
-    // Should not throw
-    await loop._replayApprovedToolCalls('ses_1', 'int_1', params, makeFrameManager(), null);
-  });
 });
