@@ -414,7 +414,7 @@ export function setup(provide) {
       static featureName = 'readFromSession';
       static displayName = 'Read from Session';
       static description = 'Read frames from another session with filtering';
-      static riskLevel   = 'low';
+      static riskLevel   = 'none'; // Reading is always allowed — only writing requires permission
       static inputSchema = {
         type:       'object',
         required:   ['sessionID'],

@@ -726,7 +726,7 @@ describe('InteractionLoop', () => {
       assert.equal(interactionCount, 1);
       assert.equal(loop.isActive(session.id), false);
 
-      // Permission-request frame and tool-result with PERMISSION REQUIRED should exist
+      // Permission-request frame and hidden tool-result should exist
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
 
@@ -737,10 +737,11 @@ describe('InteractionLoop', () => {
       let toolResults = frames.filter((f) => f.type === 'ToolResult');
       let permResult  = toolResults.find((f) => f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
       assert.ok(permResult, 'should have PERMISSION REQUIRED tool-result');
+      assert.equal(permResult.hidden, true, 'permission tool-result should be hidden from agent');
 
-      // The message after tool-call should still be processed (interaction continued)
+      // Interaction ends on permission request — agent does NOT continue
       let messageFrames = frames.filter((f) => f.type === 'Message');
-      assert.equal(messageFrames.length, 1, 'agent message should be processed after permission-request');
+      assert.equal(messageFrames.length, 0, 'no agent message — interaction ends on permission request');
     });
   });
 
@@ -1153,15 +1154,15 @@ describe('InteractionLoop', () => {
         },
       }));
 
-      // Both tool-calls should have been handled inline (no hardBreak)
+      // First permission request breaks the interaction — only 1 fires
       assert.equal(loop.isActive(session.id), false);
-      assert.equal(permissionCount, 2, 'both tool-calls should have triggered permission errors');
+      assert.equal(permissionCount, 1, 'interaction ends on first permission request');
 
       let fm     = await framePersistence.loadFrames(session.id);
       let frames = fm.toArray();
 
       let requestFrames = frames.filter((f) => f.type === 'PermissionRequest');
-      assert.equal(requestFrames.length, 2, 'should have 2 permission-request frames');
+      assert.equal(requestFrames.length, 1, 'should have 1 permission-request frame (interaction ended)');
     });
   });
 

@@ -870,19 +870,23 @@ export class InteractionLoop extends EventEmitter {
 
                 this.emit('permission:request', { sessionID, frameID: requestFrameID, toolName: block.content.toolName });
 
-                // Feed result back to agent — conversation stays valid
-                toolOutput = `PERMISSION REQUIRED for "${block.content.toolName}". A permission request (ID: ${requestFrameID}) has been sent to the user. Do NOT retry this tool call — wait for the user to approve or deny.`;
+                // Create a hidden ToolResult to pair with the ToolCall (prevents
+                // orphan detection) but the agent doesn't see it — the interaction
+                // just ends. The user's approval/denial creates the real ToolResult.
+                toolOutput = `PERMISSION REQUIRED for "${block.content.toolName}". Request ID: ${requestFrameID}.`;
                 await this._createFrame(sessionID, {
                   id: generateID('frm_'), type: 'ToolResult',
                   content: { output: toolOutput, toolUseID: block.content.toolUseId || block.content.toolUseID, _sessionID: sessionID },
                   timestamp: Date.now(), interactionID,
                   authorType: 'system', authorID: null,
                   parentID: params.parentID || null,
-                  hidden: false, deleted: false, processed: false,
+                  hidden: true, deleted: false, processed: false,
                 }, frameManager, { authorType: 'system' }, signingContext);
 
-                result = { type: 'ToolResult', content: { output: toolOutput, _sessionID: sessionID } };
-                continue;
+                // End the interaction — agent doesn't respond to permission requests.
+                // The user's approval/denial will create the real ToolResult and
+                // start a new interaction.
+                break;
               }
 
               // PermissionDeniedError from Permissions.evaluate() deny rules
