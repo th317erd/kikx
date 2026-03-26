@@ -429,14 +429,15 @@ export class InteractionController extends ControllerAuthBase {
     }
 
     if (hasDeny) {
-      // Create a denial ToolResult so the agent knows the request was denied
+      // Create a denial ToolResult so the agent sees it on the next interaction.
+      // Do NOT start a new interaction — there's no tool to re-fire.
+      // The agent will see ToolCall → ToolResult("denied") naturally.
       let toolName = stateObj.toolName || 'unknown';
       try {
-        let interactionLoop  = core.getContext().getProperty('interactionLoop');
         let framePersistence = core.getContext().getProperty('framePersistence');
 
-        if (interactionLoop && framePersistence) {
-          let fm = await framePersistence.loadFrames(params.sessionID);
+        if (framePersistence) {
+          let fm  = await framePersistence.loadFrames(params.sessionID);
           let XID = (await import('xid-js')).default;
 
           fm.merge([{
@@ -457,33 +458,9 @@ export class InteractionController extends ControllerAuthBase {
           }]);
 
           await framePersistence.saveFrames(params.sessionID, fm.toArray());
-
-          // Start interaction so the agent sees the denial
-          let agentResolver    = core.getContext().getProperty('agentResolver');
-          let agentID          = stateObj.agentID;
-
-          if (agentResolver && interactionLoop && agentID) {
-            let sessionScheduler = core.getContext().getProperty('sessionScheduler');
-            let resolveContext   = (sessionScheduler && sessionScheduler.getResolveContext)
-              ? (sessionScheduler.getResolveContext(params.sessionID) || {})
-              : {};
-
-            let { agentPlugin, resolvedAgent } = await agentResolver.resolve(agentID, resolveContext);
-            let { checkPermission, executeTool } = agentResolver.buildCallbacks(resolvedAgent, params.sessionID);
-
-            await interactionLoop.startInteraction(params.sessionID, {
-              agentPlugin,
-              agent:       resolvedAgent,
-              userMessage: null,
-              authorType:  'agent',
-              authorID:    agentID,
-              checkPermission,
-              executeTool,
-            });
-          }
         }
       } catch (_denialError) {
-        console.error('[deny-in-approve] Failed to notify agent of denial:', _denialError.message);
+        console.error('[deny-in-approve] Failed to create denial ToolResult:', _denialError.message);
       }
 
       return { data: { denied: true } };
@@ -658,7 +635,8 @@ export class InteractionController extends ControllerAuthBase {
     frame.state   = JSON.stringify(stateObj);
     await frame.save();
 
-    // Create denial ToolResult so the agent knows the request was denied
+    // Create denial ToolResult — agent sees it on the next interaction.
+    // No new interaction started — there's no tool to re-fire on denial.
     let toolName         = stateObj.toolName || content.toolName || 'unknown';
     let toolUseID        = stateObj.toolUseID || null;
     let framePersistence = core.getContext().getProperty('framePersistence');
@@ -686,33 +664,9 @@ export class InteractionController extends ControllerAuthBase {
         }]);
 
         await framePersistence.saveFrames(params.sessionID, fm.toArray());
-
-        // Start interaction so agent sees the denial
-        let agentResolver   = core.getContext().getProperty('agentResolver');
-        let interactionLoop = core.getContext().getProperty('interactionLoop');
-        let agentID         = stateObj.agentID;
-
-        if (agentResolver && interactionLoop && agentID) {
-          let resolveContext = (sessionScheduler && sessionScheduler.getResolveContext)
-            ? (sessionScheduler.getResolveContext(params.sessionID) || {})
-            : {};
-
-          let { agentPlugin, resolvedAgent } = await agentResolver.resolve(agentID, resolveContext);
-          let { checkPermission, executeTool } = agentResolver.buildCallbacks(resolvedAgent, params.sessionID);
-
-          await interactionLoop.startInteraction(params.sessionID, {
-            agentPlugin,
-            agent:       resolvedAgent,
-            userMessage: null,
-            authorType:  'agent',
-            authorID:    agentID,
-            checkPermission,
-            executeTool,
-          });
-        }
       }
     } catch (_denialError) {
-      console.error('[deny] Failed to notify agent of denial:', _denialError.message);
+      console.error('[deny] Failed to create denial ToolResult:', _denialError.message);
     }
 
     return { data: { denied: true } };
