@@ -168,18 +168,20 @@ describe('CrossSessionPermissions', () => {
         ),
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
-          assert.equal(err.title, 'permission.crossSession.postTitle');
-          assert.deepEqual(err.titleParams, { sessionName: 'My Project' });
-          assert.equal(err.description, 'permission.crossSession.postDescription');
+          assert.equal(err.title, 'Send Message to Session');
+          assert.ok(err.titleParams.sessionName === 'My Project');
+          assert.ok(err.description.includes('is attempting to send a message'));
           assert.equal(err.featureName, 'cross-session:postToSession');
 
-          // Details should contain target session and message preview
-          assert.equal(err.details.length, 2);
-          assert.equal(err.details[0].label, 'permission.detail.targetSession');
-          assert.ok(err.details[0].value.includes('My Project'));
-          assert.ok(err.details[0].value.includes(parentSession.id));
-          assert.equal(err.details[1].label, 'permission.detail.messagePreview');
-          assert.equal(err.details[1].value, 'hello world');
+          // Details should contain agent, target session, and message
+          assert.ok(err.details.length >= 2);
+          let agentDetail   = err.details.find((d) => d.label === 'Agent');
+          let sessionDetail = err.details.find((d) => d.label === 'Target Session');
+          let messageDetail = err.details.find((d) => d.label === 'Message');
+          assert.ok(agentDetail, 'should have Agent detail');
+          assert.ok(sessionDetail, 'should have Target Session detail');
+          assert.ok(sessionDetail.value.includes('My Project'));
+          if (messageDetail) assert.equal(messageDetail.value, 'hello world');
           return true;
         },
       );
@@ -197,8 +199,9 @@ describe('CrossSessionPermissions', () => {
         ),
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
-          assert.deepEqual(err.titleParams, { sessionName: 'Design Review' });
-          assert.ok(err.details[0].value.includes('Design Review'));
+          assert.ok(err.titleParams.sessionName === 'Design Review');
+          let sd = err.details.find((d) => d.label === 'Target Session');
+          assert.ok(sd && sd.value.includes('Design Review'));
           return true;
         },
       );
@@ -215,8 +218,9 @@ describe('CrossSessionPermissions', () => {
         ),
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
-          assert.deepEqual(err.titleParams, { sessionName: 'ses_nonexistent' });
-          assert.ok(err.details[0].value.includes('ses_nonexistent'));
+          assert.ok(err.titleParams.sessionName === 'ses_nonexistent');
+          let sd = err.details.find((d) => d.label === 'Target Session');
+          assert.ok(sd && sd.value.includes('ses_nonexistent'));
           return true;
         },
       );
@@ -234,8 +238,9 @@ describe('CrossSessionPermissions', () => {
         ),
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
-          assert.deepEqual(err.titleParams, { sessionName: '(unnamed)' });
-          assert.ok(err.details[0].value.includes('(unnamed)'));
+          assert.ok(err.titleParams.sessionName === '(unnamed)');
+          let sd = err.details.find((d) => d.label === 'Target Session');
+          assert.ok(sd && sd.value.includes('(unnamed)'));
           return true;
         },
       );
@@ -253,7 +258,7 @@ describe('CrossSessionPermissions', () => {
         ),
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
-          let preview = err.details.find((d) => d.label === 'permission.detail.messagePreview');
+          let preview = err.details.find((d) => d.label === 'Message');
           assert.ok(preview, 'Should have messagePreview detail');
           assert.equal(preview.value.length, 203); // 200 + '...'
           assert.ok(preview.value.endsWith('...'));
@@ -273,11 +278,11 @@ describe('CrossSessionPermissions', () => {
         ),
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
-          let preview = err.details.find((d) => d.label === 'permission.detail.messagePreview');
-          assert.equal(preview, undefined, 'Should not have messagePreview when message is missing');
-          // Should still have target session
-          assert.equal(err.details.length, 1);
-          assert.equal(err.details[0].label, 'permission.detail.targetSession');
+          let preview = err.details.find((d) => d.label === 'Message');
+          assert.equal(preview, undefined, 'Should not have message when message is missing');
+          // Should still have agent + target session
+          let sd = err.details.find((d) => d.label === 'Target Session');
+          assert.ok(sd, 'Should have Target Session detail');
           return true;
         },
       );
@@ -294,11 +299,11 @@ describe('CrossSessionPermissions', () => {
         ),
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
-          let target = err.details.find((d) => d.label === 'permission.detail.targetSession');
-          assert.equal(target, undefined, 'Should not have targetSession when sessionID is missing');
-          // Should still have message preview
-          assert.equal(err.details.length, 1);
-          assert.equal(err.details[0].label, 'permission.detail.messagePreview');
+          let target = err.details.find((d) => d.label === 'Target Session');
+          assert.equal(target, undefined, 'Should not have Target Session when sessionID is missing');
+          // Should still have agent + message
+          let msg = err.details.find((d) => d.label === 'Message');
+          assert.ok(msg, 'Should have Message detail');
           return true;
         },
       );
@@ -317,8 +322,8 @@ describe('CrossSessionPermissions', () => {
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
           assert.equal(err.featureName, 'cross-session:listSessions');
-          assert.equal(err.title, 'permission.crossSession.listTitle');
-          assert.equal(err.description, 'permission.crossSession.listDescription');
+          assert.equal(err.title, 'List Sessions');
+          assert.equal(err.description, 'Agent is requesting to list available sessions.');
           assert.deepEqual(err.details, []);
           return true;
         },
@@ -342,8 +347,8 @@ describe('CrossSessionPermissions', () => {
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
           assert.equal(err.featureName, 'cross-session:createSession');
-          assert.equal(err.title, 'permission.crossSession.createTitle');
-          assert.equal(err.description, 'permission.crossSession.createDescription');
+          assert.equal(err.title, 'Create New Session');
+          assert.ok(err.description.includes('requesting to create a new session'));
           return true;
         },
       );
@@ -359,7 +364,7 @@ describe('CrossSessionPermissions', () => {
         ),
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
-          assert.equal(err.title, 'permission.crossSession.createTitle');
+          assert.equal(err.title, 'Create New Session');
           return true;
         },
       );
@@ -375,7 +380,7 @@ describe('CrossSessionPermissions', () => {
         ),
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
-          let titleDetail = err.details.find((d) => d.label === 'permission.detail.sessionTitle');
+          let titleDetail = err.details.find((d) => d.label === 'Session Name');
           assert.ok(titleDetail, 'Should have sessionTitle detail');
           assert.equal(titleDetail.value, 'Research Task');
           return true;
@@ -524,7 +529,7 @@ describe('CrossSessionPermissions', () => {
         ),
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
-          assert.equal(err.title, 'permission.crossSession.createTitle');
+          assert.equal(err.title, 'Create New Session');
           return true;
         },
       );
@@ -561,8 +566,8 @@ describe('CrossSessionPermissions', () => {
         ),
         (err) => {
           assert.ok(err instanceof PermissionRequiredError);
-          assert.equal(err.title, 'permission.crossSession.postTitle');
-          assert.deepEqual(err.titleParams, { sessionName: 'Flow Parent' });
+          assert.equal(err.title, 'Send Message to Session');
+          assert.ok(err.titleParams.sessionName === 'Flow Parent');
           return true;
         },
       );

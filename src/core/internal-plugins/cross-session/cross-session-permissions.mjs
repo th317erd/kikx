@@ -25,7 +25,7 @@ export class CrossSessionPermissions extends Permissions {
       return await this._checkPostToSession(args);
 
     if (featureName === 'cross-session:listSessions')
-      return this._throwListSessions();
+      return this._throwListSessions(args);
 
     // All other tools: defer to normal rule matching
     return null;
@@ -62,31 +62,39 @@ export class CrossSessionPermissions extends Permissions {
       }
     }
 
-    // Build rich error context
+    // Build rich error context with human-readable names
     let sessionName = await this._resolveSessionName(sessionID);
+    let agentName   = await this._resolveAgentName(agentID);
     let message     = args && args.message;
 
     let details = [];
 
+    if (agentID) {
+      details.push({
+        label: 'Agent',
+        value: agentName,
+      });
+    }
+
     if (sessionID) {
       details.push({
-        label: 'permission.detail.targetSession',
-        value: sessionName + ' (' + sessionID + ')',
+        label: 'Target Session',
+        value: sessionName,
       });
     }
 
     if (message) {
       let preview = (message.length > 200) ? message.slice(0, 200) + '...' : message;
       details.push({
-        label: 'permission.detail.messagePreview',
+        label: 'Message',
         value: preview,
       });
     }
 
     throw new PermissionRequiredError('cross-session:postToSession', {
-      title:       'permission.crossSession.postTitle',
-      titleParams: { sessionName: sessionName },
-      description: 'permission.crossSession.postDescription',
+      title:       `Send Message to Session`,
+      titleParams: { sessionName, agentName },
+      description: `Agent '${agentName}' is attempting to send a message to session '${sessionName}'.`,
       details,
     });
   }
@@ -95,11 +103,13 @@ export class CrossSessionPermissions extends Permissions {
   // listSessions — always throws rich error
   // ---------------------------------------------------------------------------
 
-  _throwListSessions() {
+  _throwListSessions(args) {
+    let agentID = args && args.agentID;
+
     throw new PermissionRequiredError('cross-session:listSessions', {
-      title:       'permission.crossSession.listTitle',
-      description: 'permission.crossSession.listDescription',
-      details:     [],
+      title:       'List Sessions',
+      description: 'Agent is requesting to list available sessions.',
+      details:     agentID ? [{ label: 'Agent', value: agentID }] : [],
     });
   }
 
@@ -110,17 +120,26 @@ export class CrossSessionPermissions extends Permissions {
   _throwCreateSession(args) {
     let details = [];
 
-    let title = args && args.title;
-    if (title) {
+    let sessionTitle = args && args.title;
+    if (sessionTitle) {
       details.push({
-        label: 'permission.detail.sessionTitle',
-        value: title,
+        label: 'Session Name',
+        value: sessionTitle,
+      });
+    }
+
+    if (args && args.agentID) {
+      details.push({
+        label: 'Agent',
+        value: args.agentID,
       });
     }
 
     throw new PermissionRequiredError('cross-session:createSession', {
-      title:       'permission.crossSession.createTitle',
-      description: 'permission.crossSession.createDescription',
+      title:       'Create New Session',
+      description: sessionTitle
+        ? `Agent is requesting to create a new session: '${sessionTitle}'.`
+        : 'Agent is requesting to create a new session.',
       details,
     });
   }
@@ -128,6 +147,25 @@ export class CrossSessionPermissions extends Permissions {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  async _resolveAgentName(agentID) {
+    if (!agentID)
+      return '(unknown agent)';
+
+    try {
+      let models = this._context.getProperty('models');
+      if (!models)
+        return agentID;
+
+      let agent = await models.Agent.where.id.EQ(agentID).first();
+      if (!agent)
+        return agentID;
+
+      return agent.name || '(unnamed agent)';
+    } catch (_error) {
+      return agentID;
+    }
+  }
 
   async _resolveSessionName(sessionID) {
     if (!sessionID)
