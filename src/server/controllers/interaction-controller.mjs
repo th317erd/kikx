@@ -428,8 +428,66 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
-    if (hasDeny)
+    if (hasDeny) {
+      // Create a denial ToolResult so the agent knows the request was denied
+      let toolName = stateObj.toolName || 'unknown';
+      try {
+        let interactionLoop  = core.getContext().getProperty('interactionLoop');
+        let framePersistence = core.getContext().getProperty('framePersistence');
+
+        if (interactionLoop && framePersistence) {
+          let fm = await framePersistence.loadFrames(params.sessionID);
+          let XID = (await import('xid-js')).default;
+
+          fm.merge([{
+            id:            `frm_${XID.next()}`,
+            type:          'ToolResult',
+            content:       {
+              output:    `Permission denied for "${toolName}". User denied execution. Do not retry this exact command unless the user explicitly asks you to.`,
+              toolUseID: toolUseID || null,
+              _sessionID: params.sessionID,
+            },
+            timestamp:     Date.now(),
+            interactionID: stateObj.interactionID || null,
+            authorType:    'system',
+            authorID:      null,
+            hidden:        false,
+            deleted:       false,
+            processed:     false,
+          }]);
+
+          await framePersistence.saveFrames(params.sessionID, fm.toArray());
+
+          // Start interaction so the agent sees the denial
+          let agentResolver    = core.getContext().getProperty('agentResolver');
+          let agentID          = stateObj.agentID;
+
+          if (agentResolver && interactionLoop && agentID) {
+            let sessionScheduler = core.getContext().getProperty('sessionScheduler');
+            let resolveContext   = (sessionScheduler && sessionScheduler.getResolveContext)
+              ? (sessionScheduler.getResolveContext(params.sessionID) || {})
+              : {};
+
+            let { agentPlugin, resolvedAgent } = await agentResolver.resolve(agentID, resolveContext);
+            let { checkPermission, executeTool } = agentResolver.buildCallbacks(resolvedAgent, params.sessionID);
+
+            await interactionLoop.startInteraction(params.sessionID, {
+              agentPlugin,
+              agent:       resolvedAgent,
+              userMessage: null,
+              authorType:  'agent',
+              authorID:    agentID,
+              checkPermission,
+              executeTool,
+            });
+          }
+        }
+      } catch (_denialError) {
+        console.error('[deny-in-approve] Failed to notify agent of denial:', _denialError.message);
+      }
+
       return { data: { denied: true } };
+    }
 
     // For approvals: create one-time rule and start replay interaction
     if (!hasDeny) {
@@ -583,33 +641,78 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
-    // Save through FrameManager to trigger FrameRouter
+    // Save the denial on the frame
+    frame.content     = JSON.stringify(content);
+    frame.processed   = true;
+    frame.processedAt = Date.now();
+    frame.hidden      = true;
+
+    let stateObj = null;
+    try {
+      stateObj = (typeof frame.state === 'string') ? JSON.parse(frame.state) : (frame.state || {});
+    } catch (_e) {
+      stateObj = {};
+    }
+
+    stateObj.step = 'denied';
+    frame.state   = JSON.stringify(stateObj);
+    await frame.save();
+
+    // Create denial ToolResult so the agent knows the request was denied
+    let toolName         = stateObj.toolName || content.toolName || 'unknown';
+    let toolUseID        = stateObj.toolUseID || null;
     let framePersistence = core.getContext().getProperty('framePersistence');
-    let frameRouter      = core.getFrameRouter();
 
-    if (framePersistence && frameRouter) {
-      let fm = await framePersistence.loadFrames(params.sessionID);
-      let disconnect = frameRouter.connectTo(fm, { sessionID: params.sessionID });
+    try {
+      if (framePersistence) {
+        let fm  = await framePersistence.loadFrames(params.sessionID);
+        let XID = (await import('xid-js')).default;
 
-      try {
         fm.merge([{
-          id:          frame.id,
-          type:        frame.type,
-          content,
-          processed:   true,
-          processedAt: Date.now(),
-          state:       frame.state,
+          id:            `frm_${XID.next()}`,
+          type:          'ToolResult',
+          content:       {
+            output:    `Permission denied for "${toolName}". User denied execution. Do not retry this exact command unless the user explicitly asks you to.`,
+            toolUseID,
+            _sessionID: params.sessionID,
+          },
+          timestamp:     Date.now(),
+          interactionID: stateObj.interactionID || null,
+          authorType:    'system',
+          authorID:      null,
+          hidden:        false,
+          deleted:       false,
+          processed:     false,
         }]);
 
         await framePersistence.saveFrames(params.sessionID, fm.toArray());
-      } finally {
-        disconnect();
+
+        // Start interaction so agent sees the denial
+        let agentResolver   = core.getContext().getProperty('agentResolver');
+        let interactionLoop = core.getContext().getProperty('interactionLoop');
+        let agentID         = stateObj.agentID;
+
+        if (agentResolver && interactionLoop && agentID) {
+          let resolveContext = (sessionScheduler && sessionScheduler.getResolveContext)
+            ? (sessionScheduler.getResolveContext(params.sessionID) || {})
+            : {};
+
+          let { agentPlugin, resolvedAgent } = await agentResolver.resolve(agentID, resolveContext);
+          let { checkPermission, executeTool } = agentResolver.buildCallbacks(resolvedAgent, params.sessionID);
+
+          await interactionLoop.startInteraction(params.sessionID, {
+            agentPlugin,
+            agent:       resolvedAgent,
+            userMessage: null,
+            authorType:  'agent',
+            authorID:    agentID,
+            checkPermission,
+            executeTool,
+          });
+        }
       }
-    } else {
-      frame.content     = JSON.stringify(content);
-      frame.processed   = true;
-      frame.processedAt = Date.now();
-      await frame.save();
+    } catch (_denialError) {
+      console.error('[deny] Failed to notify agent of denial:', _denialError.message);
     }
 
     return { data: { denied: true } };
