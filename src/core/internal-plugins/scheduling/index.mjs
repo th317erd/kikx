@@ -37,6 +37,9 @@ export function setup(provide) {
           if (scheduled && scheduled.length > 0) {
             for (let entry of scheduled)
               sessionScheduler.queueTrigger(sessionID, entry.agentID);
+
+            // Fire all queued agents concurrently (non-blocking)
+            sessionScheduler._triggerNext(sessionID).catch(() => {});
           }
         } catch (err) {
           this.logger.error('SchedulingPlugin: error in onCommit:', err);

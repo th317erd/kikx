@@ -311,31 +311,39 @@ export class SessionScheduler extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
-  // _triggerNext — pop next pending agent and start interaction
+  // _triggerNext — fire ALL available agents concurrently
   // ---------------------------------------------------------------------------
 
   async _triggerNext(sessionID) {
-    let entry = this.dequeueTrigger(sessionID);
-    if (!entry) {
-      // No more pending triggers — safe to clear resolveContext if no active agents
+    let toTrigger = [];
+    let deferred  = [];
+
+    // Drain all pending triggers, partition into ready vs already-active
+    let entry;
+    while ((entry = this.dequeueTrigger(sessionID))) {
+      if (this._interactionLoop.isActive(sessionID, entry.agentID))
+        deferred.push(entry);
+      else
+        toTrigger.push(entry);
+    }
+
+    // Re-queue deferred agents (retried on next interaction:end)
+    for (let d of deferred)
+      this.queueTrigger(sessionID, d.agentID);
+
+    if (toTrigger.length === 0) {
       if (this.getActiveAgents(sessionID).length === 0)
         this.clearResolveContext(sessionID);
 
       return;
     }
 
-    // Skip if this specific agent already has an active interaction
-    if (this._interactionLoop.isActive(sessionID, entry.agentID)) {
-      // Put it back and wait — retried on next interaction:end
-      this.queueTrigger(sessionID, entry.agentID);
-      return;
-    }
-
-    try {
-      await this._triggerAgent(sessionID, entry.agentID);
-    } catch (error) {
-      this.emit('trigger:error', { sessionID, agentID: entry.agentID, error });
-      this.markComplete(sessionID, entry.agentID);
+    // Fire all available agents concurrently (non-blocking)
+    for (let agent of toTrigger) {
+      this._triggerAgent(sessionID, agent.agentID).catch((error) => {
+        this.emit('trigger:error', { sessionID, agentID: agent.agentID, error });
+        this.markComplete(sessionID, agent.agentID);
+      });
     }
   }
 

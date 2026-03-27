@@ -742,16 +742,20 @@ export class InteractionLoop extends EventEmitter {
         if (block.type === 'Message') {
           let html = block.content && block.content.html;
 
-          // Agent opted out of responding — suppress the message entirely.
-          // Match the exact marker AND common variations agents produce.
-          if (html) {
+          // Suppress empty or opt-out messages entirely.
+          // Empty html = agent had nothing to say (thinking only).
+          // [NOT RESPONDING] and variations = agent explicitly opted out.
+          if (!html || !html.trim())
+            continue;
+
+          {
             let stripped = html.replace(/<[^>]*>/g, '').trim().toLowerCase();
-            if (stripped.includes('[not responding]') ||
+            if (!stripped ||
+                stripped.includes('[not responding]') ||
                 stripped.includes('not responding') ||
                 stripped.startsWith('[i am staying silent') ||
                 stripped.startsWith('[staying silent') ||
-                stripped.startsWith('[silence]') ||
-                stripped === '')
+                stripped.startsWith('[silence]'))
               continue;
           }
 
