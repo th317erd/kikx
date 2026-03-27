@@ -486,6 +486,10 @@ export function createFrameElement(frame) {
         html = content;
       }
 
+      // Hide empty agent messages (thinking-only, no output)
+      if (!html && frame.type === 'Message' && frame.authorType !== 'user')
+        return null;
+
       let messageContent = document.createElement('kikx-message-content');
       messageContent.content = html;
 
@@ -898,6 +902,11 @@ class KikxSessionPage extends HTMLElement {
             if (mc && html) {
               mc.streaming = false; // Stream complete — finish typewriter instantly
               mc.content   = html;
+            }
+
+            // Hide empty messages — agent responded with only thinking, no output
+            if (!html && !groupEl.querySelector('kikx-message-content[content]')) {
+              groupEl.style.display = 'none';
             }
 
             // Switch data-frame-id from group ID to real frame ID
