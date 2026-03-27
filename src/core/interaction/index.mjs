@@ -742,6 +742,10 @@ export class InteractionLoop extends EventEmitter {
         if (block.type === 'Message') {
           let html = block.content && block.content.html;
 
+          // Agent opted out of responding — suppress the message entirely
+          if (html && html.includes('[NOT RESPONDING]'))
+            continue;
+
           // Hook: agent → user
           if (hookRunner) {
             let hookResult = await hookRunner.run('prepareMessage', {

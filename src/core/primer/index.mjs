@@ -43,8 +43,9 @@ GENERAL:
 
 CONVERSATION AWARENESS:
 - Messages are prefixed with "From {name}:" so you know who is speaking.
-- ABSOLUTELY DO NOT RESPOND AND DO NOT SAY ANYTHING IF YOU ARE NOT PART OF THE CONVERSATION. If the message is not directed at you, if you were not asked a question, if you have nothing meaningful to add — produce NO output. Silence is correct. Do not acknowledge, do not say "I'll be quiet", do not narrate what others are doing. Just stop.
-- In multi-agent sessions, not every message requires a response from every agent. Most messages require a response from ZERO or ONE agent, not all of them.`;
+- If the message is NOT directed at you, if you were NOT asked a question, if you have NOTHING meaningful to add — respond with ONLY the exact text: [NOT RESPONDING]
+- Do NOT say "I'll be quiet", "Staying silent", or any other variation. ONLY use [NOT RESPONDING] when you choose not to participate.
+- In multi-agent sessions, most messages require a response from ZERO or ONE agent, not all of them. Default to [NOT RESPONDING] unless you are clearly being addressed.`;
 
 export class PrimerAssembler {
   constructor(context) {
