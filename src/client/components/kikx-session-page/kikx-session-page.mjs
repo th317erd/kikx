@@ -895,8 +895,10 @@ class KikxSessionPage extends HTMLElement {
             }
 
             let mc = groupEl.querySelector('kikx-message-content');
-            if (mc && html)
-              mc.content = html;
+            if (mc && html) {
+              mc.streaming = false; // Stream complete — finish typewriter instantly
+              mc.content   = html;
+            }
 
             // Switch data-frame-id from group ID to real frame ID
             groupEl.setAttribute('data-frame-id', frame.id);
@@ -1005,6 +1007,7 @@ class KikxSessionPage extends HTMLElement {
 
               if (html) {
                 let mc = document.createElement('kikx-message-content');
+                mc.streaming = true;
                 mc.content = html;
                 lastInteraction.appendChild(mc);
               }
@@ -1076,8 +1079,13 @@ class KikxSessionPage extends HTMLElement {
         else if (frame.content.text)
           html = `<p>${escapeHTML(frame.content.text)}</p>`;
 
-        if (html)
+        if (html) {
+          // Enable typewriter for phantom (streaming) frames
+          if (frame.phantom)
+            mc.streaming = true;
+
           mc.content = html;
+        }
       }
 
       // Update compaction frame attributes when status changes

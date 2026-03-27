@@ -198,7 +198,9 @@ function getTemplate() {
 class KikxMessageContent extends HTMLElement {
   constructor() {
     super();
-    this._content = '';
+    this._content    = '';
+    this._typewriter = null;
+    this._streaming  = false;
   }
 
   get content() { return this._content; }
@@ -208,6 +210,17 @@ class KikxMessageContent extends HTMLElement {
 
     if (this._initialized)
       this._render();
+  }
+
+  // Enable streaming mode — content updates use typewriter effect
+  get streaming() { return this._streaming; }
+
+  set streaming(value) {
+    this._streaming = !!value;
+
+    // When streaming ends, finish the typewriter instantly
+    if (!this._streaming && this._typewriter)
+      this._typewriter.finish();
   }
 
   connectedCallback() {
@@ -225,12 +238,42 @@ class KikxMessageContent extends HTMLElement {
       this._render();
   }
 
+  disconnectedCallback() {
+    if (this._typewriter) {
+      this._typewriter.destroy();
+      this._typewriter = null;
+    }
+  }
+
   _render() {
     if (!this._messageBody)
       return;
 
     let sanitized = sanitizeHTML(this._content, this.ownerDocument);
-    this._messageBody.innerHTML = sanitized;
+
+    // Use typewriter for streaming content, instant for everything else
+    if (this._streaming) {
+      if (!this._typewriter) {
+        // Lazy-load to avoid blocking initial bundle
+        import('../../lib/typewriter.mjs').then(({ Typewriter }) => {
+          this._typewriter = new Typewriter(this._messageBody, {
+            charsPerFrame: 4,
+          });
+
+          this._typewriter.setTarget(sanitized);
+        });
+      } else {
+        this._typewriter.setTarget(sanitized);
+      }
+    } else {
+      // Instant render — no typewriter
+      if (this._typewriter) {
+        this._typewriter.finish();
+        this._typewriter = null;
+      }
+
+      this._messageBody.innerHTML = sanitized;
+    }
   }
 }
 
