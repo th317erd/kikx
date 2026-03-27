@@ -190,10 +190,68 @@ export class AgentResolver {
       // Always augment with _sessionID and _agent so that
       // PluginInterface._permissionOptions() can locate session-scoped
       // permission rules (e.g., one-time allow rules from approval flow).
+      // Activity frame for live tool status — tool calls _commitActivity(html)
+      // to create/update a visible ToolActivity frame. Silent commits so the
+      // FrameRouter doesn't trigger. Client receives via SSE and renders.
+      let activityFrameID = null;
+
+      let _commitActivity = async (html) => {
+        let interactionLoopRef = core.getContext().getProperty('interactionLoop');
+        let framePersistence   = core.getContext().getProperty('framePersistence');
+        let sessionManager     = core.getContext().getProperty('sessionManager');
+
+        if (!interactionLoopRef || !framePersistence || !sessionManager)
+          return;
+
+        let fm = sessionManager.getFrameManager(sessionID);
+        if (!fm)
+          return;
+
+        if (!activityFrameID) {
+          // Create new activity frame
+          let XID = (await import('xid-js')).default;
+          activityFrameID = `frm_${XID.next()}`;
+
+          let frameData = {
+            id:            activityFrameID,
+            type:          'ToolActivity',
+            content:       { toolName, html },
+            timestamp:     Date.now(),
+            authorType:    'system',
+            hidden:        false,
+            deleted:       false,
+            processed:     false,
+          };
+
+          fm.merge([frameData], { silent: false });
+          await framePersistence.saveFrames(sessionID, [frameData]);
+        } else {
+          // Update existing activity frame
+          fm.merge([{
+            id:      activityFrameID,
+            type:    'ToolActivity',
+            content: { toolName, html },
+          }], { silent: true });
+
+          // Persist the update
+          try {
+            let { Frame } = core.getModels();
+            let record = await Frame.where.id.EQ(activityFrameID).first();
+            if (record) {
+              record.content = JSON.stringify({ toolName, html });
+              await record.save();
+            }
+          } catch (_e) {
+            // Best-effort
+          }
+        }
+      };
+
       let augmentedArgs = {
         ...toolArgs,
         _sessionID: sessionID,
         _agent:     resolvedAgent,
+        _commitActivity,
       };
 
       let result = await toolInstance.execute(augmentedArgs);

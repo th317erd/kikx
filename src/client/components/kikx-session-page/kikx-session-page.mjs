@@ -436,6 +436,15 @@ export function createFrameElement(frame) {
       let renderType      = activityContent.renderType;
       let renderData      = activityContent.renderData || {};
 
+      // Plugin-provided HTML — render directly
+      if (activityContent.html) {
+        let activityEl       = document.createElement('div');
+        activityEl.className = 'tool-activity-content';
+        activityEl.innerHTML = activityContent.html;
+        interaction.appendChild(activityEl);
+        break;
+      }
+
       if (renderType === 'file-read') {
         let fileRead = document.createElement('kikx-file-read');
         fileRead.setAttribute('file-path', renderData.filePath || '');
@@ -1065,6 +1074,15 @@ class KikxSessionPage extends HTMLElement {
 
       if (!el)
         return;
+
+      // Update ToolActivity HTML (plugin-managed indicator)
+      if (frame.type === 'ToolActivity' && frame.content && frame.content.html) {
+        let activityEl = el.querySelector('.tool-activity-content');
+        if (activityEl)
+          activityEl.innerHTML = frame.content.html;
+
+        return;
+      }
 
       // Update message content
       if (frame.content && (frame.content.html || frame.content.text)) {

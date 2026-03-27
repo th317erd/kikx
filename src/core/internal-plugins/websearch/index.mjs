@@ -126,9 +126,12 @@ export function setup(provide) {
 
       getPermissionsClass() { return WebsearchPermissions; }
 
-      async _execute({ url }) {
+      async _execute({ url, _commitActivity }) {
         if (!url || typeof url !== 'string')
           throw new Error('url is required');
+
+        if (typeof _commitActivity === 'function')
+          _commitActivity(`<span style="font-size:0.85rem;opacity:0.7">Fetching ${url.length > 60 ? url.slice(0, 60) + '...' : url}</span>`).catch(() => {});
 
         // Strategy 1: Content negotiation (Accept: text/markdown)
         let result = await tryMarkdownNegotiation(url);
@@ -183,9 +186,12 @@ export function setup(provide) {
 
       getPermissionsClass() { return WebsearchPermissions; }
 
-      async _execute({ query, limit }) {
+      async _execute({ query, limit, _commitActivity }) {
         if (!query || typeof query !== 'string')
           throw new Error('query is required');
+
+        if (typeof _commitActivity === 'function')
+          _commitActivity(`<span style="font-size:0.85rem;opacity:0.7">Searching: "${query.length > 50 ? query.slice(0, 50) + '...' : query}"</span>`).catch(() => {});
 
         let browserHandlers = getHookHandlers(this._context, 'websearch:executeInBrowser');
 

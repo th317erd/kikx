@@ -30,9 +30,15 @@ export function setup(provide) {
         required: ['command'],
       };
 
-      async _execute({ command, workingDirectory }) {
+      async _execute({ command, workingDirectory, _commitActivity }) {
         if (!command || typeof command !== 'string')
           throw new Error('command is required');
+
+        // Show activity indicator while command runs
+        if (typeof _commitActivity === 'function') {
+          let escapedCmd = command.length > 80 ? command.slice(0, 80) + '...' : command;
+          _commitActivity(`<code style="font-size:0.85rem;opacity:0.7">$ ${escapedCmd}</code>`).catch(() => {});
+        }
 
         let cwd   = workingDirectory || process.cwd();
         let shell = process.env.SHELL || '/bin/bash';
