@@ -451,7 +451,40 @@ export class InteractionLoop extends EventEmitter {
       }
     }
 
-    let messages = buildMessages(allFrames, forAgentID, { activeCompaction });
+    // Build agents/users maps for name resolution in message history
+    let agents = new Map();
+    let users  = new Map();
+
+    try {
+      let models = this._getModels();
+      if (models) {
+        // Load agents from session participants
+        if (models.Participant && models.Agent) {
+          let participants = await models.Participant.where.sessionID.EQ(sessionID).all();
+          for (let p of participants) {
+            if (p.agentID && !agents.has(p.agentID)) {
+              let agent = await models.Agent.where.id.EQ(p.agentID).first();
+              if (agent)
+                agents.set(agent.id, { name: agent.name || agent.id });
+            }
+          }
+        }
+
+        // Load session creator as user
+        if (models.Session && models.User) {
+          let session = await models.Session.where.id.EQ(sessionID).first();
+          if (session && session.createdBy) {
+            let user = await models.User.where.id.EQ(session.createdBy).first();
+            if (user)
+              users.set(user.id, { name: user.firstName || user.email || user.id });
+          }
+        }
+      }
+    } catch (_e) {
+      // Best-effort name resolution
+    }
+
+    let messages = buildMessages(allFrames, forAgentID, { activeCompaction, agents, users });
 
     // =============================================================================
     // TRUNCATION — plugin-model-registry plan

@@ -21,12 +21,24 @@ export class FrameTypeMessage extends FrameTypeBase {
 
     // Multi-agent attribution: wrap other agents' messages in XML
     if (forAgentID && authorID && authorID !== forAgentID) {
-      let agentName = authorID;
-      let wrapped   = `<agent-message source="${authorID}" name="${agentName}">${html}</agent-message>`;
+      let agentName = this._resolveAgentName(authorID, options);
+      let wrapped   = `<agent-message source="${authorID}" name="${agentName}">\nFrom ${agentName}:\n\n${html}</agent-message>`;
       return { role: 'user', content: wrapped, frameID: this._frameData.id, sourceAgentID: authorID };
     }
 
     return { role: 'assistant', content: html, frameID: this._frameData.id };
+  }
+
+  _resolveAgentName(agentID, options) {
+    if (!agentID)
+      return 'Agent';
+
+    let agents = options && options.agents;
+    if (!agents)
+      return agentID;
+
+    let agent = agents.get ? agents.get(agentID) : agents[agentID];
+    return (agent && agent.name) ? agent.name : agentID;
   }
 
   toMessage() {

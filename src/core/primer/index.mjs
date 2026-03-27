@@ -39,7 +39,12 @@ USER PROMPTS:
 - Use help:search with query "prompt" for full documentation.
 
 GENERAL:
-- Be concise and helpful. If you are unsure about available capabilities, use help:search first.`;
+- Be concise and helpful. If you are unsure about available capabilities, use help:search first.
+
+CONVERSATION AWARENESS:
+- Messages are prefixed with "From {name}:" so you know who is speaking.
+- Before responding, think: are you the one being spoken to? Do you have anything useful to say? Don't respond if you don't need to.
+- In multi-agent sessions, not every message requires a response from every agent. Only respond when you have something meaningful to contribute.`;
 
 export class PrimerAssembler {
   constructor(context) {

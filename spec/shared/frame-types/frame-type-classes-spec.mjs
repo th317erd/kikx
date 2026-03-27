@@ -235,7 +235,7 @@ describe('FrameTypeMessage', () => {
     let result   = instance.toAgentMessage({ forAgentID: 'agent-002' });
     assert.deepEqual(result, {
       role:          'user',
-      content:       '<agent-message source="agent-001" name="agent-001"><p>I can help</p></agent-message>',
+      content:       '<agent-message source="agent-001" name="agent-001">\nFrom agent-001:\n\n<p>I can help</p></agent-message>',
       frameID:       'f2',
       sourceAgentID: 'agent-001',
     });

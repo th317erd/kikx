@@ -96,6 +96,7 @@ export function buildMessages(frames, forAgentID, options = {}) {
     toolResultMap:    resolvedToolIds,
     emittedToolResults,
     toolResultFrames,
+    agents: options.agents || null,
   };
 
   for (let frame of frames) {
