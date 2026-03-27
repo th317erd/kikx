@@ -235,12 +235,16 @@ export class AgentResolver {
 
           // Persist the update
           try {
-            let { Frame } = core.getModels();
-            let record = await Frame.where.id.EQ(activityFrameID).first();
-            if (record) {
-              record.content = JSON.stringify({ toolName, html });
-              await record.save();
-            }
+            // Update activity frame through FrameManager (silent — UI-only update)
+            fm.merge([{
+              id:      activityFrameID,
+              type:    'ToolActivity',
+              content: { toolName, html },
+            }], { silent: true });
+
+            let framePersistenceRef = core.getContext().getProperty('framePersistence');
+            if (framePersistenceRef)
+              await framePersistenceRef.saveFrames(sessionID, [{ id: activityFrameID, type: 'ToolActivity', content: { toolName, html } }]);
           } catch (_e) {
             // Best-effort
           }

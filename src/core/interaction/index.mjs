@@ -1017,12 +1017,13 @@ export class InteractionLoop extends EventEmitter {
                 // approval controller can find and update it
                 try {
                   let { Frame: PermFrame } = this._getModels();
-                  let permReq = await PermFrame.where.id.EQ(requestFrameID).first();
+                  // Update PermissionRequest state through FrameManager
+                  let permReq = frameManager.get(requestFrameID);
                   if (permReq) {
                     let permState = (typeof permReq.state === 'string') ? JSON.parse(permReq.state) : (permReq.state || {});
                     permState.toolResultID = permToolResultID;
-                    permReq.state = JSON.stringify(permState);
-                    await permReq.save();
+                    frameManager.merge([{ ...permReq, state: JSON.stringify(permState) }], { silent: true });
+                    await framePersistence.saveFrames(sessionID, [{ ...permReq, state: JSON.stringify(permState) }]);
                   }
                 } catch (_e) {
                   // Best-effort
