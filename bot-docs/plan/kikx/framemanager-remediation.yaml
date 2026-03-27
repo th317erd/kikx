@@ -1,0 +1,469 @@
+# =============================================================================
+# FrameManager Remediation — Eliminate All Bypasses
+# =============================================================================
+# One rule: ALL frame mutations go through FrameManager.merge().
+# No direct ORM saves. No manual emit('commit'). No in-memory mutations.
+#
+# Root cause: Repeated "quick fix" patches that saved directly to the DB
+# instead of routing through the FrameManager → commit → SSE → Router chain.
+# Each patch fixed one symptom but broke the architectural guarantee that
+# everything else depends on.
+#
+# Created: 2026-03-27
+# =============================================================================
+
+meta:
+  title: "FrameManager Remediation — Eliminate All Bypasses"
+  version: "1.0.0"
+
+# =============================================================================
+# THE RULE
+# =============================================================================
+#
+# FrameManager.merge() is the ONLY way to create or modify frames.
+#
+# The chain:
+#   FrameManager.merge(frameData)
+#     → emit('commit', { commit })
+#     → InteractionLoop.emit('commit', { sessionID, commit })
+#     → SSE stream broadcasts to client
+#     → FrameRouter fires plugins
+#     → FramePersistence saves to DB
+#
+# NOTHING bypasses this. Not "for performance". Not "it's simpler".
+# Not "the FrameManager isn't loaded yet". Load it. Use it.
+
+# =============================================================================
+# BYPASSES TO FIX (from audit)
+# =============================================================================
+
+bypasses:
+  - id: bypass-1
+    severity: CRITICAL
+    file: "src/server/controllers/interaction-controller.mjs"
+    lines: "307-347, 465-466, 616-630, 665-671"
+    description: |
+      Permission approval/denial: direct frame.save() + manual
+      interactionLoop.emit('commit'). FrameRouter never fires.
+      Commit validator bypassed. Commit log fabricated.
+
+  - id: bypass-2
+    severity: HIGH
+    file: "src/core/frames/index.mjs"
+    lines: "289-292"
+    description: |
+      hideOrphanedFrames(): orphan.hidden = true + orphan.save().
+      No SSE broadcast, no Router notification.
+
+  - id: bypass-3
+    severity: HIGH
+    file: "src/core/internal-plugins/permission-approval/index.mjs"
+    lines: "250, 252"
+    description: |
+      _hideAwaitingToolResult(): fm.hidden = true in-memory.
+      NEVER persisted to DB. NEVER broadcast.
+
+  - id: bypass-4
+    severity: MEDIUM
+    file: "src/core/routing/frame-router.mjs"
+    lines: "242, 250"
+    description: |
+      Plugin state persistence: frame.state = JSON.stringify(rawState)
+      + framePersistence.updateFrameState(). No commit event.
+
+  - id: bypass-5
+    severity: MEDIUM
+    file: "src/server/controllers/frame-controller.mjs"
+    lines: "140-142"
+    description: |
+      PATCH endpoint: frame.content = serialized + frame.save().
+      No SSE, no Router.
+
+  - id: bypass-6
+    severity: MEDIUM
+    file: "src/core/frames/index.mjs"
+    lines: "395-404"
+    description: |
+      updateFrameState(): direct frame.state = ... + frame.save().
+      Called by FrameRouter for plugin state. No commit event.
+
+# =============================================================================
+# IMPLEMENTATION PHASES
+# =============================================================================
+
+phases:
+  phase_1:
+    name: "CLAUDE.md Guard Rails"
+    description: |
+      Add permanent rules to CLAUDE.md that prevent future bypasses.
+      This is a PROCESS fix, not a code fix.
+    steps:
+      - id: "1.1"
+        task: "Add FrameManager mandate to CLAUDE.md"
+        file: "CLAUDE.md"
+        description: |
+          Add a section that makes the rule unmistakable:
+
+          ## FrameManager — The Single Source of Truth
+
+          **ALL frame mutations MUST go through FrameManager.merge().**
+
+          This is non-negotiable. No exceptions. No "quick fixes".
+
+          NEVER do any of these:
+          - `frame.save()` — WRONG. Use FrameManager.merge()
+          - `frame.hidden = true; await frame.save()` — WRONG
+          - `frame.content = ...; await frame.save()` — WRONG
+          - `framePersistence.updateFrameState()` — WRONG (except from FrameRouter internals)
+          - `interactionLoop.emit('commit', ...)` manually — WRONG. Let FrameManager emit it.
+
+          ALWAYS do this:
+          ```javascript
+          // Use InteractionLoop.updateFrame() — the ONLY blessed path
+          let interactionLoop = context.getProperty('interactionLoop');
+          await interactionLoop.updateFrame(sessionID, {
+            id: frameID,
+            hidden: true,
+            content: newContent,
+          });
+          ```
+
+          updateFrame() handles: hydration, merge(), persistence, SSE, commit.
+          Do NOT roll your own version. Do NOT call frameManager.merge() + saveFrames() manually.
+
+          The chain: updateFrame() → merge() → commit event → SSE broadcast → FrameRouter → DB
+
+          If you need to modify a frame: use updateFrame().
+          If you think "this is just a simple update": use updateFrame().
+          If you're inside a FrameRouter plugin: use merge({ silent: true }) to avoid re-routing.
+
+      - id: "1.2"
+        task: "Commit"
+
+  phase_2:
+    name: "Create frameUpdate() helper on InteractionLoop"
+    description: |
+      A single method that does the right thing: loads FrameManager,
+      merges the update, persists, and broadcasts. Every caller uses this
+      instead of rolling their own broken version.
+    steps:
+      - id: "2.1"
+        task: "Write failing tests for InteractionLoop.updateFrame()"
+        tdd: true
+        file: "spec/core/interaction-loop-frame-update-spec.mjs"
+        description: |
+          Tests:
+          - updateFrame() merges into session's FrameManager
+          - updateFrame() emits 'commit' event with enriched commit
+          - updateFrame() persists to DB via framePersistence
+          - updateFrame() works for content updates
+          - updateFrame() works for hidden changes
+          - updateFrame() works for state changes
+          - updateFrame() works for multiple frame updates in one call
+
+      - id: "2.2"
+        task: "Implement InteractionLoop.updateFrame()"
+        file: "src/core/interaction/index.mjs"
+        description: |
+          CRITICAL: merge() requires BOTH id AND type — partial objects
+          without type are silently skipped. updateFrame() MUST hydrate
+          full frame data from the FrameManager before merging.
+
+          async updateFrame(sessionID, frameUpdates) {
+            let updates = Array.isArray(frameUpdates) ? frameUpdates : [frameUpdates];
+
+            let sessionManager   = this._getSessionManager();
+            let framePersistence = this._getFramePersistence();
+            let frameManager     = sessionManager.getFrameManager(sessionID);
+
+            // Only load if FrameManager is empty (avoid redundant DB queries)
+            if (frameManager.toArray().length === 0)
+              await framePersistence.loadFramesInto(frameManager, sessionID);
+
+            // Hydrate partial updates with full frame data from FrameManager.
+            // merge() requires 'type' — partial objects without it are skipped.
+            let hydrated = [];
+            for (let update of updates) {
+              let existing = frameManager.get(update.id);
+              if (existing) {
+                // Spread existing frame data, then overlay the update fields
+                let full = { ...existing, ...update };
+                // Ensure content is properly serialized
+                if (typeof full.content === 'object')
+                  full.content = full.content;  // keep as object for merge
+                hydrated.push(full);
+              } else {
+                // New frame — caller MUST provide type
+                hydrated.push(update);
+              }
+            }
+
+            let results = frameManager.merge(hydrated);
+
+            if (results.length === 0)
+              return null;
+
+            // Persist the MERGED results (full frames), NOT the partial inputs
+            await framePersistence.saveFrames(sessionID, results);
+
+            // Broadcast via commit
+            let latestCommit = frameManager.getLatestCommit();
+            if (latestCommit) {
+              this.emit('commit', {
+                sessionID,
+                commit: { ...latestCommit, frames: results },
+              });
+            }
+
+            return results;
+          }
+
+      - id: "2.3"
+        task: "Run tests, verify"
+      - id: "2.4"
+        task: "Commit"
+
+  phase_3:
+    name: "Fix Approval Controller (bypass-1, CRITICAL)"
+    description: |
+      Replace all direct frame.save() + manual emit in approve() and
+      deny() with InteractionLoop.updateFrame().
+    steps:
+      - id: "3.1"
+        task: "Write tests proving approval uses FrameManager"
+        tdd: true
+        description: |
+          Tests that verify:
+          - approve() calls updateFrame() not frame.save()
+          - approve() emits proper commit event (not fabricated)
+          - deny() calls updateFrame() not frame.save()
+          - ToolResult content update goes through FrameManager
+          - SSE stream receives the commit
+
+      - id: "3.2"
+        task: "Rewrite approve() to use updateFrame()"
+        file: "src/server/controllers/interaction-controller.mjs"
+        description: |
+          Replace ALL direct mutations:
+            frame.processed = true; frame.save() → updateFrame(sessionID, { id: frame.id, processed: true, ... })
+            existingResult.content = ...; existingResult.save() → updateFrame(sessionID, { id: existingResult.id, content: ... })
+            interactionLoop.emit('commit', ...) → REMOVE (updateFrame handles it)
+
+      - id: "3.3"
+        task: "Rewrite deny() to use updateFrame()"
+        file: "src/server/controllers/interaction-controller.mjs"
+        description: "Same pattern as approve()."
+
+      - id: "3.4"
+        task: "Run full test suite"
+      - id: "3.5"
+        task: "E2E test: approve permission via curl, verify SSE receives commit"
+      - id: "3.6"
+        task: "Commit"
+
+  phase_4:
+    name: "Fix hideOrphanedFrames (bypass-2, HIGH)"
+    description: |
+      Route orphan hiding through FrameManager.merge().
+    steps:
+      - id: "4.1"
+        task: "Rewrite hideOrphanedFrames()"
+        file: "src/core/frames/index.mjs"
+        description: |
+          Change from:
+            orphan.hidden = true; await orphan.save();
+          To:
+            Collect orphan IDs, then call interactionLoop.updateFrame() or
+            frameManager.merge() with { id: orphanID, hidden: true }.
+
+          hideOrphanedFrames() needs access to the session's FrameManager.
+          Update the signature: hideOrphanedFrames(sessionID, frameManager)
+
+      - id: "4.2"
+        task: "Update callers of hideOrphanedFrames()"
+        description: "Pass frameManager from startInteraction()."
+      - id: "4.3"
+        task: "Run tests, verify"
+      - id: "4.4"
+        task: "Commit"
+
+  phase_5:
+    name: "Fix PermissionApprovalPlugin hiding (bypass-3, HIGH)"
+    description: |
+      In-memory fm.hidden = true mutations need to be persisted.
+    steps:
+      - id: "5.1"
+        task: "Fix _hideAwaitingToolResult()"
+        file: "src/core/internal-plugins/permission-approval/index.mjs"
+        description: |
+          Instead of:
+            fm.hidden = true;  // in-memory only
+          Do:
+            Collect frames to hide, hydrate with full data, then merge
+            with { silent: true }. MUST be silent because this runs
+            INSIDE a FrameRouter plugin handler — non-silent merge would
+            re-trigger routing and cascade into other plugins.
+
+            let framesToHide = [...].map(f => ({ ...f, hidden: true }));
+            this.context.frames.merge(framesToHide, { silent: true });
+
+            Then persist via framePersistence.saveFrames().
+
+      - id: "5.2"
+        task: "Run tests, verify"
+      - id: "5.3"
+        task: "Commit"
+
+  phase_6:
+    name: "Fix FrameRouter state persistence (bypass-4, MEDIUM)"
+    description: |
+      Plugin state changes should go through FrameManager.merge()
+      instead of direct updateFrameState().
+    steps:
+      - id: "6.1"
+        task: "Replace updateFrameState() with merge()"
+        file: "src/core/routing/frame-router.mjs"
+        description: |
+          Instead of:
+            frame.state = JSON.stringify(rawState);
+            framePersistence.updateFrameState(frameID, rawState);
+          Do:
+            frameManager.merge([{ id: frameID, state: JSON.stringify(rawState) }], { silent: true });
+            // silent: true prevents re-triggering the router recursively
+
+      - id: "6.2"
+        task: "Deprecate updateFrameState()"
+        file: "src/core/frames/index.mjs"
+        description: |
+          Mark updateFrameState() as deprecated. Add a console.warn()
+          if called directly. Eventually remove.
+
+      - id: "6.3"
+        task: "Run tests, verify"
+      - id: "6.4"
+        task: "Commit"
+
+  phase_7:
+    name: "Fix frame-controller PATCH (bypass-5, MEDIUM)"
+    description: |
+      The PATCH endpoint for frame content updates should use
+      InteractionLoop.updateFrame().
+    steps:
+      - id: "7.1"
+        task: "Rewrite PATCH handler"
+        file: "src/server/controllers/frame-controller.mjs"
+        description: |
+          Replace:
+            frame.content = serialized; await frame.save();
+          With:
+            interactionLoop.updateFrame(sessionID, { id: frameID, content: parsed });
+
+      - id: "7.2"
+        task: "Run tests, verify"
+      - id: "7.3"
+        task: "Commit"
+
+  phase_8:
+    name: "Grep audit + final verification"
+    description: |
+      Grep the entire codebase for any remaining bypasses.
+      Prove there are none left.
+    steps:
+      - id: "8.1"
+        task: "Grep for direct frame mutations"
+        description: |
+          Broad patterns that catch ALL bypass variants:
+
+          # Any .save() on frame-like variables (exclude spec/, node_modules/)
+          grep -rn '\.save()' src/ --include='*.mjs' | grep -v 'node_modules' | grep -v 'spec/'
+
+          # Direct property mutations on frame fields
+          grep -rn '\.hidden\s*=' src/ --include='*.mjs' | grep -v 'node_modules' | grep -v 'spec/'
+          grep -rn '\.processed\s*=' src/ --include='*.mjs' | grep -v 'node_modules' | grep -v 'spec/'
+          grep -rn '\.content\s*=' src/ --include='*.mjs' | grep -v 'node_modules' | grep -v 'spec/'
+
+          # Direct DB state updates
+          grep -rn 'framePersistence\.updateFrameState' src/ --include='*.mjs'
+
+          # Manual commit emissions (should only exist in _createFrame and updateFrame)
+          grep -rn 'interactionLoop\.emit.*commit' src/ --include='*.mjs'
+
+          # saveFrames() callers (should only be _createFrame, updateFrame, and loadFramesInto)
+          grep -rn 'saveFrames' src/ --include='*.mjs' | grep -v 'spec/'
+
+          Each hit must be classified:
+          - Inside FrameManager/FramePersistence internals → OK
+          - Inside _createFrame() or updateFrame() → OK
+          - Inside FrameRouter state persistence → OK (if using silent merge)
+          - Anything else → BYPASS that needs fixing
+
+          Also check setProcessed() on FrameManager — it mutates
+          frames without a commit event. Document whether this is
+          intentional or needs remediation.
+
+      - id: "8.2"
+        task: "Run full test suite"
+      - id: "8.3"
+        task: "E2E test: full permission flow via curl"
+      - id: "8.4"
+        task: "Commit"
+
+# =============================================================================
+# CLAUDE.MD ADDITIONS
+# =============================================================================
+
+claude_md_additions:
+  section: "FrameManager — The Single Source of Truth"
+  content: |
+    ## ⚠️ FrameManager — The Single Source of Truth ⚠️
+
+    **ALL frame mutations MUST go through FrameManager.merge().** No exceptions.
+
+    The chain: merge() → commit event → SSE broadcast → FrameRouter → DB persist
+
+    ### NEVER do this:
+    ```javascript
+    // ❌ WRONG — bypasses FrameManager, breaks SSE + Router
+    frame.hidden = true;
+    await frame.save();
+
+    // ❌ WRONG — bypasses FrameManager
+    frame.content = JSON.stringify(newContent);
+    await frame.save();
+
+    // ❌ WRONG — fabricated commit, not from FrameManager
+    interactionLoop.emit('commit', { sessionID, commit: { ... } });
+
+    // ❌ WRONG — direct DB update
+    framePersistence.updateFrameState(frameID, newState);
+    ```
+
+    ### ALWAYS do this:
+    ```javascript
+    // ✅ CORRECT — use InteractionLoop.updateFrame()
+    let interactionLoop = context.getProperty('interactionLoop');
+    await interactionLoop.updateFrame(sessionID, {
+      id: frameID,
+      hidden: true,
+      content: newContent,
+    });
+    ```
+
+    updateFrame() is the ONLY blessed path for frame mutations outside
+    of InteractionLoop._createFrame(). It handles: hydration of partial
+    updates, FrameManager.merge(), persistence, SSE broadcast, and
+    commit event emission. Do NOT roll your own version.
+
+    ### Why this matters:
+    - SSE won't broadcast if you bypass FrameManager
+    - FrameRouter won't fire plugins if you bypass FrameManager
+    - Commit history is lost if you bypass FrameManager
+    - Client and server state diverge if you bypass FrameManager
+
+    **If you need to modify a frame and FrameManager isn't loaded: LOAD IT.**
+    **If you think "this is just a simple update": IT'S NOT. USE FRAMEMANAGER.**
+
+    This rule exists because we repeatedly bypassed FrameManager with "quick
+    fixes" that broke SSE broadcasts, FrameRouter plugins, and state consistency.
+    Every time we patched a bypass with another bypass, we made it worse.
+    Never again.
