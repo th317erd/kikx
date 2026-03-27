@@ -57,11 +57,25 @@ export class PrimerAssembler {
     // 1. Core instructions (always present)
     sections.push(CORE_INSTRUCTIONS);
 
-    // 2. Multi-agent context (when >1 participant)
+    // 2. Agent identity — tell the agent who it is
+    if (agent && agent.name) {
+      let identity = `YOUR IDENTITY:\n` +
+        `- Your name is "${agent.name}".\n`;
+
+      if (agent.id)
+        identity += `- Your agent ID is ${agent.id}.\n`;
+
+      identity += `- When you see messages "From ${agent.name}:" in the conversation history, those are YOUR previous messages.\n` +
+        `- Do not confuse yourself with other agents. You are ${agent.name}.`;
+
+      sections.push(identity);
+    }
+
+    // 3. Multi-agent context (when >1 participant)
     if (options.participants && options.participants.length > 1) {
       let otherAgents = options.participants
         .filter((p) => p.agentID !== (agent && agent.id))
-        .map((p) => p.agentID)
+        .map((p) => p.agentName || p.agentID)
         .join(', ');
 
       sections.push(
