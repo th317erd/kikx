@@ -1747,13 +1747,21 @@ class KikxSessionPage extends HTMLElement {
         }
 
         // Mark any streaming reflection blocks as complete (stop spinner)
+        // Remove empty phantom bubbles (thinking-only, no message content)
         let endSg = this._streamingGroups.get(endAgentID);
         if (endSg && endSg.groupID) {
           let endGroupEl = this._chatView.querySelector(`[data-frame-id="${endSg.groupID}"]`);
           if (endGroupEl) {
             let rb = endGroupEl.querySelector('kikx-reflection-block');
+            let mc = endGroupEl.querySelector('kikx-message-content');
+
             if (rb)
               rb.setAttribute('complete', '');
+
+            // No message content = agent had nothing to say. Remove the bubble.
+            if (!mc || !mc.content || !mc.content.trim()) {
+              endGroupEl.remove();
+            }
           }
         }
 
