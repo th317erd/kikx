@@ -461,4 +461,136 @@ describe('Multi-agent streaming', () => {
       assert.equal(agentID, 'agt_late_join');
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Empty bubble cleanup on interaction:end
+  // ---------------------------------------------------------------------------
+
+  describe('empty bubble cleanup', () => {
+    it('removes phantom bubble with only reflection and no message on interaction:end', () => {
+      let page = createSessionPage();
+
+      // Simulate: agent starts thinking (typing indicator → reflection delta → phantom bubble)
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('ReflectionDelta', JSON.stringify({
+        interactionID: 'int_empty_1',
+        content: { text: 'thinking...' },
+        authorID: 'agt_alpha',
+      }));
+
+      // The phantom creates a streaming group with a groupID
+      let sg = page._streamingGroups.get('agt_alpha');
+      assert.ok(sg, 'should have streaming group');
+      assert.ok(sg.groupID, 'should have groupID');
+
+      // Simulate the phantom being rendered as a kikx-interaction in DOM
+      let doc = getDocument();
+      let fakeInteraction = doc.createElement('kikx-interaction');
+      fakeInteraction.setAttribute('data-frame-id', sg.groupID);
+      fakeInteraction.setAttribute('data-author-id', 'agt_alpha');
+
+      let rb = doc.createElement('kikx-reflection-block');
+      fakeInteraction.appendChild(rb);
+
+      page._chatView.appendChild(fakeInteraction);
+
+      // Verify it's in the DOM
+      assert.ok(page._chatView.querySelector(`[data-frame-id="${sg.groupID}"]`), 'bubble should be in DOM');
+
+      // Agent produces [NOT RESPONDING] which gets suppressed → no Message frame
+      // interaction:end fires
+      page._handleSSEEvent('interaction:end', JSON.stringify({
+        interactionID: 'int_empty_1',
+        agentID: 'agt_alpha',
+      }));
+
+      // The empty bubble should be REMOVED
+      let remaining = page._chatView.querySelector(`[data-frame-id="${sg.groupID}"]`);
+      assert.equal(remaining, null, 'empty bubble MUST be removed on interaction:end');
+    });
+
+    it('keeps bubble that HAS message content on interaction:end', () => {
+      let page = createSessionPage();
+
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('ReflectionDelta', JSON.stringify({
+        interactionID: 'int_keep_1',
+        content: { text: 'thinking...' },
+        authorID: 'agt_alpha',
+      }));
+
+      let sg = page._streamingGroups.get('agt_alpha');
+      let doc = getDocument();
+
+      let fakeInteraction = doc.createElement('kikx-interaction');
+      fakeInteraction.setAttribute('data-frame-id', sg.groupID);
+      fakeInteraction.setAttribute('data-author-id', 'agt_alpha');
+
+      let mc = doc.createElement('kikx-message-content');
+      mc.content = '<p>I have something to say</p>';
+      fakeInteraction.appendChild(mc);
+
+      page._chatView.appendChild(fakeInteraction);
+
+      page._handleSSEEvent('interaction:end', JSON.stringify({
+        interactionID: 'int_keep_1',
+        agentID: 'agt_alpha',
+      }));
+
+      // Should NOT be removed — it has message content
+      let remaining = page._chatView.querySelector(`[data-frame-id="${sg.groupID}"]`);
+      assert.ok(remaining, 'bubble with message content MUST be kept');
+    });
+
+    it('aggressive cleanup removes orphaned agent bubbles without message content', () => {
+      let page = createSessionPage();
+      let doc  = getDocument();
+
+      // Create an orphaned bubble (not tracked in streaming groups)
+      let orphan = doc.createElement('kikx-interaction');
+      orphan.setAttribute('data-author-id', 'agt_alpha');
+      orphan.setAttribute('data-frame-id', 'frm_orphan');
+
+      let rb = doc.createElement('kikx-reflection-block');
+      orphan.appendChild(rb);
+
+      page._chatView.appendChild(orphan);
+
+      // Start and end an interaction for the same agent
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('interaction:end', JSON.stringify({
+        interactionID: 'int_cleanup',
+        agentID: 'agt_alpha',
+      }));
+
+      // The orphan should be removed by aggressive cleanup
+      let remaining = page._chatView.querySelector('[data-frame-id="frm_orphan"]');
+      assert.equal(remaining, null, 'orphaned empty bubble MUST be removed');
+    });
+
+    it('aggressive cleanup preserves bubbles with tool activity', () => {
+      let page = createSessionPage();
+      let doc  = getDocument();
+
+      let bubble = doc.createElement('kikx-interaction');
+      bubble.setAttribute('data-author-id', 'agt_alpha');
+      bubble.setAttribute('data-frame-id', 'frm_activity');
+
+      let activity = doc.createElement('div');
+      activity.className = 'tool-activity-content';
+      activity.textContent = 'Running...';
+      bubble.appendChild(activity);
+
+      page._chatView.appendChild(bubble);
+
+      page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
+      page._handleSSEEvent('interaction:end', JSON.stringify({
+        interactionID: 'int_activity',
+        agentID: 'agt_alpha',
+      }));
+
+      let remaining = page._chatView.querySelector('[data-frame-id="frm_activity"]');
+      assert.ok(remaining, 'bubble with tool activity MUST be kept');
+    });
+  });
 });

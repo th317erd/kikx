@@ -1746,21 +1746,40 @@ class KikxSessionPage extends HTMLElement {
           }
         }
 
-        // Mark any streaming reflection blocks as complete (stop spinner)
-        // Remove empty phantom bubbles (thinking-only, no message content)
+        // Mark streaming reflections as complete + remove ALL empty bubbles
+        // from this agent. The agent may have streamed thinking (reflection)
+        // but produced no message ([NOT RESPONDING] suppressed server-side).
+        // The phantom bubble stays in the DOM with only a reflection block.
         let endSg = this._streamingGroups.get(endAgentID);
         if (endSg && endSg.groupID) {
           let endGroupEl = this._chatView.querySelector(`[data-frame-id="${endSg.groupID}"]`);
           if (endGroupEl) {
             let rb = endGroupEl.querySelector('kikx-reflection-block');
-            let mc = endGroupEl.querySelector('kikx-message-content');
-
             if (rb)
               rb.setAttribute('complete', '');
 
-            // No message content = agent had nothing to say. Remove the bubble.
-            if (!mc || !mc.content || !mc.content.trim()) {
+            let mc = endGroupEl.querySelector('kikx-message-content');
+            if (!mc || !mc.content || !mc.content.trim())
               endGroupEl.remove();
+          }
+        }
+
+        // Aggressive cleanup: find ANY kikx-interaction from this agent
+        // that has no message content and remove it. Catches phantoms that
+        // weren't tracked in the streaming group.
+        if (endAgentID && endAgentID !== 'default') {
+          let agentBubbles = this._chatView.querySelectorAll(`kikx-interaction[data-author-id="${endAgentID}"]`);
+          for (let bubble of agentBubbles) {
+            let mc = bubble.querySelector('kikx-message-content');
+            if (!mc || !mc.content || !mc.content.trim()) {
+              // No message content — check if it has any other meaningful content
+              let hasActivity    = bubble.querySelector('.tool-activity-content');
+              let hasPermission  = bubble.querySelector('kikx-permission-request');
+              let hasFileRead    = bubble.querySelector('kikx-file-read');
+              let hasFileWrite   = bubble.querySelector('kikx-file-write');
+
+              if (!hasActivity && !hasPermission && !hasFileRead && !hasFileWrite)
+                bubble.remove();
             }
           }
         }
