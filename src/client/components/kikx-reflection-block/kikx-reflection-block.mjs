@@ -53,6 +53,7 @@ const TEMPLATE_HTML = `
       font-weight: 600;
       font-size: 1.2rem;
       line-height: 1;
+      flex-shrink: 0;
     }
 
     kikx-reflection-block .thinking-dots span {
@@ -71,6 +72,32 @@ const TEMPLATE_HTML = `
     @keyframes kikx-dot-pulse {
       0%, 80%, 100% { opacity: 0.2; }
       40%           { opacity: 1; }
+    }
+
+    kikx-reflection-block .thinking-preview {
+      display: none;
+      flex: 1;
+      overflow: hidden;
+      white-space: nowrap;
+      font-size: 0.8rem;
+      color: var(--text-tertiary, rgba(255, 255, 255, 0.35));
+      font-style: italic;
+      mask-image: linear-gradient(to right, transparent 0%, black 5%, black 85%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 85%, transparent 100%);
+    }
+
+    kikx-reflection-block:not([complete]) .thinking-preview {
+      display: block;
+    }
+
+    kikx-reflection-block .thinking-preview-inner {
+      display: inline-block;
+      animation: kikx-thinking-scroll 8s linear infinite;
+    }
+
+    @keyframes kikx-thinking-scroll {
+      0%   { transform: translateX(0%); }
+      100% { transform: translateX(-50%); }
     }
 
     kikx-reflection-block .reflection-content {
@@ -94,6 +121,7 @@ const TEMPLATE_HTML = `
     <span class="collapse-indicator">\u25B6</span>
     <span class="brain-icon">\uD83E\uDDE0</span>
     <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+    <span class="thinking-preview"><span class="thinking-preview-inner"></span></span>
   </button>
   <div class="reflection-content"></div>
 `;
@@ -127,10 +155,12 @@ class KikxReflectionBlock extends HTMLElement {
       this._toggleHeader      = this.querySelector('.toggle-header');
       this._collapseIndicator = this.querySelector('.collapse-indicator');
       this._reflectionContent = this.querySelector('.reflection-content');
+      this._previewInner      = this.querySelector('.thinking-preview-inner');
 
       // Apply content that was set before the element connected to the DOM
       if (this._pendingContent !== null) {
         this._reflectionContent.textContent = this._pendingContent;
+        this._updatePreview(this._pendingContent);
         this._pendingContent = null;
       }
     }
@@ -159,10 +189,12 @@ class KikxReflectionBlock extends HTMLElement {
   }
 
   set content(value) {
-    if (this._reflectionContent)
+    if (this._reflectionContent) {
       this._reflectionContent.textContent = value;
-    else
+      this._updatePreview(value);
+    } else {
       this._pendingContent = value;
+    }
   }
 
   toggle() {
@@ -201,6 +233,23 @@ class KikxReflectionBlock extends HTMLElement {
       this._collapseIndicator.classList.remove('expanded');
       this._reflectionContent.classList.remove('expanded');
     }
+  }
+
+  _updatePreview(text) {
+    if (!this._previewInner)
+      return;
+
+    if (!text) {
+      this._previewInner.textContent = '';
+      return;
+    }
+
+    // Show the last ~200 chars of thinking text, duplicated for seamless scroll loop
+    let preview = text.length > 200 ? text.slice(-200) : text;
+    // Clean up whitespace for inline display
+    preview = preview.replace(/\n+/g, ' \u2022 ').replace(/\s+/g, ' ').trim();
+    // Duplicate for seamless CSS scroll animation
+    this._previewInner.textContent = preview + '    \u2022    ' + preview;
   }
 
   _dispatchToggleEvent() {
