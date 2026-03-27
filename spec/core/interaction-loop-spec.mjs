@@ -737,7 +737,7 @@ describe('InteractionLoop', () => {
       let toolResults = frames.filter((f) => f.type === 'ToolResult');
       let permResult  = toolResults.find((f) => f.content.output && f.content.output.includes('PERMISSION REQUIRED'));
       assert.ok(permResult, 'should have PERMISSION REQUIRED tool-result');
-      assert.equal(permResult.hidden, true, 'permission tool-result should be hidden from agent');
+      assert.equal(permResult.hidden, false, 'permission tool-result should be visible (paired with ToolCall)');
 
       // Interaction ends on permission request — agent does NOT continue
       let messageFrames = frames.filter((f) => f.type === 'Message');

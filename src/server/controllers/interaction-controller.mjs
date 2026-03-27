@@ -380,77 +380,20 @@ export class InteractionController extends ControllerAuthBase {
     frame.content     = JSON.stringify(content);
     await frame.save();
 
-    // Hide the placeholder ToolResult and permission-related agent Messages
-    let toolUseID = stateObj.toolUseID;
-    if (toolUseID && !hasDeny) {
-      let { Frame: FrameModel } = this.getCoreModels();
-
-      // Hide "PERMISSION REQUIRED" ToolResult frames
-      let toolResults = await FrameModel.where
-        .sessionID.EQ(params.sessionID)
-        .AND.type.EQ('ToolResult')
-        .AND.hidden.EQ(false)
-        .all();
-
-      for (let tr of toolResults) {
-        let trContent = (typeof tr.content === 'string') ? tr.content : JSON.stringify(tr.content || {});
-        if (trContent.includes(toolUseID) && trContent.includes('PERMISSION REQUIRED')) {
-          tr.hidden = true;
-          await tr.save();
-        }
-      }
-
-      // Hide agent Messages after the ToolCall (permission-related chatter)
-      let toolCall = await FrameModel.where
-        .sessionID.EQ(params.sessionID)
-        .AND.type.EQ('ToolCall')
-        .all();
-
-      let matchingCall = toolCall.find((tc) => {
-        let tcContent = (typeof tc.content === 'string') ? tc.content : JSON.stringify(tc.content || {});
-        return tcContent.includes(toolUseID);
-      });
-
-      // Unhide the ToolCall if the orphan healer hid it — the ToolResult
-      // from the approval needs a matching visible ToolCall or the API errors.
-      if (matchingCall && matchingCall.hidden) {
-        matchingCall.hidden = false;
-        await matchingCall.save();
-      }
-
-      if (matchingCall) {
-        let agentMessages = await FrameModel.where
-          .sessionID.EQ(params.sessionID)
-          .AND.type.EQ('Message')
-          .AND.authorType.EQ('agent')
-          .AND.hidden.EQ(false)
-          .all();
-
-        for (let msg of agentMessages) {
-          if (msg.order > matchingCall.order) {
-            msg.hidden = true;
-            await msg.save();
-          }
-        }
-      }
-    }
-
     // -----------------------------------------------------------------------
     // Execute the decision
     // -----------------------------------------------------------------------
-    // Every tool call gets a ToolResult — either the actual output (approval)
-    // or a denial message. The agent sees coherent context on next interaction:
-    //   ToolCall → ToolResult(output) or ToolCall → ToolResult("denied")
-    //
-    // For "forever" decisions, a PermissionRule is created so future identical
-    // requests auto-approve/deny without asking.
-    // No one-time rules. The signed PermissionRequest frame IS the audit trail.
+    // The placeholder ToolResult (created when permission was requested) stays
+    // VISIBLE and paired with its ToolCall. On approval/denial, we UPDATE its
+    // content with the real output. No hidden frames, no orphan conflicts.
     // -----------------------------------------------------------------------
 
-    let toolName      = stateObj.toolName || 'unknown';
-    let toolArguments = stateObj.toolArguments || {};
-    let sessionID     = stateObj.sessionID || params.sessionID;
-    let agentID       = stateObj.agentID;
+    let toolName       = stateObj.toolName || 'unknown';
+    let toolArguments  = stateObj.toolArguments || {};
+    let sessionID      = stateObj.sessionID || params.sessionID;
+    let agentID        = stateObj.agentID;
+    let toolUseID      = stateObj.toolUseID;
+    let toolResultID   = stateObj.toolResultID; // Set by InteractionLoop when creating the placeholder
 
     // Create "forever" PermissionRules for allow-forever / deny-forever decisions
     try {
@@ -491,20 +434,16 @@ export class InteractionController extends ControllerAuthBase {
       console.error('[approve] Failed to create permission rule:', ruleError.message);
     }
 
-    // Create the ToolResult — either tool output (approval) or denial message
-    let framePersistence = core.getContext().getProperty('framePersistence');
-    let XID             = (await import('xid-js')).default;
+    // Determine the tool output
     let toolResultOutput;
 
     if (hasDeny) {
-      // Denial: tell the agent the request was denied
       let isDenyForever = decisions.some((d) => d.decision === 'deny-forever');
       toolResultOutput  = isDenyForever
         ? `Permission permanently denied for "${toolName}". User denied execution for this tool in this session.`
         : `Permission denied for "${toolName}". User denied this specific request. Do not retry unless the user explicitly asks.`;
     } else {
       // Approval: execute the tool directly
-      // The user's authenticated request IS the authorization — no permission re-check needed.
       let pluginRegistry = core.getPluginRegistry();
       let ToolClass      = pluginRegistry.getTool(toolName);
 
@@ -515,7 +454,6 @@ export class InteractionController extends ControllerAuthBase {
           let toolInstance = new ToolClass(core.getContext());
           let result       = await toolInstance._execute(toolArguments);
 
-          // Normalize output
           if (result && typeof result === 'object' && result.content)
             result = result.content;
 
@@ -526,32 +464,61 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
-    // Persist the ToolResult frame
+    // UPDATE the existing placeholder ToolResult with the real output.
+    // No new frame, no hidden/unhide dance. The ToolCall-ToolResult pair stays intact.
+    let { Frame: FrameModel } = this.getCoreModels();
+
     try {
-      if (framePersistence) {
-        let fm = await framePersistence.loadFrames(sessionID);
+      let existingResult = null;
 
-        fm.merge([{
-          id:            `frm_${XID.next()}`,
-          type:          'ToolResult',
-          content:       {
-            output:    toolResultOutput,
-            toolUseID: toolUseID || null,
-            _sessionID: sessionID,
-          },
-          timestamp:     Date.now(),
-          interactionID: stateObj.interactionID || null,
-          authorType:    'system',
-          authorID:      null,
-          hidden:        false,
-          deleted:       false,
-          processed:     false,
-        }]);
+      // Find by stored ID (preferred)
+      if (toolResultID)
+        existingResult = await FrameModel.where.id.EQ(toolResultID).first();
 
-        await framePersistence.saveFrames(sessionID, fm.toArray());
+      // Fallback: find by toolUseID match
+      if (!existingResult && toolUseID) {
+        let candidates = await FrameModel.where
+          .sessionID.EQ(params.sessionID)
+          .AND.type.EQ('ToolResult')
+          .all();
+
+        existingResult = candidates.find((f) => {
+          let c = (typeof f.content === 'string') ? f.content : JSON.stringify(f.content || {});
+          return c.includes(toolUseID);
+        });
+      }
+
+      if (existingResult) {
+        // Update in place — content changes, frame stays paired with ToolCall
+        existingResult.content = JSON.stringify({
+          output:    toolResultOutput,
+          toolUseID: toolUseID || null,
+          _sessionID: sessionID,
+        });
+
+        await existingResult.save();
+      } else {
+        // No existing placeholder found — create a new one (shouldn't happen normally)
+        let framePersistence = core.getContext().getProperty('framePersistence');
+        if (framePersistence) {
+          let fm  = await framePersistence.loadFrames(sessionID);
+          let XID = (await import('xid-js')).default;
+
+          fm.merge([{
+            id:            `frm_${XID.next()}`,
+            type:          'ToolResult',
+            content:       { output: toolResultOutput, toolUseID: toolUseID || null, _sessionID: sessionID },
+            timestamp:     Date.now(),
+            interactionID: stateObj.interactionID || null,
+            authorType:    'system',
+            hidden:        false, deleted: false, processed: false,
+          }]);
+
+          await framePersistence.saveFrames(sessionID, fm.toArray());
+        }
       }
     } catch (frameError) {
-      console.error('[approve] Failed to create ToolResult frame:', frameError.message);
+      console.error('[approve] Failed to update ToolResult:', frameError.message);
     }
 
     // For approvals: start a new interaction so the agent sees the tool output
@@ -670,56 +637,62 @@ export class InteractionController extends ControllerAuthBase {
     frame.state   = JSON.stringify(stateObj);
     await frame.save();
 
-    // Create denial ToolResult — agent sees it on the next interaction.
-    let toolName         = stateObj.toolName || content.toolName || 'unknown';
-    let toolUseID        = stateObj.toolUseID || null;
-    let framePersistence = core.getContext().getProperty('framePersistence');
+    // UPDATE the existing placeholder ToolResult with denial message
+    let toolName       = stateObj.toolName || content.toolName || 'unknown';
+    let toolUseID      = stateObj.toolUseID || null;
+    let toolResultID   = stateObj.toolResultID;
+    let denialOutput   = `Permission denied for "${toolName}". User denied this specific request. Do not retry unless the user explicitly asks.`;
 
-    // Unhide the ToolCall if the orphan healer hid it
-    if (toolUseID) {
-      let { Frame: FrameModel } = this.getCoreModels();
-      let toolCalls = await FrameModel.where
-        .sessionID.EQ(params.sessionID)
-        .AND.type.EQ('ToolCall')
-        .AND.hidden.EQ(true)
-        .all();
-
-      for (let tc of toolCalls) {
-        let tcContent = (typeof tc.content === 'string') ? tc.content : JSON.stringify(tc.content || {});
-        if (tcContent.includes(toolUseID)) {
-          tc.hidden = false;
-          await tc.save();
-          break;
-        }
-      }
-    }
+    let { Frame: DenyFrameModel } = this.getCoreModels();
 
     try {
-      if (framePersistence) {
-        let fm  = await framePersistence.loadFrames(params.sessionID);
-        let XID = (await import('xid-js')).default;
+      let existingResult = null;
 
-        fm.merge([{
-          id:            `frm_${XID.next()}`,
-          type:          'ToolResult',
-          content:       {
-            output:    `Permission denied for "${toolName}". User denied this specific request. Do not retry unless the user explicitly asks.`,
-            toolUseID,
-            _sessionID: params.sessionID,
-          },
-          timestamp:     Date.now(),
-          interactionID: stateObj.interactionID || null,
-          authorType:    'system',
-          authorID:      null,
-          hidden:        false,
-          deleted:       false,
-          processed:     false,
-        }]);
+      if (toolResultID)
+        existingResult = await DenyFrameModel.where.id.EQ(toolResultID).first();
 
-        await framePersistence.saveFrames(params.sessionID, fm.toArray());
+      if (!existingResult && toolUseID) {
+        let candidates = await DenyFrameModel.where
+          .sessionID.EQ(params.sessionID)
+          .AND.type.EQ('ToolResult')
+          .all();
+
+        existingResult = candidates.find((f) => {
+          let c = (typeof f.content === 'string') ? f.content : JSON.stringify(f.content || {});
+          return c.includes(toolUseID);
+        });
+      }
+
+      if (existingResult) {
+        existingResult.content = JSON.stringify({
+          output:    denialOutput,
+          toolUseID: toolUseID || null,
+          _sessionID: params.sessionID,
+        });
+
+        await existingResult.save();
+      } else {
+        // Fallback: create new
+        let framePersistence = core.getContext().getProperty('framePersistence');
+        if (framePersistence) {
+          let fm  = await framePersistence.loadFrames(params.sessionID);
+          let XID = (await import('xid-js')).default;
+
+          fm.merge([{
+            id:            `frm_${XID.next()}`,
+            type:          'ToolResult',
+            content:       { output: denialOutput, toolUseID: toolUseID || null, _sessionID: params.sessionID },
+            timestamp:     Date.now(),
+            interactionID: stateObj.interactionID || null,
+            authorType:    'system',
+            hidden:        false, deleted: false, processed: false,
+          }]);
+
+          await framePersistence.saveFrames(params.sessionID, fm.toArray());
+        }
       }
     } catch (_denialError) {
-      console.error('[deny] Failed to create denial ToolResult:', _denialError.message);
+      console.error('[deny] Failed to update denial ToolResult:', _denialError.message);
     }
 
     return { data: { denied: true } };

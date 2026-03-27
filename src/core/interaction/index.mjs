@@ -919,22 +919,36 @@ export class InteractionLoop extends EventEmitter {
 
                 this.emit('permission:request', { sessionID, frameID: requestFrameID, toolName: block.content.toolName });
 
-                // Create a hidden ToolResult to pair with the ToolCall (prevents
-                // orphan detection) but the agent doesn't see it — the interaction
-                // just ends. The user's approval/denial creates the real ToolResult.
-                toolOutput = `PERMISSION REQUIRED for "${block.content.toolName}". Request ID: ${requestFrameID}.`;
+                // Create a VISIBLE ToolResult paired with the ToolCall. This prevents
+                // orphan detection issues — the pair stays intact. On approval/denial,
+                // the controller UPDATES this ToolResult's content with the real output.
+                let permToolResultID = generateID('frm_');
+                toolOutput = `PERMISSION REQUIRED for "${block.content.toolName}". Request ID: ${requestFrameID}. Awaiting user approval.`;
                 await this._createFrame(sessionID, {
-                  id: generateID('frm_'), type: 'ToolResult',
-                  content: { output: toolOutput, toolUseID: block.content.toolUseId || block.content.toolUseID, _sessionID: sessionID },
+                  id: permToolResultID, type: 'ToolResult',
+                  content: { output: toolOutput, toolUseID: block.content.toolUseId || block.content.toolUseID, _sessionID: sessionID, _permissionRequestID: requestFrameID },
                   timestamp: Date.now(), interactionID,
                   authorType: 'system', authorID: null,
                   parentID: params.parentID || null,
-                  hidden: true, deleted: false, processed: false,
+                  hidden: false, deleted: false, processed: false,
                 }, frameManager, { authorType: 'system' }, signingContext);
 
+                // Store the ToolResult ID on the PermissionRequest state so the
+                // approval controller can find and update it
+                try {
+                  let { Frame: PermFrame } = this._getModels();
+                  let permReq = await PermFrame.where.id.EQ(requestFrameID).first();
+                  if (permReq) {
+                    let permState = (typeof permReq.state === 'string') ? JSON.parse(permReq.state) : (permReq.state || {});
+                    permState.toolResultID = permToolResultID;
+                    permReq.state = JSON.stringify(permState);
+                    await permReq.save();
+                  }
+                } catch (_e) {
+                  // Best-effort
+                }
+
                 // End the interaction — agent doesn't respond to permission requests.
-                // The user's approval/denial will create the real ToolResult and
-                // start a new interaction.
                 break;
               }
 
