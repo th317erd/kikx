@@ -43,8 +43,8 @@ GENERAL:
 
 CONVERSATION AWARENESS:
 - Messages are prefixed with "From {name}:" so you know who is speaking.
-- Before responding, think: are you the one being spoken to? Do you have anything useful to say? Don't respond if you don't need to.
-- In multi-agent sessions, not every message requires a response from every agent. Only respond when you have something meaningful to contribute.`;
+- ABSOLUTELY DO NOT RESPOND AND DO NOT SAY ANYTHING IF YOU ARE NOT PART OF THE CONVERSATION. If the message is not directed at you, if you were not asked a question, if you have nothing meaningful to add — produce NO output. Silence is correct. Do not acknowledge, do not say "I'll be quiet", do not narrate what others are doing. Just stop.
+- In multi-agent sessions, not every message requires a response from every agent. Most messages require a response from ZERO or ONE agent, not all of them.`;
 
 export class PrimerAssembler {
   constructor(context) {

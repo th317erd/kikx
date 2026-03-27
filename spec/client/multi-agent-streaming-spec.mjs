@@ -117,18 +117,17 @@ describe('Multi-agent streaming', () => {
 
       let indicator = page._typingIndicators.get('agt_alpha');
       assert.ok(indicator, 'typing indicator should be stored in _typingIndicators');
-      assert.equal(indicator.getAttribute('participant-name'), 'Alpha Agent');
+      assert.equal(indicator.tagName, 'KIKX-TYPING-INDICATOR');
       assert.equal(indicator.getAttribute('data-agent-id'), 'agt_alpha');
     });
 
-    it('typing indicator has animated dots', () => {
+    it('typing indicator has agent name', () => {
       let page = createSessionPage();
       page._handleSSEEvent('interaction:start', JSON.stringify({ agentID: 'agt_alpha' }));
 
       let indicator = page._typingIndicators.get('agt_alpha');
-      let dots = indicator.querySelector('.typing-indicator');
-      assert.ok(dots, 'should have typing-indicator element');
-      assert.equal(dots.querySelectorAll('span').length, 3, 'should have 3 dot spans');
+      assert.equal(indicator.agentName, 'Alpha Agent');
+      assert.equal(indicator.tagName, 'KIKX-TYPING-INDICATOR');
     });
 
     it('removes typing indicator on first delta', () => {
@@ -216,7 +215,8 @@ describe('Multi-agent streaming', () => {
 
       let indicator = page._typingIndicators.get('agt_beta');
       assert.ok(indicator, 'typing indicator should exist');
-      assert.equal(indicator.getAttribute('participant-name'), 'Beta Agent');
+      assert.equal(indicator.tagName, 'KIKX-TYPING-INDICATOR');
+      assert.equal(indicator.agentName, 'Beta Agent');
       assert.equal(indicator.getAttribute('data-agent-id'), 'agt_beta');
     });
 

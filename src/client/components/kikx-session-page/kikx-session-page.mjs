@@ -835,23 +835,15 @@ class KikxSessionPage extends HTMLElement {
 
       let name = this._getAgentDisplayName(agentID !== 'default' ? agentID : null);
 
-      let interaction = document.createElement('kikx-interaction');
-      interaction.setAttribute('alignment', 'agent');
-      interaction.setAttribute('participant-name', name);
-      interaction.setAttribute('participant-initials', getInitials(name));
-      interaction.setAttribute('timestamp', formatTimestamp(new Date().toISOString()));
+      let indicator = document.createElement('kikx-typing-indicator');
+      indicator.agentName    = name;
+      indicator.thinkingText = '';
 
       if (agentID !== 'default')
-        interaction.setAttribute('data-agent-id', agentID);
+        indicator.setAttribute('data-agent-id', agentID);
 
-      let dots = document.createElement('div');
-      dots.className = 'typing-indicator';
-      dots.innerHTML = '<span></span><span></span><span></span>';
-
-      interaction.appendChild(dots);
-      this._chatView.appendInteraction(interaction);
-
-      this._typingIndicators.set(agentID, interaction);
+      this._chatView.appendInteraction(indicator);
+      this._typingIndicators.set(agentID, indicator);
     });
 
     // --- Event-driven rendering: frame:added → DOM projection ---
@@ -1645,11 +1637,12 @@ class KikxSessionPage extends HTMLElement {
         let reflAgentID  = parsed.authorID || 'default';
         let reflGroupID  = parsed.interactionID || `stream-${reflAgentID}-${Date.now()}`;
 
-        // Remove typing indicator on first reflection delta
+        // Update typing indicator with thinking text (scrolling preview)
         let reflTypingEl = this._typingIndicators.get(reflAgentID);
-        if (reflTypingEl) {
-          reflTypingEl.remove();
-          this._typingIndicators.delete(reflAgentID);
+        if (reflTypingEl && reflTypingEl.tagName === 'KIKX-TYPING-INDICATOR') {
+          let sg = this._streamingGroups.get(reflAgentID);
+          let fullText = (sg ? sg.reflectionText : '') + reflText;
+          reflTypingEl.thinkingText = fullText;
         }
 
         // Get or create streaming group
@@ -1744,10 +1737,14 @@ class KikxSessionPage extends HTMLElement {
           }
         }
 
-        // Remove typing indicator
+        // Dismiss typing indicator (fade out)
         let endTypingEl = this._typingIndicators.get(endAgentID);
         if (endTypingEl) {
-          endTypingEl.remove();
+          if (typeof endTypingEl.dismiss === 'function')
+            endTypingEl.dismiss();
+          else
+            endTypingEl.remove();
+
           this._typingIndicators.delete(endAgentID);
         }
 

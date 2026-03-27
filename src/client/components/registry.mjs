@@ -29,6 +29,7 @@ import './kikx-hml-prompt/kikx-hml-prompt.mjs';
 import './kikx-hml-prompt-value/kikx-hml-prompt-value.mjs';
 import './kikx-command-result/kikx-command-result.mjs';
 import './kikx-reflection-block/kikx-reflection-block.mjs';
+import './kikx-typing-indicator/kikx-typing-indicator.mjs';
 import './kikx-websearch-result/kikx-websearch-result.mjs';
 import './kikx-websocket-manager/kikx-websocket-manager.mjs';
 import './kikx-session-link/kikx-session-link.mjs';
