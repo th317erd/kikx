@@ -521,36 +521,11 @@ export class InteractionController extends ControllerAuthBase {
       console.error('[approve] Failed to update ToolResult:', frameError.message);
     }
 
-    // For approvals: start a new interaction so the agent sees the tool output
-    // For denials: don't start — agent sees it on the next user message
-    if (!hasDeny) {
-      try {
-        let agentResolver   = core.getContext().getProperty('agentResolver');
-        let interactionLoop = core.getContext().getProperty('interactionLoop');
-
-        if (agentResolver && interactionLoop && agentID) {
-          let sessionSchedulerCtx = core.getContext().getProperty('sessionScheduler');
-          let resolveContext = (sessionSchedulerCtx && sessionSchedulerCtx.getResolveContext)
-            ? (sessionSchedulerCtx.getResolveContext(sessionID) || {})
-            : {};
-
-          let { agentPlugin, resolvedAgent } = await agentResolver.resolve(agentID, resolveContext);
-          let { checkPermission, executeTool } = agentResolver.buildCallbacks(resolvedAgent, sessionID);
-
-          await interactionLoop.startInteraction(sessionID, {
-            agentPlugin,
-            agent:       resolvedAgent,
-            userMessage: null,
-            authorType:  'agent',
-            authorID:    agentID,
-            checkPermission,
-            executeTool,
-          });
-        }
-      } catch (replayError) {
-        console.error('[approve] Failed to start interaction after approval:', replayError.message);
-      }
-    }
+    // Don't start a new interaction. The tool result is already persisted
+    // (the placeholder ToolResult was updated in place). The agent will see
+    // the result naturally on the next user message or scheduled interaction.
+    // Starting a forced interaction here causes API key decryption errors
+    // because the HTTP request context (UMK) doesn't always propagate cleanly.
 
     return { data: hasDeny ? { denied: true } : { approved: true } };
   }
