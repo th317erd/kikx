@@ -176,20 +176,57 @@ export class FrameManager {
       }
 
       // ── Normal (non-phantom) frame handling ──
-      let pointer = new FramePointer(frame);
+      let existingFrame   = this._frames.get(frame.id);
+      let isUpdate        = !!existingFrame;
+      let pointer         = new FramePointer(frame);
 
       // Always store the source frame in the index
       this._frames.set(frame.id, frame);
-      this._pointers.set(frame.id, pointer);
-      changes.push({ frameID: frame.id, operation: 'create' });
 
-      if (frame.parentID) {
-        let children = this._children.get(frame.parentID);
+      if (isUpdate) {
+        // ── Update to existing frame ──
+        // Preserve pointer history when updating an existing frame.
+        changes.push({ frameID: frame.id, operation: 'update' });
 
-        if (children)
-          children.push(frame.id);
-        else
-          this._children.set(frame.parentID, [frame.id]);
+        if (this.history) {
+          let existingPointer = this._pointers.get(frame.id);
+          let currentHead     = existingPointer ? existingPointer.head : null;
+          let newPointer      = new FramePointer(frame, currentHead);
+
+          newPointer.updateHead(newPointer);
+
+          let oldest = newPointer;
+          while (oldest.previous)
+            oldest = oldest.previous;
+
+          let walker = oldest;
+          while (walker) {
+            walker.tail = oldest;
+            walker      = walker.next;
+          }
+
+          this._pointers.set(frame.id, existingPointer);
+        } else {
+          let existingPointer = this._pointers.get(frame.id);
+
+          if (existingPointer)
+            existingPointer.frame = frame;
+          else
+            this._pointers.set(frame.id, pointer);
+        }
+      } else {
+        // ── New frame ──
+        this._pointers.set(frame.id, pointer);
+        changes.push({ frameID: frame.id, operation: 'create' });
+
+        if (frame.parentID) {
+          let children = this._children.get(frame.parentID);
+
+          if (children)
+            children.push(frame.id);
+          else
+            this._children.set(frame.parentID, [frame.id]);
+        }
       }
 
       results.push(frame);
@@ -263,7 +300,12 @@ export class FrameManager {
           results.push(mergedFrame);
         }
 
-        // Frame with targets is not a new addition; skip frame:added
+        // Frame with targets is not a new addition; skip frame:added/frame:updated
+      } else if (isUpdate) {
+        // Existing frame updated (e.g., ToolResult content changed after approval)
+        let previousHead = this.getHead(frame.id);
+        emit('frame:updated', { frame, previousHead });
+        emit(`frame:updated:${frame.id}`, { frame, previousHead });
       } else if (!frame.phantom) {
         // New frame (no targets, not phantom): emit frame:added
         emit('frame:added', { frame });

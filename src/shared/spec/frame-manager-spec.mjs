@@ -341,5 +341,84 @@ describe('FrameManager', () => {
       assert.equal(children[0].id, 'child-1');
       assert.equal(children[1].id, 'child-2');
     });
+
+    // -------------------------------------------------------------------------
+    // merge() — existing frame update detection (permission approval flow)
+    // -------------------------------------------------------------------------
+
+    it('should emit frame:updated (not frame:added) when merging a frame with an existing ID', () => {
+      let manager = new FrameManager();
+      let addedEvents   = [];
+      let updatedEvents = [];
+
+      manager.on('frame:added', (event) => addedEvents.push(event));
+      manager.on('frame:updated', (event) => updatedEvents.push(event));
+
+      // First merge — creates the frame
+      manager.merge([{ id: 'frm_1', type: 'ToolResult', content: { output: 'PERMISSION REQUIRED' } }]);
+
+      assert.equal(addedEvents.length, 1, 'should emit frame:added on first merge');
+      assert.equal(updatedEvents.length, 0, 'should not emit frame:updated on first merge');
+      assert.equal(addedEvents[0].frame.content.output, 'PERMISSION REQUIRED');
+
+      // Second merge with same ID — updates the frame
+      manager.merge([{ id: 'frm_1', type: 'ToolResult', content: { output: 'actual tool output' } }]);
+
+      assert.equal(addedEvents.length, 1, 'should NOT emit frame:added on second merge (same ID)');
+      assert.equal(updatedEvents.length, 1, 'should emit frame:updated on second merge (same ID)');
+      assert.equal(updatedEvents[0].frame.content.output, 'actual tool output');
+
+      // Verify the frame in the manager was updated
+      let stored = manager.get('frm_1');
+      assert.equal(stored.content.output, 'actual tool output');
+    });
+
+    it('should record operation as "update" in commit changes for existing frames', () => {
+      let manager = new FrameManager();
+      let commits = [];
+
+      manager.on('commit', (event) => commits.push(event));
+
+      manager.merge([{ id: 'frm_1', type: 'ToolResult', content: { output: 'placeholder' } }]);
+      assert.equal(commits.length, 1);
+      assert.equal(commits[0].commit.changes[0].operation, 'create');
+
+      manager.merge([{ id: 'frm_1', type: 'ToolResult', content: { output: 'real output' } }]);
+      assert.equal(commits.length, 2);
+      assert.equal(commits[1].commit.changes[0].operation, 'update');
+    });
+
+    it('should not duplicate parentID children when updating an existing frame', () => {
+      let manager = new FrameManager();
+
+      manager.merge([
+        { id: 'parent', type: 'thread' },
+        { id: 'child-1', type: 'ToolResult', parentID: 'parent', content: { output: 'v1' } },
+      ]);
+
+      let childrenBefore = manager.getChildren('parent');
+      assert.equal(childrenBefore.length, 1);
+
+      // Update child-1 — should NOT add a duplicate child entry
+      manager.merge([{ id: 'child-1', type: 'ToolResult', parentID: 'parent', content: { output: 'v2' } }]);
+
+      let childrenAfter = manager.getChildren('parent');
+      assert.equal(childrenAfter.length, 1, 'should not duplicate child on update');
+      assert.equal(childrenAfter[0].content.output, 'v2');
+    });
+
+    it('should emit typed frame:updated:ID event for existing frames', () => {
+      let manager = new FrameManager();
+      let typedEvents = [];
+
+      manager.on('frame:updated:frm_x', (event) => typedEvents.push(event));
+
+      manager.merge([{ id: 'frm_x', type: 'Message', content: { text: 'v1' } }]);
+      assert.equal(typedEvents.length, 0, 'no typed update on first merge');
+
+      manager.merge([{ id: 'frm_x', type: 'Message', content: { text: 'v2' } }]);
+      assert.equal(typedEvents.length, 1, 'typed update emitted on second merge');
+      assert.equal(typedEvents[0].frame.content.text, 'v2');
+    });
   });
 });

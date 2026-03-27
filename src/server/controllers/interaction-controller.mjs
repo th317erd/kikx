@@ -507,11 +507,42 @@ export class InteractionController extends ControllerAuthBase {
       console.error('[approve] Failed to update ToolResult:', frameError.message);
     }
 
-    // Don't start a new interaction. The tool result is already persisted
-    // (the placeholder ToolResult was updated in place). The agent will see
-    // the result naturally on the next user message or scheduled interaction.
-    // Starting a forced interaction here causes API key decryption errors
-    // because the HTTP request context (UMK) doesn't always propagate cleanly.
+    // Start a new interaction so the agent sees and responds to the tool result.
+    // The resolveContext was stashed on the sessionScheduler above (lines 318-331)
+    // so the AgentResolver can decrypt the agent's API key.
+    // Use setTimeout to let the DB writes settle before starting the interaction.
+    try {
+      let agentResolver = core.getContext().getProperty('agentResolver');
+      let interactionLoop = core.getContext().getProperty('interactionLoop');
+
+      if (agentResolver && interactionLoop && agentID) {
+        let resolveCtx = (sessionScheduler && sessionScheduler.getResolveContext)
+          ? (sessionScheduler.getResolveContext(sessionID) || {})
+          : {};
+
+        setTimeout(async () => {
+          try {
+            let { agentPlugin, resolvedAgent } = await agentResolver.resolve(agentID, resolveCtx);
+            let { checkPermission, executeTool } = agentResolver.buildCallbacks(resolvedAgent, sessionID);
+
+            await interactionLoop.startInteraction(sessionID, {
+              agentPlugin,
+              agent:                resolvedAgent,
+              userMessage:          null,
+              authorType:           'agent',
+              authorID:             agentID,
+              checkPermission,
+              executeTool,
+              replayFromPermission: true,
+            });
+          } catch (startError) {
+            console.error('[approve] Deferred startInteraction failed:', startError.message);
+          }
+        }, 300);
+      }
+    } catch (interactionError) {
+      console.error('[approve] Failed to set up post-approval interaction:', interactionError.message);
+    }
 
     return { data: hasDeny ? { denied: true } : { approved: true } };
   }
