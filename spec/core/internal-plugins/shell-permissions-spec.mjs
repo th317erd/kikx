@@ -105,7 +105,7 @@ describe('ShellPermissions.checkPermission()', () => {
           assert.equal(error.name, 'PermissionRequiredError');
           assert.equal(error.featureName, 'shell:execute');
           assert.equal(error.details.length, 1);
-          assert.equal(error.details[0].label, 'permission.detail.pendingCommand');
+          assert.equal(error.details[0].label, 'Pending');
           return true;
         },
       );
@@ -135,8 +135,8 @@ describe('ShellPermissions.checkPermission()', () => {
           assert.equal(error.details.length, 2);
 
           // ls should be approved, cat should be pending
-          let approvedDetail = error.details.find(d => d.label === 'permission.detail.approvedCommand');
-          let pendingDetail  = error.details.find(d => d.label === 'permission.detail.pendingCommand');
+          let approvedDetail = error.details.find(d => d.label === 'Approved');
+          let pendingDetail  = error.details.find(d => d.label === 'Pending');
 
           assert.ok(approvedDetail, 'Should have an approved detail');
           assert.ok(pendingDetail, 'Should have a pending detail');
@@ -154,8 +154,8 @@ describe('ShellPermissions.checkPermission()', () => {
         (error) => {
           assert.equal(error.details.length, 3);
 
-          let approved = error.details.filter(d => d.label === 'permission.detail.approvedCommand');
-          let pending  = error.details.filter(d => d.label === 'permission.detail.pendingCommand');
+          let approved = error.details.filter(d => d.label === 'Approved');
+          let pending  = error.details.filter(d => d.label === 'Pending');
 
           assert.equal(approved.length, 2, 'echo and ls should be approved');
           assert.equal(pending.length, 1, 'rm should be pending');
@@ -244,7 +244,7 @@ describe('ShellPermissions.checkPermission()', () => {
         (error) => {
           assert.equal(error.name, 'PermissionRequiredError');
           assert.equal(error.details.length, 1);
-          assert.equal(error.details[0].label, 'permission.detail.pendingCommand');
+          assert.equal(error.details[0].label, 'Pending');
           return true;
         },
       );
@@ -266,8 +266,8 @@ describe('ShellPermissions.checkPermission()', () => {
           assert.equal(error.details.length, 2);
 
           // ls approved, grep pending
-          assert.equal(error.details[0].label, 'permission.detail.approvedCommand');
-          assert.equal(error.details[1].label, 'permission.detail.pendingCommand');
+          assert.equal(error.details[0].label, 'Approved');
+          assert.equal(error.details[1].label, 'Pending');
           return true;
         },
       );
@@ -279,8 +279,8 @@ describe('ShellPermissions.checkPermission()', () => {
       await assert.rejects(
         () => permissions.checkPermission('shell:execute', { command: 'whoami' }, {}),
         (error) => {
-          assert.equal(error.title, 'permission.shell.executeTitle');
-          assert.equal(error.description, 'permission.shell.executeDescription');
+          assert.equal(error.title, 'Execute Shell Command');
+          assert.equal(error.description, 'Run commands in the system shell.');
           assert.equal(error.featureName, 'shell:execute');
           return true;
         },

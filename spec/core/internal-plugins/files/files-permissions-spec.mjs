@@ -24,14 +24,22 @@ function makeContext() {
   };
 }
 
+// Override evaluate() so it always returns true (needs approval),
+// simulating a context where no standing rules exist.
+function makePerms() {
+  let perms = new FilesPermissions(makeContext());
+  perms.evaluate = async () => true;
+  return perms;
+}
+
 describe('FilesPermissions', () => {
 
   // ---------------------------------------------------------------------------
-  // Always throws PermissionRequiredError (never auto-approves)
+  // Always throws PermissionRequiredError when evaluate() says needs approval
   // ---------------------------------------------------------------------------
 
   it('should throw PermissionRequiredError for files:read', async () => {
-    let perms = new FilesPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('files:read', { filePath: '/tmp/foo.txt' }),
@@ -44,7 +52,7 @@ describe('FilesPermissions', () => {
   });
 
   it('should throw PermissionRequiredError for files:write', async () => {
-    let perms = new FilesPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('files:write', { filePath: '/tmp/out.txt', content: 'hello' }),
@@ -57,7 +65,7 @@ describe('FilesPermissions', () => {
   });
 
   it('should throw PermissionRequiredError for files:edit', async () => {
-    let perms = new FilesPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('files:edit', { filePath: '/tmp/foo.txt', oldString: 'a', newString: 'b' }),
@@ -70,45 +78,45 @@ describe('FilesPermissions', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Locale keys
+  // Human-readable title and description
   // ---------------------------------------------------------------------------
 
-  it('should use correct locale keys in the error', async () => {
-    let perms = new FilesPermissions(makeContext());
+  it('should use human-readable title and description in the error', async () => {
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('files:read', { filePath: '/etc/passwd' }),
       (error) => {
-        assert.equal(error.title, 'permission.files.title');
-        assert.equal(error.description, 'permission.files.description');
+        assert.equal(error.title, 'Read File');
+        assert.ok(error.description.includes('Agent is requesting to read the file: /etc/passwd'));
         return true;
       },
     );
   });
 
   // ---------------------------------------------------------------------------
-  // titleParams includes operation derived from featureName
+  // Title reflects operation from featureName
   // ---------------------------------------------------------------------------
 
-  it('should set titleParams.operation from featureName suffix', async () => {
-    let perms = new FilesPermissions(makeContext());
+  it('should set title based on operation from featureName suffix', async () => {
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('files:write', { filePath: '/tmp/x' }),
       (error) => {
-        assert.deepEqual(error.titleParams, { operation: 'write' });
+        assert.equal(error.title, 'Write File');
         return true;
       },
     );
   });
 
-  it('should default operation to "access" when featureName has no colon', async () => {
-    let perms = new FilesPermissions(makeContext());
+  it('should default title to "File Access" when featureName has no colon', async () => {
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('files', { filePath: '/tmp/x' }),
       (error) => {
-        assert.deepEqual(error.titleParams, { operation: 'access' });
+        assert.equal(error.title, 'File Access');
         return true;
       },
     );
@@ -119,13 +127,13 @@ describe('FilesPermissions', () => {
   // ---------------------------------------------------------------------------
 
   it('should include filePath in details', async () => {
-    let perms = new FilesPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('files:read', { filePath: '/home/user/secret.txt' }),
       (error) => {
         assert.equal(error.details.length, 1);
-        assert.equal(error.details[0].label, 'permission.detail.filePath');
+        assert.equal(error.details[0].label, 'File Path');
         assert.equal(error.details[0].value, '/home/user/secret.txt');
         return true;
       },
@@ -133,7 +141,7 @@ describe('FilesPermissions', () => {
   });
 
   it('should accept "path" arg as fallback for filePath', async () => {
-    let perms = new FilesPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('files:read', { path: '/tmp/alt.txt' }),
@@ -150,7 +158,7 @@ describe('FilesPermissions', () => {
   // ---------------------------------------------------------------------------
 
   it('should produce empty details when no path is provided', async () => {
-    let perms = new FilesPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('files:read', {}),
@@ -163,7 +171,7 @@ describe('FilesPermissions', () => {
   });
 
   it('should handle null args gracefully', async () => {
-    let perms = new FilesPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('files:read', null),
@@ -176,7 +184,7 @@ describe('FilesPermissions', () => {
   });
 
   it('should handle undefined args gracefully', async () => {
-    let perms = new FilesPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('files:read', undefined),
@@ -186,5 +194,17 @@ describe('FilesPermissions', () => {
         return true;
       },
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // evaluate() returning false → auto-approved (no throw)
+  // ---------------------------------------------------------------------------
+
+  it('should return false when evaluate() says no approval needed', async () => {
+    let perms = new FilesPermissions(makeContext());
+    perms.evaluate = async () => false; // standing rule approves
+
+    let result = await perms.checkPermission('files:read', { filePath: '/tmp/foo.txt' });
+    assert.equal(result, false);
   });
 });

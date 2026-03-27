@@ -80,9 +80,8 @@ describe('SystemCommandPermissions', () => {
       (error) => {
         assert.ok(error instanceof PermissionRequiredError);
         assert.equal(error.featureName, 'command:deploy');
-        assert.equal(error.title, 'permission.systemCommand.title');
-        assert.deepEqual(error.titleParams, { command: 'deploy' });
-        assert.equal(error.description, 'permission.systemCommand.description');
+        assert.equal(error.title, 'Run Command: /deploy');
+        assert.ok(error.description.includes('Agent is requesting to run the command'));
         return true;
       },
     );
@@ -100,7 +99,7 @@ describe('SystemCommandPermissions', () => {
       () => perms.checkPermission('command:invite', { args: '@test-claude' }),
       (error) => {
         assert.ok(error instanceof PermissionRequiredError);
-        let detail = error.details.find(d => d.label === 'permission.detail.command');
+        let detail = error.details.find(d => d.label === 'Command');
         assert.ok(detail, 'should have command detail');
         assert.equal(detail.value, '/invite @test-claude');
         return true;
@@ -147,10 +146,10 @@ describe('SystemCommandPermissions', () => {
       () => perms.checkPermission('command:reload', {}),
       (error) => {
         assert.ok(error instanceof PermissionRequiredError);
-        assert.equal(error.title, 'permission.systemCommand.title');
-        assert.equal(error.description, 'permission.systemCommand.description');
+        assert.equal(error.title, 'Run Command: /reload');
+        assert.ok(error.description.includes('Agent is requesting to run the command'));
         assert.ok(Array.isArray(error.details));
-        assert.equal(error.details[0].label, 'permission.detail.command');
+        assert.equal(error.details[0].label, 'Command');
         assert.equal(error.details[0].value, '/reload');
         return true;
       },
@@ -182,7 +181,7 @@ describe('SystemCommandPermissions', () => {
       (error) => {
         assert.ok(error instanceof PermissionRequiredError);
         assert.equal(error.featureName, 'command:deploy');
-        let detail = error.details.find(d => d.label === 'permission.detail.command');
+        let detail = error.details.find(d => d.label === 'Command');
         assert.equal(detail.value, '/deploy --force');
         return true;
       },
@@ -200,7 +199,7 @@ describe('SystemCommandPermissions', () => {
     await assert.rejects(
       () => perms.checkPermission('command:deploy', {}),
       (error) => {
-        let detail = error.details.find(d => d.label === 'permission.detail.command');
+        let detail = error.details.find(d => d.label === 'Command');
         assert.equal(detail.value, '/deploy');
         return true;
       },

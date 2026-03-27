@@ -68,7 +68,7 @@ describe('Invite capability via SystemCommandPermissions', () => {
     await assert.rejects(
       () => perms.checkPermission('command:invite', { args: '@test-claude' }),
       (error) => {
-        let detail = error.details.find(d => d.label === 'permission.detail.command');
+        let detail = error.details.find(d => d.label === 'Command');
         assert.ok(detail, 'should have command detail');
         assert.equal(detail.value, '/invite @test-claude');
         return true;

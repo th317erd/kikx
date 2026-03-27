@@ -58,11 +58,10 @@ export class SystemCommandPermissions extends Permissions {
       commandDisplay += ` ${args.args}`;
 
     throw new PermissionRequiredError(`command:${commandName}`, {
-      title:       'permission.systemCommand.title',
-      titleParams: { command: commandName },
-      description: 'permission.systemCommand.description',
+      title:       `Run Command: /${commandName}`,
+      description: `Agent is requesting to run the command: ${commandDisplay.trim()}`,
       details: [
-        { label: 'permission.detail.command', value: commandDisplay.trim() },
+        { label: 'Command', value: commandDisplay.trim() },
       ],
     });
   }

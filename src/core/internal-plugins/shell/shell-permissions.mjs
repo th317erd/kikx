@@ -46,10 +46,10 @@ export class ShellPermissions extends Permissions {
       }
 
       if (approved) {
-        details.push({ label: 'permission.detail.approvedCommand', value: cmd.raw || cmd.command });
+        details.push({ label: 'Approved', value: cmd.raw || cmd.command });
       } else {
         needsApproval = true;
-        details.push({ label: 'permission.detail.pendingCommand', value: cmd.raw || cmd.command });
+        details.push({ label: 'Pending', value: cmd.raw || cmd.command });
       }
     }
 
@@ -58,8 +58,8 @@ export class ShellPermissions extends Permissions {
 
     // Some commands need approval
     throw new PermissionRequiredError('shell:execute', {
-      title:       'permission.shell.executeTitle',
-      description: 'permission.shell.executeDescription',
+      title:       'Execute Shell Command',
+      description: 'Run commands in the system shell.',
       details,
     });
   }

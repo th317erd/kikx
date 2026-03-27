@@ -24,14 +24,22 @@ function makeContext() {
   };
 }
 
+// Override evaluate() so it always returns true (needs approval),
+// simulating a context where no standing rules exist.
+function makePerms() {
+  let perms = new WebsearchPermissions(makeContext());
+  perms.evaluate = async () => true;
+  return perms;
+}
+
 describe('WebsearchPermissions', () => {
 
   // ---------------------------------------------------------------------------
-  // Always throws PermissionRequiredError
+  // Always throws PermissionRequiredError when evaluate() says needs approval
   // ---------------------------------------------------------------------------
 
   it('should throw PermissionRequiredError for websearch:fetch', async () => {
-    let perms = new WebsearchPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('websearch:fetch', { url: 'https://example.com' }),
@@ -44,7 +52,7 @@ describe('WebsearchPermissions', () => {
   });
 
   it('should throw PermissionRequiredError for websearch:search', async () => {
-    let perms = new WebsearchPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('websearch:search', { query: 'how to bake bread' }),
@@ -57,17 +65,18 @@ describe('WebsearchPermissions', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Locale keys
+  // Human-readable title and description
   // ---------------------------------------------------------------------------
 
-  it('should use correct locale keys in the error', async () => {
-    let perms = new WebsearchPermissions(makeContext());
+  it('should use human-readable title and description in the error', async () => {
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('websearch:fetch', { url: 'https://example.com' }),
       (error) => {
-        assert.equal(error.title, 'permission.websearch.title');
-        assert.equal(error.description, 'permission.websearch.description');
+        // Note: 'websearch:fetch'.includes('search') is true, so title is 'Web Search'
+        assert.equal(error.title, 'Web Search');
+        assert.ok(error.description.includes('Agent is requesting to search the web'));
         return true;
       },
     );
@@ -78,13 +87,13 @@ describe('WebsearchPermissions', () => {
   // ---------------------------------------------------------------------------
 
   it('should include url in details for websearch:fetch', async () => {
-    let perms = new WebsearchPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('websearch:fetch', { url: 'https://docs.example.com/api' }),
       (error) => {
         assert.equal(error.details.length, 1);
-        assert.equal(error.details[0].label, 'permission.detail.url');
+        assert.equal(error.details[0].label, 'URL');
         assert.equal(error.details[0].value, 'https://docs.example.com/api');
         return true;
       },
@@ -96,13 +105,13 @@ describe('WebsearchPermissions', () => {
   // ---------------------------------------------------------------------------
 
   it('should include query in details for websearch:search', async () => {
-    let perms = new WebsearchPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('websearch:search', { query: 'node.js best practices' }),
       (error) => {
         assert.equal(error.details.length, 1);
-        assert.equal(error.details[0].label, 'permission.detail.query');
+        assert.equal(error.details[0].label, 'Search Query');
         assert.equal(error.details[0].value, 'node.js best practices');
         return true;
       },
@@ -114,15 +123,15 @@ describe('WebsearchPermissions', () => {
   // ---------------------------------------------------------------------------
 
   it('should include both url and query in details when both provided', async () => {
-    let perms = new WebsearchPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('websearch:search', { url: 'https://x.com', query: 'test' }),
       (error) => {
         assert.equal(error.details.length, 2);
-        assert.equal(error.details[0].label, 'permission.detail.url');
+        assert.equal(error.details[0].label, 'URL');
         assert.equal(error.details[0].value, 'https://x.com');
-        assert.equal(error.details[1].label, 'permission.detail.query');
+        assert.equal(error.details[1].label, 'Search Query');
         assert.equal(error.details[1].value, 'test');
         return true;
       },
@@ -134,7 +143,7 @@ describe('WebsearchPermissions', () => {
   // ---------------------------------------------------------------------------
 
   it('should produce empty details when no url or query provided', async () => {
-    let perms = new WebsearchPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('websearch:fetch', {}),
@@ -147,7 +156,7 @@ describe('WebsearchPermissions', () => {
   });
 
   it('should handle null args gracefully', async () => {
-    let perms = new WebsearchPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('websearch:fetch', null),
@@ -160,7 +169,7 @@ describe('WebsearchPermissions', () => {
   });
 
   it('should handle undefined args gracefully', async () => {
-    let perms = new WebsearchPermissions(makeContext());
+    let perms = makePerms();
 
     await assert.rejects(
       () => perms.checkPermission('websearch:search', undefined),
@@ -170,5 +179,17 @@ describe('WebsearchPermissions', () => {
         return true;
       },
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // evaluate() returning false → auto-approved (no throw)
+  // ---------------------------------------------------------------------------
+
+  it('should return false when evaluate() says no approval needed', async () => {
+    let perms = new WebsearchPermissions(makeContext());
+    perms.evaluate = async () => false;
+
+    let result = await perms.checkPermission('websearch:fetch', { url: 'https://example.com' });
+    assert.equal(result, false);
   });
 });

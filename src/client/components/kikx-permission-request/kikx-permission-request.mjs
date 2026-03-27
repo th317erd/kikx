@@ -217,6 +217,8 @@ const TEMPLATE_HTML = `
     kikx-permission-request .confirm-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
     kikx-permission-request[processed] .command-table,
+    kikx-permission-request[processed] .full-command,
+    kikx-permission-request[processed] .tool-name,
     kikx-permission-request[processed] .confirm-button { display: none; }
 
     kikx-permission-request .processed-badge {
@@ -250,7 +252,7 @@ const TEMPLATE_HTML = `
   <div class="permission-tool-args" style="display:none;"><code></code></div>
   <code class="full-command" style="display:none;"></code>
   <div class="command-table"></div>
-  <button class="confirm-button" disabled></button>
+  <button class="confirm-button" disabled title="Please select an option icon above to proceed"></button>
   <div class="processed-badge">\u2713 Processed</div>
   <div class="expired-badge">\u23F0 Expired — please resend your message</div>
 `;
@@ -774,6 +776,7 @@ class KikxPermissionRequest extends HTMLElement {
     );
 
     this._confirmButton.disabled = !allDecided;
+    this._confirmButton.title    = allDecided ? '' : 'Please select an option icon above to proceed';
   }
 
   _onConfirmClick() {

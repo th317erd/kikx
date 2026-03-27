@@ -11,15 +11,26 @@ import { PermissionRequiredError } from '../../permissions/permission-required-e
 // =============================================================================
 
 export class FilesPermissions extends Permissions {
-  // eslint-disable-next-line no-unused-vars
-  async checkPermission(featureName, args, _options) {
-    let path = (args && args.path) || (args && args.filePath) || null;
+  async checkPermission(featureName, args, options) {
+    // Check standing rules first (e.g., allow-forever from a previous approval)
+    try {
+      let needsApproval = await this.evaluate(featureName, args, options);
+      if (!needsApproval)
+        return false;
+    } catch (err) {
+      throw err; // PermissionDeniedError — propagate
+    }
+
+    let path      = (args && args.path) || (args && args.filePath) || null;
+    let operation = featureName.split(':')[1] || 'access';
+    let opLabel   = { read: 'Read File', write: 'Write File', edit: 'Edit File' }[operation] || 'File Access';
 
     throw new PermissionRequiredError(featureName, {
-      title:       'permission.files.title',
-      titleParams: { operation: featureName.split(':')[1] || 'access' },
-      description: 'permission.files.description',
-      details: path ? [{ label: 'permission.detail.filePath', value: path }] : [],
+      title:       opLabel,
+      description: path
+        ? `Agent is requesting to ${operation} the file: ${path}`
+        : `Agent is requesting file ${operation} access.`,
+      details: path ? [{ label: 'File Path', value: path }] : [],
     });
   }
 }

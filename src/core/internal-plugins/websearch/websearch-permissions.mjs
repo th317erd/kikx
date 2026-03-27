@@ -11,18 +11,29 @@ import { PermissionRequiredError } from '../../permissions/permission-required-e
 // =============================================================================
 
 export class WebsearchPermissions extends Permissions {
-  // eslint-disable-next-line no-unused-vars
-  async checkPermission(featureName, args, _options) {
+  async checkPermission(featureName, args, options) {
+    // Check standing rules first
+    try {
+      let needsApproval = await this.evaluate(featureName, args, options);
+      if (!needsApproval)
+        return false;
+    } catch (err) {
+      throw err;
+    }
+
     let url   = args && args.url;
     let query = args && args.query;
+    let isSearch = featureName.includes('search');
 
     let details = [];
-    if (url)   details.push({ label: 'permission.detail.url', value: url });
-    if (query) details.push({ label: 'permission.detail.query', value: query });
+    if (url)   details.push({ label: 'URL', value: url });
+    if (query) details.push({ label: 'Search Query', value: query });
 
     throw new PermissionRequiredError(featureName, {
-      title:       'permission.websearch.title',
-      description: 'permission.websearch.description',
+      title:       isSearch ? 'Web Search' : 'Fetch URL',
+      description: isSearch
+        ? `Agent is requesting to search the web${query ? ': "' + query + '"' : '.'}`
+        : `Agent is requesting to fetch: ${url || '(unknown URL)'}`,
       details,
     });
   }

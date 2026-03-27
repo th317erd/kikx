@@ -302,6 +302,23 @@ export class Permissions {
         let user     = options.user;
         let settings = (user && typeof user.getSettings === 'function') ? await user.getSettings() : null;
 
+        // If no user object in options, try to load from the session's participants
+        if (!settings && options.scopeID) {
+          try {
+            let models = this._getModels();
+            if (models && models.Session) {
+              let session = await models.Session.where.id.EQ(options.scopeID).first();
+              if (session && session.createdBy) {
+                let sessionUser = await models.User.where.id.EQ(session.createdBy).first();
+                if (sessionUser && typeof sessionUser.getSettings === 'function')
+                  settings = await sessionUser.getSettings();
+              }
+            }
+          } catch (_e) {
+            // Best-effort
+          }
+        }
+
         if (settings && settings.riskLevel)
           resolved = settings.riskLevel;
         else
