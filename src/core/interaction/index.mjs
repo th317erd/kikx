@@ -331,6 +331,69 @@ export class InteractionLoop extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
+  // updateFrame — the SINGLE blessed path for modifying existing frames
+  // ---------------------------------------------------------------------------
+  // ALL frame mutations go through FrameManager.merge(). No direct ORM saves.
+  // No manual emit('commit'). No in-memory-only mutations.
+  //
+  // Accepts a single frame update or an array of updates. Each update MUST
+  // have an `id` field. If the frame already exists in the FrameManager, the
+  // partial update is hydrated with the full existing frame data before merge
+  // (merge() silently skips frames without `type`).
+  //
+  // Returns the merged results array, or null if merge produced nothing.
+  // ---------------------------------------------------------------------------
+
+  async updateFrame(sessionID, frameUpdates) {
+    if (!sessionID)
+      throw new Error('sessionID is required');
+
+    if (!frameUpdates)
+      throw new Error('frameUpdates is required');
+
+    let updates = Array.isArray(frameUpdates) ? frameUpdates : [frameUpdates];
+
+    let sessionManager   = this._getSessionManager();
+    let framePersistence  = this._getFramePersistence();
+    let frameManager     = sessionManager.getFrameManager(sessionID);
+
+    // Load frames if FrameManager is empty (e.g., cold session)
+    if (frameManager.toArray().length === 0)
+      await framePersistence.loadFramesInto(frameManager, sessionID);
+
+    // CRITICAL: Hydrate partial updates with full frame data.
+    // merge() requires 'type' — partial objects without it are silently skipped.
+    let hydrated = [];
+    for (let update of updates) {
+      let existing = frameManager.get(update.id);
+      if (existing) {
+        hydrated.push({ ...existing, ...update });
+      } else {
+        // New frame — caller MUST provide type
+        hydrated.push(update);
+      }
+    }
+
+    let results = frameManager.merge(hydrated);
+    if (results.length === 0)
+      return null;
+
+    // Persist the MERGED results (full frames), NOT partial inputs
+    await framePersistence.saveFrames(sessionID, results);
+
+    // Broadcast via commit
+    let latestCommit = frameManager.getLatestCommit();
+    if (latestCommit) {
+      this.emit('commit', {
+        sessionID,
+        commit: { ...latestCommit, frames: results },
+      });
+    }
+
+    return results;
+  }
+
+  // ---------------------------------------------------------------------------
   // (removed: _replayApprovedToolCalls — tool execution now happens directly
   //  in the approval controller. No one-time rules or replay mechanism needed.)
 
