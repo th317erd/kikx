@@ -83,6 +83,57 @@ ps aux | grep "puppeteer.*chrome\|chrome.*headless\|chrome.*no-sandbox" | grep -
 
 ---
 
+## ⚠️ FrameManager — The Single Source of Truth ⚠️
+
+**ALL frame mutations MUST go through FrameManager.merge().** No exceptions. No "quick fixes". No "it's simpler this way".
+
+### NEVER do this:
+```javascript
+// ❌ WRONG — bypasses FrameManager, breaks SSE + Router
+frame.hidden = true;
+await frame.save();
+
+// ❌ WRONG — bypasses FrameManager
+frame.content = JSON.stringify(newContent);
+await frame.save();
+
+// ❌ WRONG — fabricated commit, not from FrameManager
+interactionLoop.emit('commit', { sessionID, commit: { ... } });
+
+// ❌ WRONG — direct DB update
+framePersistence.updateFrameState(frameID, newState);
+```
+
+### ALWAYS do this:
+```javascript
+// ✅ CORRECT — use InteractionLoop.updateFrame()
+let interactionLoop = context.getProperty('interactionLoop');
+await interactionLoop.updateFrame(sessionID, {
+  id: frameID,
+  hidden: true,
+  content: newContent,
+});
+```
+
+`updateFrame()` is the ONLY blessed path for frame mutations outside of `InteractionLoop._createFrame()`. It handles: hydration of partial updates, `FrameManager.merge()`, persistence, SSE broadcast, and commit event emission. **Do NOT roll your own version.**
+
+The chain: `updateFrame()` → `merge()` → commit event → SSE broadcast → FrameRouter → DB
+
+### Why this matters:
+- SSE won't broadcast if you bypass FrameManager
+- FrameRouter won't fire plugins if you bypass FrameManager
+- Commit history is lost if you bypass FrameManager
+- Client and server state diverge if you bypass FrameManager
+
+### Context:
+Kikx is an agentic, encrypted, asynchronous, fully plugin-capable messaging system. **Stability, recoverability, and security are the goals. NOT performance.** Do not make "performance" decisions that compromise the FrameManager's architectural integrity.
+
+We have documented plans. We have mandates. **FOLLOW THEM.** Do not deviate from plans and discussions unless mutual agreement dictates you do. Every shortcut creates more work. Every bypass creates a new bug.
+
+**TEST YOUR WORK.** Unit tests AND E2E verification. Every time. "It looks right" is not proof. Tests that pass are proof. Never say "done" without evidence.
+
+---
+
 ## Project Documentation
 
 For a comprehensive understanding of the Kikx project — architecture, data models, plugin system, client, and more — see the **[Documentation Index](./bot-docs/docs/README.md)**.
