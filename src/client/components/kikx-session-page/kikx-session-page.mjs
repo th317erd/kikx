@@ -1010,7 +1010,9 @@ class KikxSessionPage extends HTMLElement {
                 let mc = document.createElement('kikx-message-content');
                 mc.streaming = true;
                 mc.content = html;
-                lastInteraction.appendChild(mc);
+                // Append inside .content wrapper (not directly on the element)
+                let contentEl = lastInteraction._contentEl || lastInteraction.querySelector('.content') || lastInteraction;
+                contentEl.appendChild(mc);
               }
 
               return;

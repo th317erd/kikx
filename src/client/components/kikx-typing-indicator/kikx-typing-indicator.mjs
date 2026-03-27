@@ -19,6 +19,7 @@ const TEMPLATE_HTML = `
       color: var(--text-secondary, #a0a0b8);
       opacity: 0.8;
       transition: opacity 0.3s ease;
+      max-width: 18em;
     }
 
     kikx-typing-indicator .agent-name {
