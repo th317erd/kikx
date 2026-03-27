@@ -240,3 +240,134 @@ describe('kikx-add-friend-modal — edge cases', { timeout: 5000 }, () => {
     assert.ok(received);
   });
 });
+
+// =============================================================================
+// 7. Dynamic plugin/model dropdowns
+// =============================================================================
+
+describe('kikx-add-friend-modal — dynamic dropdowns', { timeout: 5000 }, () => {
+
+  // Helper: create element and inject mock models (simulates _loadModels)
+  function makeElementWithModels(models) {
+    let el = makeElement();
+
+    // Simulate what _loadModels does after fetching from API
+    el._allModels = models;
+
+    let pluginSelect = el.querySelector('.plugin-select');
+    let plugins      = new Map();
+
+    for (let m of models) {
+      if (!plugins.has(m.pluginID))
+        plugins.set(m.pluginID, m.displayName.split(' ')[0]);
+    }
+
+    pluginSelect.innerHTML = '';
+    for (let [id, name] of plugins) {
+      let opt       = document.createElement('option');
+      opt.value     = id;
+      opt.textContent = name;
+      pluginSelect.appendChild(opt);
+    }
+
+    el._updateModelOptions();
+    return el;
+  }
+
+  let mockModels = [
+    { pluginID: 'claude', id: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6' },
+    { pluginID: 'claude', id: 'claude-opus-4-6', displayName: 'Claude Opus 4.6' },
+    { pluginID: 'google', id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash' },
+    { pluginID: 'google', id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro' },
+  ];
+
+  it('plugin dropdown shows all registered plugins', () => {
+    let el      = makeElementWithModels(mockModels);
+    let options = [...el.querySelector('.plugin-select').options];
+
+    assert.equal(options.length, 2);
+    assert.ok(options.some((o) => o.value === 'claude'));
+    assert.ok(options.some((o) => o.value === 'google'));
+  });
+
+  it('plugin dropdown labels are human-readable (not IDs)', () => {
+    let el      = makeElementWithModels(mockModels);
+    let options = [...el.querySelector('.plugin-select').options];
+
+    let claude = options.find((o) => o.value === 'claude');
+    let google = options.find((o) => o.value === 'google');
+
+    assert.equal(claude.textContent, 'Claude');
+    assert.equal(google.textContent, 'Gemini');
+  });
+
+  it('model dropdown filters by selected plugin', () => {
+    let el = makeElementWithModels(mockModels);
+
+    // Default: first plugin (claude)
+    let modelOptions = [...el.querySelector('.model-select').options];
+    assert.equal(modelOptions.length, 2);
+    assert.ok(modelOptions.every((o) => o.value.startsWith('claude')));
+  });
+
+  it('switching plugin updates model dropdown', () => {
+    let el           = makeElementWithModels(mockModels);
+    let pluginSelect = el.querySelector('.plugin-select');
+
+    pluginSelect.value = 'google';
+    el._updateModelOptions();
+
+    let modelOptions = [...el.querySelector('.model-select').options];
+    assert.equal(modelOptions.length, 2);
+    assert.ok(modelOptions.every((o) => o.value.startsWith('gemini')));
+  });
+
+  it('model dropdown shows displayName not raw ID', () => {
+    let el           = makeElementWithModels(mockModels);
+    let modelOptions = [...el.querySelector('.model-select').options];
+
+    assert.ok(modelOptions.some((o) => o.textContent === 'Claude Sonnet 4.6'));
+    assert.ok(modelOptions.some((o) => o.textContent === 'Claude Opus 4.6'));
+  });
+
+  it('save dispatches correct pluginID for non-claude plugin', () => {
+    let el = makeElementWithModels(mockModels);
+    el.querySelector('.agent-type-button').click();
+
+    el.querySelector('.plugin-select').value = 'google';
+    el._updateModelOptions(); // Simulate what the change handler does
+
+    el.querySelector('.name-input').value    = 'test-gemini';
+    el.querySelector('.api-key-input').value = 'AIza-test-key';
+
+    let received = null;
+    el.addEventListener('friend-save', (e) => { received = e.detail; });
+    el.querySelector('.save-button').click();
+
+    assert.ok(received);
+    assert.equal(received.pluginID, 'google');
+    assert.equal(received.name, 'test-gemini');
+    assert.ok(received.model.startsWith('gemini'));
+  });
+
+  it('empty models array results in empty dropdowns (no crash)', () => {
+    let el           = makeElementWithModels([]);
+    let pluginOptions = [...el.querySelector('.plugin-select').options];
+    let modelOptions  = [...el.querySelector('.model-select').options];
+
+    assert.equal(pluginOptions.length, 0);
+    assert.equal(modelOptions.length, 0);
+  });
+
+  it('single plugin shows only that plugin', () => {
+    let singlePlugin = [
+      { pluginID: 'google', id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash' },
+    ];
+
+    let el      = makeElementWithModels(singlePlugin);
+    let options = [...el.querySelector('.plugin-select').options];
+
+    assert.equal(options.length, 1);
+    assert.equal(options[0].value, 'google');
+  });
+});
