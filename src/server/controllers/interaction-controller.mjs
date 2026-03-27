@@ -250,42 +250,8 @@ export class InteractionController extends ControllerAuthBase {
     let decisions = (body && Array.isArray(body.decisions)) ? body.decisions : [];
     let hasDeny   = decisions.some((d) => d.decision === 'deny-once' || d.decision === 'deny-forever');
 
-    // Create persistent rules for "forever" decisions
-    if (decisions.length > 0) {
-      let core           = this.getCore();
-      let organizationID = this.request.organizationID;
-
-      // Use Permissions base class for rule creation
-      let { Permissions } = await import('../../core/permissions/permissions-base.mjs');
-      let permissions     = new Permissions(core.getContext());
-
-      for (let decision of decisions) {
-        if (!decision.command || !decision.decision)
-          continue;
-
-        let effect = null;
-        if (decision.decision === 'allow-forever')
-          effect = 'allow';
-        else if (decision.decision === 'deny-forever')
-          effect = 'deny';
-
-        if (!effect)
-          continue; // allow-once / deny-once create no rules
-
-        await permissions.createRule({
-          organizationID,
-          featureName: (decision.command.includes(':')) ? decision.command : `shell:${decision.command}`,
-          effect,
-          scope:       'session',
-          scopeID:     params.sessionID,
-          createdBy:   this.request.userID,
-          metadata:    {
-            command:   decision.command,
-            arguments: decision.arguments || [],
-          },
-        });
-      }
-    }
+    // Note: Persistent rules for "forever" decisions are created further
+    // below (after execution) so they are only created once per approval.
 
     // Look up the permission-request frame
     let { Frame } = this.getCoreModels();

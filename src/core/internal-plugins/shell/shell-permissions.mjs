@@ -72,9 +72,17 @@ export class ShellPermissions extends Permissions {
       if (args.command !== metadata.command)
         return { matches: false };
 
+      // If the rule was created with no arguments, it's a wildcard —
+      // matches the command with ANY arguments. This is the semantics
+      // of "allow echo forever" from the permission UI, where the user
+      // approves the command name, not a specific invocation.
+      let ruleArgs    = metadata.arguments || [];
+
+      if (ruleArgs.length === 0)
+        return { matches: true };
+
       // Arguments must match positionally — argument order is semantically meaningful
       // in shell commands (e.g. mv src dest vs mv dest src).
-      let ruleArgs    = metadata.arguments || [];
       let currentArgs = args.arguments || [];
 
       if (ruleArgs.length !== currentArgs.length)
