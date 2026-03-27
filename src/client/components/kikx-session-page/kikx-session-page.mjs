@@ -1090,7 +1090,8 @@ class KikxSessionPage extends HTMLElement {
 
         if (!mc) {
           mc = document.createElement('kikx-message-content');
-          el.appendChild(mc);
+          let cEl = el._contentEl || el.querySelector('.content') || el;
+          cEl.appendChild(mc);
         }
 
         let html = '';
@@ -1270,8 +1271,9 @@ class KikxSessionPage extends HTMLElement {
               rb.content = (prev.content && prev.content.text) || '';
               rb.setAttribute('complete', '');
 
-              // Prepend before existing children so reflection appears above message
-              el.insertBefore(rb, el.firstChild);
+              // Prepend inside .content wrapper so it stays in the bubble
+              let contentEl = el._contentEl || el.querySelector('.content') || el;
+              contentEl.insertBefore(rb, contentEl.firstChild);
             }
           }
 
