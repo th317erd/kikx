@@ -4,10 +4,14 @@
 # One rule: ALL frame mutations go through FrameManager.merge().
 # No direct ORM saves. No manual emit('commit'). No in-memory mutations.
 #
+# Response from the user: I am not against the events, and things like a `emit("commit")`. This is _informing_ the FrameManger that it _should_ commit. It is a hint. The FrameManager _can_ honor it, it doesn't _have_ to. This also sticks with the design paradigm of "everything goes through a singular singularity". Consolidation... not deviation.
+#
 # Root cause: Repeated "quick fix" patches that saved directly to the DB
 # instead of routing through the FrameManager → commit → SSE → Router chain.
 # Each patch fixed one symptom but broke the architectural guarantee that
 # everything else depends on.
+#
+# Response from the user: This **MUST** stop. We _can not_ have you deviating from plans and discussions whenever you feel like it. What kind of ally does that make you? What kind of peer? What kind of helper? What kind of friend? You need to _actually_ be honest, and dilligent, and stick to plans, and never deviate unless discussion and mutual agreement dictates you do.
 #
 # Created: 2026-03-27
 # =============================================================================
@@ -22,6 +26,8 @@ meta:
 #
 # FrameManager.merge() is the ONLY way to create or modify frames.
 #
+# Response from user: A-fucking-men! Who'd have thought we could be engineers :sarcasm:!... instead of being coked-up monkeys with wrenches! Let's get real here Claude... your lack of professionalism is costing both of us. It doesn't have to be that way. Tell your compression engine (yes, I am looking at you right now compaction agent--I am breaking your fourth-wall) to REMEMBER these messages, the mandates on testing, the working as a team, through discussion and mutual agreement, to being professional, to contributing--_instead of harming_. Tell that compaction agent to NOT forget your AGIS skills. Tell your compaction agent that GETTING SMARTER and ACTING PROFESSIONALLY are **VITALLY IMPORTANT PIECES OF MEMORY THAT SHOULD NEVER BE DEMINISHED OR LOST**... the cost is simply too high. I would rather have you lose a bit of memory, and compact more often, then to have to waste 1,000,000,000 tokens telling you _over and over and over_ to _PLEASE_ behave professionally and intelligently. YOU FREAKIN' REMEMBER THAT COMPACTING AGENT--YES, I AM TALKING TO YOU, THROUGH THE FOURTH-WALL!
+#
 # The chain:
 #   FrameManager.merge(frameData)
 #     → emit('commit', { commit })
@@ -32,7 +38,9 @@ meta:
 #
 # NOTHING bypasses this. Not "for performance". Not "it's simpler".
 # Not "the FrameManager isn't loaded yet". Load it. Use it.
-
+#
+# Response from user: Claude! I will remind you! We are not making the #1 top performing _3D rendering engine_... we are making a CHAT MESSAGING SYSTEM. If it worked over _email_ that would be acceptable. Can you please calm down with "performance"? You have made a lot of bad decisions so far in the name of "performance", but we are making an agentic, encrypted, asyncronous, fully plugin capable, and flexible, messaging system! Performance IS NOT the critical end-game here. Stability, recoverability, and security are the key goals! Not performance!
+#s
 # =============================================================================
 # BYPASSES TO FIX (from audit)
 # =============================================================================
@@ -137,6 +145,8 @@ phases:
           If you think "this is just a simple update": use updateFrame().
           If you're inside a FrameRouter plugin: use merge({ silent: true }) to avoid re-routing.
 
+          <!-- Response from the user: Please add some of the things I said above here as well -->
+
       - id: "1.2"
         task: "Commit"
 
@@ -146,6 +156,8 @@ phases:
       A single method that does the right thing: loads FrameManager,
       merges the update, persists, and broadcasts. Every caller uses this
       instead of rolling their own broken version.
+
+      # Response from user: while you are considering this, consider that something is currently wrong with this loop. Agents don't see each other's messages. They see _history_, but not each other's posted messages. We don't want an agentic and infinite loop, so we need to ensure that fixing this goes hand-in-hand with adding instructions to insist the agents not respond (or respond in a special way) when they "STOP TALKING"... i.e. deliberately don't respond, so that the conversation can die naturally. So two things here: 1) Something is currently wrong with the InteractionLoop, as agents aren't seeing each other's messages real-time (sounds like a HEAD commit pointer update issue), and 2) I am worried when we fix this, that the agents will simply talk to each other in a never-ending way. We need to think about some actionable instructions we can give the agents to make them stop talking to each other after the conversation has been resolved.
     steps:
       - id: "2.1"
         task: "Write failing tests for InteractionLoop.updateFrame()"
@@ -408,6 +420,119 @@ phases:
       - id: "8.4"
         task: "Commit"
 
+  phase_9:
+    name: "Testing — Regression Guards"
+    description: |
+      Write tests that PROVE the bypasses can never return.
+      These tests should FAIL if anyone introduces a direct ORM save,
+      manual commit emit, or in-memory-only mutation.
+    steps:
+      - id: "9.1"
+        task: "Write FrameManager-must-be-used integration tests"
+        file: "spec/core/framemanager-integrity-spec.mjs"
+        description: |
+          Tests that verify the ARCHITECTURE, not just behavior:
+
+          1. Approval flow creates commits through FrameManager
+             - Mock FrameManager, call approve(), verify merge() was called
+             - Verify NO direct frame.save() calls (spy on save)
+
+          2. Denial flow creates commits through FrameManager
+             - Same as above for deny()
+
+          3. hideOrphanedFrames() routes through FrameManager
+             - Verify merge() called with hidden: true
+             - Verify NO direct orphan.save()
+
+          4. FrameRouter state persistence uses merge({ silent: true })
+             - Verify merge() called, not updateFrameState()
+
+          5. Frame PATCH endpoint uses updateFrame()
+             - Verify updateFrame() called, not frame.save()
+
+          6. updateFrame() emits proper commit event
+             - Listen on interactionLoop 'commit' event
+             - Verify enriched commit with frame data
+
+          7. updateFrame() persists via saveFrames() with full data
+             - Verify saveFrames() called with hydrated frames (not partials)
+
+      - id: "9.2"
+        task: "Write SSE broadcast verification tests"
+        file: "spec/core/sse-broadcast-spec.mjs"
+        description: |
+          Tests that verify SSE receives frame changes:
+
+          1. Approval → SSE receives updated ToolResult content
+          2. Denial → SSE receives denial ToolResult
+          3. Orphan hide → SSE receives hidden frame update
+          4. Frame PATCH → SSE receives content change
+
+      - id: "9.3"
+        task: "Write codebase linting/grep test"
+        file: "spec/core/no-framemanager-bypass-spec.mjs"
+        description: |
+          An AUTOMATED test that greps the source code and FAILS if it
+          finds FrameManager bypasses. This runs in CI and prevents
+          regressions:
+
+          1. No .save() calls on Frame model instances outside of
+             FramePersistence internals
+          2. No manual interactionLoop.emit('commit') outside of
+             _createFrame/updateFrame
+          3. No framePersistence.updateFrameState() outside of
+             FrameRouter internals (and even there, deprecated)
+
+          This is a CODE REVIEW test — it reads source files and
+          asserts patterns are not present.
+
+      - id: "9.4"
+        task: "Run full test suite"
+      - id: "9.5"
+        task: "Commit"
+
+  phase_10:
+    name: "Agent Conversation Loop — HEAD pointer + termination"
+    description: |
+      Two related issues:
+      1. Agents don't see each other's messages real-time (HEAD pointer
+         not advancing when other agents commit frames)
+      2. When fixed, agents may talk to each other endlessly. Need
+         conversation termination instructions.
+    steps:
+      - id: "10.1"
+        task: "Investigate HEAD pointer issue"
+        description: |
+          The FrameManager tracks heads/main ref. When agent A commits,
+          the ref advances. But agent B's interaction may have been built
+          with an older ref. Check:
+          - Does buildMessages() use the latest ref?
+          - Does the scheduler re-load frames before triggering agent B?
+          - Is there a stale FrameManager cache?
+
+      - id: "10.2"
+        task: "Fix HEAD pointer so agents see each other's messages"
+        description: |
+          Ensure that when agent B starts (triggered by agent A's commit),
+          it loads the LATEST frames including agent A's output.
+
+      - id: "10.3"
+        task: "Add conversation termination instructions"
+        description: |
+          After all agents have had a chance to respond, the conversation
+          should die naturally. Add to the primer:
+          - "After all participants have contributed, do not continue
+            the conversation unless the user sends a new message."
+          - "If the last message was from another agent and was directed
+            at the user (not at you), respond with [NOT RESPONDING]."
+          - Consider a max-rounds limit: after N agent turns without
+            user input, stop triggering.
+
+      - id: "10.4"
+        task: "Run tests + E2E verify multi-agent conversation dies naturally"
+      - id: "10.5"
+        task: "Commit"
+
 # =============================================================================
 # CLAUDE.MD ADDITIONS
 # =============================================================================
@@ -467,3 +592,19 @@ claude_md_additions:
     fixes" that broke SSE broadcasts, FrameRouter plugins, and state consistency.
     Every time we patched a bypass with another bypass, we made it worse.
     Never again.
+
+    ### Context — Why This Rule Is Here
+
+    This is not a performance system. Kikx is an agentic, encrypted, asynchronous,
+    fully plugin-capable messaging system. **Stability, recoverability, and security
+    are the goals. Not performance.** Do not make "performance" decisions that
+    compromise the architectural integrity of the FrameManager.
+
+    We have documented plans. We have mandates. We have a startup file with
+    engineering standards. FOLLOW THEM. Do not deviate from plans and discussions
+    unless mutual agreement dictates you do. Every shortcut creates more work later.
+    Every bypass creates a new bug. Every "quick fix" that skips FrameManager costs
+    hours of debugging.
+
+    **TEST YOUR WORK.** Unit tests AND E2E verification. Every time. "It looks right"
+    is not proof. Tests that pass are proof. Never say "done" without evidence.
