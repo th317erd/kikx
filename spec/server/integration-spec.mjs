@@ -299,7 +299,7 @@ describe('Integration: Simple Interaction', () => {
 
     // Should have at least a user-message and an agent message
     let userFrame  = frames.find((f) => f.type === 'UserMessage');
-    let agentFrame = frames.find((f) => f.type === 'Message');
+    let agentFrame = frames.find((f) => f.type === 'Message' && f.authorType === 'agent');
 
     assert.ok(userFrame, 'should have a user-message frame');
     assert.ok(agentFrame, 'should have an agent message frame');
@@ -347,7 +347,7 @@ describe('Integration: Simple Interaction', () => {
     // Load frames from DB (exclude participant lifecycle frames which have their own IDs)
     let models   = core.getModels();
     let dbFrames = await models.Frame.where.sessionID.EQ(setup.session.id).all();
-    let interactionFrames = dbFrames.filter((f) => f.type !== 'ParticipantJoined' && f.type !== 'ParticipantLeft');
+    let interactionFrames = dbFrames.filter((f) => f.type !== 'ParticipantJoined' && f.type !== 'ParticipantLeft' && !(f.type === 'Message' && f.authorType === 'system'));
 
     for (let frame of interactionFrames)
       assert.equal(frame.interactionID, interactionID, 'All frames should have same interactionID');
@@ -373,7 +373,7 @@ describe('Integration: Simple Interaction', () => {
     let dbFrames = await models.Frame.where.sessionID.EQ(setup.session.id).ORDER('+Frame:order').all();
 
     let userFrame  = dbFrames.find((f) => f.type === 'UserMessage');
-    let agentFrame = dbFrames.find((f) => f.type === 'Message');
+    let agentFrame = dbFrames.find((f) => f.type === 'Message' && f.authorType === 'agent');
 
     assert.equal(userFrame.authorType, 'user');
     assert.equal(userFrame.authorID, testUser2.user.id);
@@ -396,7 +396,7 @@ describe('Integration: Simple Interaction', () => {
 
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let agentFrame   = frames.find((f) => f.type === 'Message');
+    let agentFrame   = frames.find((f) => f.type === 'Message' && f.authorType === 'agent');
 
     assert.ok(agentFrame);
     assert.ok(!agentFrame.content.html.includes('<script>'), 'script tag should be stripped');
@@ -427,7 +427,7 @@ describe('Integration: Multi-Message Interaction', () => {
 
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let agentFrames  = frames.filter((f) => f.type === 'Message');
+    let agentFrames  = frames.filter((f) => f.type === 'Message' && f.authorType === 'agent');
 
     assert.equal(agentFrames.length, 3, 'should have 3 agent message frames');
     assert.equal(agentFrames[0].content.html, '<p>First reply</p>');
@@ -454,7 +454,7 @@ describe('Integration: Multi-Message Interaction', () => {
     let frames       = frameManager.toArray();
 
     let reflectionFrame = frames.find((f) => f.type === 'Reflection');
-    let messageFrame    = frames.find((f) => f.type === 'Message');
+    let messageFrame    = frames.find((f) => f.type === 'Message' && f.authorType === 'agent');
 
     assert.ok(reflectionFrame, 'should have a reflection frame');
     assert.ok(messageFrame, 'should have a message frame');
@@ -516,7 +516,7 @@ describe('Integration: Tool Call Interaction', () => {
 
     let toolCallFrame   = frames.find((f) => f.type === 'ToolCall');
     let toolResultFrame = frames.find((f) => f.type === 'ToolResult');
-    let messageFrame    = frames.filter((f) => f.type === 'Message');
+    let messageFrame    = frames.filter((f) => f.type === 'Message' && f.authorType === 'agent');
 
     assert.ok(toolCallFrame, 'should have a tool-call frame');
     assert.ok(toolResultFrame, 'should have a tool-result frame');
@@ -568,7 +568,7 @@ describe('Integration: Tool Call Interaction', () => {
     let allFrames    = frameManager.toArray();
 
     // Filter out participant lifecycle frames (created by addParticipant in setup)
-    let frames = allFrames.filter((f) => f.type !== 'ParticipantJoined' && f.type !== 'ParticipantLeft');
+    let frames = allFrames.filter((f) => f.type !== 'ParticipantJoined' && f.type !== 'ParticipantLeft' && !(f.type === 'Message' && f.authorType === 'system'));
 
     assert.equal(frames[0].type, 'UserMessage');
     assert.equal(frames[1].type, 'ToolCall');
@@ -915,7 +915,7 @@ describe('Integration: Content Sanitization in Interaction', () => {
 
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let agentFrame   = frames.find((f) => f.type === 'Message');
+    let agentFrame   = frames.find((f) => f.type === 'Message' && f.authorType === 'agent');
 
     assert.ok(agentFrame);
     assert.ok(!agentFrame.content.html.includes('script'), 'should not contain script');
@@ -945,7 +945,7 @@ describe('Integration: Content Sanitization in Interaction', () => {
 
     let frameManager = await framePersistence.loadFrames(setup.session.id);
     let frames       = frameManager.toArray();
-    let agentFrame   = frames.find((f) => f.type === 'Message');
+    let agentFrame   = frames.find((f) => f.type === 'Message' && f.authorType === 'agent');
 
     assert.ok(agentFrame);
     assert.ok(!agentFrame.content.html.includes('iframe'), 'should not contain iframe');

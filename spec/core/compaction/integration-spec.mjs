@@ -400,7 +400,7 @@ describe('Compaction Integration', () => {
       assert.equal(messages.length, 2);
     });
 
-    it('should still exclude non-agent-context types even during compaction', () => {
+    it('should still exclude non-agent-context types even during compaction but include Error', () => {
       let frames = [
         { id: 'f1', type: 'UserMessage', authorType: 'user', content: { text: 'msg' }, order: 1, hidden: false, deleted: false },
         { id: 'f2', type: 'Error', authorType: 'system', content: { message: 'oops' }, order: 2, hidden: false, deleted: false },
@@ -410,9 +410,10 @@ describe('Compaction Integration', () => {
       let activeCompaction = { order: 10, frameID: 'x' };
       let messages = buildMessages(frames, null, { activeCompaction });
 
-      // error and reflection are excluded regardless of compaction
-      assert.equal(messages.length, 1);
+      // reflection is hidden so excluded; Error is now included as system message
+      assert.equal(messages.length, 2);
       assert.equal(messages[0].content, 'msg');
+      assert.ok(messages[1].content.includes('[System Error: oops]'));
     });
 
     it('should handle empty frames array with activeCompaction set', () => {

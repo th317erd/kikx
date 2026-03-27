@@ -8,7 +8,17 @@ export class FrameTypeCommandResult extends FrameTypeBase {
   }
 
   isIncludedInAgentContext() {
-    return false;
+    return true;
+  }
+
+  toAgentMessage(_options) {
+    let content = this._frameData.content || {};
+    let text    = content.html || content.text || '';
+
+    if (!text)
+      return null;
+
+    return { role: 'user', content: `[System: ${text}]`, frameID: this._frameData.id };
   }
 
   getAlignment() {

@@ -426,8 +426,8 @@ describe('Command Dispatch', () => {
   // 7. _buildMessages excludes command-result
   // ===========================================================================
 
-  describe('_buildMessages — command frames excluded', () => {
-    it('should exclude command-result frames from message history', () => {
+  describe('_buildMessages — command frames in context', () => {
+    it('should include command-result frames as system messages in agent context', () => {
       let loop   = createLoop();
       let frames = [
         { type: 'UserMessage', content: { text: '/reload' }, hidden: true },
@@ -437,11 +437,13 @@ describe('Command Dispatch', () => {
       ];
 
       let messages = loop._buildMessages(frames);
-      // hidden user-message (/reload) and command-result should both be excluded
-      assert.equal(messages.length, 2);
+      // hidden user-message (/reload) is excluded, but CommandResult is now included
+      assert.equal(messages.length, 3);
       assert.equal(messages[0].role, 'user');
-      assert.equal(messages[0].content, 'hello');
-      assert.equal(messages[1].role, 'assistant');
+      assert.ok(messages[0].content.includes('[System:'));
+      assert.equal(messages[1].role, 'user');
+      assert.equal(messages[1].content, 'hello');
+      assert.equal(messages[2].role, 'assistant');
     });
 
     it('should exclude hidden frames from message history', () => {
@@ -454,9 +456,11 @@ describe('Command Dispatch', () => {
       ];
 
       let messages = loop._buildMessages(frames);
-      assert.equal(messages.length, 2);
-      assert.equal(messages[0].content, 'hello');
-      assert.equal(messages[1].content, '<p>hi</p>');
+      // CommandResult is now included as system message
+      assert.equal(messages.length, 3);
+      assert.equal(messages[0].content, '[System: <p>Invited</p>]');
+      assert.equal(messages[1].content, 'hello');
+      assert.equal(messages[2].content, '<p>hi</p>');
     });
   });
 

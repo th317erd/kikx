@@ -190,12 +190,13 @@ export class SessionManager {
     let role        = options.role || 'member';
     let participant = await Participant.create({ sessionID, agentID, role });
 
-    // Create participant-joined frame
+    // Create participant-joined frame (visible to agents and users)
     let frameManager = this.getFrameManager(sessionID);
+    let agentName    = agent.name || agentID;
     let frameData = {
       id:         `frm_${XID.next()}`,
-      type:       'ParticipantJoined',
-      content:    { agentID, agentName: agent.name },
+      type:       'Message',
+      content:    { html: `<p><em>${agentName} has joined the session.</em></p>` },
       timestamp:  Date.now(),
       authorType: 'system',
       authorID:   null,

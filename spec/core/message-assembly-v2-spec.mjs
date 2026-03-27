@@ -68,7 +68,7 @@ describe('Message Assembly v2 (B6)', () => {
       assert.equal(messages[0].frameID, 'f1');
     });
 
-    it('should skip hidden/deleted/excluded frames', () => {
+    it('should skip hidden/deleted/excluded frames but include Error', () => {
       let frames = [
         { id: 'f1', type: 'UserMessage', content: { text: 'Hi' }, hidden: false, deleted: false },
         { id: 'f2', type: 'UserMessage', content: { text: 'Hidden' }, hidden: true, deleted: false },
@@ -78,7 +78,10 @@ describe('Message Assembly v2 (B6)', () => {
       ];
 
       let messages = loop._buildMessages(frames);
-      assert.equal(messages.length, 1);
+      // UserMessage 'Hi' + Error 'oops' (now included as system message)
+      assert.equal(messages.length, 2);
+      assert.equal(messages[0].content, 'Hi');
+      assert.ok(messages[1].content.includes('[System Error:'));
     });
   });
 

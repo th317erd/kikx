@@ -167,7 +167,7 @@ describe('CreateSession Tool Extension', () => {
       let fm     = await framePersistence.loadFrames(result.sessionID);
       let frames = fm.toArray();
 
-      let messageFrames = frames.filter((f) => f.type === 'Message');
+      let messageFrames = frames.filter((f) => f.type === 'Message' && f.authorType !== 'system');
       assert.equal(messageFrames.length, 0, 'Should have no message frames without initialMessage');
     });
 
@@ -182,7 +182,7 @@ describe('CreateSession Tool Extension', () => {
       let fm     = await framePersistence.loadFrames(result.sessionID);
       let frames = fm.toArray();
 
-      let messageFrames = frames.filter((f) => f.type === 'Message');
+      let messageFrames = frames.filter((f) => f.type === 'Message' && f.authorType !== 'system');
       assert.equal(messageFrames.length, 0, 'Empty string initialMessage should produce no frames');
     });
   });

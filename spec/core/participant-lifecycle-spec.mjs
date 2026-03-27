@@ -13,12 +13,18 @@ import { Participant }      from '../../src/core/models/participant-model.mjs';
 // Participant Lifecycle Tests
 // =============================================================================
 // TDD tests for participant-joined / participant-left frame generation.
-// These tests verify the INTENDED behavior after the implementation is
-// complete. They are expected to FAIL against the current codebase.
-//
-// A single KikxCore instance is shared across the entire suite to avoid
-// race conditions from multiple concurrent DB connections.
+// addParticipant now creates a Message frame (authorType: 'system') so agents
+// can see the join notification in their context.
 // =============================================================================
+
+// Helper: find join notification frames (Message type with system author and join text)
+function isJoinFrame(frame) {
+  if (frame.type !== 'Message' || frame.authorType !== 'system')
+    return false;
+
+  let html = (frame.content && frame.content.html) || '';
+  return html.includes('has joined the session');
+}
 
 describe('Participant Lifecycle Frames', () => {
   let core;
@@ -75,40 +81,40 @@ describe('Participant Lifecycle Frames', () => {
   });
 
   // ---- Test 2 ----
-  it('addParticipant creates participant-joined frame in session FrameManager', async () => {
+  it('addParticipant creates a system Message frame in session FrameManager', async () => {
     let { agent, session } = await createAgentAndSession('test-lifecycle-2');
 
     await manager.addParticipant(session.id, agent.id);
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrames = frames.filter((frame) => frame.type === 'ParticipantJoined');
+    let joinedFrames = frames.filter(isJoinFrame);
 
-    assert.equal(joinedFrames.length, 1, 'Expected exactly one participant-joined frame');
+    assert.equal(joinedFrames.length, 1, 'Expected exactly one join notification frame');
   });
 
   // ---- Test 3 ----
-  it('participant-joined frame has correct schema', async () => {
+  it('join notification frame has correct schema', async () => {
     let { agent, session } = await createAgentAndSession('test-lifecycle-3');
 
     await manager.addParticipant(session.id, agent.id);
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrame  = frames.find((frame) => frame.type === 'ParticipantJoined');
+    let joinedFrame  = frames.find(isJoinFrame);
 
-    assert.ok(joinedFrame, 'participant-joined frame should exist');
-    assert.equal(joinedFrame.type, 'ParticipantJoined');
+    assert.ok(joinedFrame, 'join notification frame should exist');
+    assert.equal(joinedFrame.type, 'Message');
     assert.equal(joinedFrame.hidden, false);
     assert.equal(joinedFrame.authorType, 'system');
     assert.equal(joinedFrame.authorID, null);
     assert.ok(joinedFrame.content, 'Frame content should exist');
-    assert.equal(joinedFrame.content.agentID, agent.id);
-    assert.equal(joinedFrame.content.agentName, 'test-lifecycle-3');
+    assert.ok(joinedFrame.content.html.includes('test-lifecycle-3'), 'Frame should contain agent name');
+    assert.ok(joinedFrame.content.html.includes('has joined the session'), 'Frame should contain join text');
   });
 
   // ---- Test 4 ----
-  it('participant-joined frame is persisted via FramePersistence', async () => {
+  it('join notification frame is persisted via FramePersistence', async () => {
     let { agent, session } = await createAgentAndSession('test-lifecycle-4');
 
     await manager.addParticipant(session.id, agent.id);
@@ -116,15 +122,14 @@ describe('Participant Lifecycle Frames', () => {
     // Load frames from the database using a fresh FrameManager
     let loadedFrameManager = await persistence.loadFrames(session.id);
     let loadedFrames       = loadedFrameManager.toArray();
-    let joinedFrames       = loadedFrames.filter((frame) => frame.type === 'ParticipantJoined');
+    let joinedFrames       = loadedFrames.filter(isJoinFrame);
 
-    assert.equal(joinedFrames.length, 1, 'Persisted participant-joined frame should be loadable');
-    assert.equal(joinedFrames[0].content.agentID, agent.id);
-    assert.equal(joinedFrames[0].content.agentName, 'test-lifecycle-4');
+    assert.equal(joinedFrames.length, 1, 'Persisted join notification frame should be loadable');
+    assert.ok(joinedFrames[0].content.html.includes('test-lifecycle-4'));
   });
 
   // ---- Test 5 ----
-  it('participant-joined frame has correct monotonic order within session', async () => {
+  it('join notification frame has correct monotonic order within session', async () => {
     let agentOne = await models.Agent.create({
       organizationID: organization.id,
       name:           'test-lifecycle-5a',
@@ -144,9 +149,9 @@ describe('Participant Lifecycle Frames', () => {
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrames = frames.filter((frame) => frame.type === 'ParticipantJoined');
+    let joinedFrames = frames.filter(isJoinFrame);
 
-    assert.equal(joinedFrames.length, 2, 'Expected two participant-joined frames');
+    assert.equal(joinedFrames.length, 2, 'Expected two join notification frames');
     assert.ok(
       joinedFrames[0].order < joinedFrames[1].order,
       `First frame order (${joinedFrames[0].order}) should be less than second (${joinedFrames[1].order})`,
@@ -209,9 +214,9 @@ describe('Participant Lifecycle Frames', () => {
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrames = frames.filter((frame) => frame.type === 'ParticipantJoined');
+    let joinedFrames = frames.filter(isJoinFrame);
 
-    assert.equal(joinedFrames.length, 2, 'Should have two participant-joined frames (original + re-add)');
+    assert.equal(joinedFrames.length, 2, 'Should have two join notification frames (original + re-add)');
   });
 
   // ---- Test 9 ----
@@ -229,7 +234,7 @@ describe('Participant Lifecycle Frames', () => {
     let frameManager    = manager.getFrameManager(session.id);
     let frames          = frameManager.toArray();
     let lifecycleFrames = frames.filter(
-      (frame) => frame.type === 'ParticipantJoined' || frame.type === 'ParticipantLeft',
+      (frame) => isJoinFrame(frame) || frame.type === 'ParticipantLeft',
     );
 
     assert.equal(lifecycleFrames.length, 4, 'Expected 4 lifecycle frames (2 joined + 2 left)');
@@ -242,10 +247,10 @@ describe('Participant Lifecycle Frames', () => {
       );
     }
 
-    // Verify the sequence: joined, left, joined, left
-    assert.equal(lifecycleFrames[0].type, 'ParticipantJoined');
+    // Verify the sequence: joined (Message), left, joined (Message), left
+    assert.ok(isJoinFrame(lifecycleFrames[0]));
     assert.equal(lifecycleFrames[1].type, 'ParticipantLeft');
-    assert.equal(lifecycleFrames[2].type, 'ParticipantJoined');
+    assert.ok(isJoinFrame(lifecycleFrames[2]));
     assert.equal(lifecycleFrames[3].type, 'ParticipantLeft');
   });
 
@@ -335,9 +340,9 @@ describe('Participant Lifecycle Frames', () => {
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrames = frames.filter((frame) => frame.type === 'ParticipantJoined');
+    let joinedFrames = frames.filter(isJoinFrame);
 
-    assert.equal(joinedFrames.length, 1, 'Should not create a duplicate participant-joined frame');
+    assert.equal(joinedFrames.length, 1, 'Should not create a duplicate join notification frame');
   });
 
   // ---- Test 15 ----
@@ -363,24 +368,22 @@ describe('Participant Lifecycle Frames', () => {
   });
 
   // ---- Test 17 ----
-  it('participant-joined frame is visible to agents (hidden: false)', async () => {
+  it('join notification frame is visible to agents (hidden: false)', async () => {
     let { agent, session } = await createAgentAndSession('test-lifecycle-17');
 
     await manager.addParticipant(session.id, agent.id);
 
     let frameManager = manager.getFrameManager(session.id);
     let frames       = frameManager.toArray();
-    let joinedFrame  = frames.find((frame) => frame.type === 'ParticipantJoined');
+    let joinedFrame  = frames.find(isJoinFrame);
 
-    assert.ok(joinedFrame, 'participant-joined frame must exist');
+    assert.ok(joinedFrame, 'join notification frame must exist');
 
     // hidden: false means the frame appears in agent context.
-    // The default for Frame is hidden: true, so this verifies addParticipant
-    // explicitly sets hidden to false.
     assert.equal(
       joinedFrame.hidden,
       false,
-      'participant-joined frame must have hidden: false so it appears in agent context',
+      'join notification frame must have hidden: false so it appears in agent context',
     );
   });
 });

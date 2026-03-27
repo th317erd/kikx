@@ -1639,7 +1639,7 @@ describe('InteractionLoop', () => {
       assert.equal(messages[1].type, 'ToolResult');
     });
 
-    it('should skip error frames', () => {
+    it('should include error frames as system messages', () => {
       let loop   = createLoop();
       let frames = [
         { type: 'UserMessage', content: { text: 'hello' } },
@@ -1647,7 +1647,9 @@ describe('InteractionLoop', () => {
       ];
 
       let messages = loop._buildMessages(frames);
-      assert.equal(messages.length, 1);
+      assert.equal(messages.length, 2);
+      assert.equal(messages[1].role, 'user');
+      assert.ok(messages[1].content.includes('[System Error:'));
     });
 
     it('should skip reflection frames', () => {
@@ -1667,19 +1669,30 @@ describe('InteractionLoop', () => {
       assert.deepEqual(messages, []);
     });
 
-    it('should return empty array when all frames are excluded types', () => {
+    it('should return empty array when all frames are excluded types (except Error)', () => {
       let loop   = createLoop();
       let frames = [
         { type: 'PermissionRequest', content: { toolName: 'shell' } },
         { type: 'PermissionDenied', content: {} },
         { type: 'HookBlocked', content: { reason: 'test' } },
         { type: 'ToolError', content: { message: 'fail' } },
-        { type: 'Error', content: { message: 'oops' } },
         { type: 'Reflection', content: { text: 'thinking' } },
       ];
 
       let messages = loop._buildMessages(frames);
       assert.equal(messages.length, 0);
+    });
+
+    it('should include Error frames in agent context', () => {
+      let loop   = createLoop();
+      let frames = [
+        { type: 'Error', content: { message: 'oops' } },
+      ];
+
+      let messages = loop._buildMessages(frames);
+      assert.equal(messages.length, 1);
+      assert.equal(messages[0].role, 'user');
+      assert.ok(messages[0].content.includes('[System Error: oops]'));
     });
   });
 

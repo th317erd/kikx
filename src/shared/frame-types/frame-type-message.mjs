@@ -18,6 +18,11 @@ export class FrameTypeMessage extends FrameTypeBase {
     let html        = content.html || '';
     let forAgentID  = (options && options.forAgentID) ? options.forAgentID : null;
     let authorID    = this._frameData.authorID;
+    let authorType  = this._frameData.authorType;
+
+    // System-authored messages are context, not agent output
+    if (authorType === 'system')
+      return { role: 'user', content: `[System: ${html}]`, frameID: this._frameData.id };
 
     // Multi-agent attribution: wrap other agents' messages in XML
     if (forAgentID && authorID && authorID !== forAgentID) {

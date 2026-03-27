@@ -18,7 +18,14 @@ export class FrameTypeError extends FrameTypeBase {
   }
 
   isIncludedInAgentContext() {
-    return false;
+    return true;
+  }
+
+  toAgentMessage(_options) {
+    let content = this._frameData.content || {};
+    let message = content.message || content.error || content.text || 'Unknown error';
+
+    return { role: 'user', content: `[System Error: ${message}]`, frameID: this._frameData.id };
   }
 
   getAlignment() {

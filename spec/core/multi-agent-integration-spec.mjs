@@ -191,7 +191,7 @@ describe('Multi-Agent Integration', () => {
       let allFrames    = frameManager.toArray();
 
       let userFrames  = allFrames.filter((f) => f.type === 'UserMessage');
-      let agentFrames = allFrames.filter((f) => f.type === 'Message');
+      let agentFrames = allFrames.filter((f) => f.type === 'Message' && f.authorType === 'agent');
 
       assert.equal(userFrames.length, 1, 'Should have one user message');
       assert.equal(agentFrames.length, 2, 'Should have two agent messages');
@@ -368,7 +368,7 @@ describe('Multi-Agent Integration', () => {
       // All frames present
       let frameManager = sessionManager.getFrameManager(session.id);
       let allFrames    = frameManager.toArray();
-      let agentFrames  = allFrames.filter((f) => f.type === 'Message');
+      let agentFrames  = allFrames.filter((f) => f.type === 'Message' && f.authorType === 'agent');
 
       assert.equal(agentFrames.length, 3, 'Should have three agent messages');
     });

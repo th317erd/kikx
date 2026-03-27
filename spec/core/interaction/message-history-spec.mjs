@@ -150,10 +150,10 @@ describe('Message History Utilities (C5)', () => {
       assert.deepEqual(buildMessages(frames), []);
     });
 
-    it('should exclude system frame types', () => {
+    it('should exclude system frame types that are not agent-visible', () => {
       let excludedTypes = [
         'PermissionRequest', 'PermissionDenied', 'HookBlocked',
-        'ToolError', 'Error', 'Reflection', 'CommandResult', 'ToolActivity', 'Stop',
+        'ToolError', 'Reflection', 'ToolActivity', 'Stop',
       ];
 
       for (let type of excludedTypes) {
@@ -161,6 +161,22 @@ describe('Message History Utilities (C5)', () => {
         let msgs   = buildMessages(frames);
         assert.equal(msgs.length, 0, `${type} should be excluded`);
       }
+    });
+
+    it('should include Error frames as user-role system messages', () => {
+      let frames = [{ id: 'f1', type: 'Error', content: { message: 'Something broke' }, deleted: false, hidden: false }];
+      let msgs   = buildMessages(frames);
+      assert.equal(msgs.length, 1, 'Error frames should be included');
+      assert.equal(msgs[0].role, 'user');
+      assert.ok(msgs[0].content.includes('[System Error:'));
+    });
+
+    it('should include CommandResult frames as user-role system messages', () => {
+      let frames = [{ id: 'f1', type: 'CommandResult', content: { html: 'result output' }, deleted: false, hidden: false }];
+      let msgs   = buildMessages(frames);
+      assert.equal(msgs.length, 1, 'CommandResult frames should be included');
+      assert.equal(msgs[0].role, 'user');
+      assert.ok(msgs[0].content.includes('[System:'));
     });
 
     it('should include tool-call frames', () => {

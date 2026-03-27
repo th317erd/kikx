@@ -247,6 +247,12 @@ describe('FrameTypeMessage', () => {
     assert.deepEqual(result, { role: 'assistant', content: 'hi', frameID: undefined });
   });
 
+  it('toAgentMessage() — system authorType returns user role with [System: ...] prefix', () => {
+    let instance = new FrameTypeMessage({ id: 'sys1', content: { html: '<p>Agent joined</p>' }, authorType: 'system' });
+    let result   = instance.toAgentMessage({});
+    assert.deepEqual(result, { role: 'user', content: '[System: <p>Agent joined</p>]', frameID: 'sys1' });
+  });
+
   it('toMessage() returns text', () => {
     assert.equal(new FrameTypeMessage(agentFrame).toMessage(), 'I can help');
   });
@@ -678,8 +684,26 @@ describe('FrameTypeCommandResult', () => {
     assert.equal(new FrameTypeCommandResult(frame).isRenderable(), true);
   });
 
-  it('isIncludedInAgentContext() returns false', () => {
-    assert.equal(new FrameTypeCommandResult(frame).isIncludedInAgentContext(), false);
+  it('isIncludedInAgentContext() returns true', () => {
+    assert.equal(new FrameTypeCommandResult(frame).isIncludedInAgentContext(), true);
+  });
+
+  it('toAgentMessage() returns user-role message with [System: ...] prefix', () => {
+    let msg = new FrameTypeCommandResult(frame).toAgentMessage();
+    assert.ok(msg);
+    assert.equal(msg.role, 'user');
+    assert.equal(msg.content, '[System: <pre>output</pre>]');
+  });
+
+  it('toAgentMessage() falls back to text', () => {
+    let msg = new FrameTypeCommandResult({ id: 'f9b', content: { text: 'txt' } }).toAgentMessage();
+    assert.ok(msg);
+    assert.equal(msg.content, '[System: txt]');
+  });
+
+  it('toAgentMessage() returns null for empty content', () => {
+    let msg = new FrameTypeCommandResult({ id: 'f9c', content: {} }).toAgentMessage();
+    assert.equal(msg, null);
   });
 
   it('getAlignment() returns system', () => {
@@ -964,8 +988,34 @@ describe('FrameTypeError', () => {
     assert.equal(new FrameTypeError(frame).isRenderable(), true);
   });
 
-  it('isIncludedInAgentContext() returns false', () => {
-    assert.equal(new FrameTypeError(frame).isIncludedInAgentContext(), false);
+  it('isIncludedInAgentContext() returns true', () => {
+    assert.equal(new FrameTypeError(frame).isIncludedInAgentContext(), true);
+  });
+
+  it('toAgentMessage() returns user-role message with [System Error: ...] prefix', () => {
+    let msg = new FrameTypeError(frame).toAgentMessage();
+    assert.ok(msg);
+    assert.equal(msg.role, 'user');
+    assert.equal(msg.content, '[System Error: Something broke]');
+    assert.equal(msg.frameID, 'f16');
+  });
+
+  it('toAgentMessage() falls back to error field', () => {
+    let msg = new FrameTypeError({ id: 'f16b', content: { error: 'network timeout' } }).toAgentMessage();
+    assert.ok(msg);
+    assert.equal(msg.content, '[System Error: network timeout]');
+  });
+
+  it('toAgentMessage() falls back to text field', () => {
+    let msg = new FrameTypeError({ id: 'f16c', content: { text: 'something failed' } }).toAgentMessage();
+    assert.ok(msg);
+    assert.equal(msg.content, '[System Error: something failed]');
+  });
+
+  it('toAgentMessage() returns Unknown error for empty content', () => {
+    let msg = new FrameTypeError({ id: 'f16d', content: {} }).toAgentMessage();
+    assert.ok(msg);
+    assert.equal(msg.content, '[System Error: Unknown error]');
   });
 
   it('getAlignment() returns system', () => {

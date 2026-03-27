@@ -730,7 +730,7 @@ describe('Command Permissions (system:command)', () => {
       assert.equal(userFrames[0].hidden, true, 'Command user-message must be hidden');
     });
 
-    it('should exclude hidden command frames from _buildMessages', () => {
+    it('should include command-result frames but exclude hidden user frames from _buildMessages', () => {
       let loop   = createLoop();
       let frames = [
         { type: 'UserMessage', content: { text: '/reload' }, hidden: true },
@@ -740,12 +740,14 @@ describe('Command Permissions (system:command)', () => {
       ];
 
       let messages = loop._buildMessages(frames);
-      // Agent should only see "Hello" and "Hi there" — not "/reload" or command-result
-      assert.equal(messages.length, 2);
+      // Agent sees CommandResult as system message, "Hello", and "Hi there" — not "/reload"
+      assert.equal(messages.length, 3);
       assert.equal(messages[0].role, 'user');
-      assert.equal(messages[0].content, 'Hello');
-      assert.equal(messages[1].role, 'assistant');
-      assert.equal(messages[1].content, '<p>Hi there</p>');
+      assert.ok(messages[0].content.includes('[System:'));
+      assert.equal(messages[1].role, 'user');
+      assert.equal(messages[1].content, 'Hello');
+      assert.equal(messages[2].role, 'assistant');
+      assert.equal(messages[2].content, '<p>Hi there</p>');
     });
 
     it('should not count hidden command frames in _isFirstMessage', async () => {
