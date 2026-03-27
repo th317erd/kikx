@@ -1084,8 +1084,8 @@ class KikxSessionPage extends HTMLElement {
         return;
       }
 
-      // Update message content
-      if (frame.content && (frame.content.html || frame.content.text)) {
+      // Update message content (skip Reflection frames — they use the reflection block path)
+      if (frame.type !== 'Reflection' && frame.content && (frame.content.html || frame.content.text)) {
         let mc = el.querySelector('kikx-message-content');
 
         if (!mc) {
