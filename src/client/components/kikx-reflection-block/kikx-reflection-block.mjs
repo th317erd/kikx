@@ -1,5 +1,9 @@
 'use strict';
 
+import { t } from '../../lib/i18n.mjs';
+
+const THINKING_SAYING_INTERVAL = 3000; // ms between saying changes
+
 const TEMPLATE_HTML = `
   <style>
     kikx-reflection-block {
@@ -74,6 +78,7 @@ const TEMPLATE_HTML = `
       40%           { opacity: 1; }
     }
 
+    /* Scrolling preview of actual thinking text (from other bot) */
     kikx-reflection-block .thinking-preview {
       display: none;
       flex: 1;
@@ -100,6 +105,25 @@ const TEMPLATE_HTML = `
       100% { transform: translateX(-50%); }
     }
 
+    /* Funny sayings banner below the header */
+    kikx-reflection-block .thinking-saying {
+      display: block;
+      padding: 2px 8px 4px;
+      font-size: 0.8rem;
+      font-style: italic;
+      color: var(--text-muted, #6a6a80);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+
+    kikx-reflection-block .thinking-saying.visible {
+      opacity: 1;
+    }
+
+    kikx-reflection-block[complete] .thinking-saying {
+      display: none;
+    }
+
     kikx-reflection-block .reflection-content {
       display: none;
       padding: var(--spacing-sm, 8px);
@@ -123,6 +147,7 @@ const TEMPLATE_HTML = `
     <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
     <span class="thinking-preview"><span class="thinking-preview-inner"></span></span>
   </button>
+  <div class="thinking-saying"></div>
   <div class="reflection-content"></div>
 `;
 
@@ -137,13 +162,30 @@ function getTemplate() {
   return cachedTemplate;
 }
 
+function pickRandomSaying(sayings, lastIndex) {
+  if (!sayings || sayings.length === 0)
+    return { text: '', index: -1 };
+
+  if (sayings.length === 1)
+    return { text: sayings[0], index: 0 };
+
+  let index;
+  do {
+    index = Math.floor(Math.random() * sayings.length);
+  } while (index === lastIndex);
+
+  return { text: sayings[index], index };
+}
+
 class KikxReflectionBlock extends HTMLElement {
-  static get observedAttributes() { return ['expanded']; }
+  static get observedAttributes() { return ['expanded', 'complete']; }
 
   constructor() {
     super();
     this._expanded         = false;
     this._pendingContent   = null;
+    this._sayingTimer      = null;
+    this._lastSayingIndex  = -1;
     this._onToggleClick    = this._onToggleClick.bind(this);
   }
 
@@ -156,6 +198,7 @@ class KikxReflectionBlock extends HTMLElement {
       this._collapseIndicator = this.querySelector('.collapse-indicator');
       this._reflectionContent = this.querySelector('.reflection-content');
       this._previewInner      = this.querySelector('.thinking-preview-inner');
+      this._thinkingSaying    = this.querySelector('.thinking-saying');
 
       // Apply content that was set before the element connected to the DOM
       if (this._pendingContent !== null) {
@@ -169,10 +212,15 @@ class KikxReflectionBlock extends HTMLElement {
 
     if (this.hasAttribute('expanded'))
       this._setExpanded(true);
+
+    // Start cycling sayings if not yet complete
+    if (!this.hasAttribute('complete'))
+      this._startSayings();
   }
 
   disconnectedCallback() {
     this._toggleHeader.removeEventListener('click', this._onToggleClick);
+    this._stopSayings();
   }
 
   attributeChangedCallback(name) {
@@ -181,6 +229,11 @@ class KikxReflectionBlock extends HTMLElement {
 
       if (shouldExpand !== this._expanded)
         this._setExpanded(shouldExpand);
+    }
+
+    if (name === 'complete') {
+      if (this.hasAttribute('complete'))
+        this._stopSayings();
     }
   }
 
@@ -235,6 +288,7 @@ class KikxReflectionBlock extends HTMLElement {
     }
   }
 
+  // Scrolling preview of actual thinking text
   _updatePreview(text) {
     if (!this._previewInner)
       return;
@@ -244,12 +298,49 @@ class KikxReflectionBlock extends HTMLElement {
       return;
     }
 
-    // Show the last ~200 chars of thinking text, duplicated for seamless scroll loop
     let preview = text.length > 200 ? text.slice(-200) : text;
-    // Clean up whitespace for inline display
     preview = preview.replace(/\n+/g, ' \u2022 ').replace(/\s+/g, ' ').trim();
-    // Duplicate for seamless CSS scroll animation
     this._previewInner.textContent = preview + '    \u2022    ' + preview;
+  }
+
+  // Funny sayings cycling
+  _startSayings() {
+    if (this._sayingTimer)
+      return;
+
+    let sayings = t('chat.thinking.sayings');
+    if (!Array.isArray(sayings) || sayings.length === 0)
+      return;
+
+    this._showNextSaying(sayings);
+    this._sayingTimer = setInterval(() => this._showNextSaying(sayings), THINKING_SAYING_INTERVAL);
+  }
+
+  _stopSayings() {
+    if (this._sayingTimer) {
+      clearInterval(this._sayingTimer);
+      this._sayingTimer = null;
+    }
+
+    if (this._thinkingSaying) {
+      this._thinkingSaying.classList.remove('visible');
+      this._thinkingSaying.textContent = '';
+    }
+  }
+
+  _showNextSaying(sayings) {
+    if (!this._thinkingSaying)
+      return;
+
+    this._thinkingSaying.classList.remove('visible');
+
+    setTimeout(() => {
+      let { text, index }   = pickRandomSaying(sayings, this._lastSayingIndex);
+      this._lastSayingIndex = index;
+
+      this._thinkingSaying.textContent = text;
+      this._thinkingSaying.classList.add('visible');
+    }, 400);
   }
 
   _dispatchToggleEvent() {
