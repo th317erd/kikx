@@ -546,6 +546,22 @@ export class InteractionLoop extends EventEmitter {
       primerInjected: needsPrimer,
     });
 
+    // Always inject agent identity into the last user message — tiny cost,
+    // prevents identity confusion in multi-agent sessions. The primer only
+    // fires on the first message, but identity needs to persist throughout.
+    if (params.agent && params.agent.name && messages.length > 0) {
+      let identityNote = `[System: You are "${params.agent.name}". Messages from you appear as assistant messages. Do not confuse yourself with other participants.]`;
+
+      // Find the last user message and append the identity note
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          messages = [...messages];
+          messages[i] = { ...messages[i], content: messages[i].content + '\n\n' + identityNote };
+          break;
+        }
+      }
+    }
+
     // --- Compaction: trigger check ---
     // Check if the agent plugin wants to compact the session history.
     // This is fire-and-forget -- the current interaction proceeds with truncation.
