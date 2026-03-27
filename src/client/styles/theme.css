@@ -31,7 +31,7 @@ body {
   background-size: 120% 120%, 110% 130%, 130% 110%, 100% 100%;
   animation: ambient-breathe 90s ease-in-out infinite;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 21px;
   line-height: 1.5;
 }
 
