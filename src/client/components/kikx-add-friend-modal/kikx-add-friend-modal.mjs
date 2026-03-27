@@ -306,7 +306,7 @@ class KikxAddFriendModal extends HTMLElement {
   async _loadModels() {
     try {
       let result        = await getModels();
-      let models        = (result && result.models) || [];
+      let models        = (result && result.data && result.data.models) || (result && result.models) || [];
       let pluginSelect  = this.querySelector('.plugin-select');
       let modelSelect   = this.querySelector('.model-select');
 
