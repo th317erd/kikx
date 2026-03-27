@@ -499,20 +499,23 @@ export class InteractionController extends ControllerAuthBase {
         existingResult.content = JSON.stringify(updatedContent);
         await existingResult.save();
 
-        // Merge into FrameManager so the commit broadcasts via SSE —
-        // without this, the client never learns the content changed.
-        let framePersistence = core.getContext().getProperty('framePersistence');
-        let sessionManager   = core.getContext().getProperty('sessionManager');
-
-        if (framePersistence && sessionManager) {
-          let fm = sessionManager.getFrameManager(sessionID);
-          await framePersistence.loadFramesInto(fm, sessionID);
-
-          fm.merge([{
-            id:      existingResult.id,
-            type:    'ToolResult',
-            content: updatedContent,
-          }]);
+        // Emit directly on InteractionLoop so SSE stream picks it up.
+        // FrameManager merge doesn't work because SSE listens to the
+        // InteractionLoop's 'commit' event, not arbitrary FMs.
+        let interactionLoop = core.getContext().getProperty('interactionLoop');
+        if (interactionLoop) {
+          interactionLoop.emit('commit', {
+            sessionID,
+            commit: {
+              id:      `commit-approval-${Date.now()}`,
+              frames:  [{
+                id:      existingResult.id,
+                type:    'ToolResult',
+                content: updatedContent,
+              }],
+              changes: [{ frameID: existingResult.id, operation: 'update' }],
+            },
+          });
         }
       } else {
         // No existing placeholder found — create a new one (shouldn't happen normally)
@@ -665,19 +668,21 @@ export class InteractionController extends ControllerAuthBase {
         existingResult.content = JSON.stringify(updatedContent);
         await existingResult.save();
 
-        // Broadcast update via FrameManager → SSE
-        let sessionManager = core.getContext().getProperty('sessionManager');
-        let framePersistence = core.getContext().getProperty('framePersistence');
-
-        if (sessionManager && framePersistence) {
-          let fm = sessionManager.getFrameManager(params.sessionID);
-          await framePersistence.loadFramesInto(fm, params.sessionID);
-
-          fm.merge([{
-            id:      existingResult.id,
-            type:    'ToolResult',
-            content: updatedContent,
-          }]);
+        // Emit on InteractionLoop so SSE picks it up
+        let interactionLoop = core.getContext().getProperty('interactionLoop');
+        if (interactionLoop) {
+          interactionLoop.emit('commit', {
+            sessionID: params.sessionID,
+            commit: {
+              id:      `commit-denial-${Date.now()}`,
+              frames:  [{
+                id:      existingResult.id,
+                type:    'ToolResult',
+                content: updatedContent,
+              }],
+              changes: [{ frameID: existingResult.id, operation: 'update' }],
+            },
+          });
         }
       } else {
         // Fallback: create new
