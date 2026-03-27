@@ -742,9 +742,18 @@ export class InteractionLoop extends EventEmitter {
         if (block.type === 'Message') {
           let html = block.content && block.content.html;
 
-          // Agent opted out of responding — suppress the message entirely
-          if (html && html.includes('[NOT RESPONDING]'))
-            continue;
+          // Agent opted out of responding — suppress the message entirely.
+          // Match the exact marker AND common variations agents produce.
+          if (html) {
+            let stripped = html.replace(/<[^>]*>/g, '').trim().toLowerCase();
+            if (stripped.includes('[not responding]') ||
+                stripped.includes('not responding') ||
+                stripped.startsWith('[i am staying silent') ||
+                stripped.startsWith('[staying silent') ||
+                stripped.startsWith('[silence]') ||
+                stripped === '')
+              continue;
+          }
 
           // Hook: agent → user
           if (hookRunner) {

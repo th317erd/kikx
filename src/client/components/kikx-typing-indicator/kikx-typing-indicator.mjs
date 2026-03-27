@@ -19,7 +19,7 @@ const TEMPLATE_HTML = `
       color: var(--text-secondary, #a0a0b8);
       opacity: 0.8;
       transition: opacity 0.3s ease;
-      max-width: 18em;
+      max-width: 72em;
     }
 
     kikx-typing-indicator .agent-name {
@@ -63,7 +63,7 @@ const TEMPLATE_HTML = `
 
     kikx-typing-indicator .thinking-scroll-inner {
       display: inline-block;
-      animation: kikx-typing-scroll 10s linear infinite;
+      animation: kikx-typing-scroll 35s linear infinite;
     }
 
     @keyframes kikx-typing-scroll {
