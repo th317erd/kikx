@@ -534,6 +534,15 @@ describe('KikxAddFriendModal', () => {
     // Go to agent step
     wizard.querySelector('.agent-type-button').click();
 
+    // Populate dropdowns (normally loaded from API)
+    let pluginSel = wizard.querySelector('.plugin-select');
+    pluginSel.innerHTML = '<option value="claude">Claude</option>';
+    pluginSel.value = 'claude';
+
+    let modelSel = wizard.querySelector('.model-select');
+    modelSel.innerHTML = '<option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>';
+    modelSel.value = 'claude-sonnet-4-6';
+
     // Fill fields
     wizard.querySelector('.name-input').value    = 'Test Agent';
     wizard.querySelector('.api-key-input').value = 'sk-test-123';

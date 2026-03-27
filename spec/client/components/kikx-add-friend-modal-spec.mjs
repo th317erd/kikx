@@ -132,9 +132,17 @@ describe('kikx-add-friend-modal — agent step', { timeout: 5000 }, () => {
     let el = makeElement();
     el.querySelector('.agent-type-button').click();
 
+    // Populate dropdowns (normally loaded from API)
+    let pluginSel = el.querySelector('.plugin-select');
+    pluginSel.innerHTML = '<option value="claude">Claude</option>';
+    pluginSel.value = 'claude';
+
+    let modelSel = el.querySelector('.model-select');
+    modelSel.innerHTML = '<option value="claude-opus-4-6">Claude Opus 4.6</option>';
+    modelSel.value = 'claude-opus-4-6';
+
     el.querySelector('.api-key-input').value = 'sk-test-key';
     el.querySelector('.name-input').value = 'test-bot';
-    el.querySelector('.model-select').value = 'claude-opus-4-6';
 
     let received = null;
     el.addEventListener('friend-save', (e) => { received = e.detail; });

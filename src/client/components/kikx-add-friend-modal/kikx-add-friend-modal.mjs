@@ -1,6 +1,7 @@
 'use strict';
 
 import { t } from '../../lib/i18n.mjs';
+import { getModels } from '../../lib/api.mjs';
 
 const TEMPLATE_HTML = `
   <style>
@@ -151,9 +152,7 @@ const TEMPLATE_HTML = `
   <div class="wizard-step step-agent" data-step="agent">
     <div class="form-group">
       <label class="form-label plugin-label"></label>
-      <select class="form-select plugin-select">
-        <option value="claude">Claude</option>
-      </select>
+      <select class="form-select plugin-select"></select>
     </div>
     <div class="form-group">
       <label class="form-label api-key-label"></label>
@@ -165,11 +164,7 @@ const TEMPLATE_HTML = `
     </div>
     <div class="form-group">
       <label class="form-label model-label"></label>
-      <select class="form-select model-select">
-        <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
-        <option value="claude-opus-4-6">Claude Opus 4.6</option>
-        <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
-      </select>
+      <select class="form-select model-select"></select>
     </div>
     <div class="button-row">
       <button class="form-button secondary back-button" type="button"></button>
@@ -233,6 +228,7 @@ class KikxAddFriendModal extends HTMLElement {
     }
 
     this._render();
+    this._loadModels();
 
     this.querySelector('.agent-type-button').addEventListener('click', this._onAgentTypeClick);
     this.querySelector('.user-type-button').addEventListener('click', this._onUserTypeClick);
@@ -270,13 +266,12 @@ class KikxAddFriendModal extends HTMLElement {
     for (let input of inputs)
       input.value = '';
 
-    let modelSelect = this.querySelector('.model-select');
-    if (modelSelect)
-      modelSelect.value = 'claude-sonnet-4-6';
-
+    // Reset plugin and model dropdowns to first option
     let pluginSelect = this.querySelector('.plugin-select');
-    if (pluginSelect)
-      pluginSelect.value = 'claude';
+    if (pluginSelect && pluginSelect.options.length > 0)
+      pluginSelect.value = pluginSelect.options[0].value;
+
+    this._updateModelOptions();
   }
 
   _render() {
@@ -306,6 +301,62 @@ class KikxAddFriendModal extends HTMLElement {
 
     this.querySelector('.save-button').textContent   = t('friends.wizard.saveButton');
     this.querySelector('.invite-button').textContent = t('friends.wizard.inviteButton');
+  }
+
+  async _loadModels() {
+    try {
+      let result        = await getModels();
+      let models        = (result && result.models) || [];
+      let pluginSelect  = this.querySelector('.plugin-select');
+      let modelSelect   = this.querySelector('.model-select');
+
+      if (!pluginSelect || !modelSelect)
+        return;
+
+      // Store all models for filtering
+      this._allModels = models;
+
+      // Build unique plugin types
+      let plugins = new Map();
+      for (let m of models) {
+        if (!plugins.has(m.pluginID))
+          plugins.set(m.pluginID, m.displayName.split(' ')[0]); // "Claude Sonnet" → "Claude"
+      }
+
+      // Populate plugin dropdown
+      pluginSelect.innerHTML = '';
+      for (let [id, name] of plugins) {
+        let opt   = document.createElement('option');
+        opt.value = id;
+        opt.textContent = name;
+        pluginSelect.appendChild(opt);
+      }
+
+      // Update model dropdown when plugin changes
+      pluginSelect.addEventListener('change', () => this._updateModelOptions());
+      this._updateModelOptions();
+    } catch (_e) {
+      // Best-effort — fall back to empty dropdowns
+    }
+  }
+
+  _updateModelOptions() {
+    let pluginSelect = this.querySelector('.plugin-select');
+    let modelSelect  = this.querySelector('.model-select');
+
+    if (!pluginSelect || !modelSelect || !this._allModels)
+      return;
+
+    let selectedPlugin = pluginSelect.value;
+    let filtered       = this._allModels.filter((m) => m.pluginID === selectedPlugin);
+
+    modelSelect.innerHTML = '';
+    for (let m of filtered) {
+      let opt   = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.displayName;
+      modelSelect.appendChild(opt);
+    }
   }
 
   _showStep(stepName) {
