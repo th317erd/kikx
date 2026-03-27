@@ -40,13 +40,23 @@ function tick(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms || 15));
 }
 
-// Mock FramePersistence
+// Mock FramePersistence — tracks saveFrames and updateFrameState calls
 function createMockPersistence() {
   let calls = [];
   return {
     calls,
     async updateFrameState(frameID, state) {
       calls.push({ frameID, state });
+    },
+    async saveFrames(sessionID, frames) {
+      for (let f of frames) {
+        let state = f.state;
+        if (typeof state === 'string') {
+          try { state = JSON.parse(state); } catch (_e) { /* keep as-is */ }
+        }
+        calls.push({ frameID: f.id, state });
+      }
+      return frames;
     },
   };
 }

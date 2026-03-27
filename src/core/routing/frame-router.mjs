@@ -238,16 +238,23 @@ export class FrameRouter {
     {
       // Persist state if dirty and no plugin threw
       if (dirty && !stateError.value) {
-        // Update the in-memory frame
+        // Update the in-memory frame for the current routing cycle
         frame.state = JSON.stringify(rawState);
+
+        // Persist via FrameManager merge (silent to avoid re-routing)
+        let frameManager = context.frames;
+        if (frameManager)
+          frameManager.merge([{ ...frame, state: JSON.stringify(rawState) }], { silent: true });
 
         // Persist to DB if FramePersistence is available
         let framePersistence = (connectOptions && connectOptions.framePersistence) || null;
 
         if (framePersistence) {
           try {
-            let frameID = frame.id || frame.frameID;
-            await framePersistence.updateFrameState(frameID, rawState);
+            await framePersistence.saveFrames(
+              (context.session && context.session.id) || null,
+              [{ ...frame, state: JSON.stringify(rawState) }],
+            );
           } catch (persistErr) {
             this._logger.error('FrameRouter: failed to persist plugin state:', persistErr);
           }

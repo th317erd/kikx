@@ -106,8 +106,7 @@ export class FrameController extends ControllerAuthBase {
     if (content === undefined)
       this.throwBadRequestError('content is required');
 
-    let { Frame }        = this.getCoreModels();
-    let framePersistence = this.getFramePersistence();
+    let { Frame } = this.getCoreModels();
 
     // Look up the frame
     let frame = await Frame.where.id.EQ(params.frameID).first();
@@ -135,11 +134,12 @@ export class FrameController extends ControllerAuthBase {
     if (merged && typeof merged === 'object' && merged.html && sanitizer)
       merged.html = sanitizer.sanitize(merged.html);
 
-    // Serialize and update
-    let serialized = (typeof merged === 'string') ? merged : JSON.stringify(merged);
-    frame.content  = serialized;
-
-    await frame.save();
+    // Update via FrameManager (no direct .save())
+    let interactionLoop = this.getInteractionLoop();
+    await interactionLoop.updateFrame(params.sessionID, {
+      id:      frame.id,
+      content: merged,
+    });
 
     return { data: { frame: { id: frame.id, content } } };
   }

@@ -436,7 +436,7 @@ export class InteractionLoop extends EventEmitter {
 
     // Auto-heal: hide orphaned tool-calls that have no matching tool-result.
     // These cause API errors and poison the conversation. Best-effort.
-    await framePersistence.hideOrphanedFrames(sessionID);
+    await framePersistence.hideOrphanedFrames(sessionID, frameManager);
 
     // Sync order counter with DB max to avoid order collisions
     let nextDbOrder = await framePersistence.getNextOrder(sessionID);

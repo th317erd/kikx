@@ -330,7 +330,7 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
-    // Parse state and update the frame
+    // Parse state and update the frame via FrameManager (no direct .save())
     let stateObj = null;
     try {
       stateObj = (typeof frame.state === 'string') ? JSON.parse(frame.state) : (frame.state || {});
@@ -338,13 +338,17 @@ export class InteractionController extends ControllerAuthBase {
       stateObj = {};
     }
 
-    stateObj.step   = hasDeny ? 'denied' : 'completed';
-    frame.processed   = true;
-    frame.processedAt = Date.now();
-    frame.hidden      = true;
-    frame.state       = JSON.stringify(stateObj);
-    frame.content     = JSON.stringify(content);
-    await frame.save();
+    stateObj.step = hasDeny ? 'denied' : 'completed';
+
+    let interactionLoop = core.getContext().getProperty('interactionLoop');
+    await interactionLoop.updateFrame(params.sessionID, {
+      id:          frame.id,
+      processed:   true,
+      processedAt: Date.now(),
+      hidden:      true,
+      state:       JSON.stringify(stateObj),
+      content,
+    });
 
     // -----------------------------------------------------------------------
     // Execute the decision
@@ -455,42 +459,29 @@ export class InteractionController extends ControllerAuthBase {
       }
 
       if (existingResult) {
-        // Update in place — content changes, frame stays paired with ToolCall
+        // Update via FrameManager — handles merge, persistence, SSE broadcast
         let updatedContent = {
           output:    toolResultOutput,
           toolUseID: toolUseID || null,
           _sessionID: sessionID,
         };
 
-        existingResult.content = JSON.stringify(updatedContent);
-        await existingResult.save();
-
-        // Emit directly on InteractionLoop so SSE stream picks it up.
-        // FrameManager merge doesn't work because SSE listens to the
-        // InteractionLoop's 'commit' event, not arbitrary FMs.
         let interactionLoop = core.getContext().getProperty('interactionLoop');
         if (interactionLoop) {
-          interactionLoop.emit('commit', {
-            sessionID,
-            commit: {
-              id:      `commit-approval-${Date.now()}`,
-              frames:  [{
-                id:      existingResult.id,
-                type:    'ToolResult',
-                content: updatedContent,
-              }],
-              changes: [{ frameID: existingResult.id, operation: 'update' }],
-            },
+          await interactionLoop.updateFrame(sessionID, {
+            id:      existingResult.id,
+            content: updatedContent,
           });
         }
       } else {
-        // No existing placeholder found — create a new one (shouldn't happen normally)
-        let framePersistence = core.getContext().getProperty('framePersistence');
-        if (framePersistence) {
-          let fm  = await framePersistence.loadFrames(sessionID);
-          let XID = (await import('xid-js')).default;
+        // No existing placeholder found — create via InteractionLoop._createFrame
+        let interactionLoop = core.getContext().getProperty('interactionLoop');
+        if (interactionLoop) {
+          let XID            = (await import('xid-js')).default;
+          let sessionManager = this.getSessionManager();
+          let frameManager   = sessionManager.getFrameManager(sessionID);
 
-          fm.merge([{
+          await interactionLoop._createFrame(sessionID, {
             id:            `frm_${XID.next()}`,
             type:          'ToolResult',
             content:       { output: toolResultOutput, toolUseID: toolUseID || null, _sessionID: sessionID },
@@ -498,9 +489,7 @@ export class InteractionController extends ControllerAuthBase {
             interactionID: stateObj.interactionID || null,
             authorType:    'system',
             hidden:        false, deleted: false, processed: false,
-          }]);
-
-          await framePersistence.saveFrames(sessionID, fm.toArray());
+          }, frameManager);
         }
       }
     } catch (frameError) {
@@ -612,12 +601,7 @@ export class InteractionController extends ControllerAuthBase {
       }
     }
 
-    // Save the denial on the frame
-    frame.content     = JSON.stringify(content);
-    frame.processed   = true;
-    frame.processedAt = Date.now();
-    frame.hidden      = true;
-
+    // Save the denial via FrameManager (no direct .save())
     let stateObj = null;
     try {
       stateObj = (typeof frame.state === 'string') ? JSON.parse(frame.state) : (frame.state || {});
@@ -626,8 +610,16 @@ export class InteractionController extends ControllerAuthBase {
     }
 
     stateObj.step = 'denied';
-    frame.state   = JSON.stringify(stateObj);
-    await frame.save();
+
+    let interactionLoop = core.getContext().getProperty('interactionLoop');
+    await interactionLoop.updateFrame(params.sessionID, {
+      id:          frame.id,
+      content,
+      processed:   true,
+      processedAt: Date.now(),
+      hidden:      true,
+      state:       JSON.stringify(stateObj),
+    });
 
     // UPDATE the existing placeholder ToolResult with denial message
     let toolName       = stateObj.toolName || content.toolName || 'unknown';
@@ -656,39 +648,27 @@ export class InteractionController extends ControllerAuthBase {
       }
 
       if (existingResult) {
+        // Update via FrameManager — handles merge, persistence, SSE broadcast
         let updatedContent = {
           output:    denialOutput,
           toolUseID: toolUseID || null,
           _sessionID: params.sessionID,
         };
 
-        existingResult.content = JSON.stringify(updatedContent);
-        await existingResult.save();
-
-        // Emit on InteractionLoop so SSE picks it up
-        let interactionLoop = core.getContext().getProperty('interactionLoop');
         if (interactionLoop) {
-          interactionLoop.emit('commit', {
-            sessionID: params.sessionID,
-            commit: {
-              id:      `commit-denial-${Date.now()}`,
-              frames:  [{
-                id:      existingResult.id,
-                type:    'ToolResult',
-                content: updatedContent,
-              }],
-              changes: [{ frameID: existingResult.id, operation: 'update' }],
-            },
+          await interactionLoop.updateFrame(params.sessionID, {
+            id:      existingResult.id,
+            content: updatedContent,
           });
         }
       } else {
-        // Fallback: create new
-        let framePersistence = core.getContext().getProperty('framePersistence');
-        if (framePersistence) {
-          let fm  = await framePersistence.loadFrames(params.sessionID);
-          let XID = (await import('xid-js')).default;
+        // Fallback: create via InteractionLoop._createFrame
+        if (interactionLoop) {
+          let XID            = (await import('xid-js')).default;
+          let sessionManager = this.getSessionManager();
+          let frameManager   = sessionManager.getFrameManager(params.sessionID);
 
-          fm.merge([{
+          await interactionLoop._createFrame(params.sessionID, {
             id:            `frm_${XID.next()}`,
             type:          'ToolResult',
             content:       { output: denialOutput, toolUseID: toolUseID || null, _sessionID: params.sessionID },
@@ -696,9 +676,7 @@ export class InteractionController extends ControllerAuthBase {
             interactionID: stateObj.interactionID || null,
             authorType:    'system',
             hidden:        false, deleted: false, processed: false,
-          }]);
-
-          await framePersistence.saveFrames(params.sessionID, fm.toArray());
+          }, frameManager);
         }
       }
     } catch (_denialError) {

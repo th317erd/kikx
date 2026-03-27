@@ -247,7 +247,7 @@ export class FramePersistence {
   // Returns the number of frames hidden.
   // ---------------------------------------------------------------------------
 
-  async hideOrphanedFrames(sessionID) {
+  async hideOrphanedFrames(sessionID, frameManager) {
     if (!sessionID)
       return 0;
 
@@ -285,14 +285,24 @@ export class FramePersistence {
           orphans.push(f);
       }
 
-      // Hide orphans
-      for (let orphan of orphans) {
-        orphan.hidden = true;
-        await orphan.save();
-      }
+      // Hide orphans via FrameManager merge (silent — maintenance operation)
+      if (orphans.length > 0) {
+        let orphanUpdates = orphans.map((o) => {
+          // Convert ORM record to plain frame data for merge
+          let plain = (typeof o.toJSON === 'function') ? o.toJSON() : { ...o };
+          return { ...plain, hidden: true };
+        });
 
-      if (orphans.length > 0)
+        if (frameManager) {
+          frameManager.merge(orphanUpdates, { silent: true });
+          await this.saveFrames(sessionID, orphanUpdates);
+        } else {
+          // Fallback: no FrameManager provided, persist directly (legacy path)
+          await this.saveFrames(sessionID, orphanUpdates);
+        }
+
         console.log(`[FramePersistence] Hidden ${orphans.length} orphaned frame(s) in session ${sessionID}`);
+      }
 
       return orphans.length;
     } catch (error) {
@@ -392,7 +402,11 @@ export class FramePersistence {
   // Called by FrameRouter after a plugin modifies this.state.
   // ---------------------------------------------------------------------------
 
+  // DEPRECATED: Use FrameManager.merge() + saveFrames() instead.
+  // This method bypasses FrameManager and will be removed in a future release.
   async updateFrameState(frameID, state) {
+    console.warn('[FramePersistence] DEPRECATED: updateFrameState() called directly. Use FrameManager.merge() + saveFrames() instead.');
+
     let { Frame } = this._models;
 
     let frame = await Frame.where.id.EQ(frameID).first();

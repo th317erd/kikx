@@ -234,10 +234,9 @@ export function setup(provide) {
         if (toolCallOrder < 0)
           return;
 
-        // Hide all frames after the ToolCall that are:
-        // - ToolResult with matching toolUseID (the placeholder)
-        // - Message frames from the agent (the "needs permission" message)
-        // But NOT PermissionRequest (already handled separately)
+        // Collect frames to hide (do NOT mutate in-memory directly)
+        let framesToHide = [];
+
         for (let fm of allFrames) {
           if (fm.order <= toolCallOrder || fm.hidden)
             continue;
@@ -247,10 +246,22 @@ export function setup(provide) {
               ? (() => { try { return JSON.parse(fm.content); } catch (_e) { return {}; } })()
               : (fm.content || {});
             if (fmContent.toolUseID === toolUseID)
-              fm.hidden = true;
+              framesToHide.push(fm);
           } else if (fm.type === 'Message' && fm.authorType === 'agent') {
-            fm.hidden = true;
+            framesToHide.push(fm);
           }
+        }
+
+        if (framesToHide.length > 0) {
+          // Merge with silent: true — we are inside a FrameRouter plugin,
+          // non-silent would re-trigger routing and cascade into other plugins
+          let hydrated = framesToHide.map((f) => ({ ...f, hidden: true }));
+          frameManager.merge(hydrated, { silent: true });
+
+          // Persist via FramePersistence
+          let framePersistence = context.getProperty('framePersistence');
+          if (framePersistence)
+            await framePersistence.saveFrames(sessionID, hydrated);
         }
       }
 

@@ -146,6 +146,25 @@ describe('InteractionController — permission approval (Step 3.1, frame-based)'
       requestPrimerRefresh() {},
       async cancelInteraction() { return null; },
       isActive() { return false; },
+      async updateFrame(sessionID, updates) {
+        // Simulate what InteractionLoop.updateFrame() does: persist to DB
+        let updateArr = Array.isArray(updates) ? updates : [updates];
+        for (let update of updateArr) {
+          if (!update.id) continue;
+          let existing = await Frame.where.id.EQ(update.id).first();
+          if (existing) {
+            for (let key of Object.keys(update)) {
+              if (key === 'id') continue;
+              let val = update[key];
+              if (key === 'content' && typeof val === 'object') val = JSON.stringify(val);
+              existing[key] = val;
+            }
+            await existing.save();
+          }
+        }
+        return updateArr;
+      },
+      async _createFrame(_sessionID, _frameData, _fm) { return _frameData; },
     };
 
     let models = core.getModels();
