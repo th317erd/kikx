@@ -411,6 +411,13 @@ export class InteractionController extends ControllerAuthBase {
         return tcContent.includes(toolUseID);
       });
 
+      // Unhide the ToolCall if the orphan healer hid it — the ToolResult
+      // from the approval needs a matching visible ToolCall or the API errors.
+      if (matchingCall && matchingCall.hidden) {
+        matchingCall.hidden = false;
+        await matchingCall.save();
+      }
+
       if (matchingCall) {
         let agentMessages = await FrameModel.where
           .sessionID.EQ(params.sessionID)
@@ -667,6 +674,25 @@ export class InteractionController extends ControllerAuthBase {
     let toolName         = stateObj.toolName || content.toolName || 'unknown';
     let toolUseID        = stateObj.toolUseID || null;
     let framePersistence = core.getContext().getProperty('framePersistence');
+
+    // Unhide the ToolCall if the orphan healer hid it
+    if (toolUseID) {
+      let { Frame: FrameModel } = this.getCoreModels();
+      let toolCalls = await FrameModel.where
+        .sessionID.EQ(params.sessionID)
+        .AND.type.EQ('ToolCall')
+        .AND.hidden.EQ(true)
+        .all();
+
+      for (let tc of toolCalls) {
+        let tcContent = (typeof tc.content === 'string') ? tc.content : JSON.stringify(tc.content || {});
+        if (tcContent.includes(toolUseID)) {
+          tc.hidden = false;
+          await tc.save();
+          break;
+        }
+      }
+    }
 
     try {
       if (framePersistence) {
