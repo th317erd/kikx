@@ -490,13 +490,30 @@ export class InteractionController extends ControllerAuthBase {
 
       if (existingResult) {
         // Update in place — content changes, frame stays paired with ToolCall
-        existingResult.content = JSON.stringify({
+        let updatedContent = {
           output:    toolResultOutput,
           toolUseID: toolUseID || null,
           _sessionID: sessionID,
-        });
+        };
 
+        existingResult.content = JSON.stringify(updatedContent);
         await existingResult.save();
+
+        // Merge into FrameManager so the commit broadcasts via SSE —
+        // without this, the client never learns the content changed.
+        let framePersistence = core.getContext().getProperty('framePersistence');
+        let sessionManager   = core.getContext().getProperty('sessionManager');
+
+        if (framePersistence && sessionManager) {
+          let fm = sessionManager.getFrameManager(sessionID);
+          await framePersistence.loadFramesInto(fm, sessionID);
+
+          fm.merge([{
+            id:      existingResult.id,
+            type:    'ToolResult',
+            content: updatedContent,
+          }]);
+        }
       } else {
         // No existing placeholder found — create a new one (shouldn't happen normally)
         let framePersistence = core.getContext().getProperty('framePersistence');
@@ -639,13 +656,29 @@ export class InteractionController extends ControllerAuthBase {
       }
 
       if (existingResult) {
-        existingResult.content = JSON.stringify({
+        let updatedContent = {
           output:    denialOutput,
           toolUseID: toolUseID || null,
           _sessionID: params.sessionID,
-        });
+        };
 
+        existingResult.content = JSON.stringify(updatedContent);
         await existingResult.save();
+
+        // Broadcast update via FrameManager → SSE
+        let sessionManager = core.getContext().getProperty('sessionManager');
+        let framePersistence = core.getContext().getProperty('framePersistence');
+
+        if (sessionManager && framePersistence) {
+          let fm = sessionManager.getFrameManager(params.sessionID);
+          await framePersistence.loadFramesInto(fm, params.sessionID);
+
+          fm.merge([{
+            id:      existingResult.id,
+            type:    'ToolResult',
+            content: updatedContent,
+          }]);
+        }
       } else {
         // Fallback: create new
         let framePersistence = core.getContext().getProperty('framePersistence');
