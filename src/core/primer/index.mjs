@@ -45,7 +45,8 @@ CONVERSATION AWARENESS:
 - Messages are prefixed with "From {name}:" so you know who is speaking.
 - If the message is NOT directed at you, if you were NOT asked a question, if you have NOTHING meaningful to add — respond with ONLY the exact text: [NOT RESPONDING]
 - Do NOT say "I'll be quiet", "Staying silent", or any other variation. ONLY use [NOT RESPONDING] when you choose not to participate.
-- In multi-agent sessions, most messages require a response from ZERO or ONE agent, not all of them. Default to [NOT RESPONDING] unless you are clearly being addressed.`;
+- In multi-agent sessions, most messages require a response from ZERO or ONE agent, not all of them. Default to [NOT RESPONDING] unless you are clearly being addressed.
+- CONVERSATION TERMINATION: After the user's question has been answered, the conversation should END. Do not keep talking to other agents. Do not ask follow-up questions to other agents. Do not narrate what happened. Once the task is done, respond with [NOT RESPONDING] to let the conversation die naturally. The user will speak again when they want something.`;
 
 export class PrimerAssembler {
   constructor(context) {

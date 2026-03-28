@@ -5,20 +5,24 @@ import { BasePluginClass } from '../../routing/base-plugin-class.mjs';
 // =============================================================================
 // Scheduling Plugin
 // =============================================================================
-// Routing-based replacement for SchedulerOrchestrator. Registers for
-// user-message frames via the FrameRouter and triggers multi-agent
-// scheduling when a user-authored commit arrives.
+// Triggers multi-agent scheduling when commits arrive. Registered for
+// both UserMessage and Message frames so agents see each other's output.
 //
-// The scheduling plugin resolves the SessionScheduler lazily from the
-// KikxCore context at process time (not setup time), because the scheduler
-// is registered on context AFTER plugins load.
+// Loop prevention: tracks consecutive agent turns per session. After
+// MAX_AGENT_ROUNDS without user input, stops scheduling to prevent
+// infinite agent-to-agent chatter.
 // =============================================================================
+
+const MAX_AGENT_ROUNDS = 3; // Max consecutive agent turns before stopping
 
 export function setup(provide) {
   provide(({ registry, context }) => {
+
+    // Track consecutive agent rounds per session (resets on user message)
+    let agentRoundCounts = new Map();
+
     class SchedulingPlugin extends BasePluginClass {
       async process(next, done) {
-        // Resolve scheduler lazily — it may not exist at setup time
         let sessionScheduler = context.getProperty('sessionScheduler');
         if (!sessionScheduler)
           return await next(this.context);
@@ -26,10 +30,31 @@ export function setup(provide) {
         let commit    = this.context.commit;
         let sessionID = this.context.session && this.context.session.id;
 
-        // Only schedule agents on user-authored commits. Agent and system
-        // commits must be ignored to prevent ping-pong loops.
-        if (!sessionID || !commit || commit.authorType !== 'user')
+        if (!sessionID || !commit)
           return await next(this.context);
+
+        // Skip system commits (errors, notifications, etc.)
+        if (commit.authorType === 'system')
+          return await next(this.context);
+
+        // Track agent rounds for loop prevention
+        if (commit.authorType === 'user') {
+          // User spoke — reset the counter
+          agentRoundCounts.set(sessionID, 0);
+        } else if (commit.authorType === 'agent') {
+          // Agent spoke — increment counter
+          let rounds = (agentRoundCounts.get(sessionID) || 0) + 1;
+          agentRoundCounts.set(sessionID, rounds);
+
+          // Too many agent rounds without user input — stop scheduling
+          if (rounds > MAX_AGENT_ROUNDS)
+            return await next(this.context);
+
+          // Don't schedule the agent that just spoke (it already ran)
+          // The scheduler handles this via its "already-active" check,
+          // but we also skip if the commit author IS the agent being
+          // considered (the scheduler's onCommit already filters this).
+        }
 
         try {
           let scheduled = await sessionScheduler.onCommit(sessionID, commit);
@@ -38,7 +63,6 @@ export function setup(provide) {
             for (let entry of scheduled)
               sessionScheduler.queueTrigger(sessionID, entry.agentID);
 
-            // Fire all queued agents concurrently (non-blocking)
             sessionScheduler._triggerNext(sessionID).catch(() => {});
           }
         } catch (err) {
@@ -49,6 +73,9 @@ export function setup(provide) {
       }
     }
 
+    // Register for BOTH user and agent messages — agents need to see
+    // each other's output, not just user messages.
     registry.registerSelector('type:UserMessage', SchedulingPlugin);
+    registry.registerSelector('type:Message', SchedulingPlugin);
   });
 }

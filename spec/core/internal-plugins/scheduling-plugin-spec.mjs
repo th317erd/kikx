@@ -75,8 +75,9 @@ describe('SchedulingPlugin (C2)', () => {
 
       let { selectors } = setupPlugin(context);
 
-      assert.equal(selectors.length, 1);
-      assert.equal(selectors[0].selector, 'type:UserMessage');
+      assert.equal(selectors.length, 2);
+      assert.ok(selectors.some((s) => s.selector === 'type:UserMessage'));
+      assert.ok(selectors.some((s) => s.selector === 'type:Message'));
       assert.ok(selectors[0].PluginClass);
     });
 
@@ -92,8 +93,9 @@ describe('SchedulingPlugin (C2)', () => {
 
       let { selectors } = setupPlugin(mockContext);
 
-      assert.equal(selectors.length, 1, 'Should register selector (lazy resolution)');
-      assert.equal(selectors[0].selector, 'type:UserMessage');
+      assert.equal(selectors.length, 2, 'Should register both selectors (lazy resolution)');
+      assert.ok(selectors.some((s) => s.selector === 'type:UserMessage'));
+      assert.ok(selectors.some((s) => s.selector === 'type:Message'));
     });
   });
 
