@@ -33,11 +33,20 @@ export function setup(provide) {
         if (!rawString)
           return null;
 
-        let match = rawString.match(/^@?([\w_-]+)/);
-        if (!match)
+        let trimmed = rawString.trim();
+
+        // Support quoted names: /invite "Gemini Krickets" or /invite 'Gemini Krickets'
+        let quotedMatch = trimmed.match(/^@?["'](.+?)["']/);
+        if (quotedMatch)
+          return { agentName: quotedMatch[1] };
+
+        // Unquoted: treat the entire remaining string as the name
+        // (strip leading @ if present)
+        let name = trimmed.replace(/^@/, '').trim();
+        if (!name)
           return null;
 
-        return { agentName: match[1] };
+        return { agentName: name };
       },
       examples: [
         { input: '/invite @test-claude', description: 'Invite the test-claude agent' },
