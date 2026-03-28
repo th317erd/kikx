@@ -164,6 +164,8 @@ class KikxMessageInput extends HTMLElement {
     this._sessionID     = null;
     this._replyToFrameID = null;
 
+    this._historyIndex   = -1;
+    this._historySaved   = '';  // saves current input when browsing history
     this._onKeyDown      = this._onKeyDown.bind(this);
     this._onSendClick    = this._onSendClick.bind(this);
     this._onInput        = this._onInput.bind(this);
@@ -323,6 +325,50 @@ class KikxMessageInput extends HTMLElement {
       }
     }
 
+    // Arrow Up — cycle through message history
+    if (event.key === 'ArrowUp' && !event.shiftKey) {
+      let value = this._textarea.value;
+      let atStart = this._textarea.selectionStart === 0 && this._textarea.selectionEnd === 0;
+
+      // Only activate when empty or cursor is at the very start
+      if (value === '' || atStart) {
+        let history = this._getHistory();
+        if (history.length === 0)
+          return;
+
+        event.preventDefault();
+
+        if (this._historyIndex === -1)
+          this._historySaved = value;
+
+        if (this._historyIndex < history.length - 1) {
+          this._historyIndex++;
+          this._textarea.value = history[this._historyIndex];
+          this._autoResize();
+        }
+
+        return;
+      }
+    }
+
+    // Arrow Down — cycle forward through history
+    if (event.key === 'ArrowDown' && !event.shiftKey && this._historyIndex >= 0) {
+      event.preventDefault();
+
+      this._historyIndex--;
+
+      if (this._historyIndex < 0) {
+        this._textarea.value = this._historySaved;
+        this._historyIndex = -1;
+      } else {
+        let history = this._getHistory();
+        this._textarea.value = history[this._historyIndex];
+      }
+
+      this._autoResize();
+      return;
+    }
+
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       this._send();
@@ -337,6 +383,11 @@ class KikxMessageInput extends HTMLElement {
     let text = this._textarea.value.trim();
     if (!text)
       return;
+
+    // Save to history
+    this._pushHistory(text);
+    this._historyIndex = -1;
+    this._historySaved = '';
 
     this._textarea.value = '';
     this._autoResize();
@@ -429,6 +480,46 @@ class KikxMessageInput extends HTMLElement {
   _onReplyCancel() {
     this.clearReplyMode();
     this._textarea.focus();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Message history (localStorage)
+  // ---------------------------------------------------------------------------
+
+  _getHistoryKey() {
+    return 'kikx-message-history';
+  }
+
+  _getHistory() {
+    try {
+      let raw = localStorage.getItem(this._getHistoryKey());
+      return raw ? JSON.parse(raw) : [];
+    } catch (_e) {
+      return [];
+    }
+  }
+
+  _pushHistory(text) {
+    if (!text)
+      return;
+
+    try {
+      let history = this._getHistory();
+
+      // Don't duplicate the most recent entry
+      if (history.length > 0 && history[0] === text)
+        return;
+
+      history.unshift(text);
+
+      // Cap at 100 entries
+      if (history.length > 100)
+        history.length = 100;
+
+      localStorage.setItem(this._getHistoryKey(), JSON.stringify(history));
+    } catch (_e) {
+      // localStorage full or unavailable — ignore
+    }
   }
 
   _onFocusIn() {
