@@ -3,7 +3,7 @@
 import { t } from '../../lib/i18n.mjs';
 import { BASE_PATH, API_BASE_URL } from '../../lib/config.mjs';
 import { navigate } from '../../lib/router.mjs';
-import { getAgents, createAgent, updateAgent, deleteAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, getSessions, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken, getCost, markSessionRead } from '../../lib/api.mjs';
+import { getAgents, createAgent, updateAgent, deleteAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, getSessions, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken, getCost, markSessionRead, updateSession, deleteSession, addParticipant, removeParticipant } from '../../lib/api.mjs';
 import { agents, sessions, profile, connection } from '../../lib/store.mjs';
 import { estimateCost } from '../../lib/cost.mjs';
 import { FrameManager } from 'kikx/shared/frame-manager/frame-manager.mjs';
@@ -103,6 +103,9 @@ const TEMPLATE_HTML = `
   </kikx-modal>
   <kikx-modal class="edit-friend-modal">
     <kikx-agent-form-modal></kikx-agent-form-modal>
+  </kikx-modal>
+  <kikx-modal class="edit-session-modal">
+    <kikx-edit-session-modal></kikx-edit-session-modal>
   </kikx-modal>
 `;
 
@@ -675,6 +678,11 @@ class KikxSessionPage extends HTMLElement {
     this._onEditFriendSave       = this._onEditFriendSave.bind(this);
     this._onEditFriendDelete     = this._onEditFriendDelete.bind(this);
     this._onEditFriendCancel     = this._onEditFriendCancel.bind(this);
+    this._onSessionSave          = this._onSessionSave.bind(this);
+    this._onSessionDelete        = this._onSessionDelete.bind(this);
+    this._onSessionKick          = this._onSessionKick.bind(this);
+    this._onSessionInvite        = this._onSessionInvite.bind(this);
+    this._onSessionEditCancel    = this._onSessionEditCancel.bind(this);
   }
 
   connectedCallback() {
@@ -691,11 +699,14 @@ class KikxSessionPage extends HTMLElement {
     this._createSessionModal = this.querySelector('kikx-create-session-modal');
     this._editFriendModal    = this.querySelector('.edit-friend-modal');
     this._agentFormModal     = this.querySelector('kikx-agent-form-modal');
+    this._editSessionModal   = this.querySelector('.edit-session-modal');
+    this._editSessionForm    = this.querySelector('kikx-edit-session-modal');
 
     // Set modal titles
     this._friendModal.setAttribute('modal-title', t('friends.wizard.title'));
     this._sessionModal.setAttribute('modal-title', t('session.create.title'));
     this._editFriendModal.setAttribute('modal-title', t('agent.edit.title'));
+    this._editSessionModal.setAttribute('modal-title', t('session.edit.title'));
 
     // Update view based on session presence
     this._updateSessionView();
@@ -724,6 +735,11 @@ class KikxSessionPage extends HTMLElement {
     this.addEventListener('agent-save', this._onEditFriendSave);
     this.addEventListener('agent-delete', this._onEditFriendDelete);
     this.addEventListener('agent-cancel', this._onEditFriendCancel);
+    this.addEventListener('session-save', this._onSessionSave);
+    this.addEventListener('session-delete', this._onSessionDelete);
+    this.addEventListener('session-kick', this._onSessionKick);
+    this.addEventListener('session-invite', this._onSessionInvite);
+    this.addEventListener('session-edit-cancel', this._onSessionEditCancel);
 
     this._loadInitialData();
   }
@@ -752,6 +768,11 @@ class KikxSessionPage extends HTMLElement {
     this.removeEventListener('agent-save', this._onEditFriendSave);
     this.removeEventListener('agent-delete', this._onEditFriendDelete);
     this.removeEventListener('agent-cancel', this._onEditFriendCancel);
+    this.removeEventListener('session-save', this._onSessionSave);
+    this.removeEventListener('session-delete', this._onSessionDelete);
+    this.removeEventListener('session-kick', this._onSessionKick);
+    this.removeEventListener('session-invite', this._onSessionInvite);
+    this.removeEventListener('session-edit-cancel', this._onSessionEditCancel);
 
     this._disconnectStream();
     this._destroyFrameManager();
@@ -1976,6 +1997,13 @@ class KikxSessionPage extends HTMLElement {
     if (!text)
       return;
 
+    // Intercept /config — purely client-side, opens edit modal
+    let trimmed = text.trim();
+    if (trimmed === '/config') {
+      this._handleConfigCommand();
+      return;
+    }
+
     let sessionID = this.sessionID;
     if (!sessionID)
       return;
@@ -2625,6 +2653,181 @@ class KikxSessionPage extends HTMLElement {
 
   _onEditFriendCancel() {
     this._editFriendModal.close();
+  }
+
+  // ---------------------------------------------------------------------------
+  // /config command — open context-appropriate edit modal
+  // ---------------------------------------------------------------------------
+
+  _handleConfigCommand() {
+    if (this._isDMSession()) {
+      // DM session — open the edit-friend-modal for the DM agent
+      let agentID = this._currentSession && this._currentSession.dmAgentID;
+
+      if (!agentID && this._currentSession && this._currentSession.name) {
+        // Derive agent from "DM: agentName" session name
+        let dmName = this._currentSession.name;
+        if (dmName.startsWith('DM: '))
+          dmName = dmName.slice(4);
+
+        let allAgents = agents.getAllAgents();
+        let match = allAgents.find((a) => a.name === dmName);
+        if (match)
+          agentID = match.id;
+      }
+
+      if (!agentID)
+        return;
+
+      let agent = agents.getAgent(agentID);
+      if (!agent)
+        return;
+
+      if (this._agentFormModal) {
+        this._agentFormModal.removeAttribute('mode');
+        this._agentFormModal.agent = agent;
+      }
+
+      this._editFriendModal.open();
+    } else {
+      // Regular session — open the edit-session-modal
+      if (!this._currentSession)
+        return;
+
+      let sessionData = {
+        id:           this._currentSession.id,
+        name:         this._currentSession.name,
+        participants: this._currentSession.participants || [],
+      };
+
+      if (this._editSessionForm)
+        this._editSessionForm.session = sessionData;
+
+      this._editSessionModal.open();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Edit session modal handlers
+  // ---------------------------------------------------------------------------
+
+  async _onSessionSave(event) {
+    let detail    = event.detail || {};
+    let sessionID = detail.sessionID;
+    let values    = detail.values;
+
+    if (!sessionID || !values)
+      return;
+
+    try {
+      let result  = await updateSession(sessionID, values);
+      let data    = (result && result.data) || result;
+      let updated = data.session || data;
+
+      sessions.updateSession(sessionID, updated);
+      this._currentSession = { ...this._currentSession, ...updated };
+      this._updateSessionsList();
+
+      // Refresh top bar name
+      let displayName = (updated.name || this._currentSession.name || sessionID);
+      if (displayName.startsWith('DM: '))
+        displayName = displayName.slice(4);
+
+      this._topBar.setAttribute('session-name', displayName);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to update session:', error);
+    }
+
+    this._editSessionModal.close();
+  }
+
+  async _onSessionDelete(event) {
+    let detail    = event.detail || {};
+    let sessionID = detail.sessionID;
+
+    if (!sessionID)
+      return;
+
+    try {
+      await deleteSession(sessionID);
+      sessions.removeSession(sessionID);
+      this._updateSessionsList();
+      navigate(`${BASE_PATH}/`);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to delete session:', error);
+    }
+
+    this._editSessionModal.close();
+  }
+
+  async _onSessionKick(event) {
+    let detail        = event.detail || {};
+    let sessionID     = detail.sessionID;
+    let participantID = detail.participantID;
+
+    if (!sessionID || !participantID)
+      return;
+
+    try {
+      await removeParticipant(sessionID, participantID);
+
+      // Refresh session details so the participant list updates
+      await this._fetchSessionDetails(sessionID);
+
+      if (this._editSessionForm && this._currentSession) {
+        this._editSessionForm.session = {
+          id:           this._currentSession.id,
+          name:         this._currentSession.name,
+          participants: this._currentSession.participants || [],
+        };
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to remove participant:', error);
+    }
+  }
+
+  async _onSessionInvite(event) {
+    let detail    = event.detail || {};
+    let sessionID = detail.sessionID;
+    let agentName = detail.agentName;
+
+    if (!sessionID || !agentName)
+      return;
+
+    try {
+      // Resolve agent name to ID
+      let allAgents = agents.getAllAgents();
+      let match     = allAgents.find((a) => a.name.toLowerCase() === agentName.toLowerCase());
+
+      if (!match) {
+        // eslint-disable-next-line no-console
+        console.error('Agent not found:', agentName);
+        return;
+      }
+
+      await addParticipant(sessionID, { agentID: match.id });
+
+      // Refresh session details so the participant list updates
+      await this._fetchSessionDetails(sessionID);
+
+      if (this._editSessionForm && this._currentSession) {
+        this._editSessionForm.session = {
+          id:           this._currentSession.id,
+          name:         this._currentSession.name,
+          participants: this._currentSession.participants || [],
+        };
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to invite participant:', error);
+    }
+  }
+
+  _onSessionEditCancel() {
+    this._editSessionModal.close();
   }
 
   // ---------------------------------------------------------------------------
