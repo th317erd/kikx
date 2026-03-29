@@ -64,7 +64,26 @@ export class InteractionController extends ControllerAuthBase {
 
     // When no agent is specified, just persist the message and broadcast.
     // This supports sessions with no agents, or users chatting to each other.
+    // Stash resolve context so the scheduling plugin can decrypt API keys
+    // when it triggers agents from the commit event.
     if (!agentID) {
+      let sessionScheduler = this.getSessionScheduler();
+      if (sessionScheduler) {
+        try {
+          let keystore = this.getKeystore();
+          let umk      = this.request.getUMK();
+
+          sessionScheduler.setResolveContext(params.sessionID, {
+            keystore,
+            umk,
+            userID: this.request.userID,
+          });
+        } catch (_error) {
+          // Best-effort: if UMK is unavailable (legacy token, missing vault),
+          // message delivery still works — agents just can't decrypt API keys.
+        }
+      }
+
       let result = await interactionLoop.postMessage(params.sessionID, {
         text:       message,
         authorType: 'user',
