@@ -21,6 +21,7 @@ import './kikx-friends-list/kikx-friends-list.mjs';
 import './kikx-add-friend-modal/kikx-add-friend-modal.mjs';
 import './kikx-modal/kikx-modal.mjs';
 import './kikx-create-session-modal/kikx-create-session-modal.mjs';
+import './kikx-edit-session-modal/kikx-edit-session-modal.mjs';
 import './kikx-agent-list-modal/kikx-agent-list-modal.mjs';
 import './kikx-agent-form-modal/kikx-agent-form-modal.mjs';
 import './kikx-settings-tabs/kikx-settings-tabs.mjs';
