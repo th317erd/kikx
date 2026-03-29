@@ -79,6 +79,46 @@ const TEMPLATE_HTML = `
       flex-shrink: 0;
     }
 
+    kikx-friends-list .avatar-wrapper {
+      position: relative;
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+    }
+
+    kikx-friends-list .avatar-wrapper kikx-user-avatar {
+      display: block;
+      transition: opacity 0.15s ease;
+    }
+
+    kikx-friends-list .edit-icon {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      pointer-events: none;
+      font-size: 14px;
+      color: var(--text-secondary, #a0a0b8);
+      background: var(--glass-hover, rgba(255, 255, 255, 0.08));
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    kikx-friends-list .friend-row:hover .avatar-wrapper kikx-user-avatar {
+      opacity: 0;
+    }
+
+    kikx-friends-list .friend-row:hover .edit-icon {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
     kikx-friends-list .empty-message {
       padding: var(--spacing-sm, 8px);
       font-size: 1rem;
@@ -105,7 +145,8 @@ class KikxFriendsList extends HTMLElement {
     super();
     this._friends        = [];
     this._activeFriendID = null;
-    this._onRowClick = this._onRowClick.bind(this);
+    this._onRowClick  = this._onRowClick.bind(this);
+    this._onEditClick = this._onEditClick.bind(this);
   }
 
   connectedCallback() {
@@ -118,10 +159,12 @@ class KikxFriendsList extends HTMLElement {
 
     this._render();
     this._container.addEventListener('click', this._onRowClick);
+    this._container.addEventListener('click', this._onEditClick);
   }
 
   disconnectedCallback() {
     this._container.removeEventListener('click', this._onRowClick);
+    this._container.removeEventListener('click', this._onEditClick);
   }
 
   set friends(value) {
@@ -166,6 +209,9 @@ class KikxFriendsList extends HTMLElement {
       row.style.setProperty('--glow-delay-rotate', `${-Math.random() * 20}s`);
       row.style.setProperty('--glow-delay-hue', `${-Math.random() * 30}s`);
 
+      let avatarWrapper = document.createElement('div');
+      avatarWrapper.className = 'avatar-wrapper';
+
       let avatar = document.createElement('kikx-user-avatar');
       avatar.setAttribute('size', '28');
       if (friend.email)
@@ -181,7 +227,16 @@ class KikxFriendsList extends HTMLElement {
           avatar.setAttribute('last-name', parts[1]);
       }
 
-      row.appendChild(avatar);
+      avatarWrapper.appendChild(avatar);
+
+      let editIcon = document.createElement('span');
+      editIcon.className = 'edit-icon';
+      editIcon.textContent = '\u270F\uFE0F';
+      editIcon.setAttribute('role', 'button');
+      editIcon.setAttribute('aria-label', t('agent.edit.title'));
+      avatarWrapper.appendChild(editIcon);
+
+      row.appendChild(avatarWrapper);
 
       let nameSpan = document.createElement('span');
       nameSpan.className   = 'friend-name';
@@ -218,6 +273,10 @@ class KikxFriendsList extends HTMLElement {
   }
 
   _onRowClick(event) {
+    // Ignore clicks on the edit icon — those fire edit-friend instead
+    if (event.target.closest('.edit-icon'))
+      return;
+
     let row = event.target.closest('.friend-row');
     if (!row)
       return;
@@ -226,6 +285,24 @@ class KikxFriendsList extends HTMLElement {
       bubbles:  true,
       composed: true,
       detail:   { id: row.dataset.id, type: row.dataset.type },
+    }));
+  }
+
+  _onEditClick(event) {
+    let editIcon = event.target.closest('.edit-icon');
+    if (!editIcon)
+      return;
+
+    let row = editIcon.closest('.friend-row');
+    if (!row)
+      return;
+
+    let friend = this._friends.find((f) => f.id === row.dataset.id);
+
+    this.dispatchEvent(new CustomEvent('edit-friend', {
+      bubbles:  true,
+      composed: true,
+      detail:   { id: row.dataset.id, type: row.dataset.type, ...(friend || {}) },
     }));
   }
 }

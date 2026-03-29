@@ -38,12 +38,29 @@ export default {
       channels: 'Channels',
       private:  'Private',
     },
+    edit: {
+      title:            'Edit Session',
+      nameLabel:        'Session Name',
+      participants:     'Participants',
+      invitePlaceholder: 'Agent name...',
+      inviteButton:     'Invite',
+      kickButton:       'Remove',
+      deleteButton:     'Delete Session',
+      deleteConfirm:    'Are you sure? This cannot be undone.',
+      saveButton:       'Save',
+      cancelButton:     'Cancel',
+      coordinator:      'coordinator',
+      member:           'member',
+    },
     archive: {
       archiveAction: 'Archive',
       reviveAction:  'Restore',
     },
   },
   agent: {
+    edit: {
+      title: 'Edit Agent',
+    },
     list: {
       title:     'Agents',
       empty:     'No agents configured.',

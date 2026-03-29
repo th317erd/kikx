@@ -38,12 +38,29 @@ export default {
       channels: 'Canales',
       private:  'Privado',
     },
+    edit: {
+      title:            'Editar Sesi\u00f3n',
+      nameLabel:        'Nombre de la Sesi\u00f3n',
+      participants:     'Participantes',
+      invitePlaceholder: 'Nombre del agente...',
+      inviteButton:     'Invitar',
+      kickButton:       'Eliminar',
+      deleteButton:     'Eliminar Sesi\u00f3n',
+      deleteConfirm:    '\u00bfEst\u00e1s seguro? Esto no se puede deshacer.',
+      saveButton:       'Guardar',
+      cancelButton:     'Cancelar',
+      coordinator:      'coordinador',
+      member:           'miembro',
+    },
     archive: {
       archiveAction: 'Archivar',
       reviveAction:  'Restaurar',
     },
   },
   agent: {
+    edit: {
+      title: 'Editar Agente',
+    },
     list: {
       title:     'Agentes',
       empty:     'No hay agentes configurados.',

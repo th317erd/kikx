@@ -3,7 +3,7 @@
 import { t } from '../../lib/i18n.mjs';
 import { BASE_PATH, API_BASE_URL } from '../../lib/config.mjs';
 import { navigate } from '../../lib/router.mjs';
-import { getAgents, createAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, getSessions, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken, getCost, markSessionRead } from '../../lib/api.mjs';
+import { getAgents, createAgent, updateAgent, deleteAgent, createSession, getOrCreateDm, getMe, getSession, getFrames, getSessions, sendMessage, approvePermission, cancelInteraction, updateFrameContent, persistAuth, getAuthToken, getCost, markSessionRead } from '../../lib/api.mjs';
 import { agents, sessions, profile, connection } from '../../lib/store.mjs';
 import { estimateCost } from '../../lib/cost.mjs';
 import { FrameManager } from 'kikx/shared/frame-manager/frame-manager.mjs';
@@ -100,6 +100,9 @@ const TEMPLATE_HTML = `
   </kikx-modal>
   <kikx-modal class="session-modal">
     <kikx-create-session-modal></kikx-create-session-modal>
+  </kikx-modal>
+  <kikx-modal class="edit-friend-modal">
+    <kikx-agent-form-modal></kikx-agent-form-modal>
   </kikx-modal>
 `;
 
@@ -668,6 +671,10 @@ class KikxSessionPage extends HTMLElement {
     this._onInteractionIgnore    = this._onInteractionIgnore.bind(this);
     this._onSelectSession        = this._onSelectSession.bind(this);
     this._onReplyToMessage       = this._onReplyToMessage.bind(this);
+    this._onEditFriend           = this._onEditFriend.bind(this);
+    this._onEditFriendSave       = this._onEditFriendSave.bind(this);
+    this._onEditFriendDelete     = this._onEditFriendDelete.bind(this);
+    this._onEditFriendCancel     = this._onEditFriendCancel.bind(this);
   }
 
   connectedCallback() {
@@ -682,10 +689,13 @@ class KikxSessionPage extends HTMLElement {
     this._sessionModal       = this.querySelector('.session-modal');
     this._addFriendWizard    = this.querySelector('kikx-add-friend-modal');
     this._createSessionModal = this.querySelector('kikx-create-session-modal');
+    this._editFriendModal    = this.querySelector('.edit-friend-modal');
+    this._agentFormModal     = this.querySelector('kikx-agent-form-modal');
 
     // Set modal titles
     this._friendModal.setAttribute('modal-title', t('friends.wizard.title'));
     this._sessionModal.setAttribute('modal-title', t('session.create.title'));
+    this._editFriendModal.setAttribute('modal-title', t('agent.edit.title'));
 
     // Update view based on session presence
     this._updateSessionView();
@@ -710,6 +720,10 @@ class KikxSessionPage extends HTMLElement {
     this.addEventListener('interaction-ignore', this._onInteractionIgnore);
     this.addEventListener('select-session', this._onSelectSession);
     this.addEventListener('reply-to-message', this._onReplyToMessage);
+    this.addEventListener('edit-friend', this._onEditFriend);
+    this.addEventListener('agent-save', this._onEditFriendSave);
+    this.addEventListener('agent-delete', this._onEditFriendDelete);
+    this.addEventListener('agent-cancel', this._onEditFriendCancel);
 
     this._loadInitialData();
   }
@@ -734,6 +748,10 @@ class KikxSessionPage extends HTMLElement {
     this.removeEventListener('interaction-ignore', this._onInteractionIgnore);
     this.removeEventListener('select-session', this._onSelectSession);
     this.removeEventListener('reply-to-message', this._onReplyToMessage);
+    this.removeEventListener('edit-friend', this._onEditFriend);
+    this.removeEventListener('agent-save', this._onEditFriendSave);
+    this.removeEventListener('agent-delete', this._onEditFriendDelete);
+    this.removeEventListener('agent-cancel', this._onEditFriendCancel);
 
     this._disconnectStream();
     this._destroyFrameManager();
@@ -2537,6 +2555,76 @@ class KikxSessionPage extends HTMLElement {
 
   _onModalClose() {
     // No-op: modals close themselves
+  }
+
+  // ---------------------------------------------------------------------------
+  // Edit friend (agent) modal handlers
+  // ---------------------------------------------------------------------------
+
+  _onEditFriend(event) {
+    let detail = event.detail || {};
+
+    // Only agents are editable for now
+    if (detail.type !== 'agent')
+      return;
+
+    // Look up full agent data from the store
+    let agent = agents.getAgent(detail.id);
+    if (!agent)
+      return;
+
+    if (this._agentFormModal) {
+      this._agentFormModal.removeAttribute('mode');
+      this._agentFormModal.agent = agent;
+    }
+
+    this._editFriendModal.open();
+  }
+
+  async _onEditFriendSave(event) {
+    let detail  = event.detail || {};
+    let agentID = detail.agentID;
+    let values  = detail.values;
+
+    if (!agentID || !values)
+      return;
+
+    try {
+      let result   = await updateAgent(agentID, values);
+      let data     = (result && result.data) || result;
+      let updated  = data.agent || data;
+
+      agents.updateAgent(agentID, updated);
+      this._updateFriendsList(agents.getAllAgents());
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to update agent:', error);
+    }
+
+    this._editFriendModal.close();
+  }
+
+  async _onEditFriendDelete(event) {
+    let detail  = event.detail || {};
+    let agentID = detail.agentID;
+
+    if (!agentID)
+      return;
+
+    try {
+      await deleteAgent(agentID);
+      agents.removeAgent(agentID);
+      this._updateFriendsList(agents.getAllAgents());
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to delete agent:', error);
+    }
+
+    this._editFriendModal.close();
+  }
+
+  _onEditFriendCancel() {
+    this._editFriendModal.close();
   }
 
   // ---------------------------------------------------------------------------
