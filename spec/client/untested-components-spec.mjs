@@ -31,6 +31,8 @@ before(async () => {
   await import('../../src/client/components/kikx-modal/kikx-modal.mjs');
   await import('../../src/client/components/kikx-session-list/kikx-session-list.mjs');
   await import('../../src/client/components/kikx-create-session-modal/kikx-create-session-modal.mjs');
+  await import('../../src/client/components/kikx-friends-list/kikx-friends-list.mjs');
+  await import('../../src/client/components/kikx-edit-session-modal/kikx-edit-session-modal.mjs');
 });
 
 after(() => {
@@ -1093,5 +1095,462 @@ describe('KikxCreateSessionModal', { timeout: 5000 }, () => {
     form.querySelector('.create-button').click();
 
     assert.equal(detail.name, null);
+  });
+});
+
+// =============================================================================
+// KikxEditSessionModal
+// =============================================================================
+
+describe('KikxEditSessionModal', { timeout: 5000 }, () => {
+  // ---- HAPPY PATH ----
+
+  it('should render with name input, participant list, invite input, and buttons', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    assert.ok(modal.querySelector('.name-input'), 'Name input should exist');
+    assert.ok(modal.querySelector('.participant-list'), 'Participant list should exist');
+    assert.ok(modal.querySelector('.invite-input'), 'Invite input should exist');
+    assert.ok(modal.querySelector('.invite-button'), 'Invite button should exist');
+    assert.ok(modal.querySelector('.save-button'), 'Save button should exist');
+    assert.ok(modal.querySelector('.delete-button'), 'Delete button should exist');
+    assert.ok(modal.querySelector('.cancel-button'), 'Cancel button should exist');
+  });
+
+  it('should populate name from session property setter', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = { id: 'ses_123', name: 'My Cool Session', participants: [] };
+
+    assert.equal(modal.querySelector('.name-input').value, 'My Cool Session');
+  });
+
+  it('should render participant list from session.participants', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = {
+      id: 'ses_123',
+      name: 'Test',
+      participants: [
+        { id: 'p1', name: 'Alice', role: 'coordinator' },
+        { id: 'p2', name: 'Bob', role: 'member' },
+      ],
+    };
+
+    let rows = modal.querySelectorAll('.participant-row');
+    assert.equal(rows.length, 2);
+
+    let names = modal.querySelectorAll('.participant-name');
+    assert.equal(names[0].textContent, 'Alice');
+    assert.equal(names[1].textContent, 'Bob');
+  });
+
+  it('should hide kick button for coordinator role participants', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = {
+      id: 'ses_123',
+      name: 'Test',
+      participants: [
+        { id: 'p1', name: 'Alice', role: 'coordinator' },
+      ],
+    };
+
+    let rows = modal.querySelectorAll('.participant-row');
+    let kickBtn = rows[0].querySelector('.kick-button');
+    assert.equal(kickBtn, null, 'Coordinator should not have a kick button');
+  });
+
+  it('should show kick button for member role participants', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = {
+      id: 'ses_123',
+      name: 'Test',
+      participants: [
+        { id: 'p2', name: 'Bob', role: 'member' },
+      ],
+    };
+
+    let rows = modal.querySelectorAll('.participant-row');
+    let kickBtn = rows[0].querySelector('.kick-button');
+    assert.ok(kickBtn, 'Member should have a kick button');
+  });
+
+  it('should dispatch session-save with sessionID and values on save click', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = { id: 'ses_456', name: 'Original', participants: [] };
+    modal.querySelector('.name-input').value = 'Updated Name';
+
+    let dispatched = null;
+    modal.addEventListener('session-save', (e) => { dispatched = e.detail; });
+
+    modal.querySelector('.save-button').click();
+
+    assert.ok(dispatched, 'session-save event should fire');
+    assert.equal(dispatched.sessionID, 'ses_456');
+    assert.equal(dispatched.values.name, 'Updated Name');
+  });
+
+  it('should dispatch session-delete with sessionID on delete confirm (requires two clicks)', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = { id: 'ses_789', name: 'Doomed', participants: [] };
+
+    let dispatched = null;
+    modal.addEventListener('session-delete', (e) => { dispatched = e.detail; });
+
+    let deleteBtn = modal.querySelector('.delete-button');
+
+    // First click should NOT dispatch — it enters confirmation state
+    deleteBtn.click();
+    assert.equal(dispatched, null, 'Should not fire on first click');
+
+    // Second click dispatches
+    deleteBtn.click();
+    assert.ok(dispatched, 'session-delete should fire on second click');
+    assert.equal(dispatched.sessionID, 'ses_789');
+  });
+
+  it('should dispatch session-kick with participantID on kick click', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = {
+      id: 'ses_100',
+      name: 'Test',
+      participants: [
+        { id: 'p1', name: 'Alice', role: 'coordinator' },
+        { id: 'p2', name: 'Bob', role: 'member', agentID: 'agt_bob' },
+      ],
+    };
+
+    let dispatched = null;
+    modal.addEventListener('session-kick', (e) => { dispatched = e.detail; });
+
+    let kickBtn = modal.querySelector('.kick-button');
+    kickBtn.click();
+
+    assert.ok(dispatched, 'session-kick event should fire');
+    assert.equal(dispatched.participantID, 'p2');
+    assert.equal(dispatched.agentID, 'agt_bob');
+    assert.equal(dispatched.sessionID, 'ses_100');
+  });
+
+  it('should dispatch session-invite with agentName on invite click', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = { id: 'ses_inv', name: 'Test', participants: [] };
+    modal.querySelector('.invite-input').value = 'test-claude';
+
+    let dispatched = null;
+    modal.addEventListener('session-invite', (e) => { dispatched = e.detail; });
+
+    modal.querySelector('.invite-button').click();
+
+    assert.ok(dispatched, 'session-invite event should fire');
+    assert.equal(dispatched.agentName, 'test-claude');
+    assert.equal(dispatched.sessionID, 'ses_inv');
+  });
+
+  it('should dispatch session-edit-cancel on cancel click', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    let cancelled = false;
+    modal.addEventListener('session-edit-cancel', () => { cancelled = true; });
+
+    modal.querySelector('.cancel-button').click();
+    assert.ok(cancelled, 'session-edit-cancel should fire');
+  });
+
+  it('getValues() returns current name input value', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.querySelector('.name-input').value = '  Trimmed Name  ';
+    let values = modal.getValues();
+    assert.equal(values.name, 'Trimmed Name');
+  });
+
+  // ---- EDGE CASES ----
+
+  it('reset() clears all inputs', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = {
+      id: 'ses_reset',
+      name: 'Before Reset',
+      participants: [{ id: 'p1', name: 'Alice', role: 'member' }],
+    };
+    modal.querySelector('.invite-input').value = 'some-agent';
+
+    modal.reset();
+
+    assert.equal(modal.querySelector('.name-input').value, '');
+    assert.equal(modal.querySelector('.invite-input').value, '');
+    assert.equal(modal.querySelector('.participant-list').innerHTML, '');
+    assert.equal(modal.session, null);
+  });
+
+  it('empty participant list renders empty placeholder', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = { id: 'ses_empty', name: 'Empty', participants: [] };
+
+    let rows  = modal.querySelectorAll('.participant-row');
+    let empty = modal.querySelector('.empty-participants');
+
+    assert.equal(rows.length, 0);
+    assert.ok(empty, 'Empty placeholder should render');
+    assert.equal(empty.textContent, '--');
+  });
+
+  it('session with no name shows empty input', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = { id: 'ses_noname', participants: [] };
+    assert.equal(modal.querySelector('.name-input').value, '');
+  });
+
+  it('invite click with empty input does not dispatch session-invite', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = { id: 'ses_noinv', name: 'Test', participants: [] };
+    modal.querySelector('.invite-input').value = '';
+
+    let dispatched = false;
+    modal.addEventListener('session-invite', () => { dispatched = true; });
+
+    modal.querySelector('.invite-button').click();
+    assert.ok(!dispatched, 'Should not dispatch when invite input is empty');
+  });
+
+  it('invite click clears the input after dispatching', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = { id: 'ses_clr', name: 'Test', participants: [] };
+    modal.querySelector('.invite-input').value = 'some-agent';
+
+    modal.querySelector('.invite-button').click();
+    assert.equal(modal.querySelector('.invite-input').value, '');
+  });
+
+  it('delete button text changes to confirm message on first click', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = { id: 'ses_del', name: 'Test', participants: [] };
+    let deleteBtn = modal.querySelector('.delete-button');
+
+    deleteBtn.click();
+    assert.equal(deleteBtn.textContent, 'Are you sure? This cannot be undone.');
+  });
+
+  it('session setter resets confirmation state', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = { id: 'ses_1', name: 'First', participants: [] };
+    modal.querySelector('.delete-button').click(); // enter confirm state
+
+    // Set new session — confirmation should reset
+    modal.session = { id: 'ses_2', name: 'Second', participants: [] };
+
+    let dispatched = false;
+    modal.addEventListener('session-delete', () => { dispatched = true; });
+
+    modal.querySelector('.delete-button').click(); // should be first click again
+    assert.ok(!dispatched, 'Should not fire delete — confirmation was reset');
+  });
+
+  it('participant with no name falls back to agentID or Unknown', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = {
+      id: 'ses_fb',
+      name: 'Fallback',
+      participants: [
+        { id: 'p1', role: 'member', agentID: 'agt_fallback' },
+        { id: 'p2', role: 'member' },
+      ],
+    };
+
+    let names = modal.querySelectorAll('.participant-name');
+    assert.equal(names[0].textContent, 'agt_fallback');
+    assert.equal(names[1].textContent, 'Unknown');
+  });
+
+  it('invite via Enter key dispatches session-invite', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    modal.session = { id: 'ses_enter', name: 'Test', participants: [] };
+    modal.querySelector('.invite-input').value = 'enter-agent';
+
+    let dispatched = null;
+    modal.addEventListener('session-invite', (e) => { dispatched = e.detail; });
+
+    let enterEvent = new globalThis.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+    modal.querySelector('.invite-input').dispatchEvent(enterEvent);
+
+    assert.ok(dispatched, 'session-invite should fire on Enter key');
+    assert.equal(dispatched.agentName, 'enter-agent');
+  });
+
+  it('session-save has null sessionID when no session set', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    let dispatched = null;
+    modal.addEventListener('session-save', (e) => { dispatched = e.detail; });
+
+    modal.querySelector('.save-button').click();
+
+    assert.ok(dispatched);
+    assert.equal(dispatched.sessionID, undefined);
+  });
+
+  it('should clean up listeners on disconnect', () => {
+    let doc   = getDocument();
+    let modal = doc.createElement('kikx-edit-session-modal');
+    doc.body.appendChild(modal);
+
+    assert.doesNotThrow(() => doc.body.removeChild(modal));
+  });
+});
+
+// =============================================================================
+// KikxFriendsList — Pencil icon / edit-friend event
+// =============================================================================
+
+describe('KikxFriendsList edit icon', { timeout: 5000 }, () => {
+  it('should render edit icon element inside each friend row', () => {
+    let doc  = getDocument();
+    let list = doc.createElement('kikx-friends-list');
+    doc.body.appendChild(list);
+
+    list.friends = [
+      { id: 'f1', name: 'Alice', type: 'agent' },
+      { id: 'f2', name: 'Bob', type: 'agent' },
+    ];
+
+    let editIcons = list.querySelectorAll('.edit-icon');
+    assert.equal(editIcons.length, 2, 'Each friend row should have an edit icon');
+    assert.equal(editIcons[0].getAttribute('role'), 'button');
+  });
+
+  it('should dispatch edit-friend event when edit icon is clicked', () => {
+    let doc  = getDocument();
+    let list = doc.createElement('kikx-friends-list');
+    doc.body.appendChild(list);
+
+    list.friends = [
+      { id: 'f1', name: 'Alice', type: 'agent', email: 'alice@test.com' },
+    ];
+
+    let dispatched = null;
+    list.addEventListener('edit-friend', (e) => { dispatched = e.detail; });
+
+    let editIcon = list.querySelector('.edit-icon');
+    editIcon.click();
+
+    assert.ok(dispatched, 'edit-friend event should fire');
+    assert.equal(dispatched.id, 'f1');
+    assert.equal(dispatched.type, 'agent');
+  });
+
+  it('edit-friend event detail contains friend data', () => {
+    let doc  = getDocument();
+    let list = doc.createElement('kikx-friends-list');
+    doc.body.appendChild(list);
+
+    list.friends = [
+      { id: 'f1', name: 'Alice', type: 'agent', email: 'alice@test.com' },
+    ];
+
+    let dispatched = null;
+    list.addEventListener('edit-friend', (e) => { dispatched = e.detail; });
+
+    list.querySelector('.edit-icon').click();
+
+    assert.equal(dispatched.id, 'f1');
+    assert.equal(dispatched.name, 'Alice');
+    assert.equal(dispatched.type, 'agent');
+    assert.equal(dispatched.email, 'alice@test.com');
+  });
+
+  it('clicking edit icon does NOT dispatch select-friend', () => {
+    let doc  = getDocument();
+    let list = doc.createElement('kikx-friends-list');
+    doc.body.appendChild(list);
+
+    list.friends = [
+      { id: 'f1', name: 'Alice', type: 'agent' },
+    ];
+
+    let selectFired = false;
+    list.addEventListener('select-friend', () => { selectFired = true; });
+
+    list.querySelector('.edit-icon').click();
+    assert.ok(!selectFired, 'select-friend should NOT fire when edit icon is clicked');
+  });
+
+  it('edit icon has pencil text content', () => {
+    let doc  = getDocument();
+    let list = doc.createElement('kikx-friends-list');
+    doc.body.appendChild(list);
+
+    list.friends = [{ id: 'f1', name: 'Alice', type: 'agent' }];
+
+    let editIcon = list.querySelector('.edit-icon');
+    assert.equal(editIcon.textContent, '\u270F\uFE0F');
+  });
+
+  it('edit icon exists even for non-agent friends', () => {
+    let doc  = getDocument();
+    let list = doc.createElement('kikx-friends-list');
+    doc.body.appendChild(list);
+
+    list.friends = [{ id: 'f1', name: 'Human Friend', type: 'user' }];
+
+    let editIcon = list.querySelector('.edit-icon');
+    assert.ok(editIcon, 'Edit icon should exist for user type friends');
   });
 });
