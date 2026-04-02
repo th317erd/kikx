@@ -12,6 +12,9 @@
 //   - Tool call:     { toolName: 'invite', arguments: { agentName: 'name' } }
 // =============================================================================
 
+/**
+ * @param {(cb: (ctx: { registry: any, context: import('../../types').CascadingContext }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry, context }) => {
     registry.registerCapability('invite', {
@@ -52,6 +55,10 @@ export function setup(provide) {
         { input: '/invite @test-claude', description: 'Invite the test-claude agent' },
         { tool:  '{ agentName: "test-claude" }', description: 'Invite via tool call' },
       ],
+      /**
+       * @param {{ params: { agentName: string }, sessionID: string }} handlerArgs
+       * @returns {Promise<{ content: { html: string } }>}
+       */
       async handler({ params, sessionID }) {
         let agentName = params.agentName;
 

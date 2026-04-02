@@ -33,6 +33,12 @@ const AGENT_OWNED_TOOLS = new Set([
 ]);
 
 export class MemoryPermissions extends Permissions {
+  /**
+   * @param {string} featureName
+   * @param {Record<string, any>} args
+   * @param {{ scopeID?: string, agent?: import('../../types').Agent }} options
+   * @returns {Promise<boolean | null>}
+   */
   async checkPermission(featureName, args, options) {
     // Reading the current session's context is harmless — auto-approve
     if (featureName === 'memory:getSessionContext') {

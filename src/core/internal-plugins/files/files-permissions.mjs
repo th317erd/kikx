@@ -11,6 +11,12 @@ import { PermissionRequiredError } from '../../permissions/permission-required-e
 // =============================================================================
 
 export class FilesPermissions extends Permissions {
+  /**
+   * @param {string} featureName
+   * @param {Record<string, any>} args
+   * @param {Record<string, any>} options
+   * @returns {Promise<boolean | never>}
+   */
   async checkPermission(featureName, args, options) {
     // Check standing rules first (e.g., allow-forever from a previous approval)
     try {

@@ -11,6 +11,12 @@ import { PermissionRequiredError } from '../../permissions/permission-required-e
 // =============================================================================
 
 export class WebsearchPermissions extends Permissions {
+  /**
+   * @param {string} featureName
+   * @param {{ url?: string, query?: string }} args
+   * @param {Record<string, any>} options
+   * @returns {Promise<boolean | never>}
+   */
   async checkPermission(featureName, args, options) {
     // Check standing rules first
     try {

@@ -14,6 +14,9 @@ import CompactionRunner from '../../compaction/index.mjs';
 //   - Tool call:     { toolName: 'compact', arguments: {} }
 // =============================================================================
 
+/**
+ * @param {(cb: (ctx: { registry: any, context: import('../../types').CascadingContext }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry, context }) => {
     registry.registerCapability('compact', {
@@ -29,6 +32,10 @@ export function setup(provide) {
         { input: '/compact', description: 'Compact the current session\'s conversation history' },
       ],
 
+      /**
+       * @param {{ sessionID: string, context: import('../../types').CascadingContext, agent: import('../../types').Agent }} handlerArgs
+       * @returns {Promise<{ content: { html: string } }>}
+       */
       async handler({ sessionID, context: ctx, agent }) {
         // 1. Validate agent
         if (!agent || !agent.pluginID) {

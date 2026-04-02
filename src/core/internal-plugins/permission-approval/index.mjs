@@ -30,14 +30,26 @@ import { BasePluginClass } from '../../routing/base-plugin-class.mjs';
 // closure-captured global context (same pattern as SchedulingPlugin).
 // =============================================================================
 
+/**
+ * @param {string} prefix
+ * @returns {string}
+ */
 function generateID(prefix) {
   return `${prefix}${XID.next()}`;
 }
 
+/**
+ * @param {(cb: (ctx: { registry: any, context: import('../../types').CascadingContext }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry, context }) => {
 
     class PermissionApprovalPlugin extends BasePluginClass {
+      /**
+       * @param {Function} next
+       * @param {Function} done
+       * @returns {Promise<any>}
+       */
       async process(next, done) {
         let frame = this.context.newFrame;
 
@@ -99,6 +111,12 @@ export function setup(provide) {
       // Returns false only when a signature IS present but is invalid.
       // -----------------------------------------------------------------------
 
+      /**
+       * @param {import('../../types').FrameData} frame
+       * @param {Record<string, any>} content
+       * @param {'approve' | 'deny'} action
+       * @returns {boolean | { needsAsyncVerification: boolean, payload: string, signature: string, fingerprint: string }}
+       */
       _verifySignature(frame, content, action) {
         let signatureField    = (action === 'deny') ? 'denialSignature' : 'approvalSignature';
         let fingerprintField  = (action === 'deny') ? 'denialFingerprint' : 'approvalFingerprint';
@@ -149,6 +167,12 @@ export function setup(provide) {
         }
       }
 
+      /**
+       * @param {import('../../types').FrameData} frame
+       * @param {Record<string, any>} content
+       * @param {'approve' | 'deny'} action
+       * @returns {Promise<boolean>}
+       */
       async _verifySignatureAsync(frame, content, action) {
         let signatureField    = (action === 'deny') ? 'denialSignature' : 'approvalSignature';
         let fingerprintField  = (action === 'deny') ? 'denialFingerprint' : 'approvalFingerprint';
@@ -203,6 +227,12 @@ export function setup(provide) {
       // _hideAwaitingToolResult — hide placeholder ToolResult frames
       // -----------------------------------------------------------------------
 
+      /**
+       * @param {any} interactionLoop
+       * @param {string} sessionID
+       * @param {string | null} toolUseID
+       * @returns {Promise<void>}
+       */
       async _hideAwaitingToolResult(interactionLoop, sessionID, toolUseID) {
         if (!toolUseID)
           return;
@@ -265,6 +295,17 @@ export function setup(provide) {
         }
       }
 
+      /**
+       * @param {any} interactionLoop
+       * @param {any} pluginRegistry
+       * @param {string} sessionID
+       * @param {string} toolName
+       * @param {Record<string, any> | null} toolArguments
+       * @param {string | null} toolUseID
+       * @param {import('../../types').FrameData} frame
+       * @param {Record<string, any>} content
+       * @returns {Promise<void>}
+       */
       async _handleApproval(interactionLoop, pluginRegistry, sessionID, toolName, toolArguments, toolUseID, frame, content) {
         // Verify approval signature
         let signatureValid = await this._verifySignatureAsync(frame, content, 'approve');
@@ -358,6 +399,15 @@ export function setup(provide) {
         }, 200);
       }
 
+      /**
+       * @param {any} interactionLoop
+       * @param {string} sessionID
+       * @param {string} toolName
+       * @param {string | null} toolUseID
+       * @param {import('../../types').FrameData} frame
+       * @param {Record<string, any>} content
+       * @returns {Promise<void>}
+       */
       async _handleDenial(interactionLoop, sessionID, toolName, toolUseID, frame, content) {
         // Verify denial signature
         let signatureValid = await this._verifySignatureAsync(frame, content, 'deny');
@@ -390,6 +440,11 @@ export function setup(provide) {
       // Falls back to starting without agent (best-effort) if resolution fails.
       // -----------------------------------------------------------------------
 
+      /**
+       * @param {any} interactionLoop
+       * @param {string} sessionID
+       * @returns {Promise<void>}
+       */
       async _resolveAndStartInteraction(interactionLoop, sessionID) {
         try {
           let agentResolver    = context.getProperty('agentResolver');
@@ -425,6 +480,13 @@ export function setup(provide) {
         }
       }
 
+      /**
+       * @param {any} interactionLoop
+       * @param {string} sessionID
+       * @param {string} output
+       * @param {string | null} toolUseID
+       * @returns {Promise<void>}
+       */
       async _createToolResultFrame(interactionLoop, sessionID, output, toolUseID) {
         let frameData = {
           id:            generateID('frm_'),

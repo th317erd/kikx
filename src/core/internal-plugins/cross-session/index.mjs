@@ -17,6 +17,9 @@ import { CrossSessionPermissions } from './cross-session-permissions.mjs';
 //   cross-session:inviteParticipant
 // =============================================================================
 
+/**
+ * @param {(cb: (ctx: { registry: any }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry }) => {
     let PluginInterface = registry.getClass('PluginInterface');
@@ -61,6 +64,10 @@ export function setup(provide) {
         return CrossSessionPermissions;
       }
 
+      /**
+       * @param {{ search?: string, type?: string, archived?: boolean, parentSessionID?: string, topLevelOnly?: boolean, limit?: number, offset?: number, _agent?: import('../../types').Agent }} params
+       * @returns {Promise<{ sessions: Array<{ id: string, name: string, type: string, archived: boolean, parentSessionID: string | null, participantCount: number, createdAt: Date, lastActivityAt: Date }> }>}
+       */
       async _execute(params) {
         let models  = this._context.getProperty('models');
         let { Session, Participant } = models;
@@ -194,6 +201,10 @@ export function setup(provide) {
         };
       }
 
+      /**
+       * @param {{ title: string, participants?: string[], parentSessionID?: string, type?: string, initialMessage?: string, constraints?: { maxInteractions?: number, endsAt?: string }, agentID?: string }} params
+       * @returns {Promise<{ sessionID: string, title: string, participants: string[] }>}
+       */
       async _execute(params) {
         let sessionManager = this._context.getProperty('sessionManager');
         let models         = this._context.getProperty('models');
@@ -283,6 +294,14 @@ export function setup(provide) {
         return { sessionID: session.id, title: params.title, participants: params.participants || [] };
       }
 
+      /**
+       * @param {any} sessionManager
+       * @param {import('../../types').CoreModels} models
+       * @param {string} sessionID
+       * @param {string[]} participantNames
+       * @param {string | undefined} creatorAgentID
+       * @returns {Promise<void>}
+       */
       async _addParticipants(sessionManager, models, sessionID, participantNames, creatorAgentID) {
         let { Agent } = models;
         for (let name of participantNames) {
@@ -296,6 +315,12 @@ export function setup(provide) {
         }
       }
 
+      /**
+       * @param {string} sessionID
+       * @param {string | undefined} initialMessage
+       * @param {string | undefined} agentID
+       * @returns {Promise<void>}
+       */
       async _createInitialMessage(sessionID, initialMessage, agentID) {
         if (!initialMessage)
           return;
@@ -356,6 +381,10 @@ export function setup(provide) {
         };
       }
 
+      /**
+       * @param {{ sessionID: string, message: string, agentID?: string, currentSessionID?: string }} params
+       * @returns {Promise<{ frameID: string, sessionID: string }>}
+       */
       async _execute(params) {
         if (!params.sessionID)
           throw new Error('sessionID is required');
@@ -441,6 +470,10 @@ export function setup(provide) {
         };
       }
 
+      /**
+       * @param {{ sessionID: string, keyword?: string, types?: string[], limit?: number, offset?: number }} params
+       * @returns {Promise<{ frames: Array<{ id: string, type: string, authorType: string, authorID: string | null, content: string, timestamp: number }> }>}
+       */
       async _execute(params) {
         if (!params.sessionID)
           throw new Error('sessionID is required');
@@ -522,6 +555,10 @@ export function setup(provide) {
         };
       }
 
+      /**
+       * @param {{ sessionID: string, agentName: string, agentID?: string }} params
+       * @returns {Promise<{ participantID: string, agentID: string, agentName: string, sessionID: string }>}
+       */
       async _execute(params) {
         if (!params.sessionID)
           throw new Error('sessionID is required');

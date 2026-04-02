@@ -17,6 +17,9 @@ import { BasePluginClass } from '../../routing/base-plugin-class.mjs';
 // The PermissionService is accessed from the KikxCore context via closure.
 // =============================================================================
 
+/**
+ * @param {(cb: (ctx: { registry: any, context: import('../../types').CascadingContext }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry, context }) => {
     let permissionService = context.getProperty('permissionService');
@@ -26,6 +29,11 @@ export function setup(provide) {
       return;
 
     class PermissionPlugin extends BasePluginClass {
+      /**
+       * @param {Function} next
+       * @param {Function} done
+       * @returns {Promise<any>}
+       */
       async process(next, done) {
         let commit  = this.context.commit;
         let changes = commit && commit.changes;

@@ -15,9 +15,17 @@ import { mapFrameToSolrDocuments } from '../../lib/solr-document-mapper.mjs';
 // load.
 // =============================================================================
 
+/**
+ * @param {(cb: (ctx: { registry: any, context: import('../../types').CascadingContext }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry, context }) => {
     class SolrIndexingPlugin extends BasePluginClass {
+      /**
+       * @param {Function} next
+       * @param {Function} done
+       * @returns {Promise<any>}
+       */
       async process(next, done) {
         // 1. Lazy resolve solrService from the closure-captured global context
         let solrService = context.getProperty('solrService');

@@ -20,6 +20,10 @@ import { FilesPermissions } from './files-permissions.mjs';
 const MAX_LINES      = 2000;
 const BINARY_CHECK   = 8192;
 
+/**
+ * @param {Buffer} buffer
+ * @returns {boolean}
+ */
 function isBinary(buffer) {
   let check = buffer.subarray(0, BINARY_CHECK);
 
@@ -31,6 +35,10 @@ function isBinary(buffer) {
   return false;
 }
 
+/**
+ * @param {string} filePath
+ * @returns {string}
+ */
 function guessLanguage(filePath) {
   let ext = path.extname(filePath).toLowerCase();
   let map = {
@@ -48,6 +56,9 @@ function guessLanguage(filePath) {
   return map[ext] || 'text';
 }
 
+/**
+ * @param {(cb: (ctx: { registry: any }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry }) => {
     let PluginInterface = registry.getClass('PluginInterface');
@@ -74,6 +85,10 @@ export function setup(provide) {
 
       getPermissionsClass() { return FilesPermissions; }
 
+      /**
+       * @param {{ filePath: string, offset?: number, limit?: number }} params
+       * @returns {Promise<{ content: string, filePath: string, lineCount: number, totalLines: number, truncated: boolean, message?: string, _renderHint: object }>}
+       */
       async _execute({ filePath, offset, limit }) {
         if (!filePath || typeof filePath !== 'string')
           throw new Error('filePath is required');
@@ -172,6 +187,10 @@ export function setup(provide) {
 
       getPermissionsClass() { return FilesPermissions; }
 
+      /**
+       * @param {{ filePath: string, content: string, createDirectories?: boolean }} params
+       * @returns {Promise<{ message: string, filePath: string, created: boolean, _renderHint: object }>}
+       */
       async _execute({ filePath, content, createDirectories }) {
         if (!filePath || typeof filePath !== 'string')
           throw new Error('filePath is required');
@@ -249,6 +268,10 @@ export function setup(provide) {
 
       getPermissionsClass() { return FilesPermissions; }
 
+      /**
+       * @param {{ filePath: string, oldString: string, newString: string }} params
+       * @returns {Promise<{ message: string, filePath: string, _renderHint: object }>}
+       */
       async _execute({ filePath, oldString, newString }) {
         if (!filePath || typeof filePath !== 'string')
           throw new Error('filePath is required');

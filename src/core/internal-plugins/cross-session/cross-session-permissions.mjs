@@ -18,6 +18,12 @@ import { PermissionRequiredError } from '../../permissions/permission-required-e
 export class CrossSessionPermissions extends Permissions {
   // Logic-based permission decisions — checks standing rules first,
   // only throws rich PermissionRequiredError if no rule approves.
+  /**
+   * @param {string} featureName
+   * @param {Record<string, any>} args
+   * @param {Record<string, any>} options
+   * @returns {Promise<boolean | null>}
+   */
   async checkPermission(featureName, args, options) {
     if (featureName === 'cross-session:postToSession')
       return await this._checkPostToSession(args, options);
@@ -34,6 +40,13 @@ export class CrossSessionPermissions extends Permissions {
 
   // Check standing rules first — if approved, return false.
   // If not, throw the rich error from the callback.
+  /**
+   * @param {string} featureName
+   * @param {Record<string, any>} args
+   * @param {Record<string, any>} options
+   * @param {() => never} throwRichError
+   * @returns {Promise<boolean | never>}
+   */
   async _checkWithRichError(featureName, args, options, throwRichError) {
     try {
       let needsApproval = await this.evaluate(featureName, args, options);
@@ -48,6 +61,12 @@ export class CrossSessionPermissions extends Permissions {
   }
 
   // createSession never matches rules — always requires explicit approval
+  /**
+   * @param {import('../../types').PermissionRule} rule
+   * @param {Record<string, any>} args
+   * @param {Record<string, any>} metadata
+   * @returns {{ matches: boolean }}
+   */
   matchesRule(rule, args, metadata) {
     if ((args && args.toolName === 'createSession') || (rule && rule.featureName === 'cross-session:createSession'))
       return { matches: false };
@@ -59,6 +78,11 @@ export class CrossSessionPermissions extends Permissions {
   // postToSession — auto-approve if participant, rich error otherwise
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {Record<string, any>} args
+   * @param {Record<string, any>} options
+   * @returns {Promise<boolean | never>}
+   */
   async _checkPostToSession(args, options) {
     let sessionID = args && args.sessionID;
     let agentID   = args && args.agentID;
@@ -128,6 +152,10 @@ export class CrossSessionPermissions extends Permissions {
   // listSessions — always throws rich error
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {Record<string, any>} args
+   * @returns {never}
+   */
   _throwListSessions(args) {
     let agentID = args && args.agentID;
 
@@ -142,6 +170,10 @@ export class CrossSessionPermissions extends Permissions {
   // createSession — always throws rich error
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {Record<string, any>} args
+   * @returns {never}
+   */
   _throwCreateSession(args) {
     let details = [];
 
@@ -173,6 +205,10 @@ export class CrossSessionPermissions extends Permissions {
   // Helpers
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string | null} agentID
+   * @returns {Promise<string>}
+   */
   async _resolveAgentName(agentID) {
     if (!agentID)
       return '(unknown agent)';
@@ -192,6 +228,10 @@ export class CrossSessionPermissions extends Permissions {
     }
   }
 
+  /**
+   * @param {string | null} sessionID
+   * @returns {Promise<string>}
+   */
   async _resolveSessionName(sessionID) {
     if (!sessionID)
       return '(unknown)';

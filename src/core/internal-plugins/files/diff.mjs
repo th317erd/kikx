@@ -53,6 +53,11 @@ export function computeDiff(oldText, newText) {
 // Myers diff — O((N+M)D) edit script
 // ---------------------------------------------------------------------------
 
+/**
+ * @param {string[]} oldLines
+ * @param {string[]} newLines
+ * @returns {Array<{ type: 'equal' | 'add' | 'remove', value: string, oldIndex?: number, newIndex?: number }>}
+ */
 function myersDiff(oldLines, newLines) {
   let N = oldLines.length;
   let M = newLines.length;
@@ -109,6 +114,13 @@ function myersDiff(oldLines, newLines) {
   return backtrack(trace, oldLines, newLines, max);
 }
 
+/**
+ * @param {Int32Array[]} trace
+ * @param {string[]} oldLines
+ * @param {string[]} newLines
+ * @param {number} max
+ * @returns {Array<{ type: 'equal' | 'add' | 'remove', value: string, oldIndex?: number, newIndex?: number }>}
+ */
 function backtrack(trace, oldLines, newLines, max) {
   let N = oldLines.length;
   let M = newLines.length;
@@ -158,6 +170,12 @@ function backtrack(trace, oldLines, newLines, max) {
 // Build unified-diff-style hunks with context lines
 // ---------------------------------------------------------------------------
 
+/**
+ * @param {Array<{ type: string, value: string, oldIndex?: number, newIndex?: number }>} edits
+ * @param {string[]} oldLines
+ * @param {string[]} newLines
+ * @returns {Array<{ oldStart: number, oldCount: number, newStart: number, newCount: number, lines: Array<{ type: string, content: string, oldLine: number | null, newLine: number | null }> }>}
+ */
 function buildHunks(edits, oldLines, newLines) {
   if (edits.length === 0)
     return [];
@@ -248,6 +266,11 @@ function buildHunks(edits, oldLines, newLines) {
   return hunks;
 }
 
+/**
+ * @param {Array<{ type: string, newIndex?: number }>} edits
+ * @param {number} fromIndex
+ * @returns {number | null}
+ */
 function findNextNewLine(edits, fromIndex) {
   for (let i = fromIndex + 1; i < edits.length; i++) {
     if (edits[i].type === 'equal' || edits[i].type === 'add')
@@ -257,6 +280,11 @@ function findNextNewLine(edits, fromIndex) {
   return null;
 }
 
+/**
+ * @param {Array<{ type: string, oldIndex?: number }>} edits
+ * @param {number} fromIndex
+ * @returns {number | null}
+ */
 function findNextOldLine(edits, fromIndex) {
   for (let i = fromIndex + 1; i < edits.length; i++) {
     if (edits[i].type === 'equal' || edits[i].type === 'remove')

@@ -12,6 +12,9 @@ import { ShellPermissions }    from './shell-permissions.mjs';
 // checking. If ANY command in a pipeline is denied, nothing executes.
 // =============================================================================
 
+/**
+ * @param {(cb: (ctx: { registry: any }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry }) => {
     let PluginInterface = registry.getClass('PluginInterface');
@@ -30,6 +33,10 @@ export function setup(provide) {
         required: ['command'],
       };
 
+      /**
+       * @param {{ command: string, workingDirectory?: string, _commitActivity?: (html: string) => Promise<void> }} params
+       * @returns {Promise<{ stdout: string, stderr: string, exitCode: number }>}
+       */
       async _execute({ command, workingDirectory, _commitActivity }) {
         if (!command || typeof command !== 'string')
           throw new Error('command is required');

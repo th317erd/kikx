@@ -12,6 +12,10 @@
 //   - Tool call:     { toolName: 'status', arguments: {} }
 // =============================================================================
 
+/**
+ * @param {number} seconds
+ * @returns {string}
+ */
 function formatUptime(seconds) {
   let d = Math.floor(seconds / 86400);
   let h = Math.floor((seconds % 86400) / 3600);
@@ -25,6 +29,9 @@ function formatUptime(seconds) {
   return parts.join(' ');
 }
 
+/**
+ * @param {(cb: (ctx: { registry: any }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry }) => {
     registry.registerCapability('status', {
@@ -40,6 +47,10 @@ export function setup(provide) {
         { input: '/status', description: 'Show session status and server info' },
       ],
 
+      /**
+       * @param {{ sessionID: string, context: import('../../types').CascadingContext, agent: import('../../types').Agent }} handlerArgs
+       * @returns {Promise<{ content: { html: string } }>}
+       */
       async handler({ sessionID, context: ctx, agent }) {
         let models         = ctx.getProperty('models');
         let pluginRegistry = ctx.getProperty('pluginRegistry');

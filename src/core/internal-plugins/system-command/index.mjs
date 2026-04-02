@@ -13,6 +13,9 @@ import { SystemCommandPermissions } from './system-command-permissions.mjs';
 // executes it with the injected session context (_sessionID, _authorID, _agent).
 // =============================================================================
 
+/**
+ * @param {(cb: (ctx: { registry: any, context: import('../../types').CascadingContext }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry, context }) => {
     let PluginInterface = registry.getClass('PluginInterface');
@@ -36,6 +39,10 @@ export function setup(provide) {
         return SystemCommandPermissions;
       }
 
+      /**
+       * @param {{ command: string, args?: string, _sessionID?: string, _authorID?: string, _agent?: import('../../types').Agent }} params
+       * @returns {Promise<{ html: string, injectPrimer?: boolean, commandName?: string }>}
+       */
       async _execute({ command, args, _sessionID, _authorID, _agent }) {
         if (!command || typeof command !== 'string')
           return { html: '<p>Error: <code>command</code> is required and must be a string.</p>' };

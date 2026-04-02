@@ -21,6 +21,9 @@
 //   type:      'tool_log:<pluginID>:<toolName>'
 // =============================================================================
 
+/**
+ * @param {(cb: (ctx: { registry: any }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry }) => {
     let PluginInterface = registry.getClass('PluginInterface');
@@ -31,6 +34,13 @@ export function setup(provide) {
 
     // Apply char or line slicing to a string.
     // Returns { content, actualStart, actualEnd }
+    /**
+     * @param {string} output
+     * @param {number} contentStart
+     * @param {number | null} contentEnd
+     * @param {boolean} contentLines
+     * @returns {{ content: string, actualStart: number, actualEnd: number }}
+     */
     function applySlice(output, contentStart, contentEnd, contentLines) {
       let start = (typeof contentStart === 'number' && contentStart >= 0) ? contentStart : 0;
 
@@ -70,6 +80,10 @@ export function setup(provide) {
     }
 
     // Extract toolName from the type field (e.g. 'tool_log:shell:execute' -> 'shell:execute')
+    /**
+     * @param {string | null} type
+     * @returns {string}
+     */
     function toolNameFromType(type) {
       if (!type)
         return '';
@@ -116,6 +130,10 @@ export function setup(provide) {
         },
       };
 
+      /**
+       * @param {{ id: string, content_start?: number, content_end?: number | null, content_lines?: boolean, agentID?: string }} params
+       * @returns {Promise<{ id: string, toolName: string, note: string | null, outputLength: number, content: string, content_start: number, content_end: number, content_lines: boolean, createdAt: Date }>}
+       */
       async _execute(params) {
         // Validate required id argument
         if (!params.id || typeof params.id !== 'string' || params.id.trim() === '') {
@@ -251,6 +269,10 @@ export function setup(provide) {
         },
       };
 
+      /**
+       * @param {{ query?: string, toolName?: string, sessionID?: string, before?: string, after?: string, limit?: number, offset?: number, content_start?: number, content_end?: number, content_lines?: boolean, agentID?: string }} params
+       * @returns {Promise<Array<{ id: string, toolName: string, note: string | null, outputLength: number, content_preview: string, content_start: number, content_end: number, content_lines: boolean, createdAt: Date }>>}
+       */
       async _execute(params) {
         let solrService = this._context.getProperty('solrService');
 
@@ -270,6 +292,11 @@ export function setup(provide) {
       // Solr-backed search
       // -----------------------------------------------------------------------
 
+      /**
+       * @param {any} solrService
+       * @param {Record<string, any>} params
+       * @returns {Promise<Array<{ id: string, toolName: string, note: string | null, outputLength: number, content_preview: string, content_start: number, content_end: number, content_lines: boolean, createdAt: Date }>>}
+       */
       async _executeWithSolr(solrService, params) {
         let models  = this._context.getProperty('models');
         let agentID = params.agentID;
@@ -385,6 +412,10 @@ export function setup(provide) {
       // SQLite fallback (original implementation)
       // -----------------------------------------------------------------------
 
+      /**
+       * @param {Record<string, any>} params
+       * @returns {Promise<Array<{ id: string, toolName: string, note: string | null, outputLength: number, content_preview: string, content_start: number, content_end: number, content_lines: boolean, createdAt: Date }>>}
+       */
       async _executeWithSQLite(params) {
         let models  = this._context.getProperty('models');
         let agentID = params.agentID;

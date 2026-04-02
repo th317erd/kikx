@@ -23,6 +23,9 @@ import { WebsearchPermissions } from './websearch-permissions.mjs';
 
 const FETCH_TIMEOUT = 15000;
 
+/**
+ * @param {(cb: (ctx: { registry: any }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry }) => {
     let PluginInterface = registry.getClass('PluginInterface');
@@ -31,6 +34,11 @@ export function setup(provide) {
     // Helper: get hook handlers from registry via context
     // ---------------------------------------------------------------------------
 
+    /**
+     * @param {import('../../types').CascadingContext | null} context
+     * @param {string} hookName
+     * @returns {Function[]}
+     */
     function getHookHandlers(context, hookName) {
       let reg = context && context.getProperty
         ? context.getProperty('pluginRegistry')
@@ -49,6 +57,10 @@ export function setup(provide) {
     // with content-type text/markdown, follows up with a GET to retrieve the
     // pre-converted markdown directly — no browser or Turndown needed.
 
+    /**
+     * @param {string} url
+     * @returns {Promise<{ markdown: string, title: string, url: string } | null>}
+     */
     async function tryMarkdownNegotiation(url) {
       try {
         let headResponse = await fetch(url, {
@@ -85,6 +97,10 @@ export function setup(provide) {
     // Helper: plain HTTP fetch + Turndown (last resort, no JS rendering)
     // ---------------------------------------------------------------------------
 
+    /**
+     * @param {string} url
+     * @returns {Promise<{ markdown: string, title: string, url: string }>}
+     */
     async function plainFetch(url) {
       let response = await fetch(url, {
         headers: { 'Accept': 'text/html, text/markdown' },
@@ -126,6 +142,10 @@ export function setup(provide) {
 
       getPermissionsClass() { return WebsearchPermissions; }
 
+      /**
+       * @param {{ url: string, _commitActivity?: (html: string) => Promise<void> }} params
+       * @returns {Promise<{ markdown: string, title: string, url: string }>}
+       */
       async _execute({ url, _commitActivity }) {
         if (!url || typeof url !== 'string')
           throw new Error('url is required');
@@ -186,6 +206,10 @@ export function setup(provide) {
 
       getPermissionsClass() { return WebsearchPermissions; }
 
+      /**
+       * @param {{ query: string, limit?: number, _commitActivity?: (html: string) => Promise<void> }} params
+       * @returns {Promise<{ query: string, resultCount: number, results: Array<{ title: string, url: string, snippet: string }>, content: string }>}
+       */
       async _execute({ query, limit, _commitActivity }) {
         if (!query || typeof query !== 'string')
           throw new Error('query is required');

@@ -12,6 +12,9 @@
 //   - Tool call:     { toolName: 'reload', arguments: {} }
 // =============================================================================
 
+/**
+ * @param {(cb: (ctx: { registry: any }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry }) => {
     registry.registerCapability('reload', {

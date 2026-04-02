@@ -29,6 +29,10 @@ import { MemoryPermissions } from './memory-permissions.mjs';
 //   memory:searchValues
 // =============================================================================
 
+/**
+ * @param {Record<string, any> | null} obj
+ * @returns {Record<string, any> | null}
+ */
 function stripProtectedKeys(obj) {
   if (!obj || typeof obj !== 'object')
     return obj;
@@ -40,6 +44,9 @@ function stripProtectedKeys(obj) {
   return result;
 }
 
+/**
+ * @param {(cb: (ctx: { registry: any }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry }) => {
     let PluginInterface = registry.getClass('PluginInterface');
@@ -73,6 +80,10 @@ export function setup(provide) {
         };
       }
 
+      /**
+       * @param {{ agentID?: string }} params
+       * @returns {Promise<{ config: Record<string, any> }>}
+       */
       async _execute(params) {
         let models  = this._context.getProperty('models');
         let { Agent: AgentModel } = models;
@@ -121,6 +132,10 @@ export function setup(provide) {
         return MemoryPermissions;
       }
 
+      /**
+       * @param {{ config: Record<string, any>, agentID?: string }} params
+       * @returns {Promise<{ config: Record<string, any> }>}
+       */
       async _execute(params) {
         let models  = this._context.getProperty('models');
         let { Agent: AgentModel } = models;
@@ -172,6 +187,10 @@ export function setup(provide) {
         return MemoryPermissions;
       }
 
+      /**
+       * @param {{ updates: Record<string, any>, agentID?: string }} params
+       * @returns {Promise<{ config: Record<string, any> }>}
+       */
       async _execute(params) {
         let models  = this._context.getProperty('models');
         let { Agent: AgentModel } = models;
@@ -225,6 +244,10 @@ export function setup(provide) {
         return MemoryPermissions;
       }
 
+      /**
+       * @param {{ sessionID?: string, currentSessionID?: string, effective?: boolean }} params
+       * @returns {Promise<{ context: Record<string, any> }>}
+       */
       async _execute(params) {
         let models     = this._context.getProperty('models');
         let { Session } = models;
@@ -279,6 +302,10 @@ export function setup(provide) {
         return MemoryPermissions;
       }
 
+      /**
+       * @param {{ context: Record<string, any>, sessionID?: string, currentSessionID?: string }} params
+       * @returns {Promise<{ context: Record<string, any> }>}
+       */
       async _execute(params) {
         let models     = this._context.getProperty('models');
         let { Session } = models;
@@ -330,6 +357,10 @@ export function setup(provide) {
         return MemoryPermissions;
       }
 
+      /**
+       * @param {{ updates: Record<string, any>, sessionID?: string, currentSessionID?: string }} params
+       * @returns {Promise<{ context: Record<string, any> }>}
+       */
       async _execute(params) {
         let models     = this._context.getProperty('models');
         let { Session } = models;
@@ -388,6 +419,10 @@ export function setup(provide) {
         return MemoryPermissions;
       }
 
+      /**
+       * @param {{ key: string, scopeID?: string, agentID?: string, currentSessionID?: string }} params
+       * @returns {Promise<{ key: string, value: any, scopeID: string, signed?: boolean, verified?: boolean }>}
+       */
       async _execute(params) {
         let { key, scopeID } = params;
         let models  = this._context.getProperty('models');
@@ -490,6 +525,10 @@ export function setup(provide) {
         return MemoryPermissions;
       }
 
+      /**
+       * @param {{ key: string, value: any, scopeID?: string, sign?: boolean, agentID?: string, currentSessionID?: string, _agent?: import('../../types').Agent }} params
+       * @returns {Promise<{ key: string, value: any, scopeID: string, deleted?: boolean, signed?: boolean }>}
+       */
       async _execute(params) {
         let { key, value, scopeID, sign } = params;
         let models  = this._context.getProperty('models');
@@ -639,6 +678,10 @@ export function setup(provide) {
         return MemoryPermissions;
       }
 
+      /**
+       * @param {{ query?: string, scopeID?: string, limit?: number, offset?: number, agentID?: string }} params
+       * @returns {Promise<{ results: Array<{ key: string, value: any, scopeID: string, updatedAt: Date, signed: boolean, verified?: boolean }>, count: number }>}
+       */
       async _execute(params) {
         let { query, scopeID, limit, offset } = params;
         let models  = this._context.getProperty('models');

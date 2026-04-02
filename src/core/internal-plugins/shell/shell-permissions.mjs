@@ -16,6 +16,12 @@ import { parseShellCommands }      from './command-parser.mjs';
 // =============================================================================
 
 export class ShellPermissions extends Permissions {
+  /**
+   * @param {string} featureName
+   * @param {{ command?: string }} args
+   * @param {Record<string, any>} options
+   * @returns {Promise<boolean | null | never>}
+   */
   async checkPermission(featureName, args, options) {
     let command = args && args.command;
     if (!command || typeof command !== 'string')
@@ -64,6 +70,12 @@ export class ShellPermissions extends Permissions {
     });
   }
 
+  /**
+   * @param {import('../../types').PermissionRule} rule
+   * @param {{ command?: string, arguments?: string[] }} args
+   * @param {{ command?: string, arguments?: string[], allowedCommands?: string[] }} metadata
+   * @returns {{ matches: boolean }}
+   */
   matchesRule(rule, args, metadata) {
     // If the rule has stored command + arguments, require exact argument match.
     // This prevents "allow forever ls -la /tmp/" from auto-allowing "ls /etc/shadow".

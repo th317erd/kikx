@@ -15,6 +15,9 @@
 //   models      — { Frame, ValueStore } for DB enrichment
 // =============================================================================
 
+/**
+ * @param {(cb: (ctx: { registry: any }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry }) => {
     let PluginInterface = registry.getClass('PluginInterface');
@@ -42,6 +45,10 @@ export function setup(provide) {
         required: ['query'],
       };
 
+      /**
+       * @param {{ query: string, rows?: number, sessionID?: string, docType?: string, frameType?: string, _sessionID?: string }} params
+       * @returns {Promise<{ query: string, resultCount: number, results: any[], message: string }>}
+       */
       async _execute(params) {
         let { query, rows, sessionID, docType, frameType, _sessionID } = params;
 
@@ -76,6 +83,13 @@ export function setup(provide) {
         return result;
       }
 
+      /**
+       * @param {any} solrService
+       * @param {string} query
+       * @param {number} rows
+       * @param {string[]} filterQueries
+       * @returns {Promise<{ query: string, resultCount: number, results: any[], message: string }>}
+       */
       async _searchAndEnrich(solrService, query, rows, filterQueries) {
         // Search Solr
         let solrResponse = await solrService.search(query, {

@@ -37,6 +37,9 @@ import { BasePluginClass } from '../../routing/base-plugin-class.mjs';
 // the infrastructure. External plugins register their own hooks via
 // registerSelector() with hook:* selectors.
 
+/**
+ * Infrastructure-only setup — no default hook registrations.
+ */
 export function setup() {
   // Infrastructure-only — no default registrations
 }

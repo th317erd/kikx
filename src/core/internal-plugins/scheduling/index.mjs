@@ -15,6 +15,9 @@ import { BasePluginClass } from '../../routing/base-plugin-class.mjs';
 
 const MAX_AGENT_ROUNDS = 3; // Max consecutive agent turns before stopping
 
+/**
+ * @param {(cb: (ctx: { registry: any, context: import('../../types').CascadingContext }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry, context }) => {
 
@@ -22,6 +25,11 @@ export function setup(provide) {
     let agentRoundCounts = new Map();
 
     class SchedulingPlugin extends BasePluginClass {
+      /**
+       * @param {Function} next
+       * @param {Function} done
+       * @returns {Promise<any>}
+       */
       async process(next, done) {
         let sessionScheduler = context.getProperty('sessionScheduler');
         if (!sessionScheduler)

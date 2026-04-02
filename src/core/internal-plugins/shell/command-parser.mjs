@@ -17,6 +17,10 @@ import { parse } from 'shell-quote';
 //   ]
 // =============================================================================
 
+/**
+ * @param {string} input
+ * @returns {Array<{ command: string, arguments: string[] }>}
+ */
 export function parseShellCommands(input) {
   if (!input || typeof input !== 'string')
     return [];

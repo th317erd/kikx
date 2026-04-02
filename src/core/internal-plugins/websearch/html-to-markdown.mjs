@@ -10,6 +10,10 @@ import TurndownService from 'turndown';
 // before conversion to produce clean, readable markdown.
 // =============================================================================
 
+/**
+ * @param {string} html
+ * @returns {string}
+ */
 export function htmlToMarkdown(html) {
   if (!html || typeof html !== 'string')
     return '';

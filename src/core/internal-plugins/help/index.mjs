@@ -13,6 +13,10 @@ import { HelpIndex } from '../../help/help-index.mjs';
 // HTML builders for /help command output
 // ---------------------------------------------------------------------------
 
+/**
+ * @param {string} text
+ * @returns {string}
+ */
 function escapeHtml(text) {
   if (!text)
     return '';
@@ -24,6 +28,10 @@ function escapeHtml(text) {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * @param {import('../../types').JSONSchema | null} inputSchema
+ * @returns {string}
+ */
 function buildParameterRows(inputSchema) {
   if (!inputSchema || !inputSchema.properties)
     return '';
@@ -43,6 +51,10 @@ function buildParameterRows(inputSchema) {
   return (rows.length > 0) ? `<ul>${rows.join('')}</ul>` : '';
 }
 
+/**
+ * @param {Array<{ name: string, required?: boolean, description?: string }> | null} parameters
+ * @returns {string}
+ */
 function buildParameterList(parameters) {
   if (!parameters || parameters.length === 0)
     return '';
@@ -57,6 +69,10 @@ function buildParameterList(parameters) {
   return `<ul>${rows.join('')}</ul>`;
 }
 
+/**
+ * @param {Array<{ description?: string, input?: string, query?: string, command?: string, url?: string }> | null} examples
+ * @returns {string}
+ */
 function buildExamples(examples) {
   if (!examples || examples.length === 0)
     return '';
@@ -74,6 +90,10 @@ function buildExamples(examples) {
   return `<ul>${items.join('')}</ul>`;
 }
 
+/**
+ * @param {{ name: string, description?: string, usage?: string, inputSchema?: import('../../types').JSONSchema, examples?: any[], riskLevel?: string }} entry
+ * @returns {string}
+ */
 function buildToolSection(entry) {
   let parts = [];
 
@@ -102,6 +122,10 @@ function buildToolSection(entry) {
   return parts.join('');
 }
 
+/**
+ * @param {{ name: string, description?: string, usage?: string, parameters?: any[], examples?: any[] }} entry
+ * @returns {string}
+ */
 function buildCommandSection(entry) {
   let parts = [];
 
@@ -126,6 +150,10 @@ function buildCommandSection(entry) {
   return parts.join('');
 }
 
+/**
+ * @param {Array<{ category: string, name: string, [key: string]: any }>} entries
+ * @returns {string}
+ */
 function buildHelpHtml(entries) {
   let commands = entries.filter((entry) => entry.category === 'command');
   let tools    = entries.filter((entry) => entry.category === 'tool');
@@ -151,6 +179,9 @@ function buildHelpHtml(entries) {
   return sections.join('');
 }
 
+/**
+ * @returns {string}
+ */
 function buildHmlPromptReference() {
   return [
     '<h2>Interactive Prompts (<code>&lt;kikx-hml-prompt&gt;</code>)</h2>',
@@ -193,6 +224,9 @@ function buildHmlPromptReference() {
 // Plugin setup
 // ---------------------------------------------------------------------------
 
+/**
+ * @param {(cb: (ctx: { registry: any, context: import('../../types').CascadingContext }) => void) => void} provide
+ */
 export function setup(provide) {
   provide(({ registry, context }) => {
     let PluginInterface = registry.getClass('PluginInterface');
@@ -210,6 +244,10 @@ export function setup(provide) {
         },
       };
 
+      /**
+       * @param {{ query?: string }} params
+       * @returns {Promise<{ entries: any[] }>}
+       */
       async _execute({ query }) {
         let registry  = context.getProperty('pluginRegistry');
         let helpIndex = new HelpIndex(registry);
