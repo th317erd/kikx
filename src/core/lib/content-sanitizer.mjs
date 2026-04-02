@@ -1,87 +1,87 @@
 'use strict';
 
-// Default allowed tags and their allowed attributes
+/** @type {Record<string, string[]>} Default allowed tags and their allowed attributes */
 const DEFAULT_ALLOWED_TAGS = {
-  // Text formatting
   'b':          [],
   'i':          [],
   'em':         [],
   'strong':     [],
   'code':       ['class'],
   'pre':        ['class'],
-
-  // Headings
   'h1':         ['id', 'class'],
   'h2':         ['id', 'class'],
   'h3':         ['id', 'class'],
   'h4':         ['id', 'class'],
   'h5':         ['id', 'class'],
   'h6':         ['id', 'class'],
-
-  // Block elements
   'p':          ['class'],
   'div':        ['class', 'id'],
   'span':       ['class', 'id'],
   'blockquote': ['class'],
   'br':         [],
   'hr':         [],
-
-  // Links and images
   'a':          ['href', 'title', 'target', 'rel', 'class'],
   'img':        ['src', 'alt', 'title', 'width', 'height', 'class'],
-
-  // Lists
   'ul':         ['class'],
   'ol':         ['class', 'start', 'type'],
   'li':         ['class'],
-
-  // Tables
   'table':      ['class'],
   'thead':      [],
   'tbody':      [],
   'tr':         [],
   'th':         ['class', 'colspan', 'rowspan'],
   'td':         ['class', 'colspan', 'rowspan'],
-
-  // Custom elements (base set)
   'kikx-hml-prompt':  ['type', 'name', 'label', 'placeholder', 'value', 'required', 'readonly', 'min', 'max', 'step', 'options', 'default', 'prompt-id', 'class', 'id'],
   'kikx-hml-option':  ['value', 'label', 'selected', 'class'],
 };
 
-// Tags that get completely removed (tag + content)
+/** @type {Set<string>} Tags that get completely removed (tag + content) */
 const DANGEROUS_TAGS = new Set(['script', 'iframe', 'style', 'object', 'embed', 'applet', 'form', 'input', 'textarea', 'select', 'button']);
 
-// Event handler attribute pattern
+/** @type {RegExp} */
 const EVENT_HANDLER_PATTERN = /^on[a-z]/i;
 
-// JavaScript URI pattern
+/** @type {RegExp} */
 const JAVASCRIPT_URI_PATTERN = /^\s*javascript\s*:/i;
 
-// URI attributes that need javascript: checking
+/** @type {Set<string>} URI attributes that need javascript: checking */
 const URI_ATTRIBUTES = new Set(['href', 'src', 'action']);
 
 export class ContentSanitizer {
+  /**
+   * @param {object} [options]
+   * @param {Record<string, string[]>} [options.allowedTags]
+   */
   constructor(options = {}) {
+    /** @type {Record<string, string[]>} */
     this._allowedTags = { ...DEFAULT_ALLOWED_TAGS };
+    /** @type {Set<string>} */
     this._dangerousTags = new Set(DANGEROUS_TAGS);
 
-    // Apply any custom allowed tags from options
     if (options.allowedTags) {
       for (let [tag, attributes] of Object.entries(options.allowedTags))
         this._allowedTags[tag] = attributes;
     }
   }
 
-  // Register a custom element (e.g., from a plugin)
+  /**
+   * Register a custom element (e.g., from a plugin).
+   * @param {string} tagName
+   * @param {string[]} [allowedAttributes]
+   * @returns {void}
+   */
   registerCustomElement(tagName, allowedAttributes = []) {
     this._allowedTags[tagName.toLowerCase()] = allowedAttributes;
   }
 
-  // Remove a custom element from the allowlist
+  /**
+   * Remove a custom element from the allowlist.
+   * @param {string} tagName
+   * @returns {boolean}
+   */
   unregisterCustomElement(tagName) {
     let lowerTag = tagName.toLowerCase();
 
-    // Don't allow removing standard tags
     if (DEFAULT_ALLOWED_TAGS[lowerTag])
       return false;
 
@@ -90,35 +90,41 @@ export class ContentSanitizer {
     return true;
   }
 
-  // Get all currently allowed tags
+  /**
+   * Get all currently allowed tags.
+   * @returns {Record<string, string[]>}
+   */
   getAllowedTags() {
     return { ...this._allowedTags };
   }
 
-  // Main sanitize method
+  /**
+   * Main sanitize method.
+   * @param {string} html
+   * @returns {string}
+   */
   sanitize(html) {
     if (!html || typeof html !== 'string')
       return '';
 
-    // Step 1: Remove dangerous tags and their content entirely
     let result = this._removeDangerousTags(html);
-
-    // Step 2: Process remaining tags
     result = this._processAllTags(result);
 
     return result;
   }
 
-  // Remove dangerous tags and ALL their content
+  /**
+   * Remove dangerous tags and ALL their content.
+   * @param {string} html
+   * @returns {string}
+   */
   _removeDangerousTags(html) {
     let result = html;
 
     for (let tag of this._dangerousTags) {
-      // Match opening tag, content, and closing tag (non-greedy, case-insensitive)
       let pattern = new RegExp(`<${tag}[^>]*>[\\s\\S]*?</${tag}>`, 'gi');
       result = result.replace(pattern, '');
 
-      // Also remove self-closing dangerous tags
       let selfClosing = new RegExp(`<${tag}[^>]*/?>`, 'gi');
       result = result.replace(selfClosing, '');
     }
@@ -126,22 +132,22 @@ export class ContentSanitizer {
     return result;
   }
 
-  // Process all remaining tags: allow, strip, or sanitize
+  /**
+   * Process all remaining tags: allow, strip, or sanitize.
+   * @param {string} html
+   * @returns {string}
+   */
   _processAllTags(html) {
-    // Match HTML tags (opening, closing, self-closing)
     return html.replace(/<\/?([a-zA-Z][a-zA-Z0-9-]*)((?:\s+[^>]*)?)\s*\/?>/g, (match, tagName, attributesString) => {
       let lowerTag = tagName.toLowerCase();
       let isClosing = match.startsWith('</');
 
-      // If tag is not allowed, strip the tag but keep inner content
       if (!this._allowedTags.hasOwnProperty(lowerTag))
         return '';
 
-      // Closing tags don't have attributes
       if (isClosing)
         return `</${lowerTag}>`;
 
-      // Sanitize attributes
       let sanitizedAttributes = this._sanitizeAttributes(lowerTag, attributesString || '');
       let isSelfClosing = match.endsWith('/>') || this._isVoidElement(lowerTag);
 
@@ -152,7 +158,12 @@ export class ContentSanitizer {
     });
   }
 
-  // Sanitize attributes for a given tag
+  /**
+   * Sanitize attributes for a given tag.
+   * @param {string} tagName
+   * @param {string} attributesString
+   * @returns {string}
+   */
   _sanitizeAttributes(tagName, attributesString) {
     let allowedAttributes = this._allowedTags[tagName] || [];
 
@@ -161,7 +172,6 @@ export class ContentSanitizer {
 
     let sanitized = [];
 
-    // Parse attributes: name="value" or name='value' or name=value or name
     let attributePattern = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
     let attributeMatch;
 
@@ -169,20 +179,15 @@ export class ContentSanitizer {
       let attributeName = attributeMatch[1].toLowerCase();
       let attributeValue = attributeMatch[2] ?? attributeMatch[3] ?? attributeMatch[4] ?? '';
 
-      // Skip event handlers
       if (EVENT_HANDLER_PATTERN.test(attributeName))
         continue;
 
-      // Skip non-allowed attributes
       if (!allowedAttributes.includes(attributeName))
         continue;
 
-      // Check for javascript: URIs
       if (URI_ATTRIBUTES.has(attributeName) && JAVASCRIPT_URI_PATTERN.test(attributeValue))
         continue;
 
-      // Decode any existing HTML entities first to avoid double-encoding,
-      // then re-encode for safe attribute output.
       let decoded = attributeValue
         .replace(/&amp;/g, '&')
         .replace(/&quot;/g, '"')
@@ -204,15 +209,22 @@ export class ContentSanitizer {
     return sanitized.join(' ');
   }
 
+  /**
+   * @param {string} tagName
+   * @returns {boolean}
+   */
   _isVoidElement(tagName) {
     return ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'].includes(tagName);
   }
 }
 
-// Convenience function
+/**
+ * Convenience function.
+ * @param {object} [options]
+ * @returns {ContentSanitizer}
+ */
 export function createSanitizer(options) {
   return new ContentSanitizer(options);
 }
 
-// Export defaults for testing
 export { DEFAULT_ALLOWED_TAGS, DANGEROUS_TAGS };

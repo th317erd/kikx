@@ -3,29 +3,34 @@
 // =============================================================================
 // HookRunner
 // =============================================================================
-// Executes registered hook handlers in pipeline order.
-// Each handler receives a payload and returns an action result:
-//   - { action: 'pass' }     — continue with no changes
-//   - { action: 'modify', message }  — replace message and continue
-//   - { action: 'block', reason }    — stop pipeline, block the message
-//   - { action: 'redirect', target, message } — redirect message
-//   - null/undefined          — treated as pass-through
-//
-// Pipeline semantics:
-//   - Handlers run in registration order
-//   - 'modify' propagates to subsequent handlers
-//   - 'block' stops the pipeline immediately
-//   - 'redirect' stops the pipeline immediately
-// =============================================================================
+
+/**
+ * @typedef {object} HookResult
+ * @property {'pass'|'block'|'modify'|'redirect'} action
+ * @property {string} [message]
+ * @property {string} [reason]
+ * @property {string} [target]
+ */
 
 export class HookRunner {
+  /**
+   * @param {object} registry - PluginRegistry instance
+   */
   constructor(registry) {
     if (!registry)
       throw new Error('HookRunner requires a PluginRegistry');
 
+    /** @type {object} */
     this._registry = registry;
   }
 
+  /**
+   * Execute hook pipeline.
+   * @param {string} hookName
+   * @param {object} payload
+   * @param {string} payload.message
+   * @returns {Promise<HookResult>}
+   */
   async run(hookName, payload) {
     let handlers = this._registry.getHookHandlers(hookName);
 

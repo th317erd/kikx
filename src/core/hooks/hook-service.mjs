@@ -5,62 +5,42 @@ import { BasePluginClass } from '../routing/base-plugin-class.mjs';
 // =============================================================================
 // HookService
 // =============================================================================
-// Routing-plugin-based replacement for HookRunner. Executes hook handlers
-// registered via registerSelector() using BasePluginClass instances.
-//
-// Hook selectors:
-//   'hook:user-to-agent'   — before agent execution
-//   'hook:agent-to-user'   — before message frame emission
-//   'hook:agent-to-tool'   — before tool execution
-//   'hook:tool-to-agent'   — before tool result passed to generator
-//
-// Hook plugins extend BasePluginClass. Their process(next, done) method
-// receives context with { source, target, message, hookContext }.
-// To block: call done() with context.action = 'block'
-// To modify: update context.message and call next()
-//
-// Also supports legacy function handlers registered via registerHook()
-// by wrapping them in adapter plugin instances.
-//
-// Pipeline semantics match HookRunner:
-//   - Handlers run in registration order
-//   - 'block' stops the pipeline immediately
-//   - 'modify' propagates to subsequent handlers
-//   - 'redirect' stops the pipeline immediately
-// =============================================================================
 
 export class HookService {
+  /**
+   * @param {object} registry - PluginRegistry instance
+   */
   constructor(registry) {
     if (!registry)
       throw new Error('HookService requires a PluginRegistry');
 
+    /** @type {object} */
     this._registry = registry;
   }
 
-  // ---------------------------------------------------------------------------
-  // run — Execute hook pipeline
-  // ---------------------------------------------------------------------------
-  // Returns: { action: 'pass'|'block'|'redirect', message, reason?, target? }
-  // Same interface as HookRunner.run() for backward compatibility.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Execute hook pipeline.
+   * Returns: { action: 'pass'|'block'|'redirect', message, reason?, target? }
+   * @param {string} hookName
+   * @param {object} payload
+   * @param {string} [payload.source]
+   * @param {string} [payload.target]
+   * @param {string} [payload.message]
+   * @param {object} [payload.context]
+   * @returns {Promise<{ action: 'pass'|'block'|'redirect', message?: string, reason?: string, target?: string }>}
+   */
   async run(hookName, payload) {
-    // Get routing-plugin handlers for this hook selector
     let hookSelector = this._toSelector(hookName, payload);
     let plugins      = this._getPluginsForHook(hookSelector);
 
-    // Also get legacy function handlers
     let legacyHandlers = this._registry.getHookHandlers(hookName);
 
-    // If no handlers of any kind, pass through
     if (plugins.length === 0 && legacyHandlers.length === 0)
       return { action: 'pass', message: payload.message };
 
-    // Build combined handler list: legacy handlers first (for compatibility),
-    // then routing plugins
     let current = { ...payload };
 
-    // Run legacy handlers first (preserves existing registration order)
+    // Run legacy handlers first
     for (let handler of legacyHandlers) {
       let result = await handler(current);
 
@@ -98,7 +78,6 @@ export class HookService {
       if (result.action === 'redirect')
         return { action: 'redirect', target: result.target, message: result.message };
 
-      // If message was modified by the plugin, propagate
       if (result.message !== undefined)
         current.message = result.message;
     }
@@ -106,10 +85,11 @@ export class HookService {
     return { action: 'pass', message: current.message };
   }
 
-  // ---------------------------------------------------------------------------
-  // Internal
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @param {string} hookName
+   * @param {object} payload
+   * @returns {string}
+   */
   _toSelector(hookName, payload) {
     let source = payload && payload.source;
     let target = payload && payload.target;
@@ -120,6 +100,10 @@ export class HookService {
     return `hook:${hookName}`;
   }
 
+  /**
+   * @param {string} hookSelector
+   * @returns {Function[]}
+   */
   _getPluginsForHook(hookSelector) {
     let selectors = this._registry.getSelectors();
     let plugins   = [];
@@ -132,6 +116,11 @@ export class HookService {
     return plugins;
   }
 
+  /**
+   * @param {Function} PluginClass
+   * @param {object} context
+   * @returns {Promise<{ action: string, message?: string, reason?: string, target?: string }>}
+   */
   async _runPlugin(PluginClass, context) {
     let plugin = new PluginClass(context);
     let result = { action: 'pass', message: context.message };

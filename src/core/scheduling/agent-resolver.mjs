@@ -16,27 +16,27 @@ import { ShellPermissions }    from '../internal-plugins/shell/shell-permissions
 // =============================================================================
 
 export class AgentResolver {
+  /**
+   * @param {object} core - KikxCore instance
+   */
   constructor(core) {
     if (!core)
       throw new Error('AgentResolver requires a KikxCore instance');
 
+    /** @type {object} */
     this._core = core;
   }
 
   // ---------------------------------------------------------------------------
   // resolve
   // ---------------------------------------------------------------------------
-  // Resolves an agent ID into a fully ready interaction params object.
-  //
-  // resolveContext:
-  //   keystore       — Keystore instance (for API key decryption)
-  //   umk            — User master key (Buffer)
-  //   userID         — authenticated user ID
-  //   sessionID      — session scope for permissions
-  //
-  // Returns: { agentPlugin, resolvedAgent }
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Resolves an agent ID into a fully ready interaction params object.
+   *
+   * @param {string} agentID
+   * @param {import('../types').ResolveContext} [resolveContext]
+   * @returns {Promise<{ agentPlugin: import('../types').BasePluginClass, resolvedAgent: import('../types').Agent & Record<string, any> }>}
+   */
   async resolve(agentID, resolveContext = {}) {
     let models = this._core.getModels();
     let { Agent } = models;
@@ -81,19 +81,22 @@ export class AgentResolver {
   // ---------------------------------------------------------------------------
   // buildCallbacks
   // ---------------------------------------------------------------------------
-  // Constructs checkPermission and executeTool callbacks for an agent, usable
-  // outside of HTTP context (e.g., SchedulerOrchestrator triggering secondary
-  // agents). Mirrors the callback logic in InteractionController.sendMessage().
-  //
-  // Returns: { checkPermission, executeTool }
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Constructs checkPermission and executeTool callbacks for an agent, usable
+   * outside of HTTP context (e.g., SchedulerOrchestrator triggering secondary
+   * agents). Mirrors the callback logic in InteractionController.sendMessage().
+   *
+   * @param {import('../types').Agent & Record<string, any>} resolvedAgent
+   * @param {string} sessionID
+   * @returns {{ checkPermission: (featureName: string, toolArgs: any) => Promise<boolean>, executeTool: (toolName: string, toolArgs: any) => Promise<any> }}
+   */
   buildCallbacks(resolvedAgent, sessionID) {
     let core            = this._core;
     let pluginRegistry  = core.getPluginRegistry();
     let interactionLoop = core.getContext().getProperty('interactionLoop');
     let context         = core.getContext();
 
+    /** @type {(featureName: string, toolArgs: any) => Promise<boolean>} */
     let checkPermission = async (featureName, toolArgs) => {
       if (featureName === 'system:command' && toolArgs && toolArgs.command)
         featureName = `command:${toolArgs.command.toLowerCase().trim()}`;
@@ -180,6 +183,7 @@ export class AgentResolver {
       );
     };
 
+    /** @type {(toolName: string, toolArgs: any) => Promise<any>} */
     let executeTool = async (toolName, toolArgs) => {
       let ToolClass = pluginRegistry.getTool(toolName);
       if (!ToolClass)
@@ -193,8 +197,10 @@ export class AgentResolver {
       // Activity frame for live tool status — tool calls _commitActivity(html)
       // to create/update a visible ToolActivity frame. Silent commits so the
       // FrameRouter doesn't trigger. Client receives via SSE and renders.
+      /** @type {string|null} */
       let activityFrameID = null;
 
+      /** @type {(html: string) => Promise<void>} */
       let _commitActivity = async (html) => {
         let interactionLoopRef = core.getContext().getProperty('interactionLoop');
         let framePersistence   = core.getContext().getProperty('framePersistence');

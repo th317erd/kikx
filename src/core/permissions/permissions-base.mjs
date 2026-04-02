@@ -5,40 +5,38 @@ import { PermissionDeniedError } from './permission-denied-error.mjs';
 // =============================================================================
 // Permissions Base Class
 // =============================================================================
-// Base class for plugin-specific permission logic.
-// Plugins can subclass this and override matchesRule() to implement
-// custom rule matching (e.g., command-level shell permissions).
-//
-// Override points:
-//   matchesRule(rule, args, metadata) — per-rule matching during rule loop.
-//     Return { matches: true } if the rule applies, { matches: false } to skip.
-//
-//   checkPermission(featureName, args, options) — pre-rule logic override.
-//     Return true  = needs approval (short-circuit, skip rule matching).
-//     Return false = auto-approved (short-circuit, skip rule matching).
-//     Return null  = defer to normal rule matching (default).
-//
-//   evaluate(featureName, args, options) — full rule evaluation.
-//     Full rule evaluation logic. Each PermissionsClass can evaluate rules
-//     Permissions base class. Each PermissionsClass can evaluate rules
-//     without going through the engine.
-// =============================================================================
 
 const SCOPE_HIERARCHY = ['frame', 'session', 'global'];
 
 export class Permissions {
+  /**
+   * @param {import('../types').CascadingContext} context
+   */
   constructor(context) {
+    /** @type {import('../types').CascadingContext} */
     this._context = context;
   }
 
-  // Override for logic-based permission decisions that bypass rule matching.
-  // Return true (needs approval), false (auto-approved), or null (defer).
+  /**
+   * Override for logic-based permission decisions that bypass rule matching.
+   * Return true (needs approval), false (auto-approved), or null (defer).
+   * @param {string} _featureName
+   * @param {any} _args
+   * @param {object} _options
+   * @returns {Promise<boolean|null>}
+   */
   // eslint-disable-next-line no-unused-vars
   async checkPermission(_featureName, _args, _options) {
     return null; // default: defer to rule matching
   }
 
-  // Override for custom rule matching. Returns { matches: boolean }
+  /**
+   * Override for custom rule matching.
+   * @param {import('../types').PermissionRule} _rule
+   * @param {any} _args
+   * @param {Record<string, any>} _metadata
+   * @returns {{ matches: boolean }}
+   */
   matchesRule(_rule, _args, _metadata) {
     return { matches: true }; // default: rule always matches
   }
@@ -46,23 +44,26 @@ export class Permissions {
   // ---------------------------------------------------------------------------
   // evaluate — full rule evaluation
   // ---------------------------------------------------------------------------
-  // Returns true  = needs approval (no matching allow rule)
-  // Returns false = auto-approved (matching allow rule, or auto-allow)
-  // Throws PermissionDeniedError = explicit deny rule matched
-  //
-  // options:
-  //   organizationID — scopes rules to org
-  //   scope          — current scope context ('global', 'session', 'frame')
-  //   scopeID        — session or frame ID for scoped rules
-  //   riskLevel      — explicit risk level override
-  //   agent          — agent object with getConfig() for risk level resolution
-  //   user           — user object with getSettings() for risk level resolution
-  //   toolClass      — tool class with static riskLevel for safety net checks
-  //   verifyFingerprint — if true, validate rule fingerprints
-  //   userKey        — user key for fingerprint verification (HMAC)
-  //   publicKeyPEM   — Ed25519 public key for fingerprint verification
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Evaluate permissions for a feature.
+   * Returns true = needs approval, false = auto-approved.
+   * Throws PermissionDeniedError for explicit deny rules.
+   *
+   * @param {string} featureName
+   * @param {any} args
+   * @param {object} [options]
+   * @param {string} [options.organizationID]
+   * @param {string} [options.scope]
+   * @param {string} [options.scopeID]
+   * @param {string} [options.riskLevel]
+   * @param {import('../types').Agent} [options.agent]
+   * @param {import('../types').User} [options.user]
+   * @param {any} [options.toolClass]
+   * @param {boolean} [options.verifyFingerprint]
+   * @param {Buffer} [options.userKey]
+   * @param {string} [options.publicKeyPEM]
+   * @returns {Promise<boolean>}
+   */
   async evaluate(featureName, args, options = {}) {
     let { organizationID, scope, scopeID, toolClass, verifyFingerprint, userKey, publicKeyPEM } = options;
 
@@ -135,8 +136,6 @@ export class Permissions {
     }
 
     // Discover custom Permissions subclass from toolClass if available.
-    // This allows tool-specific matchesRule() logic (e.g., ShellPermissions
-    // matching command arguments).
     let permissionsInstance = this;
 
     if (toolClass && typeof toolClass.prototype.getPermissionsClass === 'function') {
@@ -173,6 +172,21 @@ export class Permissions {
   // createRule — creates a new permission rule
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {object} ruleData
+   * @param {string} ruleData.organizationID
+   * @param {string} ruleData.featureName
+   * @param {'allow'|'deny'} ruleData.effect
+   * @param {'global'|'session'|'frame'} [ruleData.scope]
+   * @param {string|null} [ruleData.scopeID]
+   * @param {Record<string, any>|null} [ruleData.metadata]
+   * @param {number} [ruleData.priority]
+   * @param {string} ruleData.createdBy
+   * @param {Date|null} [ruleData.expiresAt]
+   * @param {string} [ruleData.privateKeyPEM]
+   * @param {Buffer} [ruleData.userKey]
+   * @returns {Promise<import('../types').PermissionRule>}
+   */
   async createRule(ruleData) {
     let { PermissionRule } = this._getModels();
 
@@ -203,9 +217,6 @@ export class Permissions {
       }
     }
 
-    // Workaround: Mythix ORM's PermissionRule.create() silently drops
-    // `createdBy` from the INSERT (possibly a field resolution bug).
-    // Use new PermissionRule().save() with explicit data assignment.
     let { default: XID } = await import('xid-js');
     let rule      = new PermissionRule();
     rule.id             = `prm_${XID.next()}`;
@@ -227,6 +238,10 @@ export class Permissions {
   // deleteRule — deletes a rule by ID
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} ruleID
+   * @returns {Promise<boolean>}
+   */
   async deleteRule(ruleID) {
     let { PermissionRule } = this._getModels();
     let rule               = await PermissionRule.where.id.EQ(ruleID).first();
@@ -243,6 +258,13 @@ export class Permissions {
   // getRules — query rules for an org
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} organizationID
+   * @param {object} [filters]
+   * @param {string} [filters.featureName]
+   * @param {string} [filters.scope]
+   * @returns {Promise<import('../types').PermissionRule[]>}
+   */
   async getRules(organizationID, filters = {}) {
     let { PermissionRule } = this._getModels();
     let query              = PermissionRule.where.organizationID.EQ(organizationID);
@@ -260,6 +282,9 @@ export class Permissions {
   // pruneExpired — delete expired rules
   // ---------------------------------------------------------------------------
 
+  /**
+   * @returns {Promise<number>} Count of pruned rules
+   */
   async pruneExpired() {
     let { PermissionRule } = this._getModels();
     let now                = new Date();
@@ -275,18 +300,17 @@ export class Permissions {
   }
 
   // ---------------------------------------------------------------------------
-  // _resolveRiskLevel — resolve effective risk level from options chain
-  // ---------------------------------------------------------------------------
-  // Resolution order:
-  //   1. options.riskLevel (pre-resolved, explicit override)
-  //   2. options.agent.getConfig().riskLevel
-  //   3. options.user.getSettings().riskLevel
-  //   4. Default: 'strict'
-  //
-  // Backward compat: 'medium' is treated as 'normal'.
-  // Valid values: 'strict', 'normal', 'permissive'
+  // _resolveRiskLevel
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {object} [options]
+   * @param {string} [options.riskLevel]
+   * @param {import('../types').Agent} [options.agent]
+   * @param {import('../types').User} [options.user]
+   * @param {string} [options.scopeID]
+   * @returns {Promise<'strict'|'normal'|'permissive'>}
+   */
   async _resolveRiskLevel(options = {}) {
     let resolved;
 
@@ -302,7 +326,6 @@ export class Permissions {
         let user     = options.user;
         let settings = (user && typeof user.getSettings === 'function') ? await user.getSettings() : null;
 
-        // If no user object in options, try to load from the session's participants
         if (!settings && options.scopeID) {
           try {
             let models = this._getModels();
@@ -342,14 +365,27 @@ export class Permissions {
   // Internal helpers
   // ---------------------------------------------------------------------------
 
+  /**
+   * @returns {import('../types').CoreModels}
+   */
   _getModels() {
     return this._context.getProperty('models');
   }
 
+  /**
+   * @returns {import('../types').Keystore|null}
+   */
   _getKeystore() {
     return this._context.getProperty('keystore');
   }
 
+  /**
+   * @param {import('../types').PermissionRule[]} rules
+   * @param {string} currentScope
+   * @param {string} currentScopeID
+   * @param {string[]} ancestorSessionIDs
+   * @returns {import('../types').PermissionRule[]}
+   */
   _filterByScopeWithAncestry(rules, currentScope, currentScopeID, ancestorSessionIDs) {
     if (!currentScope)
       return rules;
@@ -404,6 +440,10 @@ export class Permissions {
     });
   }
 
+  /**
+   * @param {import('../types').PermissionRule} rule
+   * @returns {Record<string, any>}
+   */
   _parseMetadata(rule) {
     if (!rule.metadata)
       return {};
@@ -419,6 +459,12 @@ export class Permissions {
     return rule.metadata;
   }
 
+  /**
+   * @param {import('../types').PermissionRule[]} rules
+   * @param {Buffer} userKey
+   * @param {string} publicKeyPEM
+   * @returns {import('../types').PermissionRule[]}
+   */
   _filterByFingerprint(rules, userKey, publicKeyPEM) {
     let keystore = this._getKeystore();
     if (!keystore)

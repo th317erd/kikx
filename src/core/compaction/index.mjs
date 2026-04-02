@@ -3,16 +3,16 @@
 import XID from 'xid-js';
 import { createTypedFrame } from '../../shared/frame-types/index.mjs';
 
+/**
+ * @param {string} prefix
+ * @returns {string}
+ */
 function generateID(prefix) {
   return `${prefix}${XID.next()}`;
 }
 
 // =============================================================================
 // Default Compaction Prompt
-// =============================================================================
-// Used when the plugin does not provide a custom prompt via getCompactionPrompt().
-// Directs the LLM to compress conversation history with a gradient approach:
-// older content is more aggressively compressed, recent content retains detail.
 // =============================================================================
 
 const DEFAULT_COMPACTION_PROMPT = `Your job is to compact/compress the following memories/conversation. It is \
@@ -33,28 +33,23 @@ confused. The context you need to compact/compress is as follows:`;
 // =============================================================================
 // CompactionRunner
 // =============================================================================
-// Core logic for rolling compaction of session history. Creates a compaction
-// frame as a lock, asks the LLM to compress conversation, and stores the
-// summary back into the compaction frame.
-//
-// CompactionRunner does NOT own persistence — callers (e.g., InteractionLoop)
-// are responsible for persisting frame changes to the database. This module
-// operates purely on in-memory FrameManager state and emits frames through it.
-// =============================================================================
 
 class CompactionRunner {
+  /**
+   * @param {object} [options]
+   * @param {Console} [options.logger]
+   */
   constructor(options = {}) {
+    /** @type {Console} */
     this._logger = options.logger || console;
   }
 
-  // ---------------------------------------------------------------------------
-  // canStartCompaction
-  // ---------------------------------------------------------------------------
-  // Returns true if no compaction is currently in progress for this session.
-  // Checks all frames in the FrameManager for type='compaction' with
-  // content.status='started'.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Returns true if no compaction is currently in progress for this session.
+   * @param {string} sessionID
+   * @param {object} frameManager
+   * @returns {Promise<boolean>}
+   */
   async canStartCompaction(sessionID, frameManager) {
     let frames = frameManager.toArray();
 
@@ -68,36 +63,28 @@ class CompactionRunner {
     return true;
   }
 
-  // ---------------------------------------------------------------------------
-  // runCompaction
-  // ---------------------------------------------------------------------------
-  // Main compaction entry point. Creates a compaction frame as a lock, builds
-  // conversation content from existing frames, calls the LLM for compression,
-  // and updates the compaction frame with the result.
-  //
-  // params:
-  //   agent         — the agent record (needs .id)
-  //   plugin        — the agent plugin instance (needs _createSingleTurn,
-  //                   getCompactionPrompt, getMaxCompactionTokens)
-  //   frameManager  — the session's FrameManager instance
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Main compaction entry point.
+   * @param {string} sessionID
+   * @param {object} params
+   * @param {import('../types').Agent} params.agent
+   * @param {import('../types').BasePluginClass} params.plugin
+   * @param {object} params.frameManager
+   * @returns {Promise<string|null>} Frame ID of the compaction frame, or null on failure
+   */
   async runCompaction(sessionID, params) {
     let { agent, plugin, frameManager } = params;
 
-    // 1. Race guard — double-check no active compaction
     let canStart = await this.canStartCompaction(sessionID, frameManager);
     if (!canStart) {
       this._logger.warn('[CompactionRunner] Compaction already in progress for session:', sessionID);
       return null;
     }
 
-    // 2. Gather all frames for this session (excluding compaction frames)
     let allFrames       = frameManager.toArray();
     let compactable     = allFrames.filter((f) => f.type !== 'Compaction' && !f.deleted);
     let framesCompacted = compactable.length;
 
-    // Edge case: nothing to compact
     if (framesCompacted === 0) {
       this._logger.info('[CompactionRunner] No frames to compact for session:', sessionID);
       return null;
@@ -106,10 +93,10 @@ class CompactionRunner {
     let firstFrameID = compactable[0].id;
     let lastFrameID  = compactable[compactable.length - 1].id;
 
-    // 3. Create compaction frame (THE LOCK)
     let frameID   = generateID('frm_');
     let startedAt = new Date().toISOString();
 
+    /** @type {import('../types').FrameData} */
     let compactionFrame = {
       id:         frameID,
       type:       'Compaction',
@@ -135,10 +122,8 @@ class CompactionRunner {
 
     frameManager.merge([compactionFrame], { authorType: 'system' });
 
-    // 4. Build conversation content from frames
     let conversationContent = this._buildConversationContent(compactable);
 
-    // 5. Get prompt and max tokens from plugin (with fallbacks)
     let prompt    = (typeof plugin.getCompactionPrompt === 'function')
       ? plugin.getCompactionPrompt({})
       : DEFAULT_COMPACTION_PROMPT;
@@ -147,10 +132,10 @@ class CompactionRunner {
       ? plugin.getMaxCompactionTokens({})
       : 8000;
 
-    // 6. Build messages array for the LLM
+    /** @type {import('../types').ChatMessage[]} */
     let messages = [{ role: 'user', content: prompt + '\n\n' + conversationContent }];
 
-    // 7. Call plugin._createSingleTurn
+    /** @type {string|null} */
     let responseText;
 
     try {
@@ -162,7 +147,6 @@ class CompactionRunner {
     } catch (error) {
       this._logger.error('[CompactionRunner] LLM call failed:', error.message);
 
-      // Mark compaction as abandoned
       this._updateCompactionFrame(frameManager, frameID, {
         status:     'abandoned',
         finishedAt: new Date().toISOString(),
@@ -171,7 +155,6 @@ class CompactionRunner {
       return null;
     }
 
-    // 8. Empty summary check — treat as failure
     if (!responseText || (typeof responseText === 'string' && responseText.trim() === '')) {
       this._logger.warn('[CompactionRunner] LLM returned empty summary for session:', sessionID);
 
@@ -183,7 +166,6 @@ class CompactionRunner {
       return null;
     }
 
-    // 9. Success — update compaction frame with summary
     let finishedAt = new Date().toISOString();
 
     this._updateCompactionFrame(frameManager, frameID, {
@@ -198,13 +180,11 @@ class CompactionRunner {
     return frameID;
   }
 
-  // ---------------------------------------------------------------------------
-  // cleanupStaleCompactions
-  // ---------------------------------------------------------------------------
-  // Marks any compaction frames stuck in 'started' status as 'abandoned'.
-  // Called on server startup to recover from crashes during active compaction.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Marks any compaction frames stuck in 'started' status as 'abandoned'.
+   * @param {object} frameManager
+   * @returns {Promise<number>} Count of cleaned compactions
+   */
   async cleanupStaleCompactions(frameManager) {
     let frames  = frameManager.toArray();
     let cleaned = 0;
@@ -228,25 +208,20 @@ class CompactionRunner {
     return cleaned;
   }
 
-  // ---------------------------------------------------------------------------
-  // _buildConversationContent
-  // ---------------------------------------------------------------------------
-  // Builds a readable text representation of frames for the LLM to compress.
-  // Excludes compaction frames themselves. Extracts plain text from frame
-  // content (text, html, or stringified content).
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Builds a readable text representation of frames for the LLM to compress.
+   * @param {import('../types').FrameData[]} frames
+   * @returns {string}
+   */
   _buildConversationContent(frames) {
     let parts = [];
 
     for (let i = 0; i < frames.length; i++) {
       let frame = frames[i];
 
-      // Skip compaction frames
       if (frame.type === 'Compaction')
         continue;
 
-      // Skip deleted frames
       if (frame.deleted)
         continue;
 
@@ -261,24 +236,23 @@ class CompactionRunner {
     return parts.join('\n---\n');
   }
 
-  // ---------------------------------------------------------------------------
-  // _extractText — pull readable text from frame content
-  // ---------------------------------------------------------------------------
-  // Delegates to frame type class toMessage() for type-aware text extraction.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Pull readable text from frame content.
+   * @param {import('../types').FrameData} frame
+   * @returns {string}
+   */
   _extractText(frame) {
     let typed = createTypedFrame(frame, null);
     return typed.toMessage();
   }
 
-  // ---------------------------------------------------------------------------
-  // _updateCompactionFrame — update a compaction frame's content via merge
-  // ---------------------------------------------------------------------------
-  // Uses FrameManager's target-based merge to deep-merge new content fields
-  // into the existing compaction frame.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Update a compaction frame's content via merge.
+   * @param {object} frameManager
+   * @param {string} frameID
+   * @param {Record<string, any>} contentUpdates
+   * @returns {void}
+   */
   _updateCompactionFrame(frameManager, frameID, contentUpdates) {
     let updateFrame = {
       id:      generateID('frm_'),

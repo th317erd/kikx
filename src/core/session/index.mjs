@@ -6,23 +6,27 @@ import { FrameManager } from '../../shared/frame-manager/frame-manager.mjs';
 // =============================================================================
 // Session Manager
 // =============================================================================
-// CRUD for sessions, participant binding, and FrameManager instances per session.
-// Models are obtained from context (never imported directly).
-// =============================================================================
 
 export class SessionManager {
+  /**
+   * @param {import('../types').CascadingContext} context
+   */
   constructor(context) {
     if (!context)
       throw new Error('SessionManager requires a CascadingContext');
 
+    /** @type {import('../types').CascadingContext} */
     this._context       = context;
+    /** @type {Map<string, FrameManager>} */
     this._frameManagers = new Map();
+    /** @type {Map<string, string[]>} */
     this._ancestryCache = new Map();
 
     let models = this._context.getProperty('models');
     if (!models)
       throw new Error('SessionManager requires models on the context');
 
+    /** @type {import('../types').CoreModels} */
     this._models = models;
   }
 
@@ -30,6 +34,21 @@ export class SessionManager {
   // Session CRUD
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} organizationID
+   * @param {object} [options]
+   * @param {string} [options.id]
+   * @param {string} [options.name]
+   * @param {boolean} [options.archived]
+   * @param {string} [options.type]
+   * @param {string} [options.dmAgentID]
+   * @param {string} [options.parentSessionID]
+   * @param {string} [options.linkedFrameID]
+   * @param {number|null} [options.maxInteractions]
+   * @param {Date|null} [options.endsAt]
+   * @param {string} [options.agentID]
+   * @returns {Promise<import('../types').Session>}
+   */
   async createSession(organizationID, options = {}) {
     if (!organizationID)
       throw new Error('organizationID is required');
@@ -81,6 +100,10 @@ export class SessionManager {
     return session;
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {Promise<import('../types').Session|null>}
+   */
   async getSession(sessionID) {
     if (!sessionID)
       return null;
@@ -90,6 +113,14 @@ export class SessionManager {
     return session || null;
   }
 
+  /**
+   * @param {string} organizationID
+   * @param {object} [options]
+   * @param {boolean} [options.includeArchived]
+   * @param {number} [options.limit]
+   * @param {number} [options.offset]
+   * @returns {Promise<import('../types').Session[]>}
+   */
   async getSessions(organizationID, options = {}) {
     if (!organizationID)
       throw new Error('organizationID is required');
@@ -114,6 +145,13 @@ export class SessionManager {
     return sessions;
   }
 
+  /**
+   * @param {string} sessionID
+   * @param {object} [updates]
+   * @param {string} [updates.name]
+   * @param {boolean} [updates.archived]
+   * @returns {Promise<import('../types').Session>}
+   */
   async updateSession(sessionID, updates = {}) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -132,6 +170,10 @@ export class SessionManager {
     return session;
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {Promise<boolean>}
+   */
   async deleteSession(sessionID) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -147,10 +189,18 @@ export class SessionManager {
     return true;
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {Promise<import('../types').Session>}
+   */
   async archiveSession(sessionID) {
     return this.updateSession(sessionID, { archived: true });
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {Promise<import('../types').Session>}
+   */
   async reviveSession(sessionID) {
     return this.updateSession(sessionID, { archived: false });
   }
@@ -159,6 +209,13 @@ export class SessionManager {
   // Participant Management
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} sessionID
+   * @param {string} agentID
+   * @param {object} [options]
+   * @param {string} [options.role]
+   * @returns {Promise<import('../types').Participant>}
+   */
   async addParticipant(sessionID, agentID, options = {}) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -166,31 +223,25 @@ export class SessionManager {
     if (!agentID)
       throw new Error('agentID is required');
 
-    // Validate session exists
     let session = await this.getSession(sessionID);
     if (!session)
       throw new Error(`Session not found: ${sessionID}`);
 
-    // Reject if archived
     if (session.archived)
       throw new Error('Session is archived');
 
-    // Validate agent exists
     let { Agent, Participant } = this._models;
     let agent = await Agent.where.id.EQ(agentID).first();
     if (!agent)
       throw new Error(`Agent not found: ${agentID}`);
 
-    // Idempotent: if already a participant, return existing
     let existing = await Participant.where.sessionID.EQ(sessionID).AND.agentID.EQ(agentID).first();
     if (existing)
       return existing;
 
-    // Create Participant record with optional role
     let role        = options.role || 'member';
     let participant = await Participant.create({ sessionID, agentID, role });
 
-    // Create participant-joined frame (visible to agents and users)
     let frameManager = this.getFrameManager(sessionID);
     let agentName    = agent.name || agentID;
     let frameData = {
@@ -207,7 +258,6 @@ export class SessionManager {
 
     frameManager.merge([frameData], { authorType: 'system' });
 
-    // Persist the frame
     let framePersistence = this._context.getProperty('framePersistence');
     if (framePersistence)
       await framePersistence.saveFrames(sessionID, [frameData]);
@@ -215,6 +265,11 @@ export class SessionManager {
     return participant;
   }
 
+  /**
+   * @param {string} sessionID
+   * @param {string} agentID
+   * @returns {Promise<boolean|null>}
+   */
   async removeParticipant(sessionID, agentID) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -222,22 +277,17 @@ export class SessionManager {
     if (!agentID)
       throw new Error('agentID is required');
 
-    // Find the participant
     let { Agent, Participant } = this._models;
     let participant = await Participant.where.sessionID.EQ(sessionID).AND.agentID.EQ(agentID).first();
 
-    // No-op if not a participant (return falsy)
     if (!participant)
       return null;
 
-    // Look up agent name for the frame
     let agent     = await Agent.where.id.EQ(agentID).first();
     let agentName = agent ? agent.name : agentID;
 
-    // Delete the participant record
     await participant.destroy();
 
-    // Create participant-left frame
     let frameManager = this.getFrameManager(sessionID);
     let frameData = {
       id:         `frm_${XID.next()}`,
@@ -253,7 +303,6 @@ export class SessionManager {
 
     frameManager.merge([frameData], { authorType: 'system' });
 
-    // Persist the frame
     let framePersistence = this._context.getProperty('framePersistence');
     if (framePersistence)
       await framePersistence.saveFrames(sessionID, [frameData]);
@@ -261,6 +310,10 @@ export class SessionManager {
     return true;
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {Promise<import('../types').Participant[]>}
+   */
   async getParticipants(sessionID) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -270,6 +323,12 @@ export class SessionManager {
     return participants;
   }
 
+  /**
+   * @param {string} participantID
+   * @param {object} [updates]
+   * @param {string} [updates.role]
+   * @returns {Promise<import('../types').Participant>}
+   */
   async updateParticipant(participantID, updates = {}) {
     if (!participantID)
       throw new Error('participantID is required');
@@ -287,6 +346,10 @@ export class SessionManager {
     return participant;
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {Promise<import('../types').Participant[]>}
+   */
   async getCoordinators(sessionID) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -306,6 +369,8 @@ export class SessionManager {
    *
    * Returns an empty array if the session does not exist.
    * Results are cached — ancestry is immutable once a session is created.
+   * @param {string} sessionID
+   * @returns {Promise<string[]>}
    */
   async getAncestryChain(sessionID) {
     if (!sessionID)
@@ -322,8 +387,6 @@ export class SessionManager {
     let maxDepth   = 100;
 
     while (currentID && chain.length < maxDepth) {
-      // Guard against circular references (shouldn't happen with FK constraints,
-      // but protects against corrupted data)
       if (visited.has(currentID))
         break;
 
@@ -336,7 +399,6 @@ export class SessionManager {
       currentID = session.parentSessionID || null;
     }
 
-    // Cache the result (ancestry is immutable — no TTL needed)
     if (chain.length > 0)
       this._ancestryCache.set(sessionID, chain);
 
@@ -348,6 +410,8 @@ export class SessionManager {
    * at least one frame with authorType === 'user'.
    *
    * Returns null if no user found in any ancestor or if session doesn't exist.
+   * @param {string} sessionID
+   * @returns {Promise<string|null>}
    */
   async getNearestUserAncestor(sessionID) {
     if (!sessionID)
@@ -375,15 +439,15 @@ export class SessionManager {
   /**
    * Clears the ancestry cache entry for a session.
    * Also clears any cached chains that include this sessionID.
+   * @param {string} sessionID
+   * @returns {void}
    */
   clearAncestryCache(sessionID) {
     if (!sessionID)
       return;
 
-    // Direct cache entry
     this._ancestryCache.delete(sessionID);
 
-    // Also clear any entries whose chain includes this sessionID
     for (let [cachedSessionID, chain] of this._ancestryCache) {
       if (chain.includes(sessionID))
         this._ancestryCache.delete(cachedSessionID);
@@ -394,6 +458,12 @@ export class SessionManager {
   // FrameManager Integration
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} sessionID
+   * @param {object} [options]
+   * @param {Function} [options.commitValidator]
+   * @returns {FrameManager}
+   */
   getFrameManager(sessionID, options = {}) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -409,7 +479,6 @@ export class SessionManager {
 
     frameManager = new FrameManager(managerOptions);
 
-    // Auto-connect FrameRouter if available on context
     let frameRouter = this._context.getProperty('frameRouter');
     if (frameRouter)
       frameRouter.connectTo(frameManager, { id: sessionID });
@@ -418,6 +487,10 @@ export class SessionManager {
     return frameManager;
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {boolean}
+   */
   destroyFrameManager(sessionID) {
     if (!sessionID)
       throw new Error('sessionID is required');

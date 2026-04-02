@@ -5,21 +5,17 @@ import { Permissions } from './permissions-base.mjs';
 // =============================================================================
 // PermissionService
 // =============================================================================
-// High-level permission service wrapping Permissions.evaluate() + Keystore signing.
-// Provides a unified interface for:
-//   - Checking permissions (with optional signing on approval)
-//   - Creating standing approvals (session-scoped allow rules)
-//   - Signing and verifying approval envelopes
-//
-// Available on CascadingContext as 'permissionService'. Used by:
-//   - BasePluginClass.checkPermission() — routing plugins
-//   - InteractionLoop (via params.checkPermission closure)
-//   - InteractionController (replaces inline permission logic)
-// =============================================================================
 
 export class PermissionService {
+  /**
+   * @param {object} [options]
+   * @param {import('../types').CascadingContext} options.context
+   * @param {import('../types').Keystore} options.keystore
+   */
   constructor(options = {}) {
+    /** @type {import('../types').CascadingContext} */
     this._context          = options.context;
+    /** @type {import('../types').Keystore} */
     this._keystore         = options.keystore;
 
     if (!this._context)
@@ -28,14 +24,13 @@ export class PermissionService {
     if (!this._keystore)
       throw new Error('PermissionService requires keystore');
 
-    // Lazy-initialized Permissions instance for rule evaluation
+    /** @type {Permissions|null} */
     this._permissions = null;
   }
 
-  // ---------------------------------------------------------------------------
-  // _getPermissions — lazy Permissions instance
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @returns {Permissions}
+   */
   _getPermissions() {
     if (!this._permissions)
       this._permissions = new Permissions(this._context);
@@ -46,13 +41,19 @@ export class PermissionService {
   // ---------------------------------------------------------------------------
   // check — Evaluate permission and optionally sign approval
   // ---------------------------------------------------------------------------
-  // Returns:
-  //   { decision: 'allow', signature }   — tool call is approved
-  //   { decision: 'needs-approval' }     — manual approval required
-  //
-  // Throws PermissionDeniedError for explicit deny rules.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @param {string} featureName
+   * @param {any} args
+   * @param {object} [options]
+   * @param {string} [options.organizationID]
+   * @param {string} [options.sessionID]
+   * @param {any} [options.toolClass]
+   * @param {object} [options.pluginRegistry]
+   * @param {string} [options.privateKeyPEM]
+   * @param {import('../types').Agent} [options.agent]
+   * @param {import('../types').User} [options.user]
+   * @returns {Promise<{ decision: 'allow', signature: string } | { decision: 'needs-approval' }>}
+   */
   async check(featureName, args, options = {}) {
     let { organizationID, sessionID, toolClass, pluginRegistry, privateKeyPEM, agent, user } = options;
 
@@ -81,18 +82,17 @@ export class PermissionService {
   // ---------------------------------------------------------------------------
   // createStandingApproval — Session-scoped allow rule
   // ---------------------------------------------------------------------------
-  // Creates a signed session-scoped allow rule that auto-approves matching
-  // tool calls for the duration of the session (or until expiry).
-  //
-  // options:
-  //   organizationID — required
-  //   sessionID      — required (scope)
-  //   featureName    — tool/feature name (or '*' for all)
-  //   createdBy      — user ID who created the approval
-  //   expiresAt      — optional expiry Date
-  //   priority       — optional rule priority (default: 100, high priority)
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @param {object} [options]
+   * @param {string} options.organizationID
+   * @param {string} options.sessionID
+   * @param {string} [options.featureName]
+   * @param {string} [options.createdBy]
+   * @param {Date} [options.expiresAt]
+   * @param {number} [options.priority]
+   * @param {string} [options.privateKeyPEM]
+   * @returns {Promise<import('../types').PermissionRule>}
+   */
   async createStandingApproval(options = {}) {
     let { organizationID, sessionID, featureName, createdBy, expiresAt, priority, privateKeyPEM } = options;
 
@@ -127,6 +127,13 @@ export class PermissionService {
   // revokeStandingApproval — Remove standing approval for a session
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} sessionID
+   * @param {object} [options]
+   * @param {string} options.organizationID
+   * @param {string} [options.featureName]
+   * @returns {Promise<number>} Count of revoked rules
+   */
   async revokeStandingApproval(sessionID, options = {}) {
     let { organizationID, featureName } = options;
 
@@ -165,10 +172,29 @@ export class PermissionService {
   // signApproval / verifyApproval — Envelope signing
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} action
+   * @param {string|null} frameID
+   * @param {string} toolName
+   * @param {any} args
+   * @param {string|null} sessionID
+   * @param {string} [privateKeyPEM]
+   * @returns {string}
+   */
   signApproval(action, frameID, toolName, args, sessionID, privateKeyPEM) {
     return this._signApproval(action, frameID, toolName, args, sessionID || null, privateKeyPEM);
   }
 
+  /**
+   * @param {string} action
+   * @param {string|null} frameID
+   * @param {string} toolName
+   * @param {any} args
+   * @param {string} signature
+   * @param {string|null} sessionID
+   * @param {string} [publicKeyPEM]
+   * @returns {boolean}
+   */
   verifyApproval(action, frameID, toolName, args, signature, sessionID, publicKeyPEM) {
     let blob = this._buildApprovalBlob(action, frameID, toolName, args, sessionID);
     try {
@@ -186,6 +212,15 @@ export class PermissionService {
   // Internal
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} action
+   * @param {string|null} frameID
+   * @param {string} toolName
+   * @param {any} args
+   * @param {string|null} sessionID
+   * @param {string} [privateKeyPEM]
+   * @returns {string}
+   */
   _signApproval(action, frameID, toolName, args, sessionID, privateKeyPEM) {
     let blob = this._buildApprovalBlob(action, frameID, toolName, args, sessionID);
     if (privateKeyPEM)
@@ -195,6 +230,14 @@ export class PermissionService {
     return this._keystore.sign(blob);
   }
 
+  /**
+   * @param {string} action
+   * @param {string|null} frameID
+   * @param {string} toolName
+   * @param {any} args
+   * @param {string|null} sessionID
+   * @returns {{ action: string, frameID: string|null, toolName: string|null, arguments: any, sessionID: string|null }}
+   */
   _buildApprovalBlob(action, frameID, toolName, args, sessionID) {
     return {
       action:    action || 'approve',

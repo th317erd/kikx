@@ -15,14 +15,15 @@
 // failed.
 // =============================================================================
 
-// Sign frame content for a given author.
-//
-// keystore     — Keystore instance (must have signWithPrivateKey, systemSign)
-// content      — frame content (object or string; canonicalized by keystore)
-// authorType   — 'agent' | 'user' | 'system' | null
-// privateKey   — pre-decrypted PEM private key for agent/user (null for system)
-//
-// Returns hex signature string, or null if signing is not possible.
+/**
+ * Sign frame content for a given author.
+ *
+ * @param {import('../types').Keystore|null} keystore
+ * @param {Record<string, any>|string|null} content
+ * @param {'agent'|'user'|'system'|null} authorType
+ * @param {string|null} privateKey - Pre-decrypted PEM private key for agent/user (null for system)
+ * @returns {string|null} Hex signature string, or null if signing is not possible
+ */
 export function signFrameContent(keystore, content, authorType, privateKey) {
   if (!keystore)
     return null;
@@ -44,13 +45,14 @@ export function signFrameContent(keystore, content, authorType, privateKey) {
   }
 }
 
-// Decrypt an agent's private key from its encrypted envelope.
-//
-// keystore           — Keystore instance
-// encryptedPrivateKey — JSON string or parsed envelope { ciphertext, iv, authTag }
-// agentID            — agent ID used as SMK derivation context
-//
-// Returns PEM string, or null if decryption fails.
+/**
+ * Decrypt an agent's private key from its encrypted envelope.
+ *
+ * @param {import('../types').Keystore|null} keystore
+ * @param {string|import('../types').EncryptedEnvelope|null} encryptedPrivateKey - JSON string or parsed envelope
+ * @param {string|null} agentID - Agent ID used as SMK derivation context
+ * @returns {string|null} PEM string, or null if decryption fails
+ */
 export function decryptAgentPrivateKey(keystore, encryptedPrivateKey, agentID) {
   if (!keystore || !encryptedPrivateKey || !agentID)
     return null;

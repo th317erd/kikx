@@ -3,13 +3,6 @@
 // =============================================================================
 // PrimerAssembler
 // =============================================================================
-// Aggregates operational instructions from core, plugins, and agent config,
-// then injects them with the user's first message so the agent knows HOW to
-// interact with Kikx (HTML output, tool calls, hml-prompts, help system).
-//
-// Design: "Small, dynamic — 'HOW to be' not 'HERE is everything'."
-// See server-plan.yaml Section 10, primer_system.
-// =============================================================================
 
 const CORE_INSTRUCTIONS = `You are an AI assistant running inside Kikx.
 
@@ -49,10 +42,22 @@ CONVERSATION AWARENESS:
 - CONVERSATION TERMINATION: After the user's question has been answered, the conversation should END. Do not keep talking to other agents. Do not ask follow-up questions to other agents. Do not narrate what happened. Once the task is done, respond with [NOT RESPONDING] to let the conversation die naturally. The user will speak again when they want something.`;
 
 export class PrimerAssembler {
+  /**
+   * @param {import('../types').CascadingContext} context
+   */
   constructor(context) {
+    /** @type {import('../types').CascadingContext} */
     this._context = context;
   }
 
+  /**
+   * Assemble the full primer text for an agent.
+   * @param {import('../types').Agent} agent
+   * @param {object} [options]
+   * @param {string} [options.sessionID]
+   * @param {Array<{ agentID: string, agentName?: string }>} [options.participants]
+   * @returns {Promise<string>}
+   */
   async assemble(agent, options = {}) {
     let sections = [];
 
@@ -106,8 +111,6 @@ export class PrimerAssembler {
       sections.push(agent.dmSummary);
 
     // 6. Behaviors section
-    // Skip behaviors when the agent is in its own DM session — DMs are for
-    // configuring the agent, not for the agent to act on its behaviors.
     let isDMSession      = await this._isDMForAgent(agent, options.sessionID);
     let agentHasBehaviors = !isDMSession && agent && typeof agent.hasBehaviors === 'function' && await agent.hasBehaviors();
 
@@ -138,7 +141,12 @@ export class PrimerAssembler {
     return `--- START OF INSTRUCTIONS ---\n${body}\n--- END OF INSTRUCTIONS ---`;
   }
 
-  // Check if the given sessionID is a DM session for this agent
+  /**
+   * Check if the given sessionID is a DM session for this agent.
+   * @param {import('../types').Agent|null} agent
+   * @param {string} [sessionID]
+   * @returns {Promise<boolean>}
+   */
   async _isDMForAgent(agent, sessionID) {
     if (!agent || !sessionID)
       return false;
@@ -151,6 +159,12 @@ export class PrimerAssembler {
     return session && session.dmAgentID === agent.id;
   }
 
+  /**
+   * Wrap primer around a user message.
+   * @param {string|null} primer
+   * @param {string|null} userMessage
+   * @returns {string}
+   */
   wrapMessage(primer, userMessage) {
     if (!primer)
       return userMessage || '';

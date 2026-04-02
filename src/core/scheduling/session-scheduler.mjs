@@ -17,10 +17,17 @@ import { EventEmitter } from 'node:events';
 // =============================================================================
 
 export class SessionScheduler extends EventEmitter {
+  /**
+   * @param {object} [options]
+   * @param {import('../session/index.mjs').SessionManager} options.sessionManager
+   * @param {object} options.interactionLoop
+   */
   constructor(options = {}) {
     super();
 
+    /** @type {import('../session/index.mjs').SessionManager} */
     this._sessionManager  = options.sessionManager;
+    /** @type {object} */
     this._interactionLoop = options.interactionLoop;
 
     if (!this._sessionManager)
@@ -29,18 +36,20 @@ export class SessionScheduler extends EventEmitter {
     if (!this._interactionLoop)
       throw new Error('SessionScheduler requires interactionLoop');
 
-    // agentID → true while agent is running
+    /** @type {Map<string, boolean>} agentID → true while agent is running */
     this._activeAgents = new Map();
 
-    // sessionID → { keystore, umk, userID } for secondary agent resolution
+    /** @type {Map<string, import('../types').ResolveContext>} sessionID → resolve context */
     this._resolveContexts = new Map();
 
-    // sessionID → [{ agentID }] — agents queued to trigger
+    /** @type {Map<string, Array<{ agentID: string }>>} sessionID → queued triggers */
     this._pendingTriggers = new Map();
 
-    // References set by connectToInteractionLoop()
+    /** @type {AgentResolver|null} */
     this._agentResolver = null;
+    /** @type {Function|null} */
     this._onInteractionEnd = null;
+    /** @type {Function|null} */
     this._onScheduleCancel = null;
   }
 
@@ -48,14 +57,27 @@ export class SessionScheduler extends EventEmitter {
   // Resolve Context — stores decryption context for secondary agents
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} sessionID
+   * @param {import('../types').ResolveContext} context
+   * @returns {void}
+   */
   setResolveContext(sessionID, context) {
     this._resolveContexts.set(sessionID, context);
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {import('../types').ResolveContext|null}
+   */
   getResolveContext(sessionID) {
     return this._resolveContexts.get(sessionID) || null;
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {void}
+   */
   clearResolveContext(sessionID) {
     this._resolveContexts.delete(sessionID);
   }
@@ -63,12 +85,14 @@ export class SessionScheduler extends EventEmitter {
   // ---------------------------------------------------------------------------
   // onCommit
   // ---------------------------------------------------------------------------
-  // Called after a commit is created on a session's FrameManager.
-  // Determines which agents need to be triggered.
-  //
-  // Returns: Array of { agentID, newFrames } that were scheduled.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Called after a commit is created on a session's FrameManager.
+   * Determines which agents need to be triggered.
+   *
+   * @param {string} sessionID
+   * @param {import('../types').Commit} commit
+   * @returns {Promise<Array<{ agentID: string, newFrames: import('../types').FrameData[] }>>}
+   */
   async onCommit(sessionID, commit) {
     if (!sessionID || !commit)
       return [];
@@ -155,10 +179,13 @@ export class SessionScheduler extends EventEmitter {
   // ---------------------------------------------------------------------------
   // _handleStopFrames
   // ---------------------------------------------------------------------------
-  // Processes stop frames from a commit. If targetAgentID is set, cancels that
-  // specific agent. If null, cancels ALL active agents in the session.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Processes stop frames from a commit. If targetAgentID is set, cancels that
+   * specific agent. If null, cancels ALL active agents in the session.
+   * @param {string} sessionID
+   * @param {import('../types').FrameData[]} stopFrames
+   * @returns {Promise<void>}
+   */
   async _handleStopFrames(sessionID, stopFrames) {
     for (let frame of stopFrames) {
       let targetAgentID = frame.content && frame.content.targetAgentID;
@@ -179,6 +206,11 @@ export class SessionScheduler extends EventEmitter {
   // _cancelAgent
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} sessionID
+   * @param {string} agentID
+   * @returns {Promise<void>}
+   */
   async _cancelAgent(sessionID, agentID) {
     let activeKey = `${sessionID}:${agentID}`;
 
@@ -192,9 +224,13 @@ export class SessionScheduler extends EventEmitter {
   // ---------------------------------------------------------------------------
   // markComplete / markIdle
   // ---------------------------------------------------------------------------
-  // Called when an agent's interaction completes. Clears the active flag.
-  // ---------------------------------------------------------------------------
 
+  /**
+   * Called when an agent's interaction completes. Clears the active flag.
+   * @param {string} sessionID
+   * @param {string} agentID
+   * @returns {void}
+   */
   markComplete(sessionID, agentID) {
     let activeKey = `${sessionID}:${agentID}`;
     this._activeAgents.delete(activeKey);
@@ -205,14 +241,28 @@ export class SessionScheduler extends EventEmitter {
     // no more pending triggers remain.
   }
 
+  /**
+   * @param {string} sessionID
+   * @param {string} agentID
+   * @returns {void}
+   */
   markActive(sessionID, agentID) {
     this._activeAgents.set(`${sessionID}:${agentID}`, true);
   }
 
+  /**
+   * @param {string} sessionID
+   * @param {string} agentID
+   * @returns {boolean}
+   */
   isAgentActive(sessionID, agentID) {
     return !!this._activeAgents.get(`${sessionID}:${agentID}`);
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {string[]}
+   */
   getActiveAgents(sessionID) {
     let agents = [];
 
@@ -227,10 +277,12 @@ export class SessionScheduler extends EventEmitter {
   // ---------------------------------------------------------------------------
   // Pending Trigger Queue
   // ---------------------------------------------------------------------------
-  // Replaces SchedulerOrchestrator._pendingTriggers. Stores agents queued
-  // to trigger after the current interaction completes.
-  // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} sessionID
+   * @param {string} agentID
+   * @returns {void}
+   */
   queueTrigger(sessionID, agentID) {
     if (!this._pendingTriggers.has(sessionID))
       this._pendingTriggers.set(sessionID, []);
@@ -238,6 +290,10 @@ export class SessionScheduler extends EventEmitter {
     this._pendingTriggers.get(sessionID).push({ agentID });
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {{ agentID: string }|null}
+   */
   dequeueTrigger(sessionID) {
     let queue = this._pendingTriggers.get(sessionID);
     if (!queue || queue.length === 0) {
@@ -253,15 +309,27 @@ export class SessionScheduler extends EventEmitter {
     return entry;
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {void}
+   */
   clearTriggers(sessionID) {
     this._pendingTriggers.delete(sessionID);
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {boolean}
+   */
   hasPendingTriggers(sessionID) {
     let queue = this._pendingTriggers.get(sessionID);
     return !!queue && queue.length > 0;
   }
 
+  /**
+   * @param {string} sessionID
+   * @returns {Array<{ agentID: string }>}
+   */
   getPendingTriggers(sessionID) {
     return this._pendingTriggers.get(sessionID) || [];
   }
@@ -269,11 +337,13 @@ export class SessionScheduler extends EventEmitter {
   // ---------------------------------------------------------------------------
   // connectToInteractionLoop
   // ---------------------------------------------------------------------------
-  // Replaces SchedulerOrchestrator's interaction:end handling. Subscribes to
-  // InteractionLoop events and triggers the next queued agent when an
-  // interaction completes.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Subscribes to InteractionLoop events and triggers the next queued agent
+   * when an interaction completes.
+   * @param {object} interactionLoop
+   * @param {AgentResolver} agentResolver
+   * @returns {void}
+   */
   connectToInteractionLoop(interactionLoop, agentResolver) {
     this._agentResolver = agentResolver;
 
@@ -296,6 +366,9 @@ export class SessionScheduler extends EventEmitter {
     this.on('schedule:cancel', this._onScheduleCancel);
   }
 
+  /**
+   * @returns {void}
+   */
   disconnectFromInteractionLoop() {
     if (this._onInteractionEnd) {
       this._interactionLoop.removeListener('interaction:end', this._onInteractionEnd);
@@ -314,6 +387,10 @@ export class SessionScheduler extends EventEmitter {
   // _triggerNext — fire ALL available agents concurrently
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} sessionID
+   * @returns {Promise<void>}
+   */
   async _triggerNext(sessionID) {
     let toTrigger = [];
     let deferred  = [];
@@ -351,6 +428,11 @@ export class SessionScheduler extends EventEmitter {
   // _triggerAgent — resolve and start interaction for a secondary agent
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} sessionID
+   * @param {string} agentID
+   * @returns {Promise<void>}
+   */
   async _triggerAgent(sessionID, agentID) {
     if (!this._agentResolver)
       throw new Error('SessionScheduler not connected to InteractionLoop');

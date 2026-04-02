@@ -10,8 +10,12 @@ import crypto from 'node:crypto';
 // attacks across keys, scopes, and owners.
 // =============================================================================
 
-// Compute a fingerprint of an Ed25519 public key PEM.
-// Returns first 32 hex characters of SHA-256 hash (128 bits).
+/**
+ * Compute a fingerprint of an Ed25519 public key PEM.
+ * Returns first 32 hex characters of SHA-256 hash (128 bits).
+ * @param {string|null} publicKeyPEM
+ * @returns {string|null}
+ */
 export function computeKeyFingerprint(publicKeyPEM) {
   if (!publicKeyPEM)
     return null;
@@ -21,17 +25,37 @@ export function computeKeyFingerprint(publicKeyPEM) {
   return hash.substring(0, 32);
 }
 
-// Build a deterministic signing payload from the composite key + value.
-// The payload is a pipe-delimited string of all components to prevent
-// cross-key, cross-scope, and cross-owner replay attacks.
+/**
+ * Build a deterministic signing payload from the composite key + value.
+ * The payload is a pipe-delimited string of all components to prevent
+ * cross-key, cross-scope, and cross-owner replay attacks.
+ * @param {string} ownerType
+ * @param {string} ownerID
+ * @param {string} namespace
+ * @param {string} scopeID
+ * @param {string} key
+ * @param {string} jsonValue
+ * @returns {string}
+ */
 export function buildSigningPayload(ownerType, ownerID, namespace, scopeID, key, jsonValue) {
   return `${ownerType}|${ownerID}|${namespace}|${scopeID}|${key}|${jsonValue}`;
 }
 
-// Sign a ValueStore entry.
-//
-// Returns { signature, fingerprint } on success, or null if signing fails.
-// Never throws — callers should treat null as "unsigned".
+/**
+ * Sign a ValueStore entry.
+ * Returns { signature, fingerprint } on success, or null if signing fails.
+ * Never throws — callers should treat null as "unsigned".
+ * @param {import('../types').Keystore|null} keystore
+ * @param {string|null} privateKeyPEM
+ * @param {string|null} publicKeyPEM
+ * @param {string} ownerType
+ * @param {string} ownerID
+ * @param {string} namespace
+ * @param {string} scopeID
+ * @param {string} key
+ * @param {string} jsonValue
+ * @returns {{ signature: string, fingerprint: string|null }|null}
+ */
 export function signValue(keystore, privateKeyPEM, publicKeyPEM, ownerType, ownerID, namespace, scopeID, key, jsonValue) {
   if (!keystore || !privateKeyPEM || !publicKeyPEM)
     return null;
@@ -47,10 +71,21 @@ export function signValue(keystore, privateKeyPEM, publicKeyPEM, ownerType, owne
   }
 }
 
-// Verify a ValueStore entry's signature.
-//
-// Returns true if the signature is valid, false otherwise.
-// Never throws — callers should treat exceptions as verification failure.
+/**
+ * Verify a ValueStore entry's signature.
+ * Returns true if the signature is valid, false otherwise.
+ * Never throws — callers should treat exceptions as verification failure.
+ * @param {import('../types').Keystore|null} keystore
+ * @param {string|null} publicKeyPEM
+ * @param {string} ownerType
+ * @param {string} ownerID
+ * @param {string} namespace
+ * @param {string} scopeID
+ * @param {string} key
+ * @param {string} jsonValue
+ * @param {string|null} signatureHex
+ * @returns {boolean}
+ */
 export function verifyValue(keystore, publicKeyPEM, ownerType, ownerID, namespace, scopeID, key, jsonValue, signatureHex) {
   if (!keystore || !publicKeyPEM || !signatureHex)
     return false;

@@ -3,69 +3,72 @@
 // =============================================================================
 // SolrService — Thin HTTP wrapper around Solr REST API
 // =============================================================================
-// Uses Node 24 built-in fetch(). No external dependencies.
-// Accessed via context.getProperty('solrService').
-//
-// Core methods:
-//   ping()              — health check, returns true/false
-//   getCoreStatus()     — admin core status info
-//   search()            — full-text search with eDisMax, filtering, pagination
-//   indexDocuments()     — batch index (single doc or array)
-//   deleteDocuments()    — delete by ID (single or array)
-//   deleteByQuery()     — delete by Solr query
-//   commit()            — force hard commit
-//   stream()            — async generator for cursor-based pagination
-// =============================================================================
 
 const DEFAULT_HOST    = 'http://localhost:8983';
 const DEFAULT_CORE    = 'kikx';
 const DEFAULT_TIMEOUT = 15000;
 
-// Status codes worth retrying (used by callers, not internally)
+/** @type {Set<number>} Status codes worth retrying */
 export const RETRYABLE_STATUS_CODES = new Set([ 408, 429, 503, 504 ]);
 
 export class SolrError extends Error {
+  /**
+   * @param {string} message
+   * @param {number} status
+   * @param {any} body
+   */
   constructor(message, status, body) {
     super(message);
 
+    /** @type {string} */
     this.name   = 'SolrError';
+    /** @type {number} */
     this.status = status;
+    /** @type {any} */
     this.body   = body;
   }
 
+  /**
+   * @returns {boolean}
+   */
   isRetryable() {
     return RETRYABLE_STATUS_CODES.has(this.status);
   }
 }
 
 export class SolrService {
+  /**
+   * @param {object} [options]
+   * @param {import('../types').CascadingContext} [options.context]
+   * @param {string} [options.host]
+   * @param {string} [options.core]
+   * @param {number} [options.timeout]
+   */
   constructor({ context, host, core, timeout } = {}) {
+    /** @type {import('../types').CascadingContext|null} */
     this._context = context || null;
+    /** @type {string} */
     this._host    = host || DEFAULT_HOST;
+    /** @type {string} */
     this._core    = core || DEFAULT_CORE;
+    /** @type {number} */
     this._timeout = timeout || DEFAULT_TIMEOUT;
   }
 
-  // ---------------------------------------------------------------------------
-  // Configuration accessors
-  // ---------------------------------------------------------------------------
+  /** @returns {string} */
+  getHost() { return this._host; }
 
-  getHost() {
-    return this._host;
-  }
+  /** @returns {string} */
+  getCore() { return this._core; }
 
-  getCore() {
-    return this._core;
-  }
+  /** @returns {number} */
+  getTimeout() { return this._timeout; }
 
-  getTimeout() {
-    return this._timeout;
-  }
-
-  // ---------------------------------------------------------------------------
-  // URL construction
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @param {string} endpoint
+   * @param {Record<string, any>} [params]
+   * @returns {string}
+   */
   _buildURL(endpoint, params) {
     let url = new URL(`${this._host}/solr/${this._core}${endpoint}`);
 
@@ -93,6 +96,11 @@ export class SolrService {
     return url.toString();
   }
 
+  /**
+   * @param {string} endpoint
+   * @param {Record<string, any>} [params]
+   * @returns {string}
+   */
   _buildAdminURL(endpoint, params) {
     let url = new URL(`${this._host}/solr${endpoint}`);
 
@@ -113,10 +121,16 @@ export class SolrService {
     return url.toString();
   }
 
-  // ---------------------------------------------------------------------------
-  // Low-level request
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @param {string} method
+   * @param {string} endpoint
+   * @param {object} [options]
+   * @param {any} [options.body]
+   * @param {Record<string, any>} [options.params]
+   * @param {number} [options.timeout]
+   * @param {boolean} [options.admin]
+   * @returns {Promise<any>}
+   */
   async _request(method, endpoint, { body, params, timeout, admin } = {}) {
     let url = (admin)
       ? this._buildAdminURL(endpoint, params)
@@ -145,7 +159,6 @@ export class SolrService {
       throw new SolrError(`Solr connection failed: ${error.message}`, 0, null);
     }
 
-    // Read body as text first so we can parse or report raw content
     let responseText;
 
     try {
@@ -166,7 +179,6 @@ export class SolrService {
       );
     }
 
-    // HTTP-level error
     if (!response.ok) {
       throw new SolrError(
         responseBody?.error?.msg || `Solr HTTP ${response.status}`,
@@ -175,7 +187,6 @@ export class SolrService {
       );
     }
 
-    // Solr-level error (HTTP 200 but status != 0)
     if (responseBody.responseHeader && responseBody.responseHeader.status !== 0) {
       throw new SolrError(
         responseBody?.error?.msg || 'Solr returned non-zero status',
@@ -187,10 +198,9 @@ export class SolrService {
     return responseBody;
   }
 
-  // ---------------------------------------------------------------------------
-  // Health & Admin
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @returns {Promise<boolean>}
+   */
   async ping() {
     try {
       await this._request('GET', '/admin/ping');
@@ -200,6 +210,9 @@ export class SolrService {
     }
   }
 
+  /**
+   * @returns {Promise<any>}
+   */
   async getCoreStatus() {
     return this._request('GET', '/admin/cores', {
       params: { action: 'STATUS', core: this._core },
@@ -207,10 +220,20 @@ export class SolrService {
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Search
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @param {string} query
+   * @param {object} [options]
+   * @param {string|string[]} [options.filterQueries]
+   * @param {string|string[]} [options.fields]
+   * @param {string} [options.sort]
+   * @param {number} [options.rows]
+   * @param {number} [options.start]
+   * @param {string} [options.defType]
+   * @param {string} [options.queryFields]
+   * @param {object} [options.highlight]
+   * @param {string} [options.cursorMark]
+   * @returns {Promise<any>}
+   */
   async search(query, options = {}) {
     let {
       filterQueries,
@@ -230,7 +253,6 @@ export class SolrService {
       rows,
     };
 
-    // Cursor pagination is mutually exclusive with start offset
     if (cursorMark) {
       params.cursorMark = cursorMark;
 
@@ -262,10 +284,12 @@ export class SolrService {
     return this._request('GET', '/select', { params });
   }
 
-  // ---------------------------------------------------------------------------
-  // Indexing
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @param {any|any[]} documents
+   * @param {object} [options]
+   * @param {number} [options.commitWithin]
+   * @returns {Promise<any|null>}
+   */
   async indexDocuments(documents, options = {}) {
     if (!Array.isArray(documents))
       documents = [ documents ];
@@ -281,10 +305,12 @@ export class SolrService {
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Deletion
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @param {string|string[]} identifiers
+   * @param {object} [options]
+   * @param {boolean} [options.commit]
+   * @returns {Promise<any|null>}
+   */
   async deleteDocuments(identifiers, options = {}) {
     if (!Array.isArray(identifiers))
       identifiers = [ identifiers ];
@@ -301,6 +327,12 @@ export class SolrService {
     return this._request('POST', '/update', { body });
   }
 
+  /**
+   * @param {string} query
+   * @param {object} [options]
+   * @param {boolean} [options.commit]
+   * @returns {Promise<any>}
+   */
   async deleteByQuery(query, options = {}) {
     let { commit = false } = options;
     let body = { 'delete': { query } };
@@ -311,28 +343,24 @@ export class SolrService {
     return this._request('POST', '/update', { body });
   }
 
-  // ---------------------------------------------------------------------------
-  // Commit
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @returns {Promise<any>}
+   */
   async commit() {
     return this._request('POST', '/update', {
       body: { commit: {} },
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Cursor-based streaming (async generator)
-  // ---------------------------------------------------------------------------
-  // Yields individual documents, transparently paginating via cursorMark.
-  // Use for large exports or full-index scans without OOM risk.
-  //
-  // Usage:
-  //   for await (let doc of solrService.stream('*:*', { rows: 500 })) {
-  //     console.log(doc.id);
-  //   }
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Cursor-based streaming async generator.
+   * Yields individual documents, transparently paginating via cursorMark.
+   * @param {string} query
+   * @param {object} [options]
+   * @param {string} [options.sort]
+   * @param {number} [options.rows]
+   * @returns {AsyncGenerator<any, void, undefined>}
+   */
   async *stream(query, options = {}) {
     let { sort = 'id asc', rows = 500, ...rest } = options;
     let cursorMark = '*';
@@ -354,7 +382,6 @@ export class SolrService {
       for (let i = 0; i < docs.length; i++)
         yield docs[i];
 
-      // When nextCursorMark equals the current one, we've exhausted results
       if (nextCursor === cursorMark)
         break;
 

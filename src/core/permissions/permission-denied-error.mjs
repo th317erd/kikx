@@ -9,11 +9,18 @@
 // =============================================================================
 
 export class PermissionDeniedError extends Error {
+  /**
+   * @param {string} featureName
+   * @param {string} [reason]
+   */
   constructor(featureName, reason) {
     super(`Permission denied for "${featureName}": ${reason || 'explicit deny'}`);
 
+    /** @type {string} */
     this.name        = 'PermissionDeniedError';
+    /** @type {string} */
     this.featureName = featureName;
+    /** @type {string} */
     this.reason      = reason || 'explicit deny';
   }
 }

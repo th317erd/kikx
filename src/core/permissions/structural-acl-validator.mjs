@@ -3,16 +3,8 @@
 // =============================================================================
 // Structural ACL Commit Validator
 // =============================================================================
-// Pure-function module defining the security boundary for FrameManager commits.
-// Validates that actors can only create/modify frames according to their role.
-//
-// Rules:
-//   1. Type restrictions per authorType
-//   2. Ownership — can only modify frames authored by self (system can modify any)
-//   3. Immutable fields — type, authorType, authorID never changeable after creation
-// =============================================================================
 
-// Frame types each authorType is allowed to CREATE
+/** @type {Record<string, Set<string>|null>} Frame types each authorType is allowed to CREATE */
 const ALLOWED_TYPES = {
   system: null, // null = any type
   user:   new Set(['UserMessage', 'hml-prompt-value']),
@@ -20,13 +12,27 @@ const ALLOWED_TYPES = {
   tool:   new Set(['ToolResult', 'ToolError']),
 };
 
-// Fields that can never change after a frame is created
+/** @type {Set<string>} Fields that can never change after a frame is created */
 const IMMUTABLE_FIELDS = new Set(['type', 'authorType', 'authorID']);
 
+/**
+ * Creates a commit validator function that enforces structural ACL rules.
+ *
+ * @param {object} [options]
+ * @param {Record<string, Set<string>|null>} [options.allowedTypes]
+ * @param {Set<string>} [options.immutableFields]
+ * @returns {(commit: import('../types').Commit, frames: import('../types').FrameData[], actorContext: { authorType: string, authorID?: string }) => { allowed: boolean, reason?: string }}
+ */
 export function createStructuralACLValidator(options = {}) {
   let allowedTypes    = options.allowedTypes || ALLOWED_TYPES;
   let immutableFields = options.immutableFields || IMMUTABLE_FIELDS;
 
+  /**
+   * @param {import('../types').Commit} commit
+   * @param {import('../types').FrameData[]} frames
+   * @param {{ authorType: string, authorID?: string }} actorContext
+   * @returns {{ allowed: boolean, reason?: string }}
+   */
   return function validate(commit, frames, actorContext) {
     let authorType = actorContext.authorType;
 

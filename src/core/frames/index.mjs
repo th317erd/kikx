@@ -5,34 +5,35 @@ import { FrameManager } from '../../shared/frame-manager/frame-manager.mjs';
 // =============================================================================
 // Frame Persistence
 // =============================================================================
-// Syncs between the database (Frame model records) and the in-memory
-// FrameManager. Handles serialization of content/targets (JSON objects
-// in FrameManager, TEXT strings in the DB) and field name mapping
-// (parentID ↔ parentID, groupID ↔ groupID).
-// =============================================================================
 
 export class FramePersistence {
+  /**
+   * @param {import('../types').CascadingContext} context
+   */
   constructor(context) {
     if (!context)
       throw new Error('FramePersistence requires a CascadingContext');
 
+    /** @type {import('../types').CascadingContext} */
     this._context = context;
 
     let models = this._context.getProperty('models');
     if (!models)
       throw new Error('FramePersistence requires models on the context');
 
+    /** @type {import('../types').CoreModels} */
     this._models = models;
   }
 
   // ---------------------------------------------------------------------------
   // saveFrames
   // ---------------------------------------------------------------------------
-  // Persists an array of frame data objects to the database.
-  // Uses upsert logic: if a frame with the same ID exists, update it;
-  // otherwise create a new record.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Persists an array of frame data objects to the database (upsert).
+   * @param {string} sessionID
+   * @param {import('../types').FrameData[]} frames
+   * @returns {Promise<any[]>}
+   */
   async saveFrames(sessionID, frames) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -50,11 +51,9 @@ export class FramePersistence {
       let interactionID = frameData.interactionID || frameData.id;
       let record        = this._frameToRecord(sessionID, interactionID, frameData);
 
-      // Check if frame already exists
       let existing = await Frame.where.id.EQ(frameData.id).first();
 
       if (existing) {
-        // Update existing frame — set each field from the record
         let keys = Object.keys(record);
 
         for (let key of keys) {
@@ -67,7 +66,6 @@ export class FramePersistence {
         await existing.save();
         results.push(existing);
       } else {
-        // Create new record
         let frame = await Frame.create(record);
         results.push(frame);
       }
@@ -79,13 +77,12 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // loadFrames
   // ---------------------------------------------------------------------------
-  // Loads frames from the DB into a new FrameManager instance.
-  // Options:
-  //   interactionID — load only frames for this interaction
-  //   afterOrder    — load frames with order > afterOrder (reconnection replay)
-  //   limit         — max number of frames to load
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Loads frames from the DB into a new FrameManager instance.
+   * @param {string} sessionID
+   * @param {import('../types').LoadFramesOptions} [options]
+   * @returns {Promise<FrameManager>}
+   */
   async loadFrames(sessionID, options = {}) {
     let frameManager = new FrameManager({ history: true });
     await this.loadFramesInto(frameManager, sessionID, options);
@@ -95,10 +92,13 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // loadFramesInto
   // ---------------------------------------------------------------------------
-  // Loads frames from the DB into an existing FrameManager.
-  // Returns the array of frame data objects merged.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Loads frames from the DB into an existing FrameManager.
+   * @param {FrameManager} frameManager
+   * @param {string} sessionID
+   * @param {import('../types').LoadFramesOptions} [options]
+   * @returns {Promise<import('../types').FrameData[]>}
+   */
   async loadFramesInto(frameManager, sessionID, options = {}) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -126,7 +126,7 @@ export class FramePersistence {
 
     let records = await query.all();
 
-    // Safety: enforce limit client-side (some ORM versions ignore LIMIT with .all())
+    // Safety: enforce limit client-side
     if (options.limit !== undefined && records.length > options.limit)
       records = records.slice(0, options.limit);
 
@@ -136,8 +136,6 @@ export class FramePersistence {
 
     frameManager.merge(frameDataArray, { events: false });
 
-    // Stamp the current class registry version onto the FrameManager so
-    // sessions can detect when the registry changes (plugin hot reload).
     let registry = this._context && this._context.getProperty('pluginRegistry');
     if (registry && typeof registry.version === 'number')
       frameManager.setRegistryVersion(registry.version);
@@ -148,10 +146,11 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // loadContent
   // ---------------------------------------------------------------------------
-  // Loads the full content for a single frame by ID.
-  // Returns the parsed content object, or null if the frame does not exist.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Loads the full content for a single frame by ID.
+   * @param {string} frameID
+   * @returns {Promise<Record<string, any>|string|null>}
+   */
   async loadContent(frameID) {
     if (!frameID)
       return null;
@@ -178,11 +177,11 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // loadContentBulk
   // ---------------------------------------------------------------------------
-  // Loads the full content for multiple frames by ID.
-  // Returns a Map of frameID → parsed content object.
-  // Mythix ORM lacks .IN(), so each record is fetched individually.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Loads the full content for multiple frames by ID.
+   * @param {string[]} frameIDs
+   * @returns {Promise<Map<string, Record<string, any>>>}
+   */
   async loadContentBulk(frameIDs) {
     if (!frameIDs || frameIDs.length === 0)
       return new Map();
@@ -217,10 +216,13 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // loadFramesInWindow
   // ---------------------------------------------------------------------------
-  // Loads full frames (with content) for a specific order range within a
-  // session. Useful for loading only the frames in the context window.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Loads full frames for a specific order range within a session.
+   * @param {string} sessionID
+   * @param {number} [fromOrder]
+   * @param {number} [toOrder]
+   * @returns {Promise<FrameManager>}
+   */
   async loadFramesInWindow(sessionID, fromOrder, toOrder) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -239,14 +241,12 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // hideOrphanedFrames
   // ---------------------------------------------------------------------------
-  // Detects and hides orphaned tool-call frames that have no matching
-  // tool-result. These cause API errors when sent to the LLM
-  // ("tool_use ids found without tool_result blocks").
-  //
-  // Best-effort: errors are logged, never thrown.
-  // Returns the number of frames hidden.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Detects and hides orphaned tool-call frames that have no matching tool-result.
+   * @param {string} sessionID
+   * @param {FrameManager} [frameManager]
+   * @returns {Promise<number>} Number of frames hidden
+   */
   async hideOrphanedFrames(sessionID, frameManager) {
     if (!sessionID)
       return 0;
@@ -254,14 +254,12 @@ export class FramePersistence {
     try {
       let { Frame } = this._models;
 
-      // Load all visible tool-call and tool-result frames for this session
       let toolFrames = await Frame
         .where.sessionID.EQ(sessionID)
         .AND.hidden.EQ(false)
         .AND.deleted.EQ(false)
         .all();
 
-      // Build set of tool-result toolUseIDs
       let resolvedToolIds = new Set();
       for (let f of toolFrames) {
         if (f.type !== 'ToolResult')
@@ -272,7 +270,6 @@ export class FramePersistence {
           resolvedToolIds.add(content.toolUseID);
       }
 
-      // Find orphaned tool-calls
       let orphans = [];
       for (let f of toolFrames) {
         if (f.type !== 'ToolCall')
@@ -285,10 +282,8 @@ export class FramePersistence {
           orphans.push(f);
       }
 
-      // Hide orphans via FrameManager merge (silent — maintenance operation)
       if (orphans.length > 0) {
         let orphanUpdates = orphans.map((o) => {
-          // Convert ORM record to plain frame data for merge
           let plain = (typeof o.toJSON === 'function') ? o.toJSON() : { ...o };
           return { ...plain, hidden: true };
         });
@@ -297,7 +292,6 @@ export class FramePersistence {
           frameManager.merge(orphanUpdates, { silent: true });
           await this.saveFrames(sessionID, orphanUpdates);
         } else {
-          // Fallback: no FrameManager provided, persist directly (legacy path)
           await this.saveFrames(sessionID, orphanUpdates);
         }
 
@@ -314,10 +308,13 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // deleteFrames
   // ---------------------------------------------------------------------------
-  // Deletes frames from the DB for a session.
-  // If interactionID is given, only delete that interaction's frames.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Deletes frames from the DB for a session.
+   * @param {string} sessionID
+   * @param {object} [options]
+   * @param {string} [options.interactionID]
+   * @returns {Promise<number>} Count of deleted frames
+   */
   async deleteFrames(sessionID, options = {}) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -340,10 +337,11 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // getNextOrder
   // ---------------------------------------------------------------------------
-  // Returns the next monotonic order counter for a session.
-  // Queries MAX(order) for the session, returns MAX + 1 (or 1 if none).
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Returns the next monotonic order counter for a session.
+   * @param {string} sessionID
+   * @returns {Promise<number>}
+   */
   async getNextOrder(sessionID) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -361,9 +359,10 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // getFrameCount
   // ---------------------------------------------------------------------------
-  // Returns the count of frames in a session.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @param {string} sessionID
+   * @returns {Promise<number>}
+   */
   async getFrameCount(sessionID) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -376,10 +375,11 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // getMaxOrder
   // ---------------------------------------------------------------------------
-  // Returns the highest frame order for a session, or 0 if no frames exist.
-  // Uses descending ORDER + LIMIT(1) for efficiency.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Returns the highest frame order for a session, or 0 if no frames exist.
+   * @param {string} sessionID
+   * @returns {Promise<number>}
+   */
   async getMaxOrder(sessionID) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -398,12 +398,12 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // updateFrameState
   // ---------------------------------------------------------------------------
-  // Persists the plugin state (a JSON-serializable object) on a single frame.
-  // Called by FrameRouter after a plugin modifies this.state.
-  // ---------------------------------------------------------------------------
-
-  // DEPRECATED: Use FrameManager.merge() + saveFrames() instead.
-  // This method bypasses FrameManager and will be removed in a future release.
+  /**
+   * DEPRECATED: Use FrameManager.merge() + saveFrames() instead.
+   * @param {string} frameID
+   * @param {Record<string, any>|null} state
+   * @returns {Promise<void>}
+   */
   async updateFrameState(frameID, state) {
     console.warn('[FramePersistence] DEPRECATED: updateFrameState() called directly. Use FrameManager.merge() + saveFrames() instead.');
 
@@ -420,20 +420,20 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // _frameToRecord
   // ---------------------------------------------------------------------------
-  // Converts a FrameManager-style frame data object to a DB record.
-  // Handles field mapping (parentID → parentID, groupID → groupID)
-  // and JSON serialization (content/targets objects → strings).
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Converts a FrameManager-style frame data object to a DB record.
+   * @param {string} sessionID
+   * @param {string} interactionID
+   * @param {import('../types').FrameData} frameData
+   * @returns {Record<string, any>}
+   */
   _frameToRecord(sessionID, interactionID, frameData) {
     let content = frameData.content;
     let targets = frameData.targets;
 
-    // Serialize content to JSON string if it's an object
     if (content !== undefined && content !== null && typeof content !== 'string')
       content = JSON.stringify(content);
 
-    // Serialize targets to JSON string if it's an array/object
     if (targets !== undefined && targets !== null && typeof targets !== 'string')
       targets = JSON.stringify(targets);
 
@@ -468,16 +468,15 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // _recordToFrame
   // ---------------------------------------------------------------------------
-  // Converts a DB Frame model instance to a FrameManager-compatible
-  // data object. Handles field mapping (parentID → parentID, groupID → groupID)
-  // and JSON deserialization (content/targets strings → objects).
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Converts a DB Frame model instance to a FrameManager-compatible data object.
+   * @param {any} record - DB Frame model instance
+   * @returns {import('../types').FrameData}
+   */
   _recordToFrame(record) {
     let content = record.content;
     let targets = record.targets;
 
-    // Deserialize content from JSON string
     if (typeof content === 'string') {
       try {
         content = JSON.parse(content);
@@ -486,7 +485,6 @@ export class FramePersistence {
       }
     }
 
-    // Deserialize targets from JSON string
     if (typeof targets === 'string') {
       try {
         targets = JSON.parse(targets);
@@ -522,14 +520,14 @@ export class FramePersistence {
   // ---------------------------------------------------------------------------
   // _recordToFrameMetadataOnly
   // ---------------------------------------------------------------------------
-  // Like _recordToFrame but skips content parsing — sets content to null.
-  // Used for lazy loading: metadata is loaded eagerly, content on demand.
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Like _recordToFrame but skips content parsing — sets content to null.
+   * @param {any} record - DB Frame model instance
+   * @returns {import('../types').FrameData}
+   */
   _recordToFrameMetadataOnly(record) {
     let targets = record.targets;
 
-    // Deserialize targets from JSON string (targets are metadata, not content)
     if (typeof targets === 'string') {
       try {
         targets = JSON.parse(targets);

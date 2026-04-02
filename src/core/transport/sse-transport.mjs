@@ -3,14 +3,22 @@
 import { Transport } from './interface.mjs';
 
 export class SSETransport extends Transport {
+  /**
+   * @param {object} [options]
+   */
   constructor(options = {}) {
     super(options);
-    this._connections = new Map(); // connectionID -> { write, close, lastEventID }
+    /** @type {Map<string, { write: Function, close: Function, lastEventID: string|null }>} */
+    this._connections = new Map();
   }
 
-  // Register an SSE connection (called by the server wrapper when a client connects)
+  /**
+   * Register an SSE connection (called by the server wrapper when a client connects).
+   * @param {string} connectionID
+   * @param {{ write: Function, close: Function }} writer
+   * @returns {Function} Unregister function
+   */
   registerConnection(connectionID, writer) {
-    // writer must have: write(data), close(), setHeaders(headers)
     this._connections.set(connectionID, {
       write:        writer.write.bind(writer),
       close:        writer.close.bind(writer),
@@ -21,6 +29,10 @@ export class SSETransport extends Transport {
     return () => this.removeConnection(connectionID);
   }
 
+  /**
+   * @param {string} connectionID
+   * @returns {void}
+   */
   removeConnection(connectionID) {
     let connection = this._connections.get(connectionID);
     if (!connection)
@@ -31,6 +43,11 @@ export class SSETransport extends Transport {
     this.emit('disconnection', { connectionID });
   }
 
+  /**
+   * @param {string} connectionID
+   * @param {any} data
+   * @returns {Promise<void>}
+   */
   async send(connectionID, data) {
     let connection = this._connections.get(connectionID);
     if (!connection)
@@ -41,6 +58,10 @@ export class SSETransport extends Transport {
     this.emit('message:sent', { connectionID, data });
   }
 
+  /**
+   * @param {any} data
+   * @returns {Promise<void>}
+   */
   async broadcast(data) {
     let eventData = this._formatSSE(data);
     for (let [connectionID, connection] of this._connections) {
@@ -52,8 +73,12 @@ export class SSETransport extends Transport {
     }
   }
 
+  /**
+   * @param {string} connectionID
+   * @param {object} [options]
+   * @returns {{ id: string, send: (data: any) => Promise<void>, close: () => void }}
+   */
   createStream(connectionID, options = {}) {
-    // For SSE, createStream returns a handle to push events
     return {
       id:     connectionID,
       send:   (data) => this.send(connectionID, data),
@@ -61,19 +86,28 @@ export class SSETransport extends Transport {
     };
   }
 
+  /**
+   * @returns {Promise<void>}
+   */
   async disconnect() {
-    // Close all SSE connections
     for (let [connectionID] of this._connections)
       this.removeConnection(connectionID);
 
     await super.disconnect();
   }
 
+  /**
+   * @returns {number}
+   */
   getConnectionCount() {
     return this._connections.size;
   }
 
-  // Format data as SSE event string
+  /**
+   * Format data as SSE event string.
+   * @param {any} data
+   * @returns {string}
+   */
   _formatSSE(data) {
     let payload   = (typeof data === 'string') ? data : JSON.stringify(data);
     let lines     = payload.split('\n');

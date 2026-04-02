@@ -3,19 +3,18 @@
 // =============================================================================
 // Cascading Context
 // =============================================================================
-// Uses Object.create() prototype chain for layered config/state.
-// Layers: plugin defaults -> org config -> session state -> runtime state.
-// Child layers inherit from parent via prototype chain.
-// =============================================================================
 
 const PROPERTY_PATH_SEPARATOR = '.';
 const ARRAY_INDEX_PATTERN     = /\[(\d+)\]/g;
 
+/**
+ * @param {string|string[]} path
+ * @returns {string[]}
+ */
 function normalizePath(path) {
   if (Array.isArray(path))
     return path;
 
-  // Convert 'foo.bar[0].baz' -> ['foo', 'bar', '0', 'baz']
   return path
     .replace(ARRAY_INDEX_PATTERN, '.[$1]')
     .split(PROPERTY_PATH_SEPARATOR)
@@ -23,6 +22,11 @@ function normalizePath(path) {
     .filter((segment) => segment.length > 0);
 }
 
+/**
+ * @param {any} object
+ * @param {string[]} segments
+ * @returns {any}
+ */
 function getNestedValue(object, segments) {
   let current = object;
 
@@ -36,6 +40,12 @@ function getNestedValue(object, segments) {
   return current;
 }
 
+/**
+ * @param {any} object
+ * @param {string[]} segments
+ * @param {any} value
+ * @returns {void}
+ */
 function setNestedValue(object, segments, value) {
   let current = object;
 
@@ -44,7 +54,6 @@ function setNestedValue(object, segments, value) {
     let nextSegment = segments[i + 1];
 
     if (current[segment] == null) {
-      // Create intermediate object or array based on next segment
       let isArrayIndex = /^\d+$/.test(nextSegment);
       current[segment] = (isArrayIndex) ? [] : {};
     }
@@ -56,6 +65,11 @@ function setNestedValue(object, segments, value) {
   current[lastSegment] = value;
 }
 
+/**
+ * @param {any} object
+ * @param {string[]} segments
+ * @returns {boolean}
+ */
 function deleteNestedValue(object, segments) {
   let current = object;
 
@@ -78,19 +92,26 @@ function deleteNestedValue(object, segments) {
   return true;
 }
 
+/**
+ * @implements {import('../types').CascadingContext}
+ */
 export class CascadingContext {
+  /**
+   * @param {Record<string, any>} [data]
+   * @param {CascadingContext} [parent]
+   */
   constructor(data, parent) {
-    // The actual data store. Child contexts use Object.create(parent._data)
-    // so property lookups walk the prototype chain.
+    /** @type {Record<string, any>} */
     if (parent instanceof CascadingContext)
       this._data = Object.create(parent._data);
     else
       this._data = Object.create(null);
 
+    /** @type {CascadingContext|null} */
     this._parent   = (parent instanceof CascadingContext) ? parent : null;
+    /** @type {CascadingContext[]} */
     this._children = [];
 
-    // Copy initial data as own properties (not inherited)
     if (data && typeof data === 'object') {
       let keys = Object.keys(data);
       for (let i = 0; i < keys.length; i++) {
@@ -99,12 +120,15 @@ export class CascadingContext {
       }
     }
 
-    // Register with parent
     if (this._parent)
       this._parent._children.push(this);
   }
 
-  // Get a property value. Walks the prototype chain (inherited values).
+  /**
+   * Get a property value. Walks the prototype chain (inherited values).
+   * @param {string} path
+   * @returns {any}
+   */
   getProperty(path) {
     if (!path)
       return undefined;
@@ -117,7 +141,12 @@ export class CascadingContext {
     return getNestedValue(this._data, segments);
   }
 
-  // Set a property value on THIS layer only (own property).
+  /**
+   * Set a property value on THIS layer only (own property).
+   * @param {string} path
+   * @param {any} value
+   * @returns {void}
+   */
   setProperty(path, value) {
     if (!path)
       return;
@@ -129,11 +158,8 @@ export class CascadingContext {
       return;
     }
 
-    // For nested paths, we need to ensure intermediate objects
-    // are own properties so we don't mutate parent layers.
     let firstSegment = segments[0];
 
-    // If the first-level value is inherited, create an own copy
     if (!Object.prototype.hasOwnProperty.call(this._data, firstSegment)) {
       let inherited = this._data[firstSegment];
       if (inherited && typeof inherited === 'object')
@@ -145,12 +171,20 @@ export class CascadingContext {
     setNestedValue(this._data, segments, value);
   }
 
-  // Check if a property exists (including inherited).
+  /**
+   * Check if a property exists (including inherited).
+   * @param {string} path
+   * @returns {boolean}
+   */
   hasProperty(path) {
     return this.getProperty(path) !== undefined;
   }
 
-  // Check if a property is an own property (not inherited).
+  /**
+   * Check if a property is an own property (not inherited).
+   * @param {string} path
+   * @returns {boolean}
+   */
   hasOwnProperty(path) {
     if (!path)
       return false;
@@ -160,7 +194,6 @@ export class CascadingContext {
     if (segments.length === 1)
       return Object.prototype.hasOwnProperty.call(this._data, segments[0]);
 
-    // For nested paths, check each level is own
     let current = this._data;
     for (let i = 0; i < segments.length; i++) {
       if (!Object.prototype.hasOwnProperty.call(current, segments[i]))
@@ -172,7 +205,11 @@ export class CascadingContext {
     return true;
   }
 
-  // Delete an own property. Does not affect parent layers.
+  /**
+   * Delete an own property. Does not affect parent layers.
+   * @param {string} path
+   * @returns {boolean}
+   */
   deleteProperty(path) {
     if (!path)
       return false;
@@ -190,17 +227,27 @@ export class CascadingContext {
     return deleteNestedValue(this._data, segments);
   }
 
-  // Create a child context that inherits from this one.
+  /**
+   * Create a child context that inherits from this one.
+   * @param {Record<string, any>} [data]
+   * @returns {CascadingContext}
+   */
   createChild(data) {
     return new CascadingContext(data, this);
   }
 
-  // Get all own keys (not inherited).
+  /**
+   * Get all own keys (not inherited).
+   * @returns {string[]}
+   */
   getOwnKeys() {
     return Object.keys(this._data);
   }
 
-  // Get all keys (including inherited).
+  /**
+   * Get all keys (including inherited).
+   * @returns {string[]}
+   */
   getAllKeys() {
     let keys = new Set();
     let current = this._data;
@@ -215,24 +262,34 @@ export class CascadingContext {
     return Array.from(keys);
   }
 
-  // Get the parent context.
+  /**
+   * @returns {CascadingContext|null}
+   */
   getParent() {
     return this._parent;
   }
 
-  // Get all child contexts.
+  /**
+   * @returns {CascadingContext[]}
+   */
   getChildren() {
     return this._children.slice();
   }
 
-  // Remove a child context.
+  /**
+   * @param {CascadingContext} child
+   * @returns {void}
+   */
   removeChild(child) {
     let index = this._children.indexOf(child);
     if (index >= 0)
       this._children.splice(index, 1);
   }
 
-  // Detach this context from its parent.
+  /**
+   * Detach this context from its parent.
+   * @returns {void}
+   */
   detach() {
     if (this._parent)
       this._parent.removeChild(this);
@@ -240,7 +297,10 @@ export class CascadingContext {
     this._parent = null;
   }
 
-  // Snapshot own properties as a plain object.
+  /**
+   * Snapshot own properties as a plain object.
+   * @returns {Record<string, any>}
+   */
   toJSON() {
     let result = {};
     let keys   = Object.keys(this._data);
@@ -254,6 +314,11 @@ export class CascadingContext {
   }
 }
 
+/**
+ * @param {Record<string, any>} [data]
+ * @param {CascadingContext} [parent]
+ * @returns {CascadingContext}
+ */
 export function createContext(data, parent) {
   return new CascadingContext(data, parent);
 }

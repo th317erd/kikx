@@ -5,28 +5,28 @@ import { EventEmitter } from 'node:events';
 // =============================================================================
 // StreamRelay — cross-session streaming event forwarder
 // =============================================================================
-// When an agent in Session X triggers work in Session Y (via postToSession),
-// the user watching Session X sees nothing until Y finishes. StreamRelay
-// forwards streaming events (delta, reflection-delta) from Y back to X so
-// the user gets real-time feedback.
-//
-// Events emitted:
-//   'relay:delta' — { sourceSessionID, targetSessionID, agentID, content, authorType, authorID }
-//   'relay:reflection-delta' — same shape
-//
-// Auto-destroys relays on interaction:end from the target session.
-// =============================================================================
+
+/**
+ * @typedef {object} RelayHandlers
+ * @property {Function} onDelta
+ * @property {Function} onReflectionDelta
+ * @property {Function} onEnd
+ */
 
 export class StreamRelay extends EventEmitter {
+  /**
+   * @param {object} interactionLoop
+   */
   constructor(interactionLoop) {
     super();
 
     if (!interactionLoop)
       throw new Error('StreamRelay requires an InteractionLoop');
 
+    /** @type {object} */
     this._interactionLoop = interactionLoop;
 
-    // Map<string, { onDelta, onReflectionDelta, onEnd }> keyed by `${source}:${target}`
+    /** @type {Map<string, RelayHandlers>} keyed by `${source}:${target}` */
     this._relays = new Map();
   }
 
@@ -34,6 +34,11 @@ export class StreamRelay extends EventEmitter {
   // createRelay — start forwarding events from targetSessionID to sourceSessionID
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} sourceSessionID
+   * @param {string} targetSessionID
+   * @returns {void}
+   */
   createRelay(sourceSessionID, targetSessionID) {
     if (!sourceSessionID)
       throw new Error('sourceSessionID is required');
@@ -93,6 +98,11 @@ export class StreamRelay extends EventEmitter {
   // destroyRelay — stop forwarding
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} sourceSessionID
+   * @param {string} targetSessionID
+   * @returns {boolean}
+   */
   destroyRelay(sourceSessionID, targetSessionID) {
     let key   = `${sourceSessionID}:${targetSessionID}`;
     let relay = this._relays.get(key);
@@ -112,6 +122,9 @@ export class StreamRelay extends EventEmitter {
   // destroyAll — clean up all relays
   // ---------------------------------------------------------------------------
 
+  /**
+   * @returns {void}
+   */
   destroyAll() {
     for (let [key, relay] of this._relays) {
       this._interactionLoop.off('Delta', relay.onDelta);
@@ -126,10 +139,18 @@ export class StreamRelay extends EventEmitter {
   // Queries
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} sourceSessionID
+   * @param {string} targetSessionID
+   * @returns {boolean}
+   */
   hasRelay(sourceSessionID, targetSessionID) {
     return this._relays.has(`${sourceSessionID}:${targetSessionID}`);
   }
 
+  /**
+   * @returns {number}
+   */
   getRelayCount() {
     return this._relays.size;
   }

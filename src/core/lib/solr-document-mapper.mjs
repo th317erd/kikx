@@ -3,20 +3,31 @@
 // =============================================================================
 // Solr Document Mapper
 // =============================================================================
-// Pure mapping functions that convert Frame and ValueStore model instances
-// into Solr document objects matching the schema defined in solr/kikx/conf/schema.xml.
-//
-// These functions never throw — invalid input yields empty arrays or
-// documents with null/undefined fields (Solr will reject malformed docs).
-// =============================================================================
 
-// ---------------------------------------------------------------------------
-// mapFrameToSolrDocuments(frame, sessionID) → Array<SolrDocument>
-// ---------------------------------------------------------------------------
-// Maps a Frame model instance to an array of Solr documents.
-// Returns [] for null/undefined frames or phantom frames.
-// ---------------------------------------------------------------------------
+/**
+ * @typedef {object} SolrDocument
+ * @property {string} id
+ * @property {string} doc_type
+ * @property {string} [type]
+ * @property {string} [sessionID]
+ * @property {string} [interactionID]
+ * @property {string} [authorType]
+ * @property {string} [authorID]
+ * @property {number} [timestamp]
+ * @property {boolean} [hidden]
+ * @property {boolean} [archived]
+ * @property {string} [content]
+ * @property {string} [namespace]
+ * @property {string} [note]
+ */
 
+/**
+ * Maps a Frame model instance to an array of Solr documents.
+ * Returns [] for null/undefined frames or phantom frames.
+ * @param {import('../types').FrameData|null} frame
+ * @param {string} sessionID
+ * @returns {SolrDocument[]}
+ */
 export function mapFrameToSolrDocuments(frame, sessionID) {
   if (frame == null)
     return [];
@@ -37,9 +48,7 @@ export function mapFrameToSolrDocuments(frame, sessionID) {
     archived:      frame.deleted || false,
   };
 
-  // Extract content fields from the frame
-  // The frame may be an ORM model (has getContentForIndexing) or a plain
-  // FrameManager object (has content as parsed object). Handle both.
+  /** @type {Array<{ field: string, value: string }>|undefined} */
   let contentEntries;
 
   try {
@@ -62,20 +71,17 @@ export function mapFrameToSolrDocuments(frame, sessionID) {
   return [doc];
 }
 
-// ---------------------------------------------------------------------------
-// _extractContentFallback(frame) → Array<{ field, value }>
-// ---------------------------------------------------------------------------
-// Fallback content extraction for plain FrameManager frame objects that
-// don't have the ORM model's getContentForIndexing() method.
-// ---------------------------------------------------------------------------
-
+/**
+ * Fallback content extraction for plain FrameManager frame objects.
+ * @param {import('../types').FrameData} frame
+ * @returns {Array<{ field: string, value: string }>}
+ */
 function _extractContentFallback(frame) {
   let content = frame.content;
 
   if (content == null)
     return [];
 
-  // If content is a string, try to parse it as JSON
   if (typeof content === 'string') {
     try {
       content = JSON.parse(content);
@@ -87,7 +93,6 @@ function _extractContentFallback(frame) {
   if (typeof content !== 'object')
     return [{ field: 'content', value: String(content) }];
 
-  // Extract text and/or html
   let text = content.text || content.html || content.message || content.result || content.reason || content.error;
 
   if (typeof text === 'string')
@@ -96,21 +101,14 @@ function _extractContentFallback(frame) {
   if (text != null)
     return [{ field: 'content', value: JSON.stringify(text) }];
 
-  // Last resort: stringify the whole content
   return [{ field: 'content', value: JSON.stringify(content) }];
 }
 
-// ---------------------------------------------------------------------------
-// mapValueStoreToSolrDocument(record) → SolrDocument
-// ---------------------------------------------------------------------------
-// Maps a ValueStore model instance to a single Solr document.
-// Field name translations:
-//   scopeID   → sessionID
-//   ownerType → authorType
-//   ownerID   → authorID
-//   value     → content
-// ---------------------------------------------------------------------------
-
+/**
+ * Maps a ValueStore model instance to a single Solr document.
+ * @param {import('../types').ValueStoreEntry|null} record
+ * @returns {SolrDocument}
+ */
 export function mapValueStoreToSolrDocument(record) {
   if (record == null)
     record = {};

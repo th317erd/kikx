@@ -3,41 +3,54 @@
 // =============================================================================
 // HelpIndex
 // =============================================================================
-// Aggregates help entries from all registered plugins in the PluginRegistry.
-// Includes both tools (for agent use) and commands (for user slash commands).
-// Provides grep-style search across names, display names, descriptions.
-// =============================================================================
+
+/**
+ * @typedef {object} HelpEntry
+ * @property {string} category
+ * @property {string} name
+ * @property {string} [displayName]
+ * @property {string|null} [description]
+ * @property {string|null} [icon]
+ * @property {string} [riskLevel]
+ * @property {import('../types').JSONSchema|null} [inputSchema]
+ * @property {string} [usage]
+ * @property {any} [parameters]
+ * @property {any} [examples]
+ * @property {any} [schema]
+ * @property {string|null} [slashCommand]
+ */
 
 export class HelpIndex {
+  /**
+   * @param {object} pluginRegistry
+   */
   constructor(pluginRegistry) {
     if (!pluginRegistry)
       throw new Error('HelpIndex requires a PluginRegistry');
 
+    /** @type {object} */
     this._registry = pluginRegistry;
   }
 
-  // ---------------------------------------------------------------------------
-  // getEntries — build help entries from all registered tools and commands
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Build help entries from all registered tools and commands.
+   * @returns {HelpEntry[]}
+   */
   getEntries() {
     let entries = [];
 
-    // --- Tools ---
     let tools = this._registry.getTools();
     for (let [name, ToolClass] of tools) {
       let entry = this._buildToolEntry(name, ToolClass);
       entries.push(entry);
     }
 
-    // --- Commands ---
     let commands = this._registry.getCommands();
     for (let [name, commandEntry] of commands) {
       let entry = this._buildCommandEntry(name, commandEntry);
       entries.push(entry);
     }
 
-    // --- Capabilities ---
     let capabilities = this._registry.getCapabilities();
     for (let [name, capability] of capabilities) {
       let entry = this._buildCapabilityEntry(name, capability);
@@ -47,10 +60,11 @@ export class HelpIndex {
     return entries;
   }
 
-  // ---------------------------------------------------------------------------
-  // search — simple grep-style search
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Simple grep-style search across help entries.
+   * @param {string} [query]
+   * @returns {HelpEntry[]}
+   */
   search(query) {
     let entries = this.getEntries();
 
@@ -68,10 +82,11 @@ export class HelpIndex {
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Internal: build entries
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @param {string} name
+   * @param {Function} ToolClass
+   * @returns {HelpEntry}
+   */
   _buildToolEntry(name, ToolClass) {
     let base = {
       category:    'tool',
@@ -83,7 +98,6 @@ export class HelpIndex {
       inputSchema: ToolClass.inputSchema || null,
     };
 
-    // Merge data from getHelp() if available
     if (typeof ToolClass.prototype.getHelp === 'function') {
       let helpData = ToolClass.prototype.getHelp.call({ constructor: ToolClass });
       return { ...base, ...helpData, category: 'tool', name };
@@ -92,6 +106,11 @@ export class HelpIndex {
     return base;
   }
 
+  /**
+   * @param {string} name
+   * @param {object} commandEntry
+   * @returns {HelpEntry}
+   */
   _buildCommandEntry(name, commandEntry) {
     let help = commandEntry.help || {};
 
@@ -106,6 +125,11 @@ export class HelpIndex {
     };
   }
 
+  /**
+   * @param {string} name
+   * @param {object} capability
+   * @returns {HelpEntry}
+   */
   _buildCapabilityEntry(name, capability) {
     let entry = {
       category:     'capability',

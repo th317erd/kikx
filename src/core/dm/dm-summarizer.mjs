@@ -3,31 +3,24 @@
 // =============================================================================
 // DmSummarizer
 // =============================================================================
-// Service that summarizes DM session conversation history into concise
-// instructions. The summary is stored on the Agent record and injected
-// into the system prompt for non-DM sessions.
-//
-// Flow:
-//   1. Load all frames from the DM session
-//   2. Convert to conversation text (user/agent turns)
-//   3. Build a summarization prompt
-//   4. Call the agent plugin's execute() with the summary prompt
-//   5. Collect yielded message blocks into summary text
-//   6. Save to Agent.dmSummary
-// =============================================================================
 
 export class DmSummarizer {
+  /**
+   * @param {import('../types').CascadingContext} context
+   */
   constructor(context) {
     if (!context)
       throw new Error('DmSummarizer requires a CascadingContext');
 
+    /** @type {import('../types').CascadingContext} */
     this._context = context;
   }
 
-  // ---------------------------------------------------------------------------
-  // framesToConversation — convert frames to readable conversation text
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Convert frames to readable conversation text.
+   * @param {import('../types').FrameData[]} frames
+   * @returns {string}
+   */
   framesToConversation(frames) {
     let lines = [];
 
@@ -47,10 +40,11 @@ export class DmSummarizer {
     return lines.join('\n\n');
   }
 
-  // ---------------------------------------------------------------------------
-  // buildSummaryPrompt — construct the summarization instruction
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Construct the summarization instruction.
+   * @param {string} conversationText
+   * @returns {string}
+   */
   buildSummaryPrompt(conversationText) {
     return [
       'The following is a DM conversation where a user configured an agent\'s behavior.',
@@ -66,38 +60,36 @@ export class DmSummarizer {
     ].join('\n');
   }
 
-  // ---------------------------------------------------------------------------
-  // summarize — run full summarization pipeline
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Run full summarization pipeline.
+   * @param {import('../types').BasePluginClass} agentPlugin
+   * @param {import('../types').Agent} agent
+   * @param {string} sessionID
+   * @returns {Promise<string|null>}
+   */
   async summarize(agentPlugin, agent, sessionID) {
     let framePersistence = this._context.getProperty('framePersistence');
     if (!framePersistence)
       throw new Error('framePersistence not available on context');
 
-    // 1. Load frames from DM session
     let frames = await framePersistence.loadFrames(sessionID);
 
     if (!frames || frames.length === 0)
       return null;
 
-    // 2. Convert to conversation text
     let conversationText = this.framesToConversation(frames);
 
     if (!conversationText.trim())
       return null;
 
-    // 3. Build summarization prompt
     let summaryPrompt = this.buildSummaryPrompt(conversationText);
 
-    // 4. Call agent plugin to generate summary
     let generator = await agentPlugin.execute({
       messages: [{ role: 'user', content: summaryPrompt }],
       agent,
       context: this._context,
     });
 
-    // 5. Collect yielded message blocks
     let summaryParts = [];
 
     for await (let block of generator) {
@@ -113,7 +105,6 @@ export class DmSummarizer {
     if (!summary)
       return null;
 
-    // 6. Save to Agent.dmSummary
     let models = this._context.getProperty('models');
     if (models && models.Agent) {
       let agentRecord = await models.Agent.where.id.EQ(agent.id).first();
