@@ -17,11 +17,21 @@ import { parseShellCommands } from '../internal-plugins/shell/command-parser.mjs
 // Extracted from InteractionLoop to reduce file size.
 // =============================================================================
 
+/**
+ * @param {string} prefix
+ * @returns {string}
+ */
 function generateID(prefix) {
   return `${prefix}${XID.next()}`;
 }
 
 export class PermissionHandler {
+  /** @type {import('./index.mjs').InteractionLoop} */
+  _loop;
+
+  /**
+   * @param {import('./index.mjs').InteractionLoop} loop
+   */
   constructor(loop) {
     this._loop = loop;
   }
@@ -39,6 +49,19 @@ export class PermissionHandler {
   //   PendingAction frame is created).
   // ---------------------------------------------------------------------------
 
+  /**
+   * Pause interaction for permission approval. Routes to the nearest
+   * ancestor session with a user, or denies immediately if none exists.
+   *
+   * @param {string} sessionID
+   * @param {AsyncGenerator} generator
+   * @param {import('../types').GeneratorBlock} block
+   * @param {string} interactionID
+   * @param {import('../types').StartInteractionParams} params
+   * @param {*} frameManager — FrameManager instance
+   * @param {Record<string, any>} [permissionContext]
+   * @returns {Promise<void>}
+   */
   async hardBreak(sessionID, generator, block, interactionID, params, frameManager, permissionContext) {
     let loop = this._loop;
 
@@ -157,6 +180,17 @@ export class PermissionHandler {
   // _denyNoUser — immediate denial when no user exists in session ancestry
   // ---------------------------------------------------------------------------
 
+  /**
+   * Immediate denial when no user exists in session ancestry.
+   *
+   * @param {string} sessionID
+   * @param {AsyncGenerator} generator
+   * @param {import('../types').GeneratorBlock} block
+   * @param {string} interactionID
+   * @param {import('../types').StartInteractionParams} params
+   * @param {*} frameManager — FrameManager instance
+   * @returns {Promise<void>}
+   */
   async _denyNoUser(sessionID, generator, block, interactionID, params, frameManager) {
     let loop           = this._loop;
     let signingContext = (params && params._signingContext) || null;

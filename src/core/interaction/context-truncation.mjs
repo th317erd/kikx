@@ -14,6 +14,9 @@ const DEFAULT_MAX_TOTAL_CHARS    = 600000; // ~150K tokens total
 
 /**
  * Get the character length of a message's content for budgeting purposes.
+ *
+ * @param {import('../types').ChatMessage} message
+ * @returns {number}
  */
 function getContentLength(message) {
   if (message.type === 'ToolResult') {
@@ -57,10 +60,9 @@ function getContentLength(message) {
  * - Appends a marker showing the original length
  * - Returns a new array (does not mutate input)
  *
- * @param {Array} messages
- * @param {object} [options]
- * @param {number} [options.maxContentLength=8000]
- * @returns {Array}
+ * @param {import('../types').ChatMessage[]} messages
+ * @param {{ maxContentLength?: number }} [options]
+ * @returns {import('../types').ChatMessage[]}
  */
 export function truncateContent(messages, options = {}) {
   if (!messages || messages.length === 0)
@@ -81,6 +83,10 @@ export function truncateContent(messages, options = {}) {
 /**
  * Truncate a single message's content if it exceeds maxLength.
  * Returns a new message object if truncated, or the original if unchanged.
+ *
+ * @param {import('../types').ChatMessage} message
+ * @param {number} maxLength
+ * @returns {import('../types').ChatMessage}
  */
 function truncateMessageContent(message, maxLength) {
   if (message.type === 'ToolResult') {
@@ -137,10 +143,9 @@ function truncateMessageContent(message, maxLength) {
  * - Prepends a marker message when messages are dropped
  * - Returns a new array (does not mutate input)
  *
- * @param {Array} messages
- * @param {object} [options]
- * @param {number} [options.maxTotalChars=600000]
- * @returns {Array}
+ * @param {import('../types').ChatMessage[]} messages
+ * @param {{ maxTotalChars?: number }} [options]
+ * @returns {import('../types').ChatMessage[]}
  */
 export function truncateConversation(messages, options = {}) {
   if (!messages || messages.length === 0)
@@ -222,8 +227,11 @@ export function truncateConversation(messages, options = {}) {
 }
 
 /**
- * Build a map of tool-call ↔ tool-result paired indices.
+ * Build a map of tool-call / tool-result paired indices.
  * Each tool-call index maps to its tool-result index and vice versa.
+ *
+ * @param {import('../types').ChatMessage[]} messages
+ * @returns {Map<number, number>}
  */
 function buildToolPairMap(messages) {
   let pairs = new Map();

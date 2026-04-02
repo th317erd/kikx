@@ -13,11 +13,21 @@ import XID from 'xid-js';
 // Extracted from InteractionLoop to reduce file size.
 // =============================================================================
 
+/**
+ * @param {string} prefix
+ * @returns {string}
+ */
 function generateID(prefix) {
   return `${prefix}${XID.next()}`;
 }
 
 export class CommandHandler {
+  /** @type {import('./index.mjs').InteractionLoop} */
+  _loop;
+
+  /**
+   * @param {import('./index.mjs').InteractionLoop} loop
+   */
   constructor(loop) {
     this._loop = loop;
   }
@@ -26,6 +36,12 @@ export class CommandHandler {
   // parse — check if message is a /command
   // ---------------------------------------------------------------------------
 
+  /**
+   * Check if a message is a /command and parse it.
+   *
+   * @param {string | null | undefined} message
+   * @returns {{ commandName: string, arguments: string } | null}
+   */
   parse(message) {
     if (!message || typeof message !== 'string')
       return null;
@@ -44,6 +60,12 @@ export class CommandHandler {
   // resolve — look up command handler from plugin registry
   // ---------------------------------------------------------------------------
 
+  /**
+   * Look up a command handler from the plugin registry.
+   *
+   * @param {string} commandName
+   * @returns {Function | null}
+   */
   resolve(commandName) {
     let registry = this._loop._context.getProperty('pluginRegistry');
     if (!registry)
@@ -71,6 +93,14 @@ export class CommandHandler {
   // execute — run a slash command
   // ---------------------------------------------------------------------------
 
+  /**
+   * Execute a slash command. Creates user-message and command-result frames.
+   *
+   * @param {string} sessionID
+   * @param {import('../types').StartInteractionParams & { userMessage?: string }} params
+   * @param {{ commandName: string, arguments: string }} commandMatch
+   * @returns {Promise<string>} interactionID
+   */
   async execute(sessionID, params, commandMatch) {
     let loop            = this._loop;
     let framePersistence = loop._getFramePersistence();

@@ -12,6 +12,9 @@ import { createTypedFrame } from '../../shared/frame-types/index.mjs';
 /**
  * Check if this is the first real message in the session
  * (at most one user-message and no assistant messages).
+ *
+ * @param {import('../types').FrameData[]} frames
+ * @returns {boolean}
  */
 export function isFirstMessage(frames) {
   let userMessageCount    = 0;
@@ -33,6 +36,10 @@ export function isFirstMessage(frames) {
 
 /**
  * Inject primer text into the first user message of the messages array.
+ *
+ * @param {import('../types').ChatMessage[]} messages
+ * @param {string} primer
+ * @returns {import('../types').ChatMessage[]}
  */
 export function injectPrimer(messages, primer) {
   if (!messages || messages.length === 0)
@@ -52,15 +59,13 @@ export function injectPrimer(messages, primer) {
 /**
  * Build agent-facing message history from a frame array.
  *
- * @param {Array} frames      — ordered frames from FrameManager.toArray()
+ * @param {import('../types').FrameData[]} frames — ordered frames from FrameManager.toArray()
  * @param {string} forAgentID — if set, multi-agent attribution wraps other agents' messages
  * @param {Object} [options]  — optional configuration
- * @param {Object} [options.activeCompaction] — if set, filters frames during active compaction
- *   { order: <number>, frameID: <string> }
- *   Include: all frames with order <= activeCompaction.order
- *   Include: frames with order > activeCompaction.order AND authorType === 'user'
- *   Exclude: all other frames after the compaction start frame
- * @returns {Array} messages suitable for agent execution
+ * @param {{ order: number, frameID: string }} [options.activeCompaction] — if set, filters frames during active compaction
+ * @param {Map<string, { name: string }>} [options.agents] — agent name map for attribution
+ * @param {Map<string, { name: string }>} [options.users] — user name map for attribution
+ * @returns {import('../types').ChatMessage[]} messages suitable for agent execution
  */
 export function buildMessages(frames, forAgentID, options = {}) {
   // First pass: collect resolved tool IDs and map each to its result frame.

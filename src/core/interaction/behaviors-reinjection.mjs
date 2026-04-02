@@ -21,12 +21,10 @@ const TRUNCATION_MARKER_PREFIX = '[Earlier conversation history was truncated';
  *   3. Truncation occurred (marker message detected)
  *   4. A non-marker user message exists to inject into
  *
- * @param {Array}  messages
- * @param {object} agent
- * @param {object} [options]
- * @param {boolean} [options.primerInjected] — true when primer is being injected this turn
- * @param {Function} [options.isDMForAgent] — async function that returns true if session is a DM for this agent
- * @returns {Promise<Array>}
+ * @param {import('../types').ChatMessage[]} messages
+ * @param {import('../types').Agent} agent
+ * @param {{ primerInjected?: boolean, isDMForAgent?: () => Promise<boolean> }} [options]
+ * @returns {Promise<import('../types').ChatMessage[]>}
  */
 export async function reinjectBehaviors(messages, agent, options = {}) {
   if (!messages || messages.length === 0)
@@ -82,6 +80,9 @@ export async function reinjectBehaviors(messages, agent, options = {}) {
 
 /**
  * Check if any message in the array is a truncation marker.
+ *
+ * @param {import('../types').ChatMessage[]} messages
+ * @returns {boolean}
  */
 function hasTruncationMarker(messages) {
   for (let i = 0; i < messages.length; i++) {
@@ -94,6 +95,9 @@ function hasTruncationMarker(messages) {
 
 /**
  * Check if a single message is a truncation marker.
+ *
+ * @param {import('../types').ChatMessage} message
+ * @returns {boolean}
  */
 function isTruncationMarker(message) {
   if (message.role !== 'user')
@@ -107,6 +111,9 @@ function isTruncationMarker(message) {
 
 /**
  * Build the behaviors text block with delimiters and reminder.
+ *
+ * @param {string} behaviorsText
+ * @returns {string}
  */
 function buildBehaviorsBlock(behaviorsText) {
   return (

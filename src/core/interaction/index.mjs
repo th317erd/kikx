@@ -30,11 +30,42 @@ import CompactionRunner                                from '../compaction/index
 //   - message-history.mjs (buildMessages, isFirstMessage, injectPrimer)
 // =============================================================================
 
+/**
+ * @param {string} prefix
+ * @returns {string}
+ */
 function generateID(prefix) {
   return `${prefix}${XID.next()}`;
 }
 
 export class InteractionLoop extends EventEmitter {
+  /** @type {import('../types').CascadingContext} */
+  _context;
+
+  /** @type {Map<string, { generator: AsyncGenerator, interactionID: string, params: import('../types').StartInteractionParams, frameManager: * }>} */
+  _active;
+
+  /** @type {Map<string, string[]>} */
+  _queues;
+
+  /** @type {Set<string>} */
+  _primerNeeded;
+
+  /** @type {PermissionHandler} */
+  _permissionHandler;
+
+  /** @type {CommandHandler} */
+  _commandHandler;
+
+  /** @type {ToolLogService} */
+  _toolLogService;
+
+  /** @type {CompactionRunner} */
+  _compactionRunner;
+
+  /**
+   * @param {import('../types').CascadingContext} context
+   */
   constructor(context) {
     super();
 
@@ -68,6 +99,13 @@ export class InteractionLoop extends EventEmitter {
   // _activeKey — composite key for per-agent state maps
   // ---------------------------------------------------------------------------
 
+  /**
+   * Build a composite key for per-agent state maps.
+   *
+   * @param {string} sessionID
+   * @param {string | null | undefined} agentID
+   * @returns {string}
+   */
   _activeKey(sessionID, agentID) {
     return (agentID) ? `${sessionID}:${agentID}` : sessionID;
   }
@@ -76,39 +114,54 @@ export class InteractionLoop extends EventEmitter {
   // Accessors — resolve dependencies lazily from context
   // ---------------------------------------------------------------------------
 
+  /** @returns {*} SessionManager instance */
   _getSessionManager() {
     return this._context.getProperty('sessionManager');
   }
 
+  /** @returns {*} FramePersistence instance */
   _getFramePersistence() {
     return this._context.getProperty('framePersistence');
   }
 
+  /** @returns {{ sanitize: (html: string) => string } | null} */
   _getContentSanitizer() {
     return this._context.getProperty('contentSanitizer');
   }
 
+  /** @returns {{ convert: (md: string) => string } | null} */
   _getMarkdownConverter() {
     return this._context.getProperty('markdownConverter');
   }
 
+  /** @returns {*} HookService or HookRunner instance */
   _getHookRunner() {
     // Prefer HookService (C4) over legacy HookRunner
     return this._context.getProperty('hookService') || this._context.getProperty('hookRunner');
   }
 
+  /** @returns {import('../types').Keystore | null} */
   _getKeystore() {
     return this._context.getProperty('keystore');
   }
 
+  /** @returns {import('../types').CoreModels} */
   _getModels() {
     return this._context.getProperty('models');
   }
 
+  /** @returns {ToolLogService} */
   _getToolLogService() {
     return this._toolLogService;
   }
 
+  /**
+   * Check if the given session is a DM for the specified agent.
+   *
+   * @param {import('../types').Agent | null} agent
+   * @param {string} sessionID
+   * @returns {Promise<boolean>}
+   */
   async _isDMForAgent(agent, sessionID) {
     if (!agent || !sessionID)
       return false;
@@ -136,6 +189,13 @@ export class InteractionLoop extends EventEmitter {
   // (lines ~125-185). The truncation section is separate (~329-340).
   // ---------------------------------------------------------------------------
 
+  /**
+   * Sign frame content before commit (best-effort).
+   *
+   * @param {import('../types').FrameData} frameData
+   * @param {import('../types').SigningContext | null} signingContext
+   * @returns {{ signature: string, fingerprint: string } | null}
+   */
   _signFrame(frameData, signingContext) {
     let keystore = this._getKeystore();
     if (!keystore)
@@ -173,6 +233,13 @@ export class InteractionLoop extends EventEmitter {
   // repeated SMK-derived decryption. Also caches public keys for fingerprinting.
   // ---------------------------------------------------------------------------
 
+  /**
+   * Prepare cached signing keys for an interaction.
+   * Decrypts the agent private key once per interaction.
+   *
+   * @param {import('../types').StartInteractionParams} params
+   * @returns {import('../types').SigningContext | null}
+   */
   _buildSigningContext(params) {
     let keystore = this._getKeystore();
     if (!keystore)
@@ -212,6 +279,17 @@ export class InteractionLoop extends EventEmitter {
   // a JSON pointer message so the agent uses tool_log:get to retrieve it.
   // ---------------------------------------------------------------------------
 
+  /**
+   * Store tool output in ValueStore and optionally replace with a pointer.
+   *
+   * @param {string} sessionID
+   * @param {string} interactionID
+   * @param {import('../types').GeneratorBlock} block
+   * @param {import('../types').StartInteractionParams} params
+   * @param {*} toolOutput
+   * @param {import('../types').SigningContext | null} signingContext
+   * @returns {Promise<*>} original or replaced tool output
+   */
   async _storeAndMaybeReplaceToolOutput(sessionID, interactionID, block, params, toolOutput, signingContext) {
     try {
       let toolLogService = this._getToolLogService();
@@ -287,6 +365,16 @@ export class InteractionLoop extends EventEmitter {
   // _createFrame — routes frame creation through FrameManager for commits
   // ---------------------------------------------------------------------------
 
+  /**
+   * Create and persist a frame via FrameManager.merge().
+   *
+   * @param {string} sessionID
+   * @param {import('../types').FrameData} frameData
+   * @param {*} frameManager — FrameManager instance (or null for fallback)
+   * @param {Record<string, any>} [mergeOptions]
+   * @param {import('../types').SigningContext | null} [signingContext]
+   * @returns {Promise<import('../types').FrameData | null>}
+   */
   async _createFrame(sessionID, frameData, frameManager, mergeOptions = {}, signingContext) {
     // Sign the frame content before commit (best-effort)
     // _signFrame returns { signature, fingerprint } or null.
@@ -344,6 +432,14 @@ export class InteractionLoop extends EventEmitter {
   // Returns the merged results array, or null if merge produced nothing.
   // ---------------------------------------------------------------------------
 
+  /**
+   * The SINGLE blessed path for modifying existing frames.
+   * All mutations go through FrameManager.merge().
+   *
+   * @param {string} sessionID
+   * @param {import('../types').FrameUpdate | import('../types').FrameUpdate[]} frameUpdates
+   * @returns {Promise<import('../types').FrameData[] | null>}
+   */
   async updateFrame(sessionID, frameUpdates) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -401,6 +497,13 @@ export class InteractionLoop extends EventEmitter {
   // startInteraction
   // ---------------------------------------------------------------------------
 
+  /**
+   * Start an agent interaction for a session.
+   *
+   * @param {string} sessionID
+   * @param {import('../types').StartInteractionParams} [params]
+   * @returns {Promise<string | null>} interactionID, or null if queued
+   */
   async startInteraction(sessionID, params = {}) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -734,6 +837,16 @@ export class InteractionLoop extends EventEmitter {
   // _iterateGenerator — the kernel loop
   // ---------------------------------------------------------------------------
 
+  /**
+   * The kernel loop: iterate through generator blocks from the agent plugin.
+   *
+   * @param {string} sessionID
+   * @param {AsyncGenerator<import('../types').GeneratorBlock>} generator
+   * @param {string} interactionID
+   * @param {import('../types').StartInteractionParams} params
+   * @param {*} frameManager — FrameManager instance
+   * @returns {Promise<void>}
+   */
   async _iterateGenerator(sessionID, generator, interactionID, params, frameManager) {
     let sanitizer      = this._getContentSanitizer();
     let hookRunner     = this._getHookRunner();
@@ -1170,6 +1283,15 @@ export class InteractionLoop extends EventEmitter {
   // _persistTokenUsage — write a Token row for cost tracking
   // ---------------------------------------------------------------------------
 
+  /**
+   * Write a Token row for cost tracking (best-effort).
+   *
+   * @param {string} sessionID
+   * @param {string} interactionID
+   * @param {import('../types').StartInteractionParams} params
+   * @param {import('../types').UsageData} usage
+   * @returns {Promise<void>}
+   */
   async _persistTokenUsage(sessionID, interactionID, params, usage) {
     try {
       let models = this._context.getProperty('models');
@@ -1205,6 +1327,13 @@ export class InteractionLoop extends EventEmitter {
   // cancelInteraction
   // ---------------------------------------------------------------------------
 
+  /**
+   * Cancel an active interaction for a session/agent.
+   *
+   * @param {string} sessionID
+   * @param {{ targetAgentID?: string | null, authorType?: string, authorID?: string | null }} [options]
+   * @returns {Promise<string | null>} combined queued messages, or null
+   */
   async cancelInteraction(sessionID, options = {}) {
     let targetAgentID = options.targetAgentID || null;
     let authorType    = options.authorType || 'system';
@@ -1243,6 +1372,13 @@ export class InteractionLoop extends EventEmitter {
   // Message Queue
   // ---------------------------------------------------------------------------
 
+  /**
+   * Queue a message for delivery when the current interaction ends.
+   *
+   * @param {string} sessionID
+   * @param {string} text
+   * @param {string | null | undefined} agentID
+   */
   queueMessage(sessionID, text, agentID) {
     let queueKey = this._activeKey(sessionID, agentID);
 
@@ -1252,6 +1388,14 @@ export class InteractionLoop extends EventEmitter {
     this._queues.get(queueKey).push(text);
   }
 
+  /**
+   * Drain queued messages by starting a new interaction with combined text.
+   *
+   * @param {string} sessionID
+   * @param {import('../types').StartInteractionParams} params
+   * @param {string | null | undefined} agentID
+   * @returns {Promise<void>}
+   */
   async _drainQueue(sessionID, params, agentID) {
     let queueKey = this._activeKey(sessionID, agentID);
     let queue    = this._queues.get(queueKey);
@@ -1277,6 +1421,13 @@ export class InteractionLoop extends EventEmitter {
   // and broadcast via SSE so all connected clients see it.
   // ---------------------------------------------------------------------------
 
+  /**
+   * Persist a user message without starting an agent interaction.
+   *
+   * @param {string} sessionID
+   * @param {{ text: string, authorType?: string, authorID?: string | null, parentID?: string | null, convertMarkdown?: boolean, userPrivateKey?: string | null, userPublicKey?: string | null }} options
+   * @returns {Promise<{ interactionID: string, frameID: string | null }>}
+   */
   async postMessage(sessionID, { text, authorType, authorID, parentID, convertMarkdown, userPrivateKey, userPublicKey }) {
     if (!sessionID)
       throw new Error('sessionID is required');
@@ -1344,6 +1495,13 @@ export class InteractionLoop extends EventEmitter {
   // State Queries
   // ---------------------------------------------------------------------------
 
+  /**
+   * Check if an interaction is currently active for the session/agent.
+   *
+   * @param {string} sessionID
+   * @param {string} [agentID]
+   * @returns {boolean}
+   */
   isActive(sessionID, agentID) {
     if (agentID)
       return this._active.has(this._activeKey(sessionID, agentID));
@@ -1361,11 +1519,23 @@ export class InteractionLoop extends EventEmitter {
     return false;
   }
 
+  /**
+   * Get queued messages for a session/agent.
+   *
+   * @param {string} sessionID
+   * @param {string} [agentID]
+   * @returns {string[]}
+   */
   getQueuedMessages(sessionID, agentID) {
     let queueKey = this._activeKey(sessionID, agentID);
     return this._queues.get(queueKey) || [];
   }
 
+  /**
+   * Mark a session for primer re-injection on the next interaction.
+   *
+   * @param {string} sessionID
+   */
   requestPrimerRefresh(sessionID) {
     this._primerNeeded.add(sessionID);
   }
@@ -1374,6 +1544,12 @@ export class InteractionLoop extends EventEmitter {
   // Per-agent ref management
   // ---------------------------------------------------------------------------
 
+  /**
+   * Ensure a per-agent ref exists in the FrameManager.
+   *
+   * @param {*} frameManager
+   * @param {string} agentID
+   */
   _ensureAgentRef(frameManager, agentID) {
     let refName  = `processed/agent-${agentID}`;
     let existing = frameManager.getRef(refName);
@@ -1389,6 +1565,12 @@ export class InteractionLoop extends EventEmitter {
     }
   }
 
+  /**
+   * Advance the per-agent ref to the current heads/main.
+   *
+   * @param {*} frameManager
+   * @param {string} agentID
+   */
   _advanceAgentRef(frameManager, agentID) {
     let refName   = `processed/agent-${agentID}`;
     let headsMain = frameManager.getRef('heads/main');
@@ -1405,22 +1587,45 @@ export class InteractionLoop extends EventEmitter {
   // Delegation wrappers — keep backward compat for tests/external callers
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {string} message
+   * @returns {{ commandName: string, arguments: string } | null}
+   */
   _parseCommand(message) {
     return this._commandHandler.parse(message);
   }
 
+  /**
+   * @param {string} commandName
+   * @returns {Function | null}
+   */
   _resolveCommand(commandName) {
     return this._commandHandler.resolve(commandName);
   }
 
+  /**
+   * @param {import('../types').FrameData[]} frames
+   * @returns {boolean}
+   */
   _isFirstMessage(frames) {
     return isFirstMessage(frames);
   }
 
+  /**
+   * @param {import('../types').ChatMessage[]} messages
+   * @param {string} primer
+   * @returns {import('../types').ChatMessage[]}
+   */
   _injectPrimer(messages, primer) {
     return injectPrimer(messages, primer);
   }
 
+  /**
+   * @param {import('../types').FrameData[]} frames
+   * @param {string} forAgentID
+   * @param {Record<string, any>} [options]
+   * @returns {import('../types').ChatMessage[]}
+   */
   _buildMessages(frames, forAgentID, options) {
     return buildMessages(frames, forAgentID, options);
   }
@@ -1433,6 +1638,12 @@ export class InteractionLoop extends EventEmitter {
   // Called from server startup flow for each session's FrameManager.
   // ---------------------------------------------------------------------------
 
+  /**
+   * Mark any compaction frames stuck in 'started' status as 'abandoned'.
+   *
+   * @param {*} frameManager — FrameManager instance
+   * @returns {Promise<void>}
+   */
   async cleanupStaleCompactions(frameManager) {
     return this._compactionRunner.cleanupStaleCompactions(frameManager);
   }

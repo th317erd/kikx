@@ -20,14 +20,26 @@ import { signValue } from '../crypto/value-signing.mjs';
 //   - type:       'tool_log:<pluginID>:<toolName>'
 // =============================================================================
 
+/**
+ * Generate a unique tool log key.
+ *
+ * @returns {string}
+ */
 function generateKey() {
   return `tl_${XID.next()}`;
 }
 
-// Derive a short human-readable note from the tool call arguments.
-// - Shell tools (execute, run, bash, sh): use first argument value (the command)
-// - Web search tools: use the query argument
-// - Fallback: use the toolName
+/**
+ * Derive a short human-readable note from the tool call arguments.
+ * - Shell tools (execute, run, bash, sh): use first argument value (the command)
+ * - Web search tools: use the query argument
+ * - Fallback: use the toolName
+ *
+ * @param {string} toolName
+ * @param {string} pluginID
+ * @param {Record<string, any> | null} toolCallArgs
+ * @returns {string}
+ */
 function deriveNote(toolName, pluginID, toolCallArgs) {
   if (!toolCallArgs || typeof toolCallArgs !== 'object')
     return toolName;
@@ -67,26 +79,13 @@ function deriveNote(toolName, pluginID, toolCallArgs) {
 
 export class ToolLogService {
 
-  // ---------------------------------------------------------------------------
-  // storeToolOutput
-  // ---------------------------------------------------------------------------
-  // Best-effort: NEVER throws. Returns { id, key } on success, null on failure.
-  //
-  // params:
-  //   sessionID       - current session ID (used as scopeID)
-  //   interactionID   - current interaction ID (informational; not stored yet)
-  //   agentID         - agent that called the tool (ownerID)
-  //   organizationID  - required for ValueStore foreign key
-  //   toolName        - name portion of the tool (e.g. "execute")
-  //   pluginID        - plugin that owns the tool (e.g. "shell")
-  //   toolCallArgs    - arguments the agent passed to the tool (object or null)
-  //   output          - raw tool output (any type)
-  //   models          - { ValueStore } from core.getModels()
-  //   keystore        - keystore instance (for signing; optional)
-  //   privateKeyPEM   - agent private key PEM (for signing; optional)
-  //   publicKeyPEM    - agent public key PEM (for signing; optional)
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Store a tool execution output in ValueStore (best-effort).
+   * Never throws. Returns `{ id, key }` on success, `null` on failure.
+   *
+   * @param {import('../types').ToolLogStoreParams} params
+   * @returns {Promise<{ id: string, key: string } | null>}
+   */
   async storeToolOutput({
     sessionID,
     interactionID,    // eslint-disable-line no-unused-vars
