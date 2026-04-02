@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    // Type checking only — no compilation output
+    "noEmit": true,
+    "checkJs": true,
+    "allowJs": true,
+
+    // Module system
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "esModuleInterop": true,
+
+    // Strictness — start with useful checks, not full strict
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+
+    // Paths
+    "baseUrl": ".",
+    "typeRoots": ["./node_modules/@types", "./src/core"],
+
+    // Skip type checking of external libraries
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/core/**/*.mjs",
+    "src/core/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/server/node_modules",
+    "old-app",
+    "spec"
+  ]
+}
