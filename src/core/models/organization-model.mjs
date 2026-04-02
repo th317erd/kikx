@@ -9,17 +9,24 @@ import { ModelBase, Types } from './model-base.mjs';
 // Equivalent to a Discord Server — contains users, agents, sessions.
 // =============================================================================
 
+/**
+ * Organization model — top-level tenant containing users, agents, and sessions.
+ * @see {import('../types').Organization}
+ */
 export class Organization extends ModelBase {
+  /** @type {number} */
   static version = 1;
 
   static fields = {
     ...(ModelBase.fields || {}),
+    /** @type {string} */
     id: {
       type:         Types.XID({ prefix: 'org_' }),
       defaultValue: Types.XID.Default.XID,
       allowNull:    false,
       primaryKey:   true,
     },
+    /** @type {string} */
     name: {
       type:      Types.STRING(128),
       allowNull: false,

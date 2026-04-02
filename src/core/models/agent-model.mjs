@@ -12,30 +12,40 @@ import { ModelBase, Types } from './model-base.mjs';
 
 const AGENT_DEFAULTS = {};
 
+/**
+ * Agent model — represents an AI agent bound to an organization.
+ * @see {import('../types').Agent}
+ */
 export class Agent extends ModelBase {
+  /** @type {number} */
   static version = 3;
 
+  /** @type {Set<string>} */
   static PROTECTED_KEYS = new Set(['apiKey', 'encryptedAPIKey', 'riskLevel']);
 
   static fields = {
     ...(ModelBase.fields || {}),
+    /** @type {string} */
     id: {
       type:         Types.XID({ prefix: 'agt_' }),
       defaultValue: Types.XID.Default.XID,
       allowNull:    false,
       primaryKey:   true,
     },
+    /** @type {string} */
     organizationID: {
       type:      Types.FOREIGN_KEY('Organization:id', { onDelete: 'CASCADE' }),
       allowNull: false,
       index:     true,
     },
+    /** @type {string} */
     name: {
       type:      Types.STRING(128),
       allowNull: false,
       index:     true,
     },
     // Which agent plugin type (e.g., "claude-agent", "openai-agent")
+    /** @type {string} */
     pluginID: {
       type:      Types.STRING(128),
       allowNull: false,
@@ -43,26 +53,31 @@ export class Agent extends ModelBase {
     },
     // Encrypted API key: JSON blob { ciphertext, iv, authTag }
     // Encrypted with per-user key derived from UMK
+    /** @type {string | null} */
     encryptedAPIKey: {
       type:      Types.TEXT('long'),
       allowNull: true,
     },
     // Agent instructions (system prompt additions)
+    /** @type {string | null} */
     instructions: {
       type:      Types.TEXT('long'),
       allowNull: true,
     },
     // DM-derived summary (auto-generated from DM sessions)
+    /** @type {string | null} */
     dmSummary: {
       type:      Types.TEXT('long'),
       allowNull: true,
     },
     // Ed25519 public key (PEM, always readable)
+    /** @type {string | null} */
     publicKey: {
       type:      Types.TEXT('long'),
       allowNull: true,
     },
     // Ed25519 private key (PEM, encrypted with SMK-derived key)
+    /** @type {string | null} */
     encryptedPrivateKey: {
       type:      Types.TEXT('long'),
       allowNull: true,
@@ -79,6 +94,9 @@ export class Agent extends ModelBase {
   // Config methods (async — backed by ValueStore table)
   // ---------------------------------------------------------------------------
 
+  /**
+   * @returns {Promise<Record<string, any>>}
+   */
   async getConfig() {
     let ValueStore = this.getModel('ValueStore');
     let entries = await ValueStore
@@ -100,6 +118,10 @@ export class Agent extends ModelBase {
     return config;
   }
 
+  /**
+   * @param {Record<string, any> | null} value
+   * @returns {Promise<void>}
+   */
   async setConfig(value) {
     let ValueStore = this.getModel('ValueStore');
 
@@ -130,6 +152,10 @@ export class Agent extends ModelBase {
     }
   }
 
+  /**
+   * @param {Record<string, any>} partial
+   * @returns {Promise<void>}
+   */
   async updateConfig(partial) {
     if (!partial || typeof partial !== 'object' || Object.keys(partial).length === 0)
       return;
@@ -173,6 +199,9 @@ export class Agent extends ModelBase {
   // Behaviors convenience methods (async)
   // ---------------------------------------------------------------------------
 
+  /**
+   * @returns {Promise<string | null>}
+   */
   async getBehaviors() {
     let config    = await this.getConfig();
     let behaviors = config.behaviors || config.abilities || null;
@@ -191,15 +220,25 @@ export class Agent extends ModelBase {
     return String(behaviors);
   }
 
+  /**
+   * @param {string} text
+   * @returns {Promise<void>}
+   */
   async setBehaviors(text) {
     await this.updateConfig({ behaviors: text });
   }
 
+  /**
+   * @returns {Promise<boolean>}
+   */
   async hasBehaviors() {
     let behaviors = await this.getBehaviors();
     return !!behaviors;
   }
 
+  /**
+   * @returns {Promise<Record<string, any>>}
+   */
   async getSafeConfig() {
     let config = await this.getConfig();
 

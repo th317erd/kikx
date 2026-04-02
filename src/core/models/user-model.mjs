@@ -9,56 +9,71 @@ import { ModelBase, Types } from './model-base.mjs';
 // Password-only auth with zero-knowledge vault (UMK wrapped by password slot).
 // =============================================================================
 
+/**
+ * User model — a user within an organization with password-based auth.
+ * @see {import('../types').User}
+ */
+
 export let USER_DEFAULTS = { riskLevel: 'normal' };
 let SIGNED_KEYS          = new Set(['riskLevel']);
 let VALID_RISK_LEVELS    = new Set(['strict', 'normal', 'permissive']);
 
 export class User extends ModelBase {
+  /** @type {number} */
   static version = 2;
 
   static fields = {
     ...(ModelBase.fields || {}),
+    /** @type {string} */
     id: {
       type:         Types.XID({ prefix: 'usr_' }),
       defaultValue: Types.XID.Default.XID,
       allowNull:    false,
       primaryKey:   true,
     },
+    /** @type {string} */
     organizationID: {
       type:      Types.FOREIGN_KEY('Organization:id', { onDelete: 'CASCADE' }),
       allowNull: false,
       index:     true,
     },
+    /** @type {string} */
     email: {
       type:      Types.STRING(128),
       allowNull: false,
       index:     true,
     },
+    /** @type {string | null} */
     firstName: {
       type:      Types.STRING(64),
       allowNull: true,
     },
+    /** @type {string | null} */
     lastName: {
       type:      Types.STRING(64),
       allowNull: true,
     },
     // Base64-encoded avatar image (resized to 128x128 max)
+    /** @type {string | null} */
     avatar: {
       type:      Types.TEXT('long'),
       allowNull: true,
     },
     // Password slot: JSON blob { ciphertext, iv, authTag, salt }
     // Stores UMK encrypted with scrypt-derived key from password
+    /** @type {string | null} */
     passwordSlot: {
       type:      Types.TEXT('long'),
       allowNull: true,
     },
     // Ed25519 public key (PEM, always readable)
+    /** @type {string | null} */
     publicKey: {
       type:      Types.TEXT('long'),
       allowNull: true,
     },
     // Ed25519 private key (PEM, encrypted with UMK-derived key)
+    /** @type {string | null} */
     encryptedPrivateKey: {
       type:      Types.TEXT('long'),
       allowNull: true,
@@ -76,6 +91,10 @@ export class User extends ModelBase {
     },
   };
 
+  /**
+   * @param {...any} args
+   * @returns {Promise<void>}
+   */
   async onBeforeSave(...args) {
     if (this.email)
       this.email = ('' + this.email).trim().toLowerCase();
@@ -83,6 +102,9 @@ export class User extends ModelBase {
     return await super.onBeforeSave(...args);
   }
 
+  /**
+   * @returns {string}
+   */
   getDisplayName() {
     if (this.firstName && this.lastName)
       return `${this.firstName} ${this.lastName}`;
@@ -97,6 +119,9 @@ export class User extends ModelBase {
   // Settings (ValueStore-backed)
   // ---------------------------------------------------------------------------
 
+  /**
+   * @returns {Promise<Record<string, any>>}
+   */
   async getSettings() {
     let ValueStore = this.getModel('ValueStore');
     let entries    = await ValueStore
@@ -119,6 +144,12 @@ export class User extends ModelBase {
     return settings;
   }
 
+  /**
+   * @param {Record<string, any>} partial
+   * @param {import('../types').Keystore} keystore
+   * @param {string} privateKeyPEM
+   * @returns {Promise<void>}
+   */
   async updateSettings(partial, keystore, privateKeyPEM) {
     let ValueStore = this.getModel('ValueStore');
     let keys       = Object.keys(partial);
@@ -183,6 +214,11 @@ export class User extends ModelBase {
     }
   }
 
+  /**
+   * @param {import('../types').Keystore} keystore
+   * @param {string} publicKeyPEM
+   * @returns {Promise<Record<string, any> | null>}
+   */
   async getVerifiedSettings(keystore, publicKeyPEM) {
     let ValueStore = this.getModel('ValueStore');
     let entries    = await ValueStore

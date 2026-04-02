@@ -11,7 +11,11 @@ const { Model, Types } = MythixORM;
 // Provides createdAt/updatedAt timestamps and helper methods.
 // =============================================================================
 
+/**
+ * Base model for all Kikx V2 models. Provides timestamps and helper methods.
+ */
 export class ModelBase extends Model {
+  /** @type {number} */
   static version = 1;
 
   static fields = {
@@ -29,10 +33,17 @@ export class ModelBase extends Model {
     },
   };
 
+  /**
+   * @returns {string[]}
+   */
   static defaultOrder() {
     return [ `${this.getModelName()}:createdAt` ];
   }
 
+  /**
+   * @param {string} [modelName]
+   * @returns {*}
+   */
   getModel(modelName) {
     if (!modelName)
       return super.getModel();
@@ -41,6 +52,9 @@ export class ModelBase extends Model {
     return connection.getModel(modelName);
   }
 
+  /**
+   * @returns {import('../types').CoreModels}
+   */
   getModels() {
     let connection = this.getConnection();
     return connection.getModels();

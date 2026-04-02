@@ -9,27 +9,36 @@ import { ModelBase, Types } from './model-base.mjs';
 // Pure join table: { id, sessionID, agentID, createdAt, updatedAt }.
 // =============================================================================
 
+/**
+ * Participant model — binds an agent to a session with a role.
+ * @see {import('../types').Participant}
+ */
 export class Participant extends ModelBase {
+  /** @type {number} */
   static version = 2;
 
   static fields = {
     ...(ModelBase.fields || {}),
+    /** @type {string} */
     id: {
       type:         Types.XID({ prefix: 'prt_' }),
       defaultValue: Types.XID.Default.XID,
       allowNull:    false,
       primaryKey:   true,
     },
+    /** @type {string} */
     sessionID: {
       type:      Types.FOREIGN_KEY('Session:id', { onDelete: 'CASCADE' }),
       allowNull: false,
       index:     true,
     },
+    /** @type {string} */
     agentID: {
       type:      Types.FOREIGN_KEY('Agent:id', { onDelete: 'CASCADE' }),
       allowNull: false,
       index:     true,
     },
+    /** @type {string} */
     role: {
       type:         Types.STRING(32),
       defaultValue: 'member',

@@ -9,28 +9,37 @@ import { ModelBase, Types } from './model-base.mjs';
 // Contains participants and a FrameManager instance.
 // =============================================================================
 
+/**
+ * Session model — a chat session within an organization.
+ * @see {import('../types').Session}
+ */
 export class Session extends ModelBase {
+  /** @type {number} */
   static version = 4;
 
   static fields = {
     ...(ModelBase.fields || {}),
+    /** @type {string} */
     id: {
       type:         Types.XID({ prefix: 'ses_' }),
       defaultValue: Types.XID.Default.XID,
       allowNull:    false,
       primaryKey:   true,
     },
+    /** @type {string} */
     organizationID: {
       type:      Types.FOREIGN_KEY('Organization:id', { onDelete: 'CASCADE' }),
       allowNull: false,
       index:     true,
     },
+    /** @type {string} */
     name: {
       type:         Types.STRING(256),
       allowNull:    false,
       defaultValue: 'New Session',
     },
     // Session type: 'chat' (default) or 'dm' (direct message for agent config)
+    /** @type {'chat' | 'dm' | 'self' | string} */
     type: {
       type:         Types.STRING(32),
       allowNull:    false,
@@ -38,11 +47,13 @@ export class Session extends ModelBase {
       index:        true,
     },
     // For DM sessions: the agent this DM configures
+    /** @type {string | null} */
     dmAgentID: {
       type:      Types.STRING(128),
       allowNull: true,
       index:     true,
     },
+    /** @type {boolean} */
     archived: {
       type:         Types.BOOLEAN,
       allowNull:    false,
@@ -50,6 +61,7 @@ export class Session extends ModelBase {
       index:        true,
     },
     // Links sub-sessions to their parent session
+    /** @type {string | null} */
     parentSessionID: {
       type:         Types.FOREIGN_KEY('Session:id', { onDelete: 'CASCADE' }),
       allowNull:    true,
@@ -58,6 +70,7 @@ export class Session extends ModelBase {
     },
     // The frame ID in the parent session representing this sub-session (session-link bubble).
     // Not a FK because the frame lives in a different session's partition.
+    /** @type {string | null} */
     linkedFrameID: {
       type:         Types.STRING(128),
       allowNull:    true,
@@ -66,6 +79,7 @@ export class Session extends ModelBase {
     },
     // Maximum number of agent-authored commits allowed before the session is constrained.
     // null means unconstrained (no limit).
+    /** @type {number | null} */
     maxInteractions: {
       type:         Types.INTEGER,
       allowNull:    true,
@@ -73,6 +87,7 @@ export class Session extends ModelBase {
     },
     // Deadline after which the session is constrained.
     // null means unconstrained (no time limit).
+    /** @type {Date | null} */
     endsAt: {
       type:         Types.DATETIME,
       allowNull:    true,
@@ -105,6 +120,9 @@ export class Session extends ModelBase {
   // Context methods (async -- backed by ValueStore table)
   // ---------------------------------------------------------------------------
 
+  /**
+   * @returns {Promise<Record<string, any>>}
+   */
   async getContext() {
     let ValueStore = this.getModel('ValueStore');
     let entries = await ValueStore
@@ -126,6 +144,10 @@ export class Session extends ModelBase {
     return context;
   }
 
+  /**
+   * @param {Record<string, any> | null} value
+   * @returns {Promise<void>}
+   */
   async setContext(value) {
     let ValueStore = this.getModel('ValueStore');
 
@@ -156,6 +178,10 @@ export class Session extends ModelBase {
     }
   }
 
+  /**
+   * @param {Record<string, any>} partial
+   * @returns {Promise<void>}
+   */
   async updateContext(partial) {
     if (!partial || typeof partial !== 'object' || Object.keys(partial).length === 0)
       return;
@@ -195,6 +221,9 @@ export class Session extends ModelBase {
     }
   }
 
+  /**
+   * @returns {Promise<Record<string, any>>}
+   */
   async getEffectiveContext() {
     let Session  = this.getModel('Session');
     let contexts = [];

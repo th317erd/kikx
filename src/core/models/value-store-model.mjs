@@ -19,13 +19,22 @@ import { ModelBase, Types } from './model-base.mjs';
 // a true UNIQUE constraint, apply it via a migration or raw SQL.
 // =============================================================================
 
+/**
+ * ValueStore model — unified key-value store for agent config, session context, and user settings.
+ * @see {import('../types').ValueStoreEntry}
+ */
 export class ValueStore extends ModelBase {
+  /** @type {number} */
   static version = 1;
 
   // ---------------------------------------------------------------------------
   // Solr indexing — best-effort, never blocks or fails the DB write
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {*} _context
+   * @returns {Promise<void>}
+   */
   async onAfterSave(_context) {
     try {
       let application = this.constructor.getApplication?.();
@@ -59,60 +68,72 @@ export class ValueStore extends ModelBase {
 
   static fields = {
     ...(ModelBase.fields || {}),
+    /** @type {string} */
     id: {
       type:         Types.XID({ prefix: 'vs_' }),
       defaultValue: Types.XID.Default.XID,
       allowNull:    false,
       primaryKey:   true,
     },
+    /** @type {string} */
     organizationID: {
       type:      Types.FOREIGN_KEY('Organization:id', { onDelete: 'CASCADE' }),
       allowNull: false,
       index:     true,
     },
+    /** @type {string} */
     ownerType: {
       type:      Types.STRING(32),
       allowNull: false,
       index:     true,
     },
+    /** @type {string} */
     ownerID: {
       type:      Types.STRING(128),
       allowNull: false,
       index:     true,
     },
+    /** @type {string} */
     namespace: {
       type:      Types.STRING(64),
       allowNull: false,
       index:     true,
     },
+    /** @type {string} */
     scopeID: {
       type:         Types.STRING(128),
       allowNull:    false,
       defaultValue: '',
       index:        true,
     },
+    /** @type {string} */
     key: {
       type:      Types.STRING(256),
       allowNull: false,
       index:     [true, 'ownerType', 'ownerID', 'namespace', 'scopeID'],
     },
+    /** @type {string | null} */
     value: {
       type:      Types.TEXT('long'),
       allowNull: true,
     },
+    /** @type {string | null} */
     signature: {
       type:      Types.STRING(256),
       allowNull: true,
     },
+    /** @type {string | null} */
     signingKeyFingerprint: {
       type:      Types.STRING(64),
       allowNull: true,
     },
+    /** @type {string | null} */
     note: {
       type:      Types.STRING(256),
       allowNull: true,
       index:     true,
     },
+    /** @type {string | null} */
     type: {
       type:      Types.STRING(64),
       allowNull: true,
