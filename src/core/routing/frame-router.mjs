@@ -18,10 +18,20 @@ import { SelectorCompiler } from './selector-compiler.mjs';
 // =============================================================================
 
 export class FrameRouter {
+  /**
+   * @param {{ logger?: Console }} [options]
+   */
   constructor(options = {}) {
-    this._registrations = [];  // { matcher, PluginClass, pluginName }
+    /** @type {Array<{ matcher: (frame: import('../types').FrameData) => boolean; PluginClass: typeof import('./base-plugin-class.mjs').BasePluginClass; pluginName: string | null }>} */
+    this._registrations = [];
+
+    /** @type {Console} */
     this._logger        = options.logger || console;
+
+    /** @type {boolean} */
     this._processing    = false;
+
+    /** @type {Array<{ frameManager: any; commit: import('../types').Commit; sessionContext: Record<string, any> | null; connectOptions: Record<string, any> }>} */
     this._queue         = [];
   }
 
@@ -29,13 +39,23 @@ export class FrameRouter {
   // Registration
   // ---------------------------------------------------------------------------
 
-  // Register a selector + plugin class. Selector is compiled once here.
+  /**
+   * Register a selector + plugin class. Selector is compiled once here.
+   * @param {string | ((frame: import('../types').FrameData) => boolean)} selector
+   * @param {typeof import('./base-plugin-class.mjs').BasePluginClass} PluginClass
+   * @param {string} [pluginName]
+   * @returns {void}
+   */
   registerSelector(selector, PluginClass, pluginName) {
     let matcher = SelectorCompiler.compile(selector);
     this._registrations.push({ matcher, PluginClass, pluginName: pluginName || null });
   }
 
-  // Bulk-load all selectors from a PluginRegistry.
+  /**
+   * Bulk-load all selectors from a PluginRegistry.
+   * @param {import('../plugin-loader/registry.mjs').PluginRegistry} registry
+   * @returns {void}
+   */
   loadFromRegistry(registry) {
     let entries = registry.getSelectors();
 
@@ -49,8 +69,14 @@ export class FrameRouter {
   // Connect to a FrameManager
   // ---------------------------------------------------------------------------
 
-  // Subscribe to a FrameManager's commit events.
-  // Returns a cleanup function to unsubscribe.
+  /**
+   * Subscribe to a FrameManager's commit events.
+   * Returns a cleanup function to unsubscribe.
+   * @param {any} frameManager - FrameManager instance with on/off event support
+   * @param {Record<string, any> | null} sessionContext
+   * @param {{ framePersistence?: any } & Record<string, any>} [options]
+   * @returns {() => void} Cleanup function to unsubscribe
+   */
   connectTo(frameManager, sessionContext, options) {
     let connectOptions = options || {};
 
@@ -70,6 +96,13 @@ export class FrameRouter {
   // Queue processing (re-entrant safety)
   // ---------------------------------------------------------------------------
 
+  /**
+   * @param {any} frameManager
+   * @param {import('../types').Commit} commit
+   * @param {Record<string, any> | null} sessionContext
+   * @param {Record<string, any>} connectOptions
+   * @returns {void}
+   */
   _enqueue(frameManager, commit, sessionContext, connectOptions) {
     this._queue.push({ frameManager, commit, sessionContext, connectOptions });
 
@@ -77,6 +110,10 @@ export class FrameRouter {
       this._processQueue();
   }
 
+  /**
+   * Process queued commits iteratively.
+   * @returns {Promise<void>}
+   */
   async _processQueue() {
     this._processing = true;
 
@@ -97,6 +134,14 @@ export class FrameRouter {
   // Per-commit routing
   // ---------------------------------------------------------------------------
 
+  /**
+   * Route a single commit's changes through matching plugins.
+   * @param {any} frameManager
+   * @param {import('../types').Commit} commit
+   * @param {Record<string, any> | null} sessionContext
+   * @param {Record<string, any>} connectOptions
+   * @returns {Promise<void>}
+   */
   async _routeCommit(frameManager, commit, sessionContext, connectOptions) {
     let changes = commit.changes;
 
@@ -141,6 +186,15 @@ export class FrameRouter {
   // Context building
   // ---------------------------------------------------------------------------
 
+  /**
+   * Build routing context for a single frame change.
+   * @param {any} frameManager
+   * @param {import('../types').FrameData} frame
+   * @param {{ frameID: string; operation: string }} change
+   * @param {import('../types').Commit} commit
+   * @param {Record<string, any> | null} sessionContext
+   * @returns {Record<string, any>}
+   */
   _buildContext(frameManager, frame, change, commit, sessionContext) {
     let previousFrame = null;
 
@@ -165,7 +219,12 @@ export class FrameRouter {
     };
   }
 
-  // Compute property-level diffs between previousFrame and newFrame.
+  /**
+   * Compute property-level diffs between previousFrame and newFrame.
+   * @param {import('../types').FrameData | null} previousFrame
+   * @param {import('../types').FrameData} newFrame
+   * @returns {Array<{ propName: string; previousValue: any; newValue: any }>}
+   */
   _computeChanges(previousFrame, newFrame) {
     if (!previousFrame)
       return [];
@@ -198,6 +257,14 @@ export class FrameRouter {
   // State hydration + middleware chain + state persistence
   // ---------------------------------------------------------------------------
 
+  /**
+   * Execute the middleware chain with state hydration and persistence.
+   * @param {Array<{ matcher: Function; PluginClass: typeof import('./base-plugin-class.mjs').BasePluginClass; pluginName: string | null }>} matchingPlugins
+   * @param {Record<string, any>} context
+   * @param {import('../types').FrameData} frame
+   * @param {Record<string, any>} connectOptions
+   * @returns {Promise<void>}
+   */
   async _executeChainWithState(matchingPlugins, context, frame, connectOptions) {
     // Hydrate raw state from the frame
     let rawState = {};
@@ -267,6 +334,13 @@ export class FrameRouter {
   // Middleware chain execution
   // ---------------------------------------------------------------------------
 
+  /**
+   * Execute the middleware chain.
+   * @param {Array<{ matcher: Function; PluginClass: typeof import('./base-plugin-class.mjs').BasePluginClass; pluginName: string | null }>} matchingPlugins
+   * @param {Record<string, any>} context
+   * @param {Record<string, any>} stateProxy
+   * @returns {Promise<void>}
+   */
   async _executeChain(matchingPlugins, context, stateProxy) {
     let index     = 0;
     let chainDone = false;
@@ -289,6 +363,15 @@ export class FrameRouter {
     await advance(context);
   }
 
+  /**
+   * Invoke a single plugin in the middleware chain.
+   * @param {{ matcher: Function; PluginClass: typeof import('./base-plugin-class.mjs').BasePluginClass; pluginName: string | null }} registration
+   * @param {Record<string, any>} context
+   * @param {(ctx?: Record<string, any>) => Promise<void>} next
+   * @param {(ctx?: Record<string, any>) => Promise<void>} done
+   * @param {Record<string, any>} stateProxy
+   * @returns {Promise<void>}
+   */
   async _invokePlugin(registration, context, next, done, stateProxy) {
     let instance;
 
@@ -348,6 +431,10 @@ export class FrameRouter {
   // Accessors
   // ---------------------------------------------------------------------------
 
+  /**
+   * Get a copy of all registered selectors.
+   * @returns {Array<{ matcher: (frame: import('../types').FrameData) => boolean; PluginClass: typeof import('./base-plugin-class.mjs').BasePluginClass; pluginName: string | null }>}
+   */
   getRegistrations() {
     return [...this._registrations];
   }

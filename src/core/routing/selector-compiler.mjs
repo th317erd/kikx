@@ -20,8 +20,12 @@
 let SELECTOR_RE = /^(type|author):([^\[]+)(?:\[([^\]=]+)=([^\]]+)\])?$/;
 
 export class SelectorCompiler {
-  // Compile a selector (string or function) into a matcher function.
-  // The returned function takes a frame and returns true/false.
+  /**
+   * Compile a selector (string or function) into a matcher function.
+   * The returned function takes a frame and returns true/false.
+   * @param {string | ((frame: import('../types').FrameData) => boolean)} selector
+   * @returns {(frame: import('../types').FrameData) => boolean}
+   */
   static compile(selector) {
     if (typeof selector === 'function')
       return selector;

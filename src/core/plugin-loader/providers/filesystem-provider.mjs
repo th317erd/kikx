@@ -15,17 +15,24 @@ import { stat }          from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 export class FilesystemPluginProvider extends PluginProvider {
+  /**
+   * @param {string[]} directories - Array of directory paths to scan for plugins
+   */
   constructor(directories) {
     super();
 
+    /** @type {string[]} */
     this._directories = Array.isArray(directories)
       ? directories.slice()
       : [];
 
-    // Cache: pluginName -> absolute path to index.mjs
+    /** @type {Map<string, string>} Cache: pluginName -> absolute path to index.mjs */
     this._resolved = new Map();
   }
 
+  /**
+   * @returns {Promise<string[]>}
+   */
   async discover() {
     let names = [];
 
@@ -65,6 +72,10 @@ export class FilesystemPluginProvider extends PluginProvider {
     return names;
   }
 
+  /**
+   * @param {string} name
+   * @returns {Promise<{ setup: Function }>}
+   */
   async load(name) {
     let filePath = this._resolved.get(name);
 

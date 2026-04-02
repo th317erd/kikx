@@ -18,21 +18,45 @@ import { InMemoryPluginProvider }   from './providers/in-memory-provider.mjs';
 import { FilesystemPluginProvider } from './providers/filesystem-provider.mjs';
 
 export class PluginLoader {
+  /**
+   * @param {import('../types').CascadingContext | null} context
+   * @param {{ disabled?: Set<string> }} [options]
+   */
   constructor(context, options) {
+    /** @type {import('../types').CascadingContext | null} */
     this._context    = context || null;
+
+    /** @type {{ disabled?: Set<string> }} */
     this._options    = options || {};
+
+    /** @type {PluginProvider[]} */
     this._providers  = [];
+
+    /** @type {PluginRegistry} */
     this._registry   = new PluginRegistry();
-    this._teardowns  = new Map(); // pluginName -> teardown closure
-    this._loaded     = new Set(); // track loaded plugin names
-    this._failed     = new Map(); // pluginName -> error
-    this._provideCallbacks = new Map(); // pluginName -> callback (for future hot-reload)
+
+    /** @type {Map<string, Function>} */
+    this._teardowns  = new Map();
+
+    /** @type {Set<string>} */
+    this._loaded     = new Set();
+
+    /** @type {Map<string, Error>} */
+    this._failed     = new Map();
+
+    /** @type {Map<string, Function>} */
+    this._provideCallbacks = new Map();
   }
 
   // ---------------------------------------------------------------------------
   // Provider Management
   // ---------------------------------------------------------------------------
 
+  /**
+   * Add a plugin provider for discovery and loading.
+   * @param {PluginProvider} provider
+   * @returns {void}
+   */
   addProvider(provider) {
     if (!(provider instanceof PluginProvider))
       throw new Error('Provider must be an instance of PluginProvider');
@@ -44,6 +68,10 @@ export class PluginLoader {
   // Loading
   // ---------------------------------------------------------------------------
 
+  /**
+   * Discover and load all plugins from all providers.
+   * @returns {Promise<string[]>} Names of successfully loaded plugins
+   */
   async loadAll() {
     let results = [];
 
@@ -68,6 +96,12 @@ export class PluginLoader {
     return results;
   }
 
+  /**
+   * Load a single plugin by name and module.
+   * @param {string} name
+   * @param {{ setup: (provide: (callback: Function) => void) => Promise<Function | void> | Function | void }} module
+   * @returns {Promise<void>}
+   */
   async loadPlugin(name, module) {
     if (!name || typeof name !== 'string')
       throw new Error('Plugin name must be a non-empty string');
@@ -119,6 +153,11 @@ export class PluginLoader {
     this._loaded.add(name);
   }
 
+  /**
+   * Unload a plugin by name, calling its teardown if registered.
+   * @param {string} name
+   * @returns {Promise<boolean>} True if the plugin was loaded and removed
+   */
   async unloadPlugin(name) {
     if (!this._loaded.has(name))
       return false;
@@ -144,6 +183,10 @@ export class PluginLoader {
   // Provide Callbacks (for future hot-reload)
   // ---------------------------------------------------------------------------
 
+  /**
+   * Get a copy of all provide callbacks.
+   * @returns {Map<string, Function>}
+   */
   getProvideCallbacks() {
     return new Map(this._provideCallbacks);
   }
@@ -152,18 +195,31 @@ export class PluginLoader {
   // Accessors
   // ---------------------------------------------------------------------------
 
+  /**
+   * @returns {PluginRegistry}
+   */
   getRegistry() {
     return this._registry;
   }
 
+  /**
+   * @returns {Set<string>}
+   */
   getLoadedPlugins() {
     return new Set(this._loaded);
   }
 
+  /**
+   * @returns {Map<string, Error>}
+   */
   getFailedPlugins() {
     return new Map(this._failed);
   }
 
+  /**
+   * @param {string} name
+   * @returns {boolean}
+   */
   isLoaded(name) {
     return this._loaded.has(name);
   }

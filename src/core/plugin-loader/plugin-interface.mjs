@@ -16,24 +16,43 @@ import { PermissionRequiredError } from '../permissions/permission-required-erro
 // =============================================================================
 
 export class PluginInterface {
-  // Static metadata — override in subclasses
+  /** @type {string | null} */
   static pluginID     = null;
+  /** @type {string | null} */
   static featureName  = null;
+  /** @type {string | null} */
   static displayName  = null;
+  /** @type {string | null} */
   static description  = null;
+  /** @type {string | null} */
   static icon         = null;
+  /** @type {string} */
   static version      = '1.0.0';
-  static riskLevel    = 'high'; // 'none', 'low', 'high', or 'critical'
-  static inputSchema  = null;   // JSON Schema for tool input parameters
+  /** @type {'none' | 'low' | 'high' | 'critical'} */
+  static riskLevel    = 'high';
+  /** @type {import('../types').JSONSchema | null} */
+  static inputSchema  = null;
 
+  /**
+   * @param {import('../types').CascadingContext & Record<string, any>} context
+   */
   constructor(context) {
+    /** @type {import('../types').CascadingContext & Record<string, any>} */
     this._context = context;
+
+    /** @type {Record<string, any> | undefined} */
+    this._params = undefined;
   }
 
   // ---------------------------------------------------------------------------
   // Public API — framework-owned wrapper (never override)
   // ---------------------------------------------------------------------------
 
+  /**
+   * Framework-owned execute wrapper. Checks permissions then delegates to _execute().
+   * @param {Record<string, any>} params
+   * @returns {Promise<any>}
+   */
   async execute(params) {
     this._params = params;
 
@@ -50,6 +69,11 @@ export class PluginInterface {
   // Workhorse method — override in subclasses
   // ---------------------------------------------------------------------------
 
+  /**
+   * Workhorse method — override in subclasses.
+   * @param {Record<string, any>} params
+   * @returns {Promise<any>}
+   */
   async _execute(params) {
     throw new Error(`${this.constructor.name}._execute() not implemented`);
   }
@@ -58,6 +82,11 @@ export class PluginInterface {
   // Permission checking — delegates to PermissionsClass or base default
   // ---------------------------------------------------------------------------
 
+  /**
+   * Permission checking — delegates to PermissionsClass or base default.
+   * @param {Record<string, any>} params
+   * @returns {Promise<void>}
+   */
   async _checkPermissions(params) {
     // riskLevel 'none' — never needs permission
     if (this.constructor.riskLevel === 'none')
@@ -99,12 +128,21 @@ export class PluginInterface {
   // Helper methods
   // ---------------------------------------------------------------------------
 
+  /**
+   * Build the fully-qualified feature name.
+   * @returns {string}
+   */
   _featureName() {
     let pluginID    = this.constructor.pluginID || 'unknown';
     let featureName = this.constructor.featureName || 'unknown';
     return `${pluginID}:${featureName}`;
   }
 
+  /**
+   * Build permission options from params.
+   * @param {Record<string, any>} params
+   * @returns {{ organizationID: string | null; scope: string; scopeID: string | null; toolClass: typeof PluginInterface; agent: import('../types').Agent | null }}
+   */
   _permissionOptions(params) {
     return {
       organizationID: params?._agent?.organizationID || null,
@@ -115,6 +153,11 @@ export class PluginInterface {
     };
   }
 
+  /**
+   * Create a default PermissionRequiredError.
+   * @param {Record<string, any>} params
+   * @returns {PermissionRequiredError}
+   */
   _defaultPermissionError(params) {
     return new PermissionRequiredError(this._featureName(), {
       title:       this._featureName(),
@@ -123,6 +166,11 @@ export class PluginInterface {
     });
   }
 
+  /**
+   * Format parameter details for permission error display.
+   * @param {Record<string, any>} params
+   * @returns {Array<{ label: string; value: string }>}
+   */
   _formatDefaultDetails(params) {
     if (!params || typeof params !== 'object')
       return [];
@@ -158,6 +206,10 @@ export class PluginInterface {
   // Help index registration
   // ---------------------------------------------------------------------------
 
+  /**
+   * Returns help metadata for this tool.
+   * @returns {{ name: string; displayName: string | null; description: string | null; icon: string | null }}
+   */
   getHelp() {
     return {
       name:        `${this.constructor.pluginID}:${this.constructor.featureName}`,
@@ -171,6 +223,10 @@ export class PluginInterface {
   // Permission matching — override point for advanced permission logic
   // ---------------------------------------------------------------------------
 
+  /**
+   * Override point for advanced permission logic. Return a Permissions subclass or null.
+   * @returns {Function | null}
+   */
   getPermissionsClass() {
     return null;
   }

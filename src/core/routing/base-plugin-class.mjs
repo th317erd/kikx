@@ -26,26 +26,45 @@ const DEFAULT_CONTEXT_WINDOW = 200000;
 // =============================================================================
 
 export class BasePluginClass {
+  /**
+   * @param {import('../types').CascadingContext & Record<string, any>} context
+   */
   constructor(context) {
+    /** @type {import('../types').CascadingContext & Record<string, any>} */
     this._context = context;
+
+    /** @type {Record<string, any> | undefined} */
+    this._state = undefined;
+
+    /** @type {import('../types').Agent | undefined} */
+    this._agent = undefined;
   }
 
   // ---------------------------------------------------------------------------
   // Accessors
   // ---------------------------------------------------------------------------
 
-  // Returns the context object passed to the constructor.
+  /**
+   * Returns the context object passed to the constructor.
+   * @returns {import('../types').CascadingContext & Record<string, any>}
+   */
   get context() {
     return this._context;
   }
 
-  // Returns the state Proxy set by FrameRouter before dispatch.
-  // Falls back to an empty object if not set.
+  /**
+   * Returns the state Proxy set by FrameRouter before dispatch.
+   * Falls back to an empty object if not set.
+   * @returns {Record<string, any>}
+   */
   get state() {
     return this._state || {};
   }
 
-  // Returns the logger from context, falling back to the global console.
+  /**
+   * Returns the logger from context, falling back to the global console.
+   * @returns {Console}
+   */
   get logger() {
     return this._context.logger || console;
   }
@@ -58,6 +77,12 @@ export class BasePluginClass {
   // `next(ctx)` continues to the next plugin in the chain.
   // `done(ctx)` stops the chain immediately.
   // Default behavior: pass through to the next plugin.
+  /**
+   * Called by the router's middleware chain.
+   * @param {(ctx: Record<string, any>) => Promise<any>} next - Continue to the next plugin
+   * @param {(ctx: Record<string, any>) => Promise<void>} done - Stop the chain immediately
+   * @returns {Promise<any>}
+   */
   async process(next, done) {
     return await next(this._context);
   }
@@ -68,6 +93,10 @@ export class BasePluginClass {
 
   // Iterates context.changes and calls onChange() for each entry.
   // Handles missing or non-array changes gracefully (no-op).
+  /**
+   * Iterates context.changes and calls onChange() for each entry.
+   * @returns {void}
+   */
   processChanges() {
     let changes = this._context.changes;
     if (!changes || !Array.isArray(changes))
@@ -85,6 +114,13 @@ export class BasePluginClass {
 
   // Called by processChanges() for each change entry.
   // Override in subclasses to react to specific property changes.
+  /**
+   * Called by processChanges() for each change entry.
+   * @param {string} propName
+   * @param {any} previousValue
+   * @param {any} newValue
+   * @returns {void}
+   */
   // eslint-disable-next-line no-unused-vars
   onChange(propName, previousValue, newValue) {
     // Default: no-op
@@ -96,6 +132,12 @@ export class BasePluginClass {
 
   // Returns: { approved: true, signature } or { approved: false, reason }
   // If no PermissionService is available on context, defaults to approved.
+  /**
+   * Check permission for a tool invocation via PermissionService.
+   * @param {string} toolName
+   * @param {Record<string, any>} params
+   * @returns {Promise<{ approved: boolean; signature?: string; reason?: string }>}
+   */
   async checkPermission(toolName, params) {
     let permissionService = this._context.permissionService || null;
     if (!permissionService)
@@ -128,25 +170,39 @@ export class BasePluginClass {
   // stats: { totalChars, estimatedTokens, contextWindow, modelID, sessionID }
   // Returns: { compact: boolean, reason: string }
   // Override in agent plugins to determine when compaction should trigger.
+  /**
+   * Determine whether compaction should trigger.
+   * @param {import('../types').CompactionStats} _stats
+   * @returns {{ compact: boolean; reason: string }}
+   */
   shouldCompact(_stats) {
     return { compact: false, reason: '' };
   }
 
-  // Returns the prompt text sent to the compactor agent.
-  // Override in agent plugins to customize.
+  /**
+   * Returns the prompt text sent to the compactor agent.
+   * @param {import('../types').CompactionStats} _stats
+   * @returns {string}
+   */
   getCompactionPrompt(_stats) {
     return DEFAULT_COMPACTION_PROMPT;
   }
 
-  // Returns max tokens the compaction summary should use.
-  // Override in agent plugins to adjust based on context window.
+  /**
+   * Returns max tokens the compaction summary should use.
+   * @param {import('../types').CompactionStats} _stats
+   * @returns {number}
+   */
   getMaxCompactionTokens(_stats) {
     return 8000;
   }
 
-  // Makes a single non-streaming API call to the LLM.
-  // options: { maxTokens, systemPrompt }
-  // Must be overridden by agent plugins that support compaction.
+  /**
+   * Makes a single non-streaming API call to the LLM.
+   * @param {import('../types').ChatMessage[]} _messages
+   * @param {{ maxTokens?: number; systemPrompt?: string }} _options
+   * @returns {Promise<string>}
+   */
   async _createSingleTurn(_messages, _options) {
     throw new Error('_createSingleTurn() not implemented — override in agent plugin');
   }
@@ -159,6 +215,10 @@ export class BasePluginClass {
   // Each descriptor: { id, contextWindow, maxOutputTokens, displayName,
   //                    description, pricePerToken, useWhen }
   // Default: empty array (no models declared).
+  /**
+   * Returns an array of model descriptors for this plugin.
+   * @returns {import('../types').ModelDescriptor[]}
+   */
   static getModels() {
     return [];
   }
@@ -171,6 +231,12 @@ export class BasePluginClass {
   // Default implementation: chars / 4 (rough universal approximation).
   // Override in plugins that know the specific tokenizer (e.g., Claude: 3.5).
   // options.cache (boolean) — some providers discount cached tokens.
+  /**
+   * Estimates the token count for a text string.
+   * @param {string} text
+   * @param {{ cache?: boolean }} [_options]
+   * @returns {number}
+   */
   // eslint-disable-next-line no-unused-vars
   estimateTokens(text, _options) {
     return Math.ceil((text || '').length / 4);
@@ -189,6 +255,12 @@ export class BasePluginClass {
   // }
   // Returns a new messages array (does not mutate input).
 
+  /**
+   * Truncate messages to fit within the model's context window.
+   * @param {import('../types').ChatMessage[]} messages
+   * @param {import('../types').TruncateOptions} [options]
+   * @returns {Promise<import('../types').ChatMessage[]>}
+   */
   async truncate(messages, options = {}) {
     if (!messages || messages.length === 0)
       return messages || [];
