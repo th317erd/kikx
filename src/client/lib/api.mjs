@@ -175,7 +175,7 @@ export function createAgent(data) {
 }
 
 export function updateAgent(agentID, updates) {
-  return request('PATCH', `/agents/${agentID}`, updates);
+  return request('PUT', `/agents/${agentID}`, updates);
 }
 
 export function deleteAgent(agentID) {
