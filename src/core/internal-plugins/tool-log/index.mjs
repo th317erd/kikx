@@ -1,5 +1,7 @@
 'use strict';
 
+import { safeParseJSON } from '../../lib/utils.mjs';
+
 // =============================================================================
 // Tool Log Plugin
 // =============================================================================
@@ -379,14 +381,8 @@ export function setup(provide) {
           if (!entry)
             continue;
 
-          let output = '';
-          try {
-            let parsed = JSON.parse(entry.value);
-            if (parsed && typeof parsed.output === 'string')
-              output = parsed.output;
-          } catch (_e) {
-            // Corrupted entry — return empty preview
-          }
+          let parsed = safeParseJSON(entry.value, null);
+          let output = (parsed && typeof parsed.output === 'string') ? parsed.output : '';
 
           let { content, actualStart, actualEnd } = applySlice(
             output, contentStart, contentEnd, contentLines,
@@ -480,14 +476,8 @@ export function setup(provide) {
 
         // Build result rows with content previews
         let results = entries.map((entry) => {
-          let output = '';
-          try {
-            let parsed = JSON.parse(entry.value);
-            if (parsed && typeof parsed.output === 'string')
-              output = parsed.output;
-          } catch (_e) {
-            // Corrupted entry — return empty preview
-          }
+          let parsed = safeParseJSON(entry.value, null);
+          let output = (parsed && typeof parsed.output === 'string') ? parsed.output : '';
 
           let { content, actualStart, actualEnd } = applySlice(
             output, contentStart, contentEnd, contentLines,

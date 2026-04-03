@@ -8,6 +8,7 @@ import {
   verifyValue,
 } from '../../crypto/value-signing.mjs';
 import { MemoryPermissions } from './memory-permissions.mjs';
+import { safeParseJSON }     from '../../lib/utils.mjs';
 
 // =============================================================================
 // Memory Plugin
@@ -51,6 +52,23 @@ export function setup(provide) {
   provide(({ registry }) => {
     let PluginInterface = registry.getClass('PluginInterface');
 
+    /**
+     * Resolve an agent by ID from params, throwing if missing or not found.
+     * @param {Record<string, any>} models
+     * @param {string | undefined} agentID
+     * @returns {Promise<import('../../types').Agent>}
+     */
+    async function resolveAgent(models, agentID) {
+      if (!agentID)
+        throw new Error('agentID is required');
+
+      let agent = await models.Agent.where.id.EQ(agentID).first();
+      if (!agent)
+        throw new Error(`Agent not found: ${agentID}`);
+
+      return agent;
+    }
+
     // ---------------------------------------------------------------------------
     // memory:getAgentConfig
     // ---------------------------------------------------------------------------
@@ -85,16 +103,8 @@ export function setup(provide) {
        * @returns {Promise<{ config: Record<string, any> }>}
        */
       async _execute(params) {
-        let models  = this._context.getProperty('models');
-        let { Agent: AgentModel } = models;
-        let agentID = params.agentID;
-
-        if (!agentID)
-          throw new Error('agentID is required');
-
-        let agent = await AgentModel.where.id.EQ(agentID).first();
-        if (!agent)
-          throw new Error(`Agent not found: ${agentID}`);
+        let models = this._context.getProperty('models');
+        let agent  = await resolveAgent(models, params.agentID);
 
         return { config: await agent.getSafeConfig() };
       }
@@ -137,16 +147,8 @@ export function setup(provide) {
        * @returns {Promise<{ config: Record<string, any> }>}
        */
       async _execute(params) {
-        let models  = this._context.getProperty('models');
-        let { Agent: AgentModel } = models;
-        let agentID = params.agentID;
-
-        if (!agentID)
-          throw new Error('agentID is required');
-
-        let agent = await AgentModel.where.id.EQ(agentID).first();
-        if (!agent)
-          throw new Error(`Agent not found: ${agentID}`);
+        let models = this._context.getProperty('models');
+        let agent  = await resolveAgent(models, params.agentID);
 
         let safeConfig = stripProtectedKeys(params.config);
         await agent.setConfig(safeConfig);
@@ -192,16 +194,8 @@ export function setup(provide) {
        * @returns {Promise<{ config: Record<string, any> }>}
        */
       async _execute(params) {
-        let models  = this._context.getProperty('models');
-        let { Agent: AgentModel } = models;
-        let agentID = params.agentID;
-
-        if (!agentID)
-          throw new Error('agentID is required');
-
-        let agent = await AgentModel.where.id.EQ(agentID).first();
-        if (!agent)
-          throw new Error(`Agent not found: ${agentID}`);
+        let models = this._context.getProperty('models');
+        let agent  = await resolveAgent(models, params.agentID);
 
         let safeUpdates = stripProtectedKeys(params.updates);
         await agent.updateConfig(safeUpdates);
@@ -426,15 +420,8 @@ export function setup(provide) {
       async _execute(params) {
         let { key, scopeID } = params;
         let models  = this._context.getProperty('models');
-        let { Agent: AgentModel, ValueStore } = models;
-        let agentID = params.agentID;
-
-        if (!agentID)
-          throw new Error('agentID is required');
-
-        let agent = await AgentModel.where.id.EQ(agentID).first();
-        if (!agent)
-          throw new Error(`Agent not found: ${agentID}`);
+        let { ValueStore } = models;
+        let agent = await resolveAgent(models, params.agentID);
 
         // Default scope to current session ID
         if (scopeID === undefined || scopeID === null)
@@ -451,12 +438,7 @@ export function setup(provide) {
         if (!entry)
           return { key, value: null, scopeID };
 
-        let value = null;
-        try {
-          value = JSON.parse(entry.value);
-        } catch (_e) {
-          value = entry.value;
-        }
+        let value = safeParseJSON(entry.value, entry.value);
 
         let result = { key, value, scopeID };
 
@@ -532,15 +514,8 @@ export function setup(provide) {
       async _execute(params) {
         let { key, value, scopeID, sign } = params;
         let models  = this._context.getProperty('models');
-        let { Agent: AgentModel, ValueStore } = models;
-        let agentID = params.agentID;
-
-        if (!agentID)
-          throw new Error('agentID is required');
-
-        let agent = await AgentModel.where.id.EQ(agentID).first();
-        if (!agent)
-          throw new Error(`Agent not found: ${agentID}`);
+        let { ValueStore } = models;
+        let agent = await resolveAgent(models, params.agentID);
 
         // Default scope to current session ID
         if (scopeID === undefined || scopeID === null)
@@ -685,15 +660,8 @@ export function setup(provide) {
       async _execute(params) {
         let { query, scopeID, limit, offset } = params;
         let models  = this._context.getProperty('models');
-        let { Agent: AgentModel, ValueStore } = models;
-        let agentID = params.agentID;
-
-        if (!agentID)
-          throw new Error('agentID is required');
-
-        let agent = await AgentModel.where.id.EQ(agentID).first();
-        if (!agent)
-          throw new Error(`Agent not found: ${agentID}`);
+        let { ValueStore } = models;
+        let agent = await resolveAgent(models, params.agentID);
 
         limit  = limit || 20;
         offset = offset || 0;
@@ -728,12 +696,7 @@ export function setup(provide) {
         let keystore = this._context.getProperty('keystore');
 
         let results = entries.map((entry) => {
-          let value = null;
-          try {
-            value = JSON.parse(entry.value);
-          } catch (_e) {
-            value = entry.value;
-          }
+          let value = safeParseJSON(entry.value, entry.value);
 
           let result = {
             key:       entry.key,

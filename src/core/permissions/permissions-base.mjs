@@ -1,6 +1,7 @@
 'use strict';
 
 import { PermissionDeniedError } from './permission-denied-error.mjs';
+import { safeParseJSON }        from '../lib/utils.mjs';
 
 // =============================================================================
 // Permissions Base Class
@@ -448,15 +449,7 @@ export class Permissions {
     if (!rule.metadata)
       return {};
 
-    if (typeof rule.metadata === 'string') {
-      try {
-        return JSON.parse(rule.metadata);
-      } catch (_error) {
-        return {};
-      }
-    }
-
-    return rule.metadata;
+    return safeParseJSON(rule.metadata);
   }
 
   /**

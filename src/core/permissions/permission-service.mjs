@@ -1,6 +1,7 @@
 'use strict';
 
-import { Permissions } from './permissions-base.mjs';
+import { Permissions }  from './permissions-base.mjs';
+import { safeParseJSON } from '../lib/utils.mjs';
 
 // =============================================================================
 // PermissionService
@@ -154,7 +155,7 @@ export class PermissionService {
       if (rule.scopeID !== sessionID)
         continue;
 
-      let metadata = rule.metadata ? JSON.parse(rule.metadata) : {};
+      let metadata = safeParseJSON(rule.metadata);
       if (!metadata.standing)
         continue;
 

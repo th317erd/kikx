@@ -3,6 +3,15 @@
 import XID from 'xid-js';
 import { CrossSessionPermissions } from './cross-session-permissions.mjs';
 
+/**
+ * Convert frame content to a string for searching/display.
+ * @param {string | object | null | undefined} content
+ * @returns {string}
+ */
+function contentToString(content) {
+  return (typeof content === 'string') ? content : JSON.stringify(content || '');
+}
+
 // =============================================================================
 // Cross-Session Plugin
 // =============================================================================
@@ -118,7 +127,7 @@ export function setup(provide) {
               let fm = sessionManager.getFrameManager(session.id);
               let frames = fm.toArray();
               let contentMatch = frames.some((f) => {
-                let contentString = (typeof f.content === 'string') ? f.content : JSON.stringify(f.content || '');
+                let contentString = contentToString(f.content);
                 return contentString.toLowerCase().includes(searchLower);
               });
               if (!contentMatch)
@@ -498,7 +507,7 @@ export function setup(provide) {
         if (params.keyword) {
           let keyword = params.keyword.toLowerCase();
           frames = frames.filter((f) => {
-            let contentString = (typeof f.content === 'string') ? f.content : JSON.stringify(f.content || '');
+            let contentString = contentToString(f.content);
             return contentString.toLowerCase().includes(keyword);
           });
         }
@@ -510,7 +519,7 @@ export function setup(provide) {
 
         // Build summaries
         let summaries = frames.map((f) => {
-          let contentString = (typeof f.content === 'string') ? f.content : JSON.stringify(f.content || '');
+          let contentString = contentToString(f.content);
           let snippet = (contentString.length > 200) ? contentString.slice(0, 200) + '...' : contentString;
           return {
             id:         f.id,

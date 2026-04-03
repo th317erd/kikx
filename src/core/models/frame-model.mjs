@@ -2,6 +2,7 @@
 
 import { ModelBase, Types } from './model-base.mjs';
 import { createTypedFrame } from '../../shared/frame-types/index.mjs';
+import { safeParseJSON }    from '../lib/utils.mjs';
 
 // =============================================================================
 // Frame
@@ -163,15 +164,7 @@ export class Frame extends ModelBase {
     if (!this.content)
       return null;
 
-    if (typeof this.content === 'string') {
-      try {
-        return JSON.parse(this.content);
-      } catch (error) {
-        return this.content;
-      }
-    }
-
-    return this.content;
+    return safeParseJSON(this.content, this.content);
   }
 
   // ---------------------------------------------------------------------------

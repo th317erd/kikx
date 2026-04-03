@@ -1,6 +1,7 @@
 'use strict';
 
 import { ModelBase, Types } from './model-base.mjs';
+import { safeParseJSON }    from '../lib/utils.mjs';
 
 // =============================================================================
 // Agent
@@ -108,11 +109,7 @@ export class Agent extends ModelBase {
 
     let config = { ...AGENT_DEFAULTS };
     for (let entry of entries) {
-      try {
-        config[entry.key] = JSON.parse(entry.value);
-      } catch (_e) {
-        config[entry.key] = entry.value;
-      }
+      config[entry.key] = safeParseJSON(entry.value, entry.value);
     }
 
     return config;

@@ -2,6 +2,7 @@
 
 import XID                    from 'xid-js';
 import { BasePluginClass } from '../../routing/base-plugin-class.mjs';
+import { safeParseJSON }   from '../../lib/utils.mjs';
 
 // =============================================================================
 // Permission Approval Plugin
@@ -252,9 +253,7 @@ export function setup(provide) {
         for (let fm of allFrames) {
           if (fm.type !== 'ToolCall')
             continue;
-          let fmContent = (typeof fm.content === 'string')
-            ? (() => { try { return JSON.parse(fm.content); } catch (_e) { return {}; } })()
-            : (fm.content || {});
+          let fmContent = safeParseJSON(fm.content);
           if (fmContent.toolUseID === toolUseID) {
             toolCallOrder = fm.order;
             break;
@@ -272,9 +271,7 @@ export function setup(provide) {
             continue;
 
           if (fm.type === 'ToolResult') {
-            let fmContent = (typeof fm.content === 'string')
-              ? (() => { try { return JSON.parse(fm.content); } catch (_e) { return {}; } })()
-              : (fm.content || {});
+            let fmContent = safeParseJSON(fm.content);
             if (fmContent.toolUseID === toolUseID)
               framesToHide.push(fm);
           } else if (fm.type === 'Message' && fm.authorType === 'agent') {

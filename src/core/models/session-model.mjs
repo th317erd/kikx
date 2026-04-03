@@ -1,6 +1,7 @@
 'use strict';
 
 import { ModelBase, Types } from './model-base.mjs';
+import { safeParseJSON }    from '../lib/utils.mjs';
 
 // =============================================================================
 // Session
@@ -134,11 +135,7 @@ export class Session extends ModelBase {
 
     let context = {};
     for (let entry of entries) {
-      try {
-        context[entry.key] = JSON.parse(entry.value);
-      } catch (_e) {
-        context[entry.key] = entry.value;
-      }
+      context[entry.key] = safeParseJSON(entry.value, entry.value);
     }
 
     return context;
