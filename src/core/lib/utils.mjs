@@ -60,8 +60,6 @@ export function buildFrameData(type, content, overrides = {}) {
     hidden:                false,
     deleted:               false,
     processed:             false,
-    signature:             null,
-    signingKeyFingerprint: null,
     ...overrides,
   };
 }

@@ -1,6 +1,7 @@
 'use strict';
 
-import { FrameManager } from '../../shared/frame-manager/frame-manager.mjs';
+import { FrameManager }  from '../../shared/frame-manager/frame-manager.mjs';
+import { safeParseJSON }  from '../lib/utils.mjs';
 
 // =============================================================================
 // Frame Persistence
@@ -161,15 +162,9 @@ export class FramePersistence {
     if (!record)
       return null;
 
-    let content = record.content;
-
-    if (typeof content === 'string') {
-      try {
-        content = JSON.parse(content);
-      } catch (_error) {
-        // Leave as string if not valid JSON
-      }
-    }
+    let content = (typeof record.content === 'string')
+      ? safeParseJSON(record.content, record.content)
+      : record.content;
 
     return (content != null) ? content : {};
   }
@@ -197,15 +192,9 @@ export class FramePersistence {
       if (!record)
         continue;
 
-      let content = record.content;
-
-      if (typeof content === 'string') {
-        try {
-          content = JSON.parse(content);
-        } catch (_error) {
-          // Leave as string if not valid JSON
-        }
-      }
+      let content = (typeof record.content === 'string')
+        ? safeParseJSON(record.content, record.content)
+        : record.content;
 
       result.set(record.id, (content != null) ? content : {});
     }
@@ -265,7 +254,7 @@ export class FramePersistence {
         if (f.type !== 'ToolResult')
           continue;
 
-        let content = (typeof f.content === 'string') ? (() => { try { return JSON.parse(f.content); } catch (_e) { return {}; } })() : (f.content || {});
+        let content = safeParseJSON(f.content, {});
         if (content.toolUseID)
           resolvedToolIds.add(content.toolUseID);
       }
@@ -275,7 +264,7 @@ export class FramePersistence {
         if (f.type !== 'ToolCall')
           continue;
 
-        let content = (typeof f.content === 'string') ? (() => { try { return JSON.parse(f.content); } catch (_e) { return {}; } })() : (f.content || {});
+        let content = safeParseJSON(f.content, {});
         let toolUseID = content.toolUseID || content.toolUseId;
 
         if (toolUseID && !resolvedToolIds.has(toolUseID))
@@ -446,8 +435,8 @@ export class FramePersistence {
       timestamp:     frameData.timestamp || Date.now(),
       content:       (content !== undefined) ? content : null,
       targets:       (targets !== undefined) ? targets : null,
-      parentID:      (frameData.parentID !== undefined) ? frameData.parentID : (frameData.parentID !== undefined ? frameData.parentID : null),
-      groupID:       (frameData.groupID !== undefined) ? frameData.groupID : (frameData.groupID !== undefined ? frameData.groupID : null),
+      parentID:      (frameData.parentID !== undefined) ? frameData.parentID : null,
+      groupID:       (frameData.groupID !== undefined) ? frameData.groupID : null,
       groupType:     (frameData.groupType !== undefined) ? frameData.groupType : null,
       authorType:    (frameData.authorType !== undefined) ? frameData.authorType : null,
       authorID:      (frameData.authorID !== undefined) ? frameData.authorID : null,
@@ -466,39 +455,33 @@ export class FramePersistence {
   }
 
   // ---------------------------------------------------------------------------
-  // _recordToFrame
+  // _recordToFrameBase — shared base for _recordToFrame / _recordToFrameMetadataOnly
   // ---------------------------------------------------------------------------
   /**
-   * Converts a DB Frame model instance to a FrameManager-compatible data object.
+   * Converts a DB Frame model instance to a FrameManager-compatible data object,
+   * with optional content parsing. Shared base to avoid duplication.
+   *
    * @param {any} record - DB Frame model instance
+   * @param {{ includeContent: boolean }} options
    * @returns {import('../types').FrameData}
    */
-  _recordToFrame(record) {
-    let content = record.content;
-    let targets = record.targets;
+  _recordToFrameBase(record, { includeContent }) {
+    let targets = safeParseJSON(record.targets, []);
+    let content = null;
 
-    if (typeof content === 'string') {
-      try {
-        content = JSON.parse(content);
-      } catch (error) {
-        // Leave as string if not valid JSON
-      }
-    }
-
-    if (typeof targets === 'string') {
-      try {
-        targets = JSON.parse(targets);
-      } catch (error) {
-        targets = [];
-      }
+    if (includeContent) {
+      content = (typeof record.content === 'string')
+        ? safeParseJSON(record.content, record.content)
+        : record.content;
+      content = (content != null) ? content : {};
     }
 
     return {
       id:            record.id,
       interactionID: record.interactionID || null,
       type:          record.type,
-      content:       (content !== undefined && content !== null) ? content : {},
-      targets:       (targets !== undefined && targets !== null) ? targets : [],
+      content,
+      targets:       (targets != null) ? targets : [],
       parentID:      record.parentID || null,
       groupID:       record.groupID || null,
       groupType:     record.groupType || null,
@@ -518,6 +501,18 @@ export class FramePersistence {
   }
 
   // ---------------------------------------------------------------------------
+  // _recordToFrame
+  // ---------------------------------------------------------------------------
+  /**
+   * Converts a DB Frame model instance to a FrameManager-compatible data object.
+   * @param {any} record - DB Frame model instance
+   * @returns {import('../types').FrameData}
+   */
+  _recordToFrame(record) {
+    return this._recordToFrameBase(record, { includeContent: true });
+  }
+
+  // ---------------------------------------------------------------------------
   // _recordToFrameMetadataOnly
   // ---------------------------------------------------------------------------
   /**
@@ -526,37 +521,6 @@ export class FramePersistence {
    * @returns {import('../types').FrameData}
    */
   _recordToFrameMetadataOnly(record) {
-    let targets = record.targets;
-
-    if (typeof targets === 'string') {
-      try {
-        targets = JSON.parse(targets);
-      } catch (_error) {
-        targets = [];
-      }
-    }
-
-    return {
-      id:            record.id,
-      interactionID: record.interactionID || null,
-      type:          record.type,
-      content:       null,
-      targets:       (targets !== undefined && targets !== null) ? targets : [],
-      parentID:      record.parentID || null,
-      groupID:       record.groupID || null,
-      groupType:     record.groupType || null,
-      order:         record.order,
-      timestamp:     record.timestamp,
-      hidden:        record.hidden,
-      deleted:       record.deleted,
-      processed:     record.processed,
-      processedAt:   record.processedAt,
-      authorType:    record.authorType || null,
-      authorID:      record.authorID || null,
-      signature:             record.signature || null,
-      signingKeyFingerprint: record.signingKeyFingerprint || null,
-      state:                 record.state || null,
-      createdAt:             record.createdAt || null,
-    };
+    return this._recordToFrameBase(record, { includeContent: false });
   }
 }
