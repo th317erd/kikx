@@ -79,44 +79,31 @@ const TEMPLATE_HTML = `
       flex-shrink: 0;
     }
 
-    kikx-friends-list .avatar-wrapper {
+    kikx-friends-list .badge-wrapper {
       position: relative;
       flex-shrink: 0;
-      width: 28px;
-      height: 28px;
-    }
-
-    kikx-friends-list .avatar-wrapper kikx-user-avatar {
-      display: block;
-      transition: opacity 0.15s ease;
     }
 
     kikx-friends-list .edit-icon {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 28px;
-      height: 28px;
-      display: flex;
+      display: none;
       align-items: center;
       justify-content: center;
-      opacity: 0;
-      transition: opacity 0.15s ease;
-      pointer-events: none;
-      font-size: 14px;
+      font-size: 12px;
       color: var(--text-secondary, #a0a0b8);
-      background: var(--glass-hover, rgba(255, 255, 255, 0.08));
-      border-radius: 50%;
       cursor: pointer;
+      padding: 1px 4px;
     }
 
-    kikx-friends-list .friend-row:hover .avatar-wrapper kikx-user-avatar {
-      opacity: 0;
+    kikx-friends-list .edit-icon:hover {
+      color: var(--accent-primary, #00e5ff);
+    }
+
+    kikx-friends-list .friend-row:hover .agent-badge {
+      display: none;
     }
 
     kikx-friends-list .friend-row:hover .edit-icon {
-      opacity: 1;
-      pointer-events: auto;
+      display: inline-flex;
     }
 
     kikx-friends-list .empty-message {
@@ -209,9 +196,6 @@ class KikxFriendsList extends HTMLElement {
       row.style.setProperty('--glow-delay-rotate', `${-Math.random() * 20}s`);
       row.style.setProperty('--glow-delay-hue', `${-Math.random() * 30}s`);
 
-      let avatarWrapper = document.createElement('div');
-      avatarWrapper.className = 'avatar-wrapper';
-
       let avatar = document.createElement('kikx-user-avatar');
       avatar.setAttribute('size', '28');
       if (friend.email)
@@ -227,28 +211,32 @@ class KikxFriendsList extends HTMLElement {
           avatar.setAttribute('last-name', parts[1]);
       }
 
-      avatarWrapper.appendChild(avatar);
-
-      let editIcon = document.createElement('span');
-      editIcon.className = 'edit-icon';
-      editIcon.textContent = '\u270F\uFE0F';
-      editIcon.setAttribute('role', 'button');
-      editIcon.setAttribute('aria-label', t('agent.edit.title'));
-      avatarWrapper.appendChild(editIcon);
-
-      row.appendChild(avatarWrapper);
+      row.appendChild(avatar);
 
       let nameSpan = document.createElement('span');
       nameSpan.className   = 'friend-name';
       nameSpan.textContent = friend.name || friend.email || '';
       row.appendChild(nameSpan);
 
+      // Badge wrapper: shows AI badge normally, edit icon on hover
+      let badgeWrapper = document.createElement('span');
+      badgeWrapper.className = 'badge-wrapper';
+
       if (friend.type === 'agent') {
         let badge = document.createElement('span');
         badge.className   = 'agent-badge';
         badge.textContent = t('friends.agentBadge');
-        row.appendChild(badge);
+        badgeWrapper.appendChild(badge);
       }
+
+      let editIcon = document.createElement('span');
+      editIcon.className = 'edit-icon';
+      editIcon.textContent = '\u270F\uFE0F';
+      editIcon.setAttribute('role', 'button');
+      editIcon.setAttribute('aria-label', t('agent.edit.title'));
+      badgeWrapper.appendChild(editIcon);
+
+      row.appendChild(badgeWrapper);
 
       let onlineIndicator = document.createElement('span');
       onlineIndicator.className = 'online-indicator';

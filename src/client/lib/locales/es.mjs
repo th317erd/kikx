@@ -70,6 +70,7 @@ export default {
       nameLabel:      'Nombre del Agente',
       providerLabel:  'Proveedor',
       apiKeyLabel:    'Clave API',
+      apiKeyHidden:   'Clave almacenada — deja en blanco para no cambiarla',
       modelLabel:     'Modelo',
       riskLevel:      'Nivel de Riesgo',
       accountDefault: 'Predeterminado',

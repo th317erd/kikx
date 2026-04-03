@@ -50,6 +50,16 @@ const TEMPLATE_HTML = `
     kikx-agent-form-modal .form-select option {
       background: var(--bg-primary, #0a0a1a);
       color: var(--text-primary, #e8e8f0);
+      padding: 6px 8px;
+    }
+
+    kikx-agent-form-modal .form-select optgroup {
+      background: var(--bg-primary, #0a0a1a);
+      color: var(--text-muted, #6a6a80);
+      font-style: normal;
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 4px 0;
     }
 
     kikx-agent-form-modal .button-row {
@@ -88,10 +98,6 @@ const TEMPLATE_HTML = `
   <div class="form-group">
     <label class="form-label name-label"></label>
     <input class="form-input name-input" type="text" />
-  </div>
-  <div class="form-group">
-    <label class="form-label provider-label"></label>
-    <input class="form-input provider-input" type="text" />
   </div>
   <div class="form-group">
     <label class="form-label api-key-label"></label>
@@ -147,14 +153,12 @@ class KikxAgentFormModal extends HTMLElement {
       this.appendChild(getTemplate().content.cloneNode(true));
 
       this._nameInput        = this.querySelector('.name-input');
-      this._providerInput    = this.querySelector('.provider-input');
       this._apiKeyInput      = this.querySelector('.api-key-input');
       this._modelInput       = this.querySelector('.model-input');
       this._modelSelect      = this.querySelector('.model-select');
       this._riskLevelSelect  = this.querySelector('.risk-level-select');
 
       this._nameLabel        = this.querySelector('.name-label');
-      this._providerLabel    = this.querySelector('.provider-label');
       this._apiKeyLabel      = this.querySelector('.api-key-label');
       this._modelLabel       = this.querySelector('.model-label');
       this._riskLevelLabel   = this.querySelector('.risk-level-label');
@@ -165,7 +169,6 @@ class KikxAgentFormModal extends HTMLElement {
     }
 
     this._nameLabel.textContent      = t('agent.form.nameLabel');
-    this._providerLabel.textContent  = t('agent.form.providerLabel');
     this._apiKeyLabel.textContent    = t('agent.form.apiKeyLabel');
     this._modelLabel.textContent     = t('agent.form.modelLabel');
     this._riskLevelLabel.textContent = t('agent.form.riskLevel');
@@ -211,13 +214,13 @@ class KikxAgentFormModal extends HTMLElement {
 
     if (value) {
       this._nameInput.value        = value.name || '';
-      this._providerInput.value    = value.provider || '';
-      this._apiKeyInput.value      = value.apiKey || '';
+      this._apiKeyInput.value      = '';
+      this._apiKeyInput.placeholder = value.encryptedAPIKey ? t('agent.form.apiKeyHidden') : '';
       this._riskLevelSelect.value  = value.riskLevel || '';
     } else {
       this._nameInput.value        = '';
-      this._providerInput.value    = '';
       this._apiKeyInput.value      = '';
+      this._apiKeyInput.placeholder = '';
       this._riskLevelSelect.value  = '';
     }
 
@@ -246,13 +249,19 @@ class KikxAgentFormModal extends HTMLElement {
     else
       modelValue = this._modelInput ? this._modelInput.value : '';
 
-    return {
+    let values = {
       name:      this._nameInput.value,
-      provider:  this._providerInput.value,
-      apiKey:    this._apiKeyInput.value,
       model:     modelValue,
       riskLevel: this._riskLevelSelect.value,
     };
+
+    // Only include apiKey if the user actually typed something —
+    // empty string means "leave existing key unchanged"
+    let apiKeyValue = this._apiKeyInput.value.trim();
+    if (apiKeyValue)
+      values.apiKey = apiKeyValue;
+
+    return values;
   }
 
   // Populate the model <select> from the store. If models are available,
