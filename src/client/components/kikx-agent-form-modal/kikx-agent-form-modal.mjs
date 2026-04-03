@@ -270,9 +270,15 @@ class KikxAgentFormModal extends HTMLElement {
     if (!this._modelSelect || !this._modelInput)
       return;
 
-    let availableModels = (modelsStore && typeof modelsStore.getModels === 'function')
+    let allModels = (modelsStore && typeof modelsStore.getModels === 'function')
       ? modelsStore.getModels()
       : [];
+
+    // Filter to only show models from this agent's plugin
+    let agentPluginID   = this._agent && this._agent.pluginID;
+    let availableModels = (agentPluginID && allModels.length > 0)
+      ? allModels.filter((m) => m.pluginID === agentPluginID)
+      : allModels;
 
     if (!availableModels || availableModels.length === 0) {
       // No models loaded — fall back to text input
