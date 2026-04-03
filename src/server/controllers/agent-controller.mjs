@@ -103,7 +103,7 @@ export class AgentController extends ControllerAuthBase {
     if (!agent)
       this.throwNotFoundError('Agent not found');
 
-    let { name, pluginID, instructions, apiKey, riskLevel } = body || {};
+    let { name, pluginID, instructions, apiKey, model, riskLevel } = body || {};
 
     if (name !== undefined)
       agent.name = name;
@@ -114,15 +114,23 @@ export class AgentController extends ControllerAuthBase {
     if (instructions !== undefined)
       agent.instructions = instructions;
 
+    // Update model in agent config if provided
+    if (model !== undefined)
+      await agent.updateConfig({ model });
+
     // Encrypt new API key if provided
     if (apiKey !== undefined) {
       if (apiKey) {
-        let keystore  = this.getKeystore();
-        let umk       = this.request.getUMK();
-        let userKey   = keystore.deriveUserKey(umk, this.request.userID);
-        let encrypted = keystore.encrypt(apiKey, userKey);
+        try {
+          let keystore  = this.getKeystore();
+          let umk       = this.request.getUMK();
+          let userKey   = keystore.deriveUserKey(umk, this.request.userID);
+          let encrypted = keystore.encrypt(apiKey, userKey);
 
-        agent.encryptedAPIKey = JSON.stringify(encrypted);
+          agent.encryptedAPIKey = JSON.stringify(encrypted);
+        } catch (error) {
+          this.throwBadRequestError(`Failed to encrypt API key: ${error.message}`);
+        }
       } else {
         agent.encryptedAPIKey = null;
       }
