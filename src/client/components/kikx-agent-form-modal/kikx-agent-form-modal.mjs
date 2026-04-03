@@ -213,15 +213,15 @@ class KikxAgentFormModal extends HTMLElement {
     let modelValue = (value && value.model) || '';
 
     if (value) {
-      this._nameInput.value        = value.name || '';
-      this._apiKeyInput.value      = '';
-      this._apiKeyInput.placeholder = value.encryptedAPIKey ? t('agent.form.apiKeyHidden') : '';
-      this._riskLevelSelect.value  = value.riskLevel || '';
+      this._nameInput.value         = value.name || '';
+      this._apiKeyInput.value       = '';
+      this._apiKeyInput.placeholder = t('agent.form.apiKeyHidden');
+      this._riskLevelSelect.value   = value.riskLevel || '';
     } else {
-      this._nameInput.value        = '';
-      this._apiKeyInput.value      = '';
+      this._nameInput.value         = '';
+      this._apiKeyInput.value       = '';
       this._apiKeyInput.placeholder = '';
-      this._riskLevelSelect.value  = '';
+      this._riskLevelSelect.value   = '';
     }
 
     // Refresh selector (models may have loaded since last render)
