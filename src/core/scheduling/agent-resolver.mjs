@@ -127,19 +127,12 @@ export class AgentResolver {
             let perCommandFeature = `shell:${cmd.command}`;
             let status            = 'needs-approval';
 
-            try {
-              let needsPermission = await shellPerms.evaluate(perCommandFeature, cmd, shellOptions);
+            let needsPermission = await shellPerms.evaluate(perCommandFeature, cmd, shellOptions);
 
-              if (!needsPermission)
-                status = 'allowed';
-              else
-                anyNeedsApproval = true;
-            } catch (permError) {
-              if (permError.name === 'PermissionDeniedError')
-                throw permError;
-
-              throw permError;
-            }
+            if (!needsPermission)
+              status = 'allowed';
+            else
+              anyNeedsApproval = true;
 
             commandStatuses.push({ command: cmd.command, arguments: cmd.arguments, status });
           }
@@ -232,16 +225,8 @@ export class AgentResolver {
           fm.merge([frameData], { silent: false });
           await framePersistence.saveFrames(sessionID, [frameData]);
         } else {
-          // Update existing activity frame
-          fm.merge([{
-            id:      activityFrameID,
-            type:    'ToolActivity',
-            content: { toolName, html },
-          }], { silent: true });
-
-          // Persist the update
+          // Update existing activity frame (best-effort)
           try {
-            // Update activity frame through FrameManager (silent — UI-only update)
             fm.merge([{
               id:      activityFrameID,
               type:    'ToolActivity',
@@ -252,7 +237,7 @@ export class AgentResolver {
             if (framePersistenceRef)
               await framePersistenceRef.saveFrames(sessionID, [{ id: activityFrameID, type: 'ToolActivity', content: { toolName, html } }]);
           } catch (_e) {
-            // Best-effort
+            // Best-effort — activity frame update failure must not block tool execution
           }
         }
       };
