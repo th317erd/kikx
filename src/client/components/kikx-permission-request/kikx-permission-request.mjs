@@ -278,6 +278,7 @@ const TEMPLATE_HTML = `
       background: rgba(0, 229, 255, 0.10);
     }
 
+    kikx-permission-request .stack-button.allow-once:hover,
     kikx-permission-request .stack-button.allow-forever:hover {
       border-color: #66bb6a;
       color: #66bb6a;
@@ -804,10 +805,11 @@ class KikxPermissionRequest extends HTMLElement {
       stack.appendChild(wsButton);
     }
 
-    // Standard decision buttons
+    // Standard decision buttons — "Allow" is one-time, "Always allow" creates a persistent rule
     let stackButtons = [
-      { decision: 'allow-forever', cssClass: 'allow-forever', icon: '\uD83D\uDC4D', labelKey: 'permission.allowForever', fallback: 'Allow' },
-      { decision: 'deny-once',     cssClass: 'deny-once',     icon: '\uD83D\uDC4E', labelKey: 'permission.denyOnce',     fallback: 'Deny once' },
+      { decision: 'allow-once',    cssClass: 'allow-once',    icon: '\uD83D\uDC4D', labelKey: 'permission.allowOnceShort', fallback: 'Allow' },
+      { decision: 'allow-forever', cssClass: 'allow-forever',  icon: '\u2705',       labelKey: 'permission.allowForever',  fallback: 'Always allow' },
+      { decision: 'deny-once',     cssClass: 'deny-once',     icon: '\uD83D\uDC4E', labelKey: 'permission.denyOnce',       fallback: 'Deny' },
     ];
 
     // For websearch tools, replace "Deny forever" with "Deny all websearches this session"
