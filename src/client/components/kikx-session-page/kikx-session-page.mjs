@@ -2321,7 +2321,7 @@ class KikxSessionPage extends HTMLElement {
   }
 
   async _onPermissionResponse(event) {
-    let { permissionID, decisions, allowAllWebsearch } = event.detail || {};
+    let { permissionID, decisions, allowAllWebsearch, denyAllWebsearch } = event.detail || {};
 
     if (!permissionID)
       return;
@@ -2345,6 +2345,9 @@ class KikxSessionPage extends HTMLElement {
       // websearch:search and websearch:fetch in one approval
       if (allowAllWebsearch && body)
         body.allowAllWebsearch = true;
+
+      if (denyAllWebsearch && body)
+        body.denyAllWebsearch = true;
 
       await approvePermission(sessionID, permissionID, body);
 

@@ -419,13 +419,12 @@ export class InteractionController extends ControllerAuthBase {
           },
         });
       }
-      // When allowAllWebsearch is set, also create a session-scoped allow rule
-      // for the sibling websearch tool (websearch:search ↔ websearch:fetch)
+      // When allowAllWebsearch is set, create session-scoped allow rules
+      // for BOTH websearch:search and websearch:fetch
       if (body && body.allowAllWebsearch) {
         let websearchTools = ['websearch:search', 'websearch:fetch'];
 
         for (let wsTool of websearchTools) {
-          // Skip if a rule was already created above for this exact tool
           let alreadyCreated = decisions.some((d) => {
             let fn = d.command.includes(':') ? d.command : `shell:${d.command}`;
             return fn === wsTool;
@@ -447,6 +446,23 @@ export class InteractionController extends ControllerAuthBase {
             },
           });
         }
+      }
+
+      // When denyAllWebsearch is set, create a session-scoped deny rule
+      // for websearch:search only (not fetch — fetch alone is harmless)
+      if (body && body.denyAllWebsearch) {
+        await permissions.createRule({
+          organizationID,
+          featureName: 'websearch:search',
+          effect:      'deny',
+          scope:       'session',
+          scopeID:     sessionID,
+          createdBy:   this.request.userID || 'system',
+          metadata:    {
+            denyAllWebsearch:    true,
+            permissionRequestID: frame.id,
+          },
+        });
       }
     } catch (ruleError) {
       console.error('[approve] Failed to create permission rule:', ruleError.message);

@@ -18,7 +18,7 @@ import { t } from '../../lib/i18n.mjs';
 // =============================================================================
 
 const DECISION_BUTTONS = [
-  { decision: 'allow-forever', icon: '\uD83D\uDCAF',             tooltipKey: 'permission.allowForever',   activeClass: 'active-allow' },
+  { decision: 'allow-forever', icon: '\uD83D\uDC4D',             tooltipKey: 'permission.allowForever',   activeClass: 'active-allow' },
   { decision: 'allow-once',    icon: '\uD83D\uDC4D',             tooltipKey: 'permission.allowOnceShort', activeClass: 'active-allow' },
   { decision: 'deny-once',     icon: '\uD83D\uDC4E',             tooltipKey: 'permission.denyOnce',       activeClass: 'active-deny' },
   { decision: 'deny-forever',  icon: '\uD83D\uDEAB',             tooltipKey: 'permission.denyForever',    activeClass: 'active-deny' },
@@ -278,10 +278,19 @@ const TEMPLATE_HTML = `
       background: rgba(0, 229, 255, 0.10);
     }
 
-    kikx-permission-request .stack-button.allow-forever:hover,
-    kikx-permission-request .stack-button.allow-once:hover {
+    kikx-permission-request .stack-button.allow-forever:hover {
       border-color: #66bb6a;
       color: #66bb6a;
+    }
+
+    kikx-permission-request .stack-button.deny-all-websearch {
+      border-color: rgba(255, 68, 68, 0.30);
+      color: var(--text-muted, #6a6a80);
+    }
+
+    kikx-permission-request .stack-button.deny-all-websearch:hover {
+      background: rgba(255, 68, 68, 0.10);
+      color: #ff4444;
     }
 
     kikx-permission-request .stack-button.deny-once:hover,
@@ -797,17 +806,31 @@ class KikxPermissionRequest extends HTMLElement {
 
     // Standard decision buttons
     let stackButtons = [
-      { decision: 'allow-forever', cssClass: 'allow-forever', icon: '\uD83D\uDCAF', labelKey: 'permission.allowForever',   fallback: 'Allow forever' },
-      { decision: 'allow-once',    cssClass: 'allow-once',    icon: '\uD83D\uDC4D', labelKey: 'permission.allowOnceShort', fallback: 'Allow once' },
-      { decision: 'deny-once',     cssClass: 'deny-once',     icon: '\uD83D\uDC4E', labelKey: 'permission.denyOnce',       fallback: 'Deny once' },
-      { decision: 'deny-forever',  cssClass: 'deny-forever',  icon: '\uD83D\uDEAB', labelKey: 'permission.denyForever',    fallback: 'Deny forever' },
+      { decision: 'allow-forever', cssClass: 'allow-forever', icon: '\uD83D\uDC4D', labelKey: 'permission.allowForever', fallback: 'Allow' },
+      { decision: 'deny-once',     cssClass: 'deny-once',     icon: '\uD83D\uDC4E', labelKey: 'permission.denyOnce',     fallback: 'Deny once' },
     ];
+
+    // For websearch tools, replace "Deny forever" with "Deny all websearches this session"
+    if (this._isWebsearchTool()) {
+      stackButtons.push({
+        decision: 'deny-forever', cssClass: 'deny-forever deny-all-websearch',
+        icon: '\uD83D\uDEAB', labelKey: 'permission.denyAllWebsearch', fallback: 'Deny all websearches this session',
+        denyAllWebsearch: true,
+      });
+    } else {
+      stackButtons.push({
+        decision: 'deny-forever', cssClass: 'deny-forever',
+        icon: '\uD83D\uDEAB', labelKey: 'permission.denyForever', fallback: 'Deny forever',
+      });
+    }
 
     for (let btn of stackButtons) {
       let button = document.createElement('button');
       button.className = `stack-button ${btn.cssClass}`;
       button.textContent = `${btn.icon} ${t(btn.labelKey) || btn.fallback}`;
       button.setAttribute('data-decision', btn.decision);
+      if (btn.denyAllWebsearch)
+        button.setAttribute('data-deny-websearch-all', 'true');
       stack.appendChild(button);
     }
 
@@ -826,9 +849,10 @@ class KikxPermissionRequest extends HTMLElement {
     if (!button)
       return;
 
-    let decision           = button.getAttribute('data-decision');
-    let isWebsearchAll     = button.hasAttribute('data-websearch-all');
-    let cmd                = this._commands[0];
+    let decision              = button.getAttribute('data-decision');
+    let isWebsearchAll        = button.hasAttribute('data-websearch-all');
+    let isDenyWebsearchAll    = button.hasAttribute('data-deny-websearch-all');
+    let cmd                   = this._commands[0];
 
     this._decisions.set(cmd.command, decision);
 
@@ -845,6 +869,9 @@ class KikxPermissionRequest extends HTMLElement {
 
     if (isWebsearchAll)
       detail.allowAllWebsearch = true;
+
+    if (isDenyWebsearchAll)
+      detail.denyAllWebsearch = true;
 
     this.dispatchEvent(new CustomEvent('permission-response', {
       bubbles:  true,

@@ -140,7 +140,7 @@ describe('kikx-permission-request — decision label updates', { timeout: 5000 }
 
     let row = el.querySelector('.command-row[data-command="ls"]');
     let label = row.querySelector('.decision-label');
-    assert.equal(label.textContent, 'Allow forever');
+    assert.equal(label.textContent, 'Allow');
     assert.ok(label.classList.contains('label-allow'));
     assert.ok(label.classList.contains('label-nod'));
   });
@@ -210,7 +210,7 @@ describe('kikx-permission-request — decision label updates', { timeout: 5000 }
 // =============================================================================
 
 describe('kikx-permission-request — processed badge', { timeout: 5000 }, () => {
-  it('shows "Allow forever" badge when all decisions are allow-forever', () => {
+  it('shows "Allow" badge when all decisions are allow-forever', () => {
     let cmds = [{ command: 'ls', arguments: [], status: 'needs-approval' }];
     let el = makeElement({ commands: cmds });
     connectElement(el);
@@ -219,7 +219,7 @@ describe('kikx-permission-request — processed badge', { timeout: 5000 }, () =>
     el.setAttribute('processed', '');
 
     let badge = el.querySelector('.processed-badge');
-    assert.ok(badge.textContent.includes('Allow forever'));
+    assert.ok(badge.textContent.includes('Allow'));
     assert.ok(badge.classList.contains('badge-allow'));
   });
 
