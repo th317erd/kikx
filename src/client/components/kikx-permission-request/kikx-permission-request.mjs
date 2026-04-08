@@ -241,6 +241,57 @@ const TEMPLATE_HTML = `
     kikx-permission-request[expired] .confirm-button { display: none; }
     kikx-permission-request[expired] .processed-badge { display: none; }
     kikx-permission-request[expired] .expired-badge { display: block; }
+
+    kikx-permission-request .decision-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    kikx-permission-request .stack-button {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--border-radius-small, 4px);
+      background: transparent;
+      color: var(--text-secondary, #a0a0b8);
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+      text-align: left;
+    }
+
+    kikx-permission-request .stack-button:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    kikx-permission-request .stack-button.allow-all-websearch {
+      border-color: rgba(0, 229, 255, 0.30);
+      color: var(--accent-primary, #00e5ff);
+    }
+
+    kikx-permission-request .stack-button.allow-all-websearch:hover {
+      background: rgba(0, 229, 255, 0.10);
+    }
+
+    kikx-permission-request .stack-button.allow-forever:hover,
+    kikx-permission-request .stack-button.allow-once:hover {
+      border-color: #66bb6a;
+      color: #66bb6a;
+    }
+
+    kikx-permission-request .stack-button.deny-once:hover,
+    kikx-permission-request .stack-button.deny-forever:hover {
+      border-color: #ff4444;
+      color: #ff4444;
+    }
+
+    kikx-permission-request[processed] .decision-stack { display: none; }
+    kikx-permission-request[expired] .decision-stack { display: none; }
   </style>
 
   <div class="permission-header">
@@ -292,8 +343,9 @@ class KikxPermissionRequest extends HTMLElement {
     this._fullCommandValue      = '';
     this._permissionContextValue = null;
 
-    this._onConfirmClick    = this._onConfirmClick.bind(this);
-    this._onDecisionClick   = this._onDecisionClick.bind(this);
+    this._onConfirmClick      = this._onConfirmClick.bind(this);
+    this._onDecisionClick     = this._onDecisionClick.bind(this);
+    this._onStackButtonClick  = this._onStackButtonClick.bind(this);
   }
 
   connectedCallback() {
@@ -541,6 +593,52 @@ class KikxPermissionRequest extends HTMLElement {
   }
 
   // ---------------------------------------------------------------------------
+  // Layout detection
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns true when commands should use the legacy horizontal icon-button
+   * layout (multi-command shell permission requests). Single-command non-shell
+   * tools get the vertical decision stack instead.
+   */
+  _useHorizontalLayout() {
+    if (this._commands.length !== 1)
+      return true;
+
+    let cmd = this._commands[0];
+
+    // Shell commands: parsedCommands-based entries have `cmd.command` like
+    // 'ls', 'echo', etc. (not namespaced). Non-shell tools are namespaced
+    // like 'websearch:search', 'file:read', etc.
+    // The session page sets parsedCommands only for shell:execute, so if
+    // fullCommand is visible (set by session page for shell), treat as shell.
+    if (this._fullCommandValue)
+      return true;
+
+    // If the command starts with 'shell:' or has no colon (bare command name
+    // from parsedCommands), treat it as a shell command.
+    if (cmd.command.startsWith('shell:'))
+      return true;
+
+    // Bare command without namespace = shell parsed command
+    if (!cmd.command.includes(':'))
+      return true;
+
+    return false;
+  }
+
+  /**
+   * Returns true when the single command is a websearch tool.
+   */
+  _isWebsearchTool() {
+    if (this._commands.length !== 1)
+      return false;
+
+    let cmd = this._commands[0].command;
+    return cmd === 'websearch:search' || cmd === 'websearch:fetch';
+  }
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
@@ -549,6 +647,19 @@ class KikxPermissionRequest extends HTMLElement {
       return;
 
     this._commandTable.innerHTML = '';
+
+    // Remove any previous decision stack
+    let oldStack = this._commandTable.parentElement && this._commandTable.parentElement.querySelector('.decision-stack');
+    if (oldStack)
+      oldStack.remove();
+
+    // Single-command non-shell tools → vertical decision stack
+    if (this._commands.length > 0 && !this._useHorizontalLayout()) {
+      this._renderStackLayout();
+      return;
+    }
+
+    // --- Horizontal layout (shell / multi-command) ---
 
     // Add "select all" header row when multiple commands need approval
     let needsApproval = this._commands.filter((c) => c.status !== 'allowed');
@@ -657,12 +768,90 @@ class KikxPermissionRequest extends HTMLElement {
       this._commandTable.appendChild(row);
     }
 
+    this._confirmButton.style.display = '';
     this._updateConfirmState();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Vertical decision stack (single-command non-shell tools)
+  // ---------------------------------------------------------------------------
+
+  _renderStackLayout() {
+    let cmd = this._commands[0];
+
+    // Hide the confirm button — stack buttons dispatch immediately
+    this._confirmButton.style.display = 'none';
+
+    let stack = document.createElement('div');
+    stack.className = 'decision-stack';
+
+    // Websearch tools get an extra "Allow all websearches" button at the top
+    if (this._isWebsearchTool()) {
+      let wsButton = document.createElement('button');
+      wsButton.className = 'stack-button allow-all-websearch';
+      wsButton.textContent = '\uD83C\uDF10 ' + (t('permission.allowAllWebsearch') || 'Allow all websearches this session');
+      wsButton.setAttribute('data-decision', 'allow-forever');
+      wsButton.setAttribute('data-websearch-all', 'true');
+      stack.appendChild(wsButton);
+    }
+
+    // Standard decision buttons
+    let stackButtons = [
+      { decision: 'allow-forever', cssClass: 'allow-forever', icon: '\uD83D\uDCAF', labelKey: 'permission.allowForever',   fallback: 'Allow forever' },
+      { decision: 'allow-once',    cssClass: 'allow-once',    icon: '\uD83D\uDC4D', labelKey: 'permission.allowOnceShort', fallback: 'Allow once' },
+      { decision: 'deny-once',     cssClass: 'deny-once',     icon: '\uD83D\uDC4E', labelKey: 'permission.denyOnce',       fallback: 'Deny once' },
+      { decision: 'deny-forever',  cssClass: 'deny-forever',  icon: '\uD83D\uDEAB', labelKey: 'permission.denyForever',    fallback: 'Deny forever' },
+    ];
+
+    for (let btn of stackButtons) {
+      let button = document.createElement('button');
+      button.className = `stack-button ${btn.cssClass}`;
+      button.textContent = `${btn.icon} ${t(btn.labelKey) || btn.fallback}`;
+      button.setAttribute('data-decision', btn.decision);
+      stack.appendChild(button);
+    }
+
+    stack.addEventListener('click', this._onStackButtonClick);
+
+    // Insert the stack after the command table
+    this._commandTable.parentElement.insertBefore(stack, this._confirmButton);
   }
 
   // ---------------------------------------------------------------------------
   // Event handlers
   // ---------------------------------------------------------------------------
+
+  _onStackButtonClick(event) {
+    let button = event.target.closest('.stack-button');
+    if (!button)
+      return;
+
+    let decision           = button.getAttribute('data-decision');
+    let isWebsearchAll     = button.hasAttribute('data-websearch-all');
+    let cmd                = this._commands[0];
+
+    this._decisions.set(cmd.command, decision);
+
+    let decisions = [{
+      command:   cmd.command,
+      arguments: cmd.arguments || [],
+      decision,
+    }];
+
+    let detail = {
+      permissionID: this.getAttribute('permission-id') || '',
+      decisions,
+    };
+
+    if (isWebsearchAll)
+      detail.allowAllWebsearch = true;
+
+    this.dispatchEvent(new CustomEvent('permission-response', {
+      bubbles:  true,
+      composed: true,
+      detail,
+    }));
+  }
 
   _onDecisionClick(event) {
     let button = event.target.closest('.decision-button');

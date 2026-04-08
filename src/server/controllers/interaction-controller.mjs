@@ -419,6 +419,35 @@ export class InteractionController extends ControllerAuthBase {
           },
         });
       }
+      // When allowAllWebsearch is set, also create a session-scoped allow rule
+      // for the sibling websearch tool (websearch:search ↔ websearch:fetch)
+      if (body && body.allowAllWebsearch) {
+        let websearchTools = ['websearch:search', 'websearch:fetch'];
+
+        for (let wsTool of websearchTools) {
+          // Skip if a rule was already created above for this exact tool
+          let alreadyCreated = decisions.some((d) => {
+            let fn = d.command.includes(':') ? d.command : `shell:${d.command}`;
+            return fn === wsTool;
+          });
+
+          if (alreadyCreated)
+            continue;
+
+          await permissions.createRule({
+            organizationID,
+            featureName: wsTool,
+            effect:      'allow',
+            scope:       'session',
+            scopeID:     sessionID,
+            createdBy:   this.request.userID || 'system',
+            metadata:    {
+              allowAllWebsearch:   true,
+              permissionRequestID: frame.id,
+            },
+          });
+        }
+      }
     } catch (ruleError) {
       console.error('[approve] Failed to create permission rule:', ruleError.message);
     }

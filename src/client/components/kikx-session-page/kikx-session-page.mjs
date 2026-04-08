@@ -2321,7 +2321,7 @@ class KikxSessionPage extends HTMLElement {
   }
 
   async _onPermissionResponse(event) {
-    let { permissionID, decisions } = event.detail || {};
+    let { permissionID, decisions, allowAllWebsearch } = event.detail || {};
 
     if (!permissionID)
       return;
@@ -2340,6 +2340,12 @@ class KikxSessionPage extends HTMLElement {
     try {
       // Pass decisions array as body to the unified endpoint
       let body = (Array.isArray(decisions) && decisions.length > 0) ? { decisions } : undefined;
+
+      // Forward allowAllWebsearch flag so the server creates rules for both
+      // websearch:search and websearch:fetch in one approval
+      if (allowAllWebsearch && body)
+        body.allowAllWebsearch = true;
+
       await approvePermission(sessionID, permissionID, body);
 
       // Persist the decision on the frame so historical loads show what was chosen

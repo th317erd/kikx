@@ -217,6 +217,7 @@ export default {
     denyOnce:         'Deny once',
     denyForever:      'Deny forever',
     preApproved:      'Pre-approved',
+    allowAllWebsearch: 'Allow all websearches this session',
     confirmButton:    'Confirm',
     processed:        'Processed',
     defaultTitle:       'Permission Required',

@@ -46,10 +46,9 @@ function makeElement(attrs = {}) {
 // =============================================================================
 
 describe('kikx-agent-form-modal — rendering', { timeout: 5000 }, () => {
-  it('renders form inputs on connect (name, provider, api-key, model, risk-level)', () => {
+  it('renders form inputs on connect (name, api-key, model, risk-level)', () => {
     let el = connectElement(makeElement());
     assert.ok(el.querySelector('.name-input'));
-    assert.ok(el.querySelector('.provider-input'));
     assert.ok(el.querySelector('.api-key-input'));
     assert.ok(el.querySelector('.model-input'));
     assert.ok(el.querySelector('.risk-level-select'));
@@ -58,7 +57,6 @@ describe('kikx-agent-form-modal — rendering', { timeout: 5000 }, () => {
   it('labels are populated from i18n', () => {
     let el = connectElement(makeElement());
     assert.equal(el.querySelector('.name-label').textContent, 'Agent Name');
-    assert.equal(el.querySelector('.provider-label').textContent, 'Provider');
     assert.equal(el.querySelector('.api-key-label').textContent, 'API Key');
     assert.equal(el.querySelector('.model-label').textContent, 'Model');
     assert.equal(el.querySelector('.risk-level-label').textContent, 'Risk Level');
@@ -71,14 +69,14 @@ describe('kikx-agent-form-modal — rendering', { timeout: 5000 }, () => {
     assert.equal(el.querySelector('.cancel-button').textContent, 'Cancel');
   });
 
-  it('risk-level select has correct options', () => {
+  it('risk-level select has correct options with YOLO', () => {
     let el = connectElement(makeElement());
     let options = el.querySelector('.risk-level-select').options;
     assert.equal(options.length, 4);
     assert.equal(options[0].textContent, 'Account Default');
     assert.equal(options[1].textContent, 'Strict');
     assert.equal(options[2].textContent, 'Normal');
-    assert.equal(options[3].textContent, 'Permissive');
+    assert.equal(options[3].textContent, 'Permissive (YOLO)');
   });
 });
 
@@ -103,45 +101,48 @@ describe('kikx-agent-form-modal — mode attribute', { timeout: 5000 }, () => {
 // =============================================================================
 
 describe('kikx-agent-form-modal — agent property and getValues', { timeout: 5000 }, () => {
-  it('setting agent populates form fields', () => {
+  it('setting agent populates name and shows API key placeholder', () => {
     let el = connectElement(makeElement());
     el.agent = {
       id:        'agt-1',
       name:      'test-bot',
-      provider:  'anthropic',
-      apiKey:    'sk-test',
       model:     'claude-opus-4-6',
       riskLevel: 'strict',
     };
 
     assert.equal(el.querySelector('.name-input').value, 'test-bot');
-    assert.equal(el.querySelector('.provider-input').value, 'anthropic');
-    assert.equal(el.querySelector('.api-key-input').value, 'sk-test');
+    assert.equal(el.querySelector('.api-key-input').value, '');
+    assert.ok(el.querySelector('.api-key-input').placeholder.length > 0);
     assert.equal(el.querySelector('.risk-level-select').value, 'strict');
   });
 
   it('setting agent to null clears form fields', () => {
     let el = connectElement(makeElement());
-    el.agent = { name: 'test-bot', provider: 'x', apiKey: 'y' };
+    el.agent = { name: 'test-bot' };
     el.agent = null;
 
     assert.equal(el.querySelector('.name-input').value, '');
-    assert.equal(el.querySelector('.provider-input').value, '');
     assert.equal(el.querySelector('.api-key-input').value, '');
   });
 
-  it('getValues returns current form values', () => {
+  it('getValues returns name, model, riskLevel (no apiKey when empty)', () => {
     let el = connectElement(makeElement());
     el.querySelector('.name-input').value = 'test-agent';
-    el.querySelector('.provider-input').value = 'openai';
-    el.querySelector('.api-key-input').value = 'sk-123';
     el.querySelector('.risk-level-select').value = 'normal';
 
     let values = el.getValues();
     assert.equal(values.name, 'test-agent');
-    assert.equal(values.provider, 'openai');
-    assert.equal(values.apiKey, 'sk-123');
     assert.equal(values.riskLevel, 'normal');
+    assert.equal(values.apiKey, undefined);
+  });
+
+  it('getValues includes apiKey only when non-empty', () => {
+    let el = connectElement(makeElement());
+    el.querySelector('.name-input').value = 'test-agent';
+    el.querySelector('.api-key-input').value = 'sk-123';
+
+    let values = el.getValues();
+    assert.equal(values.apiKey, 'sk-123');
   });
 });
 
@@ -213,8 +214,7 @@ describe('kikx-agent-form-modal — edge cases', { timeout: 5000 }, () => {
 
   it('setting agent before connect stores value (applied on connect)', () => {
     let el = makeElement();
-    el.agent = { name: 'test-pre', provider: 'x', apiKey: 'y' };
-    // agent getter should return the set value even before connect
+    el.agent = { name: 'test-pre' };
     assert.equal(el.agent.name, 'test-pre');
   });
 });
