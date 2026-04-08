@@ -168,7 +168,7 @@ describe('kikx-permission-request — decision label updates', { timeout: 5000 }
 
     let row = el.querySelector('.command-row[data-command="rm"]');
     let label = row.querySelector('.decision-label');
-    assert.equal(label.textContent, 'Deny once');
+    assert.equal(label.textContent, 'Deny');
     assert.ok(label.classList.contains('label-caution'));
     assert.ok(label.classList.contains('label-shake'));
   });
@@ -197,7 +197,7 @@ describe('kikx-permission-request — decision label updates', { timeout: 5000 }
 
     let row = el.querySelector('.command-row[data-command="ls"]');
     let label = row.querySelector('.decision-label');
-    assert.equal(label.textContent, 'Deny once');
+    assert.equal(label.textContent, 'Deny');
     assert.ok(!label.classList.contains('label-allow'), 'should not have label-allow');
     assert.ok(!label.classList.contains('label-nod'), 'should not have label-nod');
     assert.ok(label.classList.contains('label-caution'));
@@ -245,7 +245,7 @@ describe('kikx-permission-request — processed badge', { timeout: 5000 }, () =>
     el.setAttribute('processed', '');
 
     let badge = el.querySelector('.processed-badge');
-    assert.ok(badge.textContent.includes('Deny once'));
+    assert.ok(badge.textContent.includes('Deny'));
     assert.ok(badge.classList.contains('badge-caution'));
   });
 

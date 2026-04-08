@@ -214,7 +214,7 @@ export default {
     wantsToUseTool:   '{name} wants to use {tool}:',
     allowForever:     'Allow',
     allowOnceShort:   'Allow once',
-    denyOnce:         'Deny once',
+    denyOnce:         'Deny',
     denyForever:      'Deny forever',
     preApproved:      'Pre-approved',
     allowAllWebsearch: 'Allow all websearches this session',
