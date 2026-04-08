@@ -249,6 +249,10 @@ export class AgentResolver {
         _commitActivity,
       };
 
+      // Inject agentID for tools that identify the calling agent (e.g. tool_log:get)
+      if (resolvedAgent && resolvedAgent.id)
+        augmentedArgs.agentID = toolArgs.agentID || resolvedAgent.id;
+
       let result = await toolInstance.execute(augmentedArgs);
 
       // system:command may request a primer refresh after execution
