@@ -267,8 +267,8 @@ export class InteractionLoop extends EventEmitter {
   // ---------------------------------------------------------------------------
   // Called after every tool execution, BEFORE creating the tool-result frame.
   // Stores the output in ValueStore via ToolLogService (best-effort).
-  // If output exceeds 1024 Unicode characters, replaces toolOutput inline with
-  // a JSON pointer message so the agent uses tool_log:get to retrieve it.
+  // If output exceeds 16384 Unicode characters (16K), replaces toolOutput inline
+  // with a JSON pointer message so the agent uses tool_log:get to retrieve it.
   // ---------------------------------------------------------------------------
 
   /**
@@ -336,7 +336,7 @@ export class InteractionLoop extends EventEmitter {
       let outputStr = (typeof toolOutput === 'string') ? toolOutput : JSON.stringify(toolOutput);
       let charCount = [ ...outputStr ].length;  // Unicode-aware character count
 
-      if (charCount > 1024 && storeResult) {
+      if (charCount > (16 * 1024) && storeResult) {
         return JSON.stringify({
           stored:        true,
           tool_log_id:   storeResult.key,
