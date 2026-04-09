@@ -29,7 +29,7 @@ export class WebsearchPermissions extends Permissions {
 
     let url   = args && args.url;
     let query = args && args.query;
-    let isSearch = featureName.includes('search');
+    let isSearch = featureName.endsWith(':search');
 
     let details = [];
     if (url)   details.push({ label: 'URL', value: url });
