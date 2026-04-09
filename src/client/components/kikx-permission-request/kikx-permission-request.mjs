@@ -805,25 +805,26 @@ class KikxPermissionRequest extends HTMLElement {
       stack.appendChild(wsButton);
     }
 
-    // Standard decision buttons — "Allow" is one-time, "Always allow" creates a persistent rule
-    let stackButtons = [
-      { decision: 'allow-once',    cssClass: 'allow-once',    icon: '\uD83D\uDC4D', labelKey: 'permission.allowOnceShort', fallback: 'Allow' },
-      { decision: 'allow-forever', cssClass: 'allow-forever',  icon: '\u2705',       labelKey: 'permission.allowForever',  fallback: 'Always allow' },
-      { decision: 'deny-once',     cssClass: 'deny-once',     icon: '\uD83D\uDC4E', labelKey: 'permission.denyOnce',       fallback: 'Deny' },
-    ];
+    // Build button stack — websearch tools get a simpler set (no "Always allow"
+    // since "Allow all websearches" already covers the persistent case)
+    let stackButtons;
 
-    // For websearch tools, replace "Deny forever" with "Deny all websearches this session"
     if (this._isWebsearchTool()) {
-      stackButtons.push({
-        decision: 'deny-forever', cssClass: 'deny-forever deny-all-websearch',
-        icon: '\uD83D\uDEAB', labelKey: 'permission.denyAllWebsearch', fallback: 'Deny all websearches this session',
-        denyAllWebsearch: true,
-      });
+      stackButtons = [
+        { decision: 'allow-once', cssClass: 'allow-once', icon: '\uD83D\uDC4D', labelKey: 'permission.allowOnceShort', fallback: 'Allow' },
+        { decision: 'deny-once',  cssClass: 'deny-once',  icon: '\uD83D\uDC4E', labelKey: 'permission.denyOnce',       fallback: 'Deny' },
+        { decision: 'deny-forever', cssClass: 'deny-forever deny-all-websearch',
+          icon: '\uD83D\uDEAB', labelKey: 'permission.denyAllWebsearch', fallback: 'Deny all websearches this session',
+          denyAllWebsearch: true },
+      ];
     } else {
-      stackButtons.push({
-        decision: 'deny-forever', cssClass: 'deny-forever',
-        icon: '\uD83D\uDEAB', labelKey: 'permission.denyForever', fallback: 'Deny forever',
-      });
+      stackButtons = [
+        { decision: 'allow-once',    cssClass: 'allow-once',    icon: '\uD83D\uDC4D', labelKey: 'permission.allowOnceShort', fallback: 'Allow' },
+        { decision: 'allow-forever', cssClass: 'allow-forever',  icon: '\u2705',       labelKey: 'permission.allowForever',  fallback: 'Always allow' },
+        { decision: 'deny-once',     cssClass: 'deny-once',     icon: '\uD83D\uDC4E', labelKey: 'permission.denyOnce',       fallback: 'Deny' },
+        { decision: 'deny-forever',  cssClass: 'deny-forever',
+          icon: '\uD83D\uDEAB', labelKey: 'permission.denyForever', fallback: 'Deny forever' },
+      ];
     }
 
     for (let btn of stackButtons) {
