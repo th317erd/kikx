@@ -173,7 +173,7 @@ describe('FramePersistence', () => {
       assert.equal(dbFrame.deleted, false);
     });
 
-    it('should default interactionID to frame id when not provided', async () => {
+    it('should default interactionID to empty string when not provided', async () => {
       let frameID = generateFrameID();
       let frames  = [
         { id: frameID, type: 'Message', order: 1, timestamp: Date.now() },
@@ -182,7 +182,7 @@ describe('FramePersistence', () => {
       await persistence.saveFrames(session.id, frames);
 
       let dbFrame = await models.Frame.where.id.EQ(frameID).first();
-      assert.equal(dbFrame.interactionID, frameID);
+      assert.equal(dbFrame.interactionID, '');
     });
 
     it('should use provided interactionID when present', async () => {

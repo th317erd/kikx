@@ -49,7 +49,7 @@ export class FramePersistence {
       if (!frameData.id)
         continue;
 
-      let interactionID = frameData.interactionID || frameData.id;
+      let interactionID = frameData.interactionID || '';
       let record        = this._frameToRecord(sessionID, interactionID, frameData);
 
       let existing = await Frame.where.id.EQ(frameData.id).first();

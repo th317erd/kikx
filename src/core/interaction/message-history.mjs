@@ -142,5 +142,77 @@ export function buildMessages(frames, forAgentID, options = {}) {
     }
   }
 
-  return messages;
+  // Sanitize: ensure every tool_use has a matching tool_result and vice versa.
+  // Orphaned tool calls/results cause Claude API to reject the history.
+  return sanitizeToolPairs(messages);
+}
+
+/**
+ * Removes orphaned tool_use blocks (no matching tool_result) and orphaned
+ * tool_result blocks (no matching tool_use) from the message history.
+ * This prevents Claude API "inconsistent tool state" errors caused by
+ * corrupted frame data (e.g., rogue frames with wrong interactionIDs).
+ *
+ * @param {import('../types').ChatMessage[]} messages
+ * @returns {import('../types').ChatMessage[]}
+ */
+function sanitizeToolPairs(messages) {
+  // Collect all tool_use IDs and tool_result IDs
+  let toolUseIDs    = new Set();
+  let toolResultIDs = new Set();
+
+  for (let msg of messages) {
+    if (!Array.isArray(msg.content))
+      continue;
+
+    for (let block of msg.content) {
+      if (block.type === 'tool_use' && block.id)
+        toolUseIDs.add(block.id);
+      else if (block.type === 'tool_result' && block.tool_use_id)
+        toolResultIDs.add(block.tool_use_id);
+    }
+  }
+
+  // Find orphans
+  let orphanedUseIDs    = new Set();
+  let orphanedResultIDs = new Set();
+
+  for (let id of toolUseIDs) {
+    if (!toolResultIDs.has(id))
+      orphanedUseIDs.add(id);
+  }
+
+  for (let id of toolResultIDs) {
+    if (!toolUseIDs.has(id))
+      orphanedResultIDs.add(id);
+  }
+
+  if (orphanedUseIDs.size === 0 && orphanedResultIDs.size === 0)
+    return messages;
+
+  // Strip orphaned blocks from messages
+  let cleaned = [];
+
+  for (let msg of messages) {
+    if (!Array.isArray(msg.content)) {
+      cleaned.push(msg);
+      continue;
+    }
+
+    let filteredContent = msg.content.filter((block) => {
+      if (block.type === 'tool_use' && orphanedUseIDs.has(block.id))
+        return false;
+
+      if (block.type === 'tool_result' && orphanedResultIDs.has(block.tool_use_id))
+        return false;
+
+      return true;
+    });
+
+    // Only include the message if it still has content
+    if (filteredContent.length > 0)
+      cleaned.push({ ...msg, content: filteredContent });
+  }
+
+  return cleaned;
 }
