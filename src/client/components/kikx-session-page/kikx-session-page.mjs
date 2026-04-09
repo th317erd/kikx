@@ -1807,8 +1807,12 @@ class KikxSessionPage extends HTMLElement {
 
         // Aggressive cleanup: find ANY kikx-interaction from this agent
         // that has no message content and remove it. Catches phantoms that
-        // weren't tracked in the streaming group.
-        if (endAgentID && endAgentID !== 'default') {
+        // weren't tracked in the streaming group. Run immediately AND on a
+        // short delay to catch late-arriving frames from SSE race conditions.
+        let cleanupEmptyBubbles = () => {
+          if (!endAgentID || endAgentID === 'default')
+            return;
+
           let agentBubbles = this._chatView.querySelectorAll(`kikx-interaction[data-author-id="${endAgentID}"]`);
           for (let bubble of agentBubbles) {
             let mc = bubble.querySelector('kikx-message-content');
@@ -1818,12 +1822,18 @@ class KikxSessionPage extends HTMLElement {
               let hasPermission  = bubble.querySelector('kikx-permission-request');
               let hasFileRead    = bubble.querySelector('kikx-file-read');
               let hasFileWrite   = bubble.querySelector('kikx-file-write');
+              let hasReflection  = bubble.querySelector('kikx-reflection-block');
 
-              if (!hasActivity && !hasPermission && !hasFileRead && !hasFileWrite)
+              // A bubble with ONLY a reflection (no message) should also be removed —
+              // it means the agent thought but produced no response (e.g., denial)
+              if (!hasActivity && !hasPermission && !hasFileRead && !hasFileWrite && !hasReflection)
                 bubble.remove();
             }
           }
-        }
+        };
+
+        cleanupEmptyBubbles();
+        setTimeout(cleanupEmptyBubbles, 500);
 
         // Dismiss typing indicator (fade out)
         let endTypingEl = this._typingIndicators.get(endAgentID);
