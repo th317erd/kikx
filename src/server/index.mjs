@@ -1,36 +1,19 @@
 'use strict';
 
-// V2 Server entry point — boots KikxCore + Mythix HTTP server on port 8089.
+import { createServer } from './create-server.mjs';
 
-import path from 'node:path';
-import os   from 'node:os';
+let host = process.env.KIKX_HOST || '127.0.0.1';
+let port = Number.parseInt(process.env.KIKX_PORT || '3000', 10);
 
-import { Application } from './application.mjs';
+let server = createServer();
 
-let dbPath = process.env.KIKX_DB || path.join(os.homedir(), '.config', 'kikx', 'kikx.db');
-
-let app = new Application({
-  environment: 'development',
-  database: {
-    development: {
-      dialect:  'sqlite',
-      filename: dbPath,
-    },
-  },
-  httpServer: {
-    host:       'localhost',
-    port:       8089,
-    middleware: [],
-  },
-  core: {
-    database: { filename: dbPath },
-  },
+server.listen(port, host, () => {
+  console.log(`Kikx listening on http://${host}:${port}`);
 });
 
-app.start().then(() => {
-  console.log(`Kikx V2 server listening on http://localhost:8089`);
-  console.log(`Database: ${dbPath}`);
-}).catch((error) => {
-  console.error('Failed to start V2 server:', error);
-  process.exit(1);
-});
+for (let signal of [ 'SIGINT', 'SIGTERM' ]) {
+  process.on(signal, () => {
+    server.close(() => process.exit(0));
+  });
+}
+

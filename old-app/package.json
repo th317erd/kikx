@@ -1,0 +1,38 @@
+{
+  "name": "kikx",
+  "version": "2.0.0",
+  "description": "AI agent runner with web-based chat interface",
+  "type": "module",
+  "license": "GPL-3.0",
+  "scripts": {
+    "test": "timeout 120 node --test --test-force-exit --test-timeout=30000 'spec/{client,core,server,shared,integration,scripts}/**/*-spec.mjs'",
+    "test:e2e": "timeout 300 node --test --test-force-exit --test-timeout=120000 'spec/e2e/**/*-spec.mjs'",
+    "start": "KIKX_PLUGIN_PATHS=/home/wyatt/Projects/kikx-workspace node --max-old-space-size=8192 src/server/index.mjs 2>&1 | tee -a /home/wyatt/.config/kikx/server.log",
+    "check_server": "fuser 8089/tcp >/dev/null 2>&1 && echo 'Server is RUNNING on port 8089 (PID '$(fuser 8089/tcp 2>/dev/null)')' || echo 'Server is NOT running on port 8089'",
+    "stop": "fuser -k 8089/tcp 2>/dev/null || echo 'No server running on port 8089'",
+    "restart": "npm run stop && sleep 2 && npm start",
+    "add-user": "node scripts/add-user.mjs",
+    "reset-password": "node scripts/reset-password.mjs",
+    "migrate": "node scripts/migrate.mjs",
+    "show-agent-instructions": "node scripts/show-agent-instructions.mjs"
+  },
+  "dependencies": {
+    "marked": "^17.0.4",
+    "mythix": "^4.1.0",
+    "mythix-orm": "^1.15.0",
+    "mythix-orm-sqlite": "^3.0.0",
+    "shell-quote": "^1.8.3",
+    "turndown": "^7.2.2",
+    "ws": "^8.19.0",
+    "xid-js": "^1.0.1"
+  },
+  "exports": {
+    "./*": "./src/*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "jsdom": "^25.0.0",
+    "puppeteer": "^24.37.5",
+    "typescript": "^6.0.2"
+  }
+}
