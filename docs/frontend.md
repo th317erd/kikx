@@ -10,3 +10,5 @@ Kikx uses AEOR's shared browser primitives for all HTML construction:
 Product-specific composition lives in `src/client/`. A component should move to `~/Projects/aeor-web-components` when it is not tied to Kikx data contracts, message semantics, or agent-runner workflows.
 
 The Node server exposes the shared repo at `/vendor/aeor-web-components/`, so the browser imports the actively developed local source rather than a copied snapshot.
+
+Authentication is delegated to AeorDB. The browser talks to Kikx `/api/v1/auth/*` routes, and Kikx proxies the public AeorDB auth endpoints for magic links, magic-link verification, API-key exchange, and refresh tokens.

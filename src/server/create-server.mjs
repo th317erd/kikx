@@ -65,6 +65,54 @@ async function routeRequest({ request, response, context, staticRoots }) {
     return;
   }
 
+  if (request.method === 'POST' && url.pathname === '/api/v1/auth/magic-link') {
+    let body = await readJSON(request);
+    if (!body.email || typeof body.email !== 'string')
+      throw httpError(400, 'email is required');
+
+    let aeordb = context.require('aeordb');
+    writeJSON(response, 200, {
+      data: await aeordb.requestMagicLink(body.email),
+    });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/v1/auth/magic-link/verify') {
+    let code = url.searchParams.get('code');
+    if (!code)
+      throw httpError(400, 'code is required');
+
+    let aeordb = context.require('aeordb');
+    writeJSON(response, 200, {
+      data: await aeordb.verifyMagicLink(code),
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/v1/auth/token') {
+    let body = await readJSON(request);
+    if (!body.api_key || typeof body.api_key !== 'string')
+      throw httpError(400, 'api_key is required');
+
+    let aeordb = context.require('aeordb');
+    writeJSON(response, 200, {
+      data: await aeordb.exchangeAPIKey(body.api_key),
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/v1/auth/refresh') {
+    let body = await readJSON(request);
+    if (!body.refresh_token || typeof body.refresh_token !== 'string')
+      throw httpError(400, 'refresh_token is required');
+
+    let aeordb = context.require('aeordb');
+    writeJSON(response, 200, {
+      data: await aeordb.refreshToken(body.refresh_token),
+    });
+    return;
+  }
+
   if (request.method === 'GET' || request.method === 'HEAD') {
     let handled = await serveStaticRequest({ request, response, url, staticRoots });
     if (handled)
@@ -76,6 +124,36 @@ async function routeRequest({ request, response, context, staticRoots }) {
       message: 'Not Found',
     },
   });
+}
+
+async function readJSON(request) {
+  let chunks = [];
+  let size = 0;
+  let maxSize = 1024 * 1024;
+
+  for await (let chunk of request) {
+    size += chunk.length;
+    if (size > maxSize)
+      throw httpError(413, 'Request body is too large');
+
+    chunks.push(chunk);
+  }
+
+  if (chunks.length === 0)
+    return {};
+
+  let text = Buffer.concat(chunks).toString('utf8');
+  try {
+    return JSON.parse(text);
+  } catch (_error) {
+    throw httpError(400, 'Request body must be valid JSON');
+  }
+}
+
+function httpError(status, message) {
+  let error = new Error(message);
+  error.status = status;
+  return error;
 }
 
 async function serveStaticRequest({ request, response, url, staticRoots }) {

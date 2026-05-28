@@ -89,28 +89,80 @@ body {
 
 .kikx-main {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(360px, 1fr) minmax(260px, 340px);
+  grid-template-columns: minmax(220px, 280px) minmax(360px, 1fr);
   min-height: 0;
 }
 
+.kikx-auth-main {
+  display: grid;
+  place-items: center;
+  padding: 32px 18px;
+}
+
+.kikx-auth-panel {
+  width: min(100%, 460px);
+  display: grid;
+  gap: 18px;
+}
+
+.kikx-auth-panel h2,
+.kikx-auth-panel h3,
+.kikx-auth-panel p {
+  margin: 0;
+}
+
+.kikx-auth-panel h2 {
+  font-size: 22px;
+}
+
+.kikx-auth-panel h3 {
+  color: #dce3ea;
+  font-size: 14px;
+}
+
+.kikx-auth-panel p,
+.kikx-auth-status {
+  color: #aab4bf;
+  font-size: 13px;
+}
+
+.kikx-auth-status {
+  min-height: 18px;
+}
+
+.kikx-auth-status--ready {
+  color: #8bd7ad;
+}
+
+.kikx-auth-status--error {
+  color: #fca5a5;
+}
+
+.kikx-auth-form {
+  display: grid;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid #2f3439;
+}
+
+.kikx-auth-form label {
+  color: #aeb8c2;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .kikx-sessions,
-.kikx-thread,
-.kikx-inspector {
+.kikx-thread {
   min-width: 0;
   padding: 18px;
 }
 
-.kikx-sessions,
-.kikx-inspector {
+.kikx-sessions {
   background: #131619;
 }
 
 .kikx-sessions {
   border-right: 1px solid #2f3439;
-}
-
-.kikx-inspector {
-  border-left: 1px solid #2f3439;
 }
 
 .kikx-main h2 {
@@ -151,8 +203,14 @@ body {
 .kikx-composer__actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
+}
+
+.kikx-thread__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .kikx-icon-button,
@@ -172,8 +230,18 @@ body {
   line-height: 1;
 }
 
-.kikx-send-button {
+.kikx-send-button,
+.kikx-sign-out-button {
   padding: 0 16px;
+}
+
+.kikx-sign-out-button {
+  min-height: 34px;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: transparent;
+  color: #cdd6df;
+  cursor: pointer;
 }
 
 .kikx-thread__empty {
@@ -190,8 +258,7 @@ body {
   gap: 10px;
 }
 
-.kikx-composer__label,
-.kikx-field label {
+.kikx-composer__label {
   color: #aeb8c2;
   font-size: 12px;
   font-weight: 600;
@@ -208,19 +275,12 @@ body {
   font: inherit;
 }
 
-.kikx-field {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
 @media (max-width: 960px) {
   .kikx-main {
     grid-template-columns: 1fr;
   }
 
-  .kikx-sessions,
-  .kikx-inspector {
+  .kikx-sessions {
     border: 0;
     border-bottom: 1px solid #2f3439;
   }

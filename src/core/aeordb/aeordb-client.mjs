@@ -71,6 +71,33 @@ export class AeorDBClient {
     });
   }
 
+  async requestMagicLink(email, options = {}) {
+    return this.request('POST', '/auth/magic-link', {
+      ...options,
+      body: { email },
+    });
+  }
+
+  async verifyMagicLink(code, options = {}) {
+    let url = this.url('/auth/magic-link/verify');
+    url.searchParams.set('code', code);
+    return this.request('GET', `${url.pathname}${url.search}`, options);
+  }
+
+  async exchangeAPIKey(apiKey, options = {}) {
+    return this.request('POST', '/auth/token', {
+      ...options,
+      body: { api_key: apiKey },
+    });
+  }
+
+  async refreshToken(refreshToken, options = {}) {
+    return this.request('POST', '/auth/refresh', {
+      ...options,
+      body: { refresh_token: refreshToken },
+    });
+  }
+
   eventsURL(params = {}) {
     let url = this.url('/system/events');
 
@@ -175,4 +202,3 @@ export class AeorDBClient {
     return parsed;
   }
 }
-

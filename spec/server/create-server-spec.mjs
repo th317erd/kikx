@@ -24,6 +24,16 @@ function close(server) {
   });
 }
 
+function jsonFetch(url, body) {
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 async function createStaticFixture() {
   let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-static-'));
   let clientRoot = path.join(root, 'client');
@@ -85,6 +95,195 @@ test('GET /api/v1/aeordb/events-url returns delegated AeorDB events URL', async 
     assert.deepEqual(body, {
       data: {
         url: 'events:entries_created:/sessions',
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('POST /api/v1/auth/magic-link forwards email to AeorDB', async () => {
+  let seenEmail;
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {
+        requestMagicLink: async (email) => {
+          seenEmail = email;
+          return { message: 'If an account exists, a login link has been sent.' };
+        },
+      },
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/auth/magic-link`, {
+      email: 'alice@example.com',
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(seenEmail, 'alice@example.com');
+    assert.deepEqual(body, {
+      data: {
+        message: 'If an account exists, a login link has been sent.',
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/auth/magic-link/verify forwards code to AeorDB', async () => {
+  let seenCode;
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {
+        verifyMagicLink: async (code) => {
+          seenCode = code;
+          return { token: 'jwt', expires_in: 3600 };
+        },
+      },
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/auth/magic-link/verify?code=abc+123`);
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(seenCode, 'abc 123');
+    assert.deepEqual(body, {
+      data: {
+        token: 'jwt',
+        expires_in: 3600,
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('POST /api/v1/auth/token forwards api_key to AeorDB', async () => {
+  let seenAPIKey;
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {
+        exchangeAPIKey: async (apiKey) => {
+          seenAPIKey = apiKey;
+          return { token: 'jwt', refresh_token: 'refresh', expires_in: 3600 };
+        },
+      },
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/auth/token`, {
+      api_key: 'aeor_secret',
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(seenAPIKey, 'aeor_secret');
+    assert.deepEqual(body, {
+      data: {
+        token: 'jwt',
+        refresh_token: 'refresh',
+        expires_in: 3600,
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('POST /api/v1/auth/refresh forwards refresh_token to AeorDB', async () => {
+  let seenRefreshToken;
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {
+        refreshToken: async (refreshToken) => {
+          seenRefreshToken = refreshToken;
+          return { token: 'new-jwt', refresh_token: 'new-refresh', expires_in: 3600 };
+        },
+      },
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/auth/refresh`, {
+      refresh_token: 'rt_secret',
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(seenRefreshToken, 'rt_secret');
+    assert.deepEqual(body, {
+      data: {
+        token: 'new-jwt',
+        refresh_token: 'new-refresh',
+        expires_in: 3600,
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('auth routes reject malformed JSON', async () => {
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/auth/magic-link`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: '{',
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(body, {
+      error: {
+        message: 'Request body must be valid JSON',
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('auth routes validate required fields', async () => {
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/auth/token`, {});
+    let body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(body, {
+      error: {
+        message: 'api_key is required',
       },
     });
   } finally {

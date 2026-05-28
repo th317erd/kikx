@@ -5,3 +5,5 @@
 - [x] Build the initial kikx browser shell with Element Builder, ReactiveState, Query Engine, and shared components.
 - [x] Document the frontend policy and shared-component boundary.
 - [x] Add tests and run the full suite.
+- [x] Remove human-HML composer wording, the context checkbox, and the right sidebar.
+- [x] Add first AeorDB-backed auth proxy routes and browser sign-in shell.

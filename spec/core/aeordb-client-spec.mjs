@@ -88,6 +88,72 @@ test('eventsURL includes filters and token', () => {
   assert.equal(url.toString(), 'http://aeor.test/system/events?events=entries_created%2Centries_deleted&path_prefix=%2Fsessions%2Fses_1&token=secret');
 });
 
+test('requestMagicLink posts email to AeorDB auth endpoint', async () => {
+  let seen;
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test',
+    fetchImpl: async (url, options) => {
+      seen = { url, options };
+      return jsonResponse({ message: 'sent' });
+    },
+  });
+
+  let result = await client.requestMagicLink('alice@example.com');
+
+  assert.deepEqual(result, { message: 'sent' });
+  assert.equal(seen.url.toString(), 'http://aeor.test/auth/magic-link');
+  assert.equal(seen.options.method, 'POST');
+  assert.equal(seen.options.body, '{"email":"alice@example.com"}');
+});
+
+test('verifyMagicLink sends code as a query parameter', async () => {
+  let seenURL;
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test',
+    fetchImpl: async (url) => {
+      seenURL = url.toString();
+      return jsonResponse({ token: 'jwt' });
+    },
+  });
+
+  await client.verifyMagicLink('abc 123');
+
+  assert.equal(seenURL, 'http://aeor.test/auth/magic-link/verify?code=abc+123');
+});
+
+test('exchangeAPIKey posts api_key to AeorDB auth endpoint', async () => {
+  let seen;
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test',
+    fetchImpl: async (_url, options) => {
+      seen = options;
+      return jsonResponse({ token: 'jwt', refresh_token: 'refresh' });
+    },
+  });
+
+  let result = await client.exchangeAPIKey('aeor_secret');
+
+  assert.deepEqual(result, { token: 'jwt', refresh_token: 'refresh' });
+  assert.equal(seen.method, 'POST');
+  assert.equal(seen.body, '{"api_key":"aeor_secret"}');
+});
+
+test('refreshToken posts refresh_token to AeorDB auth endpoint', async () => {
+  let seen;
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test',
+    fetchImpl: async (_url, options) => {
+      seen = options;
+      return jsonResponse({ token: 'new-jwt', refresh_token: 'new-refresh' });
+    },
+  });
+
+  await client.refreshToken('rt_secret');
+
+  assert.equal(seen.method, 'POST');
+  assert.equal(seen.body, '{"refresh_token":"rt_secret"}');
+});
+
 test('request throws AeorDBError for HTTP errors', async () => {
   let client = new AeorDBClient({
     baseURL: 'http://aeor.test',
@@ -131,4 +197,3 @@ test('request wraps fetch failures', async () => {
     (error) => error instanceof AeorDBError && /ECONNREFUSED/.test(error.message),
   );
 });
-
