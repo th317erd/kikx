@@ -32,6 +32,7 @@ async function createStaticFixture() {
   await fs.mkdir(path.join(clientRoot, 'styles'), { recursive: true });
   await fs.mkdir(path.join(aeorWebComponentsRoot, 'components'), { recursive: true });
   await fs.writeFile(path.join(clientRoot, 'index.html'), '<!doctype html><title>Kikx</title>');
+  await fs.writeFile(path.join(clientRoot, 'app.mjs'), "import './components/kikx-app.mjs';");
   await fs.writeFile(path.join(clientRoot, 'styles', 'app.css'), 'body { color: white; }');
   await fs.writeFile(path.join(aeorWebComponentsRoot, 'elements.js'), 'export const elements = {};');
 
@@ -165,6 +166,33 @@ test('GET /vendor/aeor-web-components serves shared component assets', async () 
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('content-type'), 'text/javascript; charset=utf-8');
     assert.equal(body, 'export const elements = {};');
+  } finally {
+    await close(server);
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test('GET /client/*.mjs serves browser modules with JavaScript MIME type', async () => {
+  let fixture = await createStaticFixture();
+  let server = createServer({
+    clientRoot: fixture.clientRoot,
+    aeorWebComponentsRoot: fixture.aeorWebComponentsRoot,
+    context: new AppContext({
+      aeordb: {
+        eventsURL: () => 'unused',
+      },
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/client/app.mjs`);
+    let body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'text/javascript; charset=utf-8');
+    assert.equal(body, "import './components/kikx-app.mjs';");
   } finally {
     await close(server);
     await fs.rm(fixture.root, { recursive: true, force: true });
