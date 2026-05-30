@@ -73,6 +73,26 @@ test('queryFiles posts to /files/query', async () => {
   assert.equal(seenURL, 'http://aeor.test/files/query');
 });
 
+test('listDirectory sends directory query parameters to /files/{path}', async () => {
+  let seenURL;
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test/',
+    fetchImpl: async (url) => {
+      seenURL = url.toString();
+      return jsonResponse({ items: [] });
+    },
+  });
+
+  await client.listDirectory('/sessions/ses_1/interactions', {
+    depth: -1,
+    glob: '**/frames/*.json',
+    limit: 50,
+    offset: 10,
+  });
+
+  assert.equal(seenURL, 'http://aeor.test/files/sessions/ses_1/interactions?depth=-1&glob=**%2Fframes%2F*.json&limit=50&offset=10');
+});
+
 test('eventsURL includes filters and token', () => {
   let client = new AeorDBClient({
     baseURL: 'http://aeor.test',

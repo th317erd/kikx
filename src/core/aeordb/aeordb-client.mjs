@@ -71,6 +71,25 @@ export class AeorDBClient {
     });
   }
 
+  async listDirectory(path, options = {}) {
+    let {
+      depth,
+      glob,
+      limit,
+      offset,
+      ...requestOptions
+    } = options;
+
+    let url = this.url(this.filePath(path));
+
+    for (let [key, value] of Object.entries({ depth, glob, limit, offset })) {
+      if (value != null)
+        url.searchParams.set(key, String(value));
+    }
+
+    return this.request('GET', `${url.pathname}${url.search}`, requestOptions);
+  }
+
   async requestMagicLink(email, options = {}) {
     return this.request('POST', '/auth/magic-link', {
       ...options,
