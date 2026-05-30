@@ -9,8 +9,11 @@ The previous Mythix/Mythix ORM/Solr implementation is archived in `old-app/` for
 ```bash
 npm test
 npm start
+npm run login-link -- user@example.com
 ```
 
 The new server expects AeorDB at `AEORDB_URL`, defaulting to `http://127.0.0.1:6830`.
 
 The browser client is served directly by the Node process. Kikx imports the shared AEOR Development frontend primitives from `~/Projects/aeor-web-components` through `/vendor/aeor-web-components/`.
+
+`npm run login-link -- <email>` requests a magic-link login through the running Kikx server. Override the server URL with `KIKX_URL` when needed.

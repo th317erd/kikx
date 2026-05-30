@@ -5,6 +5,7 @@
   "type": "module",
   "main": "src/index.mjs",
   "scripts": {
+    "login-link": "node scripts/request-login-link.mjs",
     "start": "node src/server/index.mjs",
     "test": "timeout 120 node --test --test-timeout=30000 'spec/**/*-spec.mjs'"
   },
@@ -13,4 +14,3 @@
   },
   "license": "GPL-3.0-or-later"
 }
-
