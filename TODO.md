@@ -7,3 +7,5 @@
 - [x] Add tests and run the full suite.
 - [x] Remove human-HML composer wording, the context checkbox, and the right sidebar.
 - [x] Add first AeorDB-backed auth proxy routes and browser sign-in shell.
+- [x] Read all archived project plan files and summarize project direction/questions.
+- [ ] Build new core foundation from old-app inspiration: plugin system, FrameEngine, FrameRouter.
