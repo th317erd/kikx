@@ -2,7 +2,7 @@
 
 import { elements, ReactiveState, $ } from '../lib/aeor-ui.mjs';
 
-const { div, header, main, section, h1, h2, h3, p, span, button, form, label, textarea, ul, li, strong } = elements;
+const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong } = elements;
 const aeorInput = elements['aeor-input'];
 const AUTH_STORAGE_KEY = 'kikx.auth.session';
 
@@ -15,7 +15,6 @@ export class KikxApp extends HTMLElement {
 
     this._state = new ReactiveState({
       aeordbEventsURL: '',
-      apiKey: '',
       authEmail: '',
       authStatus: '',
       authStatusKind: 'pending',
@@ -27,8 +26,6 @@ export class KikxApp extends HTMLElement {
       statusKind: 'pending',
     });
 
-    this._onAPIKeySubmit = this._onAPIKeySubmit.bind(this);
-    this._onMagicCodeSubmit = this._onMagicCodeSubmit.bind(this);
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
   }
@@ -72,12 +69,11 @@ export class KikxApp extends HTMLElement {
     return main.class('kikx-auth-main')(
       section.class('kikx-auth-panel')(
         h2('Sign in'),
-        p('Use an AeorDB magic link or exchange an AeorDB API key for a session token.'),
+        p('Enter your email and AeorDB will send a sign-in link.'),
         div.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.authStatusKind}`, ['authStatusKind'])(
           span.textContent.bindState((state) => state.authStatus, ['authStatus'])(),
         ),
         form.class('kikx-auth-form').onSubmit(this._onMagicLinkSubmit)(
-          h3('Magic link'),
           label('Email'),
           aeorInput
             .type('email')
@@ -86,28 +82,6 @@ export class KikxApp extends HTMLElement {
             .value.bindState((state) => state.authEmail, ['authEmail'])
             .onInput(this._syncAuthEmail)(),
           button.type('submit').class('kikx-send-button')('Send link'),
-        ),
-        form.class('kikx-auth-form').onSubmit(this._onMagicCodeSubmit)(
-          h3('Verify code'),
-          label('Code'),
-          aeorInput
-            .type('text')
-            .name('code')
-            .placeholder('Magic link code')
-            .value.bindState((state) => state.magicCode, ['magicCode'])
-            .onInput(this._syncMagicCode)(),
-          button.type('submit').class('kikx-send-button')('Verify'),
-        ),
-        form.class('kikx-auth-form').onSubmit(this._onAPIKeySubmit)(
-          h3('API key'),
-          label('API key'),
-          aeorInput
-            .type('password')
-            .name('api-key')
-            .placeholder('aeor_...')
-            .value.bindState((state) => state.apiKey, ['apiKey'])
-            .onInput(this._syncAPIKey)(),
-          button.type('submit').class('kikx-send-button')('Sign in'),
         ),
       ),
     );
@@ -192,11 +166,6 @@ export class KikxApp extends HTMLElement {
     }
   }
 
-  async _onMagicCodeSubmit(event) {
-    event.preventDefault();
-    await this._verifyMagicLink(this._state.magicCode.trim());
-  }
-
   async _verifyMagicLink(code) {
     if (!code) {
       this._state.authStatus = 'Code is required';
@@ -216,34 +185,12 @@ export class KikxApp extends HTMLElement {
     }
   }
 
-  async _onAPIKeySubmit(event) {
-    event.preventDefault();
-    let apiKey = this._state.apiKey.trim();
-    if (!apiKey) {
-      this._state.authStatus = 'API key is required';
-      this._state.authStatusKind = 'error';
-      return;
-    }
-
-    this._state.authStatus = 'Signing in...';
-    this._state.authStatusKind = 'pending';
-
-    try {
-      let result = await this._postJSON('/api/v1/auth/token', { api_key: apiKey });
-      this._applyAuth(result.data);
-    } catch (error) {
-      this._state.authStatus = error.message;
-      this._state.authStatusKind = 'error';
-    }
-  }
-
   _applyAuth(auth) {
     if (!auth?.token)
       throw new Error('AeorDB did not return an auth token');
 
     this._state.authToken = auth.token;
     this._state.refreshToken = auth.refresh_token || '';
-    this._state.apiKey = '';
     this._state.status = 'Signed in';
     this._state.statusKind = 'ready';
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
@@ -282,14 +229,6 @@ export class KikxApp extends HTMLElement {
 
   _syncAuthEmail(event) {
     this._state.authEmail = event.target.value;
-  }
-
-  _syncMagicCode(event) {
-    this._state.magicCode = event.target.value;
-  }
-
-  _syncAPIKey(event) {
-    this._state.apiKey = event.target.value;
   }
 
   _onSubmit(event) {

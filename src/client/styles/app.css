@@ -106,18 +106,12 @@ body {
 }
 
 .kikx-auth-panel h2,
-.kikx-auth-panel h3,
 .kikx-auth-panel p {
   margin: 0;
 }
 
 .kikx-auth-panel h2 {
   font-size: 22px;
-}
-
-.kikx-auth-panel h3 {
-  color: #dce3ea;
-  font-size: 14px;
 }
 
 .kikx-auth-panel p,
@@ -141,8 +135,6 @@ body {
 .kikx-auth-form {
   display: grid;
   gap: 10px;
-  padding-top: 18px;
-  border-top: 1px solid #2f3439;
 }
 
 .kikx-auth-form label {
