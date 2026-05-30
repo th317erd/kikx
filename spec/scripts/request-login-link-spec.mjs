@@ -57,17 +57,6 @@ async function readBody(request) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-test('request-login-link requires an email', async () => {
-  let result = await runScript([], {
-    env: {
-      KIKX_LOGIN_EMAIL: '',
-    },
-  });
-
-  assert.equal(result.code, 1);
-  assert.match(result.stdout, /Usage: npm run login-link -- <email>/);
-});
-
 test('request-login-link posts the email to the Kikx auth proxy', async () => {
   let seen = {};
   let { server, baseURL } = await listen(async (request, response) => {
@@ -99,6 +88,36 @@ test('request-login-link posts the email to the Kikx auth proxy', async () => {
     assert.equal(seen.headers['content-type'], 'application/json');
     assert.equal(seen.body, '{"email":"alice@example.com"}');
     assert.match(result.stdout, /login link has been sent/);
+  } finally {
+    await close(server);
+  }
+});
+
+test('request-login-link defaults to Wyatt email when no email is provided', async () => {
+  let seen = {};
+  let { server, baseURL } = await listen(async (request, response) => {
+    seen.body = await readBody(request);
+
+    response.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+    });
+    response.end(JSON.stringify({
+      data: {
+        message: 'If an account exists, a login link has been sent.',
+      },
+    }));
+  });
+
+  try {
+    let result = await runScript([], {
+      env: {
+        KIKX_URL: baseURL,
+        KIKX_LOGIN_EMAIL: '',
+      },
+    });
+
+    assert.equal(result.code, 0);
+    assert.equal(seen.body, '{"email":"wegreenway@taraani.org"}');
   } finally {
     await close(server);
   }

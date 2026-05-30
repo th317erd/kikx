@@ -2,6 +2,7 @@
 'use strict';
 
 const DEFAULT_KIKX_URL = 'http://127.0.0.1:3000';
+const DEFAULT_EMAIL = 'wegreenway@taraani.org';
 
 async function main() {
   let args = process.argv.slice(2);
@@ -11,12 +12,7 @@ async function main() {
     return;
   }
 
-  let email = args[0] || process.env.KIKX_LOGIN_EMAIL || '';
-  if (!email) {
-    printUsage();
-    process.exitCode = 1;
-    return;
-  }
+  let email = args[0] || process.env.KIKX_LOGIN_EMAIL || DEFAULT_EMAIL;
 
   let baseURL = (process.env.KIKX_URL || DEFAULT_KIKX_URL).replace(/\/+$/g, '');
   let response;
@@ -59,7 +55,7 @@ function printUsage() {
     '',
     'Environment:',
     `  KIKX_URL          Kikx server URL. Default: ${DEFAULT_KIKX_URL}`,
-    '  KIKX_LOGIN_EMAIL  Email address if not passed as an argument.',
+    `  KIKX_LOGIN_EMAIL  Email address if not passed as an argument. Default: ${DEFAULT_EMAIL}`,
   ].join('\n'));
 }
 
