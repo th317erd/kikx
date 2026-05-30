@@ -2,7 +2,10 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import fs from 'node:fs/promises';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 function runScript(args = [], options = {}) {
@@ -59,11 +62,13 @@ async function readBody(request) {
 
 test('request-login-link posts the email to the Kikx auth proxy', async () => {
   let seen = {};
+  let logPath = await createLogFile();
   let { server, baseURL } = await listen(async (request, response) => {
     seen.method = request.method;
     seen.url = request.url;
     seen.headers = request.headers;
     seen.body = await readBody(request);
+    await fs.appendFile(logPath, 'magic_link_url="/auth/magic-link/verify?code=abc123"\n');
 
     response.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
@@ -78,7 +83,9 @@ test('request-login-link posts the email to the Kikx auth proxy', async () => {
   try {
     let result = await runScript([ 'alice@example.com' ], {
       env: {
+        AEORDB_LOG_PATH: logPath,
         KIKX_URL: baseURL,
+        KIKX_PUBLIC_URL: 'http://kikx.test',
       },
     });
 
@@ -87,16 +94,19 @@ test('request-login-link posts the email to the Kikx auth proxy', async () => {
     assert.equal(seen.url, '/api/v1/auth/magic-link');
     assert.equal(seen.headers['content-type'], 'application/json');
     assert.equal(seen.body, '{"email":"alice@example.com"}');
-    assert.match(result.stdout, /login link has been sent/);
+    assert.equal(result.stdout.trim(), 'http://kikx.test/?code=abc123');
   } finally {
     await close(server);
+    await fs.rm(path.dirname(logPath), { recursive: true, force: true });
   }
 });
 
 test('request-login-link defaults to Wyatt email when no email is provided', async () => {
   let seen = {};
+  let logPath = await createLogFile();
   let { server, baseURL } = await listen(async (request, response) => {
     seen.body = await readBody(request);
+    await fs.appendFile(logPath, 'magic_link_url="/auth/magic-link/verify?code=default-code"\n');
 
     response.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
@@ -111,6 +121,7 @@ test('request-login-link defaults to Wyatt email when no email is provided', asy
   try {
     let result = await runScript([], {
       env: {
+        AEORDB_LOG_PATH: logPath,
         KIKX_URL: baseURL,
         KIKX_LOGIN_EMAIL: '',
       },
@@ -120,10 +131,12 @@ test('request-login-link defaults to Wyatt email when no email is provided', asy
     assert.equal(seen.body, '{"email":"wegreenway@taraani.org"}');
   } finally {
     await close(server);
+    await fs.rm(path.dirname(logPath), { recursive: true, force: true });
   }
 });
 
 test('request-login-link reports Kikx auth errors', async () => {
+  let logPath = await createLogFile();
   let { server, baseURL } = await listen((_request, response) => {
     response.writeHead(429, {
       'Content-Type': 'application/json; charset=utf-8',
@@ -138,6 +151,7 @@ test('request-login-link reports Kikx auth errors', async () => {
   try {
     let result = await runScript([ 'alice@example.com' ], {
       env: {
+        AEORDB_LOG_PATH: logPath,
         KIKX_URL: baseURL,
       },
     });
@@ -146,5 +160,43 @@ test('request-login-link reports Kikx auth errors', async () => {
     assert.match(result.stderr, /Rate limit exceeded/);
   } finally {
     await close(server);
+    await fs.rm(path.dirname(logPath), { recursive: true, force: true });
   }
 });
+
+test('request-login-link fails loudly when AeorDB does not log the dev link', async () => {
+  let logPath = await createLogFile();
+  let { server, baseURL } = await listen(async (_request, response) => {
+    response.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+    });
+    response.end(JSON.stringify({
+      data: {
+        message: 'If an account exists, a login link has been sent.',
+      },
+    }));
+  });
+
+  try {
+    let result = await runScript([ 'alice@example.com' ], {
+      env: {
+        AEORDB_LOG_PATH: logPath,
+        KIKX_URL: baseURL,
+        LOGIN_LINK_TIMEOUT_MS: '10',
+      },
+    });
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /AEORDB_LOG_MAGIC_LINKS=1/);
+  } finally {
+    await close(server);
+    await fs.rm(path.dirname(logPath), { recursive: true, force: true });
+  }
+});
+
+async function createLogFile() {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-login-link-'));
+  let logPath = path.join(dir, 'aeordb.log');
+  await fs.writeFile(logPath, 'startup log\n');
+  return logPath;
+}
