@@ -20,14 +20,18 @@ export class KikxApp extends HTMLElement {
       authStatusKind: 'pending',
       authToken: savedAuth.token || '',
       draft: '',
+      frames: [],
       magicCode: params.get('code') || '',
       refreshToken: savedAuth.refresh_token || '',
+      selectedSessionID: '',
+      sessions: [],
       status: 'Checking AeorDB event stream...',
       statusKind: 'pending',
     });
 
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
+    this._createSession = this._createSession.bind(this);
   }
 
   connectedCallback() {
@@ -36,10 +40,12 @@ export class KikxApp extends HTMLElement {
 
     this._mounted = true;
     this._render();
-    if (this._state.authToken)
+    if (this._state.authToken) {
       this._loadAeorDBEventsURL();
-    else if (this._state.magicCode)
+      this._loadSessions();
+    } else if (this._state.magicCode) {
       this._verifyMagicLink(this._state.magicCode);
+    }
   }
 
   _render() {
@@ -93,25 +99,20 @@ export class KikxApp extends HTMLElement {
         section.class('kikx-sessions')(
           h2('Sessions'),
           ul.class('kikx-session-list')(
-            li.class('is-selected')(
-              strong('Scratch'),
-              span('No frames yet'),
-            ),
+            this._buildSessionItems(),
           ),
         ),
         section.class('kikx-thread')(
           div.class('kikx-thread__header')(
-            h2('Scratch'),
+            h2(this._selectedSession()?.title || 'No session'),
             div.class('kikx-thread__tools')(
-              button.type('button').class('kikx-icon-button').title('Create session').onClick(this._openCreateSession)(
+              button.type('button').class('kikx-icon-button').title('Create session').onClick(this._createSession)(
                 '+',
               ),
               button.type('button').class('kikx-sign-out-button').onClick(this._signOut)('Sign out'),
             ),
           ),
-          div.class('kikx-thread__empty')(
-            p('Frame queue will render here once the store lands.'),
-          ),
+          this._buildFrameThread(),
           form.class('kikx-composer').onSubmit(this._onSubmit)(
             label.class('kikx-composer__label')('Message'),
             textarea
@@ -128,6 +129,50 @@ export class KikxApp extends HTMLElement {
     ];
   }
 
+  _buildSessionItems() {
+    if (this._state.sessions.length === 0) {
+      return li.class('kikx-session-list__empty')(
+        span('No sessions'),
+      );
+    }
+
+    return this._state.sessions.map((session) => {
+      let selected = session.id === this._state.selectedSessionID;
+      let count = selected ? this._state.frames.length : 0;
+
+      return li
+        .class(selected ? 'is-selected' : '')
+        .onClick(() => this._selectSession(session.id))(
+          strong(session.title || session.id),
+          span(`${count} frame${count === 1 ? '' : 's'}`),
+        );
+    });
+  }
+
+  _buildFrameThread() {
+    if (!this._state.selectedSessionID) {
+      return div.class('kikx-thread__empty')(
+        p('Create a session to start.'),
+      );
+    }
+
+    if (this._state.frames.length === 0) {
+      return div.class('kikx-thread__empty')(
+        p('No frames yet.'),
+      );
+    }
+
+    return ul.class('kikx-frame-list')(
+      this._state.frames.map((frame) => li.class(`kikx-frame kikx-frame--${frame.type}`)(
+        div.class('kikx-frame__meta')(
+          strong(frame.type),
+          span(frame.authorID || frame.authorType || 'system'),
+        ),
+        p(frame.content?.text || frame.contentText || frame.id),
+      )),
+    );
+  }
+
   async _loadAeorDBEventsURL() {
     try {
       let response = await fetch('/api/v1/aeordb/events-url?events=entries_created,entries_updated&path_prefix=/kikx');
@@ -142,6 +187,31 @@ export class KikxApp extends HTMLElement {
       this._state.status = error.message;
       this._state.statusKind = 'error';
     }
+  }
+
+  async _loadSessions() {
+    try {
+      let result = await this._getJSON('/api/v1/sessions');
+      this._state.sessions = result.data.sessions || [];
+
+      if (!this._state.selectedSessionID && this._state.sessions.length > 0)
+        this._state.selectedSessionID = this._state.sessions[0].id;
+
+      if (this._state.selectedSessionID)
+        await this._loadFrames(this._state.selectedSessionID);
+      else
+        this._render();
+    } catch (error) {
+      this._state.status = error.message;
+      this._state.statusKind = 'error';
+      this._render();
+    }
+  }
+
+  async _loadFrames(sessionID) {
+    let result = await this._getJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}/frames`);
+    this._state.frames = result.data.frames || [];
+    this._render();
   }
 
   async _onMagicLinkSubmit(event) {
@@ -196,12 +266,16 @@ export class KikxApp extends HTMLElement {
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
     this._render();
     this._loadAeorDBEventsURL();
+    this._loadSessions();
   }
 
   _signOut() {
     sessionStorage.removeItem(AUTH_STORAGE_KEY);
     this._state.authToken = '';
     this._state.refreshToken = '';
+    this._state.sessions = [];
+    this._state.frames = [];
+    this._state.selectedSessionID = '';
     this._state.status = 'Signed out';
     this._state.statusKind = 'pending';
     this._render();
@@ -231,7 +305,7 @@ export class KikxApp extends HTMLElement {
     this._state.authEmail = event.target.value;
   }
 
-  _onSubmit(event) {
+  async _onSubmit(event) {
     event.preventDefault();
     let draft = this._state.draft.trim();
     if (!draft) {
@@ -240,16 +314,70 @@ export class KikxApp extends HTMLElement {
       return;
     }
 
-    this._state.status = 'Message queue is not wired yet';
+    if (!this._state.selectedSessionID) {
+      this._state.status = 'Create a session before sending';
+      this._state.statusKind = 'error';
+      return;
+    }
+
+    this._state.status = 'Committing message...';
     this._state.statusKind = 'pending';
+
+    try {
+      await this._postJSON(`/api/v1/sessions/${encodeURIComponent(this._state.selectedSessionID)}/messages`, {
+        text: draft,
+      });
+      this._state.draft = '';
+      await this._loadFrames(this._state.selectedSessionID);
+      this._state.status = 'Message committed';
+      this._state.statusKind = 'ready';
+      this._render();
+    } catch (error) {
+      this._state.status = error.message;
+      this._state.statusKind = 'error';
+      this._render();
+    }
   }
 
-  _openCreateSession() {
-    let modal = elements['aeor-modal'].title('Create session')(
-      p('Session creation will connect once FrameStore lands.'),
-    ).build(document);
-    modal.addEventListener('close', () => modal.remove());
-    modal.open();
+  async _createSession() {
+    this._state.status = 'Creating session...';
+    this._state.statusKind = 'pending';
+
+    try {
+      let result = await this._postJSON('/api/v1/sessions', {
+        title: 'Scratch',
+      });
+      this._state.selectedSessionID = result.data.session.id;
+      await this._loadSessions();
+      this._state.status = 'Session created';
+      this._state.statusKind = 'ready';
+      this._render();
+    } catch (error) {
+      this._state.status = error.message;
+      this._state.statusKind = 'error';
+      this._render();
+    }
+  }
+
+  async _selectSession(sessionID) {
+    this._state.selectedSessionID = sessionID;
+    this._state.status = 'Loading session...';
+    this._state.statusKind = 'pending';
+
+    try {
+      await this._loadFrames(sessionID);
+      this._state.status = 'Session loaded';
+      this._state.statusKind = 'ready';
+      this._render();
+    } catch (error) {
+      this._state.status = error.message;
+      this._state.statusKind = 'error';
+      this._render();
+    }
+  }
+
+  _selectedSession() {
+    return this._state.sessions.find((session) => session.id === this._state.selectedSessionID) || null;
   }
 }
 

@@ -34,6 +34,47 @@ function jsonFetch(url, body) {
   });
 }
 
+function createRuntime() {
+  let calls = [];
+  return {
+    calls,
+    async createSession(input) {
+      calls.push({ method: 'createSession', input });
+      return {
+        id: input.id || 'ses_1',
+        title: input.title || 'Scratch',
+        organizationID: input.organizationID || null,
+      };
+    },
+    listSessions() {
+      calls.push({ method: 'listSessions' });
+      return [
+        { id: 'ses_1', title: 'Scratch' },
+      ];
+    },
+    async appendUserMessage(sessionID, input) {
+      calls.push({ method: 'appendUserMessage', sessionID, input });
+      if (sessionID === 'missing') {
+        let error = new Error('Unknown session: missing');
+        error.status = 404;
+        throw error;
+      }
+
+      return {
+        session: { id: sessionID, title: 'Scratch' },
+        frame: { id: 'msg_1', type: 'UserMessage', content: { text: input.text } },
+        commit: { id: 'commit_1', order: 1 },
+      };
+    },
+    listFrames(sessionID) {
+      calls.push({ method: 'listFrames', sessionID });
+      return [
+        { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } },
+      ];
+    },
+  };
+}
+
 async function createStaticFixture() {
   let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-static-'));
   let clientRoot = path.join(root, 'client');
@@ -69,6 +110,223 @@ test('GET /health reports service state', async () => {
       ok: true,
       services: {
         aeordb: true,
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('POST /api/v1/sessions creates a runtime session', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/sessions`, {
+      title: 'Scratch',
+      organizationID: 'org_1',
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(runtime.calls[0], {
+      method: 'createSession',
+      input: {
+        title: 'Scratch',
+        organizationID: 'org_1',
+        createdByUserID: null,
+      },
+    });
+    assert.deepEqual(body, {
+      data: {
+        session: {
+          id: 'ses_1',
+          title: 'Scratch',
+          organizationID: 'org_1',
+        },
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/sessions lists runtime sessions', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/sessions`);
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body, {
+      data: {
+        sessions: [
+          { id: 'ses_1', title: 'Scratch' },
+        ],
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('runtime routes validate session title when provided', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/sessions`, {
+      title: '',
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(body, {
+      error: {
+        message: 'title must be a non-empty string',
+      },
+    });
+    assert.deepEqual(runtime.calls, []);
+  } finally {
+    await close(server);
+  }
+});
+
+test('POST /api/v1/sessions/:sessionID/messages appends a user message', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/sessions/ses_1/messages`, {
+      text: 'hello',
+      userID: 'usr_1',
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(runtime.calls[0], {
+      method: 'appendUserMessage',
+      sessionID: 'ses_1',
+      input: {
+        text: 'hello',
+        userID: 'usr_1',
+      },
+    });
+    assert.deepEqual(body.data.commit, { id: 'commit_1', order: 1 });
+    assert.deepEqual(body.data.frame, { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } });
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/sessions/:sessionID/frames lists runtime frames', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/sessions/ses_1/frames`);
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body, {
+      data: {
+        frames: [
+          { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } },
+        ],
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('runtime routes validate message text', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/sessions/ses_1/messages`, {
+      text: '',
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(body, {
+      error: {
+        message: 'text is required',
+      },
+    });
+    assert.deepEqual(runtime.calls, []);
+  } finally {
+    await close(server);
+  }
+});
+
+test('runtime routes report missing sessions as 404', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/sessions/missing/messages`, {
+      text: 'hello',
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(body, {
+      error: {
+        message: 'Unknown session: missing',
       },
     });
   } finally {

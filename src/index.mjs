@@ -7,4 +7,5 @@ export { FrameEngine, deepMerge } from './core/frames/index.mjs';
 export { PermissionRequiredError } from './core/permissions/permission-required-error.mjs';
 export { PluginInterface, PluginRegistry } from './core/plugins/index.mjs';
 export { BaseFramePlugin, FrameRouter, SelectorCompiler } from './core/routing/index.mjs';
+export { FrameRuntime } from './core/runtime/index.mjs';
 export { createServer } from './server/create-server.mjs';

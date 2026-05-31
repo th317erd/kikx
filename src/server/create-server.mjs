@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { AppContext } from '../core/app/app-context.mjs';
 import { AeorDBClient } from '../core/aeordb/aeordb-client.mjs';
+import { FrameRuntime } from '../core/runtime/frame-runtime.mjs';
 
 const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
 const DEFAULT_AEOR_WEB_COMPONENTS_ROOT = '/home/wyatt/Projects/aeor-web-components';
@@ -25,6 +26,9 @@ export function createServer(options = {}) {
       fetchImpl: options.fetchImpl || globalThis.fetch,
     }));
   }
+
+  if (!context.has('frameRuntime'))
+    context.set('frameRuntime', new FrameRuntime({ aeordb: context.require('aeordb') }));
 
   return http.createServer(async (request, response) => {
     try {
@@ -63,6 +67,66 @@ async function routeRequest({ request, response, context, staticRoots }) {
       },
     });
     return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/v1/sessions') {
+    let frameRuntime = context.require('frameRuntime');
+    writeJSON(response, 200, {
+      data: {
+        sessions: frameRuntime.listSessions(),
+      },
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/v1/sessions') {
+    let body = await readJSON(request);
+    if (body.title != null && (typeof body.title !== 'string' || body.title.trim() === ''))
+      throw httpError(400, 'title must be a non-empty string');
+
+    let frameRuntime = context.require('frameRuntime');
+    let session = await frameRuntime.createSession({
+      title: body.title,
+      organizationID: body.organizationID || null,
+      createdByUserID: body.createdByUserID || body.userID || null,
+    });
+
+    writeJSON(response, 201, {
+      data: {
+        session,
+      },
+    });
+    return;
+  }
+
+  let sessionRoute = matchSessionRoute(url.pathname);
+  if (sessionRoute) {
+    let frameRuntime = context.require('frameRuntime');
+
+    if (request.method === 'GET' && sessionRoute.resource === 'frames') {
+      writeJSON(response, 200, {
+        data: {
+          frames: frameRuntime.listFrames(sessionRoute.sessionID),
+        },
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && sessionRoute.resource === 'messages') {
+      let body = await readJSON(request);
+      if (!body.text || typeof body.text !== 'string' || body.text.trim() === '')
+        throw httpError(400, 'text is required');
+
+      let result = await frameRuntime.appendUserMessage(sessionRoute.sessionID, {
+        text: body.text,
+        userID: body.userID || body.authorID || null,
+      });
+
+      writeJSON(response, 201, {
+        data: result,
+      });
+      return;
+    }
   }
 
   if (request.method === 'POST' && url.pathname === '/api/v1/auth/magic-link') {
@@ -154,6 +218,17 @@ function httpError(status, message) {
   let error = new Error(message);
   error.status = status;
   return error;
+}
+
+function matchSessionRoute(pathname) {
+  let match = /^\/api\/v1\/sessions\/([^/]+)\/(frames|messages)$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    sessionID: decodeURIComponent(match[1]),
+    resource: match[2],
+  };
 }
 
 async function serveStaticRequest({ request, response, url, staticRoots }) {

@@ -10,3 +10,4 @@
 - [x] Read all archived project plan files and summarize project direction/questions.
 - [x] Build new core foundation from old-app inspiration: plugin system, FrameEngine, FrameRouter.
 - [x] Add AeorDB persistence adapter for FrameEngine sessions, commits, frames, and indexes.
+- [x] Wire FrameEngine and AeorDBFrameStore into runtime session/message API endpoints.
