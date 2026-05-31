@@ -135,6 +135,65 @@ test('request-login-link defaults to Wyatt email when no email is provided', asy
   }
 });
 
+test('request-login-link loads dev environment defaults when present', async () => {
+  let previousEnv = {
+    AEORDB_LOG_PATH: process.env.AEORDB_LOG_PATH,
+    KIKX_ENV_FILE: process.env.KIKX_ENV_FILE,
+    KIKX_PORT: process.env.KIKX_PORT,
+    KIKX_URL: process.env.KIKX_URL,
+  };
+  let tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-login-env-'));
+  let logPath = path.join(tempDir, 'aeordb.log');
+  let envPath = path.join(tempDir, '.env.dev');
+  let seen = {};
+
+  await fs.writeFile(logPath, 'startup log\n');
+
+  let { server, baseURL } = await listen(async (request, response) => {
+    seen.body = await readBody(request);
+    await fs.appendFile(logPath, 'magic_link_url="/auth/magic-link/verify?code=env-code"\n');
+
+    response.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+    });
+    response.end(JSON.stringify({ data: { message: 'sent' } }));
+  });
+
+  let port = new URL(baseURL).port;
+
+  try {
+    delete process.env.AEORDB_LOG_PATH;
+    delete process.env.KIKX_ENV_FILE;
+    delete process.env.KIKX_PORT;
+    delete process.env.KIKX_URL;
+
+    await fs.writeFile(envPath, [
+      `KIKX_PORT=${port}`,
+      `AEORDB_LOG_PATH=${logPath}`,
+    ].join('\n'));
+
+    let result = await runScript([], {
+      env: {
+        KIKX_ENV_FILE: envPath,
+      },
+    });
+
+    assert.equal(result.code, 0);
+    assert.equal(seen.body, '{"email":"wegreenway@taraani.org"}');
+    assert.equal(result.stdout.trim(), `http://127.0.0.1:${port}/?code=env-code`);
+  } finally {
+    await close(server);
+    await fs.rm(tempDir, { recursive: true, force: true });
+
+    for (let [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined)
+        delete process.env[key];
+      else
+        process.env[key] = value;
+    }
+  }
+});
+
 test('request-login-link reports Kikx auth errors', async () => {
   let logPath = await createLogFile();
   let { server, baseURL } = await listen((_request, response) => {

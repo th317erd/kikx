@@ -6,8 +6,9 @@
   "main": "src/index.mjs",
   "scripts": {
     "login-link": "node scripts/request-login-link.mjs",
+    "magic-link": "node scripts/request-login-link.mjs",
     "start": "node src/server/index.mjs",
-    "start:aeordb": "mkdir -p .aeordb /tmp/codex/kikx && AEORDB_LOG_MAGIC_LINKS=${AEORDB_LOG_MAGIC_LINKS:-1} ${AEORDB_BIN:-/home/wyatt/Projects/aeordb-workspace/aeordb/target/release/aeordb} start -D ${AEORDB_DATABASE:-.aeordb/kikx.aeordb} --host ${AEORDB_HOST:-127.0.0.1} --port ${AEORDB_PORT:-6830} --auth ${AEORDB_AUTH:-self} 2>&1 | tee ${AEORDB_LOG_PATH:-/tmp/codex/kikx/aeordb.log}",
+    "start:aeordb": "mkdir -p .aeordb /tmp/codex/kikx && AEORDB_LOG=${AEORDB_LOG:-aeordb=debug,aeordb_cli=info} AEORDB_LOG_MAGIC_LINKS=${AEORDB_LOG_MAGIC_LINKS:-1} ${AEORDB_BIN:-/home/wyatt/Projects/aeordb-workspace/aeordb/target/release/aeordb} start -D ${AEORDB_DATABASE:-.aeordb/kikx.aeordb} --host ${AEORDB_HOST:-127.0.0.1} --port ${AEORDB_PORT:-6830} --auth ${AEORDB_AUTH:-self} 2>&1 | tee ${AEORDB_LOG_PATH:-/tmp/codex/kikx/aeordb.log}",
     "start:aeordb:dev": "set -a; . ./.env.dev; set +a; npm run start:aeordb",
     "start:kikx": "node src/server/index.mjs",
     "start:kikx:dev": "node scripts/start-kikx-dev.mjs",

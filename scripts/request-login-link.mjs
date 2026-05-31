@@ -3,7 +3,11 @@
 
 import fs from 'node:fs/promises';
 
-const DEFAULT_KIKX_URL = 'http://127.0.0.1:3000';
+await loadEnvFile(process.env.KIKX_ENV_FILE || '.env.dev');
+
+const DEFAULT_KIKX_HOST = process.env.KIKX_HOST || '127.0.0.1';
+const DEFAULT_KIKX_PORT = process.env.KIKX_PORT || 3000;
+const DEFAULT_KIKX_URL = `http://${DEFAULT_KIKX_HOST}:${DEFAULT_KIKX_PORT}`;
 const DEFAULT_EMAIL = 'wegreenway@taraani.org';
 const DEFAULT_AEORDB_LOG_PATH = '/tmp/codex/kikx/aeordb.log';
 const DEFAULT_LINK_TIMEOUT_MS = 3000;
@@ -143,6 +147,30 @@ async function fileSize(path) {
       return 0;
 
     throw error;
+  }
+}
+
+async function loadEnvFile(path) {
+  try {
+    let text = await fs.readFile(path, 'utf8');
+    for (let line of text.split(/\r?\n/g)) {
+      line = line.trim();
+      if (!line || line.startsWith('#'))
+        continue;
+
+      let index = line.indexOf('=');
+      if (index < 1)
+        continue;
+
+      let key = line.slice(0, index).trim();
+      let value = line.slice(index + 1).trim();
+
+      if (!(key in process.env))
+        process.env[key] = value;
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT')
+      throw error;
   }
 }
 
