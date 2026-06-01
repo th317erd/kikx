@@ -21,9 +21,10 @@ import {
 } from '../state/kikx-state.mjs';
 import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
 
-const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong, input, select, option } = elements;
+const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong, option } = elements;
 const aeorInput = elements['aeor-input'];
 const aeorModal = elements['aeor-modal'];
+const aeorSelect = elements['aeor-select'];
 
 export class KikxApp extends HTMLElement {
   constructor() {
@@ -207,14 +208,16 @@ export class KikxApp extends HTMLElement {
             ? p.class('kikx-muted')('No agent provider plugins are registered.')
             : [
               label('Name'),
-              input
+              aeorInput
                 .type('text')
                 .name('name')
                 .value.bindState((state) => state.agentFormName, ['agentFormName'])
                 .onInput((event) => { this._state.agentFormName = event.target.value; })(),
               label('Provider'),
-              select
+              aeorSelect
                 .name('pluginID')
+                .placeholder('Select provider')
+                .value(this._state.agentFormPluginID)
                 .disabled(this._state.agentFormMode === 'edit')
                 .onChange((event) => this._selectAgentProvider(event.target.value))(
                   providers.map((candidate) => option
@@ -245,7 +248,7 @@ export class KikxApp extends HTMLElement {
 
     return (provider.configFields || []).flatMap((field) => [
       label(field.label || field.name),
-      input
+      aeorInput
         .type(field.secret ? 'password' : field.type || 'text')
         .name(field.name)
         .placeholder(field.secret ? this._secretPlaceholder(field.name) : '')

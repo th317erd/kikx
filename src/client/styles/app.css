@@ -452,15 +452,9 @@ body {
   font-weight: 600;
 }
 
-.kikx-agent-form input,
-.kikx-agent-form select {
+.kikx-agent-form aeor-input,
+.kikx-agent-form aeor-select {
   min-height: 36px;
-  border: 1px solid #3b434b;
-  border-radius: 6px;
-  padding: 0 10px;
-  background: #181c20;
-  color: #f5f7fa;
-  font: inherit;
 }
 
 .kikx-composer__label {
