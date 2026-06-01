@@ -37,3 +37,5 @@
   - [x] Add global reactive agent state.
   - [x] Add browser agent management UI.
   - [x] Run full verification and restart Kikx.
+
+- [x] Split agent list and create/edit modals.

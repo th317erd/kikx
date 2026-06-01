@@ -22,6 +22,7 @@ export const kikxState = new ReactiveState({
   agentFormPluginID: '',
   agentFormSecrets: {},
   agentIDs: [],
+  agentEditorOpen: false,
   agentProviders: [],
   agentStatus: '',
   agentStatusKind: 'pending',

@@ -21,7 +21,7 @@ import {
 } from '../state/kikx-state.mjs';
 import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
 
-const { div, header, main, section, h1, h2, h3, p, span, button, form, label, textarea, ul, li, strong, input, select, option } = elements;
+const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong, input, select, option } = elements;
 const aeorInput = elements['aeor-input'];
 const aeorModal = elements['aeor-modal'];
 
@@ -36,6 +36,7 @@ export class KikxApp extends HTMLElement {
     this._onComposerKeydown = this._onComposerKeydown.bind(this);
     this._openAgentManager = this._openAgentManager.bind(this);
     this._closeAgentManager = this._closeAgentManager.bind(this);
+    this._closeAgentEditor = this._closeAgentEditor.bind(this);
     this._createAgent = this._createAgent.bind(this);
     this._onAgentFormSubmit = this._onAgentFormSubmit.bind(this);
     this._createSession = this._createSession.bind(this);
@@ -88,6 +89,9 @@ export class KikxApp extends HTMLElement {
 
     if (this._state.managingAgents)
       shellChildren.push(this._buildAgentManager());
+
+    if (this._state.agentEditorOpen)
+      shellChildren.push(this._buildAgentEditor());
 
     let tree = div.class('kikx-shell').context(this)(shellChildren).build(document);
 
@@ -161,31 +165,44 @@ export class KikxApp extends HTMLElement {
   }
 
   _buildAgentManager() {
-    let providers = this._state.agentProviders;
     let agents = getAgents(this._state);
-    let provider = getSelectedAgentProvider(this._state);
 
     return aeorModal.title('Agents').onClose(this._closeAgentManager)(
       div.class('kikx-agent-manager')(
-        div.class('kikx-agent-manager__list')(
-          h3('Configured agents'),
-          agents.length === 0
-            ? p.class('kikx-muted')('No agents.')
-            : ul.class('kikx-agent-list')(
-              agents.map((agent) => li(
-                div(
-                  strong(agent.name),
-                  span(`${agent.pluginID}${agent.enabled === false ? ' disabled' : ''}`),
-                ),
-                div.class('kikx-agent-list__actions')(
-                  button.type('button').class('kikx-sign-out-button').onClick(() => this._editAgent(agent))('Edit'),
-                  button.type('button').class('kikx-sign-out-button').onClick(() => this._deleteAgent(agent.id))('Delete'),
-                ),
-              )),
-            ),
+        agents.length === 0
+          ? p.class('kikx-muted')('No agents.')
+          : ul.class('kikx-agent-list')(
+            agents.map((agent) => li(
+              div.class('kikx-agent-list__details')(
+                strong(agent.name),
+                span(this._agentProviderLabel(agent)),
+              ),
+              button
+                .type('button')
+                .class('kikx-agent-list__edit')
+                .title('Edit agent')
+                .ariaLabel('Edit agent')
+                .onClick(() => this._editAgent(agent))('⚙'),
+            )),
+          ),
+        div.class('modal-footer-actions')(
+          button.type('button').class('kikx-send-button').onClick(this._createAgent)('+ Add Agent'),
         ),
+        p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.agentStatusKind}`, ['agentStatusKind'])(
+          span.textContent.bindState((state) => state.agentStatus, ['agentStatus'])(),
+        ),
+      ),
+    );
+  }
+
+  _buildAgentEditor() {
+    let providers = this._state.agentProviders;
+    let provider = getSelectedAgentProvider(this._state);
+
+    return aeorModal
+      .title(this._state.agentFormMode === 'edit' ? 'Edit agent' : 'Create agent')
+      .onClose(this._closeAgentEditor)(
         form.class('kikx-agent-form').onSubmit(this._onAgentFormSubmit)(
-          h3(this._state.agentFormMode === 'edit' ? 'Edit agent' : 'New agent'),
           providers.length === 0
             ? p.class('kikx-muted')('No agent provider plugins are registered.')
             : [
@@ -208,7 +225,10 @@ export class KikxApp extends HTMLElement {
                 ),
               ...this._buildAgentConfigFields(provider),
               div.class('modal-footer-actions')(
-                button.type('button').class('kikx-sign-out-button').onClick(this._createAgent)('New'),
+                ...(this._state.agentFormMode === 'edit'
+                  ? [ button.type('button').class('kikx-sign-out-button').onClick(() => this._deleteAgent(this._state.editingAgentID))('Delete') ]
+                  : []),
+                button.type('button').class('kikx-sign-out-button').onClick(this._closeAgentEditor)('Cancel'),
                 button.type('submit').class('kikx-send-button')(this._state.agentFormMode === 'edit' ? 'Save' : 'Create'),
               ),
             ],
@@ -216,8 +236,7 @@ export class KikxApp extends HTMLElement {
             span.textContent.bindState((state) => state.agentStatus, ['agentStatus'])(),
           ),
         ),
-      ),
-    );
+      );
   }
 
   _buildAgentConfigFields(provider) {
@@ -522,6 +541,7 @@ export class KikxApp extends HTMLElement {
 
   _openAgentManager() {
     this._state.managingAgents = true;
+    this._state.agentEditorOpen = false;
     this._state.agentStatus = '';
     this._state.agentStatusKind = 'pending';
     resetAgentForm(this._state);
@@ -534,12 +554,22 @@ export class KikxApp extends HTMLElement {
     this._render();
   }
 
+  _closeAgentEditor() {
+    this._state.agentEditorOpen = false;
+    this._state.managingAgents = true;
+    this._render();
+  }
+
   _createAgent() {
     resetAgentForm(this._state);
+    this._state.managingAgents = false;
+    this._state.agentEditorOpen = true;
     this._render();
   }
 
   _editAgent(agent) {
+    this._state.managingAgents = false;
+    this._state.agentEditorOpen = true;
     this._state.agentFormMode = 'edit';
     this._state.editingAgentID = agent.id;
     this._state.agentFormName = agent.name || '';
@@ -592,7 +622,9 @@ export class KikxApp extends HTMLElement {
 
       upsertAgent(result.data.agent, this._state);
       let message = this._state.agentFormMode === 'edit' ? 'Agent saved' : 'Agent created';
-      this._editAgent(result.data.agent);
+      resetAgentForm(this._state);
+      this._state.agentEditorOpen = false;
+      this._state.managingAgents = true;
       this._state.agentStatus = message;
       this._state.agentStatusKind = 'ready';
       this._render();
@@ -615,6 +647,8 @@ export class KikxApp extends HTMLElement {
       removeAgent(agentID, this._state);
       if (this._state.editingAgentID === agentID)
         resetAgentForm(this._state);
+      this._state.agentEditorOpen = false;
+      this._state.managingAgents = true;
       this._state.agentStatus = 'Agent deleted';
       this._state.agentStatusKind = 'ready';
       this._render();
@@ -629,6 +663,12 @@ export class KikxApp extends HTMLElement {
     let agent = this._state.agentDetailsByID[this._state.editingAgentID];
     let secret = agent?.secretState?.[fieldName];
     return secret?.present ? `Stored ending in ${secret.last4}` : '';
+  }
+
+  _agentProviderLabel(agent) {
+    let provider = this._state.agentProviders.find((candidate) => candidate.pluginID === agent.pluginID);
+    let label = provider?.displayName || agent.pluginID;
+    return `${label}${agent.enabled === false ? ' disabled' : ''}`;
   }
 
   async _createSession() {
