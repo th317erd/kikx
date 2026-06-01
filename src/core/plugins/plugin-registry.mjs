@@ -1,11 +1,13 @@
 'use strict';
 
 import { PluginInterface } from './plugin-interface.mjs';
+import { AgentInterface } from './agent-interface.mjs';
 
 export class PluginRegistry {
   constructor(options = {}) {
     this.logger = options.logger || console;
     this._tools = new Map();
+    this._agentProviders = new Map();
     this._selectors = [];
     this._classes = new Map();
   }
@@ -30,6 +32,36 @@ export class PluginRegistry {
 
   getTools() {
     return new Map(this._tools);
+  }
+
+  registerAgentProvider(pluginID, AgentClass) {
+    if (!pluginID || typeof pluginID !== 'string')
+      throw new TypeError('Agent provider pluginID must be a non-empty string');
+
+    if (!isSubclassOf(AgentClass, AgentInterface))
+      throw new TypeError(`Agent provider "${pluginID}" must extend AgentInterface`);
+
+    if (this._agentProviders.has(pluginID))
+      this.logger.warn?.(`Agent provider "${pluginID}" is being overridden`);
+
+    this._agentProviders.set(pluginID, AgentClass);
+    return AgentClass;
+  }
+
+  registerAgentType(pluginID, AgentClass) {
+    return this.registerAgentProvider(pluginID, AgentClass);
+  }
+
+  getAgentProvider(pluginID) {
+    return this._agentProviders.get(pluginID) || null;
+  }
+
+  getAgentProviders() {
+    return new Map(this._agentProviders);
+  }
+
+  listAgentProviderDescriptors() {
+    return [ ...this._agentProviders.values() ].map((AgentClass) => AgentClass.getAgentProviderDescriptor());
   }
 
   registerSelector(selector, PluginClass, pluginName = null) {
@@ -77,4 +109,3 @@ function isSubclassOf(candidate, BaseClass) {
     && candidate !== BaseClass
     && candidate.prototype instanceof BaseClass;
 }
-

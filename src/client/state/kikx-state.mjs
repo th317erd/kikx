@@ -15,6 +15,16 @@ let params = new URLSearchParams(globalThis.location?.search || '');
 
 export const kikxState = new ReactiveState({
   aeordbEventsURL: '',
+  agentDetailsByID: {},
+  agentFormConfig: {},
+  agentFormMode: 'create',
+  agentFormName: '',
+  agentFormPluginID: '',
+  agentFormSecrets: {},
+  agentIDs: [],
+  agentProviders: [],
+  agentStatus: '',
+  agentStatusKind: 'pending',
   authEmail: '',
   authStatus: '',
   authStatusKind: 'pending',
@@ -24,8 +34,10 @@ export const kikxState = new ReactiveState({
   draft: '',
   editingSessionID: '',
   editingSessionTitle: '',
+  editingAgentID: '',
   framesBySessionID: {},
   magicCode: params.get('code') || '',
+  managingAgents: false,
   refreshToken: savedAuth.refresh_token || '',
   selectedSessionID: '',
   sessionDetailsByID: {},
@@ -33,6 +45,16 @@ export const kikxState = new ReactiveState({
   status: 'Checking AeorDB event stream...',
   statusKind: 'pending',
 });
+
+export function getAgents(state = kikxState) {
+  return state.agentIDs
+    .map((agentID) => state.agentDetailsByID[agentID])
+    .filter(Boolean);
+}
+
+export function getSelectedAgentProvider(state = kikxState) {
+  return state.agentProviders.find((provider) => provider.pluginID === state.agentFormPluginID) || null;
+}
 
 export function getSessions(state = kikxState) {
   return state.sessionIDs
@@ -65,6 +87,53 @@ export function resetSessionState(state = kikxState) {
   state.sessionDetailsByID = {};
   state.framesBySessionID = {};
   state.selectedSessionID = '';
+}
+
+export function setAgentProviders(providers, state = kikxState) {
+  state.agentProviders = Array.isArray(providers) ? providers.slice() : [];
+}
+
+export function setAgents(agents, state = kikxState) {
+  let agentIDs = [];
+  let agentDetailsByID = {};
+
+  for (let agent of Array.isArray(agents) ? agents : []) {
+    if (!agent?.id)
+      continue;
+
+    agentIDs.push(agent.id);
+    agentDetailsByID[agent.id] = agent;
+  }
+
+  state.agentIDs = agentIDs;
+  state.agentDetailsByID = agentDetailsByID;
+}
+
+export function upsertAgent(agent, state = kikxState) {
+  if (!agent?.id)
+    return;
+
+  state.agentIDs = state.agentIDs.includes(agent.id) ? state.agentIDs : [ agent.id, ...state.agentIDs ];
+  state.agentDetailsByID = {
+    ...state.agentDetailsByID,
+    [agent.id]: agent,
+  };
+}
+
+export function removeAgent(agentID, state = kikxState) {
+  state.agentIDs = state.agentIDs.filter((id) => id !== agentID);
+  let next = { ...state.agentDetailsByID };
+  delete next[agentID];
+  state.agentDetailsByID = next;
+}
+
+export function resetAgentForm(state = kikxState) {
+  state.agentFormMode = 'create';
+  state.editingAgentID = '';
+  state.agentFormName = '';
+  state.agentFormPluginID = state.agentProviders[0]?.pluginID || '';
+  state.agentFormConfig = {};
+  state.agentFormSecrets = {};
 }
 
 export { countMessageFrames };

@@ -30,3 +30,10 @@
   - [x] Add state reducer tests for inactive session metadata.
 
 - [x] Add Enter-to-send composer keyboard behavior.
+
+- [x] Add AeorDB-backed agent management CRUD.
+  - [x] Add agent persistence store and tests.
+  - [x] Add `/api/v1/agents` server routes and tests.
+  - [x] Add global reactive agent state.
+  - [x] Add browser agent management UI.
+  - [x] Run full verification and restart Kikx.

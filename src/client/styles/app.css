@@ -65,6 +65,12 @@ body {
   min-width: 1px;
 }
 
+.kikx-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .kikx-statusbar {
   display: inline-flex;
   align-items: center;
@@ -363,6 +369,80 @@ body {
   gap: 10px;
 }
 
+.kikx-agent-manager {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(280px, 1fr);
+  gap: 18px;
+  min-width: min(820px, calc(100vw - 64px));
+}
+
+.kikx-agent-manager h3,
+.kikx-agent-manager p {
+  margin: 0;
+}
+
+.kikx-agent-manager h3 {
+  color: #dce3ea;
+  font-size: 14px;
+}
+
+.kikx-agent-manager__list,
+.kikx-agent-form {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.kikx-agent-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kikx-agent-list li {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #181c20;
+}
+
+.kikx-agent-list li > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.kikx-agent-list span,
+.kikx-muted {
+  color: #97a3ae;
+  font-size: 12px;
+}
+
+.kikx-agent-list__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.kikx-agent-form label {
+  color: #aeb8c2;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kikx-agent-form input,
+.kikx-agent-form select {
+  min-height: 36px;
+  border: 1px solid #3b434b;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #181c20;
+  color: #f5f7fa;
+  font: inherit;
+}
+
 .kikx-composer__label {
   color: #aeb8c2;
   font-size: 12px;
@@ -397,5 +477,10 @@ body {
 
   .kikx-statusbar {
     padding: 0 14px;
+  }
+
+  .kikx-agent-manager {
+    grid-template-columns: 1fr;
+    min-width: 0;
   }
 }

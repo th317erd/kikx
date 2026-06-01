@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { PermissionRequiredError } from '../../src/core/permissions/permission-required-error.mjs';
-import { PluginInterface, PluginRegistry } from '../../src/core/plugins/index.mjs';
+import { AgentInterface, PluginInterface, PluginRegistry } from '../../src/core/plugins/index.mjs';
 
 class EchoTool extends PluginInterface {
   static pluginID = 'test';
@@ -26,6 +26,15 @@ class DangerousTool extends PluginInterface {
   }
 }
 
+class TestAgent extends AgentInterface {
+  static pluginId = 'test-agent';
+  static displayName = 'Test Agent';
+  static configFields = [
+    { name: 'model', required: true },
+    { name: 'apiKey', secret: true },
+  ];
+}
+
 test('PluginRegistry registers and retrieves tool classes', () => {
   let registry = new PluginRegistry({ logger: { warn() {} } });
 
@@ -41,6 +50,51 @@ test('PluginRegistry rejects tools that do not extend PluginInterface', () => {
   assert.throws(
     () => registry.registerTool('bad:tool', class BadTool {}),
     /must extend PluginInterface/,
+  );
+});
+
+test('PluginRegistry registers only AgentInterface-backed agent providers', () => {
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+
+  registry.registerAgentProvider('test-agent', TestAgent);
+
+  assert.equal(registry.getAgentProvider('test-agent'), TestAgent);
+  assert.equal(registry.getAgentProviders().get('test-agent'), TestAgent);
+  assert.deepEqual(registry.listAgentProviderDescriptors(), [
+    {
+      pluginID: 'test-agent',
+      agentType: 'test-agent',
+      serviceType: null,
+      displayName: 'Test Agent',
+      description: '',
+      configFields: [
+        {
+          name: 'model',
+          label: 'model',
+          type: 'text',
+          required: true,
+          secret: false,
+          defaultValue: undefined,
+          options: undefined,
+          help: '',
+        },
+        {
+          name: 'apiKey',
+          label: 'apiKey',
+          type: 'text',
+          required: false,
+          secret: true,
+          defaultValue: undefined,
+          options: undefined,
+          help: '',
+        },
+      ],
+    },
+  ]);
+
+  assert.throws(
+    () => registry.registerAgentProvider('bad-agent', class BadAgent {}),
+    /must extend AgentInterface/,
   );
 });
 
@@ -81,4 +135,3 @@ test('PluginInterface executes through an explicit permission boundary', async (
   assert.equal(calls.length, 1);
   assert.equal(calls[0].featureName, 'test:danger');
 });
-

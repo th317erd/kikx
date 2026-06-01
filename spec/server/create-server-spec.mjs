@@ -88,6 +88,58 @@ function createRuntime() {
   };
 }
 
+function createAgentManager() {
+  let calls = [];
+  return {
+    calls,
+    listProviders() {
+      calls.push({ method: 'listProviders' });
+      return [
+        {
+          pluginID: 'test-agent',
+          displayName: 'Test Agent',
+          configFields: [
+            { name: 'model', secret: false, required: true },
+            { name: 'apiKey', secret: true, required: true },
+          ],
+        },
+      ];
+    },
+    async listAgents(options) {
+      calls.push({ method: 'listAgents', options });
+      return [
+        { id: 'agent_1', name: 'Coder', pluginID: 'test-agent', config: { model: 'sonnet' }, secretState: { apiKey: { present: true, last4: '1234' } } },
+      ];
+    },
+    async createAgent(input) {
+      calls.push({ method: 'createAgent', input });
+      return {
+        id: 'agent_1',
+        name: input.name,
+        pluginID: input.pluginID,
+        config: input.config,
+        secretState: { apiKey: { present: true, last4: '1234' } },
+      };
+    },
+    async getAgent(agentID) {
+      calls.push({ method: 'getAgent', agentID });
+      if (agentID === 'missing') {
+        let error = new Error('Unknown agent: missing');
+        error.status = 404;
+        throw error;
+      }
+      return { id: agentID, name: 'Coder', pluginID: 'test-agent', config: {}, secretState: {} };
+    },
+    async updateAgent(agentID, input) {
+      calls.push({ method: 'updateAgent', agentID, input });
+      return { id: agentID, name: input.name || 'Coder', pluginID: 'test-agent', config: input.config || {}, secretState: {} };
+    },
+    async deleteAgent(agentID) {
+      calls.push({ method: 'deleteAgent', agentID });
+    },
+  };
+}
+
 async function createStaticFixture() {
   let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-static-'));
   let clientRoot = path.join(root, 'client');
@@ -527,6 +579,113 @@ test('GET /api/v1/aeordb/events-url returns delegated AeorDB events URL', async 
         url: 'events:entries_created:/sessions',
       },
     });
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/agent-providers lists plugin-declared providers', async () => {
+  let agentManager = createAgentManager();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      agentManager,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/agent-providers`);
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(agentManager.calls[0].method, 'listProviders');
+    assert.equal(body.data.providers[0].pluginID, 'test-agent');
+    assert.equal(body.data.providers[0].configFields[1].secret, true);
+  } finally {
+    await close(server);
+  }
+});
+
+test('agent routes create, list, read, update, and delete through AgentManager', async () => {
+  let agentManager = createAgentManager();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      agentManager,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let createResponse = await jsonFetch(`${baseURL}/api/v1/agents`, {
+      name: 'Coder',
+      pluginID: 'test-agent',
+      config: { model: 'sonnet' },
+      secrets: { apiKey: 'sk-secret-1234' },
+    });
+    let createBody = await createResponse.json();
+    assert.equal(createResponse.status, 201);
+    assert.equal(createBody.data.agent.secrets, undefined);
+
+    let listResponse = await fetch(`${baseURL}/api/v1/agents?limit=25&offset=5`);
+    assert.equal(listResponse.status, 200);
+
+    let getResponse = await fetch(`${baseURL}/api/v1/agents/agent_1`);
+    assert.equal(getResponse.status, 200);
+
+    let updateResponse = await jsonFetch(`${baseURL}/api/v1/agents/agent_1`, {
+      name: 'Reviewer',
+      config: { model: 'opus' },
+      clearSecrets: [ 'apiKey' ],
+    }, { method: 'PATCH' });
+    assert.equal(updateResponse.status, 200);
+
+    let deleteResponse = await fetch(`${baseURL}/api/v1/agents/agent_1`, { method: 'DELETE' });
+    assert.equal(deleteResponse.status, 204);
+
+    assert.deepEqual(agentManager.calls.map((call) => call.method), [
+      'createAgent',
+      'listAgents',
+      'getAgent',
+      'updateAgent',
+      'deleteAgent',
+    ]);
+    assert.deepEqual(agentManager.calls[1].options, { limit: 25, offset: 5 });
+  } finally {
+    await close(server);
+  }
+});
+
+test('agent routes validate request bodies and report missing agents', async () => {
+  let agentManager = createAgentManager();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      agentManager,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let invalidCreate = await jsonFetch(`${baseURL}/api/v1/agents`, {
+      name: '',
+      pluginID: 'test-agent',
+    });
+    assert.equal(invalidCreate.status, 400);
+
+    let invalidPatch = await jsonFetch(`${baseURL}/api/v1/agents/agent_1`, {
+      config: [],
+    }, { method: 'PATCH' });
+    assert.equal(invalidPatch.status, 400);
+
+    let missing = await fetch(`${baseURL}/api/v1/agents/missing`);
+    let body = await missing.json();
+    assert.equal(missing.status, 404);
+    assert.equal(body.error.message, 'Unknown agent: missing');
   } finally {
     await close(server);
   }

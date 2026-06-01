@@ -7,6 +7,9 @@ import { fileURLToPath } from 'node:url';
 
 import { AppContext } from '../core/app/app-context.mjs';
 import { AeorDBClient } from '../core/aeordb/aeordb-client.mjs';
+import { AgentManager } from '../core/agents/agent-manager.mjs';
+import { PluginRegistry } from '../core/plugins/index.mjs';
+import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
 import { FrameRuntime } from '../core/runtime/frame-runtime.mjs';
 
 const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
@@ -30,6 +33,24 @@ export function createServer(options = {}) {
   if (!context.has('frameRuntime'))
     context.set('frameRuntime', new FrameRuntime({ aeordb: context.require('aeordb') }));
 
+  if (!context.has('pluginRegistry'))
+    context.set('pluginRegistry', new PluginRegistry());
+
+  if (!context.has('pluginLoadPromise')) {
+    context.set('pluginLoadPromise', loadPlugins({
+      pluginPaths: options.pluginPaths || process.env.KIKX_PLUGIN_PATHS || '',
+      registry: context.require('pluginRegistry'),
+      context,
+    }));
+  }
+
+  if (!context.has('agentManager')) {
+    context.set('agentManager', new AgentManager({
+      aeordb: context.require('aeordb'),
+      pluginRegistry: context.require('pluginRegistry'),
+    }));
+  }
+
   return http.createServer(async (request, response) => {
     try {
       await routeRequest({ request, response, context, staticRoots });
@@ -44,6 +65,9 @@ export function createServer(options = {}) {
 }
 
 async function routeRequest({ request, response, context, staticRoots }) {
+  if (context.has('pluginLoadPromise'))
+    await context.require('pluginLoadPromise');
+
   let url = new URL(request.url, 'http://localhost');
 
   if (request.method === 'GET' && url.pathname === '/health') {
@@ -80,6 +104,74 @@ async function routeRequest({ request, response, context, staticRoots }) {
       },
     });
     return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/v1/agent-providers') {
+    let agentManager = context.require('agentManager');
+    writeJSON(response, 200, {
+      data: {
+        providers: agentManager.listProviders(),
+      },
+    });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/v1/agents') {
+    let agentManager = context.require('agentManager');
+    writeJSON(response, 200, {
+      data: {
+        agents: await agentManager.listAgents({
+          limit: parsePositiveInteger(url.searchParams.get('limit'), 50),
+          offset: parseNonNegativeInteger(url.searchParams.get('offset'), 0),
+        }),
+      },
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/v1/agents') {
+    let body = await readJSON(request);
+    validateAgentBody(body, { creating: true });
+
+    let agentManager = context.require('agentManager');
+    writeJSON(response, 201, {
+      data: {
+        agent: await agentManager.createAgent(body),
+      },
+    });
+    return;
+  }
+
+  let agentRoute = matchAgentRoute(url.pathname);
+  if (agentRoute) {
+    let agentManager = context.require('agentManager');
+
+    if (request.method === 'GET') {
+      writeJSON(response, 200, {
+        data: {
+          agent: await agentManager.getAgent(agentRoute.agentID),
+        },
+      });
+      return;
+    }
+
+    if (request.method === 'PATCH') {
+      let body = await readJSON(request);
+      validateAgentBody(body, { creating: false });
+      writeJSON(response, 200, {
+        data: {
+          agent: await agentManager.updateAgent(agentRoute.agentID, body),
+        },
+      });
+      return;
+    }
+
+    if (request.method === 'DELETE') {
+      await agentManager.deleteAgent(agentRoute.agentID);
+      response.writeHead(204);
+      response.end();
+      return;
+    }
   }
 
   if (request.method === 'POST' && url.pathname === '/api/v1/sessions') {
@@ -283,6 +375,42 @@ function matchSessionRoute(pathname) {
     sessionID: decodeURIComponent(match[1]),
     resource: match[2],
   };
+}
+
+function matchAgentRoute(pathname) {
+  let match = /^\/api\/v1\/agents\/([^/]+)$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    agentID: decodeURIComponent(match[1]),
+  };
+}
+
+function validateAgentBody(body, options = {}) {
+  if (options.creating && (!body.name || typeof body.name !== 'string' || body.name.trim() === ''))
+    throw httpError(400, 'name must be a non-empty string');
+
+  if (body.name != null && (typeof body.name !== 'string' || body.name.trim() === ''))
+    throw httpError(400, 'name must be a non-empty string');
+
+  if (options.creating && (!body.pluginID || typeof body.pluginID !== 'string' || body.pluginID.trim() === ''))
+    throw httpError(400, 'pluginID must be a non-empty string');
+
+  if (body.pluginID != null && (typeof body.pluginID !== 'string' || body.pluginID.trim() === ''))
+    throw httpError(400, 'pluginID must be a non-empty string');
+
+  if (body.config != null && (typeof body.config !== 'object' || Array.isArray(body.config)))
+    throw httpError(400, 'config must be an object');
+
+  if (body.secrets != null && (typeof body.secrets !== 'object' || Array.isArray(body.secrets)))
+    throw httpError(400, 'secrets must be an object');
+
+  if (body.clearSecrets != null && !Array.isArray(body.clearSecrets))
+    throw httpError(400, 'clearSecrets must be an array');
+
+  if (body.enabled != null && typeof body.enabled !== 'boolean')
+    throw httpError(400, 'enabled must be a boolean');
 }
 
 async function serveStaticRequest({ request, response, url, staticRoots }) {
