@@ -39,3 +39,5 @@
   - [x] Run full verification and restart Kikx.
 
 - [x] Split agent list and create/edit modals.
+
+- [x] Render plugin-declared select fields with shared `aeor-select`.

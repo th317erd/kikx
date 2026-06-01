@@ -250,13 +250,35 @@ export class KikxApp extends HTMLElement {
 
     return (provider.configFields || []).flatMap((field) => [
       label(field.label || field.name),
-      aeorInput
-        .type(field.secret ? 'password' : field.type || 'text')
-        .name(field.name)
-        .placeholder(field.secret ? this._secretPlaceholder(field.name) : '')
-        .value(field.secret ? '' : this._state.agentFormConfig[field.name] ?? field.defaultValue ?? '')
-        .onInput((event) => this._syncAgentField(field, event.target.value))(),
+      this._buildAgentConfigField(field),
     ]);
+  }
+
+  _buildAgentConfigField(field) {
+    if (field.type === 'select') {
+      return aeorSelect
+        .name(field.name)
+        .placeholder(field.label || field.name)
+        .value(this._agentConfigFieldValue(field))
+        .onChange((event) => this._syncAgentField(field, event.target.value))(
+          normalizeFieldOptions(field.options).map((item) => option
+            .value(item.value)
+            .selected(item.value === this._agentConfigFieldValue(field))(
+              item.label,
+            )),
+        );
+    }
+
+    return aeorInput
+      .type(field.secret ? 'password' : field.type || 'text')
+      .name(field.name)
+      .placeholder(field.secret ? this._secretPlaceholder(field.name) : '')
+      .value(field.secret ? '' : this._agentConfigFieldValue(field))
+      .onInput((event) => this._syncAgentField(field, event.target.value))();
+  }
+
+  _agentConfigFieldValue(field) {
+    return this._state.agentFormConfig[field.name] ?? field.defaultValue ?? '';
   }
 
   _buildSessionItems() {
@@ -778,6 +800,18 @@ function coerceAgentFieldValue(field, value) {
     return Boolean(value);
 
   return value;
+}
+
+function normalizeFieldOptions(options) {
+  return (Array.isArray(options) ? options : []).map((item) => {
+    if (typeof item === 'string')
+      return { value: item, label: item };
+
+    return {
+      value: item?.value ?? '',
+      label: item?.label ?? item?.value ?? '',
+    };
+  });
 }
 
 if (!customElements.get('kikx-app'))
