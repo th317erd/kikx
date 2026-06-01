@@ -4,6 +4,7 @@ import { elements, ReactiveState, $ } from '../lib/aeor-ui.mjs';
 
 const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong } = elements;
 const aeorInput = elements['aeor-input'];
+const aeorModal = elements['aeor-modal'];
 const AUTH_STORAGE_KEY = 'kikx.auth.session';
 
 export class KikxApp extends HTMLElement {
@@ -22,6 +23,8 @@ export class KikxApp extends HTMLElement {
       connectionStatus: 'Disconnected',
       connectionStatusKind: 'error',
       draft: '',
+      editingSessionID: '',
+      editingSessionTitle: '',
       frames: [],
       magicCode: params.get('code') || '',
       refreshToken: savedAuth.refresh_token || '',
@@ -34,6 +37,8 @@ export class KikxApp extends HTMLElement {
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
     this._createSession = this._createSession.bind(this);
+    this._closeSessionEditor = this._closeSessionEditor.bind(this);
+    this._onSessionEditSubmit = this._onSessionEditSubmit.bind(this);
     this._signOut = this._signOut.bind(this);
   }
 
@@ -72,6 +77,9 @@ export class KikxApp extends HTMLElement {
 
     if (this._state.authToken)
       shellChildren.push(this._buildStatusBar());
+
+    if (this._state.editingSessionID)
+      shellChildren.push(this._buildSessionEditor());
 
     let tree = div.class('kikx-shell').context(this)(shellChildren).build(document);
 
@@ -158,10 +166,36 @@ export class KikxApp extends HTMLElement {
       return li
         .class(selected ? 'is-selected' : '')
         .onClick(() => this._selectSession(session.id))(
-          strong(session.title || session.id),
-          span(`${count} frame${count === 1 ? '' : 's'}`),
+          div.class('kikx-session-item__header')(
+            strong(session.title || session.id),
+            button
+              .type('button')
+              .class('kikx-session-item__edit')
+              .title('Edit session')
+              .ariaLabel('Edit session')
+              .onClick((event) => this._openSessionEditor(event, session))('⚙'),
+          ),
+          span.class('kikx-session-item__meta')(`${count} frame${count === 1 ? '' : 's'}`),
         );
     });
+  }
+
+  _buildSessionEditor() {
+    return aeorModal.title('Edit session').onClose(this._closeSessionEditor)(
+      form.class('kikx-session-editor').onSubmit(this._onSessionEditSubmit)(
+        label('Name'),
+        aeorInput
+          .type('text')
+          .name('title')
+          .placeholder('Session name')
+          .value.bindState((state) => state.editingSessionTitle, ['editingSessionTitle'])
+          .onInput(this._syncEditingSessionTitle)(),
+        div.class('modal-footer-actions').slot('footer')(
+          button.type('button').class('kikx-sign-out-button').onClick(this._closeSessionEditor)('Cancel'),
+          button.type('submit').class('kikx-send-button')('Save'),
+        ),
+      ),
+    );
   }
 
   _buildFrameThread() {
@@ -317,12 +351,27 @@ export class KikxApp extends HTMLElement {
     return readResponse(response);
   }
 
+  async _patchJSON(url, body) {
+    let response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    return readResponse(response);
+  }
+
   _syncDraft(event) {
     this._state.draft = event.target.value;
   }
 
   _syncAuthEmail(event) {
     this._state.authEmail = event.target.value;
+  }
+
+  _syncEditingSessionTitle(event) {
+    this._state.editingSessionTitle = event.target.value;
   }
 
   async _onSubmit(event) {
@@ -365,11 +414,57 @@ export class KikxApp extends HTMLElement {
 
     try {
       let result = await this._postJSON('/api/v1/sessions', {
-        title: 'Scratch',
       });
       this._state.selectedSessionID = result.data.session.id;
       await this._loadSessions();
       this._state.status = 'Session created';
+      this._state.statusKind = 'ready';
+      this._render();
+    } catch (error) {
+      this._state.status = error.message;
+      this._state.statusKind = 'error';
+      this._render();
+    }
+  }
+
+  _openSessionEditor(event, session) {
+    event.stopPropagation();
+    this._state.editingSessionID = session.id;
+    this._state.editingSessionTitle = session.title || '';
+    this._render();
+  }
+
+  _closeSessionEditor() {
+    this._state.editingSessionID = '';
+    this._state.editingSessionTitle = '';
+    this._render();
+  }
+
+  async _onSessionEditSubmit(event) {
+    event.preventDefault();
+
+    let title = this._state.editingSessionTitle.trim();
+    if (!title) {
+      this._state.status = 'Session name is required';
+      this._state.statusKind = 'error';
+      return;
+    }
+
+    let sessionID = this._state.editingSessionID;
+    this._state.status = 'Saving session...';
+    this._state.statusKind = 'pending';
+
+    try {
+      let result = await this._patchJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}`, { title });
+      this._state.sessions = this._state.sessions.map((session) => {
+        if (session.id !== sessionID)
+          return session;
+
+        return result.data.session;
+      });
+      this._state.editingSessionID = '';
+      this._state.editingSessionTitle = '';
+      this._state.status = 'Session saved';
       this._state.statusKind = 'ready';
       this._render();
     } catch (error) {

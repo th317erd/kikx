@@ -179,6 +179,8 @@ body {
 }
 
 .kikx-session-list {
+  display: grid;
+  gap: 8px;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -197,6 +199,37 @@ body {
 .kikx-session-list li.is-selected {
   border-color: #7ca7d9;
   background: #202832;
+}
+
+.kikx-session-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kikx-session-item__header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-session-item__edit {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: transparent;
+  color: #cdd6df;
+  cursor: pointer;
+}
+
+.kikx-session-item__edit:hover,
+.kikx-session-item__edit:focus-visible {
+  background: #29313a;
 }
 
 .kikx-session-list li.kikx-session-list__empty {
@@ -321,6 +354,11 @@ body {
 }
 
 .kikx-composer {
+  display: grid;
+  gap: 10px;
+}
+
+.kikx-session-editor {
   display: grid;
   gap: 10px;
 }

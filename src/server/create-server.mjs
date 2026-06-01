@@ -99,6 +99,25 @@ async function routeRequest({ request, response, context, staticRoots }) {
     return;
   }
 
+  let sessionUpdateRoute = matchSessionUpdateRoute(url.pathname);
+  if (request.method === 'PATCH' && sessionUpdateRoute) {
+    let body = await readJSON(request);
+    if (!body.title || typeof body.title !== 'string' || body.title.trim() === '')
+      throw httpError(400, 'title must be a non-empty string');
+
+    let frameRuntime = context.require('frameRuntime');
+    let session = await frameRuntime.updateSession(sessionUpdateRoute.sessionID, {
+      title: body.title,
+    });
+
+    writeJSON(response, 200, {
+      data: {
+        session,
+      },
+    });
+    return;
+  }
+
   let sessionRoute = matchSessionRoute(url.pathname);
   if (sessionRoute) {
     let frameRuntime = context.require('frameRuntime');
@@ -218,6 +237,16 @@ function httpError(status, message) {
   let error = new Error(message);
   error.status = status;
   return error;
+}
+
+function matchSessionUpdateRoute(pathname) {
+  let match = /^\/api\/v1\/sessions\/([^/]+)$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    sessionID: decodeURIComponent(match[1]),
+  };
 }
 
 function matchSessionRoute(pathname) {

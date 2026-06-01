@@ -25,7 +25,7 @@ export class FrameRuntime {
   }
 
   async createSession(input = {}) {
-    let title = normalizeTitle(input.title);
+    let title = normalizeTitle(input.title, `Session ${this.sessions.size + 1}`);
     let now = this.clock();
     let session = {
       id: input.id || this.idGenerator(),
@@ -57,6 +57,18 @@ export class FrameRuntime {
     });
 
     return session;
+  }
+
+  async updateSession(sessionID, input = {}) {
+    let entry = this.requireSessionEntry(sessionID);
+    let now = this.clock();
+
+    entry.session.title = normalizeTitle(input.title);
+    entry.session.updatedAt = input.updatedAt || now;
+
+    await this.frameStore.saveSession(entry.session);
+
+    return entry.session;
   }
 
   getSession(sessionID) {
@@ -136,9 +148,9 @@ export class FrameRuntime {
   }
 }
 
-function normalizeTitle(title) {
+function normalizeTitle(title, defaultTitle = null) {
   if (title == null)
-    return 'Scratch';
+    return defaultTitle || 'Session';
 
   if (typeof title !== 'string' || title.trim() === '')
     throw new TypeError('title must be a non-empty string');

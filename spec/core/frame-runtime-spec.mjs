@@ -53,6 +53,31 @@ test('FrameRuntime creates sessions and writes AeorDB index configs', async () =
   ]);
 });
 
+test('FrameRuntime defaults session titles to numbered names', async () => {
+  let runtime = createRuntime({ ids: [ 'ses_1', 'ses_2' ] });
+
+  let first = await runtime.createSession();
+  let second = await runtime.createSession();
+
+  assert.equal(first.title, 'Session 1');
+  assert.equal(second.title, 'Session 2');
+});
+
+test('FrameRuntime renames sessions and persists the manifest', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({ aeordb, ids: [ 'ses_1' ], now: 1000 });
+
+  await runtime.createSession();
+  runtime.clock = () => 2000;
+  let session = await runtime.updateSession('ses_1', { title: 'Project Alpha' });
+
+  assert.equal(session.title, 'Project Alpha');
+  assert.equal(session.updatedAt, 2000);
+  assert.equal(runtime.getSession('ses_1'), session);
+  assert.equal(aeordb.calls.at(-1).path, '/kikx/sessions/ses_1/session.json');
+  assert.equal(aeordb.calls.at(-1).body.title, 'Project Alpha');
+});
+
 test('FrameRuntime appends user messages through FrameEngine and AeorDBFrameStore', async () => {
   let aeordb = createClient();
   let runtime = createRuntime({ aeordb, ids: [ 'ses_1', 'int_1', 'msg_1', 'commit_1' ] });
@@ -92,6 +117,16 @@ test('FrameRuntime rejects invalid session and message inputs', async () => {
   await assert.rejects(
     () => runtime.appendUserMessage('ses_1', { text: '   ' }),
     /text must be a non-empty string/,
+  );
+
+  await assert.rejects(
+    () => runtime.updateSession('missing', { title: 'New title' }),
+    /Unknown session/,
+  );
+
+  await assert.rejects(
+    () => runtime.updateSession('ses_1', { title: '   ' }),
+    /title must be a non-empty string/,
   );
 });
 

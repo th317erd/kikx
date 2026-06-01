@@ -15,3 +15,7 @@
 - [x] Move connection status to bottom bar and tighten empty-session controls.
 
 - [x] Fix /api/v1/sessions 500 during authenticated UI load.
+
+- [x] Add AeorDB operational safety SKILL.md for corruption evidence and graceful start/stop.
+
+- [x] Add numbered session defaults, session list spacing, and session rename modal.

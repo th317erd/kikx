@@ -24,9 +24,9 @@ function close(server) {
   });
 }
 
-function jsonFetch(url, body) {
+function jsonFetch(url, body, options = {}) {
   return fetch(url, {
-    method: 'POST',
+    method: options.method || 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
@@ -42,7 +42,7 @@ function createRuntime() {
       calls.push({ method: 'createSession', input });
       return {
         id: input.id || 'ses_1',
-        title: input.title || 'Scratch',
+        title: input.title || 'Session 1',
         organizationID: input.organizationID || null,
       };
     },
@@ -51,6 +51,19 @@ function createRuntime() {
       return [
         { id: 'ses_1', title: 'Scratch' },
       ];
+    },
+    async updateSession(sessionID, input) {
+      calls.push({ method: 'updateSession', sessionID, input });
+      if (sessionID === 'missing') {
+        let error = new Error('Unknown session: missing');
+        error.status = 404;
+        throw error;
+      }
+
+      return {
+        id: sessionID,
+        title: input.title,
+      };
     },
     async appendUserMessage(sessionID, input) {
       calls.push({ method: 'appendUserMessage', sessionID, input });
@@ -210,6 +223,131 @@ test('runtime routes validate session title when provided', async () => {
       },
     });
     assert.deepEqual(runtime.calls, []);
+  } finally {
+    await close(server);
+  }
+});
+
+test('POST /api/v1/sessions allows runtime-generated session titles', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/sessions`, {});
+    let body = await response.json();
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(runtime.calls[0], {
+      method: 'createSession',
+      input: {
+        title: undefined,
+        organizationID: null,
+        createdByUserID: null,
+      },
+    });
+    assert.equal(body.data.session.title, 'Session 1');
+  } finally {
+    await close(server);
+  }
+});
+
+test('PATCH /api/v1/sessions/:sessionID updates a runtime session title', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/sessions/ses_1`, {
+      title: 'Project Alpha',
+    }, { method: 'PATCH' });
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(runtime.calls[0], {
+      method: 'updateSession',
+      sessionID: 'ses_1',
+      input: {
+        title: 'Project Alpha',
+      },
+    });
+    assert.deepEqual(body, {
+      data: {
+        session: {
+          id: 'ses_1',
+          title: 'Project Alpha',
+        },
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('PATCH /api/v1/sessions/:sessionID validates title input', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/sessions/ses_1`, {
+      title: ' ',
+    }, { method: 'PATCH' });
+    let body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(body, {
+      error: {
+        message: 'title must be a non-empty string',
+      },
+    });
+    assert.deepEqual(runtime.calls, []);
+  } finally {
+    await close(server);
+  }
+});
+
+test('PATCH /api/v1/sessions/:sessionID reports missing sessions as 404', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/sessions/missing`, {
+      title: 'Project Alpha',
+    }, { method: 'PATCH' });
+    let body = await response.json();
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(body, {
+      error: {
+        message: 'Unknown session: missing',
+      },
+    });
   } finally {
     await close(server);
   }
