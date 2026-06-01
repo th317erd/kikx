@@ -12,3 +12,4 @@
 - [x] Add AeorDB persistence adapter for FrameEngine sessions, commits, frames, and indexes.
 - [x] Wire FrameEngine and AeorDBFrameStore into runtime session/message API endpoints.
 - [x] Add npm scripts for AeorDB and Kikx dev startup.
+- [x] Move connection status to bottom bar and tighten empty-session controls.

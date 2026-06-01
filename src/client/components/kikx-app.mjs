@@ -19,6 +19,8 @@ export class KikxApp extends HTMLElement {
       authStatus: '',
       authStatusKind: 'pending',
       authToken: savedAuth.token || '',
+      connectionStatus: 'Disconnected',
+      connectionStatusKind: 'error',
       draft: '',
       frames: [],
       magicCode: params.get('code') || '',
@@ -32,6 +34,7 @@ export class KikxApp extends HTMLElement {
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
     this._createSession = this._createSession.bind(this);
+    this._signOut = this._signOut.bind(this);
   }
 
   connectedCallback() {
@@ -51,7 +54,7 @@ export class KikxApp extends HTMLElement {
   _render() {
     $(this).empty();
 
-    let tree = div.class('kikx-shell').context(this)(
+    let shellChildren = [
       header.class('kikx-topbar')(
         div.class('kikx-brand')(
           span.class('kikx-brand__mark')('K'),
@@ -60,13 +63,17 @@ export class KikxApp extends HTMLElement {
             p('Agent runner'),
           ),
         ),
-        div.class.bindState((state) => `kikx-status kikx-status--${state.statusKind}`, ['statusKind'])(
-          span.class('kikx-status__dot')(),
-          span.textContent.bindState((state) => state.status, ['status'])(),
-        ),
+        this._state.authToken
+          ? button.type('button').class('kikx-sign-out-button').onClick(this._signOut)('Sign out')
+          : span.class('kikx-topbar__spacer')(),
       ),
       this._state.authToken ? this._buildRunnerShell() : this._buildAuthShell(),
-    ).build(document);
+    ];
+
+    if (this._state.authToken)
+      shellChildren.push(this._buildStatusBar());
+
+    let tree = div.class('kikx-shell').context(this)(shellChildren).build(document);
 
     this.appendChild(tree);
   }
@@ -94,10 +101,15 @@ export class KikxApp extends HTMLElement {
   }
 
   _buildRunnerShell() {
+    let hasSelectedSession = Boolean(this._state.selectedSessionID);
+
     return [
       main.class('kikx-main')(
         section.class('kikx-sessions')(
-          h2('Sessions'),
+          div.class('kikx-sessions__header')(
+            h2('Sessions'),
+            button.type('button').class('kikx-icon-button').title('Create session').onClick(this._createSession)('+'),
+          ),
           ul.class('kikx-session-list')(
             this._buildSessionItems(),
           ),
@@ -105,23 +117,18 @@ export class KikxApp extends HTMLElement {
         section.class('kikx-thread')(
           div.class('kikx-thread__header')(
             h2(this._selectedSession()?.title || 'No session'),
-            div.class('kikx-thread__tools')(
-              button.type('button').class('kikx-icon-button').title('Create session').onClick(this._createSession)(
-                '+',
-              ),
-              button.type('button').class('kikx-sign-out-button').onClick(this._signOut)('Sign out'),
-            ),
           ),
           this._buildFrameThread(),
           form.class('kikx-composer').onSubmit(this._onSubmit)(
             label.class('kikx-composer__label')('Message'),
             textarea
               .name('message')
-              .placeholder('Send a message')
+              .placeholder(hasSelectedSession ? 'Send a message' : 'Create or select a session first')
+              .disabled(!hasSelectedSession)
               .value.bindState((state) => state.draft, ['draft'])
               .onInput(this._syncDraft)(),
             div.class('kikx-composer__actions')(
-              button.type('submit').class('kikx-send-button')('Send'),
+              button.type('submit').class('kikx-send-button').disabled(!hasSelectedSession)('Send'),
             ),
           ),
         ),
@@ -129,10 +136,18 @@ export class KikxApp extends HTMLElement {
     ];
   }
 
+  _buildStatusBar() {
+    return div.class.bindState((state) => `kikx-statusbar kikx-statusbar--${state.connectionStatusKind}`, ['connectionStatusKind'])(
+      span.class('kikx-statusbar__dot')(),
+      span.textContent.bindState((state) => state.connectionStatus, ['connectionStatus'])(),
+    );
+  }
+
   _buildSessionItems() {
     if (this._state.sessions.length === 0) {
       return li.class('kikx-session-list__empty')(
-        span('No sessions'),
+        p('No Sessions.'),
+        button.type('button').class('kikx-inline-action').onClick(this._createSession)('+ New Session'),
       );
     }
 
@@ -153,6 +168,7 @@ export class KikxApp extends HTMLElement {
     if (!this._state.selectedSessionID) {
       return div.class('kikx-thread__empty')(
         p('Create a session to start.'),
+        button.type('button').class('kikx-inline-action').onClick(this._createSession)('+ New Session'),
       );
     }
 
@@ -181,9 +197,11 @@ export class KikxApp extends HTMLElement {
         throw new Error(body?.error?.message || 'Unable to load AeorDB events URL');
 
       this._state.aeordbEventsURL = body.data.url;
-      this._state.status = 'AeorDB event stream configured';
-      this._state.statusKind = 'ready';
+      this._state.connectionStatus = 'Connected';
+      this._state.connectionStatusKind = 'ready';
     } catch (error) {
+      this._state.connectionStatus = 'Disconnected';
+      this._state.connectionStatusKind = 'error';
       this._state.status = error.message;
       this._state.statusKind = 'error';
     }
@@ -276,6 +294,8 @@ export class KikxApp extends HTMLElement {
     this._state.sessions = [];
     this._state.frames = [];
     this._state.selectedSessionID = '';
+    this._state.connectionStatus = 'Disconnected';
+    this._state.connectionStatusKind = 'error';
     this._state.status = 'Signed out';
     this._state.statusKind = 'pending';
     this._render();

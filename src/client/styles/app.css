@@ -10,7 +10,7 @@ body {
 .kikx-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;
   background: #101214;
   color: #f5f7fa;
 }
@@ -61,29 +61,36 @@ body {
   font-size: 13px;
 }
 
-.kikx-status {
+.kikx-topbar__spacer {
+  min-width: 1px;
+}
+
+.kikx-statusbar {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  max-width: 45vw;
+  min-height: 28px;
+  padding: 0 18px;
+  border-top: 1px solid #2f3439;
+  background: #15181b;
   color: #c4ccd4;
   font-size: 13px;
 }
 
-.kikx-status__dot {
+.kikx-statusbar__dot {
   width: 8px;
   height: 8px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: #d0a73a;
+  background: #f87171;
 }
 
-.kikx-status--ready .kikx-status__dot {
+.kikx-statusbar--ready .kikx-statusbar__dot {
   background: #52b788;
 }
 
-.kikx-status--error .kikx-status__dot {
+.kikx-statusbar--error .kikx-statusbar__dot {
   background: #f87171;
 }
 
@@ -157,10 +164,17 @@ body {
   border-right: 1px solid #2f3439;
 }
 
+.kikx-sessions__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .kikx-main h2 {
   font-size: 14px;
   line-height: 1.3;
-  margin-bottom: 14px;
   color: #dce3ea;
 }
 
@@ -186,7 +200,14 @@ body {
 }
 
 .kikx-session-list li.kikx-session-list__empty {
+  place-items: start;
+  gap: 10px;
   cursor: default;
+}
+
+.kikx-session-list__empty p {
+  margin: 0;
+  color: #97a3ae;
 }
 
 .kikx-session-list span {
@@ -201,7 +222,12 @@ body {
   background: #101214;
 }
 
-.kikx-thread__header,
+.kikx-thread__header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
 .kikx-composer__actions {
   display: flex;
   align-items: center;
@@ -209,14 +235,9 @@ body {
   gap: 12px;
 }
 
-.kikx-thread__tools {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .kikx-icon-button,
-.kikx-send-button {
+.kikx-send-button,
+.kikx-inline-action {
   min-height: 34px;
   border: 1px solid #3c444d;
   border-radius: 6px;
@@ -233,7 +254,8 @@ body {
 }
 
 .kikx-send-button,
-.kikx-sign-out-button {
+.kikx-sign-out-button,
+.kikx-inline-action {
   padding: 0 16px;
 }
 
@@ -246,9 +268,17 @@ body {
   cursor: pointer;
 }
 
+.kikx-send-button:disabled,
+.kikx-composer textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .kikx-thread__empty {
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: 12px;
   min-height: 240px;
   border: 1px dashed #37414a;
   border-radius: 6px;
@@ -327,7 +357,7 @@ body {
     flex-direction: column;
   }
 
-  .kikx-status {
-    max-width: 100%;
+  .kikx-statusbar {
+    padding: 0 14px;
   }
 }
