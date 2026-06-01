@@ -67,6 +67,7 @@ test('FrameRuntime creates sessions and writes AeorDB index configs', async () =
 
   assert.equal(session.id, 'ses_1');
   assert.equal(session.title, 'Scratch');
+  assert.equal(session.messageCount, 0);
   assert.equal(runtime.getSession('ses_1'), session);
   assert.deepEqual(aeordb.calls.map((call) => call.path), [
     '/kikx/sessions/.aeordb-config/indexes.json',
@@ -161,9 +162,12 @@ test('FrameRuntime appends user messages through FrameEngine and AeorDBFrameStor
   assert.equal(result.frame.content.text, 'hello');
   assert.equal(result.commit.id, 'commit_1');
   assert.equal(result.commit.order, 1);
+  assert.equal(result.session.messageCount, 1);
   assert.deepEqual((await runtime.listFrames('ses_1')).map((frame) => frame.id), [ 'msg_1' ]);
   assert.ok(aeordb.calls.some((call) => call.path === '/kikx/sessions/ses_1/commits/0000000000000001-commit_1.json'));
   assert.ok(aeordb.calls.some((call) => call.path === '/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-msg_1.json'));
+  assert.equal(aeordb.calls.at(-1).path, '/kikx/sessions/ses_1/session.json');
+  assert.equal(aeordb.calls.at(-1).body.messageCount, 1);
 });
 
 test('FrameRuntime rejects invalid session and message inputs', async () => {

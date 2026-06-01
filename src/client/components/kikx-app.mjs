@@ -1,38 +1,27 @@
 'use strict';
 
-import { elements, ReactiveState, $ } from '../lib/aeor-ui.mjs';
+import { elements, $ } from '../lib/aeor-ui.mjs';
+import {
+  AUTH_STORAGE_KEY,
+  getSelectedFrames,
+  getSelectedSession,
+  getSessions,
+  kikxState,
+  resetSessionState,
+  setSessionFrames,
+  setSessions,
+  upsertSession,
+} from '../state/kikx-state.mjs';
 
 const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong } = elements;
 const aeorInput = elements['aeor-input'];
 const aeorModal = elements['aeor-modal'];
-const AUTH_STORAGE_KEY = 'kikx.auth.session';
 
 export class KikxApp extends HTMLElement {
   constructor() {
     super();
 
-    let savedAuth = loadSavedAuth();
-    let params = new URLSearchParams(globalThis.location?.search || '');
-
-    this._state = new ReactiveState({
-      aeordbEventsURL: '',
-      authEmail: '',
-      authStatus: '',
-      authStatusKind: 'pending',
-      authToken: savedAuth.token || '',
-      connectionStatus: 'Disconnected',
-      connectionStatusKind: 'error',
-      draft: '',
-      editingSessionID: '',
-      editingSessionTitle: '',
-      frames: [],
-      magicCode: params.get('code') || '',
-      refreshToken: savedAuth.refresh_token || '',
-      selectedSessionID: '',
-      sessions: [],
-      status: 'Checking AeorDB event stream...',
-      statusKind: 'pending',
-    });
+    this._state = kikxState;
 
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
@@ -152,16 +141,17 @@ export class KikxApp extends HTMLElement {
   }
 
   _buildSessionItems() {
-    if (this._state.sessions.length === 0) {
+    let sessions = getSessions(this._state);
+    if (sessions.length === 0) {
       return li.class('kikx-session-list__empty')(
         p('No Sessions.'),
         button.type('button').class('kikx-inline-action').onClick(this._createSession)('+ New Session'),
       );
     }
 
-    return this._state.sessions.map((session) => {
+    return sessions.map((session) => {
       let selected = session.id === this._state.selectedSessionID;
-      let count = selected ? this._state.frames.length : 0;
+      let count = typeof session.messageCount === 'number' ? session.messageCount : 0;
 
       return li
         .class(selected ? 'is-selected' : '')
@@ -175,7 +165,7 @@ export class KikxApp extends HTMLElement {
               .ariaLabel('Edit session')
               .onClick((event) => this._openSessionEditor(event, session))('⚙'),
           ),
-          span.class('kikx-session-item__meta')(`${count} frame${count === 1 ? '' : 's'}`),
+          span.class('kikx-session-item__meta')(`${count} message${count === 1 ? '' : 's'}`),
         );
     });
   }
@@ -206,14 +196,15 @@ export class KikxApp extends HTMLElement {
       );
     }
 
-    if (this._state.frames.length === 0) {
+    let frames = getSelectedFrames(this._state);
+    if (frames.length === 0) {
       return div.class('kikx-thread__empty')(
         p('No frames yet.'),
       );
     }
 
     return ul.class('kikx-frame-list')(
-      this._state.frames.map((frame) => li.class(`kikx-frame kikx-frame--${frame.type}`)(
+      frames.map((frame) => li.class(`kikx-frame kikx-frame--${frame.type}`)(
         div.class('kikx-frame__meta')(
           strong(frame.type),
           span(frame.authorID || frame.authorType || 'system'),
@@ -244,10 +235,11 @@ export class KikxApp extends HTMLElement {
   async _loadSessions() {
     try {
       let result = await this._getJSON('/api/v1/sessions');
-      this._state.sessions = result.data.sessions || [];
+      setSessions(result.data.sessions || [], this._state);
 
-      if (!this._state.selectedSessionID && this._state.sessions.length > 0)
-        this._state.selectedSessionID = this._state.sessions[0].id;
+      let sessions = getSessions(this._state);
+      if (!this._state.selectedSessionID && sessions.length > 0)
+        this._state.selectedSessionID = sessions[0].id;
 
       if (this._state.selectedSessionID)
         await this._loadFrames(this._state.selectedSessionID);
@@ -262,7 +254,7 @@ export class KikxApp extends HTMLElement {
 
   async _loadFrames(sessionID) {
     let result = await this._getJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}/frames`);
-    this._state.frames = result.data.frames || [];
+    setSessionFrames(sessionID, result.data.frames || [], this._state);
     this._render();
   }
 
@@ -325,9 +317,7 @@ export class KikxApp extends HTMLElement {
     sessionStorage.removeItem(AUTH_STORAGE_KEY);
     this._state.authToken = '';
     this._state.refreshToken = '';
-    this._state.sessions = [];
-    this._state.frames = [];
-    this._state.selectedSessionID = '';
+    resetSessionState(this._state);
     this._state.connectionStatus = 'Disconnected';
     this._state.connectionStatusKind = 'error';
     this._state.status = 'Signed out';
@@ -393,9 +383,10 @@ export class KikxApp extends HTMLElement {
     this._state.statusKind = 'pending';
 
     try {
-      await this._postJSON(`/api/v1/sessions/${encodeURIComponent(this._state.selectedSessionID)}/messages`, {
+      let result = await this._postJSON(`/api/v1/sessions/${encodeURIComponent(this._state.selectedSessionID)}/messages`, {
         text: draft,
       });
+      upsertSession(result.data.session, this._state);
       this._state.draft = '';
       await this._loadFrames(this._state.selectedSessionID);
       this._state.status = 'Message committed';
@@ -415,6 +406,7 @@ export class KikxApp extends HTMLElement {
     try {
       let result = await this._postJSON('/api/v1/sessions', {
       });
+      upsertSession(result.data.session, this._state);
       this._state.selectedSessionID = result.data.session.id;
       await this._loadSessions();
       this._state.status = 'Session created';
@@ -456,12 +448,7 @@ export class KikxApp extends HTMLElement {
 
     try {
       let result = await this._patchJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}`, { title });
-      this._state.sessions = this._state.sessions.map((session) => {
-        if (session.id !== sessionID)
-          return session;
-
-        return result.data.session;
-      });
+      upsertSession(result.data.session, this._state);
       this._state.editingSessionID = '';
       this._state.editingSessionTitle = '';
       this._state.status = 'Session saved';
@@ -492,7 +479,7 @@ export class KikxApp extends HTMLElement {
   }
 
   _selectedSession() {
-    return this._state.sessions.find((session) => session.id === this._state.selectedSessionID) || null;
+    return getSelectedSession(this._state);
   }
 }
 
@@ -502,14 +489,6 @@ async function readResponse(response) {
     throw new Error(body?.error?.message || `HTTP ${response.status}`);
 
   return body;
-}
-
-function loadSavedAuth() {
-  try {
-    return JSON.parse(sessionStorage.getItem(AUTH_STORAGE_KEY) || '{}') || {};
-  } catch (_error) {
-    return {};
-  }
 }
 
 if (!customElements.get('kikx-app'))

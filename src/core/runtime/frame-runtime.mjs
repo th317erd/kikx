@@ -32,6 +32,7 @@ export class FrameRuntime {
       title,
       organizationID: input.organizationID || null,
       createdByUserID: input.createdByUserID || input.userID || null,
+      messageCount: normalizeCount(input.messageCount),
       createdAt: input.createdAt || now,
       updatedAt: input.updatedAt || now,
     };
@@ -177,6 +178,8 @@ export class FrameRuntime {
     await this.frameStore.flush();
 
     entry.session.updatedAt = now;
+    entry.session.messageCount = nextMessageCount(entry.session.messageCount, entry.frameEngine.toArray(), frames);
+    await this.frameStore.saveSessionManifest(entry.session);
 
     return {
       session: entry.session,
@@ -186,7 +189,8 @@ export class FrameRuntime {
   }
 
   async listFrames(sessionID) {
-    return (await this.ensureSessionEntry(sessionID)).frameEngine.toArray();
+    let entry = await this.ensureSessionEntry(sessionID);
+    return entry.frameEngine.toArray();
   }
 
   async ensureIndexConfigs() {
@@ -218,4 +222,27 @@ function normalizeText(text) {
     throw new TypeError('text must be a non-empty string');
 
   return text.trim();
+}
+
+function normalizeCount(value) {
+  if (value == null)
+    return 0;
+
+  return (typeof value === 'number' && Number.isFinite(value) && value >= 0)
+    ? Math.trunc(value)
+    : 0;
+}
+
+function countMessageFrames(frames) {
+  if (!Array.isArray(frames))
+    return 0;
+
+  return frames.filter((frame) => frame?.type === 'UserMessage').length;
+}
+
+function nextMessageCount(currentCount, loadedFrames, newFrames) {
+  if (typeof currentCount === 'number' && Number.isFinite(currentCount) && currentCount >= 0)
+    return Math.trunc(currentCount) + countMessageFrames(newFrames);
+
+  return countMessageFrames(loadedFrames);
 }

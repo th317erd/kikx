@@ -132,6 +132,13 @@ export class AeorDBFrameStore {
       throw new TypeError('saveSession() requires session.id');
 
     await this.ensureSessionIndexConfigs(session.id);
+    await this.saveSessionManifest(session);
+  }
+
+  async saveSessionManifest(session) {
+    if (!session?.id)
+      throw new TypeError('saveSessionManifest() requires session.id');
+
     await this.aeordb.putFile(this.sessionPath(session.id), session);
   }
 

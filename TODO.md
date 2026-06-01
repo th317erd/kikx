@@ -23,3 +23,8 @@
 - [x] Fix Session Edit modal Save button action.
 
 - [x] List sessions from AeorDB and lazily open active sessions after Kikx restart.
+
+- [x] Preserve and persist session message counts across selection changes.
+  - [x] Move session list/details into a global reactive client state queue.
+  - [x] Keep frame hydration scoped to the selected session.
+  - [x] Add state reducer tests for inactive session metadata.
