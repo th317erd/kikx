@@ -117,6 +117,39 @@ export class FrameEngine extends EventEmitter {
     return this._commits[this._commits.length - 1];
   }
 
+  hydrate(frames, options = {}) {
+    if (!Array.isArray(frames))
+      throw new TypeError('FrameEngine.hydrate() requires an array of frames');
+
+    this._frames.clear();
+    this._history.clear();
+    this._children.clear();
+    this._commits = [];
+    this._refs.clear();
+    this._frameOrder = 0;
+    this._commitOrder = 0;
+
+    for (let input of frames) {
+      if (!input?.id || !input.type)
+        continue;
+
+      let frame = this._normalizeFrame(input);
+      this._frames.set(frame.id, frame);
+      this._appendHistory(frame.id, frame);
+      if (frame.parentID)
+        this._addChild(frame.parentID, frame.id);
+
+      this._frameOrder = Math.max(this._frameOrder, frame.order || 0);
+      this._commitOrder = Math.max(this._commitOrder, frame.order || 0);
+    }
+
+    if (options.headOrder != null)
+      this._commitOrder = Math.max(this._commitOrder, options.headOrder);
+
+    if (this._commitOrder > 0)
+      this._refs.set('heads/main', this._commitOrder);
+  }
+
   createRef(name, commitOrder = this.getLatestCommit()?.order || 0) {
     this._assertCommitOrder(commitOrder);
     this._refs.set(name, commitOrder);
@@ -381,4 +414,3 @@ function cloneMapOfArrays(map) {
     copy.set(key, value.slice());
   return copy;
 }
-

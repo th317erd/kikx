@@ -25,8 +25,8 @@ export class FrameRuntime {
   }
 
   async createSession(input = {}) {
-    let title = normalizeTitle(input.title, `Session ${this.sessions.size + 1}`);
     let now = this.clock();
+    let title = normalizeTitle(input.title, `Session ${now}`);
     let session = {
       id: input.id || this.idGenerator(),
       title,
@@ -54,29 +54,40 @@ export class FrameRuntime {
       session,
       frameEngine,
       disconnectStore,
+      framesLoaded: true,
     });
 
     return session;
   }
 
   async updateSession(sessionID, input = {}) {
-    let entry = this.requireSessionEntry(sessionID);
+    let entry = this.sessions.get(sessionID);
+    let session = entry?.session || await this.frameStore.loadSession(sessionID);
+    if (!session?.id) {
+      let error = new Error(`Unknown session: ${sessionID}`);
+      error.status = 404;
+      throw error;
+    }
+
     let now = this.clock();
 
-    entry.session.title = normalizeTitle(input.title);
-    entry.session.updatedAt = input.updatedAt || now;
+    session.title = normalizeTitle(input.title);
+    session.updatedAt = input.updatedAt || now;
 
-    await this.frameStore.saveSession(entry.session);
+    await this.frameStore.saveSession(session);
 
-    return entry.session;
+    if (entry)
+      entry.session = session;
+
+    return session;
   }
 
   getSession(sessionID) {
     return this.sessions.get(sessionID)?.session || null;
   }
 
-  listSessions() {
-    return Array.from(this.sessions.values()).map((entry) => entry.session);
+  async listSessions(options = {}) {
+    return await this.frameStore.listSessions(options);
   }
 
   requireSessionEntry(sessionID) {
@@ -90,8 +101,52 @@ export class FrameRuntime {
     return entry;
   }
 
+  async ensureSessionEntry(sessionID, options = {}) {
+    let entry = this.sessions.get(sessionID);
+    if (entry) {
+      if (options.loadFrames !== false && !entry.framesLoaded) {
+        let frames = await this.frameStore.listFrames(sessionID, {
+          limit: options.frameLimit || 250,
+        });
+        entry.frameEngine.hydrate(frames);
+        entry.framesLoaded = true;
+      }
+      return entry;
+    }
+
+    let session = await this.frameStore.loadSession(sessionID);
+    if (!session?.id) {
+      let error = new Error(`Unknown session: ${sessionID}`);
+      error.status = 404;
+      throw error;
+    }
+
+    let frameEngine = new FrameEngine({
+      clock: this.clock,
+      idGenerator: this.idGenerator,
+      commitValidator: options.commitValidator || null,
+    });
+
+    if (options.loadFrames !== false) {
+      let frames = await this.frameStore.listFrames(sessionID, {
+        limit: options.frameLimit || 250,
+      });
+      frameEngine.hydrate(frames);
+    }
+
+    let disconnectStore = this.frameStore.connect(frameEngine, { sessionID });
+    entry = {
+      session,
+      frameEngine,
+      disconnectStore,
+      framesLoaded: options.loadFrames !== false,
+    };
+    this.sessions.set(sessionID, entry);
+    return entry;
+  }
+
   async appendUserMessage(sessionID, input = {}) {
-    let entry = this.requireSessionEntry(sessionID);
+    let entry = await this.ensureSessionEntry(sessionID);
     let text = normalizeText(input.text);
     let now = this.clock();
     let interactionID = input.interactionID || input.interactionId || this.idGenerator();
@@ -130,8 +185,8 @@ export class FrameRuntime {
     };
   }
 
-  listFrames(sessionID) {
-    return this.requireSessionEntry(sessionID).frameEngine.toArray();
+  async listFrames(sessionID) {
+    return (await this.ensureSessionEntry(sessionID)).frameEngine.toArray();
   }
 
   async ensureIndexConfigs() {

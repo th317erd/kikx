@@ -21,3 +21,5 @@
 - [x] Add numbered session defaults, session list spacing, and session rename modal.
 
 - [x] Fix Session Edit modal Save button action.
+
+- [x] List sessions from AeorDB and lazily open active sessions after Kikx restart.

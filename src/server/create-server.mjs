@@ -73,7 +73,10 @@ async function routeRequest({ request, response, context, staticRoots }) {
     let frameRuntime = context.require('frameRuntime');
     writeJSON(response, 200, {
       data: {
-        sessions: frameRuntime.listSessions(),
+        sessions: await frameRuntime.listSessions({
+          limit: parsePositiveInteger(url.searchParams.get('limit'), 50),
+          offset: parseNonNegativeInteger(url.searchParams.get('offset'), 0),
+        }),
       },
     });
     return;
@@ -125,7 +128,7 @@ async function routeRequest({ request, response, context, staticRoots }) {
     if (request.method === 'GET' && sessionRoute.resource === 'frames') {
       writeJSON(response, 200, {
         data: {
-          frames: frameRuntime.listFrames(sessionRoute.sessionID),
+          frames: await frameRuntime.listFrames(sessionRoute.sessionID),
         },
       });
       return;
@@ -237,6 +240,28 @@ function httpError(status, message) {
   let error = new Error(message);
   error.status = status;
   return error;
+}
+
+function parsePositiveInteger(value, fallback) {
+  if (value == null)
+    return fallback;
+
+  let parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1)
+    throw httpError(400, 'limit must be a positive integer');
+
+  return parsed;
+}
+
+function parseNonNegativeInteger(value, fallback) {
+  if (value == null)
+    return fallback;
+
+  let parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0)
+    throw httpError(400, 'offset must be a non-negative integer');
+
+  return parsed;
 }
 
 function matchSessionUpdateRoute(pathname) {

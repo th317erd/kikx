@@ -135,6 +135,65 @@ export class AeorDBFrameStore {
     await this.aeordb.putFile(this.sessionPath(session.id), session);
   }
 
+  async loadSession(sessionID) {
+    if (!sessionID)
+      throw new TypeError('loadSession() requires sessionID');
+
+    return await this.aeordb.getFile(this.sessionPath(sessionID));
+  }
+
+  async listSessions(options = {}) {
+    let limit = normalizeLimit(options.limit, 50);
+    let offset = normalizeOffset(options.offset);
+    let result = await this.aeordb.listDirectory(`${this.rootPath}/sessions`, {
+      depth: -1,
+      glob: '**/session.json',
+      limit,
+      offset,
+    });
+
+    let sessions = [];
+    for (let item of result?.items || []) {
+      if (!item?.path)
+        continue;
+
+      let session = await this.aeordb.getFile(item.path);
+      if (session?.id)
+        sessions.push(session);
+    }
+
+    return sessions;
+  }
+
+  async listFrames(sessionID, options = {}) {
+    if (!sessionID)
+      throw new TypeError('listFrames() requires sessionID');
+
+    let limit = normalizeLimit(options.limit, 250);
+    let offset = normalizeOffset(options.offset);
+    let result = await this.aeordb.listDirectory(`${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`, {
+      depth: -1,
+      glob: '**/*.json',
+      limit,
+      offset,
+    });
+
+    let frames = [];
+    for (let item of result?.items || []) {
+      if (!item?.path)
+        continue;
+
+      if (!item.path.includes('/frames/'))
+        continue;
+
+      let frame = await this.aeordb.getFile(item.path);
+      if (frame?.id && frame.type)
+        frames.push(frame);
+    }
+
+    return frames.sort(compareFrameOrder);
+  }
+
   async saveCommit(sessionID, commit, frames, frameEngine = null) {
     if (!sessionID)
       throw new TypeError('sessionID is required to save a commit');
@@ -253,6 +312,32 @@ function padOrder(order) {
     throw new TypeError(`Invalid order: ${order}`);
 
   return String(Math.trunc(order)).padStart(ORDER_WIDTH, '0');
+}
+
+function normalizeLimit(limit, fallback) {
+  if (limit == null)
+    return fallback;
+
+  let value = Number(limit);
+  if (!Number.isInteger(value) || value < 1)
+    throw new TypeError('limit must be a positive integer');
+
+  return Math.min(value, 500);
+}
+
+function normalizeOffset(offset) {
+  if (offset == null)
+    return 0;
+
+  let value = Number(offset);
+  if (!Number.isInteger(value) || value < 0)
+    throw new TypeError('offset must be a non-negative integer');
+
+  return value;
+}
+
+function compareFrameOrder(a, b) {
+  return ((a.order || 0) - (b.order || 0)) || String(a.id).localeCompare(String(b.id));
 }
 
 function normalizeRoot(rootPath) {

@@ -10,8 +10,10 @@ function createClient() {
   let calls = [];
   return {
     calls,
+    files: new Map(),
     async putFile(path, body) {
       calls.push({ method: 'putFile', path, body });
+      this.files.set(path, body);
       return { path };
     },
     async patchFile(path, body) {
@@ -20,7 +22,28 @@ function createClient() {
     },
     async getFile(path) {
       calls.push({ method: 'getFile', path });
-      return null;
+      return this.files.get(path) || null;
+    },
+    async listDirectory(path, options) {
+      calls.push({ method: 'listDirectory', path, options });
+      let prefix = `${path.replace(/\/+$/g, '')}/`;
+      let items = [];
+      for (let filePath of this.files.keys()) {
+        if (!filePath.startsWith(prefix))
+          continue;
+
+        if (options?.glob === '**/session.json' && !/^\/kikx\/sessions\/[^/]+\/session\.json$/.test(filePath))
+          continue;
+
+        if (options?.glob === '**/*.json' && !filePath.endsWith('.json'))
+          continue;
+
+        items.push({ path: filePath });
+      }
+
+      return {
+        items: items.slice(options?.offset || 0, (options?.offset || 0) + (options?.limit || items.length)),
+      };
     },
   };
 }
@@ -72,6 +95,47 @@ test('AeorDBFrameStore saves session manifests after creating session-local inde
     '/kikx/sessions/ses_1/tool-log/.aeordb-config/indexes.json',
     '/kikx/sessions/ses_1/session.json',
   ]);
+});
+
+test('AeorDBFrameStore lists persisted session manifests with a bounded query', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  aeordb.files.set('/kikx/sessions/ses_2/session.json', { id: 'ses_2', title: 'Second', updatedAt: 20 });
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First', updatedAt: 10 });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-msg_1.json', { id: 'msg_1' });
+
+  let sessions = await store.listSessions({ limit: 25, offset: 0 });
+
+  assert.deepEqual(aeordb.calls[0], {
+    method: 'listDirectory',
+    path: '/kikx/sessions',
+      options: {
+      depth: -1,
+      glob: '**/session.json',
+      limit: 25,
+      offset: 0,
+    },
+  });
+  assert.deepEqual(sessions.map((session) => session.id), [ 'ses_2', 'ses_1' ]);
+});
+
+test('AeorDBFrameStore loads one session manifest and its frames on demand', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First' });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000002-UserMessage-msg_2.json', {
+    id: 'msg_2',
+    type: 'UserMessage',
+    order: 2,
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-msg_1.json', {
+    id: 'msg_1',
+    type: 'UserMessage',
+    order: 1,
+  });
+
+  assert.deepEqual(await store.loadSession('ses_1'), { id: 'ses_1', title: 'First' });
+  assert.deepEqual((await store.listFrames('ses_1')).map((frame) => frame.id), [ 'msg_1', 'msg_2' ]);
 });
 
 test('AeorDBFrameStore persists a commit and changed frames', async () => {

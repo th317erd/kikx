@@ -119,3 +119,20 @@ test('FrameEngine refs and diffFrames expose persistent promise-style progress',
   assert.deepEqual(frames.diffFrames('processed/agent_1', 'heads/main'), []);
 });
 
+test('FrameEngine hydrates persisted frames without emitting commits', () => {
+  let frames = engine();
+  let commits = [];
+  frames.on('commit', (event) => commits.push(event.commit));
+
+  frames.hydrate([
+    { id: 'msg_2', type: 'UserMessage', order: 2, content: { text: 'two' }, hidden: false },
+    { id: 'msg_1', type: 'UserMessage', order: 1, content: { text: 'one' }, hidden: false },
+  ]);
+
+  assert.deepEqual(frames.toArray().map((frame) => frame.id), [ 'msg_1', 'msg_2' ]);
+  assert.equal(frames.getRef('heads/main'), 2);
+  assert.deepEqual(commits, []);
+
+  frames.merge([{ id: 'msg_3', type: 'UserMessage', content: { text: 'three' }, hidden: false }]);
+  assert.equal(frames.getLatestCommit().order, 3);
+});

@@ -46,8 +46,8 @@ function createRuntime() {
         organizationID: input.organizationID || null,
       };
     },
-    listSessions() {
-      calls.push({ method: 'listSessions' });
+    listSessions(options) {
+      calls.push({ method: 'listSessions', options });
       return [
         { id: 'ses_1', title: 'Scratch' },
       ];
@@ -130,6 +130,33 @@ test('GET /health reports service state', async () => {
   }
 });
 
+test('GET /api/v1/sessions validates pagination parameters', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/sessions?limit=0`);
+    let body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(body, {
+      error: {
+        message: 'limit must be a positive integer',
+      },
+    });
+    assert.deepEqual(runtime.calls, []);
+  } finally {
+    await close(server);
+  }
+});
+
 test('POST /api/v1/sessions creates a runtime session', async () => {
   let runtime = createRuntime();
   let server = createServer({
@@ -187,6 +214,13 @@ test('GET /api/v1/sessions lists runtime sessions', async () => {
     let body = await response.json();
 
     assert.equal(response.status, 200);
+    assert.deepEqual(runtime.calls[0], {
+      method: 'listSessions',
+      options: {
+        limit: 50,
+        offset: 0,
+      },
+    });
     assert.deepEqual(body, {
       data: {
         sessions: [
