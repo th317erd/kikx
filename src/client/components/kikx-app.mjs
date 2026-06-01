@@ -12,6 +12,7 @@ import {
   setSessions,
   upsertSession,
 } from '../state/kikx-state.mjs';
+import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
 
 const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong } = elements;
 const aeorInput = elements['aeor-input'];
@@ -25,6 +26,7 @@ export class KikxApp extends HTMLElement {
 
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
+    this._onComposerKeydown = this._onComposerKeydown.bind(this);
     this._createSession = this._createSession.bind(this);
     this._closeSessionEditor = this._closeSessionEditor.bind(this);
     this._onSessionEditSubmit = this._onSessionEditSubmit.bind(this);
@@ -123,6 +125,7 @@ export class KikxApp extends HTMLElement {
               .placeholder(hasSelectedSession ? 'Send a message' : 'Create or select a session first')
               .disabled(!hasSelectedSession)
               .value.bindState((state) => state.draft, ['draft'])
+              .onKeydown(this._onComposerKeydown)
               .onInput(this._syncDraft)(),
             div.class('kikx-composer__actions')(
               button.type('submit').class('kikx-send-button').disabled(!hasSelectedSession)('Send'),
@@ -397,6 +400,14 @@ export class KikxApp extends HTMLElement {
       this._state.statusKind = 'error';
       this._render();
     }
+  }
+
+  _onComposerKeydown(event) {
+    if (!shouldSubmitComposerKey(event))
+      return;
+
+    event.preventDefault();
+    event.target?.form?.requestSubmit();
   }
 
   async _createSession() {

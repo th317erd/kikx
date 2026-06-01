@@ -28,3 +28,5 @@
   - [x] Move session list/details into a global reactive client state queue.
   - [x] Keep frame hydration scoped to the selected session.
   - [x] Add state reducer tests for inactive session metadata.
+
+- [x] Add Enter-to-send composer keyboard behavior.
