@@ -2,6 +2,10 @@
 
 import { ReactiveState } from '../lib/aeor-ui.mjs';
 import {
+  defaultConfigForProvider,
+  mergeAgentConfigWithProviderDefaults,
+} from './agent-state-utils.mjs';
+import {
   countMessageFrames,
   mergeSessions,
   setSessionFramesState,
@@ -129,11 +133,29 @@ export function removeAgent(agentID, state = kikxState) {
 }
 
 export function resetAgentForm(state = kikxState) {
+  let provider = state.agentProviders[0] || null;
   state.agentFormMode = 'create';
   state.editingAgentID = '';
   state.agentFormName = '';
-  state.agentFormPluginID = state.agentProviders[0]?.pluginID || '';
-  state.agentFormConfig = {};
+  state.agentFormPluginID = provider?.pluginID || '';
+  state.agentFormConfig = defaultConfigForProvider(provider);
+  state.agentFormSecrets = {};
+}
+
+export function setAgentFormProvider(pluginID, state = kikxState) {
+  let provider = state.agentProviders.find((candidate) => candidate.pluginID === pluginID) || null;
+  state.agentFormPluginID = pluginID || '';
+  state.agentFormConfig = defaultConfigForProvider(provider);
+  state.agentFormSecrets = {};
+}
+
+export function setAgentFormFromAgent(agent, state = kikxState) {
+  let provider = state.agentProviders.find((candidate) => candidate.pluginID === agent?.pluginID) || null;
+  state.agentFormMode = 'edit';
+  state.editingAgentID = agent.id;
+  state.agentFormName = agent.name || '';
+  state.agentFormPluginID = agent.pluginID || '';
+  state.agentFormConfig = mergeAgentConfigWithProviderDefaults(provider, agent.config);
   state.agentFormSecrets = {};
 }
 

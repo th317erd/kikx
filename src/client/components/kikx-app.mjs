@@ -14,6 +14,8 @@ import {
   resetSessionState,
   setAgentProviders,
   setAgents,
+  setAgentFormFromAgent,
+  setAgentFormProvider,
   setSessionFrames,
   setSessions,
   upsertAgent,
@@ -378,7 +380,7 @@ export class KikxApp extends HTMLElement {
       setAgentProviders(providersResult.data.providers || [], this._state);
       setAgents(agentsResult.data.agents || [], this._state);
       if (!this._state.agentFormPluginID)
-        this._state.agentFormPluginID = this._state.agentProviders[0]?.pluginID || '';
+        resetAgentForm(this._state);
       this._render();
     } catch (error) {
       this._state.agentStatus = error.message;
@@ -573,20 +575,13 @@ export class KikxApp extends HTMLElement {
   _editAgent(agent) {
     this._state.managingAgents = false;
     this._state.agentEditorOpen = true;
-    this._state.agentFormMode = 'edit';
-    this._state.editingAgentID = agent.id;
-    this._state.agentFormName = agent.name || '';
-    this._state.agentFormPluginID = agent.pluginID || '';
-    this._state.agentFormConfig = { ...(agent.config || {}) };
-    this._state.agentFormSecrets = {};
+    setAgentFormFromAgent(agent, this._state);
     this._state.agentStatus = '';
     this._render();
   }
 
   _selectAgentProvider(pluginID) {
-    this._state.agentFormPluginID = pluginID;
-    this._state.agentFormConfig = {};
-    this._state.agentFormSecrets = {};
+    setAgentFormProvider(pluginID, this._state);
     this._render();
   }
 
