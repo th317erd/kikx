@@ -19,3 +19,5 @@
 - [x] Add AeorDB operational safety SKILL.md for corruption evidence and graceful start/stop.
 
 - [x] Add numbered session defaults, session list spacing, and session rename modal.
+
+- [x] Fix Session Edit modal Save button action.

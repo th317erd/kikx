@@ -192,7 +192,7 @@ export class KikxApp extends HTMLElement {
           .onInput(this._syncEditingSessionTitle)(),
         div.class('modal-footer-actions').slot('footer')(
           button.type('button').class('kikx-sign-out-button').onClick(this._closeSessionEditor)('Cancel'),
-          button.type('submit').class('kikx-send-button')('Save'),
+          button.type('button').class('kikx-send-button').onClick(this._onSessionEditSubmit)('Save'),
         ),
       ),
     );
