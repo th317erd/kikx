@@ -13,3 +13,5 @@
 - [x] Wire FrameEngine and AeorDBFrameStore into runtime session/message API endpoints.
 - [x] Add npm scripts for AeorDB and Kikx dev startup.
 - [x] Move connection status to bottom bar and tighten empty-session controls.
+
+- [x] Fix /api/v1/sessions 500 during authenticated UI load.
