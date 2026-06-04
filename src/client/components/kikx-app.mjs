@@ -234,7 +234,7 @@ export class KikxApp extends HTMLElement {
                   ? [ button.type('button').class('kikx-sign-out-button').onClick(() => this._deleteAgent(this._state.editingAgentID))('Delete') ]
                   : []),
                 button.type('button').class('kikx-sign-out-button').onClick(this._closeAgentEditor)('Cancel'),
-                button.type('submit').class('kikx-send-button')(this._state.agentFormMode === 'edit' ? 'Save' : 'Create'),
+                button.type('button').class('kikx-send-button').onClick(this._onAgentFormSubmit)(this._state.agentFormMode === 'edit' ? 'Save' : 'Create'),
               ),
             ],
           p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.agentStatusKind}`, ['agentStatusKind'])(

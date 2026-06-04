@@ -43,3 +43,5 @@
 - [x] Render plugin-declared select fields with shared `aeor-select`.
 
 - [x] Expand Codex/OpenAI plugin model choices.
+
+- [x] Fix Agent Create modal footer button action.
