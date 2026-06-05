@@ -50,7 +50,7 @@ export function upsertSessionState(state, session) {
 
 export function setSessionFramesState(state, sessionID, frames) {
   let snapshot = createSessionStateSnapshot(state);
-  let safeFrames = Array.isArray(frames) ? [ ...frames ] : [];
+  let safeFrames = sortFrames(Array.isArray(frames) ? [ ...frames ] : []);
   let next = {
     ...snapshot,
     framesBySessionID: {
@@ -169,3 +169,26 @@ const LIVE_VISIBLE_PHANTOM_TYPES = new Set([
   'AgentThinking',
   'AgentMessageDelta',
 ]);
+
+function sortFrames(frames) {
+  return frames
+    .map((frame, index) => ({ frame, index }))
+    .sort((a, b) => {
+      let order = frameSortOrder(a.frame) - frameSortOrder(b.frame);
+      if (order !== 0)
+        return order;
+
+      return a.index - b.index;
+    })
+    .map((entry) => entry.frame);
+}
+
+function frameSortOrder(frame) {
+  if (typeof frame?.commitOrder === 'number' && Number.isFinite(frame.commitOrder))
+    return frame.commitOrder;
+
+  if (typeof frame?.order === 'number' && Number.isFinite(frame.order))
+    return frame.order;
+
+  return Number.MAX_SAFE_INTEGER;
+}

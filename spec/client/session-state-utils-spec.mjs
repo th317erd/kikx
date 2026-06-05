@@ -5,6 +5,7 @@ import test from 'node:test';
 
 import {
   countMessageFrames,
+  createSessionStateSnapshot,
   mergeSessions,
   setSessionFramesState,
   upsertFrameState,
@@ -185,6 +186,24 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
   assert.deepEqual(final.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1' ]);
   assert.equal(final.framesBySessionID.ses_1[1].type, 'AgentMessage');
   assert.equal(final.framesBySessionID.ses_1[1].content.text, 'final');
+});
+
+test('upsertFrameState keeps live frames sorted by commit order', () => {
+  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', [
+    { id: 'agent_1', type: 'AgentMessage', order: 1, commitOrder: 1, hidden: true },
+    { id: 'user_1', type: 'UserMessage', order: 2, commitOrder: 2, hidden: false },
+  ]);
+
+  let next = upsertFrameState(state, 'ses_1', {
+    id: 'agent_1',
+    type: 'AgentMessage',
+    order: 1,
+    commitOrder: 3,
+    hidden: false,
+    content: { text: 'final' },
+  });
+
+  assert.deepEqual(next.framesBySessionID.ses_1.map((frame) => frame.id), [ 'user_1', 'agent_1' ]);
 });
 
 test('upsertFrameState ignores malformed frames and missing session ids', () => {

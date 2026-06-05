@@ -202,7 +202,48 @@ export class AeorDBFrameStore {
       }
     }
 
-    return frames.sort(compareFrameOrder);
+    let commits = await this.listCommits(sessionID, { limit, offset });
+    if (commits.length === 0)
+      return frames.sort(compareFrameOrder);
+
+    return orderFramesByCommits(sessionID, frames, commits);
+  }
+
+  async listCommits(sessionID, options = {}) {
+    let limit = normalizeLimit(options.limit, 250);
+    let offset = normalizeOffset(options.offset);
+    let result;
+
+    try {
+      result = await this.aeordb.listDirectory(`${this.rootPath}/sessions/${encodeSegment(sessionID)}/commits`, {
+        depth: -1,
+        glob: '**/*.json',
+        limit,
+        offset,
+      });
+    } catch (error) {
+      if (error?.status === 404)
+        return [];
+
+      throw error;
+    }
+
+    let commits = [];
+    for (let item of result?.items || []) {
+      if (!item?.path)
+        continue;
+
+      try {
+        let commit = await this.aeordb.getFile(item.path);
+        if (commit?.id && typeof commit.order === 'number')
+          commits.push(commit);
+      } catch (_error) {
+        // Frame evidence is more important than failing the whole session view
+        // for one unreadable commit object.
+      }
+    }
+
+    return commits.sort(compareCommitOrder);
   }
 
   async saveCommit(sessionID, commit, frames, frameEngine = null) {
@@ -214,10 +255,10 @@ export class AeorDBFrameStore {
 
     let changedFrames = Array.isArray(frames) ? frames : [];
 
-    await this.aeordb.putFile(this.commitPath(sessionID, commit), serializeCommit(commit, changedFrames));
-
     for (let frame of changedFrames)
       await this.saveFrame(sessionID, frame);
+
+    await this.aeordb.putFile(this.commitPath(sessionID, commit), serializeCommit(commit, changedFrames));
 
     if (frameEngine)
       await this.saveRefs(sessionID, frameEngine);
@@ -348,7 +389,87 @@ function normalizeOffset(offset) {
 }
 
 function compareFrameOrder(a, b) {
+  return (sortOrder(a) - sortOrder(b)) || String(a.id).localeCompare(String(b.id));
+}
+
+function sortOrder(frame) {
+  if (typeof frame?.commitOrder === 'number' && Number.isFinite(frame.commitOrder))
+    return frame.commitOrder;
+
+  return frame?.order || 0;
+}
+
+function compareCommitOrder(a, b) {
   return ((a.order || 0) - (b.order || 0)) || String(a.id).localeCompare(String(b.id));
+}
+
+function orderFramesByCommits(sessionID, frames, commits) {
+  let frameByID = new Map();
+  let outputByID = new Map();
+  let ordered = [];
+
+  for (let frame of frames) {
+    if (!frame?.id)
+      continue;
+
+    let existing = frameByID.get(frame.id);
+    if (!existing || compareFrameFileVersion(existing, frame) <= 0)
+      frameByID.set(frame.id, frame);
+  }
+
+  for (let commit of commits) {
+    for (let frameID of commitFrameIDs(commit)) {
+      if (!frameID)
+        continue;
+
+      let frame = frameByID.get(frameID);
+      if (!frame) {
+        outputByID.set(frameID, createCommittedFrameLoadError(sessionID, commit, frameID));
+        continue;
+      }
+
+      outputByID.set(frameID, {
+        ...frame,
+        commitOrder: commit.order,
+      });
+    }
+  }
+
+  for (let frame of outputByID.values())
+    ordered.push(frame);
+
+  for (let [frameID, frame] of frameByID) {
+    if (!outputByID.has(frameID))
+      ordered.push(frame);
+  }
+
+  return ordered.sort(compareFrameOrder);
+}
+
+function commitFrameIDs(commit) {
+  let frameIDs = [];
+
+  if (Array.isArray(commit?.changes)) {
+    for (let change of commit.changes) {
+      if (change?.frameID)
+        frameIDs.push(change.frameID);
+    }
+  }
+
+  if (frameIDs.length === 0 && Array.isArray(commit?.frameIDs)) {
+    for (let frameID of commit.frameIDs) {
+      if (frameID)
+        frameIDs.push(frameID);
+    }
+  }
+
+  return frameIDs;
+}
+
+function compareFrameFileVersion(a, b) {
+  return ((a.updatedAt || 0) - (b.updatedAt || 0))
+    || ((a.commitOrder || 0) - (b.commitOrder || 0))
+    || ((a.order || 0) - (b.order || 0));
 }
 
 function createFrameLoadError(sessionID, path, error) {
@@ -374,6 +495,35 @@ function createFrameLoadError(sessionID, path, error) {
       text: 'Frame could not be loaded from AeorDB. Original database evidence was not modified.',
       path,
       error: error?.message || 'Unknown frame load failure',
+    },
+  };
+}
+
+function createCommittedFrameLoadError(sessionID, commit, frameID) {
+  let order = typeof commit?.order === 'number' ? commit.order : 0;
+
+  return {
+    id: `load-error:${commit?.id || order}:${frameID}`,
+    type: 'FrameLoadError',
+    sessionID,
+    interactionID: null,
+    parentID: null,
+    authorType: 'system',
+    authorID: 'internal:aeordb-frame-store',
+    order,
+    commitOrder: order,
+    timestamp: commit?.timestamp || 0,
+    createdAt: commit?.timestamp || 0,
+    updatedAt: commit?.timestamp || 0,
+    hidden: false,
+    deleted: false,
+    phantom: false,
+    content: {
+      text: 'Committed frame could not be loaded from AeorDB. Original database evidence was not modified.',
+      commitID: commit?.id || null,
+      commitOrder: order,
+      frameID,
+      error: 'Committed frame body is missing or unreadable.',
     },
   };
 }

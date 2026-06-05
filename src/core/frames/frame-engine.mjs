@@ -75,6 +75,7 @@ export class FrameEngine extends EventEmitter {
 
     this._commits.push(commit);
     this._refs.set('heads/main', commit.order);
+    this._applyCommitOrder(results, commit.order);
 
     if (options.events !== false) {
       for (let event of frameEvents)
@@ -145,7 +146,7 @@ export class FrameEngine extends EventEmitter {
         this._addChild(frame.parentID, frame.id);
 
       this._frameOrder = Math.max(this._frameOrder, frame.order || 0);
-      this._commitOrder = Math.max(this._commitOrder, frame.order || 0);
+      this._commitOrder = Math.max(this._commitOrder, frame.commitOrder || frame.order || 0);
     }
 
     if (options.headOrder != null)
@@ -338,6 +339,21 @@ export class FrameEngine extends EventEmitter {
     };
   }
 
+  _applyCommitOrder(frames, commitOrder) {
+    let seen = new Set();
+
+    for (let frame of frames) {
+      if (!frame?.id || seen.has(frame.id))
+        continue;
+
+      seen.add(frame.id);
+      frame.commitOrder = commitOrder;
+      let current = this._frames.get(frame.id);
+      if (current)
+        current.commitOrder = commitOrder;
+    }
+  }
+
   _appendHistory(id, frame) {
     if (!this._history.has(id))
       this._history.set(id, []);
@@ -406,7 +422,14 @@ export class FrameEngine extends EventEmitter {
 }
 
 function compareFrameOrder(a, b) {
-  return (a.order - b.order) || String(a.id).localeCompare(String(b.id));
+  return (sortOrder(a) - sortOrder(b)) || String(a.id).localeCompare(String(b.id));
+}
+
+function sortOrder(frame) {
+  if (typeof frame?.commitOrder === 'number' && Number.isFinite(frame.commitOrder))
+    return frame.commitOrder;
+
+  return frame?.order || 0;
 }
 
 function numberOr(value, fallback) {

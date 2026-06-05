@@ -141,6 +141,56 @@ test('AeorDBFrameStore loads one session manifest and its frames on demand', asy
   assert.deepEqual((await store.listFrames('ses_1')).map((frame) => frame.id), [ 'msg_1', 'msg_2' ]);
 });
 
+test('AeorDBFrameStore orders frames by commit order and exposes missing committed frames', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000010-AgentMessage-agent_1.json', {
+    id: 'agent_1',
+    type: 'AgentMessage',
+    order: 10,
+    hidden: false,
+    content: { text: 'agent final' },
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_2/frames/0000000000000011-UserMessage-user_1.json', {
+    id: 'user_1',
+    type: 'UserMessage',
+    order: 11,
+    hidden: false,
+    content: { text: 'user before final' },
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/commits/0000000000000001-commit_1.json', {
+    id: 'commit_1',
+    order: 1,
+    changes: [{ frameID: 'agent_1', operation: 'create' }],
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/commits/0000000000000002-commit_2.json', {
+    id: 'commit_2',
+    order: 2,
+    changes: [{ frameID: 'user_1', operation: 'create' }],
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/commits/0000000000000003-commit_3.json', {
+    id: 'commit_3',
+    order: 3,
+    changes: [{ frameID: 'agent_1', operation: 'update' }],
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/commits/0000000000000004-commit_4.json', {
+    id: 'commit_4',
+    order: 4,
+    changes: [{ frameID: 'missing_agent', operation: 'create' }],
+  });
+
+  let frames = await store.listFrames('ses_1');
+
+  assert.deepEqual(frames.map((frame) => frame.id), [ 'user_1', 'agent_1', 'load-error:commit_4:missing_agent' ]);
+  assert.equal(frames[0].commitOrder, 2);
+  assert.equal(frames[1].order, 10);
+  assert.equal(frames[1].commitOrder, 3);
+  assert.equal(frames[2].type, 'FrameLoadError');
+  assert.equal(frames[2].commitOrder, 4);
+  assert.match(frames[2].content.text, /Committed frame could not be loaded/);
+});
+
 test('AeorDBFrameStore preserves frame load failures as visible non-persisted placeholders', async () => {
   let aeordb = createClient({
     failGetPath: '0000000000000002-AgentMessage-bad_msg.json',
@@ -207,13 +257,13 @@ test('AeorDBFrameStore persists a commit and changed frames', async () => {
   await store.saveCommit('ses_1', commit, frames.diffFrames(0, 'heads/main'), frames);
 
   assert.deepEqual(aeordb.calls.map((call) => [ call.method, call.path ]), [
-    [ 'putFile', '/kikx/sessions/ses_1/commits/0000000000000001-commit_1.json' ],
     [ 'putFile', '/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-frm_1.json' ],
+    [ 'putFile', '/kikx/sessions/ses_1/commits/0000000000000001-commit_1.json' ],
     [ 'putFile', '/kikx/sessions/ses_1/refs/heads%2Fmain.json' ],
   ]);
-  assert.equal(aeordb.calls[1].body.contentText, 'hello');
-  assert.equal(aeordb.calls[1].body.hidden, false);
-  assert.equal(aeordb.calls[1].body.hiddenIndex, 'false');
+  assert.equal(aeordb.calls[0].body.contentText, 'hello');
+  assert.equal(aeordb.calls[0].body.hidden, false);
+  assert.equal(aeordb.calls[0].body.hiddenIndex, 'false');
   assert.equal(aeordb.calls[2].body.commitOrder, 1);
 });
 

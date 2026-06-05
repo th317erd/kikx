@@ -90,3 +90,9 @@
   - [x] Tie thinking/output phantom frames to the response frame id.
   - [x] Persist final response JSON with a durable `content.thinking` block.
   - [x] Verify focused plugin, routing, and full app tests.
+
+- [x] Fix frame display ordering for finalized agent response frames.
+  - [x] Track latest frame commit position separately from stable frame creation order.
+  - [x] Hydrate frames by commit history and surface missing committed frame bodies as evidence placeholders.
+  - [x] Write frame bodies before commit records to avoid publishing commits that point at missing frames.
+  - [x] Keep live SSE frame state sorted by commit order while preserving unordered phantom arrival order.

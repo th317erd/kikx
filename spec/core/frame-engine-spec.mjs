@@ -81,6 +81,18 @@ test('FrameEngine target merges only mergeable fields and keeps target identity 
   assert.equal(frames.getVersionHistory('prompt_1').length, 2);
 });
 
+test('FrameEngine sorts by latest commit order without changing stable frame order', () => {
+  let frames = engine();
+  frames.merge([{ id: 'agent_1', type: 'AgentMessage', content: { text: '' }, hidden: true }]);
+  frames.merge([{ id: 'user_1', type: 'UserMessage', content: { text: 'later user' }, hidden: false }]);
+  frames.merge([{ id: 'agent_1', type: 'AgentMessage', content: { text: 'final' }, hidden: false }]);
+
+  assert.equal(frames.get('agent_1').order, 1);
+  assert.equal(frames.get('agent_1').commitOrder, 3);
+  assert.equal(frames.get('user_1').order, 2);
+  assert.deepEqual(frames.toArray().map((frame) => frame.id), [ 'user_1', 'agent_1' ]);
+});
+
 test('FrameEngine live frames collapse into a persistent group frame', () => {
   let frames = engine();
 
