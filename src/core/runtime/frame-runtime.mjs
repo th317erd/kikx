@@ -1,12 +1,15 @@
 'use strict';
 
+import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 
 import { AeorDBFrameStore } from '../aeordb/aeordb-frame-store.mjs';
 import { FrameEngine } from '../frames/frame-engine.mjs';
 
-export class FrameRuntime {
+export class FrameRuntime extends EventEmitter {
   constructor(options = {}) {
+    super();
+
     let {
       aeordb,
       frameStore,
@@ -55,6 +58,7 @@ export class FrameRuntime {
 
     let disconnect = this.connectFrameEngine(frameEngine, session);
     await this.frameStore.saveSession(session);
+    this.emitRuntimeEvent('session.saved', { sessionID: session.id, session });
 
     this.sessions.set(session.id, {
       session,
@@ -81,6 +85,7 @@ export class FrameRuntime {
     session.updatedAt = input.updatedAt || now;
 
     await this.frameStore.saveSession(session);
+    this.emitRuntimeEvent('session.saved', { sessionID: session.id, session });
 
     if (entry)
       entry.session = session;
@@ -186,6 +191,7 @@ export class FrameRuntime {
     entry.session.updatedAt = now;
     entry.session.messageCount = nextMessageCount(entry.session.messageCount, entry.frameEngine.toArray(), frames);
     await this.frameStore.saveSessionManifest(entry.session);
+    this.emitRuntimeEvent('session.saved', { sessionID, session: entry.session });
 
     return {
       session: entry.session,
@@ -210,6 +216,7 @@ export class FrameRuntime {
     };
 
     await this.frameStore.saveSessionManifest(entry.session);
+    this.emitRuntimeEvent('session.saved', { sessionID, session: entry.session });
 
     return {
       session: entry.session,
@@ -236,8 +243,34 @@ export class FrameRuntime {
       entry.disconnectStore?.();
   }
 
+  emitRuntimeEvent(type, payload = {}) {
+    this.emit(type, { type, ...payload });
+    this.emit('event', { type, ...payload });
+  }
+
   connectFrameEngine(frameEngine, session) {
+    let sessionID = session.id;
+    let phantomHandler = ({ frame }) => {
+      this.emitRuntimeEvent('frame.phantom', { sessionID, frame });
+    };
+    let commitHandler = ({ commit, frames }) => {
+      for (let frame of frames || []) {
+        let eventType = commit.changes?.find((change) => change.frameID === frame.id)?.operation === 'update'
+          ? 'frame.updated'
+          : 'frame.added';
+        this.emitRuntimeEvent(eventType, { sessionID, frame, commit });
+      }
+      this.emitRuntimeEvent('commit', { sessionID, commit, frames: Array.isArray(frames) ? frames.slice() : [] });
+    };
+
+    frameEngine.on('frame:phantom', phantomHandler);
+    frameEngine.on('commit', commitHandler);
+
     let disconnects = [
+      () => {
+        frameEngine.off('frame:phantom', phantomHandler);
+        frameEngine.off('commit', commitHandler);
+      },
       this.frameStore.connect(frameEngine, { sessionID: session.id }),
     ];
 

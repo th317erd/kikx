@@ -18,6 +18,7 @@ import {
   setAgentFormProvider,
   setSessionFrames,
   setSessions,
+  upsertFrame,
   upsertAgent,
   upsertSession,
 } from '../state/kikx-state.mjs';
@@ -33,6 +34,7 @@ export class KikxApp extends HTMLElement {
     super();
 
     this._state = kikxState;
+    this._eventSource = null;
 
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
@@ -46,6 +48,9 @@ export class KikxApp extends HTMLElement {
     this._closeSessionEditor = this._closeSessionEditor.bind(this);
     this._onSessionEditSubmit = this._onSessionEditSubmit.bind(this);
     this._signOut = this._signOut.bind(this);
+    this._onRuntimeEvent = this._onRuntimeEvent.bind(this);
+    this._onRuntimeEventsOpen = this._onRuntimeEventsOpen.bind(this);
+    this._onRuntimeEventsError = this._onRuntimeEventsError.bind(this);
   }
 
   connectedCallback() {
@@ -55,7 +60,7 @@ export class KikxApp extends HTMLElement {
     this._mounted = true;
     this._render();
     if (this._state.authToken) {
-      this._loadAeorDBEventsURL();
+      this._connectRuntimeEvents();
       this._loadSessions();
     } else if (this._state.magicCode) {
       this._verifyMagicLink(this._state.magicCode);
@@ -355,22 +360,68 @@ export class KikxApp extends HTMLElement {
     );
   }
 
-  async _loadAeorDBEventsURL() {
-    try {
-      let response = await fetch('/api/v1/aeordb/events-url?events=entries_created,entries_updated&path_prefix=/kikx');
-      let body = await response.json();
-      if (!response.ok)
-        throw new Error(body?.error?.message || 'Unable to load AeorDB events URL');
+  _connectRuntimeEvents() {
+    this._disconnectRuntimeEvents();
 
-      this._state.aeordbEventsURL = body.data.url;
-      this._state.connectionStatus = 'Connected';
-      this._state.connectionStatusKind = 'ready';
+    if (typeof EventSource !== 'function') {
+      this._state.connectionStatus = 'Disconnected';
+      this._state.connectionStatusKind = 'error';
+      return;
+    }
+
+    try {
+      this._eventSource = new EventSource('/api/v1/events');
+      this._eventSource.addEventListener('open', this._onRuntimeEventsOpen);
+      this._eventSource.addEventListener('error', this._onRuntimeEventsError);
+      for (let eventType of [ 'connected', 'session.saved', 'frame.added', 'frame.updated', 'frame.phantom', 'commit' ])
+        this._eventSource.addEventListener(eventType, this._onRuntimeEvent);
     } catch (error) {
       this._state.connectionStatus = 'Disconnected';
       this._state.connectionStatusKind = 'error';
       this._state.status = error.message;
       this._state.statusKind = 'error';
     }
+  }
+
+  _disconnectRuntimeEvents() {
+    if (!this._eventSource)
+      return;
+
+    this._eventSource.close();
+    this._eventSource = null;
+  }
+
+  _onRuntimeEventsOpen() {
+    this._state.connectionStatus = 'Connected';
+    this._state.connectionStatusKind = 'ready';
+    this._render();
+  }
+
+  _onRuntimeEventsError() {
+    this._state.connectionStatus = 'Disconnected';
+    this._state.connectionStatusKind = 'error';
+    this._render();
+  }
+
+  _onRuntimeEvent(event) {
+    let data = parseRuntimeEvent(event);
+    if (!data)
+      return;
+
+    if (data.type === 'connected') {
+      this._state.connectionStatus = 'Connected';
+      this._state.connectionStatusKind = 'ready';
+      this._render();
+      return;
+    }
+
+    if (data.type === 'session.saved' && data.session?.id)
+      upsertSession(data.session, this._state);
+
+    if ((data.type === 'frame.added' || data.type === 'frame.updated' || data.type === 'frame.phantom') && data.sessionID && data.frame?.id)
+      upsertFrame(data.sessionID, data.frame, this._state);
+
+    this._render();
   }
 
   async _loadSessions() {
@@ -468,11 +519,12 @@ export class KikxApp extends HTMLElement {
     this._state.statusKind = 'ready';
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
     this._render();
-    this._loadAeorDBEventsURL();
+    this._connectRuntimeEvents();
     this._loadSessions();
   }
 
   _signOut() {
+    this._disconnectRuntimeEvents();
     sessionStorage.removeItem(AUTH_STORAGE_KEY);
     this._state.authToken = '';
     this._state.refreshToken = '';
@@ -812,6 +864,17 @@ function normalizeFieldOptions(options) {
       label: item?.label ?? item?.value ?? '',
     };
   });
+}
+
+function parseRuntimeEvent(event) {
+  try {
+    let data = JSON.parse(event.data || '{}');
+    if (!data.type && event.type)
+      data.type = event.type;
+    return data;
+  } catch (_error) {
+    return null;
+  }
 }
 
 if (!customElements.get('kikx-app'))

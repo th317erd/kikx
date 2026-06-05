@@ -1,6 +1,7 @@
 'use strict';
 
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -583,6 +584,78 @@ test('GET /api/v1/aeordb/events-url returns delegated AeorDB events URL', async 
     await close(server);
   }
 });
+
+test('GET /api/v1/events streams runtime events as SSE', async () => {
+  let runtime = new EventEmitter();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+  let response;
+
+  try {
+    response = await fetch(`${baseURL}/api/v1/events?sessionID=ses_1`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /text\/event-stream/);
+
+    let reader = response.body.getReader();
+    let first = await readSSEEvent(reader);
+    assert.deepEqual(first, {
+      event: 'connected',
+      data: { ok: true },
+    });
+
+    runtime.emit('event', {
+      type: 'frame.phantom',
+      sessionID: 'ses_2',
+      frame: { id: 'skip_1' },
+    });
+    runtime.emit('event', {
+      type: 'frame.phantom',
+      sessionID: 'ses_1',
+      frame: { id: 'think_1', type: 'AgentThinking', content: { text: 'thinking' } },
+    });
+
+    let second = await readSSEEvent(reader);
+    assert.equal(second.event, 'frame.phantom');
+    assert.equal(second.data.sessionID, 'ses_1');
+    assert.equal(second.data.frame.type, 'AgentThinking');
+
+    await reader.cancel();
+  } finally {
+    await close(server);
+  }
+});
+
+async function readSSEEvent(reader) {
+  let decoder = new TextDecoder();
+  let buffer = '';
+  while (!buffer.includes('\n\n')) {
+    let result = await reader.read();
+    if (result.done)
+      throw new Error('SSE stream ended before an event arrived');
+    buffer += decoder.decode(result.value, { stream: true });
+  }
+
+  let block = buffer.slice(0, buffer.indexOf('\n\n'));
+  let event = 'message';
+  let data = [];
+  for (let line of block.split('\n')) {
+    if (line.startsWith('event:'))
+      event = line.slice('event:'.length).trim();
+    if (line.startsWith('data:'))
+      data.push(line.slice('data:'.length).trimStart());
+  }
+
+  return {
+    event,
+    data: JSON.parse(data.join('\n')),
+  };
+}
 
 test('GET /api/v1/agent-providers lists plugin-declared providers', async () => {
   let agentManager = createAgentManager();

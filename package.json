@@ -19,5 +19,8 @@
   "engines": {
     "node": ">=22"
   },
-  "license": "GPL-3.0-or-later"
+  "license": "GPL-3.0-or-later",
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
 }

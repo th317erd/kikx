@@ -7,6 +7,7 @@ import {
   countMessageFrames,
   mergeSessions,
   setSessionFramesState,
+  upsertFrameState,
   upsertSessionState,
 } from '../../src/client/state/session-state-utils.mjs';
 
@@ -92,6 +93,48 @@ test('upsertSessionState adds new sessions without clearing cached inactive deta
   assert.equal(next.sessionDetailsByID.ses_1.messageCount, 5);
   assert.equal(next.sessionDetailsByID.ses_2.title, 'Created');
   assert.deepEqual(next.framesBySessionID.ses_1, [ { id: 'msg_1', type: 'UserMessage' } ]);
+});
+
+test('upsertFrameState appends and replaces frames by id without losing session details', () => {
+  let state = {
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: {
+      ses_1: { id: 'ses_1', title: 'Scratch', messageCount: 1 },
+    },
+    framesBySessionID: {
+      ses_1: [
+        { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } },
+      ],
+    },
+  };
+
+  let appended = upsertFrameState(state, 'ses_1', {
+    id: 'think_1',
+    type: 'AgentThinking',
+    phantom: true,
+    content: { text: 'thinking' },
+  });
+  let replaced = upsertFrameState(appended, 'ses_1', {
+    id: 'think_1',
+    type: 'AgentThinking',
+    phantom: true,
+    content: { text: 'still thinking' },
+  });
+
+  assert.deepEqual(replaced.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'think_1' ]);
+  assert.equal(replaced.framesBySessionID.ses_1[1].content.text, 'still thinking');
+  assert.equal(replaced.sessionDetailsByID.ses_1.messageCount, 1);
+});
+
+test('upsertFrameState ignores malformed frames and missing session ids', () => {
+  let state = {
+    sessionIDs: [],
+    sessionDetailsByID: {},
+    framesBySessionID: {},
+  };
+
+  assert.deepEqual(upsertFrameState(state, '', { id: 'frame_1' }), state);
+  assert.deepEqual(upsertFrameState(state, 'ses_1', { type: 'MissingID' }), state);
 });
 
 test('countMessageFrames treats non-message frames and invalid input as zero', () => {

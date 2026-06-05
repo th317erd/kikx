@@ -80,6 +80,20 @@ export function setSessionFramesState(state, sessionID, frames) {
   };
 }
 
+export function upsertFrameState(state, sessionID, frame) {
+  let snapshot = createSessionStateSnapshot(state);
+  if (!sessionID || !frame?.id)
+    return snapshot;
+
+  let frames = snapshot.framesBySessionID[sessionID] || [];
+  let existingIndex = frames.findIndex((candidate) => candidate?.id === frame.id);
+  let nextFrames = existingIndex === -1
+    ? [ ...frames, frame ]
+    : frames.map((candidate, index) => index === existingIndex ? frame : candidate);
+
+  return setSessionFramesState(snapshot, sessionID, nextFrames);
+}
+
 export function countMessageFrames(frames) {
   return (Array.isArray(frames) ? frames : []).filter((frame) => frame?.type === 'UserMessage').length;
 }

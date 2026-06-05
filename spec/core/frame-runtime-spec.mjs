@@ -225,6 +225,58 @@ test('FrameRuntime routes user messages through the configured frame router', as
   assert.equal(routed[0].services.frameRuntime, runtime);
 });
 
+test('FrameRuntime emits runtime events for persistent and phantom frames', async () => {
+  let events = [];
+  let aeordb = createClient();
+  let runtime = new FrameRuntime({
+    aeordb,
+    clock: () => 1000,
+    idGenerator: (() => {
+      let ids = [ 'ses_1', 'int_1', 'msg_1', 'commit_1', 'phantom_1', 'agent_1', 'commit_2' ];
+      let index = 0;
+      return () => ids[index++];
+    })(),
+  });
+  runtime.on('event', (event) => events.push(event));
+
+  await runtime.createSession({ title: 'Scratch' });
+  await runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'phantom_1',
+    type: 'AgentThinking',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    parentID: 'msg_1',
+    phantom: true,
+    content: { text: 'thinking' },
+  }]);
+  entry.frameEngine.merge([{
+    id: 'agent_1',
+    type: 'AgentMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    parentID: 'msg_1',
+    hidden: false,
+    content: { text: 'hello back' },
+  }]);
+
+  assert.deepEqual(events.map((event) => event.type), [
+    'session.saved',
+    'frame.added',
+    'commit',
+    'session.saved',
+    'frame.phantom',
+    'frame.added',
+    'commit',
+  ]);
+  assert.equal(events[1].sessionID, 'ses_1');
+  assert.equal(events[1].frame.type, 'UserMessage');
+  assert.equal(events[4].frame.type, 'AgentThinking');
+  assert.equal(events[4].frame.phantom, true);
+  assert.equal(events[5].frame.type, 'AgentMessage');
+});
+
 test('FrameRuntime routes /invite through internal command before lower priority agent routes', async () => {
   let result = await routeInviteMessage('/invite Coder', 'Coder');
 

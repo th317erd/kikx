@@ -60,7 +60,11 @@
 
 - [x] Fix routed command results appearing only after the next message.
 
-- [ ] Add SSE-driven frame/session updates so routed frames appear without manual reloads.
+- [x] Add SSE-driven frame/session updates so routed frames appear without manual reloads.
+  - [x] Emit runtime frame events for persistent and phantom frames.
+  - [x] Add a Kikx SSE endpoint scoped to session/global runtime events.
+  - [x] Consume Kikx SSE in the browser global reactive state.
+  - [x] Verify live AI chat with Playwright.
 
 - [x] Hook invited agents into low-priority frame routing.
   - [x] Add generic agent dispatch after slash/internal routing.

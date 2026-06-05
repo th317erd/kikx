@@ -9,6 +9,7 @@ import {
   countMessageFrames,
   mergeSessions,
   setSessionFramesState,
+  upsertFrameState,
   upsertSessionState,
 } from './session-state-utils.mjs';
 
@@ -85,6 +86,10 @@ export function upsertSession(session, state = kikxState) {
 
 export function setSessionFrames(sessionID, frames, state = kikxState) {
   applySessionSnapshot(state, setSessionFramesState(state, sessionID, frames));
+}
+
+export function upsertFrame(sessionID, frame, state = kikxState) {
+  applySessionSnapshot(state, upsertFrameState(state, sessionID, frame));
 }
 
 export function resetSessionState(state = kikxState) {
