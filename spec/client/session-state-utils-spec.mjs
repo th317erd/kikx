@@ -136,6 +136,18 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
     framesBySessionID: {
       ses_1: [
         { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } },
+        {
+          id: 'agent_msg_1',
+          type: 'AgentMessage',
+          parentID: 'msg_1',
+          authorID: 'agent_1',
+          hidden: true,
+          content: {
+            text: '',
+            thinking: { text: '', status: 'pending' },
+            status: 'streaming',
+          },
+        },
       ],
     },
   };
@@ -151,14 +163,23 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
     id: 'agent_msg_1:thinking',
     type: 'AgentThinking',
     phantom: true,
+    responseFrameID: 'agent_msg_1',
     parentID: 'msg_1',
     authorID: 'agent_1',
-    content: { text: 'thinking' },
+    content: {
+      text: 'thinking',
+      thinking: {
+        text: 'thinking',
+        chunks: { '1': 'thinking' },
+        status: 'streaming',
+      },
+    },
   });
   let delta = upsertFrameState(thinking, 'ses_1', {
     id: 'agent_msg_1',
     type: 'AgentMessageDelta',
     phantom: true,
+    responseFrameID: 'agent_msg_1',
     parentID: 'msg_1',
     authorID: 'agent_1',
     content: { text: 'partial' },
@@ -177,15 +198,27 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
     content: { text: 'final' },
   });
 
-  assert.deepEqual(thinking.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'typing:agent_1', 'agent_msg_1:thinking' ]);
-  assert.equal(thinking.framesBySessionID.ses_1[1].type, 'BeginTyping');
-  assert.equal(thinking.framesBySessionID.ses_1[2].hidden, false);
-  assert.deepEqual(delta.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'typing:agent_1', 'agent_msg_1:thinking', 'agent_msg_1' ]);
-  assert.equal(delta.framesBySessionID.ses_1[3].hidden, false);
-  assert.deepEqual(endTyping.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1:thinking', 'agent_msg_1' ]);
+  assert.deepEqual(thinking.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1', 'typing:agent_1' ]);
+  assert.equal(thinking.framesBySessionID.ses_1[1].type, 'AgentMessage');
+  assert.equal(thinking.framesBySessionID.ses_1[1].hidden, true);
+  assert.deepEqual(thinking.framesBySessionID.ses_1[1].content.thinking, {
+    text: 'thinking',
+    chunks: { '1': 'thinking' },
+    status: 'streaming',
+  });
+  assert.deepEqual(delta.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1', 'typing:agent_1' ]);
+  assert.equal(delta.framesBySessionID.ses_1[1].type, 'AgentMessage');
+  assert.equal(delta.framesBySessionID.ses_1[1].hidden, false);
+  assert.equal(delta.framesBySessionID.ses_1[1].content.text, 'partial');
+  assert.deepEqual(endTyping.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1' ]);
   assert.deepEqual(final.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1' ]);
   assert.equal(final.framesBySessionID.ses_1[1].type, 'AgentMessage');
   assert.equal(final.framesBySessionID.ses_1[1].content.text, 'final');
+  assert.deepEqual(final.framesBySessionID.ses_1[1].content.thinking, {
+    text: 'thinking',
+    chunks: { '1': 'thinking' },
+    status: 'streaming',
+  });
 });
 
 test('upsertFrameState keeps live frames sorted by commit order', () => {

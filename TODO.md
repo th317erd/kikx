@@ -96,3 +96,8 @@
   - [x] Hydrate frames by commit history and surface missing committed frame bodies as evidence placeholders.
   - [x] Write frame bodies before commit records to avoid publishing commits that point at missing frames.
   - [x] Keep live SSE frame state sorted by commit order while preserving unordered phantom arrival order.
+
+- [x] Fold response-bound thinking phantoms into their AgentMessage frame in the browser.
+  - [x] Keep `AgentThinking` PhantomFrames transitory and non-persistent.
+  - [x] Merge `content.thinking` into the response frame state instead of rendering a second thinking row.
+  - [x] Preserve accumulated thinking when the final AgentMessage event arrives.
