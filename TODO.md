@@ -119,3 +119,11 @@
   - [x] Restart local AeorDB with `/home/wyatt/.local/bin/aeordb`.
   - [x] Re-test session creation/listing against the fixed build.
   - [x] Replace repeated per-file fetches with `POST /files/fetch` where appropriate.
+
+- [x] Add Stagehand UI test support.
+  - [x] Read current Stagehand v3 docs.
+  - [x] Install Stagehand and required test dependencies.
+  - [x] Add a local Stagehand test harness.
+  - [x] Load the dev OpenAI key from the `Test 1` Kikx agent without printing it.
+  - [x] Add a Stagehand UI test for New Session behavior.
+  - [x] Verify focused Stagehand test and full app tests.
