@@ -42,13 +42,15 @@ export class FrameRuntime extends EventEmitter {
     let stamp = this.nextClockStamp();
     let now = stamp.at;
     let title = normalizeTitle(input.title, this.nextDefaultSessionTitle());
+    let participantAgentIDs = normalizeStringArray(input.participantAgentIDs);
     let session = {
       id: input.id || this.idGenerator(),
       title,
       organizationID: input.organizationID || null,
       createdByUserID: input.createdByUserID || input.userID || null,
       messageCount: normalizeCount(input.messageCount),
-      participantAgentIDs: normalizeStringArray(input.participantAgentIDs),
+      participantAgentIDs,
+      coordinatorAgentID: normalizeCoordinatorAgentID(input.coordinatorAgentID, participantAgentIDs),
       createdAt: input.createdAt || now,
       updatedAt: input.updatedAt || now,
       createdClock: input.createdClock || stamp.clock,
@@ -228,6 +230,7 @@ export class FrameRuntime extends EventEmitter {
       participantAgentIDs.push(agentID);
 
     entry.session.participantAgentIDs = participantAgentIDs;
+    entry.session.coordinatorAgentID = normalizeCoordinatorAgentID(entry.session.coordinatorAgentID, participantAgentIDs);
     let stamp = this.nextClockStamp();
     entry.session.updatedAt = input.updatedAt || input.invitedAt || stamp.at;
     entry.session.updatedClock = input.updatedClock || input.invitedClock || stamp.clock;
@@ -369,6 +372,16 @@ function normalizeStringArray(values) {
   }
 
   return normalized;
+}
+
+function normalizeCoordinatorAgentID(coordinatorAgentID, participantAgentIDs) {
+  if (typeof coordinatorAgentID === 'string') {
+    let trimmed = coordinatorAgentID.trim();
+    if (participantAgentIDs.includes(trimmed))
+      return trimmed;
+  }
+
+  return participantAgentIDs[0] || null;
 }
 
 function countMessageFrames(frames) {

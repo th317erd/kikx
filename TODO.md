@@ -127,3 +127,10 @@
   - [x] Load the dev OpenAI key from the `Test 1` Kikx agent without printing it.
   - [x] Add a Stagehand UI test for New Session behavior.
   - [x] Verify focused Stagehand test and full app tests.
+
+- [x] Add session coordinators and base agent loop.
+  - [x] Persist exactly one `coordinatorAgentID` when a session has participants.
+  - [x] Route normal user messages only to the coordinator by default.
+  - [x] Add deterministic base `AgentInterface` loop primitives and break/finalize tools.
+  - [x] Update Codex provider to use the base loop primitive.
+  - [x] Verify focused app/plugin tests and full app tests.

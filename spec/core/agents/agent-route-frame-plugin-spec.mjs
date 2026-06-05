@@ -25,6 +25,8 @@ class StreamingAgentProvider extends AgentInterface {
       responseFrameID: params.responseFrameID,
       responseFrameIDMatchesFrame: params.responseFrameID === params.responseFrame?.id,
       frameTypes: params.frames.map((frame) => frame.type),
+      isCoordinator: params.isCoordinator,
+      coordinatorAgentID: params.coordinatorAgentID,
     });
 
     yield {
@@ -102,6 +104,8 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
     responseFrameID: 'agent_frame_1',
     responseFrameIDMatchesFrame: true,
     frameTypes: [ 'UserMessage', 'AgentMessage' ],
+    isCoordinator: true,
+    coordinatorAgentID: 'agent_1',
   });
   assert.deepEqual(phantoms.map((frame) => frame.type), [ 'AgentThinking' ]);
   assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage' ]);
@@ -122,6 +126,42 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
   assert.equal(phantoms[0].parentID, 'msg_1');
 });
 
+test('AgentRouteFramePlugin dispatches normal user messages only to the session coordinator', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Coder',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-one' },
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Reviewer',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-two' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1', 'agent_2' ],
+    coordinatorAgentID: 'agent_2',
+  });
+  await runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
+
+  let calls = runtime.services.calls.filter((call) => call.method === 'run');
+  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_2' ]);
+  assert.equal(calls[0].apiKey, 'sk-two');
+  assert.equal(calls[0].isCoordinator, true);
+  assert.equal(calls[0].coordinatorAgentID, 'agent_2');
+});
+
 test('AgentRouteFramePlugin does nothing when a session has no invited agents', async () => {
   let runtime = createRuntime();
 
@@ -132,7 +172,7 @@ test('AgentRouteFramePlugin does nothing when a session has no invited agents', 
   assert.deepEqual((await runtime.listFrames('ses_1')).map((frame) => frame.type), [ 'UserMessage' ]);
 });
 
-test('AgentRouteFramePlugin skips disabled agents and writes visible errors for broken providers', async () => {
+test('AgentRouteFramePlugin routes coordinator failures without broadcasting to other participants', async () => {
   let runtime = createRuntime({
     session: {
       participantAgentIDs: [ 'agent_disabled', 'agent_missing_provider', 'agent_failing' ],
@@ -168,17 +208,53 @@ test('AgentRouteFramePlugin skips disabled agents and writes visible errors for 
   await runtime.createSession({
     title: 'Scratch',
     participantAgentIDs: [ 'agent_disabled', 'agent_missing_provider', 'agent_failing' ],
+    coordinatorAgentID: 'agent_failing',
   });
   await runtime.appendUserMessage('ses_1', { text: 'hello' });
 
   let frames = await runtime.listFrames('ses_1');
-  assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentError', 'AgentMessage' ]);
-  assert.match(frames[1].content.text, /Unknown agent provider: missing-provider/);
-  assert.equal(frames[1].authorID, 'agent_missing_provider');
-  assert.match(frames[2].content.text, /provider exploded/);
-  assert.equal(frames[2].authorID, 'agent_failing');
-  assert.equal(frames[2].content.status, 'error');
-  assert.equal(frames[2].hidden, false);
+  assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage' ]);
+  assert.match(frames[1].content.text, /provider exploded/);
+  assert.equal(frames[1].authorID, 'agent_failing');
+  assert.equal(frames[1].content.status, 'error');
+  assert.equal(frames[1].hidden, false);
+  assert.deepEqual(runtime.services.calls.filter((call) => call.method === 'run'), []);
+});
+
+test('AgentRouteFramePlugin writes a visible error when the coordinator is disabled', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_disabled', {
+        id: 'agent_disabled',
+        name: 'Disabled',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: {},
+        enabled: false,
+      } ],
+      [ 'agent_enabled', {
+        id: 'agent_enabled',
+        name: 'Enabled',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-enabled' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_disabled', 'agent_enabled' ],
+    coordinatorAgentID: 'agent_disabled',
+  });
+  await runtime.appendUserMessage('ses_1', { text: 'hello' });
+
+  let frames = await runtime.listFrames('ses_1');
+  assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentError' ]);
+  assert.equal(frames[1].authorID, 'agent_disabled');
+  assert.match(frames[1].content.text, /Agent is disabled: agent_disabled/);
+  assert.deepEqual(runtime.services.calls.filter((call) => call.method === 'run'), []);
 });
 
 test('AgentRouteFramePlugin requests agent secrets through AgentManager', async () => {

@@ -18,6 +18,12 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       return;
     }
 
+    let coordinatorAgentID = resolveCoordinatorAgentID(this.context.session, participantAgentIDs);
+    if (!coordinatorAgentID) {
+      await next(this.context);
+      return;
+    }
+
     let services = this.context.services || {};
     let agentManager = resolveService(services, 'agentManager');
     let pluginRegistry = resolveService(services, 'pluginRegistry');
@@ -28,13 +34,19 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
     if (!pluginRegistry)
       throw new Error('AgentRouteFramePlugin requires pluginRegistry');
 
-    for (let agentID of participantAgentIDs)
-      await this.routeAgent({ agentID, agentManager, pluginRegistry, services, frame });
+    await this.routeAgent({
+      agentID: coordinatorAgentID,
+      coordinatorAgentID,
+      agentManager,
+      pluginRegistry,
+      services,
+      frame,
+    });
 
     done();
   }
 
-  async routeAgent({ agentID, agentManager, pluginRegistry, services, frame }) {
+  async routeAgent({ agentID, coordinatorAgentID, agentManager, pluginRegistry, services, frame }) {
     let agent;
     let responseFrameID = null;
     try {
@@ -43,7 +55,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         throw new Error(`Unknown agent: ${agentID}`);
 
       if (agent.enabled === false)
-        return;
+        throw new Error(`Agent is disabled: ${agentID}`);
 
       let ProviderClass = pluginRegistry.getAgentProvider(agent.pluginID);
       if (!ProviderClass)
@@ -71,6 +83,8 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         services,
         responseFrameID,
         responseFrame,
+        coordinatorAgentID,
+        isCoordinator: agent.id === coordinatorAgentID,
       };
 
       for await (let output of provider.run(runParams))
@@ -221,6 +235,16 @@ function normalizeStringArray(values) {
   }
 
   return normalized;
+}
+
+function resolveCoordinatorAgentID(session, participantAgentIDs) {
+  if (typeof session?.coordinatorAgentID === 'string') {
+    let coordinatorAgentID = session.coordinatorAgentID.trim();
+    if (participantAgentIDs.includes(coordinatorAgentID))
+      return coordinatorAgentID;
+  }
+
+  return participantAgentIDs[0] || null;
 }
 
 function resolveService(services, name) {

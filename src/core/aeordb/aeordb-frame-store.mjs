@@ -55,6 +55,7 @@ export class AeorDBFrameStore {
             { name: 'id', type: 'string' },
             { name: 'organizationID', type: 'string' },
             { name: 'title', type: [ 'string', 'trigram' ] },
+            { name: 'coordinatorAgentID', type: 'string' },
             { name: 'createdAt', type: 'timestamp' },
             { name: 'updatedAt', type: 'timestamp' },
             { name: 'createdClock', type: 'string' },

@@ -103,6 +103,7 @@ test('AeorDBFrameStore writes global and session-local index configs', async () 
   assert.ok(aeordb.calls[1].body.indexes.some((index) => index.name === 'contentText'));
   assert.ok(aeordb.calls[1].body.indexes.some((index) => index.name === 'createdClock'));
   assert.ok(aeordb.calls[1].body.indexes.some((index) => index.name === 'updatedClock'));
+  assert.ok(aeordb.calls[0].body.indexes.some((index) => index.name === 'coordinatorAgentID'));
 });
 
 test('AeorDBFrameStore saves session manifests after creating session-local indexes', async () => {

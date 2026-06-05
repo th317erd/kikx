@@ -194,9 +194,54 @@ test('FrameRuntime idempotently persists invited agent participants on session m
   assert.equal(first.alreadyParticipant, false);
   assert.equal(second.alreadyParticipant, true);
   assert.deepEqual(second.session.participantAgentIDs, [ 'agent_1' ]);
+  assert.equal(first.session.coordinatorAgentID, 'agent_1');
+  assert.equal(second.session.coordinatorAgentID, 'agent_1');
   assert.equal(second.session.updatedAt, 3000);
   assert.equal(aeordb.calls.at(-1).path, '/kikx/sessions/ses_1/session.json');
   assert.deepEqual(aeordb.calls.at(-1).body.participantAgentIDs, [ 'agent_1' ]);
+  assert.equal(aeordb.calls.at(-1).body.coordinatorAgentID, 'agent_1');
+});
+
+test('FrameRuntime assigns the first invited agent as coordinator and preserves it for later invites', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({ aeordb, ids: [ 'ses_1' ], now: 1000 });
+
+  await runtime.createSession({ title: 'Scratch' });
+  let first = await runtime.inviteAgentToSession('ses_1', {
+    id: 'agent_1',
+    name: 'Coder',
+  }, { invitedAt: 2000 });
+  let second = await runtime.inviteAgentToSession('ses_1', {
+    id: 'agent_2',
+    name: 'Reviewer',
+  }, { invitedAt: 3000 });
+
+  assert.equal(first.session.coordinatorAgentID, 'agent_1');
+  assert.equal(second.session.coordinatorAgentID, 'agent_1');
+  assert.deepEqual(second.session.participantAgentIDs, [ 'agent_1', 'agent_2' ]);
+});
+
+test('FrameRuntime normalizes coordinator manifests when participant input is provided', async () => {
+  let runtime = createRuntime({ ids: [ 'ses_1', 'ses_2', 'ses_3' ] });
+
+  let empty = await runtime.createSession({
+    title: 'Empty',
+    participantAgentIDs: [],
+    coordinatorAgentID: 'agent_missing',
+  });
+  let first = await runtime.createSession({
+    title: 'First',
+    participantAgentIDs: [ 'agent_1', 'agent_2' ],
+  });
+  let explicit = await runtime.createSession({
+    title: 'Explicit',
+    participantAgentIDs: [ 'agent_1', 'agent_2' ],
+    coordinatorAgentID: 'agent_2',
+  });
+
+  assert.equal(empty.coordinatorAgentID, null);
+  assert.equal(first.coordinatorAgentID, 'agent_1');
+  assert.equal(explicit.coordinatorAgentID, 'agent_2');
 });
 
 test('FrameRuntime routes user messages through the configured frame router', async () => {
@@ -286,6 +331,7 @@ test('FrameRuntime routes /invite through internal command before lower priority
 
   assert.deepEqual(result.agentRoutes, []);
   assert.deepEqual(result.session.participantAgentIDs, [ 'agent_1' ]);
+  assert.equal(result.session.coordinatorAgentID, 'agent_1');
   assert.deepEqual(result.frames.map((frame) => frame.type), [ 'UserMessage', 'CommandResult' ]);
   assert.equal(result.frames[1].content.text, 'Coder joined this session.');
 });
