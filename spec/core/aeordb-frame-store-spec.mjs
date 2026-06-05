@@ -6,7 +6,7 @@ import test from 'node:test';
 import { FrameEngine } from '../../src/core/frames/index.mjs';
 import { AeorDBFrameStore } from '../../src/core/aeordb/aeordb-frame-store.mjs';
 
-function createClient() {
+function createClient(options = {}) {
   let calls = [];
   return {
     calls,
@@ -22,6 +22,9 @@ function createClient() {
     },
     async getFile(path) {
       calls.push({ method: 'getFile', path });
+      if (options.failGetPath && path.includes(options.failGetPath))
+        throw new Error(options.failGetMessage || 'read failed');
+
       return this.files.get(path) || null;
     },
     async listDirectory(path, options) {
@@ -136,6 +139,47 @@ test('AeorDBFrameStore loads one session manifest and its frames on demand', asy
 
   assert.deepEqual(await store.loadSession('ses_1'), { id: 'ses_1', title: 'First' });
   assert.deepEqual((await store.listFrames('ses_1')).map((frame) => frame.id), [ 'msg_1', 'msg_2' ]);
+});
+
+test('AeorDBFrameStore preserves frame load failures as visible non-persisted placeholders', async () => {
+  let aeordb = createClient({
+    failGetPath: '0000000000000002-AgentMessage-bad_msg.json',
+    failGetMessage: 'fetch failed',
+  });
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-msg_1.json', {
+    id: 'msg_1',
+    type: 'UserMessage',
+    order: 1,
+    hidden: false,
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000002-AgentMessage-bad_msg.json', {
+    id: 'bad_msg',
+    type: 'AgentMessage',
+    order: 2,
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000003-UserMessage-msg_2.json', {
+    id: 'msg_2',
+    type: 'UserMessage',
+    order: 3,
+    hidden: false,
+  });
+
+  let frames = await store.listFrames('ses_1');
+
+  assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'FrameLoadError', 'UserMessage' ]);
+  assert.deepEqual(frames.map((frame) => frame.id), [
+    'msg_1',
+    'load-error:0000000000000002-AgentMessage-bad_msg.json',
+    'msg_2',
+  ]);
+  assert.equal(frames[1].hidden, false);
+  assert.equal(frames[1].deleted, false);
+  assert.equal(frames[1].order, 2);
+  assert.equal(frames[1].content.text, 'Frame could not be loaded from AeorDB. Original database evidence was not modified.');
+  assert.equal(frames[1].content.path, '/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000002-AgentMessage-bad_msg.json');
+  assert.equal(frames[1].content.error, 'fetch failed');
+  assert.equal(aeordb.calls.some((call) => call.method === 'putFile' || call.method === 'patchFile'), false);
 });
 
 test('AeorDBFrameStore persists a commit and changed frames', async () => {

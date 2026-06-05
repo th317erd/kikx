@@ -193,9 +193,13 @@ export class AeorDBFrameStore {
       if (!item.path.includes('/frames/'))
         continue;
 
-      let frame = await this.aeordb.getFile(item.path);
-      if (frame?.id && frame.type)
-        frames.push(frame);
+      try {
+        let frame = await this.aeordb.getFile(item.path);
+        if (frame?.id && frame.type)
+          frames.push(frame);
+      } catch (error) {
+        frames.push(createFrameLoadError(sessionID, item.path, error));
+      }
     }
 
     return frames.sort(compareFrameOrder);
@@ -345,6 +349,48 @@ function normalizeOffset(offset) {
 
 function compareFrameOrder(a, b) {
   return ((a.order || 0) - (b.order || 0)) || String(a.id).localeCompare(String(b.id));
+}
+
+function createFrameLoadError(sessionID, path, error) {
+  let fileName = String(path || '').split('/').pop() || 'unknown-frame.json';
+  let order = parseFrameOrderFromPath(path);
+
+  return {
+    id: `load-error:${fileName}`,
+    type: 'FrameLoadError',
+    sessionID,
+    interactionID: parseInteractionIDFromPath(path),
+    parentID: null,
+    authorType: 'system',
+    authorID: 'internal:aeordb-frame-store',
+    order,
+    timestamp: 0,
+    createdAt: 0,
+    updatedAt: 0,
+    hidden: false,
+    deleted: false,
+    phantom: false,
+    content: {
+      text: 'Frame could not be loaded from AeorDB. Original database evidence was not modified.',
+      path,
+      error: error?.message || 'Unknown frame load failure',
+    },
+  };
+}
+
+function parseFrameOrderFromPath(path) {
+  let fileName = String(path || '').split('/').pop() || '';
+  let match = fileName.match(/^(\d+)-/);
+  if (!match)
+    return 0;
+
+  let order = Number(match[1]);
+  return Number.isFinite(order) ? order : 0;
+}
+
+function parseInteractionIDFromPath(path) {
+  let match = String(path || '').match(/\/interactions\/([^/]+)\/frames\//);
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 function normalizeRoot(rootPath) {
