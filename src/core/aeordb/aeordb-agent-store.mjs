@@ -94,12 +94,20 @@ export class AeorDBAgentStore {
         throw error;
     }
 
-    let result = await this.aeordb.queryFiles({
-      path: `${this.rootPath}/agents`,
-      where: { field: 'name', op: 'eq', value: reference.trim() },
-      limit: 2,
-      select: [ '@path' ],
-    });
+    let result;
+    try {
+      result = await this.aeordb.queryFiles({
+        path: `${this.rootPath}/agents`,
+        where: { field: 'name', op: 'eq', value: reference.trim() },
+        limit: 2,
+        select: [ '@path' ],
+      });
+    } catch (error) {
+      if (error.status !== 404)
+        throw error;
+
+      return await this.findAgentByNameFromBoundedList(reference);
+    }
 
     let agents = [];
     for (let item of result?.results || result?.items || []) {
@@ -119,6 +127,19 @@ export class AeorDBAgentStore {
     }
 
     return agents[0] || null;
+  }
+
+  async findAgentByNameFromBoundedList(reference) {
+    let agents = await this.listAgents({ limit: 500 });
+    let matches = agents.filter((agent) => agent.name === reference.trim());
+
+    if (matches.length > 1) {
+      let error = new Error(`Ambiguous agent name: ${reference}`);
+      error.status = 400;
+      throw error;
+    }
+
+    return matches[0] || null;
   }
 
   async updateAgent(agentID, input = {}) {

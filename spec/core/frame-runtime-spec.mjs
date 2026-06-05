@@ -226,6 +226,30 @@ test('FrameRuntime routes user messages through the configured frame router', as
 });
 
 test('FrameRuntime routes /invite through internal command before lower priority agent routes', async () => {
+  let result = await routeInviteMessage('/invite Coder', 'Coder');
+
+  assert.deepEqual(result.agentRoutes, []);
+  assert.deepEqual(result.session.participantAgentIDs, [ 'agent_1' ]);
+  assert.deepEqual(result.frames.map((frame) => frame.type), [ 'UserMessage', 'CommandResult' ]);
+  assert.equal(result.frames[1].content.text, 'Coder joined this session.');
+});
+
+test('FrameRuntime supports spaced and quoted agent names in /invite', async () => {
+  assert.equal((await routeInviteMessage('/invite Agent With Spaces', 'Agent With Spaces')).frames[1].content.status, 'ok');
+  assert.equal((await routeInviteMessage('/invite "Agent With Spaces"', 'Agent With Spaces')).frames[1].content.status, 'ok');
+  assert.equal((await routeInviteMessage("/invite 'Agent With Spaces'", 'Agent With Spaces')).frames[1].content.status, 'ok');
+});
+
+test('FrameRuntime reports malformed quoted /invite arguments as command errors', async () => {
+  let result = await routeInviteMessage('/invite "Agent With Spaces', null);
+
+  assert.deepEqual(result.agentRoutes, []);
+  assert.equal(result.frames[1].type, 'CommandResult');
+  assert.equal(result.frames[1].content.status, 'error');
+  assert.match(result.frames[1].content.text, /Usage: \/invite/);
+});
+
+async function routeInviteMessage(text, expectedReference) {
   let aeordb = createClient();
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
   let commandRegistry = new CommandRegistry({ logger: quietLogger() });
@@ -245,8 +269,8 @@ test('FrameRuntime routes /invite through internal command before lower priority
 
   let agentManager = {
     async resolveAgent(reference) {
-      assert.equal(reference, 'Coder');
-      return { id: 'agent_1', name: 'Coder' };
+      assert.equal(reference, expectedReference);
+      return { id: 'agent_1', name: expectedReference };
     },
   };
   let ids = [ 'ses_1', 'int_1', 'msg_1', 'commit_1', 'cmd_1', 'commit_2' ];
@@ -279,7 +303,7 @@ test('FrameRuntime routes /invite through internal command before lower priority
   });
 
   await runtime.createSession({ title: 'Scratch' });
-  await runtime.appendUserMessage('ses_1', { text: '/invite Coder', userID: 'usr_1' });
+  await runtime.appendUserMessage('ses_1', { text, userID: 'usr_1' });
   await tick();
   await tick();
   await runtime.frameStore.flush();
@@ -287,11 +311,12 @@ test('FrameRuntime routes /invite through internal command before lower priority
   let session = await aeordb.getFile('/kikx/sessions/ses_1/session.json');
   let frames = await runtime.listFrames('ses_1');
 
-  assert.deepEqual(agentRoutes, []);
-  assert.deepEqual(session.participantAgentIDs, [ 'agent_1' ]);
-  assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'CommandResult' ]);
-  assert.equal(frames[1].content.text, 'Coder joined this session.');
-});
+  return {
+    agentRoutes,
+    frames,
+    session,
+  };
+}
 
 test('FrameRuntime rejects invalid session and message inputs', async () => {
   let runtime = createRuntime();

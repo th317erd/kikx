@@ -141,6 +141,32 @@ test('AeorDBAgentStore resolves agents by direct id or indexed exact name query'
   assert.ok(aeordb.calls.some((call) => call.method === 'queryFiles' && call.query.where.field === 'name'));
 });
 
+test('AeorDBAgentStore falls back to bounded exact-name list lookup when indexed query returns 404', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBAgentStore({
+    aeordb,
+    clock: () => 1000,
+    idGenerator: () => 'agent_1',
+  });
+  aeordb.queryFiles = async (query) => {
+    aeordb.calls.push({ method: 'queryFiles', query });
+    let error = new Error('AeorDB HTTP 404');
+    error.status = 404;
+    throw error;
+  };
+
+  await store.createAgent({
+    name: 'Test 1',
+    pluginID: 'test-agent',
+    config: { model: 'sonnet' },
+    secrets: { apiKey: 'sk-secret-1234' },
+  });
+
+  assert.equal((await store.findAgentByIDOrName('Test 1')).id, 'agent_1');
+  assert.ok(aeordb.calls.some((call) => call.method === 'queryFiles'));
+  assert.ok(aeordb.calls.some((call) => call.method === 'listDirectory' && call.options.limit === 500));
+});
+
 test('AeorDBAgentStore rejects malformed agents and missing records', async () => {
   let store = new AeorDBAgentStore({ aeordb: createClient() });
 

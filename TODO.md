@@ -53,3 +53,7 @@
   - [x] Persist idempotent session participant agent IDs.
   - [x] Wire command routing before future agent routing.
   - [x] Verify `/invite agent-name` and `/invite agent-id`.
+
+- [x] Support quoted agent names in `/invite`.
+
+- [x] Fix `/invite` agent lookup returning raw AeorDB HTTP 404 for agent names with spaces.

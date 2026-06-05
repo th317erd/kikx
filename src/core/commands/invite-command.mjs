@@ -42,5 +42,17 @@ function normalizeAgentReference(args) {
   if (typeof args !== 'string' || args.trim() === '')
     throw new Error('Usage: /invite agent-name');
 
-  return args.trim();
+  let reference = args.trim();
+  let quote = reference[0];
+  if ((quote === '"' || quote === "'") && reference.at(-1) === quote)
+    return unescapeQuotedReference(reference.slice(1, -1), quote);
+
+  if (quote === '"' || quote === "'")
+    throw new Error('Usage: /invite "agent name"');
+
+  return reference;
+}
+
+function unescapeQuotedReference(value, quote) {
+  return value.replaceAll(`\\${quote}`, quote).replaceAll('\\\\', '\\').trim();
 }
