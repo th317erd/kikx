@@ -180,6 +180,7 @@ export class FrameRuntime {
     if (frames.length === 0)
       throw new Error('UserMessage commit produced no frames');
 
+    await this.frameRouter?.flush?.();
     await this.frameStore.flush();
 
     entry.session.updatedAt = now;

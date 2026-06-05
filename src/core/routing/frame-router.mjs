@@ -8,6 +8,7 @@ export class FrameRouter {
     this._registrations = [];
     this._queue = [];
     this._processing = false;
+    this._flushWaiters = [];
   }
 
   registerSelector(selector, PluginClass, pluginName = null) {
@@ -46,6 +47,15 @@ export class FrameRouter {
       this._processQueue();
   }
 
+  async flush() {
+    if (!this._processing && this._queue.length === 0)
+      return;
+
+    return await new Promise((resolve) => {
+      this._flushWaiters.push(resolve);
+    });
+  }
+
   async _processQueue() {
     this._processing = true;
 
@@ -60,6 +70,7 @@ export class FrameRouter {
     }
 
     this._processing = false;
+    this._resolveFlushWaiters();
   }
 
   async routeCommit(frameEngine, commit, session = null, options = {}) {
@@ -150,6 +161,12 @@ export class FrameRouter {
 
     return matches;
   }
+
+  _resolveFlushWaiters() {
+    let waiters = this._flushWaiters.splice(0);
+    for (let resolve of waiters)
+      resolve();
+  }
 }
 
 export class BaseFramePlugin {
@@ -185,4 +202,3 @@ function computeChanges(previousFrame, newFrame) {
 
   return changes;
 }
-

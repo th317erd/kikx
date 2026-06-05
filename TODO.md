@@ -57,3 +57,7 @@
 - [x] Support quoted agent names in `/invite`.
 
 - [x] Fix `/invite` agent lookup returning raw AeorDB HTTP 404 for agent names with spaces.
+
+- [x] Fix routed command results appearing only after the next message.
+
+- [ ] Add SSE-driven frame/session updates so routed frames appear without manual reloads.

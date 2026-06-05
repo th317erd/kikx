@@ -234,6 +234,13 @@ test('FrameRuntime routes /invite through internal command before lower priority
   assert.equal(result.frames[1].content.text, 'Coder joined this session.');
 });
 
+test('FrameRuntime appendUserMessage waits for routed command frames to persist before returning', async () => {
+  let result = await routeInviteMessage('/invite Coder', 'Coder', { skipPostAppendWait: true });
+
+  assert.deepEqual(result.frames.map((frame) => frame.type), [ 'UserMessage', 'CommandResult' ]);
+  assert.ok(result.savedFramePaths.some((path) => path.includes('-CommandResult-')));
+});
+
 test('FrameRuntime supports spaced and quoted agent names in /invite', async () => {
   assert.equal((await routeInviteMessage('/invite Agent With Spaces', 'Agent With Spaces')).frames[1].content.status, 'ok');
   assert.equal((await routeInviteMessage('/invite "Agent With Spaces"', 'Agent With Spaces')).frames[1].content.status, 'ok');
@@ -249,7 +256,7 @@ test('FrameRuntime reports malformed quoted /invite arguments as command errors'
   assert.match(result.frames[1].content.text, /Usage: \/invite/);
 });
 
-async function routeInviteMessage(text, expectedReference) {
+async function routeInviteMessage(text, expectedReference, options = {}) {
   let aeordb = createClient();
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
   let commandRegistry = new CommandRegistry({ logger: quietLogger() });
@@ -304,9 +311,11 @@ async function routeInviteMessage(text, expectedReference) {
 
   await runtime.createSession({ title: 'Scratch' });
   await runtime.appendUserMessage('ses_1', { text, userID: 'usr_1' });
-  await tick();
-  await tick();
-  await runtime.frameStore.flush();
+  if (!options.skipPostAppendWait) {
+    await tick();
+    await tick();
+    await runtime.frameStore.flush();
+  }
 
   let session = await aeordb.getFile('/kikx/sessions/ses_1/session.json');
   let frames = await runtime.listFrames('ses_1');
@@ -315,6 +324,9 @@ async function routeInviteMessage(text, expectedReference) {
     agentRoutes,
     frames,
     session,
+    savedFramePaths: aeordb.calls
+      .filter((call) => call.method === 'putFile' && call.path.includes('/frames/'))
+      .map((call) => call.path),
   };
 }
 

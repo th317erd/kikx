@@ -107,6 +107,37 @@ test('FrameRouter continues when a plugin throws or forgets next', async () => {
   assert.deepEqual(events, [ 'throw', 'forget', 'last' ]);
 });
 
+test('FrameRouter.flush waits for queued async routing work', async () => {
+  let events = [];
+  let router = new FrameRouter({ logger: quietLogger() });
+  let frames = new FrameEngine();
+  let release;
+  let blocker = new Promise((resolve) => { release = resolve; });
+
+  class SlowPlugin extends BaseFramePlugin {
+    async process(next) {
+      await blocker;
+      events.push('slow');
+      await next(this.context);
+    }
+  }
+
+  router.registerSelector('Type:UserMessage', SlowPlugin, 'slow');
+  router.connectTo(frames);
+
+  frames.merge([{ id: 'msg_1', type: 'UserMessage' }]);
+  let flushed = false;
+  let flushPromise = router.flush().then(() => { flushed = true; });
+  await tick();
+
+  assert.equal(flushed, false);
+  release();
+  await flushPromise;
+
+  assert.deepEqual(events, [ 'slow' ]);
+  assert.equal(flushed, true);
+});
+
 test('SlashCommandFramePlugin handles registered slash commands and stops propagation', async () => {
   let events = [];
   let commandRegistry = new CommandRegistry({ logger: quietLogger() });
