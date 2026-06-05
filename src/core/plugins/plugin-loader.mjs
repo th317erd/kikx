@@ -11,6 +11,7 @@ export async function loadPlugins(options = {}) {
   let {
     pluginPaths = process.env.KIKX_PLUGIN_PATHS || '',
     registry,
+    commandRegistry = null,
     context = {},
     logger = console,
   } = options;
@@ -30,7 +31,7 @@ export async function loadPlugins(options = {}) {
       if (typeof pluginModule.setup !== 'function')
         continue;
 
-      await pluginModule.setup(createPluginSetupContext({ registry, context, pluginPath }));
+      await pluginModule.setup(createPluginSetupContext({ registry, commandRegistry, context, pluginPath }));
       loaded.push({ path: pluginPath, modulePath });
     } catch (error) {
       logger.warn?.(`Failed to load plugin at ${pluginPath}: ${error.message}`);
@@ -40,9 +41,10 @@ export async function loadPlugins(options = {}) {
   return loaded;
 }
 
-function createPluginSetupContext({ registry, context, pluginPath }) {
+function createPluginSetupContext({ registry, commandRegistry, context, pluginPath }) {
   let directContext = {
     registry,
+    commandRegistry,
     context,
     pluginPath,
     PluginInterface,
@@ -50,6 +52,12 @@ function createPluginSetupContext({ registry, context, pluginPath }) {
     registerTool: (...args) => registry.registerTool(...args),
     registerAgentProvider: (...args) => registry.registerAgentProvider(...args),
     registerAgentType: (...args) => registry.registerAgentType(...args),
+    registerCommand: (...args) => {
+      if (!commandRegistry)
+        throw new Error('Command registry is not available in this plugin context');
+
+      return commandRegistry.registerCommand(...args);
+    },
     registerSelector: (...args) => registry.registerSelector(...args),
   };
 

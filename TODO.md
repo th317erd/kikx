@@ -47,3 +47,9 @@
 - [x] Fix Agent Create modal footer button action.
 
 - [x] Add one-command dev stack startup script.
+
+- [x] Add routed slash-command support and `/invite` agent sessions.
+  - [x] Add command registry/parser and internal invite command.
+  - [x] Persist idempotent session participant agent IDs.
+  - [x] Wire command routing before future agent routing.
+  - [x] Verify `/invite agent-name` and `/invite agent-id`.

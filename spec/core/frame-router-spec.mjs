@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { FrameEngine } from '../../src/core/frames/index.mjs';
+import { CommandRegistry } from '../../src/core/commands/index.mjs';
 import { BaseFramePlugin, FrameRouter, SelectorCompiler } from '../../src/core/routing/index.mjs';
+import { SlashCommandFramePlugin } from '../../src/core/commands/index.mjs';
 
 test('SelectorCompiler matches PascalCase frame types and nested properties', () => {
   let matcher = SelectorCompiler.compile('Type:ToolCall[content.toolName=shell:execute]');
@@ -105,6 +107,84 @@ test('FrameRouter continues when a plugin throws or forgets next', async () => {
   assert.deepEqual(events, [ 'throw', 'forget', 'last' ]);
 });
 
+test('SlashCommandFramePlugin handles registered slash commands and stops propagation', async () => {
+  let events = [];
+  let commandRegistry = new CommandRegistry({ logger: quietLogger() });
+  let router = new FrameRouter({ logger: quietLogger() });
+  let frames = new FrameEngine({
+    idGenerator: (() => {
+      let ids = [ 'commit_1', 'cmd_1', 'commit_2' ];
+      let index = 0;
+      return () => ids[index++];
+    })(),
+    clock: () => 1000,
+  });
+
+  class InviteCommand {
+    async execute({ args }) {
+      events.push(`command:${args}`);
+      return {
+        message: 'invited Coder',
+        data: { agentID: 'agent_1' },
+      };
+    }
+  }
+
+  class AgentPlugin extends BaseFramePlugin {
+    async process(next) {
+      events.push('agent');
+      await next(this.context);
+    }
+  }
+
+  commandRegistry.registerCommand('invite', InviteCommand);
+  router.registerSelector('Type:UserMessage', SlashCommandFramePlugin, 'commands');
+  router.registerSelector('Type:UserMessage', AgentPlugin, 'agent');
+  router.connectTo(frames, { id: 'ses_1' }, { services: { commandRegistry, clock: () => 1000 } });
+
+  frames.merge([{
+    id: 'msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    content: { text: '/invite Coder' },
+  }]);
+  await tick();
+  await tick();
+
+  assert.deepEqual(events, [ 'command:Coder' ]);
+  assert.deepEqual(frames.toArray().map((frame) => frame.type), [ 'UserMessage', 'CommandResult' ]);
+  assert.equal(frames.get('cmd_1').content.text, 'invited Coder');
+});
+
+test('SlashCommandFramePlugin lets non-commands continue to lower priority plugins', async () => {
+  let events = [];
+  let router = new FrameRouter({ logger: quietLogger() });
+  let frames = new FrameEngine();
+
+  class AgentPlugin extends BaseFramePlugin {
+    async process(next) {
+      events.push(this.context.newFrame.content.text);
+      await next(this.context);
+    }
+  }
+
+  router.registerSelector('Type:UserMessage', SlashCommandFramePlugin, 'commands');
+  router.registerSelector('Type:UserMessage', AgentPlugin, 'agent');
+  router.connectTo(frames, { id: 'ses_1' }, { services: { commandRegistry: new CommandRegistry() } });
+
+  frames.merge([{
+    id: 'msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    content: { text: 'hello agent' },
+  }]);
+  await tick();
+
+  assert.deepEqual(events, [ 'hello agent' ]);
+});
+
 function quietLogger() {
   return {
     error() {},
@@ -116,4 +196,3 @@ function quietLogger() {
 function tick() {
   return new Promise((resolve) => setImmediate(resolve));
 }
-

@@ -10,6 +10,8 @@ export class FrameRuntime {
     let {
       aeordb,
       frameStore,
+      frameRouter = null,
+      services = null,
       clock = () => Date.now(),
       idGenerator = () => randomUUID(),
     } = options;
@@ -20,6 +22,8 @@ export class FrameRuntime {
     this.clock = clock;
     this.idGenerator = idGenerator;
     this.frameStore = frameStore || new AeorDBFrameStore({ aeordb });
+    this.frameRouter = frameRouter;
+    this.services = services || {};
     this.sessions = new Map();
     this._indexesReady = false;
   }
@@ -33,6 +37,7 @@ export class FrameRuntime {
       organizationID: input.organizationID || null,
       createdByUserID: input.createdByUserID || input.userID || null,
       messageCount: normalizeCount(input.messageCount),
+      participantAgentIDs: normalizeStringArray(input.participantAgentIDs),
       createdAt: input.createdAt || now,
       updatedAt: input.updatedAt || now,
     };
@@ -48,13 +53,13 @@ export class FrameRuntime {
       commitValidator: input.commitValidator || null,
     });
 
-    let disconnectStore = this.frameStore.connect(frameEngine, { sessionID: session.id });
+    let disconnect = this.connectFrameEngine(frameEngine, session);
     await this.frameStore.saveSession(session);
 
     this.sessions.set(session.id, {
       session,
       frameEngine,
-      disconnectStore,
+      disconnectStore: disconnect,
       framesLoaded: true,
     });
 
@@ -135,11 +140,11 @@ export class FrameRuntime {
       frameEngine.hydrate(frames);
     }
 
-    let disconnectStore = this.frameStore.connect(frameEngine, { sessionID });
+    let disconnect = this.connectFrameEngine(frameEngine, session);
     entry = {
       session,
       frameEngine,
-      disconnectStore,
+      disconnectStore: disconnect,
       framesLoaded: options.loadFrames !== false,
     };
     this.sessions.set(sessionID, entry);
@@ -188,6 +193,30 @@ export class FrameRuntime {
     };
   }
 
+  async inviteAgentToSession(sessionID, agent, input = {}) {
+    let entry = await this.ensureSessionEntry(sessionID, { loadFrames: false });
+    let agentID = normalizeRequiredString(agent?.id, 'agent.id');
+    let participantAgentIDs = normalizeStringArray(entry.session.participantAgentIDs);
+    let alreadyParticipant = participantAgentIDs.includes(agentID);
+
+    if (!alreadyParticipant)
+      participantAgentIDs.push(agentID);
+
+    entry.session = {
+      ...entry.session,
+      participantAgentIDs,
+      updatedAt: input.updatedAt || input.invitedAt || this.clock(),
+    };
+
+    await this.frameStore.saveSessionManifest(entry.session);
+
+    return {
+      session: entry.session,
+      agentID,
+      alreadyParticipant,
+    };
+  }
+
   async listFrames(sessionID) {
     let entry = await this.ensureSessionEntry(sessionID);
     return entry.frameEngine.toArray();
@@ -204,6 +233,27 @@ export class FrameRuntime {
   disconnect() {
     for (let entry of this.sessions.values())
       entry.disconnectStore?.();
+  }
+
+  connectFrameEngine(frameEngine, session) {
+    let disconnects = [
+      this.frameStore.connect(frameEngine, { sessionID: session.id }),
+    ];
+
+    if (this.frameRouter) {
+      disconnects.push(this.frameRouter.connectTo(frameEngine, session, {
+        services: {
+          ...this.services,
+          frameRuntime: this,
+          clock: this.clock,
+        },
+      }));
+    }
+
+    return () => {
+      for (let disconnect of disconnects)
+        disconnect?.();
+    };
   }
 }
 
@@ -231,6 +281,30 @@ function normalizeCount(value) {
   return (typeof value === 'number' && Number.isFinite(value) && value >= 0)
     ? Math.trunc(value)
     : 0;
+}
+
+function normalizeRequiredString(value, fieldName) {
+  if (typeof value !== 'string' || value.trim() === '')
+    throw new TypeError(`${fieldName} must be a non-empty string`);
+
+  return value.trim();
+}
+
+function normalizeStringArray(values) {
+  if (!Array.isArray(values))
+    return [];
+
+  let normalized = [];
+  for (let value of values) {
+    if (typeof value !== 'string' || value.trim() === '')
+      continue;
+
+    let item = value.trim();
+    if (!normalized.includes(item))
+      normalized.push(item);
+  }
+
+  return normalized;
 }
 
 function countMessageFrames(frames) {

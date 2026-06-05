@@ -32,6 +32,21 @@ function createClient() {
           .map((filePath) => ({ path: filePath })),
       };
     },
+    async queryFiles(query) {
+      this.calls.push({ method: 'queryFiles', query });
+      let prefix = `${query.path.replace(/\/+$/g, '')}/`;
+      let matches = [];
+
+      for (let [filePath, body] of this.files.entries()) {
+        if (!filePath.startsWith(prefix))
+          continue;
+
+        if (query.where?.field === 'name' && query.where?.op === 'eq' && body.name === query.where.value)
+          matches.push({ path: filePath });
+      }
+
+      return { results: matches.slice(0, query.limit || matches.length) };
+    },
   };
 }
 
@@ -96,6 +111,34 @@ test('AeorDBAgentStore lists, updates, and deletes agents', async () => {
 
   await store.deleteAgent('agent_1');
   assert.equal(await store.loadAgent('agent_1'), null);
+});
+
+test('AeorDBAgentStore resolves agents by direct id or indexed exact name query', async () => {
+  let aeordb = createClient();
+  let ids = [ 'agent_1', 'agent_2' ];
+  let store = new AeorDBAgentStore({
+    aeordb,
+    clock: () => 1000,
+    idGenerator: () => ids.shift(),
+  });
+
+  await store.createAgent({
+    name: 'Coder',
+    pluginID: 'test-agent',
+    config: { model: 'sonnet' },
+    secrets: { apiKey: 'sk-secret-1234' },
+  });
+  await store.createAgent({
+    name: 'Reviewer',
+    pluginID: 'test-agent',
+    config: { model: 'sonnet' },
+    secrets: { apiKey: 'sk-secret-5678' },
+  });
+
+  assert.equal((await store.findAgentByIDOrName('agent_1')).name, 'Coder');
+  assert.equal((await store.findAgentByIDOrName('Reviewer')).id, 'agent_2');
+  assert.equal(await store.findAgentByIDOrName('missing'), null);
+  assert.ok(aeordb.calls.some((call) => call.method === 'queryFiles' && call.query.where.field === 'name'));
 });
 
 test('AeorDBAgentStore rejects malformed agents and missing records', async () => {

@@ -81,6 +81,46 @@ export class AeorDBAgentStore {
     return options.includeSecrets ? agent : sanitizeAgent(agent);
   }
 
+  async findAgentByIDOrName(reference) {
+    if (typeof reference !== 'string' || reference.trim() === '')
+      throw new TypeError('findAgentByIDOrName() requires a non-empty reference');
+
+    await this.ensureIndexConfigs();
+
+    try {
+      return await this.getAgent(reference);
+    } catch (error) {
+      if (error.status !== 404)
+        throw error;
+    }
+
+    let result = await this.aeordb.queryFiles({
+      path: `${this.rootPath}/agents`,
+      where: { field: 'name', op: 'eq', value: reference.trim() },
+      limit: 2,
+      select: [ '@path' ],
+    });
+
+    let agents = [];
+    for (let item of result?.results || result?.items || []) {
+      let path = item.path || item['@path'];
+      if (!path)
+        continue;
+
+      let agent = await this.aeordb.getFile(path);
+      if (agent?.id)
+        agents.push(sanitizeAgent(agent));
+    }
+
+    if (agents.length > 1) {
+      let error = new Error(`Ambiguous agent name: ${reference}`);
+      error.status = 400;
+      throw error;
+    }
+
+    return agents[0] || null;
+  }
+
   async updateAgent(agentID, input = {}) {
     await this.ensureIndexConfigs();
 

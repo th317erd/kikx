@@ -30,6 +30,41 @@ export class AgentManager {
     return await this.agentStore.getAgent(agentID);
   }
 
+  async resolveAgent(reference) {
+    if (typeof reference !== 'string' || reference.trim() === '')
+      throw badRequest('agent reference must be a non-empty string');
+
+    let ref = reference.trim();
+
+    if (typeof this.agentStore.findAgentByIDOrName === 'function') {
+      let agent = await this.agentStore.findAgentByIDOrName(ref);
+      if (agent)
+        return agent;
+    } else {
+      try {
+        let agent = await this.agentStore.getAgent(ref);
+        if (agent?.id)
+          return agent;
+      } catch (error) {
+        if (error.status !== 404)
+          throw error;
+      }
+
+      let agents = await this.agentStore.listAgents({ limit: 500 });
+      let lowered = ref.toLowerCase();
+      let matches = agents.filter((agent) => agent.name?.toLowerCase() === lowered);
+      if (matches.length === 1)
+        return matches[0];
+
+      if (matches.length > 1)
+        throw badRequest(`Ambiguous agent name: ${ref}`);
+    }
+
+    let error = new Error(`Agent not found: ${ref}`);
+    error.status = 404;
+    throw error;
+  }
+
   async updateAgent(agentID, input = {}) {
     let current = await this.agentStore.getAgent(agentID);
     let pluginID = input.pluginID ?? current.pluginID;

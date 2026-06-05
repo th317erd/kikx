@@ -3,6 +3,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { CommandRegistry, registerInternalCommands } from '../../src/core/commands/index.mjs';
+import { PluginRegistry } from '../../src/core/plugins/index.mjs';
+import { FrameRouter } from '../../src/core/routing/index.mjs';
 import { FrameRuntime } from '../../src/core/runtime/frame-runtime.mjs';
 
 function createClient(options = {}) {
@@ -170,6 +173,126 @@ test('FrameRuntime appends user messages through FrameEngine and AeorDBFrameStor
   assert.equal(aeordb.calls.at(-1).body.messageCount, 1);
 });
 
+test('FrameRuntime idempotently persists invited agent participants on session manifests', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({ aeordb, ids: [ 'ses_1' ], now: 1000 });
+
+  await runtime.createSession({ title: 'Scratch' });
+  let first = await runtime.inviteAgentToSession('ses_1', {
+    id: 'agent_1',
+    name: 'Coder',
+  }, { invitedAt: 2000 });
+  let second = await runtime.inviteAgentToSession('ses_1', {
+    id: 'agent_1',
+    name: 'Coder',
+  }, { invitedAt: 3000 });
+
+  assert.equal(first.alreadyParticipant, false);
+  assert.equal(second.alreadyParticipant, true);
+  assert.deepEqual(second.session.participantAgentIDs, [ 'agent_1' ]);
+  assert.equal(second.session.updatedAt, 3000);
+  assert.equal(aeordb.calls.at(-1).path, '/kikx/sessions/ses_1/session.json');
+  assert.deepEqual(aeordb.calls.at(-1).body.participantAgentIDs, [ 'agent_1' ]);
+});
+
+test('FrameRuntime routes user messages through the configured frame router', async () => {
+  let routed = [];
+  let aeordb = createClient();
+  let runtime = new FrameRuntime({
+    aeordb,
+    clock: () => 1000,
+    idGenerator: (() => {
+      let ids = [ 'ses_1', 'int_1', 'msg_1', 'commit_1' ];
+      let index = 0;
+      return () => ids[index++];
+    })(),
+    frameRouter: {
+      connectTo(frameEngine, session, options) {
+        let handler = ({ commit }) => routed.push({ sessionID: session.id, commitID: commit.id, services: options.services });
+        frameEngine.on('commit', handler);
+        return () => frameEngine.off('commit', handler);
+      },
+    },
+    services: { commandRegistry: {} },
+  });
+
+  await runtime.createSession({ title: 'Scratch' });
+  await runtime.appendUserMessage('ses_1', { text: 'hello' });
+
+  assert.equal(routed.length, 1);
+  assert.equal(routed[0].sessionID, 'ses_1');
+  assert.equal(routed[0].commitID, 'commit_1');
+  assert.equal(routed[0].services.frameRuntime, runtime);
+});
+
+test('FrameRuntime routes /invite through internal command before lower priority agent routes', async () => {
+  let aeordb = createClient();
+  let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
+  let commandRegistry = new CommandRegistry({ logger: quietLogger() });
+  let router = new FrameRouter({ logger: quietLogger() });
+  let agentRoutes = [];
+
+  class AgentRoutePlugin {
+    constructor(context = {}) {
+      this.context = context;
+    }
+
+    async process(next) {
+      agentRoutes.push(this.context.newFrame.id);
+      await next(this.context);
+    }
+  }
+
+  let agentManager = {
+    async resolveAgent(reference) {
+      assert.equal(reference, 'Coder');
+      return { id: 'agent_1', name: 'Coder' };
+    },
+  };
+  let ids = [ 'ses_1', 'int_1', 'msg_1', 'commit_1', 'cmd_1', 'commit_2' ];
+  let runtime;
+  let context = {
+    require(name) {
+      if (name === 'agentManager')
+        return agentManager;
+
+      if (name === 'frameRuntime')
+        return runtime;
+
+      if (name === 'commandRegistry')
+        return commandRegistry;
+
+      throw new Error(`Unknown service: ${name}`);
+    },
+  };
+
+  registerInternalCommands({ pluginRegistry, commandRegistry });
+  pluginRegistry.registerSelector('Type:UserMessage', AgentRoutePlugin, 'agent');
+  router.loadFromRegistry(pluginRegistry);
+
+  runtime = new FrameRuntime({
+    aeordb,
+    frameRouter: router,
+    services: { context },
+    clock: () => 1000,
+    idGenerator: () => ids.shift(),
+  });
+
+  await runtime.createSession({ title: 'Scratch' });
+  await runtime.appendUserMessage('ses_1', { text: '/invite Coder', userID: 'usr_1' });
+  await tick();
+  await tick();
+  await runtime.frameStore.flush();
+
+  let session = await aeordb.getFile('/kikx/sessions/ses_1/session.json');
+  let frames = await runtime.listFrames('ses_1');
+
+  assert.deepEqual(agentRoutes, []);
+  assert.deepEqual(session.participantAgentIDs, [ 'agent_1' ]);
+  assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'CommandResult' ]);
+  assert.equal(frames[1].content.text, 'Coder joined this session.');
+});
+
 test('FrameRuntime rejects invalid session and message inputs', async () => {
   let runtime = createRuntime();
 
@@ -210,3 +333,15 @@ test('FrameRuntime surfaces AeorDB persistence failures', async () => {
     /disk is gone/,
   );
 });
+
+function tick() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+function quietLogger() {
+  return {
+    error() {},
+    warn() {},
+    log() {},
+  };
+}

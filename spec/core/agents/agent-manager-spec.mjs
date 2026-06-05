@@ -122,6 +122,25 @@ test('AgentManager creates agents using plugin-declared fields only', async () =
   assert.equal(agent.secrets, undefined);
 });
 
+test('AgentManager resolves agents by id or exact name', async () => {
+  let manager = createManager();
+
+  await manager.createAgent({
+    name: 'Coder',
+    pluginID: 'test-agent',
+    config: { model: 'sonnet' },
+    secrets: { apiKey: 'sk-secret-1234' },
+  });
+
+  assert.equal((await manager.resolveAgent('agent_1')).id, 'agent_1');
+  assert.equal((await manager.resolveAgent('coder')).id, 'agent_1');
+
+  await assert.rejects(
+    () => manager.resolveAgent('missing-agent'),
+    /Agent not found/,
+  );
+});
+
 test('AgentManager rejects unknown providers and unknown fields', async () => {
   let manager = createManager();
 

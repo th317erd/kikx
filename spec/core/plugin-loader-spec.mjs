@@ -8,6 +8,7 @@ import test from 'node:test';
 
 import { loadPlugins } from '../../src/core/plugins/plugin-loader.mjs';
 import { PluginRegistry } from '../../src/core/plugins/index.mjs';
+import { CommandRegistry } from '../../src/core/commands/index.mjs';
 
 test('loadPlugins supports external setup(provide) agent provider registration', async () => {
   let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-plugin-loader-'));
@@ -47,4 +48,34 @@ test('loadPlugins supports external setup(provide) agent provider registration',
     options: undefined,
     help: '',
   });
+});
+
+test('loadPlugins exposes command registration to external plugins', async () => {
+  let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-command-plugin-'));
+  await fs.writeFile(path.join(root, 'index.mjs'), `
+    export function setup(provide) {
+      provide(({ registerCommand }) => {
+        class PingCommand {
+          static description = 'Ping command';
+          async execute() {
+            return { message: 'pong' };
+          }
+        }
+        registerCommand('ping', PingCommand, { aliases: [ 'p' ] });
+      });
+    }
+  `);
+
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+  let commandRegistry = new CommandRegistry({ logger: { warn() {} } });
+  let loaded = await loadPlugins({
+    pluginPaths: root,
+    registry,
+    commandRegistry,
+    logger: { warn() {} },
+  });
+
+  assert.equal(loaded.length, 1);
+  assert.equal(commandRegistry.getCommand('ping').description, 'Ping command');
+  assert.equal(commandRegistry.getCommand('/p').name, 'ping');
 });

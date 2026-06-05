@@ -8,8 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { AppContext } from '../core/app/app-context.mjs';
 import { AeorDBClient } from '../core/aeordb/aeordb-client.mjs';
 import { AgentManager } from '../core/agents/agent-manager.mjs';
+import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
+import { FrameRouter } from '../core/routing/index.mjs';
 import { FrameRuntime } from '../core/runtime/frame-runtime.mjs';
 
 const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
@@ -30,24 +32,47 @@ export function createServer(options = {}) {
     }));
   }
 
-  if (!context.has('frameRuntime'))
-    context.set('frameRuntime', new FrameRuntime({ aeordb: context.require('aeordb') }));
-
   if (!context.has('pluginRegistry'))
     context.set('pluginRegistry', new PluginRegistry());
 
+  if (!context.has('commandRegistry'))
+    context.set('commandRegistry', new CommandRegistry());
+
+  if (!context.has('internalCommandsRegistered')) {
+    registerInternalCommands({
+      pluginRegistry: context.require('pluginRegistry'),
+      commandRegistry: context.require('commandRegistry'),
+    });
+    context.set('internalCommandsRegistered', true);
+  }
+
+  if (!context.has('frameRouter'))
+    context.set('frameRouter', new FrameRouter());
+
   if (!context.has('pluginLoadPromise')) {
-    context.set('pluginLoadPromise', loadPlugins({
-      pluginPaths: options.pluginPaths || process.env.KIKX_PLUGIN_PATHS || '',
-      registry: context.require('pluginRegistry'),
-      context,
-    }));
+    context.set('pluginLoadPromise', (async () => {
+      await loadPlugins({
+        pluginPaths: options.pluginPaths || process.env.KIKX_PLUGIN_PATHS || '',
+        registry: context.require('pluginRegistry'),
+        commandRegistry: context.require('commandRegistry'),
+        context,
+      });
+      context.require('frameRouter').loadFromRegistry(context.require('pluginRegistry'));
+    })());
   }
 
   if (!context.has('agentManager')) {
     context.set('agentManager', new AgentManager({
       aeordb: context.require('aeordb'),
       pluginRegistry: context.require('pluginRegistry'),
+    }));
+  }
+
+  if (!context.has('frameRuntime')) {
+    context.set('frameRuntime', new FrameRuntime({
+      aeordb: context.require('aeordb'),
+      frameRouter: context.require('frameRouter'),
+      services: { context },
     }));
   }
 
