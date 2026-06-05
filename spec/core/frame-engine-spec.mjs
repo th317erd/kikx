@@ -108,6 +108,28 @@ test('FrameEngine live frames collapse into a persistent group frame', () => {
   assert.deepEqual(frames.get('msg_1').content, { text: 'hello' });
 });
 
+test('FrameEngine emits event-only phantom frames without creating commits', () => {
+  let frames = engine();
+  let phantoms = [];
+  let commits = [];
+  frames.on('frame:phantom', ({ frame }) => phantoms.push(frame));
+  frames.on('commit', ({ commit }) => commits.push(commit));
+
+  let result = frames.merge([
+    {
+      id: 'delta_1',
+      type: 'AgentThinking',
+      phantom: true,
+      content: { text: 'thinking' },
+    },
+  ]);
+
+  assert.deepEqual(result, []);
+  assert.equal(frames.get('delta_1'), undefined);
+  assert.deepEqual(phantoms.map((frame) => frame.content.text), [ 'thinking' ]);
+  assert.deepEqual(commits, []);
+});
+
 test('FrameEngine refs and diffFrames expose persistent promise-style progress', () => {
   let frames = engine();
   frames.merge([{ id: 'req_1', type: 'ToolCall', content: { toolName: 'shell:execute' } }]);

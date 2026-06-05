@@ -51,8 +51,13 @@ export class FrameEngine extends EventEmitter {
       this._mergeTargets(normalized, results, changes, frameEvents);
     }
 
-    if (changes.length === 0)
+    if (changes.length === 0) {
+      if (options.events !== false) {
+        for (let event of frameEvents)
+          this.emit(event.name, event.payload);
+      }
       return [];
+    }
 
     let commit = this._createCommit(changes, options);
 

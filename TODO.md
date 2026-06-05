@@ -61,3 +61,9 @@
 - [x] Fix routed command results appearing only after the next message.
 
 - [ ] Add SSE-driven frame/session updates so routed frames appear without manual reloads.
+
+- [x] Hook invited agents into low-priority frame routing.
+  - [x] Add generic agent dispatch after slash/internal routing.
+  - [x] Make API message appends await routed agent side effects.
+  - [x] Implement Codex/OpenAI streaming in the Codex plugin.
+  - [x] Persist final agent output and emit phantom thinking/output frames while streaming.

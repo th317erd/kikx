@@ -26,8 +26,8 @@ export class AgentManager {
     return await this.agentStore.listAgents(options);
   }
 
-  async getAgent(agentID) {
-    return await this.agentStore.getAgent(agentID);
+  async getAgent(agentID, options = {}) {
+    return await this.agentStore.getAgent(agentID, options);
   }
 
   async resolveAgent(reference) {

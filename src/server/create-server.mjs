@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { AppContext } from '../core/app/app-context.mjs';
 import { AeorDBClient } from '../core/aeordb/aeordb-client.mjs';
-import { AgentManager } from '../core/agents/agent-manager.mjs';
+import { AgentManager, registerAgentRouting } from '../core/agents/index.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
@@ -58,6 +58,7 @@ export function createServer(options = {}) {
         context,
       });
       context.require('frameRouter').loadFromRegistry(context.require('pluginRegistry'));
+      registerAgentRouting(context.require('frameRouter'));
     })());
   }
 

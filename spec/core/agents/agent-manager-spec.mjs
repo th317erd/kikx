@@ -44,8 +44,20 @@ function createStore() {
     async listAgents() {
       return [ ...agents.values() ];
     },
-    async getAgent(agentID) {
-      return agents.get(agentID);
+    async getAgent(agentID, options = {}) {
+      if (options.includeSecrets)
+        return agents.get(agentID);
+
+      let agent = agents.get(agentID);
+      if (!agent)
+        return agent;
+
+      let { secrets: _secrets, ...sanitized } = agent;
+      return sanitized;
+    },
+    async findAgentByIDOrName(reference) {
+      let lowered = reference.toLowerCase();
+      return agents.get(reference) || [ ...agents.values() ].find((agent) => agent.name.toLowerCase() === lowered) || null;
     },
     async updateAgent(agentID, input) {
       let next = { ...agents.get(agentID), ...input };
@@ -120,6 +132,35 @@ test('AgentManager creates agents using plugin-declared fields only', async () =
     apiKey: { present: true, last4: '1234' },
   });
   assert.equal(agent.secrets, undefined);
+});
+
+test('AgentManager passes read options through to the agent store', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerAgentProvider('test-agent', TestAgentProvider);
+  let calls = [];
+  let manager = new AgentManager({
+    pluginRegistry,
+    agentStore: {
+      async getAgent(agentID, options) {
+        calls.push({ agentID, options });
+        return {
+          id: agentID,
+          name: 'Coder',
+          pluginID: 'test-agent',
+          config: {},
+          secrets: { apiKey: 'sk-test' },
+        };
+      },
+    },
+  });
+
+  let agent = await manager.getAgent('agent_1', { includeSecrets: true });
+
+  assert.equal(agent.secrets.apiKey, 'sk-test');
+  assert.deepEqual(calls, [{
+    agentID: 'agent_1',
+    options: { includeSecrets: true },
+  }]);
 });
 
 test('AgentManager resolves agents by id or exact name', async () => {
