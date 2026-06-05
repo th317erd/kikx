@@ -209,11 +209,8 @@ export class FrameRuntime extends EventEmitter {
     if (!alreadyParticipant)
       participantAgentIDs.push(agentID);
 
-    entry.session = {
-      ...entry.session,
-      participantAgentIDs,
-      updatedAt: input.updatedAt || input.invitedAt || this.clock(),
-    };
+    entry.session.participantAgentIDs = participantAgentIDs;
+    entry.session.updatedAt = input.updatedAt || input.invitedAt || this.clock();
 
     await this.frameStore.saveSessionManifest(entry.session);
     this.emitRuntimeEvent('session.saved', { sessionID, session: entry.session });

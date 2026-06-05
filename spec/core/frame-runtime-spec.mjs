@@ -293,6 +293,74 @@ test('FrameRuntime appendUserMessage waits for routed command frames to persist 
   assert.ok(result.savedFramePaths.some((path) => path.includes('-CommandResult-')));
 });
 
+test('FrameRuntime routes normal messages to participants invited in the same active session', async () => {
+  let aeordb = createClient();
+  let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
+  let commandRegistry = new CommandRegistry({ logger: quietLogger() });
+  let router = new FrameRouter({ logger: quietLogger() });
+  let observed = [];
+  let runtime;
+
+  class ParticipantObserverPlugin {
+    constructor(context = {}) {
+      this.context = context;
+    }
+
+    async process(next) {
+      if (!this.context.newFrame.content.text.startsWith('/')) {
+        observed.push({
+          text: this.context.newFrame.content.text,
+          participantAgentIDs: this.context.session.participantAgentIDs?.slice() || [],
+        });
+      }
+      await next(this.context);
+    }
+  }
+
+  let agentManager = {
+    async resolveAgent(reference) {
+      assert.equal(reference, 'Coder');
+      return { id: 'agent_1', name: 'Coder' };
+    },
+  };
+  let context = {
+    require(name) {
+      if (name === 'agentManager')
+        return agentManager;
+
+      if (name === 'frameRuntime')
+        return runtime;
+
+      if (name === 'commandRegistry')
+        return commandRegistry;
+
+      throw new Error(`Unknown service: ${name}`);
+    },
+  };
+
+  registerInternalCommands({ pluginRegistry, commandRegistry });
+  pluginRegistry.registerSelector('Type:UserMessage', ParticipantObserverPlugin, 'participant-observer');
+  router.loadFromRegistry(pluginRegistry);
+
+  let ids = [ 'ses_1', 'int_1', 'invite_1', 'commit_1', 'cmd_1', 'commit_2', 'int_2', 'msg_1', 'commit_3' ];
+  runtime = new FrameRuntime({
+    aeordb,
+    frameRouter: router,
+    services: { context },
+    clock: () => 1000,
+    idGenerator: () => ids.shift(),
+  });
+
+  await runtime.createSession({ title: 'Scratch' });
+  await runtime.appendUserMessage('ses_1', { text: '/invite Coder', userID: 'usr_1' });
+  await runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
+
+  assert.deepEqual(observed, [{
+    text: 'hello',
+    participantAgentIDs: [ 'agent_1' ],
+  }]);
+});
+
 test('FrameRuntime supports spaced and quoted agent names in /invite', async () => {
   assert.equal((await routeInviteMessage('/invite Agent With Spaces', 'Agent With Spaces')).frames[1].content.status, 'ok');
   assert.equal((await routeInviteMessage('/invite "Agent With Spaces"', 'Agent With Spaces')).frames[1].content.status, 'ok');

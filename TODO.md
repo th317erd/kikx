@@ -71,3 +71,8 @@
   - [x] Make API message appends await routed agent side effects.
   - [x] Implement Codex/OpenAI streaming in the Codex plugin.
   - [x] Persist final agent output and emit phantom thinking/output frames while streaming.
+
+- [x] Fix invited agents not receiving messages until server restart.
+  - [x] Add regression coverage for `/invite` followed by a normal message in the same active runtime session.
+  - [x] Keep router session context current after participant updates.
+  - [x] Run focused and full verification.
