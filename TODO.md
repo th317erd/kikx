@@ -45,3 +45,5 @@
 - [x] Expand Codex/OpenAI plugin model choices.
 
 - [x] Fix Agent Create modal footer button action.
+
+- [x] Add one-command dev stack startup script.
