@@ -14,11 +14,16 @@ class StreamingAgentProvider extends AgentInterface {
 
   async *run(params = {}) {
     params.services.calls.push({
+      method: 'response-frame-before-run',
+      responseFrame: params.responseFrame,
+    });
+    params.services.calls.push({
       method: 'run',
       agentID: params.agent.id,
       apiKey: params.secrets.apiKey,
       text: params.frame.content.text,
       responseFrameID: params.responseFrameID,
+      responseFrameIDMatchesFrame: params.responseFrameID === params.responseFrame?.id,
       frameTypes: params.frames.map((frame) => frame.type),
     });
 
@@ -26,11 +31,17 @@ class StreamingAgentProvider extends AgentInterface {
       id: 'think_1',
       type: 'AgentThinking',
       phantom: true,
-      content: { text: 'thinking...' },
+      content: {
+        text: 'thinking...',
+        thinking: { text: 'thinking...' },
+      },
     };
     yield {
       type: 'AgentMessage',
-      content: { text: `Echo: ${params.frame.content.text}` },
+      content: {
+        text: `Echo: ${params.frame.content.text}`,
+        thinking: { text: 'thinking...' },
+      },
     };
     yield {
       type: 'Done',
@@ -71,14 +82,27 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
   await runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
 
   let frames = await runtime.listFrames('ses_1');
-  assert.deepEqual(runtime.services.calls, [{
+  assert.equal(runtime.services.calls[0].method, 'response-frame-before-run');
+  assert.equal(runtime.services.calls[0].responseFrame.id, 'agent_frame_1');
+  assert.equal(runtime.services.calls[0].responseFrame.type, 'AgentMessage');
+  assert.equal(runtime.services.calls[0].responseFrame.hidden, true);
+  assert.deepEqual(runtime.services.calls[0].responseFrame.content, {
+    text: '',
+    thinking: {
+      text: '',
+      status: 'pending',
+    },
+    status: 'streaming',
+  });
+  assert.deepEqual(runtime.services.calls[1], {
     method: 'run',
     agentID: 'agent_1',
     apiKey: 'sk-test',
     text: 'hello',
     responseFrameID: 'agent_frame_1',
-    frameTypes: [ 'UserMessage' ],
-  }]);
+    responseFrameIDMatchesFrame: true,
+    frameTypes: [ 'UserMessage', 'AgentMessage' ],
+  });
   assert.deepEqual(phantoms.map((frame) => frame.type), [ 'AgentThinking' ]);
   assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage' ]);
   assert.equal(frames[1].id, 'agent_frame_1');
@@ -88,6 +112,14 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
   assert.equal(frames[1].authorID, 'agent_1');
   assert.equal(frames[1].hidden, false);
   assert.equal(frames[1].content.text, 'Echo: hello');
+  assert.deepEqual(frames[1].content.thinking, {
+    text: 'thinking...',
+    status: 'complete',
+  });
+  assert.equal(frames[1].content.status, 'complete');
+  assert.equal(phantoms[0].id, 'think_1');
+  assert.equal(phantoms[0].responseFrameID, 'agent_frame_1');
+  assert.equal(phantoms[0].parentID, 'msg_1');
 });
 
 test('AgentRouteFramePlugin does nothing when a session has no invited agents', async () => {
@@ -140,11 +172,13 @@ test('AgentRouteFramePlugin skips disabled agents and writes visible errors for 
   await runtime.appendUserMessage('ses_1', { text: 'hello' });
 
   let frames = await runtime.listFrames('ses_1');
-  assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentError', 'AgentError' ]);
+  assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentError', 'AgentMessage' ]);
   assert.match(frames[1].content.text, /Unknown agent provider: missing-provider/);
   assert.equal(frames[1].authorID, 'agent_missing_provider');
   assert.match(frames[2].content.text, /provider exploded/);
   assert.equal(frames[2].authorID, 'agent_failing');
+  assert.equal(frames[2].content.status, 'error');
+  assert.equal(frames[2].hidden, false);
 });
 
 test('AgentRouteFramePlugin requests agent secrets through AgentManager', async () => {

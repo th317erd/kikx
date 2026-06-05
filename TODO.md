@@ -84,3 +84,9 @@
   - [x] Pass rolled-up frame history to agent providers and use OpenAI prompt caching.
   - [x] Add typing indicator WebComponent based on old app behavior.
   - [x] Run plugin, focused app, full app, and browser verification.
+
+- [x] Attach streamed agent thinking to the original agent response frame.
+  - [x] Pre-create the agent response frame before provider API calls.
+  - [x] Tie thinking/output phantom frames to the response frame id.
+  - [x] Persist final response JSON with a durable `content.thinking` block.
+  - [x] Verify focused plugin, routing, and full app tests.
