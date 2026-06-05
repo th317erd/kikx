@@ -76,3 +76,11 @@
   - [x] Add regression coverage for `/invite` followed by a normal message in the same active runtime session.
   - [x] Keep router session context current after participant updates.
   - [x] Run focused and full verification.
+
+- [x] Fix agent streaming UX and cached context.
+  - [x] Emit BeginTyping/EndTyping phantoms around provider streams.
+  - [x] Coalesce streamed thinking/output into single dynamic frames instead of one row per chunk.
+  - [x] Remove live phantoms when the final durable agent message arrives.
+  - [x] Pass rolled-up frame history to agent providers and use OpenAI prompt caching.
+  - [x] Add typing indicator WebComponent based on old app behavior.
+  - [x] Run plugin, focused app, full app, and browser verification.

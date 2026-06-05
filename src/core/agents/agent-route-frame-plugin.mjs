@@ -49,6 +49,9 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         throw new Error(`Unknown agent provider: ${agent.pluginID}`);
 
       let responseFrameID = this.context.engine.idGenerator();
+      let sessionFrames = typeof this.context.engine.toArray === 'function'
+        ? this.context.engine.toArray()
+        : [];
       let provider = new ProviderClass({
         ...this.context,
         agent,
@@ -61,6 +64,8 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         agent,
         config: agent.config || {},
         secrets: agent.secrets || {},
+        frames: sessionFrames,
+        sessionFrames,
         services,
         responseFrameID,
       };

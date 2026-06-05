@@ -361,6 +361,21 @@ kikx-app {
   background: #171b1f;
 }
 
+.kikx-frame--BeginTyping {
+  padding: 8px 12px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.kikx-frame--AgentThinking {
+  border-color: #3b434b;
+  background: #15191d;
+}
+
+.kikx-frame--AgentMessageDelta {
+  border-color: #46525d;
+}
+
 .kikx-frame__meta {
   display: flex;
   align-items: center;
@@ -374,6 +389,89 @@ kikx-app {
   margin: 0;
   color: #edf2f7;
   white-space: pre-wrap;
+}
+
+.kikx-frame__thinking {
+  color: #aab4bf;
+  font-style: italic;
+}
+
+.kikx-frame__stream {
+  color: #edf2f7;
+}
+
+kikx-typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 72em;
+  color: #aab4bf;
+  font-size: 13px;
+}
+
+.kikx-typing-indicator__name {
+  flex: 0 0 auto;
+  color: #edf2f7;
+  font-weight: 600;
+}
+
+.kikx-typing-indicator__dots {
+  display: inline-flex;
+  gap: 2px;
+  flex: 0 0 auto;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.kikx-typing-indicator__dots span {
+  animation: kikx-typing-dot 1.4s ease-in-out infinite;
+  opacity: 0.35;
+}
+
+.kikx-typing-indicator__dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.kikx-typing-indicator__dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.kikx-typing-indicator__thinking {
+  min-width: 0;
+  overflow: hidden;
+  color: #87929d;
+  font-style: italic;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, transparent 0%, black 5%, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 85%, transparent 100%);
+}
+
+.kikx-typing-indicator__thinking span {
+  display: inline-block;
+  animation: kikx-typing-scroll 35s linear infinite;
+}
+
+@keyframes kikx-typing-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+  }
+
+  40% {
+    opacity: 1;
+  }
+}
+
+@keyframes kikx-typing-scroll {
+  0% {
+    transform: translateX(0%);
+  }
+
+  100% {
+    transform: translateX(-50%);
+  }
 }
 
 .kikx-composer {

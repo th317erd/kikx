@@ -28,6 +28,7 @@ const { div, header, main, section, h1, h2, p, span, button, form, label, textar
 const aeorInput = elements['aeor-input'];
 const aeorModal = elements['aeor-modal'];
 const aeorSelect = elements['aeor-select'];
+const kikxTypingIndicator = elements['kikx-typing-indicator'];
 
 export class KikxApp extends HTMLElement {
   constructor() {
@@ -356,7 +357,7 @@ export class KikxApp extends HTMLElement {
       );
     }
 
-    let frames = getSelectedFrames(this._state);
+    let frames = getSelectedFrames(this._state).filter((frame) => frame && !frame.deleted && !frame.hidden);
     if (frames.length === 0) {
       return div.class('kikx-thread__empty')(
         p('No frames yet.'),
@@ -364,14 +365,36 @@ export class KikxApp extends HTMLElement {
     }
 
     return ul.class('kikx-frame-list')(
-      frames.map((frame) => li.class(`kikx-frame kikx-frame--${frame.type}`)(
-        div.class('kikx-frame__meta')(
-          strong(frame.type),
-          span(frame.authorID || frame.authorType || 'system'),
-        ),
-        p(frame.content?.text || frame.contentText || frame.id),
-      )),
+      frames.map((frame) => this._buildFrameItem(frame)),
     );
+  }
+
+  _buildFrameItem(frame) {
+    if (frame.type === 'BeginTyping') {
+      return li.class('kikx-frame kikx-frame--BeginTyping')(
+        kikxTypingIndicator
+          .agentName(frame.content?.agentName || frame.authorID || 'Agent')
+          .thinkingText(frame.content?.thinkingText || '')(),
+      );
+    }
+
+    return li.class(`kikx-frame kikx-frame--${frame.type}`)(
+      div.class('kikx-frame__meta')(
+        strong(frame.type),
+        span(frame.authorID || frame.authorType || 'system'),
+      ),
+      this._buildFrameContent(frame),
+    );
+  }
+
+  _buildFrameContent(frame) {
+    if (frame.type === 'AgentMessageDelta')
+      return p.class('kikx-frame__stream')(frame.content?.text || frame.content?.delta || '');
+
+    if (frame.type === 'AgentThinking')
+      return p.class('kikx-frame__thinking')(frame.content?.text || '');
+
+    return p(frame.content?.text || frame.contentText || frame.id);
   }
 
   _connectRuntimeEvents() {

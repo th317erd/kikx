@@ -86,10 +86,24 @@ export function upsertFrameState(state, sessionID, frame) {
     return snapshot;
 
   let frames = snapshot.framesBySessionID[sessionID] || [];
-  let existingIndex = frames.findIndex((candidate) => candidate?.id === frame.id);
+  let normalizedFrame = normalizeLiveFrame(frame);
+  let transitionFrames = removeFramesForLiveTransition(frames, normalizedFrame);
+  let existingIndex = transitionFrames.findIndex((candidate) => candidate?.id === normalizedFrame.id);
+
+  if (normalizedFrame.type === 'EndTyping')
+    return setSessionFramesState(snapshot, sessionID, transitionFrames);
+
+  let nextFrame = {
+    ...normalizedFrame,
+    hidden: normalizedFrame.hidden ?? false,
+  };
+
+  if (normalizedFrame.phantom && LIVE_VISIBLE_PHANTOM_TYPES.has(normalizedFrame.type))
+    nextFrame.hidden = false;
+
   let nextFrames = existingIndex === -1
-    ? [ ...frames, frame ]
-    : frames.map((candidate, index) => index === existingIndex ? frame : candidate);
+    ? [ ...transitionFrames, nextFrame ]
+    : transitionFrames.map((candidate, index) => index === existingIndex ? nextFrame : candidate);
 
   return setSessionFramesState(snapshot, sessionID, nextFrames);
 }
@@ -109,3 +123,49 @@ function mergeSessionDetail(previous = {}, next = {}) {
 
   return merged;
 }
+
+function normalizeLiveFrame(frame) {
+  if (frame?.type === 'BeginTyping' || frame?.type === 'EndTyping') {
+    let agentID = frame.authorID || frame.content?.agentID || 'default';
+    return {
+      ...frame,
+      id: `typing:${agentID}`,
+      authorID: agentID,
+      hidden: false,
+    };
+  }
+
+  if (frame?.phantom && frame.groupID)
+    return { ...frame, id: frame.groupID };
+
+  return frame;
+}
+
+function removeFramesForLiveTransition(frames, frame) {
+  if (!Array.isArray(frames))
+    return [];
+
+  if (frame.type === 'EndTyping')
+    return frames.filter((candidate) => candidate?.id !== frame.id);
+
+  if (frame.type === 'AgentMessage')
+    return frames.filter((candidate) => {
+      if (!candidate)
+        return false;
+
+      if (candidate.id === frame.id)
+        return true;
+
+      if (candidate.parentID !== frame.parentID)
+        return true;
+
+      return candidate.type !== 'AgentThinking' && candidate.type !== 'AgentMessageDelta';
+    });
+
+  return frames.slice();
+}
+
+const LIVE_VISIBLE_PHANTOM_TYPES = new Set([
+  'AgentThinking',
+  'AgentMessageDelta',
+]);

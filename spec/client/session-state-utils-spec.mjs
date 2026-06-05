@@ -126,6 +126,67 @@ test('upsertFrameState appends and replaces frames by id without losing session 
   assert.equal(replaced.sessionDetailsByID.ses_1.messageCount, 1);
 });
 
+test('upsertFrameState coalesces grouped phantoms and final agent messages', () => {
+  let state = {
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: {
+      ses_1: { id: 'ses_1', title: 'Scratch', messageCount: 1 },
+    },
+    framesBySessionID: {
+      ses_1: [
+        { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } },
+      ],
+    },
+  };
+
+  let typing = upsertFrameState(state, 'ses_1', {
+    id: 'typing_1',
+    type: 'BeginTyping',
+    phantom: true,
+    authorID: 'agent_1',
+    content: { agentName: 'Codex' },
+  });
+  let thinking = upsertFrameState(typing, 'ses_1', {
+    id: 'agent_msg_1:thinking',
+    type: 'AgentThinking',
+    phantom: true,
+    parentID: 'msg_1',
+    authorID: 'agent_1',
+    content: { text: 'thinking' },
+  });
+  let delta = upsertFrameState(thinking, 'ses_1', {
+    id: 'agent_msg_1',
+    type: 'AgentMessageDelta',
+    phantom: true,
+    parentID: 'msg_1',
+    authorID: 'agent_1',
+    content: { text: 'partial' },
+  });
+  let endTyping = upsertFrameState(delta, 'ses_1', {
+    id: 'typing_2',
+    type: 'EndTyping',
+    phantom: true,
+    authorID: 'agent_1',
+  });
+  let final = upsertFrameState(endTyping, 'ses_1', {
+    id: 'agent_msg_1',
+    type: 'AgentMessage',
+    parentID: 'msg_1',
+    authorID: 'agent_1',
+    content: { text: 'final' },
+  });
+
+  assert.deepEqual(thinking.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'typing:agent_1', 'agent_msg_1:thinking' ]);
+  assert.equal(thinking.framesBySessionID.ses_1[1].type, 'BeginTyping');
+  assert.equal(thinking.framesBySessionID.ses_1[2].hidden, false);
+  assert.deepEqual(delta.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'typing:agent_1', 'agent_msg_1:thinking', 'agent_msg_1' ]);
+  assert.equal(delta.framesBySessionID.ses_1[3].hidden, false);
+  assert.deepEqual(endTyping.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1:thinking', 'agent_msg_1' ]);
+  assert.deepEqual(final.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1' ]);
+  assert.equal(final.framesBySessionID.ses_1[1].type, 'AgentMessage');
+  assert.equal(final.framesBySessionID.ses_1[1].content.text, 'final');
+});
+
 test('upsertFrameState ignores malformed frames and missing session ids', () => {
   let state = {
     sessionIDs: [],

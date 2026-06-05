@@ -19,6 +19,7 @@ class StreamingAgentProvider extends AgentInterface {
       apiKey: params.secrets.apiKey,
       text: params.frame.content.text,
       responseFrameID: params.responseFrameID,
+      frameTypes: params.frames.map((frame) => frame.type),
     });
 
     yield {
@@ -76,6 +77,7 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
     apiKey: 'sk-test',
     text: 'hello',
     responseFrameID: 'agent_frame_1',
+    frameTypes: [ 'UserMessage' ],
   }]);
   assert.deepEqual(phantoms.map((frame) => frame.type), [ 'AgentThinking' ]);
   assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage' ]);
