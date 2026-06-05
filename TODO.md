@@ -113,3 +113,9 @@
   - [x] Stamp frames and commits with `createdClock` / `updatedClock`.
   - [x] Sort server and client frame views by HLC clocks before legacy numeric fallbacks.
   - [x] Persist/query HLC fields in AeorDB frame/session metadata.
+
+- [x] Verify updated AeorDB build and adopt multi-fetch where Kikx batch-loads files.
+  - [x] Read AeorDB `/files/fetch` documentation.
+  - [x] Restart local AeorDB with `/home/wyatt/.local/bin/aeordb`.
+  - [x] Re-test session creation/listing against the fixed build.
+  - [x] Replace repeated per-file fetches with `POST /files/fetch` where appropriate.

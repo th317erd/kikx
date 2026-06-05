@@ -90,6 +90,41 @@ export class AeorDBClient {
     return this.request('GET', `${url.pathname}${url.search}`, requestOptions);
   }
 
+  async fetchFiles(paths, options = {}) {
+    let {
+      maxBytes,
+      max_bytes: maxBytesSnake,
+      ...requestOptions
+    } = options;
+
+    if (!Array.isArray(paths))
+      throw new TypeError('fetchFiles() paths must be an array');
+
+    let normalizedPaths = [];
+    for (let path of paths) {
+      if (!path || typeof path !== 'string')
+        throw new TypeError('fetchFiles() paths must contain only non-empty strings');
+
+      normalizedPaths.push(path);
+    }
+
+    if (normalizedPaths.length === 0)
+      return {};
+
+    let byteLimit = maxBytes ?? maxBytesSnake;
+    if (byteLimit != null && (!Number.isInteger(Number(byteLimit)) || Number(byteLimit) < 1))
+      throw new TypeError('fetchFiles() maxBytes must be a positive integer');
+
+    let body = { paths: normalizedPaths };
+    if (byteLimit != null)
+      body.max_bytes = Number(byteLimit);
+
+    return this.request('POST', '/files/fetch', {
+      ...requestOptions,
+      body,
+    });
+  }
+
   async requestMagicLink(email, options = {}) {
     return this.request('POST', '/auth/magic-link', {
       ...options,

@@ -1,5 +1,7 @@
 'use strict';
 
+import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
+
 const DEFAULT_ROOT_PATH = '/kikx';
 const ORDER_WIDTH = 16;
 
@@ -165,12 +167,14 @@ export class AeorDBFrameStore {
       offset,
     });
 
+    let sessionPaths = pathsFromItems(result?.items);
     let sessions = [];
-    for (let item of result?.items || []) {
-      if (!item?.path)
-        continue;
+    let reads = await readJSONFiles(this.aeordb, sessionPaths, {
+      fallbackOnBatchError: true,
+    });
 
-      let session = await this.aeordb.getFile(item.path);
+    for (let read of reads) {
+      let session = read.value;
       if (session?.id)
         sessions.push(session);
     }
@@ -191,21 +195,23 @@ export class AeorDBFrameStore {
       offset,
     });
 
+    let framePaths = pathsFromItems(result?.items)
+      .filter((path) => path.includes('/frames/'));
     let frames = [];
-    for (let item of result?.items || []) {
-      if (!item?.path)
-        continue;
+    let reads = await readJSONFiles(this.aeordb, framePaths, {
+      fallbackOnBatchError: true,
+      continueOnError: true,
+    });
 
-      if (!item.path.includes('/frames/'))
+    for (let read of reads) {
+      if (read.error) {
+        frames.push(createFrameLoadError(sessionID, read.path, read.error));
         continue;
-
-      try {
-        let frame = await this.aeordb.getFile(item.path);
-        if (frame?.id && frame.type)
-          frames.push(frame);
-      } catch (error) {
-        frames.push(createFrameLoadError(sessionID, item.path, error));
       }
+
+      let frame = read.value;
+      if (frame?.id && frame.type)
+        frames.push(frame);
     }
 
     let commits = await this.listCommits(sessionID, { limit, offset });
@@ -234,19 +240,20 @@ export class AeorDBFrameStore {
       throw error;
     }
 
+    let commitPaths = pathsFromItems(result?.items);
     let commits = [];
-    for (let item of result?.items || []) {
-      if (!item?.path)
+    let reads = await readJSONFiles(this.aeordb, commitPaths, {
+      fallbackOnBatchError: true,
+      continueOnError: true,
+    });
+
+    for (let read of reads) {
+      if (read.error)
         continue;
 
-      try {
-        let commit = await this.aeordb.getFile(item.path);
-        if (commit?.id && typeof commit.order === 'number')
-          commits.push(commit);
-      } catch (_error) {
-        // Frame evidence is more important than failing the whole session view
-        // for one unreadable commit object.
-      }
+      let commit = read.value;
+      if (commit?.id && typeof commit.order === 'number')
+        commits.push(commit);
     }
 
     return commits.sort(compareCommitOrder);

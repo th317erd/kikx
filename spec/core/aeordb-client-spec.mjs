@@ -93,6 +93,62 @@ test('listDirectory sends directory query parameters to /files/{path}', async ()
   assert.equal(seenURL, 'http://aeor.test/files/sessions/ses_1/interactions?depth=-1&glob=**%2Fframes%2F*.json&limit=50&offset=10');
 });
 
+test('fetchFiles posts a bounded multi-fetch request', async () => {
+  let seen;
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test/',
+    token: 'secret',
+    fetchImpl: async (url, options) => {
+      seen = { url, options };
+      return jsonResponse({
+        '/sessions/ses_1/session.json': {
+          path: '/sessions/ses_1/session.json',
+          content: '{"id":"ses_1"}',
+        },
+      });
+    },
+  });
+
+  let result = await client.fetchFiles([ '/sessions/ses_1/session.json' ], { maxBytes: 1024 });
+
+  assert.equal(seen.url.toString(), 'http://aeor.test/files/fetch');
+  assert.equal(seen.options.method, 'POST');
+  assert.equal(seen.options.headers.Authorization, 'Bearer secret');
+  assert.equal(seen.options.headers['Content-Type'], 'application/json');
+  assert.equal(seen.options.body, '{"paths":["/sessions/ses_1/session.json"],"max_bytes":1024}');
+  assert.equal(result['/sessions/ses_1/session.json'].content, '{"id":"ses_1"}');
+});
+
+test('fetchFiles treats an empty path list as an empty result without calling AeorDB', async () => {
+  let calls = 0;
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test/',
+    fetchImpl: async () => {
+      calls++;
+      return jsonResponse({});
+    },
+  });
+
+  assert.deepEqual(await client.fetchFiles([]), {});
+  assert.equal(calls, 0);
+});
+
+test('fetchFiles validates path lists before making a request', async () => {
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test/',
+    fetchImpl: async () => jsonResponse({}),
+  });
+
+  await assert.rejects(
+    () => client.fetchFiles('/not-an-array'),
+    /paths must be an array/,
+  );
+  await assert.rejects(
+    () => client.fetchFiles([ '/ok.json', '' ]),
+    /non-empty string/,
+  );
+});
+
 test('eventsURL includes filters and token', () => {
   let client = new AeorDBClient({
     baseURL: 'http://aeor.test',

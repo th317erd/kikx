@@ -18,6 +18,24 @@ function createClient() {
       this.calls.push({ method: 'getFile', path });
       return this.files.get(path) || null;
     },
+    async fetchFiles(paths, options) {
+      this.calls.push({ method: 'fetchFiles', paths, options });
+      let output = {};
+      for (let path of paths) {
+        if (!this.files.has(path)) {
+          let error = new Error(`missing: ${path}`);
+          error.status = 404;
+          throw error;
+        }
+
+        output[path] = {
+          path,
+          content: JSON.stringify(this.files.get(path)),
+        };
+      }
+
+      return output;
+    },
     async deleteFile(path) {
       this.calls.push({ method: 'deleteFile', path });
       this.files.delete(path);
@@ -108,6 +126,7 @@ test('AeorDBAgentStore lists, updates, and deletes agents', async () => {
   assert.deepEqual(updated.config, { model: 'opus' });
   assert.deepEqual(updated.secretState.apiKey, { present: true, last4: '9999' });
   assert.deepEqual((await store.listAgents()).map((agent) => agent.id), [ 'agent_1' ]);
+  assert.ok(aeordb.calls.some((call) => call.method === 'fetchFiles' && call.paths.includes('/kikx/agents/agent_1/agent.json')));
 
   await store.deleteAgent('agent_1');
   assert.equal(await store.loadAgent('agent_1'), null);
@@ -139,6 +158,7 @@ test('AeorDBAgentStore resolves agents by direct id or indexed exact name query'
   assert.equal((await store.findAgentByIDOrName('Reviewer')).id, 'agent_2');
   assert.equal(await store.findAgentByIDOrName('missing'), null);
   assert.ok(aeordb.calls.some((call) => call.method === 'queryFiles' && call.query.where.field === 'name'));
+  assert.ok(aeordb.calls.some((call) => call.method === 'fetchFiles' && call.paths.includes('/kikx/agents/agent_2/agent.json')));
 });
 
 test('AeorDBAgentStore falls back to bounded exact-name list lookup when indexed query returns 404', async () => {

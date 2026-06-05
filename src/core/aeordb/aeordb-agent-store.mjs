@@ -2,6 +2,8 @@
 
 import { randomUUID } from 'node:crypto';
 
+import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
+
 const DEFAULT_ROOT_PATH = '/kikx';
 
 export class AeorDBAgentStore {
@@ -61,11 +63,12 @@ export class AeorDBAgentStore {
     }
 
     let agents = [];
-    for (let item of result?.items || []) {
-      if (!item?.path)
-        continue;
+    let reads = await readJSONFiles(this.aeordb, pathsFromItems(result?.items), {
+      fallbackOnBatchError: true,
+    });
 
-      let agent = await this.aeordb.getFile(item.path);
+    for (let read of reads) {
+      let agent = read.value;
       if (agent?.id)
         agents.push(sanitizeAgent(agent));
     }
@@ -109,13 +112,20 @@ export class AeorDBAgentStore {
       return await this.findAgentByNameFromBoundedList(reference);
     }
 
-    let agents = [];
+    let paths = [];
     for (let item of result?.results || result?.items || []) {
       let path = item.path || item['@path'];
-      if (!path)
-        continue;
+      if (path)
+        paths.push(path);
+    }
 
-      let agent = await this.aeordb.getFile(path);
+    let agents = [];
+    let reads = await readJSONFiles(this.aeordb, paths, {
+      fallbackOnBatchError: true,
+    });
+
+    for (let read of reads) {
+      let agent = read.value;
       if (agent?.id)
         agents.push(sanitizeAgent(agent));
     }

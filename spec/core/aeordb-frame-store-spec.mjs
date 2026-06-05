@@ -27,6 +27,27 @@ function createClient(options = {}) {
 
       return this.files.get(path) || null;
     },
+    async fetchFiles(paths, requestOptions) {
+      calls.push({ method: 'fetchFiles', paths, options: requestOptions });
+      if (options.failGetPath && paths.some((path) => path.includes(options.failGetPath)))
+        throw new Error(options.failGetMessage || 'read failed');
+
+      let output = {};
+      for (let path of paths) {
+        if (!this.files.has(path)) {
+          let error = new Error(`missing: ${path}`);
+          error.status = 404;
+          throw error;
+        }
+
+        output[path] = {
+          path,
+          content: JSON.stringify(this.files.get(path)),
+        };
+      }
+
+      return output;
+    },
     async listDirectory(path, options) {
       calls.push({ method: 'listDirectory', path, options });
       let prefix = `${path.replace(/\/+$/g, '')}/`;
@@ -122,6 +143,14 @@ test('AeorDBFrameStore lists persisted session manifests with a bounded query', 
     },
   });
   assert.deepEqual(sessions.map((session) => session.id), [ 'ses_2', 'ses_1' ]);
+  assert.deepEqual(aeordb.calls[1], {
+    method: 'fetchFiles',
+    paths: [
+      '/kikx/sessions/ses_2/session.json',
+      '/kikx/sessions/ses_1/session.json',
+    ],
+    options: undefined,
+  });
 });
 
 test('AeorDBFrameStore loads one session manifest and its frames on demand', async () => {
@@ -268,6 +297,33 @@ test('AeorDBFrameStore preserves frame load failures as visible non-persisted pl
   assert.equal(frames[1].content.path, '/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000002-AgentMessage-bad_msg.json');
   assert.equal(frames[1].content.error, 'fetch failed');
   assert.equal(aeordb.calls.some((call) => call.method === 'putFile' || call.method === 'patchFile'), false);
+  assert.ok(aeordb.calls.some((call) => call.method === 'fetchFiles'));
+  assert.equal(aeordb.calls.filter((call) => call.method === 'getFile').length, 3);
+});
+
+test('AeorDBFrameStore falls back to individual frame reads when multi-fetch is all-or-nothing', async () => {
+  let aeordb = createClient({
+    failGetPath: '0000000000000002-AgentMessage-bad_msg.json',
+    failGetMessage: 'multi-fetch 404',
+  });
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-msg_1.json', {
+    id: 'msg_1',
+    type: 'UserMessage',
+    order: 1,
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000002-AgentMessage-bad_msg.json', {
+    id: 'bad_msg',
+    type: 'AgentMessage',
+    order: 2,
+  });
+
+  let frames = await store.listFrames('ses_1');
+
+  assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'FrameLoadError' ]);
+  assert.equal(frames[1].content.error, 'multi-fetch 404');
+  assert.ok(aeordb.calls.some((call) => call.method === 'fetchFiles'));
+  assert.equal(aeordb.calls.filter((call) => call.method === 'getFile').length, 2);
 });
 
 test('AeorDBFrameStore persists a commit and changed frames', async () => {
