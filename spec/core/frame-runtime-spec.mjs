@@ -54,6 +54,7 @@ function createRuntime(options = {}) {
   return new FrameRuntime({
     aeordb: options.aeordb || createClient(),
     clock: () => options.now || 1000,
+    runnerID: options.runnerID || 'runtime',
     idGenerator: () => ids[index++],
   });
 }
@@ -96,8 +97,10 @@ test('FrameRuntime defaults session titles to numbered names', async () => {
   let first = await runtime.createSession();
   let second = await runtime.createSession();
 
-  assert.equal(first.title, 'Session 1000');
-  assert.equal(second.title, 'Session 1001');
+  assert.equal(first.title, 'Session 1');
+  assert.equal(second.title, 'Session 2');
+  assert.equal(first.createdAt, 1_000_000);
+  assert.equal(second.createdAt, 1_001_000);
 });
 
 test('FrameRuntime renames sessions and persists the manifest', async () => {
@@ -109,7 +112,8 @@ test('FrameRuntime renames sessions and persists the manifest', async () => {
   let session = await runtime.updateSession('ses_1', { title: 'Project Alpha' });
 
   assert.equal(session.title, 'Project Alpha');
-  assert.equal(session.updatedAt, 2000);
+  assert.equal(session.updatedAt, 2_000_000);
+  assert.equal(session.updatedClock, '0000000002000000-000000-runtime');
   assert.equal(runtime.getSession('ses_1'), session);
   assert.equal(aeordb.calls.at(-1).path, '/kikx/sessions/ses_1/session.json');
   assert.equal(aeordb.calls.at(-1).body.title, 'Project Alpha');

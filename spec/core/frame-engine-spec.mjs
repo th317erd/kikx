@@ -93,6 +93,34 @@ test('FrameEngine sorts by latest commit order without changing stable frame ord
   assert.deepEqual(frames.toArray().map((frame) => frame.id), [ 'user_1', 'agent_1' ]);
 });
 
+test('FrameEngine stamps frames with sortable created and updated clocks', () => {
+  let now = 1_000;
+  let frames = new FrameEngine({
+    clock: () => now,
+    runnerID: 'test-runner',
+    idGenerator: (() => {
+      let index = 0;
+      return () => `commit_${++index}`;
+    })(),
+  });
+
+  frames.merge([{ id: 'agent_1', type: 'AgentMessage', content: { text: '' }, hidden: true }]);
+  now = 1_001;
+  frames.merge([{ id: 'user_1', type: 'UserMessage', content: { text: 'after initial response' }, hidden: false }]);
+  now = 1_002;
+  frames.merge([{ id: 'agent_1', type: 'AgentMessage', content: { text: 'final response' }, hidden: false }]);
+
+  let agent = frames.get('agent_1');
+  let user = frames.get('user_1');
+
+  assert.equal(agent.createdAt, 1_000_000);
+  assert.equal(agent.updatedAt, 1_002_000);
+  assert.equal(agent.createdClock, '0000000001000000-000000-test-runner');
+  assert.equal(agent.updatedClock, '0000000001002000-000000-test-runner');
+  assert.equal(user.updatedClock, '0000000001001000-000000-test-runner');
+  assert.deepEqual(frames.toArray().map((frame) => frame.id), [ 'user_1', 'agent_1' ]);
+});
+
 test('FrameEngine live frames collapse into a persistent group frame', () => {
   let frames = engine();
 
@@ -159,8 +187,22 @@ test('FrameEngine hydrates persisted frames without emitting commits', () => {
   frames.on('commit', (event) => commits.push(event.commit));
 
   frames.hydrate([
-    { id: 'msg_2', type: 'UserMessage', order: 2, content: { text: 'two' }, hidden: false },
-    { id: 'msg_1', type: 'UserMessage', order: 1, content: { text: 'one' }, hidden: false },
+    {
+      id: 'msg_2',
+      type: 'UserMessage',
+      order: 2,
+      content: { text: 'two' },
+      hidden: false,
+      updatedClock: '0000000001002000-000000-test',
+    },
+    {
+      id: 'msg_1',
+      type: 'UserMessage',
+      order: 1,
+      content: { text: 'one' },
+      hidden: false,
+      updatedClock: '0000000001001000-000000-test',
+    },
   ]);
 
   assert.deepEqual(frames.toArray().map((frame) => frame.id), [ 'msg_1', 'msg_2' ]);

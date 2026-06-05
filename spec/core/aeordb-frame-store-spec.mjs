@@ -80,6 +80,8 @@ test('AeorDBFrameStore writes global and session-local index configs', async () 
   ]);
   assert.equal(aeordb.calls[1].body.glob, '**/frames/*.json');
   assert.ok(aeordb.calls[1].body.indexes.some((index) => index.name === 'contentText'));
+  assert.ok(aeordb.calls[1].body.indexes.some((index) => index.name === 'createdClock'));
+  assert.ok(aeordb.calls[1].body.indexes.some((index) => index.name === 'updatedClock'));
 });
 
 test('AeorDBFrameStore saves session manifests after creating session-local indexes', async () => {
@@ -189,6 +191,42 @@ test('AeorDBFrameStore orders frames by commit order and exposes missing committ
   assert.equal(frames[2].type, 'FrameLoadError');
   assert.equal(frames[2].commitOrder, 4);
   assert.match(frames[2].content.text, /Committed frame could not be loaded/);
+});
+
+test('AeorDBFrameStore orders frames by updated clocks before legacy commit order', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-AgentMessage-agent_1.json', {
+    id: 'agent_1',
+    type: 'AgentMessage',
+    order: 1,
+    commitOrder: 3,
+    updatedClock: '0000000001003000-000000-runner',
+    hidden: false,
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_2/frames/0000000000000002-UserMessage-user_1.json', {
+    id: 'user_1',
+    type: 'UserMessage',
+    order: 2,
+    commitOrder: 2,
+    updatedClock: '0000000001002000-000000-runner',
+    hidden: false,
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/commits/0000000000000002-commit_2.json', {
+    id: 'commit_2',
+    order: 2,
+    changes: [{ frameID: 'user_1', operation: 'create' }],
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/commits/0000000000000003-commit_3.json', {
+    id: 'commit_3',
+    order: 3,
+    changes: [{ frameID: 'agent_1', operation: 'update' }],
+  });
+
+  let frames = await store.listFrames('ses_1');
+
+  assert.deepEqual(frames.map((frame) => frame.id), [ 'user_1', 'agent_1' ]);
 });
 
 test('AeorDBFrameStore preserves frame load failures as visible non-persisted placeholders', async () => {

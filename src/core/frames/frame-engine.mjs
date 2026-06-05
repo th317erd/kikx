@@ -3,6 +3,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 
+import { HybridLogicalClock, defaultUnixMicros } from '../clock/hybrid-logical-clock.mjs';
 import { cloneValue, deepMerge } from './deep-merge.mjs';
 
 const MERGEABLE_FIELDS = new Set([ 'content', 'hidden', 'deleted', 'updatedAt', 'state' ]);
@@ -11,7 +12,11 @@ export class FrameEngine extends EventEmitter {
   constructor(options = {}) {
     super();
     this.history = options.history !== false;
-    this.clock = options.clock || (() => Date.now());
+    this.clock = options.clock || defaultUnixMicros;
+    this.logicalClock = options.logicalClock || new HybridLogicalClock({
+      now: this.clock,
+      runnerID: options.runnerID,
+    });
     this.idGenerator = options.idGenerator || (() => randomUUID());
     this.commitValidator = options.commitValidator || null;
 
@@ -140,6 +145,8 @@ export class FrameEngine extends EventEmitter {
         continue;
 
       let frame = this._normalizeFrame(input);
+      this._seedClock(frame.createdClock);
+      this._seedClock(frame.updatedClock);
       this._frames.set(frame.id, frame);
       this._appendHistory(frame.id, frame);
       if (frame.parentID)
@@ -199,8 +206,17 @@ export class FrameEngine extends EventEmitter {
   }
 
   _normalizeFrame(input) {
-    let timestamp = numberOr(input.timestamp, this.clock());
     let existing = this.get(input.id);
+    let stamp = null;
+    let nextStamp = () => {
+      stamp ||= this._nextStamp();
+      return stamp;
+    };
+    let timestamp = numberOr(input.timestamp, nextStamp().at);
+    let createdAt = numberOr(input.createdAt, existing?.createdAt || timestamp);
+    let updatedAt = numberOr(input.updatedAt, timestamp);
+    let createdClock = stringOr(input.createdClock, existing?.createdClock || nextStamp().clock);
+    let updatedClock = stringOr(input.updatedClock, existing ? nextStamp().clock : createdClock);
     let order = numberOr(input.order, existing?.order || ++this._frameOrder);
 
     return {
@@ -209,8 +225,10 @@ export class FrameEngine extends EventEmitter {
       type: input.type,
       order,
       timestamp,
-      createdAt: numberOr(input.createdAt, existing?.createdAt || timestamp),
-      updatedAt: numberOr(input.updatedAt, timestamp),
+      createdAt,
+      updatedAt,
+      createdClock,
+      updatedClock,
       hidden: input.hidden ?? existing?.hidden ?? true,
       deleted: input.deleted ?? existing?.deleted ?? false,
       targets: Array.isArray(input.targets) ? input.targets.slice() : [],
@@ -268,7 +286,7 @@ export class FrameEngine extends EventEmitter {
           update[key] = cloneValue(source[key]);
       }
 
-      update.updatedAt = this.clock();
+      this._stampUpdated(update);
 
       this._frames.set(targetID, update);
       this._appendHistory(targetID, update);
@@ -315,8 +333,8 @@ export class FrameEngine extends EventEmitter {
     let updated = {
       ...existing,
       content: deepMerge(existing.content || {}, frame.content || {}),
-      updatedAt: this.clock(),
     };
+    this._stampUpdated(updated);
 
     this._frames.set(existing.id, updated);
     this._appendHistory(existing.id, updated);
@@ -327,16 +345,38 @@ export class FrameEngine extends EventEmitter {
 
   _createCommit(changes, options) {
     let order = ++this._commitOrder;
+    let stamp = this._nextStamp();
     return {
       id: options.commitID || this.idGenerator(),
       order,
       parentOrder: order > 1 ? order - 1 : null,
-      timestamp: this.clock(),
+      timestamp: stamp.at,
+      clock: stamp.clock,
+      createdAt: stamp.at,
+      createdClock: stamp.clock,
       authorType: options.authorType || 'system',
       authorID: options.authorID || null,
       silent: options.silent === true,
       changes: changes.map((change) => ({ ...change })),
     };
+  }
+
+  _nextStamp() {
+    if (this.logicalClock && typeof this.logicalClock.tick === 'function')
+      return this.logicalClock.tick();
+
+    return { at: this.clock(), clock: null };
+  }
+
+  _seedClock(clock) {
+    if (this.logicalClock && typeof this.logicalClock.seed === 'function')
+      this.logicalClock.seed(clock);
+  }
+
+  _stampUpdated(frame) {
+    let stamp = this._nextStamp();
+    frame.updatedAt = stamp.at;
+    frame.updatedClock = stamp.clock;
   }
 
   _applyCommitOrder(frames, commitOrder) {
@@ -422,18 +462,52 @@ export class FrameEngine extends EventEmitter {
 }
 
 function compareFrameOrder(a, b) {
-  return (sortOrder(a) - sortOrder(b)) || String(a.id).localeCompare(String(b.id));
+  return compareClock(sortUpdatedClock(a), sortUpdatedClock(b))
+    || compareNumber(sortUpdatedAt(a), sortUpdatedAt(b))
+    || compareClock(a?.createdClock, b?.createdClock)
+    || compareNumber(a?.createdAt, b?.createdAt)
+    || compareNumber(sortCommitOrder(a), sortCommitOrder(b))
+    || compareNumber(a?.order, b?.order)
+    || String(a.id).localeCompare(String(b.id));
 }
 
-function sortOrder(frame) {
+function sortUpdatedClock(frame) {
+  return stringOr(frame?.updatedClock, frame?.createdClock);
+}
+
+function sortUpdatedAt(frame) {
+  return numberOr(frame?.updatedAt, frame?.createdAt || 0);
+}
+
+function sortCommitOrder(frame) {
   if (typeof frame?.commitOrder === 'number' && Number.isFinite(frame.commitOrder))
     return frame.commitOrder;
 
   return frame?.order || 0;
 }
 
+function compareClock(a, b) {
+  if (!a || !b)
+    return 0;
+
+  if (a && b && a !== b)
+    return String(a).localeCompare(String(b));
+
+  return 0;
+}
+
+function compareNumber(a, b) {
+  let left = (typeof a === 'number' && Number.isFinite(a)) ? a : 0;
+  let right = (typeof b === 'number' && Number.isFinite(b)) ? b : 0;
+  return left - right;
+}
+
 function numberOr(value, fallback) {
   return (typeof value === 'number' && Number.isFinite(value)) ? value : fallback;
+}
+
+function stringOr(value, fallback = null) {
+  return (typeof value === 'string' && value.trim() !== '') ? value : fallback;
 }
 
 function cloneMapOfArrays(map) {

@@ -3,6 +3,7 @@
 export { AeorDBClient, AeorDBError } from './core/aeordb/aeordb-client.mjs';
 export { AeorDBFrameStore } from './core/aeordb/aeordb-frame-store.mjs';
 export { AppContext } from './core/app/app-context.mjs';
+export { HybridLogicalClock, defaultUnixMicros, normalizeMicros, parseClock } from './core/clock/index.mjs';
 export { CommandRegistry, InviteCommand, SlashCommandFramePlugin } from './core/commands/index.mjs';
 export { FrameEngine, deepMerge } from './core/frames/index.mjs';
 export { PermissionRequiredError } from './core/permissions/permission-required-error.mjs';

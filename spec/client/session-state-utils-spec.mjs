@@ -135,10 +135,18 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
     },
     framesBySessionID: {
       ses_1: [
-        { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } },
+        {
+          id: 'msg_1',
+          type: 'UserMessage',
+          order: 1,
+          updatedClock: '0000000001000000-000000-runner',
+          content: { text: 'hello' },
+        },
         {
           id: 'agent_msg_1',
           type: 'AgentMessage',
+          order: 2,
+          updatedClock: '0000000001001000-000000-runner',
           parentID: 'msg_1',
           authorID: 'agent_1',
           hidden: true,
@@ -157,6 +165,7 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
     type: 'BeginTyping',
     phantom: true,
     authorID: 'agent_1',
+    updatedClock: '0000000001001500-000000-runner',
     content: { agentName: 'Codex' },
   });
   let thinking = upsertFrameState(typing, 'ses_1', {
@@ -166,6 +175,7 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
     responseFrameID: 'agent_msg_1',
     parentID: 'msg_1',
     authorID: 'agent_1',
+    updatedClock: '0000000001002000-000000-runner',
     content: {
       text: 'thinking',
       thinking: {
@@ -182,6 +192,7 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
     responseFrameID: 'agent_msg_1',
     parentID: 'msg_1',
     authorID: 'agent_1',
+    updatedClock: '0000000001003000-000000-runner',
     content: { text: 'partial' },
   });
   let endTyping = upsertFrameState(delta, 'ses_1', {
@@ -189,12 +200,14 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
     type: 'EndTyping',
     phantom: true,
     authorID: 'agent_1',
+    updatedClock: '0000000001003500-000000-runner',
   });
   let final = upsertFrameState(endTyping, 'ses_1', {
     id: 'agent_msg_1',
     type: 'AgentMessage',
     parentID: 'msg_1',
     authorID: 'agent_1',
+    updatedClock: '0000000001004000-000000-runner',
     content: { text: 'final' },
   });
 
@@ -221,7 +234,40 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
   });
 });
 
-test('upsertFrameState keeps live frames sorted by commit order', () => {
+test('upsertFrameState keeps live frames sorted by updated clocks', () => {
+  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', [
+    {
+      id: 'agent_1',
+      type: 'AgentMessage',
+      order: 1,
+      commitOrder: 1,
+      updatedClock: '0000000001000000-000000-runner',
+      hidden: true,
+    },
+    {
+      id: 'user_1',
+      type: 'UserMessage',
+      order: 2,
+      commitOrder: 2,
+      updatedClock: '0000000001001000-000000-runner',
+      hidden: false,
+    },
+  ]);
+
+  let next = upsertFrameState(state, 'ses_1', {
+    id: 'agent_1',
+    type: 'AgentMessage',
+    order: 1,
+    commitOrder: 3,
+    updatedClock: '0000000001002000-000000-runner',
+    hidden: false,
+    content: { text: 'final' },
+  });
+
+  assert.deepEqual(next.framesBySessionID.ses_1.map((frame) => frame.id), [ 'user_1', 'agent_1' ]);
+});
+
+test('upsertFrameState falls back to commit order when clocks are missing', () => {
   let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', [
     { id: 'agent_1', type: 'AgentMessage', order: 1, commitOrder: 1, hidden: true },
     { id: 'user_1', type: 'UserMessage', order: 2, commitOrder: 2, hidden: false },

@@ -101,3 +101,15 @@
   - [x] Keep `AgentThinking` PhantomFrames transitory and non-persistent.
   - [x] Merge `content.thinking` into the response frame state instead of rendering a second thinking row.
   - [x] Preserve accumulated thinking when the final AgentMessage event arrives.
+
+- [ ] Clear current test sessions and frames from AeorDB while preserving agents.
+  - [x] Preserved pre-delete and post-delete AeorDB evidence copies.
+  - [x] Removed normal session manifests from the test DB while preserving agents.
+  - [x] Created AeorDB bug report for recursive listing/delete inconsistency.
+  - [ ] Fully remove orphaned session-subtree entries after AeorDB storage bug is diagnosed.
+
+- [x] Add high-resolution hybrid-logical frame clocks for deterministic message ordering.
+  - [x] Add focused clock tests.
+  - [x] Stamp frames and commits with `createdClock` / `updatedClock`.
+  - [x] Sort server and client frame views by HLC clocks before legacy numeric fallbacks.
+  - [x] Persist/query HLC fields in AeorDB frame/session metadata.

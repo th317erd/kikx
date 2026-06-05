@@ -55,6 +55,8 @@ export class AeorDBFrameStore {
             { name: 'title', type: [ 'string', 'trigram' ] },
             { name: 'createdAt', type: 'timestamp' },
             { name: 'updatedAt', type: 'timestamp' },
+            { name: 'createdClock', type: 'string' },
+            { name: 'updatedClock', type: 'string' },
           ],
         },
       },
@@ -85,6 +87,10 @@ export class AeorDBFrameStore {
             { name: 'parentID', type: 'string' },
             { name: 'order', type: 'u64' },
             { name: 'timestamp', type: 'timestamp' },
+            { name: 'createdAt', type: 'timestamp' },
+            { name: 'updatedAt', type: 'timestamp' },
+            { name: 'createdClock', type: 'string' },
+            { name: 'updatedClock', type: 'string' },
             { name: 'authorType', type: 'string' },
             { name: 'authorID', type: 'string' },
             { name: 'hidden', type: 'string', source: [ 'hiddenIndex' ] },
@@ -389,10 +395,24 @@ function normalizeOffset(offset) {
 }
 
 function compareFrameOrder(a, b) {
-  return (sortOrder(a) - sortOrder(b)) || String(a.id).localeCompare(String(b.id));
+  return compareClock(sortUpdatedClock(a), sortUpdatedClock(b))
+    || compareNumber(sortUpdatedAt(a), sortUpdatedAt(b))
+    || compareClock(a?.createdClock, b?.createdClock)
+    || compareNumber(a?.createdAt, b?.createdAt)
+    || compareNumber(sortCommitOrder(a), sortCommitOrder(b))
+    || compareNumber(a?.order, b?.order)
+    || String(a.id).localeCompare(String(b.id));
 }
 
-function sortOrder(frame) {
+function sortUpdatedClock(frame) {
+  return stringOr(frame?.updatedClock, frame?.createdClock);
+}
+
+function sortUpdatedAt(frame) {
+  return numberOr(frame?.updatedAt, frame?.createdAt || 0);
+}
+
+function sortCommitOrder(frame) {
   if (typeof frame?.commitOrder === 'number' && Number.isFinite(frame.commitOrder))
     return frame.commitOrder;
 
@@ -467,9 +487,10 @@ function commitFrameIDs(commit) {
 }
 
 function compareFrameFileVersion(a, b) {
-  return ((a.updatedAt || 0) - (b.updatedAt || 0))
-    || ((a.commitOrder || 0) - (b.commitOrder || 0))
-    || ((a.order || 0) - (b.order || 0));
+  return compareClock(sortUpdatedClock(a), sortUpdatedClock(b))
+    || compareNumber(sortUpdatedAt(a), sortUpdatedAt(b))
+    || compareNumber(a?.commitOrder, b?.commitOrder)
+    || compareNumber(a?.order, b?.order);
 }
 
 function createFrameLoadError(sessionID, path, error) {
@@ -488,6 +509,8 @@ function createFrameLoadError(sessionID, path, error) {
     timestamp: 0,
     createdAt: 0,
     updatedAt: 0,
+    createdClock: null,
+    updatedClock: null,
     hidden: false,
     deleted: false,
     phantom: false,
@@ -515,6 +538,8 @@ function createCommittedFrameLoadError(sessionID, commit, frameID) {
     timestamp: commit?.timestamp || 0,
     createdAt: commit?.timestamp || 0,
     updatedAt: commit?.timestamp || 0,
+    createdClock: commit?.clock || commit?.createdClock || null,
+    updatedClock: commit?.clock || commit?.createdClock || null,
     hidden: false,
     deleted: false,
     phantom: false,
@@ -553,4 +578,28 @@ function normalizeRoot(rootPath) {
 
 function encodeSegment(value) {
   return encodeURIComponent(String(value));
+}
+
+function compareClock(a, b) {
+  if (!a || !b)
+    return 0;
+
+  if (a && b && a !== b)
+    return String(a).localeCompare(String(b));
+
+  return 0;
+}
+
+function compareNumber(a, b) {
+  let left = (typeof a === 'number' && Number.isFinite(a)) ? a : 0;
+  let right = (typeof b === 'number' && Number.isFinite(b)) ? b : 0;
+  return left - right;
+}
+
+function numberOr(value, fallback) {
+  return (typeof value === 'number' && Number.isFinite(value)) ? value : fallback;
+}
+
+function stringOr(value, fallback = null) {
+  return (typeof value === 'string' && value.trim() !== '') ? value : fallback;
 }

@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 
 import { AeorDBFrameStore } from '../aeordb/aeordb-frame-store.mjs';
+import { HybridLogicalClock, defaultUnixMicros } from '../clock/hybrid-logical-clock.mjs';
 import { FrameEngine } from '../frames/frame-engine.mjs';
 
 export class FrameRuntime extends EventEmitter {
@@ -15,7 +16,9 @@ export class FrameRuntime extends EventEmitter {
       frameStore,
       frameRouter = null,
       services = null,
-      clock = () => Date.now(),
+      clock = defaultUnixMicros,
+      logicalClock = null,
+      runnerID = null,
       idGenerator = () => randomUUID(),
     } = options;
 
@@ -23,6 +26,10 @@ export class FrameRuntime extends EventEmitter {
       throw new TypeError('FrameRuntime requires aeordb or frameStore');
 
     this.clock = clock;
+    this.logicalClock = logicalClock || new HybridLogicalClock({
+      now: this.clock,
+      runnerID,
+    });
     this.idGenerator = idGenerator;
     this.frameStore = frameStore || new AeorDBFrameStore({ aeordb });
     this.frameRouter = frameRouter;
@@ -32,8 +39,9 @@ export class FrameRuntime extends EventEmitter {
   }
 
   async createSession(input = {}) {
-    let now = this.clock();
-    let title = normalizeTitle(input.title, `Session ${now}`);
+    let stamp = this.nextClockStamp();
+    let now = stamp.at;
+    let title = normalizeTitle(input.title, this.nextDefaultSessionTitle());
     let session = {
       id: input.id || this.idGenerator(),
       title,
@@ -43,6 +51,8 @@ export class FrameRuntime extends EventEmitter {
       participantAgentIDs: normalizeStringArray(input.participantAgentIDs),
       createdAt: input.createdAt || now,
       updatedAt: input.updatedAt || now,
+      createdClock: input.createdClock || stamp.clock,
+      updatedClock: input.updatedClock || stamp.clock,
     };
 
     if (!session.id || typeof session.id !== 'string')
@@ -52,6 +62,7 @@ export class FrameRuntime extends EventEmitter {
 
     let frameEngine = new FrameEngine({
       clock: this.clock,
+      logicalClock: this.logicalClock,
       idGenerator: this.idGenerator,
       commitValidator: input.commitValidator || null,
     });
@@ -79,10 +90,12 @@ export class FrameRuntime extends EventEmitter {
       throw error;
     }
 
-    let now = this.clock();
+    let stamp = this.nextClockStamp();
+    let now = stamp.at;
 
     session.title = normalizeTitle(input.title);
     session.updatedAt = input.updatedAt || now;
+    session.updatedClock = input.updatedClock || stamp.clock;
 
     await this.frameStore.saveSession(session);
     this.emitRuntimeEvent('session.saved', { sessionID: session.id, session });
@@ -134,6 +147,7 @@ export class FrameRuntime extends EventEmitter {
 
     let frameEngine = new FrameEngine({
       clock: this.clock,
+      logicalClock: this.logicalClock,
       idGenerator: this.idGenerator,
       commitValidator: options.commitValidator || null,
     });
@@ -159,7 +173,8 @@ export class FrameRuntime extends EventEmitter {
   async appendUserMessage(sessionID, input = {}) {
     let entry = await this.ensureSessionEntry(sessionID);
     let text = normalizeText(input.text);
-    let now = this.clock();
+    let stamp = this.nextClockStamp();
+    let now = stamp.at;
     let interactionID = input.interactionID || input.interactionId || this.idGenerator();
     let frame = {
       id: input.id || this.idGenerator(),
@@ -172,6 +187,8 @@ export class FrameRuntime extends EventEmitter {
       timestamp: input.timestamp || now,
       createdAt: input.createdAt || now,
       updatedAt: input.updatedAt || now,
+      createdClock: input.createdClock || stamp.clock,
+      updatedClock: input.updatedClock || stamp.clock,
       hidden: false,
       deleted: false,
       content: { text },
@@ -189,6 +206,7 @@ export class FrameRuntime extends EventEmitter {
     await this.frameStore.flush();
 
     entry.session.updatedAt = now;
+    entry.session.updatedClock = stamp.clock;
     entry.session.messageCount = nextMessageCount(entry.session.messageCount, entry.frameEngine.toArray(), frames);
     await this.frameStore.saveSessionManifest(entry.session);
     this.emitRuntimeEvent('session.saved', { sessionID, session: entry.session });
@@ -210,7 +228,9 @@ export class FrameRuntime extends EventEmitter {
       participantAgentIDs.push(agentID);
 
     entry.session.participantAgentIDs = participantAgentIDs;
-    entry.session.updatedAt = input.updatedAt || input.invitedAt || this.clock();
+    let stamp = this.nextClockStamp();
+    entry.session.updatedAt = input.updatedAt || input.invitedAt || stamp.at;
+    entry.session.updatedClock = input.updatedClock || input.invitedClock || stamp.clock;
 
     await this.frameStore.saveSessionManifest(entry.session);
     this.emitRuntimeEvent('session.saved', { sessionID, session: entry.session });
@@ -238,6 +258,19 @@ export class FrameRuntime extends EventEmitter {
   disconnect() {
     for (let entry of this.sessions.values())
       entry.disconnectStore?.();
+  }
+
+  nextClockStamp() {
+    if (this.logicalClock && typeof this.logicalClock.tick === 'function') {
+      this.logicalClock.now = this.clock;
+      return this.logicalClock.tick();
+    }
+
+    return { at: this.clock(), clock: null };
+  }
+
+  nextDefaultSessionTitle() {
+    return `Session ${this.sessions.size + 1}`;
   }
 
   emitRuntimeEvent(type, payload = {}) {

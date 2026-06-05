@@ -229,6 +229,8 @@ function mergeResponseFramePhantom(existing, frame, responseFrameID) {
     timestamp: existing?.timestamp || frame.timestamp,
     createdAt: existing?.createdAt || frame.createdAt,
     updatedAt: frame.updatedAt || existing?.updatedAt,
+    createdClock: existing?.createdClock || frame.createdClock,
+    updatedClock: frame.updatedClock || existing?.updatedClock,
     hidden: shouldShow ? false : existing?.hidden ?? true,
     deleted: existing?.deleted ?? frame.deleted ?? false,
     phantom: false,
@@ -285,7 +287,7 @@ function sortFrames(frames) {
   return frames
     .map((frame, index) => ({ frame, index }))
     .sort((a, b) => {
-      let order = frameSortOrder(a.frame) - frameSortOrder(b.frame);
+      let order = compareFrameOrder(a.frame, b.frame);
       if (order !== 0)
         return order;
 
@@ -294,7 +296,30 @@ function sortFrames(frames) {
     .map((entry) => entry.frame);
 }
 
-function frameSortOrder(frame) {
+function compareFrameOrder(a, b) {
+  return compareNumber(liveSortWeight(a), liveSortWeight(b))
+    || compareClock(sortUpdatedClock(a), sortUpdatedClock(b))
+    || compareNumber(sortUpdatedAt(a), sortUpdatedAt(b))
+    || compareClock(a?.createdClock, b?.createdClock)
+    || compareNumber(a?.createdAt, b?.createdAt)
+    || compareNumber(sortCommitOrder(a), sortCommitOrder(b))
+    || compareNumber(a?.order, b?.order)
+    || String(a?.id || '').localeCompare(String(b?.id || ''));
+}
+
+function liveSortWeight(frame) {
+  return frame?.type === 'BeginTyping' ? 1 : 0;
+}
+
+function sortUpdatedClock(frame) {
+  return stringOr(frame?.updatedClock, frame?.createdClock);
+}
+
+function sortUpdatedAt(frame) {
+  return numberOr(frame?.updatedAt, frame?.createdAt || 0);
+}
+
+function sortCommitOrder(frame) {
   if (typeof frame?.commitOrder === 'number' && Number.isFinite(frame.commitOrder))
     return frame.commitOrder;
 
@@ -302,4 +327,28 @@ function frameSortOrder(frame) {
     return frame.order;
 
   return Number.MAX_SAFE_INTEGER;
+}
+
+function compareClock(a, b) {
+  if (!a || !b)
+    return 0;
+
+  if (a && b && a !== b)
+    return String(a).localeCompare(String(b));
+
+  return 0;
+}
+
+function compareNumber(a, b) {
+  let left = (typeof a === 'number' && Number.isFinite(a)) ? a : 0;
+  let right = (typeof b === 'number' && Number.isFinite(b)) ? b : 0;
+  return left - right;
+}
+
+function numberOr(value, fallback) {
+  return (typeof value === 'number' && Number.isFinite(value)) ? value : fallback;
+}
+
+function stringOr(value, fallback = null) {
+  return (typeof value === 'string' && value.trim() !== '') ? value : fallback;
 }
