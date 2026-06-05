@@ -35,6 +35,11 @@ export class KikxApp extends HTMLElement {
 
     this._state = kikxState;
     this._eventSource = null;
+    this._frameListResizeObserver = null;
+    this._observedFrameList = null;
+    this._frameListAnchoredToBottom = true;
+    this._forceScrollToBottomAfterRender = false;
+    this._focusComposerAfterRender = false;
 
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
@@ -51,6 +56,7 @@ export class KikxApp extends HTMLElement {
     this._onRuntimeEvent = this._onRuntimeEvent.bind(this);
     this._onRuntimeEventsOpen = this._onRuntimeEventsOpen.bind(this);
     this._onRuntimeEventsError = this._onRuntimeEventsError.bind(this);
+    this._onFrameListScroll = this._onFrameListScroll.bind(this);
   }
 
   connectedCallback() {
@@ -68,6 +74,8 @@ export class KikxApp extends HTMLElement {
   }
 
   _render() {
+    let renderSnapshot = this._captureRenderSnapshot();
+    this._disconnectFrameListObserver();
     $(this).empty();
 
     let shellChildren = [
@@ -104,6 +112,12 @@ export class KikxApp extends HTMLElement {
     let tree = div.class('kikx-shell').context(this)(shellChildren).build(document);
 
     this.appendChild(tree);
+    this._afterRender(renderSnapshot);
+  }
+
+  disconnectedCallback() {
+    this._disconnectRuntimeEvents();
+    this._disconnectFrameListObserver();
   }
 
   _buildAuthShell() {
@@ -404,6 +418,7 @@ export class KikxApp extends HTMLElement {
   }
 
   _onRuntimeEvent(event) {
+    let wasNearBottom = this._isFrameListNearBottom();
     let data = parseRuntimeEvent(event);
     if (!data)
       return;
@@ -418,8 +433,11 @@ export class KikxApp extends HTMLElement {
     if (data.type === 'session.saved' && data.session?.id)
       upsertSession(data.session, this._state);
 
-    if ((data.type === 'frame.added' || data.type === 'frame.updated' || data.type === 'frame.phantom') && data.sessionID && data.frame?.id)
+    if ((data.type === 'frame.added' || data.type === 'frame.updated' || data.type === 'frame.phantom') && data.sessionID && data.frame?.id) {
       upsertFrame(data.sessionID, data.frame, this._state);
+      if (data.sessionID === this._state.selectedSessionID && wasNearBottom)
+        this._forceScrollToBottomAfterRender = true;
+    }
 
     this._render();
   }
@@ -433,10 +451,12 @@ export class KikxApp extends HTMLElement {
       if (!this._state.selectedSessionID && sessions.length > 0)
         this._state.selectedSessionID = sessions[0].id;
 
-      if (this._state.selectedSessionID)
+      if (this._state.selectedSessionID) {
+        this._forceScrollToBottomAfterRender = true;
         await this._loadFrames(this._state.selectedSessionID);
-      else
+      } else {
         this._render();
+      }
     } catch (error) {
       this._state.status = error.message;
       this._state.statusKind = 'error';
@@ -599,6 +619,8 @@ export class KikxApp extends HTMLElement {
       });
       upsertSession(result.data.session, this._state);
       this._state.draft = '';
+      this._forceScrollToBottomAfterRender = true;
+      this._focusComposerAfterRender = true;
       await this._loadFrames(this._state.selectedSessionID);
       this._state.status = 'Message committed';
       this._state.statusKind = 'ready';
@@ -752,6 +774,7 @@ export class KikxApp extends HTMLElement {
       });
       upsertSession(result.data.session, this._state);
       this._state.selectedSessionID = result.data.session.id;
+      this._forceScrollToBottomAfterRender = true;
       await this._loadSessions();
       this._state.status = 'Session created';
       this._state.statusKind = 'ready';
@@ -809,6 +832,7 @@ export class KikxApp extends HTMLElement {
     this._state.selectedSessionID = sessionID;
     this._state.status = 'Loading session...';
     this._state.statusKind = 'pending';
+    this._forceScrollToBottomAfterRender = true;
 
     try {
       await this._loadFrames(sessionID);
@@ -824,6 +848,90 @@ export class KikxApp extends HTMLElement {
 
   _selectedSession() {
     return getSelectedSession(this._state);
+  }
+
+  _captureRenderSnapshot() {
+    let frameList = this.querySelector('.kikx-frame-list');
+    if (frameList)
+      this._frameListAnchoredToBottom = this._isFrameListNearBottom(frameList);
+
+    return {
+      composerFocused: this.contains(document.activeElement) && document.activeElement?.matches?.('textarea[name="message"]'),
+      frameListNearBottom: this._frameListAnchoredToBottom,
+      forceScrollToBottom: this._forceScrollToBottomAfterRender,
+      focusComposer: this._focusComposerAfterRender,
+    };
+  }
+
+  _afterRender(snapshot = {}) {
+    let shouldScrollToBottom = snapshot.forceScrollToBottom || snapshot.frameListNearBottom;
+    let shouldFocusComposer = snapshot.focusComposer || snapshot.composerFocused;
+    this._forceScrollToBottomAfterRender = false;
+    this._focusComposerAfterRender = false;
+
+    if (shouldScrollToBottom) {
+      this._frameListAnchoredToBottom = true;
+      this._scrollFramesToBottom();
+    }
+
+    if (shouldFocusComposer)
+      queueMicrotask(() => this.querySelector('textarea[name="message"]:not([disabled])')?.focus());
+
+    this._connectFrameListObserver();
+  }
+
+  _connectFrameListObserver() {
+    let frameList = this.querySelector('.kikx-frame-list');
+    if (!frameList || typeof ResizeObserver !== 'function')
+      return;
+
+    this._observedFrameList = frameList;
+    frameList.addEventListener('scroll', this._onFrameListScroll);
+    this._frameListResizeObserver = new ResizeObserver(() => {
+      if (this._frameListAnchoredToBottom)
+        this._scrollFramesToBottom();
+    });
+    this._frameListResizeObserver.observe(frameList);
+  }
+
+  _disconnectFrameListObserver() {
+    if (this._observedFrameList) {
+      this._observedFrameList.removeEventListener('scroll', this._onFrameListScroll);
+      this._observedFrameList = null;
+    }
+
+    if (!this._frameListResizeObserver)
+      return;
+
+    this._frameListResizeObserver.disconnect();
+    this._frameListResizeObserver = null;
+  }
+
+  _isFrameListNearBottom(frameList = this.querySelector('.kikx-frame-list')) {
+    if (!frameList)
+      return true;
+
+    return frameList.scrollHeight - frameList.scrollTop - frameList.clientHeight <= 50;
+  }
+
+  _scrollFramesToBottom() {
+    let scroll = () => {
+      let frameList = this.querySelector('.kikx-frame-list');
+      if (!frameList)
+        return;
+
+      frameList.scrollTop = frameList.scrollHeight - frameList.clientHeight;
+      this._frameListAnchoredToBottom = true;
+    };
+
+    requestAnimationFrame(() => {
+      scroll();
+      requestAnimationFrame(scroll);
+    });
+  }
+
+  _onFrameListScroll(event) {
+    this._frameListAnchoredToBottom = this._isFrameListNearBottom(event.currentTarget);
   }
 }
 
