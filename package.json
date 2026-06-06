@@ -15,7 +15,8 @@
     "start:kikx": "node src/server/index.mjs",
     "start:kikx:dev": "node scripts/start-kikx-dev.mjs",
     "test": "timeout 120 node --test --test-timeout=30000 'spec/**/*-spec.mjs'",
-    "test:ui:stagehand": "timeout 120 node --test --test-timeout=60000 'spec/ui/stagehand/*-stagehand.mjs'"
+    "test:ui:stagehand": "timeout 120 node --test --test-timeout=60000 'spec/ui/stagehand/*-stagehand.mjs'",
+    "test:ui:puppeteer": "timeout 120 node --test --test-timeout=60000 'spec/ui/puppeteer/*-puppeteer.mjs'"
   },
   "engines": {
     "node": ">=22"
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@browserbasehq/stagehand": "^3.5.0",
     "playwright": "^1.60.0",
+    "puppeteer-core": "^24.43.1",
     "zod": "^4.4.3"
   }
 }

@@ -61,6 +61,12 @@ class BreakAgent extends AgentInterface {
   }
 }
 
+class ForwardingAgent extends AgentInterface {
+  async ask(_prompt, options = {}) {
+    return options.tools.forward([ 'agent_2', 'agent_3' ], 'please handle this');
+  }
+}
+
 class ScriptFinalizingAgent extends AgentInterface {
   createAgentLoopScript() {
     return [{
@@ -135,6 +141,7 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].prompt, /The user has just sent you a message:/);
   assert.match(agent.calls[1].prompt, /hello/);
   assert.match(agent.calls[1].prompt, /You are the coordinator\?: true/);
+  assert.match(agent.calls[1].prompt, /Mentions JSON:/);
   assert.deepEqual(agent.calls[1].toolNames, [ 'break', 'finalize', 'forward', 'nullResponse', 'respond' ]);
 });
 
@@ -209,6 +216,30 @@ test('AgentInterface base loop handles null-response and break loop controls', a
   ]);
 });
 
+test('AgentInterface forward tool delegates frame routing and remains silent', async () => {
+  let forwards = [];
+  let outputs = await collect(new ForwardingAgent().run(baseLoopParams({
+    services: {
+      async forwardFrame(forward) {
+        forwards.push(forward);
+      },
+    },
+  })));
+
+  assert.deepEqual(outputs, [
+    {
+      type: 'Done',
+      content: {
+        status: 'forwarded',
+      },
+    },
+  ]);
+  assert.equal(forwards.length, 1);
+  assert.deepEqual(forwards[0].targets, [ 'agent_2', 'agent_3' ]);
+  assert.equal(forwards[0].message, 'please handle this');
+  assert.equal(forwards[0].frame.id, 'msg_1');
+});
+
 test('AgentInterface base loop supports script-level finalization', async () => {
   assert.deepEqual(await collect(new ScriptFinalizingAgent().run(baseLoopParams())), [
     {
@@ -255,6 +286,13 @@ function baseLoopParams(overrides = {}) {
       coordinatorAgentID: 'agent_1',
     },
     frames: [],
+    mentions: {
+      agent_2: {
+        id: 'agent_2',
+        type: 'agent',
+        name: 'Worker',
+      },
+    },
     isCoordinator: true,
     ...overrides,
   };

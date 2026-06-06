@@ -134,3 +134,11 @@
   - [x] Add deterministic base `AgentInterface` loop primitives and break/finalize tools.
   - [x] Update Codex provider to use the base loop primitive.
   - [x] Verify focused app/plugin tests and full app tests.
+
+- [x] Add @mention routing and coordinator forwarding.
+  - [x] Add high-priority internal mention plugin and parser.
+  - [x] Resolve mentioned actors by id/name/quoted name and attach top-level `mentions`.
+  - [x] Preserve coordinator-first routing, then route coordinated frames to all mentioned session agents.
+  - [x] Implement agent `/forward` loop control as frame mutation plus next-tick router requeue.
+  - [x] Feed mentions JSON into the agent coordinator primer.
+  - [x] Verify with unit tests, Stagehand UI coverage, and Puppeteer/browser confirmation.

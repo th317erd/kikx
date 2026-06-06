@@ -6,6 +6,10 @@ import { EventEmitter } from 'node:events';
 
 import { AppContext } from '../../../src/core/app/app-context.mjs';
 import { AeorDBClient } from '../../../src/core/aeordb/aeordb-client.mjs';
+import {
+  parseMentionReferences,
+  resolveMentionActors,
+} from '../../../src/core/mentions/index.mjs';
 import { createServer } from '../../../src/server/create-server.mjs';
 
 export async function loadStagehandOpenAIAPIKey(options = {}) {
@@ -84,10 +88,14 @@ export function findChromeExecutable() {
 }
 
 export async function startStagehandUIServer(options = {}) {
-  let frameRuntime = new StagehandFrameRuntime(options.sessions || []);
+  let agents = Array.isArray(options.agents) ? options.agents : [];
+  let frameRuntime = options.frameRuntime || new StagehandFrameRuntime({
+    sessions: options.sessions || [],
+    agents,
+  });
   let context = new AppContext({
     aeordb: createAuthStub(),
-    agentManager: createAgentManagerStub(),
+    agentManager: createAgentManagerStub(agents),
     frameRuntime,
     pluginLoadPromise: Promise.resolve(),
   });
@@ -104,8 +112,10 @@ export async function startStagehandUIServer(options = {}) {
 }
 
 class StagehandFrameRuntime extends EventEmitter {
-  constructor(sessions = []) {
+  constructor(options = {}) {
     super();
+    let sessions = Array.isArray(options) ? options : options.sessions || [];
+    this.agents = Array.isArray(options.agents) ? options.agents : [];
     this.sessions = sessions.length > 0
       ? sessions.map((session) => normalizeSession(session))
       : [ normalizeSession({ id: 'session_1', title: 'Session 1' }) ];
@@ -178,6 +188,10 @@ class StagehandFrameRuntime extends EventEmitter {
       deleted: false,
       content: { text: input.text },
     };
+    let mentions = await this.resolveMentions(input.text);
+    if (Object.keys(mentions).length > 0)
+      frame.mentions = mentions;
+
     frames.push(frame);
     this.framesBySessionID.set(sessionID, frames);
     session.messageCount = frames.length;
@@ -201,6 +215,16 @@ class StagehandFrameRuntime extends EventEmitter {
     let event = { type, ...payload };
     this.emit(type, event);
     this.emit('event', event);
+  }
+
+  async resolveMentions(text) {
+    let references = parseMentionReferences(text);
+    if (references.length === 0)
+      return {};
+
+    return await resolveMentionActors(references, {
+      agentManager: createAgentManagerStub(this.agents),
+    });
   }
 }
 
@@ -248,16 +272,34 @@ function createAuthStub() {
   };
 }
 
-function createAgentManagerStub() {
+function createAgentManagerStub(agents = []) {
   return {
     listProviders() {
       return [];
     },
     async listAgents() {
-      return [];
+      return agents.slice();
     },
-    async getAgent() {
-      let error = new Error('Unknown agent');
+    async getAgent(agentID) {
+      let agent = agents.find((candidate) => candidate.id === agentID);
+      if (agent)
+        return agent;
+
+      let error = new Error(`Unknown agent: ${agentID}`);
+      error.status = 404;
+      throw error;
+    },
+    async resolveAgent(reference) {
+      let lowered = String(reference || '').trim().toLowerCase();
+      let agent = agents.find((candidate) => (
+        candidate.id === reference
+        || candidate.name === reference
+        || candidate.name?.toLowerCase() === lowered
+      ));
+      if (agent)
+        return agent;
+
+      let error = new Error(`Agent not found: ${reference}`);
       error.status = 404;
       throw error;
     },

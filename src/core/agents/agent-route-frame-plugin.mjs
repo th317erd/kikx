@@ -1,6 +1,10 @@
 'use strict';
 
 import { BaseFramePlugin } from '../routing/index.mjs';
+import {
+  mergeMentionMaps,
+  resolveMentionActors,
+} from '../mentions/index.mjs';
 
 export class AgentRouteFramePlugin extends BaseFramePlugin {
   static pluginID = 'internal:agent-router';
@@ -34,14 +38,22 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
     if (!pluginRegistry)
       throw new Error('AgentRouteFramePlugin requires pluginRegistry');
 
-    await this.routeAgent({
-      agentID: coordinatorAgentID,
-      coordinatorAgentID,
-      agentManager,
-      pluginRegistry,
-      services,
-      frame,
-    });
+    let routeTargets = resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID });
+    if (routeTargets.length === 0) {
+      await next(this.context);
+      return;
+    }
+
+    for (let agentID of routeTargets) {
+      await this.routeAgent({
+        agentID,
+        coordinatorAgentID,
+        agentManager,
+        pluginRegistry,
+        services,
+        frame,
+      });
+    }
 
     done();
   }
@@ -66,10 +78,11 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       let sessionFrames = typeof this.context.engine.toArray === 'function'
         ? this.context.engine.toArray()
         : [];
+      let providerServices = this.providerServices({ services, agent, frame });
       let provider = new ProviderClass({
         ...this.context,
         agent,
-        services,
+        services: providerServices,
       });
       let runParams = {
         frame,
@@ -80,15 +93,21 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         secrets: agent.secrets || {},
         frames: sessionFrames,
         sessionFrames,
-        services,
+        services: providerServices,
         responseFrameID,
         responseFrame,
         coordinatorAgentID,
         isCoordinator: agent.id === coordinatorAgentID,
       };
 
-      for await (let output of provider.run(runParams))
+      for await (let output of provider.run(runParams)) {
+        if (output?.type === 'Done' && output.content?.status === 'forwarded') {
+          this.cleanupForwardedResponseFrame({ responseFrameID, responseFrame, agent });
+          continue;
+        }
+
         this.mergeProviderFrame(output, { agent, frame, responseFrameID });
+      }
     } catch (error) {
       this.appendAgentError({
         agent: agent || { id: agentID, name: agentID },
@@ -97,6 +116,18 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         responseFrameID,
       });
     }
+  }
+
+  providerServices({ services, agent, frame }) {
+    return {
+      ...services,
+      forwardFrame: async (forward) => await this.forwardFrame({
+        ...forward,
+        agent,
+        frame,
+        services,
+      }),
+    };
   }
 
   async createResponseFrame({ agent, frame, responseFrameID, services }) {
@@ -194,6 +225,66 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
     });
   }
 
+  cleanupForwardedResponseFrame({ responseFrameID, responseFrame, agent }) {
+    if (!responseFrameID)
+      return;
+
+    this.context.engine.merge([{
+      ...responseFrame,
+      id: responseFrameID,
+      type: 'AgentMessage',
+      hidden: true,
+      deleted: true,
+      content: {
+        ...(responseFrame?.content || {}),
+        status: 'forwarded',
+      },
+    }], {
+      authorType: 'agent',
+      authorID: agent.id,
+      silent: true,
+    });
+  }
+
+  async forwardFrame({ frame, targets = [], message = '', services = {}, agent = null }) {
+    let targetMentions = await resolveMentionActors(targets, {
+      ...this.context.services,
+      ...services,
+    });
+    let mentions = mergeMentionMaps(frame.mentions, targetMentions);
+    let updated = {
+      ...frame,
+      mentions,
+      coordinated: true,
+    };
+    if (message)
+      updated.coordination = { message };
+
+    let merged = this.context.engine.merge([ updated ], {
+      authorType: 'agent',
+      authorID: agent?.id || null,
+      silent: true,
+    });
+    let updatedFrame = merged[0] || this.context.engine.get(frame.id) || updated;
+    await services?.frameRuntime?.frameStore?.flush?.();
+
+    let frameRouter = resolveService(services, 'frameRouter') || services?.frameRuntime?.frameRouter;
+    let commit = this.context.engine.getLatestCommit();
+    if (!frameRouter || !commit)
+      return updatedFrame;
+
+    await Promise.resolve();
+    frameRouter.enqueue(this.context.engine, {
+      ...commit,
+      silent: false,
+      changes: commit.changes.map((change) => ({ ...change, operation: 'update' })),
+    }, this.context.session, {
+      services: this.context.services,
+    });
+
+    return updatedFrame;
+  }
+
   clock() {
     return this.context.services?.clock?.() || Date.now();
   }
@@ -207,7 +298,7 @@ export function registerAgentRouting(frameRouter) {
 }
 
 function shouldRouteToAgents(context, frame) {
-  if (context.change?.operation && context.change.operation !== 'create')
+  if (context.change?.operation && context.change.operation !== 'create' && frame?.coordinated !== true)
     return false;
 
   if (frame?.type !== 'UserMessage')
@@ -218,6 +309,19 @@ function shouldRouteToAgents(context, frame) {
     return false;
 
   return true;
+}
+
+function resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID }) {
+  if (frame?.coordinated === true) {
+    let mentionedAgentIDs = Object.entries(frame.mentions || {})
+      .filter(([actorID, mention]) => mention?.type === 'agent' || participantAgentIDs.includes(actorID))
+      .map(([actorID]) => actorID)
+      .filter((actorID) => actorID !== coordinatorAgentID && participantAgentIDs.includes(actorID));
+
+    return uniqueStrings(mentionedAgentIDs);
+  }
+
+  return coordinatorAgentID ? [ coordinatorAgentID ] : [];
 }
 
 function normalizeStringArray(values) {
@@ -235,6 +339,20 @@ function normalizeStringArray(values) {
   }
 
   return normalized;
+}
+
+function uniqueStrings(values) {
+  let unique = [];
+  for (let value of Array.isArray(values) ? values : []) {
+    if (typeof value !== 'string' || value.trim() === '')
+      continue;
+
+    let item = value.trim();
+    if (!unique.includes(item))
+      unique.push(item);
+  }
+
+  return unique;
 }
 
 function resolveCoordinatorAgentID(session, participantAgentIDs) {

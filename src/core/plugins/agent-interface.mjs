@@ -23,7 +23,7 @@ export class AgentInterface extends PluginInterface {
 
     let stepCount = 0;
     for await (let step of iterateAgentResult(this.createAgentLoopScript(context))) {
-      if (state.break || state.nullResponse || state.finalized)
+      if (state.break || state.nullResponse || state.forwarded || state.finalized)
         break;
 
       stepCount++;
@@ -52,6 +52,16 @@ export class AgentInterface extends PluginInterface {
         type: 'Done',
         content: {
           status: 'null-response',
+        },
+      };
+      return;
+    }
+
+    if (state.forwarded) {
+      yield {
+        type: 'Done',
+        content: {
+          status: 'forwarded',
         },
       };
       return;
@@ -102,7 +112,7 @@ export class AgentInterface extends PluginInterface {
       if (handleLoopControl(output, state))
         continue;
 
-      if (state.break || state.nullResponse || state.finalized)
+      if (state.break || state.nullResponse || state.forwarded || state.finalized)
         continue;
 
       yieldedOutput = true;
@@ -119,6 +129,11 @@ export class AgentInterface extends PluginInterface {
           status: 'break',
         },
       };
+    }
+
+    if (state.forwarded && !state.forwardDispatched) {
+      state.forwardDispatched = true;
+      await dispatchForwards(context, state);
     }
   }
 
@@ -151,15 +166,22 @@ export class AgentInterface extends PluginInterface {
 
   buildDefaultAgentPrompt(context = {}) {
     let userMessage = context.frame?.content?.text || '';
+    let mentions = normalizeMentions(context.mentions || context.frame?.mentions);
     return [
+      'You are participating in a Kikx agentic coordination loop.',
+      'Your job is to coordinate first, then decide whether you should answer, remain silent, or forward the user message to another actor.',
+      '',
       'The user has just sent you a message:',
       '',
       userMessage,
       '',
       `You are the coordinator?: ${context.isCoordinator === true}`,
       '',
+      'Mentions JSON:',
+      JSON.stringify(mentions, null, 2),
+      '',
       'If you are the coordinator, then you are the preferred agent. You are the first to talk and respond, and you get to decide how to direct this message.',
-      'If it is meant for another party, use the forward tool.',
+      'If another bot or actor is mentioned, or if the message appears to be meant for another actor in the session, use the forward tool and remain silent.',
       'If the message is targeted to you, deeply consider it in the context of the available user and project rules.',
       'When you are ready to answer, use the respond/finalize tool or return a final agent message.',
     ].join('\n');
@@ -183,6 +205,8 @@ function createLoopState() {
     break: false,
     nullResponse: false,
     finalized: false,
+    forwarded: false,
+    forwardDispatched: false,
     finalFrame: null,
     yieldedAgentMessage: false,
     forwards: [],
@@ -212,8 +236,11 @@ function createLoopTools(state) {
       return { type: 'LoopControl', action: 'null-response', reason };
     },
     forward(target, message) {
-      let forward = { target, message };
-      state.forwards.push(forward);
+      let forward = {
+        targets: normalizeForwardTargets(target),
+        message,
+      };
+      recordForward(state, forward);
       return { type: 'LoopControl', action: 'forward', ...forward };
     },
     break(reason = '') {
@@ -247,14 +274,59 @@ function handleLoopControl(output, state) {
   }
 
   if (output.action === 'forward') {
-    state.forwards.push({
-      target: output.target,
+    recordForward(state, {
+      targets: normalizeForwardTargets(output.targets || output.target),
       message: output.message,
     });
     return true;
   }
 
   return false;
+}
+
+function recordForward(state, forward) {
+  state.forwarded = true;
+  let normalized = {
+    targets: normalizeForwardTargets(forward.targets || forward.target),
+    message: forward.message,
+  };
+  let key = JSON.stringify(normalized);
+  if (!state.forwards.some((existing) => JSON.stringify(existing) === key))
+    state.forwards.push(normalized);
+}
+
+async function dispatchForwards(context, state) {
+  let forwardFrame = context.services?.forwardFrame;
+  if (typeof forwardFrame !== 'function')
+    return;
+
+  for (let forward of state.forwards) {
+    await forwardFrame({
+      frame: context.frame,
+      userFrame: context.userFrame || context.frame,
+      agent: context.agent,
+      session: context.session,
+      targets: forward.targets,
+      message: forward.message,
+    });
+  }
+}
+
+function normalizeForwardTargets(target) {
+  let values = Array.isArray(target) ? target : [ target ];
+  let targets = [];
+
+  for (let value of values) {
+    if (typeof value === 'string' && value.trim() !== '') {
+      targets.push(value.trim());
+      continue;
+    }
+
+    if (value?.id && typeof value.id === 'string')
+      targets.push(value.id.trim());
+  }
+
+  return targets.filter((targetValue, index) => targetValue && targets.indexOf(targetValue) === index);
 }
 
 function normalizeToolResponseContent(content) {
@@ -265,6 +337,13 @@ function normalizeToolResponseContent(content) {
     return { ...content };
 
   return { text: String(content ?? '') };
+}
+
+function normalizeMentions(mentions) {
+  if (!mentions || typeof mentions !== 'object' || Array.isArray(mentions))
+    return {};
+
+  return mentions;
 }
 
 async function *iterateAgentResult(value) {

@@ -27,6 +27,8 @@ class StreamingAgentProvider extends AgentInterface {
       frameTypes: params.frames.map((frame) => frame.type),
       isCoordinator: params.isCoordinator,
       coordinatorAgentID: params.coordinatorAgentID,
+      coordinated: params.frame.coordinated === true,
+      mentions: params.frame.mentions || {},
     });
 
     yield {
@@ -49,6 +51,21 @@ class StreamingAgentProvider extends AgentInterface {
       type: 'Done',
       content: { usage: { inputTokens: 1, outputTokens: 2 } },
     };
+  }
+}
+
+class ForwardingAgentProvider extends AgentInterface {
+  static pluginID = 'forwarding-agent';
+
+  async ask(_prompt, params = {}) {
+    params.services.calls.push({
+      method: 'ask',
+      agentID: params.agent.id,
+      isCoordinator: params.isCoordinator,
+      coordinated: params.frame.coordinated === true,
+    });
+
+    return params.tools.forward([ 'agent_2', 'agent_3' ], 'forwarded by coordinator');
   }
 }
 
@@ -106,6 +123,8 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
     frameTypes: [ 'UserMessage', 'AgentMessage' ],
     isCoordinator: true,
     coordinatorAgentID: 'agent_1',
+    coordinated: false,
+    mentions: {},
   });
   assert.deepEqual(phantoms.map((frame) => frame.type), [ 'AgentThinking' ]);
   assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage' ]);
@@ -160,6 +179,125 @@ test('AgentRouteFramePlugin dispatches normal user messages only to the session 
   assert.equal(calls[0].apiKey, 'sk-two');
   assert.equal(calls[0].isCoordinator, true);
   assert.equal(calls[0].coordinatorAgentID, 'agent_2');
+});
+
+test('AgentRouteFramePlugin forwards coordinated frames to all mentioned session agents', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Coordinator',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-one' },
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Worker A',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-two' },
+        enabled: true,
+      } ],
+      [ 'agent_3', {
+        id: 'agent_3',
+        name: 'Worker B',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-three' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1', 'agent_2', 'agent_3' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'user',
+    content: { text: 'hello mentioned agents' },
+    mentions: {
+      agent_2: { id: 'agent_2', type: 'agent', name: 'Worker A' },
+      agent_3: { id: 'agent_3', type: 'agent', name: 'Worker B' },
+    },
+    coordinated: true,
+    hidden: false,
+  }]);
+  await runtime.frameRouter.flush();
+
+  let calls = runtime.services.calls.filter((call) => call.method === 'run');
+  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_2', 'agent_3' ]);
+  assert.deepEqual(calls.map((call) => call.coordinated), [ true, true ]);
+  assert.deepEqual(calls.map((call) => Object.keys(call.mentions)), [
+    [ 'agent_2', 'agent_3' ],
+    [ 'agent_2', 'agent_3' ],
+  ]);
+  assert.deepEqual(calls.map((call) => call.isCoordinator), [ false, false ]);
+});
+
+test('AgentRouteFramePlugin coordinator forward mutates and requeues the original frame', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Coordinator',
+        pluginID: 'forwarding-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Worker A',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-two' },
+        enabled: true,
+      } ],
+      [ 'agent_3', {
+        id: 'agent_3',
+        name: 'Worker B',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-three' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1', 'agent_2', 'agent_3' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  await runtime.appendUserMessage('ses_1', { text: 'please coordinate this', userID: 'usr_1' });
+
+  let calls = runtime.services.calls.filter((call) => call.method === 'ask' || call.method === 'run');
+  assert.deepEqual(calls.map((call) => `${call.method}:${call.agentID}`), [
+    'ask:agent_1',
+    'run:agent_2',
+    'run:agent_3',
+  ]);
+  assert.equal(calls[0].isCoordinator, true);
+  assert.deepEqual(calls.slice(1).map((call) => call.coordinated), [ true, true ]);
+
+  let userFrame = (await runtime.listFrames('ses_1')).find((frame) => frame.type === 'UserMessage');
+  assert.equal(userFrame.coordinated, true);
+  assert.deepEqual(Object.keys(userFrame.mentions), [ 'agent_2', 'agent_3' ]);
+  assert.equal(userFrame.mentions.agent_2.name, 'Worker A');
+  assert.equal(userFrame.mentions.agent_3.name, 'Worker B');
+
+  let coordinatorFrame = (await runtime.listFrames('ses_1')).find((frame) => frame.authorID === 'agent_1');
+  assert.equal(coordinatorFrame.deleted, true);
+  assert.equal(coordinatorFrame.hidden, true);
 });
 
 test('AgentRouteFramePlugin does nothing when a session has no invited agents', async () => {
@@ -290,6 +428,7 @@ test('AgentRouteFramePlugin requests agent secrets through AgentManager', async 
 function createRuntime(options = {}) {
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
   pluginRegistry.registerAgentProvider('streaming-agent', StreamingAgentProvider);
+  pluginRegistry.registerAgentProvider('forwarding-agent', ForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('failing-agent', FailingAgentProvider);
 
   let agents = options.agents || new Map();
