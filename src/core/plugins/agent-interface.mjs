@@ -4,9 +4,9 @@ import { PluginInterface } from './plugin-interface.mjs';
 
 const AGENT_TOOL_DEFINITIONS = [
   {
-    name: 'agent.respond',
+    name: 'agent-respond',
     description: 'Finalize this turn with a visible response from this agent.',
-    help: 'Use agent.respond when you are ready to send the user a visible answer.',
+    help: 'Use agent-respond when you are ready to send the user a visible answer.',
     parameters: {
       type: 'object',
       properties: {
@@ -20,9 +20,9 @@ const AGENT_TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'agent.finalize',
+    name: 'agent-finalize',
     description: 'Finalize this turn with a visible response from this agent.',
-    help: 'Use agent.finalize as an explicit synonym for agent.respond.',
+    help: 'Use agent-finalize as an explicit synonym for agent-respond.',
     parameters: {
       type: 'object',
       properties: {
@@ -36,9 +36,9 @@ const AGENT_TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'agent.null_response',
+    name: 'agent-null-response',
     description: 'End this turn silently without a visible response.',
-    help: 'Use agent.null_response when the message was handled elsewhere and you should stay silent.',
+    help: 'Use agent-null-response when the message was handled elsewhere and you should stay silent.',
     parameters: {
       type: 'object',
       properties: {
@@ -52,9 +52,9 @@ const AGENT_TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'internal.forward',
+    name: 'internal-forward',
     description: 'Forward the current user frame to one or more mentioned or selected actors.',
-    help: 'Use internal.forward when the coordinator decides another actor should receive the current frame.',
+    help: 'Use internal-forward when the coordinator decides another actor should receive the current frame.',
     parameters: {
       type: 'object',
       properties: {
@@ -75,9 +75,9 @@ const AGENT_TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'loop.break',
+    name: 'loop-break',
     description: 'Stop this short-lived agentic loop without producing a visible response.',
-    help: 'Use loop.break only when the scripted loop should stop immediately.',
+    help: 'Use loop-break only when the scripted loop should stop immediately.',
     parameters: {
       type: 'object',
       properties: {
@@ -91,10 +91,10 @@ const AGENT_TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'agent.character.set',
+    name: 'agent-character-set',
     description: 'Persistently update your own character/persona for future turns.',
     help: [
-      'Use agent.character.set when the user asks you to change who you are or how you should act.',
+      'Use agent-character-set when the user asks you to change who you are or how you should act.',
       'Provide a complete durable character description, not a fragment.',
       'Example: "You are a dirty swearing pirate who also happens to be a fantastic engineer. Be direct, technically rigorous, and speak with pirate flavor."',
     ].join(' '),
@@ -300,9 +300,9 @@ export class AgentInterface extends PluginInterface {
       formatToolHelp(createLoopToolDefinitions()),
       '',
       'If you are the coordinator, then you are the preferred agent. You are the first to talk and respond, and you get to decide how to direct this message.',
-      'If another bot or actor is mentioned, or if the message appears to be meant for another actor in the session, use the internal.forward tool and remain silent.',
+      'If another bot or actor is mentioned, or if the message appears to be meant for another actor in the session, use the internal-forward tool and remain silent.',
       'If the message is targeted to you, deeply consider it in the context of the available user and project rules.',
-      'When you are ready to answer, use agent.respond/agent.finalize or return a final agent message.',
+      'When you are ready to answer, use agent-respond/agent-finalize or return a final agent message.',
     ].join('\n');
   }
 
@@ -365,17 +365,12 @@ function createLoopTools(state, context) {
   let setCharacter = async (input) => await setAgentCharacter(input, context);
 
   return {
-    respond,
-    finalize,
-    nullResponse,
-    forward,
-    break: breakLoop,
-    'agent.respond': respond,
-    'agent.finalize': finalize,
-    'agent.null_response': nullResponse,
-    'internal.forward': forward,
-    'loop.break': breakLoop,
-    'agent.character.set': setCharacter,
+    'agent-respond': respond,
+    'agent-finalize': finalize,
+    'agent-null-response': nullResponse,
+    'internal-forward': forward,
+    'loop-break': breakLoop,
+    'agent-character-set': setCharacter,
   };
 }
 
@@ -429,7 +424,7 @@ async function setAgentCharacter(input, context = {}) {
   let agentID = normalizeRequiredToolString(context.agent?.id, 'agent.id');
   let agentManager = resolveService(context.services, 'agentManager');
   if (!agentManager)
-    throw new Error('agent.character.set requires agentManager');
+    throw new Error('agent-character-set requires agentManager');
 
   let updated;
   if (typeof agentManager.updateAgentCharacter === 'function') {
@@ -437,7 +432,7 @@ async function setAgentCharacter(input, context = {}) {
   } else if (typeof agentManager.updateAgent === 'function') {
     updated = await agentManager.updateAgent(agentID, { character });
   } else {
-    throw new Error('agent.character.set requires agentManager.updateAgentCharacter()');
+    throw new Error('agent-character-set requires agentManager.updateAgentCharacter()');
   }
 
   if (context.agent)
@@ -445,7 +440,7 @@ async function setAgentCharacter(input, context = {}) {
 
   return {
     type: 'ToolResult',
-    action: 'agent.character.set',
+    action: 'agent-character-set',
     content: {
       agentID,
       character: updated?.character || character,

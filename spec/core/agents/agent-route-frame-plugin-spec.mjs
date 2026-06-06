@@ -65,7 +65,7 @@ class ForwardingAgentProvider extends AgentInterface {
       coordinated: params.frame.coordinated === true,
     });
 
-    return params.tools.forward([ 'agent_2', 'agent_3' ], 'forwarded by coordinator');
+    return params.tools['internal-forward']([ 'agent_2', 'agent_3' ], 'forwarded by coordinator');
   }
 }
 

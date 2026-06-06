@@ -146,9 +146,9 @@
 - [x] Add agent self-configuration tools and character priming.
   - [x] Map agent config, loop tool, and provider tool-call surfaces.
   - [x] Add tests for persistent agent character configuration.
-  - [x] Add namespaced agent loop tool descriptors and `agent.character.set`.
+  - [x] Add hyphenated agent loop tool descriptors and `agent-character-set`.
   - [x] Feed each agent's character into the priming instructions.
-  - [x] Expose namespaced tools through the Codex/OpenAI provider.
+  - [x] Expose hyphenated tools through the Codex/OpenAI provider.
   - [x] Verify focused app/plugin tests and full app tests.
 
 - [x] Add Xenocept-inspired Kikx dev watcher.
@@ -168,3 +168,9 @@
   - [x] Archive the corrupt DB out of the active `.aeordb/kikx.aeordb` path.
   - [x] Restore the existing dev agent into the clean DB.
   - [x] Treat missing clean-DB sessions directory as an empty session list.
+
+- [x] Fix OpenAI tool-name compatibility.
+  - [x] Replace provider-facing dotted tool names with hyphenated names.
+  - [x] Remove old exposed tool aliases.
+  - [x] Add contract tests that reject dotted OpenAI tool names.
+  - [x] Verify with a live Kikx agent message smoke.

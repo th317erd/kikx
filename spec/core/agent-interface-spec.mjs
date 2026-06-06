@@ -45,26 +45,26 @@ class LoopAgent extends AgentInterface {
 
 class ToolFinalizingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    options.tools.respond({ text: 'tool final answer' });
+    options.tools['agent-respond']({ text: 'tool final answer' });
     return { done: true };
   }
 }
 
 class NullResponseAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    return options.tools.nullResponse('forwarded elsewhere');
+    return options.tools['agent-null-response']('forwarded elsewhere');
   }
 }
 
 class BreakAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    return options.tools.break('stop now');
+    return options.tools['loop-break']('stop now');
   }
 }
 
 class ForwardingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    return options.tools.forward([ 'agent_2', 'agent_3' ], 'please handle this');
+    return options.tools['internal-forward']([ 'agent_2', 'agent_3' ], 'please handle this');
   }
 }
 
@@ -75,16 +75,16 @@ class CharacterSettingAgent extends AgentInterface {
   }
 
   async ask(_prompt, options = {}) {
-    this.toolResult = await options.tools['agent.character.set']({
+    this.toolResult = await options.tools['agent-character-set']({
       character: 'You are a dirty swearing pirate and fantastic engineer.',
     });
-    return options.tools.respond({ text: 'Character updated.' });
+    return options.tools['agent-respond']({ text: 'Character updated.' });
   }
 }
 
 class InvalidCharacterSettingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    return await options.tools['agent.character.set']({ character: '' });
+    return await options.tools['agent-character-set']({ character: '' });
   }
 }
 
@@ -166,21 +166,18 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].prompt, /Agent character:/);
   assert.match(agent.calls[1].prompt, /You are a pragmatic engineer\./);
   assert.match(agent.calls[1].prompt, /Available tools:/);
-  assert.match(agent.calls[1].prompt, /agent\.character\.set/);
+  assert.match(agent.calls[1].prompt, /agent-character-set/);
   assert.deepEqual(agent.calls[1].toolNames, [
-    'agent.character.set',
-    'agent.finalize',
-    'agent.null_response',
-    'agent.respond',
-    'break',
-    'finalize',
-    'forward',
-    'internal.forward',
-    'loop.break',
-    'nullResponse',
-    'respond',
+    'agent-character-set',
+    'agent-finalize',
+    'agent-null-response',
+    'agent-respond',
+    'internal-forward',
+    'loop-break',
   ]);
-  assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'agent.character.set'));
+  assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'agent-character-set'));
+  assert.equal(agent.calls[1].toolDefinitions.every((tool) => /^[A-Za-z0-9_-]+$/.test(tool.name)), true);
+  assert.equal(agent.calls[1].toolNames.every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
 });
 
 test('AgentInterface detects first-message hooks inherited from provider base classes', async () => {
@@ -313,7 +310,7 @@ test('AgentInterface exposes agent-owned self-configuration tools', async () => 
   }]);
   assert.deepEqual(agent.toolResult, {
     type: 'ToolResult',
-    action: 'agent.character.set',
+    action: 'agent-character-set',
     content: {
       agentID: 'agent_1',
       character: 'You are a dirty swearing pirate and fantastic engineer.',
@@ -337,7 +334,7 @@ test('AgentInterface self-configuration tools fail loud for invalid input', asyn
 
   await assert.rejects(
     () => collect(new CharacterSettingAgent().run(baseLoopParams())),
-    /agent\.character\.set requires agentManager/,
+    /agent-character-set requires agentManager/,
   );
 });
 
