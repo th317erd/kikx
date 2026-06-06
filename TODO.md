@@ -156,3 +156,9 @@
   - [x] Poll source file fingerprints and restart on change.
   - [x] Add npm script and unit coverage for watcher helpers.
   - [x] Verify watcher tests and relevant script behavior.
+
+- [x] Preserve AeorDB recursive-listing corruption evidence and restore session listing.
+  - [x] Copy current DB/log evidence before any workaround.
+  - [x] Add read-only shallow session-manifest fallback.
+  - [x] Verify `/api/v1/sessions` returns sessions against the corrupt DB.
+  - [x] Run focused and full test coverage.

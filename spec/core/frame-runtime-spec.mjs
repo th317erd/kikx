@@ -121,7 +121,7 @@ test('FrameRuntime renames sessions and persists the manifest', async () => {
 
 test('FrameRuntime lists sessions from AeorDB instead of active memory', async () => {
   let aeordb = createClient();
-  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'Persisted' });
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'Persisted', updatedAt: 2_000_000 });
   let runtime = createRuntime({ aeordb, ids: [ 'active_1' ] });
 
   await runtime.createSession({ title: 'Active only' });

@@ -161,14 +161,24 @@ export class AeorDBFrameStore {
   async listSessions(options = {}) {
     let limit = normalizeLimit(options.limit, 50);
     let offset = normalizeOffset(options.offset);
-    let result = await this.aeordb.listDirectory(`${this.rootPath}/sessions`, {
-      depth: -1,
-      glob: '**/session.json',
-      limit,
-      offset,
-    });
+    let result;
+    let sessionPaths;
 
-    let sessionPaths = pathsFromItems(result?.items);
+    try {
+      result = await this.aeordb.listDirectory(`${this.rootPath}/sessions`, {
+        depth: -1,
+        glob: '**/session.json',
+        limit,
+        offset,
+      });
+      sessionPaths = pathsFromItems(result?.items);
+    } catch (error) {
+      if (!shouldFallbackToShallowSessionList(error))
+        throw error;
+
+      sessionPaths = await this.listSessionManifestPathsShallow({ limit, offset });
+    }
+
     let sessions = [];
     let reads = await readJSONFiles(this.aeordb, sessionPaths, {
       fallbackOnBatchError: true,
@@ -180,7 +190,30 @@ export class AeorDBFrameStore {
         sessions.push(session);
     }
 
-    return sessions;
+    return sessions.sort(compareSessionOrder);
+  }
+
+  async listSessionManifestPathsShallow(options = {}) {
+    let result = await this.aeordb.listDirectory(`${this.rootPath}/sessions`, {
+      depth: 1,
+      limit: options.limit,
+      offset: options.offset,
+    });
+    let paths = [];
+
+    for (let item of result?.items || []) {
+      let itemPath = item.path || item['@path'];
+      if (!itemPath || shouldIgnoreSessionDirectory(itemPath))
+        continue;
+
+      let sessionID = pathSegmentAfter(`${this.rootPath}/sessions`, itemPath);
+      if (!sessionID)
+        continue;
+
+      paths.push(this.sessionPath(decodeURIComponent(sessionID)));
+    }
+
+    return uniqueStrings(paths);
   }
 
   async listFrames(sessionID, options = {}) {
@@ -400,6 +433,53 @@ function normalizeOffset(offset) {
     throw new TypeError('offset must be a non-negative integer');
 
   return value;
+}
+
+function shouldFallbackToShallowSessionList(error) {
+  if (!error)
+    return false;
+
+  if (error.status === 500)
+    return true;
+
+  return /failed to list directory|Invalid hash algorithm|recursive traversal/i.test(error.message || '');
+}
+
+function shouldIgnoreSessionDirectory(itemPath) {
+  let value = String(itemPath || '');
+  return value.includes('/.aeordb-config') || value.includes('/.aeordb-indexes');
+}
+
+function pathSegmentAfter(parentPath, itemPath) {
+  let prefix = `${parentPath.replace(/\/+$/g, '')}/`;
+  if (!String(itemPath).startsWith(prefix))
+    return '';
+
+  let relativePath = String(itemPath).slice(prefix.length);
+  return relativePath.split('/')[0] || '';
+}
+
+function uniqueStrings(values) {
+  let unique = [];
+
+  for (let value of values) {
+    if (typeof value !== 'string' || value.trim() === '')
+      continue;
+
+    let item = value.trim();
+    if (!unique.includes(item))
+      unique.push(item);
+  }
+
+  return unique;
+}
+
+function compareSessionOrder(a, b) {
+  return compareClock(b?.updatedClock, a?.updatedClock)
+    || compareNumber(b?.updatedAt, a?.updatedAt)
+    || compareClock(b?.createdClock, a?.createdClock)
+    || compareNumber(b?.createdAt, a?.createdAt)
+    || String(a.id || '').localeCompare(String(b.id || ''));
 }
 
 function compareFrameOrder(a, b) {

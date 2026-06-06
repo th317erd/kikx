@@ -50,6 +50,7 @@ function createClient(options = {}) {
     },
     async listDirectory(path, options) {
       calls.push({ method: 'listDirectory', path, options });
+
       let prefix = `${path.replace(/\/+$/g, '')}/`;
       let items = [];
       for (let filePath of this.files.keys()) {
@@ -61,6 +62,12 @@ function createClient(options = {}) {
 
         if (options?.glob === '**/*.json' && !filePath.endsWith('.json'))
           continue;
+
+        if (options?.depth === 1) {
+          let relativePath = filePath.slice(prefix.length);
+          if (relativePath.includes('/'))
+            continue;
+        }
 
         items.push({ path: filePath });
       }
@@ -136,7 +143,7 @@ test('AeorDBFrameStore lists persisted session manifests with a bounded query', 
   assert.deepEqual(aeordb.calls[0], {
     method: 'listDirectory',
     path: '/kikx/sessions',
-      options: {
+    options: {
       depth: -1,
       glob: '**/session.json',
       limit: 25,
@@ -152,6 +159,62 @@ test('AeorDBFrameStore lists persisted session manifests with a bounded query', 
     ],
     options: undefined,
   });
+});
+
+test('AeorDBFrameStore falls back to shallow session manifests when recursive listing fails', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  aeordb.files.set('/kikx/sessions/ses_2/session.json', { id: 'ses_2', title: 'Second', updatedAt: 20 });
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First', updatedAt: 10 });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/bad.json', { id: 'bad' });
+
+  aeordb.listDirectory = async (path, options) => {
+    aeordb.calls.push({ method: 'listDirectory', path, options });
+    if (options?.depth === -1 && options?.glob === '**/session.json') {
+      let error = new Error('Invalid hash algorithm: 0x0000');
+      error.status = 500;
+      throw error;
+    }
+
+    let prefix = `${path.replace(/\/+$/g, '')}/`;
+    let names = new Set();
+    for (let filePath of aeordb.files.keys()) {
+      if (!filePath.startsWith(prefix))
+        continue;
+
+      let name = filePath.slice(prefix.length).split('/')[0];
+      if (name)
+        names.add(name);
+    }
+
+    return {
+      items: [ ...names ].sort().map((name) => ({
+        path: `${prefix}${name}`,
+        name,
+      })),
+    };
+  };
+
+  let sessions = await store.listSessions({ limit: 25, offset: 0 });
+
+  assert.deepEqual(sessions.map((session) => session.id), [ 'ses_2', 'ses_1' ]);
+  assert.deepEqual(aeordb.calls.filter((call) => call.method === 'listDirectory').map((call) => call.options), [
+    {
+      depth: -1,
+      glob: '**/session.json',
+      limit: 25,
+      offset: 0,
+    },
+    {
+      depth: 1,
+      limit: 25,
+      offset: 0,
+    },
+  ]);
+  assert.deepEqual(aeordb.calls.find((call) => call.method === 'fetchFiles').paths, [
+    '/kikx/sessions/ses_1/session.json',
+    '/kikx/sessions/ses_2/session.json',
+  ]);
 });
 
 test('AeorDBFrameStore loads one session manifest and its frames on demand', async () => {
