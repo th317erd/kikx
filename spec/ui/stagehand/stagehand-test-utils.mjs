@@ -62,13 +62,16 @@ export async function loadStagehandOpenAIAPIKey(options = {}) {
     return '';
 
   let files = await aeordb.fetchFiles(paths);
+  let fallbackAPIKey = '';
   for (let path of paths) {
     let agent = parseAgentFile(files?.[path]);
     if (agent?.name === agentName)
       return firstNonEmpty(agent.secrets?.apiKey, agent.secrets?.openaiApiKey, agent.secrets?.openAIAPIKey);
+
+    fallbackAPIKey ||= firstNonEmpty(agent?.secrets?.apiKey, agent?.secrets?.openaiApiKey, agent?.secrets?.openAIAPIKey);
   }
 
-  return '';
+  return fallbackAPIKey;
 }
 
 export function findChromeExecutable() {

@@ -180,3 +180,10 @@
   - [x] Add command/runtime tests for spaced and punctuated agent names.
   - [x] Fix slash-command argument parsing or agent lookup behavior.
   - [x] Verify with unit tests and a live invite smoke.
+
+- [x] Show configured agent names on agent message frames.
+  - [x] Add `authorDisplayName` to agent-authored frame data.
+  - [x] Add frame-label and agent-history tests for configured names.
+  - [x] Replace hardcoded `frame.type` labels for agent-authored frames.
+  - [x] Add Stagehand coverage for rendered agent-name labels.
+  - [x] Verify with unit tests, Stagehand, and browser/live checks.

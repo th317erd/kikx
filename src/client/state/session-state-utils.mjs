@@ -101,8 +101,14 @@ export function upsertFrameState(state, sessionID, frame) {
     hidden: normalizedFrame.hidden ?? false,
   };
 
-  if (existingIndex !== -1 && isPlainObject(nextFrame.content))
-    nextFrame.content = mergeContent(transitionFrames[existingIndex]?.content || {}, nextFrame.content);
+  if (existingIndex !== -1) {
+    let existingFrame = transitionFrames[existingIndex] || {};
+    if (!nextFrame.authorDisplayName && existingFrame.authorDisplayName)
+      nextFrame.authorDisplayName = existingFrame.authorDisplayName;
+
+    if (isPlainObject(nextFrame.content))
+      nextFrame.content = mergeContent(existingFrame.content || {}, nextFrame.content);
+  }
 
   if (normalizedFrame.phantom && LIVE_VISIBLE_PHANTOM_TYPES.has(normalizedFrame.type))
     nextFrame.hidden = false;
@@ -224,6 +230,7 @@ function mergeResponseFramePhantom(existing, frame, responseFrameID) {
     parentID: existing?.parentID ?? frame.parentID ?? null,
     authorType: existing?.authorType || frame.authorType || 'agent',
     authorID: existing?.authorID || frame.authorID || frame.content?.agentID || null,
+    authorDisplayName: existing?.authorDisplayName || frame.authorDisplayName || frame.content?.agentName || null,
     order: existing?.order ?? frame.order,
     commitOrder: existing?.commitOrder ?? frame.commitOrder,
     timestamp: existing?.timestamp || frame.timestamp,

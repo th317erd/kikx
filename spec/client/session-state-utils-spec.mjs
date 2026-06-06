@@ -149,6 +149,7 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
           updatedClock: '0000000001001000-000000-runner',
           parentID: 'msg_1',
           authorID: 'agent_1',
+          authorDisplayName: 'Test 1',
           hidden: true,
           content: {
             text: '',
@@ -175,6 +176,7 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
     responseFrameID: 'agent_msg_1',
     parentID: 'msg_1',
     authorID: 'agent_1',
+    authorDisplayName: 'Test 1',
     updatedClock: '0000000001002000-000000-runner',
     content: {
       text: 'thinking',
@@ -192,6 +194,7 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
     responseFrameID: 'agent_msg_1',
     parentID: 'msg_1',
     authorID: 'agent_1',
+    authorDisplayName: 'Test 1',
     updatedClock: '0000000001003000-000000-runner',
     content: { text: 'partial' },
   });
@@ -213,6 +216,7 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
 
   assert.deepEqual(thinking.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1', 'typing:agent_1' ]);
   assert.equal(thinking.framesBySessionID.ses_1[1].type, 'AgentMessage');
+  assert.equal(thinking.framesBySessionID.ses_1[1].authorDisplayName, 'Test 1');
   assert.equal(thinking.framesBySessionID.ses_1[1].hidden, true);
   assert.deepEqual(thinking.framesBySessionID.ses_1[1].content.thinking, {
     text: 'thinking',
@@ -221,11 +225,13 @@ test('upsertFrameState coalesces grouped phantoms and final agent messages', () 
   });
   assert.deepEqual(delta.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1', 'typing:agent_1' ]);
   assert.equal(delta.framesBySessionID.ses_1[1].type, 'AgentMessage');
+  assert.equal(delta.framesBySessionID.ses_1[1].authorDisplayName, 'Test 1');
   assert.equal(delta.framesBySessionID.ses_1[1].hidden, false);
   assert.equal(delta.framesBySessionID.ses_1[1].content.text, 'partial');
   assert.deepEqual(endTyping.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1' ]);
   assert.deepEqual(final.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'agent_msg_1' ]);
   assert.equal(final.framesBySessionID.ses_1[1].type, 'AgentMessage');
+  assert.equal(final.framesBySessionID.ses_1[1].authorDisplayName, 'Test 1');
   assert.equal(final.framesBySessionID.ses_1[1].content.text, 'final');
   assert.deepEqual(final.framesBySessionID.ses_1[1].content.thinking, {
     text: 'thinking',

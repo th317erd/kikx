@@ -105,6 +105,7 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
   assert.equal(runtime.services.calls[0].responseFrame.id, 'agent_frame_1');
   assert.equal(runtime.services.calls[0].responseFrame.type, 'AgentMessage');
   assert.equal(runtime.services.calls[0].responseFrame.hidden, true);
+  assert.equal(runtime.services.calls[0].responseFrame.authorDisplayName, 'Coder');
   assert.deepEqual(runtime.services.calls[0].responseFrame.content, {
     text: '',
     thinking: {
@@ -133,6 +134,7 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
   assert.equal(frames[1].interactionID, 'int_1');
   assert.equal(frames[1].authorType, 'agent');
   assert.equal(frames[1].authorID, 'agent_1');
+  assert.equal(frames[1].authorDisplayName, 'Coder');
   assert.equal(frames[1].hidden, false);
   assert.equal(frames[1].content.text, 'Echo: hello');
   assert.deepEqual(frames[1].content.thinking, {
@@ -143,6 +145,7 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
   assert.equal(phantoms[0].id, 'think_1');
   assert.equal(phantoms[0].responseFrameID, 'agent_frame_1');
   assert.equal(phantoms[0].parentID, 'msg_1');
+  assert.equal(phantoms[0].authorDisplayName, 'Coder');
 });
 
 test('AgentRouteFramePlugin dispatches normal user messages only to the session coordinator', async () => {
@@ -354,6 +357,7 @@ test('AgentRouteFramePlugin routes coordinator failures without broadcasting to 
   assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage' ]);
   assert.match(frames[1].content.text, /provider exploded/);
   assert.equal(frames[1].authorID, 'agent_failing');
+  assert.equal(frames[1].authorDisplayName, 'Failing');
   assert.equal(frames[1].content.status, 'error');
   assert.equal(frames[1].hidden, false);
   assert.deepEqual(runtime.services.calls.filter((call) => call.method === 'run'), []);
@@ -391,6 +395,7 @@ test('AgentRouteFramePlugin writes a visible error when the coordinator is disab
   let frames = await runtime.listFrames('ses_1');
   assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentError' ]);
   assert.equal(frames[1].authorID, 'agent_disabled');
+  assert.equal(frames[1].authorDisplayName, 'Disabled');
   assert.match(frames[1].content.text, /Agent is disabled: agent_disabled/);
   assert.deepEqual(runtime.services.calls.filter((call) => call.method === 'run'), []);
 });

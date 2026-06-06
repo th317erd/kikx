@@ -23,6 +23,10 @@ import {
   upsertSession,
 } from '../state/kikx-state.mjs';
 import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
+import {
+  frameDisplayLabel,
+  frameSecondaryLabel,
+} from './frame-labels.mjs';
 
 const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong, option } = elements;
 const aeorInput = elements['aeor-input'];
@@ -68,6 +72,7 @@ export class KikxApp extends HTMLElement {
     this._render();
     if (this._state.authToken) {
       this._connectRuntimeEvents();
+      this._loadAgents();
       this._loadSessions();
     } else if (this._state.magicCode) {
       this._verifyMagicLink(this._state.magicCode);
@@ -380,8 +385,8 @@ export class KikxApp extends HTMLElement {
 
     return li.class(`kikx-frame kikx-frame--${frame.type}`)(
       div.class('kikx-frame__meta')(
-        strong(frame.type),
-        span(frame.authorID || frame.authorType || 'system'),
+        strong(frameDisplayLabel(frame, this._state)),
+        span(frameSecondaryLabel(frame)),
       ),
       this._buildFrameContent(frame),
     );
@@ -563,6 +568,7 @@ export class KikxApp extends HTMLElement {
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
     this._render();
     this._connectRuntimeEvents();
+    this._loadAgents();
     this._loadSessions();
   }
 
