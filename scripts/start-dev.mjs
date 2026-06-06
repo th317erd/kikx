@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 
+import { createParentExitMonitor } from './parent-exit-monitor.mjs';
+
 loadEnvFile('.env.dev');
 
 let aeorDBURL = new URL(process.env.AEORDB_URL || 'http://127.0.0.1:6830');
@@ -13,6 +15,7 @@ let kikxHost = process.env.KIKX_HOST || '127.0.0.1';
 let kikxPort = Number.parseInt(process.env.KIKX_PORT || '3000', 10);
 let children = [];
 let shuttingDown = false;
+let parentMonitor = null;
 
 if (!(await isListening(aeorDBHost, aeorDBPort))) {
   startChild('AeorDB', [ 'run', 'start:aeordb:dev' ]);
@@ -33,6 +36,13 @@ console.log(`Dev stack ready: http://${kikxHost}:${kikxPort}`);
 if (children.length === 0)
   process.exit(0);
 
+parentMonitor = createParentExitMonitor({
+  onParentExit: ({ parentPID, currentParentPID }) => {
+    console.error(`Dev stack parent ${parentPID} exited; current parent is ${currentParentPID}. Shutting down child processes.`);
+    shutdown('SIGTERM');
+  },
+});
+
 for (let signal of [ 'SIGINT', 'SIGTERM' ])
   process.on(signal, () => shutdown(signal));
 
@@ -41,6 +51,7 @@ process.stdin.resume();
 function startChild(name, args) {
   let child = spawn('npm', args, {
     stdio: 'inherit',
+    detached: true,
     env: process.env,
   });
 
@@ -59,12 +70,29 @@ async function shutdown(signal) {
     return;
 
   shuttingDown = true;
+  parentMonitor?.stop();
   let active = children.slice();
   for (let { child } of active)
-    child.kill(signal);
+    signalChildGroup(child, signal);
 
-  await Promise.all(active.map(({ child }) => new Promise((resolve) => child.once('exit', resolve))));
+  await Promise.all(active.map(({ child }) => waitForExit(child)));
   process.exit(0);
+}
+
+function signalChildGroup(child, signal) {
+  try {
+    process.kill(-child.pid, signal);
+  } catch (error) {
+    if (error.code !== 'ESRCH')
+      throw error;
+  }
+}
+
+function waitForExit(child) {
+  if (child.exitCode != null || child.signalCode != null)
+    return Promise.resolve();
+
+  return new Promise((resolve) => child.once('exit', resolve));
 }
 
 async function waitForListening(name, host, port) {

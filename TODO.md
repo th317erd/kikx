@@ -187,3 +187,9 @@
   - [x] Replace hardcoded `frame.type` labels for agent-authored frames.
   - [x] Add Stagehand coverage for rendered agent-name labels.
   - [x] Verify with unit tests, Stagehand, and browser/live checks.
+
+- [x] Fix Kikx web server shutdown with active SSE clients.
+  - [x] Add regression coverage for shutdown while an event stream is open.
+  - [x] Close idle and active HTTP connections during signal shutdown.
+  - [x] Shut down Kikx child processes when npm/dev wrappers are orphaned.
+  - [x] Verify focused shutdown tests, full app tests, and real dev-wrapper shutdown.
