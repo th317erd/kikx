@@ -150,3 +150,9 @@
   - [x] Feed each agent's character into the priming instructions.
   - [x] Expose namespaced tools through the Codex/OpenAI provider.
   - [x] Verify focused app/plugin tests and full app tests.
+
+- [x] Add Xenocept-inspired Kikx dev watcher.
+  - [x] Add a process-group restart wrapper for Kikx dev server.
+  - [x] Poll source file fingerprints and restart on change.
+  - [x] Add npm script and unit coverage for watcher helpers.
+  - [x] Verify watcher tests and relevant script behavior.

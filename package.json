@@ -6,6 +6,7 @@
   "main": "src/index.mjs",
   "scripts": {
     "dev": "node scripts/start-dev.mjs",
+    "dev:watch": "node scripts/dev-watch.mjs",
     "login-link": "node scripts/request-login-link.mjs",
     "magic-link": "node scripts/request-login-link.mjs",
     "start": "node src/server/index.mjs",
