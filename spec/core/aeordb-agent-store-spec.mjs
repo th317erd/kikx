@@ -79,6 +79,7 @@ test('AeorDBAgentStore persists plugin-owned agent config and sanitizes secrets'
   let agent = await store.createAgent({
     name: 'Coder',
     pluginID: 'test-agent',
+    character: 'You are a careful engineering partner.',
     config: { model: 'sonnet' },
     secrets: { apiKey: 'sk-secret-1234' },
   });
@@ -87,6 +88,7 @@ test('AeorDBAgentStore persists plugin-owned agent config and sanitizes secrets'
     id: 'agent_1',
     name: 'Coder',
     pluginID: 'test-agent',
+    character: 'You are a careful engineering partner.',
     config: { model: 'sonnet' },
     secretState: {
       apiKey: { present: true, last4: '1234' },
@@ -96,6 +98,7 @@ test('AeorDBAgentStore persists plugin-owned agent config and sanitizes secrets'
     updatedAt: 1000,
   });
   assert.equal(aeordb.files.get('/kikx/agents/agent_1/agent.json').secrets.apiKey, 'sk-secret-1234');
+  assert.equal(aeordb.files.get('/kikx/agents/agent_1/agent.json').character, 'You are a careful engineering partner.');
   assert.equal(aeordb.calls[0].path, '/kikx/agents/.aeordb-config/indexes.json');
 });
 
@@ -118,11 +121,13 @@ test('AeorDBAgentStore lists, updates, and deletes agents', async () => {
   });
   let updated = await store.updateAgent('agent_1', {
     name: 'Reviewer',
+    character: 'You are a skeptical reviewer.',
     config: { model: 'opus' },
     secrets: { apiKey: 'sk-secret-9999' },
   });
 
   assert.equal(updated.name, 'Reviewer');
+  assert.equal(updated.character, 'You are a skeptical reviewer.');
   assert.deepEqual(updated.config, { model: 'opus' });
   assert.deepEqual(updated.secretState.apiKey, { present: true, last4: '9999' });
   assert.deepEqual((await store.listAgents()).map((agent) => agent.id), [ 'agent_1' ]);
@@ -193,6 +198,17 @@ test('AeorDBAgentStore rejects malformed agents and missing records', async () =
   await assert.rejects(
     () => store.createAgent({ pluginID: 'test-agent', secrets: {}, config: {} }),
     /name must be a non-empty string/,
+  );
+
+  await assert.rejects(
+    () => store.createAgent({
+      name: 'Bad',
+      pluginID: 'test-agent',
+      character: {},
+      secrets: {},
+      config: {},
+    }),
+    /character must be a string/,
   );
 
   await assert.rejects(

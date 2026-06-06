@@ -109,7 +109,14 @@ function createAgentManager() {
     async listAgents(options) {
       calls.push({ method: 'listAgents', options });
       return [
-        { id: 'agent_1', name: 'Coder', pluginID: 'test-agent', config: { model: 'sonnet' }, secretState: { apiKey: { present: true, last4: '1234' } } },
+        {
+          id: 'agent_1',
+          name: 'Coder',
+          pluginID: 'test-agent',
+          character: 'You are a careful engineer.',
+          config: { model: 'sonnet' },
+          secretState: { apiKey: { present: true, last4: '1234' } },
+        },
       ];
     },
     async createAgent(input) {
@@ -118,6 +125,7 @@ function createAgentManager() {
         id: 'agent_1',
         name: input.name,
         pluginID: input.pluginID,
+        character: input.character || '',
         config: input.config,
         secretState: { apiKey: { present: true, last4: '1234' } },
       };
@@ -129,11 +137,11 @@ function createAgentManager() {
         error.status = 404;
         throw error;
       }
-      return { id: agentID, name: 'Coder', pluginID: 'test-agent', config: {}, secretState: {} };
+      return { id: agentID, name: 'Coder', pluginID: 'test-agent', character: '', config: {}, secretState: {} };
     },
     async updateAgent(agentID, input) {
       calls.push({ method: 'updateAgent', agentID, input });
-      return { id: agentID, name: input.name || 'Coder', pluginID: 'test-agent', config: input.config || {}, secretState: {} };
+      return { id: agentID, name: input.name || 'Coder', pluginID: 'test-agent', character: input.character || '', config: input.config || {}, secretState: {} };
     },
     async deleteAgent(agentID) {
       calls.push({ method: 'deleteAgent', agentID });
@@ -696,6 +704,7 @@ test('agent routes create, list, read, update, and delete through AgentManager',
     let createResponse = await jsonFetch(`${baseURL}/api/v1/agents`, {
       name: 'Coder',
       pluginID: 'test-agent',
+      character: 'You are a careful engineer.',
       config: { model: 'sonnet' },
       secrets: { apiKey: 'sk-secret-1234' },
     });
@@ -711,6 +720,7 @@ test('agent routes create, list, read, update, and delete through AgentManager',
 
     let updateResponse = await jsonFetch(`${baseURL}/api/v1/agents/agent_1`, {
       name: 'Reviewer',
+      character: 'You are a skeptical reviewer.',
       config: { model: 'opus' },
       clearSecrets: [ 'apiKey' ],
     }, { method: 'PATCH' });
@@ -727,6 +737,8 @@ test('agent routes create, list, read, update, and delete through AgentManager',
       'deleteAgent',
     ]);
     assert.deepEqual(agentManager.calls[1].options, { limit: 25, offset: 5 });
+    assert.equal(agentManager.calls[0].input.character, 'You are a careful engineer.');
+    assert.equal(agentManager.calls[3].input.character, 'You are a skeptical reviewer.');
   } finally {
     await close(server);
   }
@@ -754,6 +766,11 @@ test('agent routes validate request bodies and report missing agents', async () 
       config: [],
     }, { method: 'PATCH' });
     assert.equal(invalidPatch.status, 400);
+
+    let invalidCharacter = await jsonFetch(`${baseURL}/api/v1/agents/agent_1`, {
+      character: {},
+    }, { method: 'PATCH' });
+    assert.equal(invalidCharacter.status, 400);
 
     let missing = await fetch(`${baseURL}/api/v1/agents/missing`);
     let body = await missing.json();

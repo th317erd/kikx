@@ -25,6 +25,7 @@ function createStore() {
         enabled: true,
         createdAt: 1000,
         updatedAt: 1000,
+        character: '',
         ...input,
         secretState: Object.fromEntries(Object.entries(input.secrets || {}).map(([key, value]) => [
           key,
@@ -36,6 +37,7 @@ function createStore() {
         id: agent.id,
         name: agent.name,
         pluginID: agent.pluginID,
+        character: agent.character,
         config: agent.config,
         secretState: agent.secretState,
         enabled: agent.enabled,
@@ -121,17 +123,40 @@ test('AgentManager creates agents using plugin-declared fields only', async () =
   let agent = await manager.createAgent({
     name: 'Coder',
     pluginID: 'test-agent',
+    character: 'You are a pragmatic engineer.',
     config: { model: 'sonnet' },
     secrets: { apiKey: 'sk-secret-1234' },
   });
 
   assert.equal(agent.name, 'Coder');
   assert.equal(agent.pluginID, 'test-agent');
+  assert.equal(agent.character, 'You are a pragmatic engineer.');
   assert.deepEqual(agent.config, { model: 'sonnet' });
   assert.deepEqual(agent.secretState, {
     apiKey: { present: true, last4: '1234' },
   });
   assert.equal(agent.secrets, undefined);
+});
+
+test('AgentManager updates persistent agent character outside plugin config', async () => {
+  let manager = createManager();
+
+  let agent = await manager.createAgent({
+    name: 'Coder',
+    pluginID: 'test-agent',
+    config: { model: 'sonnet' },
+    secrets: { apiKey: 'sk-secret-1234' },
+  });
+  let updated = await manager.updateAgentCharacter(agent.id, 'You are a dirty swearing pirate and fantastic engineer.');
+
+  assert.equal(updated.id, agent.id);
+  assert.equal(updated.character, 'You are a dirty swearing pirate and fantastic engineer.');
+  assert.deepEqual(updated.config, { model: 'sonnet' });
+
+  await assert.rejects(
+    () => manager.updateAgentCharacter(agent.id, ''),
+    /character must be a non-empty string/,
+  );
 });
 
 test('AgentManager passes read options through to the agent store', async () => {
@@ -215,6 +240,17 @@ test('AgentManager rejects unknown providers and unknown fields', async () => {
       secrets: { otherKey: 'sk' },
     }),
     /Unknown secret field/,
+  );
+
+  await assert.rejects(
+    () => manager.createAgent({
+      name: 'Bad',
+      pluginID: 'test-agent',
+      character: {},
+      config: { model: 'sonnet' },
+      secrets: { apiKey: 'sk' },
+    }),
+    /character must be a string/,
   );
 });
 

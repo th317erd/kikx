@@ -432,6 +432,9 @@ function validateAgentBody(body, options = {}) {
   if (body.pluginID != null && (typeof body.pluginID !== 'string' || body.pluginID.trim() === ''))
     throw httpError(400, 'pluginID must be a non-empty string');
 
+  if (body.character != null && typeof body.character !== 'string')
+    throw httpError(400, 'character must be a string');
+
   if (body.config != null && (typeof body.config !== 'object' || Array.isArray(body.config)))
     throw httpError(400, 'config must be an object');
 

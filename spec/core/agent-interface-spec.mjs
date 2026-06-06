@@ -28,6 +28,7 @@ class LoopAgent extends AgentInterface {
     this.calls.push({
       method: 'ask',
       prompt,
+      toolDefinitions: options.toolDefinitions,
       toolNames: Object.keys(options.tools).sort(),
       isCoordinator: options.isCoordinator,
     });
@@ -64,6 +65,26 @@ class BreakAgent extends AgentInterface {
 class ForwardingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
     return options.tools.forward([ 'agent_2', 'agent_3' ], 'please handle this');
+  }
+}
+
+class CharacterSettingAgent extends AgentInterface {
+  constructor(options = {}) {
+    super(options);
+    this.toolResult = null;
+  }
+
+  async ask(_prompt, options = {}) {
+    this.toolResult = await options.tools['agent.character.set']({
+      character: 'You are a dirty swearing pirate and fantastic engineer.',
+    });
+    return options.tools.respond({ text: 'Character updated.' });
+  }
+}
+
+class InvalidCharacterSettingAgent extends AgentInterface {
+  async ask(_prompt, options = {}) {
+    return await options.tools['agent.character.set']({ character: '' });
   }
 }
 
@@ -142,7 +163,24 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].prompt, /hello/);
   assert.match(agent.calls[1].prompt, /You are the coordinator\?: true/);
   assert.match(agent.calls[1].prompt, /Mentions JSON:/);
-  assert.deepEqual(agent.calls[1].toolNames, [ 'break', 'finalize', 'forward', 'nullResponse', 'respond' ]);
+  assert.match(agent.calls[1].prompt, /Agent character:/);
+  assert.match(agent.calls[1].prompt, /You are a pragmatic engineer\./);
+  assert.match(agent.calls[1].prompt, /Available tools:/);
+  assert.match(agent.calls[1].prompt, /agent\.character\.set/);
+  assert.deepEqual(agent.calls[1].toolNames, [
+    'agent.character.set',
+    'agent.finalize',
+    'agent.null_response',
+    'agent.respond',
+    'break',
+    'finalize',
+    'forward',
+    'internal.forward',
+    'loop.break',
+    'nullResponse',
+    'respond',
+  ]);
+  assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'agent.character.set'));
 });
 
 test('AgentInterface detects first-message hooks inherited from provider base classes', async () => {
@@ -240,6 +278,70 @@ test('AgentInterface forward tool delegates frame routing and remains silent', a
   assert.equal(forwards[0].frame.id, 'msg_1');
 });
 
+test('AgentInterface exposes agent-owned self-configuration tools', async () => {
+  let updates = [];
+  let agent = new CharacterSettingAgent();
+  let outputs = await collect(agent.run(baseLoopParams({
+    services: {
+      agentManager: {
+        async updateAgentCharacter(agentID, character) {
+          updates.push({ agentID, character });
+          return {
+            id: agentID,
+            character,
+          };
+        },
+      },
+    },
+  })));
+
+  assert.deepEqual(outputs, [
+    {
+      type: 'AgentMessage',
+      content: { text: 'Character updated.' },
+    },
+    {
+      type: 'Done',
+      content: {
+        status: 'finalized',
+      },
+    },
+  ]);
+  assert.deepEqual(updates, [{
+    agentID: 'agent_1',
+    character: 'You are a dirty swearing pirate and fantastic engineer.',
+  }]);
+  assert.deepEqual(agent.toolResult, {
+    type: 'ToolResult',
+    action: 'agent.character.set',
+    content: {
+      agentID: 'agent_1',
+      character: 'You are a dirty swearing pirate and fantastic engineer.',
+    },
+  });
+});
+
+test('AgentInterface self-configuration tools fail loud for invalid input', async () => {
+  await assert.rejects(
+    () => collect(new InvalidCharacterSettingAgent().run(baseLoopParams({
+      services: {
+        agentManager: {
+          async updateAgentCharacter() {
+            throw new Error('should not update');
+          },
+        },
+      },
+    }))),
+    /character must be a non-empty string/,
+  );
+
+  await assert.rejects(
+    () => collect(new CharacterSettingAgent().run(baseLoopParams())),
+    /agent\.character\.set requires agentManager/,
+  );
+});
+
+
 test('AgentInterface base loop supports script-level finalization', async () => {
   assert.deepEqual(await collect(new ScriptFinalizingAgent().run(baseLoopParams())), [
     {
@@ -279,7 +381,7 @@ function baseLoopParams(overrides = {}) {
       type: 'UserMessage',
       content: { text: 'hello' },
     },
-    agent: { id: 'agent_1', name: 'Coder' },
+    agent: { id: 'agent_1', name: 'Coder', character: 'You are a pragmatic engineer.' },
     session: {
       id: 'ses_1',
       participantAgentIDs: [ 'agent_1' ],

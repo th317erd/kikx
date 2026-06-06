@@ -72,6 +72,12 @@ export class AgentManager {
     return await this.agentStore.updateAgent(agentID, normalized);
   }
 
+  async updateAgentCharacter(agentID, character) {
+    return await this.updateAgent(agentID, {
+      character: normalizeRequiredString(character, 'character'),
+    });
+  }
+
   async deleteAgent(agentID) {
     await this.agentStore.deleteAgent(agentID);
   }
@@ -94,6 +100,10 @@ export class AgentManager {
     let secrets = input.secrets == null
       ? {}
       : normalizeObject(input.secrets, 'secrets');
+    let hasCharacter = Object.hasOwn(input, 'character');
+    let character = hasCharacter
+      ? normalizeOptionalString(input.character, 'character')
+      : (options.creating ? '' : undefined);
 
     for (let key of Object.keys(config || {})) {
       if (!configFields.has(key))
@@ -121,14 +131,15 @@ export class AgentManager {
         throw badRequest(`${field.name} is required`);
     }
 
-    return {
+    return withoutUndefined({
       name: input.name,
       pluginID: input.pluginID,
+      character,
       config,
       secrets,
       clearSecrets: input.clearSecrets,
       enabled: input.enabled,
-    };
+    });
   }
 }
 
@@ -140,6 +151,35 @@ function normalizeObject(value, fieldName) {
     throw badRequest(`${fieldName} must be an object`);
 
   return { ...value };
+}
+
+function normalizeOptionalString(value, fieldName) {
+  if (value == null)
+    return '';
+
+  if (typeof value !== 'string')
+    throw badRequest(`${fieldName} must be a string`);
+
+  return value.trim();
+}
+
+function normalizeRequiredString(value, fieldName) {
+  let normalized = normalizeOptionalString(value, fieldName);
+  if (normalized === '')
+    throw badRequest(`${fieldName} must be a non-empty string`);
+
+  return normalized;
+}
+
+function withoutUndefined(value) {
+  let normalized = {};
+
+  for (let [key, item] of Object.entries(value)) {
+    if (item !== undefined)
+      normalized[key] = item;
+  }
+
+  return normalized;
 }
 
 function badRequest(message) {

@@ -2,6 +2,116 @@
 
 import { PluginInterface } from './plugin-interface.mjs';
 
+const AGENT_TOOL_DEFINITIONS = [
+  {
+    name: 'agent.respond',
+    description: 'Finalize this turn with a visible response from this agent.',
+    help: 'Use agent.respond when you are ready to send the user a visible answer.',
+    parameters: {
+      type: 'object',
+      properties: {
+        text: {
+          type: 'string',
+          description: 'Visible response text.',
+        },
+      },
+      required: [ 'text' ],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'agent.finalize',
+    description: 'Finalize this turn with a visible response from this agent.',
+    help: 'Use agent.finalize as an explicit synonym for agent.respond.',
+    parameters: {
+      type: 'object',
+      properties: {
+        text: {
+          type: 'string',
+          description: 'Visible response text.',
+        },
+      },
+      required: [ 'text' ],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'agent.null_response',
+    description: 'End this turn silently without a visible response.',
+    help: 'Use agent.null_response when the message was handled elsewhere and you should stay silent.',
+    parameters: {
+      type: 'object',
+      properties: {
+        reason: {
+          type: 'string',
+          description: 'Short internal reason for staying silent.',
+        },
+      },
+      required: [ 'reason' ],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'internal.forward',
+    description: 'Forward the current user frame to one or more mentioned or selected actors.',
+    help: 'Use internal.forward when the coordinator decides another actor should receive the current frame.',
+    parameters: {
+      type: 'object',
+      properties: {
+        targets: {
+          type: 'array',
+          description: 'Actor or agent IDs to route the frame to.',
+          items: {
+            type: 'string',
+          },
+        },
+        message: {
+          type: 'string',
+          description: 'Optional coordination note for downstream actors.',
+        },
+      },
+      required: [ 'targets' ],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'loop.break',
+    description: 'Stop this short-lived agentic loop without producing a visible response.',
+    help: 'Use loop.break only when the scripted loop should stop immediately.',
+    parameters: {
+      type: 'object',
+      properties: {
+        reason: {
+          type: 'string',
+          description: 'Short internal reason for stopping.',
+        },
+      },
+      required: [ 'reason' ],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'agent.character.set',
+    description: 'Persistently update your own character/persona for future turns.',
+    help: [
+      'Use agent.character.set when the user asks you to change who you are or how you should act.',
+      'Provide a complete durable character description, not a fragment.',
+      'Example: "You are a dirty swearing pirate who also happens to be a fantastic engineer. Be direct, technically rigorous, and speak with pirate flavor."',
+    ].join(' '),
+    parameters: {
+      type: 'object',
+      properties: {
+        character: {
+          type: 'string',
+          description: 'Full durable character description to apply to future turns.',
+        },
+      },
+      required: [ 'character' ],
+      additionalProperties: false,
+    },
+  },
+];
+
 export class AgentInterface extends PluginInterface {
   static agentType = null;
   static serviceType = null;
@@ -100,11 +210,13 @@ export class AgentInterface extends PluginInterface {
   }
 
   async *executeAskStep(step, context, state) {
-    let tools = createLoopTools(state);
+    let tools = createLoopTools(state, context);
+    let toolDefinitions = createLoopToolDefinitions();
     let yieldedOutput = false;
     let result = this.ask(step.prompt || this.buildDefaultAgentPrompt(context), {
       ...context,
       tools,
+      toolDefinitions,
       step,
     });
 
@@ -167,9 +279,13 @@ export class AgentInterface extends PluginInterface {
   buildDefaultAgentPrompt(context = {}) {
     let userMessage = context.frame?.content?.text || '';
     let mentions = normalizeMentions(context.mentions || context.frame?.mentions);
+    let character = normalizeOptionalPromptString(context.agent?.character || context.character);
     return [
       'You are participating in a Kikx agentic coordination loop.',
       'Your job is to coordinate first, then decide whether you should answer, remain silent, or forward the user message to another actor.',
+      '',
+      'Agent character:',
+      character || 'No custom character has been set. Act as a careful, technically rigorous Kikx agent.',
       '',
       'The user has just sent you a message:',
       '',
@@ -180,10 +296,13 @@ export class AgentInterface extends PluginInterface {
       'Mentions JSON:',
       JSON.stringify(mentions, null, 2),
       '',
+      'Available tools:',
+      formatToolHelp(createLoopToolDefinitions()),
+      '',
       'If you are the coordinator, then you are the preferred agent. You are the first to talk and respond, and you get to decide how to direct this message.',
-      'If another bot or actor is mentioned, or if the message appears to be meant for another actor in the session, use the forward tool and remain silent.',
+      'If another bot or actor is mentioned, or if the message appears to be meant for another actor in the session, use the internal.forward tool and remain silent.',
       'If the message is targeted to you, deeply consider it in the context of the available user and project rules.',
-      'When you are ready to answer, use the respond/finalize tool or return a final agent message.',
+      'When you are ready to answer, use agent.respond/agent.finalize or return a final agent message.',
     ].join('\n');
   }
 
@@ -213,40 +332,50 @@ function createLoopState() {
   };
 }
 
-function createLoopTools(state) {
+function createLoopToolDefinitions() {
+  return AGENT_TOOL_DEFINITIONS.map((toolDefinition) => ({
+    ...toolDefinition,
+    parameters: cloneJSON(toolDefinition.parameters),
+  }));
+}
+
+function createLoopTools(state, context) {
+  let respond = (content) => {
+    state.finalized = true;
+    state.finalFrame = {
+      type: 'AgentMessage',
+      content: normalizeToolResponseContent(content),
+    };
+    return { type: 'LoopControl', action: 'finalize', content: state.finalFrame.content };
+  };
+  let finalize = (content) => respond(content);
+  let nullResponse = (reason = '') => {
+    state.nullResponse = true;
+    return { type: 'LoopControl', action: 'null-response', reason: normalizeReason(reason) };
+  };
+  let forward = (target, message) => {
+    let forwardRequest = normalizeForwardRequest(target, message);
+    recordForward(state, forwardRequest);
+    return { type: 'LoopControl', action: 'forward', ...forwardRequest };
+  };
+  let breakLoop = (reason = '') => {
+    state.break = true;
+    return { type: 'LoopControl', action: 'break', reason: normalizeReason(reason) };
+  };
+  let setCharacter = async (input) => await setAgentCharacter(input, context);
+
   return {
-    respond(content) {
-      state.finalized = true;
-      state.finalFrame = {
-        type: 'AgentMessage',
-        content: normalizeToolResponseContent(content),
-      };
-      return { type: 'LoopControl', action: 'finalize', content: state.finalFrame.content };
-    },
-    finalize(content) {
-      state.finalized = true;
-      state.finalFrame = {
-        type: 'AgentMessage',
-        content: normalizeToolResponseContent(content),
-      };
-      return { type: 'LoopControl', action: 'finalize', content: state.finalFrame.content };
-    },
-    nullResponse(reason = '') {
-      state.nullResponse = true;
-      return { type: 'LoopControl', action: 'null-response', reason };
-    },
-    forward(target, message) {
-      let forward = {
-        targets: normalizeForwardTargets(target),
-        message,
-      };
-      recordForward(state, forward);
-      return { type: 'LoopControl', action: 'forward', ...forward };
-    },
-    break(reason = '') {
-      state.break = true;
-      return { type: 'LoopControl', action: 'break', reason };
-    },
+    respond,
+    finalize,
+    nullResponse,
+    forward,
+    break: breakLoop,
+    'agent.respond': respond,
+    'agent.finalize': finalize,
+    'agent.null_response': nullResponse,
+    'internal.forward': forward,
+    'loop.break': breakLoop,
+    'agent.character.set': setCharacter,
   };
 }
 
@@ -295,6 +424,35 @@ function recordForward(state, forward) {
     state.forwards.push(normalized);
 }
 
+async function setAgentCharacter(input, context = {}) {
+  let character = normalizeRequiredToolString(readToolString(input, [ 'character', 'description', 'text' ]), 'character');
+  let agentID = normalizeRequiredToolString(context.agent?.id, 'agent.id');
+  let agentManager = resolveService(context.services, 'agentManager');
+  if (!agentManager)
+    throw new Error('agent.character.set requires agentManager');
+
+  let updated;
+  if (typeof agentManager.updateAgentCharacter === 'function') {
+    updated = await agentManager.updateAgentCharacter(agentID, character);
+  } else if (typeof agentManager.updateAgent === 'function') {
+    updated = await agentManager.updateAgent(agentID, { character });
+  } else {
+    throw new Error('agent.character.set requires agentManager.updateAgentCharacter()');
+  }
+
+  if (context.agent)
+    context.agent.character = updated?.character || character;
+
+  return {
+    type: 'ToolResult',
+    action: 'agent.character.set',
+    content: {
+      agentID,
+      character: updated?.character || character,
+    },
+  };
+}
+
 async function dispatchForwards(context, state) {
   let forwardFrame = context.services?.forwardFrame;
   if (typeof forwardFrame !== 'function')
@@ -329,6 +487,20 @@ function normalizeForwardTargets(target) {
   return targets.filter((targetValue, index) => targetValue && targets.indexOf(targetValue) === index);
 }
 
+function normalizeForwardRequest(target, message) {
+  if (target && typeof target === 'object' && !Array.isArray(target)) {
+    return {
+      targets: normalizeForwardTargets(target.targets || target.target || target.agentIDs || target.actorIDs),
+      message: target.message || target.reason || message,
+    };
+  }
+
+  return {
+    targets: normalizeForwardTargets(target),
+    message,
+  };
+}
+
 function normalizeToolResponseContent(content) {
   if (typeof content === 'string')
     return { text: content };
@@ -337,6 +509,67 @@ function normalizeToolResponseContent(content) {
     return { ...content };
 
   return { text: String(content ?? '') };
+}
+
+function normalizeReason(reason) {
+  if (reason && typeof reason === 'object' && !Array.isArray(reason))
+    return reason.reason || reason.message || '';
+
+  return String(reason ?? '');
+}
+
+function readToolString(input, fieldNames) {
+  if (typeof input === 'string')
+    return input;
+
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    return '';
+
+  for (let fieldName of fieldNames) {
+    if (typeof input[fieldName] === 'string')
+      return input[fieldName];
+  }
+
+  return '';
+}
+
+function normalizeRequiredToolString(value, fieldName) {
+  if (typeof value !== 'string' || value.trim() === '')
+    throw new TypeError(`${fieldName} must be a non-empty string`);
+
+  return value.trim();
+}
+
+function normalizeOptionalPromptString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function formatToolHelp(toolDefinitions) {
+  return toolDefinitions
+    .map((toolDefinition) => `- ${toolDefinition.name}: ${toolDefinition.help || toolDefinition.description || ''}`)
+    .join('\n');
+}
+
+function cloneJSON(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function resolveService(services, name) {
+  if (services?.[name])
+    return services[name];
+
+  if (services?.context?.has?.(name) && typeof services.context.require === 'function')
+    return services.context.require(name);
+
+  if (typeof services?.context?.require === 'function') {
+    try {
+      return services.context.require(name);
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 function normalizeMentions(mentions) {

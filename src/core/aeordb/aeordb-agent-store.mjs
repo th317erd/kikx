@@ -33,6 +33,7 @@ export class AeorDBAgentStore {
       id: input.id || this.idGenerator(),
       name: input.name,
       pluginID: input.pluginID,
+      character: input.character || '',
       config: input.config || {},
       secrets: input.secrets || {},
       enabled: input.enabled !== false,
@@ -163,6 +164,7 @@ export class AeorDBAgentStore {
       ...agent,
       name: input.name ?? agent.name,
       pluginID: input.pluginID ?? agent.pluginID,
+      character: input.character ?? agent.character ?? '',
       config: input.config ?? agent.config ?? {},
       secrets: mergeSecrets(agent.secrets, input.secrets, input.clearSecrets),
       enabled: input.enabled ?? agent.enabled,
@@ -228,6 +230,7 @@ export function sanitizeAgent(agent) {
     id: agent.id,
     name: agent.name,
     pluginID: agent.pluginID,
+    character: normalizeOptionalString(agent.character, 'character'),
     config: isPlainObject(agent.config) ? { ...agent.config } : {},
     secretState: secretState(agent.secrets),
     enabled: agent.enabled !== false,
@@ -241,6 +244,7 @@ function normalizeAgent(agent) {
     id: normalizeRequiredString(agent.id, 'agent.id'),
     name: normalizeRequiredString(agent.name, 'name'),
     pluginID: normalizeRequiredString(agent.pluginID, 'pluginID'),
+    character: normalizeOptionalString(agent.character, 'character'),
     config: normalizePlainObject(agent.config, 'config'),
     secrets: normalizePlainObject(agent.secrets, 'secrets'),
     enabled: agent.enabled !== false,
@@ -259,6 +263,16 @@ function normalizeRoot(rootPath) {
 function normalizeRequiredString(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '')
     throw new TypeError(`${fieldName} must be a non-empty string`);
+
+  return value.trim();
+}
+
+function normalizeOptionalString(value, fieldName) {
+  if (value == null)
+    return '';
+
+  if (typeof value !== 'string')
+    throw new TypeError(`${fieldName} must be a string`);
 
   return value.trim();
 }

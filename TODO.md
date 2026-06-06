@@ -142,3 +142,11 @@
   - [x] Implement agent `/forward` loop control as frame mutation plus next-tick router requeue.
   - [x] Feed mentions JSON into the agent coordinator primer.
   - [x] Verify with unit tests, Stagehand UI coverage, and Puppeteer/browser confirmation.
+
+- [x] Add agent self-configuration tools and character priming.
+  - [x] Map agent config, loop tool, and provider tool-call surfaces.
+  - [x] Add tests for persistent agent character configuration.
+  - [x] Add namespaced agent loop tool descriptors and `agent.character.set`.
+  - [x] Feed each agent's character into the priming instructions.
+  - [x] Expose namespaced tools through the Codex/OpenAI provider.
+  - [x] Verify focused app/plugin tests and full app tests.
