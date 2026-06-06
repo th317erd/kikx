@@ -415,6 +415,9 @@ test('FrameRuntime supports spaced and quoted agent names in /invite', async () 
   assert.equal((await routeInviteMessage('/invite Agent With Spaces', 'Agent With Spaces')).frames[1].content.status, 'ok');
   assert.equal((await routeInviteMessage('/invite "Agent With Spaces"', 'Agent With Spaces')).frames[1].content.status, 'ok');
   assert.equal((await routeInviteMessage("/invite 'Agent With Spaces'", 'Agent With Spaces')).frames[1].content.status, 'ok');
+  assert.equal((await routeInviteMessage('/invite Mr. Bennett', 'Mr. Bennett')).frames[1].content.status, 'ok');
+  assert.equal((await routeInviteMessage('/invite "Mr. Bennett"', 'Mr. Bennett')).frames[1].content.status, 'ok');
+  assert.equal((await routeInviteMessage("/invite 'Mr. Bennett'", 'Mr. Bennett')).frames[1].content.status, 'ok');
 });
 
 test('FrameRuntime reports malformed quoted /invite arguments as command errors', async () => {

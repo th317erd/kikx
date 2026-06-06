@@ -174,3 +174,9 @@
   - [x] Remove old exposed tool aliases.
   - [x] Add contract tests that reject dotted OpenAI tool names.
   - [x] Verify with a live Kikx agent message smoke.
+
+- [x] Fix `/invite` for punctuated agent names.
+  - [x] Reproduce `Mr. Bennett` failing through the live HTTP route.
+  - [x] Add command/runtime tests for spaced and punctuated agent names.
+  - [x] Fix slash-command argument parsing or agent lookup behavior.
+  - [x] Verify with unit tests and a live invite smoke.

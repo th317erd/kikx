@@ -1,6 +1,6 @@
 'use strict';
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
 
@@ -98,11 +98,18 @@ export class AeorDBAgentStore {
         throw error;
     }
 
+    let lookupMatches = await this.findAgentsByNameLookup(reference);
+    if (lookupMatches.length > 1)
+      throw ambiguousName(reference);
+
+    if (lookupMatches.length === 1)
+      return lookupMatches[0];
+
     let result;
     try {
       result = await this.aeordb.queryFiles({
         path: `${this.rootPath}/agents`,
-        where: { field: 'name', op: 'eq', value: reference.trim() },
+        where: { field: 'nameKey', op: 'eq', value: normalizeAgentNameForLookup(reference) },
         limit: 2,
         select: [ '@path' ],
       });
@@ -110,7 +117,11 @@ export class AeorDBAgentStore {
       if (error.status !== 404)
         throw error;
 
-      return await this.findAgentByNameFromBoundedList(reference);
+      let legacyMatch = await this.findAgentByNameFromBoundedList(reference);
+      if (legacyMatch)
+        await this.saveAgentNameLookup(legacyMatch);
+
+      return legacyMatch;
     }
 
     let paths = [];
@@ -131,24 +142,67 @@ export class AeorDBAgentStore {
         agents.push(sanitizeAgent(agent));
     }
 
-    if (agents.length > 1) {
-      let error = new Error(`Ambiguous agent name: ${reference}`);
-      error.status = 400;
+    if (agents.length > 1)
+      throw ambiguousName(reference);
+
+    if (agents.length === 1)
+      return agents[0];
+
+    let legacyMatch = await this.findAgentByNameFromBoundedList(reference);
+    if (legacyMatch)
+      await this.saveAgentNameLookup(legacyMatch);
+
+    return legacyMatch;
+  }
+
+  async findAgentsByNameLookup(reference) {
+    let result;
+    try {
+      result = await this.aeordb.listDirectory(this.agentNameLookupDir(reference), {
+        depth: 1,
+        glob: '*.json',
+        limit: 2,
+      });
+    } catch (error) {
+      if (error.status === 404)
+        return [];
+
       throw error;
     }
 
-    return agents[0] || null;
+    let reads = await readJSONFiles(this.aeordb, pathsFromItems(result?.items), {
+      fallbackOnBatchError: true,
+    });
+    let matches = [];
+    let referenceKey = normalizeAgentNameForLookup(reference);
+
+    for (let read of reads) {
+      let agentID = read.value?.agentID;
+      if (!agentID)
+        continue;
+
+      let agent;
+      try {
+        agent = await this.loadAgent(agentID);
+      } catch (error) {
+        if (error.status !== 404)
+          throw error;
+      }
+
+      if (agent?.id && normalizeAgentNameForLookup(agent.name) === referenceKey)
+        matches.push(sanitizeAgent(agent));
+    }
+
+    return matches;
   }
 
   async findAgentByNameFromBoundedList(reference) {
     let agents = await this.listAgents({ limit: 500 });
-    let matches = agents.filter((agent) => agent.name === reference.trim());
+    let referenceKey = normalizeAgentNameForLookup(reference);
+    let matches = agents.filter((agent) => normalizeAgentNameForLookup(agent.name) === referenceKey);
 
-    if (matches.length > 1) {
-      let error = new Error(`Ambiguous agent name: ${reference}`);
-      error.status = 400;
-      throw error;
-    }
+    if (matches.length > 1)
+      throw ambiguousName(reference);
 
     return matches[0] || null;
   }
@@ -171,7 +225,7 @@ export class AeorDBAgentStore {
       updatedAt: input.updatedAt || this.clock(),
     });
 
-    await this.saveAgent(next);
+    await this.saveAgent(next, agent);
     return sanitizeAgent(next);
   }
 
@@ -183,16 +237,22 @@ export class AeorDBAgentStore {
       throw notFound(agentID);
 
     await this.aeordb.deleteFile(this.agentPath(agentID));
+    await this.deleteAgentNameLookup(agent);
   }
 
-  async saveAgent(agent) {
+  async saveAgent(agent, previousAgent = null) {
     if (!agent?.id)
       throw new TypeError('saveAgent() requires agent.id');
 
     await this.aeordb.putFile(this.agentPath(agent.id), {
       ...agent,
+      nameKey: normalizeAgentNameForLookup(agent.name),
       enabledIndex: String(agent.enabled !== false),
     });
+    await this.saveAgentNameLookup(agent);
+
+    if (previousAgent?.id && this.agentNameLookupPath(previousAgent.id, previousAgent.name) !== this.agentNameLookupPath(agent.id, agent.name))
+      await this.deleteAgentNameLookup(previousAgent);
   }
 
   async loadAgent(agentID) {
@@ -211,6 +271,7 @@ export class AeorDBAgentStore {
       indexes: [
         { name: 'id', type: 'string' },
         { name: 'name', type: [ 'string', 'trigram' ] },
+        { name: 'nameKey', type: 'string' },
         { name: 'pluginID', type: 'string' },
         { name: 'enabled', type: 'string', source: [ 'enabledIndex' ] },
         { name: 'createdAt', type: 'timestamp' },
@@ -222,6 +283,32 @@ export class AeorDBAgentStore {
 
   agentPath(agentID) {
     return `${this.rootPath}/agents/${encodeSegment(agentID)}/agent.json`;
+  }
+
+  agentNameLookupDir(name) {
+    return `${this.rootPath}/agent-name-lookup/${agentNameLookupHash(name)}`;
+  }
+
+  agentNameLookupPath(agentID, name) {
+    return `${this.agentNameLookupDir(name)}/${encodeSegment(agentID)}.json`;
+  }
+
+  async saveAgentNameLookup(agent) {
+    await this.aeordb.putFile(this.agentNameLookupPath(agent.id, agent.name), {
+      agentID: agent.id,
+      name: agent.name,
+      nameKey: normalizeAgentNameForLookup(agent.name),
+      updatedAt: agent.updatedAt || null,
+    });
+  }
+
+  async deleteAgentNameLookup(agent) {
+    try {
+      await this.aeordb.deleteFile(this.agentNameLookupPath(agent.id, agent.name));
+    } catch (error) {
+      if (error.status !== 404)
+        throw error;
+    }
   }
 }
 
@@ -251,6 +338,16 @@ function normalizeAgent(agent) {
     createdAt: agent.createdAt,
     updatedAt: agent.updatedAt,
   };
+}
+
+function normalizeAgentNameForLookup(name) {
+  return normalizeRequiredString(name, 'name').toLowerCase();
+}
+
+function agentNameLookupHash(name) {
+  return createHash('sha256')
+    .update(normalizeAgentNameForLookup(name))
+    .digest('base64url');
 }
 
 function normalizeRoot(rootPath) {
@@ -342,6 +439,12 @@ function normalizeOffset(value) {
 
 function encodeSegment(value) {
   return encodeURIComponent(String(value));
+}
+
+function ambiguousName(reference) {
+  let error = new Error(`Ambiguous agent name: ${reference}`);
+  error.status = 400;
+  return error;
 }
 
 function notFound(agentID) {

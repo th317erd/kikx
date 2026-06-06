@@ -44,9 +44,16 @@ function createClient() {
     async listDirectory(path, options) {
       this.calls.push({ method: 'listDirectory', path, options });
       let prefix = `${path.replace(/\/+$/g, '')}/`;
+      let regex = null;
+      if (options?.glob === '*/agent.json')
+        regex = /^\/kikx\/agents\/[^/]+\/agent\.json$/;
+      else if (options?.glob === '*.json')
+        regex = new RegExp(`^${escapeRegex(prefix)}[^/]+\\.json$`);
+
       return {
         items: [ ...this.files.keys() ]
-          .filter((filePath) => filePath.startsWith(prefix) && filePath.endsWith('/agent.json'))
+          .filter((filePath) => filePath.startsWith(prefix))
+          .filter((filePath) => !regex || regex.test(filePath))
           .map((filePath) => ({ path: filePath })),
       };
     },
@@ -59,13 +66,17 @@ function createClient() {
         if (!filePath.startsWith(prefix))
           continue;
 
-        if (query.where?.field === 'name' && query.where?.op === 'eq' && body.name === query.where.value)
+        if (query.where?.field === 'nameKey' && query.where?.op === 'eq' && body.nameKey === query.where.value)
           matches.push({ path: filePath });
       }
 
       return { results: matches.slice(0, query.limit || matches.length) };
     },
   };
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 test('AeorDBAgentStore persists plugin-owned agent config and sanitizes secrets', async () => {
@@ -99,6 +110,8 @@ test('AeorDBAgentStore persists plugin-owned agent config and sanitizes secrets'
   });
   assert.equal(aeordb.files.get('/kikx/agents/agent_1/agent.json').secrets.apiKey, 'sk-secret-1234');
   assert.equal(aeordb.files.get('/kikx/agents/agent_1/agent.json').character, 'You are a careful engineering partner.');
+  assert.equal(aeordb.files.get('/kikx/agents/agent_1/agent.json').nameKey, 'coder');
+  assert.ok([ ...aeordb.files.keys() ].some((path) => path.startsWith('/kikx/agent-name-lookup/') && path.endsWith('/agent_1.json')));
   assert.equal(aeordb.calls[0].path, '/kikx/agents/.aeordb-config/indexes.json');
 });
 
@@ -130,14 +143,17 @@ test('AeorDBAgentStore lists, updates, and deletes agents', async () => {
   assert.equal(updated.character, 'You are a skeptical reviewer.');
   assert.deepEqual(updated.config, { model: 'opus' });
   assert.deepEqual(updated.secretState.apiKey, { present: true, last4: '9999' });
+  assert.equal([ ...aeordb.files.values() ].filter((value) => value?.agentID === 'agent_1').length, 1);
+  assert.equal([ ...aeordb.files.values() ].find((value) => value?.agentID === 'agent_1')?.name, 'Reviewer');
   assert.deepEqual((await store.listAgents()).map((agent) => agent.id), [ 'agent_1' ]);
   assert.ok(aeordb.calls.some((call) => call.method === 'fetchFiles' && call.paths.includes('/kikx/agents/agent_1/agent.json')));
 
   await store.deleteAgent('agent_1');
   assert.equal(await store.loadAgent('agent_1'), null);
+  assert.equal([ ...aeordb.files.values() ].some((value) => value?.agentID === 'agent_1'), false);
 });
 
-test('AeorDBAgentStore resolves agents by direct id or indexed exact name query', async () => {
+test('AeorDBAgentStore resolves agents by direct id or exact name lookup', async () => {
   let aeordb = createClient();
   let ids = [ 'agent_1', 'agent_2' ];
   let store = new AeorDBAgentStore({
@@ -153,20 +169,21 @@ test('AeorDBAgentStore resolves agents by direct id or indexed exact name query'
     secrets: { apiKey: 'sk-secret-1234' },
   });
   await store.createAgent({
-    name: 'Reviewer',
+    name: 'Mr. Bennett',
     pluginID: 'test-agent',
     config: { model: 'sonnet' },
     secrets: { apiKey: 'sk-secret-5678' },
   });
 
   assert.equal((await store.findAgentByIDOrName('agent_1')).name, 'Coder');
-  assert.equal((await store.findAgentByIDOrName('Reviewer')).id, 'agent_2');
+  assert.equal((await store.findAgentByIDOrName('Mr. Bennett')).id, 'agent_2');
+  assert.equal((await store.findAgentByIDOrName('mr. bennett')).id, 'agent_2');
   assert.equal(await store.findAgentByIDOrName('missing'), null);
-  assert.ok(aeordb.calls.some((call) => call.method === 'queryFiles' && call.query.where.field === 'name'));
   assert.ok(aeordb.calls.some((call) => call.method === 'fetchFiles' && call.paths.includes('/kikx/agents/agent_2/agent.json')));
+  assert.ok(aeordb.calls.some((call) => call.method === 'listDirectory' && call.path.startsWith('/kikx/agent-name-lookup/')));
 });
 
-test('AeorDBAgentStore falls back to bounded exact-name list lookup when indexed query returns 404', async () => {
+test('AeorDBAgentStore falls back to bounded exact-name list lookup for legacy records', async () => {
   let aeordb = createClient();
   let store = new AeorDBAgentStore({
     aeordb,
@@ -180,16 +197,18 @@ test('AeorDBAgentStore falls back to bounded exact-name list lookup when indexed
     throw error;
   };
 
-  await store.createAgent({
-    name: 'Test 1',
+  aeordb.files.set('/kikx/agents/agent_1/agent.json', {
+    id: 'agent_1',
+    name: 'Mr. Bennett',
     pluginID: 'test-agent',
     config: { model: 'sonnet' },
     secrets: { apiKey: 'sk-secret-1234' },
   });
 
-  assert.equal((await store.findAgentByIDOrName('Test 1')).id, 'agent_1');
+  assert.equal((await store.findAgentByIDOrName('Mr. Bennett')).id, 'agent_1');
   assert.ok(aeordb.calls.some((call) => call.method === 'queryFiles'));
   assert.ok(aeordb.calls.some((call) => call.method === 'listDirectory' && call.options.limit === 500));
+  assert.ok([ ...aeordb.files.keys() ].some((path) => path.startsWith('/kikx/agent-name-lookup/') && path.endsWith('/agent_1.json')));
 });
 
 test('AeorDBAgentStore rejects malformed agents and missing records', async () => {
