@@ -173,6 +173,9 @@ export class AeorDBFrameStore {
       });
       sessionPaths = pathsFromItems(result?.items);
     } catch (error) {
+      if (error?.status === 404)
+        return [];
+
       if (!shouldFallbackToShallowSessionList(error))
         throw error;
 
@@ -194,11 +197,19 @@ export class AeorDBFrameStore {
   }
 
   async listSessionManifestPathsShallow(options = {}) {
-    let result = await this.aeordb.listDirectory(`${this.rootPath}/sessions`, {
-      depth: 1,
-      limit: options.limit,
-      offset: options.offset,
-    });
+    let result;
+    try {
+      result = await this.aeordb.listDirectory(`${this.rootPath}/sessions`, {
+        depth: 1,
+        limit: options.limit,
+        offset: options.offset,
+      });
+    } catch (error) {
+      if (error?.status === 404)
+        return [];
+
+      throw error;
+    }
     let paths = [];
 
     for (let item of result?.items || []) {

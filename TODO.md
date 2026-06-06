@@ -162,3 +162,9 @@
   - [x] Add read-only shallow session-manifest fallback.
   - [x] Verify `/api/v1/sessions` returns sessions against the corrupt DB.
   - [x] Run focused and full test coverage.
+
+- [x] Restart with fixed AeorDB binary and clean dev database.
+  - [x] Preserve old corrupt DB before and after the new-binary retry.
+  - [x] Archive the corrupt DB out of the active `.aeordb/kikx.aeordb` path.
+  - [x] Restore the existing dev agent into the clean DB.
+  - [x] Treat missing clean-DB sessions directory as an empty session list.

@@ -161,6 +161,32 @@ test('AeorDBFrameStore lists persisted session manifests with a bounded query', 
   });
 });
 
+test('AeorDBFrameStore treats a missing sessions directory as an empty list', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+
+  aeordb.listDirectory = async (path, options) => {
+    aeordb.calls.push({ method: 'listDirectory', path, options });
+    let error = new Error('Not found: kikx/sessions');
+    error.status = 404;
+    throw error;
+  };
+
+  assert.deepEqual(await store.listSessions({ limit: 25, offset: 0 }), []);
+  assert.deepEqual(aeordb.calls, [
+    {
+      method: 'listDirectory',
+      path: '/kikx/sessions',
+      options: {
+        depth: -1,
+        glob: '**/session.json',
+        limit: 25,
+        offset: 0,
+      },
+    },
+  ]);
+});
+
 test('AeorDBFrameStore falls back to shallow session manifests when recursive listing fails', async () => {
   let aeordb = createClient();
   let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
