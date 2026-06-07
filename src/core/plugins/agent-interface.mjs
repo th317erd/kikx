@@ -60,7 +60,7 @@ const AGENT_TOOL_DEFINITIONS = [
       properties: {
         targets: {
           type: 'array',
-          description: 'Actor or agent IDs to route the frame to.',
+          description: 'Actor IDs, agent IDs, or exact names from Session agents JSON to route the frame to.',
           items: {
             type: 'string',
           },
@@ -198,6 +198,11 @@ export class AgentInterface extends PluginInterface {
       ...params,
       participantAgentIDs,
       coordinatorAgentID,
+      participantAgents: normalizeParticipantAgents(params.participantAgents || params.sessionAgents, {
+        participantAgentIDs,
+        coordinatorAgentID,
+        selfAgentID: agentID,
+      }),
       isCoordinator: params.isCoordinator ?? Boolean(agentID && coordinatorAgentID === agentID),
     };
   }
@@ -279,10 +284,17 @@ export class AgentInterface extends PluginInterface {
   buildDefaultAgentPrompt(context = {}) {
     let userMessage = context.frame?.content?.text || '';
     let mentions = normalizeMentions(context.mentions || context.frame?.mentions);
+    let participantAgents = normalizeParticipantAgents(context.participantAgents || context.sessionAgents, {
+      participantAgentIDs: context.participantAgentIDs || context.session?.participantAgentIDs,
+      coordinatorAgentID: context.coordinatorAgentID || context.session?.coordinatorAgentID,
+      selfAgentID: context.agent?.id,
+    });
     let character = normalizeOptionalPromptString(context.agent?.character || context.character);
     return [
       'You are participating in a Kikx agentic coordination loop.',
       'Your job is to coordinate first, then decide whether you should answer, remain silent, or forward the user message to another actor.',
+      'Before choosing a tool or visible response, ask yourself: "Who is this message really for?"',
+      'Use explicit mentions first, then names or nicknames in the text, then conversation turn-taking and recent context. A message can be intended for another actor even when no @mention appears.',
       '',
       'Agent character:',
       character || 'No custom character has been set. Act as a careful, technically rigorous Kikx agent.',
@@ -292,6 +304,9 @@ export class AgentInterface extends PluginInterface {
       userMessage,
       '',
       `You are the coordinator?: ${context.isCoordinator === true}`,
+      '',
+      'Session agents JSON:',
+      JSON.stringify(participantAgents, null, 2),
       '',
       'Mentions JSON:',
       JSON.stringify(mentions, null, 2),
@@ -565,7 +580,10 @@ function buildRoutingPromptLines(context = {}) {
   if (context.isCoordinator === true) {
     return [
       'If you are the coordinator, then you are the preferred agent. You are the first to talk and respond, and you get to decide how to direct this message.',
-      'If another bot or actor is mentioned, or if the message appears to be meant for another actor in the session, use the internal-forward tool and remain silent.',
+      'Recipient decision checklist: ask "Who is this message really for: me, another session agent, the user, or everyone?" before answering.',
+      'Use turn-taking: if the immediately prior visible response came from another agent and the user asks a follow-up with "you", "your", or a short ambiguous question, treat it as meant for that prior agent unless the user clearly redirects to you.',
+      'If another bot or actor is mentioned by id, exact name, nickname, or clear conversational context, use the internal-forward tool with that actor id or exact name from Session agents JSON, then remain silent.',
+      'Do not answer on behalf of another session agent just because you are the coordinator.',
       'If the message is targeted to you, deeply consider it in the context of the available user and project rules.',
     ];
   }
@@ -618,6 +636,53 @@ function normalizeMentions(mentions) {
     return {};
 
   return mentions;
+}
+
+function normalizeParticipantAgents(participantAgents, options = {}) {
+  let participantAgentIDs = normalizeStringArray(options.participantAgentIDs);
+  let coordinatorAgentID = normalizeOptionalPromptString(options.coordinatorAgentID);
+  let selfAgentID = normalizeOptionalPromptString(options.selfAgentID);
+  let byID = new Map();
+
+  for (let participant of Array.isArray(participantAgents) ? participantAgents : []) {
+    let id = normalizeOptionalPromptString(participant?.id || participant);
+    if (!id)
+      continue;
+
+    byID.set(id, normalizeParticipantAgent(participant, {
+      coordinatorAgentID,
+      selfAgentID,
+    }));
+  }
+
+  let orderedIDs = participantAgentIDs.slice();
+  for (let id of byID.keys()) {
+    if (!orderedIDs.includes(id))
+      orderedIDs.push(id);
+  }
+
+  return orderedIDs.map((id) => byID.get(id) || normalizeParticipantAgent({ id }, {
+    coordinatorAgentID,
+    selfAgentID,
+  }));
+}
+
+function normalizeParticipantAgent(agent, options = {}) {
+  let id = normalizeOptionalPromptString(agent?.id || agent);
+  let name = normalizeOptionalPromptString(agent?.name || agent?.displayName || id);
+  let pluginID = normalizeOptionalPromptString(agent?.pluginID || agent?.pluginId);
+  let item = {
+    id,
+    type: 'agent',
+    name: name || id,
+    isSelf: id === options.selfAgentID,
+    isCoordinator: id === options.coordinatorAgentID,
+  };
+
+  if (pluginID)
+    item.pluginID = pluginID;
+
+  return item;
 }
 
 function isCoordinatedMentionTarget(context = {}) {

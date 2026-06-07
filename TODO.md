@@ -8,6 +8,13 @@
   - [x] Treat failed health fetches as unhealthy instead of fatal.
   - [x] Verify focused and full tests.
 
+- [x] Expand coordinator recipient-inference instructions.
+  - [x] Inspect Session 2 to identify the missed forwarding case.
+  - [x] Add prompt tests for explicit recipient self-questioning and turn-taking.
+  - [x] Include session agent names/ids in the agent prompt without secrets.
+  - [x] Tighten coordinator and forwarded-target routing instructions.
+  - [x] Verify focused and full tests.
+
 - [x] Read aeor-web-components skill and API surfaces.
 - [x] Serve kikx client assets and aeor-web-components assets from the Node server.
 - [x] Build the initial kikx browser shell with Element Builder, ReactiveState, Query Engine, and shared components.

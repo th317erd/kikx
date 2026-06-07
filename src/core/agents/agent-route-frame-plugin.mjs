@@ -75,6 +75,11 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
 
       responseFrameID = this.context.engine.idGenerator();
       let responseFrame = await this.createResponseFrame({ agent, frame, responseFrameID, services });
+      let participantAgents = await this.loadParticipantAgents({
+        participantAgentIDs: this.context.session?.participantAgentIDs,
+        agentManager,
+        currentAgent: agent,
+      });
       let sessionFrames = typeof this.context.engine.toArray === 'function'
         ? this.context.engine.toArray()
         : [];
@@ -88,6 +93,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         frame,
         userFrame: frame,
         session: this.context.session,
+        participantAgents,
         agent,
         config: agent.config || {},
         secrets: agent.secrets || {},
@@ -119,6 +125,26 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         responseFrameID,
       });
     }
+  }
+
+  async loadParticipantAgents({ participantAgentIDs, agentManager, currentAgent = null }) {
+    let agents = [];
+    for (let agentID of normalizeStringArray(participantAgentIDs)) {
+      let agent = null;
+      if (currentAgent?.id === agentID) {
+        agent = currentAgent;
+      } else {
+        try {
+          agent = await agentManager.getAgent(agentID, { includeSecrets: false });
+        } catch (_error) {
+          agent = null;
+        }
+      }
+
+      agents.push(sanitizeParticipantAgent(agent || { id: agentID }));
+    }
+
+    return agents;
   }
 
   providerServices({ services, agent, frame }) {
@@ -393,6 +419,20 @@ function resolveService(services, name) {
   }
 
   return null;
+}
+
+function sanitizeParticipantAgent(agent) {
+  let id = typeof agent?.id === 'string' ? agent.id.trim() : '';
+  let name = typeof agent?.name === 'string' ? agent.name.trim() : '';
+  let pluginID = typeof agent?.pluginID === 'string'
+    ? agent.pluginID.trim()
+    : (typeof agent?.pluginId === 'string' ? agent.pluginId.trim() : '');
+
+  return {
+    id,
+    name: name || id,
+    pluginID,
+  };
 }
 
 function normalizeProviderContent(output, existingResponseFrame) {

@@ -163,6 +163,10 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].prompt, /hello/);
   assert.match(agent.calls[1].prompt, /You are the coordinator\?: true/);
   assert.match(agent.calls[1].prompt, /Mentions JSON:/);
+  assert.match(agent.calls[1].prompt, /Session agents JSON:/);
+  assert.match(agent.calls[1].prompt, /Who is this message really for\?/);
+  assert.match(agent.calls[1].prompt, /turn-taking/i);
+  assert.match(agent.calls[1].prompt, /immediately prior visible response/i);
   assert.match(agent.calls[1].prompt, /Agent character:/);
   assert.match(agent.calls[1].prompt, /You are a pragmatic engineer\./);
   assert.match(agent.calls[1].prompt, /Available tools:/);
@@ -178,6 +182,43 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'agent-character-set'));
   assert.equal(agent.calls[1].toolDefinitions.every((tool) => /^[A-Za-z0-9_-]+$/.test(tool.name)), true);
   assert.equal(agent.calls[1].toolNames.every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
+});
+
+test('AgentInterface prompt includes session participant names without secrets', async () => {
+  let agent = new LoopAgent();
+  await collect(agent.run(baseLoopParams({
+    session: {
+      id: 'ses_1',
+      participantAgentIDs: [ 'agent_1', 'agent_2' ],
+      coordinatorAgentID: 'agent_1',
+    },
+    participantAgents: [
+      {
+        id: 'agent_1',
+        name: 'Iron-Hand McGuffin',
+        pluginID: 'codex-agent',
+        secrets: { apiKey: 'sk-should-not-appear' },
+        character: 'secret-ish personality should not be in roster',
+      },
+      {
+        id: 'agent_2',
+        name: 'Mr. Bennett',
+        pluginID: 'codex-agent',
+        config: { model: 'gpt-test' },
+      },
+    ],
+  })));
+
+  let askCall = agent.calls.find((call) => call.method === 'ask');
+  assert.ok(askCall);
+  assert.match(askCall.prompt, /"id": "agent_1"/);
+  assert.match(askCall.prompt, /"name": "Iron-Hand McGuffin"/);
+  assert.match(askCall.prompt, /"isSelf": true/);
+  assert.match(askCall.prompt, /"id": "agent_2"/);
+  assert.match(askCall.prompt, /"name": "Mr\. Bennett"/);
+  assert.doesNotMatch(askCall.prompt, /sk-should-not-appear/);
+  assert.doesNotMatch(askCall.prompt, /gpt-test/);
+  assert.doesNotMatch(askCall.prompt, /secret-ish personality/);
 });
 
 test('AgentInterface detects first-message hooks inherited from provider base classes', async () => {

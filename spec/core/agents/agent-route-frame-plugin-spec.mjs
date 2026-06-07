@@ -29,6 +29,7 @@ class StreamingAgentProvider extends AgentInterface {
       coordinatorAgentID: params.coordinatorAgentID,
       coordinated: params.frame.coordinated === true,
       mentions: params.frame.mentions || {},
+      participantAgents: params.participantAgents,
     });
 
     yield {
@@ -176,6 +177,13 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
     coordinatorAgentID: 'agent_1',
     coordinated: false,
     mentions: {},
+    participantAgents: [
+      {
+        id: 'agent_1',
+        name: 'Coder',
+        pluginID: 'streaming-agent',
+      },
+    ],
   });
   assert.deepEqual(phantoms.map((frame) => frame.type), [ 'AgentThinking' ]);
   assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage' ]);
@@ -232,6 +240,51 @@ test('AgentRouteFramePlugin dispatches normal user messages only to the session 
   assert.equal(calls[0].apiKey, 'sk-two');
   assert.equal(calls[0].isCoordinator, true);
   assert.equal(calls[0].coordinatorAgentID, 'agent_2');
+});
+
+test('AgentRouteFramePlugin passes all session agent names without secrets to providers', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Iron-Hand McGuffin',
+        pluginID: 'streaming-agent',
+        config: { model: 'coordinator-model' },
+        secrets: { apiKey: 'sk-one' },
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Mr. Bennett',
+        pluginID: 'streaming-agent',
+        config: { model: 'target-model' },
+        secrets: { apiKey: 'sk-two' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1', 'agent_2' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  await runtime.appendUserMessage('ses_1', { text: 'what is your favorite color?', userID: 'usr_1' });
+
+  let call = runtime.services.calls.find((entry) => entry.method === 'run');
+  assert.ok(call);
+  assert.deepEqual(call.participantAgents, [
+    {
+      id: 'agent_1',
+      name: 'Iron-Hand McGuffin',
+      pluginID: 'streaming-agent',
+    },
+    {
+      id: 'agent_2',
+      name: 'Mr. Bennett',
+      pluginID: 'streaming-agent',
+    },
+  ]);
 });
 
 test('AgentRouteFramePlugin forwards coordinated frames to all mentioned session agents', async () => {
