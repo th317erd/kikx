@@ -332,7 +332,7 @@ function createLoopState() {
 
 function createLoopToolDefinitions(context = {}) {
   return AGENT_TOOL_DEFINITIONS
-    .filter((toolDefinition) => context.isCoordinator === true || toolDefinition.name !== 'internal-forward')
+    .filter((toolDefinition) => shouldExposeLoopTool(toolDefinition.name, context))
     .map((toolDefinition) => ({
       ...toolDefinition,
       parameters: cloneJSON(toolDefinition.parameters),
@@ -367,15 +367,27 @@ function createLoopTools(state, context) {
   let tools = {
     'agent-respond': respond,
     'agent-finalize': finalize,
-    'agent-null-response': nullResponse,
     'loop-break': breakLoop,
     'agent-character-set': setCharacter,
   };
+
+  if (shouldExposeLoopTool('agent-null-response', context))
+    tools['agent-null-response'] = nullResponse;
 
   if (context.isCoordinator === true)
     tools['internal-forward'] = forward;
 
   return tools;
+}
+
+function shouldExposeLoopTool(toolName, context = {}) {
+  if (toolName === 'internal-forward')
+    return context.isCoordinator === true;
+
+  if (toolName === 'agent-null-response')
+    return !isCoordinatedMentionTarget(context);
+
+  return true;
 }
 
 function handleLoopControl(output, state) {
@@ -559,10 +571,17 @@ function buildRoutingPromptLines(context = {}) {
   }
 
   if (context.frame?.coordinated === true) {
+    if (isCoordinatedMentionTarget(context)) {
+      return [
+        'You are not the coordinator. This frame has already been coordinated and forwarded to you.',
+        'You are an intended recipient. Answer the user directly.',
+        'Do not forward it again and do not stay silent.',
+      ];
+    }
+
     return [
       'You are not the coordinator. This frame has already been coordinated and forwarded to its mentioned recipients.',
-      'If you are mentioned in Mentions JSON, treat yourself as an intended recipient and answer the user directly.',
-      'If you are not an intended recipient, use agent-null-response. In either case, do not forward it again.',
+      'You are not an intended recipient. Use agent-null-response and do not forward it again.',
     ];
   }
 
@@ -599,6 +618,18 @@ function normalizeMentions(mentions) {
     return {};
 
   return mentions;
+}
+
+function isCoordinatedMentionTarget(context = {}) {
+  if (context.frame?.coordinated !== true)
+    return false;
+
+  let agentID = normalizeOptionalPromptString(context.agent?.id);
+  if (!agentID)
+    return false;
+
+  let mentions = normalizeMentions(context.mentions || context.frame?.mentions);
+  return Object.prototype.hasOwnProperty.call(mentions, agentID);
 }
 
 async function *iterateAgentResult(value) {

@@ -1,5 +1,13 @@
 # TODO
 
+- [x] Ignore local `cxp.sh` helper script.
+
+- [x] Fix `dev:watch` startup against local `.env.dev`.
+  - [x] Add focused watcher tests for `.env.dev` loading and refused health probes.
+  - [x] Load `.env.dev` before deriving the health URL.
+  - [x] Treat failed health fetches as unhealthy instead of fatal.
+  - [x] Verify focused and full tests.
+
 - [x] Read aeor-web-components skill and API surfaces.
 - [x] Serve kikx client assets and aeor-web-components assets from the Node server.
 - [x] Build the initial kikx browser shell with Element Builder, ReactiveState, Query Engine, and shared components.
@@ -199,3 +207,9 @@
   - [x] Reproduce the forwarding loop with a focused routing test.
   - [x] Add a loop guard or route eligibility fix without breaking normal forwarding.
   - [x] Verify focused tests and full app tests before restarting anything.
+
+- [x] Fix forwarded target agent not responding after loop guard.
+  - [x] Inspect latest Session 2 frames after the no-loop test.
+  - [x] Determine whether target routing, provider output, or UI rendering suppressed Mr. Bennett's response.
+  - [x] Add focused regression coverage for the failure path.
+  - [x] Verify focused and full tests.

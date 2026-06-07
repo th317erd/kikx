@@ -10,7 +10,9 @@ import {
   buildHealthURL,
   collectWatchFiles,
   fingerprintFiles,
+  isHealthy,
   isWatchableFile,
+  loadEnvFile,
   shouldIgnoreWatchPath,
 } from '../../scripts/dev-watch.mjs';
 
@@ -78,3 +80,52 @@ test('dev-watch builds the Kikx health URL from host and port', () => {
   assert.equal(buildHealthURL('127.0.0.1', 3001), 'http://127.0.0.1:3001/health');
   assert.equal(buildHealthURL('localhost', '3002'), 'http://localhost:3002/health');
 });
+
+test('dev-watch loads .env-style defaults without replacing existing environment', async () => {
+  let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-dev-watch-env-'));
+  let envPath = path.join(root, '.env.dev');
+  let originalExisting = process.env.KIKX_DEV_WATCH_EXISTING;
+  let originalLoaded = process.env.KIKX_DEV_WATCH_LOADED;
+  try {
+    process.env.KIKX_DEV_WATCH_EXISTING = 'already-set';
+    delete process.env.KIKX_DEV_WATCH_LOADED;
+    await fs.writeFile(envPath, [
+      '# comment',
+      'KIKX_DEV_WATCH_EXISTING=from-file',
+      'KIKX_DEV_WATCH_LOADED=from-file',
+      '',
+    ].join('\n'));
+
+    await loadEnvFile(envPath);
+
+    assert.equal(process.env.KIKX_DEV_WATCH_EXISTING, 'already-set');
+    assert.equal(process.env.KIKX_DEV_WATCH_LOADED, 'from-file');
+  } finally {
+    restoreEnv('KIKX_DEV_WATCH_EXISTING', originalExisting);
+    restoreEnv('KIKX_DEV_WATCH_LOADED', originalLoaded);
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('dev-watch treats failed health probes as unhealthy', async () => {
+  assert.equal(await isHealthy('http://127.0.0.1:1/health', {
+    async fetchImpl() {
+      throw new Error('connect ECONNREFUSED');
+    },
+  }), false);
+
+  assert.equal(await isHealthy('http://127.0.0.1:3001/health', {
+    async fetchImpl() {
+      return { ok: true };
+    },
+  }), true);
+});
+
+function restoreEnv(name, value) {
+  if (value == null) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}

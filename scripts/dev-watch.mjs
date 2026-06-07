@@ -87,6 +87,8 @@ export function buildHealthURL(host, port) {
 }
 
 async function main() {
+  await loadEnvFile('.env.dev');
+
   let host = process.env.KIKX_HOST || '127.0.0.1';
   let port = Number.parseInt(process.env.KIKX_PORT || '3000', 10);
   let healthURL = buildHealthURL(host, Number.isInteger(port) ? port : 3000);
@@ -253,9 +255,17 @@ async function waitForHealth(healthURL, child = null) {
   throw new Error(`Kikx did not pass health check at ${healthURL} within 30s`);
 }
 
-async function isHealthy(healthURL) {
-  let response = await fetch(healthURL);
-  return response.ok;
+export async function isHealthy(healthURL, options = {}) {
+  let fetchImpl = options.fetchImpl || globalThis.fetch;
+  if (typeof fetchImpl !== 'function')
+    return false;
+
+  try {
+    let response = await fetchImpl(healthURL);
+    return response?.ok === true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 async function cleanup(signal) {
@@ -275,6 +285,33 @@ function parseWatchEntries(value) {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+export async function loadEnvFile(envPath) {
+  let text;
+  try {
+    text = await fs.readFile(envPath, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT')
+      return;
+
+    throw error;
+  }
+
+  for (let rawLine of text.split(/\r?\n/g)) {
+    let line = rawLine.trim();
+    if (!line || line.startsWith('#'))
+      continue;
+
+    let index = line.indexOf('=');
+    if (index < 1)
+      continue;
+
+    let key = line.slice(0, index).trim();
+    let value = line.slice(index + 1).trim();
+    if (!(key in process.env))
+      process.env[key] = value;
+  }
 }
 
 function sleep(ms) {

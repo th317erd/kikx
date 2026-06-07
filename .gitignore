@@ -26,6 +26,7 @@ dist/
 # Editor/system noise
 .DS_Store
 .vscode-test/
+cxp.sh
 
 # Local documentation symlinks
 docs/mythix-ui-*

@@ -101,8 +101,11 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       };
 
       for await (let output of provider.run(runParams)) {
-        if (output?.type === 'Done' && output.content?.status === 'forwarded') {
-          this.cleanupForwardedResponseFrame({ responseFrameID, responseFrame, agent });
+        if (output?.type === 'Done') {
+          let status = normalizeDoneStatus(output.content?.status);
+          if (shouldCleanupResponseFrame(status))
+            this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status });
+
           continue;
         }
 
@@ -228,7 +231,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
     });
   }
 
-  cleanupForwardedResponseFrame({ responseFrameID, responseFrame, agent }) {
+  cleanupResponseFrame({ responseFrameID, responseFrame, agent, status }) {
     if (!responseFrameID)
       return;
 
@@ -241,7 +244,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       deleted: true,
       content: {
         ...(responseFrame?.content || {}),
-        status: 'forwarded',
+        status,
       },
     }], {
       authorType: 'agent',
@@ -409,4 +412,15 @@ function normalizeProviderContent(output, existingResponseFrame) {
   };
 
   return content;
+}
+
+function normalizeDoneStatus(status) {
+  if (typeof status !== 'string')
+    return '';
+
+  return status.trim();
+}
+
+function shouldCleanupResponseFrame(status) {
+  return status === 'forwarded' || status === 'null-response' || status === 'break';
 }

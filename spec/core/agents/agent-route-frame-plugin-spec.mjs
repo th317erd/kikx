@@ -99,6 +99,26 @@ class ServiceForwardingAgentProvider extends AgentInterface {
   }
 }
 
+class NullResponseAgentProvider extends AgentInterface {
+  static pluginID = 'null-response-agent';
+
+  async *run(params = {}) {
+    params.services.calls.push({
+      method: 'null-response',
+      agentID: params.agent.id,
+      isCoordinator: params.isCoordinator,
+      coordinated: params.frame.coordinated === true,
+    });
+
+    yield {
+      type: 'Done',
+      content: {
+        status: 'null-response',
+      },
+    };
+  }
+}
+
 class FailingAgentProvider extends AgentInterface {
   static pluginID = 'failing-agent';
 
@@ -397,6 +417,64 @@ test('AgentRouteFramePlugin rejects forwarded-frame requeue from non-coordinator
   assert.match(agentFrames[0].content.text, /Only the session coordinator can forward frames/);
 });
 
+test('AgentRouteFramePlugin cleans up silent response placeholders', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Coordinator',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-one' },
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Mr. Bennett',
+        pluginID: 'null-response-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1', 'agent_2' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'user_msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'user',
+    content: { text: 'This is already handled elsewhere.' },
+    mentions: {
+      agent_2: { id: 'agent_2', type: 'agent', name: 'Mr. Bennett' },
+    },
+    coordinated: true,
+    hidden: false,
+  }]);
+  await runtime.frameRouter.flush();
+
+  let calls = runtime.services.calls.filter((call) => call.method === 'null-response');
+  assert.deepEqual(calls, [{
+    method: 'null-response',
+    agentID: 'agent_2',
+    isCoordinator: false,
+    coordinated: true,
+  }]);
+
+  let agentFrames = (await runtime.listFrames('ses_1')).filter((frame) => frame.authorID === 'agent_2');
+  assert.equal(agentFrames.length, 1);
+  assert.equal(agentFrames[0].hidden, true);
+  assert.equal(agentFrames[0].deleted, true);
+  assert.equal(agentFrames[0].content.status, 'null-response');
+});
+
 test('AgentRouteFramePlugin does nothing when a session has no invited agents', async () => {
   let runtime = createRuntime();
 
@@ -529,6 +607,7 @@ function createRuntime(options = {}) {
   pluginRegistry.registerAgentProvider('streaming-agent', StreamingAgentProvider);
   pluginRegistry.registerAgentProvider('forwarding-agent', ForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('service-forwarding-agent', ServiceForwardingAgentProvider);
+  pluginRegistry.registerAgentProvider('null-response-agent', NullResponseAgentProvider);
   pluginRegistry.registerAgentProvider('failing-agent', FailingAgentProvider);
 
   let agents = options.agents || new Map();
