@@ -251,6 +251,11 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
   }
 
   async forwardFrame({ frame, targets = [], message = '', services = {}, agent = null }) {
+    let participantAgentIDs = normalizeStringArray(this.context.session?.participantAgentIDs);
+    let coordinatorAgentID = resolveCoordinatorAgentID(this.context.session, participantAgentIDs);
+    if (!agent?.id || agent.id !== coordinatorAgentID)
+      throw new Error('Only the session coordinator can forward frames');
+
     let targetMentions = await resolveMentionActors(targets, {
       ...this.context.services,
       ...services,

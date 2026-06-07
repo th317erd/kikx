@@ -275,6 +275,42 @@ test('AgentInterface forward tool delegates frame routing and remains silent', a
   assert.equal(forwards[0].frame.id, 'msg_1');
 });
 
+test('AgentInterface does not offer forwarding tools to non-coordinators', async () => {
+  let agent = new LoopAgent();
+  await collect(agent.run(baseLoopParams({
+    agent: { id: 'agent_2', name: 'Worker' },
+    session: {
+      id: 'ses_1',
+      participantAgentIDs: [ 'agent_1', 'agent_2' ],
+      coordinatorAgentID: 'agent_1',
+    },
+    isCoordinator: false,
+    frame: {
+      id: 'msg_1',
+      type: 'UserMessage',
+      coordinated: true,
+      content: { text: 'hello worker' },
+      mentions: {
+        agent_2: {
+          id: 'agent_2',
+          type: 'agent',
+          name: 'Worker',
+        },
+      },
+    },
+  })));
+
+  let askCall = agent.calls.find((call) => call.method === 'ask');
+  assert.ok(askCall);
+  assert.equal(askCall.isCoordinator, false);
+  assert.equal(askCall.toolNames.includes('internal-forward'), false);
+  assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'internal-forward'), false);
+  assert.match(askCall.prompt, /You are the coordinator\?: false/);
+  assert.match(askCall.prompt, /This frame has already been coordinated/);
+  assert.match(askCall.prompt, /do not forward it again/);
+  assert.doesNotMatch(askCall.prompt, /use the internal-forward tool/u);
+});
+
 test('AgentInterface exposes agent-owned self-configuration tools', async () => {
   let updates = [];
   let agent = new CharacterSettingAgent();

@@ -193,3 +193,9 @@
   - [x] Close idle and active HTTP connections during signal shutdown.
   - [x] Shut down Kikx child processes when npm/dev wrappers are orphaned.
   - [x] Verify focused shutdown tests, full app tests, and real dev-wrapper shutdown.
+
+- [x] Fix agent forwarding infinite loop in Session 2.
+  - [x] Inspect Session 2 frames and agent/session metadata from AeorDB.
+  - [x] Reproduce the forwarding loop with a focused routing test.
+  - [x] Add a loop guard or route eligibility fix without breaking normal forwarding.
+  - [x] Verify focused tests and full app tests before restarting anything.

@@ -211,7 +211,7 @@ export class AgentInterface extends PluginInterface {
 
   async *executeAskStep(step, context, state) {
     let tools = createLoopTools(state, context);
-    let toolDefinitions = createLoopToolDefinitions();
+    let toolDefinitions = createLoopToolDefinitions(context);
     let yieldedOutput = false;
     let result = this.ask(step.prompt || this.buildDefaultAgentPrompt(context), {
       ...context,
@@ -297,11 +297,9 @@ export class AgentInterface extends PluginInterface {
       JSON.stringify(mentions, null, 2),
       '',
       'Available tools:',
-      formatToolHelp(createLoopToolDefinitions()),
+      formatToolHelp(createLoopToolDefinitions(context)),
       '',
-      'If you are the coordinator, then you are the preferred agent. You are the first to talk and respond, and you get to decide how to direct this message.',
-      'If another bot or actor is mentioned, or if the message appears to be meant for another actor in the session, use the internal-forward tool and remain silent.',
-      'If the message is targeted to you, deeply consider it in the context of the available user and project rules.',
+      ...buildRoutingPromptLines(context),
       'When you are ready to answer, use agent-respond/agent-finalize or return a final agent message.',
     ].join('\n');
   }
@@ -332,11 +330,13 @@ function createLoopState() {
   };
 }
 
-function createLoopToolDefinitions() {
-  return AGENT_TOOL_DEFINITIONS.map((toolDefinition) => ({
-    ...toolDefinition,
-    parameters: cloneJSON(toolDefinition.parameters),
-  }));
+function createLoopToolDefinitions(context = {}) {
+  return AGENT_TOOL_DEFINITIONS
+    .filter((toolDefinition) => context.isCoordinator === true || toolDefinition.name !== 'internal-forward')
+    .map((toolDefinition) => ({
+      ...toolDefinition,
+      parameters: cloneJSON(toolDefinition.parameters),
+    }));
 }
 
 function createLoopTools(state, context) {
@@ -364,14 +364,18 @@ function createLoopTools(state, context) {
   };
   let setCharacter = async (input) => await setAgentCharacter(input, context);
 
-  return {
+  let tools = {
     'agent-respond': respond,
     'agent-finalize': finalize,
     'agent-null-response': nullResponse,
-    'internal-forward': forward,
     'loop-break': breakLoop,
     'agent-character-set': setCharacter,
   };
+
+  if (context.isCoordinator === true)
+    tools['internal-forward'] = forward;
+
+  return tools;
 }
 
 function handleLoopControl(output, state) {
@@ -543,6 +547,29 @@ function formatToolHelp(toolDefinitions) {
   return toolDefinitions
     .map((toolDefinition) => `- ${toolDefinition.name}: ${toolDefinition.help || toolDefinition.description || ''}`)
     .join('\n');
+}
+
+function buildRoutingPromptLines(context = {}) {
+  if (context.isCoordinator === true) {
+    return [
+      'If you are the coordinator, then you are the preferred agent. You are the first to talk and respond, and you get to decide how to direct this message.',
+      'If another bot or actor is mentioned, or if the message appears to be meant for another actor in the session, use the internal-forward tool and remain silent.',
+      'If the message is targeted to you, deeply consider it in the context of the available user and project rules.',
+    ];
+  }
+
+  if (context.frame?.coordinated === true) {
+    return [
+      'You are not the coordinator. This frame has already been coordinated and forwarded to its mentioned recipients.',
+      'If you are mentioned in Mentions JSON, treat yourself as an intended recipient and answer the user directly.',
+      'If you are not an intended recipient, use agent-null-response. In either case, do not forward it again.',
+    ];
+  }
+
+  return [
+    'You are not the coordinator. Answer only when the message is targeted to you.',
+    'If this message is not for you, use agent-null-response and let routing continue elsewhere.',
+  ];
 }
 
 function cloneJSON(value) {

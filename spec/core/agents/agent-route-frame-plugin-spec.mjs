@@ -69,6 +69,36 @@ class ForwardingAgentProvider extends AgentInterface {
   }
 }
 
+class ServiceForwardingAgentProvider extends AgentInterface {
+  static pluginID = 'service-forwarding-agent';
+
+  async *run(params = {}) {
+    let priorCalls = params.services.calls.filter((call) => call.method === 'service-forward').length;
+    params.services.calls.push({
+      method: 'service-forward',
+      agentID: params.agent.id,
+      isCoordinator: params.isCoordinator,
+      coordinated: params.frame.coordinated === true,
+    });
+
+    if (priorCalls > 0)
+      throw new Error('forward loop detected');
+
+    await params.services.forwardFrame({
+      frame: params.frame,
+      targets: [ params.agent.id ],
+      message: 'target agent attempted to re-forward',
+    });
+
+    yield {
+      type: 'Done',
+      content: {
+        status: 'forwarded',
+      },
+    };
+  }
+}
+
 class FailingAgentProvider extends AgentInterface {
   static pluginID = 'failing-agent';
 
@@ -221,7 +251,7 @@ test('AgentRouteFramePlugin forwards coordinated frames to all mentioned session
   });
   let entry = runtime.requireSessionEntry('ses_1');
   entry.frameEngine.merge([{
-    id: 'msg_1',
+    id: 'user_msg_1',
     type: 'UserMessage',
     sessionID: 'ses_1',
     interactionID: 'int_1',
@@ -301,6 +331,70 @@ test('AgentRouteFramePlugin coordinator forward mutates and requeues the origina
   let coordinatorFrame = (await runtime.listFrames('ses_1')).find((frame) => frame.authorID === 'agent_1');
   assert.equal(coordinatorFrame.deleted, true);
   assert.equal(coordinatorFrame.hidden, true);
+});
+
+test('AgentRouteFramePlugin rejects forwarded-frame requeue from non-coordinator targets', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Coordinator',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-one' },
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Mr. Bennett',
+        pluginID: 'service-forwarding-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1', 'agent_2' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'user_msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'user',
+    content: { text: 'Mr. Bennett, are you there?' },
+    mentions: {
+      agent_2: { id: 'agent_2', type: 'agent', name: 'Mr. Bennett' },
+    },
+    coordinated: true,
+    hidden: false,
+  }]);
+  await runtime.frameRouter.flush();
+
+  let calls = runtime.services.calls.filter((call) => call.method === 'service-forward');
+  assert.deepEqual(calls, [{
+    method: 'service-forward',
+    agentID: 'agent_2',
+    isCoordinator: false,
+    coordinated: true,
+  }]);
+
+  let frames = await runtime.listFrames('ses_1');
+  let userFrame = frames.find((frame) => frame.id === 'user_msg_1');
+  assert.equal(userFrame.coordinated, true);
+  assert.deepEqual(Object.keys(userFrame.mentions), [ 'agent_2' ]);
+
+  let agentFrames = frames.filter((frame) => frame.authorID === 'agent_2');
+  assert.equal(agentFrames.length, 1);
+  assert.equal(agentFrames[0].hidden, false);
+  assert.equal(agentFrames[0].deleted, false);
+  assert.equal(agentFrames[0].content.status, 'error');
+  assert.match(agentFrames[0].content.text, /Only the session coordinator can forward frames/);
 });
 
 test('AgentRouteFramePlugin does nothing when a session has no invited agents', async () => {
@@ -434,6 +528,7 @@ function createRuntime(options = {}) {
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
   pluginRegistry.registerAgentProvider('streaming-agent', StreamingAgentProvider);
   pluginRegistry.registerAgentProvider('forwarding-agent', ForwardingAgentProvider);
+  pluginRegistry.registerAgentProvider('service-forwarding-agent', ServiceForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('failing-agent', FailingAgentProvider);
 
   let agents = options.agents || new Map();
