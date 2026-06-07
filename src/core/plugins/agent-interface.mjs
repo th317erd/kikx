@@ -292,7 +292,7 @@ export class AgentInterface extends PluginInterface {
     let character = normalizeOptionalPromptString(context.agent?.character || context.character);
     return [
       'You are participating in a Kikx agentic coordination loop.',
-      'Your job is to coordinate first, then decide whether you should answer, remain silent, or forward the user message to another actor.',
+      'Your job is to decide whether you should answer, remain silent, or use an explicit forwarding pathway for special workflows.',
       'Before choosing a tool or visible response, ask yourself: "Who is this message really for?"',
       'Use explicit mentions first, then names or nicknames in the text, then conversation turn-taking and recent context. A message can be intended for another actor even when no @mention appears.',
       '',
@@ -579,11 +579,12 @@ function formatToolHelp(toolDefinitions) {
 function buildRoutingPromptLines(context = {}) {
   if (context.isCoordinator === true) {
     return [
-      'If you are the coordinator, then you are the preferred agent. You are the first to talk and respond, and you get to decide how to direct this message.',
+      'If you are the coordinator, then you are the preferred agent. You evaluate first, and you are usually the best agent to answer broad, general, or ambiguous messages.',
       'Recipient decision checklist: ask "Who is this message really for: me, another session agent, the user, or everyone?" before answering.',
       'Use turn-taking: if the immediately prior visible response came from another agent and the user asks a follow-up with "you", "your", or a short ambiguous question, treat it as meant for that prior agent unless the user clearly redirects to you.',
-      'If another bot or actor is mentioned by id, exact name, nickname, or clear conversational context, use the internal-forward tool with that actor id or exact name from Session agents JSON, then remain silent.',
+      'If this message is not for you based on mentions, names, nicknames, turn-taking, or recent context, use agent-null-response and stay silent.',
       'Do not answer on behalf of another session agent just because you are the coordinator.',
+      'Keep internal-forward available only for explicit forwarding workflows, such as external services or future sleeper agents; do not use it as normal intra-session handoff.',
       'If the message is targeted to you, deeply consider it in the context of the available user and project rules.',
     ];
   }

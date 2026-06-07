@@ -15,6 +15,12 @@
   - [x] Tighten coordinator and forwarded-target routing instructions.
   - [x] Verify focused and full tests.
 
+- [x] Revise coordinator prompt to prefer null over normal session forwarding.
+  - [x] Add focused prompt coverage for coordinator null guidance.
+  - [x] Remove normal intra-session forwarding guidance from coordinator instructions.
+  - [x] Keep coordinator forwarding tool available for explicit/future forwarding paths.
+  - [x] Verify focused and full tests.
+
 - [x] Read aeor-web-components skill and API surfaces.
 - [x] Serve kikx client assets and aeor-web-components assets from the Node server.
 - [x] Build the initial kikx browser shell with Element Builder, ReactiveState, Query Engine, and shared components.
