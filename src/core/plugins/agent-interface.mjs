@@ -399,9 +399,6 @@ function shouldExposeLoopTool(toolName, context = {}) {
   if (toolName === 'internal-forward')
     return context.isCoordinator === true;
 
-  if (toolName === 'agent-null-response')
-    return !isCoordinatedMentionTarget(context);
-
   return true;
 }
 
@@ -593,8 +590,9 @@ function buildRoutingPromptLines(context = {}) {
     if (isCoordinatedMentionTarget(context)) {
       return [
         'You are not the coordinator. This frame has already been coordinated and forwarded to you.',
-        'You are an intended recipient. Answer the user directly.',
-        'Do not forward it again and do not stay silent.',
+        'You are an intended recipient; answer if it is for you.',
+        'If this message is not for you after checking mentions, names, turn-taking, and recent context, use agent-null-response and stay silent.',
+        'Do not forward it again.',
       ];
     }
 

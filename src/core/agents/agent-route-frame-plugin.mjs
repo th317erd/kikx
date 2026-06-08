@@ -45,7 +45,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
     }
 
     for (let agentID of routeTargets) {
-      await this.routeAgent({
+      let result = await this.routeAgent({
         agentID,
         coordinatorAgentID,
         agentManager,
@@ -53,6 +53,9 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         services,
         frame,
       });
+
+      if (result?.status === 'forwarded')
+        break;
     }
 
     done();
@@ -61,6 +64,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
   async routeAgent({ agentID, coordinatorAgentID, agentManager, pluginRegistry, services, frame }) {
     let agent;
     let responseFrameID = null;
+    let doneStatus = '';
     try {
       agent = await agentManager.getAgent(agentID, { includeSecrets: true });
       if (!agent?.id)
@@ -109,6 +113,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       for await (let output of provider.run(runParams)) {
         if (output?.type === 'Done') {
           let status = normalizeDoneStatus(output.content?.status);
+          doneStatus = status || doneStatus;
           if (shouldCleanupResponseFrame(status))
             this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status });
 
@@ -117,6 +122,8 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
 
         this.mergeProviderFrame(output, { agent, frame, responseFrameID });
       }
+
+      return { status: doneStatus };
     } catch (error) {
       this.appendAgentError({
         agent: agent || { id: agentID, name: agentID },
@@ -124,6 +131,8 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         error,
         responseFrameID,
       });
+
+      return { status: 'error' };
     }
   }
 
@@ -359,7 +368,7 @@ function resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID })
     return uniqueStrings(mentionedAgentIDs);
   }
 
-  return coordinatorAgentID ? [ coordinatorAgentID ] : [];
+  return uniqueStrings([ coordinatorAgentID, ...participantAgentIDs ]);
 }
 
 function normalizeStringArray(values) {

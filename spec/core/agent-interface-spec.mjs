@@ -355,7 +355,7 @@ test('AgentInterface does not offer forwarding tools to non-coordinators', async
   assert.doesNotMatch(askCall.prompt, /use the internal-forward tool/u);
 });
 
-test('AgentInterface does not offer silence tools to coordinated mentioned targets', async () => {
+test('AgentInterface offers silence tools to coordinated mentioned targets', async () => {
   let agent = new LoopAgent();
   await collect(agent.run(baseLoopParams({
     agent: { id: 'agent_2', name: 'Mr. Bennett' },
@@ -384,12 +384,12 @@ test('AgentInterface does not offer silence tools to coordinated mentioned targe
   assert.ok(askCall);
   assert.equal(askCall.isCoordinator, false);
   assert.equal(askCall.toolNames.includes('internal-forward'), false);
-  assert.equal(askCall.toolNames.includes('agent-null-response'), false);
+  assert.equal(askCall.toolNames.includes('agent-null-response'), true);
   assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'internal-forward'), false);
-  assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'agent-null-response'), false);
+  assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'agent-null-response'), true);
   assert.match(askCall.prompt, /forwarded to you/);
-  assert.match(askCall.prompt, /do not stay silent/);
-  assert.doesNotMatch(askCall.prompt, /use agent-null-response/u);
+  assert.match(askCall.prompt, /answer if it is for you/i);
+  assert.match(askCall.prompt, /use agent-null-response/i);
 });
 
 test('AgentInterface exposes agent-owned self-configuration tools', async () => {

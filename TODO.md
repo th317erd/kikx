@@ -1,5 +1,22 @@
 # TODO
 
+- [x] Broadcast normal user messages to all invited session agents.
+  - [x] Add focused routing tests for all-agent normal message dispatch.
+  - [x] Keep explicit coordinator forwarding pathway intact.
+  - [x] Update prompt/tool tests so non-coordinators can null on normal messages.
+  - [x] Verify focused and full tests.
+
+- [x] Investigate Session 2 apparent missing Iron-Hand message.
+  - [x] Read recent Session 2 frames including hidden/deleted routing frames.
+  - [x] Determine whether Iron-Hand produced a visible message, hidden forwarding placeholder, null placeholder, or no durable frame.
+  - [x] Report whether data was trampled or the UI is accurately hiding routing internals.
+
+- [x] Investigate why coordinator still forwards after prompt change.
+  - [x] Compare latest Session 2 frame times/orders against prompt-change deployment.
+  - [x] Verify the running server is using the post-`bc819af` prompt code.
+  - [x] Check whether tool definitions still bias the model toward `internal-forward`.
+  - [x] Identify whether this is stale runtime, stale conversation context, or prompt/tool contract.
+
 - [x] Ignore local `cxp.sh` helper script.
 
 - [x] Fix `dev:watch` startup against local `.env.dev`.
@@ -151,7 +168,7 @@
 
 - [x] Add session coordinators and base agent loop.
   - [x] Persist exactly one `coordinatorAgentID` when a session has participants.
-  - [x] Route normal user messages only to the coordinator by default.
+  - [x] Route normal user messages coordinator-first by default.
   - [x] Add deterministic base `AgentInterface` loop primitives and break/finalize tools.
   - [x] Update Codex provider to use the base loop primitive.
   - [x] Verify focused app/plugin tests and full app tests.
