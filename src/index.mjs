@@ -12,6 +12,8 @@ export { PluginInterface, PluginRegistry } from './core/plugins/index.mjs';
 export { BaseFramePlugin, FrameRouter, SelectorCompiler } from './core/routing/index.mjs';
 export { FrameRuntime } from './core/runtime/index.mjs';
 export {
+  ExecTool,
+  LocalCommandExecutionService,
   LocalFileAccessService,
   PuppeteerBrowserService,
   ReadFileTool,

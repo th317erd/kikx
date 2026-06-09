@@ -1,5 +1,11 @@
 # TODO
 
+- [x] Add built-in command execution agent tool.
+  - [x] Add a consolidated local command execution service.
+  - [x] Run commands through the Kikx server login shell.
+  - [x] Register the global `exec` tool.
+  - [x] Add focused unit coverage.
+
 - [x] Render agent Markdown with Kikx-controlled HTML.
   - [x] Add a client Markdown renderer that avoids paragraph wrapping.
   - [x] Render agent messages and deltas through the Markdown renderer.

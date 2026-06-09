@@ -1,5 +1,7 @@
 'use strict';
 
+export { ExecTool } from './exec-tool.mjs';
+export { LocalCommandExecutionService } from './local-command-execution-service.mjs';
 export { LocalFileAccessService } from './local-file-access-service.mjs';
 export { PuppeteerBrowserService } from './puppeteer-browser-service.mjs';
 export { ReadFileTool } from './read-file-tool.mjs';

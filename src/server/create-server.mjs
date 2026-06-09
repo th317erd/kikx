@@ -15,6 +15,7 @@ import { FrameRouter } from '../core/routing/index.mjs';
 import { FrameRuntime } from '../core/runtime/frame-runtime.mjs';
 import { TokenUsageTracker } from '../core/tokens/index.mjs';
 import {
+  LocalCommandExecutionService,
   LocalFileAccessService,
   PuppeteerBrowserService,
   registerBuiltInTools,
@@ -56,6 +57,9 @@ export function createServer(options = {}) {
 
   if (!context.has('fileAccess'))
     context.set('fileAccess', new LocalFileAccessService({ cwd: process.cwd() }));
+
+  if (!context.has('commandExecutor'))
+    context.set('commandExecutor', new LocalCommandExecutionService({ cwd: process.cwd() }));
 
   if (!context.has('toolOutputStore')) {
     context.set('toolOutputStore', new ToolOutputStore({

@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -9,6 +10,8 @@ import vm from 'node:vm';
 
 import { PluginRegistry } from '../../src/core/plugins/index.mjs';
 import {
+  ExecTool,
+  LocalCommandExecutionService,
   LocalFileAccessService,
   PuppeteerBrowserService,
   ReadFileTool,
@@ -45,6 +48,7 @@ test('registerBuiltInTools registers global web tools with OpenAI-safe names', (
   assert.equal(registry.getTool('web-fetch'), WebFetchTool);
   assert.equal(registry.getTool('read-file'), ReadFileTool);
   assert.equal(registry.getTool('write-file'), WriteFileTool);
+  assert.equal(registry.getTool('exec'), ExecTool);
   assert.equal(registry.getTool('tool-output-get'), ToolOutputGetTool);
   assert.equal([...registry.getTools().keys()].every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
 });
@@ -242,6 +246,102 @@ test('WriteFileTool requires consolidated file access service', async () => {
   await assert.rejects(
     () => tool.execute({ path: '/tmp/example.txt', content: 'hello' }),
     /write-file requires a fileAccess service/,
+  );
+});
+
+test('ExecTool runs commands through a login shell command executor', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-exec-'));
+  let home = path.join(dir, 'home');
+  await fs.mkdir(home);
+  await fs.writeFile(path.join(home, '.bash_profile'), 'export KIKX_EXEC_PROFILE_VALUE=from-profile\n', 'utf8');
+  let shell = fsSyncExists('/bin/bash') ? '/bin/bash' : process.env.SHELL;
+  let tool = new ExecTool({
+    services: {
+      commandExecutor: new LocalCommandExecutionService({
+        cwd: dir,
+        shell,
+        env: {
+          HOME: home,
+          PATH: process.env.PATH,
+        },
+      }),
+    },
+  });
+
+  let result = await tool.execute({
+    command: 'printf "%s:%s" "$KIKX_EXEC_PROFILE_VALUE" "$PWD"',
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.signal, null);
+  assert.equal(result.timedOut, false);
+  assert.equal(result.cwd, dir);
+  assert.equal(result.stdout, `from-profile:${dir}`);
+  assert.equal(result.stderr, '');
+  assert.equal(result.stdoutBytes, Buffer.byteLength(result.stdout));
+});
+
+test('ExecTool captures stderr and non-zero exit codes without throwing', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-exec-stderr-'));
+  let home = path.join(dir, 'home');
+  await fs.mkdir(home);
+  let tool = new ExecTool({
+    services: {
+      commandExecutor: new LocalCommandExecutionService({
+        cwd: dir,
+        shell: fsSyncExists('/bin/bash') ? '/bin/bash' : process.env.SHELL,
+        env: {
+          HOME: home,
+          PATH: process.env.PATH,
+        },
+      }),
+    },
+  });
+
+  let result = await tool.execute({
+    command: 'printf "out"; printf "err" >&2; exit 7',
+  });
+
+  assert.equal(result.exitCode, 7);
+  assert.equal(result.signal, null);
+  assert.equal(result.stdout, 'out');
+  assert.equal(result.stderr, 'err');
+});
+
+test('ExecTool times out and reports killed command state', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-exec-timeout-'));
+  let home = path.join(dir, 'home');
+  await fs.mkdir(home);
+  let tool = new ExecTool({
+    services: {
+      commandExecutor: new LocalCommandExecutionService({
+        cwd: dir,
+        shell: fsSyncExists('/bin/bash') ? '/bin/bash' : process.env.SHELL,
+        env: {
+          HOME: home,
+          PATH: process.env.PATH,
+        },
+      }),
+    },
+  });
+
+  let result = await tool.execute({
+    command: 'sleep 5',
+    timeoutMs: 50,
+  });
+
+  assert.equal(result.timedOut, true);
+  assert.equal(result.timeoutMs, 50);
+  assert.equal(result.exitCode, null);
+  assert.equal(result.signal, 'SIGTERM');
+});
+
+test('ExecTool requires consolidated command executor service', async () => {
+  let tool = new ExecTool();
+
+  await assert.rejects(
+    () => tool.execute({ command: 'true' }),
+    /exec requires a commandExecutor service/,
   );
 });
 
@@ -676,4 +776,8 @@ function createFakeToolOutputDB() {
       return { results: [] };
     },
   };
+}
+
+function fsSyncExists(filePath) {
+  return Boolean(filePath && fsSync.existsSync(filePath));
 }

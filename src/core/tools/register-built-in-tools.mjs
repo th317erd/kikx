@@ -1,5 +1,6 @@
 'use strict';
 
+import { ExecTool } from './exec-tool.mjs';
 import { ReadFileTool } from './read-file-tool.mjs';
 import { ToolOutputGetTool } from './tool-output-get-tool.mjs';
 import { WebFetchTool } from './web-fetch-tool.mjs';
@@ -11,6 +12,7 @@ export const BUILT_IN_TOOLS = [
   [ 'web-fetch', WebFetchTool ],
   [ 'read-file', ReadFileTool ],
   [ 'write-file', WriteFileTool ],
+  [ 'exec', ExecTool ],
   [ 'tool-output-get', ToolOutputGetTool ],
 ];
 
