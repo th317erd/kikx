@@ -166,7 +166,7 @@ test('WebFetchTool rejects non-http URLs', async () => {
   );
 });
 
-test('PuppeteerBrowserService falls back to headed stealth launch with a Chrome channel', async () => {
+test('PuppeteerBrowserService falls back to headless stealth launch with a Chrome channel', async () => {
   let launchOptions = null;
   let closed = false;
   let service = new PuppeteerBrowserService({
@@ -191,7 +191,7 @@ test('PuppeteerBrowserService falls back to headed stealth launch with a Chrome 
   await service.browser();
   await service.close();
 
-  assert.equal(launchOptions.headless, false);
+  assert.equal(launchOptions.headless, true);
   assert.equal(launchOptions.channel, 'chrome');
   assert.deepEqual(launchOptions.args.slice(0, 2), [ '--no-sandbox', '--disable-setuid-sandbox' ]);
   assert.equal(closed, true);

@@ -58,7 +58,7 @@ export class PuppeteerBrowserService {
     try {
       let puppeteer = this.stealthPuppeteer || createStealthPuppeteer(this.puppeteerCore);
       this._browser = await puppeteer.launch(normalizeLaunchOptions({
-        headless: false,
+        headless: true,
         defaultViewport: this.defaultViewport,
         args: [
           '--no-sandbox',
@@ -76,7 +76,7 @@ export class PuppeteerBrowserService {
     } catch (launchError) {
       throw new Error([
         `Unable to connect to Puppeteer debugging browser at ${this.debuggingURL}: ${connectError?.message || connectError}`,
-        `Unable to launch fallback headed Puppeteer browser: ${launchError?.message || launchError}`,
+        `Unable to launch fallback headless Puppeteer browser: ${launchError?.message || launchError}`,
       ].join('\n'));
     }
   }
