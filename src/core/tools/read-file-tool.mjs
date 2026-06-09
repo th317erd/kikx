@@ -20,11 +20,31 @@ export class ReadFileTool extends PluginInterface {
         enum: [ 'utf8', 'base64' ],
         description: 'Output encoding for the returned file content.',
       },
+      startLine: {
+        type: 'integer',
+        minimum: 1,
+        description: 'First line to return, using 1-based line numbers. Line ranges are inclusive.',
+      },
+      endLine: {
+        type: 'integer',
+        minimum: 1,
+        description: 'Last line to return, using 1-based line numbers. Line ranges are inclusive.',
+      },
+      startCharacter: {
+        type: 'integer',
+        minimum: 0,
+        description: 'First character to return, using a 0-based character offset.',
+      },
+      endCharacter: {
+        type: 'integer',
+        minimum: 0,
+        description: 'Exclusive character offset where reading should stop.',
+      },
     },
     required: [ 'path' ],
     additionalProperties: false,
   };
-  static help = 'Use read-file to inspect a local file by path. The full output is stored in AeorDB; very large results will be returned as a tool output pointer that you can read with tool-output-get.';
+  static help = 'Use read-file to inspect a local file by path. Use startLine/endLine for 1-based inclusive line ranges, or startCharacter/endCharacter for 0-based character ranges with an exclusive end. Do not mix line and character ranges. The full tool output is stored in AeorDB; very large results will be returned as a tool output pointer that you can read with tool-output-get.';
 
   async _execute(params = {}) {
     return await resolveFileAccess(this.context).readFile(params);

@@ -67,7 +67,88 @@ test('ReadFileTool reads local files through the file access service', async () 
   assert.equal(result.sizeBytes, 12);
   assert.equal(result.bytesRead, 12);
   assert.equal(result.truncated, false);
+  assert.equal(result.ranged, false);
+  assert.equal(result.rangeType, null);
+  assert.equal(result.range, null);
   assert.equal(result.content, 'hello world\n');
+});
+
+test('ReadFileTool reads 1-based inclusive line ranges', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-read-lines-'));
+  let filePath = path.join(dir, 'sample.txt');
+  await fs.writeFile(filePath, 'one\ntwo\nthree\nfour\n', 'utf8');
+
+  let tool = new ReadFileTool({
+    services: {
+      fileAccess: new LocalFileAccessService({ cwd: dir }),
+    },
+  });
+  let result = await tool.execute({
+    path: 'sample.txt',
+    startLine: 2,
+    endLine: 3,
+  });
+
+  assert.equal(result.path, filePath);
+  assert.equal(result.sizeBytes, 19);
+  assert.equal(result.bytesRead, 10);
+  assert.equal(result.truncated, true);
+  assert.equal(result.ranged, true);
+  assert.equal(result.rangeType, 'line');
+  assert.deepEqual(result.range, {
+    type: 'line',
+    startLine: 2,
+    endLine: 3,
+    totalLines: 4,
+  });
+  assert.equal(result.content, 'two\nthree\n');
+});
+
+test('ReadFileTool reads 0-based exclusive character ranges', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-read-chars-'));
+  await fs.writeFile(path.join(dir, 'sample.txt'), 'abcde🙂f', 'utf8');
+
+  let tool = new ReadFileTool({
+    services: {
+      fileAccess: new LocalFileAccessService({ cwd: dir }),
+    },
+  });
+  let result = await tool.execute({
+    path: 'sample.txt',
+    startCharacter: 2,
+    endCharacter: 6,
+  });
+
+  assert.equal(result.content, 'cde🙂');
+  assert.equal(result.bytesRead, Buffer.byteLength('cde🙂', 'utf8'));
+  assert.equal(result.truncated, true);
+  assert.equal(result.ranged, true);
+  assert.equal(result.rangeType, 'character');
+  assert.deepEqual(result.range, {
+    type: 'character',
+    startCharacter: 2,
+    endCharacter: 6,
+    totalCharacters: 7,
+  });
+});
+
+test('ReadFileTool rejects ambiguous ranges', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-read-bad-range-'));
+  await fs.writeFile(path.join(dir, 'sample.txt'), 'hello', 'utf8');
+  let tool = new ReadFileTool({
+    services: {
+      fileAccess: new LocalFileAccessService({ cwd: dir }),
+    },
+  });
+
+  await assert.rejects(
+    () => tool.execute({
+      path: 'sample.txt',
+      startLine: 1,
+      startCharacter: 0,
+    }),
+    /either a line range or a character range/,
+  );
 });
 
 test('ToolExecutionService stores every tool result and returns inline envelope below limit', async () => {

@@ -1,5 +1,12 @@
 # TODO
 
+- [x] Add read-file line and character range support.
+  - [x] Add read-file schema parameters for line and character ranges.
+  - [x] Return range metadata from the local file access service.
+  - [x] Add unit coverage for full, line-range, character-range, and invalid mixed reads.
+  - [x] Verify focused tests.
+  - [x] Verify full tests.
+
 - [x] Persist full tool outputs and return large-result pointers.
   - [x] Add AeorDB-backed tool output store with metadata indexes.
   - [x] Add `tool-output-get` retrieval tool with byte-range arguments.
