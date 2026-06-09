@@ -13,6 +13,7 @@ import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
 import { FrameRouter } from '../core/routing/index.mjs';
 import { FrameRuntime } from '../core/runtime/frame-runtime.mjs';
+import { TokenUsageTracker } from '../core/tokens/index.mjs';
 
 const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
 const DEFAULT_AEOR_WEB_COMPONENTS_ROOT = '/home/wyatt/Projects/aeor-web-components';
@@ -49,6 +50,19 @@ export function createServer(options = {}) {
   if (!context.has('frameRouter'))
     context.set('frameRouter', new FrameRouter());
 
+  if (!context.has('tokenUsage')) {
+    context.set('tokenUsage', new TokenUsageTracker({
+      aeordb: context.require('aeordb'),
+    }));
+  }
+
+  if (!context.has('tokenUsageLoadPromise')) {
+    let tokenUsage = context.require('tokenUsage');
+    context.set('tokenUsageLoadPromise', Promise.resolve(
+      typeof tokenUsage.load === 'function' ? tokenUsage.load() : tokenUsage.snapshot?.() || {},
+    ));
+  }
+
   if (!context.has('pluginLoadPromise')) {
     context.set('pluginLoadPromise', (async () => {
       await loadPlugins({
@@ -77,6 +91,15 @@ export function createServer(options = {}) {
     }));
   }
 
+  if (!context.has('tokenUsageRuntimeBridge')) {
+    let tokenUsage = context.require('tokenUsage');
+    let frameRuntime = context.require('frameRuntime');
+    if (frameRuntime.tokenUsage !== tokenUsage)
+      connectTokenUsageToRuntime(tokenUsage, frameRuntime);
+
+    context.set('tokenUsageRuntimeBridge', true);
+  }
+
   return http.createServer(async (request, response) => {
     try {
       await routeRequest({ request, response, context, staticRoots });
@@ -93,6 +116,9 @@ export function createServer(options = {}) {
 async function routeRequest({ request, response, context, staticRoots }) {
   if (context.has('pluginLoadPromise'))
     await context.require('pluginLoadPromise');
+
+  if (context.has('tokenUsageLoadPromise'))
+    await context.require('tokenUsageLoadPromise');
 
   let url = new URL(request.url, 'http://localhost');
 
@@ -114,6 +140,20 @@ async function routeRequest({ request, response, context, staticRoots }) {
           events: url.searchParams.get('events'),
           path_prefix: url.searchParams.get('path_prefix'),
         }),
+      },
+    });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/v1/tokens') {
+    let tokenUsage = context.require('tokenUsage');
+    let snapshot = typeof tokenUsage.snapshot === 'function' ? tokenUsage.snapshot() : {};
+    writeJSON(response, 200, {
+      data: {
+        tokenUsage: snapshot,
+        totalTokensUsed: typeof tokenUsage.totalTokensUsed === 'function'
+          ? tokenUsage.totalTokensUsed()
+          : totalTokensUsed(snapshot),
       },
     });
     return;
@@ -602,4 +642,33 @@ function streamRuntimeEvents({ request, response, frameRuntime, sessionID = '' }
 function writeSSE(response, event, data) {
   response.write(`event: ${event}\n`);
   response.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+function connectTokenUsageToRuntime(tokenUsage, frameRuntime) {
+  if (!tokenUsage || typeof tokenUsage.on !== 'function' || !frameRuntime)
+    return;
+
+  tokenUsage.on('updated', (event) => {
+    let payload = event || {};
+    if (typeof frameRuntime.emitRuntimeEvent === 'function') {
+      frameRuntime.emitRuntimeEvent('tokens.updated', payload);
+      return;
+    }
+
+    frameRuntime.emit?.('event', {
+      type: 'tokens.updated',
+      ...payload,
+    });
+  });
+}
+
+function totalTokensUsed(snapshot) {
+  let total = 0;
+  for (let entry of Object.values(snapshot || {})) {
+    let value = Number(entry?.tokensUsed);
+    if (Number.isFinite(value) && value > 0)
+      total += Math.trunc(value);
+  }
+
+  return total;
 }

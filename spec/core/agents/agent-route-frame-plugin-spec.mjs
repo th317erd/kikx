@@ -36,6 +36,17 @@ class StreamingAgentProvider extends AgentInterface {
       participantAgents: params.participantAgents,
     });
 
+    if (params.frame.type === 'AgentMessage') {
+      yield {
+        type: 'Done',
+        content: {
+          status: 'null-response',
+          usage: { inputTokens: 1, outputTokens: 0 },
+        },
+      };
+      return;
+    }
+
     yield {
       id: 'think_1',
       type: 'AgentThinking',
@@ -214,6 +225,39 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
     status: 'complete',
   });
   assert.equal(frames[1].content.status, 'complete');
+  assert.deepEqual(frames[0].tokenUsage, {
+    'streaming-agent': {
+      createdAt: 1000,
+      inputTokens: 1,
+      readTokens: 1,
+      tokensUsed: 1,
+      updatedAt: 1000,
+    },
+  });
+  assert.deepEqual(frames[1].tokenUsage, {
+    'streaming-agent': {
+      createdAt: 1000,
+      inputTokens: 1,
+      outputTokens: 2,
+      readTokens: 1,
+      tokensUsed: 3,
+      updatedAt: 1000,
+      writeTokens: 2,
+    },
+  });
+  assert.deepEqual(runtime.services.tokenUsage.calls, [{
+    serviceKey: 'streaming-agent',
+    usage: {
+      inputTokens: 1,
+      outputTokens: 2,
+      readTokens: 1,
+      serviceKey: '',
+      tokensUsed: 3,
+      tracked: false,
+      writeTokens: 2,
+    },
+    options: { updatedAt: 1000 },
+  }]);
   assert.equal(phantoms[0].id, 'think_1');
   assert.equal(phantoms[0].responseFrameID, 'agent_frame_1');
   assert.equal(phantoms[0].parentID, 'msg_1');
@@ -406,7 +450,7 @@ test('AgentRouteFramePlugin ignores hidden and streaming agent message placehold
   assert.deepEqual(runtime.services.calls.filter((call) => call.method === 'run'), []);
 });
 
-test('AgentRouteFramePlugin does not rebroadcast second-hop agent responses', async () => {
+test('AgentRouteFramePlugin broadcasts second-hop agent responses to other participants', async () => {
   let runtime = createRuntime({
     agents: new Map([
       [ 'agent_1', {
@@ -464,7 +508,10 @@ test('AgentRouteFramePlugin does not rebroadcast second-hop agent responses', as
   }]);
   await runtime.frameRouter.flush();
 
-  assert.deepEqual(runtime.services.calls.filter((call) => call.method === 'run'), []);
+  let calls = runtime.services.calls
+    .filter((call) => call.method === 'run' && call.frameType === 'AgentMessage');
+  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_1', 'agent_3' ]);
+  assert.deepEqual(calls.map((call) => call.frameAuthorID), [ 'agent_2', 'agent_2' ]);
 });
 
 test('AgentRouteFramePlugin passes all session agent names without secrets to providers', async () => {
@@ -813,6 +860,7 @@ test('AgentRouteFramePlugin routes individual agent failures without stopping ot
   assert.deepEqual(secondPassAgentFrames.map((frame) => frame.agentRoute.path), [
     [ 'agent_failing', 'agent_worker' ],
     [ 'agent_worker', 'agent_failing' ],
+    [ 'agent_worker', 'agent_failing' ],
   ]);
   assert.deepEqual(
     runtime.services.calls
@@ -923,8 +971,10 @@ function createRuntime(options = {}) {
   router.registerSelector('Type:UserMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
   router.registerSelector('Type:AgentMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
 
+  let tokenUsage = options.tokenUsage || createTokenUsageStub();
   let services = {
     calls: [],
+    tokenUsage,
     pluginRegistry,
     agentManager,
     commandRegistry,
@@ -938,6 +988,9 @@ function createRuntime(options = {}) {
 
         if (name === 'commandRegistry')
           return commandRegistry;
+
+        if (name === 'tokenUsage')
+          return tokenUsage;
 
         throw new Error(`Unknown service: ${name}`);
       },
@@ -977,6 +1030,14 @@ function createClient() {
       this.files.set(path, body);
       return { path };
     },
+    async patchFile(path, body) {
+      this.calls.push({ method: 'patchFile', path, body });
+      this.files.set(path, {
+        ...(this.files.get(path) || {}),
+        ...body,
+      });
+      return { path };
+    },
     async getFile(path) {
       this.calls.push({ method: 'getFile', path });
       return this.files.get(path) || null;
@@ -988,6 +1049,20 @@ function createClient() {
         items: [ ...this.files.keys() ]
           .filter((filePath) => filePath.startsWith(prefix))
           .map((filePath) => ({ path: filePath })),
+      };
+    },
+  };
+}
+
+function createTokenUsageStub() {
+  return {
+    calls: [],
+    async addTokens(serviceKey, usage, options) {
+      this.calls.push({ serviceKey, usage, options });
+      return {
+        tokensUsed: usage.tokensUsed,
+        createdAt: options?.updatedAt,
+        updatedAt: options?.updatedAt,
       };
     },
   };

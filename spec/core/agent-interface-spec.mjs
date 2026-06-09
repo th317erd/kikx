@@ -165,6 +165,10 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].prompt, /Mentions JSON:/);
   assert.match(agent.calls[1].prompt, /Session agents JSON:/);
   assert.match(agent.calls[1].prompt, /Who is this message really for\?/);
+  assert.match(agent.calls[1].prompt, /costing the user real money/i);
+  assert.match(agent.calls[1].prompt, /Minimize the number of interactions/i);
+  assert.match(agent.calls[1].prompt, /Token usage summary JSON:/);
+  assert.match(agent.calls[1].prompt, /"totalTokensUsed": 42/);
   assert.match(agent.calls[1].prompt, /turn-taking/i);
   assert.match(agent.calls[1].prompt, /immediately prior visible response/i);
   assert.match(agent.calls[1].prompt, /If this message is not for you/i);
@@ -546,6 +550,14 @@ function baseLoopParams(overrides = {}) {
       },
     },
     isCoordinator: true,
+    tokenUsage: {
+      'openai/chatgpt/codex-agent': {
+        tokensUsed: 42,
+        createdAt: 'first',
+        updatedAt: 'now',
+      },
+    },
+    totalTokensUsed: 42,
     ...overrides,
   };
 }

@@ -5,8 +5,7 @@ import {
   mergeMentionMaps,
   resolveMentionActors,
 } from '../mentions/index.mjs';
-
-const MAX_AGENT_MESSAGE_BROADCAST_DEPTH = 1;
+import { normalizeProviderUsage } from '../tokens/index.mjs';
 
 export class AgentRouteFramePlugin extends BaseFramePlugin {
   static pluginID = 'internal:agent-router';
@@ -89,6 +88,8 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       let sessionFrames = typeof this.context.engine.toArray === 'function'
         ? this.context.engine.toArray()
         : [];
+      let tokenUsage = resolveService(services, 'tokenUsage');
+      let tokenUsageSnapshot = typeof tokenUsage?.snapshot === 'function' ? tokenUsage.snapshot() : {};
       let providerServices = this.providerServices({ services, agent, frame });
       let provider = new ProviderClass({
         ...this.context,
@@ -105,6 +106,10 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         secrets: agent.secrets || {},
         frames: sessionFrames,
         sessionFrames,
+        tokenUsage: tokenUsageSnapshot,
+        totalTokensUsed: typeof tokenUsage?.totalTokensUsed === 'function'
+          ? tokenUsage.totalTokensUsed()
+          : totalTokensUsed(tokenUsageSnapshot),
         services: providerServices,
         responseFrameID,
         responseFrame,
@@ -118,6 +123,15 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
           doneStatus = status || doneStatus;
           if (shouldCleanupResponseFrame(status))
             this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status });
+
+          await this.recordProviderUsage({
+            output,
+            ProviderClass,
+            agent,
+            frame,
+            responseFrameID,
+            services,
+          });
 
           continue;
         }
@@ -159,8 +173,13 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
   }
 
   providerServices({ services, agent, frame }) {
+    let tokenUsage = resolveService(services, 'tokenUsage');
     return {
       ...services,
+      ...(tokenUsage ? {
+        tokenUsage,
+        addTokens: async (serviceKey, usage, options = {}) => await tokenUsage.addTokens(serviceKey, usage, options),
+      } : {}),
       forwardFrame: async (forward) => await this.forwardFrame({
         ...forward,
         agent,
@@ -168,6 +187,77 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         services,
       }),
     };
+  }
+
+  async recordProviderUsage({ output, ProviderClass, agent, frame, responseFrameID, services }) {
+    let usage = normalizeProviderUsage(output.content?.usage);
+    if (!usage)
+      return null;
+
+    let serviceKey = resolveTokenServiceKey({ usage, ProviderClass, agent });
+    let tokenUsage = resolveService(services, 'tokenUsage');
+    let aggregateEntry = null;
+    if (usage.tracked !== true && tokenUsage && typeof tokenUsage.addTokens === 'function') {
+      aggregateEntry = await tokenUsage.addTokens(serviceKey, usage, {
+        updatedAt: this.clock(),
+      });
+    }
+
+    this.mergeFrameTokenUsage({ frame, responseFrameID, serviceKey, usage });
+    await services?.frameRuntime?.frameStore?.flush?.();
+
+    return {
+      serviceKey,
+      usage,
+      aggregateEntry,
+    };
+  }
+
+  mergeFrameTokenUsage({ frame, responseFrameID, serviceKey, usage }) {
+    let sourceReadTokens = usage.readTokens || usage.inputTokens;
+    if (sourceReadTokens > 0) {
+      this.mergeSingleFrameTokenUsage({
+        frameID: frame.id,
+        serviceKey,
+        tokenUsage: {
+          readTokens: sourceReadTokens,
+          inputTokens: usage.inputTokens,
+          tokensUsed: sourceReadTokens,
+        },
+      });
+    }
+
+    if (!responseFrameID)
+      return;
+
+    this.mergeSingleFrameTokenUsage({
+      frameID: responseFrameID,
+      serviceKey,
+      tokenUsage: {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        readTokens: usage.readTokens,
+        writeTokens: usage.writeTokens || usage.outputTokens,
+        tokensUsed: usage.tokensUsed,
+      },
+    });
+  }
+
+  mergeSingleFrameTokenUsage({ frameID, serviceKey, tokenUsage }) {
+    let existing = this.context.engine.get(frameID);
+    if (!existing)
+      return;
+
+    let now = this.clock();
+    let next = mergeFrameUsage(existing.tokenUsage, serviceKey, tokenUsage, now);
+    this.context.engine.merge([{
+      ...existing,
+      tokenUsage: next,
+    }], {
+      authorType: 'system',
+      authorID: 'token-usage',
+      silent: true,
+    });
   }
 
   async createResponseFrame({ agent, frame, responseFrameID, services }) {
@@ -401,12 +491,7 @@ function shouldRouteAgentMessage(context, frame) {
 
 function resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID }) {
   if (frame?.type === 'AgentMessage') {
-    let path = normalizeStringArray(frame.agentRoute?.path);
-    if (path.length > MAX_AGENT_MESSAGE_BROADCAST_DEPTH)
-      return [];
-
-    let blocked = uniqueStrings([ frame.authorID, ...path ]);
-    return participantAgentIDs.filter((agentID) => !blocked.includes(agentID));
+    return participantAgentIDs.filter((agentID) => agentID !== frame.authorID);
   }
 
   if (frame?.coordinated === true) {
@@ -452,6 +537,73 @@ function normalizeAgentRoute(agentRoute) {
       : null,
     path: normalizeStringArray(agentRoute.path),
   };
+}
+
+function resolveTokenServiceKey({ usage, ProviderClass, agent }) {
+  if (usage.serviceKey)
+    return usage.serviceKey;
+
+  let explicit = normalizeOptionalString(ProviderClass?.tokenServiceKey || ProviderClass?.serviceKey);
+  if (explicit)
+    return explicit;
+
+  let serviceType = normalizeOptionalString(ProviderClass?.serviceType);
+  let agentType = normalizeOptionalString(ProviderClass?.agentType);
+  let pluginID = normalizeOptionalString(agent?.pluginID || ProviderClass?.pluginID || agent?.id);
+  let parts = [];
+  for (let part of [ serviceType, agentType, pluginID ]) {
+    if (part)
+      parts.push(part);
+  }
+
+  return parts.length > 0 ? parts.join('/') : 'unknown/agent';
+}
+
+function mergeFrameUsage(existingUsage, serviceKey, delta, timestamp) {
+  let existing = (existingUsage && typeof existingUsage === 'object' && !Array.isArray(existingUsage))
+    ? existingUsage
+    : {};
+  let existingEntry = (existing[serviceKey] && typeof existing[serviceKey] === 'object' && !Array.isArray(existing[serviceKey]))
+    ? existing[serviceKey]
+    : {};
+  let nextEntry = {
+    ...existingEntry,
+    createdAt: existingEntry.createdAt || timestamp,
+    updatedAt: timestamp,
+  };
+
+  for (let [key, value] of Object.entries(delta || {})) {
+    let amount = normalizeNonNegativeInteger(value);
+    if (amount <= 0)
+      continue;
+
+    nextEntry[key] = normalizeNonNegativeInteger(existingEntry[key]) + amount;
+  }
+
+  return {
+    ...existing,
+    [serviceKey]: nextEntry,
+  };
+}
+
+function normalizeOptionalString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeNonNegativeInteger(value) {
+  let number = Number(value);
+  if (!Number.isFinite(number) || number <= 0)
+    return 0;
+
+  return Math.trunc(number);
+}
+
+function totalTokensUsed(snapshot) {
+  let total = 0;
+  for (let entry of Object.values(snapshot || {}))
+    total += normalizeNonNegativeInteger(entry?.tokensUsed);
+
+  return total;
 }
 
 function normalizeStringArray(values) {

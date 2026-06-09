@@ -34,6 +34,8 @@ export class FrameRuntime extends EventEmitter {
     this.frameStore = frameStore || new AeorDBFrameStore({ aeordb });
     this.frameRouter = frameRouter;
     this.services = services || {};
+    this.tokenUsage = options.tokenUsage || resolveService(this.services, 'tokenUsage');
+    this._disconnectTokenUsage = this.connectTokenUsage(this.tokenUsage);
     this.sessions = new Map();
     this._indexesReady = false;
   }
@@ -261,6 +263,9 @@ export class FrameRuntime extends EventEmitter {
   disconnect() {
     for (let entry of this.sessions.values())
       entry.disconnectStore?.();
+
+    this._disconnectTokenUsage?.();
+    this._disconnectTokenUsage = null;
   }
 
   nextClockStamp() {
@@ -322,6 +327,37 @@ export class FrameRuntime extends EventEmitter {
         disconnect?.();
     };
   }
+
+  connectTokenUsage(tokenUsage) {
+    if (!tokenUsage || typeof tokenUsage.on !== 'function')
+      return null;
+
+    let handler = (event) => {
+      this.emitRuntimeEvent('tokens.updated', event || {
+        tokenUsage: typeof tokenUsage.snapshot === 'function' ? tokenUsage.snapshot() : {},
+      });
+    };
+    tokenUsage.on('updated', handler);
+    return () => tokenUsage.off?.('updated', handler);
+  }
+}
+
+function resolveService(services, name) {
+  if (services?.[name])
+    return services[name];
+
+  if (services?.context?.has?.(name) && typeof services.context.require === 'function')
+    return services.context.require(name);
+
+  if (typeof services?.context?.require === 'function') {
+    try {
+      return services.context.require(name);
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 function normalizeTitle(title, defaultTitle = null) {

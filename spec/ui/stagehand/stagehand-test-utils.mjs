@@ -92,6 +92,7 @@ export function findChromeExecutable() {
 
 export async function startStagehandUIServer(options = {}) {
   let agents = Array.isArray(options.agents) ? options.agents : [];
+  let tokenUsage = options.tokenUsage || createTokenUsageStub(options.tokenUsageSnapshot || {});
   let frameRuntime = options.frameRuntime || new StagehandFrameRuntime({
     sessions: options.sessions || [],
     agents,
@@ -100,6 +101,7 @@ export async function startStagehandUIServer(options = {}) {
     aeordb: createAuthStub(),
     agentManager: createAgentManagerStub(agents),
     frameRuntime,
+    tokenUsage,
     pluginLoadPromise: Promise.resolve(),
   });
   let server = createServer({ context });
@@ -108,6 +110,7 @@ export async function startStagehandUIServer(options = {}) {
   return {
     baseURL,
     frameRuntime,
+    tokenUsage,
     async close() {
       await closeServer(server);
     },
@@ -229,6 +232,33 @@ class StagehandFrameRuntime extends EventEmitter {
       agentManager: createAgentManagerStub(this.agents),
     });
   }
+}
+
+function createTokenUsageStub(initialSnapshot = {}) {
+  let emitter = new EventEmitter();
+  let snapshot = initialSnapshot;
+  emitter.snapshot = () => snapshot;
+  emitter.totalTokensUsed = () => totalTokensUsed(snapshot);
+  emitter.load = async () => snapshot;
+  emitter.setSnapshot = (nextSnapshot) => {
+    snapshot = nextSnapshot || {};
+    emitter.emit('updated', {
+      tokenUsage: snapshot,
+      totalTokensUsed: totalTokensUsed(snapshot),
+    });
+  };
+  return emitter;
+}
+
+function totalTokensUsed(snapshot) {
+  let total = 0;
+  for (let entry of Object.values(snapshot || {})) {
+    let value = Number(entry?.tokensUsed);
+    if (Number.isFinite(value) && value > 0)
+      total += Math.trunc(value);
+  }
+
+  return total;
 }
 
 function normalizeSession(input = {}) {

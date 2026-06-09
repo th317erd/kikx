@@ -102,6 +102,17 @@ kikx-app {
   background: #f87171;
 }
 
+.kikx-statusbar__spacer {
+  flex: 1 1 auto;
+  min-width: 12px;
+}
+
+.kikx-statusbar__tokens {
+  flex: 0 0 auto;
+  color: #aab4bf;
+  white-space: nowrap;
+}
+
 .kikx-statusbar--ready .kikx-statusbar__dot {
   background: #52b788;
 }

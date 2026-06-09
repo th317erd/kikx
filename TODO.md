@@ -1,5 +1,15 @@
 # TODO
 
+- [x] Replace one-hop agent conversation guard with token-aware broad conversation.
+  - [x] Add AeorDB-backed token usage tracker and unit tests.
+  - [x] Load token usage on runtime/server startup and expose totals via API/SSE.
+  - [x] Record provider usage from `Done.content.usage` into `/kikx/tokens.json`.
+  - [x] Store per-frame token usage on user and agent frames.
+  - [x] Remove AgentMessage cascade depth blocking while still preventing self-delivery.
+  - [x] Add cost-aware agent prompt instructions and tests.
+  - [x] Display token totals in the status bar with Stagehand coverage.
+  - [x] Verify focused, full, and UI tests.
+
 - [x] Broadcast visible agent messages to other session agents without loops.
   - [x] Add routing tests for visible `AgentMessage` delivery to other agents.
   - [x] Add loop-guard tests for hidden placeholders, self-delivery, and cascade depth.

@@ -290,9 +290,14 @@ export class AgentInterface extends PluginInterface {
       selfAgentID: context.agent?.id,
     });
     let character = normalizeOptionalPromptString(context.agent?.character || context.character);
+    let tokenUsage = normalizeTokenUsagePromptContext(context);
     return [
       'You are participating in a Kikx agentic coordination loop.',
       'Your job is to decide whether you should answer, remain silent, or use an explicit forwarding pathway for special workflows.',
+      'This conversation is expensive and is costing the user real money. Respond as needed, but only as needed, to minimize cost.',
+      'If you do not have anything useful to add, do not speak. Use agent-null-response, also called the nullResponse tool, to skip responding.',
+      'If you have something useful to add, say it all at once in one detailed message. Minimize the number of interactions, especially follow-up interactions.',
+      'Frames may include tokenUsage metadata showing read/write token costs. Pay attention to token growth over time and be concerned when it grows.',
       'Before choosing a tool or visible response, ask yourself: "Who is this message really for?"',
       'Use explicit mentions first, then names or nicknames in the text, then conversation turn-taking and recent context. A message can be intended for another actor even when no @mention appears.',
       '',
@@ -310,6 +315,9 @@ export class AgentInterface extends PluginInterface {
       '',
       'Mentions JSON:',
       JSON.stringify(mentions, null, 2),
+      '',
+      'Token usage summary JSON:',
+      JSON.stringify(tokenUsage, null, 2),
       '',
       'Available tools:',
       formatToolHelp(createLoopToolDefinitions(context)),
@@ -565,6 +573,31 @@ function normalizeRequiredToolString(value, fieldName) {
 
 function normalizeOptionalPromptString(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeTokenUsagePromptContext(context = {}) {
+  let tokenUsage = (context.tokenUsage && typeof context.tokenUsage === 'object' && !Array.isArray(context.tokenUsage))
+    ? context.tokenUsage
+    : {};
+  let total = Number(context.totalTokensUsed);
+  if (!Number.isFinite(total) || total < 0)
+    total = totalTokensUsed(tokenUsage);
+
+  return {
+    totalTokensUsed: Math.trunc(total),
+    services: tokenUsage,
+  };
+}
+
+function totalTokensUsed(snapshot) {
+  let total = 0;
+  for (let entry of Object.values(snapshot || {})) {
+    let value = Number(entry?.tokensUsed);
+    if (Number.isFinite(value) && value > 0)
+      total += Math.trunc(value);
+  }
+
+  return total;
 }
 
 function formatToolHelp(toolDefinitions) {

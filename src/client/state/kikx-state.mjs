@@ -50,6 +50,8 @@ export const kikxState = new ReactiveState({
   sessionIDs: [],
   status: 'Checking AeorDB event stream...',
   statusKind: 'pending',
+  tokenUsage: {},
+  totalTokensUsed: 0,
 });
 
 export function getAgents(state = kikxState) {
@@ -90,6 +92,14 @@ export function setSessionFrames(sessionID, frames, state = kikxState) {
 
 export function upsertFrame(sessionID, frame, state = kikxState) {
   applySessionSnapshot(state, upsertFrameState(state, sessionID, frame));
+}
+
+export function setTokenUsage(tokenUsage, totalTokensUsed = null, state = kikxState) {
+  let snapshot = normalizeTokenUsageSnapshot(tokenUsage);
+  state.tokenUsage = snapshot;
+  state.totalTokensUsed = totalTokensUsed == null
+    ? totalTokensUsedFromSnapshot(snapshot)
+    : normalizeNonNegativeInteger(totalTokensUsed);
 }
 
 export function resetSessionState(state = kikxState) {
@@ -170,6 +180,44 @@ function applySessionSnapshot(state, snapshot) {
   state.sessionIDs = snapshot.sessionIDs;
   state.sessionDetailsByID = snapshot.sessionDetailsByID;
   state.framesBySessionID = snapshot.framesBySessionID;
+}
+
+function normalizeTokenUsageSnapshot(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    return {};
+
+  let output = {};
+  for (let [key, value] of Object.entries(input)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      continue;
+
+    let tokensUsed = normalizeNonNegativeInteger(value.tokensUsed);
+    if (tokensUsed <= 0)
+      continue;
+
+    output[key] = {
+      ...value,
+      tokensUsed,
+    };
+  }
+
+  return output;
+}
+
+function totalTokensUsedFromSnapshot(snapshot) {
+  let total = 0;
+  for (let entry of Object.values(snapshot))
+    total += normalizeNonNegativeInteger(entry?.tokensUsed);
+
+  return total;
+}
+
+function normalizeNonNegativeInteger(value) {
+  let number = Number(value);
+  if (!Number.isFinite(number) || number <= 0)
+    return 0;
+
+  return Math.trunc(number);
 }
 
 function loadSavedAuth() {

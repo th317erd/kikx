@@ -593,6 +593,51 @@ test('GET /api/v1/aeordb/events-url returns delegated AeorDB events URL', async 
   }
 });
 
+test('GET /api/v1/tokens returns token usage totals', async () => {
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      tokenUsage: {
+        snapshot() {
+          return {
+            'openai/chatgpt/codex-agent': {
+              tokensUsed: 1234,
+              createdAt: 'first',
+              updatedAt: 'now',
+            },
+          };
+        },
+        totalTokensUsed() {
+          return 1234;
+        },
+      },
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/tokens`);
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body, {
+      data: {
+        tokenUsage: {
+          'openai/chatgpt/codex-agent': {
+            tokensUsed: 1234,
+            createdAt: 'first',
+            updatedAt: 'now',
+          },
+        },
+        totalTokensUsed: 1234,
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
 test('GET /api/v1/events streams runtime events as SSE', async () => {
   let runtime = new EventEmitter();
   let server = createServer({
@@ -632,6 +677,49 @@ test('GET /api/v1/events streams runtime events as SSE', async () => {
     assert.equal(second.event, 'frame.phantom');
     assert.equal(second.data.sessionID, 'ses_1');
     assert.equal(second.data.frame.type, 'AgentThinking');
+
+    await reader.cancel();
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/events streams token usage updates as SSE', async () => {
+  let runtime = new EventEmitter();
+  let tokenUsage = new EventEmitter();
+  tokenUsage.snapshot = () => ({});
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+      tokenUsage,
+    }),
+  });
+
+  let baseURL = await listen(server);
+  let response;
+
+  try {
+    response = await fetch(`${baseURL}/api/v1/events`);
+    assert.equal(response.status, 200);
+
+    let reader = response.body.getReader();
+    await readSSEEvent(reader);
+
+    tokenUsage.emit('updated', {
+      tokenUsage: {
+        'openai/chatgpt/codex-agent': {
+          tokensUsed: 44,
+          createdAt: 'first',
+          updatedAt: 'now',
+        },
+      },
+      totalTokensUsed: 44,
+    });
+
+    let second = await readSSEEvent(reader);
+    assert.equal(second.event, 'tokens.updated');
+    assert.equal(second.data.totalTokensUsed, 44);
 
     await reader.cancel();
   } finally {

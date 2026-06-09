@@ -18,6 +18,7 @@ import {
   setAgentFormProvider,
   setSessionFrames,
   setSessions,
+  setTokenUsage,
   upsertFrame,
   upsertAgent,
   upsertSession,
@@ -74,6 +75,7 @@ export class KikxApp extends HTMLElement {
       this._connectRuntimeEvents();
       this._loadAgents();
       this._loadSessions();
+      this._loadTokenUsage();
     } else if (this._state.magicCode) {
       this._verifyMagicLink(this._state.magicCode);
     }
@@ -189,6 +191,11 @@ export class KikxApp extends HTMLElement {
     return div.class.bindState((state) => `kikx-statusbar kikx-statusbar--${state.connectionStatusKind}`, ['connectionStatusKind'])(
       span.class('kikx-statusbar__dot')(),
       span.textContent.bindState((state) => state.connectionStatus, ['connectionStatus'])(),
+      span.class('kikx-statusbar__spacer')(),
+      span
+        .class('kikx-statusbar__tokens')
+        .title('Total tracked tokens')
+        .textContent.bindState((state) => formatTokenUsageTotal(state.totalTokensUsed), ['totalTokensUsed'])(),
     );
   }
 
@@ -415,7 +422,7 @@ export class KikxApp extends HTMLElement {
       this._eventSource = new EventSource('/api/v1/events');
       this._eventSource.addEventListener('open', this._onRuntimeEventsOpen);
       this._eventSource.addEventListener('error', this._onRuntimeEventsError);
-      for (let eventType of [ 'connected', 'session.saved', 'frame.added', 'frame.updated', 'frame.phantom', 'commit' ])
+      for (let eventType of [ 'connected', 'session.saved', 'frame.added', 'frame.updated', 'frame.phantom', 'commit', 'tokens.updated' ])
         this._eventSource.addEventListener(eventType, this._onRuntimeEvent);
     } catch (error) {
       this._state.connectionStatus = 'Disconnected';
@@ -454,6 +461,12 @@ export class KikxApp extends HTMLElement {
     if (data.type === 'connected') {
       this._state.connectionStatus = 'Connected';
       this._state.connectionStatusKind = 'ready';
+      this._render();
+      return;
+    }
+
+    if (data.type === 'tokens.updated') {
+      setTokenUsage(data.tokenUsage || {}, data.totalTokensUsed, this._state);
       this._render();
       return;
     }
@@ -516,6 +529,18 @@ export class KikxApp extends HTMLElement {
     this._render();
   }
 
+  async _loadTokenUsage() {
+    try {
+      let result = await this._getJSON('/api/v1/tokens');
+      setTokenUsage(result.data?.tokenUsage || {}, result.data?.totalTokensUsed, this._state);
+      this._render();
+    } catch (error) {
+      this._state.status = error.message;
+      this._state.statusKind = 'error';
+      this._render();
+    }
+  }
+
   async _onMagicLinkSubmit(event) {
     event.preventDefault();
     let email = this._state.authEmail.trim();
@@ -570,6 +595,7 @@ export class KikxApp extends HTMLElement {
     this._connectRuntimeEvents();
     this._loadAgents();
     this._loadSessions();
+    this._loadTokenUsage();
   }
 
   _signOut() {
@@ -578,6 +604,7 @@ export class KikxApp extends HTMLElement {
     this._state.authToken = '';
     this._state.refreshToken = '';
     resetSessionState(this._state);
+    setTokenUsage({}, 0, this._state);
     this._state.connectionStatus = 'Disconnected';
     this._state.connectionStatusKind = 'error';
     this._state.status = 'Signed out';
@@ -1001,6 +1028,14 @@ function normalizeFieldOptions(options) {
       label: item?.label ?? item?.value ?? '',
     };
   });
+}
+
+function formatTokenUsageTotal(value) {
+  let total = Number(value);
+  if (!Number.isFinite(total) || total < 0)
+    total = 0;
+
+  return `Tokens: ${Math.trunc(total).toLocaleString('en-US')}`;
 }
 
 function parseRuntimeEvent(event) {
