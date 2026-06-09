@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { AgentInterface } from '../../src/core/plugins/index.mjs';
+import { AgentInterface, PluginInterface, PluginRegistry } from '../../src/core/plugins/index.mjs';
 
 class LoopAgent extends AgentInterface {
   constructor(options = {}) {
@@ -148,6 +148,47 @@ class InheritedFirstMessageAgent extends InheritedFirstMessageBase {
   }
 }
 
+class GlobalEchoTool extends PluginInterface {
+  static pluginID = 'test';
+  static featureName = 'global-echo';
+  static description = 'Echo a value through a registered global tool.';
+  static riskLevel = 'none';
+  static inputSchema = {
+    type: 'object',
+    properties: {
+      text: { type: 'string' },
+    },
+    required: [ 'text' ],
+    additionalProperties: false,
+  };
+
+  async _execute(params) {
+    return {
+      text: params.text,
+      agentID: params._agentID,
+      sessionID: params._sessionID,
+      frameID: params._frameID,
+    };
+  }
+}
+
+class GlobalToolCallingAgent extends AgentInterface {
+  constructor(options = {}) {
+    super(options);
+    this.toolResult = null;
+    this.askCall = null;
+  }
+
+  async ask(_prompt, options = {}) {
+    this.askCall = {
+      toolDefinitions: options.toolDefinitions,
+      toolNames: Object.keys(options.tools).sort(),
+    };
+    this.toolResult = await options.tools['global-echo']({ text: 'hello' });
+    return options.tools['agent-respond']({ text: this.toolResult.text });
+  }
+}
+
 test('AgentInterface base loop runs first-message hook before asking the provider', async () => {
   let agent = new LoopAgent();
   let params = baseLoopParams();
@@ -189,6 +230,29 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'agent-character-set'));
   assert.equal(agent.calls[1].toolDefinitions.every((tool) => /^[A-Za-z0-9_-]+$/.test(tool.name)), true);
   assert.equal(agent.calls[1].toolNames.every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
+});
+
+test('AgentInterface exposes registered global plugin tools to agent turns', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerTool('global-echo', GlobalEchoTool);
+  pluginRegistry.registerTool('legacy:bad-name', GlobalEchoTool);
+
+  let agent = new GlobalToolCallingAgent();
+  let outputs = await collect(agent.run(baseLoopParams({
+    services: { pluginRegistry },
+  })));
+
+  assert.deepEqual(agent.toolResult, {
+    text: 'hello',
+    agentID: 'agent_1',
+    sessionID: 'ses_1',
+    frameID: 'msg_1',
+  });
+  assert.equal(agent.askCall.toolNames.includes('global-echo'), true);
+  assert.equal(agent.askCall.toolNames.includes('legacy:bad-name'), false);
+  assert.ok(agent.askCall.toolDefinitions.some((tool) => tool.name === 'global-echo'));
+  assert.equal(agent.askCall.toolDefinitions.some((tool) => tool.name === 'legacy:bad-name'), false);
+  assert.equal(outputs.some((output) => output.type === 'AgentMessage' && output.content.text === 'hello'), true);
 });
 
 test('AgentInterface prompt includes session participant names without secrets', async () => {

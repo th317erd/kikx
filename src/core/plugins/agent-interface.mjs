@@ -111,6 +111,7 @@ const AGENT_TOOL_DEFINITIONS = [
     },
   },
 ];
+const AGENT_TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 export class AgentInterface extends PluginInterface {
   static agentType = null;
@@ -354,12 +355,14 @@ function createLoopState() {
 }
 
 function createLoopToolDefinitions(context = {}) {
-  return AGENT_TOOL_DEFINITIONS
+  let loopDefinitions = AGENT_TOOL_DEFINITIONS
     .filter((toolDefinition) => shouldExposeLoopTool(toolDefinition.name, context))
     .map((toolDefinition) => ({
       ...toolDefinition,
       parameters: cloneJSON(toolDefinition.parameters),
     }));
+
+  return mergeToolDefinitions(loopDefinitions, createRegisteredToolDefinitions(context));
 }
 
 function createLoopTools(state, context) {
@@ -399,6 +402,11 @@ function createLoopTools(state, context) {
 
   if (context.isCoordinator === true)
     tools['internal-forward'] = forward;
+
+  for (let [toolName, handler] of Object.entries(createRegisteredToolHandlers(context))) {
+    if (!tools[toolName])
+      tools[toolName] = handler;
+  }
 
   return tools;
 }
@@ -482,6 +490,93 @@ async function setAgentCharacter(input, context = {}) {
       character: updated?.character || character,
     },
   };
+}
+
+function createRegisteredToolDefinitions(context = {}) {
+  let pluginRegistry = resolvePluginRegistry(context);
+  if (!pluginRegistry?.getTools)
+    return [];
+
+  let definitions = [];
+  for (let [toolName, ToolClass] of pluginRegistry.getTools()) {
+    if (!shouldExposeRegisteredTool(toolName, ToolClass))
+      continue;
+
+    definitions.push({
+      name: toolName,
+      description: ToolClass.description || ToolClass.displayName || toolName,
+      help: ToolClass.help || ToolClass.description || '',
+      parameters: cloneJSON(ToolClass.inputSchema || {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      }),
+    });
+  }
+
+  return definitions;
+}
+
+function createRegisteredToolHandlers(context = {}) {
+  let pluginRegistry = resolvePluginRegistry(context);
+  if (!pluginRegistry?.getTools)
+    return {};
+
+  let handlers = {};
+  for (let [toolName, ToolClass] of pluginRegistry.getTools()) {
+    if (!shouldExposeRegisteredTool(toolName, ToolClass))
+      continue;
+
+    handlers[toolName] = async (input = {}) => {
+      let tool = new ToolClass(createToolExecutionContext(context));
+      return await tool.execute({
+        ...normalizeToolInput(input),
+        _agentID: context.agent?.id || null,
+        _sessionID: context.session?.id || null,
+        _frameID: context.frame?.id || null,
+      });
+    };
+  }
+
+  return handlers;
+}
+
+function createToolExecutionContext(context = {}) {
+  return {
+    ...context,
+    services: context.services || {},
+    permissions: context.permissions,
+    fetchImpl: context.fetchImpl || context.services?.fetchImpl,
+  };
+}
+
+function normalizeToolInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    return { value: input };
+
+  return input;
+}
+
+function shouldExposeRegisteredTool(toolName, ToolClass) {
+  return typeof toolName === 'string'
+    && toolName.trim() !== ''
+    && AGENT_TOOL_NAME_PATTERN.test(toolName)
+    && ToolClass?.exposeToAgents !== false;
+}
+
+function mergeToolDefinitions(primary, secondary) {
+  let merged = [];
+  let seen = new Set();
+
+  for (let definition of [ ...primary, ...secondary ]) {
+    if (!definition?.name || seen.has(definition.name))
+      continue;
+
+    seen.add(definition.name);
+    merged.push(definition);
+  }
+
+  return merged;
 }
 
 async function dispatchForwards(context, state) {
@@ -687,6 +782,13 @@ function resolveParticipantName(context = {}, actorID = '') {
 
 function cloneJSON(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function resolvePluginRegistry(context = {}) {
+  if (context.pluginRegistry)
+    return context.pluginRegistry;
+
+  return resolveService(context.services, 'pluginRegistry');
 }
 
 function resolveService(services, name) {

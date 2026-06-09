@@ -14,6 +14,10 @@ import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
 import { FrameRouter } from '../core/routing/index.mjs';
 import { FrameRuntime } from '../core/runtime/frame-runtime.mjs';
 import { TokenUsageTracker } from '../core/tokens/index.mjs';
+import {
+  PuppeteerBrowserService,
+  registerBuiltInTools,
+} from '../core/tools/index.mjs';
 
 const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
 const DEFAULT_AEOR_WEB_COMPONENTS_ROOT = '/home/wyatt/Projects/aeor-web-components';
@@ -35,6 +39,17 @@ export function createServer(options = {}) {
 
   if (!context.has('pluginRegistry'))
     context.set('pluginRegistry', new PluginRegistry());
+
+  if (!context.has('builtInToolsRegistered')) {
+    registerBuiltInTools(context.require('pluginRegistry'));
+    context.set('builtInToolsRegistered', true);
+  }
+
+  if (!context.has('webBrowser')) {
+    context.set('webBrowser', new PuppeteerBrowserService({
+      logger: options.logger || console,
+    }));
+  }
 
   if (!context.has('commandRegistry'))
     context.set('commandRegistry', new CommandRegistry());
