@@ -50,7 +50,7 @@ export class WebSearchTool extends PluginInterface {
     url.searchParams.set('no_html', '1');
     url.searchParams.set('skip_disambig', '1');
 
-    let data = await fetchDuckDuckGoJSON(fetchImpl, url, timeoutMs);
+    let data = await fetchDuckDuckGoJSON(fetchImpl, url, timeoutMs, { query });
     return normalizeDuckDuckGoResults(data, {
       query,
       maxResults,
@@ -58,7 +58,7 @@ export class WebSearchTool extends PluginInterface {
   }
 }
 
-async function fetchDuckDuckGoJSON(fetchImpl, url, timeoutMs) {
+async function fetchDuckDuckGoJSON(fetchImpl, url, timeoutMs, { query }) {
   let controller = new AbortController();
   let timeout = setTimeout(() => controller.abort(), timeoutMs);
   timeout.unref?.();
@@ -75,7 +75,15 @@ async function fetchDuckDuckGoJSON(fetchImpl, url, timeoutMs) {
     if (!response?.ok)
       throw new Error(`DuckDuckGo HTTP ${response?.status || 'error'}`);
 
-    return await response.json();
+    let text = await response.text();
+    if (!text.trim())
+      throw new Error(`DuckDuckGo returned an empty response for query: ${query}`);
+
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      throw new Error(`DuckDuckGo returned malformed JSON for query "${query}": ${error.message}`);
+    }
   } finally {
     clearTimeout(timeout);
   }

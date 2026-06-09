@@ -276,3 +276,10 @@
   - [x] Keep typing/streaming open across tool rounds until a final model answer arrives.
   - [x] Add Codex plugin regression coverage for multi-request function-call handling.
   - [x] Verify the Codex plugin tests.
+
+- [x] Keep agent turns alive when global tools fail.
+  - [x] Inspect Session 2 frames and identify the `Unexpected end of JSON input` tool failure.
+  - [x] Convert Codex provider tool execution errors into `function_call_output` error payloads.
+  - [x] Wrap DuckDuckGo empty/malformed responses with web-search-specific errors.
+  - [x] Add Codex plugin and Kikx web-search regression coverage.
+  - [x] Verify plugin tests and full Kikx tests.

@@ -29,8 +29,8 @@ test('WebSearchTool queries DuckDuckGo instant answers and normalizes results', 
       assert.equal(options.headers.Accept, 'application/json');
       return {
         ok: true,
-        async json() {
-          return {
+        async text() {
+          return JSON.stringify({
             Heading: 'Kikx',
             AbstractText: 'A modular agent runner.',
             AbstractURL: 'https://example.test/kikx',
@@ -53,7 +53,7 @@ test('WebSearchTool queries DuckDuckGo instant answers and normalizes results', 
                 ],
               },
             ],
-          };
+          });
         },
       };
     },
@@ -72,6 +72,22 @@ test('WebSearchTool queries DuckDuckGo instant answers and normalizes results', 
   assert.equal(result.results.length, 3);
   assert.deepEqual(result.results.map((item) => item.type), [ 'abstract', 'answer', 'result' ]);
   assert.equal(result.results[0].url, 'https://example.test/kikx');
+});
+
+test('WebSearchTool reports empty DuckDuckGo responses with query context', async () => {
+  let tool = new WebSearchTool({
+    fetchImpl: async () => ({
+      ok: true,
+      async text() {
+        return '';
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () => tool.execute({ query: 'Phoenix weather' }),
+    /DuckDuckGo returned an empty response for query: Phoenix weather/,
+  );
 });
 
 test('WebFetchTool extracts rendered page details through injected browser service', async () => {
