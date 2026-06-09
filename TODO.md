@@ -262,10 +262,17 @@
   - [x] Add focused regression coverage for the failure path.
   - [x] Verify focused and full tests.
 
-- [ ] Add global web tools for all agents.
+- [x] Add global web tools for all agents.
   - [x] Add `web-search` DuckDuckGo instant-answer tool.
   - [x] Add `web-fetch` Puppeteer rendering tool with CDP port 9223 first.
   - [x] Register built-in global tools during server startup.
   - [x] Expose registered global tools through the base agent loop.
   - [x] Add focused unit coverage for tool execution and agent tool exposure.
   - [x] Verify focused and full tests.
+
+- [x] Fix Codex provider continuation after tool calls.
+  - [x] Inspect Session 2 frames and identify the `Tool web-search completed.` failure mode.
+  - [x] Send tool results back to OpenAI as `function_call_output` with `previous_response_id`.
+  - [x] Keep typing/streaming open across tool rounds until a final model answer arrives.
+  - [x] Add Codex plugin regression coverage for multi-request function-call handling.
+  - [x] Verify the Codex plugin tests.
