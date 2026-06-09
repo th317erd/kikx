@@ -62,6 +62,8 @@ test('Stagehand renders agent markdown without paragraph-heavy markup', async (t
           '',
           '[docs](https://example.test/docs)',
           '<strong onclick="window.__kikxXSS=1">Safe HTML</strong>',
+          '<a href="https://example.test/**not-bold**">Attribute Markdown</a>',
+          '<p>Paragraph **markdown** should not create p tags.</p>',
           '<a href="javascript:alert(1)">unsafe link</a>',
         ].join('\n'),
       },
@@ -105,6 +107,8 @@ test('Stagehand renders agent markdown without paragraph-heavy markup', async (t
         code: body.querySelector('pre code')?.textContent || '',
         href: body.querySelector('a')?.getAttribute('href') || '',
         rel: body.querySelector('a')?.getAttribute('rel') || '',
+        attributeMarkdownHref: Array.from(body.querySelectorAll('a')).find((node) => node.textContent === 'Attribute Markdown')?.getAttribute('href') || '',
+        attributeMarkdownHTML: Array.from(body.querySelectorAll('a')).find((node) => node.textContent === 'Attribute Markdown')?.innerHTML || '',
         unsafeHrefs: Array.from(body.querySelectorAll('a')).map((node) => node.getAttribute('href')).filter((href) => href?.startsWith('javascript:')),
         eventAttrs: Array.from(body.querySelectorAll('*')).flatMap((node) => Array.from(node.attributes).filter((attr) => attr.name.startsWith('on')).map((attr) => attr.name)),
         safeHTML: Array.from(body.querySelectorAll('strong')).map((node) => node.textContent),
@@ -118,9 +122,12 @@ test('Stagehand renders agent markdown without paragraph-heavy markup', async (t
     assert.equal(rendered.code, 'const ok = true;');
     assert.equal(rendered.href, 'https://example.test/docs');
     assert.equal(rendered.rel, 'noopener noreferrer');
+    assert.equal(rendered.attributeMarkdownHref, 'https://example.test/**not-bold**');
+    assert.equal(rendered.attributeMarkdownHTML, 'Attribute Markdown');
     assert.deepEqual(rendered.unsafeHrefs, []);
     assert.deepEqual(rendered.eventAttrs, []);
     assert.ok(rendered.safeHTML.includes('Safe HTML'));
+    assert.ok(rendered.safeHTML.includes('markdown'));
   } finally {
     await stagehand.close().catch(() => {});
     await fixture.close().catch(() => {});

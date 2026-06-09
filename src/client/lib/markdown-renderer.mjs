@@ -2,6 +2,12 @@
 
 const TOKEN_PREFIX = '\u0000KIKX_MD_';
 const TOKEN_SUFFIX = '\u0000';
+const NODE_TYPES = {
+  ELEMENT: 1,
+  TEXT: 3,
+  COMMENT: 8,
+  DOCUMENT_FRAGMENT: 11,
+};
 const SAFE_INLINE_TAGS = new Set([
   'strong', 'em', 'b', 'i', 'u', 's', 'del', 'code', 'kbd', 'mark', 'sub', 'sup',
 ]);
@@ -86,8 +92,17 @@ export function markdownToHTML(input) {
 export function renderMarkdownToElement(ownerDocument, input, options = {}) {
   let element = ownerDocument.createElement('div');
   element.className = options.className || 'kikx-frame__content kikx-markdown';
-  element.appendChild(parseHTMLFragment(ownerDocument, markdownToHTML(input)));
+  element.appendChild(renderBotContentFragment(ownerDocument, input));
   return element;
+}
+
+function renderBotContentFragment(ownerDocument, input) {
+  let template = ownerDocument.createElement('template');
+  template.innerHTML = String(input ?? '');
+  sanitizeRenderedNode(template.content);
+  renderMarkdownTextNodes(ownerDocument, template.content);
+  sanitizeRenderedNode(template.content);
+  return template.content.cloneNode(true);
 }
 
 function parseHTMLFragment(ownerDocument, html) {
@@ -430,22 +445,16 @@ function normalizeSafeURL(value) {
 }
 
 function sanitizeRenderedNode(root) {
-  let nodeConstants = root.ownerDocument.defaultView?.Node || {
-    TEXT_NODE: 3,
-    COMMENT_NODE: 8,
-    ELEMENT_NODE: 1,
-  };
-
   for (let child of Array.from(root.childNodes)) {
-    if (child.nodeType === nodeConstants.TEXT_NODE)
+    if (child.nodeType === NODE_TYPES.TEXT)
       continue;
 
-    if (child.nodeType === nodeConstants.COMMENT_NODE) {
+    if (child.nodeType === NODE_TYPES.COMMENT) {
       child.remove();
       continue;
     }
 
-    if (child.nodeType !== nodeConstants.ELEMENT_NODE) {
+    if (child.nodeType !== NODE_TYPES.ELEMENT) {
       child.remove();
       continue;
     }
@@ -495,6 +504,50 @@ function sanitizeRenderedNode(root) {
 
     sanitizeRenderedNode(child);
   }
+}
+
+function renderMarkdownTextNodes(ownerDocument, root) {
+  let textNodes = collectMarkdownTextNodes(root);
+  for (let textNode of textNodes) {
+    if (!textNode.parentNode)
+      continue;
+
+    let content = textNode.nodeValue || '';
+    if (content.length === 0)
+      continue;
+
+    let html = shouldRenderBlockMarkdown(textNode)
+      ? markdownToHTML(content)
+      : renderInline(content);
+    let fragment = parseHTMLFragment(ownerDocument, html);
+    textNode.parentNode.insertBefore(fragment, textNode);
+    textNode.remove();
+  }
+}
+
+function collectMarkdownTextNodes(root, output = []) {
+  for (let child of Array.from(root.childNodes)) {
+    if (child.nodeType === NODE_TYPES.TEXT) {
+      output.push(child);
+      continue;
+    }
+
+    if (child.nodeType !== NODE_TYPES.ELEMENT || isMarkdownOpaqueElement(child))
+      continue;
+
+    collectMarkdownTextNodes(child, output);
+  }
+
+  return output;
+}
+
+function isMarkdownOpaqueElement(element) {
+  let tagName = element.tagName?.toLowerCase();
+  return tagName === 'code' || tagName === 'pre' || tagName === 'kbd';
+}
+
+function shouldRenderBlockMarkdown(textNode) {
+  return textNode.parentNode?.nodeType === NODE_TYPES.DOCUMENT_FRAGMENT;
 }
 
 function unwrapNode(node) {
