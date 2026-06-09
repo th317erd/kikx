@@ -224,6 +224,40 @@ test('AgentInterface prompt includes session participant names without secrets',
   assert.doesNotMatch(askCall.prompt, /secret-ish personality/);
 });
 
+test('AgentInterface prompt describes agent-authored trigger frames accurately', async () => {
+  let agent = new LoopAgent();
+  await collect(agent.run(baseLoopParams({
+    agent: { id: 'agent_1', name: 'Coder' },
+    session: {
+      id: 'ses_1',
+      participantAgentIDs: [ 'agent_1', 'agent_2' ],
+      coordinatorAgentID: 'agent_1',
+    },
+    frame: {
+      id: 'agent_msg_1',
+      type: 'AgentMessage',
+      authorType: 'agent',
+      authorID: 'agent_2',
+      authorDisplayName: 'Reviewer',
+      content: { text: 'Coder, can you sanity-check this?' },
+      agentRoute: {
+        rootFrameID: 'msg_1',
+        sourceFrameID: 'msg_1',
+        path: [ 'agent_2' ],
+      },
+    },
+    isCoordinator: true,
+  })));
+
+  let askCall = agent.calls.find((call) => call.method === 'ask');
+  assert.ok(askCall);
+  assert.match(askCall.prompt, /Agent Reviewer \(agent_2\) has just sent a message:/);
+  assert.match(askCall.prompt, /Coder, can you sanity-check this\?/);
+  assert.match(askCall.prompt, /This is an agent-authored message in the shared session/);
+  assert.match(askCall.prompt, /use agent-null-response/i);
+  assert.doesNotMatch(askCall.prompt, /The user has just sent you a message:/);
+});
+
 test('AgentInterface detects first-message hooks inherited from provider base classes', async () => {
   let agent = new InheritedFirstMessageAgent();
   let outputs = await collect(agent.run(baseLoopParams()));
@@ -493,6 +527,8 @@ function baseLoopParams(overrides = {}) {
     frame: {
       id: 'msg_1',
       type: 'UserMessage',
+      authorType: 'user',
+      authorID: 'usr_1',
       content: { text: 'hello' },
     },
     agent: { id: 'agent_1', name: 'Coder', character: 'You are a pragmatic engineer.' },

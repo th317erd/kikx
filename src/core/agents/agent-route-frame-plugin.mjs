@@ -6,6 +6,8 @@ import {
   resolveMentionActors,
 } from '../mentions/index.mjs';
 
+const MAX_AGENT_MESSAGE_BROADCAST_DEPTH = 1;
+
 export class AgentRouteFramePlugin extends BaseFramePlugin {
   static pluginID = 'internal:agent-router';
 
@@ -170,6 +172,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
 
   async createResponseFrame({ agent, frame, responseFrameID, services }) {
     let now = this.clock();
+    let agentRoute = createResponseAgentRoute({ sourceFrame: frame, agentID: agent.id });
     let responseFrame = {
       id: responseFrameID,
       type: 'AgentMessage',
@@ -184,6 +187,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       updatedAt: now,
       hidden: true,
       deleted: false,
+      agentRoute,
       content: {
         text: '',
         thinking: {
@@ -225,6 +229,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       updatedAt: output.updatedAt || now,
       hidden: output.hidden ?? (output.phantom ? true : false),
       deleted: output.deleted ?? false,
+      agentRoute: output.agentRoute || this.context.engine.get(responseFrameID)?.agentRoute,
       content,
     };
 
@@ -237,6 +242,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
   appendAgentError({ agent, frame, error, responseFrameID = null }) {
     let now = this.clock();
     let type = responseFrameID ? 'AgentMessage' : 'AgentError';
+    let existingResponseFrame = responseFrameID ? this.context.engine.get(responseFrameID) : null;
     this.context.engine.merge([{
       id: responseFrameID || this.context.engine.idGenerator(),
       type,
@@ -251,6 +257,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       updatedAt: now,
       hidden: false,
       deleted: false,
+      agentRoute: existingResponseFrame?.agentRoute,
       content: {
         agentID: agent.id,
         agentName: agent.name || agent.id,
@@ -342,13 +349,24 @@ export function registerAgentRouting(frameRouter) {
     throw new TypeError('registerAgentRouting() requires a FrameRouter');
 
   frameRouter.registerSelector('Type:UserMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
+  frameRouter.registerSelector('Type:AgentMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
 }
 
 function shouldRouteToAgents(context, frame) {
-  if (context.change?.operation && context.change.operation !== 'create' && frame?.coordinated !== true)
+  if (!frame || frame.phantom || frame.hidden === true || frame.deleted === true)
     return false;
 
-  if (frame?.type !== 'UserMessage')
+  if (frame.type === 'UserMessage')
+    return shouldRouteUserMessage(context, frame);
+
+  if (frame.type === 'AgentMessage')
+    return shouldRouteAgentMessage(context, frame);
+
+  return false;
+}
+
+function shouldRouteUserMessage(context, frame) {
+  if (context.change?.operation && context.change.operation !== 'create' && frame?.coordinated !== true)
     return false;
 
   let text = frame.content?.text;
@@ -358,7 +376,39 @@ function shouldRouteToAgents(context, frame) {
   return true;
 }
 
+function shouldRouteAgentMessage(context, frame) {
+  if (frame.authorType !== 'agent' || typeof frame.authorID !== 'string' || frame.authorID.trim() === '')
+    return false;
+
+  if (frame.content?.status === 'streaming')
+    return false;
+
+  let operation = context.change?.operation || 'create';
+  if (operation === 'create')
+    return true;
+
+  if (operation !== 'update')
+    return false;
+
+  if (frame.coordinated === true)
+    return false;
+
+  let previous = context.previousFrame || {};
+  let becameVisible = previous.hidden !== false && frame.hidden === false;
+  let finalized = previous.content?.status === 'streaming' && frame.content?.status !== 'streaming';
+  return becameVisible || finalized;
+}
+
 function resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID }) {
+  if (frame?.type === 'AgentMessage') {
+    let path = normalizeStringArray(frame.agentRoute?.path);
+    if (path.length > MAX_AGENT_MESSAGE_BROADCAST_DEPTH)
+      return [];
+
+    let blocked = uniqueStrings([ frame.authorID, ...path ]);
+    return participantAgentIDs.filter((agentID) => !blocked.includes(agentID));
+  }
+
   if (frame?.coordinated === true) {
     let mentionedAgentIDs = Object.entries(frame.mentions || {})
       .filter(([actorID, mention]) => mention?.type === 'agent' || participantAgentIDs.includes(actorID))
@@ -369,6 +419,39 @@ function resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID })
   }
 
   return uniqueStrings([ coordinatorAgentID, ...participantAgentIDs ]);
+}
+
+function createResponseAgentRoute({ sourceFrame, agentID }) {
+  let inherited = normalizeAgentRoute(sourceFrame?.agentRoute);
+  let inheritedPath = inherited.path.length > 0
+    ? inherited.path
+    : normalizeStringArray(sourceFrame?.authorType === 'agent' ? [ sourceFrame.authorID ] : []);
+
+  return {
+    rootFrameID: inherited.rootFrameID || sourceFrame?.id || null,
+    sourceFrameID: sourceFrame?.id || null,
+    path: uniqueStrings([ ...inheritedPath, agentID ]),
+  };
+}
+
+function normalizeAgentRoute(agentRoute) {
+  if (!agentRoute || typeof agentRoute !== 'object') {
+    return {
+      rootFrameID: null,
+      sourceFrameID: null,
+      path: [],
+    };
+  }
+
+  return {
+    rootFrameID: typeof agentRoute.rootFrameID === 'string' && agentRoute.rootFrameID.trim()
+      ? agentRoute.rootFrameID.trim()
+      : null,
+    sourceFrameID: typeof agentRoute.sourceFrameID === 'string' && agentRoute.sourceFrameID.trim()
+      ? agentRoute.sourceFrameID.trim()
+      : null,
+    path: normalizeStringArray(agentRoute.path),
+  };
 }
 
 function normalizeStringArray(values) {

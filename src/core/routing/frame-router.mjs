@@ -78,7 +78,8 @@ export class FrameRouter {
       return;
 
     for (let change of commit.changes) {
-      let frame = frameEngine.getHead(change.frameID);
+      let history = frameEngine.getVersionHistory(change.frameID);
+      let { frame, previousFrame } = resolveCommitFrame(history, commit);
       if (!frame)
         continue;
 
@@ -86,15 +87,20 @@ export class FrameRouter {
       if (registrations.length === 0)
         continue;
 
-      let context = this.createContext({ frameEngine, commit, change, frame, session, options });
+      let context = this.createContext({
+        frameEngine,
+        commit,
+        change,
+        frame,
+        previousFrame,
+        session,
+        options,
+      });
       await this.executeChain(registrations, context);
     }
   }
 
-  createContext({ frameEngine, commit, change, frame, session, options }) {
-    let history = frameEngine.getVersionHistory(change.frameID);
-    let previousFrame = history.length >= 2 ? history[history.length - 2] : null;
-
+  createContext({ frameEngine, commit, change, frame, previousFrame = null, session, options }) {
     return {
       frames: frameEngine,
       engine: frameEngine,
@@ -178,6 +184,18 @@ export class BaseFramePlugin {
   async process(next) {
     await next(this.context);
   }
+}
+
+function resolveCommitFrame(history, commit) {
+  let versions = Array.isArray(history) ? history : [];
+  let index = versions.findIndex((frame) => frame?.commitOrder === commit.order);
+  if (index < 0)
+    index = versions.length - 1;
+
+  return {
+    frame: index >= 0 ? versions[index] : null,
+    previousFrame: index > 0 ? versions[index - 1] : null,
+  };
 }
 
 function computeChanges(previousFrame, newFrame) {

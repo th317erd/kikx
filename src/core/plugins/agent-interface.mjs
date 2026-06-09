@@ -282,7 +282,7 @@ export class AgentInterface extends PluginInterface {
   }
 
   buildDefaultAgentPrompt(context = {}) {
-    let userMessage = context.frame?.content?.text || '';
+    let frameMessage = context.frame?.content?.text || '';
     let mentions = normalizeMentions(context.mentions || context.frame?.mentions);
     let participantAgents = normalizeParticipantAgents(context.participantAgents || context.sessionAgents, {
       participantAgentIDs: context.participantAgentIDs || context.session?.participantAgentIDs,
@@ -299,9 +299,9 @@ export class AgentInterface extends PluginInterface {
       'Agent character:',
       character || 'No custom character has been set. Act as a careful, technically rigorous Kikx agent.',
       '',
-      'The user has just sent you a message:',
+      ...buildTriggerFramePromptLines(context),
       '',
-      userMessage,
+      frameMessage,
       '',
       `You are the coordinator?: ${context.isCoordinator === true}`,
       '',
@@ -575,7 +575,7 @@ function formatToolHelp(toolDefinitions) {
 
 function buildRoutingPromptLines(context = {}) {
   if (context.isCoordinator === true) {
-    return [
+    let lines = [
       'If you are the coordinator, then you are the preferred agent. You evaluate first, and you are usually the best agent to answer broad, general, or ambiguous messages.',
       'Recipient decision checklist: ask "Who is this message really for: me, another session agent, the user, or everyone?" before answering.',
       'Use turn-taking: if the immediately prior visible response came from another agent and the user asks a follow-up with "you", "your", or a short ambiguous question, treat it as meant for that prior agent unless the user clearly redirects to you.',
@@ -584,6 +584,14 @@ function buildRoutingPromptLines(context = {}) {
       'Keep internal-forward available only for explicit forwarding workflows, such as external services or future sleeper agents; do not use it as normal intra-session handoff.',
       'If the message is targeted to you, deeply consider it in the context of the available user and project rules.',
     ];
+
+    if (context.frame?.authorType === 'agent') {
+      lines.splice(3, 0,
+        'This is an agent-authored message in the shared session. Answer only if that agent directly asks you, mentions you, delegates to you, or your contribution is clearly needed.',
+      );
+    }
+
+    return lines;
   }
 
   if (context.frame?.coordinated === true) {
@@ -606,6 +614,42 @@ function buildRoutingPromptLines(context = {}) {
     'You are not the coordinator. Answer only when the message is targeted to you.',
     'If this message is not for you, use agent-null-response and let routing continue elsewhere.',
   ];
+}
+
+function buildTriggerFramePromptLines(context = {}) {
+  let frame = context.frame || {};
+  if (frame.authorType === 'agent') {
+    let label = normalizeOptionalPromptString(frame.authorDisplayName)
+      || resolveParticipantName(context, frame.authorID)
+      || normalizeOptionalPromptString(frame.authorID)
+      || 'Unknown agent';
+    let id = normalizeOptionalPromptString(frame.authorID);
+    return [
+      `Agent ${label}${id ? ` (${id})` : ''} has just sent a message:`,
+    ];
+  }
+
+  if (frame.authorType === 'user')
+    return [ 'The user has just sent you a message:' ];
+
+  return [ 'A session frame has just been routed to you:' ];
+}
+
+function resolveParticipantName(context = {}, actorID = '') {
+  let id = normalizeOptionalPromptString(actorID);
+  if (!id)
+    return '';
+
+  for (let agent of normalizeParticipantAgents(context.participantAgents || context.sessionAgents, {
+    participantAgentIDs: context.participantAgentIDs || context.session?.participantAgentIDs,
+    coordinatorAgentID: context.coordinatorAgentID || context.session?.coordinatorAgentID,
+    selfAgentID: context.agent?.id,
+  })) {
+    if (agent.id === id)
+      return agent.name || '';
+  }
+
+  return '';
 }
 
 function cloneJSON(value) {

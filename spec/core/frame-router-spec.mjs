@@ -138,6 +138,82 @@ test('FrameRouter.flush waits for queued async routing work', async () => {
   assert.equal(flushed, true);
 });
 
+test('FrameRouter routes queued commits against their committed frame version', async () => {
+  let events = [];
+  let router = new FrameRouter({ logger: quietLogger() });
+  let frames = new FrameEngine({
+    idGenerator: (() => {
+      let ids = [ 'commit_1', 'commit_2', 'commit_3' ];
+      let index = 0;
+      return () => ids[index++];
+    })(),
+  });
+
+  class UserPlugin extends BaseFramePlugin {
+    async process(next) {
+      frames.merge([{
+        id: 'agent_1',
+        type: 'AgentMessage',
+        hidden: true,
+        content: { status: 'streaming' },
+      }]);
+      frames.merge([{
+        id: 'agent_1',
+        type: 'AgentMessage',
+        hidden: false,
+        content: { status: 'complete' },
+      }]);
+      await next(this.context);
+    }
+  }
+
+  class AgentPlugin extends BaseFramePlugin {
+    async process(next) {
+      events.push({
+        operation: this.context.change.operation,
+        hidden: this.context.newFrame.hidden,
+        status: this.context.newFrame.content.status,
+        previousHidden: this.context.previousFrame?.hidden ?? null,
+        changedProps: this.context.changes.map((change) => change.propName).sort(),
+      });
+      await next(this.context);
+    }
+  }
+
+  router.registerSelector('Type:UserMessage', UserPlugin, 'user');
+  router.registerSelector('Type:AgentMessage', AgentPlugin, 'agent');
+  router.connectTo(frames);
+
+  frames.merge([{ id: 'msg_1', type: 'UserMessage', hidden: false }]);
+  await router.flush();
+
+  assert.deepEqual(events, [
+    {
+      operation: 'create',
+      hidden: true,
+      status: 'streaming',
+      previousHidden: null,
+      changedProps: [],
+    },
+    {
+      operation: 'update',
+      hidden: false,
+      status: 'complete',
+      previousHidden: true,
+      changedProps: [
+        'commitOrder',
+        'content',
+        'hidden',
+        'state',
+        'targets',
+        'timestamp',
+        'updatedAt',
+        'updatedClock',
+      ],
+    },
+  ]);
+});
+
 test('SlashCommandFramePlugin handles registered slash commands and stops propagation', async () => {
   let events = [];
   let commandRegistry = new CommandRegistry({ logger: quietLogger() });

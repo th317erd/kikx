@@ -1,5 +1,13 @@
 # TODO
 
+- [x] Broadcast visible agent messages to other session agents without loops.
+  - [x] Add routing tests for visible `AgentMessage` delivery to other agents.
+  - [x] Add loop-guard tests for hidden placeholders, self-delivery, and cascade depth.
+  - [x] Add prompt tests for agent-authored trigger frames.
+  - [x] Implement agent-route cascade metadata and `AgentMessage` selector registration.
+  - [x] Fix queued router commits to route their committed frame version.
+  - [x] Verify focused and full tests.
+
 - [x] Broadcast normal user messages to all invited session agents.
   - [x] Add focused routing tests for all-agent normal message dispatch.
   - [x] Keep explicit coordinator forwarding pathway intact.
