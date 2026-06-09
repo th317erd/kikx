@@ -110,7 +110,7 @@ async function main() {
   while (!shuttingDown) {
     await sleep(1000);
 
-    if (currentChild && currentChild.exitCode != null && !shuttingDown) {
+    if (currentChild && hasChildExited(currentChild) && !shuttingDown) {
       console.log('[dev-watch] Kikx exited unexpectedly -- restarting...');
       await startKikx(healthURL);
       lastFingerprint = await fingerprintWatchEntries(watchEntries);
@@ -193,7 +193,7 @@ async function startKikx(healthURL) {
 }
 
 async function stopChild(child, options = {}) {
-  if (!child || child.exitCode != null)
+  if (!child || hasChildExited(child))
     return;
 
   console.log(`[dev-watch] Stopping Kikx process group ${child.pid}...`);
@@ -216,8 +216,12 @@ function signalChildGroup(child, signal) {
   }
 }
 
-function waitForExit(child, timeoutMS) {
-  if (child.exitCode != null)
+export function hasChildExited(child) {
+  return !child || child.exitCode != null || child.signalCode != null;
+}
+
+export function waitForExit(child, timeoutMS) {
+  if (hasChildExited(child))
     return true;
 
   return new Promise((resolve) => {
@@ -225,7 +229,6 @@ function waitForExit(child, timeoutMS) {
       child.off('exit', onExit);
       resolve(false);
     }, timeoutMS);
-    timeout.unref?.();
 
     function onExit() {
       clearTimeout(timeout);
@@ -239,7 +242,7 @@ function waitForExit(child, timeoutMS) {
 async function waitForHealth(healthURL, child = null) {
   let deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    if (child?.exitCode != null)
+    if (hasChildExited(child))
       throw new Error(`Kikx exited before passing health check at ${healthURL}`);
 
     try {

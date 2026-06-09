@@ -1,5 +1,12 @@
 # TODO
 
+- [x] Fix `dev:watch` restart reliability.
+  - [x] Treat signal-exited child processes as exited.
+  - [x] Keep restart wait timeouts referenced so top-level await does not get stranded.
+  - [x] Add focused watcher regression coverage.
+  - [x] Verify a real file-change restart cycle on a temporary port.
+  - [x] Verify full tests.
+
 - [x] Add built-in command execution agent tool.
   - [x] Add a consolidated local command execution service.
   - [x] Run commands through the Kikx server login shell.

@@ -10,10 +10,12 @@ import {
   buildHealthURL,
   collectWatchFiles,
   fingerprintFiles,
+  hasChildExited,
   isHealthy,
   isWatchableFile,
   loadEnvFile,
   shouldIgnoreWatchPath,
+  waitForExit,
 } from '../../scripts/dev-watch.mjs';
 
 test('dev-watch ignores generated/runtime directories and watches source-like files', () => {
@@ -121,6 +123,22 @@ test('dev-watch treats failed health probes as unhealthy', async () => {
   }), true);
 });
 
+test('dev-watch treats signal-exited child processes as exited', async () => {
+  let signalExitedChild = createFakeChild({
+    exitCode: null,
+    signalCode: 'SIGTERM',
+  });
+  let runningChild = createFakeChild({
+    exitCode: null,
+    signalCode: null,
+  });
+
+  assert.equal(hasChildExited(signalExitedChild), true);
+  assert.equal(await waitForExit(signalExitedChild, 10), true);
+  assert.equal(hasChildExited(runningChild), false);
+  assert.equal(await waitForExit(runningChild, 10), false);
+});
+
 function restoreEnv(name, value) {
   if (value == null) {
     delete process.env[name];
@@ -128,4 +146,18 @@ function restoreEnv(name, value) {
   }
 
   process.env[name] = value;
+}
+
+function createFakeChild(state = {}) {
+  let listeners = new Map();
+  return {
+    exitCode: state.exitCode,
+    signalCode: state.signalCode,
+    once(eventName, listener) {
+      listeners.set(eventName, listener);
+    },
+    off(eventName) {
+      listeners.delete(eventName);
+    },
+  };
 }
