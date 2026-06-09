@@ -1,5 +1,12 @@
 # TODO
 
+- [x] Make global web tools work through live agent routing.
+  - [x] Add DuckDuckGo HTML fallback when Instant Answer has no usable search results.
+  - [x] Fix browser-context extraction in `web-fetch`.
+  - [x] Verify full tests.
+  - [x] Verify focused tests.
+  - [x] Verify Session 2 live agent calls both `web-search` and `web-fetch`.
+
 - [x] Replace one-hop agent conversation guard with token-aware broad conversation.
   - [x] Add AeorDB-backed token usage tracker and unit tests.
   - [x] Load token usage on runtime/server startup and expose totals via API/SSE.

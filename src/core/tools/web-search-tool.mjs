@@ -3,6 +3,7 @@
 import { PluginInterface } from '../plugins/index.mjs';
 
 const DUCKDUCKGO_API_URL = 'https://api.duckduckgo.com/';
+const DUCKDUCKGO_HTML_URL = 'https://html.duckduckgo.com/html/';
 const DEFAULT_MAX_RESULTS = 8;
 const MAX_RESULTS_LIMIT = 20;
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -51,10 +52,40 @@ export class WebSearchTool extends PluginInterface {
     url.searchParams.set('skip_disambig', '1');
 
     let data = await fetchDuckDuckGoJSON(fetchImpl, url, timeoutMs, { query });
-    return normalizeDuckDuckGoResults(data, {
+    let normalized = normalizeDuckDuckGoResults(data, {
       query,
       maxResults,
     });
+
+    if (normalized.results.length >= maxResults)
+      return normalized;
+
+    let htmlResults;
+    try {
+      htmlResults = await fetchDuckDuckGoHTMLResults(fetchImpl, {
+        query,
+        timeoutMs,
+        maxResults,
+      });
+    } catch (error) {
+      if (normalized.results.length > 0)
+        return { ...normalized, warning: error.message };
+
+      throw error;
+    }
+
+    if (htmlResults.length === 0)
+      return normalized;
+
+    let results = mergeSearchResults(normalized.results, htmlResults, maxResults);
+    return {
+      ...normalized,
+      source: normalized.results.length > 0
+        ? 'duckduckgo-instant-answer+html'
+        : 'duckduckgo-html',
+      results,
+      resultCount: results.length,
+    };
   }
 }
 
@@ -84,6 +115,36 @@ async function fetchDuckDuckGoJSON(fetchImpl, url, timeoutMs, { query }) {
     } catch (error) {
       throw new Error(`DuckDuckGo returned malformed JSON for query "${query}": ${error.message}`);
     }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchDuckDuckGoHTMLResults(fetchImpl, { query, timeoutMs, maxResults }) {
+  let url = new URL(DUCKDUCKGO_HTML_URL);
+  url.searchParams.set('q', query);
+
+  let controller = new AbortController();
+  let timeout = setTimeout(() => controller.abort(), timeoutMs);
+  timeout.unref?.();
+
+  try {
+    let response = await fetchImpl(url, {
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari/537.36 Kikx/0.1',
+      },
+      signal: controller.signal,
+    });
+
+    if (!response?.ok)
+      throw new Error(`DuckDuckGo HTML HTTP ${response?.status || 'error'}`);
+
+    let html = await response.text();
+    if (!html.trim())
+      throw new Error(`DuckDuckGo HTML returned an empty response for query: ${query}`);
+
+    return parseDuckDuckGoHTMLResults(html, { maxResults });
   } finally {
     clearTimeout(timeout);
   }
@@ -128,6 +189,40 @@ function normalizeDuckDuckGoResults(data, { query, maxResults }) {
     results: results.slice(0, maxResults),
     resultCount: Math.min(results.length, maxResults),
   };
+}
+
+function parseDuckDuckGoHTMLResults(html, { maxResults }) {
+  let results = [];
+  let anchorPattern = /<a\b[^>]*class=(["'])[^"']*\bresult__a\b[^"']*\1[^>]*href=(["'])(.*?)\2[^>]*>([\s\S]*?)<\/a>/gi;
+  let matches = [...String(html || '').matchAll(anchorPattern)];
+
+  for (let index = 0; index < matches.length && results.length < maxResults; index++) {
+    let match = matches[index];
+    let blockEnd = matches[index + 1]?.index ?? html.length;
+    let block = html.slice(match.index, blockEnd);
+    let snippetMatch = /<a\b[^>]*class=(["'])[^"']*\bresult__snippet\b[^"']*\1[^>]*>([\s\S]*?)<\/a>/i.exec(block);
+    let url = normalizeDuckDuckGoHTMLURL(match[3]);
+    let title = decodeHTMLText(stripTags(match[4]));
+    let text = decodeHTMLText(stripTags(snippetMatch?.[2] || ''));
+
+    pushResult(results, {
+      type: 'result',
+      title,
+      text,
+      url,
+      source: hostnameFromURL(url),
+    });
+  }
+
+  return results;
+}
+
+function mergeSearchResults(primary, secondary, maxResults) {
+  let results = [];
+  for (let item of [ ...primary, ...secondary ])
+    pushResult(results, item);
+
+  return results.slice(0, maxResults);
 }
 
 function pushDuckDuckGoTopic(results, item, type) {
@@ -213,6 +308,64 @@ function stripTags(value) {
 
 function stringOrEmpty(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function decodeHTMLText(value) {
+  return stringOrEmpty(value).replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (_match, entity) => {
+    let lower = entity.toLowerCase();
+    if (lower === 'amp')
+      return '&';
+    if (lower === 'lt')
+      return '<';
+    if (lower === 'gt')
+      return '>';
+    if (lower === 'quot')
+      return '"';
+    if (lower === 'apos' || lower === '#39')
+      return "'";
+    if (lower.startsWith('#x')) {
+      let codePoint = Number.parseInt(lower.slice(2), 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : '';
+    }
+    if (lower.startsWith('#')) {
+      let codePoint = Number.parseInt(lower.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : '';
+    }
+
+    return `&${entity};`;
+  });
+}
+
+function normalizeDuckDuckGoHTMLURL(value) {
+  let text = decodeHTMLText(value);
+  if (!text)
+    return '';
+
+  let parsed;
+  try {
+    if (text.startsWith('//'))
+      parsed = new URL(`https:${text}`);
+    else
+      parsed = new URL(text, 'https://duckduckgo.com');
+  } catch (_error) {
+    return text;
+  }
+
+  if (/duckduckgo\.com$/i.test(parsed.hostname) && parsed.pathname === '/l/') {
+    let target = parsed.searchParams.get('uddg');
+    if (target)
+      return target;
+  }
+
+  return parsed.href;
+}
+
+function hostnameFromURL(value) {
+  try {
+    return new URL(value).hostname.replace(/^www\./i, '');
+  } catch (_error) {
+    return '';
+  }
 }
 
 function absolutizeDuckDuckGoAsset(value) {

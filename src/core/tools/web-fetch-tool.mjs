@@ -93,12 +93,20 @@ async function configurePage(page, timeoutMs) {
 }
 
 function extractPageSnapshot({ selector, maxTextLength, maxLinks }) {
+  function normalizeText(value) {
+    return String(value || '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+  }
+
   let root = selector ? document.querySelector(selector) : document.body;
   let target = root || document.body || document.documentElement;
-  let fullText = normalizeRenderedText(target?.innerText || target?.textContent || '');
+  let fullText = normalizeText(target?.innerText || target?.textContent || '');
   let links = Array.from(document.querySelectorAll('a[href]'))
     .map((link) => ({
-      text: normalizeRenderedText(link.innerText || link.textContent || '').slice(0, 200),
+      text: normalizeText(link.innerText || link.textContent || '').slice(0, 200),
       url: link.href,
     }))
     .filter((link) => link.url)

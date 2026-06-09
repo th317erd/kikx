@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import vm from 'node:vm';
 
 import { PluginRegistry } from '../../src/core/plugins/index.mjs';
 import {
@@ -74,6 +75,68 @@ test('WebSearchTool queries DuckDuckGo instant answers and normalizes results', 
   assert.equal(result.results[0].url, 'https://example.test/kikx');
 });
 
+test('WebSearchTool falls back to DuckDuckGo HTML results when instant answers are empty', async () => {
+  let requests = [];
+  let tool = new WebSearchTool({
+    fetchImpl: async (url, options = {}) => {
+      let requestedURL = new URL(url);
+      requests.push({
+        url: requestedURL,
+        accept: options.headers.Accept,
+      });
+
+      if (requestedURL.origin === 'https://api.duckduckgo.com') {
+        return {
+          ok: true,
+          async text() {
+            return JSON.stringify({
+              Heading: '',
+              Results: [],
+              RelatedTopics: [],
+            });
+          },
+        };
+      }
+
+      return {
+        ok: true,
+        async text() {
+          return `
+            <div class="result results_links results_links_deep web-result">
+              <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fforecast.weather.gov%2Fzipcity.php%3Finputstring%3DPhoenix%2CAZ&amp;rut=abc">
+                7-Day Forecast 33.45N 112.07W - National Weather Service
+              </a>
+              <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fforecast.weather.gov%2Fzipcity.php%3Finputstring%3DPhoenix%2CAZ&amp;rut=abc">
+                Your local <b>forecast</b> office is <b>Phoenix</b>, <b>AZ</b>.
+              </a>
+            </div>
+            <div class="result results_links results_links_deep web-result">
+              <a rel="nofollow" class="result__a" href="https://www.weather.gov/psr/">NWS Forecast Office Phoenix, AZ</a>
+              <a class="result__snippet" href="https://www.weather.gov/psr/">Weather forecast office page.</a>
+            </div>
+          `;
+        },
+      };
+    },
+  });
+
+  let result = await tool.execute({
+    query: 'Phoenix AZ weather forecast National Weather Service',
+    maxResults: 2,
+  });
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].url.origin, 'https://api.duckduckgo.com');
+  assert.equal(requests[1].url.origin, 'https://html.duckduckgo.com');
+  assert.equal(requests[1].accept, 'text/html,application/xhtml+xml');
+  assert.equal(result.source, 'duckduckgo-html');
+  assert.equal(result.resultCount, 2);
+  assert.equal(result.results[0].url, 'https://forecast.weather.gov/zipcity.php?inputstring=Phoenix,AZ');
+  assert.equal(result.results[0].text, 'Your local forecast office is Phoenix, AZ.');
+  assert.equal(result.results[0].source, 'forecast.weather.gov');
+  assert.equal(result.results[1].url, 'https://www.weather.gov/psr/');
+});
+
 test('WebSearchTool reports empty DuckDuckGo responses with query context', async () => {
   let tool = new WebSearchTool({
     fetchImpl: async () => ({
@@ -122,15 +185,45 @@ test('WebFetchTool extracts rendered page details through injected browser servi
             maxTextLength: 2000,
             maxLinks: 2,
           });
-          return {
-            title: 'Example Page',
-            url: 'https://example.test/final',
-            text: 'Rendered text',
-            textTruncated: false,
-            links: [
-              { text: 'Docs', url: 'https://example.test/docs' },
-            ],
-          };
+          let evaluated = vm.runInNewContext(`(${_fn.toString()})(args)`, {
+            args,
+            document: {
+              title: 'Example Page',
+              body: {
+                innerText: 'Rendered   text\n\n\nMore text',
+              },
+              documentElement: {
+                innerText: 'Fallback text',
+              },
+              querySelector(selector) {
+                assert.equal(selector, 'main');
+                return {
+                  innerText: 'Rendered   text\n\n\nMore text',
+                };
+              },
+              querySelectorAll(selector) {
+                assert.equal(selector, 'a[href]');
+                return [
+                  {
+                    innerText: 'Docs\nLink',
+                    href: 'https://example.test/docs',
+                  },
+                  {
+                    textContent: 'Other Link',
+                    href: 'https://example.test/other',
+                  },
+                  {
+                    innerText: 'Hidden',
+                    href: '',
+                  },
+                ];
+              },
+            },
+            location: {
+              href: 'https://example.test/final',
+            },
+          });
+          return JSON.parse(JSON.stringify(evaluated));
         },
       };
 
@@ -157,10 +250,11 @@ test('WebFetchTool extracts rendered page details through injected browser servi
     status: 200,
     browserMode: 'cdp',
     selector: 'main',
-    text: 'Rendered text',
+    text: 'Rendered text\n\nMore text',
     textTruncated: false,
     links: [
-      { text: 'Docs', url: 'https://example.test/docs' },
+      { text: 'Docs\nLink', url: 'https://example.test/docs' },
+      { text: 'Other Link', url: 'https://example.test/other' },
     ],
   });
 });

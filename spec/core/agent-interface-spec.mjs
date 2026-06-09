@@ -50,6 +50,41 @@ class ToolFinalizingAgent extends AgentInterface {
   }
 }
 
+class ToolFinalizingProviderFrameAgent extends AgentInterface {
+  async *ask(_prompt, options = {}) {
+    options.tools['agent-respond']({ text: 'tool final answer' });
+    yield {
+      id: 'provider_frame_1',
+      type: 'AgentMessage',
+      content: {
+        text: 'provider fallback answer',
+        thinking: {
+          text: 'provider thinking',
+          status: 'complete',
+        },
+        model: 'test-model',
+        status: 'complete',
+        toolResults: [
+          {
+            toolName: 'web-search',
+            result: {
+              resultCount: 2,
+            },
+          },
+        ],
+      },
+    };
+    yield {
+      type: 'Done',
+      content: {
+        usage: {
+          totalTokens: 12,
+        },
+      },
+    };
+  }
+}
+
 class NullResponseAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
     return options.tools['agent-null-response']('forwarded elsewhere');
@@ -367,6 +402,43 @@ test('AgentInterface base loop exposes response tools that can finalize without 
     {
       type: 'AgentMessage',
       content: { text: 'tool final answer' },
+    },
+    {
+      type: 'Done',
+      content: {
+        status: 'finalized',
+      },
+    },
+  ]);
+});
+
+test('AgentInterface base loop preserves provider frame metadata after response-tool finalization', async () => {
+  let agent = new ToolFinalizingProviderFrameAgent();
+  let outputs = await collect(agent.run(baseLoopParams({
+    frames: [],
+  })));
+
+  assert.deepEqual(outputs, [
+    {
+      id: 'provider_frame_1',
+      type: 'AgentMessage',
+      content: {
+        text: 'tool final answer',
+        thinking: {
+          text: 'provider thinking',
+          status: 'complete',
+        },
+        model: 'test-model',
+        status: 'complete',
+        toolResults: [
+          {
+            toolName: 'web-search',
+            result: {
+              resultCount: 2,
+            },
+          },
+        ],
+      },
     },
     {
       type: 'Done',

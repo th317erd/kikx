@@ -230,6 +230,15 @@ export class AgentInterface extends PluginInterface {
       if (handleLoopControl(output, state))
         continue;
 
+      if (state.finalized && output?.type === 'AgentMessage') {
+        output = mergeFinalizedProviderFrame(output, state.finalFrame);
+        state.finalFrame = output;
+        yieldedOutput = true;
+        state.yieldedAgentMessage = true;
+        yield output;
+        continue;
+      }
+
       if (state.break || state.nullResponse || state.forwarded || state.finalized)
         continue;
 
@@ -450,6 +459,23 @@ function handleLoopControl(output, state) {
   }
 
   return false;
+}
+
+function mergeFinalizedProviderFrame(providerFrame, finalFrame) {
+  if (!finalFrame?.content)
+    return providerFrame;
+
+  return {
+    ...providerFrame,
+    content: {
+      ...(providerFrame.content && typeof providerFrame.content === 'object' && !Array.isArray(providerFrame.content)
+        ? providerFrame.content
+        : {}),
+      ...(finalFrame.content && typeof finalFrame.content === 'object' && !Array.isArray(finalFrame.content)
+        ? finalFrame.content
+        : {}),
+    },
+  };
 }
 
 function recordForward(state, forward) {
