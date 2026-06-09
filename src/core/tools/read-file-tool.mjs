@@ -2,8 +2,6 @@
 
 import { PluginInterface } from '../plugins/index.mjs';
 
-const MAX_BYTES_LIMIT = 1048576;
-
 export class ReadFileTool extends PluginInterface {
   static pluginID = 'internal:filesystem';
   static featureName = 'read-file';
@@ -22,17 +20,11 @@ export class ReadFileTool extends PluginInterface {
         enum: [ 'utf8', 'base64' ],
         description: 'Output encoding for the returned file content.',
       },
-      maxBytes: {
-        type: 'integer',
-        minimum: 1,
-        maximum: MAX_BYTES_LIMIT,
-        description: 'Maximum bytes to read from the file.',
-      },
     },
     required: [ 'path' ],
     additionalProperties: false,
   };
-  static help = 'Use read-file to inspect a local file by path. It returns content, size, bytes read, and whether the content was truncated.';
+  static help = 'Use read-file to inspect a local file by path. The full output is stored in AeorDB; very large results will be returned as a tool output pointer that you can read with tool-output-get.';
 
   async _execute(params = {}) {
     return await resolveFileAccess(this.context).readFile(params);

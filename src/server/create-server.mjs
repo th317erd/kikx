@@ -19,6 +19,7 @@ import {
   PuppeteerBrowserService,
   registerBuiltInTools,
   ToolExecutionService,
+  ToolOutputStore,
 } from '../core/tools/index.mjs';
 
 const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
@@ -56,8 +57,16 @@ export function createServer(options = {}) {
   if (!context.has('fileAccess'))
     context.set('fileAccess', new LocalFileAccessService({ cwd: process.cwd() }));
 
+  if (!context.has('toolOutputStore')) {
+    context.set('toolOutputStore', new ToolOutputStore({
+      aeordb: context.require('aeordb'),
+    }));
+  }
+
   if (!context.has('toolExecutor'))
-    context.set('toolExecutor', new ToolExecutionService());
+    context.set('toolExecutor', new ToolExecutionService({
+      toolOutputStore: context.require('toolOutputStore'),
+    }));
 
   if (!context.has('commandRegistry'))
     context.set('commandRegistry', new CommandRegistry());

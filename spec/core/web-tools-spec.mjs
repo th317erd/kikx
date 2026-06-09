@@ -13,9 +13,27 @@ import {
   PuppeteerBrowserService,
   ReadFileTool,
   registerBuiltInTools,
+  ToolExecutionService,
+  ToolOutputGetTool,
+  ToolOutputStore,
   WebFetchTool,
   WebSearchTool,
 } from '../../src/core/tools/index.mjs';
+
+class EchoTool {
+  constructor(context = {}) {
+    this.context = context;
+  }
+
+  async execute(input = {}) {
+    return {
+      text: input.text,
+      agentID: input._agentID,
+      sessionID: input._sessionID,
+      frameID: input._frameID,
+    };
+  }
+}
 
 test('registerBuiltInTools registers global web tools with OpenAI-safe names', () => {
   let registry = new PluginRegistry({ logger: { warn() {} } });
@@ -25,6 +43,7 @@ test('registerBuiltInTools registers global web tools with OpenAI-safe names', (
   assert.equal(registry.getTool('web-search'), WebSearchTool);
   assert.equal(registry.getTool('web-fetch'), WebFetchTool);
   assert.equal(registry.getTool('read-file'), ReadFileTool);
+  assert.equal(registry.getTool('tool-output-get'), ToolOutputGetTool);
   assert.equal([...registry.getTools().keys()].every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
 });
 
@@ -40,16 +59,121 @@ test('ReadFileTool reads local files through the file access service', async () 
   });
   let result = await tool.execute({
     path: 'sample.txt',
-    maxBytes: 5,
   });
 
   assert.equal(result.requestedPath, 'sample.txt');
   assert.equal(result.path, filePath);
   assert.equal(result.encoding, 'utf8');
   assert.equal(result.sizeBytes, 12);
-  assert.equal(result.bytesRead, 5);
+  assert.equal(result.bytesRead, 12);
+  assert.equal(result.truncated, false);
+  assert.equal(result.content, 'hello world\n');
+});
+
+test('ToolExecutionService stores every tool result and returns inline envelope below limit', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let store = new ToolOutputStore({
+    aeordb,
+    idGenerator: () => 'OUT1',
+    clock: () => '2026-06-08T00:00:00.000Z',
+  });
+  let result = await new ToolExecutionService({ toolOutputStore: store }).executeTool({
+    toolName: 'global-echo',
+    ToolClass: EchoTool,
+    input: { text: 'hello' },
+    context: {
+      agent: { id: 'agent_1' },
+      session: { id: 'ses_1' },
+      frame: { id: 'frm_1' },
+    },
+  });
+
+  assert.equal(result.type, 'ToolOutput');
+  assert.equal(result.toolOutputID, 'OUT1');
+  assert.equal(result.stored, true);
+  assert.equal(result.inline, true);
+  assert.equal(result.retrieval.getTool, 'tool-output-get');
+  assert.deepEqual(result.retrieval.getAll.arguments, {
+    id: 'OUT1',
+    full: true,
+  });
+  assert.deepEqual(result.result, {
+    text: 'hello',
+    agentID: 'agent_1',
+    sessionID: 'ses_1',
+    frameID: 'frm_1',
+  });
+
+  assert.ok(aeordb.files.has('/kikx/tool-outputs/.aeordb-config/indexes.json'));
+  assert.equal(aeordb.files.get('/kikx/tool-outputs/OUT1/metadata.json').toolName, 'global-echo');
+  assert.match(aeordb.files.get('/kikx/tool-outputs/OUT1/result.txt'), /"text": "hello"/);
+});
+
+test('ToolExecutionService returns a pointer envelope for outputs above inline limit', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let store = new ToolOutputStore({
+    aeordb,
+    inlineLimitBytes: 180,
+    defaultReadBytes: 32,
+    idGenerator: () => 'BIG1',
+  });
+
+  class BigTool {
+    async execute() {
+      return { content: 'x'.repeat(512) };
+    }
+  }
+
+  let result = await new ToolExecutionService({ toolOutputStore: store }).executeTool({
+    toolName: 'big-tool',
+    ToolClass: BigTool,
+    input: {},
+    context: {},
+  });
+
+  assert.equal(result.type, 'ToolOutputPointer');
+  assert.equal(result.toolOutputID, 'BIG1');
+  assert.equal(result.inline, false);
+  assert.equal(result.sizeBytes > 512, true);
+  assert.equal(result.retrieval.getRange.tool, 'tool-output-get');
+  assert.deepEqual(result.retrieval.getRange.arguments, {
+    id: 'BIG1',
+    start: 0,
+    end: 32,
+  });
+  assert.match(result.message, /tool-output-get/);
+  assert.match(result.message, /"full":true/);
+  assert.equal('result' in result, false);
+  assert.match(aeordb.files.get('/kikx/tool-outputs/BIG1/result.txt'), /"content"/);
+});
+
+test('ToolOutputGetTool retrieves stored output ranges', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let store = new ToolOutputStore({
+    aeordb,
+    idGenerator: () => 'RANGE1',
+  });
+  await store.storeToolOutput({
+    toolName: 'plain-text',
+    result: 'abcdef',
+  });
+
+  let tool = new ToolOutputGetTool({
+    services: { toolOutputStore: store },
+  });
+  let result = await tool.execute({
+    id: 'RANGE1',
+    start: 2,
+    end: 5,
+  });
+
+  assert.equal(result.id, 'RANGE1');
+  assert.equal(result.content, 'cde');
+  assert.equal(result.start, 2);
+  assert.equal(result.end, 5);
+  assert.equal(result.returnedBytes, 3);
   assert.equal(result.truncated, true);
-  assert.equal(result.content, 'hello');
+  assert.ok(aeordb.calls.some((call) => call.method === 'getFile' && call.options?.headers?.Range === 'bytes=2-4'));
 });
 
 test('ReadFileTool requires consolidated file access service', async () => {
@@ -345,3 +469,36 @@ test('PuppeteerBrowserService falls back to headless stealth launch with a Chrom
   assert.deepEqual(launchOptions.args.slice(0, 2), [ '--no-sandbox', '--disable-setuid-sandbox' ]);
   assert.equal(closed, true);
 });
+
+function createFakeToolOutputDB() {
+  let files = new Map();
+  let calls = [];
+
+  return {
+    files,
+    calls,
+    async putFile(path, body, options = {}) {
+      calls.push({ method: 'putFile', path, body, options });
+      files.set(path, body);
+      return { path };
+    },
+    async getFile(path, options = {}) {
+      calls.push({ method: 'getFile', path, options });
+      if (!files.has(path)) {
+        let error = new Error(`missing file: ${path}`);
+        error.status = 404;
+        throw error;
+      }
+
+      let value = files.get(path);
+      if (options.expectJSON === false)
+        return String(value ?? '');
+
+      return value;
+    },
+    async searchFiles(search) {
+      calls.push({ method: 'searchFiles', search });
+      return { results: [] };
+    },
+  };
+}

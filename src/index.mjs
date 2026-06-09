@@ -11,5 +11,15 @@ export { PermissionRequiredError } from './core/permissions/permission-required-
 export { PluginInterface, PluginRegistry } from './core/plugins/index.mjs';
 export { BaseFramePlugin, FrameRouter, SelectorCompiler } from './core/routing/index.mjs';
 export { FrameRuntime } from './core/runtime/index.mjs';
-export { PuppeteerBrowserService, WebFetchTool, WebSearchTool, registerBuiltInTools } from './core/tools/index.mjs';
+export {
+  LocalFileAccessService,
+  PuppeteerBrowserService,
+  ReadFileTool,
+  ToolExecutionService,
+  ToolOutputGetTool,
+  ToolOutputStore,
+  WebFetchTool,
+  WebSearchTool,
+  registerBuiltInTools,
+} from './core/tools/index.mjs';
 export { createServer } from './server/create-server.mjs';

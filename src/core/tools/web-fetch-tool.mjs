@@ -3,7 +3,6 @@
 import { PluginInterface } from '../plugins/index.mjs';
 
 const DEFAULT_TIMEOUT_MS = 15000;
-const DEFAULT_MAX_TEXT_LENGTH = 12000;
 const DEFAULT_MAX_LINKS = 25;
 
 export class WebFetchTool extends PluginInterface {
@@ -32,8 +31,7 @@ export class WebFetchTool extends PluginInterface {
       maxTextLength: {
         type: 'integer',
         minimum: 1000,
-        maximum: 50000,
-        description: 'Maximum visible text characters to return.',
+        description: 'Optional maximum visible text characters to return. Omit this to return all rendered text.',
       },
       maxLinks: {
         type: 'integer',
@@ -51,7 +49,7 @@ export class WebFetchTool extends PluginInterface {
     let url = normalizeHTTPURL(params.url);
     let selector = normalizeOptionalString(params.selector);
     let timeoutMs = clampInteger(params.timeoutMs, DEFAULT_TIMEOUT_MS, 1000, 60000);
-    let maxTextLength = clampInteger(params.maxTextLength, DEFAULT_MAX_TEXT_LENGTH, 1000, 50000);
+    let maxTextLength = normalizeOptionalPositiveInteger(params.maxTextLength);
     let maxLinks = clampInteger(params.maxLinks, DEFAULT_MAX_LINKS, 0, 100);
     let browserService = resolveBrowserService(this.context);
 
@@ -115,8 +113,8 @@ function extractPageSnapshot({ selector, maxTextLength, maxLinks }) {
   return {
     title: document.title || '',
     url: location.href,
-    text: fullText.slice(0, maxTextLength),
-    textTruncated: fullText.length > maxTextLength,
+    text: maxTextLength == null ? fullText : fullText.slice(0, maxTextLength),
+    textTruncated: maxTextLength == null ? false : fullText.length > maxTextLength,
     links,
   };
 }
@@ -181,4 +179,15 @@ function clampInteger(value, defaultValue, min, max) {
 
   number = Math.trunc(number);
   return Math.min(max, Math.max(min, number));
+}
+
+function normalizeOptionalPositiveInteger(value) {
+  if (value == null || value === '')
+    return null;
+
+  let number = Number(value);
+  if (!Number.isFinite(number) || number < 1)
+    throw new TypeError('maxTextLength must be a positive integer');
+
+  return Math.trunc(number);
 }

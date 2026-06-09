@@ -1,5 +1,13 @@
 # TODO
 
+- [x] Persist full tool outputs and return large-result pointers.
+  - [x] Add AeorDB-backed tool output store with metadata indexes.
+  - [x] Add `tool-output-get` retrieval tool with byte-range arguments.
+  - [x] Store registered tool results through the central tool executor.
+  - [x] Remove read-file output truncation.
+  - [x] Verify focused tests.
+  - [x] Verify full tests.
+
 - [x] Add built-in read-file agent tool.
   - [x] Route registered agent tools through a central tool executor service.
   - [x] Add a local file access service for filesystem reads.
