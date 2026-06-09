@@ -1,5 +1,12 @@
 # TODO
 
+- [x] Add built-in read-file agent tool.
+  - [x] Route registered agent tools through a central tool executor service.
+  - [x] Add a local file access service for filesystem reads.
+  - [x] Register the `read-file` global tool.
+  - [x] Verify focused tests.
+  - [x] Verify full tests.
+
 - [x] Make global web tools work through live agent routing.
   - [x] Add DuckDuckGo HTML fallback when Instant Answer has no usable search results.
   - [x] Fix browser-context extraction in `web-fetch`.

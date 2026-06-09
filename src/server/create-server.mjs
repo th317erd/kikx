@@ -15,8 +15,10 @@ import { FrameRouter } from '../core/routing/index.mjs';
 import { FrameRuntime } from '../core/runtime/frame-runtime.mjs';
 import { TokenUsageTracker } from '../core/tokens/index.mjs';
 import {
+  LocalFileAccessService,
   PuppeteerBrowserService,
   registerBuiltInTools,
+  ToolExecutionService,
 } from '../core/tools/index.mjs';
 
 const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
@@ -50,6 +52,12 @@ export function createServer(options = {}) {
       logger: options.logger || console,
     }));
   }
+
+  if (!context.has('fileAccess'))
+    context.set('fileAccess', new LocalFileAccessService({ cwd: process.cwd() }));
+
+  if (!context.has('toolExecutor'))
+    context.set('toolExecutor', new ToolExecutionService());
 
   if (!context.has('commandRegistry'))
     context.set('commandRegistry', new CommandRegistry());

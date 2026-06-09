@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AgentInterface, PluginInterface, PluginRegistry } from '../../src/core/plugins/index.mjs';
+import { ToolExecutionService } from '../../src/core/tools/index.mjs';
 
 class LoopAgent extends AgentInterface {
   constructor(options = {}) {
@@ -288,6 +289,59 @@ test('AgentInterface exposes registered global plugin tools to agent turns', asy
   assert.ok(agent.askCall.toolDefinitions.some((tool) => tool.name === 'global-echo'));
   assert.equal(agent.askCall.toolDefinitions.some((tool) => tool.name === 'legacy:bad-name'), false);
   assert.equal(outputs.some((output) => output.type === 'AgentMessage' && output.content.text === 'hello'), true);
+});
+
+test('AgentInterface routes registered global plugin tools through the tool executor service', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerTool('global-echo', GlobalEchoTool);
+  let calls = [];
+  let toolExecutor = {
+    async executeTool(call) {
+      calls.push(call);
+      return {
+        text: call.input.text,
+        agentID: call.context.agent.id,
+        sessionID: call.context.session.id,
+        frameID: call.context.frame.id,
+      };
+    },
+  };
+
+  let agent = new GlobalToolCallingAgent();
+  await collect(agent.run(baseLoopParams({
+    services: {
+      pluginRegistry,
+      toolExecutor,
+    },
+  })));
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].toolName, 'global-echo');
+  assert.equal(calls[0].ToolClass, GlobalEchoTool);
+  assert.deepEqual(calls[0].input, { text: 'hello' });
+  assert.equal(calls[0].context.agent.id, 'agent_1');
+  assert.deepEqual(agent.toolResult, {
+    text: 'hello',
+    agentID: 'agent_1',
+    sessionID: 'ses_1',
+    frameID: 'msg_1',
+  });
+});
+
+test('ToolExecutionService runs tool public execute path with agent context metadata', async () => {
+  let result = await new ToolExecutionService().executeTool({
+    toolName: 'global-echo',
+    ToolClass: GlobalEchoTool,
+    input: { text: 'hello' },
+    context: baseLoopParams(),
+  });
+
+  assert.deepEqual(result, {
+    text: 'hello',
+    agentID: 'agent_1',
+    sessionID: 'ses_1',
+    frameID: 'msg_1',
+  });
 });
 
 test('AgentInterface prompt includes session participant names without secrets', async () => {

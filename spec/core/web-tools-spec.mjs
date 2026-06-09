@@ -1,12 +1,17 @@
 'use strict';
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 
 import { PluginRegistry } from '../../src/core/plugins/index.mjs';
 import {
+  LocalFileAccessService,
   PuppeteerBrowserService,
+  ReadFileTool,
   registerBuiltInTools,
   WebFetchTool,
   WebSearchTool,
@@ -19,7 +24,41 @@ test('registerBuiltInTools registers global web tools with OpenAI-safe names', (
 
   assert.equal(registry.getTool('web-search'), WebSearchTool);
   assert.equal(registry.getTool('web-fetch'), WebFetchTool);
+  assert.equal(registry.getTool('read-file'), ReadFileTool);
   assert.equal([...registry.getTools().keys()].every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
+});
+
+test('ReadFileTool reads local files through the file access service', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-read-file-'));
+  let filePath = path.join(dir, 'sample.txt');
+  await fs.writeFile(filePath, 'hello world\n', 'utf8');
+
+  let tool = new ReadFileTool({
+    services: {
+      fileAccess: new LocalFileAccessService({ cwd: dir }),
+    },
+  });
+  let result = await tool.execute({
+    path: 'sample.txt',
+    maxBytes: 5,
+  });
+
+  assert.equal(result.requestedPath, 'sample.txt');
+  assert.equal(result.path, filePath);
+  assert.equal(result.encoding, 'utf8');
+  assert.equal(result.sizeBytes, 12);
+  assert.equal(result.bytesRead, 5);
+  assert.equal(result.truncated, true);
+  assert.equal(result.content, 'hello');
+});
+
+test('ReadFileTool requires consolidated file access service', async () => {
+  let tool = new ReadFileTool();
+
+  await assert.rejects(
+    () => tool.execute({ path: '/tmp/example.txt' }),
+    /read-file requires a fileAccess service/,
+  );
 });
 
 test('WebSearchTool queries DuckDuckGo instant answers and normalizes results', async () => {

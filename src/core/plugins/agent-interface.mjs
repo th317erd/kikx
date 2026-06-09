@@ -1,5 +1,6 @@
 'use strict';
 
+import { ToolExecutionService } from '../tools/tool-execution-service.mjs';
 import { PluginInterface } from './plugin-interface.mjs';
 
 const AGENT_TOOL_DEFINITIONS = [
@@ -548,18 +549,18 @@ function createRegisteredToolHandlers(context = {}) {
   if (!pluginRegistry?.getTools)
     return {};
 
+  let toolExecutor = resolveToolExecutor(context);
   let handlers = {};
   for (let [toolName, ToolClass] of pluginRegistry.getTools()) {
     if (!shouldExposeRegisteredTool(toolName, ToolClass))
       continue;
 
     handlers[toolName] = async (input = {}) => {
-      let tool = new ToolClass(createToolExecutionContext(context));
-      return await tool.execute({
-        ...normalizeToolInput(input),
-        _agentID: context.agent?.id || null,
-        _sessionID: context.session?.id || null,
-        _frameID: context.frame?.id || null,
+      return await toolExecutor.executeTool({
+        toolName,
+        ToolClass,
+        input,
+        context,
       });
     };
   }
@@ -567,20 +568,11 @@ function createRegisteredToolHandlers(context = {}) {
   return handlers;
 }
 
-function createToolExecutionContext(context = {}) {
-  return {
-    ...context,
-    services: context.services || {},
-    permissions: context.permissions,
-    fetchImpl: context.fetchImpl || context.services?.fetchImpl,
-  };
-}
-
-function normalizeToolInput(input) {
-  if (!input || typeof input !== 'object' || Array.isArray(input))
-    return { value: input };
-
-  return input;
+function resolveToolExecutor(context = {}) {
+  return context.toolExecutor
+    || context.services?.toolExecutor
+    || resolveService(context.services, 'toolExecutor')
+    || new ToolExecutionService();
 }
 
 function shouldExposeRegisteredTool(toolName, ToolClass) {

@@ -1,11 +1,13 @@
 'use strict';
 
+import { ReadFileTool } from './read-file-tool.mjs';
 import { WebFetchTool } from './web-fetch-tool.mjs';
 import { WebSearchTool } from './web-search-tool.mjs';
 
 export const BUILT_IN_TOOLS = [
   [ 'web-search', WebSearchTool ],
   [ 'web-fetch', WebFetchTool ],
+  [ 'read-file', ReadFileTool ],
 ];
 
 export function registerBuiltInTools(pluginRegistry) {
