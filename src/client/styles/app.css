@@ -402,6 +402,113 @@ kikx-app {
   white-space: pre-wrap;
 }
 
+.kikx-frame__content {
+  min-width: 0;
+  color: #edf2f7;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.kikx-markdown {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.kikx-markdown > * {
+  margin: 0;
+}
+
+.kikx-markdown__text {
+  white-space: normal;
+}
+
+.kikx-markdown :is(h1, h2, h3, h4, h5, h6) {
+  color: #f5f7fa;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.kikx-markdown h1 {
+  font-size: 1.25rem;
+}
+
+.kikx-markdown h2 {
+  font-size: 1.12rem;
+}
+
+.kikx-markdown h3,
+.kikx-markdown h4,
+.kikx-markdown h5,
+.kikx-markdown h6 {
+  font-size: 1rem;
+}
+
+.kikx-markdown ul,
+.kikx-markdown ol {
+  padding-left: 1.35rem;
+}
+
+.kikx-markdown li + li {
+  margin-top: 0.2rem;
+}
+
+.kikx-markdown blockquote {
+  padding-left: 0.8rem;
+  border-left: 3px solid #7ca7d9;
+  color: #c6d0da;
+}
+
+.kikx-markdown pre {
+  max-width: 100%;
+  padding: 10px;
+  overflow-x: auto;
+  border: 1px solid #303941;
+  border-radius: 6px;
+  background: #0d1013;
+}
+
+.kikx-markdown code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #242a30;
+  color: #f6f8fa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.95em;
+}
+
+.kikx-markdown pre code {
+  padding: 0;
+  background: transparent;
+  font-size: 0.92rem;
+  white-space: pre;
+}
+
+.kikx-markdown a {
+  color: #9cc7ff;
+  text-decoration: none;
+}
+
+.kikx-markdown a:hover {
+  text-decoration: underline;
+}
+
+.kikx-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.kikx-markdown th,
+.kikx-markdown td {
+  padding: 6px 8px;
+  border: 1px solid #303941;
+  text-align: left;
+}
+
+.kikx-markdown th {
+  background: #20262c;
+  font-weight: 700;
+}
+
 .kikx-frame__thinking {
   color: #aab4bf;
   font-style: italic;

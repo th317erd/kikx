@@ -1,5 +1,14 @@
 # TODO
 
+- [x] Render agent Markdown with Kikx-controlled HTML.
+  - [x] Add a client Markdown renderer that avoids paragraph wrapping.
+  - [x] Render agent messages and deltas through the Markdown renderer.
+  - [x] Add Markdown unit coverage for blocks, inline formatting, links, tables, and safe HTML handling.
+  - [x] Add Stagehand coverage for rendered agent Markdown.
+  - [x] Verify focused tests.
+  - [x] Verify Stagehand tests.
+  - [x] Verify full tests.
+
 - [x] Add built-in write-file agent tool.
   - [x] Add write-file schema and tool class.
   - [x] Route writes through the consolidated local file access service.

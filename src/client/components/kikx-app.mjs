@@ -1,6 +1,7 @@
 'use strict';
 
 import { elements, $ } from '../lib/aeor-ui.mjs';
+import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
 import {
   AUTH_STORAGE_KEY,
   getAgents,
@@ -401,10 +402,18 @@ export class KikxApp extends HTMLElement {
 
   _buildFrameContent(frame) {
     if (frame.type === 'AgentMessageDelta')
-      return p.class('kikx-frame__stream')(frame.content?.text || frame.content?.delta || '');
+      return renderMarkdownToElement(document, frame.content?.text || frame.content?.delta || '', {
+        className: 'kikx-frame__content kikx-frame__stream kikx-markdown',
+      });
 
     if (frame.type === 'AgentThinking')
       return p.class('kikx-frame__thinking')(frame.content?.text || '');
+
+    if (frame.type === 'AgentMessage') {
+      return renderMarkdownToElement(document, frame.content?.text || frame.contentText || frame.id, {
+        className: 'kikx-frame__content kikx-markdown',
+      });
+    }
 
     return p(frame.content?.text || frame.contentText || frame.id);
   }

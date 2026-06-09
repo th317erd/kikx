@@ -137,6 +137,6 @@ async function readRenderedAgentMessages(page) {
   return await page.evaluate(() => ({
     labels: Array.from(document.querySelectorAll('.kikx-frame--AgentMessage .kikx-frame__meta strong')).map((node) => node.textContent),
     secondary: Array.from(document.querySelectorAll('.kikx-frame--AgentMessage .kikx-frame__meta span')).map((node) => node.textContent),
-    bodies: Array.from(document.querySelectorAll('.kikx-frame--AgentMessage p')).map((node) => node.textContent),
+    bodies: Array.from(document.querySelectorAll('.kikx-frame--AgentMessage .kikx-frame__content')).map((node) => node.textContent),
   }));
 }
