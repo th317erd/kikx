@@ -308,6 +308,58 @@ test('ExecTool captures stderr and non-zero exit codes without throwing', async 
   assert.equal(result.stderr, 'err');
 });
 
+test('ExecTool keeps RVM-style login shell hooks working after commands enable nounset', async () => {
+  if (!fsSyncExists('/bin/bash'))
+    return;
+
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-exec-rvm-nounset-'));
+  let home = path.join(dir, 'home');
+  let nested = path.join(dir, 'nested');
+  await fs.mkdir(home);
+  await fs.mkdir(nested);
+  await fs.writeFile(path.join(home, '.bash_profile'), `
+__rvm_file_env_check_unload() {
+  if (( \${#rvm_saved_env[@]} > 0 )); then
+    :
+  fi
+  rvm_saved_env=()
+}
+
+__rvm_teardown_final() {
+  (( rvm_bash_nounset == 1 )) && set -o nounset
+}
+
+cd() {
+  builtin cd "$@"
+  __rvm_file_env_check_unload
+}
+
+trap '__rvm_teardown_final' EXIT
+`, 'utf8');
+
+  let tool = new ExecTool({
+    services: {
+      commandExecutor: new LocalCommandExecutionService({
+        cwd: dir,
+        shell: '/bin/bash',
+        env: {
+          HOME: home,
+          PATH: process.env.PATH,
+        },
+      }),
+    },
+  });
+
+  let result = await tool.execute({
+    command: 'set -u; cd nested; printf "%s" "$PWD"',
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.signal, null);
+  assert.equal(result.stdout, nested);
+  assert.equal(result.stderr, '');
+});
+
 test('ExecTool times out and reports killed command state', async () => {
   let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-exec-timeout-'));
   let home = path.join(dir, 'home');

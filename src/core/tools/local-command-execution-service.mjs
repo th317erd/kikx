@@ -6,6 +6,13 @@ import path from 'node:path';
 const DEFAULT_TIMEOUT_MS = 60000;
 const MAX_TIMEOUT_MS = 10 * 60 * 1000;
 const FORCE_KILL_DELAY_MS = 1000;
+const RVM_NOUNSET_COMPAT_PROLOGUE = [
+  '# Kikx exec: RVM hooks assume these globals exist when user commands enable nounset.',
+  'rvm_saved_env=()',
+  'rvm_bash_nounset=${rvm_bash_nounset:-0}',
+  'rvm_zsh_clobber=${rvm_zsh_clobber:-1}',
+  'rvm_zsh_nomatch=${rvm_zsh_nomatch:-1}',
+].join('\n');
 
 export class LocalCommandExecutionService {
   constructor(options = {}) {
@@ -48,7 +55,7 @@ async function runLoginShellCommand(options = {}) {
     let child;
 
     try {
-      child = spawn(options.shell, [ '-lc', options.command ], {
+      child = spawn(options.shell, [ '-lc', buildLoginShellCommand(options.command, options.shell) ], {
         cwd: options.cwd,
         env: options.env,
         detached: true,
@@ -107,6 +114,18 @@ async function runLoginShellCommand(options = {}) {
 
     child.stdin.end();
   });
+}
+
+function buildLoginShellCommand(command, shell) {
+  if (!isRVMCompatibleShell(shell))
+    return command;
+
+  return `${RVM_NOUNSET_COMPAT_PROLOGUE}\n${command}`;
+}
+
+function isRVMCompatibleShell(shell) {
+  let shellName = path.basename(shell || '');
+  return shellName === 'bash' || shellName === 'zsh';
 }
 
 function killProcessGroup(child, signal) {
