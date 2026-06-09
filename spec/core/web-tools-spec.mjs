@@ -18,6 +18,7 @@ import {
   ToolOutputStore,
   WebFetchTool,
   WebSearchTool,
+  WriteFileTool,
 } from '../../src/core/tools/index.mjs';
 
 class EchoTool {
@@ -43,6 +44,7 @@ test('registerBuiltInTools registers global web tools with OpenAI-safe names', (
   assert.equal(registry.getTool('web-search'), WebSearchTool);
   assert.equal(registry.getTool('web-fetch'), WebFetchTool);
   assert.equal(registry.getTool('read-file'), ReadFileTool);
+  assert.equal(registry.getTool('write-file'), WriteFileTool);
   assert.equal(registry.getTool('tool-output-get'), ToolOutputGetTool);
   assert.equal([...registry.getTools().keys()].every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
 });
@@ -148,6 +150,98 @@ test('ReadFileTool rejects ambiguous ranges', async () => {
       startCharacter: 0,
     }),
     /either a line range or a character range/,
+  );
+});
+
+test('WriteFileTool writes local files through the file access service', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-write-file-'));
+  let filePath = path.join(dir, 'nested', 'sample.txt');
+  let tool = new WriteFileTool({
+    services: {
+      fileAccess: new LocalFileAccessService({ cwd: dir }),
+    },
+  });
+
+  let result = await tool.execute({
+    path: 'nested/sample.txt',
+    content: 'hello world\n',
+  });
+
+  assert.equal(result.requestedPath, 'nested/sample.txt');
+  assert.equal(result.path, filePath);
+  assert.equal(result.encoding, 'utf8');
+  assert.equal(result.mode, 'overwrite');
+  assert.equal(result.bytesWritten, 12);
+  assert.equal(result.sizeBytes, 12);
+  assert.equal(result.created, true);
+  assert.equal(result.appended, false);
+  assert.equal(result.createDirectories, true);
+  assert.equal(await fs.readFile(filePath, 'utf8'), 'hello world\n');
+});
+
+test('WriteFileTool appends and create mode refuses existing files', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-write-append-'));
+  let filePath = path.join(dir, 'sample.txt');
+  await fs.writeFile(filePath, 'one\n', 'utf8');
+
+  let tool = new WriteFileTool({
+    services: {
+      fileAccess: new LocalFileAccessService({ cwd: dir }),
+    },
+  });
+  let appendResult = await tool.execute({
+    path: 'sample.txt',
+    content: 'two\n',
+    mode: 'append',
+  });
+
+  assert.equal(appendResult.created, false);
+  assert.equal(appendResult.appended, true);
+  assert.equal(appendResult.sizeBytes, 8);
+  assert.equal(await fs.readFile(filePath, 'utf8'), 'one\ntwo\n');
+
+  await assert.rejects(
+    () => tool.execute({
+      path: 'sample.txt',
+      content: 'three\n',
+      mode: 'create',
+    }),
+    /refusing to overwrite existing file/,
+  );
+  assert.equal(await fs.readFile(filePath, 'utf8'), 'one\ntwo\n');
+});
+
+test('WriteFileTool supports empty and base64 content', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-write-base64-'));
+  let tool = new WriteFileTool({
+    services: {
+      fileAccess: new LocalFileAccessService({ cwd: dir }),
+    },
+  });
+
+  let emptyResult = await tool.execute({
+    path: 'empty.txt',
+    content: '',
+  });
+  assert.equal(emptyResult.bytesWritten, 0);
+  assert.equal(await fs.readFile(path.join(dir, 'empty.txt'), 'utf8'), '');
+
+  let base64Result = await tool.execute({
+    path: 'binary.bin',
+    content: Buffer.from([ 0, 1, 2, 255 ]).toString('base64'),
+    encoding: 'base64',
+  });
+  assert.equal(base64Result.encoding, 'base64');
+  assert.equal(base64Result.bytesWritten, 4);
+  assert.deepEqual([...(await fs.readFile(path.join(dir, 'binary.bin')))], [ 0, 1, 2, 255 ]);
+});
+
+test('WriteFileTool requires consolidated file access service', async () => {
+  let tool = new WriteFileTool();
+
+  await assert.rejects(
+    () => tool.execute({ path: '/tmp/example.txt', content: 'hello' }),
+    /write-file requires a fileAccess service/,
   );
 });
 

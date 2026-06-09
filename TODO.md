@@ -1,5 +1,13 @@
 # TODO
 
+- [x] Add built-in write-file agent tool.
+  - [x] Add write-file schema and tool class.
+  - [x] Route writes through the consolidated local file access service.
+  - [x] Support overwrite, append, and create-only modes.
+  - [x] Add unit coverage for text, append/create, base64, empty content, and missing service.
+  - [x] Verify focused tests.
+  - [x] Verify full tests.
+
 - [x] Add read-file line and character range support.
   - [x] Add read-file schema parameters for line and character ranges.
   - [x] Return range metadata from the local file access service.

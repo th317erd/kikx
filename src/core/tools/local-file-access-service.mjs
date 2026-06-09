@@ -41,6 +41,40 @@ export class LocalFileAccessService {
       content,
     };
   }
+
+  async writeFile(params = {}) {
+    let requestedPath = normalizeRequiredString(params.path, 'path');
+    let absolutePath = path.resolve(this.cwd, requestedPath);
+    let encoding = normalizeEncoding(params.encoding);
+    let mode = normalizeWriteMode(params.mode);
+    let createDirectories = params.createDirectories !== false;
+    let content = normalizeContentString(params.content);
+    let buffer = encodeWriteContent(content, encoding);
+    let existedBefore = await pathExists(absolutePath);
+
+    if (mode === 'create' && existedBefore)
+      throw new Error(`write-file refusing to overwrite existing file: ${absolutePath}`);
+
+    if (createDirectories)
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+
+    await fs.writeFile(absolutePath, buffer, {
+      flag: writeFlagForMode(mode),
+    });
+
+    let stat = await fs.stat(absolutePath);
+    return {
+      requestedPath,
+      path: absolutePath,
+      encoding,
+      mode,
+      bytesWritten: buffer.length,
+      sizeBytes: stat.size,
+      created: !existedBefore,
+      appended: mode === 'append' && existedBefore,
+      createDirectories,
+    };
+  }
 }
 
 function normalizeRequiredString(value, fieldName) {
@@ -48,6 +82,13 @@ function normalizeRequiredString(value, fieldName) {
     throw new TypeError(`${fieldName} must be a non-empty string`);
 
   return value.trim();
+}
+
+function normalizeContentString(value) {
+  if (typeof value !== 'string')
+    throw new TypeError('content must be a string');
+
+  return value;
 }
 
 function normalizeEncoding(value) {
@@ -61,6 +102,45 @@ function normalizeEncoding(value) {
     throw new TypeError('encoding must be utf8 or base64');
 
   return value;
+}
+
+function normalizeWriteMode(value) {
+  if (value == null || value === '')
+    return 'overwrite';
+
+  if (value !== 'overwrite' && value !== 'append' && value !== 'create')
+    throw new TypeError('mode must be overwrite, append, or create');
+
+  return value;
+}
+
+function encodeWriteContent(content, encoding) {
+  if (encoding === 'base64')
+    return Buffer.from(content, 'base64');
+
+  return Buffer.from(content, 'utf8');
+}
+
+function writeFlagForMode(mode) {
+  if (mode === 'append')
+    return 'a';
+
+  if (mode === 'create')
+    return 'wx';
+
+  return 'w';
+}
+
+async function pathExists(filePath) {
+  try {
+    await fs.stat(filePath);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT')
+      return false;
+
+    throw error;
+  }
 }
 
 function normalizeRangeRequest(params = {}) {

@@ -20,6 +20,7 @@ export {
   ToolOutputStore,
   WebFetchTool,
   WebSearchTool,
+  WriteFileTool,
   registerBuiltInTools,
 } from './core/tools/index.mjs';
 export { createServer } from './server/create-server.mjs';

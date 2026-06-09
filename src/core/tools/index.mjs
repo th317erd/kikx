@@ -14,4 +14,5 @@ export {
 } from './tool-output-store.mjs';
 export { WebFetchTool } from './web-fetch-tool.mjs';
 export { WebSearchTool } from './web-search-tool.mjs';
+export { WriteFileTool } from './write-file-tool.mjs';
 export { registerBuiltInTools } from './register-built-in-tools.mjs';
