@@ -51,6 +51,16 @@ class ToolFinalizingAgent extends AgentInterface {
   }
 }
 
+class RespondAndContinueAgent extends AgentInterface {
+  async ask(_prompt, options = {}) {
+    return options.tools['agent-respond-and-continue']({
+      text: 'I started the work and will continue shortly.',
+      delayMs: 125,
+      reason: 'Run the next smoke check.',
+    });
+  }
+}
+
 class ToolFinalizingProviderFrameAgent extends AgentInterface {
   async *ask(_prompt, options = {}) {
     options.tools['agent-respond']({ text: 'tool final answer' });
@@ -262,6 +272,7 @@ test('AgentInterface base loop runs first-message hook before asking the provide
     'agent-finalize',
     'agent-null-response',
     'agent-respond',
+    'agent-respond-and-continue',
     'internal-forward',
     'loop-break',
   ]);
@@ -500,6 +511,27 @@ test('AgentInterface base loop preserves provider frame metadata after response-
       type: 'Done',
       content: {
         status: 'finalized',
+      },
+    },
+  ]);
+});
+
+test('AgentInterface base loop supports respond-and-continue control', async () => {
+  assert.deepEqual(await collect(new RespondAndContinueAgent().run(baseLoopParams())), [
+    {
+      type: 'AgentMessage',
+      content: {
+        text: 'I started the work and will continue shortly.',
+      },
+    },
+    {
+      type: 'Done',
+      content: {
+        status: 'respond-and-continue',
+        continuation: {
+          delayMs: 250,
+          reason: 'Run the next smoke check.',
+        },
       },
     },
   ]);

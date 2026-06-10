@@ -21,6 +21,34 @@ const AGENT_TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'agent-respond-and-continue',
+    description: 'Finalize this turn with a visible response, then schedule a delayed continuation back to this same agent.',
+    help: [
+      'Use agent-respond-and-continue when you need to tell the user or other agents what you did now, then resume your own work after a short timer.',
+      'This is a boomerang: your visible response ends this turn, and Kikx will route a hidden continuation frame back to you after delayMs.',
+      'Do not use this for ordinary final answers.',
+    ].join(' '),
+    parameters: {
+      type: 'object',
+      properties: {
+        text: {
+          type: 'string',
+          description: 'Visible response text for this turn.',
+        },
+        delayMs: {
+          type: 'integer',
+          description: 'Delay in milliseconds before this same agent receives a continuation frame. Defaults to 1000. Bounded by Kikx.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Short private note explaining what to continue doing when the timer fires.',
+        },
+      },
+      required: [ 'text' ],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'agent-finalize',
     description: 'Finalize this turn with a visible response from this agent after required work is complete.',
     help: 'Use agent-finalize as an explicit synonym for agent-respond after needed tool work is complete.',
@@ -186,7 +214,8 @@ export class AgentInterface extends PluginInterface {
       yield {
         type: 'Done',
         content: {
-          status: 'finalized',
+          status: state.continuation ? 'respond-and-continue' : 'finalized',
+          ...(state.continuation ? { continuation: state.continuation } : {}),
         },
       };
     }
@@ -313,6 +342,7 @@ export class AgentInterface extends PluginInterface {
       'Use explicit mentions first, then names or nicknames in the text, then conversation turn-taking and recent context. A message can be intended for another actor even when no @mention appears.',
       'Visible responses are final for the current turn. If you need to read, write, fetch, search, execute commands, or otherwise use tools, call those tools before agent-respond/agent-finalize.',
       'Do not promise future tool work in a visible response. Complete the tool work in this turn first, then summarize what happened.',
+      'Use agent-respond-and-continue only when you intentionally need a visible interim response plus a timer that returns control to you later.',
       '',
       'Agent character:',
       character || 'No custom character has been set. Act as a careful, technically rigorous Kikx agent.',
@@ -361,6 +391,7 @@ function createLoopState() {
     forwarded: false,
     forwardDispatched: false,
     finalFrame: null,
+    continuation: null,
     yieldedAgentMessage: false,
     forwards: [],
   };
@@ -380,11 +411,27 @@ function createLoopToolDefinitions(context = {}) {
 function createLoopTools(state, context) {
   let respond = (content) => {
     state.finalized = true;
+    state.continuation = null;
     state.finalFrame = {
       type: 'AgentMessage',
       content: normalizeToolResponseContent(content),
     };
     return { type: 'LoopControl', action: 'finalize', content: state.finalFrame.content };
+  };
+  let respondAndContinue = (content) => {
+    let continuation = normalizeContinuationRequest(content);
+    state.finalized = true;
+    state.continuation = continuation;
+    state.finalFrame = {
+      type: 'AgentMessage',
+      content: normalizeToolResponseContent(content),
+    };
+    return {
+      type: 'LoopControl',
+      action: 'respond-and-continue',
+      content: state.finalFrame.content,
+      continuation,
+    };
   };
   let finalize = (content) => respond(content);
   let nullResponse = (reason = '') => {
@@ -404,6 +451,7 @@ function createLoopTools(state, context) {
 
   let tools = {
     'agent-respond': respond,
+    'agent-respond-and-continue': respondAndContinue,
     'agent-finalize': finalize,
     'loop-break': breakLoop,
     'agent-character-set': setCharacter,
@@ -436,6 +484,17 @@ function handleLoopControl(output, state) {
 
   if (output.action === 'finalize') {
     state.finalized = true;
+    state.continuation = null;
+    state.finalFrame = {
+      type: 'AgentMessage',
+      content: normalizeToolResponseContent(output.content),
+    };
+    return true;
+  }
+
+  if (output.action === 'respond-and-continue') {
+    state.finalized = true;
+    state.continuation = normalizeContinuationRequest(output.continuation || output.content);
     state.finalFrame = {
       type: 'AgentMessage',
       content: normalizeToolResponseContent(output.content),
@@ -651,10 +710,42 @@ function normalizeToolResponseContent(content) {
   if (typeof content === 'string')
     return { text: content };
 
-  if (content && typeof content === 'object' && !Array.isArray(content))
-    return { ...content };
+  if (content && typeof content === 'object' && !Array.isArray(content)) {
+    let { delayMs: _delayMs, delayMS: _delayMS, delayMilliseconds: _delayMilliseconds, delaySeconds: _delaySeconds, seconds: _seconds, reason: _reason, ...rest } = content;
+    return { ...rest };
+  }
 
   return { text: String(content ?? '') };
+}
+
+function normalizeContinuationRequest(input) {
+  let payload = (input && typeof input === 'object' && !Array.isArray(input)) ? input : {};
+  return {
+    delayMs: normalizeContinuationDelay(payload.delayMs ?? payload.delayMS ?? payload.delayMilliseconds ?? secondsToMs(payload.delaySeconds ?? payload.seconds)),
+    reason: normalizeReason(payload.reason || payload.message || 'Continue this task after the timer fires.'),
+  };
+}
+
+function secondsToMs(value) {
+  if (value == null || value === '')
+    return null;
+
+  let number = Number(value);
+  if (!Number.isFinite(number))
+    return value;
+
+  return number * 1000;
+}
+
+function normalizeContinuationDelay(value) {
+  if (value == null || value === '')
+    return 1000;
+
+  let number = Number(value);
+  if (!Number.isFinite(number) || number < 0)
+    throw new TypeError('delayMs must be a non-negative finite number');
+
+  return Math.min(10 * 60 * 1000, Math.max(250, Math.trunc(number)));
 }
 
 function normalizeReason(reason) {
@@ -766,6 +857,12 @@ function buildRoutingPromptLines(context = {}) {
 
 function buildTriggerFramePromptLines(context = {}) {
   let frame = context.frame || {};
+  if (frame.type === 'AgentContinuation') {
+    return [
+      'Your respond-and-continue timer has fired and this hidden continuation frame has been routed back to you:',
+    ];
+  }
+
   if (frame.authorType === 'agent') {
     let label = normalizeOptionalPromptString(frame.authorDisplayName)
       || resolveParticipantName(context, frame.authorID)

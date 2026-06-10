@@ -7,6 +7,10 @@ import {
 } from '../mentions/index.mjs';
 import { normalizeProviderUsage } from '../tokens/index.mjs';
 
+const DEFAULT_CONTINUATION_DELAY_MS = 1000;
+const MIN_CONTINUATION_DELAY_MS = 250;
+const MAX_CONTINUATION_DELAY_MS = 10 * 60 * 1000;
+
 export class AgentRouteFramePlugin extends BaseFramePlugin {
   static pluginID = 'internal:agent-router';
 
@@ -66,6 +70,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
     let agent;
     let responseFrameID = null;
     let doneStatus = '';
+    let continuation = null;
     try {
       agent = await agentManager.getAgent(agentID, { includeSecrets: true });
       if (!agent?.id)
@@ -121,6 +126,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         if (output?.type === 'Done') {
           let status = normalizeDoneStatus(output.content?.status);
           doneStatus = status || doneStatus;
+          continuation = normalizeContinuation(output.content?.continuation) || continuation;
           if (shouldCleanupResponseFrame(status))
             this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status });
 
@@ -138,6 +144,9 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
 
         this.mergeProviderFrame(output, { agent, frame, responseFrameID });
       }
+
+      if (continuation && responseFrameID)
+        this.scheduleAgentContinuation({ agent, frame, responseFrameID, continuation, services });
 
       return { status: doneStatus };
     } catch (error) {
@@ -432,6 +441,74 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
   clock() {
     return this.context.services?.clock?.() || Date.now();
   }
+
+  scheduleAgentContinuation({ agent, frame, responseFrameID, continuation, services = {} }) {
+    let scheduler = resolveContinuationScheduler(services);
+    let delayMs = normalizeContinuationDelay(continuation.delayMs);
+    let schedule = {
+      agentID: agent.id,
+      responseFrameID,
+      sourceFrameID: frame.id,
+      delayMs,
+      reason: continuation.reason || '',
+    };
+    scheduler({
+      delayMs,
+      continuation: schedule,
+      callback: async () => {
+        await this.createAgentContinuationFrame({
+          agent,
+          frame,
+          responseFrameID,
+          continuation: schedule,
+          services,
+        });
+      },
+    });
+  }
+
+  async createAgentContinuationFrame({ agent, frame, responseFrameID, continuation, services = {} }) {
+    let responseFrame = this.context.engine.get(responseFrameID);
+    if (!responseFrame || responseFrame.deleted === true)
+      return null;
+
+    let now = this.clock();
+    let continuationFrame = {
+      id: this.context.engine.idGenerator(),
+      type: 'AgentContinuation',
+      sessionID: frame.sessionID,
+      interactionID: frame.interactionID,
+      parentID: responseFrameID,
+      authorType: 'system',
+      authorID: 'internal:agent-continuation',
+      targetAgentID: agent.id,
+      timestamp: now,
+      createdAt: now,
+      updatedAt: now,
+      hidden: true,
+      deleted: false,
+      continuation: {
+        ...continuation,
+        firedAt: now,
+      },
+      content: {
+        text: buildContinuationPromptText({ agent, responseFrame, continuation }),
+        status: 'ready',
+        agentID: agent.id,
+        agentName: agent.name || agent.id,
+        sourceFrameID: frame.id,
+        responseFrameID,
+        reason: continuation.reason || '',
+      },
+    };
+
+    let merged = this.context.engine.merge([ continuationFrame ], {
+      authorType: 'system',
+      authorID: 'internal:agent-continuation',
+    });
+    await services?.frameRuntime?.frameStore?.flush?.();
+    return merged[0] || this.context.engine.get(continuationFrame.id) || continuationFrame;
+  }
 }
 
 export function registerAgentRouting(frameRouter) {
@@ -440,9 +517,13 @@ export function registerAgentRouting(frameRouter) {
 
   frameRouter.registerSelector('Type:UserMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
   frameRouter.registerSelector('Type:AgentMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
+  frameRouter.registerSelector('Type:AgentContinuation', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
 }
 
 function shouldRouteToAgents(context, frame) {
+  if (frame?.type === 'AgentContinuation')
+    return shouldRouteAgentContinuation(context, frame);
+
   if (!frame || frame.phantom || frame.hidden === true || frame.deleted === true)
     return false;
 
@@ -489,7 +570,21 @@ function shouldRouteAgentMessage(context, frame) {
   return becameVisible || finalized;
 }
 
+function shouldRouteAgentContinuation(context, frame) {
+  if (!frame || frame.deleted === true)
+    return false;
+
+  if (typeof frame.targetAgentID !== 'string' || frame.targetAgentID.trim() === '')
+    return false;
+
+  let operation = context.change?.operation || 'create';
+  return operation === 'create';
+}
+
 function resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID }) {
+  if (frame?.type === 'AgentContinuation')
+    return participantAgentIDs.includes(frame.targetAgentID) ? [ frame.targetAgentID ] : [];
+
   if (frame?.type === 'AgentMessage') {
     return participantAgentIDs.filter((agentID) => agentID !== frame.authorID);
   }
@@ -696,6 +791,54 @@ function normalizeProviderContent(output, existingResponseFrame) {
   };
 
   return content;
+}
+
+function normalizeContinuation(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return null;
+
+  return {
+    delayMs: normalizeContinuationDelay(value.delayMs),
+    reason: normalizeOptionalString(value.reason || value.message),
+  };
+}
+
+function normalizeContinuationDelay(value) {
+  if (value == null || value === '')
+    return DEFAULT_CONTINUATION_DELAY_MS;
+
+  let number = Number(value);
+  if (!Number.isFinite(number) || number < 0)
+    return DEFAULT_CONTINUATION_DELAY_MS;
+
+  return Math.min(MAX_CONTINUATION_DELAY_MS, Math.max(MIN_CONTINUATION_DELAY_MS, Math.trunc(number)));
+}
+
+function resolveContinuationScheduler(services = {}) {
+  let scheduler = resolveService(services, 'agentContinuationScheduler');
+  if (typeof scheduler === 'function')
+    return scheduler;
+
+  return ({ delayMs, callback }) => {
+    let timer = setTimeout(() => {
+      Promise.resolve(callback()).catch((error) => {
+        services?.logger?.error?.('Agent continuation callback failed', error);
+      });
+    }, delayMs);
+    timer.unref?.();
+    return timer;
+  };
+}
+
+function buildContinuationPromptText({ agent, responseFrame, continuation }) {
+  let priorText = normalizeOptionalString(responseFrame?.content?.text);
+  let reason = normalizeOptionalString(continuation.reason);
+  return [
+    `Your respond-and-continue timer has fired for ${agent.name || agent.id}.`,
+    reason ? `Continuation reason: ${reason}` : 'Continue the work you intentionally scheduled.',
+    priorText ? `Your previous visible response was:\n${priorText}` : '',
+    'Decide whether to use tools, respond visibly, schedule another continuation, or stay silent.',
+  ].filter(Boolean).join('\n\n');
 }
 
 function normalizeDoneStatus(status) {
