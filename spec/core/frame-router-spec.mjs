@@ -254,6 +254,7 @@ test('SlashCommandFramePlugin handles registered slash commands and stops propag
     type: 'UserMessage',
     sessionID: 'ses_1',
     interactionID: 'int_1',
+    hidden: false,
     content: { text: '/invite Coder' },
   }]);
   await tick();

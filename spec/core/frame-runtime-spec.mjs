@@ -274,6 +274,122 @@ test('FrameRuntime routes user messages through the configured frame router', as
   assert.equal(routed[0].services.frameRuntime, runtime);
 });
 
+test('FrameRuntime defers frames with scheduledAt until the scheduled queue dispatches them', async () => {
+  let routed = [];
+  let now = 1000;
+  let aeordb = createClient();
+  let router = new FrameRouter({ logger: quietLogger() });
+
+  class ObserverPlugin {
+    constructor(context = {}) {
+      this.context = context;
+    }
+
+    async process(next) {
+      routed.push({
+        frameID: this.context.newFrame.id,
+        scheduledDispatch: this.context.commit.scheduledDispatch === true,
+      });
+      await next(this.context);
+    }
+  }
+
+  router.registerSelector('Type:UserMessage', ObserverPlugin, 'observer');
+  let runtime = new FrameRuntime({
+    aeordb,
+    frameRouter: router,
+    clock: () => now,
+    idGenerator: (() => {
+      let ids = [ 'ses_1', 'commit_1', 'commit_2', 'commit_3' ];
+      let index = 0;
+      return () => ids[index++];
+    })(),
+  });
+
+  await runtime.createSession({ title: 'Scratch' });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'scheduled_msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'system',
+    authorID: 'test',
+    scheduledAt: 2000,
+    scheduledStatus: 'pending',
+    hidden: false,
+    content: { text: 'later' },
+  }], {
+    authorType: 'system',
+    authorID: 'test',
+  });
+  await runtime.frameRouter.flush();
+
+  assert.deepEqual(routed, []);
+
+  now = 2000;
+  let dispatched = await runtime.processScheduledFrames();
+  await runtime.frameRouter.flush();
+  await runtime.frameStore.flush();
+
+  assert.deepEqual(routed, [{
+    frameID: 'scheduled_msg_1',
+    scheduledDispatch: true,
+  }]);
+  assert.equal(dispatched[0].id, 'scheduled_msg_1');
+  assert.equal(entry.frameEngine.get('scheduled_msg_1').scheduledStatus, 'fired');
+});
+
+test('FrameRuntime reloads unfired scheduled frames from AeorDB before dispatch', async () => {
+  let routed = [];
+  let now = 2000;
+  let aeordb = createClient();
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'Persisted', updatedAt: 1000 });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-scheduled_msg_1.json', {
+    id: 'scheduled_msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    order: 1,
+    authorType: 'system',
+    authorID: 'test',
+    scheduledAt: 1500,
+    scheduledStatus: 'pending',
+    hidden: false,
+    content: { text: 'persisted later' },
+  });
+  let router = new FrameRouter({ logger: quietLogger() });
+
+  class ObserverPlugin {
+    constructor(context = {}) {
+      this.context = context;
+    }
+
+    async process(next) {
+      routed.push(this.context.newFrame.id);
+      await next(this.context);
+    }
+  }
+
+  router.registerSelector('Type:UserMessage', ObserverPlugin, 'observer');
+  let runtime = new FrameRuntime({
+    aeordb,
+    frameRouter: router,
+    clock: () => now,
+    idGenerator: (() => {
+      let ids = [ 'commit_1', 'commit_2' ];
+      let index = 0;
+      return () => ids[index++];
+    })(),
+  });
+
+  await runtime.loadScheduledFrames();
+  await runtime.processScheduledFrames();
+
+  assert.deepEqual(routed, [ 'scheduled_msg_1' ]);
+  assert.equal(runtime.requireSessionEntry('ses_1').frameEngine.get('scheduled_msg_1').scheduledStatus, 'fired');
+});
+
 test('FrameRuntime emits runtime events for persistent and phantom frames', async () => {
   let events = [];
   let aeordb = createClient();

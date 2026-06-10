@@ -73,6 +73,7 @@ export function registerMentionRouting(registry) {
 
 function shouldInspectFrame(frame) {
   return frame?.type === 'UserMessage'
+    && frame.hidden !== true
     && typeof frame.content?.text === 'string'
     && frame.content.text.includes('@');
 }

@@ -8,8 +8,7 @@ import {
 import { normalizeProviderUsage } from '../tokens/index.mjs';
 
 const DEFAULT_CONTINUATION_DELAY_MS = 1000;
-const MIN_CONTINUATION_DELAY_MS = 250;
-const MAX_CONTINUATION_DELAY_MS = 10 * 60 * 1000;
+const DEFAULT_CONTINUATION_PROMPT = 'Please continue what you were doing.';
 
 export class AgentRouteFramePlugin extends BaseFramePlugin {
   static pluginID = 'internal:agent-router';
@@ -146,7 +145,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       }
 
       if (continuation && responseFrameID)
-        this.scheduleAgentContinuation({ agent, frame, responseFrameID, continuation, services });
+        await this.scheduleAgentContinuation({ agent, frame, responseFrameID, continuation, services });
 
       return { status: doneStatus };
     } catch (error) {
@@ -442,32 +441,28 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
     return this.context.services?.clock?.() || Date.now();
   }
 
-  scheduleAgentContinuation({ agent, frame, responseFrameID, continuation, services = {} }) {
-    let scheduler = resolveContinuationScheduler(services);
+  async scheduleAgentContinuation({ agent, frame, responseFrameID, continuation, services = {} }) {
     let delayMs = normalizeContinuationDelay(continuation.delayMs);
+    let now = this.clock();
+    let scheduledAt = now + delayMsToClockUnits(delayMs, now);
     let schedule = {
       agentID: agent.id,
       responseFrameID,
       sourceFrameID: frame.id,
       delayMs,
-      reason: continuation.reason || '',
+      continuationPrompt: continuation.continuationPrompt || DEFAULT_CONTINUATION_PROMPT,
+      scheduledAt,
     };
-    scheduler({
-      delayMs,
+    return await this.createScheduledAgentContinuationFrame({
+      agent,
+      frame,
+      responseFrameID,
       continuation: schedule,
-      callback: async () => {
-        await this.createAgentContinuationFrame({
-          agent,
-          frame,
-          responseFrameID,
-          continuation: schedule,
-          services,
-        });
-      },
+      services,
     });
   }
 
-  async createAgentContinuationFrame({ agent, frame, responseFrameID, continuation, services = {} }) {
+  async createScheduledAgentContinuationFrame({ agent, frame, responseFrameID, continuation, services = {} }) {
     let responseFrame = this.context.engine.get(responseFrameID);
     if (!responseFrame || responseFrame.deleted === true)
       return null;
@@ -475,30 +470,33 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
     let now = this.clock();
     let continuationFrame = {
       id: this.context.engine.idGenerator(),
-      type: 'AgentContinuation',
+      type: 'UserMessage',
       sessionID: frame.sessionID,
       interactionID: frame.interactionID,
       parentID: responseFrameID,
       authorType: 'system',
       authorID: 'internal:agent-continuation',
       targetAgentID: agent.id,
-      timestamp: now,
+      timestamp: continuation.scheduledAt,
       createdAt: now,
       updatedAt: now,
+      scheduledAt: continuation.scheduledAt,
+      scheduledStatus: 'pending',
       hidden: true,
       deleted: false,
       continuation: {
         ...continuation,
-        firedAt: now,
+        kind: 'agent-respond-and-continue',
+        createdAt: now,
       },
       content: {
         text: buildContinuationPromptText({ agent, responseFrame, continuation }),
-        status: 'ready',
+        status: 'scheduled',
         agentID: agent.id,
         agentName: agent.name || agent.id,
         sourceFrameID: frame.id,
         responseFrameID,
-        reason: continuation.reason || '',
+        continuationPrompt: continuation.continuationPrompt || DEFAULT_CONTINUATION_PROMPT,
       },
     };
 
@@ -517,14 +515,13 @@ export function registerAgentRouting(frameRouter) {
 
   frameRouter.registerSelector('Type:UserMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
   frameRouter.registerSelector('Type:AgentMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
-  frameRouter.registerSelector('Type:AgentContinuation', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
 }
 
 function shouldRouteToAgents(context, frame) {
-  if (frame?.type === 'AgentContinuation')
-    return shouldRouteAgentContinuation(context, frame);
+  if (!frame || frame.phantom || frame.deleted === true)
+    return false;
 
-  if (!frame || frame.phantom || frame.hidden === true || frame.deleted === true)
+  if (frame.hidden === true && !isHiddenScheduledTargetFrame(context, frame))
     return false;
 
   if (frame.type === 'UserMessage')
@@ -570,20 +567,10 @@ function shouldRouteAgentMessage(context, frame) {
   return becameVisible || finalized;
 }
 
-function shouldRouteAgentContinuation(context, frame) {
-  if (!frame || frame.deleted === true)
-    return false;
-
-  if (typeof frame.targetAgentID !== 'string' || frame.targetAgentID.trim() === '')
-    return false;
-
-  let operation = context.change?.operation || 'create';
-  return operation === 'create';
-}
-
 function resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID }) {
-  if (frame?.type === 'AgentContinuation')
-    return participantAgentIDs.includes(frame.targetAgentID) ? [ frame.targetAgentID ] : [];
+  let targetAgentID = normalizeOptionalString(frame?.targetAgentID);
+  if (targetAgentID)
+    return participantAgentIDs.includes(targetAgentID) ? [ targetAgentID ] : [];
 
   if (frame?.type === 'AgentMessage') {
     return participantAgentIDs.filter((agentID) => agentID !== frame.authorID);
@@ -799,7 +786,7 @@ function normalizeContinuation(value) {
 
   return {
     delayMs: normalizeContinuationDelay(value.delayMs),
-    reason: normalizeOptionalString(value.reason || value.message),
+    continuationPrompt: normalizeOptionalString(value.continuationPrompt || value.prompt || value.reason || value.message) || DEFAULT_CONTINUATION_PROMPT,
   };
 }
 
@@ -811,34 +798,40 @@ function normalizeContinuationDelay(value) {
   if (!Number.isFinite(number) || number < 0)
     return DEFAULT_CONTINUATION_DELAY_MS;
 
-  return Math.min(MAX_CONTINUATION_DELAY_MS, Math.max(MIN_CONTINUATION_DELAY_MS, Math.trunc(number)));
-}
-
-function resolveContinuationScheduler(services = {}) {
-  let scheduler = resolveService(services, 'agentContinuationScheduler');
-  if (typeof scheduler === 'function')
-    return scheduler;
-
-  return ({ delayMs, callback }) => {
-    let timer = setTimeout(() => {
-      Promise.resolve(callback()).catch((error) => {
-        services?.logger?.error?.('Agent continuation callback failed', error);
-      });
-    }, delayMs);
-    timer.unref?.();
-    return timer;
-  };
+  return Math.trunc(number);
 }
 
 function buildContinuationPromptText({ agent, responseFrame, continuation }) {
   let priorText = normalizeOptionalString(responseFrame?.content?.text);
-  let reason = normalizeOptionalString(continuation.reason);
+  let continuationPrompt = normalizeOptionalString(continuation.continuationPrompt) || DEFAULT_CONTINUATION_PROMPT;
   return [
-    `Your respond-and-continue timer has fired for ${agent.name || agent.id}.`,
-    reason ? `Continuation reason: ${reason}` : 'Continue the work you intentionally scheduled.',
+    `Your scheduled respond-and-continue prompt has fired for ${agent.name || agent.id}.`,
+    continuationPrompt,
     priorText ? `Your previous visible response was:\n${priorText}` : '',
     'Decide whether to use tools, respond visibly, schedule another continuation, or stay silent.',
   ].filter(Boolean).join('\n\n');
+}
+
+function isHiddenScheduledTargetFrame(context, frame) {
+  if (context?.commit?.scheduledDispatch === true)
+    return typeof frame?.targetAgentID === 'string' && frame.targetAgentID.trim() !== '';
+
+  if (typeof frame?.targetAgentID !== 'string' || frame.targetAgentID.trim() === '')
+    return false;
+
+  let scheduledAt = Number(frame.scheduledAt);
+  if (!Number.isFinite(scheduledAt) || scheduledAt <= 0)
+    return false;
+
+  if (frame.scheduledStatus === 'fired' || frame.scheduledStatus === 'cancelled')
+    return false;
+
+  return scheduledAt <= (context?.services?.clock?.() || Date.now());
+}
+
+function delayMsToClockUnits(delayMs, now) {
+  let multiplier = Math.abs(Number(now)) >= 100_000_000_000_000 ? 1000 : 1;
+  return Math.trunc(delayMs * multiplier);
 }
 
 function normalizeDoneStatus(status) {

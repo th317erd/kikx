@@ -158,7 +158,7 @@ class ContinuingAgentProvider extends AgentInterface {
       text: params.frame.content?.text || '',
     });
 
-    if (params.frame.type === 'AgentContinuation') {
+    if (params.frame.authorID === 'internal:agent-continuation') {
       yield {
         type: 'AgentMessage',
         content: {
@@ -185,8 +185,8 @@ class ContinuingAgentProvider extends AgentInterface {
       content: {
         status: 'respond-and-continue',
         continuation: {
-          delayMs: 500,
-          reason: 'Continue the task after the short timer.',
+          delayMs: 0,
+          continuationPrompt: 'Please run the next step now.',
         },
       },
     };
@@ -850,13 +850,8 @@ test('AgentRouteFramePlugin cleans up silent response placeholders', async () =>
   assert.equal(agentFrames[0].content.status, 'null-response');
 });
 
-test('AgentRouteFramePlugin schedules respond-and-continue back to the same agent', async () => {
-  let scheduled = [];
+test('AgentRouteFramePlugin schedules respond-and-continue as a generic scheduled target frame', async () => {
   let runtime = createRuntime({
-    agentContinuationScheduler(schedule) {
-      scheduled.push(schedule);
-      return { scheduled: true };
-    },
     agents: new Map([
       [ 'agent_1', {
         id: 'agent_1',
@@ -884,31 +879,25 @@ test('AgentRouteFramePlugin schedules respond-and-continue back to the same agen
   });
   await runtime.appendUserMessage('ses_1', { text: 'start and keep working' });
 
-  assert.equal(scheduled.length, 1);
-  assert.equal(scheduled[0].delayMs, 500);
-  assert.deepEqual(scheduled[0].continuation, {
-    agentID: 'agent_1',
-    responseFrameID: 'agent_frame_1',
-    sourceFrameID: 'msg_1',
-    delayMs: 500,
-    reason: 'Continue the task after the short timer.',
-  });
-
-  await scheduled[0].callback();
+  await runtime.processScheduledFrames();
   await runtime.frameRouter.flush();
   await runtime.frameStore.flush();
 
   let frames = await runtime.listFrames('ses_1');
-  let continuationFrame = frames.find((frame) => frame.type === 'AgentContinuation');
+  let continuationFrame = frames.find((frame) => frame.authorID === 'internal:agent-continuation');
+  assert.equal(continuationFrame.type, 'UserMessage');
   assert.equal(continuationFrame.hidden, true);
   assert.equal(continuationFrame.targetAgentID, 'agent_1');
   assert.equal(continuationFrame.parentID, 'agent_frame_1');
-  assert.match(continuationFrame.content.text, /respond-and-continue timer has fired/);
+  assert.equal(continuationFrame.scheduledStatus, 'fired');
+  assert.equal(continuationFrame.scheduledAt, 1000);
+  assert.equal(continuationFrame.content.continuationPrompt, 'Please run the next step now.');
+  assert.match(continuationFrame.content.text, /scheduled respond-and-continue prompt has fired/);
 
   let calls = runtime.services.calls.filter((call) => call.method === 'continuing-run');
   assert.deepEqual(calls.map((call) => `${call.agentID}:${call.frameType}`), [
     'agent_1:UserMessage',
-    'agent_1:AgentContinuation',
+    'agent_1:UserMessage',
   ]);
   assert.equal(calls[1].targetAgentID, 'agent_1');
 
@@ -1086,13 +1075,11 @@ function createRuntime(options = {}) {
   let router = new FrameRouter({ logger: quietLogger() });
   router.registerSelector('Type:UserMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
   router.registerSelector('Type:AgentMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
-  router.registerSelector('Type:AgentContinuation', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
 
   let tokenUsage = options.tokenUsage || createTokenUsageStub();
   let services = {
     calls: [],
     tokenUsage,
-    ...(options.agentContinuationScheduler ? { agentContinuationScheduler: options.agentContinuationScheduler } : {}),
     pluginRegistry,
     agentManager,
     commandRegistry,

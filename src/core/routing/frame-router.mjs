@@ -83,6 +83,9 @@ export class FrameRouter {
       if (!frame)
         continue;
 
+      if (shouldDeferScheduledFrame(frame, commit))
+        continue;
+
       let registrations = this._matchingRegistrations(frame);
       if (registrations.length === 0)
         continue;
@@ -219,4 +222,35 @@ function computeChanges(previousFrame, newFrame) {
   }
 
   return changes;
+}
+
+function shouldDeferScheduledFrame(frame, commit) {
+  if (commit?.scheduledDispatch === true)
+    return false;
+
+  let scheduledAt = normalizeScheduledAt(frame?.scheduledAt);
+  if (!Number.isFinite(scheduledAt) || scheduledAt <= 0)
+    return false;
+
+  if (frame.scheduledStatus === 'fired' || frame.scheduledStatus === 'cancelled')
+    return false;
+
+  return scheduledAt > 0;
+}
+
+function normalizeScheduledAt(value) {
+  if (value instanceof Date)
+    return value.getTime() * 1000;
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    let number = Number(value);
+    if (Number.isFinite(number))
+      return number;
+
+    let parsed = Date.parse(value);
+    if (Number.isFinite(parsed))
+      return parsed * 1000;
+  }
+
+  return Number(value);
 }

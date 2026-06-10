@@ -98,6 +98,8 @@ export class AeorDBFrameStore {
             { name: 'authorID', type: 'string' },
             { name: 'hidden', type: 'string', source: [ 'hiddenIndex' ] },
             { name: 'deleted', type: 'string', source: [ 'deletedIndex' ] },
+            { name: 'scheduledAt', type: 'timestamp' },
+            { name: 'scheduledStatus', type: 'string' },
             { name: 'contentText', type: 'trigram' },
             { name: 'toolName', type: [ 'string', 'trigram' ], source: [ 'content', 'toolName' ] },
             { name: 'stateStatus', type: 'string', source: [ 'state', 'status' ] },
@@ -264,6 +266,86 @@ export class AeorDBFrameStore {
       return frames.sort(compareFrameOrder);
 
     return orderFramesByCommits(sessionID, frames, commits);
+  }
+
+  async listScheduledFrames(options = {}) {
+    let limit = normalizeLimit(options.limit, 500);
+    let offset = normalizeOffset(options.offset);
+    let frames = await this.searchScheduledFrames({ limit, offset });
+
+    if (frames)
+      return frames;
+
+    return await this.listScheduledFramesFallback({ limit, offset });
+  }
+
+  async searchScheduledFrames({ limit, offset }) {
+    if (typeof this.aeordb.searchFiles !== 'function')
+      return null;
+
+    let result;
+    try {
+      result = await this.aeordb.searchFiles({
+        path: `${this.rootPath}/sessions`,
+        where: {
+          and: [
+            { field: 'scheduledAt', op: 'gt', value: 0 },
+            { not: { field: 'scheduledStatus', op: 'eq', value: 'fired' } },
+            { not: { field: 'scheduledStatus', op: 'eq', value: 'cancelled' } },
+          ],
+        },
+        limit,
+        offset,
+      });
+    } catch (error) {
+      if (error?.status === 404)
+        return [];
+
+      if (!shouldFallbackToScheduledFrameScan(error))
+        throw error;
+
+      return null;
+    }
+
+    return await this.readScheduledFramePaths(pathsFromItems(result?.results || result?.items || []));
+  }
+
+  async listScheduledFramesFallback({ limit, offset }) {
+    let sessions = await this.listSessions({ limit: 500, offset: 0 });
+    let frames = [];
+
+    for (let session of sessions) {
+      let sessionFrames = await this.listFrames(session.id, { limit: 500, offset: 0 });
+      for (let frame of sessionFrames) {
+        if (isPendingScheduledFrame(frame))
+          frames.push(frame);
+      }
+    }
+
+    return frames
+      .sort(compareScheduledFrameOrder)
+      .slice(offset, offset + limit);
+  }
+
+  async readScheduledFramePaths(paths) {
+    let framePaths = uniqueStrings(paths)
+      .filter((path) => path.includes('/frames/'));
+    let reads = await readJSONFiles(this.aeordb, framePaths, {
+      fallbackOnBatchError: true,
+      continueOnError: true,
+    });
+    let frames = [];
+
+    for (let read of reads) {
+      if (read.error)
+        continue;
+
+      let frame = read.value;
+      if (isPendingScheduledFrame(frame))
+        frames.push(frame);
+    }
+
+    return frames.sort(compareScheduledFrameOrder);
   }
 
   async listCommits(sessionID, options = {}) {
@@ -454,6 +536,34 @@ function shouldFallbackToShallowSessionList(error) {
     return true;
 
   return /failed to list directory|Invalid hash algorithm|recursive traversal/i.test(error.message || '');
+}
+
+function shouldFallbackToScheduledFrameScan(error) {
+  if (!error)
+    return false;
+
+  if (error.status === 500)
+    return true;
+
+  return /no index|index|scheduledAt|search|query/i.test(error.message || '');
+}
+
+function isPendingScheduledFrame(frame) {
+  if (!frame?.id || !frame.type || frame.deleted === true)
+    return false;
+
+  let scheduledAt = Number(frame.scheduledAt);
+  if (!Number.isFinite(scheduledAt) || scheduledAt <= 0)
+    return false;
+
+  return frame.scheduledStatus !== 'fired' && frame.scheduledStatus !== 'cancelled';
+}
+
+function compareScheduledFrameOrder(a, b) {
+  return compareNumber(a?.scheduledAt, b?.scheduledAt)
+    || compareClock(a?.updatedClock, b?.updatedClock)
+    || compareNumber(a?.updatedAt, b?.updatedAt)
+    || String(a?.id || '').localeCompare(String(b?.id || ''));
 }
 
 function shouldIgnoreSessionDirectory(itemPath) {

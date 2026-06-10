@@ -6,6 +6,11 @@ export class SlashCommandFramePlugin extends BaseFramePlugin {
   static pluginID = 'internal:slash-command-router';
 
   async process(next, done) {
+    if (this.context.newFrame?.hidden === true) {
+      await next(this.context);
+      return;
+    }
+
     let parsed = parseSlashCommand(this.context.newFrame?.content?.text);
     if (!parsed) {
       await next(this.context);

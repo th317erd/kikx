@@ -127,6 +127,18 @@ export function createServer(options = {}) {
     }));
   }
 
+  if (!context.has('scheduledFrameWorkerPromise')) {
+    let frameRuntime = context.require('frameRuntime');
+    context.set('scheduledFrameWorkerPromise', Promise.resolve(
+      typeof frameRuntime.startScheduledFrameWorker === 'function' && canLoadScheduledFrames(frameRuntime)
+        ? frameRuntime.startScheduledFrameWorker()
+        : null,
+    ).catch((error) => {
+      (options.logger || console)?.error?.('Kikx scheduled frame worker failed to start', error);
+      return null;
+    }));
+  }
+
   if (!context.has('tokenUsageRuntimeBridge')) {
     let tokenUsage = context.require('tokenUsage');
     let frameRuntime = context.require('frameRuntime');
@@ -147,6 +159,12 @@ export function createServer(options = {}) {
       });
     }
   });
+}
+
+function canLoadScheduledFrames(frameRuntime) {
+  let aeordb = frameRuntime?.frameStore?.aeordb;
+  return typeof frameRuntime?.frameStore?.listScheduledFrames === 'function'
+    && (typeof aeordb?.searchFiles === 'function' || typeof aeordb?.listDirectory === 'function');
 }
 
 async function routeRequest({ request, response, context, staticRoots }) {

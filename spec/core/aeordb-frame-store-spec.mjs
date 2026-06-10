@@ -110,6 +110,8 @@ test('AeorDBFrameStore writes global and session-local index configs', async () 
   assert.ok(aeordb.calls[1].body.indexes.some((index) => index.name === 'contentText'));
   assert.ok(aeordb.calls[1].body.indexes.some((index) => index.name === 'createdClock'));
   assert.ok(aeordb.calls[1].body.indexes.some((index) => index.name === 'updatedClock'));
+  assert.ok(aeordb.calls[1].body.indexes.some((index) => index.name === 'scheduledAt'));
+  assert.ok(aeordb.calls[1].body.indexes.some((index) => index.name === 'scheduledStatus'));
   assert.ok(aeordb.calls[0].body.indexes.some((index) => index.name === 'coordinatorAgentID'));
 });
 
@@ -260,6 +262,37 @@ test('AeorDBFrameStore loads one session manifest and its frames on demand', asy
 
   assert.deepEqual(await store.loadSession('ses_1'), { id: 'ses_1', title: 'First' });
   assert.deepEqual((await store.listFrames('ses_1')).map((frame) => frame.id), [ 'msg_1', 'msg_2' ]);
+});
+
+test('AeorDBFrameStore lists pending scheduled frames for runtime queue hydration', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First' });
+  aeordb.files.set('/kikx/sessions/ses_2/session.json', { id: 'ses_2', title: 'Second' });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-later.json', {
+    id: 'later',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    order: 1,
+    scheduledAt: 5000,
+    scheduledStatus: 'pending',
+    content: { text: 'later' },
+  });
+  aeordb.files.set('/kikx/sessions/ses_2/interactions/int_2/frames/0000000000000001-UserMessage-done.json', {
+    id: 'done',
+    type: 'UserMessage',
+    sessionID: 'ses_2',
+    interactionID: 'int_2',
+    order: 1,
+    scheduledAt: 4000,
+    scheduledStatus: 'fired',
+    content: { text: 'done' },
+  });
+
+  let scheduledFrames = await store.listScheduledFrames();
+
+  assert.deepEqual(scheduledFrames.map((frame) => frame.id), [ 'later' ]);
 });
 
 test('AeorDBFrameStore orders frames by commit order and exposes missing committed frames', async () => {

@@ -24,8 +24,9 @@ const AGENT_TOOL_DEFINITIONS = [
     name: 'agent-respond-and-continue',
     description: 'Finalize this turn with a visible response, then schedule a delayed continuation back to this same agent.',
     help: [
-      'Use agent-respond-and-continue when you need to tell the user or other agents what you did now, then resume your own work after a short timer.',
+      'Use agent-respond-and-continue when you need to tell the user or other agents what you did now, then resume your own work at a scheduled time.',
       'This is a boomerang: your visible response ends this turn, and Kikx will route a hidden continuation frame back to you after delayMs.',
+      'This is the proper tool for progress updates when you must continue the task yourself after reporting progress.',
       'Do not use this for ordinary final answers.',
     ].join(' '),
     parameters: {
@@ -37,11 +38,11 @@ const AGENT_TOOL_DEFINITIONS = [
         },
         delayMs: {
           type: 'integer',
-          description: 'Delay in milliseconds before this same agent receives a continuation frame. Defaults to 1000. Bounded by Kikx.',
+          description: 'Delay in milliseconds before this same agent receives a continuation frame. Defaults to 1000. May be 0 or any future delay.',
         },
-        reason: {
+        continuationPrompt: {
           type: 'string',
-          description: 'Short private note explaining what to continue doing when the timer fires.',
+          description: 'Prompt text Kikx will send back to you when the timer fires. Defaults to "Please continue what you were doing."',
         },
       },
       required: [ 'text' ],
@@ -342,7 +343,7 @@ export class AgentInterface extends PluginInterface {
       'Use explicit mentions first, then names or nicknames in the text, then conversation turn-taking and recent context. A message can be intended for another actor even when no @mention appears.',
       'Visible responses are final for the current turn. If you need to read, write, fetch, search, execute commands, or otherwise use tools, call those tools before agent-respond/agent-finalize.',
       'Do not promise future tool work in a visible response. Complete the tool work in this turn first, then summarize what happened.',
-      'Use agent-respond-and-continue only when you intentionally need a visible interim response plus a timer that returns control to you later.',
+      'Use agent-respond-and-continue when you need to report progress, yield the current turn, and schedule Kikx to prompt you to continue later.',
       '',
       'Agent character:',
       character || 'No custom character has been set. Act as a careful, technically rigorous Kikx agent.',
@@ -711,7 +712,17 @@ function normalizeToolResponseContent(content) {
     return { text: content };
 
   if (content && typeof content === 'object' && !Array.isArray(content)) {
-    let { delayMs: _delayMs, delayMS: _delayMS, delayMilliseconds: _delayMilliseconds, delaySeconds: _delaySeconds, seconds: _seconds, reason: _reason, ...rest } = content;
+    let {
+      delayMs: _delayMs,
+      delayMS: _delayMS,
+      delayMilliseconds: _delayMilliseconds,
+      delaySeconds: _delaySeconds,
+      seconds: _seconds,
+      continuationPrompt: _continuationPrompt,
+      prompt: _prompt,
+      reason: _reason,
+      ...rest
+    } = content;
     return { ...rest };
   }
 
@@ -722,7 +733,7 @@ function normalizeContinuationRequest(input) {
   let payload = (input && typeof input === 'object' && !Array.isArray(input)) ? input : {};
   return {
     delayMs: normalizeContinuationDelay(payload.delayMs ?? payload.delayMS ?? payload.delayMilliseconds ?? secondsToMs(payload.delaySeconds ?? payload.seconds)),
-    reason: normalizeReason(payload.reason || payload.message || 'Continue this task after the timer fires.'),
+    continuationPrompt: normalizeReason(payload.continuationPrompt || payload.prompt || payload.reason || 'Please continue what you were doing.'),
   };
 }
 
@@ -745,7 +756,7 @@ function normalizeContinuationDelay(value) {
   if (!Number.isFinite(number) || number < 0)
     throw new TypeError('delayMs must be a non-negative finite number');
 
-  return Math.min(10 * 60 * 1000, Math.max(250, Math.trunc(number)));
+  return Math.trunc(number);
 }
 
 function normalizeReason(reason) {
@@ -857,9 +868,9 @@ function buildRoutingPromptLines(context = {}) {
 
 function buildTriggerFramePromptLines(context = {}) {
   let frame = context.frame || {};
-  if (frame.type === 'AgentContinuation') {
+  if (frame.continuation?.kind === 'agent-respond-and-continue' || frame.authorID === 'internal:agent-continuation') {
     return [
-      'Your respond-and-continue timer has fired and this hidden continuation frame has been routed back to you:',
+      'Your scheduled respond-and-continue prompt has fired and this hidden continuation frame has been routed back to you:',
     ];
   }
 

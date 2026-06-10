@@ -5,6 +5,8 @@ export function pathsFromItems(items = []) {
   for (let item of items) {
     if (item?.path)
       paths.push(item.path);
+    else if (item?.['@path'])
+      paths.push(item['@path']);
   }
 
   return paths;

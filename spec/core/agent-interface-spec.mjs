@@ -55,8 +55,8 @@ class RespondAndContinueAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
     return options.tools['agent-respond-and-continue']({
       text: 'I started the work and will continue shortly.',
-      delayMs: 125,
-      reason: 'Run the next smoke check.',
+      delayMs: 0,
+      continuationPrompt: 'Run the next smoke check.',
     });
   }
 }
@@ -529,8 +529,8 @@ test('AgentInterface base loop supports respond-and-continue control', async () 
       content: {
         status: 'respond-and-continue',
         continuation: {
-          delayMs: 250,
-          reason: 'Run the next smoke check.',
+          delayMs: 0,
+          continuationPrompt: 'Run the next smoke check.',
         },
       },
     },

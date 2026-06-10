@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { AeorDBFrameStore } from '../aeordb/aeordb-frame-store.mjs';
 import { HybridLogicalClock, defaultUnixMicros } from '../clock/hybrid-logical-clock.mjs';
 import { FrameEngine } from '../frames/frame-engine.mjs';
+import { ScheduledFrameQueue } from './scheduled-frame-queue.mjs';
 
 export class FrameRuntime extends EventEmitter {
   constructor(options = {}) {
@@ -20,6 +21,7 @@ export class FrameRuntime extends EventEmitter {
       logicalClock = null,
       runnerID = null,
       idGenerator = () => randomUUID(),
+      scheduledFrameWorkerIntervalMS = 1000,
     } = options;
 
     if (!aeordb && !frameStore)
@@ -36,6 +38,11 @@ export class FrameRuntime extends EventEmitter {
     this.services = services || {};
     this.tokenUsage = options.tokenUsage || resolveService(this.services, 'tokenUsage');
     this._disconnectTokenUsage = this.connectTokenUsage(this.tokenUsage);
+    this.scheduledFrames = new ScheduledFrameQueue({
+      runtime: this,
+      intervalMS: scheduledFrameWorkerIntervalMS,
+      logger: options.logger || console,
+    });
     this.sessions = new Map();
     this._indexesReady = false;
   }
@@ -261,11 +268,37 @@ export class FrameRuntime extends EventEmitter {
   }
 
   disconnect() {
+    this.scheduledFrames.stop();
+
     for (let entry of this.sessions.values())
       entry.disconnectStore?.();
 
     this._disconnectTokenUsage?.();
     this._disconnectTokenUsage = null;
+  }
+
+  async startScheduledFrameWorker() {
+    return await this.scheduledFrames.start();
+  }
+
+  stopScheduledFrameWorker() {
+    this.scheduledFrames.stop();
+  }
+
+  async loadScheduledFrames() {
+    return await this.scheduledFrames.load();
+  }
+
+  async processScheduledFrames() {
+    return await this.scheduledFrames.processDue();
+  }
+
+  routerServices() {
+    return {
+      ...this.services,
+      frameRuntime: this,
+      clock: this.clock,
+    };
   }
 
   nextClockStamp() {
@@ -292,6 +325,8 @@ export class FrameRuntime extends EventEmitter {
       this.emitRuntimeEvent('frame.phantom', { sessionID, frame });
     };
     let commitHandler = ({ commit, frames }) => {
+      this.scheduledFrames.trackFrames(frames);
+
       for (let frame of frames || []) {
         let eventType = commit.changes?.find((change) => change.frameID === frame.id)?.operation === 'update'
           ? 'frame.updated'
@@ -314,11 +349,7 @@ export class FrameRuntime extends EventEmitter {
 
     if (this.frameRouter) {
       disconnects.push(this.frameRouter.connectTo(frameEngine, session, {
-        services: {
-          ...this.services,
-          frameRuntime: this,
-          clock: this.clock,
-        },
+        services: this.routerServices(),
       }));
     }
 
