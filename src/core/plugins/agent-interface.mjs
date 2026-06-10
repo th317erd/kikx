@@ -6,8 +6,8 @@ import { PluginInterface } from './plugin-interface.mjs';
 const AGENT_TOOL_DEFINITIONS = [
   {
     name: 'agent-respond',
-    description: 'Finalize this turn with a visible response from this agent.',
-    help: 'Use agent-respond when you are ready to send the user a visible answer.',
+    description: 'Finalize this turn with a visible response from this agent after required work is complete.',
+    help: 'Use agent-respond only after you have completed any needed tool work for this turn. Do not use it to announce future tool work.',
     parameters: {
       type: 'object',
       properties: {
@@ -22,8 +22,8 @@ const AGENT_TOOL_DEFINITIONS = [
   },
   {
     name: 'agent-finalize',
-    description: 'Finalize this turn with a visible response from this agent.',
-    help: 'Use agent-finalize as an explicit synonym for agent-respond.',
+    description: 'Finalize this turn with a visible response from this agent after required work is complete.',
+    help: 'Use agent-finalize as an explicit synonym for agent-respond after needed tool work is complete.',
     parameters: {
       type: 'object',
       properties: {
@@ -311,6 +311,8 @@ export class AgentInterface extends PluginInterface {
       'Frames may include tokenUsage metadata showing read/write token costs. Pay attention to token growth over time and be concerned when it grows.',
       'Before choosing a tool or visible response, ask yourself: "Who is this message really for?"',
       'Use explicit mentions first, then names or nicknames in the text, then conversation turn-taking and recent context. A message can be intended for another actor even when no @mention appears.',
+      'Visible responses are final for the current turn. If you need to read, write, fetch, search, execute commands, or otherwise use tools, call those tools before agent-respond/agent-finalize.',
+      'Do not promise future tool work in a visible response. Complete the tool work in this turn first, then summarize what happened.',
       '',
       'Agent character:',
       character || 'No custom character has been set. Act as a careful, technically rigorous Kikx agent.',

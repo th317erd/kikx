@@ -28,9 +28,10 @@ import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
 import {
   frameDisplayLabel,
   frameSecondaryLabel,
+  frameTimestamp,
 } from './frame-labels.mjs';
 
-const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong, option } = elements;
+const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong, time, option } = elements;
 const aeorInput = elements['aeor-input'];
 const aeorModal = elements['aeor-modal'];
 const aeorSelect = elements['aeor-select'];
@@ -391,10 +392,20 @@ export class KikxApp extends HTMLElement {
       );
     }
 
+    let timestamp = frameTimestamp(frame);
+
     return li.class(`kikx-frame kikx-frame--${frame.type}`)(
       div.class('kikx-frame__meta')(
-        strong(frameDisplayLabel(frame, this._state)),
-        span(frameSecondaryLabel(frame)),
+        div.class('kikx-frame__meta-main')(
+          strong(frameDisplayLabel(frame, this._state)),
+          timestamp
+            ? time
+              .class('kikx-frame__timestamp')
+              .datetime(timestamp.dateTime)
+              .title(timestamp.title)(timestamp.label)
+            : null,
+        ),
+        span.class('kikx-frame__secondary')(frameSecondaryLabel(frame)),
       ),
       this._buildFrameContent(frame),
     );

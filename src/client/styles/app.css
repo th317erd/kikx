@@ -389,11 +389,43 @@ kikx-app {
 
 .kikx-frame__meta {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   color: #aeb8c2;
   font-size: 12px;
+}
+
+.kikx-frame__meta-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.kikx-frame__meta-main strong {
+  color: #cfd8e3;
+}
+
+.kikx-frame__timestamp,
+.kikx-frame__secondary {
+  color: #87929d;
+  font-variant-numeric: tabular-nums;
+}
+
+.kikx-frame__timestamp {
+  white-space: nowrap;
+}
+
+.kikx-frame__secondary {
+  flex: 0 0 auto;
+  max-width: 34%;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .kikx-frame p {

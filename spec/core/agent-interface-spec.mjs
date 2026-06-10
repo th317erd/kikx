@@ -248,6 +248,8 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].prompt, /"totalTokensUsed": 42/);
   assert.match(agent.calls[1].prompt, /turn-taking/i);
   assert.match(agent.calls[1].prompt, /immediately prior visible response/i);
+  assert.match(agent.calls[1].prompt, /Visible responses are final/i);
+  assert.match(agent.calls[1].prompt, /Complete the tool work in this turn first/i);
   assert.match(agent.calls[1].prompt, /If this message is not for you/i);
   assert.match(agent.calls[1].prompt, /use agent-null-response/i);
   assert.doesNotMatch(agent.calls[1].prompt, /use the internal-forward tool with that actor id/u);
