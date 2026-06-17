@@ -1,12 +1,15 @@
 'use strict';
 
 import { PluginInterface } from '../plugins/index.mjs';
+import { builtInToolComponent } from './tool-client-components.mjs';
 
 export class WriteFileTool extends PluginInterface {
   static pluginID = 'internal:filesystem';
   static featureName = 'write-file';
   static displayName = 'Write file';
   static description = 'Write a local file to any path visible to the Kikx server process.';
+  static frameType = 'WriteFileToolFrame';
+  static clientComponent = builtInToolComponent('kikx-write-file-use');
   static riskLevel = 'none';
   static inputSchema = {
     type: 'object',

@@ -59,6 +59,8 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
       return commandRegistry.registerCommand(...args);
     },
     registerSelector: (...args) => registry.registerSelector(...args),
+    registerFrameComponent: (...args) => registry.registerFrameComponent(...args),
+    registerToolComponent: (...args) => registry.registerToolComponent(...args),
   };
 
   return (callback) => {

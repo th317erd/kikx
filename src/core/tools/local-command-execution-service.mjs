@@ -6,6 +6,7 @@ import path from 'node:path';
 const DEFAULT_TIMEOUT_MS = 60000;
 const MAX_TIMEOUT_MS = 10 * 60 * 1000;
 const FORCE_KILL_DELAY_MS = 1000;
+const DEFAULT_EXIT_STDIO_GRACE_MS = 250;
 const RVM_NOUNSET_COMPAT_PROLOGUE = [
   '# Kikx exec: RVM hooks assume these globals exist when user commands enable nounset.',
   'rvm_saved_env=()',
@@ -24,48 +25,121 @@ export class LocalCommandExecutionService {
     };
     this.defaultTimeoutMs = normalizeTimeout(options.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS, 'defaultTimeoutMs');
     this.maxTimeoutMs = normalizeTimeout(options.maxTimeoutMs ?? MAX_TIMEOUT_MS, 'maxTimeoutMs');
+    this.exitStdioGraceMs = normalizeNonNegativeTimeout(options.exitStdioGraceMs ?? DEFAULT_EXIT_STDIO_GRACE_MS, 'exitStdioGraceMs');
   }
 
   async exec(params = {}) {
-    let command = normalizeCommand(params.command);
-    let cwd = normalizeCWD(this.cwd, params.cwd);
-    let timeoutMs = normalizeRequestedTimeout(params.timeoutMs, this.defaultTimeoutMs, this.maxTimeoutMs);
-    let env = normalizeEnvironment(this.env, params.env);
-    let startedAt = Date.now();
+    return await runLoginShellCommand(this.startProcess(params, {
+      defaultTimeoutMs: this.defaultTimeoutMs,
+      allowNoTimeout: false,
+    }));
+  }
 
-    return await runLoginShellCommand({
-      command,
-      cwd,
-      env,
+  startProcess(params = {}, options = {}) {
+    let request = this.normalizeExecutionRequest(params, {
+      defaultTimeoutMs: options.defaultTimeoutMs ?? null,
+      allowNoTimeout: options.allowNoTimeout !== false,
+    });
+
+    return spawnLoginShellCommand(request);
+  }
+
+  normalizeExecutionRequest(params = {}, options = {}) {
+    let defaultTimeoutMs = options.defaultTimeoutMs === undefined ? this.defaultTimeoutMs : options.defaultTimeoutMs;
+    return {
+      command: normalizeCommand(params.command),
+      cwd: normalizeCWD(this.cwd, params.cwd),
+      env: normalizeEnvironment(this.env, params.env),
       shell: this.shell,
       stdin: normalizeStdin(params.stdin),
-      timeoutMs,
-      startedAt,
-    });
+      timeoutMs: normalizeRequestedTimeout(params.timeoutMs, defaultTimeoutMs, this.maxTimeoutMs, {
+        allowNoTimeout: options.allowNoTimeout !== false,
+      }),
+      exitStdioGraceMs: this.exitStdioGraceMs,
+      startedAt: Date.now(),
+    };
   }
 }
 
-async function runLoginShellCommand(options = {}) {
+async function runLoginShellCommand(handle = {}) {
   return await new Promise((resolve, reject) => {
     let stdoutChunks = [];
     let stderrChunks = [];
-    let timedOut = false;
-    let timeout = null;
-    let forceKillTimeout = null;
-    let child;
-
-    try {
-      child = spawn(options.shell, [ '-lc', buildLoginShellCommand(options.command, options.shell) ], {
-        cwd: options.cwd,
-        env: options.env,
-        detached: true,
-        stdio: [ 'pipe', 'pipe', 'pipe' ],
-      });
-    } catch (error) {
-      reject(error);
+    let child = handle.child;
+    let settled = false;
+    let exitStdioTimer = null;
+    if (!child) {
+      reject(new Error('command process handle is missing child'));
       return;
     }
 
+    let settle = ({ exitCode = null, signal = null, stdioClosedByManager = false } = {}) => {
+      if (settled)
+        return;
+
+      settled = true;
+      clearTimeout(exitStdioTimer);
+      handle.clearTimeout?.();
+
+      if (stdioClosedByManager)
+        closeChildStdio(child);
+
+      let stdout = Buffer.concat(stdoutChunks);
+      let stderr = Buffer.concat(stderrChunks);
+
+      resolve({
+        command: handle.command,
+        shell: handle.shell,
+        cwd: handle.cwd,
+        exitCode,
+        signal,
+        timedOut: handle.timedOut === true,
+        timeoutMs: handle.timeoutMs,
+        durationMs: Date.now() - handle.startedAt,
+        stdout: stdout.toString('utf8'),
+        stderr: stderr.toString('utf8'),
+        stdoutBytes: stdout.length,
+        stderrBytes: stderr.length,
+        stdioClosedByManager,
+      });
+    };
+
+    child.stdout.on('data', (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr.on('data', (chunk) => stderrChunks.push(Buffer.from(chunk)));
+    child.on('error', (error) => {
+      if (settled)
+        return;
+
+      settled = true;
+      clearTimeout(exitStdioTimer);
+      handle.clearTimeout?.();
+      reject(error);
+    });
+    child.on('exit', (exitCode, signal) => {
+      handle.clearTimeout?.();
+      exitStdioTimer = setTimeout(() => {
+        settle({ exitCode, signal, stdioClosedByManager: true });
+      }, handle.exitStdioGraceMs);
+      exitStdioTimer.unref?.();
+    });
+    child.on('close', (exitCode, signal) => {
+      settle({ exitCode, signal, stdioClosedByManager: false });
+    });
+  });
+}
+
+function spawnLoginShellCommand(options = {}) {
+  let timedOut = false;
+  let timeout = null;
+  let forceKillTimeout = null;
+  let child = spawn(options.shell, [ '-lc', buildLoginShellCommand(options.command, options.shell) ], {
+    cwd: options.cwd,
+    env: options.env,
+    detached: true,
+    stdio: [ 'pipe', 'pipe', 'pipe' ],
+  });
+
+  if (options.timeoutMs != null) {
     timeout = setTimeout(() => {
       timedOut = true;
       killProcessGroup(child, 'SIGTERM');
@@ -75,45 +149,30 @@ async function runLoginShellCommand(options = {}) {
       forceKillTimeout.unref?.();
     }, options.timeoutMs);
     timeout.unref?.();
+  }
 
-    child.stdout.on('data', (chunk) => stdoutChunks.push(Buffer.from(chunk)));
-    child.stderr.on('data', (chunk) => stderrChunks.push(Buffer.from(chunk)));
-    child.stdin.on('error', () => {});
-    child.on('error', (error) => {
+  child.stdin.on('error', () => {});
+  if (options.stdin) {
+    child.stdin.write(options.stdin);
+    if (!options.stdin.endsWith('\n'))
+      child.stdin.write('\n');
+  }
+  child.stdin.end();
+
+  return {
+    ...options,
+    child,
+    get timedOut() {
+      return timedOut;
+    },
+    kill(signal = 'SIGTERM') {
+      killProcessGroup(child, signal);
+    },
+    clearTimeout() {
       clearTimeout(timeout);
       clearTimeout(forceKillTimeout);
-      reject(error);
-    });
-    child.on('close', (exitCode, signal) => {
-      clearTimeout(timeout);
-      clearTimeout(forceKillTimeout);
-      let stdout = Buffer.concat(stdoutChunks);
-      let stderr = Buffer.concat(stderrChunks);
-
-      resolve({
-        command: options.command,
-        shell: options.shell,
-        cwd: options.cwd,
-        exitCode,
-        signal,
-        timedOut,
-        timeoutMs: options.timeoutMs,
-        durationMs: Date.now() - options.startedAt,
-        stdout: stdout.toString('utf8'),
-        stderr: stderr.toString('utf8'),
-        stdoutBytes: stdout.length,
-        stderrBytes: stderr.length,
-      });
-    });
-
-    if (options.stdin) {
-      child.stdin.write(options.stdin);
-      if (!options.stdin.endsWith('\n'))
-        child.stdin.write('\n');
-    }
-
-    child.stdin.end();
-  });
+    },
+  };
 }
 
 function buildLoginShellCommand(command, shell) {
@@ -137,6 +196,14 @@ function killProcessGroup(child, signal) {
   } catch (_error) {}
 }
 
+function closeChildStdio(child) {
+  for (let stream of [ child?.stdout, child?.stderr ]) {
+    try {
+      stream?.destroy?.();
+    } catch (_error) {}
+  }
+}
+
 function normalizeCommand(value) {
   if (typeof value !== 'string' || value.trim() === '')
     throw new TypeError('command must be a non-empty string');
@@ -154,9 +221,13 @@ function normalizeCWD(baseCWD, value) {
   return path.resolve(baseCWD, value.trim());
 }
 
-function normalizeRequestedTimeout(value, defaultTimeoutMs, maxTimeoutMs) {
-  if (value == null || value === '')
+function normalizeRequestedTimeout(value, defaultTimeoutMs, maxTimeoutMs, options = {}) {
+  if (value == null || value === '') {
+    if (defaultTimeoutMs == null && options.allowNoTimeout)
+      return null;
+
     return defaultTimeoutMs;
+  }
 
   let timeoutMs = normalizeTimeout(value, 'timeoutMs');
   if (timeoutMs > maxTimeoutMs)
@@ -169,6 +240,14 @@ function normalizeTimeout(value, fieldName) {
   let number = Number(value);
   if (!Number.isFinite(number) || number < 1)
     throw new TypeError(`${fieldName} must be a positive integer`);
+
+  return Math.trunc(number);
+}
+
+function normalizeNonNegativeTimeout(value, fieldName) {
+  let number = Number(value);
+  if (!Number.isFinite(number) || number < 0)
+    throw new TypeError(`${fieldName} must be a non-negative integer`);
 
   return Math.trunc(number);
 }

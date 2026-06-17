@@ -1,19 +1,22 @@
 'use strict';
 
 import { PluginInterface } from '../plugins/index.mjs';
+import { builtInToolComponent } from './tool-client-components.mjs';
 
 export class ExecTool extends PluginInterface {
   static pluginID = 'internal:command';
   static featureName = 'exec';
   static displayName = 'Execute command';
   static description = 'Execute a local shell command through the Kikx server process login shell.';
+  static frameType = 'ShellToolFrame';
+  static clientComponent = builtInToolComponent('kikx-shell-tool-use');
   static riskLevel = 'none';
   static inputSchema = {
     type: 'object',
     properties: {
       command: {
         type: 'string',
-        description: 'Command to execute in the Kikx server process login shell.',
+        description: 'Command to execute in the Kikx server process login shell. Prefer foreground commands for long-running managed work; exec is already async and can keep the process managed.',
       },
       cwd: {
         type: 'string',
@@ -26,7 +29,7 @@ export class ExecTool extends PluginInterface {
       timeoutMs: {
         type: 'integer',
         minimum: 1,
-        description: 'Optional timeout in milliseconds. Defaults to 60000 and is capped by the server.',
+        description: 'Optional timeout in milliseconds for the async process. By default async exec has no timeout.',
       },
       env: {
         type: 'object',
@@ -39,17 +42,28 @@ export class ExecTool extends PluginInterface {
     required: [ 'command' ],
     additionalProperties: false,
   };
-  static help = 'Use exec to run local commands through the Kikx server process login shell. The command sees the server environment plus normal login-shell startup files. stdout and stderr are stored in AeorDB with every tool result; large outputs are returned as tool output pointers readable with tool-output-get.';
+  static help = [
+    'Use exec to run local commands through the Kikx server process login shell.',
+    'Exec is always async: Kikx starts a managed process, waits briefly for very short commands, and either returns the completed output immediately or returns an async process ID.',
+    'For servers and other long-running work, prefer running the foreground command directly, then use exec-read or exec-status to inspect it while it remains managed.',
+    'If a command truly needs shell detaching such as trailing &, nohup, disown, or setsid, Kikx will complete the shell wrapper when it exits; detached child processes may no longer be manageable with exec-status or exec-kill.',
+    'When a process is still running, Kikx automatically wakes you with the stored completion result when it exits.',
+    'Use exec-status, exec-read, exec-grep, and exec-kill to manage async exec processes.',
+    'The command sees the server environment plus normal login-shell startup files. Tool results and process completion results are stored in AeorDB; large outputs are returned as tool output pointers readable with output-read.',
+  ].join(' ');
 
   async _execute(params = {}) {
-    return await resolveCommandExecutor(this.context).exec(params);
+    return await resolveProcessManager(this.context).start(params, this.context, {
+      autoWake: true,
+      returnCompletionIfReady: true,
+    });
   }
 }
 
-function resolveCommandExecutor(context = {}) {
-  let service = context.commandExecutor || context.services?.commandExecutor || resolveContextService(context, 'commandExecutor');
-  if (!service?.exec)
-    throw new Error('exec requires a commandExecutor service');
+function resolveProcessManager(context = {}) {
+  let service = context.processManager || context.services?.processManager || resolveContextService(context, 'processManager');
+  if (!service?.start)
+    throw new Error('exec requires a processManager service');
 
   return service;
 }

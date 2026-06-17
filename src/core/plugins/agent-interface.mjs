@@ -1,6 +1,10 @@
 'use strict';
 
 import { ToolExecutionService } from '../tools/tool-execution-service.mjs';
+import {
+  buildAgenticScriptPrompt,
+  buildCompletionReviewScriptPrompt,
+} from './agent-script-template.mjs';
 import { PluginInterface } from './plugin-interface.mjs';
 
 const AGENT_TOOL_DEFINITIONS = [
@@ -78,6 +82,27 @@ const AGENT_TOOL_DEFINITIONS = [
         },
       },
       required: [ 'reason' ],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'agent-progress',
+    description: 'Write a visible, non-final progress note before using another tool.',
+    help: [
+      'Use agent-progress before every individual read, write, fetch, search, exec, or other task tool call.',
+      'Keep the note short: one paragraph at most, describing the single next tool action you are about to take.',
+      'Do not group several future tool calls under one progress note.',
+      'This does not finalize your turn; continue with the tool call after the progress note succeeds.',
+    ].join(' '),
+    parameters: {
+      type: 'object',
+      properties: {
+        text: {
+          type: 'string',
+          description: 'Visible one-paragraph progress note for the single next tool action.',
+        },
+      },
+      required: [ 'text' ],
       additionalProperties: false,
     },
   },
@@ -209,6 +234,28 @@ export class AgentInterface extends PluginInterface {
     }
 
     if (state.finalized) {
+      yield* this.runCompletionReview(context, state);
+
+      if (state.nullResponse) {
+        yield {
+          type: 'Done',
+          content: {
+            status: 'null-response',
+          },
+        };
+        return;
+      }
+
+      if (state.forwarded) {
+        yield {
+          type: 'Done',
+          content: {
+            status: 'forwarded',
+          },
+        };
+        return;
+      }
+
       if (state.finalFrame && !state.yieldedAgentMessage)
         yield state.finalFrame;
 
@@ -265,8 +312,6 @@ export class AgentInterface extends PluginInterface {
         output = mergeFinalizedProviderFrame(output, state.finalFrame);
         state.finalFrame = output;
         yieldedOutput = true;
-        state.yieldedAgentMessage = true;
-        yield output;
         continue;
       }
 
@@ -287,6 +332,57 @@ export class AgentInterface extends PluginInterface {
           status: 'break',
         },
       };
+    }
+
+    if (state.forwarded && !state.forwardDispatched) {
+      state.forwardDispatched = true;
+      await dispatchForwards(context, state);
+    }
+  }
+
+  async *runCompletionReview(context, state) {
+    if (state.completionReviewed || !state.finalFrame || state.nullResponse || state.forwarded || this.ask === AgentInterface.prototype.ask)
+      return;
+
+    state.completionReviewed = true;
+    let prompt = this.buildCompletionReviewPrompt(context, state);
+    let step = {
+      type: 'completion-review',
+      prompt,
+    };
+    let tools = createLoopTools(state, context);
+    let toolDefinitions = createLoopToolDefinitions(context);
+    let result = this.ask(prompt, {
+      ...context,
+      tools,
+      toolDefinitions,
+      step,
+      completionReview: true,
+    });
+
+    let reviewControlFinalized = false;
+    let reviewStartFinalFrame = state.finalFrame;
+    for await (let output of iterateAgentResult(result)) {
+      if (output?.type === 'LoopControl') {
+        reviewControlFinalized = output.action === 'finalize' || output.action === 'respond-and-continue';
+        handleLoopControl(output, state);
+        continue;
+      }
+
+      if (output?.type === 'AgentMessage') {
+        let responseToolSelectedFrame = reviewControlFinalized || state.finalFrame !== reviewStartFinalFrame;
+        state.finalFrame = responseToolSelectedFrame
+          ? mergeFinalizedProviderFrame(output, state.finalFrame)
+          : mergeCompletionReviewFrame(state.finalFrame, output);
+        reviewStartFinalFrame = state.finalFrame;
+        continue;
+      }
+
+      if (output?.type === 'Done')
+        continue;
+
+      if (output?.type)
+        yield output;
     }
 
     if (state.forwarded && !state.forwardDispatched) {
@@ -332,43 +428,26 @@ export class AgentInterface extends PluginInterface {
     });
     let character = normalizeOptionalPromptString(context.agent?.character || context.character);
     let tokenUsage = normalizeTokenUsagePromptContext(context);
-    return [
-      'You are participating in a Kikx agentic coordination loop.',
-      'Your job is to decide whether you should answer, remain silent, or use an explicit forwarding pathway for special workflows.',
-      'This conversation is expensive and is costing the user real money. Respond as needed, but only as needed, to minimize cost.',
-      'If you do not have anything useful to add, do not speak. Use agent-null-response, also called the nullResponse tool, to skip responding.',
-      'If you have something useful to add, say it all at once in one detailed message. Minimize the number of interactions, especially follow-up interactions.',
-      'Frames may include tokenUsage metadata showing read/write token costs. Pay attention to token growth over time and be concerned when it grows.',
-      'Before choosing a tool or visible response, ask yourself: "Who is this message really for?"',
-      'Use explicit mentions first, then names or nicknames in the text, then conversation turn-taking and recent context. A message can be intended for another actor even when no @mention appears.',
-      'Visible responses are final for the current turn. If you need to read, write, fetch, search, execute commands, or otherwise use tools, call those tools before agent-respond/agent-finalize.',
-      'Do not promise future tool work in a visible response. Complete the tool work in this turn first, then summarize what happened.',
-      'Use agent-respond-and-continue when you need to report progress, yield the current turn, and schedule Kikx to prompt you to continue later.',
-      '',
-      'Agent character:',
-      character || 'No custom character has been set. Act as a careful, technically rigorous Kikx agent.',
-      '',
-      ...buildTriggerFramePromptLines(context),
-      '',
+    return buildAgenticScriptPrompt({
       frameMessage,
-      '',
-      `You are the coordinator?: ${context.isCoordinator === true}`,
-      '',
-      'Session agents JSON:',
-      JSON.stringify(participantAgents, null, 2),
-      '',
-      'Mentions JSON:',
-      JSON.stringify(mentions, null, 2),
-      '',
-      'Token usage summary JSON:',
-      JSON.stringify(tokenUsage, null, 2),
-      '',
-      'Available tools:',
-      formatToolHelp(createLoopToolDefinitions(context)),
-      '',
-      ...buildRoutingPromptLines(context),
-      'When you are ready to answer, use agent-respond/agent-finalize or return a final agent message.',
-    ].join('\n');
+      mentions,
+      participantAgents,
+      character,
+      tokenUsage,
+      isCoordinator: context.isCoordinator === true,
+      triggerFrameLines: buildTriggerFramePromptLines(context),
+      routingLines: buildRoutingPromptLines(context),
+      toolDefinitions: createLoopToolDefinitions(context),
+    });
+  }
+
+  buildCompletionReviewPrompt(context = {}, state = {}) {
+    let frameMessage = context.frame?.content?.text || '';
+    return buildCompletionReviewScriptPrompt({
+      frameMessage,
+      finalFrameContent: state.finalFrame?.content || {},
+      toolDefinitions: createLoopToolDefinitions(context),
+    });
   }
 
   static getAgentProviderDescriptor() {
@@ -391,6 +470,7 @@ function createLoopState() {
     finalized: false,
     forwarded: false,
     forwardDispatched: false,
+    completionReviewed: false,
     finalFrame: null,
     continuation: null,
     yieldedAgentMessage: false,
@@ -448,6 +528,7 @@ function createLoopTools(state, context) {
     state.break = true;
     return { type: 'LoopControl', action: 'break', reason: normalizeReason(reason) };
   };
+  let progress = async (content) => await recordAgentProgress(content, context);
   let setCharacter = async (input) => await setAgentCharacter(input, context);
 
   let tools = {
@@ -455,6 +536,7 @@ function createLoopTools(state, context) {
     'agent-respond-and-continue': respondAndContinue,
     'agent-finalize': finalize,
     'loop-break': breakLoop,
+    'agent-progress': progress,
     'agent-character-set': setCharacter,
   };
 
@@ -541,6 +623,24 @@ function mergeFinalizedProviderFrame(providerFrame, finalFrame) {
   };
 }
 
+function mergeCompletionReviewFrame(finalFrame, reviewFrame) {
+  if (!reviewFrame?.content)
+    return finalFrame;
+
+  return {
+    ...(finalFrame || {}),
+    ...reviewFrame,
+    content: {
+      ...(finalFrame?.content && typeof finalFrame.content === 'object' && !Array.isArray(finalFrame.content)
+        ? finalFrame.content
+        : {}),
+      ...(reviewFrame.content && typeof reviewFrame.content === 'object' && !Array.isArray(reviewFrame.content)
+        ? reviewFrame.content
+        : {}),
+    },
+  };
+}
+
 function recordForward(state, forward) {
   state.forwarded = true;
   let normalized = {
@@ -581,6 +681,78 @@ async function setAgentCharacter(input, context = {}) {
   };
 }
 
+async function recordAgentProgress(input, context = {}) {
+  let text = normalizeRequiredToolString(readToolString(input, [ 'text', 'message', 'progress' ]), 'text');
+  let frameEngine = resolveFrameEngine(context);
+  let sessionID = normalizeOptionalPromptString(context.session?.id || context.frame?.sessionID);
+  let agentID = normalizeOptionalPromptString(context.agent?.id);
+  if (!frameEngine || !sessionID || !agentID) {
+    return {
+      type: 'ToolResult',
+      action: 'agent-progress',
+      content: {
+        text,
+        visible: false,
+      },
+    };
+  }
+
+  let now = resolveClock(context)();
+  let progressFrame = {
+    id: typeof frameEngine.idGenerator === 'function' ? frameEngine.idGenerator() : `agent-progress:${now}`,
+    type: 'AgentProgress',
+    sessionID,
+    interactionID: context.frame?.interactionID || null,
+    parentID: context.responseFrameID || context.frame?.id || null,
+    authorType: 'agent',
+    authorID: agentID,
+    authorDisplayName: context.agent?.name || agentID,
+    timestamp: now,
+    createdAt: now,
+    updatedAt: now,
+    hidden: false,
+    deleted: false,
+    agentRoute: context.responseFrameID ? frameEngine.get?.(context.responseFrameID)?.agentRoute : undefined,
+    content: {
+      text,
+      status: 'progress',
+      responseFrameID: context.responseFrameID || null,
+    },
+  };
+
+  frameEngine.merge([ progressFrame ], {
+    authorType: 'agent',
+    authorID: agentID,
+  });
+  await context.services?.frameRuntime?.frameStore?.flush?.();
+
+  return {
+    type: 'ToolResult',
+    action: 'agent-progress',
+    content: {
+      text,
+      visible: true,
+      frameID: progressFrame.id,
+    },
+  };
+}
+
+function resolveFrameEngine(context = {}) {
+  return context.frameEngine
+    || context.services?.frameEngine
+    || resolveService(context.services, 'frameEngine');
+}
+
+function resolveClock(context = {}) {
+  if (typeof context.services?.clock === 'function')
+    return context.services.clock;
+
+  if (typeof context.clock === 'function')
+    return context.clock;
+
+  return () => Date.now();
+}
+
 function createRegisteredToolDefinitions(context = {}) {
   let pluginRegistry = resolvePluginRegistry(context);
   if (!pluginRegistry?.getTools)
@@ -595,15 +767,41 @@ function createRegisteredToolDefinitions(context = {}) {
       name: toolName,
       description: ToolClass.description || ToolClass.displayName || toolName,
       help: ToolClass.help || ToolClass.description || '',
-      parameters: cloneJSON(ToolClass.inputSchema || {
+      parameters: withCrossSessionToolParameter(cloneJSON(ToolClass.inputSchema || {
         type: 'object',
         properties: {},
         additionalProperties: false,
-      }),
+      })),
     });
   }
 
   return definitions;
+}
+
+function withCrossSessionToolParameter(schema) {
+  let output = (schema && typeof schema === 'object' && !Array.isArray(schema))
+    ? schema
+    : {};
+
+  if (output.type && output.type !== 'object')
+    return output;
+
+  output.type = 'object';
+  output.properties = (output.properties && typeof output.properties === 'object' && !Array.isArray(output.properties))
+    ? output.properties
+    : {};
+
+  if (!output.properties.session_id) {
+    output.properties.session_id = {
+      type: 'string',
+      description: 'Optional target Kikx session ID. When set, this tool call/result is recorded in that session.',
+    };
+  }
+
+  if (output.additionalProperties == null)
+    output.additionalProperties = false;
+
+  return output;
 }
 
 function createRegisteredToolHandlers(context = {}) {
@@ -817,12 +1015,6 @@ function totalTokensUsed(snapshot) {
   return total;
 }
 
-function formatToolHelp(toolDefinitions) {
-  return toolDefinitions
-    .map((toolDefinition) => `- ${toolDefinition.name}: ${toolDefinition.help || toolDefinition.description || ''}`)
-    .join('\n');
-}
-
 function buildRoutingPromptLines(context = {}) {
   if (context.isCoordinator === true) {
     let lines = [
@@ -871,6 +1063,12 @@ function buildTriggerFramePromptLines(context = {}) {
   if (frame.continuation?.kind === 'agent-respond-and-continue' || frame.authorID === 'internal:agent-continuation') {
     return [
       'Your scheduled respond-and-continue prompt has fired and this hidden continuation frame has been routed back to you:',
+    ];
+  }
+
+  if (frame.continuation?.kind === 'exec-wake-on-completion' || frame.authorID === 'internal:process-manager') {
+    return [
+      'An async process you started has completed and this hidden completion wake frame has been routed back to you:',
     ];
   }
 

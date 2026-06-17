@@ -50,7 +50,7 @@ export function upsertSessionState(state, session) {
 
 export function setSessionFramesState(state, sessionID, frames) {
   let snapshot = createSessionStateSnapshot(state);
-  let safeFrames = sortFrames(Array.isArray(frames) ? [ ...frames ] : []);
+  let safeFrames = collapseToolDisplayFrames(sortFrames(Array.isArray(frames) ? [ ...frames ] : []));
   let next = {
     ...snapshot,
     framesBySessionID: {
@@ -85,16 +85,41 @@ export function upsertFrameState(state, sessionID, frame) {
   if (!sessionID || !frame?.id)
     return snapshot;
 
-  let frames = snapshot.framesBySessionID[sessionID] || [];
+  return setSessionFramesState(snapshot, sessionID, upsertFrameArray(snapshot.framesBySessionID[sessionID] || [], frame));
+}
+
+export function upsertFramesState(state, framesBySessionID) {
+  let snapshot = createSessionStateSnapshot(state);
+  let next = snapshot;
+
+  for (let [sessionID, frames] of normalizeFrameBatch(framesBySessionID)) {
+    let nextFrames = next.framesBySessionID[sessionID] || [];
+    for (let frame of frames) {
+      if (!frame?.id)
+        continue;
+
+      nextFrames = upsertFrameArray(nextFrames, frame);
+    }
+
+    next = setSessionFramesState(next, sessionID, nextFrames);
+  }
+
+  return next;
+}
+
+function upsertFrameArray(frames, frame) {
   let normalizedFrame = normalizeLiveFrame(frame);
   if (isResponseFramePhantom(normalizedFrame))
-    return upsertResponseFramePhantom(snapshot, sessionID, frames, normalizedFrame);
+    return upsertResponseFramePhantom(frames, normalizedFrame);
+
+  if (isToolFrame(normalizedFrame))
+    return upsertToolDisplayFrame(frames, normalizedFrame);
 
   let transitionFrames = removeFramesForLiveTransition(frames, normalizedFrame);
   let existingIndex = transitionFrames.findIndex((candidate) => candidate?.id === normalizedFrame.id);
 
   if (normalizedFrame.type === 'EndTyping')
-    return setSessionFramesState(snapshot, sessionID, transitionFrames);
+    return transitionFrames;
 
   let nextFrame = {
     ...normalizedFrame,
@@ -103,6 +128,21 @@ export function upsertFrameState(state, sessionID, frame) {
 
   if (existingIndex !== -1) {
     let existingFrame = transitionFrames[existingIndex] || {};
+    for (let fieldName of [
+      'order',
+      'createdAt',
+      'createdClock',
+      'timestamp',
+      'sessionID',
+      'interactionID',
+      'parentID',
+      'authorType',
+      'authorID',
+    ]) {
+      if (nextFrame[fieldName] == null && existingFrame[fieldName] != null)
+        nextFrame[fieldName] = existingFrame[fieldName];
+    }
+
     if (!nextFrame.authorDisplayName && existingFrame.authorDisplayName)
       nextFrame.authorDisplayName = existingFrame.authorDisplayName;
 
@@ -113,11 +153,171 @@ export function upsertFrameState(state, sessionID, frame) {
   if (normalizedFrame.phantom && LIVE_VISIBLE_PHANTOM_TYPES.has(normalizedFrame.type))
     nextFrame.hidden = false;
 
-  let nextFrames = existingIndex === -1
+  return existingIndex === -1
     ? [ ...transitionFrames, nextFrame ]
     : transitionFrames.map((candidate, index) => index === existingIndex ? nextFrame : candidate);
+}
 
-  return setSessionFramesState(snapshot, sessionID, nextFrames);
+function collapseToolDisplayFrames(frames) {
+  let output = [];
+  for (let frame of frames) {
+    if (isToolFrame(frame))
+      output = upsertToolDisplayFrame(output, frame);
+    else
+      output.push(frame);
+  }
+
+  return output;
+}
+
+function upsertToolDisplayFrame(frames, frame) {
+  let normalizedFrame = {
+    ...frame,
+    hidden: frame.hidden ?? false,
+  };
+
+  if (isToolResultFrame(normalizedFrame)) {
+    let callIndex = findToolCallFrameIndex(frames, normalizedFrame);
+    if (callIndex !== -1) {
+      let callFrame = frames[callIndex];
+      let mergedFrame = mergeToolCallAndResultFrame(callFrame, normalizedFrame);
+      return frames.map((candidate, index) => index === callIndex ? mergedFrame : candidate);
+    }
+  }
+
+  if (isToolCallFrame(normalizedFrame)) {
+    let resultIndex = findToolResultFrameIndex(frames, normalizedFrame);
+    if (resultIndex !== -1) {
+      let resultFrame = frames[resultIndex];
+      let mergedFrame = mergeToolCallAndResultFrame(normalizedFrame, resultFrame);
+      let existingCallIndex = frames.findIndex((candidate) => candidate?.id === normalizedFrame.id);
+      let withoutResult = frames.filter((_candidate, index) => index !== resultIndex);
+
+      if (existingCallIndex !== -1)
+        return withoutResult.map((candidate) => candidate?.id === normalizedFrame.id ? mergedFrame : candidate);
+
+      return [
+        ...withoutResult.slice(0, resultIndex),
+        mergedFrame,
+        ...withoutResult.slice(resultIndex),
+      ];
+    }
+  }
+
+  let existingIndex = frames.findIndex((candidate) => candidate?.id === normalizedFrame.id);
+  if (existingIndex === -1)
+    return [ ...frames, normalizedFrame ];
+
+  let existingFrame = frames[existingIndex];
+  let nextFrame = mergeToolFrame(existingFrame, normalizedFrame);
+  return frames.map((candidate, index) => index === existingIndex ? nextFrame : candidate);
+}
+
+function mergeToolCallAndResultFrame(callFrame, resultFrame) {
+  let content = mergeContent(callFrame?.content || {}, resultFrame?.content || {});
+  return {
+    ...(callFrame || {}),
+    type: resultFrame?.type || callFrame?.type,
+    updatedAt: resultFrame?.updatedAt || callFrame?.updatedAt,
+    updatedClock: resultFrame?.updatedClock || callFrame?.updatedClock,
+    commitOrder: resultFrame?.commitOrder ?? callFrame?.commitOrder,
+    hidden: resultFrame?.hidden ?? callFrame?.hidden ?? false,
+    deleted: resultFrame?.deleted ?? callFrame?.deleted ?? false,
+    state: {
+      ...(callFrame?.state || {}),
+      ...(resultFrame?.state || {}),
+    },
+    content: {
+      ...content,
+      phase: 'result',
+      toolResultFrameID: resultFrame?.id || content.toolResultFrameID || null,
+    },
+  };
+}
+
+function mergeToolFrame(existingFrame, nextFrame) {
+  if (isToolCallFrame(nextFrame) && isToolResultFrame(existingFrame))
+    return mergeToolCallAndResultFrame(nextFrame, existingFrame);
+
+  let output = {
+    ...existingFrame,
+    ...nextFrame,
+  };
+
+  for (let fieldName of [
+    'order',
+    'createdAt',
+    'createdClock',
+    'timestamp',
+    'sessionID',
+    'interactionID',
+    'parentID',
+    'authorType',
+    'authorID',
+  ]) {
+    if (output[fieldName] == null && existingFrame?.[fieldName] != null)
+      output[fieldName] = existingFrame[fieldName];
+  }
+
+  if (!output.authorDisplayName && existingFrame?.authorDisplayName)
+    output.authorDisplayName = existingFrame.authorDisplayName;
+
+  if (isPlainObject(output.content) && isPlainObject(existingFrame?.content))
+    output.content = mergeContent(existingFrame.content, output.content);
+
+  return output;
+}
+
+function findToolCallFrameIndex(frames, resultFrame) {
+  let content = resultFrame?.content || {};
+  let resultParentID = stringOr(resultFrame?.parentID);
+  let callFrameID = stringOr(content.toolCallFrameID) || resultParentID;
+  let toolCallID = stringOr(content.toolCallID);
+
+  return frames.findIndex((candidate) => {
+    if (!isToolFrame(candidate) || candidate?.id === resultFrame?.id)
+      return false;
+
+    if (callFrameID && candidate.id === callFrameID)
+      return true;
+
+    return toolCallID && candidate.content?.toolCallID === toolCallID;
+  });
+}
+
+function findToolResultFrameIndex(frames, callFrame) {
+  let content = callFrame?.content || {};
+  let callFrameID = stringOr(callFrame?.id);
+  let toolCallID = stringOr(content.toolCallID);
+
+  return frames.findIndex((candidate) => {
+    if (!isToolResultFrame(candidate) || candidate?.id === callFrame?.id)
+      return false;
+
+    if (callFrameID && (candidate.content?.toolCallFrameID === callFrameID || candidate.parentID === callFrameID))
+      return true;
+
+    return toolCallID && candidate.content?.toolCallID === toolCallID;
+  });
+}
+
+function isToolFrame(frame) {
+  return Boolean(frame?.content?.toolName)
+    && (
+      frame.type === 'ToolCall'
+      || frame.type === 'ToolResult'
+      || frame.content.phase === 'call'
+      || frame.content.phase === 'result'
+      || /ToolFrame$/.test(String(frame.type || ''))
+    );
+}
+
+function isToolCallFrame(frame) {
+  return isToolFrame(frame) && (frame.content?.phase === 'call' || frame.type === 'ToolCall');
+}
+
+function isToolResultFrame(frame) {
+  return isToolFrame(frame) && (frame.content?.phase === 'result' || frame.type === 'ToolResult');
 }
 
 export function countMessageFrames(frames) {
@@ -184,17 +384,15 @@ function isResponseFramePhantom(frame) {
     && (frame.type === 'AgentThinking' || frame.type === 'AgentMessageDelta');
 }
 
-function upsertResponseFramePhantom(snapshot, sessionID, frames, frame) {
+function upsertResponseFramePhantom(frames, frame) {
   let responseFrameID = frame.responseFrameID.trim();
   let transitionFrames = removeResponseFramePhantoms(frames, frame);
   let existingIndex = transitionFrames.findIndex((candidate) => candidate?.id === responseFrameID);
   let existing = existingIndex === -1 ? null : transitionFrames[existingIndex];
   let nextFrame = mergeResponseFramePhantom(existing, frame, responseFrameID);
-  let nextFrames = existingIndex === -1
+  return existingIndex === -1
     ? [ ...transitionFrames, nextFrame ]
     : transitionFrames.map((candidate, index) => index === existingIndex ? nextFrame : candidate);
-
-  return setSessionFramesState(snapshot, sessionID, nextFrames);
 }
 
 function removeResponseFramePhantoms(frames, frame) {
@@ -285,6 +483,18 @@ function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function normalizeFrameBatch(input) {
+  if (!input || typeof input !== 'object')
+    return [];
+
+  if (input instanceof Map)
+    return Array.from(input.entries())
+      .filter(([sessionID, frames]) => typeof sessionID === 'string' && sessionID && Array.isArray(frames));
+
+  return Object.entries(input)
+    .filter(([sessionID, frames]) => typeof sessionID === 'string' && sessionID && Array.isArray(frames));
+}
+
 const LIVE_VISIBLE_PHANTOM_TYPES = new Set([
   'AgentThinking',
   'AgentMessageDelta',
@@ -305,25 +515,15 @@ function sortFrames(frames) {
 
 function compareFrameOrder(a, b) {
   return compareNumber(liveSortWeight(a), liveSortWeight(b))
-    || compareClock(sortUpdatedClock(a), sortUpdatedClock(b))
-    || compareNumber(sortUpdatedAt(a), sortUpdatedAt(b))
-    || compareClock(a?.createdClock, b?.createdClock)
-    || compareNumber(a?.createdAt, b?.createdAt)
-    || compareNumber(sortCommitOrder(a), sortCommitOrder(b))
+    || compareClock(visibleSortClock(a), visibleSortClock(b))
+    || compareNumber(visibleSortTime(a), visibleSortTime(b))
     || compareNumber(a?.order, b?.order)
+    || compareNumber(sortCommitOrder(a), sortCommitOrder(b))
     || String(a?.id || '').localeCompare(String(b?.id || ''));
 }
 
 function liveSortWeight(frame) {
   return frame?.type === 'BeginTyping' ? 1 : 0;
-}
-
-function sortUpdatedClock(frame) {
-  return stringOr(frame?.updatedClock, frame?.createdClock);
-}
-
-function sortUpdatedAt(frame) {
-  return numberOr(frame?.updatedAt, frame?.createdAt || 0);
 }
 
 function sortCommitOrder(frame) {
@@ -334,6 +534,29 @@ function sortCommitOrder(frame) {
     return frame.order;
 
   return Number.MAX_SAFE_INTEGER;
+}
+
+function visibleSortClock(frame) {
+  if (isVisibleAgentResponseFrame(frame))
+    return frame?.updatedClock || frame?.createdClock;
+
+  return frame?.createdClock;
+}
+
+function visibleSortTime(frame) {
+  if (isVisibleAgentResponseFrame(frame))
+    return numberOr(frame?.updatedAt, frame?.createdAt);
+
+  return frame?.createdAt;
+}
+
+function isVisibleAgentResponseFrame(frame) {
+  if (frame?.type !== 'AgentMessage' || frame.hidden === true || frame.phantom === true)
+    return false;
+
+  let content = frame.content || {};
+  return content.status === 'complete'
+    || (typeof content.text === 'string' && content.text.trim() !== '');
 }
 
 function compareClock(a, b) {

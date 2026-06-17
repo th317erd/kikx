@@ -1,6 +1,7 @@
 'use strict';
 
 import { PluginInterface } from '../plugins/index.mjs';
+import { builtInToolComponent } from './tool-client-components.mjs';
 
 const DUCKDUCKGO_API_URL = 'https://api.duckduckgo.com/';
 const DUCKDUCKGO_HTML_URL = 'https://html.duckduckgo.com/html/';
@@ -13,6 +14,8 @@ export class WebSearchTool extends PluginInterface {
   static featureName = 'search';
   static displayName = 'Web search';
   static description = 'Search DuckDuckGo instant answers and related topics.';
+  static frameType = 'WebSearchToolFrame';
+  static clientComponent = builtInToolComponent('kikx-web-search-use');
   static riskLevel = 'none';
   static inputSchema = {
     type: 'object',

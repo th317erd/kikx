@@ -4,6 +4,9 @@ import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
 
 const DEFAULT_ROOT_PATH = '/kikx';
 const ORDER_WIDTH = 16;
+const DEFAULT_FRAME_LIST_LIMIT = 1000;
+const MAX_FRAME_LIST_LIMIT = 5000;
+const DIRECTORY_PAGE_LIMIT = 500;
 
 export class AeorDBFrameStore {
   constructor(options = {}) {
@@ -103,6 +106,9 @@ export class AeorDBFrameStore {
             { name: 'contentText', type: 'trigram' },
             { name: 'toolName', type: [ 'string', 'trigram' ], source: [ 'content', 'toolName' ] },
             { name: 'stateStatus', type: 'string', source: [ 'state', 'status' ] },
+            { name: 'compactionKind', type: 'string', source: [ 'content', 'kind' ] },
+            { name: 'compactionStatus', type: 'string', source: [ 'content', 'status' ] },
+            { name: 'compactionBoundaryOrder', type: 'u64', source: [ 'content', 'boundaryOrder' ] },
           ],
         },
       },
@@ -187,9 +193,13 @@ export class AeorDBFrameStore {
     let sessions = [];
     let reads = await readJSONFiles(this.aeordb, sessionPaths, {
       fallbackOnBatchError: true,
+      continueOnError: true,
     });
 
     for (let read of reads) {
+      if (read.error)
+        continue;
+
       let session = read.value;
       if (session?.id)
         sessions.push(session);
@@ -233,17 +243,15 @@ export class AeorDBFrameStore {
     if (!sessionID)
       throw new TypeError('listFrames() requires sessionID');
 
-    let limit = normalizeLimit(options.limit, 250);
+    let limit = normalizeLargeLimit(options.limit, DEFAULT_FRAME_LIST_LIMIT);
     let offset = normalizeOffset(options.offset);
-    let result = await this.aeordb.listDirectory(`${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`, {
+    let paths = await this.listDirectoryPaths(`${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`, {
       depth: -1,
       glob: '**/*.json',
       limit,
       offset,
     });
-
-    let framePaths = pathsFromItems(result?.items)
-      .filter((path) => path.includes('/frames/'));
+    let framePaths = paths.filter((path) => path.includes('/frames/'));
     let frames = [];
     let reads = await readJSONFiles(this.aeordb, framePaths, {
       fallbackOnBatchError: true,
@@ -280,12 +288,12 @@ export class AeorDBFrameStore {
   }
 
   async searchScheduledFrames({ limit, offset }) {
-    if (typeof this.aeordb.searchFiles !== 'function')
+    if (typeof this.aeordb.queryFiles !== 'function' && typeof this.aeordb.searchFiles !== 'function')
       return null;
 
     let result;
     try {
-      result = await this.aeordb.searchFiles({
+      let query = {
         path: `${this.rootPath}/sessions`,
         where: {
           and: [
@@ -296,7 +304,10 @@ export class AeorDBFrameStore {
         },
         limit,
         offset,
-      });
+      };
+      result = typeof this.aeordb.queryFiles === 'function'
+        ? await this.aeordb.queryFiles(query)
+        : await this.aeordb.searchFiles(query);
     } catch (error) {
       if (error?.status === 404)
         return [];
@@ -349,12 +360,12 @@ export class AeorDBFrameStore {
   }
 
   async listCommits(sessionID, options = {}) {
-    let limit = normalizeLimit(options.limit, 250);
+    let limit = normalizeLargeLimit(options.limit, DEFAULT_FRAME_LIST_LIMIT);
     let offset = normalizeOffset(options.offset);
-    let result;
+    let commitPaths;
 
     try {
-      result = await this.aeordb.listDirectory(`${this.rootPath}/sessions/${encodeSegment(sessionID)}/commits`, {
+      commitPaths = await this.listDirectoryPaths(`${this.rootPath}/sessions/${encodeSegment(sessionID)}/commits`, {
         depth: -1,
         glob: '**/*.json',
         limit,
@@ -367,7 +378,6 @@ export class AeorDBFrameStore {
       throw error;
     }
 
-    let commitPaths = pathsFromItems(result?.items);
     let commits = [];
     let reads = await readJSONFiles(this.aeordb, commitPaths, {
       fallbackOnBatchError: true,
@@ -384,6 +394,34 @@ export class AeorDBFrameStore {
     }
 
     return commits.sort(compareCommitOrder);
+  }
+
+  async listDirectoryPaths(path, options = {}) {
+    let limit = normalizeLargeLimit(options.limit, DEFAULT_FRAME_LIST_LIMIT);
+    let offset = normalizeOffset(options.offset);
+    let paths = [];
+    let remaining = limit;
+    let cursor = offset;
+
+    while (remaining > 0) {
+      let pageLimit = Math.min(DIRECTORY_PAGE_LIMIT, remaining);
+      let result = await this.aeordb.listDirectory(path, {
+        ...options,
+        limit: pageLimit,
+        offset: cursor,
+      });
+      let pagePaths = pathsFromItems(result?.items);
+
+      paths.push(...pagePaths);
+
+      if (pagePaths.length < pageLimit)
+        break;
+
+      cursor += pageLimit;
+      remaining -= pageLimit;
+    }
+
+    return uniqueStrings(paths);
   }
 
   async saveCommit(sessionID, commit, frames, frameEngine = null) {
@@ -517,6 +555,17 @@ function normalizeLimit(limit, fallback) {
   return Math.min(value, 500);
 }
 
+function normalizeLargeLimit(limit, fallback) {
+  if (limit == null)
+    return fallback;
+
+  let value = Number(limit);
+  if (!Number.isInteger(value) || value < 1)
+    throw new TypeError('limit must be a positive integer');
+
+  return Math.min(value, MAX_FRAME_LIST_LIMIT);
+}
+
 function normalizeOffset(offset) {
   if (offset == null)
     return 0;
@@ -543,6 +592,9 @@ function shouldFallbackToScheduledFrameScan(error) {
     return false;
 
   if (error.status === 500)
+    return true;
+
+  if (error.status === 400)
     return true;
 
   return /no index|index|scheduledAt|search|query/i.test(error.message || '');
@@ -604,12 +656,10 @@ function compareSessionOrder(a, b) {
 }
 
 function compareFrameOrder(a, b) {
-  return compareClock(sortUpdatedClock(a), sortUpdatedClock(b))
-    || compareNumber(sortUpdatedAt(a), sortUpdatedAt(b))
-    || compareClock(a?.createdClock, b?.createdClock)
+  return compareClock(a?.createdClock, b?.createdClock)
     || compareNumber(a?.createdAt, b?.createdAt)
-    || compareNumber(sortCommitOrder(a), sortCommitOrder(b))
     || compareNumber(a?.order, b?.order)
+    || compareNumber(sortCommitOrder(a), sortCommitOrder(b))
     || String(a.id).localeCompare(String(b.id));
 }
 
@@ -742,7 +792,7 @@ function createCommittedFrameLoadError(sessionID, commit, frameID) {
     parentID: null,
     authorType: 'system',
     authorID: 'internal:aeordb-frame-store',
-    order,
+    order: Number.MAX_SAFE_INTEGER,
     commitOrder: order,
     timestamp: commit?.timestamp || 0,
     createdAt: commit?.timestamp || 0,

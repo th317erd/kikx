@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { AppContext } from '../core/app/app-context.mjs';
 import { AeorDBClient } from '../core/aeordb/aeordb-client.mjs';
 import { AgentManager, registerAgentRouting } from '../core/agents/index.mjs';
+import { CompactionService } from '../core/compaction/index.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
@@ -17,6 +18,7 @@ import { TokenUsageTracker } from '../core/tokens/index.mjs';
 import {
   LocalCommandExecutionService,
   LocalFileAccessService,
+  ProcessManager,
   PuppeteerBrowserService,
   registerBuiltInTools,
   ToolExecutionService,
@@ -25,6 +27,7 @@ import {
 
 const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
 const DEFAULT_AEOR_WEB_COMPONENTS_ROOT = '/home/wyatt/Projects/aeor-web-components';
+const DEFAULT_TOOL_OUTPUT_API_BYTES = 128 * 1024;
 
 export function createServer(options = {}) {
   let context = options.context || new AppContext();
@@ -124,6 +127,30 @@ export function createServer(options = {}) {
       aeordb: context.require('aeordb'),
       frameRouter: context.require('frameRouter'),
       services: { context },
+    }));
+  }
+
+  if (!context.has('compactionService')) {
+    context.set('compactionService', new CompactionService({
+      agentManager: context.require('agentManager'),
+      pluginRegistry: context.require('pluginRegistry'),
+      frameRuntime: context.require('frameRuntime'),
+      contextWindowTokens: parseEnvPositiveInteger(process.env.KIKX_CONTEXT_WINDOW_TOKENS, 128000),
+      compactionAgentContextTokens: parseEnvPositiveInteger(process.env.KIKX_COMPACTION_AGENT_CONTEXT_TOKENS, 128000),
+      promptReserveTokens: parseEnvNonNegativeInteger(process.env.KIKX_CONTEXT_PROMPT_RESERVE_TOKENS, 8000),
+      compactionTriggerRatio: parseEnvRatio(process.env.KIKX_COMPACTION_TRIGGER_RATIO, 0.7),
+      hardLimitRatio: parseEnvRatio(process.env.KIKX_COMPACTION_HARD_RATIO, 1),
+      logger: options.logger || console,
+    }));
+  }
+
+  if (!context.has('processManager')) {
+    context.set('processManager', new ProcessManager({
+      commandExecutor: context.require('commandExecutor'),
+      toolOutputStore: context.require('toolOutputStore'),
+      frameRuntime: context.require('frameRuntime'),
+      context,
+      logger: options.logger || console,
     }));
   }
 
@@ -242,6 +269,39 @@ async function routeRequest({ request, response, context, staticRoots }) {
     return;
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/v1/client-components') {
+    let pluginRegistry = context.require('pluginRegistry');
+    writeJSON(response, 200, {
+      data: {
+        components: typeof pluginRegistry.listClientComponentDescriptors === 'function'
+          ? pluginRegistry.listClientComponentDescriptors()
+          : [],
+      },
+    });
+    return;
+  }
+
+  let toolOutputRoute = matchToolOutputRoute(url.pathname);
+  if (request.method === 'GET' && toolOutputRoute) {
+    let toolOutputStore = context.require('toolOutputStore');
+    let full = parseBoolean(url.searchParams.get('full'), false);
+    let output = await toolOutputStore.getToolOutput({
+      id: toolOutputRoute.outputID,
+      start: parseOptionalNonNegativeInteger(url.searchParams.get('start')),
+      end: parseOptionalPositiveInteger(url.searchParams.get('end')),
+      maxBytes: full
+        ? null
+        : parseOptionalPositiveInteger(url.searchParams.get('maxBytes')) || DEFAULT_TOOL_OUTPUT_API_BYTES,
+    });
+
+    writeJSON(response, 200, {
+      data: {
+        output,
+      },
+    });
+    return;
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/v1/agents') {
     let agentManager = context.require('agentManager');
     writeJSON(response, 200, {
@@ -346,7 +406,10 @@ async function routeRequest({ request, response, context, staticRoots }) {
     if (request.method === 'GET' && sessionRoute.resource === 'frames') {
       writeJSON(response, 200, {
         data: {
-          frames: await frameRuntime.listFrames(sessionRoute.sessionID),
+          frames: await frameRuntime.listFrames(sessionRoute.sessionID, {
+            limit: parsePositiveInteger(url.searchParams.get('limit'), 1000),
+            offset: parseNonNegativeInteger(url.searchParams.get('offset'), 0),
+          }),
         },
       });
       return;
@@ -482,6 +545,62 @@ function parseNonNegativeInteger(value, fallback) {
   return parsed;
 }
 
+function parseEnvPositiveInteger(value, fallback) {
+  if (value == null || value === '')
+    return fallback;
+
+  let parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
+function parseEnvNonNegativeInteger(value, fallback) {
+  if (value == null || value === '')
+    return fallback;
+
+  let parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function parseEnvRatio(value, fallback) {
+  if (value == null || value === '')
+    return fallback;
+
+  let parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0)
+    return fallback;
+
+  return Math.min(parsed, 1);
+}
+
+function parseOptionalPositiveInteger(value) {
+  if (value == null)
+    return null;
+
+  let parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1)
+    throw httpError(400, 'value must be a positive integer');
+
+  return parsed;
+}
+
+function parseOptionalNonNegativeInteger(value) {
+  if (value == null)
+    return null;
+
+  let parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0)
+    throw httpError(400, 'value must be a non-negative integer');
+
+  return parsed;
+}
+
+function parseBoolean(value, fallback = false) {
+  if (value == null || value === '')
+    return fallback;
+
+  return value === '1' || value === 'true' || value === 'yes';
+}
+
 function matchSessionUpdateRoute(pathname) {
   let match = /^\/api\/v1\/sessions\/([^/]+)$/.exec(pathname);
   if (!match)
@@ -510,6 +629,16 @@ function matchAgentRoute(pathname) {
 
   return {
     agentID: decodeURIComponent(match[1]),
+  };
+}
+
+function matchToolOutputRoute(pathname) {
+  let match = /^\/api\/v1\/tool-outputs\/([^/]+)$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    outputID: decodeURIComponent(match[1]),
   };
 }
 

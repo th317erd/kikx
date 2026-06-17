@@ -2,12 +2,15 @@
 
 import { PluginInterface } from '../plugins/index.mjs';
 import { DEFAULT_TOOL_OUTPUT_READ_BYTES } from './tool-output-store.mjs';
+import { builtInToolComponent } from './tool-client-components.mjs';
 
-export class ToolOutputGetTool extends PluginInterface {
+export class OutputReadTool extends PluginInterface {
   static pluginID = 'internal:tool-output';
-  static featureName = 'get';
-  static displayName = 'Get tool output';
+  static featureName = 'read';
+  static displayName = 'Read stored output';
   static description = 'Read a stored tool output by ID, optionally bounded to a byte range.';
+  static frameType = 'StoredOutputToolFrame';
+  static clientComponent = builtInToolComponent('kikx-output-read-use');
   static riskLevel = 'none';
   static inputSchema = {
     type: 'object',
@@ -39,7 +42,7 @@ export class ToolOutputGetTool extends PluginInterface {
     required: [ 'id' ],
     additionalProperties: false,
   };
-  static help = 'Use tool-output-get when a prior tool result was too large to include inline. Pass id to read the first chunk, or pass start/end byte offsets to read a range.';
+  static help = 'Use output-read when a prior tool result was too large to include inline. Pass id to read the first chunk, or pass start/end byte offsets to read a range.';
 
   async _execute(params = {}) {
     return await resolveToolOutputStore(this.context).getToolOutput({
@@ -56,7 +59,7 @@ export class ToolOutputGetTool extends PluginInterface {
 function resolveToolOutputStore(context = {}) {
   let service = context.toolOutputStore || context.services?.toolOutputStore || resolveContextService(context, 'toolOutputStore');
   if (!service?.getToolOutput)
-    throw new Error('tool-output-get requires a toolOutputStore service');
+    throw new Error('output-read requires a toolOutputStore service');
 
   return service;
 }

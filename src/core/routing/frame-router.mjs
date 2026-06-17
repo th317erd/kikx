@@ -8,6 +8,7 @@ export class FrameRouter {
     this._registrations = [];
     this._queue = [];
     this._processing = false;
+    this._backgroundTasks = new Set();
     this._flushWaiters = [];
   }
 
@@ -47,12 +48,25 @@ export class FrameRouter {
       this._processQueue();
   }
 
-  async flush() {
-    if (!this._processing && this._queue.length === 0)
+  runBackground(task) {
+    let promise = Promise.resolve(task);
+    this._backgroundTasks.add(promise);
+    promise.catch((error) => {
+      this.logger.error?.('FrameRouter background task failed', error);
+    }).finally(() => {
+      this._backgroundTasks.delete(promise);
+      this._resolveFlushWaiters();
+    });
+    return promise;
+  }
+
+  async flush(options = {}) {
+    let waitForBackground = options.background !== false;
+    if (this._isFlushReady(waitForBackground))
       return;
 
     return await new Promise((resolve) => {
-      this._flushWaiters.push(resolve);
+      this._flushWaiters.push({ resolve, waitForBackground });
     });
   }
 
@@ -172,9 +186,26 @@ export class FrameRouter {
   }
 
   _resolveFlushWaiters() {
-    let waiters = this._flushWaiters.splice(0);
-    for (let resolve of waiters)
-      resolve();
+    if (this._flushWaiters.length === 0)
+      return;
+
+    let remaining = [];
+    for (let waiter of this._flushWaiters) {
+      if (!this._isFlushReady(waiter.waitForBackground)) {
+        remaining.push(waiter);
+        continue;
+      }
+
+      waiter.resolve();
+    }
+
+    this._flushWaiters = remaining;
+  }
+
+  _isFlushReady(waitForBackground) {
+    return !this._processing
+      && this._queue.length === 0
+      && (!waitForBackground || this._backgroundTasks.size === 0);
   }
 }
 

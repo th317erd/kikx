@@ -293,6 +293,13 @@ kikx-app {
   justify-content: flex-start;
 }
 
+.kikx-thread__body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
 .kikx-composer__actions {
   display: flex;
   align-items: center;
@@ -352,24 +359,40 @@ kikx-app {
 }
 
 .kikx-frame-list {
-  display: grid;
-  align-content: start;
-  gap: 10px;
+  height: 100%;
   min-height: 0;
   margin: 0;
   padding: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.kikx-frame-stream {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
   list-style: none;
 }
 
 .kikx-frame {
   display: grid;
   gap: 8px;
+  justify-self: end;
+  width: fit-content;
+  max-width: min(78%, 960px);
+  min-width: 0;
+  box-sizing: border-box;
   padding: 12px;
   border: 1px solid #303941;
   border-radius: 6px;
   background: #171b1f;
+}
+
+.kikx-frame--UserMessage {
+  justify-self: start;
 }
 
 .kikx-frame--BeginTyping {
@@ -548,6 +571,205 @@ kikx-app {
 
 .kikx-frame__stream {
   color: #edf2f7;
+  white-space: pre-wrap;
+}
+
+.kikx-frame--ToolCall,
+.kikx-frame--ToolResult,
+.kikx-frame--CompactionFrame,
+.kikx-frame[data-frame-type$="ToolFrame"] {
+  border-color: #36434d;
+  background: #14191d;
+}
+
+.kikx-frame__content--custom {
+  display: block;
+}
+
+.kikx-tool-card {
+  display: block;
+  min-width: 0;
+}
+
+.kikx-tool-card__inner {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kikx-tool-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kikx-tool-card__header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #dce3ea;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-tool-card__badge,
+.kikx-tool-card__status,
+.kikx-tool-card__facts span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border: 1px solid #3b4650;
+  border-radius: 999px;
+  background: #1f252b;
+  color: #b9c4ce;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.kikx-tool-card__status--success {
+  border-color: #2f6847;
+  color: #8bd7ad;
+}
+
+.kikx-tool-card__status--error {
+  border-color: #7a3d3d;
+  color: #fca5a5;
+}
+
+.kikx-tool-card__status--running {
+  border-color: #57636f;
+  color: #cfd8e3;
+}
+
+.kikx-tool-card__details {
+  min-width: 0;
+}
+
+.kikx-tool-card__details summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  cursor: pointer;
+  color: #aeb8c2;
+  font-size: 12px;
+}
+
+.kikx-tool-card__details summary::marker {
+  color: #8c98a4;
+}
+
+.kikx-tool-card__summary {
+  min-width: 0;
+  color: #dce3ea;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.kikx-tool-card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kikx-tool-card__message,
+.kikx-tool-card__retrieval {
+  color: #c6d0da;
+  font-size: 13px;
+}
+
+.kikx-tool-card__message--error {
+  color: #fca5a5;
+}
+
+.kikx-tool-card__preview,
+.kikx-tool-card__details pre {
+  max-width: 100%;
+  max-height: 260px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid #303941;
+  border-radius: 6px;
+  background: #0d1013;
+}
+
+.kikx-tool-card__preview code,
+.kikx-tool-card__details code {
+  color: #dce3ea;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre;
+}
+
+.kikx-tool-output {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 8px;
+}
+
+.kikx-tool-output__meta {
+  color: #aeb8c2;
+  font-size: 12px;
+}
+
+.kikx-tool-output__meta-block {
+  max-height: 140px;
+}
+
+.kikx-tool-output__section {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kikx-tool-output__section-label {
+  color: #8c98a4;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.kikx-tool-output__results {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.kikx-tool-output__results li {
+  min-width: 0;
+}
+
+.kikx-tool-output__results a,
+.kikx-tool-output__results strong {
+  color: #9cc7ff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.kikx-tool-output__results a:hover {
+  text-decoration: underline;
+}
+
+.kikx-tool-output__results p {
+  margin: 3px 0 0;
+  color: #dce3ea;
+  white-space: normal;
+}
+
+.kikx-tool-output__source {
+  display: block;
+  margin-top: 3px;
+  color: #8c98a4;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 kikx-typing-indicator {

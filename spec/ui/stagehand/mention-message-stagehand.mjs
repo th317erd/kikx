@@ -71,18 +71,43 @@ test('Stagehand sends an @mention message and the API exposes mention metadata',
     );
     assert.equal(focusResult.success, true, focusResult.message || 'Stagehand did not focus the message composer');
 
+    await page.evaluate(() => {
+      let originalFetch = window.fetch.bind(window);
+      let releaseMessagePost = null;
+      window.__kikxMessagePostStarted = false;
+      window.__kikxReleaseMessagePost = () => releaseMessagePost?.();
+      window.fetch = async (input, init = {}) => {
+        let url = typeof input === 'string' ? input : input?.url || '';
+        let method = String(init?.method || 'GET').toUpperCase();
+        if (url.includes('/api/v1/sessions/session_1/messages') && method === 'POST') {
+          window.__kikxMessagePostStarted = true;
+          await new Promise((resolve) => {
+            releaseMessagePost = resolve;
+          });
+        }
+
+        return await originalFetch(input, init);
+      };
+    });
+
     await page.locator('.kikx-composer textarea').fill('Please review this @"Mention Bot"');
 
-    let sendResult = await stagehand.act(
-      'Click the Send button in the message composer.',
-      {
-        page,
-        timeout: 20000,
-      },
-    );
-    assert.equal(sendResult.success, true, sendResult.message || 'Stagehand did not send the mention message');
+    await page.locator('.kikx-composer .kikx-send-button').click();
+    await waitForPageFlag(page, '__kikxMessagePostStarted');
+    await waitForComposerValue(page, '');
+    await page.evaluate(() => window.__kikxReleaseMessagePost?.());
 
     await page.waitForSelector('.kikx-frame--UserMessage', { timeout: 10000 });
+    await waitForComposerValue(page, '');
+    fixture.frameRuntime.emitEvent('session.saved', {
+      sessionID: 'session_1',
+      session: {
+        ...fixture.frameRuntime.sessions[0],
+        updatedAt: Date.now(),
+      },
+    });
+    await delay(300);
+    await waitForComposerValue(page, '');
     let frames = await page.evaluate(async () => {
       let response = await fetch('/api/v1/sessions/session_1/frames');
       return (await response.json()).data.frames;
@@ -107,3 +132,33 @@ test('Stagehand sends an @mention message and the API exposes mention metadata',
       process.env.OPENAI_API_KEY = previousOpenAIAPIKey;
   }
 });
+
+async function waitForComposerValue(page, expectedValue, timeoutMS = 10000) {
+  let startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMS) {
+    let value = await page.locator('.kikx-composer textarea').inputValue();
+    if (value === expectedValue)
+      return;
+
+    await delay(100);
+  }
+
+  throw new Error(`Timed out waiting for composer value ${JSON.stringify(expectedValue)}`);
+}
+
+async function waitForPageFlag(page, flagName, timeoutMS = 10000) {
+  let startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMS) {
+    let value = await page.evaluate((name) => Boolean(window[name]), flagName);
+    if (value)
+      return;
+
+    await delay(100);
+  }
+
+  throw new Error(`Timed out waiting for page flag ${flagName}`);
+}
+
+async function delay(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}

@@ -1,7 +1,6 @@
 'use strict';
 
 import { elements, $ } from '../lib/aeor-ui.mjs';
-import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
 import {
   AUTH_STORAGE_KEY,
   getAgents,
@@ -17,25 +16,24 @@ import {
   setAgents,
   setAgentFormFromAgent,
   setAgentFormProvider,
+  setClientComponents,
   setSessionFrames,
   setSessions,
   setTokenUsage,
-  upsertFrame,
+  upsertFrames,
   upsertAgent,
   upsertSession,
 } from '../state/kikx-state.mjs';
 import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
-import {
-  frameDisplayLabel,
-  frameSecondaryLabel,
-  frameTimestamp,
-} from './frame-labels.mjs';
+import { loadClientComponentDescriptors } from './frame-component-registry.mjs';
+import './kikx-frame-item.mjs';
 
-const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong, time, option } = elements;
+const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong, option } = elements;
 const aeorInput = elements['aeor-input'];
 const aeorModal = elements['aeor-modal'];
 const aeorSelect = elements['aeor-select'];
-const kikxTypingIndicator = elements['kikx-typing-indicator'];
+
+const ANCHOR_THRESHOLD = 50;
 
 export class KikxApp extends HTMLElement {
   constructor() {
@@ -48,10 +46,16 @@ export class KikxApp extends HTMLElement {
     this._frameListAnchoredToBottom = true;
     this._forceScrollToBottomAfterRender = false;
     this._focusComposerAfterRender = false;
+    this._renderScheduled = false;
+    this._pendingFrameRuntimeEvents = [];
+    this._frameRuntimeFlushScheduled = false;
 
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
     this._onComposerKeydown = this._onComposerKeydown.bind(this);
+    this._syncDraft = this._syncDraft.bind(this);
+    this._syncAuthEmail = this._syncAuthEmail.bind(this);
+    this._syncEditingSessionTitle = this._syncEditingSessionTitle.bind(this);
     this._openAgentManager = this._openAgentManager.bind(this);
     this._closeAgentManager = this._closeAgentManager.bind(this);
     this._closeAgentEditor = this._closeAgentEditor.bind(this);
@@ -65,6 +69,8 @@ export class KikxApp extends HTMLElement {
     this._onRuntimeEventsOpen = this._onRuntimeEventsOpen.bind(this);
     this._onRuntimeEventsError = this._onRuntimeEventsError.bind(this);
     this._onFrameListScroll = this._onFrameListScroll.bind(this);
+    this._onFrameContentResize = this._onFrameContentResize.bind(this);
+    this._flushFrameRuntimeEvents = this._flushFrameRuntimeEvents.bind(this);
   }
 
   connectedCallback() {
@@ -75,6 +81,7 @@ export class KikxApp extends HTMLElement {
     this._render();
     if (this._state.authToken) {
       this._connectRuntimeEvents();
+      this._loadClientComponents();
       this._loadAgents();
       this._loadSessions();
       this._loadTokenUsage();
@@ -86,6 +93,7 @@ export class KikxApp extends HTMLElement {
   _render() {
     let renderSnapshot = this._captureRenderSnapshot();
     this._disconnectFrameListObserver();
+    this._cleanupReactiveBindings();
     $(this).empty();
 
     let shellChildren = [
@@ -128,6 +136,7 @@ export class KikxApp extends HTMLElement {
   disconnectedCallback() {
     this._disconnectRuntimeEvents();
     this._disconnectFrameListObserver();
+    this._cleanupReactiveBindings();
   }
 
   _buildAuthShell() {
@@ -170,16 +179,17 @@ export class KikxApp extends HTMLElement {
           div.class('kikx-thread__header')(
             h2(this._selectedSession()?.title || 'No session'),
           ),
-          this._buildFrameThread(),
+          div.class('kikx-thread__body')(
+            this._buildFrameThread(),
+          ),
           form.class('kikx-composer').onSubmit(this._onSubmit)(
             label.class('kikx-composer__label')('Message'),
             textarea
               .name('message')
               .placeholder(hasSelectedSession ? 'Send a message' : 'Create or select a session first')
               .disabled(!hasSelectedSession)
-              .value.bindState((state) => state.draft, ['draft'])
               .onKeydown(this._onComposerKeydown)
-              .onInput(this._syncDraft)(),
+              .onInput(this._syncDraft)(this._state.draft),
             div.class('kikx-composer__actions')(
               button.type('submit').class('kikx-send-button').disabled(!hasSelectedSession)('Send'),
             ),
@@ -378,55 +388,17 @@ export class KikxApp extends HTMLElement {
       );
     }
 
-    return ul.class('kikx-frame-list')(
-      frames.map((frame) => this._buildFrameItem(frame)),
-    );
-  }
-
-  _buildFrameItem(frame) {
-    if (frame.type === 'BeginTyping') {
-      return li.class('kikx-frame kikx-frame--BeginTyping')(
-        kikxTypingIndicator
-          .agentName(frame.content?.agentName || frame.authorID || 'Agent')
-          .thinkingText(frame.content?.thinkingText || '')(),
-      );
-    }
-
-    let timestamp = frameTimestamp(frame);
-
-    return li.class(`kikx-frame kikx-frame--${frame.type}`)(
-      div.class('kikx-frame__meta')(
-        div.class('kikx-frame__meta-main')(
-          strong(frameDisplayLabel(frame, this._state)),
-          timestamp
-            ? time
-              .class('kikx-frame__timestamp')
-              .datetime(timestamp.dateTime)
-              .title(timestamp.title)(timestamp.label)
-            : null,
-        ),
-        span.class('kikx-frame__secondary')(frameSecondaryLabel(frame)),
+    return div.class('kikx-frame-list').role('list')(
+      div.class('kikx-frame-stream')(
+        frames.map((frame) => this._createFrameItemElement(frame)),
       ),
-      this._buildFrameContent(frame),
     );
   }
 
-  _buildFrameContent(frame) {
-    if (frame.type === 'AgentMessageDelta')
-      return renderMarkdownToElement(document, frame.content?.text || frame.content?.delta || '', {
-        className: 'kikx-frame__content kikx-frame__stream kikx-markdown',
-      });
-
-    if (frame.type === 'AgentThinking')
-      return p.class('kikx-frame__thinking')(frame.content?.text || '');
-
-    if (frame.type === 'AgentMessage') {
-      return renderMarkdownToElement(document, frame.content?.text || frame.contentText || frame.id, {
-        className: 'kikx-frame__content kikx-markdown',
-      });
-    }
-
-    return p(frame.content?.text || frame.contentText || frame.id);
+  _createFrameItemElement(frame) {
+    let item = document.createElement('kikx-frame-item');
+    item.updateFrame(frame, this._state);
+    return item;
   }
 
   _connectRuntimeEvents() {
@@ -463,17 +435,14 @@ export class KikxApp extends HTMLElement {
   _onRuntimeEventsOpen() {
     this._state.connectionStatus = 'Connected';
     this._state.connectionStatusKind = 'ready';
-    this._render();
   }
 
   _onRuntimeEventsError() {
     this._state.connectionStatus = 'Disconnected';
     this._state.connectionStatusKind = 'error';
-    this._render();
   }
 
   _onRuntimeEvent(event) {
-    let wasNearBottom = this._isFrameListNearBottom();
     let data = parseRuntimeEvent(event);
     if (!data)
       return;
@@ -481,26 +450,65 @@ export class KikxApp extends HTMLElement {
     if (data.type === 'connected') {
       this._state.connectionStatus = 'Connected';
       this._state.connectionStatusKind = 'ready';
-      this._render();
       return;
     }
 
     if (data.type === 'tokens.updated') {
       setTokenUsage(data.tokenUsage || {}, data.totalTokensUsed, this._state);
-      this._render();
       return;
     }
 
-    if (data.type === 'session.saved' && data.session?.id)
+    if (data.type === 'session.saved' && data.session?.id) {
       upsertSession(data.session, this._state);
-
-    if ((data.type === 'frame.added' || data.type === 'frame.updated' || data.type === 'frame.phantom') && data.sessionID && data.frame?.id) {
-      upsertFrame(data.sessionID, data.frame, this._state);
-      if (data.sessionID === this._state.selectedSessionID && wasNearBottom)
-        this._forceScrollToBottomAfterRender = true;
+      if (!this._syncSessionShell())
+        this._requestRender();
+      return;
     }
 
-    this._render();
+    if ((data.type === 'frame.added' || data.type === 'frame.updated' || data.type === 'frame.phantom') && data.sessionID && data.frame?.id) {
+      this._queueFrameRuntimeEvent(data);
+      return;
+    }
+
+    if (data.sessionID === this._state.selectedSessionID && this._frameListAnchoredToBottom)
+      this._forceScrollToBottomAfterRender = true;
+
+    this._requestRender();
+  }
+
+  _queueFrameRuntimeEvent(data) {
+    this._pendingFrameRuntimeEvents.push(data);
+
+    if (this._frameRuntimeFlushScheduled)
+      return;
+
+    this._frameRuntimeFlushScheduled = true;
+    scheduleAnimationFrame(this._flushFrameRuntimeEvents);
+  }
+
+  _flushFrameRuntimeEvents() {
+    this._frameRuntimeFlushScheduled = false;
+    let events = this._pendingFrameRuntimeEvents.splice(0);
+    if (events.length === 0)
+      return;
+
+    let framesBySessionID = new Map();
+    let touchedFrameIDsBySessionID = new Map();
+    for (let data of events) {
+      addFrameToBatch(framesBySessionID, data.sessionID, data.frame);
+      addTouchedFrameIDs(touchedFrameIDsBySessionID, data.sessionID, renderedFrameIDsFor(data.frame));
+    }
+    upsertFrames(framesBySessionID, this._state);
+
+    let selectedSessionID = this._state.selectedSessionID;
+    let touchedFrameIDs = touchedFrameIDsBySessionID.get(selectedSessionID);
+    if (touchedFrameIDs)
+      this._syncFrameThread(selectedSessionID, { touchedFrameIDs });
+
+    if (this._pendingFrameRuntimeEvents.length > 0 && !this._frameRuntimeFlushScheduled) {
+      this._frameRuntimeFlushScheduled = true;
+      scheduleAnimationFrame(this._flushFrameRuntimeEvents);
+    }
   }
 
   async _loadSessions() {
@@ -543,10 +551,25 @@ export class KikxApp extends HTMLElement {
     }
   }
 
-  async _loadFrames(sessionID) {
+  async _loadClientComponents() {
+    try {
+      let result = await this._getJSON('/api/v1/client-components');
+      let components = await loadClientComponentDescriptors(result.data?.components || []);
+      setClientComponents(components, this._state);
+      this._syncFrameThread(this._state.selectedSessionID, { force: true });
+    } catch (error) {
+      this._state.clientComponentStatus = 'error';
+      this._state.status = error.message;
+      this._state.statusKind = 'error';
+      this._requestRender();
+    }
+  }
+
+  async _loadFrames(sessionID, options = {}) {
     let result = await this._getJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}/frames`);
     setSessionFrames(sessionID, result.data.frames || [], this._state);
-    this._render();
+    if (options.render !== false)
+      this._render();
   }
 
   async _loadTokenUsage() {
@@ -613,6 +636,7 @@ export class KikxApp extends HTMLElement {
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
     this._render();
     this._connectRuntimeEvents();
+    this._loadClientComponents();
     this._loadAgents();
     this._loadSessions();
     this._loadTokenUsage();
@@ -673,7 +697,8 @@ export class KikxApp extends HTMLElement {
 
   async _onSubmit(event) {
     event.preventDefault();
-    let draft = this._state.draft.trim();
+    let submittedDraft = this._state.draft;
+    let draft = submittedDraft.trim();
     if (!draft) {
       this._state.status = 'Write a message before sending';
       this._state.statusKind = 'error';
@@ -688,20 +713,21 @@ export class KikxApp extends HTMLElement {
 
     this._state.status = 'Committing message...';
     this._state.statusKind = 'pending';
+    this._clearComposerDraft();
 
     try {
       let result = await this._postJSON(`/api/v1/sessions/${encodeURIComponent(this._state.selectedSessionID)}/messages`, {
         text: draft,
       });
       upsertSession(result.data.session, this._state);
-      this._state.draft = '';
       this._forceScrollToBottomAfterRender = true;
       this._focusComposerAfterRender = true;
-      await this._loadFrames(this._state.selectedSessionID);
+      await this._loadFrames(this._state.selectedSessionID, { render: false });
       this._state.status = 'Message committed';
       this._state.statusKind = 'ready';
       this._render();
     } catch (error) {
+      this._restoreComposerDraftOnFailure(submittedDraft);
       this._state.status = error.message;
       this._state.statusKind = 'error';
       this._render();
@@ -928,11 +954,20 @@ export class KikxApp extends HTMLElement {
 
   _captureRenderSnapshot() {
     let frameList = this.querySelector('.kikx-frame-list');
-    if (frameList)
-      this._frameListAnchoredToBottom = this._isFrameListNearBottom(frameList);
+
+    let composer = this.querySelector('textarea[name="message"]');
+    let composerFocused = this.contains(document.activeElement) && document.activeElement === composer;
 
     return {
-      composerFocused: this.contains(document.activeElement) && document.activeElement?.matches?.('textarea[name="message"]'),
+      composerFocused,
+      composerPresent: Boolean(composer),
+      selectedSessionID: this._state.selectedSessionID,
+      frameListPresent: Boolean(frameList),
+      frameListScrollTop: frameList?.scrollTop ?? 0,
+      frameListScrollHeight: frameList?.scrollHeight ?? 0,
+      composerSelectionStart: composerFocused ? composer.selectionStart : null,
+      composerSelectionEnd: composerFocused ? composer.selectionEnd : null,
+      composerSelectionDirection: composerFocused ? composer.selectionDirection : 'none',
       frameListNearBottom: this._frameListAnchoredToBottom,
       forceScrollToBottom: this._forceScrollToBottomAfterRender,
       focusComposer: this._focusComposerAfterRender,
@@ -942,32 +977,175 @@ export class KikxApp extends HTMLElement {
   _afterRender(snapshot = {}) {
     let shouldScrollToBottom = snapshot.forceScrollToBottom || snapshot.frameListNearBottom;
     let shouldFocusComposer = snapshot.focusComposer || snapshot.composerFocused;
+    let shouldRestoreFrameScroll = (
+      !shouldScrollToBottom
+      && snapshot.frameListPresent
+      && snapshot.selectedSessionID === this._state.selectedSessionID
+    );
+    let composer = this.querySelector('textarea[name="message"]');
+    if (composer && composer.value !== (this._state.draft || ''))
+      composer.value = this._state.draft || '';
+
     this._forceScrollToBottomAfterRender = false;
     this._focusComposerAfterRender = false;
 
     if (shouldScrollToBottom) {
       this._frameListAnchoredToBottom = true;
       this._scrollFramesToBottom();
+    } else if (shouldRestoreFrameScroll) {
+      this._restoreFrameListScroll(snapshot);
     }
 
-    if (shouldFocusComposer)
-      queueMicrotask(() => this.querySelector('textarea[name="message"]:not([disabled])')?.focus());
+    if (shouldFocusComposer) {
+      queueMicrotask(() => {
+        let nextComposer = this.querySelector('textarea[name="message"]:not([disabled])');
+        if (!nextComposer)
+          return;
+
+        nextComposer.focus();
+        if (Number.isInteger(snapshot.composerSelectionStart) && Number.isInteger(snapshot.composerSelectionEnd)) {
+          let max = nextComposer.value.length;
+          nextComposer.setSelectionRange(
+            Math.min(snapshot.composerSelectionStart, max),
+            Math.min(snapshot.composerSelectionEnd, max),
+            snapshot.composerSelectionDirection || 'none',
+          );
+        }
+      });
+    }
 
     this._connectFrameListObserver();
   }
 
+  _requestRender() {
+    if (this._renderScheduled)
+      return;
+
+    this._renderScheduled = true;
+    scheduleAnimationFrame(() => {
+      this._renderScheduled = false;
+      if (this.isConnected)
+        this._render();
+    });
+  }
+
+  _clearComposerDraft() {
+    this._state.draft = '';
+    let composer = this.querySelector('textarea[name="message"]');
+    if (!composer)
+      return;
+
+    composer.value = '';
+    try {
+      composer.setSelectionRange(0, 0);
+    } catch (_error) {}
+  }
+
+  _restoreComposerDraftOnFailure(submittedDraft) {
+    if (this._state.draft)
+      return;
+
+    this._state.draft = submittedDraft;
+    let composer = this.querySelector('textarea[name="message"]');
+    if (composer && composer.value === '')
+      composer.value = submittedDraft;
+  }
+
+  _syncSessionShell() {
+    let sessionList = this.querySelector('.kikx-session-list');
+    if (!sessionList)
+      return false;
+
+    let sessionItems = this._buildSessionItems();
+    let sessionItemDefinitions = Array.isArray(sessionItems) ? sessionItems : [ sessionItems ];
+    sessionList.replaceChildren(...sessionItemDefinitions.map((item) => item.build(document)));
+
+    let threadTitle = this.querySelector('.kikx-thread__header h2');
+    let selectedSession = this._selectedSession();
+    if (threadTitle)
+      threadTitle.textContent = selectedSession?.title || 'No session';
+
+    return true;
+  }
+
+  _syncFrameThread(sessionID = this._state.selectedSessionID, options = {}) {
+    if (!sessionID || sessionID !== this._state.selectedSessionID)
+      return;
+
+    let body = this.querySelector('.kikx-thread__body');
+    if (!body)
+      return;
+
+    let frames = getSelectedFrames(this._state).filter((frame) => frame && !frame.deleted && !frame.hidden);
+    if (frames.length === 0) {
+      if (!body.querySelector('.kikx-thread__empty')) {
+        this._disconnectFrameListObserver();
+        body.replaceChildren(this._buildFrameThread().build(document));
+      }
+      return;
+    }
+
+    let frameList = body.querySelector('.kikx-frame-list');
+    let frameStream = frameList?.querySelector('.kikx-frame-stream');
+    if (!frameList || !frameStream) {
+      this._disconnectFrameListObserver();
+      body.replaceChildren(this._buildFrameThread().build(document));
+      this._connectFrameListObserver();
+      if (this._frameListAnchoredToBottom)
+        this._scrollFramesToBottomImmediate();
+      return;
+    }
+
+    let touchedFrameIDs = options.touchedFrameIDs instanceof Set ? options.touchedFrameIDs : null;
+    let existingByID = new Map();
+    for (let item of Array.from(frameStream.children).filter((node) => node.matches?.('kikx-frame-item[data-frame-id]')))
+      existingByID.set(item.dataset.frameId, item);
+
+    let cursor = frameStream.firstElementChild;
+    for (let frame of frames) {
+      let item = existingByID.get(frame.id);
+      if (!item) {
+        item = this._createFrameItemElement(frame);
+      } else {
+        existingByID.delete(frame.id);
+        if (options.force === true || !touchedFrameIDs || touchedFrameIDs.has(frame.id))
+          item.updateFrame(frame, this._state, { force: options.force === true });
+      }
+
+      if (item === cursor) {
+        cursor = cursor.nextElementSibling;
+      } else {
+        frameStream.insertBefore(item, cursor);
+      }
+    }
+
+    for (let stale of existingByID.values())
+      stale.remove();
+  }
+
+  _cleanupReactiveBindings(root = this) {
+    let nodes = [ root, ...root.querySelectorAll('*') ];
+    for (let node of nodes) {
+      if (!Array.isArray(node.__bindings))
+        continue;
+
+      for (let cleanup of node.__bindings)
+        cleanup?.();
+
+      node.__bindings = [];
+    }
+  }
+
   _connectFrameListObserver() {
     let frameList = this.querySelector('.kikx-frame-list');
-    if (!frameList || typeof ResizeObserver !== 'function')
+    let frameStream = frameList?.querySelector('.kikx-frame-stream');
+    if (!frameList || !frameStream || typeof ResizeObserver !== 'function')
       return;
 
     this._observedFrameList = frameList;
     frameList.addEventListener('scroll', this._onFrameListScroll);
-    this._frameListResizeObserver = new ResizeObserver(() => {
-      if (this._frameListAnchoredToBottom)
-        this._scrollFramesToBottom();
-    });
-    this._frameListResizeObserver.observe(frameList);
+    this._frameListResizeObserver = new ResizeObserver(this._onFrameContentResize);
+    this._frameListResizeObserver.observe(frameStream);
   }
 
   _disconnectFrameListObserver() {
@@ -987,23 +1165,33 @@ export class KikxApp extends HTMLElement {
     if (!frameList)
       return true;
 
-    return frameList.scrollHeight - frameList.scrollTop - frameList.clientHeight <= 50;
+    return frameList.scrollHeight - frameList.scrollTop - frameList.clientHeight <= ANCHOR_THRESHOLD;
   }
 
   _scrollFramesToBottom() {
-    let scroll = () => {
-      let frameList = this.querySelector('.kikx-frame-list');
-      if (!frameList)
-        return;
+    this._frameListAnchoredToBottom = true;
+    this._scrollFramesToBottomImmediate();
+  }
 
-      frameList.scrollTop = frameList.scrollHeight - frameList.clientHeight;
-      this._frameListAnchoredToBottom = true;
-    };
+  _scrollFramesToBottomImmediate(frameList = this.querySelector('.kikx-frame-list')) {
+    if (!frameList)
+      return;
 
-    requestAnimationFrame(() => {
-      scroll();
-      requestAnimationFrame(scroll);
-    });
+    frameList.scrollTop = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+  }
+
+  _restoreFrameListScroll(snapshot = {}) {
+    let frameList = this.querySelector('.kikx-frame-list');
+    if (!frameList)
+      return;
+
+    let maxScrollTop = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+    frameList.scrollTop = Math.min(Math.max(0, snapshot.frameListScrollTop || 0), maxScrollTop);
+  }
+
+  _onFrameContentResize() {
+    if (this._frameListAnchoredToBottom)
+      this._scrollFramesToBottomImmediate();
   }
 
   _onFrameListScroll(event) {
@@ -1067,6 +1255,65 @@ function parseRuntimeEvent(event) {
   } catch (_error) {
     return null;
   }
+}
+
+function scheduleAnimationFrame(callback) {
+  if (typeof requestAnimationFrame === 'function')
+    return requestAnimationFrame(callback);
+
+  return setTimeout(callback, 0);
+}
+
+function addTouchedFrameIDs(target, sessionID, frameIDs) {
+  if (!sessionID || !frameIDs || frameIDs.size === 0)
+    return;
+
+  let existing = target.get(sessionID);
+  if (!existing) {
+    existing = new Set();
+    target.set(sessionID, existing);
+  }
+
+  for (let frameID of frameIDs)
+    existing.add(frameID);
+}
+
+function addFrameToBatch(target, sessionID, frame) {
+  if (!sessionID || !frame)
+    return;
+
+  let frames = target.get(sessionID);
+  if (!frames) {
+    frames = [];
+    target.set(sessionID, frames);
+  }
+
+  frames.push(frame);
+}
+
+function renderedFrameIDsFor(frame) {
+  let ids = new Set();
+  if (!frame)
+    return ids;
+
+  if (typeof frame.id === 'string' && frame.id)
+    ids.add(frame.id);
+
+  if (
+    frame.phantom === true
+    && typeof frame.responseFrameID === 'string'
+    && frame.responseFrameID.trim() !== ''
+    && (frame.type === 'AgentThinking' || frame.type === 'AgentMessageDelta')
+  ) {
+    ids.add(frame.responseFrameID.trim());
+  }
+
+  if (frame.type === 'BeginTyping' || frame.type === 'EndTyping') {
+    let agentID = frame.authorID || frame.content?.agentID || 'default';
+    ids.add(`typing:${agentID}`);
+  }
+
+  return ids;
 }
 
 if (!customElements.get('kikx-app'))

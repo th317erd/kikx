@@ -9,6 +9,7 @@ import test from 'node:test';
 
 import { createServer } from '../../src/server/create-server.mjs';
 import { AppContext } from '../../src/core/app/app-context.mjs';
+import { PluginRegistry } from '../../src/core/plugins/index.mjs';
 
 function listen(server) {
   return new Promise((resolve) => {
@@ -80,8 +81,8 @@ function createRuntime() {
         commit: { id: 'commit_1', order: 1 },
       };
     },
-    listFrames(sessionID) {
-      calls.push({ method: 'listFrames', sessionID });
+    listFrames(sessionID, options) {
+      calls.push({ method: 'listFrames', sessionID, options });
       return [
         { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } },
       ];
@@ -184,6 +185,44 @@ test('GET /health reports service state', async () => {
       ok: true,
       services: {
         aeordb: true,
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/client-components returns plugin renderer descriptors', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerFrameComponent('ToolCall', {
+    tagName: 'kikx-tool-call-frame',
+    moduleURL: '/client/components/tool-renderers/kikx-tool-call-frame.mjs',
+  });
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      pluginRegistry,
+      builtInToolsRegistered: true,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/client-components`);
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body, {
+      data: {
+        components: [
+          {
+            kind: 'frame',
+            frameType: 'ToolCall',
+            tagName: 'kikx-tool-call-frame',
+            moduleURL: '/client/components/tool-renderers/kikx-tool-call-frame.mjs',
+          },
+        ],
       },
     });
   } finally {
@@ -505,6 +544,131 @@ test('GET /api/v1/sessions/:sessionID/frames lists runtime frames', async () => 
         ],
       },
     });
+    assert.deepEqual(runtime.calls.at(-1), {
+      method: 'listFrames',
+      sessionID: 'ses_1',
+      options: {
+        limit: 1000,
+        offset: 0,
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/sessions/:sessionID/frames passes pagination options', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/sessions/ses_1/frames?limit=25&offset=50`);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(runtime.calls.at(-1), {
+      method: 'listFrames',
+      sessionID: 'ses_1',
+      options: {
+        limit: 25,
+        offset: 50,
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/tool-outputs/:outputID reads stored tool output with bounded defaults', async () => {
+  let calls = [];
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      processManager: {},
+      toolOutputStore: {
+        async getToolOutput(input) {
+          calls.push(input);
+          return {
+            id: input.id,
+            toolName: 'exec',
+            format: 'json',
+            sizeBytes: 4096,
+            start: input.start || 0,
+            end: 128,
+            returnedBytes: 128,
+            truncated: true,
+            content: '{"stdout":"hello"}',
+          };
+        },
+      },
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/tool-outputs/OUT1`);
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.output.id, 'OUT1');
+    assert.deepEqual(calls, [{
+      id: 'OUT1',
+      start: null,
+      end: null,
+      maxBytes: 128 * 1024,
+    }]);
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/tool-outputs/:outputID forwards explicit ranges', async () => {
+  let calls = [];
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      processManager: {},
+      toolOutputStore: {
+        async getToolOutput(input) {
+          calls.push(input);
+          return {
+            id: input.id,
+            toolName: 'web-search',
+            format: 'json',
+            sizeBytes: 1000,
+            start: input.start,
+            end: input.end,
+            returnedBytes: input.end - input.start,
+            truncated: true,
+            content: '{}',
+          };
+        },
+      },
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/tool-outputs/OUT2?start=10&end=42&maxBytes=64`);
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.output.start, 10);
+    assert.equal(body.data.output.end, 42);
+    assert.deepEqual(calls, [{
+      id: 'OUT2',
+      start: 10,
+      end: 42,
+      maxBytes: 64,
+    }]);
   } finally {
     await close(server);
   }

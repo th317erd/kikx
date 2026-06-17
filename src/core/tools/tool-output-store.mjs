@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 export const DEFAULT_TOOL_OUTPUT_ROOT = '/kikx/tool-outputs';
 export const DEFAULT_TOOL_OUTPUT_INLINE_LIMIT_BYTES = 192 * 1024;
 export const DEFAULT_TOOL_OUTPUT_READ_BYTES = 128 * 1024;
-export const TOOL_OUTPUT_GET_TOOL_NAME = 'tool-output-get';
+export const OUTPUT_READ_TOOL_NAME = 'output-read';
 
 export class ToolOutputStore {
   constructor(options = {}) {
@@ -142,15 +142,33 @@ export class ToolOutputStore {
       .toString('utf8');
   }
 
-  async searchToolOutputs({ query, limit = 20, offset = 0 } = {}) {
-    let normalizedQuery = normalizeRequiredString(query, 'query');
+  async searchToolOutputs(options = {}) {
+    let normalizedQuery = normalizeOptionalString(options.query);
+    let where = normalizeWhere(options.where);
+    if (!normalizedQuery && !where)
+      throw new TypeError('query or where is required');
+
     await this.ensureIndexConfig();
-    return await this.aeordb.searchFiles({
+    let search = {
       path: this.rootPath,
-      query: normalizedQuery,
-      limit: clampInteger(limit, 20, 1, 100),
-      offset: clampInteger(offset, 0, 0, Number.MAX_SAFE_INTEGER),
-    });
+      limit: clampInteger(options.limit, 20, 1, 1000),
+      offset: clampInteger(options.offset, 0, 0, Number.MAX_SAFE_INTEGER),
+      include_matches: options.includeMatches ?? options.include_matches ?? true,
+      max_matches_per_result: clampInteger(options.maxMatchesPerResult ?? options.max_matches_per_result, 5, 1, 50),
+      snippet_chars: clampInteger(options.snippetChars ?? options.snippet_chars, 240, 1, 4096),
+      match_context_lines: clampInteger(options.matchContextLines ?? options.match_context_lines, 2, 0, 100),
+    };
+
+    if (normalizedQuery)
+      search.query = normalizedQuery;
+    if (where)
+      search.where = where;
+
+    let maxLocatorScanBytes = options.maxLocatorScanBytes ?? options.max_locator_scan_bytes;
+    if (maxLocatorScanBytes != null)
+      search.max_locator_scan_bytes = normalizePositiveInteger(maxLocatorScanBytes, 'maxLocatorScanBytes');
+
+    return await this.aeordb.searchFiles(search);
   }
 
   createAgentResult(storedOutput) {
@@ -187,22 +205,22 @@ export class ToolOutputStore {
     return [
       `The tool call output was too large to include inline (${sizeBytes} bytes; inline limit ${this.inlineLimitBytes} bytes).`,
       `The full output was stored in AeorDB with tool output ID ${id}.`,
-      `To read the first chunk, call ${TOOL_OUTPUT_GET_TOOL_NAME} with {"id":"${id}","start":0,"end":${firstEnd}}.`,
-      `To request a different byte range, call ${TOOL_OUTPUT_GET_TOOL_NAME} with {"id":"${id}","start":<inclusive_byte_offset>,"end":<exclusive_byte_offset>}.`,
-      `To attempt the full output, call ${TOOL_OUTPUT_GET_TOOL_NAME} with {"id":"${id}","full":true}.`,
+      `To read the first chunk, call ${OUTPUT_READ_TOOL_NAME} with {"id":"${id}","start":0,"end":${firstEnd}}.`,
+      `To request a different byte range, call ${OUTPUT_READ_TOOL_NAME} with {"id":"${id}","start":<inclusive_byte_offset>,"end":<exclusive_byte_offset>}.`,
+      `To attempt the full output, call ${OUTPUT_READ_TOOL_NAME} with {"id":"${id}","full":true}.`,
     ].join(' ');
   }
 
   createRetrievalInstructions(id, sizeBytes) {
     let firstEnd = Math.min(sizeBytes, this.defaultReadBytes);
     return {
-      getTool: TOOL_OUTPUT_GET_TOOL_NAME,
+      getTool: OUTPUT_READ_TOOL_NAME,
       getAll: {
-        tool: TOOL_OUTPUT_GET_TOOL_NAME,
+        tool: OUTPUT_READ_TOOL_NAME,
         arguments: { id, full: true },
       },
       getRange: {
-        tool: TOOL_OUTPUT_GET_TOOL_NAME,
+        tool: OUTPUT_READ_TOOL_NAME,
         arguments: { id, start: 0, end: firstEnd },
       },
       rangeSemantics: 'start is inclusive, end is exclusive, both are byte offsets in the stored serialized tool output.',
@@ -214,7 +232,7 @@ export class ToolOutputStore {
       return;
 
     await this.aeordb.putFile(`${this.rootPath}/.aeordb-config/indexes.json`, {
-      glob: '*/metadata.json',
+      glob: '*/*',
       indexes: [
         { name: 'id', type: 'string' },
         { name: 'toolName', type: [ 'string', 'trigram' ] },
@@ -226,6 +244,7 @@ export class ToolOutputStore {
         { name: 'format', type: 'string' },
         { name: 'sizeBytes', type: 'u64' },
         { name: 'contentPreview', type: [ 'string', 'trigram' ] },
+        { name: 'resultText', type: 'trigram', source: [ 'text' ] },
       ],
     });
     this._indexesReady = true;
@@ -351,6 +370,20 @@ function normalizeRequiredString(value, fieldName) {
     throw new TypeError(`${fieldName} must be a non-empty string`);
 
   return value.trim();
+}
+
+function normalizeOptionalString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeWhere(value) {
+  if (value == null)
+    return null;
+
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new TypeError('where must be an object');
+
+  return value;
 }
 
 function normalizePositiveInteger(value, fieldName) {

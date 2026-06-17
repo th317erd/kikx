@@ -42,24 +42,35 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
     if (!pluginRegistry)
       throw new Error('AgentRouteFramePlugin requires pluginRegistry');
 
-    let routeTargets = resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID });
+    let routeTargets = filterRedundantRouteTargets({
+      frame,
+      routeTargets: resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID }),
+      frameEngine: this.context.engine,
+    });
     if (routeTargets.length === 0) {
       await next(this.context);
       return;
     }
 
-    for (let agentID of routeTargets) {
-      let result = await this.routeAgent({
-        agentID,
-        coordinatorAgentID,
-        agentManager,
-        pluginRegistry,
-        services,
-        frame,
-      });
+    let routeTasks = routeTargets.map((agentID) => this.routeAgent({
+      agentID,
+      coordinatorAgentID,
+      agentManager,
+      pluginRegistry,
+      services,
+      frame,
+    }));
+    let frameRouter = resolveService(services, 'frameRouter') || services?.frameRuntime?.frameRouter;
 
-      if (result?.status === 'forwarded')
-        break;
+    if (typeof frameRouter?.runBackground === 'function') {
+      for (let task of routeTasks)
+        frameRouter.runBackground(task);
+    } else {
+      let results = await Promise.allSettled(routeTasks);
+      for (let result of results) {
+        if (result.status === 'rejected')
+          this.logger.error?.('AgentRouteFramePlugin routeAgent failed', result.reason);
+      }
     }
 
     done();
@@ -82,8 +93,6 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       if (!ProviderClass)
         throw new Error(`Unknown agent provider: ${agent.pluginID}`);
 
-      responseFrameID = this.context.engine.idGenerator();
-      let responseFrame = await this.createResponseFrame({ agent, frame, responseFrameID, services });
       let participantAgents = await this.loadParticipantAgents({
         participantAgentIDs: this.context.session?.participantAgentIDs,
         agentManager,
@@ -92,6 +101,25 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       let sessionFrames = typeof this.context.engine.toArray === 'function'
         ? this.context.engine.toArray()
         : [];
+      let compactionService = resolveService(services, 'compactionService');
+      let contextMemory = null;
+      if (typeof compactionService?.prepareAgentContext === 'function') {
+        contextMemory = await compactionService.prepareAgentContext({
+          session: this.context.session,
+          frameEngine: this.context.engine,
+          triggerFrame: frame,
+          agent,
+          participantAgents,
+          services,
+          routerContext: this.context,
+          coordinatorAgentID,
+        });
+        if (Array.isArray(contextMemory?.frames))
+          sessionFrames = contextMemory.frames;
+      }
+
+      responseFrameID = this.context.engine.idGenerator();
+      let responseFrame = await this.createResponseFrame({ agent, frame, responseFrameID, services });
       let tokenUsage = resolveService(services, 'tokenUsage');
       let tokenUsageSnapshot = typeof tokenUsage?.snapshot === 'function' ? tokenUsage.snapshot() : {};
       let providerServices = this.providerServices({ services, agent, frame });
@@ -110,6 +138,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         secrets: agent.secrets || {},
         frames: sessionFrames,
         sessionFrames,
+        contextMemory,
         tokenUsage: tokenUsageSnapshot,
         totalTokensUsed: typeof tokenUsage?.totalTokensUsed === 'function'
           ? tokenUsage.totalTokensUsed()
@@ -184,6 +213,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
     let tokenUsage = resolveService(services, 'tokenUsage');
     return {
       ...services,
+      frameEngine: this.context.engine,
       ...(tokenUsage ? {
         tokenUsage,
         addTokens: async (serviceKey, usage, options = {}) => await tokenUsage.addTokens(serviceKey, usage, options),
@@ -311,7 +341,15 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       return;
 
     let now = this.clock();
-    let content = normalizeProviderContent(output, this.context.engine.get(responseFrameID));
+    let responseFrame = this.context.engine.get(responseFrameID);
+    let content = normalizeProviderContent(output, responseFrame);
+    if (shouldSuppressBlankAgentMessage(output, content)) {
+      if (!output.id || output.id === responseFrameID)
+        this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status: 'empty' });
+
+      return;
+    }
+
     let mergedFrame = {
       ...output,
       id: output.id || (output.phantom ? this.context.engine.idGenerator() : responseFrameID),
@@ -588,6 +626,86 @@ function resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID })
   return uniqueStrings([ coordinatorAgentID, ...participantAgentIDs ]);
 }
 
+function filterRedundantRouteTargets({ frame, routeTargets, frameEngine }) {
+  let targets = uniqueStrings(routeTargets);
+  if (!frame || targets.length === 0 || !frameEngine)
+    return targets;
+
+  return targets.filter((agentID) => shouldDeliverFrameToAgent({ frame, agentID, frameEngine }));
+}
+
+function shouldDeliverFrameToAgent({ frame, agentID, frameEngine }) {
+  if (hasAgentRouteForSourceFrame({ frameEngine, sourceFrameID: frame.id, agentID }))
+    return false;
+
+  if (frame.type !== 'AgentMessage')
+    return true;
+
+  if (isExplicitAgentTarget(frame, agentID))
+    return true;
+
+  return !hasVisibleAgentResponseForRoot({ frameEngine, frame, agentID });
+}
+
+function hasAgentRouteForSourceFrame({ frameEngine, sourceFrameID, agentID }) {
+  if (!sourceFrameID || !agentID)
+    return false;
+
+  for (let candidate of frameEngine.toArray?.() || []) {
+    if (!candidate || candidate.id === sourceFrameID)
+      continue;
+
+    if (candidate.type !== 'AgentMessage' || candidate.authorID !== agentID)
+      continue;
+
+    if (candidate.deleted === true)
+      continue;
+
+    if (candidate.parentID === sourceFrameID)
+      return true;
+
+    let route = normalizeAgentRoute(candidate.agentRoute);
+    if (route.sourceFrameID === sourceFrameID)
+      return true;
+  }
+
+  return false;
+}
+
+function hasVisibleAgentResponseForRoot({ frameEngine, frame, agentID }) {
+  let rootFrameID = normalizeAgentRoute(frame.agentRoute).rootFrameID || frame.parentID || null;
+  if (!rootFrameID || !agentID)
+    return false;
+
+  for (let candidate of frameEngine.toArray?.() || []) {
+    if (!candidate || candidate.id === frame.id)
+      continue;
+
+    if (candidate.type !== 'AgentMessage' || candidate.authorID !== agentID)
+      continue;
+
+    if (candidate.hidden === true || candidate.deleted === true)
+      continue;
+
+    let route = normalizeAgentRoute(candidate.agentRoute);
+    if (route.rootFrameID === rootFrameID || candidate.parentID === rootFrameID)
+      return true;
+  }
+
+  return false;
+}
+
+function isExplicitAgentTarget(frame, agentID) {
+  if (!frame || !agentID)
+    return false;
+
+  if (frame.targetAgentID === agentID)
+    return true;
+
+  let mention = frame.mentions?.[agentID];
+  return mention?.type === 'agent' || mention != null;
+}
+
 function createResponseAgentRoute({ sourceFrame, agentID }) {
   let inherited = normalizeAgentRoute(sourceFrame?.agentRoute);
   let inheritedPath = inherited.path.length > 0
@@ -778,6 +896,19 @@ function normalizeProviderContent(output, existingResponseFrame) {
   };
 
   return content;
+}
+
+function shouldSuppressBlankAgentMessage(output, content = {}) {
+  if (output?.phantom || output?.type !== 'AgentMessage')
+    return false;
+
+  return !hasVisibleText(content.text)
+    && !hasVisibleText(content.html)
+    && !hasVisibleText(content.markdown);
+}
+
+function hasVisibleText(value) {
+  return typeof value === 'string' && value.trim() !== '';
 }
 
 function normalizeContinuation(value) {

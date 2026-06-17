@@ -61,6 +61,7 @@ test('Stagehand renders agent markdown without paragraph-heavy markup', async (t
           '```',
           '',
           '[docs](https://example.test/docs)',
+          'Bare URL: https://example.test/bare?from=agent.',
           '<strong onclick="window.__kikxXSS=1">Safe HTML</strong>',
           '<a href="https://example.test/**not-bold**">Attribute Markdown</a>',
           '<p>Paragraph **markdown** should not create p tags.</p>',
@@ -107,6 +108,8 @@ test('Stagehand renders agent markdown without paragraph-heavy markup', async (t
         code: body.querySelector('pre code')?.textContent || '',
         href: body.querySelector('a')?.getAttribute('href') || '',
         rel: body.querySelector('a')?.getAttribute('rel') || '',
+        bareURL: Array.from(body.querySelectorAll('a')).find((node) => node.textContent === 'https://example.test/bare?from=agent')?.getAttribute('href') || '',
+        bareURLText: Array.from(body.querySelectorAll('a')).find((node) => node.textContent === 'https://example.test/bare?from=agent')?.textContent || '',
         attributeMarkdownHref: Array.from(body.querySelectorAll('a')).find((node) => node.textContent === 'Attribute Markdown')?.getAttribute('href') || '',
         attributeMarkdownHTML: Array.from(body.querySelectorAll('a')).find((node) => node.textContent === 'Attribute Markdown')?.innerHTML || '',
         unsafeHrefs: Array.from(body.querySelectorAll('a')).map((node) => node.getAttribute('href')).filter((href) => href?.startsWith('javascript:')),
@@ -122,6 +125,8 @@ test('Stagehand renders agent markdown without paragraph-heavy markup', async (t
     assert.equal(rendered.code, 'const ok = true;');
     assert.equal(rendered.href, 'https://example.test/docs');
     assert.equal(rendered.rel, 'noopener noreferrer');
+    assert.equal(rendered.bareURL, 'https://example.test/bare?from=agent');
+    assert.equal(rendered.bareURLText, 'https://example.test/bare?from=agent');
     assert.equal(rendered.attributeMarkdownHref, 'https://example.test/**not-bold**');
     assert.equal(rendered.attributeMarkdownHTML, 'Attribute Markdown');
     assert.deepEqual(rendered.unsafeHrefs, []);

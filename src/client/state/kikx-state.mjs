@@ -9,6 +9,7 @@ import {
   countMessageFrames,
   mergeSessions,
   setSessionFramesState,
+  upsertFramesState,
   upsertFrameState,
   upsertSessionState,
 } from './session-state-utils.mjs';
@@ -35,6 +36,9 @@ export const kikxState = new ReactiveState({
   authStatus: '',
   authStatusKind: 'pending',
   authToken: savedAuth.token || '',
+  clientComponentStatus: 'pending',
+  clientFrameComponentsByType: {},
+  clientToolComponentsByName: {},
   connectionStatus: 'Disconnected',
   connectionStatusKind: 'error',
   draft: '',
@@ -94,6 +98,10 @@ export function upsertFrame(sessionID, frame, state = kikxState) {
   applySessionSnapshot(state, upsertFrameState(state, sessionID, frame));
 }
 
+export function upsertFrames(framesBySessionID, state = kikxState) {
+  applySessionSnapshot(state, upsertFramesState(state, framesBySessionID));
+}
+
 export function setTokenUsage(tokenUsage, totalTokensUsed = null, state = kikxState) {
   let snapshot = normalizeTokenUsageSnapshot(tokenUsage);
   state.tokenUsage = snapshot;
@@ -111,6 +119,22 @@ export function resetSessionState(state = kikxState) {
 
 export function setAgentProviders(providers, state = kikxState) {
   state.agentProviders = Array.isArray(providers) ? providers.slice() : [];
+}
+
+export function setClientComponents(components, state = kikxState) {
+  let frameComponents = {};
+  let toolComponents = {};
+
+  for (let component of Array.isArray(components) ? components : []) {
+    if (component?.kind === 'frame' && component.frameType)
+      frameComponents[component.frameType] = component;
+    else if (component?.kind === 'tool' && component.toolName)
+      toolComponents[component.toolName] = component;
+  }
+
+  state.clientFrameComponentsByType = frameComponents;
+  state.clientToolComponentsByName = toolComponents;
+  state.clientComponentStatus = 'ready';
 }
 
 export function setAgents(agents, state = kikxState) {

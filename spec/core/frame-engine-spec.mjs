@@ -81,7 +81,7 @@ test('FrameEngine target merges only mergeable fields and keeps target identity 
   assert.equal(frames.getVersionHistory('prompt_1').length, 2);
 });
 
-test('FrameEngine sorts by latest commit order without changing stable frame order', () => {
+test('FrameEngine sorts by stable frame creation order after later updates', () => {
   let frames = engine();
   frames.merge([{ id: 'agent_1', type: 'AgentMessage', content: { text: '' }, hidden: true }]);
   frames.merge([{ id: 'user_1', type: 'UserMessage', content: { text: 'later user' }, hidden: false }]);
@@ -90,7 +90,7 @@ test('FrameEngine sorts by latest commit order without changing stable frame ord
   assert.equal(frames.get('agent_1').order, 1);
   assert.equal(frames.get('agent_1').commitOrder, 3);
   assert.equal(frames.get('user_1').order, 2);
-  assert.deepEqual(frames.toArray().map((frame) => frame.id), [ 'user_1', 'agent_1' ]);
+  assert.deepEqual(frames.toArray().map((frame) => frame.id), [ 'agent_1', 'user_1' ]);
 });
 
 test('FrameEngine stamps frames with sortable created and updated clocks', () => {
@@ -118,7 +118,7 @@ test('FrameEngine stamps frames with sortable created and updated clocks', () =>
   assert.equal(agent.createdClock, '0000000001000000-000000-test-runner');
   assert.equal(agent.updatedClock, '0000000001002000-000000-test-runner');
   assert.equal(user.updatedClock, '0000000001001000-000000-test-runner');
-  assert.deepEqual(frames.toArray().map((frame) => frame.id), [ 'user_1', 'agent_1' ]);
+  assert.deepEqual(frames.toArray().map((frame) => frame.id), [ 'agent_1', 'user_1' ]);
 });
 
 test('FrameEngine live frames collapse into a persistent group frame', () => {

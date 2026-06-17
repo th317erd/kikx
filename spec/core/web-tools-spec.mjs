@@ -10,14 +10,32 @@ import vm from 'node:vm';
 
 import { PluginRegistry } from '../../src/core/plugins/index.mjs';
 import {
+  AgentListTool,
+  DatabaseFetchTool,
+  DatabaseSearchTool,
   ExecTool,
+  ExecGrepTool,
+  ExecKillTool,
+  ExecListTool,
+  ExecReadTool,
+  ExecStatusTool,
   LocalCommandExecutionService,
   LocalFileAccessService,
+  OutputGrepTool,
+  OutputReadTool,
+  OutputSearchTool,
+  ProcessManager,
   PuppeteerBrowserService,
   ReadFileTool,
   registerBuiltInTools,
+  SessionCreateTool,
+  SessionFramesTool,
+  SessionGetTool,
+  SessionInviteAgentsTool,
+  SessionListTool,
+  SessionMessageTool,
+  SessionSearchTool,
   ToolExecutionService,
-  ToolOutputGetTool,
   ToolOutputStore,
   WebFetchTool,
   WebSearchTool,
@@ -49,7 +67,27 @@ test('registerBuiltInTools registers global web tools with OpenAI-safe names', (
   assert.equal(registry.getTool('read-file'), ReadFileTool);
   assert.equal(registry.getTool('write-file'), WriteFileTool);
   assert.equal(registry.getTool('exec'), ExecTool);
-  assert.equal(registry.getTool('tool-output-get'), ToolOutputGetTool);
+  assert.equal(registry.getTool('exec-list'), ExecListTool);
+  assert.equal(registry.getTool('exec-status'), ExecStatusTool);
+  assert.equal(registry.getTool('exec-read'), ExecReadTool);
+  assert.equal(registry.getTool('exec-grep'), ExecGrepTool);
+  assert.equal(registry.getTool('exec-kill'), ExecKillTool);
+  assert.equal(registry.getTool('database-search'), DatabaseSearchTool);
+  assert.equal(registry.getTool('database-fetch'), DatabaseFetchTool);
+  assert.equal(registry.getTool('process-list'), null);
+  assert.equal(registry.getTool('process-response-fetch'), null);
+  assert.equal(registry.getTool('process-wake-on-completion'), null);
+  assert.equal(registry.getTool('output-read'), OutputReadTool);
+  assert.equal(registry.getTool('output-grep'), OutputGrepTool);
+  assert.equal(registry.getTool('output-search'), OutputSearchTool);
+  assert.equal(registry.getTool('agent-list'), AgentListTool);
+  assert.equal(registry.getTool('session-list'), SessionListTool);
+  assert.equal(registry.getTool('session-create'), SessionCreateTool);
+  assert.equal(registry.getTool('session-invite-agents'), SessionInviteAgentsTool);
+  assert.equal(registry.getTool('session-get'), SessionGetTool);
+  assert.equal(registry.getTool('session-frames'), SessionFramesTool);
+  assert.equal(registry.getTool('session-search'), SessionSearchTool);
+  assert.equal(registry.getTool('session-message'), SessionMessageTool);
   assert.equal([...registry.getTools().keys()].every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
 });
 
@@ -249,26 +287,22 @@ test('WriteFileTool requires consolidated file access service', async () => {
   );
 });
 
-test('ExecTool runs commands through a login shell command executor', async () => {
+test('LocalCommandExecutionService runs commands through a login shell', async () => {
   let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-exec-'));
   let home = path.join(dir, 'home');
   await fs.mkdir(home);
   await fs.writeFile(path.join(home, '.bash_profile'), 'export KIKX_EXEC_PROFILE_VALUE=from-profile\n', 'utf8');
   let shell = fsSyncExists('/bin/bash') ? '/bin/bash' : process.env.SHELL;
-  let tool = new ExecTool({
-    services: {
-      commandExecutor: new LocalCommandExecutionService({
-        cwd: dir,
-        shell,
-        env: {
-          HOME: home,
-          PATH: process.env.PATH,
-        },
-      }),
+  let service = new LocalCommandExecutionService({
+    cwd: dir,
+    shell,
+    env: {
+      HOME: home,
+      PATH: process.env.PATH,
     },
   });
 
-  let result = await tool.execute({
+  let result = await service.exec({
     command: 'printf "%s:%s" "$KIKX_EXEC_PROFILE_VALUE" "$PWD"',
   });
 
@@ -281,24 +315,20 @@ test('ExecTool runs commands through a login shell command executor', async () =
   assert.equal(result.stdoutBytes, Buffer.byteLength(result.stdout));
 });
 
-test('ExecTool captures stderr and non-zero exit codes without throwing', async () => {
+test('LocalCommandExecutionService captures stderr and non-zero exit codes without throwing', async () => {
   let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-exec-stderr-'));
   let home = path.join(dir, 'home');
   await fs.mkdir(home);
-  let tool = new ExecTool({
-    services: {
-      commandExecutor: new LocalCommandExecutionService({
-        cwd: dir,
-        shell: fsSyncExists('/bin/bash') ? '/bin/bash' : process.env.SHELL,
-        env: {
-          HOME: home,
-          PATH: process.env.PATH,
-        },
-      }),
+  let service = new LocalCommandExecutionService({
+    cwd: dir,
+    shell: fsSyncExists('/bin/bash') ? '/bin/bash' : process.env.SHELL,
+    env: {
+      HOME: home,
+      PATH: process.env.PATH,
     },
   });
 
-  let result = await tool.execute({
+  let result = await service.exec({
     command: 'printf "out"; printf "err" >&2; exit 7',
   });
 
@@ -308,7 +338,7 @@ test('ExecTool captures stderr and non-zero exit codes without throwing', async 
   assert.equal(result.stderr, 'err');
 });
 
-test('ExecTool keeps RVM-style login shell hooks working after commands enable nounset', async () => {
+test('LocalCommandExecutionService keeps RVM-style login shell hooks working after commands enable nounset', async () => {
   if (!fsSyncExists('/bin/bash'))
     return;
 
@@ -337,20 +367,16 @@ cd() {
 trap '__rvm_teardown_final' EXIT
 `, 'utf8');
 
-  let tool = new ExecTool({
-    services: {
-      commandExecutor: new LocalCommandExecutionService({
-        cwd: dir,
-        shell: '/bin/bash',
-        env: {
-          HOME: home,
-          PATH: process.env.PATH,
-        },
-      }),
+  let service = new LocalCommandExecutionService({
+    cwd: dir,
+    shell: '/bin/bash',
+    env: {
+      HOME: home,
+      PATH: process.env.PATH,
     },
   });
 
-  let result = await tool.execute({
+  let result = await service.exec({
     command: 'set -u; cd nested; printf "%s" "$PWD"',
   });
 
@@ -360,24 +386,20 @@ trap '__rvm_teardown_final' EXIT
   assert.equal(result.stderr, '');
 });
 
-test('ExecTool times out and reports killed command state', async () => {
+test('LocalCommandExecutionService times out and reports killed command state', async () => {
   let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-exec-timeout-'));
   let home = path.join(dir, 'home');
   await fs.mkdir(home);
-  let tool = new ExecTool({
-    services: {
-      commandExecutor: new LocalCommandExecutionService({
-        cwd: dir,
-        shell: fsSyncExists('/bin/bash') ? '/bin/bash' : process.env.SHELL,
-        env: {
-          HOME: home,
-          PATH: process.env.PATH,
-        },
-      }),
+  let service = new LocalCommandExecutionService({
+    cwd: dir,
+    shell: fsSyncExists('/bin/bash') ? '/bin/bash' : process.env.SHELL,
+    env: {
+      HOME: home,
+      PATH: process.env.PATH,
     },
   });
 
-  let result = await tool.execute({
+  let result = await service.exec({
     command: 'sleep 5',
     timeoutMs: 50,
   });
@@ -388,13 +410,314 @@ test('ExecTool times out and reports killed command state', async () => {
   assert.equal(result.signal, 'SIGTERM');
 });
 
-test('ExecTool requires consolidated command executor service', async () => {
+test('LocalCommandExecutionService completes nohup and disown commands that inherit stdio', async () => {
+  if (!fsSyncExists('/bin/bash'))
+    return;
+
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-exec-detached-'));
+  let home = path.join(dir, 'home');
+  let pidPath = path.join(dir, 'background.pid');
+  await fs.mkdir(home);
+  let service = new LocalCommandExecutionService({
+    cwd: dir,
+    shell: '/bin/bash',
+    exitStdioGraceMs: 50,
+    env: {
+      HOME: home,
+      PATH: process.env.PATH,
+    },
+  });
+
+  try {
+    let result = await service.exec({
+      command: `nohup sleep 5 & echo $! > ${shellQuote(pidPath)}; disown; printf "detached"`,
+      timeoutMs: 1000,
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.signal, null);
+    assert.equal(result.timedOut, false);
+    assert.equal(result.stdout, 'detached');
+    assert.equal(result.stdioClosedByManager, true);
+  } finally {
+    await killPIDFromFile(pidPath);
+  }
+});
+
+test('ExecTool requires consolidated process manager service', async () => {
   let tool = new ExecTool();
 
   await assert.rejects(
     () => tool.execute({ command: 'true' }),
-    /exec requires a commandExecutor service/,
+    /exec requires a processManager service/,
   );
+});
+
+test('ExecTool returns direct output when async process completes during grace window', async () => {
+  let { processManager } = await createProcessHarness({ graceMs: 500 });
+  let tool = new ExecTool({
+    services: { processManager },
+  });
+
+  let result = await tool.execute({
+    command: 'printf "quick"',
+    _agentID: 'agent_1',
+    _sessionID: 'ses_1',
+    _frameID: 'frm_1',
+  });
+
+  assert.equal(result.completedWithinGrace, true);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.result.stdout, 'quick');
+  assert.equal(result.completionToolOutputID, 'OUT1');
+});
+
+test('ExecTool completes setsid-detached shell wrappers without waiting for inherited stdio', async () => {
+  if (!fsSyncExists('/bin/bash') || !fsSyncExists('/usr/bin/setsid'))
+    return;
+
+  let { processManager, dir } = await createProcessHarness({
+    graceMs: 1000,
+    exitStdioGraceMs: 50,
+  });
+  let pidPath = path.join(dir, 'setsid.pid');
+  let tool = new ExecTool({
+    services: { processManager },
+  });
+
+  try {
+    let result = await tool.execute({
+      command: `setsid sleep 5 & echo $! > ${shellQuote(pidPath)}; printf "setsid-started"`,
+      _agentID: 'agent_1',
+      _sessionID: 'ses_1',
+      _frameID: 'frm_1',
+    });
+
+    assert.equal(result.completedWithinGrace, true);
+    assert.equal(result.status, 'completed');
+    assert.equal(result.timedOut, false);
+    assert.equal(result.stdioClosedByManager, true);
+    assert.equal(result.result.stdout, 'setsid-started');
+    assert.equal(result.result.stdioClosedByManager, true);
+    assert.equal(result.completionToolOutputID, 'OUT1');
+  } finally {
+    await killPIDFromFile(pidPath);
+  }
+});
+
+test('ExecTool returns running process instructions and stores completion output later', async () => {
+  let { processManager, aeordb } = await createProcessHarness({ graceMs: 25 });
+  let tool = new ExecTool({
+    services: { processManager },
+  });
+
+  let result = await tool.execute({
+    command: 'printf "start"; sleep 0.15; printf " done"',
+    _agentID: 'agent_1',
+    _sessionID: 'ses_1',
+    _frameID: 'frm_1',
+  });
+
+  assert.equal(result.status, 'running');
+  assert.match(result.message, /Async exec ID#/);
+  assert.match(result.message, /automatically when it completes/);
+  assert.equal(result.tools.status.tool, 'exec-status');
+
+  await waitFor(async () => processManager.status({
+    processID: result.processID,
+    _agentID: 'agent_1',
+  }).status === 'completed');
+
+  let status = processManager.status({
+    processID: result.processID,
+    _agentID: 'agent_1',
+  });
+  assert.equal(status.completionToolOutputID, 'OUT1');
+  assert.match(aeordb.files.get('/kikx/tool-outputs/OUT1/result.txt'), /start done/);
+});
+
+test('ExecTool automatically schedules an agent wake when a long async process completes', async () => {
+  let { processManager } = await createProcessHarness({ graceMs: 10 });
+  let scheduledFrames = [];
+  let processedScheduledFrames = false;
+  processManager.frameRuntime = {
+    clock: () => 123456,
+    idGenerator: () => 'wake_frame_1',
+    async ensureSessionEntry(sessionID) {
+      return {
+        session: { id: sessionID },
+        frameEngine: {
+          merge(frames) {
+            scheduledFrames.push(...frames);
+            return frames;
+          },
+        },
+      };
+    },
+    frameStore: {
+      async flush() {},
+    },
+    async processScheduledFrames() {
+      processedScheduledFrames = true;
+    },
+  };
+  let tool = new ExecTool({
+    services: { processManager },
+  });
+
+  let started = await tool.execute({
+    command: 'sleep 0.05; printf "finished"',
+    _agentID: 'agent_1',
+    _sessionID: 'ses_1',
+    _frameID: 'frm_1',
+  });
+
+  assert.equal(started.status, 'running');
+
+  await waitFor(async () => processManager.status({
+    processID: started.processID,
+    _agentID: 'agent_1',
+  }).status === 'completed');
+
+  assert.equal(scheduledFrames.length, 1);
+  assert.equal(scheduledFrames[0].hidden, true);
+  assert.equal(scheduledFrames[0].targetAgentID, 'agent_1');
+  assert.equal(scheduledFrames[0].continuation.kind, 'exec-wake-on-completion');
+  assert.equal(scheduledFrames[0].content.completionToolOutputID, 'OUT1');
+  assert.equal(processedScheduledFrames, true);
+});
+
+test('ExecTool wake prompt gives range and grep instructions for large completion responses', async () => {
+  let { processManager } = await createProcessHarness({ graceMs: 10, inlineLimitBytes: 64 });
+  let scheduledFrames = [];
+  processManager.frameRuntime = {
+    clock: () => 123456,
+    idGenerator: () => 'wake_frame_1',
+    async ensureSessionEntry(sessionID) {
+      return {
+        session: { id: sessionID },
+        frameEngine: {
+          merge(frames) {
+            scheduledFrames.push(...frames);
+            return frames;
+          },
+        },
+      };
+    },
+    frameStore: {
+      async flush() {},
+    },
+    async processScheduledFrames() {},
+  };
+  let tool = new ExecTool({
+    services: { processManager },
+  });
+
+  let started = await tool.execute({
+    command: 'sleep 0.05; printf "%s" "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"',
+    _agentID: 'agent_1',
+    _sessionID: 'ses_1',
+    _frameID: 'frm_1',
+  });
+
+  await waitFor(async () => processManager.status({
+    processID: started.processID,
+    _agentID: 'agent_1',
+  }).status === 'completed');
+
+  assert.match(scheduledFrames[0].content.text, /finished, but the completion response is large/);
+  assert.match(scheduledFrames[0].content.text, /output-read/);
+  assert.match(scheduledFrames[0].content.text, /output-grep/);
+  assert.doesNotMatch(scheduledFrames[0].content.text, /process-response-fetch/);
+});
+
+test('Exec management tools read, grep, list, and kill per-agent async processes', async () => {
+  let { processManager } = await createProcessHarness({ graceMs: 0 });
+  let exec = new ExecTool({
+    services: { processManager },
+  });
+  let started = await exec.execute({
+    command: 'printf "alpha\\nbeta\\n"; sleep 5',
+    _agentID: 'agent_1',
+  });
+
+  let listTool = new ExecListTool({ services: { processManager } });
+  let list = await listTool.execute({ _agentID: 'agent_1' });
+  assert.deepEqual(list.processes.map((process) => process.processID), [ started.processID ]);
+
+  await waitFor(async () => {
+    let read = await processManager.read({
+      processID: started.processID,
+      _agentID: 'agent_1',
+      stream: 'stdout',
+      full: true,
+    });
+    return read.content.includes('beta');
+  });
+
+  let readTool = new ExecReadTool({ services: { processManager } });
+  let read = await readTool.execute({
+    processID: started.processID,
+    _agentID: 'agent_1',
+    stream: 'stdout',
+    start: 0,
+    end: 5,
+  });
+  assert.equal(read.content, 'alpha');
+
+  let grepTool = new ExecGrepTool({ services: { processManager } });
+  let grep = await grepTool.execute({
+    processID: started.processID,
+    _agentID: 'agent_1',
+    stream: 'stdout',
+    pattern: 'bet',
+  });
+  assert.equal(grep.matches[0].line, 'beta');
+
+  assert.throws(
+    () => processManager.status({ processID: started.processID, _agentID: 'agent_2' }),
+    /not owned/,
+  );
+
+  let killTool = new ExecKillTool({ services: { processManager } });
+  let kill = await killTool.execute({
+    processID: started.processID,
+    _agentID: 'agent_1',
+  });
+  assert.equal(kill.signal, 'SIGTERM');
+
+  await waitFor(async () => processManager.status({
+    processID: started.processID,
+    _agentID: 'agent_1',
+  }).status === 'killed');
+});
+
+test('OutputReadTool reads persisted exec completion output by tool output ID', async () => {
+  let { processManager } = await createProcessHarness({ graceMs: 5 });
+  let exec = new ExecTool({
+    services: { processManager },
+  });
+  let started = await exec.execute({
+    command: 'sleep 0.05; printf "persisted-response"',
+    _agentID: 'agent_1',
+  });
+
+  await waitFor(async () => processManager.status({
+    processID: started.processID,
+    _agentID: 'agent_1',
+  }).status === 'completed');
+
+  let outputTool = new OutputReadTool({ services: { toolOutputStore: processManager.toolOutputStore } });
+  let response = await outputTool.execute({
+    id: processManager.status({
+      processID: started.processID,
+      _agentID: 'agent_1',
+    }).completionToolOutputID,
+    full: true,
+  });
+
+  assert.equal(response.id, 'OUT1');
+  assert.match(response.content, /persisted-response/);
 });
 
 test('ToolExecutionService stores every tool result and returns inline envelope below limit', async () => {
@@ -419,7 +742,7 @@ test('ToolExecutionService stores every tool result and returns inline envelope 
   assert.equal(result.toolOutputID, 'OUT1');
   assert.equal(result.stored, true);
   assert.equal(result.inline, true);
-  assert.equal(result.retrieval.getTool, 'tool-output-get');
+  assert.equal(result.retrieval.getTool, 'output-read');
   assert.deepEqual(result.retrieval.getAll.arguments, {
     id: 'OUT1',
     full: true,
@@ -434,6 +757,277 @@ test('ToolExecutionService stores every tool result and returns inline envelope 
   assert.ok(aeordb.files.has('/kikx/tool-outputs/.aeordb-config/indexes.json'));
   assert.equal(aeordb.files.get('/kikx/tool-outputs/OUT1/metadata.json').toolName, 'global-echo');
   assert.match(aeordb.files.get('/kikx/tool-outputs/OUT1/result.txt'), /"text": "hello"/);
+});
+
+test('ToolExecutionService emits visible typed tool frames', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let store = new ToolOutputStore({
+    aeordb,
+    idGenerator: () => 'OUT1',
+    clock: () => '2026-06-08T00:00:00.000Z',
+  });
+  let frameEngine = createRecordingFrameEngine();
+  let flushCount = 0;
+
+  await new ToolExecutionService({ toolOutputStore: store }).executeTool({
+    toolName: 'global-echo',
+    ToolClass: EchoTool,
+    input: { text: 'hello', apiKey: 'secret' },
+    context: {
+      agent: { id: 'agent_1', name: 'Test Agent' },
+      session: { id: 'ses_1' },
+      frame: { id: 'frm_1', interactionID: 'int_1' },
+      responseFrameID: 'agent_response_1',
+      services: {
+        frameEngine,
+        clock: () => 1781035260000000,
+        frameRuntime: {
+          frameStore: {
+            async flush() {
+              flushCount++;
+            },
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(frameEngine.frames.length, 2);
+  assert.equal(flushCount, 2);
+  assert.equal(frameEngine.frames[0].type, 'GlobalEchoToolFrame');
+  assert.equal(frameEngine.frames[0].hidden, false);
+  assert.equal(frameEngine.frames[0].parentID, 'agent_response_1');
+  assert.equal(frameEngine.frames[0].authorDisplayName, 'Test Agent');
+  assert.equal(frameEngine.frames[0].content.phase, 'call');
+  assert.equal(frameEngine.frames[0].content.toolName, 'global-echo');
+  assert.deepEqual(frameEngine.frames[0].content.input, {
+    text: 'hello',
+    apiKey: '[redacted]',
+  });
+
+  assert.equal(frameEngine.frames[1].type, 'GlobalEchoToolFrame');
+  assert.equal(frameEngine.frames[1].hidden, false);
+  assert.equal(frameEngine.frames[1].parentID, frameEngine.frames[0].id);
+  assert.equal(frameEngine.frames[1].content.phase, 'result');
+  assert.equal(frameEngine.frames[1].content.toolName, 'global-echo');
+  assert.equal(frameEngine.frames[1].content.toolOutputID, 'OUT1');
+  assert.equal(frameEngine.frames[1].content.status, 'success');
+  assert.deepEqual(frameEngine.frames[1].content.input, {
+    text: 'hello',
+    apiKey: '[redacted]',
+  });
+  assert.match(frameEngine.frames[1].content.preview, /"text": "hello"/);
+  assert.equal('result' in frameEngine.frames[1].content, false);
+});
+
+test('ToolExecutionService records tool frames and output metadata in session_id target sessions', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let store = new ToolOutputStore({
+    aeordb,
+    idGenerator: () => 'OUT_TARGET',
+    clock: () => '2026-06-08T00:00:00.000Z',
+  });
+  let sourceEngine = createRecordingFrameEngine();
+  let targetEngine = createRecordingFrameEngine();
+  let flushCount = 0;
+  let frameRuntime = {
+    frameStore: {
+      async flush() {
+        flushCount++;
+      },
+    },
+    async ensureSessionEntry(sessionID) {
+      assert.equal(sessionID, 'ses_target');
+      return {
+        session: { id: 'ses_target', title: 'Target' },
+        frameEngine: targetEngine,
+      };
+    },
+  };
+
+  let result = await new ToolExecutionService({ toolOutputStore: store }).executeTool({
+    toolName: 'global-echo',
+    ToolClass: EchoTool,
+    input: { text: 'hello target', session_id: 'ses_target' },
+    context: {
+      agent: { id: 'agent_1', name: 'Test Agent' },
+      session: { id: 'ses_source', title: 'Source' },
+      frame: { id: 'frm_source', sessionID: 'ses_source', interactionID: 'int_1' },
+      responseFrameID: 'agent_response_source',
+      frameEngine: sourceEngine,
+      services: {
+        frameRuntime,
+        clock: () => 1781035260000000,
+      },
+    },
+  });
+
+  assert.equal(result.result.sessionID, 'ses_target');
+  assert.equal(sourceEngine.frames.length, 0);
+  assert.equal(targetEngine.frames.length, 2);
+  assert.equal(flushCount, 2);
+  assert.equal(targetEngine.frames[0].sessionID, 'ses_target');
+  assert.equal(targetEngine.frames[0].parentID, null);
+  assert.equal(targetEngine.frames[0].content.input.session_id, 'ses_target');
+  assert.equal(targetEngine.frames[0].content.targetSessionID, 'ses_target');
+  assert.equal(targetEngine.frames[0].content.sourceSessionID, 'ses_source');
+  assert.equal(targetEngine.frames[0].content.sourceFrameID, 'frm_source');
+  assert.equal(targetEngine.frames[0].content.sourceResponseFrameID, 'agent_response_source');
+  assert.equal(targetEngine.frames[1].sessionID, 'ses_target');
+  assert.equal(targetEngine.frames[1].parentID, targetEngine.frames[0].id);
+  assert.equal(targetEngine.frames[1].content.targetSessionID, 'ses_target');
+  assert.equal(aeordb.files.get('/kikx/tool-outputs/OUT_TARGET/metadata.json').sessionID, 'ses_target');
+});
+
+test('Session tools list, create, inspect frames, and post messages through FrameRuntime', async () => {
+  let targetEngine = createRecordingFrameEngine();
+  let sessions = [
+    { id: 'ses_1', title: 'Source', messageCount: 1, participantAgentIDs: [ 'agent_1' ] },
+    { id: 'ses_2', title: 'Target', messageCount: 2, participantAgentIDs: [ 'agent_2' ] },
+  ];
+  let agents = [
+    { id: 'agent_1', name: 'Agent One', pluginID: 'openai:codex', enabled: true },
+    { id: 'agent_2', name: 'Agent Two', pluginID: 'openai:codex', enabled: true },
+    { id: 'agent_3', name: 'Agent Three', pluginID: 'openai:codex', enabled: true },
+    { id: 'agent_disabled', name: 'Disabled Agent', pluginID: 'openai:codex', enabled: false },
+  ];
+  let runtime = {
+    idGenerator: (() => {
+      let index = 0;
+      return () => `runtime_${++index}`;
+    })(),
+    frameStore: {
+      flushCount: 0,
+      async flush() {
+        this.flushCount++;
+      },
+    },
+    clock: () => 1781035260000000,
+    nextClockStamp() {
+      return {
+        at: 1781035260000000,
+        clock: '1781035260000000-000000-test',
+      };
+    },
+    async listSessions({ limit, offset } = {}) {
+      return sessions.slice(offset || 0, (offset || 0) + (limit || sessions.length));
+    },
+    async createSession(input = {}) {
+      let session = {
+        id: `ses_${sessions.length + 1}`,
+        title: input.title || `Session ${sessions.length + 1}`,
+        participantAgentIDs: input.participantAgentIDs || [],
+        messageCount: 0,
+      };
+      sessions.push(session);
+      return session;
+    },
+    async inviteAgentToSession(sessionID, agent) {
+      let session = sessions.find((candidate) => candidate.id === sessionID);
+      if (!session) {
+        let error = new Error(`Unknown session: ${sessionID}`);
+        error.status = 404;
+        throw error;
+      }
+
+      let alreadyParticipant = session.participantAgentIDs.includes(agent.id);
+      if (!alreadyParticipant)
+        session.participantAgentIDs.push(agent.id);
+
+      session.coordinatorAgentID ||= session.participantAgentIDs[0] || null;
+      return { session, agentID: agent.id, alreadyParticipant };
+    },
+    async ensureSessionEntry(sessionID) {
+      let session = sessions.find((candidate) => candidate.id === sessionID);
+      if (!session) {
+        let error = new Error(`Unknown session: ${sessionID}`);
+        error.status = 404;
+        throw error;
+      }
+
+      return {
+        session,
+        frameEngine: sessionID === 'ses_2' ? targetEngine : createRecordingFrameEngine(),
+      };
+    },
+    async listFrames(sessionID, options = {}) {
+      assert.equal(sessionID, 'ses_2');
+      assert.deepEqual(options, { limit: 2, offset: 0 });
+      return [
+        {
+          id: 'frm_1',
+          type: 'UserMessage',
+          sessionID,
+          authorType: 'user',
+          authorID: 'user_1',
+          content: { text: 'hello' },
+        },
+      ];
+    },
+  };
+  let context = {
+    agent: { id: 'agent_1', name: 'Agent One' },
+    session: { id: 'ses_1', title: 'Source' },
+    frame: { id: 'source_frame', sessionID: 'ses_1', interactionID: 'int_1' },
+    services: {
+      frameRuntime: runtime,
+      agentManager: {
+        async listAgents({ limit, offset } = {}) {
+          return agents.slice(offset || 0, (offset || 0) + (limit || agents.length));
+        },
+        async resolveAgent(reference) {
+          let normalized = reference.toLowerCase();
+          let agent = agents.find((candidate) => candidate.id === reference || candidate.name.toLowerCase() === normalized);
+          if (!agent) {
+            let error = new Error(`Agent not found: ${reference}`);
+            error.status = 404;
+            throw error;
+          }
+
+          return agent;
+        },
+      },
+    },
+  };
+
+  let listedAgents = await new AgentListTool(context).execute({ limit: 10 });
+  assert.deepEqual(listedAgents.agents.map((agent) => agent.id), [ 'agent_1', 'agent_2', 'agent_3' ]);
+
+  let listed = await new SessionListTool(context).execute({ limit: 1 });
+  assert.deepEqual(listed.sessions.map((session) => session.id), [ 'ses_1' ]);
+
+  let created = await new SessionCreateTool(context).execute({
+    title: 'Branch',
+    includeSelf: true,
+    participantAgents: [ 'Agent Two' ],
+  });
+  assert.equal(created.session.title, 'Branch');
+  assert.deepEqual(created.session.participantAgentIDs, [ 'agent_2', 'agent_1' ]);
+
+  let invited = await new SessionInviteAgentsTool(context).execute({
+    session_id: created.session.id,
+    agents: [ 'Agent Three', 'agent_2' ],
+  });
+  assert.equal(invited.sessionID, created.session.id);
+  assert.deepEqual(invited.invitedAgentIDs, [ 'agent_3', 'agent_2' ]);
+  assert.deepEqual(invited.session.participantAgentIDs, [ 'agent_2', 'agent_1', 'agent_3' ]);
+
+  let got = await new SessionGetTool(context).execute({ session_id: 'ses_2' });
+  assert.equal(got.session.title, 'Target');
+
+  let frames = await new SessionFramesTool(context).execute({ session_id: 'ses_2', limit: 2 });
+  assert.equal(frames.sessionID, 'ses_2');
+  assert.deepEqual(frames.frames.map((frame) => frame.id), [ 'frm_1' ]);
+
+  let posted = await new SessionMessageTool(context).execute({ session_id: 'ses_2', text: 'Cross-session hello.' });
+  assert.equal(posted.sessionID, 'ses_2');
+  assert.equal(targetEngine.frames.length, 1);
+  assert.equal(targetEngine.frames[0].type, 'AgentMessage');
+  assert.equal(targetEngine.frames[0].sessionID, 'ses_2');
+  assert.equal(targetEngine.frames[0].authorDisplayName, 'Agent One');
+  assert.equal(targetEngine.frames[0].content.text, 'Cross-session hello.');
+  assert.equal(targetEngine.frames[0].content.sourceSessionID, 'ses_1');
+  assert.equal(runtime.frameStore.flushCount, 1);
 });
 
 test('ToolExecutionService returns a pointer envelope for outputs above inline limit', async () => {
@@ -462,19 +1056,36 @@ test('ToolExecutionService returns a pointer envelope for outputs above inline l
   assert.equal(result.toolOutputID, 'BIG1');
   assert.equal(result.inline, false);
   assert.equal(result.sizeBytes > 512, true);
-  assert.equal(result.retrieval.getRange.tool, 'tool-output-get');
+  assert.equal(result.retrieval.getRange.tool, 'output-read');
   assert.deepEqual(result.retrieval.getRange.arguments, {
     id: 'BIG1',
     start: 0,
     end: 32,
   });
-  assert.match(result.message, /tool-output-get/);
+  assert.match(result.message, /output-read/);
   assert.match(result.message, /"full":true/);
   assert.equal('result' in result, false);
   assert.match(aeordb.files.get('/kikx/tool-outputs/BIG1/result.txt'), /"content"/);
 });
 
-test('ToolOutputGetTool retrieves stored output ranges', async () => {
+function createRecordingFrameEngine() {
+  let nextID = 1;
+  return {
+    frames: [],
+    idGenerator() {
+      return `tool_frame_${nextID++}`;
+    },
+    merge(frames) {
+      this.frames.push(...frames);
+      return frames;
+    },
+    get(id) {
+      return this.frames.find((frame) => frame.id === id) || null;
+    },
+  };
+}
+
+test('OutputReadTool retrieves stored output ranges', async () => {
   let aeordb = createFakeToolOutputDB();
   let store = new ToolOutputStore({
     aeordb,
@@ -485,7 +1096,7 @@ test('ToolOutputGetTool retrieves stored output ranges', async () => {
     result: 'abcdef',
   });
 
-  let tool = new ToolOutputGetTool({
+  let tool = new OutputReadTool({
     services: { toolOutputStore: store },
   });
   let result = await tool.execute({
@@ -501,6 +1112,177 @@ test('ToolOutputGetTool retrieves stored output ranges', async () => {
   assert.equal(result.returnedBytes, 3);
   assert.equal(result.truncated, true);
   assert.ok(aeordb.calls.some((call) => call.method === 'getFile' && call.options?.headers?.Range === 'bytes=2-4'));
+});
+
+test('OutputReadTool retrieves JSON tool output as serialized text', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let store = new ToolOutputStore({
+    aeordb,
+    idGenerator: () => 'JSON1',
+  });
+  await store.storeToolOutput({
+    toolName: 'json-result',
+    result: {
+      processID: 'proc_1',
+      stdout: 'persisted json output',
+    },
+  });
+
+  let tool = new OutputReadTool({
+    services: { toolOutputStore: store },
+  });
+  let result = await tool.execute({
+    id: 'JSON1',
+    full: true,
+  });
+
+  assert.match(result.content, /"processID": "proc_1"/);
+  assert.match(result.content, /"stdout": "persisted json output"/);
+  assert.doesNotMatch(result.content, /\[object Object\]/);
+});
+
+test('OutputGrepTool searches stored tool output with a regular expression', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let store = new ToolOutputStore({
+    aeordb,
+    idGenerator: () => 'GREP1',
+  });
+  await store.storeToolOutput({
+    toolName: 'plain-text',
+    result: 'alpha\nbeta\ngamma\n',
+  });
+
+  let tool = new OutputGrepTool({
+    services: { toolOutputStore: store },
+  });
+  let result = await tool.execute({
+    id: 'GREP1',
+    pattern: '^b',
+    flags: 'm',
+  });
+
+  assert.equal(result.id, 'GREP1');
+  assert.equal(result.matchCount, 1);
+  assert.equal(result.matches[0].lineNumber, 2);
+  assert.equal(result.matches[0].line, 'beta');
+});
+
+test('OutputSearchTool asks AeorDB for hit locators on stored output search', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let store = new ToolOutputStore({
+    aeordb,
+    idGenerator: () => 'OUT1',
+  });
+  await store.storeToolOutput({
+    toolName: 'plain-text',
+    result: 'alpha\nbeta\ngamma\n',
+  });
+
+  let tool = new OutputSearchTool({
+    services: { toolOutputStore: store },
+  });
+  let result = await tool.execute({
+    query: 'beta',
+    maxMatchesPerResult: 3,
+  });
+
+  let searchCall = aeordb.calls.find((call) => call.method === 'searchFiles');
+  assert.equal(searchCall.search.path, '/kikx/tool-outputs');
+  assert.equal(searchCall.search.query, 'beta');
+  assert.equal(searchCall.search.include_matches, true);
+  assert.equal(searchCall.search.max_matches_per_result, 3);
+  assert.equal(searchCall.search.snippet_chars, 240);
+  assert.equal(result.fetchTool, 'database-fetch');
+  assert.equal(result.results[0].toolOutputID, 'OUT1');
+  assert.equal(result.results[0].matches[0].fetch.preferred, 'line_range');
+});
+
+test('DatabaseSearchTool returns AeorDB hit locators with fetch instructions', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let tool = new DatabaseSearchTool({
+    services: { aeordb },
+  });
+
+  let result = await tool.execute({
+    path: '/kikx/sessions',
+    query: 'coordinator',
+    snippetChars: 80,
+  });
+
+  let searchCall = aeordb.calls.find((call) => call.method === 'searchFiles');
+  assert.equal(searchCall.search.path, '/kikx/sessions');
+  assert.equal(searchCall.search.query, 'coordinator');
+  assert.equal(searchCall.search.include_matches, true);
+  assert.equal(searchCall.search.snippet_chars, 80);
+  assert.equal(result.fetchTool, 'database-fetch');
+  assert.equal(result.results[0].locatorFetchTool, 'database-fetch');
+  assert.equal(result.results[0].content_hash, 'hash1');
+});
+
+test('DatabaseFetchTool fetches locator ranges with stale guards', async () => {
+  let aeordb = createFakeToolOutputDB();
+  aeordb.files.set('/kikx/tool-outputs/OUT1/result.txt', 'alpha\nbeta\n');
+  let tool = new DatabaseFetchTool({
+    services: { aeordb },
+  });
+
+  let result = await tool.execute({
+    items: [
+      {
+        id: 'm_1',
+        path: '/kikx/tool-outputs/OUT1/result.txt',
+        content_hash: 'hash1',
+        fetch: {
+          preferred: 'line_range',
+          line_range: { start: 2, end: 2 },
+        },
+      },
+    ],
+    continueOnError: true,
+  });
+
+  let fetchCall = aeordb.calls.find((call) => call.method === 'fetchFileRanges');
+  assert.deepEqual(fetchCall.items, [
+    {
+      id: 'm_1',
+      path: '/kikx/tool-outputs/OUT1/result.txt',
+      range: { mode: 'lines', start: 2, end: 2 },
+      if_content_hash: 'hash1',
+    },
+  ]);
+  assert.equal(fetchCall.options.continueOnError, true);
+  assert.equal(result.items[0].range.mode, 'lines');
+  assert.equal(result.rangeSemantics.lines, 'start/end are 1-based inclusive line numbers.');
+});
+
+test('SessionSearchTool scopes locator search to a session frame index', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let ensuredSessionID = null;
+  let tool = new SessionSearchTool({
+    services: {
+      frameRuntime: {
+        frameStore: {
+          aeordb,
+          rootPath: '/kikx',
+          async ensureSessionIndexConfigs(sessionID) {
+            ensuredSessionID = sessionID;
+          },
+        },
+      },
+    },
+    session: { id: 'ses_1' },
+  });
+
+  let result = await tool.execute({
+    query: 'hello',
+  });
+
+  let searchCall = aeordb.calls.find((call) => call.method === 'searchFiles');
+  assert.equal(ensuredSessionID, 'ses_1');
+  assert.equal(searchCall.search.path, '/kikx/sessions/ses_1/interactions');
+  assert.equal(searchCall.search.include_matches, true);
+  assert.equal(result.sessionID, 'ses_1');
+  assert.equal(result.fetchTool, 'database-fetch');
 });
 
 test('ReadFileTool requires consolidated file access service', async () => {
@@ -823,13 +1605,163 @@ function createFakeToolOutputDB() {
 
       return value;
     },
+    async fetchFileRanges(items, options = {}) {
+      calls.push({ method: 'fetchFileRanges', items, options });
+      return {
+        items: items.map((item) => ({
+          id: item.id || null,
+          status: 'ok',
+          path: item.path,
+          range: item.range,
+          content: String(files.get(item.path) ?? ''),
+          truncated: false,
+        })),
+        has_errors: false,
+      };
+    },
     async searchFiles(search) {
       calls.push({ method: 'searchFiles', search });
-      return { results: [] };
+      return {
+        results: [
+          {
+            path: `${search.path}/OUT1/result.txt`,
+            score: 1,
+            matched_by: [ 'resultText' ],
+            content_hash: 'hash1',
+            updated_at: 1781035260000,
+            matches: [
+              {
+                id: 'm_1',
+                matched_text: search.query || 'match',
+                source: { type: 'stored-file', mime_type: 'text/plain' },
+                range: {
+                  line: { start: 1, end: 1 },
+                  byte: { start: 0, end: 5 },
+                },
+                fetch: {
+                  line_range: { start: 1, end: 1 },
+                  byte_range: { start: 0, end: 5 },
+                  preferred: 'line_range',
+                },
+              },
+            ],
+            matches_truncated: false,
+            locator_status: 'complete',
+          },
+        ],
+        has_more: false,
+        total_count: 1,
+      };
     },
   };
 }
 
+async function createProcessHarness({ graceMs = 0, inlineLimitBytes, exitStdioGraceMs } = {}) {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-process-harness-'));
+  let tempRoot = path.join(dir, 'processes');
+  let home = path.join(dir, 'home');
+  await fs.mkdir(home);
+  let aeordb = createFakeToolOutputDB();
+  let outputID = 0;
+  let store = new ToolOutputStore({
+    aeordb,
+    ...(inlineLimitBytes ? { inlineLimitBytes } : {}),
+    idGenerator: () => `OUT${++outputID}`,
+    clock: () => '2026-06-10T00:00:00.000Z',
+  });
+  let commandExecutor = new LocalCommandExecutionService({
+    cwd: dir,
+    shell: fsSyncExists('/bin/bash') ? '/bin/bash' : process.env.SHELL,
+    env: {
+      HOME: home,
+      PATH: process.env.PATH,
+    },
+  });
+  let processID = 0;
+  let processManager = new ProcessManager({
+    commandExecutor,
+    toolOutputStore: store,
+    tempRoot,
+    defaultExecGraceMs: graceMs,
+    ...(exitStdioGraceMs == null ? {} : { exitStdioGraceMs }),
+    idGenerator: () => `PROC${++processID}`,
+    clock: () => '2026-06-10T00:00:00.000Z',
+    logger: { error() {} },
+  });
+
+  return {
+    dir,
+    aeordb,
+    store,
+    commandExecutor,
+    processManager,
+  };
+}
+
+async function waitFor(predicate, options = {}) {
+  let deadline = Date.now() + (options.timeoutMs || 3000);
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      if (await predicate())
+        return;
+    } catch (error) {
+      lastError = error;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, options.intervalMs || 20));
+  }
+
+  if (lastError)
+    throw lastError;
+
+  throw new Error('waitFor timed out');
+}
+
 function fsSyncExists(filePath) {
   return Boolean(filePath && fsSync.existsSync(filePath));
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, '\'\\\'\'')}'`;
+}
+
+async function killPIDFromFile(pidPath) {
+  let text;
+  try {
+    text = await fs.readFile(pidPath, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT')
+      return;
+
+    throw error;
+  }
+
+  let pid = Number(text.trim());
+  if (!Number.isInteger(pid) || pid <= 1)
+    return;
+
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch (_error) {
+    return;
+  }
+
+  try {
+    await waitFor(async () => !isProcessAlive(pid), { timeoutMs: 500, intervalMs: 25 });
+  } catch (_error) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch (_killError) {}
+  }
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }

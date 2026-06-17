@@ -163,6 +163,23 @@ test('AeorDBFrameStore lists persisted session manifests with a bounded query', 
   });
 });
 
+test('AeorDBFrameStore skips unreadable session manifests without modifying evidence', async () => {
+  let aeordb = createClient({
+    failGetPath: '/kikx/sessions/ses_bad/session.json',
+    failGetMessage: 'fetch failed',
+  });
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  aeordb.files.set('/kikx/sessions/ses_good/session.json', { id: 'ses_good', title: 'Good', updatedAt: 20 });
+  aeordb.files.set('/kikx/sessions/ses_bad/session.json', { id: 'ses_bad', title: 'Unreadable', updatedAt: 10 });
+
+  let sessions = await store.listSessions({ limit: 25, offset: 0 });
+
+  assert.deepEqual(sessions.map((session) => session.id), [ 'ses_good' ]);
+  assert.ok(aeordb.calls.some((call) => call.method === 'fetchFiles'));
+  assert.equal(aeordb.calls.filter((call) => call.method === 'getFile').length, 2);
+  assert.equal(aeordb.calls.some((call) => call.method === 'putFile' || call.method === 'patchFile'), false);
+});
+
 test('AeorDBFrameStore treats a missing sessions directory as an empty list', async () => {
   let aeordb = createClient();
   let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
@@ -264,6 +281,39 @@ test('AeorDBFrameStore loads one session manifest and its frames on demand', asy
   assert.deepEqual((await store.listFrames('ses_1')).map((frame) => frame.id), [ 'msg_1', 'msg_2' ]);
 });
 
+test('AeorDBFrameStore walks AeorDB pages for large session histories', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+
+  for (let index = 1; index <= 520; index++) {
+    let padded = String(index).padStart(16, '0');
+    aeordb.files.set(`/kikx/sessions/ses_1/interactions/int_${index}/frames/${padded}-UserMessage-msg_${index}.json`, {
+      id: `msg_${index}`,
+      type: 'UserMessage',
+      sessionID: 'ses_1',
+      interactionID: `int_${index}`,
+      order: index,
+      hidden: false,
+      content: { text: `message ${index}` },
+    });
+    aeordb.files.set(`/kikx/sessions/ses_1/commits/${padded}-commit_${index}.json`, {
+      id: `commit_${index}`,
+      order: index,
+      changes: [{ frameID: `msg_${index}`, operation: 'create' }],
+    });
+  }
+
+  let frames = await store.listFrames('ses_1');
+  let interactionCalls = aeordb.calls.filter((call) => call.method === 'listDirectory' && call.path.endsWith('/interactions'));
+  let commitCalls = aeordb.calls.filter((call) => call.method === 'listDirectory' && call.path.endsWith('/commits'));
+
+  assert.equal(frames.length, 520);
+  assert.equal(frames[0].id, 'msg_1');
+  assert.equal(frames.at(-1).id, 'msg_520');
+  assert.deepEqual(interactionCalls.map((call) => call.options.offset), [ 0, 500 ]);
+  assert.deepEqual(commitCalls.map((call) => call.options.offset), [ 0, 500 ]);
+});
+
 test('AeorDBFrameStore lists pending scheduled frames for runtime queue hydration', async () => {
   let aeordb = createClient();
   let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
@@ -295,7 +345,72 @@ test('AeorDBFrameStore lists pending scheduled frames for runtime queue hydratio
   assert.deepEqual(scheduledFrames.map((frame) => frame.id), [ 'later' ]);
 });
 
-test('AeorDBFrameStore orders frames by commit order and exposes missing committed frames', async () => {
+test('AeorDBFrameStore queries pending scheduled frames through the structured query endpoint', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let laterPath = '/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-later.json';
+  aeordb.files.set(laterPath, {
+    id: 'later',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    order: 1,
+    scheduledAt: 5000,
+    scheduledStatus: 'pending',
+    content: { text: 'later' },
+  });
+  aeordb.queryFiles = async (query) => {
+    aeordb.calls.push({ method: 'queryFiles', query });
+    return { results: [{ path: laterPath }] };
+  };
+
+  let scheduledFrames = await store.listScheduledFrames({ limit: 25, offset: 5 });
+
+  assert.deepEqual(scheduledFrames.map((frame) => frame.id), [ 'later' ]);
+  assert.deepEqual(aeordb.calls.find((call) => call.method === 'queryFiles').query, {
+    path: '/kikx/sessions',
+    where: {
+      and: [
+        { field: 'scheduledAt', op: 'gt', value: 0 },
+        { not: { field: 'scheduledStatus', op: 'eq', value: 'fired' } },
+        { not: { field: 'scheduledStatus', op: 'eq', value: 'cancelled' } },
+      ],
+    },
+    limit: 25,
+    offset: 5,
+  });
+});
+
+test('AeorDBFrameStore falls back to scanning when scheduled-frame query is unsupported', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First' });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-later.json', {
+    id: 'later',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    order: 1,
+    scheduledAt: 5000,
+    scheduledStatus: 'pending',
+    content: { text: 'later' },
+  });
+  aeordb.queryFiles = async (query) => {
+    aeordb.calls.push({ method: 'queryFiles', query });
+    let error = new Error('AeorDB HTTP 400');
+    error.status = 400;
+    error.body = { error: "Missing 'field' in where clause" };
+    throw error;
+  };
+
+  let scheduledFrames = await store.listScheduledFrames();
+
+  assert.deepEqual(scheduledFrames.map((frame) => frame.id), [ 'later' ]);
+  assert.ok(aeordb.calls.some((call) => call.method === 'queryFiles'));
+  assert.ok(aeordb.calls.some((call) => call.method === 'listDirectory'));
+});
+
+test('AeorDBFrameStore keeps stable frame order and exposes missing committed frames last', async () => {
   let aeordb = createClient();
   let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
 
@@ -336,16 +451,16 @@ test('AeorDBFrameStore orders frames by commit order and exposes missing committ
 
   let frames = await store.listFrames('ses_1');
 
-  assert.deepEqual(frames.map((frame) => frame.id), [ 'user_1', 'agent_1', 'load-error:commit_4:missing_agent' ]);
-  assert.equal(frames[0].commitOrder, 2);
-  assert.equal(frames[1].order, 10);
-  assert.equal(frames[1].commitOrder, 3);
+  assert.deepEqual(frames.map((frame) => frame.id), [ 'agent_1', 'user_1', 'load-error:commit_4:missing_agent' ]);
+  assert.equal(frames[0].order, 10);
+  assert.equal(frames[0].commitOrder, 3);
+  assert.equal(frames[1].commitOrder, 2);
   assert.equal(frames[2].type, 'FrameLoadError');
   assert.equal(frames[2].commitOrder, 4);
   assert.match(frames[2].content.text, /Committed frame could not be loaded/);
 });
 
-test('AeorDBFrameStore orders frames by updated clocks before legacy commit order', async () => {
+test('AeorDBFrameStore orders frames by stable creation clocks before legacy commit order', async () => {
   let aeordb = createClient();
   let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
 
@@ -354,6 +469,7 @@ test('AeorDBFrameStore orders frames by updated clocks before legacy commit orde
     type: 'AgentMessage',
     order: 1,
     commitOrder: 3,
+    createdClock: '0000000001001000-000000-runner',
     updatedClock: '0000000001003000-000000-runner',
     hidden: false,
   });
@@ -362,6 +478,7 @@ test('AeorDBFrameStore orders frames by updated clocks before legacy commit orde
     type: 'UserMessage',
     order: 2,
     commitOrder: 2,
+    createdClock: '0000000001002000-000000-runner',
     updatedClock: '0000000001002000-000000-runner',
     hidden: false,
   });
@@ -378,7 +495,7 @@ test('AeorDBFrameStore orders frames by updated clocks before legacy commit orde
 
   let frames = await store.listFrames('ses_1');
 
-  assert.deepEqual(frames.map((frame) => frame.id), [ 'user_1', 'agent_1' ]);
+  assert.deepEqual(frames.map((frame) => frame.id), [ 'agent_1', 'user_1' ]);
 });
 
 test('AeorDBFrameStore preserves frame load failures as visible non-persisted placeholders', async () => {

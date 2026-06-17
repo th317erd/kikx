@@ -79,3 +79,32 @@ test('loadPlugins exposes command registration to external plugins', async () =>
   assert.equal(commandRegistry.getCommand('ping').description, 'Ping command');
   assert.equal(commandRegistry.getCommand('/p').name, 'ping');
 });
+
+test('loadPlugins exposes client component registration to external plugins', async () => {
+  let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-component-plugin-'));
+  await fs.writeFile(path.join(root, 'index.mjs'), `
+    export function setup(provide) {
+      provide(({ registerFrameComponent, registerToolComponent }) => {
+        registerFrameComponent('ToolResult', {
+          tagName: 'kikx-external-tool-result',
+          moduleURL: '/client/plugins/external-tool-result.mjs',
+        });
+        registerToolComponent('external-tool', {
+          tagName: 'kikx-external-tool',
+          moduleURL: '/client/plugins/external-tool.mjs',
+        });
+      });
+    }
+  `);
+
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+  let loaded = await loadPlugins({
+    pluginPaths: root,
+    registry,
+    logger: { warn() {} },
+  });
+
+  assert.equal(loaded.length, 1);
+  assert.equal(registry.getFrameComponents().get('ToolResult').tagName, 'kikx-external-tool-result');
+  assert.equal(registry.getToolComponents().get('external-tool').tagName, 'kikx-external-tool');
+});

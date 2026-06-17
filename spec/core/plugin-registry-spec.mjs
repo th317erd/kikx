@@ -16,6 +16,14 @@ class EchoTool extends PluginInterface {
   }
 }
 
+class RenderedTool extends EchoTool {
+  static frameType = 'RenderedToolFrame';
+  static clientComponent = {
+    tagName: 'kikx-rendered-tool',
+    moduleURL: '/client/plugins/rendered-tool.mjs',
+  };
+}
+
 class DangerousTool extends PluginInterface {
   static pluginID = 'test';
   static featureName = 'danger';
@@ -42,6 +50,49 @@ test('PluginRegistry registers and retrieves tool classes', () => {
 
   assert.equal(registry.getTool('test:echo'), EchoTool);
   assert.equal(registry.getTools().get('test:echo'), EchoTool);
+});
+
+test('PluginRegistry registers client frame and tool component descriptors', () => {
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+
+  let frameDescriptor = registry.registerFrameComponent('ToolResult', {
+    tagName: 'kikx-tool-result-frame',
+    moduleURL: '/client/components/tool-result-frame.mjs',
+  });
+  let toolDescriptor = registry.registerToolComponent('web-search', {
+    tagName: 'kikx-web-search-result',
+    moduleURL: '/client/plugins/web-search-result.mjs',
+  });
+
+  assert.equal(frameDescriptor.kind, 'frame');
+  assert.equal(frameDescriptor.frameType, 'ToolResult');
+  assert.equal(registry.getFrameComponents().get('ToolResult').tagName, 'kikx-tool-result-frame');
+  assert.equal(toolDescriptor.kind, 'tool');
+  assert.equal(toolDescriptor.toolName, 'web-search');
+  assert.deepEqual(registry.listClientComponentDescriptors(), [
+    frameDescriptor,
+    toolDescriptor,
+  ]);
+});
+
+test('PluginRegistry auto-registers tool clientComponent metadata', () => {
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+
+  registry.registerTool('rendered-tool', RenderedTool);
+
+  assert.equal(registry.getTool('rendered-tool'), RenderedTool);
+  assert.deepEqual(registry.getToolComponents().get('rendered-tool'), {
+    kind: 'tool',
+    toolName: 'rendered-tool',
+    tagName: 'kikx-rendered-tool',
+    moduleURL: '/client/plugins/rendered-tool.mjs',
+  });
+  assert.deepEqual(registry.getFrameComponents().get('RenderedToolFrame'), {
+    kind: 'frame',
+    frameType: 'RenderedToolFrame',
+    tagName: 'kikx-rendered-tool',
+    moduleURL: '/client/plugins/rendered-tool.mjs',
+  });
 });
 
 test('PluginRegistry rejects tools that do not extend PluginInterface', () => {

@@ -137,11 +137,62 @@ class NullResponseAgentProvider extends AgentInterface {
   }
 }
 
+class BlankMessageAgentProvider extends AgentInterface {
+  static pluginID = 'blank-message-agent';
+
+  async *run(params = {}) {
+    params.services.calls.push({
+      method: 'blank-message',
+      agentID: params.agent.id,
+    });
+
+    yield {
+      type: 'AgentMessage',
+      content: {
+        text: '   ',
+      },
+    };
+    yield {
+      type: 'Done',
+      content: {
+        status: 'complete',
+      },
+    };
+  }
+}
+
 class FailingAgentProvider extends AgentInterface {
   static pluginID = 'failing-agent';
 
   async *run() {
     throw new Error('provider exploded');
+  }
+}
+
+class SlowAgentProvider extends AgentInterface {
+  static pluginID = 'slow-agent';
+
+  async *run(params = {}) {
+    params.services.calls.push({
+      method: 'slow-run-start',
+      agentID: params.agent.id,
+      frameType: params.frame.type,
+    });
+
+    await params.services.slowAgentGate.promise;
+
+    params.services.calls.push({
+      method: 'slow-run-release',
+      agentID: params.agent.id,
+      frameType: params.frame.type,
+    });
+
+    yield {
+      type: 'AgentMessage',
+      content: {
+        text: `Slow echo: ${params.frame.content.text}`,
+      },
+    };
   }
 }
 
@@ -245,7 +296,7 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
     text: 'hello',
     responseFrameID: 'agent_frame_1',
     responseFrameIDMatchesFrame: true,
-    frameTypes: [ 'UserMessage', 'AgentMessage' ],
+    frameTypes: [ 'UserMessage' ],
     isCoordinator: true,
     coordinatorAgentID: 'agent_1',
     coordinated: false,
@@ -353,6 +404,57 @@ test('AgentRouteFramePlugin dispatches normal user messages to all session agent
   assert.equal(userCalls[1].isCoordinator, false);
   assert.equal(userCalls[1].coordinatorAgentID, 'agent_2');
   assert.deepEqual(userCalls[1].responseFrameAgentRoute.path, [ 'agent_1' ]);
+});
+
+test('AgentRouteFramePlugin does not let a slow coordinator block other session agents from starting', async () => {
+  let releaseSlowAgent;
+  let slowAgentGate = {
+    promise: new Promise((resolve) => {
+      releaseSlowAgent = resolve;
+    }),
+  };
+  let runtime = createRuntime({
+    services: { slowAgentGate },
+    agents: new Map([
+      [ 'agent_slow', {
+        id: 'agent_slow',
+        name: 'Slow Coordinator',
+        pluginID: 'slow-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+      [ 'agent_worker', {
+        id: 'agent_worker',
+        name: 'Worker',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-worker' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_slow', 'agent_worker' ],
+    coordinatorAgentID: 'agent_slow',
+  });
+
+  let appendPromise = runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
+  await waitForCondition(() => runtime.services.calls.some((call) => call.method === 'run' && call.agentID === 'agent_worker'));
+
+  assert.ok(runtime.services.calls.some((call) => call.method === 'slow-run-start' && call.agentID === 'agent_slow'));
+  assert.ok(runtime.services.calls.some((call) => call.method === 'run' && call.agentID === 'agent_worker'));
+  assert.equal(runtime.services.calls.some((call) => call.method === 'slow-run-release' && call.agentID === 'agent_slow'), false);
+  assert.equal(await promiseState(appendPromise), 'pending');
+
+  releaseSlowAgent();
+  await appendPromise;
+
+  let firstPassAgentFrames = (await runtime.listFrames('ses_1'))
+    .filter((frame) => frame.parentID === 'msg_1' && frame.type === 'AgentMessage');
+  assert.deepEqual(firstPassAgentFrames.map((frame) => frame.authorID).sort(), [ 'agent_slow', 'agent_worker' ]);
 });
 
 test('AgentRouteFramePlugin broadcasts visible agent messages to other session agents', async () => {
@@ -562,6 +664,186 @@ test('AgentRouteFramePlugin broadcasts second-hop agent responses to other parti
   assert.deepEqual(calls.map((call) => call.frameAuthorID), [ 'agent_2', 'agent_2' ]);
 });
 
+test('AgentRouteFramePlugin does not rebroadcast agent messages to agents that already answered the same root turn', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Coordinator',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-one' },
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Worker',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-two' },
+        enabled: true,
+      } ],
+      [ 'agent_3', {
+        id: 'agent_3',
+        name: 'Observer',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-three' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1', 'agent_2', 'agent_3' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'user_msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'user',
+    hidden: false,
+    content: { text: 'please do a task' },
+  }, {
+    id: 'agent_1_root_reply',
+    type: 'AgentMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    parentID: 'user_msg_1',
+    authorType: 'agent',
+    authorID: 'agent_1',
+    hidden: false,
+    content: { text: 'I can help.', status: 'complete' },
+    agentRoute: {
+      rootFrameID: 'user_msg_1',
+      sourceFrameID: 'user_msg_1',
+      path: [ 'agent_1' ],
+    },
+  }, {
+    id: 'agent_2_root_reply',
+    type: 'AgentMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    parentID: 'user_msg_1',
+    authorType: 'agent',
+    authorID: 'agent_2',
+    hidden: false,
+    content: { text: 'I already handled it.', status: 'complete' },
+    agentRoute: {
+      rootFrameID: 'user_msg_1',
+      sourceFrameID: 'user_msg_1',
+      path: [ 'agent_2' ],
+    },
+  }], { silent: true });
+
+  entry.frameEngine.merge([{
+    id: 'agent_1_followup',
+    type: 'AgentMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    parentID: 'agent_2_root_reply',
+    authorType: 'agent',
+    authorID: 'agent_1',
+    hidden: false,
+    content: {
+      text: 'I see agent two handled it.',
+      status: 'complete',
+    },
+    agentRoute: {
+      rootFrameID: 'user_msg_1',
+      sourceFrameID: 'agent_2_root_reply',
+      path: [ 'agent_2', 'agent_1' ],
+    },
+  }]);
+  await runtime.frameRouter.flush();
+
+  let calls = runtime.services.calls
+    .filter((call) => call.method === 'run' && call.frameType === 'AgentMessage');
+  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_3' ]);
+  assert.deepEqual(calls[0].responseFrameAgentRoute.path, [ 'agent_2', 'agent_1', 'agent_3' ]);
+});
+
+test('AgentRouteFramePlugin does not route coordinated replays to agents already handling the source frame', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Coordinator',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-one' },
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Worker A',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-two' },
+        enabled: true,
+      } ],
+      [ 'agent_3', {
+        id: 'agent_3',
+        name: 'Worker B',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-three' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1', 'agent_2', 'agent_3' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'user_msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'user',
+    content: { text: 'Worker A, please handle this.' },
+    mentions: {
+      agent_2: { id: 'agent_2', type: 'agent', name: 'Worker A' },
+      agent_3: { id: 'agent_3', type: 'agent', name: 'Worker B' },
+    },
+    coordinated: true,
+    hidden: false,
+  }, {
+    id: 'agent_2_placeholder',
+    type: 'AgentMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    parentID: 'user_msg_1',
+    authorType: 'agent',
+    authorID: 'agent_2',
+    hidden: true,
+    deleted: false,
+    content: {
+      text: '',
+      status: 'streaming',
+    },
+    agentRoute: {
+      rootFrameID: 'user_msg_1',
+      sourceFrameID: 'user_msg_1',
+      path: [ 'agent_2' ],
+    },
+  }]);
+  await runtime.frameRouter.flush();
+
+  let calls = runtime.services.calls
+    .filter((call) => call.method === 'run' && call.frameType === 'UserMessage');
+  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_3' ]);
+  assert.equal(calls[0].coordinated, true);
+});
+
 test('AgentRouteFramePlugin passes all session agent names without secrets to providers', async () => {
   let runtime = createRuntime({
     agents: new Map([
@@ -670,7 +952,7 @@ test('AgentRouteFramePlugin forwards coordinated frames to all mentioned session
   assert.deepEqual(calls.map((call) => call.isCoordinator), [ false, false ]);
 });
 
-test('AgentRouteFramePlugin coordinator forward mutates and requeues the original frame', async () => {
+test('AgentRouteFramePlugin coordinator forward mutates the original frame without blocking active agents', async () => {
   let runtime = createRuntime({
     agents: new Map([
       [ 'agent_1', {
@@ -715,7 +997,7 @@ test('AgentRouteFramePlugin coordinator forward mutates and requeues the origina
     'run:agent_3',
   ]);
   assert.equal(calls[0].isCoordinator, true);
-  assert.deepEqual(calls.slice(1).map((call) => call.coordinated), [ true, true ]);
+  assert.deepEqual(calls.slice(1).map((call) => call.coordinated), [ false, false ]);
 
   let userFrame = (await runtime.listFrames('ses_1')).find((frame) => frame.type === 'UserMessage');
   assert.equal(userFrame.coordinated, true);
@@ -850,6 +1132,41 @@ test('AgentRouteFramePlugin cleans up silent response placeholders', async () =>
   assert.equal(agentFrames[0].content.status, 'null-response');
 });
 
+test('AgentRouteFramePlugin cleans up blank visible agent messages', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Quiet Worker',
+        pluginID: 'blank-message-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  await runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
+
+  let calls = runtime.services.calls.filter((call) => call.method === 'blank-message');
+  assert.deepEqual(calls, [{
+    method: 'blank-message',
+    agentID: 'agent_1',
+  }]);
+
+  let agentFrames = (await runtime.listFrames('ses_1')).filter((frame) => frame.authorID === 'agent_1');
+  assert.equal(agentFrames.length, 1);
+  assert.equal(agentFrames[0].hidden, true);
+  assert.equal(agentFrames[0].deleted, true);
+  assert.equal(agentFrames[0].content.status, 'empty');
+  assert.equal(agentFrames[0].content.text, '');
+});
+
 test('AgentRouteFramePlugin schedules respond-and-continue as a generic scheduled target frame', async () => {
   let runtime = createRuntime({
     agents: new Map([
@@ -963,8 +1280,6 @@ test('AgentRouteFramePlugin routes individual agent failures without stopping ot
   let secondPassAgentFrames = frames.filter((frame) => frame.type === 'AgentMessage' && frame.parentID !== 'msg_1');
   assert.deepEqual(secondPassAgentFrames.map((frame) => frame.agentRoute.path), [
     [ 'agent_failing', 'agent_worker' ],
-    [ 'agent_worker', 'agent_failing' ],
-    [ 'agent_worker', 'agent_failing' ],
   ]);
   assert.deepEqual(
     runtime.services.calls
@@ -1056,13 +1371,65 @@ test('AgentRouteFramePlugin requests agent secrets through AgentManager', async 
   }]);
 });
 
+test('AgentRouteFramePlugin passes compaction-aware memory frames to providers', async () => {
+  let compactionCalls = [];
+  let runtime = createRuntime({
+    session: {
+      participantAgentIDs: [ 'agent_1' ],
+    },
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Coder',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-test' },
+        enabled: true,
+      } ],
+    ]),
+    services: {
+      compactionService: {
+        async prepareAgentContext(input) {
+          compactionCalls.push({
+            triggerFrameID: input.triggerFrame.id,
+            agentID: input.agent.id,
+          });
+          return {
+            frames: [
+              {
+                id: 'cmp_1',
+                type: 'CompactionFrame',
+                hidden: true,
+                content: {
+                  kind: 'compaction_frame',
+                  summary: 'old context summary',
+                },
+              },
+              input.triggerFrame,
+            ],
+          };
+        },
+      },
+    },
+  });
+
+  await runtime.createSession({ title: 'Scratch', participantAgentIDs: [ 'agent_1' ] });
+  await runtime.appendUserMessage('ses_1', { text: 'hello' });
+
+  let runCall = runtime.services.calls.find((call) => call.method === 'run');
+  assert.deepEqual(compactionCalls, [{ triggerFrameID: 'msg_1', agentID: 'agent_1' }]);
+  assert.deepEqual(runCall.frameTypes, [ 'CompactionFrame', 'UserMessage' ]);
+});
+
 function createRuntime(options = {}) {
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
   pluginRegistry.registerAgentProvider('streaming-agent', StreamingAgentProvider);
   pluginRegistry.registerAgentProvider('forwarding-agent', ForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('service-forwarding-agent', ServiceForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('null-response-agent', NullResponseAgentProvider);
+  pluginRegistry.registerAgentProvider('blank-message-agent', BlankMessageAgentProvider);
   pluginRegistry.registerAgentProvider('failing-agent', FailingAgentProvider);
+  pluginRegistry.registerAgentProvider('slow-agent', SlowAgentProvider);
   pluginRegistry.registerAgentProvider('continuing-agent', ContinuingAgentProvider);
 
   let agents = options.agents || new Map();
@@ -1100,6 +1467,7 @@ function createRuntime(options = {}) {
         throw new Error(`Unknown service: ${name}`);
       },
     },
+    ...(options.services || {}),
   };
 
   let ids = [
@@ -1171,6 +1539,29 @@ function createTokenUsageStub() {
       };
     },
   };
+}
+
+async function promiseState(promise) {
+  return await Promise.race([
+    promise.then(() => 'resolved', () => 'rejected'),
+    sleep(10).then(() => 'pending'),
+  ]);
+}
+
+async function waitForCondition(predicate, timeoutMS = 250) {
+  let deadline = Date.now() + timeoutMS;
+  while (Date.now() < deadline) {
+    if (predicate())
+      return;
+
+    await sleep(1);
+  }
+
+  assert.fail('Timed out waiting for condition');
+}
+
+async function sleep(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function quietLogger() {

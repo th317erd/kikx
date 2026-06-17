@@ -102,6 +102,7 @@ export async function startStagehandUIServer(options = {}) {
     agentManager: createAgentManagerStub(agents),
     frameRuntime,
     tokenUsage,
+    ...(options.toolOutputStore ? { toolOutputStore: options.toolOutputStore } : {}),
     pluginLoadPromise: Promise.resolve(),
   });
   let server = createServer({ context });

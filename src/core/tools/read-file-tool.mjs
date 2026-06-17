@@ -1,12 +1,15 @@
 'use strict';
 
 import { PluginInterface } from '../plugins/index.mjs';
+import { builtInToolComponent } from './tool-client-components.mjs';
 
 export class ReadFileTool extends PluginInterface {
   static pluginID = 'internal:filesystem';
   static featureName = 'read-file';
   static displayName = 'Read file';
   static description = 'Read a local file from any path visible to the Kikx server process.';
+  static frameType = 'ReadFileToolFrame';
+  static clientComponent = builtInToolComponent('kikx-read-file-use');
   static riskLevel = 'none';
   static inputSchema = {
     type: 'object',
@@ -44,7 +47,7 @@ export class ReadFileTool extends PluginInterface {
     required: [ 'path' ],
     additionalProperties: false,
   };
-  static help = 'Use read-file to inspect a local file by path. Use startLine/endLine for 1-based inclusive line ranges, or startCharacter/endCharacter for 0-based character ranges with an exclusive end. Do not mix line and character ranges. The full tool output is stored in AeorDB; very large results will be returned as a tool output pointer that you can read with tool-output-get.';
+  static help = 'Use read-file to inspect a local file by path. Use startLine/endLine for 1-based inclusive line ranges, or startCharacter/endCharacter for 0-based character ranges with an exclusive end. Do not mix line and character ranges. The full tool output is stored in AeorDB; very large results will be returned as a tool output pointer that you can read with output-read.';
 
   async _execute(params = {}) {
     return await resolveFileAccess(this.context).readFile(params);

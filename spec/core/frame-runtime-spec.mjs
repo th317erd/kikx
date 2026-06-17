@@ -153,6 +153,36 @@ test('FrameRuntime lazily opens persisted sessions for frames and messages', asy
   assert.deepEqual((await runtime.listFrames('ses_1')).map((frame) => frame.id), [ 'msg_1', 'msg_2' ]);
 });
 
+test('FrameRuntime hydrates persisted sessions beyond the old 250-frame window', async () => {
+  let aeordb = createClient();
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'Persisted', updatedAt: 1000 });
+
+  for (let index = 1; index <= 300; index++) {
+    let padded = String(index).padStart(16, '0');
+    aeordb.files.set(`/kikx/sessions/ses_1/interactions/int_${index}/frames/${padded}-UserMessage-msg_${index}.json`, {
+      id: `msg_${index}`,
+      type: 'UserMessage',
+      sessionID: 'ses_1',
+      interactionID: `int_${index}`,
+      order: index,
+      hidden: false,
+      content: { text: `message ${index}` },
+    });
+  }
+
+  let runtime = createRuntime({ aeordb });
+  let frames = await runtime.listFrames('ses_1');
+
+  assert.equal(frames.length, 300);
+  assert.equal(frames[0].id, 'msg_1');
+  assert.equal(frames.at(-1).id, 'msg_300');
+  assert.deepEqual((await runtime.listFrames('ses_1', { limit: 3, offset: 250 })).map((frame) => frame.id), [
+    'msg_251',
+    'msg_252',
+    'msg_253',
+  ]);
+});
+
 test('FrameRuntime appends user messages through FrameEngine and AeorDBFrameStore', async () => {
   let aeordb = createClient();
   let runtime = createRuntime({ aeordb, ids: [ 'ses_1', 'int_1', 'msg_1', 'commit_1' ] });
@@ -545,6 +575,77 @@ test('FrameRuntime reports malformed quoted /invite arguments as command errors'
   assert.match(result.frames[1].content.text, /Usage: \/invite/);
 });
 
+test('FrameRuntime routes /compact to manual compaction without a generic command result', async () => {
+  let aeordb = createClient();
+  let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
+  let commandRegistry = new CommandRegistry({ logger: quietLogger() });
+  let router = new FrameRouter({ logger: quietLogger() });
+  let compactionCalls = [];
+  let runtime;
+  let context = {
+    require(name) {
+      if (name === 'commandRegistry')
+        return commandRegistry;
+
+      if (name === 'frameRuntime')
+        return runtime;
+
+      if (name === 'compactionService') {
+        return {
+          startManualCompaction(input) {
+            compactionCalls.push({
+              sessionID: input.session.id,
+              triggerFrameID: input.triggerFrame.id,
+            });
+            input.frameEngine.merge([{
+              id: 'manual_compaction_1',
+              type: 'CompactionFrame',
+              sessionID: input.session.id,
+              interactionID: 'compact_1',
+              parentID: input.triggerFrame.id,
+              authorType: 'system',
+              authorID: 'internal:compaction',
+              hidden: false,
+              deleted: false,
+              content: {
+                kind: 'compaction_frame',
+                status: 'running',
+                text: 'Compacting session context...',
+              },
+            }], {
+              authorType: 'system',
+              authorID: 'internal:compaction',
+            });
+            return Promise.resolve();
+          },
+        };
+      }
+
+      throw new Error(`Unknown service: ${name}`);
+    },
+  };
+
+  registerInternalCommands({ pluginRegistry, commandRegistry });
+  router.loadFromRegistry(pluginRegistry);
+  runtime = new FrameRuntime({
+    aeordb,
+    frameRouter: router,
+    services: { context },
+    clock: () => 1000,
+    idGenerator: createIDGenerator([ 'ses_1', 'int_1', 'msg_1', 'commit_1', 'manual_commit_1' ]),
+  });
+
+  await runtime.createSession({ title: 'Scratch' });
+  await runtime.appendUserMessage('ses_1', { text: '/compact', userID: 'usr_1' });
+  await runtime.frameRouter.flush();
+  await runtime.frameStore.flush();
+
+  let frames = await runtime.listFrames('ses_1');
+  assert.deepEqual(compactionCalls, [{ sessionID: 'ses_1', triggerFrameID: 'msg_1' }]);
+  assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'CompactionFrame' ]);
+  assert.equal(frames[1].content.status, 'running');
+});
+
 async function routeInviteMessage(text, expectedReference, options = {}) {
   let aeordb = createClient();
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
@@ -662,6 +763,12 @@ test('FrameRuntime surfaces AeorDB persistence failures', async () => {
 
 function tick() {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+function createIDGenerator(ids = []) {
+  let values = ids.slice();
+  let index = 0;
+  return () => values.shift() || `generated_${++index}`;
 }
 
 function quietLogger() {

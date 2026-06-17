@@ -3,7 +3,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { AgentInterface, PluginInterface, PluginRegistry } from '../../src/core/plugins/index.mjs';
+import { FrameEngine } from '../../src/core/frames/index.mjs';
+import {
+  AGENTIC_SCRIPT_NAME,
+  AgentInterface,
+  buildAgenticScriptPrompt,
+  buildCompletionReviewScriptPrompt,
+  PluginInterface,
+  PluginRegistry,
+} from '../../src/core/plugins/index.mjs';
 import { ToolExecutionService } from '../../src/core/tools/index.mjs';
 
 class LoopAgent extends AgentInterface {
@@ -48,6 +56,40 @@ class ToolFinalizingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
     options.tools['agent-respond']({ text: 'tool final answer' });
     return { done: true };
+  }
+}
+
+class SelfReviewingAgent extends AgentInterface {
+  constructor(options = {}) {
+    super(options);
+    this.calls = [];
+  }
+
+  async ask(prompt, options = {}) {
+    this.calls.push({
+      prompt,
+      stepType: options.step?.type || 'ask',
+      toolNames: Object.keys(options.tools).sort(),
+    });
+
+    if (options.step?.type === 'completion-review')
+      return options.tools['agent-finalize']({ text: 'reviewed final answer' });
+
+    return options.tools['agent-respond']({ text: 'draft final answer' });
+  }
+}
+
+class IncompleteSelfReviewAgent extends AgentInterface {
+  async ask(_prompt, options = {}) {
+    if (options.step?.type === 'completion-review') {
+      return options.tools['agent-respond-and-continue']({
+        text: 'I found one missing check. I will run it next.',
+        delayMs: 0,
+        continuationPrompt: 'Run the missing check.',
+      });
+    }
+
+    return options.tools['agent-respond']({ text: 'draft final answer' });
   }
 }
 
@@ -121,6 +163,9 @@ class CharacterSettingAgent extends AgentInterface {
   }
 
   async ask(_prompt, options = {}) {
+    if (options.step?.type === 'completion-review')
+      return options.tools['agent-finalize']({ text: 'Character updated.' });
+
     this.toolResult = await options.tools['agent-character-set']({
       character: 'You are a dirty swearing pirate and fantastic engineer.',
     });
@@ -227,13 +272,67 @@ class GlobalToolCallingAgent extends AgentInterface {
 
   async ask(_prompt, options = {}) {
     this.askCall = {
+      stepType: options.step?.type || 'ask',
       toolDefinitions: options.toolDefinitions,
       toolNames: Object.keys(options.tools).sort(),
     };
+    if (options.step?.type === 'completion-review')
+      return options.tools['agent-finalize']({ text: this.toolResult?.text || 'hello' });
+
     this.toolResult = await options.tools['global-echo']({ text: 'hello' });
     return options.tools['agent-respond']({ text: this.toolResult.text });
   }
 }
+
+class ProgressThenToolAgent extends AgentInterface {
+  constructor(options = {}) {
+    super(options);
+    this.toolResult = null;
+  }
+
+  async ask(_prompt, options = {}) {
+    if (options.step?.type === 'completion-review')
+      return options.tools['agent-finalize']({ text: this.toolResult?.text || 'hello' });
+
+    await options.tools['agent-progress']({ text: 'I will echo the requested value now.' });
+    this.toolResult = await options.tools['global-echo']({ text: 'hello' });
+    return options.tools['agent-respond']({ text: this.toolResult.text });
+  }
+}
+
+test('agentic script templates generate the named Kikx agent script', () => {
+  let prompt = buildAgenticScriptPrompt({
+    frameMessage: 'Please inspect this.',
+    mentions: { agent_1: { id: 'agent_1', name: 'Iron-Hand' } },
+    participantAgents: [ { id: 'agent_1', name: 'Iron-Hand', isSelf: true } ],
+    character: 'You are terse.',
+    tokenUsage: { totalTokensUsed: 12, services: {} },
+    isCoordinator: true,
+    triggerFrameLines: [ 'The user has just sent you a message:' ],
+    routingLines: [ 'Coordinator routing line.' ],
+    toolDefinitions: [
+      { name: 'agent-progress', help: 'Progress before one tool.' },
+      { name: 'database-fetch', description: 'Fetch ranges.' },
+    ],
+  });
+
+  assert.equal(AGENTIC_SCRIPT_NAME, 'agentic script');
+  assert.match(prompt, /Kikx agentic coordination loop/);
+  assert.match(prompt, /Please inspect this\./);
+  assert.match(prompt, /You are the coordinator\?: true/);
+  assert.match(prompt, /Session agents JSON:/);
+  assert.match(prompt, /Mentions JSON:/);
+  assert.match(prompt, /database-fetch: Fetch ranges\./);
+
+  let reviewPrompt = buildCompletionReviewScriptPrompt({
+    frameMessage: 'Please inspect this.',
+    finalFrameContent: { text: 'Draft' },
+    toolDefinitions: [ { name: 'agent-finalize', help: 'Finalize.' } ],
+  });
+  assert.match(reviewPrompt, /Completion self-review/);
+  assert.match(reviewPrompt, /Draft visible response JSON:/);
+  assert.match(reviewPrompt, /agent-finalize: Finalize\./);
+});
 
 test('AgentInterface base loop runs first-message hook before asking the provider', async () => {
   let agent = new LoopAgent();
@@ -252,14 +351,31 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].prompt, /Mentions JSON:/);
   assert.match(agent.calls[1].prompt, /Session agents JSON:/);
   assert.match(agent.calls[1].prompt, /Who is this message really for\?/);
+  assert.match(agent.calls[1].prompt, /Was this message for me\?/);
+  assert.match(agent.calls[1].prompt, /Do I have anything useful to contribute that the coordinator probably will not contribute\?/);
+  assert.match(agent.calls[1].prompt, /absolutely confident that speaking is what I should do/i);
   assert.match(agent.calls[1].prompt, /costing the user real money/i);
   assert.match(agent.calls[1].prompt, /Minimize the number of interactions/i);
   assert.match(agent.calls[1].prompt, /Token usage summary JSON:/);
   assert.match(agent.calls[1].prompt, /"totalTokensUsed": 42/);
   assert.match(agent.calls[1].prompt, /turn-taking/i);
   assert.match(agent.calls[1].prompt, /immediately prior visible response/i);
+  assert.match(agent.calls[1].prompt, /first call agent-progress with a short visible note/i);
+  assert.match(agent.calls[1].prompt, /What is the next most important thing to do\?/);
+  assert.match(agent.calls[1].prompt, /call agent-progress again before calling that next tool/i);
+  assert.match(agent.calls[1].prompt, /pre-tool progress notes are not final answers/i);
+  assert.match(agent.calls[1].prompt, /Use agent-progress, not agent-respond or agent-finalize/i);
   assert.match(agent.calls[1].prompt, /Visible responses are final/i);
   assert.match(agent.calls[1].prompt, /Complete the tool work in this turn first/i);
+  assert.match(agent.calls[1].prompt, /completion self-review/i);
+  assert.match(agent.calls[1].prompt, /What did you miss\?/i);
+  assert.match(agent.calls[1].prompt, /optional session_id parameter/i);
+  assert.match(agent.calls[1].prompt, /session-message with session_id/i);
+  assert.match(agent.calls[1].prompt, /delegated sub-agent work/i);
+  assert.match(agent.calls[1].prompt, /agent-list to discover available agents/i);
+  assert.match(agent.calls[1].prompt, /session-invite-agents with session_id/i);
+  assert.match(agent.calls[1].prompt, /inspect their work/i);
+  assert.match(agent.calls[1].prompt, /What could you have done better\?/i);
   assert.match(agent.calls[1].prompt, /If this message is not for you/i);
   assert.match(agent.calls[1].prompt, /use agent-null-response/i);
   assert.doesNotMatch(agent.calls[1].prompt, /use the internal-forward tool with that actor id/u);
@@ -271,12 +387,14 @@ test('AgentInterface base loop runs first-message hook before asking the provide
     'agent-character-set',
     'agent-finalize',
     'agent-null-response',
+    'agent-progress',
     'agent-respond',
     'agent-respond-and-continue',
     'internal-forward',
     'loop-break',
   ]);
   assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'agent-character-set'));
+  assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'agent-progress'));
   assert.equal(agent.calls[1].toolDefinitions.every((tool) => /^[A-Za-z0-9_-]+$/.test(tool.name)), true);
   assert.equal(agent.calls[1].toolNames.every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
 });
@@ -299,7 +417,10 @@ test('AgentInterface exposes registered global plugin tools to agent turns', asy
   });
   assert.equal(agent.askCall.toolNames.includes('global-echo'), true);
   assert.equal(agent.askCall.toolNames.includes('legacy:bad-name'), false);
-  assert.ok(agent.askCall.toolDefinitions.some((tool) => tool.name === 'global-echo'));
+  let echoDefinition = agent.askCall.toolDefinitions.find((tool) => tool.name === 'global-echo');
+  assert.ok(echoDefinition);
+  assert.equal(echoDefinition.parameters.properties.session_id.type, 'string');
+  assert.equal(echoDefinition.parameters.additionalProperties, false);
   assert.equal(agent.askCall.toolDefinitions.some((tool) => tool.name === 'legacy:bad-name'), false);
   assert.equal(outputs.some((output) => output.type === 'AgentMessage' && output.content.text === 'hello'), true);
 });
@@ -339,6 +460,57 @@ test('AgentInterface routes registered global plugin tools through the tool exec
     sessionID: 'ses_1',
     frameID: 'msg_1',
   });
+});
+
+test('AgentInterface persists agent-progress frames before registered tool calls', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerTool('global-echo', GlobalEchoTool);
+
+  let now = 1_000_000;
+  let frameEngine = new FrameEngine({
+    clock: () => now,
+    runnerID: 'test-runner',
+    idGenerator: (() => {
+      let index = 0;
+      return () => `frame_${++index}`;
+    })(),
+  });
+  let visibleBeforeTool = [];
+  let toolExecutor = {
+    async executeTool(call) {
+      visibleBeforeTool = frameEngine.toArray()
+        .filter((frame) => frame.hidden === false)
+        .map((frame) => ({
+          type: frame.type,
+          text: frame.content?.text,
+        }));
+      return {
+        text: call.input.text,
+        agentID: call.context.agent.id,
+        sessionID: call.context.session.id,
+        frameID: call.context.frame.id,
+      };
+    },
+  };
+
+  let agent = new ProgressThenToolAgent();
+  let outputs = await collect(agent.run(baseLoopParams({
+    responseFrameID: 'agent_response_1',
+    frameEngine,
+    services: {
+      pluginRegistry,
+      toolExecutor,
+      clock: () => ++now,
+    },
+  })));
+
+  assert.deepEqual(visibleBeforeTool, [{
+    type: 'AgentProgress',
+    text: 'I will echo the requested value now.',
+  }]);
+  assert.equal(agent.toolResult.text, 'hello');
+  assert.equal(outputs.some((output) => output.type === 'AgentMessage' && output.content.text === 'hello'), true);
+  assert.deepEqual(frameEngine.toArray().map((frame) => frame.type), [ 'AgentProgress' ]);
 });
 
 test('ToolExecutionService runs tool public execute path with agent context metadata', async () => {
@@ -474,6 +646,59 @@ test('AgentInterface base loop exposes response tools that can finalize without 
       type: 'Done',
       content: {
         status: 'finalized',
+      },
+    },
+  ]);
+});
+
+test('AgentInterface runs a completion self-review before emitting a finalized response', async () => {
+  let agent = new SelfReviewingAgent();
+  let outputs = await collect(agent.run(baseLoopParams({
+    frames: [],
+  })));
+
+  assert.deepEqual(outputs, [
+    {
+      type: 'AgentMessage',
+      content: { text: 'reviewed final answer' },
+    },
+    {
+      type: 'Done',
+      content: {
+        status: 'finalized',
+      },
+    },
+  ]);
+  assert.deepEqual(agent.calls.map((call) => call.stepType), [ 'ask', 'completion-review' ]);
+  assert.match(agent.calls[1].prompt, /Have you completed all the tasks the user requested of you\?/);
+  assert.match(agent.calls[1].prompt, /What did you miss\?/);
+  assert.match(agent.calls[1].prompt, /What did you forget\?/);
+  assert.match(agent.calls[1].prompt, /What could you have done better\?/);
+  assert.match(agent.calls[1].prompt, /Draft visible response JSON:/);
+  assert.match(agent.calls[1].prompt, /draft final answer/);
+  assert.ok(agent.calls[1].toolNames.includes('agent-progress'));
+});
+
+test('AgentInterface completion self-review can convert a draft final answer into a continuation', async () => {
+  let outputs = await collect(new IncompleteSelfReviewAgent().run(baseLoopParams({
+    frames: [],
+  })));
+
+  assert.deepEqual(outputs, [
+    {
+      type: 'AgentMessage',
+      content: {
+        text: 'I found one missing check. I will run it next.',
+      },
+    },
+    {
+      type: 'Done',
+      content: {
+        status: 'respond-and-continue',
+        continuation: {
+          delayMs: 0,
+          continuationPrompt: 'Run the missing check.',
+        },
       },
     },
   ]);

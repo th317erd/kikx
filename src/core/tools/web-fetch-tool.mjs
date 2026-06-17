@@ -1,6 +1,7 @@
 'use strict';
 
 import { PluginInterface } from '../plugins/index.mjs';
+import { builtInToolComponent } from './tool-client-components.mjs';
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_LINKS = 25;
@@ -10,6 +11,8 @@ export class WebFetchTool extends PluginInterface {
   static featureName = 'fetch';
   static displayName = 'Web fetch';
   static description = 'Fetch and render a public web page with Puppeteer.';
+  static frameType = 'FetchToolFrame';
+  static clientComponent = builtInToolComponent('kikx-fetch-use');
   static riskLevel = 'none';
   static inputSchema = {
     type: 'object',

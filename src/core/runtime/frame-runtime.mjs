@@ -8,6 +8,9 @@ import { HybridLogicalClock, defaultUnixMicros } from '../clock/hybrid-logical-c
 import { FrameEngine } from '../frames/frame-engine.mjs';
 import { ScheduledFrameQueue } from './scheduled-frame-queue.mjs';
 
+const DEFAULT_SESSION_FRAME_LIMIT = 1000;
+const MAX_SESSION_FRAME_LIMIT = 5000;
+
 export class FrameRuntime extends EventEmitter {
   constructor(options = {}) {
     super();
@@ -87,6 +90,7 @@ export class FrameRuntime extends EventEmitter {
       frameEngine,
       disconnectStore: disconnect,
       framesLoaded: true,
+      framesLoadedLimit: Number.POSITIVE_INFINITY,
     });
 
     return session;
@@ -139,12 +143,14 @@ export class FrameRuntime extends EventEmitter {
   async ensureSessionEntry(sessionID, options = {}) {
     let entry = this.sessions.get(sessionID);
     if (entry) {
-      if (options.loadFrames !== false && !entry.framesLoaded) {
+      let frameLimit = normalizeFrameLimit(options.frameLimit);
+      if (options.loadFrames !== false && (!entry.framesLoaded || entry.framesLoadedLimit < frameLimit)) {
         let frames = await this.frameStore.listFrames(sessionID, {
-          limit: options.frameLimit || 250,
+          limit: frameLimit,
         });
         entry.frameEngine.hydrate(frames);
         entry.framesLoaded = true;
+        entry.framesLoadedLimit = frameLimit;
       }
       return entry;
     }
@@ -164,8 +170,9 @@ export class FrameRuntime extends EventEmitter {
     });
 
     if (options.loadFrames !== false) {
+      let frameLimit = normalizeFrameLimit(options.frameLimit);
       let frames = await this.frameStore.listFrames(sessionID, {
-        limit: options.frameLimit || 250,
+        limit: frameLimit,
       });
       frameEngine.hydrate(frames);
     }
@@ -176,6 +183,7 @@ export class FrameRuntime extends EventEmitter {
       frameEngine,
       disconnectStore: disconnect,
       framesLoaded: options.loadFrames !== false,
+      framesLoadedLimit: options.loadFrames === false ? 0 : normalizeFrameLimit(options.frameLimit),
     };
     this.sessions.set(sessionID, entry);
     return entry;
@@ -254,9 +262,18 @@ export class FrameRuntime extends EventEmitter {
     };
   }
 
-  async listFrames(sessionID) {
-    let entry = await this.ensureSessionEntry(sessionID);
-    return entry.frameEngine.toArray();
+  async listFrames(sessionID, options = {}) {
+    let hasPagingOptions = options.limit != null || options.offset != null;
+    let limit = normalizeFrameLimit(options.limit);
+    let offset = normalizeFrameOffset(options.offset);
+    let loadLimit = hasPagingOptions ? normalizeFrameWindowLimit(offset + limit) : limit;
+    let entry = await this.ensureSessionEntry(sessionID, { frameLimit: loadLimit });
+    let frames = entry.frameEngine.toArray();
+
+    if (hasPagingOptions)
+      return frames.slice(offset, offset + limit);
+
+    return frames;
   }
 
   async ensureIndexConfigs() {
@@ -415,6 +432,32 @@ function normalizeCount(value) {
   return (typeof value === 'number' && Number.isFinite(value) && value >= 0)
     ? Math.trunc(value)
     : 0;
+}
+
+function normalizeFrameLimit(value) {
+  if (value == null)
+    return DEFAULT_SESSION_FRAME_LIMIT;
+
+  let number = Number(value);
+  if (!Number.isInteger(number) || number < 1)
+    throw new TypeError('frame limit must be a positive integer');
+
+  return Math.min(number, MAX_SESSION_FRAME_LIMIT);
+}
+
+function normalizeFrameWindowLimit(value) {
+  return Math.min(value, MAX_SESSION_FRAME_LIMIT);
+}
+
+function normalizeFrameOffset(value) {
+  if (value == null)
+    return 0;
+
+  let number = Number(value);
+  if (!Number.isInteger(number) || number < 0)
+    throw new TypeError('frame offset must be a non-negative integer');
+
+  return number;
 }
 
 function normalizeRequiredString(value, fieldName) {

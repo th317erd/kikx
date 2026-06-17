@@ -138,6 +138,51 @@ test('FrameRouter.flush waits for queued async routing work', async () => {
   assert.equal(flushed, true);
 });
 
+test('FrameRouter background tasks do not block later queued commits', async () => {
+  let events = [];
+  let router = new FrameRouter({ logger: quietLogger() });
+  let frames = new FrameEngine();
+  let release;
+  let blocker = new Promise((resolve) => { release = resolve; });
+
+  class BackgroundPlugin extends BaseFramePlugin {
+    async process(next) {
+      events.push(`route:${this.context.newFrame.id}`);
+      if (this.context.newFrame.id === 'msg_1') {
+        router.runBackground(blocker.then(() => {
+          events.push('background:msg_1');
+        }));
+      }
+      await next(this.context);
+    }
+  }
+
+  router.registerSelector('Type:UserMessage', BackgroundPlugin, 'background');
+  router.connectTo(frames);
+
+  frames.merge([{ id: 'msg_1', type: 'UserMessage', hidden: false }]);
+  await tick();
+
+  let flushed = false;
+  let flushPromise = router.flush().then(() => { flushed = true; });
+  await tick();
+
+  assert.equal(flushed, false);
+  assert.equal(await didResolve(router.flush({ background: false })), true);
+
+  frames.merge([{ id: 'msg_2', type: 'UserMessage', hidden: false }]);
+  await tick();
+
+  assert.deepEqual(events, [ 'route:msg_1', 'route:msg_2' ]);
+  assert.equal(flushed, false);
+
+  release();
+  await flushPromise;
+
+  assert.deepEqual(events, [ 'route:msg_1', 'route:msg_2', 'background:msg_1' ]);
+  assert.equal(flushed, true);
+});
+
 test('FrameRouter routes queued commits against their committed frame version', async () => {
   let events = [];
   let router = new FrameRouter({ logger: quietLogger() });
@@ -303,4 +348,11 @@ function quietLogger() {
 
 function tick() {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+async function didResolve(promise) {
+  return await Promise.race([
+    promise.then(() => true, () => false),
+    tick().then(() => false),
+  ]);
 }

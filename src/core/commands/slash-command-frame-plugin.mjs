@@ -42,6 +42,11 @@ export class SlashCommandFramePlugin extends BaseFramePlugin {
         services: this.context.services,
       });
 
+      if (result?.suppressCommandResult === true) {
+        done();
+        return;
+      }
+
       this.appendCommandResult({
         command: descriptor.name,
         status: result?.status || 'ok',

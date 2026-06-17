@@ -48,6 +48,19 @@ test('markdownToHTML renders links, inline code, tables, and safe inline html', 
   assert.equal(html.includes('javascript:'), false);
 });
 
+test('markdownToHTML autolinks bare safe URLs outside code and existing anchors', () => {
+  let html = markdownToHTML([
+    'Visit https://example.test/docs?x=1.',
+    '`https://example.test/code`',
+    '<a href="https://example.test/raw">https://example.test/raw</a>',
+  ].join('\n'));
+
+  assert.match(html, /Visit <a href="https:\/\/example.test\/docs\?x=1" target="_blank" rel="noopener noreferrer">https:\/\/example.test\/docs\?x=1<\/a>\./);
+  assert.match(html, /<code>https:\/\/example.test\/code<\/code>/);
+  assert.match(html, /<a href="https:\/\/example.test\/raw" target="_blank" rel="noopener noreferrer">https:\/\/example.test\/raw<\/a>/);
+  assert.equal((html.match(/<a /g) || []).length, 2);
+});
+
 test('markdownToHTML strips paragraph tags and escapes dangerous html', () => {
   let html = markdownToHTML('<p>Hello</p> <script>alert("x")</script>');
 

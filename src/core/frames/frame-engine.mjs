@@ -144,7 +144,7 @@ export class FrameEngine extends EventEmitter {
       if (!input?.id || !input.type)
         continue;
 
-      let frame = this._normalizeFrame(input);
+      let frame = this._normalizeFrame(input, { stampMissingTime: false });
       this._seedClock(frame.createdClock);
       this._seedClock(frame.updatedClock);
       this._frames.set(frame.id, frame);
@@ -205,18 +205,20 @@ export class FrameEngine extends EventEmitter {
       .sort(compareFrameOrder);
   }
 
-  _normalizeFrame(input) {
+  _normalizeFrame(input, options = {}) {
     let existing = this.get(input.id);
     let stamp = null;
+    let shouldStampMissingTime = options.stampMissingTime !== false;
     let nextStamp = () => {
       stamp ||= this._nextStamp();
       return stamp;
     };
-    let timestamp = numberOr(input.timestamp, nextStamp().at);
+    let missingStamp = () => shouldStampMissingTime ? nextStamp() : { at: 0, clock: null };
+    let timestamp = numberOr(input.timestamp, missingStamp().at);
     let createdAt = numberOr(input.createdAt, existing?.createdAt || timestamp);
     let updatedAt = numberOr(input.updatedAt, timestamp);
-    let createdClock = stringOr(input.createdClock, existing?.createdClock || nextStamp().clock);
-    let updatedClock = stringOr(input.updatedClock, existing ? nextStamp().clock : createdClock);
+    let createdClock = stringOr(input.createdClock, existing?.createdClock || missingStamp().clock);
+    let updatedClock = stringOr(input.updatedClock, existing ? missingStamp().clock : createdClock);
     let order = numberOr(input.order, existing?.order || ++this._frameOrder);
 
     return {
@@ -462,21 +464,11 @@ export class FrameEngine extends EventEmitter {
 }
 
 function compareFrameOrder(a, b) {
-  return compareClock(sortUpdatedClock(a), sortUpdatedClock(b))
-    || compareNumber(sortUpdatedAt(a), sortUpdatedAt(b))
-    || compareClock(a?.createdClock, b?.createdClock)
+  return compareClock(a?.createdClock, b?.createdClock)
     || compareNumber(a?.createdAt, b?.createdAt)
-    || compareNumber(sortCommitOrder(a), sortCommitOrder(b))
     || compareNumber(a?.order, b?.order)
+    || compareNumber(sortCommitOrder(a), sortCommitOrder(b))
     || String(a.id).localeCompare(String(b.id));
-}
-
-function sortUpdatedClock(frame) {
-  return stringOr(frame?.updatedClock, frame?.createdClock);
-}
-
-function sortUpdatedAt(frame) {
-  return numberOr(frame?.updatedAt, frame?.createdAt || 0);
 }
 
 function sortCommitOrder(frame) {

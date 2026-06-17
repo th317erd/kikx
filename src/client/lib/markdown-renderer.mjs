@@ -310,7 +310,7 @@ function renderInline(input) {
   let text = String(input);
   text = replaceCodeSpans(text, tokens);
   text = replaceLinks(text, tokens);
-  text = escapeHTMLAllowingSafeTags(text);
+  text = escapeHTMLAllowingSafeTags(text, (chunk) => renderInlineTextChunk(chunk, tokens));
   text = applyInlineEmphasis(text);
   return restoreTokens(text, tokens);
 }
@@ -333,6 +333,66 @@ function replaceLinks(text, tokens) {
   });
 }
 
+function renderInlineTextChunk(text, tokens) {
+  let output = '';
+  let cursor = 0;
+  let pattern = /\bhttps?:\/\/[^\s<>"']+/gi;
+
+  for (let match; (match = pattern.exec(text));) {
+    let rawURL = match[0];
+    let { url, suffix } = splitTrailingURLPunctuation(rawURL);
+    let href = normalizeSafeURL(url);
+
+    if (!href || !url) {
+      output += escapeHTML(text.slice(cursor, pattern.lastIndex));
+      cursor = pattern.lastIndex;
+      continue;
+    }
+
+    output += escapeHTML(text.slice(cursor, match.index));
+    output += createToken(tokens, `<a href="${escapeAttribute(href)}" target="_blank" rel="noopener noreferrer">${escapeHTML(url)}</a>`);
+    output += escapeHTML(suffix);
+    cursor = pattern.lastIndex;
+  }
+
+  output += escapeHTML(text.slice(cursor));
+  return output;
+}
+
+function splitTrailingURLPunctuation(rawURL) {
+  let url = String(rawURL || '');
+  let suffix = '';
+
+  while (url.length > 0 && /[.,!?;:]/.test(url[url.length - 1])) {
+    suffix = url[url.length - 1] + suffix;
+    url = url.slice(0, -1);
+  }
+
+  for (let pair of [
+    [ '(', ')' ],
+    [ '[', ']' ],
+    [ '{', '}' ],
+  ]) {
+    let [open, close] = pair;
+    while (url.endsWith(close) && countCharacter(url, close) > countCharacter(url, open)) {
+      suffix = close + suffix;
+      url = url.slice(0, -1);
+    }
+  }
+
+  return { url, suffix };
+}
+
+function countCharacter(value, character) {
+  let count = 0;
+  for (let index = 0; index < value.length; index++) {
+    if (value[index] === character)
+      count++;
+  }
+
+  return count;
+}
+
 function applyInlineEmphasis(text) {
   return text
     .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
@@ -351,18 +411,21 @@ function restoreTokens(text, tokens) {
   return text.replace(new RegExp(`${TOKEN_PREFIX}(\\d+)${TOKEN_SUFFIX}`, 'g'), (_match, index) => tokens[Number(index)] || '');
 }
 
-function escapeHTMLAllowingSafeTags(text) {
+function escapeHTMLAllowingSafeTags(text, transformText = escapeHTML) {
   let output = '';
   let index = 0;
+  let anchorDepth = 0;
 
   while (index < text.length) {
     let tagStart = text.indexOf('<', index);
     if (tagStart < 0) {
-      output += escapeHTML(text.slice(index));
+      let chunk = text.slice(index);
+      output += anchorDepth > 0 ? escapeHTML(chunk) : transformText(chunk);
       break;
     }
 
-    output += escapeHTML(text.slice(index, tagStart));
+    let chunk = text.slice(index, tagStart);
+    output += anchorDepth > 0 ? escapeHTML(chunk) : transformText(chunk);
     let tagEnd = text.indexOf('>', tagStart + 1);
     if (tagEnd < 0) {
       output += '&lt;';
@@ -373,10 +436,25 @@ function escapeHTMLAllowingSafeTags(text) {
     let tag = text.slice(tagStart, tagEnd + 1);
     let sanitized = sanitizeSafeTag(tag);
     output += sanitized == null ? escapeHTML(tag) : sanitized;
+    anchorDepth = nextAnchorDepth(anchorDepth, tag, sanitized);
     index = tagEnd + 1;
   }
 
   return output;
+}
+
+function nextAnchorDepth(anchorDepth, rawTag, sanitizedTag) {
+  if (sanitizedTag == null)
+    return anchorDepth;
+
+  let match = /^<\s*(\/?)\s*([A-Za-z][A-Za-z0-9-]*)\b/.exec(rawTag);
+  if (!match || match[2].toLowerCase() !== 'a')
+    return anchorDepth;
+
+  if (match[1] === '/')
+    return Math.max(0, anchorDepth - 1);
+
+  return anchorDepth + 1;
 }
 
 function sanitizeSafeTag(tag) {
@@ -543,7 +621,7 @@ function collectMarkdownTextNodes(root, output = []) {
 
 function isMarkdownOpaqueElement(element) {
   let tagName = element.tagName?.toLowerCase();
-  return tagName === 'code' || tagName === 'pre' || tagName === 'kbd';
+  return tagName === 'a' || tagName === 'code' || tagName === 'pre' || tagName === 'kbd';
 }
 
 function shouldRenderBlockMarkdown(textNode) {

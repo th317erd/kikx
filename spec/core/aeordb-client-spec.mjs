@@ -149,6 +149,94 @@ test('fetchFiles validates path lists before making a request', async () => {
   );
 });
 
+test('fetchFileRanges posts range-mode fetch requests', async () => {
+  let seen;
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test/',
+    token: 'secret',
+    fetchImpl: async (url, options) => {
+      seen = { url, options };
+      return jsonResponse({
+        items: [
+          {
+            id: 'hit-1',
+            status: 'ok',
+            path: '/data/a.txt',
+            content: 'matched line',
+          },
+        ],
+        has_errors: false,
+      });
+    },
+  });
+
+  let result = await client.fetchFileRanges([
+    {
+      id: 'hit-1',
+      path: '/data/a.txt',
+      ifContentHash: 'b3c1',
+      range: { mode: 'lines', start: 10, end: 14 },
+      maxBytes: 65536,
+    },
+  ], {
+    maxBytes: 1048576,
+    continueOnError: true,
+  });
+
+  assert.equal(seen.url.toString(), 'http://aeor.test/files/fetch');
+  assert.equal(seen.options.method, 'POST');
+  assert.equal(seen.options.headers.Authorization, 'Bearer secret');
+  assert.equal(seen.options.body, JSON.stringify({
+    items: [
+      {
+        path: '/data/a.txt',
+        range: { mode: 'lines', start: 10, end: 14 },
+        id: 'hit-1',
+        if_content_hash: 'b3c1',
+        max_bytes: 65536,
+      },
+    ],
+    max_bytes: 1048576,
+    continue_on_error: true,
+  }));
+  assert.equal(result.items[0].content, 'matched line');
+});
+
+test('fetchFileRanges validates range fetch items', async () => {
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test/',
+    fetchImpl: async () => jsonResponse({}),
+  });
+
+  await assert.rejects(
+    () => client.fetchFileRanges('/not-an-array'),
+    /items must be an array/,
+  );
+  await assert.rejects(
+    () => client.fetchFileRanges([ { path: '/ok.txt', range: { mode: 'json_pointer' } } ]),
+    /json_pointer range requires pointer/,
+  );
+});
+
+test('getFile returns raw response text when expectJSON is false', async () => {
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test/',
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      async text() {
+        return '{"stored":true,"value":42}';
+      },
+    }),
+  });
+
+  let result = await client.getFile('/kikx/tool-outputs/OUT1/result.txt', {
+    expectJSON: false,
+  });
+
+  assert.equal(result, '{"stored":true,"value":42}');
+});
+
 test('eventsURL includes filters and token', () => {
   let client = new AeorDBClient({
     baseURL: 'http://aeor.test',

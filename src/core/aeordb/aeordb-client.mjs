@@ -125,6 +125,43 @@ export class AeorDBClient {
     });
   }
 
+  async fetchFileRanges(items, options = {}) {
+    let {
+      maxBytes,
+      max_bytes: maxBytesSnake,
+      continueOnError,
+      continue_on_error: continueOnErrorSnake,
+      ...requestOptions
+    } = options;
+
+    if (!Array.isArray(items))
+      throw new TypeError('fetchFileRanges() items must be an array');
+
+    let normalizedItems = items.map((item) => normalizeFetchRangeItem(item));
+    if (normalizedItems.length === 0)
+      return { items: [], has_errors: false };
+
+    let byteLimit = maxBytes ?? maxBytesSnake;
+    if (byteLimit != null && (!Number.isInteger(Number(byteLimit)) || Number(byteLimit) < 1))
+      throw new TypeError('fetchFileRanges() maxBytes must be a positive integer');
+
+    let body = {
+      items: normalizedItems,
+    };
+
+    if (byteLimit != null)
+      body.max_bytes = Number(byteLimit);
+
+    let shouldContinue = continueOnError ?? continueOnErrorSnake;
+    if (shouldContinue != null)
+      body.continue_on_error = Boolean(shouldContinue);
+
+    return this.request('POST', '/files/fetch', {
+      ...requestOptions,
+      body,
+    });
+  }
+
   async requestMagicLink(email, options = {}) {
     return this.request('POST', '/auth/magic-link', {
       ...options,
@@ -225,26 +262,9 @@ export class AeorDBClient {
     }
 
     let text = await response.text();
-    let parsed = null;
-
-    if (text) {
-      try {
-        parsed = JSON.parse(text);
-      } catch (error) {
-        if (expectJSON) {
-          throw new AeorDBError('AeorDB returned a non-JSON response', {
-            status: response.status,
-            body: text.slice(0, 500),
-            url: url.toString(),
-            cause: error,
-          });
-        }
-
-        parsed = text;
-      }
-    }
 
     if (!response.ok) {
+      let parsed = parseJSONOrText(text);
       let message = parsed?.error?.message || parsed?.message || `AeorDB HTTP ${response.status}`;
       throw new AeorDBError(message, {
         status: response.status,
@@ -253,6 +273,136 @@ export class AeorDBClient {
       });
     }
 
+    if (expectJSON === false)
+      return text;
+
+    let parsed = null;
+
+    if (text) {
+      try {
+        parsed = JSON.parse(text);
+      } catch (error) {
+        throw new AeorDBError('AeorDB returned a non-JSON response', {
+          status: response.status,
+          body: text.slice(0, 500),
+          url: url.toString(),
+          cause: error,
+        });
+      }
+    }
+
     return parsed;
+  }
+}
+
+function normalizeFetchRangeItem(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item))
+    throw new TypeError('fetchFileRanges() items must contain objects');
+
+  if (!item.path || typeof item.path !== 'string')
+    throw new TypeError('fetchFileRanges() item.path must be a non-empty string');
+
+  let range = normalizeFetchRange(item.range || item);
+  let output = {
+    path: item.path,
+    range,
+  };
+
+  if (item.id != null)
+    output.id = String(item.id);
+
+  if (item.if_content_hash != null)
+    output.if_content_hash = String(item.if_content_hash);
+  else if (item.ifContentHash != null)
+    output.if_content_hash = String(item.ifContentHash);
+
+  if (item.if_updated_at != null)
+    output.if_updated_at = normalizeInteger(item.if_updated_at, 'if_updated_at');
+  else if (item.ifUpdatedAt != null)
+    output.if_updated_at = normalizeInteger(item.ifUpdatedAt, 'ifUpdatedAt');
+
+  let maxBytes = item.max_bytes ?? item.maxBytes;
+  if (maxBytes != null)
+    output.max_bytes = normalizePositiveInteger(maxBytes, 'maxBytes');
+
+  return output;
+}
+
+function normalizeFetchRange(range) {
+  if (!range || typeof range !== 'object' || Array.isArray(range))
+    throw new TypeError('fetchFileRanges() item.range must be an object');
+
+  let mode = normalizeRangeMode(range.mode || range.type);
+  let output = { mode };
+
+  if (mode === 'json_pointer') {
+    let pointer = range.pointer ?? range.json_pointer ?? range.jsonPointer;
+    if (typeof pointer !== 'string' || pointer === '')
+      throw new TypeError('json_pointer range requires pointer');
+
+    output.pointer = pointer;
+    return output;
+  }
+
+  if (range.start != null)
+    output.start = normalizeNonNegativeInteger(range.start, 'start');
+
+  if (range.end != null)
+    output.end = mode === 'lines'
+      ? normalizePositiveInteger(range.end, 'end')
+      : normalizeNonNegativeInteger(range.end, 'end');
+
+  return output;
+}
+
+function normalizeRangeMode(value) {
+  let mode = String(value || '').trim();
+  if (mode === 'line')
+    mode = 'lines';
+  if (mode === 'char')
+    mode = 'chars';
+  if (mode === 'byte')
+    mode = 'bytes';
+  if (mode === 'jsonPointer')
+    mode = 'json_pointer';
+
+  if (![ 'lines', 'chars', 'bytes', 'json_pointer' ].includes(mode))
+    throw new TypeError('range.mode must be lines, chars, bytes, or json_pointer');
+
+  return mode;
+}
+
+function normalizeInteger(value, fieldName) {
+  let number = Number(value);
+  if (!Number.isInteger(number))
+    throw new TypeError(`${fieldName} must be an integer`);
+
+  return number;
+}
+
+function normalizePositiveInteger(value, fieldName) {
+  let number = normalizeInteger(value, fieldName);
+  if (number < 1)
+    throw new TypeError(`${fieldName} must be a positive integer`);
+
+  return number;
+}
+
+function normalizeNonNegativeInteger(value, fieldName) {
+  let number = normalizeInteger(value, fieldName);
+  if (number < 0)
+    throw new TypeError(`${fieldName} must be a non-negative integer`);
+
+  return number;
+}
+
+function parseJSONOrText(text) {
+  if (!text)
+    return null;
+
+  try {
+    return JSON.parse(text);
+  } catch (_error) {
+    return text;
   }
 }
