@@ -613,7 +613,7 @@ if (typeof window !== 'undefined') {
       count++;
     }
 
-    // eslint-disable-next-line no-console
+     
     console.log(`[kikx] Reflections ${(enabled) ? 'ON' : 'OFF'} (${count} bubbles)`);
 
     return enabled;

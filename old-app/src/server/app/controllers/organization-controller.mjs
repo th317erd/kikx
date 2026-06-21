@@ -146,7 +146,7 @@ export class OrganizationController extends ControllerAuthBase {
       };
 
       if (result.status === 'not-modified') {
-        // eslint-disable-next-line no-magic-numbers
+         
         this.setStatusCode(201);
       } else {
         this.setStatusCode(200);

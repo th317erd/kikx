@@ -1,4 +1,4 @@
-/* eslint-disable max-classes-per-file */
+ 
 
 import { SQLiteConnection } from 'mythix-orm-sqlite';
 // import { PostgreSQLConnection } from 'mythix-orm-postgresql';
@@ -61,7 +61,7 @@ class _TestApplicationShim extends Application {
     return defaultModules;
   }
 
-  // eslint-disable-next-line no-unused-vars
+   
   async createDatabaseConnection(databaseConfig) {
     let connection = new SQLiteConnection({
       bindModels:                 false,

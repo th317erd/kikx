@@ -1,4 +1,4 @@
-/* eslint-disable no-magic-numbers */
+ 
 
 import Nife from 'nife';
 import {
@@ -13,7 +13,7 @@ describe('OrganizationModel', function() {
   let models;
   let factory;
 
-  // eslint-disable-next-line no-unused-vars
+   
   const { it, fit } = createRunners(() => app.getConnection());
 
   beforeAll(async () => {

@@ -1,0 +1,33 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: K
+      - generic [ref=e7]:
+        - heading "Kikx" [level=1] [ref=e8]
+        - paragraph [ref=e9]: Agent runner
+    - generic [ref=e10]:
+      - generic [ref=e11]: wegreenway@taraani.org
+      - button "Account" [ref=e12] [cursor=pointer]
+      - button "Agents" [ref=e13] [cursor=pointer]
+      - button "Sign out" [ref=e14] [cursor=pointer]
+  - main [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - heading "Sessions" [level=2] [ref=e18]
+        - button "+" [ref=e19] [cursor=pointer]
+      - list [ref=e20]:
+        - listitem [ref=e21]:
+          - paragraph [ref=e22]: No Sessions.
+          - button "+ New Session" [ref=e23] [cursor=pointer]
+    - generic [ref=e24]:
+      - heading "No session" [level=2] [ref=e26]
+      - generic [ref=e28]:
+        - paragraph [ref=e29]: Create a session to start.
+        - button "+ New Session" [ref=e30] [cursor=pointer]
+      - generic [ref=e31]:
+        - generic [ref=e32]: Message
+        - textbox "Create or select a session first" [disabled] [ref=e33]
+        - button "Send" [disabled] [ref=e35]
+  - generic [ref=e36]:
+    - generic [ref=e38]: Connected
+    - generic "Total tracked tokens" [ref=e39]: "Tokens: 1,944,552"

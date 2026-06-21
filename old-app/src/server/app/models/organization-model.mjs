@@ -1,4 +1,4 @@
-/* eslint-disable camelcase */
+ 
 
 import Nife           from 'nife';
 import { DateTime }   from 'luxon';
@@ -163,11 +163,11 @@ export class Organization extends ModelBase {
 
       return { status: 'modified', user, addedRoles: addedUserRoles };
     } else {
-      // eslint-disable-next-line no-magic-numbers
+       
       let { magicLinkURL } = await user.generateSessionToken({
         ...options,
         scope:      (addedUserRoles.indexOf('masteradmin') >= 0 || addedUserRoles.indexOf('support') >= 0) ? 'a' : 'u',
-        // eslint-disable-next-line no-magic-numbers
+         
         expiresAt:  Math.floor(DateTime.now().plus({ hours: 72 }).toMillis() / 1000.0),
       });
 
@@ -238,7 +238,7 @@ export class Organization extends ModelBase {
     } = options;
 
     if (limit == null)
-    // eslint-disable-next-line no-magic-numbers
+     
       limit = 20;
 
     if (order == null)

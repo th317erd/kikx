@@ -1,4 +1,4 @@
-/* eslint-disable camelcase */
+ 
 
 import Nife from 'nife';
 import { UserPermissions } from '../../app/permissions/index.mjs';
@@ -20,7 +20,7 @@ describe('UserPermissions', function() {
   let generateTests;
   let context;
 
-  // eslint-disable-next-line no-unused-vars
+   
   const { it, fit } = createRunners(() => app.getConnection());
 
   const contextProvider = () => context;

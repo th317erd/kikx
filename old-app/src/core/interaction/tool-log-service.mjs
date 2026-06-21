@@ -88,7 +88,7 @@ export class ToolLogService {
    */
   async storeToolOutput({
     sessionID,
-    interactionID,    // eslint-disable-line no-unused-vars
+    interactionID,     
     agentID,
     organizationID,
     toolName,

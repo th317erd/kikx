@@ -11,6 +11,9 @@ import vm from 'node:vm';
 import { PluginRegistry } from '../../src/core/plugins/index.mjs';
 import {
   AgentListTool,
+  CwdClearTool,
+  CwdGetTool,
+  CwdSetTool,
   DatabaseFetchTool,
   DatabaseSearchTool,
   ExecTool,
@@ -19,6 +22,7 @@ import {
   ExecListTool,
   ExecReadTool,
   ExecStatusTool,
+  FeedbackReportTool,
   LocalCommandExecutionService,
   LocalFileAccessService,
   OutputGrepTool,
@@ -35,6 +39,14 @@ import {
   SessionListTool,
   SessionMessageTool,
   SessionSearchTool,
+  TodoAddTool,
+  TodoClearTool,
+  TodoCompleteTool,
+  TodoDeleteTool,
+  TodoFocusClearTool,
+  TodoFocusSetTool,
+  TodoGetTool,
+  TodoUpdateTool,
   ToolExecutionService,
   ToolOutputStore,
   WebFetchTool,
@@ -72,6 +84,10 @@ test('registerBuiltInTools registers global web tools with OpenAI-safe names', (
   assert.equal(registry.getTool('exec-read'), ExecReadTool);
   assert.equal(registry.getTool('exec-grep'), ExecGrepTool);
   assert.equal(registry.getTool('exec-kill'), ExecKillTool);
+  assert.equal(registry.getTool('cwd-get'), CwdGetTool);
+  assert.equal(registry.getTool('cwd-set'), CwdSetTool);
+  assert.equal(registry.getTool('cwd-clear'), CwdClearTool);
+  assert.equal(registry.getTool('feedback-report'), FeedbackReportTool);
   assert.equal(registry.getTool('database-search'), DatabaseSearchTool);
   assert.equal(registry.getTool('database-fetch'), DatabaseFetchTool);
   assert.equal(registry.getTool('process-list'), null);
@@ -88,7 +104,116 @@ test('registerBuiltInTools registers global web tools with OpenAI-safe names', (
   assert.equal(registry.getTool('session-frames'), SessionFramesTool);
   assert.equal(registry.getTool('session-search'), SessionSearchTool);
   assert.equal(registry.getTool('session-message'), SessionMessageTool);
+  assert.equal(registry.getTool('todo-get'), TodoGetTool);
+  assert.equal(registry.getTool('todo-add'), TodoAddTool);
+  assert.equal(registry.getTool('todo-update'), TodoUpdateTool);
+  assert.equal(registry.getTool('todo-complete'), TodoCompleteTool);
+  assert.equal(registry.getTool('todo-delete'), TodoDeleteTool);
+  assert.equal(registry.getTool('todo-clear'), TodoClearTool);
+  assert.equal(registry.getTool('todo-focus-set'), TodoFocusSetTool);
+  assert.equal(registry.getTool('todo-focus-clear'), TodoFocusClearTool);
   assert.equal([...registry.getTools().keys()].every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
+});
+
+test('FeedbackReportTool writes reports through the consolidated feedback store', async () => {
+  let calls = [];
+  let feedbackStore = {
+    async createFeedback(input, context) {
+      calls.push({ input, context });
+      return {
+        id: 'FB1',
+        path: '/feedback/feedback-FB1.md',
+        title: input.title,
+        severity: input.severity || 'medium',
+        message: 'saved',
+      };
+    },
+  };
+  let context = {
+    agent: { id: 'agent_1', name: 'Coder' },
+    session: { id: 'ses_1' },
+    frame: { id: 'frm_1' },
+    services: { feedbackStore },
+  };
+
+  let result = await new FeedbackReportTool(context).execute({
+    title: 'Tool loop error',
+    severity: 'high',
+    report: 'The agent hit a repeated tool loop.',
+  });
+
+  assert.equal(result.path, '/feedback/feedback-FB1.md');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].input.title, 'Tool loop error');
+  assert.equal(calls[0].context.agent.id, 'agent_1');
+});
+
+test('cwd tools mutate only the calling agent session cwd', async () => {
+  let calls = [];
+  let agentCwdStore = {
+    async getCWD(agentID, sessionID) {
+      calls.push({ method: 'getCWD', agentID, sessionID });
+      return { agentID, sessionID, cwd: '/tmp', configured: false };
+    },
+    async setCWD(agentID, sessionID, cwd) {
+      calls.push({ method: 'setCWD', agentID, sessionID, cwd });
+      return { agentID, sessionID, cwd: '/tmp/project', configured: true };
+    },
+    async clearCWD(agentID, sessionID) {
+      calls.push({ method: 'clearCWD', agentID, sessionID });
+      return { agentID, sessionID, cwd: '/tmp', configured: false };
+    },
+  };
+  let context = {
+    agent: { id: 'agent_1', name: 'Coder' },
+    session: { id: 'ses_1' },
+    services: { agentCwdStore },
+  };
+
+  let get = await new CwdGetTool(context).execute({});
+  let set = await new CwdSetTool(context).execute({ cwd: 'project' });
+  let cleared = await new CwdClearTool(context).execute({});
+
+  assert.equal(get.cwd, '/tmp');
+  assert.equal(set.cwd, '/tmp/project');
+  assert.equal(cleared.configured, false);
+  assert.deepEqual(calls, [
+    { method: 'getCWD', agentID: 'agent_1', sessionID: 'ses_1' },
+    { method: 'setCWD', agentID: 'agent_1', sessionID: 'ses_1', cwd: 'project' },
+    { method: 'clearCWD', agentID: 'agent_1', sessionID: 'ses_1' },
+  ]);
+});
+
+test('todo tools mutate only the calling agent todo list', async () => {
+  let calls = [];
+  let todoStore = {
+    async getTodoState(agentID) {
+      calls.push({ method: 'getTodoState', agentID });
+      return { agentID, items: [], focus: null };
+    },
+    async addItem(agentID, input) {
+      calls.push({ method: 'addItem', agentID, input });
+      return { agentID, items: [ { id: 'todo_1', title: input.title, children: [] } ], focus: null };
+    },
+    async setFocus(agentID, input) {
+      calls.push({ method: 'setFocus', agentID, input });
+      return { agentID, items: [], focus: { itemID: input.id, childID: null, name: 'Build', setAt: 1 } };
+    },
+  };
+  let context = {
+    agent: { id: 'agent_1', name: 'Coder' },
+    services: { agentTodoStore: todoStore },
+  };
+
+  let getResult = await new TodoGetTool(context).execute({});
+  let addResult = await new TodoAddTool(context).execute({ title: 'Build', focus: true });
+  let focusResult = await new TodoFocusSetTool(context).execute({ id: 'todo_1' });
+
+  assert.deepEqual(getResult, { agentID: 'agent_1', items: [], focus: null });
+  assert.equal(addResult.items[0].title, 'Build');
+  assert.equal(focusResult.focus.itemID, 'todo_1');
+  assert.deepEqual(calls.map((call) => call.method), [ 'getTodoState', 'addItem', 'setFocus' ]);
+  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_1', 'agent_1', 'agent_1' ]);
 });
 
 test('ReadFileTool reads local files through the file access service', async () => {
@@ -470,6 +595,36 @@ test('ExecTool returns direct output when async process completes during grace w
   assert.equal(result.status, 'completed');
   assert.equal(result.result.stdout, 'quick');
   assert.equal(result.completionToolOutputID, 'OUT1');
+});
+
+test('ExecTool uses the agent session cwd when cwd is omitted', async () => {
+  let { processManager, dir } = await createProcessHarness({ graceMs: 500 });
+  let workspace = path.join(dir, 'workspace');
+  await fs.mkdir(workspace);
+  let agentCwdStore = {
+    async getCWD(agentID, sessionID) {
+      return {
+        agentID,
+        sessionID,
+        cwd: workspace,
+        configured: true,
+      };
+    },
+  };
+  let tool = new ExecTool({
+    services: { processManager, agentCwdStore },
+  });
+
+  let result = await tool.execute({
+    command: 'pwd',
+    _agentID: 'agent_1',
+    _sessionID: 'ses_1',
+    _frameID: 'frm_1',
+  });
+
+  assert.equal(result.completedWithinGrace, true);
+  assert.equal(result.result.cwd, workspace);
+  assert.equal(result.result.stdout.trim(), workspace);
 });
 
 test('ExecTool completes setsid-detached shell wrappers without waiting for inherited stdio', async () => {
@@ -882,8 +1037,8 @@ test('ToolExecutionService records tool frames and output metadata in session_id
 test('Session tools list, create, inspect frames, and post messages through FrameRuntime', async () => {
   let targetEngine = createRecordingFrameEngine();
   let sessions = [
-    { id: 'ses_1', title: 'Source', messageCount: 1, participantAgentIDs: [ 'agent_1' ] },
-    { id: 'ses_2', title: 'Target', messageCount: 2, participantAgentIDs: [ 'agent_2' ] },
+    { id: 'ses_1', title: 'Source', messageCount: 1, participantAgentIDs: [ 'agent_1' ], generation: 0 },
+    { id: 'ses_2', title: 'Target', messageCount: 2, participantAgentIDs: [ 'agent_2' ], generation: 0 },
   ];
   let agents = [
     { id: 'agent_1', name: 'Agent One', pluginID: 'openai:codex', enabled: true },
@@ -917,6 +1072,9 @@ test('Session tools list, create, inspect frames, and post messages through Fram
         id: `ses_${sessions.length + 1}`,
         title: input.title || `Session ${sessions.length + 1}`,
         participantAgentIDs: input.participantAgentIDs || [],
+        createdByAgentID: input.createdByAgentID || null,
+        parentSessionID: input.parentSessionID || null,
+        generation: input.generation ?? 0,
         messageCount: 0,
       };
       sessions.push(session);
@@ -1003,6 +1161,9 @@ test('Session tools list, create, inspect frames, and post messages through Fram
   });
   assert.equal(created.session.title, 'Branch');
   assert.deepEqual(created.session.participantAgentIDs, [ 'agent_2', 'agent_1' ]);
+  assert.equal(created.session.createdByAgentID, 'agent_1');
+  assert.equal(created.session.parentSessionID, 'ses_1');
+  assert.equal(created.session.generation, 1);
 
   let invited = await new SessionInviteAgentsTool(context).execute({
     session_id: created.session.id,
@@ -1028,6 +1189,64 @@ test('Session tools list, create, inspect frames, and post messages through Fram
   assert.equal(targetEngine.frames[0].content.text, 'Cross-session hello.');
   assert.equal(targetEngine.frames[0].content.sourceSessionID, 'ses_1');
   assert.equal(runtime.frameStore.flushCount, 1);
+});
+
+test('Session delegation tools allow only first-generation source sessions', async () => {
+  let calls = [];
+  let runtime = {
+    async createSession() {
+      calls.push({ method: 'createSession' });
+      return { id: 'ses_new', title: 'New', participantAgentIDs: [], generation: 1 };
+    },
+    async inviteAgentToSession(sessionID, agent) {
+      calls.push({ method: 'inviteAgentToSession', sessionID, agentID: agent.id });
+      return {
+        session: {
+          id: sessionID,
+          title: 'Child',
+          participantAgentIDs: [ agent.id ],
+          generation: 1,
+        },
+        alreadyParticipant: false,
+      };
+    },
+    async ensureSessionEntry(sessionID) {
+      return {
+        session: { id: sessionID, title: 'Child', participantAgentIDs: [ 'agent_2' ], generation: 1 },
+      };
+    },
+  };
+  let agentManager = {
+    async resolveAgent(reference) {
+      return { id: reference, name: reference, pluginID: 'openai:codex', enabled: true };
+    },
+  };
+  let allowed = {
+    agent: { id: 'agent_1', name: 'Agent One' },
+    sourceSession: { id: 'ses_root', title: 'Root', generation: 0 },
+    session: { id: 'ses_child', title: 'Child', generation: 1 },
+    services: { frameRuntime: runtime, agentManager },
+  };
+
+  let invited = await new SessionInviteAgentsTool(allowed).execute({
+    session_id: 'ses_child',
+    agents: [ 'agent_2' ],
+  });
+  assert.equal(invited.sessionID, 'ses_child');
+  assert.deepEqual(calls, [{ method: 'inviteAgentToSession', sessionID: 'ses_child', agentID: 'agent_2' }]);
+
+  let blocked = {
+    ...allowed,
+    sourceSession: { id: 'ses_child', title: 'Child', generation: 1 },
+  };
+  await assert.rejects(
+    () => new SessionCreateTool(blocked).execute({ title: 'Grandchild' }),
+    /session-create is only available to first-generation agents/,
+  );
+  await assert.rejects(
+    () => new SessionInviteAgentsTool(blocked).execute({ session_id: 'ses_grandchild', agents: [ 'agent_2' ] }),
+    /session-invite-agents is only available to first-generation agents/,
+  );
 });
 
 test('ToolExecutionService returns a pointer envelope for outputs above inline limit', async () => {

@@ -1,4 +1,4 @@
-/* eslint-disable no-magic-numbers */
+ 
 
 import Nife           from 'nife';
 import mjmlToHTML     from 'mjml';

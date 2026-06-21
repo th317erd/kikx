@@ -121,7 +121,7 @@ export class UserController extends ControllerAuthBase {
 
     this.setCookie(this.getAuthTokenCookieName(), sessionToken, {
       domain:   app.getConfigValue('application.{environment}.domain', 'example.com'),
-      // eslint-disable-next-line no-magic-numbers
+       
       maxAge:   claims.expiresIn * 1000,
       secure:   true,
       httpOnly: true,

@@ -34,6 +34,15 @@ export class AeorDBClient {
     this.fetch = fetchImpl;
   }
 
+  withToken(token) {
+    return new AeorDBClient({
+      baseURL: this.baseURL,
+      token,
+      timeoutMS: this.timeoutMS,
+      fetchImpl: this.fetch,
+    });
+  }
+
   async getFile(path, options = {}) {
     return this.request('GET', this.filePath(path), options);
   }
@@ -186,6 +195,27 @@ export class AeorDBClient {
     return this.request('POST', '/auth/refresh', {
       ...options,
       body: { refresh_token: refreshToken },
+    });
+  }
+
+  async listOwnAPIKeys(options = {}) {
+    return this.request('GET', '/auth/keys', options);
+  }
+
+  async getSystemUser(userID, options = {}) {
+    if (!userID || typeof userID !== 'string')
+      throw new TypeError('getSystemUser() requires userID');
+
+    return this.request('GET', `/system/users/${encodeURIComponent(userID)}`, options);
+  }
+
+  async updateSystemUser(userID, body, options = {}) {
+    if (!userID || typeof userID !== 'string')
+      throw new TypeError('updateSystemUser() requires userID');
+
+    return this.request('PATCH', `/system/users/${encodeURIComponent(userID)}`, {
+      ...options,
+      body,
     });
   }
 

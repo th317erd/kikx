@@ -35,6 +35,23 @@ class SessionTool extends PluginInterface {
   targetSessionID(params = {}) {
     return normalizeOptionalString(params._sessionID || params.session_id || params.sessionID || this.context.session?.id);
   }
+
+  sourceSession() {
+    return this.context.sourceSession || this.context.session || null;
+  }
+
+  assertFirstGenerationDelegation(action) {
+    if (!this.context.agent?.id)
+      return;
+
+    let generation = sessionGeneration(this.sourceSession());
+    if (generation <= 0)
+      return;
+
+    let error = new Error(`${action} is only available to first-generation agents. Current session generation is ${generation}.`);
+    error.status = 403;
+    throw error;
+  }
 }
 
 export class AgentListTool extends SessionTool {
@@ -166,6 +183,8 @@ export class SessionCreateTool extends SessionTool {
   static help = 'Use session-create to create a new session. Set includeSelf when you should participate in that new session.';
 
   async _execute(params = {}) {
+    this.assertFirstGenerationDelegation('session-create');
+
     let participantAgentIDs = normalizeStringArray(params.participantAgentIDs);
     let participantAgentRefs = normalizeStringArray(params.participantAgents);
     if (participantAgentRefs.length > 0) {
@@ -179,9 +198,16 @@ export class SessionCreateTool extends SessionTool {
     if (params.includeSelf === true && this.context.agent?.id && !participantAgentIDs.includes(this.context.agent.id))
       participantAgentIDs.push(this.context.agent.id);
 
+    let sourceSession = this.sourceSession();
+    let createdByAgentID = normalizeOptionalString(this.context.agent?.id);
     let session = await this.frameRuntime().createSession({
       ...(typeof params.title === 'string' && params.title.trim() ? { title: params.title.trim() } : {}),
       participantAgentIDs,
+      ...(createdByAgentID ? {
+        createdByAgentID,
+        parentSessionID: sourceSession?.id || null,
+        generation: sessionGeneration(sourceSession) + 1,
+      } : {}),
     });
 
     return {
@@ -215,6 +241,8 @@ export class SessionInviteAgentsTool extends SessionTool {
   static help = 'Use session-invite-agents with session_id to invite multiple existing agents into a target session. Values in agents may be agent IDs or exact agent names.';
 
   async _execute(params = {}) {
+    this.assertFirstGenerationDelegation('session-invite-agents');
+
     let sessionID = requireTargetSessionID(this.targetSessionID(params));
     let refs = normalizeStringArray(params.agents || params.agentRefs || params.agentIDs);
     if (params.includeSelf === true && this.context.agent?.id)
@@ -462,6 +490,9 @@ function sanitizeSession(session = {}) {
     title: session.title || session.id || '',
     organizationID: session.organizationID || null,
     createdByUserID: session.createdByUserID || null,
+    createdByAgentID: session.createdByAgentID || null,
+    parentSessionID: session.parentSessionID || null,
+    generation: sessionGeneration(session),
     messageCount: normalizeNonNegativeInteger(session.messageCount, 0),
     participantAgentIDs: normalizeStringArray(session.participantAgentIDs),
     coordinatorAgentID: session.coordinatorAgentID || null,
@@ -617,6 +648,17 @@ function normalizeNonNegativeInteger(value, fallback) {
     return fallback;
 
   return Math.trunc(number);
+}
+
+function sessionGeneration(session) {
+  if (!session || typeof session !== 'object')
+    return 0;
+
+  let number = Number(session.generation);
+  if (Number.isFinite(number) && number >= 0)
+    return Math.trunc(number);
+
+  return session.parentSessionID ? 1 : 0;
 }
 
 function clampInteger(value, defaultValue, min, max) {

@@ -1,5 +1,5 @@
-/* eslint-disable max-classes-per-file */
-/* eslint-disable no-magic-numbers */
+ 
+ 
 
 import Nife from 'nife';
 import {
@@ -16,7 +16,7 @@ describe('UserController', function () {
   let factory;
   let models;
 
-  // eslint-disable-next-line no-unused-vars
+   
   const { it, fit } = createRunners(() => app.getConnection());
 
   beforeAll(async () => {

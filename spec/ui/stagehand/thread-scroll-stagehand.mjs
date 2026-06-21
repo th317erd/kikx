@@ -80,6 +80,13 @@ test('Stagehand keeps the message thread scrollable and anchored to the bottom',
     assert.equal(afterScroll.canScroll, true);
     assert.equal(afterScroll.atTop, true);
     assert.equal(afterScroll.atBottom, false);
+
+    await page.setViewportSize({ width: 780, height: 493 });
+    await page.waitForTimeout(100);
+
+    let compactLayout = await readThreadScrollMetrics(page);
+    assert.equal(compactLayout.clientHeight > 80, true, `expected compact frame list height > 80, got ${compactLayout.clientHeight}`);
+    assert.equal(compactLayout.canScroll, true);
   } finally {
     await stagehand.close().catch(() => {});
     await fixture.close().catch(() => {});

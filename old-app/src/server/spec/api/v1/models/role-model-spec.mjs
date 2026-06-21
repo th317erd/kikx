@@ -1,4 +1,4 @@
-/* eslint-disable no-magic-numbers */
+ 
 
 import {
   createTestApplication,
@@ -12,7 +12,7 @@ describe('RoleModel', function() {
   let models;
   let factory;
 
-  // eslint-disable-next-line no-unused-vars
+   
   const { it, fit } = createRunners(() => app.getConnection());
 
   beforeAll(async () => {

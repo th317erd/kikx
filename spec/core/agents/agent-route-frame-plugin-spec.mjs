@@ -34,6 +34,8 @@ class StreamingAgentProvider extends AgentInterface {
       coordinated: params.frame.coordinated === true,
       mentions: params.frame.mentions || {},
       participantAgents: params.participantAgents,
+      todoState: params.todoState,
+      cwdState: params.cwdState,
     });
 
     if (params.frame.type === 'AgentMessage') {
@@ -308,6 +310,8 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
         pluginID: 'streaming-agent',
       },
     ],
+    todoState: null,
+    cwdState: null,
   });
   assert.deepEqual(phantoms.map((frame) => frame.type), [ 'AgentThinking' ]);
   assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage' ]);
@@ -887,6 +891,96 @@ test('AgentRouteFramePlugin passes all session agent names without secrets to pr
       pluginID: 'streaming-agent',
     },
   ]);
+});
+
+test('AgentRouteFramePlugin passes per-agent todo state to providers', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Planner',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-test' },
+        enabled: true,
+      } ],
+    ]),
+    services: {
+      agentTodoStore: {
+        async getTodoState(agentID) {
+          return {
+            agentID,
+            items: [ {
+              id: 'todo_1',
+              title: 'Verify todo primer',
+              status: 'pending',
+              children: [],
+            } ],
+            focus: {
+              itemID: 'todo_1',
+              childID: null,
+              name: 'Verify todo primer',
+              setAt: 123,
+            },
+            updatedAt: 123,
+          };
+        },
+      },
+    },
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  await runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
+
+  let call = runtime.services.calls.find((entry) => entry.method === 'run');
+  assert.equal(call.todoState.agentID, 'agent_1');
+  assert.equal(call.todoState.items[0].title, 'Verify todo primer');
+  assert.equal(call.todoState.focus.name, 'Verify todo primer');
+});
+
+test('AgentRouteFramePlugin passes per-agent session cwd state to providers', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Shell Planner',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-test' },
+        enabled: true,
+      } ],
+    ]),
+    services: {
+      agentCwdStore: {
+        async getCWD(agentID, sessionID) {
+          return {
+            agentID,
+            sessionID,
+            cwd: '/tmp/kikx-shell-planner',
+            configured: true,
+            updatedAt: 123,
+          };
+        },
+      },
+    },
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  await runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
+
+  let call = runtime.services.calls.find((entry) => entry.method === 'run');
+  assert.equal(call.cwdState.agentID, 'agent_1');
+  assert.equal(call.cwdState.sessionID, 'ses_1');
+  assert.equal(call.cwdState.cwd, '/tmp/kikx-shell-planner');
+  assert.equal(call.cwdState.configured, true);
 });
 
 test('AgentRouteFramePlugin forwards coordinated frames to all mentioned session agents', async () => {

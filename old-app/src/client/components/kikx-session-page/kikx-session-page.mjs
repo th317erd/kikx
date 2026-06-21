@@ -1252,7 +1252,7 @@ class KikxSessionPage extends HTMLElement {
 
       this._topBar.setAttribute('session-name', displayName);
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to fetch session details:', error);
     }
   }
@@ -1340,7 +1340,7 @@ class KikxSessionPage extends HTMLElement {
         this._refreshAgentNames();
       }
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to load frames:', error);
     }
   }
@@ -1412,7 +1412,7 @@ class KikxSessionPage extends HTMLElement {
       if (fragment.childNodes.length > 0)
         this._chatView.prependInteraction(fragment);
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to load older frames:', error);
     } finally {
       this._loadingOlder = false;
@@ -1500,7 +1500,7 @@ class KikxSessionPage extends HTMLElement {
       signal:  abort.signal,
     }).then((response) => {
       if (!response.ok) {
-        // eslint-disable-next-line no-console
+         
         console.error('SSE stream failed:', response.status, response.statusText);
         connection.setStatus('disconnected');
         this._scheduleReconnect();
@@ -1515,7 +1515,7 @@ class KikxSessionPage extends HTMLElement {
       if (error.name === 'AbortError')
         return;
 
-      // eslint-disable-next-line no-console
+       
       console.error('SSE connection error:', error);
       connection.setStatus('disconnected');
       this._scheduleReconnect();
@@ -1564,7 +1564,7 @@ class KikxSessionPage extends HTMLElement {
         return;
       }
 
-      // eslint-disable-next-line no-console
+       
       console.error('SSE read error:', error);
     } finally {
       if (!aborted) {
@@ -2027,7 +2027,7 @@ class KikxSessionPage extends HTMLElement {
       await sendMessage(sessionID, text, agentID || undefined, parentID || undefined);
       this._messageInput.clearDraft();
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to send message:', error);
     }
   }
@@ -2049,7 +2049,7 @@ class KikxSessionPage extends HTMLElement {
         persistAuth(getAuthToken(), merged);
       }
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to load profile:', error);
     }
 
@@ -2064,7 +2064,7 @@ class KikxSessionPage extends HTMLElement {
 
       this._updateFriendsList(agentList);
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to load agents:', error);
     }
 
@@ -2088,7 +2088,7 @@ class KikxSessionPage extends HTMLElement {
 
       this._updateSessionsList();
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to load sessions:', error);
     }
   }
@@ -2230,7 +2230,7 @@ class KikxSessionPage extends HTMLElement {
         let allAgents = agents.getAllAgents();
         this._updateFriendsList(allAgents);
       } catch (error) {
-        // eslint-disable-next-line no-console
+         
         console.error('Failed to create agent:', error);
       }
     }
@@ -2278,7 +2278,7 @@ class KikxSessionPage extends HTMLElement {
       if (newSession && newSession.id)
         navigate(`${BASE_PATH}/sessions/${newSession.id}`);
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to create session:', error);
       this._sessionModal.close();
     }
@@ -2296,7 +2296,7 @@ class KikxSessionPage extends HTMLElement {
         if (session && session.id)
           navigate(`${BASE_PATH}/sessions/${session.id}`);
       } catch (error) {
-        // eslint-disable-next-line no-console
+         
         console.error('Failed to open DM session:', error);
       }
     }
@@ -2482,7 +2482,7 @@ class KikxSessionPage extends HTMLElement {
     try {
       await updateFrameContent(sessionID, frameID, { html: updatedHTML });
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to persist frame content:', error);
     }
   }
@@ -2556,7 +2556,7 @@ class KikxSessionPage extends HTMLElement {
     try {
       await sendMessage(sessionID, text, agentID);
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to submit prompt answers:', error);
     }
 
@@ -2593,7 +2593,7 @@ class KikxSessionPage extends HTMLElement {
     try {
       await sendMessage(sessionID, text, agentID);
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to send ignore response:', error);
     }
 
@@ -2644,7 +2644,7 @@ class KikxSessionPage extends HTMLElement {
       agents.updateAgent(agentID, updated);
       this._updateFriendsList(agents.getAllAgents());
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to update agent:', error);
     }
 
@@ -2663,7 +2663,7 @@ class KikxSessionPage extends HTMLElement {
       agents.removeAgent(agentID);
       this._updateFriendsList(agents.getAllAgents());
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to delete agent:', error);
     }
 
@@ -2754,7 +2754,7 @@ class KikxSessionPage extends HTMLElement {
 
       this._topBar.setAttribute('session-name', displayName);
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to update session:', error);
     }
 
@@ -2774,7 +2774,7 @@ class KikxSessionPage extends HTMLElement {
       this._updateSessionsList();
       navigate(`${BASE_PATH}/`);
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to delete session:', error);
     }
 
@@ -2803,7 +2803,7 @@ class KikxSessionPage extends HTMLElement {
         };
       }
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to remove participant:', error);
     }
   }
@@ -2822,7 +2822,7 @@ class KikxSessionPage extends HTMLElement {
       let match     = allAgents.find((a) => a.name.toLowerCase() === agentName.toLowerCase());
 
       if (!match) {
-        // eslint-disable-next-line no-console
+         
         console.error('Agent not found:', agentName);
         return;
       }
@@ -2840,7 +2840,7 @@ class KikxSessionPage extends HTMLElement {
         };
       }
     } catch (error) {
-      // eslint-disable-next-line no-console
+       
       console.error('Failed to invite participant:', error);
     }
   }

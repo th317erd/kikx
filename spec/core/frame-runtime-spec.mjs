@@ -34,7 +34,7 @@ function createClient(options = {}) {
         if (!filePath.startsWith(prefix))
           continue;
 
-        if (requestOptions?.glob === '*/session.json' && !/^\/kikx\/sessions\/[^/]+\/session\.json$/.test(filePath))
+        if ((requestOptions?.glob === '*/session.json' || requestOptions?.glob === '**/session.json') && !/^\/kikx\/sessions\/[^/]+\/session\.json$/.test(filePath))
           continue;
 
         if (requestOptions?.glob === '**/frames/*.json' && !filePath.includes('/frames/'))
@@ -72,6 +72,9 @@ test('FrameRuntime creates sessions and writes AeorDB index configs', async () =
   assert.equal(session.id, 'ses_1');
   assert.equal(session.title, 'Scratch');
   assert.equal(session.messageCount, 0);
+  assert.equal(session.createdByAgentID, null);
+  assert.equal(session.parentSessionID, null);
+  assert.equal(session.generation, 0);
   assert.equal(runtime.getSession('ses_1'), session);
   assert.deepEqual(aeordb.calls.map((call) => call.path), [
     '/kikx/sessions/.aeordb-config/indexes.json',
@@ -101,6 +104,23 @@ test('FrameRuntime defaults session titles to numbered names', async () => {
   assert.equal(second.title, 'Session 2');
   assert.equal(first.createdAt, 1_000_000);
   assert.equal(second.createdAt, 1_001_000);
+});
+
+test('FrameRuntime records agent-created child session lineage', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({ aeordb, ids: [ 'ses_child' ] });
+
+  let session = await runtime.createSession({
+    title: 'Child',
+    createdByAgentID: 'agent_1',
+    parentSessionID: 'ses_parent',
+    generation: 1,
+  });
+
+  assert.equal(session.createdByAgentID, 'agent_1');
+  assert.equal(session.parentSessionID, 'ses_parent');
+  assert.equal(session.generation, 1);
+  assert.equal(aeordb.files.get('/kikx/sessions/ses_child/session.json').generation, 1);
 });
 
 test('FrameRuntime renames sessions and persists the manifest', async () => {
@@ -183,6 +203,75 @@ test('FrameRuntime hydrates persisted sessions beyond the old 250-frame window',
   ]);
 });
 
+test('FrameRuntime recovers stale streaming agent responses and running tool calls', async () => {
+  let aeordb = createClient();
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'Kikx', updatedAt: 1000 });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-msg_1.json', {
+    id: 'msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    order: 1,
+    hidden: false,
+    deleted: false,
+    content: { text: 'read docs' },
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000002-AgentMessage-agent_pending.json', {
+    id: 'agent_pending',
+    type: 'AgentMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    parentID: 'msg_1',
+    authorType: 'agent',
+    authorID: 'agent_1',
+    order: 2,
+    hidden: true,
+    deleted: false,
+    content: {
+      text: '',
+      status: 'streaming',
+      thinking: { status: 'pending' },
+    },
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000003-ShellToolFrame-tool_call.json', {
+    id: 'tool_call',
+    type: 'ShellToolFrame',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    parentID: 'agent_pending',
+    authorType: 'agent',
+    authorID: 'agent_1',
+    order: 3,
+    hidden: false,
+    deleted: false,
+    content: {
+      toolName: 'exec',
+      phase: 'call',
+      toolCallID: 'call_1',
+      status: 'running',
+    },
+    state: { status: 'running' },
+  });
+  let runtime = createRuntime({ aeordb, ids: [ 'commit_recovery' ], now: 2000 });
+
+  let result = await runtime.recoverStaleRuntimeFrames({ sessionLimit: 10 });
+  let frames = await runtime.listFrames('ses_1');
+  let agentFrame = frames.find((frame) => frame.id === 'agent_pending');
+  let toolFrame = frames.find((frame) => frame.id === 'tool_call');
+
+  assert.equal(result.recoveredAgentResponses, 1);
+  assert.equal(result.recoveredToolCalls, 1);
+  assert.equal(agentFrame.hidden, false);
+  assert.equal(agentFrame.content.status, 'error');
+  assert.equal(agentFrame.content.error.recovered, true);
+  assert.match(agentFrame.content.text, /recovered this agent response/);
+  assert.equal(toolFrame.content.status, 'failed');
+  assert.equal(toolFrame.state.status, 'failed');
+  assert.equal(toolFrame.content.error.recovered, true);
+  assert.ok(aeordb.calls.some((call) => call.method === 'putFile' && call.path.includes('agent_pending.json')));
+  assert.ok(aeordb.calls.some((call) => call.method === 'putFile' && call.path.includes('tool_call.json')));
+});
+
 test('FrameRuntime appends user messages through FrameEngine and AeorDBFrameStore', async () => {
   let aeordb = createClient();
   let runtime = createRuntime({ aeordb, ids: [ 'ses_1', 'int_1', 'msg_1', 'commit_1' ] });
@@ -191,11 +280,13 @@ test('FrameRuntime appends user messages through FrameEngine and AeorDBFrameStor
   let result = await runtime.appendUserMessage('ses_1', {
     text: 'hello',
     userID: 'usr_1',
+    authorDisplayName: 'Wyatt',
   });
 
   assert.equal(result.frame.id, 'msg_1');
   assert.equal(result.frame.type, 'UserMessage');
   assert.equal(result.frame.hidden, false);
+  assert.equal(result.frame.authorDisplayName, 'Wyatt');
   assert.equal(result.frame.content.text, 'hello');
   assert.equal(result.commit.id, 'commit_1');
   assert.equal(result.commit.order, 1);

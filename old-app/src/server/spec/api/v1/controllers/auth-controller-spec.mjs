@@ -1,4 +1,4 @@
-/* eslint-disable no-magic-numbers */
+ 
 
 import TWT from 'mythix-twt';
 
@@ -15,7 +15,7 @@ describe('AuthController', function() {
   let models;
   let factory;
 
-  // eslint-disable-next-line no-unused-vars
+   
   const { it, fit } = createRunners(() => app.getConnection());
 
   beforeAll(async () => {

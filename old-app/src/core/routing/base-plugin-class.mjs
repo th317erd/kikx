@@ -121,7 +121,7 @@ export class BasePluginClass {
    * @param {any} newValue
    * @returns {void}
    */
-  // eslint-disable-next-line no-unused-vars
+   
   onChange(propName, previousValue, newValue) {
     // Default: no-op
   }
@@ -237,7 +237,7 @@ export class BasePluginClass {
    * @param {{ cache?: boolean }} [_options]
    * @returns {number}
    */
-  // eslint-disable-next-line no-unused-vars
+   
   estimateTokens(text, _options) {
     return Math.ceil((text || '').length / 4);
   }

@@ -122,6 +122,8 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       let responseFrame = await this.createResponseFrame({ agent, frame, responseFrameID, services });
       let tokenUsage = resolveService(services, 'tokenUsage');
       let tokenUsageSnapshot = typeof tokenUsage?.snapshot === 'function' ? tokenUsage.snapshot() : {};
+      let todoState = await this.loadAgentTodoState({ agent, services });
+      let cwdState = await this.loadAgentCwdState({ agent, services, session: this.context.session });
       let providerServices = this.providerServices({ services, agent, frame });
       let provider = new ProviderClass({
         ...this.context,
@@ -140,6 +142,8 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         sessionFrames,
         contextMemory,
         tokenUsage: tokenUsageSnapshot,
+        todoState,
+        cwdState,
         totalTokensUsed: typeof tokenUsage?.totalTokensUsed === 'function'
           ? tokenUsage.totalTokensUsed()
           : totalTokensUsed(tokenUsageSnapshot),
@@ -184,6 +188,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         error,
         responseFrameID,
       });
+      await services?.frameRuntime?.frameStore?.flush?.();
 
       return { status: 'error' };
     }
@@ -207,6 +212,22 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
     }
 
     return agents;
+  }
+
+  async loadAgentTodoState({ agent, services = {} }) {
+    let store = resolveService(services, 'agentTodoStore');
+    if (!agent?.id || typeof store?.getTodoState !== 'function')
+      return null;
+
+    return await store.getTodoState(agent.id);
+  }
+
+  async loadAgentCwdState({ agent, services = {}, session = null }) {
+    let store = resolveService(services, 'agentCwdStore');
+    if (!agent?.id || !session?.id || typeof store?.getCWD !== 'function')
+      return null;
+
+    return await store.getCWD(agent.id, session.id);
   }
 
   providerServices({ services, agent, frame }) {

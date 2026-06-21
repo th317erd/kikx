@@ -50,7 +50,7 @@ export function getModelNameFromIDPrefix(id) {
   if (!Nife.instanceOf(id, 'string'))
     return;
 
-  // eslint-disable-next-line no-magic-numbers
+   
   let prefix = id.substring(0, 4);
   return ID_PREFIX_TO_MODEL_NAME[prefix];
 }

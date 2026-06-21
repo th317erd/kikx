@@ -27,6 +27,7 @@ async function shutdown(signal) {
     return;
 
   shuttingDown = true;
+  await shutdownRuntimeServices(server);
   let result = await shutdownHTTPServer(server);
 
   if (result.error) {
@@ -40,4 +41,48 @@ async function shutdown(signal) {
   }
 
   process.exit(0);
+}
+
+async function shutdownRuntimeServices(server) {
+  let context = server.kikxContext;
+  if (!context)
+    return;
+
+  try {
+    await context.require?.('processManager')?.shutdown?.({
+      signal: 'SIGTERM',
+      forceSignal: 'SIGKILL',
+      forceAfterMS: 1000,
+      timeoutMS: 3000,
+    });
+  } catch (error) {
+    console.error('Kikx process manager shutdown failed:', error);
+  }
+
+  try {
+    await withTimeout(context.require?.('frameRouter')?.flush?.({ background: true }), 1000);
+    await withTimeout(context.require?.('frameRuntime')?.frameStore?.flush?.(), 1000);
+  } catch (error) {
+    console.error('Kikx runtime drain failed:', error);
+  }
+
+  try {
+    context.require?.('frameRuntime')?.disconnect?.();
+  } catch (error) {
+    console.error('Kikx frame runtime shutdown failed:', error);
+  }
+}
+
+async function withTimeout(promise, timeoutMS) {
+  if (!promise)
+    return null;
+
+  let timeout;
+  return await Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error(`Timed out after ${timeoutMS}ms`)), timeoutMS);
+      timeout.unref?.();
+    }),
+  ]).finally(() => clearTimeout(timeout));
 }

@@ -318,6 +318,47 @@ test('refreshToken posts refresh_token to AeorDB auth endpoint', async () => {
   assert.equal(seen.body, '{"refresh_token":"rt_secret"}');
 });
 
+test('system user helpers proxy AeorDB admin user endpoints', async () => {
+  let seen = [];
+  let client = new AeorDBClient({
+    baseURL: 'http://aeor.test',
+    token: 'root-token',
+    fetchImpl: async (url, options) => {
+      seen.push({ url: url.toString(), options });
+      return jsonResponse({ user_id: 'usr_1', username: 'alice', email: 'alice@example.com' });
+    },
+  });
+
+  await client.getSystemUser('usr_1');
+  await client.updateSystemUser('usr_1', { email: 'next@example.com' });
+
+  assert.equal(seen[0].url, 'http://aeor.test/system/users/usr_1');
+  assert.equal(seen[0].options.method, 'GET');
+  assert.equal(seen[0].options.headers.Authorization, 'Bearer root-token');
+  assert.equal(seen[1].url, 'http://aeor.test/system/users/usr_1');
+  assert.equal(seen[1].options.method, 'PATCH');
+  assert.equal(seen[1].options.body, '{"email":"next@example.com"}');
+});
+
+test('withToken creates a scoped client for self-service auth calls', async () => {
+  let seen;
+  let rootClient = new AeorDBClient({
+    baseURL: 'http://aeor.test',
+    token: 'root-token',
+    fetchImpl: async (url, options) => {
+      seen = { url: url.toString(), options };
+      return jsonResponse([]);
+    },
+  });
+  let userClient = rootClient.withToken('user-token');
+
+  await userClient.listOwnAPIKeys();
+
+  assert.equal(seen.url, 'http://aeor.test/auth/keys');
+  assert.equal(seen.options.method, 'GET');
+  assert.equal(seen.options.headers.Authorization, 'Bearer user-token');
+});
+
 test('request throws AeorDBError for HTTP errors', async () => {
   let client = new AeorDBClient({
     baseURL: 'http://aeor.test',

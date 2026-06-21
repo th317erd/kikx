@@ -1,5 +1,5 @@
-/* eslint-disable no-loop-func */
-/* eslint-disable key-spacing */
+ 
+ 
 
 const ALL_ROLE_NAMES = [ 'masteradmin', 'support', 'superadmin', 'admin', 'member' ];
 

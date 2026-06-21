@@ -29,7 +29,7 @@ export class InvalidToken extends ModelBase {
       primaryKey:   true,
     },
     tokenHash: {
-      // eslint-disable-next-line no-magic-numbers
+       
       type:         Types.STRING(32),
       allowNull:    false,
       index:        true,
@@ -61,7 +61,7 @@ export class InvalidToken extends ModelBase {
 
       await InvalidToken.create({
         tokenHash:  CryptoUtils.MD5(token),
-        // eslint-disable-next-line no-magic-numbers
+         
         purgeAt:    (claims.expiresAt + 120) * 1000.0,
       });
     } catch (error) {

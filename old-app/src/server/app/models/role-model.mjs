@@ -39,7 +39,7 @@ export class Role extends ModelBase {
       index:        true,
     },
     sourceID: {
-      // eslint-disable-next-line no-magic-numbers
+       
       type:         Types.STRING(24),
       allowNull:    false,
       index:        true,
@@ -51,7 +51,7 @@ export class Role extends ModelBase {
       index:        true,
     },
     targetID: {
-      // eslint-disable-next-line no-magic-numbers
+       
       type:         Types.STRING(24),
       defaultValue: null,
       allowNull:    true,
@@ -90,7 +90,7 @@ export class Role extends ModelBase {
 
   static getRoleDefinition(roleName, sourceNames, targetNames) {
     let roleDefinitions = this.getRoleDefinitions((def) => {
-      // eslint-disable-next-line eqeqeq
+       
       if (!this.roleSourceAndTargetMatches(def, sourceNames, targetNames))
         return false;
 
@@ -107,7 +107,7 @@ export class Role extends ModelBase {
     let roleNames = Nife.toArray(_roleNames).filter(Boolean);
 
     return this.getRoleDefinitions((def) => {
-      // eslint-disable-next-line eqeqeq
+       
       if (!this.roleSourceAndTargetMatches(def, sourceNames, targetNames))
         return false;
 

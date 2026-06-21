@@ -1,5 +1,5 @@
-/* eslint-disable no-magic-numbers */
-/* eslint-disable camelcase */
+ 
+ 
 
 import { ControllerBase } from '../../../../app/controllers/controller-base.mjs';
 import {
@@ -13,7 +13,7 @@ describe('ControllerBase', function() {
   let app;
   let factory;
 
-  // eslint-disable-next-line no-unused-vars
+   
   const { it, fit } = createRunners(() => app.getConnection());
 
   beforeAll(async () => {
@@ -140,7 +140,7 @@ describe('ControllerBase', function() {
 
       let { limit, offset } = instance.getLimitOffsetOrder();
 
-      // eslint-disable-next-line no-magic-numbers
+       
       expect(limit).toEqual(20);
       expect(offset).toEqual(0);
     });
@@ -150,7 +150,7 @@ describe('ControllerBase', function() {
 
       let { limit, offset } = instance.getLimitOffsetOrder({ limit: 100 });
 
-      // eslint-disable-next-line no-magic-numbers
+       
       expect(limit).toEqual(100);
       expect(offset).toEqual(0);
     });

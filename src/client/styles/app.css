@@ -77,8 +77,18 @@ kikx-app {
 
 .kikx-topbar__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+.kikx-account-chip {
+  max-width: 220px;
+  overflow: hidden;
+  color: #cdd6df;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .kikx-statusbar {
@@ -383,16 +393,27 @@ kikx-app {
   justify-self: end;
   width: fit-content;
   max-width: min(78%, 960px);
+  max-height: 20000px;
   min-width: 0;
   box-sizing: border-box;
   padding: 12px;
   border: 1px solid #303941;
   border-radius: 6px;
   background: #171b1f;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    max-height 220ms ease,
+    padding-top 220ms ease,
+    padding-bottom 220ms ease,
+    opacity 180ms ease,
+    transform 220ms ease;
 }
 
 .kikx-frame--UserMessage {
   justify-self: start;
+  border-color: #294c51;
+  background: #101d20;
 }
 
 .kikx-frame--BeginTyping {
@@ -406,8 +427,25 @@ kikx-app {
   background: #15191d;
 }
 
+.kikx-frame--AgentMessage {
+  border-color: #3c3858;
+  background: #181722;
+}
+
 .kikx-frame--AgentMessageDelta {
   border-color: #46525d;
+}
+
+.kikx-frame--animating {
+  overflow: hidden;
+}
+
+.kikx-frame--entering {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  transform: translateY(8px);
 }
 
 .kikx-frame__meta {
@@ -429,7 +467,27 @@ kikx-app {
 }
 
 .kikx-frame__meta-main strong {
-  color: #cfd8e3;
+  color: #f2d488;
+}
+
+.kikx-frame--UserMessage .kikx-frame__meta-main strong {
+  color: #7dd3d0;
+}
+
+.kikx-frame--AgentMessage .kikx-frame__meta-main strong,
+.kikx-frame--AgentMessageDelta .kikx-frame__meta-main strong {
+  color: #c7b7ff;
+}
+
+.kikx-frame--AgentThinking .kikx-frame__meta-main strong,
+.kikx-frame--BeginTyping .kikx-frame__meta-main strong {
+  color: #a8c7ff;
+}
+
+.kikx-frame[data-frame-type$="ToolFrame"] .kikx-frame__meta-main strong,
+.kikx-frame--ToolCall .kikx-frame__meta-main strong,
+.kikx-frame--ToolResult .kikx-frame__meta-main strong {
+  color: #f6bd60;
 }
 
 .kikx-frame__timestamp,
@@ -524,16 +582,19 @@ kikx-app {
 
 .kikx-markdown code {
   padding: 1px 5px;
+  border: 1px solid rgba(255, 183, 102, 0.24);
   border-radius: 4px;
-  background: #242a30;
-  color: #f6f8fa;
+  background: rgba(255, 159, 64, 0.12);
+  color: #ffb86b;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.95em;
 }
 
 .kikx-markdown pre code {
   padding: 0;
+  border: 0;
   background: transparent;
+  color: #ffd0a3;
   font-size: 0.92rem;
   white-space: pre;
 }
@@ -572,6 +633,20 @@ kikx-app {
 .kikx-frame__stream {
   color: #edf2f7;
   white-space: pre-wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kikx-frame {
+    transition: none;
+  }
+
+  .kikx-frame--entering {
+    max-height: 20000px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .kikx-frame--ToolCall,
@@ -933,15 +1008,23 @@ kikx-typing-indicator {
   background: #29313a;
 }
 
-.kikx-agent-form label {
+.kikx-agent-form label,
+.kikx-account-form label {
   color: #aeb8c2;
   font-size: 12px;
   font-weight: 600;
 }
 
 .kikx-agent-form aeor-input,
-.kikx-agent-form aeor-select {
+.kikx-agent-form aeor-select,
+.kikx-account-form aeor-input {
   min-height: 36px;
+}
+
+.kikx-account-form {
+  display: grid;
+  gap: 12px;
+  min-width: min(460px, calc(100vw - 48px));
 }
 
 .kikx-composer__label {
@@ -964,7 +1047,7 @@ kikx-typing-indicator {
 @media (max-width: 960px) {
   .kikx-main {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(140px, 30vh) minmax(0, 1fr);
+    grid-template-rows: minmax(88px, 20dvh) minmax(0, 1fr);
   }
 
   .kikx-sessions {
@@ -972,9 +1055,21 @@ kikx-typing-indicator {
     border-bottom: 1px solid #2f3439;
   }
 
-  .kikx-topbar {
-    align-items: flex-start;
-    flex-direction: column;
+  .kikx-sessions,
+  .kikx-thread {
+    padding: 12px;
+  }
+
+  .kikx-thread {
+    gap: 10px;
+  }
+
+  .kikx-composer {
+    gap: 8px;
+  }
+
+  .kikx-composer textarea {
+    min-height: 64px;
   }
 
   .kikx-statusbar {
@@ -987,5 +1082,16 @@ kikx-typing-indicator {
 
   .kikx-agent-form {
     min-width: 0;
+  }
+
+  .kikx-account-form {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .kikx-topbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

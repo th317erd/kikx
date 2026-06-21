@@ -21,6 +21,12 @@ let params = new URLSearchParams(globalThis.location?.search || '');
 
 export const kikxState = new ReactiveState({
   aeordbEventsURL: '',
+  account: null,
+  accountEditorOpen: false,
+  accountFormEmail: '',
+  accountFormName: '',
+  accountStatus: '',
+  accountStatusKind: 'pending',
   agentDetailsByID: {},
   agentFormConfig: {},
   agentFormMode: 'create',
@@ -62,6 +68,25 @@ export function getAgents(state = kikxState) {
   return state.agentIDs
     .map((agentID) => state.agentDetailsByID[agentID])
     .filter(Boolean);
+}
+
+export function setAccount(account, state = kikxState) {
+  state.account = account && typeof account === 'object' ? { ...account } : null;
+}
+
+export function setAccountFormFromAccount(account = kikxState.account, state = kikxState) {
+  let source = account && typeof account === 'object' ? account : {};
+  state.accountFormName = source.name || '';
+  state.accountFormEmail = source.email || '';
+}
+
+export function resetAccountState(state = kikxState) {
+  state.account = null;
+  state.accountEditorOpen = false;
+  state.accountFormName = '';
+  state.accountFormEmail = '';
+  state.accountStatus = '';
+  state.accountStatusKind = 'pending';
 }
 
 export function getSelectedAgentProvider(state = kikxState) {

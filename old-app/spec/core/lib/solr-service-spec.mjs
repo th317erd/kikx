@@ -792,7 +792,7 @@ describe('SolrService', () => {
     it('uses default sort "id asc" and rows 500', async () => {
       fetchMock.mock.mockImplementation(() => solrSearchResponse([], 0));
 
-      // eslint-disable-next-line no-unused-vars
+       
       for await (let _doc of service.stream('*:*')) {
         // no-op
       }
@@ -808,7 +808,7 @@ describe('SolrService', () => {
       fetchMock.mock.mockImplementation(() => solrErrorResponse('bad query', 400));
 
       await assert.rejects(async () => {
-        // eslint-disable-next-line no-unused-vars
+         
         for await (let _doc of service.stream('invalid:::query')) {
           // no-op
         }

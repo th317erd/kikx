@@ -1,4 +1,4 @@
-/* eslint-disable key-spacing */
+ 
 
 export default {
   login: {

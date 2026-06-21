@@ -26,7 +26,7 @@ export class Permissions {
    * @param {object} _options
    * @returns {Promise<boolean|null>}
    */
-  // eslint-disable-next-line no-unused-vars
+   
   async checkPermission(_featureName, _args, _options) {
     return null; // default: defer to rule matching
   }

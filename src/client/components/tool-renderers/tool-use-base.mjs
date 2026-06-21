@@ -502,6 +502,75 @@ export class SessionToolUse extends ToolUse {
   }
 }
 
+export class CwdToolUse extends ToolUse {
+  displayName() {
+    return 'Shell cwd';
+  }
+
+  callSummary() {
+    if (this.toolName === 'cwd-get')
+      return 'Reading shell cwd...';
+    if (this.toolName === 'cwd-set')
+      return this.input.cwd ? `Changing shell cwd: ${this.input.cwd}` : 'Changing shell cwd...';
+    if (this.toolName === 'cwd-clear')
+      return 'Clearing shell cwd...';
+
+    return `${this.toolName}...`;
+  }
+
+  resultSummary() {
+    let outcome = this.status === 'error' ? 'failed' : 'completed';
+    return `${this.toolName} ${outcome}.`;
+  }
+}
+
+export class FeedbackToolUse extends ToolUse {
+  displayName() {
+    return 'Feedback';
+  }
+
+  callSummary() {
+    return this.input.title ? `Reporting feedback: ${this.input.title}` : 'Reporting Kikx feedback...';
+  }
+
+  resultSummary() {
+    let outcome = this.status === 'error' ? 'failed' : 'saved';
+    return this.input.title ? `Feedback ${outcome}: ${this.input.title}` : `Feedback ${outcome}.`;
+  }
+}
+
+export class TodoToolUse extends ToolUse {
+  displayName() {
+    return 'Todo';
+  }
+
+  callSummary() {
+    if (this.toolName === 'todo-get')
+      return 'Reading todo list...';
+    if (this.toolName === 'todo-add')
+      return this.input.title ? `Adding todo: ${this.input.title}` : 'Adding todo...';
+    if (this.toolName === 'todo-update')
+      return this.input.id ? `Updating todo: ${this.input.id}` : 'Updating todo...';
+    if (this.toolName === 'todo-complete')
+      return this.input.id ? `Completing todo: ${this.input.id}` : 'Completing todo...';
+    if (this.toolName === 'todo-delete')
+      return this.input.id ? `Deleting todo: ${this.input.id}` : 'Deleting todo...';
+    if (this.toolName === 'todo-clear')
+      return 'Clearing todo list...';
+    if (this.toolName === 'todo-focus-set')
+      return this.input.id ? `Focusing todo: ${this.input.id}` : 'Setting todo focus...';
+    if (this.toolName === 'todo-focus-clear')
+      return 'Clearing todo focus...';
+
+    return `${this.toolName}...`;
+  }
+
+  resultSummary() {
+    let outcome = this.status === 'error' ? 'failed' : 'completed';
+    return `${this.toolName} ${outcome}.`;
+  }
+}
+
 export class ExecListUse extends ProcessToolUse {}
 
 export class ExecStatusUse extends ProcessToolUse {}

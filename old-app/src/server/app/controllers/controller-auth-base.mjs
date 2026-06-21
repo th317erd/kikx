@@ -15,7 +15,7 @@ export class ControllerAuthBase extends ControllerBase {
   // Overload this in a child controller
   // to skip authorization for certain routes.
 
-  // eslint-disable-next-line no-unused-vars
+   
   skipAuthorization(context) {
     return false;
   }

@@ -249,7 +249,7 @@ function getSnapshotNameAndPath() {
       nodePath = nodePath.replace(/^[^0-9a-zA-Z]+/, '').replace(/[^0-9a-zA-Z]+$/, '');
     }
 
-    // eslint-disable-next-line no-magic-numbers
+     
     return (`${nodePath}-${('' + callCount).padStart(3, '0')}.snapshot`);
   };
 

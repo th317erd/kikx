@@ -11,7 +11,7 @@ import { TaggableBase } from './taggable-base.mjs';
 import { PermissionBase } from '../permissions/index.mjs';
 import Utils from '../utils/index.mjs';
 
-// eslint-disable-next-line no-magic-numbers
+ 
 const AVATAR_SIZES  = [ 48, 196, 512 ];
 const TWT_KEY_MAP   = {
   s:    'scope',
@@ -167,7 +167,7 @@ export class User extends TaggableBase {
       if (Nife.isEmpty(organizationUserLink)) {
         try {
           organizationUserLink = await this.getOrganizationUserLink(organizationID);
-          // eslint-disable-next-line no-empty
+           
         } catch (error) {}
       }
 
@@ -352,7 +352,7 @@ export class User extends TaggableBase {
         query = query.name.EQ(names);
     }
 
-    // eslint-disable-next-line no-magic-numbers
+     
     query = query.LIMIT(options.limit || 500).OFFSET(options.offset || 0).ORDER(options.order || '+Role:name');
 
     if (options.namesOnly)
@@ -522,7 +522,7 @@ export class User extends TaggableBase {
     } = options;
 
     if (limit == null)
-    // eslint-disable-next-line no-magic-numbers
+     
       limit = 20;
 
     if (order == null)

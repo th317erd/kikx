@@ -247,7 +247,7 @@ describe('ToolLogService', () => {
     it('returns null when ValueStore.create() rejects with a non-Error', async () => {
       let params = makeParams({
         models: makeModels(async () => {
-          // eslint-disable-next-line no-throw-literal
+           
           throw 'string error';
         }),
       });

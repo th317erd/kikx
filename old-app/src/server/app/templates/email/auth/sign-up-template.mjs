@@ -1,4 +1,4 @@
-/* eslint-disable no-magic-numbers */
+ 
 
 import { MasterEmailTemplate } from '../master-template.mjs';
 

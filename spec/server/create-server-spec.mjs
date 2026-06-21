@@ -31,9 +31,22 @@ function jsonFetch(url, body, options = {}) {
     method: options.method || 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(options.headers || {}),
     },
     body: JSON.stringify(body),
   });
+}
+
+function unsignedJWT(payload = {}) {
+  return [
+    base64URL(JSON.stringify({ alg: 'none', typ: 'JWT' })),
+    base64URL(JSON.stringify(payload)),
+    'signature',
+  ].join('.');
+}
+
+function base64URL(value) {
+  return Buffer.from(value).toString('base64url');
 }
 
 function createRuntime() {
@@ -516,6 +529,152 @@ test('POST /api/v1/sessions/:sessionID/messages appends a user message', async (
     });
     assert.deepEqual(body.data.commit, { id: 'commit_1', order: 1 });
     assert.deepEqual(body.data.frame, { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } });
+  } finally {
+    await close(server);
+  }
+});
+
+test('POST /api/v1/sessions/:sessionID/messages stamps account author metadata when signed in', async () => {
+  let runtime = createRuntime();
+  let token = unsignedJWT({ sub: 'usr_1' });
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {
+        async getFile() {
+          return { id: 'usr_1', name: 'Wyatt Greenway', email: 'wyatt@example.com' };
+        },
+        async getSystemUser() {
+          return { user_id: 'usr_1', username: 'wyatt@example.com', email: 'wyatt@example.com' };
+        },
+      },
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/sessions/ses_1/messages`, {
+      text: 'hello',
+    }, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 201);
+    assert.deepEqual(runtime.calls[0], {
+      method: 'appendUserMessage',
+      sessionID: 'ses_1',
+      input: {
+        text: 'hello',
+        userID: 'usr_1',
+        authorDisplayName: 'Wyatt Greenway',
+      },
+    });
+    assert.deepEqual(body.data.commit, { id: 'commit_1', order: 1 });
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/account returns a Kikx profile for the signed-in user', async () => {
+  let token = unsignedJWT({ sub: 'usr_1' });
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {
+        async getFile(pathname) {
+          if (pathname === '/kikx/tokens.json')
+            return null;
+
+          assert.equal(pathname, '/kikx/users/usr_1/profile.json');
+          return { id: 'usr_1', name: 'Wyatt', email: 'wyatt@kikx.test' };
+        },
+        async getSystemUser(userID) {
+          assert.equal(userID, 'usr_1');
+          return { user_id: 'usr_1', username: 'wyatt@example.com', email: 'wyatt@example.com' };
+        },
+      },
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/account`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.data.account, {
+      id: 'usr_1',
+      name: 'Wyatt',
+      email: 'wyatt@kikx.test',
+      username: 'wyatt@example.com',
+      source: 'aeordb-user',
+      createdAt: null,
+      updatedAt: null,
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('PATCH /api/v1/account saves display name and updates AeorDB email', async () => {
+  let token = unsignedJWT({ sub: 'usr_1' });
+  let writes = [];
+  let updatedUser;
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {
+        async getFile() {
+          return { id: 'usr_1', name: 'Old Name', email: 'old@example.com', createdAt: 1000 };
+        },
+        async putFile(pathname, body) {
+          writes.push({ pathname, body });
+          return { path: pathname };
+        },
+        async getSystemUser() {
+          return { user_id: 'usr_1', username: 'wyatt@example.com', email: 'old@example.com' };
+        },
+        async updateSystemUser(userID, body) {
+          updatedUser = { userID, body };
+          return { user_id: 'usr_1', username: 'wyatt@example.com', email: body.email };
+        },
+      },
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/account`, {
+      name: 'New Name',
+      email: 'new@example.com',
+    }, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(updatedUser, {
+      userID: 'usr_1',
+      body: { email: 'new@example.com' },
+    });
+    assert.equal(writes.length, 2);
+    assert.equal(writes[0].pathname, '/kikx/users/usr_1/profile.json');
+    assert.equal(writes[0].body.name, 'New Name');
+    assert.equal(writes[0].body.email, 'new@example.com');
+    assert.equal(writes[1].body.email, 'new@example.com');
+    assert.equal(body.data.account.name, 'New Name');
+    assert.equal(body.data.account.email, 'new@example.com');
   } finally {
     await close(server);
   }

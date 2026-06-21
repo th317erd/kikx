@@ -8,7 +8,7 @@ export class OrganizationPermissions extends PermissionBase {
     return 'Organization';
   }
 
-  // eslint-disable-next-line no-unused-vars
+   
   async canCreate(organizationParams) {
     // Support staff and masteradmins can create organizations
     if (await this.currentUser.hasRolesFor(null, { names: [ 'support', 'masteradmin' ] }))
@@ -17,7 +17,7 @@ export class OrganizationPermissions extends PermissionBase {
     return false;
   }
 
-  // eslint-disable-next-line no-unused-vars
+   
   async canUpdate(organization, organizationParams) {
     // Support staff and masteradmins can modify anything
     // superadmins are allowed to update organizations they
@@ -98,7 +98,7 @@ export class OrganizationPermissions extends PermissionBase {
     return false;
   }
 
-  // eslint-disable-next-line no-unused-vars
+   
   async canUpdateUser(user, organization, userParams) {
     // User can always update themselves
     if (this.currentUser.id === user.id)

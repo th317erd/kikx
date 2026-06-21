@@ -90,22 +90,34 @@ test('Stagehand collapses tool start and result frames into one plugin-rendered 
     await page.waitForSelector('kikx-web-search-use', { timeout: 10000 });
     await page.waitForSelector('kikx-fetch-use', { timeout: 10000 });
     await page.waitForSelector('kikx-session-tool-use', { timeout: 10000 });
+    await page.waitForSelector('kikx-todo-tool-use.kikx-tool-card--result', { timeout: 10000 });
+    await page.waitForSelector('kikx-cwd-tool-use.kikx-tool-card--result', { timeout: 10000 });
+    await page.waitForSelector('kikx-feedback-tool-use.kikx-tool-card--result', { timeout: 10000 });
     await page.waitForSelector('kikx-shell-tool-use.kikx-tool-card--result', { timeout: 10000 });
 
     let searchCallText = await page.locator('kikx-web-search-use').first().textContent();
     let fetchCallText = await page.locator('kikx-fetch-use').first().textContent();
     let sessionToolTexts = await page.evaluate(() => Array.from(document.querySelectorAll('kikx-session-tool-use'))
       .map((node) => node.textContent || ''));
+    let todoText = await page.locator('kikx-todo-tool-use.kikx-tool-card--result').first().textContent();
+    let cwdText = await page.locator('kikx-cwd-tool-use.kikx-tool-card--result').first().textContent();
+    let feedbackText = await page.locator('kikx-feedback-tool-use.kikx-tool-card--result').first().textContent();
     let resultText = await page.locator('kikx-shell-tool-use.kikx-tool-card--result').first().textContent();
     let frameIDs = await page.evaluate(() => Array.from(document.querySelectorAll('kikx-frame-item'))
       .map((node) => node.dataset.frameId));
 
-    assert.deepEqual(frameIDs, [ 'tool_call_1', 'tool_call_2', 'tool_call_3', 'tool_call_4', 'tool_call_5', 'tool_call_6' ]);
+    assert.deepEqual(frameIDs, [ 'tool_call_1', 'tool_call_2', 'tool_call_3', 'tool_call_4', 'tool_call_5', 'tool_call_6', 'tool_call_7', 'tool_call_8', 'tool_call_9' ]);
     assert.match(searchCallText, /Searching for hottest pokemon\.\.\./);
     assert.match(fetchCallText, /Fetching URL: https:\/\/example\.com\/weather\.\.\./);
     assert.ok(sessionToolTexts.some((text) => /Listing agents\.\.\./.test(text)));
     assert.ok(sessionToolTexts.some((text) => /Listing sessions\.\.\./.test(text)));
     assert.ok(sessionToolTexts.some((text) => /Inviting agents to session: session_child/.test(text)));
+    assert.match(todoText, /Todo/);
+    assert.match(todoText, /todo-add completed\./);
+    assert.match(cwdText, /Shell cwd/);
+    assert.match(cwdText, /cwd-set completed\./);
+    assert.match(feedbackText, /Feedback/);
+    assert.match(feedbackText, /Feedback saved: Tool loop error/);
     assert.match(resultText, /Result/);
     assert.match(resultText, /Output OUT1/);
     assert.match(resultText, /Command completed: ls \/tmp/);
@@ -377,6 +389,151 @@ function createToolFrames() {
           session_id: 'session_child',
           agents: [ 'Worker One', 'Worker Two' ],
         },
+      },
+    },
+    {
+      id: 'tool_call_7',
+      type: 'TodoAddToolFrame',
+      sessionID: 'session_1',
+      interactionID: 'interaction_1',
+      parentID: 'agent_response_1',
+      authorType: 'agent',
+      authorID: 'agent_1',
+      authorDisplayName: 'Test Agent',
+      hidden: false,
+      deleted: false,
+      order: 8,
+      createdAt: 1781035262000000,
+      updatedAt: 1781035262000000,
+      content: {
+        toolName: 'todo-add',
+        phase: 'call',
+        status: 'running',
+        input: {
+          title: 'Write Stagehand coverage',
+          focus: true,
+        },
+      },
+    },
+    {
+      id: 'tool_result_7',
+      type: 'TodoAddToolFrame',
+      sessionID: 'session_1',
+      interactionID: 'interaction_1',
+      parentID: 'tool_call_7',
+      authorType: 'tool',
+      authorID: 'todo-add',
+      authorDisplayName: 'todo-add',
+      hidden: false,
+      deleted: false,
+      order: 9,
+      createdAt: 1781035262250000,
+      updatedAt: 1781035262250000,
+      content: {
+        toolName: 'todo-add',
+        phase: 'result',
+        status: 'success',
+        input: {
+          title: 'Write Stagehand coverage',
+          focus: true,
+        },
+        preview: '{"items":[{"title":"Write Stagehand coverage"}]}',
+      },
+    },
+    {
+      id: 'tool_call_8',
+      type: 'CwdSetToolFrame',
+      sessionID: 'session_1',
+      interactionID: 'interaction_1',
+      parentID: 'agent_response_1',
+      authorType: 'agent',
+      authorID: 'agent_1',
+      authorDisplayName: 'Test Agent',
+      hidden: false,
+      deleted: false,
+      order: 10,
+      createdAt: 1781035262500000,
+      updatedAt: 1781035262500000,
+      content: {
+        toolName: 'cwd-set',
+        phase: 'call',
+        status: 'running',
+        input: {
+          cwd: '/tmp/project',
+        },
+      },
+    },
+    {
+      id: 'tool_result_8',
+      type: 'CwdSetToolFrame',
+      sessionID: 'session_1',
+      interactionID: 'interaction_1',
+      parentID: 'tool_call_8',
+      authorType: 'tool',
+      authorID: 'cwd-set',
+      authorDisplayName: 'cwd-set',
+      hidden: false,
+      deleted: false,
+      order: 11,
+      createdAt: 1781035262750000,
+      updatedAt: 1781035262750000,
+      content: {
+        toolName: 'cwd-set',
+        phase: 'result',
+        status: 'success',
+        input: {
+          cwd: '/tmp/project',
+        },
+        preview: '{"cwd":"/tmp/project","configured":true}',
+      },
+    },
+    {
+      id: 'tool_call_9',
+      type: 'FeedbackReportToolFrame',
+      sessionID: 'session_1',
+      interactionID: 'interaction_1',
+      parentID: 'agent_response_1',
+      authorType: 'agent',
+      authorID: 'agent_1',
+      authorDisplayName: 'Test Agent',
+      hidden: false,
+      deleted: false,
+      order: 12,
+      createdAt: 1781035263000000,
+      updatedAt: 1781035263000000,
+      content: {
+        toolName: 'feedback-report',
+        phase: 'call',
+        status: 'running',
+        input: {
+          title: 'Tool loop error',
+          severity: 'high',
+        },
+      },
+    },
+    {
+      id: 'tool_result_9',
+      type: 'FeedbackReportToolFrame',
+      sessionID: 'session_1',
+      interactionID: 'interaction_1',
+      parentID: 'tool_call_9',
+      authorType: 'tool',
+      authorID: 'feedback-report',
+      authorDisplayName: 'feedback-report',
+      hidden: false,
+      deleted: false,
+      order: 13,
+      createdAt: 1781035263250000,
+      updatedAt: 1781035263250000,
+      content: {
+        toolName: 'feedback-report',
+        phase: 'result',
+        status: 'success',
+        input: {
+          title: 'Tool loop error',
+          severity: 'high',
+        },
+        preview: '{"path":"/feedback/feedback-FB1.md"}',
       },
     },
   ];

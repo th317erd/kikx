@@ -18,7 +18,7 @@ describe('OrganizationPermissions', function() {
   let generateTests;
   let context;
 
-  // eslint-disable-next-line no-unused-vars
+   
   const { it, fit } = createRunners(() => app.getConnection());
 
   const contextProvider = () => context;

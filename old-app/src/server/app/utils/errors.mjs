@@ -1,4 +1,4 @@
-/* eslint-disable max-classes-per-file */
+ 
 
 // These error classes are designed to be thrown
 // from anywhere in the application. These are

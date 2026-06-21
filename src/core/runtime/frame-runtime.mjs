@@ -55,11 +55,15 @@ export class FrameRuntime extends EventEmitter {
     let now = stamp.at;
     let title = normalizeTitle(input.title, this.nextDefaultSessionTitle());
     let participantAgentIDs = normalizeStringArray(input.participantAgentIDs);
+    let parentSessionID = normalizeOptionalString(input.parentSessionID || input.parentSessionId);
     let session = {
       id: input.id || this.idGenerator(),
       title,
       organizationID: input.organizationID || null,
       createdByUserID: input.createdByUserID || input.userID || null,
+      createdByAgentID: normalizeOptionalString(input.createdByAgentID || input.agentID) || null,
+      parentSessionID: parentSessionID || null,
+      generation: normalizeSessionGeneration(input.generation, parentSessionID),
       messageCount: normalizeCount(input.messageCount),
       participantAgentIDs,
       coordinatorAgentID: normalizeCoordinatorAgentID(input.coordinatorAgentID, participantAgentIDs),
@@ -203,6 +207,7 @@ export class FrameRuntime extends EventEmitter {
       parentID: input.parentID || input.parentId || null,
       authorType: 'user',
       authorID: input.userID || input.authorID || null,
+      authorDisplayName: normalizeOptionalString(input.authorDisplayName || input.userDisplayName) || null,
       timestamp: input.timestamp || now,
       createdAt: input.createdAt || now,
       updatedAt: input.updatedAt || now,
@@ -274,6 +279,63 @@ export class FrameRuntime extends EventEmitter {
       return frames.slice(offset, offset + limit);
 
     return frames;
+  }
+
+  async recoverStaleRuntimeFrames(options = {}) {
+    let sessions = await this.listSessions({
+      limit: normalizeRecoveryLimit(options.sessionLimit, 500),
+      offset: 0,
+    });
+    let recoveredAgentResponses = 0;
+    let recoveredToolCalls = 0;
+
+    for (let session of sessions) {
+      if (!session?.id)
+        continue;
+
+      let entry = await this.ensureSessionEntry(session.id, {
+        frameLimit: normalizeFrameLimit(options.frameLimit || MAX_SESSION_FRAME_LIMIT),
+      });
+      let frames = entry.frameEngine.toArray();
+      let toolResultIDs = collectToolResultIDs(frames);
+      let updates = [];
+
+      for (let frame of frames) {
+        if (isStaleAgentResponseFrame(frame)) {
+          updates.push(createRecoveredAgentResponseFrame(frame, {
+            clock: this.clock,
+            message: options.agentMessage,
+          }));
+          recoveredAgentResponses++;
+          continue;
+        }
+
+        if (isStaleToolCallFrame(frame, toolResultIDs)) {
+          updates.push(createRecoveredToolCallFrame(frame, {
+            clock: this.clock,
+            message: options.toolMessage,
+          }));
+          recoveredToolCalls++;
+        }
+      }
+
+      if (updates.length === 0)
+        continue;
+
+      entry.frameEngine.merge(updates, {
+        authorType: 'system',
+        authorID: 'runtime-recovery',
+        silent: true,
+      });
+      await this.frameStore.flush();
+    }
+
+    return {
+      sessionsScanned: sessions.length,
+      recoveredAgentResponses,
+      recoveredToolCalls,
+      recovered: recoveredAgentResponses + recoveredToolCalls,
+    };
   }
 
   async ensureIndexConfigs() {
@@ -434,6 +496,24 @@ function normalizeCount(value) {
     : 0;
 }
 
+function normalizeSessionGeneration(value, parentSessionID = '') {
+  if (value == null)
+    return parentSessionID ? 1 : 0;
+
+  let number = Number(value);
+  if (!Number.isFinite(number) || number < 0)
+    return parentSessionID ? 1 : 0;
+
+  return Math.trunc(number);
+}
+
+function normalizeOptionalString(value) {
+  if (typeof value !== 'string')
+    return '';
+
+  return value.trim();
+}
+
 function normalizeFrameLimit(value) {
   if (value == null)
     return DEFAULT_SESSION_FRAME_LIMIT;
@@ -458,6 +538,14 @@ function normalizeFrameOffset(value) {
     throw new TypeError('frame offset must be a non-negative integer');
 
   return number;
+}
+
+function normalizeRecoveryLimit(value, defaultValue) {
+  let number = Number(value);
+  if (!Number.isInteger(number) || number < 1)
+    return defaultValue;
+
+  return Math.min(number, 5000);
 }
 
 function normalizeRequiredString(value, fieldName) {
@@ -492,6 +580,97 @@ function normalizeCoordinatorAgentID(coordinatorAgentID, participantAgentIDs) {
   }
 
   return participantAgentIDs[0] || null;
+}
+
+function collectToolResultIDs(frames) {
+  let ids = new Set();
+  for (let frame of frames) {
+    let toolCallID = normalizeOptionalString(frame?.content?.toolCallID);
+    if (!toolCallID)
+      continue;
+
+    if (frame?.content?.phase === 'result' || frame?.authorType === 'tool')
+      ids.add(toolCallID);
+  }
+
+  return ids;
+}
+
+function isStaleAgentResponseFrame(frame) {
+  return frame?.type === 'AgentMessage'
+    && frame.hidden === true
+    && frame.deleted !== true
+    && frame.content?.status === 'streaming';
+}
+
+function isStaleToolCallFrame(frame, toolResultIDs) {
+  if (!frame?.type || !frame.type.endsWith('ToolFrame'))
+    return false;
+
+  let content = frame.content || {};
+  let toolCallID = normalizeOptionalString(content.toolCallID);
+  return content.phase === 'call'
+    && (content.status === 'running' || frame.state?.status === 'running')
+    && (!toolCallID || !toolResultIDs.has(toolCallID));
+}
+
+function createRecoveredAgentResponseFrame(frame, options = {}) {
+  let now = options.clock?.() || Date.now();
+  let text = options.message
+    || 'Kikx recovered this agent response after a server restart or interrupted provider stream. The original response did not complete.';
+  return {
+    ...frame,
+    hidden: false,
+    deleted: false,
+    updatedAt: now,
+    content: {
+      ...(frame.content || {}),
+      text,
+      status: 'error',
+      error: {
+        message: text,
+        recovered: true,
+        previousStatus: frame.content?.status || null,
+      },
+      thinking: {
+        ...(frame.content?.thinking || {}),
+        status: 'error',
+      },
+    },
+    state: {
+      ...(frame.state || {}),
+      status: 'error',
+      recovered: true,
+    },
+  };
+}
+
+function createRecoveredToolCallFrame(frame, options = {}) {
+  let now = options.clock?.() || Date.now();
+  let text = options.message
+    || 'Kikx recovered this tool call after a server restart. The managed process/result state was no longer available.';
+  return {
+    ...frame,
+    hidden: frame.hidden ?? false,
+    deleted: false,
+    updatedAt: now,
+    content: {
+      ...(frame.content || {}),
+      status: 'failed',
+      recovered: true,
+      message: text,
+      error: {
+        message: text,
+        recovered: true,
+      },
+      finishedAt: now,
+    },
+    state: {
+      ...(frame.state || {}),
+      status: 'failed',
+      recovered: true,
+    },
+  };
 }
 
 function countMessageFrames(frames) {

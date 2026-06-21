@@ -20,7 +20,7 @@ export class ExecTool extends PluginInterface {
       },
       cwd: {
         type: 'string',
-        description: 'Optional working directory. Relative paths resolve from the Kikx server working directory.',
+        description: 'Optional one-off working directory override. Prefer cwd-set for changing the session default. Relative paths resolve from the Kikx server working directory.',
       },
       stdin: {
         type: 'string',
@@ -46,6 +46,7 @@ export class ExecTool extends PluginInterface {
     'Use exec to run local commands through the Kikx server process login shell.',
     'Exec is always async: Kikx starts a managed process, waits briefly for very short commands, and either returns the completed output immediately or returns an async process ID.',
     'For servers and other long-running work, prefer running the foreground command directly, then use exec-read or exec-status to inspect it while it remains managed.',
+    'Exec automatically uses your session-specific shell cwd when one is set with cwd-set. Omit cwd for normal work; pass cwd only for a one-off override.',
     'If a command truly needs shell detaching such as trailing &, nohup, disown, or setsid, Kikx will complete the shell wrapper when it exits; detached child processes may no longer be manageable with exec-status or exec-kill.',
     'When a process is still running, Kikx automatically wakes you with the stored completion result when it exits.',
     'Use exec-status, exec-read, exec-grep, and exec-kill to manage async exec processes.',

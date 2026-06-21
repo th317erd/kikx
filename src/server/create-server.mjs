@@ -6,14 +6,21 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { AppContext } from '../core/app/app-context.mjs';
+import { AccountStore } from '../core/account/index.mjs';
 import { AeorDBClient } from '../core/aeordb/aeordb-client.mjs';
-import { AgentManager, registerAgentRouting } from '../core/agents/index.mjs';
+import {
+  AgentCwdStore,
+  AgentManager,
+  AgentTodoStore,
+  registerAgentRouting,
+} from '../core/agents/index.mjs';
 import { CompactionService } from '../core/compaction/index.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
 import { FrameRouter } from '../core/routing/index.mjs';
 import { FrameRuntime } from '../core/runtime/frame-runtime.mjs';
+import { FeedbackStore } from '../core/feedback/index.mjs';
 import { TokenUsageTracker } from '../core/tokens/index.mjs';
 import {
   LocalCommandExecutionService,
@@ -95,6 +102,12 @@ export function createServer(options = {}) {
     }));
   }
 
+  if (!context.has('accountStore')) {
+    context.set('accountStore', new AccountStore({
+      aeordb: context.require('aeordb'),
+    }));
+  }
+
   if (!context.has('tokenUsageLoadPromise')) {
     let tokenUsage = context.require('tokenUsage');
     context.set('tokenUsageLoadPromise', Promise.resolve(
@@ -119,6 +132,25 @@ export function createServer(options = {}) {
     context.set('agentManager', new AgentManager({
       aeordb: context.require('aeordb'),
       pluginRegistry: context.require('pluginRegistry'),
+    }));
+  }
+
+  if (!context.has('agentTodoStore')) {
+    context.set('agentTodoStore', new AgentTodoStore({
+      aeordb: context.require('aeordb'),
+    }));
+  }
+
+  if (!context.has('agentCwdStore')) {
+    context.set('agentCwdStore', new AgentCwdStore({
+      aeordb: context.require('aeordb'),
+      baseCWD: process.cwd(),
+    }));
+  }
+
+  if (!context.has('feedbackStore')) {
+    context.set('feedbackStore', new FeedbackStore({
+      aeordb: context.require('aeordb'),
     }));
   }
 
@@ -154,13 +186,32 @@ export function createServer(options = {}) {
     }));
   }
 
+  if (!context.has('runtimeRecoveryPromise')) {
+    let frameRuntime = context.require('frameRuntime');
+    let aeordb = context.require('aeordb');
+    let logger = options.logger || console;
+    context.set('runtimeRecoveryPromise', Promise.resolve(
+      typeof frameRuntime.recoverStaleRuntimeFrames === 'function' && typeof aeordb.listDirectory === 'function'
+        ? frameRuntime.recoverStaleRuntimeFrames()
+        : { recovered: 0, skipped: true },
+    ).then((result) => {
+      if (result?.recovered > 0)
+        logger.warn?.('Kikx recovered stale runtime frames', result);
+
+      return result;
+    }).catch((error) => {
+      logger.error?.('Kikx stale runtime frame recovery failed', error);
+      return { recovered: 0, error };
+    }));
+  }
+
   if (!context.has('scheduledFrameWorkerPromise')) {
     let frameRuntime = context.require('frameRuntime');
-    context.set('scheduledFrameWorkerPromise', Promise.resolve(
+    context.set('scheduledFrameWorkerPromise', Promise.resolve(context.require('runtimeRecoveryPromise')).then(() => (
       typeof frameRuntime.startScheduledFrameWorker === 'function' && canLoadScheduledFrames(frameRuntime)
         ? frameRuntime.startScheduledFrameWorker()
-        : null,
-    ).catch((error) => {
+        : null
+    )).catch((error) => {
       (options.logger || console)?.error?.('Kikx scheduled frame worker failed to start', error);
       return null;
     }));
@@ -175,7 +226,7 @@ export function createServer(options = {}) {
     context.set('tokenUsageRuntimeBridge', true);
   }
 
-  return http.createServer(async (request, response) => {
+  let server = http.createServer(async (request, response) => {
     try {
       await routeRequest({ request, response, context, staticRoots });
     } catch (error) {
@@ -186,6 +237,8 @@ export function createServer(options = {}) {
       });
     }
   });
+  server.kikxContext = context;
+  return server;
 }
 
 function canLoadScheduledFrames(frameRuntime) {
@@ -235,6 +288,29 @@ async function routeRequest({ request, response, context, staticRoots }) {
         totalTokensUsed: typeof tokenUsage.totalTokensUsed === 'function'
           ? tokenUsage.totalTokensUsed()
           : totalTokensUsed(snapshot),
+      },
+    });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/v1/account') {
+    let accountStore = context.require('accountStore');
+    let identity = accountStore.resolveIdentity(request);
+    writeJSON(response, 200, {
+      data: {
+        account: await accountStore.getAccount(identity),
+      },
+    });
+    return;
+  }
+
+  if (request.method === 'PATCH' && url.pathname === '/api/v1/account') {
+    let body = await readJSON(request);
+    let accountStore = context.require('accountStore');
+    let identity = accountStore.resolveIdentity(request);
+    writeJSON(response, 200, {
+      data: {
+        account: await accountStore.updateAccount(identity, body),
       },
     });
     return;
@@ -420,10 +496,16 @@ async function routeRequest({ request, response, context, staticRoots }) {
       if (!body.text || typeof body.text !== 'string' || body.text.trim() === '')
         throw httpError(400, 'text is required');
 
-      let result = await frameRuntime.appendUserMessage(sessionRoute.sessionID, {
+      let account = await getRequestAccount(context, request);
+      let messageInput = {
         text: body.text,
-        userID: body.userID || body.authorID || null,
-      });
+        userID: account?.id || body.userID || body.authorID || null,
+      };
+      let authorDisplayName = account?.name || body.authorDisplayName || '';
+      if (authorDisplayName)
+        messageInput.authorDisplayName = authorDisplayName;
+
+      let result = await frameRuntime.appendUserMessage(sessionRoute.sessionID, messageInput);
 
       writeJSON(response, 201, {
         data: result,
@@ -515,6 +597,25 @@ async function readJSON(request) {
   } catch (_error) {
     throw httpError(400, 'Request body must be valid JSON');
   }
+}
+
+async function getRequestAccount(context, request) {
+  if (!context.has('accountStore'))
+    return null;
+
+  let accountStore = context.require('accountStore');
+  let identity;
+
+  try {
+    identity = accountStore.resolveIdentity(request);
+  } catch (error) {
+    if (error?.status === 401)
+      return null;
+
+    throw error;
+  }
+
+  return await accountStore.getAccount(identity);
 }
 
 function httpError(status, message) {

@@ -51,7 +51,7 @@ export class OrganizationUserLink extends TaggableBase {
       index:        true,
     },
     userAvatarURL: {
-      // eslint-disable-next-line no-magic-numbers
+       
       type:         Types.STRING(512),
       defaultValue: null,
       allowNull:    true,

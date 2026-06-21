@@ -62,7 +62,7 @@ export class AuthController extends ControllerBase {
 
     this.setCookie(this.getAuthTokenCookieName(), sessionToken, {
       domain:   app.getConfigValue('application.{environment}.domain', 'example.com'),
-      // eslint-disable-next-line no-magic-numbers
+       
       maxAge:   claims.expiresIn * 1000,
       secure:   true,
       httpOnly: true,
@@ -98,7 +98,7 @@ export class AuthController extends ControllerBase {
     }
 
     if (Nife.isEmpty(authCookieToken) && Nife.isEmpty(authHeaderToken)) {
-      // eslint-disable-next-line no-magic-numbers
+       
       this.setStatusCode(201);
       return;
     }

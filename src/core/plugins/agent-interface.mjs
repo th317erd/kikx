@@ -167,6 +167,17 @@ const AGENT_TOOL_DEFINITIONS = [
   },
 ];
 const AGENT_TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
+const DELEGATION_TOOL_NAMES = new Set([ 'session-create', 'session-invite-agents' ]);
+const AVOIDABLE_DEFERRAL_PATTERNS = [
+  /\b(?:should|shall)\s+i\s+(?:continue|proceed|read|inspect|review|run|start|create|update|check|look|audit|test)\b/i,
+  /\b(?:would|do)\s+you\s+(?:like|want)\s+me\s+to\b/i,
+  /\bcan\s+i\s+proceed\b/i,
+  /\bany\s+changes\b[\s\S]{0,120}\bbefore\s+i\s+proceed\b/i,
+  /\bwhich\s+(?:would\s+you\s+like|one\s+should\s+i|option\s+should\s+i)\b/i,
+  /\bwhat\s+would\s+you\s+like\s+me\s+to\s+do\s+next\b/i,
+  /\bi\s+will\s+only\s+proceed\s+after\s+your\s+confirmation\b/i,
+  /\bif\s+yes,?\s+i\s+will\b/i,
+];
 
 export class AgentInterface extends PluginInterface {
   static agentType = null;
@@ -235,6 +246,7 @@ export class AgentInterface extends PluginInterface {
 
     if (state.finalized) {
       yield* this.runCompletionReview(context, state);
+      applyAvoidableDeferralGuard(context, state);
 
       if (state.nullResponse) {
         yield {
@@ -317,6 +329,13 @@ export class AgentInterface extends PluginInterface {
 
       if (state.break || state.nullResponse || state.forwarded || state.finalized)
         continue;
+
+      if (output?.type === 'AgentMessage' && output.phantom !== true) {
+        state.finalized = true;
+        state.finalFrame = output;
+        yieldedOutput = true;
+        continue;
+      }
 
       yieldedOutput = true;
       if (output?.type === 'AgentMessage')
@@ -428,12 +447,17 @@ export class AgentInterface extends PluginInterface {
     });
     let character = normalizeOptionalPromptString(context.agent?.character || context.character);
     let tokenUsage = normalizeTokenUsagePromptContext(context);
+    let todoState = normalizeTodoPromptContext(context.todoState || context.todoList || context.todos);
+    let cwdState = normalizeCwdPromptContext(context.cwdState || context.shellCwd || context.cwd);
     return buildAgenticScriptPrompt({
       frameMessage,
       mentions,
       participantAgents,
       character,
       tokenUsage,
+      todoState,
+      cwdState,
+      sessionGeneration: sessionGeneration(context.session),
       isCoordinator: context.isCoordinator === true,
       triggerFrameLines: buildTriggerFramePromptLines(context),
       routingLines: buildRoutingPromptLines(context),
@@ -558,7 +582,20 @@ function shouldExposeLoopTool(toolName, context = {}) {
   if (toolName === 'internal-forward')
     return context.isCoordinator === true;
 
+  if (toolName === 'agent-null-response' && isSoleAgentUserTurn(context))
+    return false;
+
   return true;
+}
+
+function isSoleAgentUserTurn(context = {}) {
+  let participantAgentIDs = normalizeStringArray(context.participantAgentIDs || context.session?.participantAgentIDs);
+  let frame = context.frame || {};
+
+  return participantAgentIDs.length <= 1
+    && frame.authorType === 'user'
+    && frame.hidden !== true
+    && frame.deleted !== true;
 }
 
 function handleLoopControl(output, state) {
@@ -639,6 +676,51 @@ function mergeCompletionReviewFrame(finalFrame, reviewFrame) {
         : {}),
     },
   };
+}
+
+function applyAvoidableDeferralGuard(context = {}, state = {}) {
+  if (state.continuation || !state.finalFrame?.content || !isVisibleUserTurn(context))
+    return;
+
+  let text = finalFrameText(state.finalFrame);
+  if (!isAvoidableDeferralQuestion(text))
+    return;
+
+  state.continuation = {
+    delayMs: 0,
+    continuationPrompt: [
+      'Your previous draft stopped to ask the user whether to continue or which obvious safe next step to take.',
+      'The user expects you to infer the next safe implied step and continue without asking for permission.',
+      'Continue now. Use tools if needed. Ask only if there is a real blocker, a destructive/risky action, or a genuinely important decision that cannot be inferred.',
+    ].join(' '),
+  };
+  state.finalFrame = {
+    ...state.finalFrame,
+    content: {
+      ...state.finalFrame.content,
+      text: 'I’m going to continue with the next safe implied step instead of stopping for confirmation.',
+    },
+  };
+}
+
+function isVisibleUserTurn(context = {}) {
+  let frame = context.frame || {};
+  return frame.authorType === 'user'
+    && frame.hidden !== true
+    && frame.deleted !== true;
+}
+
+function finalFrameText(frame) {
+  let content = frame?.content || {};
+  return normalizeOptionalPromptString(content.text || content.markdown || content.html);
+}
+
+function isAvoidableDeferralQuestion(text) {
+  let value = normalizeOptionalPromptString(text);
+  if (!value)
+    return false;
+
+  return AVOIDABLE_DEFERRAL_PATTERNS.some((pattern) => pattern.test(value));
 }
 
 function recordForward(state, forward) {
@@ -760,7 +842,7 @@ function createRegisteredToolDefinitions(context = {}) {
 
   let definitions = [];
   for (let [toolName, ToolClass] of pluginRegistry.getTools()) {
-    if (!shouldExposeRegisteredTool(toolName, ToolClass))
+    if (!shouldExposeRegisteredTool(toolName, ToolClass, context))
       continue;
 
     definitions.push({
@@ -812,7 +894,7 @@ function createRegisteredToolHandlers(context = {}) {
   let toolExecutor = resolveToolExecutor(context);
   let handlers = {};
   for (let [toolName, ToolClass] of pluginRegistry.getTools()) {
-    if (!shouldExposeRegisteredTool(toolName, ToolClass))
+    if (!shouldExposeRegisteredTool(toolName, ToolClass, context))
       continue;
 
     handlers[toolName] = async (input = {}) => {
@@ -835,11 +917,19 @@ function resolveToolExecutor(context = {}) {
     || new ToolExecutionService();
 }
 
-function shouldExposeRegisteredTool(toolName, ToolClass) {
+function shouldExposeRegisteredTool(toolName, ToolClass, context = {}) {
   return typeof toolName === 'string'
     && toolName.trim() !== ''
     && AGENT_TOOL_NAME_PATTERN.test(toolName)
-    && ToolClass?.exposeToAgents !== false;
+    && ToolClass?.exposeToAgents !== false
+    && shouldExposeDelegationTool(toolName, context);
+}
+
+function shouldExposeDelegationTool(toolName, context = {}) {
+  if (!DELEGATION_TOOL_NAMES.has(toolName))
+    return true;
+
+  return sessionGeneration(context.session) <= 0;
 }
 
 function mergeToolDefinitions(primary, secondary) {
@@ -990,6 +1080,17 @@ function normalizeOptionalPromptString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function sessionGeneration(session) {
+  if (!session || typeof session !== 'object')
+    return 0;
+
+  let number = Number(session.generation);
+  if (Number.isFinite(number) && number >= 0)
+    return Math.trunc(number);
+
+  return session.parentSessionID ? 1 : 0;
+}
+
 function normalizeTokenUsagePromptContext(context = {}) {
   let tokenUsage = (context.tokenUsage && typeof context.tokenUsage === 'object' && !Array.isArray(context.tokenUsage))
     ? context.tokenUsage
@@ -1001,6 +1102,38 @@ function normalizeTokenUsagePromptContext(context = {}) {
   return {
     totalTokensUsed: Math.trunc(total),
     services: tokenUsage,
+  };
+}
+
+function normalizeTodoPromptContext(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return null;
+
+  return {
+    agentID: typeof value.agentID === 'string' ? value.agentID : null,
+    items: Array.isArray(value.items) ? value.items : [],
+    focus: value.focus && typeof value.focus === 'object' && !Array.isArray(value.focus)
+      ? value.focus
+      : null,
+    updatedAt: value.updatedAt || null,
+  };
+}
+
+function normalizeCwdPromptContext(value) {
+  if (typeof value === 'string' && value.trim() !== '') {
+    return {
+      cwd: value.trim(),
+      configured: true,
+    };
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return null;
+
+  return {
+    cwd: typeof value.cwd === 'string' ? value.cwd.trim() : '',
+    configured: value.configured === true,
+    updatedAt: value.updatedAt || null,
   };
 }
 
@@ -1083,8 +1216,13 @@ function buildTriggerFramePromptLines(context = {}) {
     ];
   }
 
-  if (frame.authorType === 'user')
-    return [ 'The user has just sent you a message:' ];
+  if (frame.authorType === 'user') {
+    let label = normalizeOptionalPromptString(frame.authorDisplayName)
+      || normalizeOptionalPromptString(frame.authorID);
+    return [
+      label ? `User ${label} has just sent you a message:` : 'The user has just sent you a message:',
+    ];
+  }
 
   return [ 'A session frame has just been routed to you:' ];
 }

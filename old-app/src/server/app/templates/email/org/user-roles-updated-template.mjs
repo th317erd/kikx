@@ -1,4 +1,4 @@
-/* eslint-disable no-magic-numbers */
+ 
 
 import { OrgBaseTemplate } from './org-template-base.mjs';
 

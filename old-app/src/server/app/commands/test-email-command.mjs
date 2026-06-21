@@ -16,7 +16,7 @@ export class TestEmailCommand extends CommandBase {
   static commandArguments() {
     return {
       help: {
-        /* eslint-disable key-spacing */
+         
         '@usage': 'mythix-cli test-email [options]',
         '@title': 'Test email rendering',
         '-t={template name} | -t {template name} | --template={template name} | --template {template name}': 'Email template name to render',

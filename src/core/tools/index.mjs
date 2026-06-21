@@ -1,6 +1,8 @@
 'use strict';
 
+export { CwdClearTool, CwdGetTool, CwdSetTool } from './cwd-tools.mjs';
 export { ExecTool } from './exec-tool.mjs';
+export { FeedbackReportTool } from './feedback-tool.mjs';
 export { LocalCommandExecutionService } from './local-command-execution-service.mjs';
 export { LocalFileAccessService } from './local-file-access-service.mjs';
 export { ProcessManager } from './process-manager.mjs';
@@ -25,6 +27,16 @@ export {
   SessionSearchTool,
 } from './session-tools.mjs';
 export { ToolExecutionService } from './tool-execution-service.mjs';
+export {
+  TodoAddTool,
+  TodoClearTool,
+  TodoCompleteTool,
+  TodoDeleteTool,
+  TodoFocusClearTool,
+  TodoFocusSetTool,
+  TodoGetTool,
+  TodoUpdateTool,
+} from './todo-tools.mjs';
 export { OutputGrepTool } from './tool-output-grep-tool.mjs';
 export { OutputReadTool } from './tool-output-get-tool.mjs';
 export { OutputSearchTool } from './tool-output-search-tool.mjs';

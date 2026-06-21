@@ -52,7 +52,7 @@ export class EventEmitter {
 
     // Max listener warning (not throw)
     if (this._maxListeners > 0 && listeners.size > this._maxListeners) {
-      // eslint-disable-next-line no-console
+       
       console.warn(
         `EventEmitter: possible memory leak detected. ${listeners.size} ` +
         `listeners added for event "${event}". Use setMaxListeners() to increase limit.`,

@@ -83,7 +83,7 @@ export class FrameManager {
           if (existingGroup) {
             // groupType conflict check
             if (frame.groupType && frame.groupType !== existingGroup.type) {
-              // eslint-disable-next-line no-console
+               
               console.warn(
                 `FrameManager: phantom groupType "${frame.groupType}" conflicts with ` +
                 `existing group frame type "${existingGroup.type}" (groupID: ${frame.groupID}). Skipping.`,

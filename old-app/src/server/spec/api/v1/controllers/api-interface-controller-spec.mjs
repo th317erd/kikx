@@ -10,7 +10,7 @@ describe('APIInterfaceController', function() {
   let factory;
   let API;
 
-  // eslint-disable-next-line no-unused-vars
+   
   const { it, fit } = createRunners(() => app.getConnection());
 
   beforeAll(async () => {
@@ -29,7 +29,7 @@ describe('APIInterfaceController', function() {
 
     let body = apiResponse.body.toString('utf8');
 
-    // eslint-disable-next-line no-eval
+     
     API = eval(body);
     await API.loaded();
   });

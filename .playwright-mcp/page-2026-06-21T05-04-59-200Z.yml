@@ -1,0 +1,15 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: K
+      - generic [ref=e7]:
+        - heading "Kikx" [level=1] [ref=e8]
+        - paragraph [ref=e9]: Agent runner
+  - main [ref=e10]:
+    - generic [ref=e11]:
+      - heading "Sign in" [level=2] [ref=e12]
+      - paragraph [ref=e13]: Enter your email and AeorDB will send a sign-in link.
+      - generic [ref=e15]:
+        - generic [ref=e16]: Email
+        - textbox "you@example.com" [ref=e18]
+        - button "Send link" [ref=e19] [cursor=pointer]

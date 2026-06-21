@@ -53,7 +53,8 @@ export class ProcessManager {
     let processDir = path.join(this.tempRoot, encodeSegment(processID));
     await fsp.mkdir(processDir, { recursive: true });
 
-    let handle = this.commandExecutor.startProcess(params, {
+    let executionParams = await this.resolveExecutionParams(params, context);
+    let handle = this.commandExecutor.startProcess(executionParams, {
       allowNoTimeout: true,
       defaultTimeoutMs: null,
     });
@@ -62,9 +63,9 @@ export class ProcessManager {
     let stdoutStream = fs.createWriteStream(stdoutPath);
     let stderrStream = fs.createWriteStream(stderrPath);
     let now = this.clock();
-    let agentID = normalizeOptionalString(params._agentID || context.agent?.id);
-    let sessionID = normalizeOptionalString(params._sessionID || context.session?.id);
-    let frameID = normalizeOptionalString(params._frameID || context.frame?.id);
+    let agentID = normalizeOptionalString(executionParams._agentID || context.agent?.id);
+    let sessionID = normalizeOptionalString(executionParams._sessionID || context.session?.id);
+    let frameID = normalizeOptionalString(executionParams._frameID || context.frame?.id);
 
     let record = {
       id: processID,
@@ -156,12 +157,32 @@ export class ProcessManager {
     }
 
     if (options.autoWake !== false) {
-      this.setWake(record, params, context, buildDefaultWakePrompt(record));
+      this.setWake(record, executionParams, context, buildDefaultWakePrompt(record));
       if (record.status !== 'running')
         await this.scheduleWake(record);
     }
 
     return this.createStartedResult(record);
+  }
+
+  async resolveExecutionParams(params = {}, context = {}) {
+    if (params.cwd != null && params.cwd !== '')
+      return params;
+
+    let cwdStore = resolveAgentCwdStore(context, this.context);
+    let agentID = normalizeOptionalString(params._agentID || context.agent?.id);
+    let sessionID = normalizeOptionalString(params._sessionID || context.session?.id);
+    if (!cwdStore?.getCWD || !agentID || !sessionID)
+      return params;
+
+    let state = await cwdStore.getCWD(agentID, sessionID);
+    if (!state?.cwd)
+      return params;
+
+    return {
+      ...params,
+      cwd: state.cwd,
+    };
   }
 
   list(params = {}) {
@@ -279,6 +300,53 @@ export class ProcessManager {
       status: record.status,
       signal,
       message: `Sent ${signal} to process ${record.processID}.`,
+    };
+  }
+
+  async shutdown(options = {}) {
+    let signal = normalizeSignal(options.signal || 'SIGTERM');
+    let forceSignal = normalizeSignal(options.forceSignal || 'SIGKILL');
+    let forceAfterMS = normalizeNonNegativeInteger(options.forceAfterMS, 1000);
+    let timeoutMS = normalizeNonNegativeInteger(options.timeoutMS, 3000);
+    let running = Array.from(this.processes.values()).filter((record) => record.status === 'running');
+    let shutdownAt = this.clock();
+
+    for (let record of running) {
+      record.killRequested ||= {
+        signal,
+        requestedAt: shutdownAt,
+        agentID: record.agentID || null,
+        reason: 'server-shutdown',
+      };
+      record.updatedAt = shutdownAt;
+      record.handle.kill(signal);
+    }
+
+    if (running.length === 0) {
+      return {
+        signal,
+        forceSignal,
+        killed: 0,
+        forced: 0,
+        remaining: 0,
+      };
+    }
+
+    await waitForRecords(running, Math.min(forceAfterMS, timeoutMS));
+    let stillRunning = running.filter((record) => record.status === 'running');
+    for (let record of stillRunning)
+      record.handle.kill(forceSignal);
+
+    let remainingBudget = Math.max(0, timeoutMS - forceAfterMS);
+    await waitForRecords(stillRunning, remainingBudget);
+    let remaining = running.filter((record) => record.status === 'running');
+
+    return {
+      signal,
+      forceSignal,
+      killed: running.length,
+      forced: stillRunning.length,
+      remaining: remaining.length,
     };
   }
 
@@ -657,6 +725,21 @@ async function waitForCompletion(promise, timeoutMs) {
   return result === timeoutSymbol ? null : result;
 }
 
+async function waitForRecords(records, timeoutMs) {
+  if (!records.length || timeoutMs <= 0)
+    return;
+
+  let timeout;
+  await Promise.race([
+    Promise.allSettled(records.map((record) => record.completionPromise)),
+    new Promise((resolve) => {
+      timeout = setTimeout(resolve, timeoutMs);
+      timeout.unref?.();
+    }),
+  ]);
+  clearTimeout(timeout);
+}
+
 async function readFileRange(filePath, range) {
   let content = await readWholeFile(filePath);
   return sliceTextByByteRange(content, range);
@@ -785,6 +868,26 @@ function normalizeProcessID(value) {
     throw new TypeError('processID may only contain letters, numbers, underscores, and hyphens');
 
   return normalized;
+}
+
+function resolveAgentCwdStore(context = {}, appContext = null) {
+  if (context.agentCwdStore)
+    return context.agentCwdStore;
+
+  if (context.services?.agentCwdStore)
+    return context.services.agentCwdStore;
+
+  let serviceContext = context.services?.context || context.context || appContext;
+  if (serviceContext?.has?.('agentCwdStore') && typeof serviceContext.require === 'function')
+    return serviceContext.require('agentCwdStore');
+
+  if (typeof serviceContext?.require === 'function') {
+    try {
+      return serviceContext.require('agentCwdStore');
+    } catch (_error) {}
+  }
+
+  return null;
 }
 
 function createProcessID() {

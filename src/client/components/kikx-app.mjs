@@ -10,8 +10,11 @@ import {
   getSessions,
   kikxState,
   removeAgent,
+  resetAccountState,
   resetAgentForm,
   resetSessionState,
+  setAccount,
+  setAccountFormFromAccount,
   setAgentProviders,
   setAgents,
   setAgentFormFromAgent,
@@ -34,6 +37,7 @@ const aeorModal = elements['aeor-modal'];
 const aeorSelect = elements['aeor-select'];
 
 const ANCHOR_THRESHOLD = 50;
+const FRAME_ENTER_ANIMATION_MS = 260;
 
 export class KikxApp extends HTMLElement {
   constructor() {
@@ -55,7 +59,12 @@ export class KikxApp extends HTMLElement {
     this._onComposerKeydown = this._onComposerKeydown.bind(this);
     this._syncDraft = this._syncDraft.bind(this);
     this._syncAuthEmail = this._syncAuthEmail.bind(this);
+    this._syncAccountName = this._syncAccountName.bind(this);
+    this._syncAccountEmail = this._syncAccountEmail.bind(this);
     this._syncEditingSessionTitle = this._syncEditingSessionTitle.bind(this);
+    this._openAccountEditor = this._openAccountEditor.bind(this);
+    this._closeAccountEditor = this._closeAccountEditor.bind(this);
+    this._onAccountSubmit = this._onAccountSubmit.bind(this);
     this._openAgentManager = this._openAgentManager.bind(this);
     this._closeAgentManager = this._closeAgentManager.bind(this);
     this._closeAgentEditor = this._closeAgentEditor.bind(this);
@@ -82,6 +91,7 @@ export class KikxApp extends HTMLElement {
     if (this._state.authToken) {
       this._connectRuntimeEvents();
       this._loadClientComponents();
+      this._loadAccount();
       this._loadAgents();
       this._loadSessions();
       this._loadTokenUsage();
@@ -107,6 +117,8 @@ export class KikxApp extends HTMLElement {
         ),
         this._state.authToken
           ? div.class('kikx-topbar__actions')(
+            span.class('kikx-account-chip')(this._state.account?.name || 'User'),
+            button.type('button').class('kikx-sign-out-button').onClick(this._openAccountEditor)('Account'),
             button.type('button').class('kikx-sign-out-button').onClick(this._openAgentManager)('Agents'),
             button.type('button').class('kikx-sign-out-button').onClick(this._signOut)('Sign out'),
           )
@@ -120,6 +132,9 @@ export class KikxApp extends HTMLElement {
 
     if (this._state.editingSessionID)
       shellChildren.push(this._buildSessionEditor());
+
+    if (this._state.accountEditorOpen)
+      shellChildren.push(this._buildAccountEditor());
 
     if (this._state.managingAgents)
       shellChildren.push(this._buildAgentManager());
@@ -208,6 +223,34 @@ export class KikxApp extends HTMLElement {
         .class('kikx-statusbar__tokens')
         .title('Total tracked tokens')
         .textContent.bindState((state) => formatTokenUsageTotal(state.totalTokensUsed), ['totalTokensUsed'])(),
+    );
+  }
+
+  _buildAccountEditor() {
+    return aeorModal.title('Account').onClose(this._closeAccountEditor)(
+      form.class('kikx-account-form').onSubmit(this._onAccountSubmit)(
+        label('Name'),
+        aeorInput
+          .type('text')
+          .name('name')
+          .placeholder('Display name')
+          .value.bindState((state) => state.accountFormName, ['accountFormName'])
+          .onInput(this._syncAccountName)(),
+        label('Email'),
+        aeorInput
+          .type('email')
+          .name('email')
+          .placeholder('you@example.com')
+          .value.bindState((state) => state.accountFormEmail, ['accountFormEmail'])
+          .onInput(this._syncAccountEmail)(),
+        div.class('modal-footer-actions')(
+          button.type('button').class('kikx-sign-out-button').onClick(this._closeAccountEditor)('Cancel'),
+          button.type('submit').class('kikx-send-button')('Save'),
+        ),
+        p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.accountStatusKind}`, ['accountStatusKind'])(
+          span.textContent.bindState((state) => state.accountStatus, ['accountStatus'])(),
+        ),
+      ),
     );
   }
 
@@ -637,6 +680,7 @@ export class KikxApp extends HTMLElement {
     this._render();
     this._connectRuntimeEvents();
     this._loadClientComponents();
+    this._loadAccount();
     this._loadAgents();
     this._loadSessions();
     this._loadTokenUsage();
@@ -647,6 +691,7 @@ export class KikxApp extends HTMLElement {
     sessionStorage.removeItem(AUTH_STORAGE_KEY);
     this._state.authToken = '';
     this._state.refreshToken = '';
+    resetAccountState(this._state);
     resetSessionState(this._state);
     setTokenUsage({}, 0, this._state);
     this._state.connectionStatus = 'Disconnected';
@@ -657,16 +702,18 @@ export class KikxApp extends HTMLElement {
   }
 
   async _getJSON(url) {
-    let response = await fetch(url);
+    let response = await fetch(url, {
+      headers: this._apiHeaders(),
+    });
     return readResponse(response);
   }
 
   async _postJSON(url, body) {
     let response = await fetch(url, {
       method: 'POST',
-      headers: {
+      headers: this._apiHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(body),
     });
     return readResponse(response);
@@ -675,12 +722,20 @@ export class KikxApp extends HTMLElement {
   async _patchJSON(url, body) {
     let response = await fetch(url, {
       method: 'PATCH',
-      headers: {
+      headers: this._apiHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(body),
     });
     return readResponse(response);
+  }
+
+  _apiHeaders(headers = {}) {
+    let next = { ...headers };
+    if (this._state.authToken)
+      next.Authorization = `Bearer ${this._state.authToken}`;
+
+    return next;
   }
 
   _syncDraft(event) {
@@ -689,6 +744,14 @@ export class KikxApp extends HTMLElement {
 
   _syncAuthEmail(event) {
     this._state.authEmail = event.target.value;
+  }
+
+  _syncAccountName(event) {
+    this._state.accountFormName = event.target.value;
+  }
+
+  _syncAccountEmail(event) {
+    this._state.accountFormEmail = event.target.value;
   }
 
   _syncEditingSessionTitle(event) {
@@ -718,6 +781,7 @@ export class KikxApp extends HTMLElement {
     try {
       let result = await this._postJSON(`/api/v1/sessions/${encodeURIComponent(this._state.selectedSessionID)}/messages`, {
         text: draft,
+        authorDisplayName: this._state.account?.name || null,
       });
       upsertSession(result.data.session, this._state);
       this._forceScrollToBottomAfterRender = true;
@@ -740,6 +804,66 @@ export class KikxApp extends HTMLElement {
 
     event.preventDefault();
     event.target?.form?.requestSubmit();
+  }
+
+  async _loadAccount(options = {}) {
+    try {
+      let result = await this._getJSON('/api/v1/account');
+      setAccount(result.data?.account || null, this._state);
+      if (options.syncForm === true)
+        setAccountFormFromAccount(this._state.account, this._state);
+      this._requestRender();
+    } catch (error) {
+      this._state.accountStatus = error.message;
+      this._state.accountStatusKind = 'error';
+      if (options.render !== false)
+        this._requestRender();
+    }
+  }
+
+  async _openAccountEditor() {
+    this._state.accountEditorOpen = true;
+    this._state.accountStatus = '';
+    this._state.accountStatusKind = 'pending';
+    setAccountFormFromAccount(this._state.account, this._state);
+    this._render();
+    await this._loadAccount({ syncForm: true, render: false });
+  }
+
+  _closeAccountEditor() {
+    this._state.accountEditorOpen = false;
+    this._render();
+  }
+
+  async _onAccountSubmit(event) {
+    event.preventDefault();
+
+    let name = this._state.accountFormName.trim();
+    let email = this._state.accountFormEmail.trim();
+    if (!name) {
+      this._state.accountStatus = 'Name is required';
+      this._state.accountStatusKind = 'error';
+      this._render();
+      return;
+    }
+
+    this._state.accountStatus = 'Saving account...';
+    this._state.accountStatusKind = 'pending';
+    this._requestRender();
+
+    try {
+      let result = await this._patchJSON('/api/v1/account', { name, email });
+      setAccount(result.data?.account || null, this._state);
+      setAccountFormFromAccount(this._state.account, this._state);
+      this._state.accountEditorOpen = false;
+      this._state.accountStatus = 'Account saved';
+      this._state.accountStatusKind = 'ready';
+      this._render();
+    } catch (error) {
+      this._state.accountStatus = error.message;
+      this._state.accountStatusKind = 'error';
+      this._render();
+    }
   }
 
   _openAgentManager() {
@@ -1097,15 +1221,19 @@ export class KikxApp extends HTMLElement {
     }
 
     let touchedFrameIDs = options.touchedFrameIDs instanceof Set ? options.touchedFrameIDs : null;
+    let wasAnchoredToBottom = this._frameListAnchoredToBottom || this._isFrameListNearBottom(frameList);
     let existingByID = new Map();
     for (let item of Array.from(frameStream.children).filter((node) => node.matches?.('kikx-frame-item[data-frame-id]')))
       existingByID.set(item.dataset.frameId, item);
 
     let cursor = frameStream.firstElementChild;
+    let insertedNewFrame = false;
     for (let frame of frames) {
       let item = existingByID.get(frame.id);
+      let isNewItem = false;
       if (!item) {
         item = this._createFrameItemElement(frame);
+        isNewItem = true;
       } else {
         existingByID.delete(frame.id);
         if (options.force === true || !touchedFrameIDs || touchedFrameIDs.has(frame.id))
@@ -1115,12 +1243,25 @@ export class KikxApp extends HTMLElement {
       if (item === cursor) {
         cursor = cursor.nextElementSibling;
       } else {
+        if (isNewItem)
+          prepareFrameEntryAnimation(item);
+
         frameStream.insertBefore(item, cursor);
+
+        if (isNewItem) {
+          insertedNewFrame = true;
+          startFrameEntryAnimation(item);
+        }
       }
     }
 
     for (let stale of existingByID.values())
       stale.remove();
+
+    if (insertedNewFrame && wasAnchoredToBottom) {
+      this._frameListAnchoredToBottom = true;
+      this._scheduleAnchoredFrameScroll();
+    }
   }
 
   _cleanupReactiveBindings(root = this) {
@@ -1173,6 +1314,16 @@ export class KikxApp extends HTMLElement {
     this._scrollFramesToBottomImmediate();
   }
 
+  _scheduleAnchoredFrameScroll() {
+    scheduleAnimationFrame(() => {
+      this._scrollFramesToBottomImmediate();
+    });
+
+    setTimeout(() => {
+      this._scrollFramesToBottomImmediate();
+    }, FRAME_ENTER_ANIMATION_MS + 40);
+  }
+
   _scrollFramesToBottomImmediate(frameList = this.querySelector('.kikx-frame-list')) {
     if (!frameList)
       return;
@@ -1197,6 +1348,30 @@ export class KikxApp extends HTMLElement {
   _onFrameListScroll(event) {
     this._frameListAnchoredToBottom = this._isFrameListNearBottom(event.currentTarget);
   }
+}
+
+function prepareFrameEntryAnimation(item) {
+  if (!item || prefersReducedMotion())
+    return;
+
+  item.classList.add('kikx-frame--animating', 'kikx-frame--entering');
+}
+
+function startFrameEntryAnimation(item) {
+  if (!item || prefersReducedMotion())
+    return;
+
+  scheduleAnimationFrame(() => {
+    item.classList.remove('kikx-frame--entering');
+    let finish = () => item.classList.remove('kikx-frame--animating');
+    item.addEventListener('transitionend', finish, { once: true });
+    setTimeout(finish, FRAME_ENTER_ANIMATION_MS + 80);
+  });
+}
+
+function prefersReducedMotion() {
+  return typeof matchMedia === 'function'
+    && matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 async function readResponse(response) {

@@ -28,7 +28,7 @@ export class SystemCommandPermissions extends Permissions {
    * @param {Record<string, any>} _options
    * @returns {Promise<boolean | null | never>}
    */
-  // eslint-disable-next-line no-unused-vars
+   
   async checkPermission(featureName, args, _options) {
     // featureName is `command:<name>` after translation
     let commandName = featureName.startsWith('command:')

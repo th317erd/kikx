@@ -1,4 +1,4 @@
-/* eslint-disable no-magic-numbers */
+ 
 
 import { Types }        from 'mythix';
 import { TaggableBase } from './taggable-base.mjs';

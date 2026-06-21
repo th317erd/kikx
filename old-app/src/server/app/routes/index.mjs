@@ -1,4 +1,4 @@
-/* eslint-disable key-spacing */
+ 
 
 // This module defines all application routes.
 // The "name" property on routes tells mythix

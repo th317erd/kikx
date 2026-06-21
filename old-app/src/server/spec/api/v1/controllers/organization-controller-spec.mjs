@@ -1,5 +1,5 @@
-/* eslint-disable max-classes-per-file */
-/* eslint-disable no-magic-numbers */
+ 
+ 
 
 import Path from 'node:path';
 import FileSystem from 'node:fs';
@@ -22,7 +22,7 @@ describe('OrganizationController', function() {
   let factory;
   let models;
 
-  // eslint-disable-next-line no-unused-vars
+   
   const { it, fit } = createRunners(() => app.getConnection());
 
   beforeAll(async () => {

@@ -20,6 +20,7 @@ Do not maintain a separate hand-copied prompt as the authoritative version. The 
 - `participantAgents`
 - `character`
 - `tokenUsage`
+- `sessionGeneration`
 - `isCoordinator`
 - `triggerFrameLines`
 - `routingLines`
@@ -31,17 +32,29 @@ The generated script tells the agent to:
 - decide whether to answer, stay silent, or use explicit forwarding for special workflows
 - treat token usage as real user cost
 - ask "Who is this message really for?" before tool use or visible response
-- pass strict speaking gates before any visible progress note or answer
+- pass strict speaking gates before any visible progress note or answer, with coordinators treated as default handlers for broad user messages
 - use `agent-null-response` when it should stay silent
+- presume user-authored messages are for the agent when it is the only invited agent, unless the message explicitly targets someone else
 - use explicit mentions, names, nicknames, turn-taking, and recent context to infer intended recipients
+- treat broad read-only requests such as "inspect this", "read the docs", "get familiar", "review the project", and "figure out what is going on" as permission to continue through obvious safe next steps
+- use a compact AGIS critical-thinking checklist:
+  - understand the user's intent and important uncertainty
+  - map producers, consumers, data flows, hidden dependencies, and aliases before changing shared systems
+  - consider alternatives and risks through engineer, cynic, QA, security, end-user, and minimalist perspectives
+  - test and verify before claiming done, with clear proof and sane timeouts
+  - review what was missed, forgotten, assumed, or left unverified before finalizing
 - before each tool call, use `agent-progress` with a short visible note describing only the next tool action
 - run one tool at a time, inspect the result, then ask "What is the next most important thing to do?"
+- after each tool result, choose the next safe, reversible, clearly implied, or necessary verification step without asking the user for permission
+- ask the user only for unresolved important decisions, important new concerns not already addressed, destructive or risky steps, real blockers, or significant resource costs
 - finish tool work before `agent-respond` or `agent-finalize`
+- avoid finalizing with "Should I continue?" when an obvious next safe step would move the requested task forward
 - run a completion self-review before finalizing
 - use `agent-respond-and-continue` when it must report progress and resume later
 - use `session_id` on registered task tools when the visible tool call/result belongs in another session
 - use `session-message` for visible cross-session agent-authored messages
-- use `agent-list`, `session-create`, `session-invite-agents`, `session-message`, and `session-frames` for delegated sub-agent work
+- use `agent-list`, `session-create`, `session-invite-agents`, `session-message`, and `session-frames` for delegated sub-agent work only from first-generation/root sessions
+- avoid creating sessions or inviting agents when already working inside a delegated child session
 - use `session-search`, `output-search`, and `database-fetch` for large history or stored tool-output lookup
 
 ## Completion Review Script
@@ -60,6 +73,12 @@ The generated script asks:
 - What could you have done better?
 
 If complete, the agent calls `agent-finalize`. If not complete, it explains the next work and continues with tools or `agent-respond-and-continue`.
+
+If the draft asks the user whether the agent should take an obvious next safe/read-only step, the script treats that draft as incomplete and tells the agent to continue instead.
+
+Direct provider `AgentMessage` outputs are treated as draft final answers too. Kikx routes them through completion review before publishing them.
+
+After completion review, Kikx also applies a deterministic deferral guard. If the final text is an avoidable permission/continuation question such as "should I continue?", "would you like me to...", or "which step should I do next?" for a visible user turn, Kikx converts the turn into an immediate `respond-and-continue` instead of stopping for another user confirmation.
 
 ## Routing Script
 

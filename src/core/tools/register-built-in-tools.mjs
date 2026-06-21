@@ -1,6 +1,12 @@
 'use strict';
 
 import { ExecTool } from './exec-tool.mjs';
+import { FeedbackReportTool } from './feedback-tool.mjs';
+import {
+  CwdClearTool,
+  CwdGetTool,
+  CwdSetTool,
+} from './cwd-tools.mjs';
 import {
   ExecGrepTool,
   ExecKillTool,
@@ -23,6 +29,16 @@ import { DatabaseFetchTool, DatabaseSearchTool } from './database-tools.mjs';
 import { OutputGrepTool } from './tool-output-grep-tool.mjs';
 import { OutputReadTool } from './tool-output-get-tool.mjs';
 import { OutputSearchTool } from './tool-output-search-tool.mjs';
+import {
+  TodoAddTool,
+  TodoClearTool,
+  TodoCompleteTool,
+  TodoDeleteTool,
+  TodoFocusClearTool,
+  TodoFocusSetTool,
+  TodoGetTool,
+  TodoUpdateTool,
+} from './todo-tools.mjs';
 import { WebFetchTool } from './web-fetch-tool.mjs';
 import { WebSearchTool } from './web-search-tool.mjs';
 import { WriteFileTool } from './write-file-tool.mjs';
@@ -38,6 +54,10 @@ export const BUILT_IN_TOOLS = [
   [ 'exec-read', ExecReadTool ],
   [ 'exec-grep', ExecGrepTool ],
   [ 'exec-kill', ExecKillTool ],
+  [ 'cwd-get', CwdGetTool ],
+  [ 'cwd-set', CwdSetTool ],
+  [ 'cwd-clear', CwdClearTool ],
+  [ 'feedback-report', FeedbackReportTool ],
   [ 'database-search', DatabaseSearchTool ],
   [ 'database-fetch', DatabaseFetchTool ],
   [ 'output-read', OutputReadTool ],
@@ -51,6 +71,14 @@ export const BUILT_IN_TOOLS = [
   [ 'session-frames', SessionFramesTool ],
   [ 'session-search', SessionSearchTool ],
   [ 'session-message', SessionMessageTool ],
+  [ 'todo-get', TodoGetTool ],
+  [ 'todo-add', TodoAddTool ],
+  [ 'todo-update', TodoUpdateTool ],
+  [ 'todo-complete', TodoCompleteTool ],
+  [ 'todo-delete', TodoDeleteTool ],
+  [ 'todo-clear', TodoClearTool ],
+  [ 'todo-focus-set', TodoFocusSetTool ],
+  [ 'todo-focus-clear', TodoFocusClearTool ],
 ];
 
 const BUILT_IN_FRAME_COMPONENTS = [

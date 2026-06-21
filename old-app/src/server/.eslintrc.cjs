@@ -1,4 +1,4 @@
-/* eslint-disable no-magic-numbers */
+ 
 
 module.exports = {
   'env': {

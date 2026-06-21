@@ -34,7 +34,7 @@ export class Notification extends ProcessableBase {
       index:        true,
     },
     content: {
-      // eslint-disable-next-line no-magic-numbers
+       
       type:         Types.TEXT(65565),
       allowNull:    true,
       index:        false,

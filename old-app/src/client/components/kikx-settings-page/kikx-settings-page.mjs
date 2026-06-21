@@ -464,7 +464,7 @@ class KikxSettingsPage extends HTMLElement {
 
         this._pendingAvatar = null;
       } catch (error) {
-        // eslint-disable-next-line no-console
+         
         console.error('Profile update failed:', error);
       }
     });
