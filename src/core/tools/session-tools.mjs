@@ -177,10 +177,18 @@ export class SessionCreateTool extends SessionTool {
         type: 'boolean',
         description: 'When true, include the calling agent as a participant in the new session.',
       },
+      initialMessage: {
+        type: 'string',
+        description: 'Optional first visible message to seed the new session. For delegated sub-agent work, use this as a compact orientation handoff: project name, cwd, goal, current status, constraints, and first assignment.',
+      },
+      reuseExisting: {
+        type: 'boolean',
+        description: 'For agent-created child sessions, reuse an existing same-title child under the same parent/creator. Defaults to true; set false only when a separate duplicate-title session is intentional.',
+      },
     },
     additionalProperties: false,
   };
-  static help = 'Use session-create to create a new session. Set includeSelf when you should participate in that new session.';
+  static help = 'Use session-create to create a new session. Set includeSelf when you should participate in that new session. For delegated sub-agent work, set initialMessage to a compact orienting handoff with project name, cwd, parent goal, current status, constraints, and the first assignment. Agent-created child sessions reuse an existing same-title child under the same parent/creator by default; set reuseExisting false only when you intentionally need a separate duplicate-title session.';
 
   async _execute(params = {}) {
     this.assertFirstGenerationDelegation('session-create');
@@ -200,8 +208,25 @@ export class SessionCreateTool extends SessionTool {
 
     let sourceSession = this.sourceSession();
     let createdByAgentID = normalizeOptionalString(this.context.agent?.id);
+    let title = typeof params.title === 'string' && params.title.trim() ? params.title.trim() : '';
+    if (params.reuseExisting !== false) {
+      let reusable = await findReusableChildSession(this.frameRuntime(), {
+        title,
+        parentSessionID: sourceSession?.id || null,
+        createdByAgentID,
+      });
+      if (reusable) {
+        return {
+          session: sanitizeSession(reusable),
+          created: false,
+          reusedExisting: true,
+          initialFrame: null,
+        };
+      }
+    }
+
     let session = await this.frameRuntime().createSession({
-      ...(typeof params.title === 'string' && params.title.trim() ? { title: params.title.trim() } : {}),
+      ...(title ? { title } : {}),
       participantAgentIDs,
       ...(createdByAgentID ? {
         createdByAgentID,
@@ -210,9 +235,23 @@ export class SessionCreateTool extends SessionTool {
       } : {}),
     });
 
+    let initialMessage = normalizeOptionalString(params.initialMessage);
+    let initialFrame = null;
+    if (initialMessage) {
+      let posted = await postAgentSessionMessage({
+        runtime: this.frameRuntime(),
+        context: this.context,
+        sessionID: session.id,
+        text: initialMessage,
+      });
+      initialFrame = posted.frame;
+    }
+
     return {
       session: sanitizeSession(session),
       created: true,
+      reusedExisting: false,
+      initialFrame,
     };
   }
 }
@@ -441,47 +480,69 @@ export class SessionMessageTool extends SessionTool {
     let text = normalizeRequiredString(params.text, 'text');
     let runtime = this.frameRuntime();
     let sessionID = requireTargetSessionID(this.targetSessionID(params));
-    let entry = await runtime.ensureSessionEntry(sessionID);
-    let stamp = typeof runtime.nextClockStamp === 'function'
-      ? runtime.nextClockStamp()
-      : { at: runtime.clock?.() || Date.now(), clock: null };
-    let now = stamp.at;
-    let frame = {
-      id: runtime.idGenerator?.() || entry.frameEngine.idGenerator?.() || `session-message:${now}`,
-      type: 'AgentMessage',
+    return await postAgentSessionMessage({
+      runtime,
+      context: this.context,
       sessionID,
-      interactionID: params.interactionID || this.context.frame?.interactionID || runtime.idGenerator?.() || `interaction:${now}`,
-      parentID: null,
-      authorType: 'agent',
-      authorID: this.context.agent?.id || params._agentID || null,
-      authorDisplayName: this.context.agent?.name || this.context.agent?.id || params._agentID || null,
-      timestamp: now,
-      createdAt: now,
-      updatedAt: now,
-      createdClock: stamp.clock,
-      updatedClock: stamp.clock,
-      hidden: false,
-      deleted: false,
-      content: {
-        text,
-        status: 'complete',
-        sourceSessionID: normalizeOptionalString(params._sourceSessionID || this.context.sourceSession?.id || this.context.frame?.sessionID),
-        sourceFrameID: normalizeOptionalString(params._frameID || this.context.frame?.id),
-      },
-    };
-
-    let merged = entry.frameEngine.merge([ frame ], {
-      authorType: 'agent',
-      authorID: frame.authorID,
+      text,
+      interactionID: params.interactionID,
+      agentID: params._agentID,
+      sourceSessionID: params._sourceSessionID,
+      sourceFrameID: params._frameID,
     });
-    await runtime.frameStore?.flush?.();
-
-    return {
-      sessionID,
-      frame: sanitizeFrame(merged[0] || entry.frameEngine.get?.(frame.id) || frame),
-      posted: true,
-    };
   }
+}
+
+async function postAgentSessionMessage({
+  runtime,
+  context = {},
+  sessionID,
+  text,
+  interactionID = null,
+  agentID = null,
+  sourceSessionID = null,
+  sourceFrameID = null,
+}) {
+  let entry = await runtime.ensureSessionEntry(sessionID);
+  let stamp = typeof runtime.nextClockStamp === 'function'
+    ? runtime.nextClockStamp()
+    : { at: runtime.clock?.() || Date.now(), clock: null };
+  let now = stamp.at;
+  let frame = {
+    id: runtime.idGenerator?.() || entry.frameEngine.idGenerator?.() || `session-message:${now}`,
+    type: 'AgentMessage',
+    sessionID,
+    interactionID: interactionID || context.frame?.interactionID || runtime.idGenerator?.() || `interaction:${now}`,
+    parentID: null,
+    authorType: 'agent',
+    authorID: context.agent?.id || agentID || null,
+    authorDisplayName: context.agent?.name || context.agent?.id || agentID || null,
+    timestamp: now,
+    createdAt: now,
+    updatedAt: now,
+    createdClock: stamp.clock,
+    updatedClock: stamp.clock,
+    hidden: false,
+    deleted: false,
+    content: {
+      text,
+      status: 'complete',
+      sourceSessionID: normalizeOptionalString(sourceSessionID || context.sourceSession?.id || context.frame?.sessionID),
+      sourceFrameID: normalizeOptionalString(sourceFrameID || context.frame?.id),
+    },
+  };
+
+  let merged = entry.frameEngine.merge([ frame ], {
+    authorType: 'agent',
+    authorID: frame.authorID,
+  });
+  await runtime.frameStore?.flush?.();
+
+  return {
+    sessionID,
+    frame: sanitizeFrame(merged[0] || entry.frameEngine.get?.(frame.id) || frame),
+    posted: true,
+  };
 }
 
 function sanitizeSession(session = {}) {
@@ -629,6 +690,39 @@ function uniqueStrings(values) {
   }
 
   return output;
+}
+
+async function findReusableChildSession(runtime, { title, parentSessionID, createdByAgentID }) {
+  let normalizedTitle = normalizeOptionalString(title).toLowerCase();
+  let normalizedParentID = normalizeOptionalString(parentSessionID);
+  let normalizedAgentID = normalizeOptionalString(createdByAgentID);
+  if (!normalizedTitle || !normalizedParentID || !normalizedAgentID || typeof runtime?.listSessions !== 'function')
+    return null;
+
+  let offset = 0;
+  let limit = 100;
+  while (offset < 1000) {
+    let sessions = await runtime.listSessions({ limit, offset });
+    for (let session of sessions || []) {
+      if (normalizeOptionalString(session.title).toLowerCase() !== normalizedTitle)
+        continue;
+
+      if (normalizeOptionalString(session.parentSessionID) !== normalizedParentID)
+        continue;
+
+      if (normalizeOptionalString(session.createdByAgentID) !== normalizedAgentID)
+        continue;
+
+      return session;
+    }
+
+    if (!Array.isArray(sessions) || sessions.length < limit)
+      break;
+
+    offset += limit;
+  }
+
+  return null;
 }
 
 function normalizeRequiredString(value, fieldName) {

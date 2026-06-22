@@ -35,15 +35,15 @@ class CwdTool extends PluginInterface {
 
 export class CwdGetTool extends CwdTool {
   static featureName = 'cwd-get';
-  static displayName = 'Get shell cwd';
-  static description = 'Read this agent session default working directory for shell exec.';
+  static displayName = 'Get cwd';
+  static description = 'Read this agent session default working directory for shell and file tools.';
   static frameType = 'CwdGetToolFrame';
   static inputSchema = {
     type: 'object',
     properties: {},
     additionalProperties: false,
   };
-  static help = 'Use cwd-get to inspect the current session-specific shell working directory that exec will use by default.';
+  static help = 'Use cwd-get to inspect the current session-specific working directory that exec, read-file, and write-file use by default.';
 
   async _execute(params = {}) {
     return await this.cwdStore().getCWD(this.agentID(params), this.sessionID(params));
@@ -52,21 +52,21 @@ export class CwdGetTool extends CwdTool {
 
 export class CwdSetTool extends CwdTool {
   static featureName = 'cwd-set';
-  static displayName = 'Set shell cwd';
-  static description = 'Set this agent session default working directory for shell exec.';
+  static displayName = 'Set cwd';
+  static description = 'Set this agent session default working directory for shell and file tools.';
   static frameType = 'CwdSetToolFrame';
   static inputSchema = {
     type: 'object',
     properties: {
       cwd: {
         type: 'string',
-        description: 'Directory to use as the default cwd for future exec calls in this session. Relative paths resolve from the current cwd.',
+        description: 'Directory to use as the default cwd for future exec, read-file, and write-file calls in this session. Relative paths resolve from the current cwd.',
       },
     },
     required: [ 'cwd' ],
     additionalProperties: false,
   };
-  static help = 'Use cwd-set to change the default working directory for future exec calls in this session. This behaves like cd: relative paths resolve from the current session cwd. The directory must exist.';
+  static help = 'Use cwd-set to change the default working directory for future exec, read-file, and write-file calls in this session. This behaves like cd: relative paths resolve from the current session cwd. The directory must exist.';
 
   async _execute(params = {}) {
     return await this.cwdStore().setCWD(this.agentID(params), this.sessionID(params), params.cwd || params.path || params.directory);
@@ -75,15 +75,15 @@ export class CwdSetTool extends CwdTool {
 
 export class CwdClearTool extends CwdTool {
   static featureName = 'cwd-clear';
-  static displayName = 'Clear shell cwd';
-  static description = 'Clear this agent session default working directory and return exec to the server base cwd.';
+  static displayName = 'Clear cwd';
+  static description = 'Clear this agent session default working directory and return shell/file tools to the server base cwd.';
   static frameType = 'CwdClearToolFrame';
   static inputSchema = {
     type: 'object',
     properties: {},
     additionalProperties: false,
   };
-  static help = 'Use cwd-clear to remove your session-specific exec cwd and return to the Kikx server base cwd.';
+  static help = 'Use cwd-clear to remove your session-specific cwd and return exec, read-file, and write-file to the Kikx server base cwd.';
 
   async _execute(params = {}) {
     return await this.cwdStore().clearCWD(this.agentID(params), this.sessionID(params));

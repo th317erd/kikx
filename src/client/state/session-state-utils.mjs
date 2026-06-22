@@ -72,9 +72,7 @@ export function setSessionFramesState(state, sessionID, frames) {
       ...next.sessionDetailsByID,
       [sessionID]: {
         ...previous,
-        messageCount: typeof previous.messageCount === 'number'
-          ? previous.messageCount
-          : countMessageFrames(safeFrames),
+        messageCount: mergeLoadedFrameCount(previous.messageCount, countMessageFrames(safeFrames)),
       },
     },
   };
@@ -321,7 +319,25 @@ function isToolResultFrame(frame) {
 }
 
 export function countMessageFrames(frames) {
-  return (Array.isArray(frames) ? frames : []).filter((frame) => frame?.type === 'UserMessage').length;
+  return (Array.isArray(frames) ? frames : []).filter(isVisibleThreadFrame).length;
+}
+
+function mergeLoadedFrameCount(previousCount, loadedFrameCount) {
+  let loaded = Number.isFinite(loadedFrameCount) && loadedFrameCount > 0
+    ? Math.trunc(loadedFrameCount)
+    : 0;
+
+  if (typeof previousCount === 'number' && Number.isFinite(previousCount) && previousCount >= 0)
+    return Math.max(Math.trunc(previousCount), loaded);
+
+  return loaded;
+}
+
+function isVisibleThreadFrame(frame) {
+  return Boolean(frame?.id)
+    && frame.hidden !== true
+    && frame.deleted !== true
+    && frame.phantom !== true;
 }
 
 function mergeSessionDetail(previous = {}, next = {}) {

@@ -1,6 +1,7 @@
 'use strict';
 
 import { PluginInterface } from '../plugins/index.mjs';
+import { resolveContextService, resolveFileToolParams } from './file-tool-cwd.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
 
 export class WriteFileTool extends PluginInterface {
@@ -16,7 +17,7 @@ export class WriteFileTool extends PluginInterface {
     properties: {
       path: {
         type: 'string',
-        description: 'Absolute path, or a path relative to the Kikx server working directory.',
+        description: 'Absolute path, or a path relative to your session cwd when set with cwd-set.',
       },
       content: {
         type: 'string',
@@ -40,10 +41,10 @@ export class WriteFileTool extends PluginInterface {
     required: [ 'path', 'content' ],
     additionalProperties: false,
   };
-  static help = 'Use write-file to write content to a local file. mode defaults to overwrite; use append to add to an existing file, or create to fail if the file already exists. The tool returns write metadata only, while the full tool result is still stored in AeorDB.';
+  static help = 'Use write-file to write content to a local file. Relative paths resolve from your session cwd when one is set with cwd-set; otherwise they resolve from the Kikx server base cwd. mode defaults to overwrite; use append to add to an existing file, or create to fail if the file already exists. The tool returns write metadata only, while the full tool result is still stored in AeorDB.';
 
   async _execute(params = {}) {
-    return await resolveFileAccess(this.context).writeFile(params);
+    return await resolveFileAccess(this.context).writeFile(await resolveFileToolParams(params, this.context));
   }
 }
 
@@ -53,20 +54,4 @@ function resolveFileAccess(context = {}) {
     throw new Error('write-file requires a fileAccess service');
 
   return service;
-}
-
-function resolveContextService(context, name) {
-  let appContext = context.services?.context || context.context;
-  if (appContext?.has?.(name) && typeof appContext.require === 'function')
-    return appContext.require(name);
-
-  if (typeof appContext?.require === 'function') {
-    try {
-      return appContext.require(name);
-    } catch (_error) {
-      return null;
-    }
-  }
-
-  return null;
 }

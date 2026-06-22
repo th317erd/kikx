@@ -242,6 +242,42 @@ test('ReadFileTool reads local files through the file access service', async () 
   assert.equal(result.content, 'hello world\n');
 });
 
+test('ReadFileTool uses the agent session cwd for relative paths', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-read-file-cwd-'));
+  let serverBase = path.join(dir, 'server-base');
+  let workspace = path.join(dir, 'workspace');
+  await fs.mkdir(serverBase);
+  await fs.mkdir(workspace);
+  let filePath = path.join(workspace, 'sample.txt');
+  await fs.writeFile(filePath, 'from workspace\n', 'utf8');
+  let agentCwdStore = {
+    async getCWD(agentID, sessionID) {
+      return {
+        agentID,
+        sessionID,
+        cwd: workspace,
+        configured: true,
+      };
+    },
+  };
+
+  let tool = new ReadFileTool({
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_1' },
+    services: {
+      fileAccess: new LocalFileAccessService({ cwd: serverBase }),
+      agentCwdStore,
+    },
+  });
+  let result = await tool.execute({
+    path: 'sample.txt',
+  });
+
+  assert.equal(result.requestedPath, 'sample.txt');
+  assert.equal(result.path, filePath);
+  assert.equal(result.content, 'from workspace\n');
+});
+
 test('ReadFileTool reads 1-based inclusive line ranges', async () => {
   let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-read-lines-'));
   let filePath = path.join(dir, 'sample.txt');
@@ -344,6 +380,47 @@ test('WriteFileTool writes local files through the file access service', async (
   assert.equal(result.appended, false);
   assert.equal(result.createDirectories, true);
   assert.equal(await fs.readFile(filePath, 'utf8'), 'hello world\n');
+});
+
+test('WriteFileTool uses the agent session cwd for relative paths', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-write-file-cwd-'));
+  let serverBase = path.join(dir, 'server-base');
+  let workspace = path.join(dir, 'workspace');
+  await fs.mkdir(serverBase);
+  await fs.mkdir(workspace);
+  let workspaceFile = path.join(workspace, 'nested', 'sample.txt');
+  let serverBaseFile = path.join(serverBase, 'nested', 'sample.txt');
+  let agentCwdStore = {
+    async getCWD(agentID, sessionID) {
+      return {
+        agentID,
+        sessionID,
+        cwd: workspace,
+        configured: true,
+      };
+    },
+  };
+
+  let tool = new WriteFileTool({
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_1' },
+    services: {
+      fileAccess: new LocalFileAccessService({ cwd: serverBase }),
+      agentCwdStore,
+    },
+  });
+  let result = await tool.execute({
+    path: 'nested/sample.txt',
+    content: 'from workspace\n',
+  });
+
+  assert.equal(result.requestedPath, 'nested/sample.txt');
+  assert.equal(result.path, workspaceFile);
+  assert.equal(await fs.readFile(workspaceFile, 'utf8'), 'from workspace\n');
+  await assert.rejects(
+    () => fs.stat(serverBaseFile),
+    /ENOENT/,
+  );
 });
 
 test('WriteFileTool appends and create mode refuses existing files', async () => {
@@ -1036,6 +1113,9 @@ test('ToolExecutionService records tool frames and output metadata in session_id
 
 test('Session tools list, create, inspect frames, and post messages through FrameRuntime', async () => {
   let targetEngine = createRecordingFrameEngine();
+  let sessionEngines = new Map([
+    [ 'ses_2', targetEngine ],
+  ]);
   let sessions = [
     { id: 'ses_1', title: 'Source', messageCount: 1, participantAgentIDs: [ 'agent_1' ], generation: 0 },
     { id: 'ses_2', title: 'Target', messageCount: 2, participantAgentIDs: [ 'agent_2' ], generation: 0 },
@@ -1068,8 +1148,9 @@ test('Session tools list, create, inspect frames, and post messages through Fram
       return sessions.slice(offset || 0, (offset || 0) + (limit || sessions.length));
     },
     async createSession(input = {}) {
+      let id = `ses_${sessions.length + 1}`;
       let session = {
-        id: `ses_${sessions.length + 1}`,
+        id,
         title: input.title || `Session ${sessions.length + 1}`,
         participantAgentIDs: input.participantAgentIDs || [],
         createdByAgentID: input.createdByAgentID || null,
@@ -1078,6 +1159,7 @@ test('Session tools list, create, inspect frames, and post messages through Fram
         messageCount: 0,
       };
       sessions.push(session);
+      sessionEngines.set(id, createRecordingFrameEngine());
       return session;
     },
     async inviteAgentToSession(sessionID, agent) {
@@ -1105,7 +1187,7 @@ test('Session tools list, create, inspect frames, and post messages through Fram
 
       return {
         session,
-        frameEngine: sessionID === 'ses_2' ? targetEngine : createRecordingFrameEngine(),
+        frameEngine: sessionEngines.get(sessionID) || createRecordingFrameEngine(),
       };
     },
     async listFrames(sessionID, options = {}) {
@@ -1158,12 +1240,39 @@ test('Session tools list, create, inspect frames, and post messages through Fram
     title: 'Branch',
     includeSelf: true,
     participantAgents: [ 'Agent Two' ],
+    initialMessage: [
+      'Project: Kikx',
+      'CWD: /home/wyatt/Projects/kikx-workspace/kikx',
+      'Goal: review session count handling.',
+      'Current status: code is patched; verify tests.',
+      'First assignment: inspect the current diff and report risks.',
+    ].join('\n'),
   });
   assert.equal(created.session.title, 'Branch');
   assert.deepEqual(created.session.participantAgentIDs, [ 'agent_2', 'agent_1' ]);
   assert.equal(created.session.createdByAgentID, 'agent_1');
   assert.equal(created.session.parentSessionID, 'ses_1');
   assert.equal(created.session.generation, 1);
+  assert.equal(created.initialFrame.type, 'AgentMessage');
+  assert.equal(created.initialFrame.sessionID, created.session.id);
+  assert.equal(created.initialFrame.authorDisplayName, 'Agent One');
+  assert.match(created.initialFrame.content.text, /Project: Kikx/);
+  assert.match(created.initialFrame.content.text, /CWD: \/home\/wyatt\/Projects\/kikx-workspace\/kikx/);
+  assert.match(created.initialFrame.content.text, /First assignment:/);
+  assert.equal(sessionEngines.get(created.session.id).frames.length, 1);
+  assert.equal(sessionEngines.get(created.session.id).frames[0].content.sourceSessionID, 'ses_1');
+
+  let reused = await new SessionCreateTool(context).execute({
+    title: 'Branch',
+    includeSelf: true,
+    participantAgents: [ 'Agent Two' ],
+    initialMessage: 'Duplicate handoff should not be posted.',
+  });
+  assert.equal(reused.session.id, created.session.id);
+  assert.equal(reused.created, false);
+  assert.equal(reused.reusedExisting, true);
+  assert.equal(reused.initialFrame, null);
+  assert.equal(sessionEngines.get(created.session.id).frames.length, 1);
 
   let invited = await new SessionInviteAgentsTool(context).execute({
     session_id: created.session.id,
@@ -1188,7 +1297,7 @@ test('Session tools list, create, inspect frames, and post messages through Fram
   assert.equal(targetEngine.frames[0].authorDisplayName, 'Agent One');
   assert.equal(targetEngine.frames[0].content.text, 'Cross-session hello.');
   assert.equal(targetEngine.frames[0].content.sourceSessionID, 'ses_1');
-  assert.equal(runtime.frameStore.flushCount, 1);
+  assert.equal(runtime.frameStore.flushCount, 2);
 });
 
 test('Session delegation tools allow only first-generation source sessions', async () => {

@@ -1,6 +1,7 @@
 'use strict';
 
 import { PluginInterface } from '../plugins/index.mjs';
+import { resolveContextService, resolveFileToolParams } from './file-tool-cwd.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
 
 export class ReadFileTool extends PluginInterface {
@@ -16,7 +17,7 @@ export class ReadFileTool extends PluginInterface {
     properties: {
       path: {
         type: 'string',
-        description: 'Absolute path, or a path relative to the Kikx server working directory.',
+        description: 'Absolute path, or a path relative to your session cwd when set with cwd-set.',
       },
       encoding: {
         type: 'string',
@@ -47,10 +48,10 @@ export class ReadFileTool extends PluginInterface {
     required: [ 'path' ],
     additionalProperties: false,
   };
-  static help = 'Use read-file to inspect a local file by path. Use startLine/endLine for 1-based inclusive line ranges, or startCharacter/endCharacter for 0-based character ranges with an exclusive end. Do not mix line and character ranges. The full tool output is stored in AeorDB; very large results will be returned as a tool output pointer that you can read with output-read.';
+  static help = 'Use read-file to inspect a local file by path. Relative paths resolve from your session cwd when one is set with cwd-set; otherwise they resolve from the Kikx server base cwd. Use startLine/endLine for 1-based inclusive line ranges, or startCharacter/endCharacter for 0-based character ranges with an exclusive end. Do not mix line and character ranges. The full tool output is stored in AeorDB; very large results will be returned as a tool output pointer that you can read with output-read.';
 
   async _execute(params = {}) {
-    return await resolveFileAccess(this.context).readFile(params);
+    return await resolveFileAccess(this.context).readFile(await resolveFileToolParams(params, this.context));
   }
 }
 
@@ -60,20 +61,4 @@ function resolveFileAccess(context = {}) {
     throw new Error('read-file requires a fileAccess service');
 
   return service;
-}
-
-function resolveContextService(context, name) {
-  let appContext = context.services?.context || context.context;
-  if (appContext?.has?.(name) && typeof appContext.require === 'function')
-    return appContext.require(name);
-
-  if (typeof appContext?.require === 'function') {
-    try {
-      return appContext.require(name);
-    } catch (_error) {
-      return null;
-    }
-  }
-
-  return null;
 }

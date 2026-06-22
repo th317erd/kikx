@@ -294,8 +294,75 @@ test('FrameRuntime appends user messages through FrameEngine and AeorDBFrameStor
   assert.deepEqual((await runtime.listFrames('ses_1')).map((frame) => frame.id), [ 'msg_1' ]);
   assert.ok(aeordb.calls.some((call) => call.path === '/kikx/sessions/ses_1/commits/0000000000000001-commit_1.json'));
   assert.ok(aeordb.calls.some((call) => call.path === '/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-msg_1.json'));
-  assert.equal(aeordb.calls.at(-1).path, '/kikx/sessions/ses_1/session.json');
-  assert.equal(aeordb.calls.at(-1).body.messageCount, 1);
+  let sessionSave = aeordb.calls.findLast((call) => call.path === '/kikx/sessions/ses_1/session.json');
+  assert.equal(sessionSave.body.messageCount, 1);
+});
+
+test('FrameRuntime keeps session manifests synced for agent-authored frame commits', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({ aeordb, ids: [ 'ses_1', 'commit_1' ], now: 1000 });
+
+  await runtime.createSession({ title: 'Child' });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'agent_msg_1',
+    type: 'AgentMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    parentID: null,
+    authorType: 'agent',
+    authorID: 'agent_1',
+    authorDisplayName: 'Agent One',
+    timestamp: 2_000_000,
+    createdAt: 2_000_000,
+    updatedAt: 2_000_000,
+    hidden: false,
+    deleted: false,
+    content: { text: 'hello from a child session' },
+  }], {
+    authorType: 'agent',
+    authorID: 'agent_1',
+  });
+
+  await tick();
+  await tick();
+
+  let manifest = await aeordb.getFile('/kikx/sessions/ses_1/session.json');
+  assert.equal(manifest.messageCount, 1);
+  assert.equal(manifest.updatedAt, 2_000_000);
+});
+
+test('FrameRuntime repairs stale message counts when persisted frames are hydrated', async () => {
+  let aeordb = createClient();
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', {
+    id: 'ses_1',
+    title: 'Persisted child',
+    messageCount: 0,
+    updatedAt: 1_000_000,
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-AgentMessage-agent_msg_1.json', {
+    id: 'agent_msg_1',
+    type: 'AgentMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'agent',
+    authorID: 'agent_1',
+    timestamp: 2_000_000,
+    createdAt: 2_000_000,
+    updatedAt: 2_000_000,
+    hidden: false,
+    deleted: false,
+    content: { text: 'persisted child frame' },
+  });
+  let runtime = createRuntime({ aeordb, ids: [ 'commit_1' ] });
+
+  await runtime.ensureSessionEntry('ses_1');
+  await tick();
+  await tick();
+
+  let manifest = await aeordb.getFile('/kikx/sessions/ses_1/session.json');
+  assert.equal(manifest.messageCount, 1);
+  assert.equal(manifest.updatedAt, 2_000_000);
 });
 
 test('FrameRuntime idempotently persists invited agent participants on session manifests', async () => {
@@ -393,6 +460,51 @@ test('FrameRuntime routes user messages through the configured frame router', as
   assert.equal(routed[0].sessionID, 'ses_1');
   assert.equal(routed[0].commitID, 'commit_1');
   assert.equal(routed[0].services.frameRuntime, runtime);
+});
+
+test('FrameRuntime saves user message counts without waiting for background agent work', async () => {
+  let releaseBackground;
+  let backgroundStarted = false;
+  let backgroundTask = new Promise((resolve) => {
+    releaseBackground = resolve;
+  });
+  let aeordb = createClient();
+  let router = new FrameRouter({ logger: quietLogger() });
+
+  class BackgroundPlugin {
+    constructor(context = {}) {
+      this.context = context;
+    }
+
+    async process(next) {
+      backgroundStarted = true;
+      router.runBackground(backgroundTask);
+      await next(this.context);
+    }
+  }
+
+  router.registerSelector('Type:UserMessage', BackgroundPlugin, 'background');
+  let runtime = new FrameRuntime({
+    aeordb,
+    frameRouter: router,
+    clock: () => 1000,
+    idGenerator: createIDGenerator([ 'ses_1', 'int_1', 'msg_1', 'commit_1' ]),
+  });
+
+  await runtime.createSession({ title: 'Scratch' });
+  let pending = runtime.appendUserMessage('ses_1', { text: 'hello' });
+  await tick();
+  await tick();
+
+  assert.equal(backgroundStarted, true);
+  assert.equal(await promiseState(pending), 'pending');
+  assert.equal((await aeordb.getFile('/kikx/sessions/ses_1/session.json')).messageCount, 1);
+  releaseBackground();
+
+  let result = await pending;
+  assert.equal(result.session.messageCount, 1);
+  assert.equal((await aeordb.getFile('/kikx/sessions/ses_1/session.json')).messageCount, 1);
+  await router.flush();
 });
 
 test('FrameRuntime defers frames with scheduledAt until the scheduled queue dispatches them', async () => {
@@ -854,6 +966,13 @@ test('FrameRuntime surfaces AeorDB persistence failures', async () => {
 
 function tick() {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+async function promiseState(promise) {
+  return await Promise.race([
+    promise.then(() => 'resolved', () => 'rejected'),
+    tick().then(() => 'pending'),
+  ]);
 }
 
 function createIDGenerator(ids = []) {

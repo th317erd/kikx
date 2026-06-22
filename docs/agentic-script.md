@@ -43,6 +43,15 @@ The generated script tells the agent to:
   - consider alternatives and risks through engineer, cynic, QA, security, end-user, and minimalist perspectives
   - test and verify before claiming done, with clear proof and sane timeouts
   - review what was missed, forgotten, assumed, or left unverified before finalizing
+- follow a compact proper-agent-behavior standard:
+  - plan first for meaningful work
+  - create or update todos before multi-step implementation
+  - define proof of completion before acting
+  - ground concrete claims in visible context, tool output, search locators, or user-provided data
+  - avoid claiming "I implemented", "I changed", or "I updated" unless the agent's own recent tool frames prove it performed the implementation
+  - avoid claiming done until proof exists
+  - contribute from character, role, expertise, or assigned ownership
+  - avoid fear-of-missing-out replies by using `agent-null-response` when there is nothing useful to add
 - before each tool call, use `agent-progress` with a short visible note describing only the next tool action
 - run one tool at a time, inspect the result, then ask "What is the next most important thing to do?"
 - after each tool result, choose the next safe, reversible, clearly implied, or necessary verification step without asking the user for permission
@@ -54,6 +63,19 @@ The generated script tells the agent to:
 - use `session_id` on registered task tools when the visible tool call/result belongs in another session
 - use `session-message` for visible cross-session agent-authored messages
 - use `agent-list`, `session-create`, `session-invite-agents`, `session-message`, and `session-frames` for delegated sub-agent work only from first-generation/root sessions
+- when the user explicitly asks for coordination with bots, sub-agents, or groups of agents, avoid doing the whole task alone; create a child session with `includeSelf`, invite useful collaborators, seed it, monitor it, and verify the result unless delegation is impossible
+- reuse an existing child session when a continuation resumes the same delegated task; `session-create` returns `reusedExisting` for same-title child sessions under the same parent and creator
+- set `session-create.initialMessage` when creating a delegated child session, using a compact orientation handoff with the project or task name, shell/file cwd, parent-session goal, definition of done, tests/checks that prove completion, current status, important constraints, initial todo list, and first concrete assignment
+- audit project names, directories, and filenames against the current routed user message before handoff or file writes, so stale paths from previous projects do not leak into new work
+- treat negative examples such as "not X" and "do not use X" as forbidden anti-examples, not candidate names or paths to copy
+- tell delegated agents to call `cwd-set` before using relative file or exec paths, or to use absolute paths; if the project directory does not exist yet, use an existing parent workspace cwd and create the project directory beneath it
+- treat coordinator initial handoffs and explicit role assignments in delegated child sessions as actionable work
+- stay inside assignment boundaries: implementation agents implement, QA agents define/run checks, and UX agents review/suggest focused fixes instead of duplicating implementation file writes
+- avoid implementation writes from QA, UX, security, product, or coordinator roles unless the user/coordinator explicitly reassigns them to fix a specific defect
+- understand that Kikx may hide `write-file` from obvious QA, UX, product, security, reviewer, or coordinator roles until explicit write permission or reassignment is present
+- coordinate and verify instead of taking over implementation when another agent owns the implementation assignment
+- inspect recent frames or obvious tool output before writing shared project files in a multi-agent session, so agents avoid racing, overwriting, or reimplementing work already assigned to someone else
+- keep delegated child-session initial messages small and useful so sub-agents start in the right project and task context without guessing
 - avoid creating sessions or inviting agents when already working inside a delegated child session
 - use `session-search`, `output-search`, and `database-fetch` for large history or stored tool-output lookup
 
@@ -72,11 +94,13 @@ The generated script asks:
 - What did you forget?
 - What could you have done better?
 
-If complete, the agent calls `agent-finalize`. If not complete, it explains the next work and continues with tools or `agent-respond-and-continue`.
+If complete, the agent calls `agent-finalize` with the actual visible answer/report/progress message for the original user request. The completion review is private control logic and must not be emitted as the visible response. If not complete, it explains the next work and continues with tools or `agent-respond-and-continue`.
 
 If the draft asks the user whether the agent should take an obvious next safe/read-only step, the script treats that draft as incomplete and tells the agent to continue instead.
 
 Direct provider `AgentMessage` outputs are treated as draft final answers too. Kikx routes them through completion review before publishing them.
+
+If a completion review emits meta-review text such as "Self-review..." instead of a substantive final answer, Kikx preserves the prior draft final answer. This deterministic guard prevents the private audit from replacing the user-facing response.
 
 After completion review, Kikx also applies a deterministic deferral guard. If the final text is an avoidable permission/continuation question such as "should I continue?", "would you like me to...", or "which step should I do next?" for a visible user turn, Kikx converts the turn into an immediate `respond-and-continue` instead of stopping for another user confirmation.
 

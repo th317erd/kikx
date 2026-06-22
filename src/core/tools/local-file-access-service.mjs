@@ -10,7 +10,7 @@ export class LocalFileAccessService {
 
   async readFile(params = {}) {
     let requestedPath = normalizeRequiredString(params.path, 'path');
-    let absolutePath = path.resolve(this.cwd, requestedPath);
+    let absolutePath = path.resolve(normalizeBaseCwd(params.cwd, this.cwd), requestedPath);
     let encoding = normalizeEncoding(params.encoding);
     let rangeRequest = normalizeRangeRequest(params);
     let stat = await fs.stat(absolutePath);
@@ -44,7 +44,7 @@ export class LocalFileAccessService {
 
   async writeFile(params = {}) {
     let requestedPath = normalizeRequiredString(params.path, 'path');
-    let absolutePath = path.resolve(this.cwd, requestedPath);
+    let absolutePath = path.resolve(normalizeBaseCwd(params.cwd, this.cwd), requestedPath);
     let encoding = normalizeEncoding(params.encoding);
     let mode = normalizeWriteMode(params.mode);
     let createDirectories = params.createDirectories !== false;
@@ -80,6 +80,13 @@ export class LocalFileAccessService {
 function normalizeRequiredString(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '')
     throw new TypeError(`${fieldName} must be a non-empty string`);
+
+  return value.trim();
+}
+
+function normalizeBaseCwd(value, fallback) {
+  if (typeof value !== 'string' || value.trim() === '')
+    return fallback;
 
   return value.trim();
 }

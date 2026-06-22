@@ -41,12 +41,14 @@ export class FrameRuntime extends EventEmitter {
     this.services = services || {};
     this.tokenUsage = options.tokenUsage || resolveService(this.services, 'tokenUsage');
     this._disconnectTokenUsage = this.connectTokenUsage(this.tokenUsage);
+    this.logger = options.logger || console;
     this.scheduledFrames = new ScheduledFrameQueue({
       runtime: this,
       intervalMS: scheduledFrameWorkerIntervalMS,
-      logger: options.logger || console,
+      logger: this.logger,
     });
     this.sessions = new Map();
+    this._sessionManifestSaves = new Map();
     this._indexesReady = false;
   }
 
@@ -153,6 +155,7 @@ export class FrameRuntime extends EventEmitter {
           limit: frameLimit,
         });
         entry.frameEngine.hydrate(frames);
+        this.syncSessionManifestFromEngine(entry, { persist: true });
         entry.framesLoaded = true;
         entry.framesLoadedLimit = frameLimit;
       }
@@ -190,6 +193,8 @@ export class FrameRuntime extends EventEmitter {
       framesLoadedLimit: options.loadFrames === false ? 0 : normalizeFrameLimit(options.frameLimit),
     };
     this.sessions.set(sessionID, entry);
+    if (options.loadFrames !== false)
+      this.syncSessionManifestFromEngine(entry, { persist: true });
     return entry;
   }
 
@@ -226,14 +231,16 @@ export class FrameRuntime extends EventEmitter {
     if (frames.length === 0)
       throw new Error('UserMessage commit produced no frames');
 
-    await this.frameRouter?.flush?.();
+    let manifestSave = this._sessionManifestSaves.get(sessionID);
     await this.frameStore.flush();
 
     entry.session.updatedAt = now;
     entry.session.updatedClock = stamp.clock;
-    entry.session.messageCount = nextMessageCount(entry.session.messageCount, entry.frameEngine.toArray(), frames);
-    await this.frameStore.saveSessionManifest(entry.session);
-    this.emitRuntimeEvent('session.saved', { sessionID, session: entry.session });
+    entry.session.messageCount = countMessageFrames(entry.frameEngine.toArray());
+    if (!manifestSave)
+      manifestSave = this.queueSessionManifestSave(entry);
+    await manifestSave;
+    await this.frameRouter?.flush?.();
 
     return {
       session: entry.session,
@@ -405,6 +412,9 @@ export class FrameRuntime extends EventEmitter {
     };
     let commitHandler = ({ commit, frames }) => {
       this.scheduledFrames.trackFrames(frames);
+      let entry = this.sessions.get(sessionID);
+      if (entry)
+        this.syncSessionManifestFromEngine(entry, { frames, persist: true });
 
       for (let frame of frames || []) {
         let eventType = commit.changes?.find((change) => change.frameID === frame.id)?.operation === 'update'
@@ -436,6 +446,62 @@ export class FrameRuntime extends EventEmitter {
       for (let disconnect of disconnects)
         disconnect?.();
     };
+  }
+
+  syncSessionManifestFromEngine(entry, options = {}) {
+    if (!entry?.session || !entry.frameEngine)
+      return entry?.session || null;
+
+    let frames = typeof entry.frameEngine.toArray === 'function'
+      ? entry.frameEngine.toArray()
+      : [];
+    let changedFrames = Array.isArray(options.frames) ? options.frames : frames;
+    let nextCount = countMessageFrames(frames);
+    let frameUpdatedAt = maxFrameTimestamp(changedFrames);
+    let changed = entry.session.messageCount !== nextCount;
+
+    if (changed)
+      entry.session.messageCount = nextCount;
+
+    if (frameUpdatedAt && (!entry.session.updatedAt || frameUpdatedAt > entry.session.updatedAt)) {
+      entry.session.updatedAt = frameUpdatedAt;
+      changed = true;
+    }
+
+    let frameUpdatedClock = latestFrameClock(changedFrames);
+    if (frameUpdatedClock && frameUpdatedClock !== entry.session.updatedClock) {
+      entry.session.updatedClock = frameUpdatedClock;
+      changed = true;
+    }
+
+    if (changed && options.persist)
+      this.queueSessionManifestSave(entry);
+
+    return entry.session;
+  }
+
+  queueSessionManifestSave(entry) {
+    if (!entry?.session?.id || !this.frameStore?.saveSessionManifest)
+      return null;
+
+    let sessionID = entry.session.id;
+    if (this._sessionManifestSaves.has(sessionID))
+      return this._sessionManifestSaves.get(sessionID);
+
+    let save = Promise.resolve()
+      .then(async () => {
+        await this.frameStore.saveSessionManifest(entry.session);
+        this.emitRuntimeEvent('session.saved', { sessionID, session: entry.session });
+      })
+      .catch((error) => {
+        this.logger?.error?.('FrameRuntime failed to persist session manifest', error);
+      })
+      .finally(() => {
+        this._sessionManifestSaves.delete(sessionID);
+      });
+
+    this._sessionManifestSaves.set(sessionID, save);
+    return save;
   }
 
   connectTokenUsage(tokenUsage) {
@@ -677,12 +743,40 @@ function countMessageFrames(frames) {
   if (!Array.isArray(frames))
     return 0;
 
-  return frames.filter((frame) => frame?.type === 'UserMessage').length;
+  return frames.filter(isVisibleThreadFrame).length;
 }
 
-function nextMessageCount(currentCount, loadedFrames, newFrames) {
-  if (typeof currentCount === 'number' && Number.isFinite(currentCount) && currentCount >= 0)
-    return Math.trunc(currentCount) + countMessageFrames(newFrames);
+function isVisibleThreadFrame(frame) {
+  return Boolean(frame?.id)
+    && frame.hidden !== true
+    && frame.deleted !== true
+    && frame.phantom !== true;
+}
 
-  return countMessageFrames(loadedFrames);
+function maxFrameTimestamp(frames) {
+  let max = null;
+  for (let frame of Array.isArray(frames) ? frames : []) {
+    let value = normalizePositiveTimestamp(frame?.updatedAt || frame?.createdAt || frame?.timestamp);
+    if (value && (!max || value > max))
+      max = value;
+  }
+
+  return max;
+}
+
+function normalizePositiveTimestamp(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
+    return null;
+
+  return Math.trunc(value);
+}
+
+function latestFrameClock(frames) {
+  let clock = null;
+  for (let frame of Array.isArray(frames) ? frames : []) {
+    if (typeof frame?.updatedClock === 'string' && frame.updatedClock)
+      clock = frame.updatedClock;
+  }
+
+  return clock;
 }

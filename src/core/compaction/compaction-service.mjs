@@ -275,6 +275,8 @@ export class CompactionService {
       session,
       frames: compactionWindow.frames,
       sessionFrames: compactionWindow.frames,
+      config: compactorAgent.config || {},
+      secrets: compactorAgent.secrets || {},
       tools: {},
       toolDefinitions: [],
       services: input.services || {},
@@ -419,24 +421,30 @@ export class CompactionService {
   }
 
   async resolveCompactionAgent(input = {}) {
-    let agentID = this.compactionAgentID
-      || normalizeOptionalString(input.session?.compactionAgentID)
-      || findAlternateAgentID(input.session?.participantAgentIDs, input.agent?.id)
-      || normalizeOptionalString(input.agent?.id);
+    let participantAgentIDs = normalizeStringArray(input.session?.participantAgentIDs);
+    let agentIDs = normalizeStringArray([
+      this.compactionAgentID,
+      normalizeOptionalString(input.session?.compactionAgentID),
+      normalizeOptionalString(input.agent?.id),
+      ...participantAgentIDs,
+    ]);
 
-    if (!agentID) {
-      let firstParticipant = normalizeStringArray(input.session?.participantAgentIDs)[0];
-      agentID = firstParticipant || null;
-    }
-
-    if (!agentID)
+    if (agentIDs.length === 0)
       return null;
 
     let agentManager = this.agentManager || resolveService(input.services, 'agentManager');
-    if (!agentManager?.getAgent)
-      return input.agent?.id === agentID ? input.agent : null;
+    if (!agentManager?.getAgent) {
+      let currentAgentID = normalizeOptionalString(input.agent?.id);
+      return currentAgentID && agentIDs.includes(currentAgentID) ? input.agent : null;
+    }
 
-    return await agentManager.getAgent(agentID, { includeSecrets: true });
+    for (let agentID of agentIDs) {
+      let agent = await agentManager.getAgent(agentID, { includeSecrets: true });
+      if (agent?.id && agent.enabled !== false)
+        return agent;
+    }
+
+    return null;
   }
 
   resolveProviderClass(agent) {
@@ -525,11 +533,6 @@ function resolveService(services, name) {
   }
 
   return null;
-}
-
-function findAlternateAgentID(agentIDs, currentAgentID) {
-  let ids = normalizeStringArray(agentIDs);
-  return ids.find((agentID) => agentID !== currentAgentID) || null;
 }
 
 function normalizeStringArray(values) {

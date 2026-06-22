@@ -93,6 +93,29 @@ class IncompleteSelfReviewAgent extends AgentInterface {
   }
 }
 
+class MetaSelfReviewAgent extends AgentInterface {
+  constructor(options = {}) {
+    super(options);
+    this.calls = [];
+  }
+
+  async ask(_prompt, options = {}) {
+    this.calls.push(options.step?.type || 'ask');
+    if (options.step?.type === 'completion-review') {
+      return options.tools['agent-finalize']({
+        text: [
+          'Self-review of the draft/report:',
+          '1. Have I completed all requested tasks? Yes.',
+          '2. What did I miss? Nothing.',
+          'Which follow-up would you prefer?',
+        ].join('\n'),
+      });
+    }
+
+    return options.tools['agent-respond']({ text: 'Actual code review report with concrete findings.' });
+  }
+}
+
 class DeferringDirectAgent extends AgentInterface {
   constructor(options = {}) {
     super(options);
@@ -105,6 +128,23 @@ class DeferringDirectAgent extends AgentInterface {
       type: 'AgentMessage',
       content: {
         text: 'Next step: should I continue reading src/core/plugins/agent-interface.mjs as planned?',
+      },
+    };
+  }
+}
+
+class PermissionSeekingDirectAgent extends AgentInterface {
+  constructor(options = {}) {
+    super(options);
+    this.calls = [];
+  }
+
+  async ask(_prompt, options = {}) {
+    this.calls.push(options.step?.type || 'ask');
+    return {
+      type: 'AgentMessage',
+      content: {
+        text: 'Before I start changing files, please tell me which small fix you want first.',
       },
     };
   }
@@ -354,15 +394,21 @@ test('agentic script templates generate the named Kikx agent script', () => {
   assert.equal(AGENTIC_SCRIPT_NAME, 'agentic script');
   assert.match(prompt, /Kikx agentic coordination loop/);
   assert.match(prompt, /Please inspect this\./);
+  assert.match(prompt, /current routed frame below is the highest-priority input/i);
+  assert.match(prompt, /obey the current user message first/i);
+  assert.ok(prompt.indexOf('The user has just sent you a message:') < prompt.indexOf('Agent todo list JSON:'));
+  assert.ok(prompt.indexOf('Please inspect this.') < prompt.indexOf('Agent todo list JSON:'));
   assert.match(prompt, /You are the coordinator\?: true/);
   assert.match(prompt, /Session agents JSON:/);
   assert.match(prompt, /Mentions JSON:/);
   assert.match(prompt, /Session delegation generation: 0/);
   assert.match(prompt, /For delegated sub-agent work/);
+  assert.match(prompt, /session-create\.initialMessage/);
+  assert.match(prompt, /compact orientation handoff/);
   assert.match(prompt, /Agent todo list JSON:/);
   assert.match(prompt, /Build todo tools/);
   assert.match(prompt, /Where am I at on my todo list/);
-  assert.match(prompt, /Shell working directory:/);
+  assert.match(prompt, /Session working directory:/);
   assert.match(prompt, /\/tmp\/kikx-work/);
   assert.match(prompt, /feedback-report/);
   assert.match(prompt, /global \/feedback\//);
@@ -374,6 +420,10 @@ test('agentic script templates generate the named Kikx agent script', () => {
   assert.match(prompt, /engineer, cynic, qa_tester, security_officer, end_user, and minimalist/);
   assert.match(prompt, /what could give false confidence/);
   assert.match(prompt, /what did you miss, forget, assume, or leave unverified/i);
+  assert.match(prompt, /Proper agent behavior compact/);
+  assert.match(prompt, /Plan first for meaningful work/);
+  assert.match(prompt, /create or update your todo list before implementation/i);
+  assert.match(prompt, /Do not claim done until you have proof/i);
   assert.match(prompt, /database-fetch: Fetch ranges\./);
 
   let reviewPrompt = buildCompletionReviewScriptPrompt({
@@ -400,6 +450,8 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.equal(agent.calls[1].isCoordinator, true);
   assert.match(agent.calls[1].prompt, /User usr_1 has just sent you a message:/);
   assert.match(agent.calls[1].prompt, /hello/);
+  assert.match(agent.calls[1].prompt, /highest-priority input/i);
+  assert.match(agent.calls[1].prompt, /background memory only/i);
   assert.match(agent.calls[1].prompt, /You are the coordinator\?: true/);
   assert.match(agent.calls[1].prompt, /Mentions JSON:/);
   assert.match(agent.calls[1].prompt, /Session agents JSON:/);
@@ -417,7 +469,7 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].prompt, /persistent todo list/i);
   assert.match(agent.calls[1].prompt, /todo-add/);
   assert.match(agent.calls[1].prompt, /todo-focus-set/);
-  assert.match(agent.calls[1].prompt, /Shell working directory:/);
+  assert.match(agent.calls[1].prompt, /Session working directory:/);
   assert.match(agent.calls[1].prompt, /cwd-set/);
   assert.match(agent.calls[1].prompt, /feedback-report/);
   assert.match(agent.calls[1].prompt, /AEOR Development/);
@@ -432,6 +484,12 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].prompt, /qa_tester/);
   assert.match(agent.calls[1].prompt, /sane timeouts/i);
   assert.match(agent.calls[1].prompt, /If the work is not actually complete, continue/i);
+  assert.match(agent.calls[1].prompt, /Proper agent behavior compact/i);
+  assert.match(agent.calls[1].prompt, /Plan first for meaningful work/i);
+  assert.match(agent.calls[1].prompt, /proof of completion/i);
+  assert.match(agent.calls[1].prompt, /Concrete claims about files/i);
+  assert.match(agent.calls[1].prompt, /Do not claim "I implemented"/i);
+  assert.match(agent.calls[1].prompt, /Do not have fear of missing out/i);
   assert.match(agent.calls[1].prompt, /first call agent-progress with a short visible note/i);
   assert.match(agent.calls[1].prompt, /What is the next most important thing to do\?/);
   assert.match(agent.calls[1].prompt, /call agent-progress again before calling that next tool/i);
@@ -452,6 +510,18 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].prompt, /delegated sub-agent work/i);
   assert.match(agent.calls[1].prompt, /agent-list to discover available agents/i);
   assert.match(agent.calls[1].prompt, /session-invite-agents with session_id/i);
+  assert.match(agent.calls[1].prompt, /session-create\.initialMessage/i);
+  assert.match(agent.calls[1].prompt, /coordinate with bots, sub-agents, or groups of agents/i);
+  assert.match(agent.calls[1].prompt, /reusedExisting/i);
+  assert.match(agent.calls[1].prompt, /Do not leak stale names or paths/i);
+  assert.match(agent.calls[1].prompt, /forbidden anti-examples/i);
+  assert.match(agent.calls[1].prompt, /definition of done, tests\/checks that prove completion/i);
+  assert.match(agent.calls[1].prompt, /call cwd-set before file or exec tools/i);
+  assert.match(agent.calls[1].prompt, /initial orientation or assignment from the coordinator is actionable work/i);
+  assert.match(agent.calls[1].prompt, /Stay inside the assignment boundaries/i);
+  assert.match(agent.calls[1].prompt, /do not call write-file for implementation code/i);
+  assert.match(agent.calls[1].prompt, /coordinate and verify instead of implementing/i);
+  assert.match(agent.calls[1].prompt, /Avoid racing, overwriting, or reimplementing work/i);
   assert.match(agent.calls[1].prompt, /inspect their work/i);
   assert.match(agent.calls[1].prompt, /What could you have done better\?/i);
   assert.match(agent.calls[1].prompt, /If this message is not for you/i);
@@ -501,6 +571,61 @@ test('AgentInterface exposes registered global plugin tools to agent turns', asy
   assert.equal(echoDefinition.parameters.additionalProperties, false);
   assert.equal(agent.askCall.toolDefinitions.some((tool) => tool.name === 'legacy:bad-name'), false);
   assert.equal(outputs.some((output) => output.type === 'AgentMessage' && output.content.text === 'hello'), true);
+});
+
+test('AgentInterface hides write-file from review-only roles by default', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerTool('write-file', GlobalEchoTool);
+  pluginRegistry.registerTool('read-file', GlobalEchoTool);
+
+  let agent = new LoopAgent();
+  await collect(agent.run(baseLoopParams({
+    agent: {
+      id: 'agis_qa_tester',
+      name: 'QA Tester',
+      character: 'You are a QA reviewer.',
+    },
+    services: { pluginRegistry },
+  })));
+
+  let askCall = agent.calls.find((call) => call.method === 'ask');
+  assert.equal(askCall.toolNames.includes('write-file'), false);
+  assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'write-file'), false);
+  assert.equal(askCall.toolNames.includes('read-file'), true);
+});
+
+test('AgentInterface keeps write-file available to implementers and explicit overrides', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerTool('write-file', GlobalEchoTool);
+
+  let implementer = new LoopAgent();
+  await collect(implementer.run(baseLoopParams({
+    agent: {
+      id: 'subagent_oakhurst',
+      name: 'Subagent Oakhurst',
+      character: 'You are an implementation engineer.',
+    },
+    services: { pluginRegistry },
+  })));
+  let implementerAsk = implementer.calls.find((call) => call.method === 'ask');
+  assert.equal(implementerAsk.toolNames.includes('write-file'), true);
+
+  let reassignedReviewer = new LoopAgent();
+  await collect(reassignedReviewer.run(baseLoopParams({
+    agent: {
+      id: 'ux_guru',
+      name: 'UX Reviewer',
+      character: 'You are a UX reviewer reassigned to patch a specific defect.',
+      config: {
+        permissions: {
+          writeFile: true,
+        },
+      },
+    },
+    services: { pluginRegistry },
+  })));
+  let reviewerAsk = reassignedReviewer.calls.find((call) => call.method === 'ask');
+  assert.equal(reviewerAsk.toolNames.includes('write-file'), true);
 });
 
 test('AgentInterface hides delegation tools from child-session agents', async () => {
@@ -810,6 +935,29 @@ test('AgentInterface completion self-review can convert a draft final answer int
   ]);
 });
 
+test('AgentInterface preserves the draft when completion self-review emits meta-review text', async () => {
+  let agent = new MetaSelfReviewAgent();
+  let outputs = await collect(agent.run(baseLoopParams({
+    frames: [],
+  })));
+
+  assert.deepEqual(agent.calls, [ 'ask', 'completion-review' ]);
+  assert.deepEqual(outputs, [
+    {
+      type: 'AgentMessage',
+      content: {
+        text: 'Actual code review report with concrete findings.',
+      },
+    },
+    {
+      type: 'Done',
+      content: {
+        status: 'finalized',
+      },
+    },
+  ]);
+});
+
 test('AgentInterface reviews direct provider messages and converts avoidable deferral questions to continuations', async () => {
   let agent = new DeferringDirectAgent();
   let outputs = await collect(agent.run(baseLoopParams({
@@ -835,6 +983,19 @@ test('AgentInterface reviews direct provider messages and converts avoidable def
       },
     },
   ]);
+});
+
+test('AgentInterface converts permission-seeking file-change deferrals to continuations', async () => {
+  let agent = new PermissionSeekingDirectAgent();
+  let outputs = await collect(agent.run(baseLoopParams({
+    frames: [],
+  })));
+
+  assert.deepEqual(agent.calls, [ 'ask', 'completion-review' ]);
+  assert.equal(outputs[0].type, 'AgentMessage');
+  assert.match(outputs[0].content.text, /continue with the next safe implied step/i);
+  assert.equal(outputs[1].type, 'Done');
+  assert.equal(outputs[1].content.status, 'respond-and-continue');
 });
 
 test('AgentInterface base loop preserves provider frame metadata after response-tool finalization', async () => {

@@ -51,17 +51,20 @@ test('setSessionFramesState derives a fallback count only when the manifest has 
   let next = setSessionFramesState(previous, 'ses_1', [
     { id: 'frm_1', type: 'SystemNotice' },
     { id: 'msg_1', type: 'UserMessage' },
-    { id: 'msg_2', type: 'UserMessage' },
+    { id: 'agent_1', type: 'AgentMessage', hidden: false },
+    { id: 'tool_1', type: 'ShellToolFrame', hidden: false },
+    { id: 'hidden_1', type: 'AgentMessage', hidden: true },
+    { id: 'deleted_1', type: 'AgentMessage', deleted: true },
   ]);
 
-  assert.equal(next.sessionDetailsByID.ses_1.messageCount, 2);
+  assert.equal(next.sessionDetailsByID.ses_1.messageCount, 4);
   assert.equal(next.sessionDetailsByID.ses_2.messageCount, 11);
-  assert.deepEqual(next.framesBySessionID.ses_1.map((frame) => frame.id), [ 'frm_1', 'msg_1', 'msg_2' ]);
+  assert.deepEqual(next.framesBySessionID.ses_1.map((frame) => frame.id), [ 'agent_1', 'deleted_1', 'frm_1', 'hidden_1', 'msg_1', 'tool_1' ]);
   assert.notEqual(next.framesBySessionID, previous.framesBySessionID);
   assert.notEqual(next.sessionDetailsByID, previous.sessionDetailsByID);
 });
 
-test('setSessionFramesState does not replace an authoritative manifest count with loaded frames', () => {
+test('setSessionFramesState does not reduce an authoritative manifest count with loaded frames', () => {
   let previous = {
     sessionIDs: [ 'ses_1' ],
     sessionDetailsByID: {
@@ -76,6 +79,25 @@ test('setSessionFramesState does not replace an authoritative manifest count wit
   ]);
 
   assert.equal(next.sessionDetailsByID.ses_1.messageCount, 1000);
+});
+
+test('setSessionFramesState repairs stale manifest under-counts from loaded visible frames', () => {
+  let previous = {
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: {
+      ses_1: { id: 'ses_1', title: 'Stale child session', messageCount: 0 },
+    },
+    framesBySessionID: {},
+  };
+
+  let next = setSessionFramesState(previous, 'ses_1', [
+    { id: 'msg_1', type: 'UserMessage' },
+    { id: 'agent_1', type: 'AgentMessage', hidden: false },
+    { id: 'tool_1', type: 'ShellToolFrame', hidden: false },
+    { id: 'hidden_1', type: 'AgentMessage', hidden: true },
+  ]);
+
+  assert.equal(next.sessionDetailsByID.ses_1.messageCount, 3);
 });
 
 test('upsertSessionState adds new sessions without clearing cached inactive details', () => {
@@ -330,7 +352,7 @@ test('upsertFramesState applies multiple frame updates and sorts once per sessio
     '2': 'second',
   });
   assert.equal(next.framesBySessionID.ses_1[1].content.thinking.text, 'first second');
-  assert.equal(next.sessionDetailsByID.ses_1.messageCount, 1);
+  assert.equal(next.sessionDetailsByID.ses_1.messageCount, 2);
 
   let malformed = upsertFramesState(state, new Map([
     [ 'ses_1', [ { type: 'MissingID' } ] ],
@@ -599,12 +621,17 @@ test('upsertFrameState ignores malformed frames and missing session ids', () => 
   assert.deepEqual(upsertFrameState(state, 'ses_1', { type: 'MissingID' }), state);
 });
 
-test('countMessageFrames treats non-message frames and invalid input as zero', () => {
+test('countMessageFrames counts visible thread frames and ignores hidden or deleted frames', () => {
   assert.equal(countMessageFrames(null), 0);
   assert.equal(countMessageFrames([
     { id: 'sys_1', type: 'SystemNotice' },
     { id: 'msg_1', type: 'UserMessage' },
+    { id: 'agent_1', type: 'AgentMessage', hidden: false },
+    { id: 'progress_1', type: 'AgentProgress', hidden: false },
     null,
     { id: 'tool_1', type: 'ToolCall' },
-  ]), 1);
+    { id: 'hidden_1', type: 'AgentMessage', hidden: true },
+    { id: 'deleted_1', type: 'AgentMessage', deleted: true },
+    { id: 'phantom_1', type: 'AgentThinking', phantom: true },
+  ]), 5);
 });

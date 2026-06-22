@@ -168,13 +168,17 @@ const AGENT_TOOL_DEFINITIONS = [
 ];
 const AGENT_TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 const DELEGATION_TOOL_NAMES = new Set([ 'session-create', 'session-invite-agents' ]);
+const REVIEW_ONLY_TOOL_DENYLIST = new Set([ 'write-file' ]);
+const REVIEW_ONLY_AGENT_PATTERN = /\b(?:qa|q\.a\.|tester|quality|ux|user[-\s]?experience|designer|reviewer|security|product|coordinator)\b/i;
 const AVOIDABLE_DEFERRAL_PATTERNS = [
   /\b(?:should|shall)\s+i\s+(?:continue|proceed|read|inspect|review|run|start|create|update|check|look|audit|test)\b/i,
   /\b(?:would|do)\s+you\s+(?:like|want)\s+me\s+to\b/i,
   /\bcan\s+i\s+proceed\b/i,
   /\bany\s+changes\b[\s\S]{0,120}\bbefore\s+i\s+proceed\b/i,
   /\bwhich\s+(?:would\s+you\s+like|one\s+should\s+i|option\s+should\s+i)\b/i,
+  /\bplease\s+(?:tell|let)\s+me\s+which\b/i,
   /\bwhat\s+would\s+you\s+like\s+me\s+to\s+do\s+next\b/i,
+  /\bbefore\s+i\s+(?:start|begin|proceed|change|edit|modify)[\s\S]{0,160}\b(?:please\s+)?(?:tell|let)\s+me\b/i,
   /\bi\s+will\s+only\s+proceed\s+after\s+your\s+confirmation\b/i,
   /\bif\s+yes,?\s+i\s+will\b/i,
 ];
@@ -371,6 +375,8 @@ export class AgentInterface extends PluginInterface {
     };
     let tools = createLoopTools(state, context);
     let toolDefinitions = createLoopToolDefinitions(context);
+    let reviewOriginalFinalFrame = state.finalFrame;
+    let reviewStartFinalFrame = state.finalFrame;
     let result = this.ask(prompt, {
       ...context,
       tools,
@@ -380,15 +386,26 @@ export class AgentInterface extends PluginInterface {
     });
 
     let reviewControlFinalized = false;
-    let reviewStartFinalFrame = state.finalFrame;
     for await (let output of iterateAgentResult(result)) {
       if (output?.type === 'LoopControl') {
+        if (isCompletionReviewMetaResponseContent(output.content) && reviewOriginalFinalFrame) {
+          state.finalFrame = reviewOriginalFinalFrame;
+          state.continuation = null;
+          continue;
+        }
+
         reviewControlFinalized = output.action === 'finalize' || output.action === 'respond-and-continue';
         handleLoopControl(output, state);
         continue;
       }
 
       if (output?.type === 'AgentMessage') {
+        if (isCompletionReviewMetaResponseContent(output.content) && reviewOriginalFinalFrame) {
+          state.finalFrame = reviewOriginalFinalFrame;
+          state.continuation = null;
+          continue;
+        }
+
         let responseToolSelectedFrame = reviewControlFinalized || state.finalFrame !== reviewStartFinalFrame;
         state.finalFrame = responseToolSelectedFrame
           ? mergeFinalizedProviderFrame(output, state.finalFrame)
@@ -723,6 +740,21 @@ function isAvoidableDeferralQuestion(text) {
   return AVOIDABLE_DEFERRAL_PATTERNS.some((pattern) => pattern.test(value));
 }
 
+function isCompletionReviewMetaResponseContent(content = {}) {
+  let text = normalizeOptionalPromptString(content.text || content.markdown || content.html);
+  if (!text)
+    return false;
+
+  let prefix = text.slice(0, 240).toLowerCase();
+  return (
+    prefix.includes('self-review')
+    || prefix.includes('self review')
+    || prefix.includes('completion self-review')
+    || prefix.includes('audit of the draft')
+  )
+    && /(?:have i completed|what did i miss|what did i forget|what could i have done better|requested tasks)/i.test(text);
+}
+
 function recordForward(state, forward) {
   state.forwarded = true;
   let normalized = {
@@ -922,7 +954,8 @@ function shouldExposeRegisteredTool(toolName, ToolClass, context = {}) {
     && toolName.trim() !== ''
     && AGENT_TOOL_NAME_PATTERN.test(toolName)
     && ToolClass?.exposeToAgents !== false
-    && shouldExposeDelegationTool(toolName, context);
+    && shouldExposeDelegationTool(toolName, context)
+    && shouldExposeRoleTool(toolName, context);
 }
 
 function shouldExposeDelegationTool(toolName, context = {}) {
@@ -930,6 +963,39 @@ function shouldExposeDelegationTool(toolName, context = {}) {
     return true;
 
   return sessionGeneration(context.session) <= 0;
+}
+
+function shouldExposeRoleTool(toolName, context = {}) {
+  if (!REVIEW_ONLY_TOOL_DENYLIST.has(toolName))
+    return true;
+
+  if (hasExplicitWriteFilePermission(context))
+    return true;
+
+  return !isReviewOnlyAgent(context.agent);
+}
+
+function hasExplicitWriteFilePermission(context = {}) {
+  return context.allowWriteFile === true
+    || context.agent?.allowWriteFile === true
+    || context.agent?.permissions?.writeFile === true
+    || context.agent?.config?.allowWriteFile === true
+    || context.agent?.config?.permissions?.writeFile === true;
+}
+
+function isReviewOnlyAgent(agent = {}) {
+  let text = [
+    agent.id,
+    agent.name,
+    agent.role,
+    agent.character,
+    agent.config?.role,
+    agent.config?.character,
+  ]
+    .filter((value) => typeof value === 'string' && value.trim() !== '')
+    .join(' ');
+
+  return REVIEW_ONLY_AGENT_PATTERN.test(text);
 }
 
 function mergeToolDefinitions(primary, secondary) {

@@ -65,6 +65,7 @@ test('Stagehand batches phantom frame bursts without rerendering the full thread
     await page.waitForSelector('kikx-frame-item[data-frame-id="stable_1"] .kikx-markdown', { timeout: 10000 });
     await page.waitForSelector('kikx-frame-item[data-frame-id="stable_48"]', { timeout: 10000 });
     await waitForFrameListBottom(page);
+    await page.waitForTimeout(100);
     await installFrameUpdateCounter(page);
     await installScrollTracker(page);
 

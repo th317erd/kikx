@@ -41,6 +41,23 @@ class DeferredCompactorProvider extends AgentInterface {
   }
 }
 
+class SecretCheckingCompactorProvider extends AgentInterface {
+  static pluginID = 'secret-checking-compactor';
+
+  async ask(_prompt, params = {}) {
+    if (!params.secrets?.apiKey)
+      throw new Error('apiKey is required');
+
+    params.services.calls.push({
+      method: 'secret-checking.ask',
+      agentID: params.agent.id,
+      apiKey: params.secrets.apiKey,
+      model: params.config?.model,
+    });
+    return 'compacted with current agent secret';
+  }
+}
+
 test('CompactionService runs one-shot compaction and stores a hidden CompactionFrame', async () => {
   let pluginRegistry = new PluginRegistry();
   pluginRegistry.registerAgentProvider('compactor', CompactorProvider);
@@ -102,6 +119,68 @@ test('CompactionService runs one-shot compaction and stores a hidden CompactionF
   assert.match(compactionFrame.content.summary, /\/tmp\/project/);
   assert.deepEqual(services.calls[0].frameIDs, [ 'msg_1', 'msg_2' ]);
   assert.deepEqual(services.events.map((event) => event.type), [ 'compaction.started', 'compaction.completed' ]);
+});
+
+test('CompactionService prefers the current agent before alternate participants when no compactor is configured', async () => {
+  let pluginRegistry = new PluginRegistry();
+  pluginRegistry.registerAgentProvider('secret-checking-compactor', SecretCheckingCompactorProvider);
+  let frameEngine = new FrameEngine({
+    clock: createClock(),
+    idGenerator: createIDs([ 'commit_1', 'compaction_frame_1', 'commit_2' ]),
+  });
+  frameEngine.merge([
+    userFrame('msg_1', 'older project detail', 1),
+    userFrame('msg_2', 'active request', 2),
+  ], { silent: true });
+  let requestedAgentIDs = [];
+  let service = new CompactionService({
+    pluginRegistry,
+    agentManager: {
+      async getAgent(agentID) {
+        requestedAgentIDs.push(agentID);
+        return {
+          id: agentID,
+          name: agentID,
+          pluginID: 'secret-checking-compactor',
+          secrets: agentID === 'current_agent' ? { apiKey: 'secret' } : {},
+          config: { model: 'test-model' },
+          enabled: true,
+        };
+      },
+    },
+    clock: () => 9000,
+    idGenerator: () => 'compaction_frame_1',
+    compactionAgentContextTokens: 1000,
+    estimateTokens: () => 5,
+  });
+  let services = { calls: [] };
+
+  let frame = await service.runCompaction({
+    session: {
+      id: 'ses_1',
+      participantAgentIDs: [ 'alternate_agent', 'current_agent' ],
+    },
+    frameEngine,
+    compactionWindow: {
+      frames: [ frameEngine.get('msg_1') ],
+      startFrameID: 'msg_1',
+      boundaryFrameID: 'msg_1',
+      boundaryOrder: 1,
+      tokens: 5,
+    },
+    agent: { id: 'current_agent' },
+    services,
+  });
+
+  assert.deepEqual(requestedAgentIDs, [ 'current_agent' ]);
+  assert.equal(frame.content.compactorAgentID, 'current_agent');
+  assert.match(frame.content.summary, /current agent secret/);
+  assert.deepEqual(services.calls, [{
+    method: 'secret-checking.ask',
+    agentID: 'current_agent',
+    apiKey: 'secret',
+    model: 'test-model',
+  }]);
 });
 
 test('CompactionService waits at hard context limit and returns rebuilt compacted memory', async () => {
