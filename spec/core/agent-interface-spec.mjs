@@ -1082,6 +1082,9 @@ test('AgentInterface base loop preserves provider frame metadata after response-
       type: 'Done',
       content: {
         status: 'finalized',
+        usage: {
+          totalTokens: 24,
+        },
       },
     },
   ]);
@@ -1129,6 +1132,48 @@ test('AgentInterface base loop handles null-response and break loop controls', a
       type: 'Done',
       content: {
         status: 'break',
+      },
+    },
+  ]);
+});
+
+test('AgentInterface base loop forwards provider Done usage through the agent loop', async () => {
+  class UsageAgent extends AgentInterface {
+    constructor(options = {}) {
+      super(options);
+      this.calls = 0;
+    }
+
+    async ask(_prompt, options = {}) {
+      this.calls++;
+
+      if (this.calls === 1) {
+        options.tools['agent-respond']({ text: 'usage answer' });
+        return {
+          type: 'Done',
+          content: {
+            usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 },
+          },
+        };
+      }
+
+      options.tools['agent-finalize']({ text: 'usage answer' });
+      return { type: 'Done', content: {} };
+    }
+  }
+
+  let outputs = await collect(new UsageAgent().run(baseLoopParams({ frames: [] })));
+
+  assert.deepEqual(outputs, [
+    {
+      type: 'AgentMessage',
+      content: { text: 'usage answer' },
+    },
+    {
+      type: 'Done',
+      content: {
+        status: 'finalized',
+        usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 },
       },
     },
   ]);

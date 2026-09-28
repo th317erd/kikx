@@ -231,9 +231,7 @@ export class AgentInterface extends PluginInterface {
     if (state.nullResponse) {
       yield {
         type: 'Done',
-        content: {
-          status: 'null-response',
-        },
+        content: buildLoopDoneContent(state, { status: 'null-response' }),
       };
       return;
     }
@@ -241,9 +239,7 @@ export class AgentInterface extends PluginInterface {
     if (state.forwarded) {
       yield {
         type: 'Done',
-        content: {
-          status: 'forwarded',
-        },
+        content: buildLoopDoneContent(state, { status: 'forwarded' }),
       };
       return;
     }
@@ -255,9 +251,7 @@ export class AgentInterface extends PluginInterface {
       if (state.nullResponse) {
         yield {
           type: 'Done',
-          content: {
-            status: 'null-response',
-          },
+          content: buildLoopDoneContent(state, { status: 'null-response' }),
         };
         return;
       }
@@ -265,9 +259,7 @@ export class AgentInterface extends PluginInterface {
       if (state.forwarded) {
         yield {
           type: 'Done',
-          content: {
-            status: 'forwarded',
-          },
+          content: buildLoopDoneContent(state, { status: 'forwarded' }),
         };
         return;
       }
@@ -277,10 +269,10 @@ export class AgentInterface extends PluginInterface {
 
       yield {
         type: 'Done',
-        content: {
+        content: buildLoopDoneContent(state, {
           status: state.continuation ? 'respond-and-continue' : 'finalized',
           ...(state.continuation ? { continuation: state.continuation } : {}),
-        },
+        }),
       };
     }
   }
@@ -323,6 +315,8 @@ export class AgentInterface extends PluginInterface {
     for await (let output of iterateAgentResult(result)) {
       if (handleLoopControl(output, state))
         continue;
+
+      captureProviderDoneUsage(state, output);
 
       if (state.finalized && output?.type === 'AgentMessage') {
         output = mergeFinalizedProviderFrame(output, state.finalFrame);
@@ -417,8 +411,10 @@ export class AgentInterface extends PluginInterface {
         continue;
       }
 
-      if (output?.type === 'Done')
+      if (output?.type === 'Done') {
+        captureProviderDoneUsage(state, output);
         continue;
+      }
 
       if (output?.type)
         yield output;
@@ -519,7 +515,38 @@ function createLoopState() {
     continuation: null,
     yieldedAgentMessage: false,
     forwards: [],
+    usage: null,
   };
+}
+
+function captureProviderDoneUsage(state, output) {
+  if (output?.type !== 'Done')
+    return;
+
+  let usage = output.content?.usage;
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage))
+    return;
+
+  state.usage = state.usage ? sumProviderUsage(state.usage, usage) : { ...usage };
+}
+
+function sumProviderUsage(left, right) {
+  let result = { ...left };
+
+  for (let [key, value] of Object.entries(right)) {
+    if (typeof value === 'number' && Number.isFinite(value))
+      result[key] = (typeof result[key] === 'number' ? result[key] : 0) + value;
+    else if (result[key] === undefined)
+      result[key] = value;
+  }
+
+  return result;
+}
+
+function buildLoopDoneContent(state, content = {}) {
+  return state.usage
+    ? { ...content, usage: state.usage }
+    : content;
 }
 
 function createLoopToolDefinitions(context = {}) {
