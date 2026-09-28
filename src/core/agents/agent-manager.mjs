@@ -18,7 +18,7 @@ export class AgentManager {
   }
 
   async createAgent(input = {}) {
-    let normalized = this.normalizeInput(input, { creating: true });
+    let normalized = await this.normalizeInput(input, { creating: true });
     return await this.agentStore.createAgent(normalized);
   }
 
@@ -68,7 +68,7 @@ export class AgentManager {
   async updateAgent(agentID, input = {}) {
     let current = await this.agentStore.getAgent(agentID);
     let pluginID = input.pluginID ?? current.pluginID;
-    let normalized = this.normalizeInput({ ...input, pluginID }, { creating: false });
+    let normalized = await this.normalizeInput({ ...input, pluginID }, { creating: false });
     return await this.agentStore.updateAgent(agentID, normalized);
   }
 
@@ -82,7 +82,7 @@ export class AgentManager {
     await this.agentStore.deleteAgent(agentID);
   }
 
-  normalizeInput(input, options = {}) {
+  async normalizeInput(input, options = {}) {
     let provider = this.pluginRegistry.getAgentProvider(input.pluginID);
     if (!provider) {
       let error = new Error(`Unknown agent provider: ${input.pluginID || ''}`);
@@ -90,7 +90,13 @@ export class AgentManager {
       throw error;
     }
 
-    let descriptor = provider.getAgentProviderDescriptor();
+    let descriptor;
+    try {
+      descriptor = await provider.getAgentProviderDescriptor();
+    } catch (error) {
+      throw badRequest(`Unable to resolve provider configuration for ${input.pluginID}: ${error?.message || error}`);
+    }
+
     let fields = descriptor.configFields || [];
     let configFields = new Set(fields.filter((field) => !field.secret).map((field) => field.name));
     let secretFields = new Set(fields.filter((field) => field.secret).map((field) => field.name));

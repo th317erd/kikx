@@ -81,10 +81,10 @@ function createManager() {
   });
 }
 
-test('AgentManager lists plugin-registered agent providers', () => {
+test('AgentManager lists plugin-registered agent providers', async () => {
   let manager = createManager();
 
-  assert.deepEqual(manager.listProviders(), [
+  assert.deepEqual(await manager.listProviders(), [
     {
       pluginID: 'test-agent',
       agentType: 'test-agent',
@@ -136,6 +136,64 @@ test('AgentManager creates agents using plugin-declared fields only', async () =
     apiKey: { present: true, last4: '1234' },
   });
   assert.equal(agent.secrets, undefined);
+});
+
+test('AgentManager creates agents using dynamically resolved plugin fields', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+
+  class DynamicProvider extends AgentInterface {
+    static pluginID = 'dynamic-agent';
+    static displayName = 'Dynamic Agent';
+
+    static async resolveConfigFields() {
+      return [
+        { name: 'model', type: 'select', required: true },
+        { name: 'apiKey', secret: true },
+      ];
+    }
+  }
+
+  pluginRegistry.registerAgentProvider('dynamic-agent', DynamicProvider);
+
+  let manager = new AgentManager({ pluginRegistry, agentStore: createStore() });
+  let agent = await manager.createAgent({
+    name: 'Dynamic',
+    pluginID: 'dynamic-agent',
+    config: { model: 'live-model' },
+    secrets: { apiKey: 'sk-dynamic-9999' },
+  });
+
+  assert.deepEqual(agent.config, { model: 'live-model' });
+
+  await assert.rejects(
+    () => manager.createAgent({ name: 'Bad', pluginID: 'dynamic-agent', config: { unknown: 1 } }),
+    /Unknown config field/,
+  );
+});
+
+test('AgentManager rejects agent creation when provider config resolution fails', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+
+  class BrokenProvider extends AgentInterface {
+    static pluginID = 'broken-agent';
+
+    static async resolveConfigFields() {
+      throw new Error('discovery unavailable');
+    }
+  }
+
+  pluginRegistry.registerAgentProvider('broken-agent', BrokenProvider);
+
+  let manager = new AgentManager({ pluginRegistry, agentStore: createStore() });
+
+  await assert.rejects(
+    () => manager.createAgent({ name: 'Broken', pluginID: 'broken-agent' }),
+    (error) => {
+      assert.equal(error.status, 400);
+      assert.match(error.message, /Unable to resolve provider configuration/);
+      return true;
+    },
+  );
 });
 
 test('AgentManager updates persistent agent character outside plugin config', async () => {

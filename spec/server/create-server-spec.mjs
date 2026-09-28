@@ -107,7 +107,7 @@ function createAgentManager() {
   let calls = [];
   return {
     calls,
-    listProviders() {
+    async listProviders() {
       calls.push({ method: 'listProviders' });
       return [
         {

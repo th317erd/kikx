@@ -490,7 +490,7 @@ export class AgentInterface extends PluginInterface {
     });
   }
 
-  static getAgentProviderDescriptor() {
+  static async getAgentProviderDescriptor() {
     let pluginID = (this.pluginID && this.pluginID !== 'unknown') ? this.pluginID : this.pluginId;
     return {
       pluginID,
@@ -498,8 +498,12 @@ export class AgentInterface extends PluginInterface {
       serviceType: this.serviceType || null,
       displayName: this.displayName || pluginID,
       description: this.description || '',
-      configFields: normalizeConfigFields(this.configFields),
+      configFields: normalizeConfigFields(await this.resolveConfigFields()),
     };
+  }
+
+  static async resolveConfigFields() {
+    return this.configFields;
   }
 }
 

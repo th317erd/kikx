@@ -104,14 +104,14 @@ test('PluginRegistry rejects tools that do not extend PluginInterface', () => {
   );
 });
 
-test('PluginRegistry registers only AgentInterface-backed agent providers', () => {
+test('PluginRegistry registers only AgentInterface-backed agent providers', async () => {
   let registry = new PluginRegistry({ logger: { warn() {} } });
 
   registry.registerAgentProvider('test-agent', TestAgent);
 
   assert.equal(registry.getAgentProvider('test-agent'), TestAgent);
   assert.equal(registry.getAgentProviders().get('test-agent'), TestAgent);
-  assert.deepEqual(registry.listAgentProviderDescriptors(), [
+  assert.deepEqual(await registry.listAgentProviderDescriptors(), [
     {
       pluginID: 'test-agent',
       agentType: 'test-agent',
@@ -147,6 +147,77 @@ test('PluginRegistry registers only AgentInterface-backed agent providers', () =
     () => registry.registerAgentProvider('bad-agent', class BadAgent {}),
     /must extend AgentInterface/,
   );
+});
+
+test('PluginRegistry resolves dynamic provider config fields asynchronously', async () => {
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+
+  class DynamicAgent extends AgentInterface {
+    static pluginId = 'dynamic-agent';
+    static displayName = 'Dynamic Agent';
+    static configFields = [
+      { name: 'model', type: 'select', options: [ { value: 'fallback', label: 'Fallback' } ] },
+    ];
+
+    static async resolveConfigFields() {
+      return [
+        {
+          name: 'model',
+          type: 'select',
+          options: [
+            { value: 'live-a', label: 'Live A' },
+            { value: 'live-b', label: 'Live B' },
+          ],
+        },
+      ];
+    }
+  }
+
+  registry.registerAgentProvider('dynamic-agent', DynamicAgent);
+
+  let descriptors = await registry.listAgentProviderDescriptors();
+  assert.deepEqual(descriptors[0].configFields[0].options, [
+    { value: 'live-a', label: 'Live A' },
+    { value: 'live-b', label: 'Live B' },
+  ]);
+});
+
+test('PluginRegistry tolerates a provider whose dynamic descriptor fails', async () => {
+  let warnings = [];
+  let registry = new PluginRegistry({ logger: { warn(message) { warnings.push(message); } } });
+
+  class BrokenAgent extends AgentInterface {
+    static pluginId = 'broken-agent';
+    static displayName = 'Broken Agent';
+
+    static async resolveConfigFields() {
+      throw new Error('discovery unavailable');
+    }
+  }
+
+  class HealthyAgent extends AgentInterface {
+    static pluginId = 'healthy-agent';
+    static displayName = 'Healthy Agent';
+  }
+
+  registry.registerAgentProvider('broken-agent', BrokenAgent);
+  registry.registerAgentProvider('healthy-agent', HealthyAgent);
+
+  let descriptors = await registry.listAgentProviderDescriptors();
+
+  assert.equal(descriptors.length, 2);
+  assert.deepEqual(descriptors[0], {
+    pluginID: 'broken-agent',
+    agentType: 'broken-agent',
+    serviceType: null,
+    displayName: 'Broken Agent',
+    description: '',
+    configFields: [],
+  });
+  assert.equal(descriptors[1].pluginID, 'healthy-agent');
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /broken-agent/);
+  assert.match(warnings[0], /discovery unavailable/);
 });
 
 test('PluginInterface permits riskLevel none without permission boundary', async () => {

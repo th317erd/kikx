@@ -38,7 +38,7 @@ test('loadPlugins supports external setup(provide) agent provider registration',
 
   assert.equal(loaded.length, 1);
   assert.equal(registry.getAgentProvider('external-agent')?.displayName, 'External Agent');
-  assert.deepEqual(registry.listAgentProviderDescriptors()[0].configFields[0], {
+  assert.deepEqual((await registry.listAgentProviderDescriptors())[0].configFields[0], {
     name: 'apiKey',
     label: 'apiKey',
     type: 'text',

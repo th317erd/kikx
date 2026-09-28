@@ -73,7 +73,25 @@ export class PluginRegistry {
   }
 
   listAgentProviderDescriptors() {
-    return [ ...this._agentProviders.values() ].map((AgentClass) => AgentClass.getAgentProviderDescriptor());
+    return Promise.all([ ...this._agentProviders.values() ].map(async (AgentClass) => {
+      try {
+        return await AgentClass.getAgentProviderDescriptor();
+      } catch (error) {
+        let pluginID = AgentClass.pluginID && AgentClass.pluginID !== 'unknown'
+          ? AgentClass.pluginID
+          : AgentClass.pluginId;
+        this.logger.warn?.(`Failed to resolve agent provider descriptor for "${pluginID || AgentClass.name}": ${error?.message || error}`);
+
+        return {
+          pluginID: pluginID || AgentClass.name,
+          agentType: AgentClass.agentType || pluginID || AgentClass.name,
+          serviceType: AgentClass.serviceType || null,
+          displayName: AgentClass.displayName || pluginID || AgentClass.name,
+          description: AgentClass.description || '',
+          configFields: [],
+        };
+      }
+    }));
   }
 
   registerSelector(selector, PluginClass, pluginName = null) {

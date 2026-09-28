@@ -349,7 +349,7 @@ async function routeRequest({ request, response, context, staticRoots }) {
     let agentManager = context.require('agentManager');
     writeJSON(response, 200, {
       data: {
-        providers: agentManager.listProviders(),
+        providers: await agentManager.listProviders(),
       },
     });
     return;
