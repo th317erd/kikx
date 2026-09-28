@@ -7,6 +7,10 @@ import { AeorDBFrameStore } from '../aeordb/aeordb-frame-store.mjs';
 import { HybridLogicalClock, defaultUnixMicros } from '../clock/hybrid-logical-clock.mjs';
 import { FrameEngine } from '../frames/frame-engine.mjs';
 import { ScheduledFrameQueue } from './scheduled-frame-queue.mjs';
+import {
+  countMessageFrames,
+  projectFrameMessages,
+} from '../../shared/frame-manager/frame-manager.mjs';
 
 const DEFAULT_SESSION_FRAME_LIMIT = 1000;
 const MAX_SESSION_FRAME_LIMIT = 5000;
@@ -57,6 +61,7 @@ export class FrameRuntime extends EventEmitter {
     let now = stamp.at;
     let title = normalizeTitle(input.title, this.nextDefaultSessionTitle());
     let participantAgentIDs = normalizeStringArray(input.participantAgentIDs);
+    let participantUserIDs = normalizeStringArray(input.participantUserIDs);
     let parentSessionID = normalizeOptionalString(input.parentSessionID || input.parentSessionId);
     let session = {
       id: input.id || this.idGenerator(),
@@ -68,6 +73,7 @@ export class FrameRuntime extends EventEmitter {
       generation: normalizeSessionGeneration(input.generation, parentSessionID),
       messageCount: normalizeCount(input.messageCount),
       participantAgentIDs,
+      participantUserIDs,
       coordinatorAgentID: normalizeCoordinatorAgentID(input.coordinatorAgentID, participantAgentIDs),
       createdAt: input.createdAt || now,
       updatedAt: input.updatedAt || now,
@@ -274,13 +280,37 @@ export class FrameRuntime extends EventEmitter {
     };
   }
 
+  async inviteUserToSession(sessionID, user, input = {}) {
+    let entry = await this.ensureSessionEntry(sessionID, { loadFrames: false });
+    let userID = normalizeRequiredString(user?.id || user?.actorID || user?.userID, 'user.id');
+    let participantUserIDs = normalizeStringArray(entry.session.participantUserIDs);
+    let alreadyParticipant = participantUserIDs.includes(userID);
+
+    if (!alreadyParticipant)
+      participantUserIDs.push(userID);
+
+    entry.session.participantUserIDs = participantUserIDs;
+    let stamp = this.nextClockStamp();
+    entry.session.updatedAt = input.updatedAt || input.invitedAt || stamp.at;
+    entry.session.updatedClock = input.updatedClock || input.invitedClock || stamp.clock;
+
+    await this.frameStore.saveSessionManifest(entry.session);
+    this.emitRuntimeEvent('session.saved', { sessionID, session: entry.session });
+
+    return {
+      session: entry.session,
+      userID,
+      alreadyParticipant,
+    };
+  }
+
   async listFrames(sessionID, options = {}) {
     let hasPagingOptions = options.limit != null || options.offset != null;
     let limit = normalizeFrameLimit(options.limit);
     let offset = normalizeFrameOffset(options.offset);
     let loadLimit = hasPagingOptions ? normalizeFrameWindowLimit(offset + limit) : limit;
     let entry = await this.ensureSessionEntry(sessionID, { frameLimit: loadLimit });
-    let frames = entry.frameEngine.toArray();
+    let frames = projectFrameMessages(entry.frameEngine.toArray());
 
     if (hasPagingOptions)
       return frames.slice(offset, offset + limit);
@@ -737,20 +767,6 @@ function createRecoveredToolCallFrame(frame, options = {}) {
       recovered: true,
     },
   };
-}
-
-function countMessageFrames(frames) {
-  if (!Array.isArray(frames))
-    return 0;
-
-  return frames.filter(isVisibleThreadFrame).length;
-}
-
-function isVisibleThreadFrame(frame) {
-  return Boolean(frame?.id)
-    && frame.hidden !== true
-    && frame.deleted !== true
-    && frame.phantom !== true;
 }
 
 function maxFrameTimestamp(frames) {

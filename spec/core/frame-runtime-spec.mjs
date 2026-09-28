@@ -769,6 +769,137 @@ test('FrameRuntime supports spaced and quoted agent names in /invite', async () 
   assert.equal((await routeInviteMessage("/invite 'Mr. Bennett'", 'Mr. Bennett')).frames[1].content.status, 'ok');
 });
 
+test('FrameRuntime expands /invite team references into agent and user session participants', async () => {
+  let aeordb = createClient();
+  let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
+  let commandRegistry = new CommandRegistry({ logger: quietLogger() });
+  let router = new FrameRouter({ logger: quietLogger() });
+  let runtime;
+  let agentManager = {
+    async resolveAgent(reference) {
+      assert.equal(reference, 'Builders');
+      let error = new Error(`Agent not found: ${reference}`);
+      error.status = 404;
+      throw error;
+    },
+    async getAgent(agentID) {
+      assert.equal(agentID, 'agent_1');
+      return { id: 'agent_1', name: 'Iron-Hand' };
+    },
+  };
+  let teamManager = {
+    async resolveTeam(reference) {
+      assert.equal(reference, 'Builders');
+      return {
+        id: 'team_1',
+        name: 'Builders',
+        members: [
+          { type: 'agent', actorID: 'agent_1', name: 'Iron-Hand' },
+          { type: 'user', actorID: 'usr_1', name: 'Wyatt' },
+        ],
+      };
+    },
+  };
+  let context = {
+    require(name) {
+      if (name === 'agentManager')
+        return agentManager;
+
+      if (name === 'teamManager')
+        return teamManager;
+
+      if (name === 'frameRuntime')
+        return runtime;
+
+      if (name === 'commandRegistry')
+        return commandRegistry;
+
+      throw new Error(`Unknown service: ${name}`);
+    },
+  };
+
+  registerInternalCommands({ pluginRegistry, commandRegistry });
+  router.loadFromRegistry(pluginRegistry);
+  runtime = new FrameRuntime({
+    aeordb,
+    frameRouter: router,
+    services: { context },
+    clock: () => 1000,
+    idGenerator: createIDGenerator([ 'ses_1', 'int_1', 'msg_1', 'commit_1', 'cmd_1', 'commit_2' ]),
+  });
+
+  await runtime.createSession({ title: 'Scratch' });
+  await runtime.appendUserMessage('ses_1', { text: '/invite Builders', userID: 'usr_1' });
+  await tick();
+  await tick();
+  await runtime.frameStore.flush();
+
+  let session = await aeordb.getFile('/kikx/sessions/ses_1/session.json');
+  let frames = await runtime.listFrames('ses_1');
+
+  assert.deepEqual(session.participantAgentIDs, [ 'agent_1' ]);
+  assert.deepEqual(session.participantUserIDs, [ 'usr_1' ]);
+  assert.equal(frames[1].content.text, 'Team Builders joined this session (1 agent, 1 user).');
+  assert.deepEqual(frames[1].content.data.invitedAgents, [{ actorID: 'agent_1', type: 'agent', name: 'Iron-Hand' }]);
+  assert.deepEqual(frames[1].content.data.invitedUsers, [{ actorID: 'usr_1', type: 'user', name: 'Wyatt' }]);
+});
+
+test('FrameRuntime reports ambiguous /invite targets when agent and team names collide', async () => {
+  let aeordb = createClient();
+  let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
+  let commandRegistry = new CommandRegistry({ logger: quietLogger() });
+  let router = new FrameRouter({ logger: quietLogger() });
+  let runtime;
+  let context = {
+    require(name) {
+      if (name === 'agentManager') {
+        return {
+          async resolveAgent(reference) {
+            return { id: 'agent_1', name: reference };
+          },
+        };
+      }
+
+      if (name === 'teamManager') {
+        return {
+          async resolveTeam(reference) {
+            return { id: 'team_1', name: reference, members: [] };
+          },
+        };
+      }
+
+      if (name === 'frameRuntime')
+        return runtime;
+
+      if (name === 'commandRegistry')
+        return commandRegistry;
+
+      throw new Error(`Unknown service: ${name}`);
+    },
+  };
+
+  registerInternalCommands({ pluginRegistry, commandRegistry });
+  router.loadFromRegistry(pluginRegistry);
+  runtime = new FrameRuntime({
+    aeordb,
+    frameRouter: router,
+    services: { context },
+    clock: () => 1000,
+    idGenerator: createIDGenerator([ 'ses_1', 'int_1', 'msg_1', 'commit_1', 'cmd_1', 'commit_2' ]),
+  });
+
+  await runtime.createSession({ title: 'Scratch' });
+  await runtime.appendUserMessage('ses_1', { text: '/invite Builders', userID: 'usr_1' });
+  await tick();
+  await tick();
+  await runtime.frameStore.flush();
+
+  let frames = await runtime.listFrames('ses_1');
+
+  assert.equal(frames[1].content.status, 'error');
+  assert.match(frames[1].content.text, /Ambiguous invite target/);
+});
+
 test('FrameRuntime reports malformed quoted /invite arguments as command errors', async () => {
   let result = await routeInviteMessage('/invite "Agent With Spaces', null);
 

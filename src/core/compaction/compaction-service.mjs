@@ -13,6 +13,7 @@ import {
   FrameContextBuilder,
   serializeFramesForCompaction,
 } from './frame-context-builder.mjs';
+import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
 const DEFAULT_COMPACTION_AGENT_CONTEXT_TOKENS = 128000;
@@ -47,7 +48,7 @@ export class CompactionService {
 
   async prepareAgentContext(input = {}) {
     let frameEngine = input.frameEngine;
-    let frames = typeof frameEngine?.toArray === 'function' ? frameEngine.toArray() : input.frames || [];
+    let frames = projectFrameMessages(typeof frameEngine?.toArray === 'function' ? frameEngine.toArray() : input.frames || []);
     let result = this.contextBuilder.build(frames, {
       activeFrameID: input.triggerFrame?.id || input.activeFrameID,
       contextWindowTokens: input.contextWindowTokens || this.contextWindowTokens,
@@ -71,7 +72,7 @@ export class CompactionService {
         this.logger.error?.('Kikx compaction failed while waiting at hard context limit', error);
       });
 
-      let nextFrames = typeof frameEngine?.toArray === 'function' ? frameEngine.toArray() : frames;
+      let nextFrames = projectFrameMessages(typeof frameEngine?.toArray === 'function' ? frameEngine.toArray() : frames);
       return this.contextBuilder.build(nextFrames, {
         activeFrameID: input.triggerFrame?.id || input.activeFrameID,
         contextWindowTokens: input.contextWindowTokens || this.contextWindowTokens,
@@ -139,7 +140,7 @@ export class CompactionService {
     if (!session?.id || !frameEngine)
       throw new Error('Manual compaction requires a session and frame engine');
 
-    let frames = typeof frameEngine.toArray === 'function' ? frameEngine.toArray() : input.frames || [];
+    let frames = projectFrameMessages(typeof frameEngine.toArray === 'function' ? frameEngine.toArray() : input.frames || []);
     let context = this.contextBuilder.build(frames, {
       activeFrameID: input.triggerFrame?.id || input.activeFrameID,
       contextWindowTokens: Number.MAX_SAFE_INTEGER,

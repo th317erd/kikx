@@ -659,11 +659,33 @@ function compareSessionOrder(a, b) {
 }
 
 function compareFrameOrder(a, b) {
-  return compareClock(a?.createdClock, b?.createdClock)
-    || compareNumber(a?.createdAt, b?.createdAt)
+  return compareClock(logicalSortClock(a), logicalSortClock(b))
+    || compareNumber(logicalSortTime(a), logicalSortTime(b))
     || compareNumber(a?.order, b?.order)
     || compareNumber(sortCommitOrder(a), sortCommitOrder(b))
     || String(a.id).localeCompare(String(b.id));
+}
+
+function logicalSortClock(frame) {
+  if (isClosedAgentMessage(frame))
+    return frame?.state?.lifecycle?.closedClock || sortUpdatedClock(frame);
+
+  return frame?.createdClock;
+}
+
+function logicalSortTime(frame) {
+  if (isClosedAgentMessage(frame))
+    return numberOr(frame?.state?.lifecycle?.closedAt, sortUpdatedAt(frame));
+
+  return frame?.createdAt;
+}
+
+function isClosedAgentMessage(frame) {
+  return frame?.type === 'AgentMessage'
+    && (
+      frame?.state?.lifecycle?.status === 'closed'
+      || frame?.content?.status === 'complete'
+    );
 }
 
 function sortUpdatedClock(frame) {

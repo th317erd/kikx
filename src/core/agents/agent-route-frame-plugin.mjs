@@ -6,6 +6,7 @@ import {
   resolveMentionActors,
 } from '../mentions/index.mjs';
 import { normalizeProviderUsage } from '../tokens/index.mjs';
+import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
 
 const DEFAULT_CONTINUATION_DELAY_MS = 1000;
 const DEFAULT_CONTINUATION_PROMPT = 'Please continue what you were doing.';
@@ -99,7 +100,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
         currentAgent: agent,
       });
       let sessionFrames = typeof this.context.engine.toArray === 'function'
-        ? this.context.engine.toArray()
+        ? projectFrameMessages(this.context.engine.toArray())
         : [];
       let compactionService = resolveService(services, 'compactionService');
       let contextMemory = null;
@@ -171,7 +172,7 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
             services,
           });
 
-          continue;
+          break;
         }
 
         this.mergeProviderFrame(output, { agent, frame, responseFrameID });
@@ -363,6 +364,9 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
 
     let now = this.clock();
     let responseFrame = this.context.engine.get(responseFrameID);
+    if (output.phantom && isClosedFrame(responseFrame))
+      return;
+
     let content = normalizeProviderContent(output, responseFrame);
     if (shouldSuppressBlankAgentMessage(output, content)) {
       if (!output.id || output.id === responseFrameID)
@@ -390,7 +394,18 @@ export class AgentRouteFramePlugin extends BaseFramePlugin {
       content,
     };
 
-    this.context.engine.merge([ mergedFrame ], {
+    let frames = [ normalizeClosingFrame(mergedFrame, { now }) ];
+    if (isClosingAgentMessageFrame(mergedFrame)) {
+      frames.push(createMessageDoneFrame({
+        agent,
+        frame,
+        responseFrameID,
+        responseFrame: frames[0],
+        now,
+      }));
+    }
+
+    this.context.engine.merge(frames, {
       authorType: 'agent',
       authorID: agent.id,
     });
@@ -917,6 +932,68 @@ function normalizeProviderContent(output, existingResponseFrame) {
   };
 
   return content;
+}
+
+function normalizeClosingFrame(frame, { now }) {
+  if (!isClosingAgentMessageFrame(frame))
+    return frame;
+
+  return {
+    ...frame,
+    state: {
+      ...(frame.state || {}),
+      lifecycle: {
+        ...(frame.state?.lifecycle || {}),
+        status: 'closed',
+        closedAt: frame.state?.lifecycle?.closedAt || now,
+        reason: frame.content?.status || 'complete',
+      },
+    },
+  };
+}
+
+function createMessageDoneFrame({ agent, frame, responseFrameID, responseFrame, now }) {
+  return {
+    id: `${responseFrameID}:done`,
+    type: 'MessageDone',
+    sessionID: frame.sessionID,
+    interactionID: frame.interactionID,
+    parentID: responseFrameID,
+    authorType: 'agent',
+    authorID: agent.id,
+    authorDisplayName: agent.name || agent.id,
+    timestamp: now,
+    createdAt: now,
+    updatedAt: now,
+    hidden: true,
+    deleted: false,
+    content: {
+      frameID: responseFrameID,
+      frameType: responseFrame?.type || 'AgentMessage',
+      status: responseFrame?.content?.status || 'complete',
+      agentID: agent.id,
+      agentName: agent.name || agent.id,
+      text: '',
+    },
+    state: {
+      lifecycle: {
+        status: 'closed',
+        closedAt: now,
+        reason: responseFrame?.content?.status || 'complete',
+      },
+    },
+  };
+}
+
+function isClosingAgentMessageFrame(frame) {
+  return frame?.phantom !== true
+    && frame?.type === 'AgentMessage'
+    && frame.content?.status === 'complete';
+}
+
+function isClosedFrame(frame) {
+  return frame?.state?.lifecycle?.status === 'closed'
+    || frame?.content?.status === 'complete';
 }
 
 function shouldSuppressBlankAgentMessage(output, content = {}) {

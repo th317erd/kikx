@@ -498,6 +498,51 @@ test('AeorDBFrameStore orders frames by stable creation clocks before legacy com
   assert.deepEqual(frames.map((frame) => frame.id), [ 'agent_1', 'user_1' ]);
 });
 
+test('AeorDBFrameStore orders closed agent responses by close clock on reload', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-user_1.json', {
+    id: 'user_1',
+    type: 'UserMessage',
+    order: 1,
+    createdClock: '0000000001000000-000000-runner',
+    updatedClock: '0000000001000000-000000-runner',
+    hidden: false,
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000002-AgentMessage-agent_1.json', {
+    id: 'agent_1',
+    type: 'AgentMessage',
+    order: 2,
+    createdClock: '0000000001001000-000000-runner',
+    updatedClock: '0000000009000000-000000-runner',
+    hidden: false,
+    content: {
+      text: 'answer',
+      status: 'complete',
+    },
+    state: {
+      lifecycle: {
+        status: 'closed',
+        closedClock: '0000000001002000-000000-runner',
+        closedAt: 1002,
+      },
+    },
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_2/frames/0000000000000003-UserMessage-user_2.json', {
+    id: 'user_2',
+    type: 'UserMessage',
+    order: 3,
+    createdClock: '0000000001003000-000000-runner',
+    updatedClock: '0000000001003000-000000-runner',
+    hidden: false,
+  });
+
+  let frames = await store.listFrames('ses_1');
+
+  assert.deepEqual(frames.map((frame) => frame.id), [ 'user_1', 'agent_1', 'user_2' ]);
+});
+
 test('AeorDBFrameStore preserves frame load failures as visible non-persisted placeholders', async () => {
   let aeordb = createClient({
     failGetPath: '0000000000000002-AgentMessage-bad_msg.json',

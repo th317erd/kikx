@@ -7,6 +7,18 @@ import { HybridLogicalClock, defaultUnixMicros } from '../clock/hybrid-logical-c
 import { cloneValue, deepMerge } from './deep-merge.mjs';
 
 const MERGEABLE_FIELDS = new Set([ 'content', 'hidden', 'deleted', 'updatedAt', 'state' ]);
+const TERMINAL_CONTENT_STATUSES = new Set([
+  'break',
+  'complete',
+  'completed',
+  'deleted',
+  'empty',
+  'error',
+  'finalized',
+  'forwarded',
+  'null-response',
+  'respond-and-continue',
+]);
 
 export class FrameEngine extends EventEmitter {
   constructor(options = {}) {
@@ -221,6 +233,15 @@ export class FrameEngine extends EventEmitter {
     let updatedClock = stringOr(input.updatedClock, existing ? missingStamp().clock : createdClock);
     let order = numberOr(input.order, existing?.order || ++this._frameOrder);
 
+    let content = cloneValue(input.content || {});
+    let state = normalizeLifecycleState({
+      inputState: input.state,
+      existingState: existing?.state,
+      content,
+      updatedAt,
+      updatedClock,
+    });
+
     return {
       ...cloneValue(input),
       id: input.id,
@@ -238,8 +259,8 @@ export class FrameEngine extends EventEmitter {
       groupID: input.groupID ?? input.groupId ?? null,
       groupType: input.groupType ?? null,
       phantom: input.phantom === true,
-      content: cloneValue(input.content || {}),
-      state: cloneValue(input.state || existing?.state || {}),
+      content,
+      state,
     };
   }
 
@@ -464,11 +485,33 @@ export class FrameEngine extends EventEmitter {
 }
 
 function compareFrameOrder(a, b) {
-  return compareClock(a?.createdClock, b?.createdClock)
-    || compareNumber(a?.createdAt, b?.createdAt)
+  return compareClock(logicalSortClock(a), logicalSortClock(b))
+    || compareNumber(logicalSortTime(a), logicalSortTime(b))
     || compareNumber(a?.order, b?.order)
     || compareNumber(sortCommitOrder(a), sortCommitOrder(b))
     || String(a.id).localeCompare(String(b.id));
+}
+
+function logicalSortClock(frame) {
+  if (isClosedAgentMessage(frame))
+    return frame?.state?.lifecycle?.closedClock || frame?.updatedClock || frame?.createdClock;
+
+  return frame?.createdClock;
+}
+
+function logicalSortTime(frame) {
+  if (isClosedAgentMessage(frame))
+    return numberOr(frame?.state?.lifecycle?.closedAt, numberOr(frame?.updatedAt, frame?.createdAt));
+
+  return frame?.createdAt;
+}
+
+function isClosedAgentMessage(frame) {
+  return frame?.type === 'AgentMessage'
+    && (
+      frame?.state?.lifecycle?.status === 'closed'
+      || frame?.content?.status === 'complete'
+    );
 }
 
 function sortCommitOrder(frame) {
@@ -476,6 +519,37 @@ function sortCommitOrder(frame) {
     return frame.commitOrder;
 
   return frame?.order || 0;
+}
+
+function normalizeLifecycleState({ inputState, existingState, content, updatedAt, updatedClock }) {
+  let state = cloneValue(inputState || existingState || {});
+  let lifecycle = (state.lifecycle && typeof state.lifecycle === 'object' && !Array.isArray(state.lifecycle))
+    ? { ...state.lifecycle }
+    : {};
+
+  if (!shouldCloseLifecycle(lifecycle, content))
+    return state;
+
+  lifecycle.status = 'closed';
+  lifecycle.closedAt = numberOr(lifecycle.closedAt, updatedAt);
+  lifecycle.closedClock = stringOr(lifecycle.closedClock, updatedClock);
+  lifecycle.reason = stringOr(lifecycle.reason, normalizeTerminalStatus(content?.status) || 'closed');
+
+  return {
+    ...state,
+    lifecycle,
+  };
+}
+
+function shouldCloseLifecycle(lifecycle, content) {
+  if (lifecycle?.status === 'closed')
+    return true;
+
+  return TERMINAL_CONTENT_STATUSES.has(normalizeTerminalStatus(content?.status));
+}
+
+function normalizeTerminalStatus(status) {
+  return typeof status === 'string' ? status.trim() : '';
 }
 
 function compareClock(a, b) {

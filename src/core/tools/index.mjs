@@ -26,6 +26,15 @@ export {
   SessionMessageTool,
   SessionSearchTool,
 } from './session-tools.mjs';
+export {
+  SessionInviteTeamTool,
+  TeamAddMemberTool,
+  TeamCreateTool,
+  TeamDeleteTool,
+  TeamListTool,
+  TeamRemoveMemberTool,
+  TeamUpdateTool,
+} from './team-tools.mjs';
 export { ToolExecutionService } from './tool-execution-service.mjs';
 export {
   TodoAddTool,

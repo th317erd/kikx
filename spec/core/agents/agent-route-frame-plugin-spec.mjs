@@ -163,6 +163,32 @@ class BlankMessageAgentProvider extends AgentInterface {
   }
 }
 
+class LatePhantomAfterDoneAgentProvider extends AgentInterface {
+  static pluginID = 'late-phantom-agent';
+
+  async *run() {
+    yield {
+      type: 'AgentMessage',
+      content: {
+        text: 'Final before bad stream.',
+      },
+    };
+    yield {
+      type: 'Done',
+      content: {
+        status: 'finalized',
+      },
+    };
+    yield {
+      type: 'AgentThinking',
+      phantom: true,
+      content: {
+        text: 'this should never arrive',
+      },
+    };
+  }
+}
+
 class FailingAgentProvider extends AgentInterface {
   static pluginID = 'failing-agent';
 
@@ -270,6 +296,7 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
   await runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
 
   let frames = await runtime.listFrames('ses_1');
+  let rawFrames = runtime.requireSessionEntry('ses_1').frameEngine.toArray();
   assert.equal(runtime.services.calls[0].method, 'response-frame-before-run');
   assert.equal(runtime.services.calls[0].responseFrame.id, 'agent_frame_1');
   assert.equal(runtime.services.calls[0].responseFrame.type, 'AgentMessage');
@@ -315,6 +342,7 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
   });
   assert.deepEqual(phantoms.map((frame) => frame.type), [ 'AgentThinking' ]);
   assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage' ]);
+  assert.deepEqual(rawFrames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage', 'MessageDone' ]);
   assert.equal(frames[1].id, 'agent_frame_1');
   assert.equal(frames[1].parentID, 'msg_1');
   assert.equal(frames[1].interactionID, 'int_1');
@@ -328,6 +356,15 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
     status: 'complete',
   });
   assert.equal(frames[1].content.status, 'complete');
+  assert.equal(frames[1].state.lifecycle.status, 'closed');
+  assert.equal(frames[1].state.lifecycle.reason, 'complete');
+  assert.equal(frames[1].state.lifecycle.closedAt, 1000);
+  assert.equal(typeof frames[1].state.lifecycle.closedClock, 'string');
+  assert.equal(rawFrames[2].id, 'agent_frame_1:done');
+  assert.equal(rawFrames[2].parentID, 'agent_frame_1');
+  assert.equal(rawFrames[2].hidden, true);
+  assert.equal(rawFrames[2].content.frameID, 'agent_frame_1');
+  assert.equal(rawFrames[2].state.lifecycle.status, 'closed');
   assert.deepEqual(frames[0].tokenUsage, {
     'streaming-agent': {
       createdAt: 1000,
@@ -1261,6 +1298,39 @@ test('AgentRouteFramePlugin cleans up blank visible agent messages', async () =>
   assert.equal(agentFrames[0].content.text, '');
 });
 
+test('AgentRouteFramePlugin treats Done as a hard provider stream boundary', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Closer',
+        pluginID: 'late-phantom-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  let phantoms = [];
+  runtime.requireSessionEntry('ses_1').frameEngine.on('frame:phantom', ({ frame }) => phantoms.push(frame));
+
+  await runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
+
+  let frames = await runtime.listFrames('ses_1');
+  let rawFrames = runtime.requireSessionEntry('ses_1').frameEngine.toArray();
+  assert.deepEqual(phantoms, []);
+  assert.deepEqual(frames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage' ]);
+  assert.deepEqual(rawFrames.map((frame) => frame.type), [ 'UserMessage', 'AgentMessage', 'MessageDone' ]);
+  assert.equal(frames[1].content.text, 'Final before bad stream.');
+  assert.equal(frames[1].state.lifecycle.status, 'closed');
+});
+
 test('AgentRouteFramePlugin schedules respond-and-continue as a generic scheduled target frame', async () => {
   let runtime = createRuntime({
     agents: new Map([
@@ -1522,6 +1592,7 @@ function createRuntime(options = {}) {
   pluginRegistry.registerAgentProvider('service-forwarding-agent', ServiceForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('null-response-agent', NullResponseAgentProvider);
   pluginRegistry.registerAgentProvider('blank-message-agent', BlankMessageAgentProvider);
+  pluginRegistry.registerAgentProvider('late-phantom-agent', LatePhantomAfterDoneAgentProvider);
   pluginRegistry.registerAgentProvider('failing-agent', FailingAgentProvider);
   pluginRegistry.registerAgentProvider('slow-agent', SlowAgentProvider);
   pluginRegistry.registerAgentProvider('continuing-agent', ContinuingAgentProvider);

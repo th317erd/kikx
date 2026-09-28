@@ -79,6 +79,39 @@ class SelfReviewingAgent extends AgentInterface {
   }
 }
 
+class StreamingSelfReviewAgent extends AgentInterface {
+  async *ask(_prompt, options = {}) {
+    if (options.step?.type === 'completion-review') {
+      yield {
+        id: 'review_typing',
+        type: 'BeginTyping',
+        phantom: true,
+      };
+      yield {
+        id: 'review_thinking',
+        type: 'AgentThinking',
+        phantom: true,
+        content: { text: 'internal review thinking' },
+      };
+      yield {
+        id: 'review_delta',
+        type: 'AgentMessageDelta',
+        phantom: true,
+        content: { text: 'internal review draft' },
+      };
+      yield options.tools['agent-finalize']({ text: 'reviewed final answer' });
+      yield {
+        id: 'review_typing',
+        type: 'EndTyping',
+        phantom: true,
+      };
+      return;
+    }
+
+    yield options.tools['agent-respond']({ text: 'draft final answer' });
+  }
+}
+
 class IncompleteSelfReviewAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
     if (options.step?.type === 'completion-review') {
@@ -908,6 +941,25 @@ test('AgentInterface runs a completion self-review before emitting a finalized r
   assert.match(agent.calls[1].prompt, /Draft visible response JSON:/);
   assert.match(agent.calls[1].prompt, /draft final answer/);
   assert.ok(agent.calls[1].toolNames.includes('agent-progress'));
+});
+
+test('AgentInterface suppresses internal completion-review streaming frames', async () => {
+  let outputs = await collect(new StreamingSelfReviewAgent().run(baseLoopParams({
+    frames: [],
+  })));
+
+  assert.deepEqual(outputs, [
+    {
+      type: 'AgentMessage',
+      content: { text: 'reviewed final answer' },
+    },
+    {
+      type: 'Done',
+      content: {
+        status: 'finalized',
+      },
+    },
+  ]);
 });
 
 test('AgentInterface completion self-review can convert a draft final answer into a continuation', async () => {

@@ -163,19 +163,100 @@ function createAgentManager() {
   };
 }
 
+function createTeamManager() {
+  let calls = [];
+  return {
+    calls,
+    async listTeams(options) {
+      calls.push({ method: 'listTeams', options });
+      return [
+        {
+          id: 'team_1',
+          name: 'Builders',
+          members: [{ type: 'agent', actorID: 'agent_1', name: 'Coder' }],
+          createdAt: 1000,
+          updatedAt: 1000,
+        },
+      ];
+    },
+    async createTeam(input) {
+      calls.push({ method: 'createTeam', input });
+      return {
+        id: 'team_1',
+        name: input.name,
+        members: input.members || [],
+        createdAt: 1000,
+        updatedAt: 1000,
+      };
+    },
+    async getTeam(teamID) {
+      calls.push({ method: 'getTeam', teamID });
+      if (teamID === 'missing') {
+        let error = new Error('Unknown team: missing');
+        error.status = 404;
+        throw error;
+      }
+
+      return {
+        id: teamID,
+        name: 'Builders',
+        members: [{ type: 'agent', actorID: 'agent_1', name: 'Coder' }],
+        createdAt: 1000,
+        updatedAt: 1000,
+      };
+    },
+    async updateTeam(teamID, input) {
+      calls.push({ method: 'updateTeam', teamID, input });
+      return {
+        id: teamID,
+        name: input.name || 'Builders',
+        members: input.members || [],
+        createdAt: 1000,
+        updatedAt: 1001,
+      };
+    },
+    async addMember(teamID, input) {
+      calls.push({ method: 'addMember', teamID, input });
+      return {
+        id: teamID,
+        name: 'Builders',
+        members: [{ type: input.type || 'agent', actorID: input.actorID || input.agentID || 'agent_1', name: input.name || 'Coder' }],
+        createdAt: 1000,
+        updatedAt: 1001,
+      };
+    },
+    async removeMember(teamID, input) {
+      calls.push({ method: 'removeMember', teamID, input });
+      return {
+        id: teamID,
+        name: 'Builders',
+        members: [],
+        createdAt: 1000,
+        updatedAt: 1001,
+      };
+    },
+    async deleteTeam(teamID) {
+      calls.push({ method: 'deleteTeam', teamID });
+    },
+  };
+}
+
 async function createStaticFixture() {
   let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-static-'));
   let clientRoot = path.join(root, 'client');
+  let sharedRoot = path.join(root, 'shared');
   let aeorWebComponentsRoot = path.join(root, 'aeor-web-components');
 
   await fs.mkdir(path.join(clientRoot, 'styles'), { recursive: true });
+  await fs.mkdir(path.join(sharedRoot, 'frame-manager'), { recursive: true });
   await fs.mkdir(path.join(aeorWebComponentsRoot, 'components'), { recursive: true });
   await fs.writeFile(path.join(clientRoot, 'index.html'), '<!doctype html><title>Kikx</title>');
   await fs.writeFile(path.join(clientRoot, 'app.mjs'), "import './components/kikx-app.mjs';");
   await fs.writeFile(path.join(clientRoot, 'styles', 'app.css'), 'body { color: white; }');
+  await fs.writeFile(path.join(sharedRoot, 'frame-manager', 'frame-manager.mjs'), 'export class FrameManager {}');
   await fs.writeFile(path.join(aeorWebComponentsRoot, 'elements.js'), 'export const elements = {};');
 
-  return { root, clientRoot, aeorWebComponentsRoot };
+  return { root, clientRoot, sharedRoot, aeorWebComponentsRoot };
 }
 
 test('GET /health reports service state', async () => {
@@ -1192,6 +1273,108 @@ test('agent routes validate request bodies and report missing agents', async () 
   }
 });
 
+test('team routes create, list, read, update, add/remove members, and delete through TeamManager', async () => {
+  let teamManager = createTeamManager();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      agentManager: createAgentManager(),
+      teamManager,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let createResponse = await jsonFetch(`${baseURL}/api/v1/teams`, {
+      name: 'Builders',
+      members: [
+        { type: 'agent', actorID: 'agent_1', name: 'Coder' },
+        { type: 'user', actorID: 'usr_1', name: 'Wyatt' },
+      ],
+    });
+    assert.equal(createResponse.status, 201);
+
+    let listResponse = await fetch(`${baseURL}/api/v1/teams?limit=25&offset=5`);
+    assert.equal(listResponse.status, 200);
+
+    let getResponse = await fetch(`${baseURL}/api/v1/teams/team_1`);
+    assert.equal(getResponse.status, 200);
+
+    let updateResponse = await jsonFetch(`${baseURL}/api/v1/teams/team_1`, {
+      name: 'Reviewers',
+      members: [{ type: 'agent', actorID: 'agent_2', name: 'Mr. Bennett' }],
+    }, { method: 'PATCH' });
+    assert.equal(updateResponse.status, 200);
+
+    let addResponse = await jsonFetch(`${baseURL}/api/v1/teams/team_1/members`, {
+      type: 'agent',
+      actorID: 'agent_3',
+      name: 'Critic',
+    });
+    assert.equal(addResponse.status, 200);
+
+    let removeResponse = await fetch(`${baseURL}/api/v1/teams/team_1/members/agent_3?type=agent`, { method: 'DELETE' });
+    assert.equal(removeResponse.status, 200);
+
+    let deleteResponse = await fetch(`${baseURL}/api/v1/teams/team_1`, { method: 'DELETE' });
+    assert.equal(deleteResponse.status, 204);
+
+    assert.deepEqual(teamManager.calls.map((call) => call.method), [
+      'createTeam',
+      'listTeams',
+      'getTeam',
+      'updateTeam',
+      'addMember',
+      'removeMember',
+      'deleteTeam',
+    ]);
+    assert.deepEqual(teamManager.calls[1].options, { limit: 25, offset: 5 });
+    assert.equal(teamManager.calls[0].input.members[1].type, 'user');
+    assert.deepEqual(teamManager.calls[5].input, { actorID: 'agent_3', type: 'agent' });
+  } finally {
+    await close(server);
+  }
+});
+
+test('team routes validate request bodies and report missing teams', async () => {
+  let teamManager = createTeamManager();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      agentManager: createAgentManager(),
+      teamManager,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let invalidCreate = await jsonFetch(`${baseURL}/api/v1/teams`, {
+      name: '',
+    });
+    assert.equal(invalidCreate.status, 400);
+
+    let invalidMembers = await jsonFetch(`${baseURL}/api/v1/teams/team_1`, {
+      members: {},
+    }, { method: 'PATCH' });
+    assert.equal(invalidMembers.status, 400);
+
+    let invalidMember = await jsonFetch(`${baseURL}/api/v1/teams/team_1/members`, {
+      type: 'service',
+      actorID: 'svc_1',
+    });
+    assert.equal(invalidMember.status, 400);
+
+    let missing = await fetch(`${baseURL}/api/v1/teams/missing`);
+    let body = await missing.json();
+    assert.equal(missing.status, 404);
+    assert.equal(body.error.message, 'Unknown team: missing');
+  } finally {
+    await close(server);
+  }
+});
+
 test('POST /api/v1/auth/magic-link forwards email to AeorDB', async () => {
   let seenEmail;
   let server = createServer({
@@ -1465,6 +1648,7 @@ test('GET /client/*.mjs serves browser modules with JavaScript MIME type', async
   let fixture = await createStaticFixture();
   let server = createServer({
     clientRoot: fixture.clientRoot,
+    sharedRoot: fixture.sharedRoot,
     aeorWebComponentsRoot: fixture.aeorWebComponentsRoot,
     context: new AppContext({
       aeordb: {
@@ -1488,10 +1672,39 @@ test('GET /client/*.mjs serves browser modules with JavaScript MIME type', async
   }
 });
 
+test('GET /shared/*.mjs serves shared browser-safe modules with JavaScript MIME type', async () => {
+  let fixture = await createStaticFixture();
+  let server = createServer({
+    clientRoot: fixture.clientRoot,
+    sharedRoot: fixture.sharedRoot,
+    aeorWebComponentsRoot: fixture.aeorWebComponentsRoot,
+    context: new AppContext({
+      aeordb: {
+        eventsURL: () => 'unused',
+      },
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/shared/frame-manager/frame-manager.mjs`);
+    let body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'text/javascript; charset=utf-8');
+    assert.equal(body, 'export class FrameManager {}');
+  } finally {
+    await close(server);
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test('static routes reject path traversal outside configured roots', async () => {
   let fixture = await createStaticFixture();
   let server = createServer({
     clientRoot: fixture.clientRoot,
+    sharedRoot: fixture.sharedRoot,
     aeorWebComponentsRoot: fixture.aeorWebComponentsRoot,
     context: new AppContext({
       aeordb: {

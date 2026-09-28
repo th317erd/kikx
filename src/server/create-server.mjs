@@ -21,6 +21,7 @@ import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
 import { FrameRouter } from '../core/routing/index.mjs';
 import { FrameRuntime } from '../core/runtime/frame-runtime.mjs';
 import { FeedbackStore } from '../core/feedback/index.mjs';
+import { TeamManager } from '../core/teams/index.mjs';
 import { TokenUsageTracker } from '../core/tokens/index.mjs';
 import {
   LocalCommandExecutionService,
@@ -33,6 +34,7 @@ import {
 } from '../core/tools/index.mjs';
 
 const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
+const SHARED_ROOT = fileURLToPath(new URL('../shared/', import.meta.url));
 const DEFAULT_AEOR_WEB_COMPONENTS_ROOT = '/home/wyatt/Projects/aeor-web-components';
 const DEFAULT_TOOL_OUTPUT_API_BYTES = 128 * 1024;
 
@@ -40,6 +42,7 @@ export function createServer(options = {}) {
   let context = options.context || new AppContext();
   let staticRoots = {
     client: options.clientRoot || CLIENT_ROOT,
+    shared: options.sharedRoot || SHARED_ROOT,
     aeorWebComponents: options.aeorWebComponentsRoot || process.env.AEOR_WEB_COMPONENTS_DIR || DEFAULT_AEOR_WEB_COMPONENTS_ROOT,
   };
 
@@ -132,6 +135,13 @@ export function createServer(options = {}) {
     context.set('agentManager', new AgentManager({
       aeordb: context.require('aeordb'),
       pluginRegistry: context.require('pluginRegistry'),
+    }));
+  }
+
+  if (!context.has('teamManager')) {
+    context.set('teamManager', new TeamManager({
+      aeordb: context.require('aeordb'),
+      agentManager: context.require('agentManager'),
     }));
   }
 
@@ -436,6 +446,92 @@ async function routeRequest({ request, response, context, staticRoots }) {
     }
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/v1/teams') {
+    let teamManager = context.require('teamManager');
+    writeJSON(response, 200, {
+      data: {
+        teams: await teamManager.listTeams({
+          limit: parsePositiveInteger(url.searchParams.get('limit'), 50),
+          offset: parseNonNegativeInteger(url.searchParams.get('offset'), 0),
+        }),
+      },
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/v1/teams') {
+    let body = await readJSON(request);
+    validateTeamBody(body, { creating: true });
+
+    let teamManager = context.require('teamManager');
+    writeJSON(response, 201, {
+      data: {
+        team: await teamManager.createTeam(body),
+      },
+    });
+    return;
+  }
+
+  let teamMemberRoute = matchTeamMemberRoute(url.pathname);
+  if (teamMemberRoute) {
+    let teamManager = context.require('teamManager');
+
+    if (request.method === 'POST' && teamMemberRoute.resource === 'members') {
+      let body = await readJSON(request);
+      validateTeamMemberBody(body);
+      writeJSON(response, 200, {
+        data: {
+          team: await teamManager.addMember(teamMemberRoute.teamID, body),
+        },
+      });
+      return;
+    }
+
+    if (request.method === 'DELETE' && teamMemberRoute.resource === 'member') {
+      writeJSON(response, 200, {
+        data: {
+          team: await teamManager.removeMember(teamMemberRoute.teamID, {
+            actorID: teamMemberRoute.actorID,
+            type: url.searchParams.get('type') || '',
+          }),
+        },
+      });
+      return;
+    }
+  }
+
+  let teamRoute = matchTeamRoute(url.pathname);
+  if (teamRoute) {
+    let teamManager = context.require('teamManager');
+
+    if (request.method === 'GET') {
+      writeJSON(response, 200, {
+        data: {
+          team: await teamManager.getTeam(teamRoute.teamID),
+        },
+      });
+      return;
+    }
+
+    if (request.method === 'PATCH') {
+      let body = await readJSON(request);
+      validateTeamBody(body, { creating: false });
+      writeJSON(response, 200, {
+        data: {
+          team: await teamManager.updateTeam(teamRoute.teamID, body),
+        },
+      });
+      return;
+    }
+
+    if (request.method === 'DELETE') {
+      await teamManager.deleteTeam(teamRoute.teamID);
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/v1/sessions') {
     let body = await readJSON(request);
     if (body.title != null && (typeof body.title !== 'string' || body.title.trim() === ''))
@@ -733,6 +829,36 @@ function matchAgentRoute(pathname) {
   };
 }
 
+function matchTeamRoute(pathname) {
+  let match = /^\/api\/v1\/teams\/([^/]+)$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    teamID: decodeURIComponent(match[1]),
+  };
+}
+
+function matchTeamMemberRoute(pathname) {
+  let membersMatch = /^\/api\/v1\/teams\/([^/]+)\/members$/.exec(pathname);
+  if (membersMatch) {
+    return {
+      teamID: decodeURIComponent(membersMatch[1]),
+      resource: 'members',
+    };
+  }
+
+  let memberMatch = /^\/api\/v1\/teams\/([^/]+)\/members\/([^/]+)$/.exec(pathname);
+  if (!memberMatch)
+    return null;
+
+  return {
+    teamID: decodeURIComponent(memberMatch[1]),
+    actorID: decodeURIComponent(memberMatch[2]),
+    resource: 'member',
+  };
+}
+
 function matchToolOutputRoute(pathname) {
   let match = /^\/api\/v1\/tool-outputs\/([^/]+)$/.exec(pathname);
   if (!match)
@@ -770,6 +896,48 @@ function validateAgentBody(body, options = {}) {
 
   if (body.enabled != null && typeof body.enabled !== 'boolean')
     throw httpError(400, 'enabled must be a boolean');
+}
+
+function validateTeamBody(body, options = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    throw httpError(400, 'team body must be an object');
+
+  if (options.creating && (!body.name || typeof body.name !== 'string' || body.name.trim() === ''))
+    throw httpError(400, 'name must be a non-empty string');
+
+  if (body.name != null && (typeof body.name !== 'string' || body.name.trim() === ''))
+    throw httpError(400, 'name must be a non-empty string');
+
+  if (body.members != null) {
+    if (!Array.isArray(body.members))
+      throw httpError(400, 'members must be an array');
+
+    for (let member of body.members)
+      validateTeamMemberBody(member);
+  }
+}
+
+function validateTeamMemberBody(body) {
+  if (typeof body === 'string') {
+    if (body.trim() === '')
+      throw httpError(400, 'team member reference must be a non-empty string');
+
+    return;
+  }
+
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    throw httpError(400, 'team member must be an object or agent reference string');
+
+  if (body.type != null && body.type !== 'agent' && body.type !== 'user')
+    throw httpError(400, 'member.type must be agent or user');
+
+  let type = body.type || (body.userID || body.email ? 'user' : 'agent');
+  let hasReference = Boolean(body.reference || body.agentReference || body.actorID || body.agentID || body.userID || body.id || body.name);
+  if (type === 'user')
+    hasReference = Boolean(body.actorID || body.userID || body.id || body.reference);
+
+  if (!hasReference)
+    throw httpError(400, 'team member requires an actor reference');
 }
 
 async function serveStaticRequest({ request, response, url, staticRoots }) {
@@ -823,6 +991,13 @@ function getStaticAsset(pathname, staticRoots) {
   if (pathname.startsWith('/client/')) {
     return {
       filePath: safeResolve(staticRoots.client, pathname.slice('/client/'.length)),
+      cacheControl: 'no-cache',
+    };
+  }
+
+  if (pathname.startsWith('/shared/')) {
+    return {
+      filePath: safeResolve(staticRoots.shared, pathname.slice('/shared/'.length)),
       cacheControl: 'no-cache',
     };
   }

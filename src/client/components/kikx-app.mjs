@@ -8,11 +8,14 @@ import {
   getSelectedAgentProvider,
   getSelectedSession,
   getSessions,
+  getTeams,
   kikxState,
   removeAgent,
+  removeTeam,
   resetAccountState,
   resetAgentForm,
   resetSessionState,
+  resetTeamForm,
   setAccount,
   setAccountFormFromAccount,
   setAgentProviders,
@@ -22,19 +25,23 @@ import {
   setClientComponents,
   setSessionFrames,
   setSessions,
+  setTeams,
+  setTeamFormFromTeam,
   setTokenUsage,
   upsertFrames,
   upsertAgent,
   upsertSession,
+  upsertTeam,
 } from '../state/kikx-state.mjs';
 import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
 import { loadClientComponentDescriptors } from './frame-component-registry.mjs';
 import './kikx-frame-item.mjs';
 
-const { div, header, main, section, h1, h2, p, span, button, form, label, textarea, ul, li, strong, option } = elements;
+const { div, header, main, section, h1, h2, p, span, button, form, input, label, textarea, ul, li, strong, option } = elements;
 const aeorInput = elements['aeor-input'];
 const aeorModal = elements['aeor-modal'];
 const aeorSelect = elements['aeor-select'];
+const aeorCheckbox = elements['aeor-checkbox'];
 
 const ANCHOR_THRESHOLD = 50;
 const FRAME_ENTER_ANIMATION_MS = 260;
@@ -70,6 +77,11 @@ export class KikxApp extends HTMLElement {
     this._closeAgentEditor = this._closeAgentEditor.bind(this);
     this._createAgent = this._createAgent.bind(this);
     this._onAgentFormSubmit = this._onAgentFormSubmit.bind(this);
+    this._openTeamManager = this._openTeamManager.bind(this);
+    this._closeTeamManager = this._closeTeamManager.bind(this);
+    this._closeTeamEditor = this._closeTeamEditor.bind(this);
+    this._createTeam = this._createTeam.bind(this);
+    this._onTeamFormSubmit = this._onTeamFormSubmit.bind(this);
     this._createSession = this._createSession.bind(this);
     this._closeSessionEditor = this._closeSessionEditor.bind(this);
     this._onSessionEditSubmit = this._onSessionEditSubmit.bind(this);
@@ -120,6 +132,7 @@ export class KikxApp extends HTMLElement {
             span.class('kikx-account-chip')(this._state.account?.name || 'User'),
             button.type('button').class('kikx-sign-out-button').onClick(this._openAccountEditor)('Account'),
             button.type('button').class('kikx-sign-out-button').onClick(this._openAgentManager)('Agents'),
+            button.type('button').class('kikx-sign-out-button').onClick(this._openTeamManager)('Teams'),
             button.type('button').class('kikx-sign-out-button').onClick(this._signOut)('Sign out'),
           )
           : span.class('kikx-topbar__spacer')(),
@@ -141,6 +154,12 @@ export class KikxApp extends HTMLElement {
 
     if (this._state.agentEditorOpen)
       shellChildren.push(this._buildAgentEditor());
+
+    if (this._state.managingTeams)
+      shellChildren.push(this._buildTeamManager());
+
+    if (this._state.teamEditorOpen)
+      shellChildren.push(this._buildTeamEditor());
 
     let tree = div.class('kikx-shell').context(this)(shellChildren).build(document);
 
@@ -331,6 +350,78 @@ export class KikxApp extends HTMLElement {
       );
   }
 
+  _buildTeamManager() {
+    let teams = getTeams(this._state);
+
+    return aeorModal.title('Teams').onClose(this._closeTeamManager)(
+      div.class('kikx-agent-manager kikx-team-manager')(
+        teams.length === 0
+          ? p.class('kikx-muted')('No teams.')
+          : ul.class('kikx-agent-list kikx-team-list')(
+            teams.map((team) => li(
+              div.class('kikx-agent-list__details')(
+                strong(team.name),
+                span(this._teamMemberSummary(team)),
+              ),
+              button
+                .type('button')
+                .class('kikx-agent-list__edit kikx-team-list__edit')
+                .title('Edit team')
+                .ariaLabel('Edit team')
+                .onClick(() => this._editTeam(team))('⚙'),
+            )),
+          ),
+        div.class('modal-footer-actions')(
+          button.type('button').class('kikx-send-button').onClick(this._createTeam)('+ Add Team'),
+        ),
+        p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.teamStatusKind}`, ['teamStatusKind'])(
+          span.textContent.bindState((state) => state.teamStatus, ['teamStatus'])(),
+        ),
+      ),
+    );
+  }
+
+  _buildTeamEditor() {
+    let actors = this._availableTeamActors();
+
+    return aeorModal
+      .title(this._state.teamFormMode === 'edit' ? 'Edit team' : 'Create team')
+      .onClose(this._closeTeamEditor)(
+        form.class('kikx-agent-form kikx-team-form').onSubmit(this._onTeamFormSubmit)(
+          label('Name'),
+          aeorInput
+            .type('text')
+            .name('name')
+            .value.bindState((state) => state.teamFormName, ['teamFormName'])
+            .onInput((event) => { this._state.teamFormName = event.target.value; })(),
+          label('Members'),
+          actors.length === 0
+            ? p.class('kikx-muted')('No actors are available.')
+            : div.class('kikx-team-member-list')(
+              actors.map((actor) => aeorCheckbox
+                .class('kikx-team-member-option')
+                .name('team-member')
+                .value(this._teamMemberKey(actor))
+                .checked(this._teamMemberChecked(actor))
+                .onChange((event) => this._toggleTeamMember(actor, event.currentTarget.checked))(
+                  span.class('kikx-team-member-option__name')(actor.name),
+                  span.class('kikx-team-member-option__type')(actor.type),
+                )),
+            ),
+          div.class('modal-footer-actions')(
+            ...(this._state.teamFormMode === 'edit'
+              ? [ button.type('button').class('kikx-sign-out-button').onClick(() => this._deleteTeam(this._state.editingTeamID))('Delete') ]
+              : []),
+            button.type('button').class('kikx-sign-out-button').onClick(this._closeTeamEditor)('Cancel'),
+            button.type('button').class('kikx-send-button').onClick(this._onTeamFormSubmit)(this._state.teamFormMode === 'edit' ? 'Save' : 'Create'),
+          ),
+          p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.teamStatusKind}`, ['teamStatusKind'])(
+            span.textContent.bindState((state) => state.teamStatus, ['teamStatus'])(),
+          ),
+        ),
+      );
+  }
+
   _buildAgentConfigFields(provider) {
     if (!provider)
       return [];
@@ -366,6 +457,63 @@ export class KikxApp extends HTMLElement {
 
   _agentConfigFieldValue(field) {
     return this._state.agentFormConfig[field.name] ?? field.defaultValue ?? '';
+  }
+
+  _availableTeamActors() {
+    let actors = getAgents(this._state).map((agent) => ({
+      type: 'agent',
+      actorID: agent.id,
+      name: agent.name || agent.id,
+    }));
+    let account = this._state.account;
+    if (account?.id) {
+      actors.push({
+        type: 'user',
+        actorID: account.id,
+        name: account.name || account.username || account.email || account.id,
+        username: account.username || '',
+        email: account.email || '',
+      });
+    }
+
+    return actors;
+  }
+
+  _teamMemberKey(actor) {
+    return `${actor.type}:${actor.actorID}`;
+  }
+
+  _teamMemberChecked(actor) {
+    return this._state.teamFormMemberKeys[this._teamMemberKey(actor)] === true;
+  }
+
+  _toggleTeamMember(actor, checked) {
+    let key = this._teamMemberKey(actor);
+    let next = { ...this._state.teamFormMemberKeys };
+    if (checked)
+      next[key] = true;
+    else
+      delete next[key];
+
+    this._state.teamFormMemberKeys = next;
+  }
+
+  _teamMembersFromForm() {
+    let selected = this._state.teamFormMemberKeys || {};
+    return this._availableTeamActors().filter((actor) => selected[this._teamMemberKey(actor)]).map((actor) => ({ ...actor }));
+  }
+
+  _teamMemberSummary(team) {
+    let members = Array.isArray(team.members) ? team.members : [];
+    let agentCount = members.filter((member) => member.type === 'agent').length;
+    let userCount = members.filter((member) => member.type === 'user').length;
+    let parts = [];
+    if (agentCount)
+      parts.push(`${agentCount} ${agentCount === 1 ? 'agent' : 'agents'}`);
+    if (userCount)
+      parts.push(`${userCount} ${userCount === 1 ? 'user' : 'users'}`);
+
+    return parts.join(', ') || 'No members';
   }
 
   _buildSessionItems() {
@@ -594,6 +742,22 @@ export class KikxApp extends HTMLElement {
     }
   }
 
+  async _loadTeams() {
+    try {
+      let [teamsResult, agentsResult] = await Promise.all([
+        this._getJSON('/api/v1/teams'),
+        this._getJSON('/api/v1/agents'),
+      ]);
+      setTeams(teamsResult.data.teams || [], this._state);
+      setAgents(agentsResult.data.agents || [], this._state);
+      this._render();
+    } catch (error) {
+      this._state.teamStatus = error.message;
+      this._state.teamStatusKind = 'error';
+      this._render();
+    }
+  }
+
   async _loadClientComponents() {
     try {
       let result = await this._getJSON('/api/v1/client-components');
@@ -693,6 +857,10 @@ export class KikxApp extends HTMLElement {
     this._state.refreshToken = '';
     resetAccountState(this._state);
     resetSessionState(this._state);
+    setTeams([], this._state);
+    resetTeamForm(this._state);
+    this._state.managingTeams = false;
+    this._state.teamEditorOpen = false;
     setTokenUsage({}, 0, this._state);
     this._state.connectionStatus = 'Disconnected';
     this._state.connectionStatusKind = 'error';
@@ -727,6 +895,17 @@ export class KikxApp extends HTMLElement {
       }),
       body: JSON.stringify(body),
     });
+    return readResponse(response);
+  }
+
+  async _deleteJSON(url) {
+    let response = await fetch(url, {
+      method: 'DELETE',
+      headers: this._apiHeaders(),
+    });
+    if (response.status === 204)
+      return null;
+
     return readResponse(response);
   }
 
@@ -868,7 +1047,9 @@ export class KikxApp extends HTMLElement {
 
   _openAgentManager() {
     this._state.managingAgents = true;
+    this._state.managingTeams = false;
     this._state.agentEditorOpen = false;
+    this._state.teamEditorOpen = false;
     this._state.agentStatus = '';
     this._state.agentStatusKind = 'pending';
     resetAgentForm(this._state);
@@ -900,6 +1081,96 @@ export class KikxApp extends HTMLElement {
     setAgentFormFromAgent(agent, this._state);
     this._state.agentStatus = '';
     this._render();
+  }
+
+  _openTeamManager() {
+    this._state.managingTeams = true;
+    this._state.managingAgents = false;
+    this._state.teamEditorOpen = false;
+    this._state.agentEditorOpen = false;
+    this._state.teamStatus = '';
+    this._state.teamStatusKind = 'pending';
+    resetTeamForm(this._state);
+    this._render();
+    this._loadTeams();
+  }
+
+  _closeTeamManager() {
+    this._state.managingTeams = false;
+    this._render();
+  }
+
+  _closeTeamEditor() {
+    this._state.teamEditorOpen = false;
+    this._state.managingTeams = true;
+    this._render();
+  }
+
+  _createTeam() {
+    resetTeamForm(this._state);
+    this._state.managingTeams = false;
+    this._state.teamEditorOpen = true;
+    this._render();
+  }
+
+  _editTeam(team) {
+    this._state.managingTeams = false;
+    this._state.teamEditorOpen = true;
+    setTeamFormFromTeam(team, this._state);
+    this._state.teamStatus = '';
+    this._render();
+  }
+
+  async _onTeamFormSubmit(event) {
+    event.preventDefault();
+
+    let body = {
+      name: this._state.teamFormName,
+      members: this._teamMembersFromForm(),
+    };
+
+    this._state.teamStatus = this._state.teamFormMode === 'edit' ? 'Saving team...' : 'Creating team...';
+    this._state.teamStatusKind = 'pending';
+
+    try {
+      let result = this._state.teamFormMode === 'edit'
+        ? await this._patchJSON(`/api/v1/teams/${encodeURIComponent(this._state.editingTeamID)}`, body)
+        : await this._postJSON('/api/v1/teams', body);
+
+      upsertTeam(result.data.team, this._state);
+      let message = this._state.teamFormMode === 'edit' ? 'Team saved' : 'Team created';
+      resetTeamForm(this._state);
+      this._state.teamEditorOpen = false;
+      this._state.managingTeams = true;
+      this._state.teamStatus = message;
+      this._state.teamStatusKind = 'ready';
+      this._render();
+    } catch (error) {
+      this._state.teamStatus = error.message;
+      this._state.teamStatusKind = 'error';
+      this._render();
+    }
+  }
+
+  async _deleteTeam(teamID) {
+    this._state.teamStatus = 'Deleting team...';
+    this._state.teamStatusKind = 'pending';
+
+    try {
+      await this._deleteJSON(`/api/v1/teams/${encodeURIComponent(teamID)}`);
+      removeTeam(teamID, this._state);
+      if (this._state.editingTeamID === teamID)
+        resetTeamForm(this._state);
+      this._state.teamEditorOpen = false;
+      this._state.managingTeams = true;
+      this._state.teamStatus = 'Team deleted';
+      this._state.teamStatusKind = 'ready';
+      this._render();
+    } catch (error) {
+      this._state.teamStatus = error.message;
+      this._state.teamStatusKind = 'error';
+      this._render();
+    }
   }
 
   _selectAgentProvider(pluginID) {

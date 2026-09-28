@@ -36,9 +36,16 @@ import {
   SessionFramesTool,
   SessionGetTool,
   SessionInviteAgentsTool,
+  SessionInviteTeamTool,
   SessionListTool,
   SessionMessageTool,
   SessionSearchTool,
+  TeamAddMemberTool,
+  TeamCreateTool,
+  TeamDeleteTool,
+  TeamListTool,
+  TeamRemoveMemberTool,
+  TeamUpdateTool,
   TodoAddTool,
   TodoClearTool,
   TodoCompleteTool,
@@ -100,10 +107,17 @@ test('registerBuiltInTools registers global web tools with OpenAI-safe names', (
   assert.equal(registry.getTool('session-list'), SessionListTool);
   assert.equal(registry.getTool('session-create'), SessionCreateTool);
   assert.equal(registry.getTool('session-invite-agents'), SessionInviteAgentsTool);
+  assert.equal(registry.getTool('session-invite-team'), SessionInviteTeamTool);
   assert.equal(registry.getTool('session-get'), SessionGetTool);
   assert.equal(registry.getTool('session-frames'), SessionFramesTool);
   assert.equal(registry.getTool('session-search'), SessionSearchTool);
   assert.equal(registry.getTool('session-message'), SessionMessageTool);
+  assert.equal(registry.getTool('team-list'), TeamListTool);
+  assert.equal(registry.getTool('team-create'), TeamCreateTool);
+  assert.equal(registry.getTool('team-update'), TeamUpdateTool);
+  assert.equal(registry.getTool('team-delete'), TeamDeleteTool);
+  assert.equal(registry.getTool('team-add-member'), TeamAddMemberTool);
+  assert.equal(registry.getTool('team-remove-member'), TeamRemoveMemberTool);
   assert.equal(registry.getTool('todo-get'), TodoGetTool);
   assert.equal(registry.getTool('todo-add'), TodoAddTool);
   assert.equal(registry.getTool('todo-update'), TodoUpdateTool);
@@ -1298,6 +1312,158 @@ test('Session tools list, create, inspect frames, and post messages through Fram
   assert.equal(targetEngine.frames[0].content.text, 'Cross-session hello.');
   assert.equal(targetEngine.frames[0].content.sourceSessionID, 'ses_1');
   assert.equal(runtime.frameStore.flushCount, 2);
+});
+
+test('Team tools manage actor teams and invite all team members into a session', async () => {
+  let team = null;
+  let session = {
+    id: 'ses_1',
+    title: 'Scratch',
+    participantAgentIDs: [],
+    participantUserIDs: [],
+    generation: 0,
+  };
+  let agents = new Map([
+    [ 'agent_1', { id: 'agent_1', name: 'Iron-Hand', pluginID: 'openai:codex', enabled: true } ],
+    [ 'agent_2', { id: 'agent_2', name: 'Mr. Bennett', pluginID: 'openai:codex', enabled: true } ],
+  ]);
+  let teamManager = {
+    async listTeams() {
+      return team ? [ team ] : [];
+    },
+    async createTeam(input) {
+      team = {
+        id: 'team_1',
+        name: input.name,
+        members: input.members || [],
+        createdAt: 1000,
+        updatedAt: 1000,
+      };
+      return team;
+    },
+    async resolveTeam(reference) {
+      if (team && (team.id === reference || team.name === reference))
+        return team;
+
+      let error = new Error(`Team not found: ${reference}`);
+      error.status = 404;
+      throw error;
+    },
+    async updateTeam(teamID, input) {
+      assert.equal(teamID, 'team_1');
+      team = {
+        ...team,
+        ...input,
+        updatedAt: 1001,
+      };
+      return team;
+    },
+    async addMember(teamID, member) {
+      assert.equal(teamID, 'team_1');
+      let normalized = typeof member === 'string'
+        ? { type: 'agent', actorID: member, name: member }
+        : member;
+      team = {
+        ...team,
+        members: [ ...team.members, normalized ],
+        updatedAt: 1001,
+      };
+      return team;
+    },
+    async removeMember(teamID, input) {
+      assert.equal(teamID, 'team_1');
+      team = {
+        ...team,
+        members: team.members.filter((member) => member.actorID !== input.actorID),
+        updatedAt: 1002,
+      };
+      return team;
+    },
+    async deleteTeam(teamID) {
+      assert.equal(teamID, 'team_1');
+      team = null;
+    },
+  };
+  let agentManager = {
+    async getAgent(agentID) {
+      return agents.get(agentID);
+    },
+    async resolveAgent(reference) {
+      return agents.get(reference);
+    },
+  };
+  let runtime = {
+    async inviteAgentToSession(sessionID, agent) {
+      assert.equal(sessionID, 'ses_1');
+      let alreadyParticipant = session.participantAgentIDs.includes(agent.id);
+      if (!alreadyParticipant)
+        session.participantAgentIDs.push(agent.id);
+
+      return { session, agentID: agent.id, alreadyParticipant };
+    },
+    async inviteUserToSession(sessionID, user) {
+      assert.equal(sessionID, 'ses_1');
+      let userID = user.id || user.actorID;
+      let alreadyParticipant = session.participantUserIDs.includes(userID);
+      if (!alreadyParticipant)
+        session.participantUserIDs.push(userID);
+
+      return { session, userID, alreadyParticipant };
+    },
+    async ensureSessionEntry(sessionID) {
+      assert.equal(sessionID, 'ses_1');
+      return { session };
+    },
+  };
+  let context = {
+    agent: { id: 'agent_1', name: 'Iron-Hand' },
+    session,
+    services: { teamManager, agentManager, frameRuntime: runtime },
+  };
+
+  let created = await new TeamCreateTool(context).execute({
+    name: 'Builders',
+    members: [
+      { type: 'agent', actorID: 'agent_1', name: 'Iron-Hand' },
+      { type: 'user', actorID: 'usr_1', name: 'Wyatt' },
+    ],
+  });
+  assert.equal(created.team.name, 'Builders');
+
+  let listed = await new TeamListTool(context).execute();
+  assert.deepEqual(listed.teams.map((item) => item.id), [ 'team_1' ]);
+
+  let added = await new TeamAddMemberTool(context).execute({
+    team: 'Builders',
+    member: { type: 'agent', actorID: 'agent_2', name: 'Mr. Bennett' },
+  });
+  assert.deepEqual(added.team.members.map((member) => member.actorID), [ 'agent_1', 'usr_1', 'agent_2' ]);
+
+  let invited = await new SessionInviteTeamTool(context).execute({
+    team: 'Builders',
+    session_id: 'ses_1',
+  });
+  assert.deepEqual(invited.invitedAgents.map((member) => member.actorID), [ 'agent_1', 'agent_2' ]);
+  assert.deepEqual(invited.invitedUsers.map((member) => member.actorID), [ 'usr_1' ]);
+  assert.deepEqual(invited.session.participantAgentIDs, [ 'agent_1', 'agent_2' ]);
+  assert.deepEqual(invited.session.participantUserIDs, [ 'usr_1' ]);
+
+  let updated = await new TeamUpdateTool(context).execute({
+    team: 'Builders',
+    name: 'Reviewers',
+  });
+  assert.equal(updated.team.name, 'Reviewers');
+
+  let removed = await new TeamRemoveMemberTool(context).execute({
+    team: 'Reviewers',
+    actorID: 'agent_2',
+    type: 'agent',
+  });
+  assert.deepEqual(removed.team.members.map((member) => member.actorID), [ 'agent_1', 'usr_1' ]);
+
+  let deleted = await new TeamDeleteTool(context).execute({ team: 'Reviewers' });
+  assert.equal(deleted.deleted, true);
+  assert.equal(team, null);
 });
 
 test('Session delegation tools allow only first-generation source sessions', async () => {

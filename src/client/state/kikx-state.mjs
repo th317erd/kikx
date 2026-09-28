@@ -54,12 +54,22 @@ export const kikxState = new ReactiveState({
   framesBySessionID: {},
   magicCode: params.get('code') || '',
   managingAgents: false,
+  managingTeams: false,
   refreshToken: savedAuth.refresh_token || '',
   selectedSessionID: '',
   sessionDetailsByID: {},
   sessionIDs: [],
   status: 'Checking AeorDB event stream...',
   statusKind: 'pending',
+  editingTeamID: '',
+  teamDetailsByID: {},
+  teamEditorOpen: false,
+  teamFormMemberKeys: {},
+  teamFormMode: 'create',
+  teamFormName: '',
+  teamIDs: [],
+  teamStatus: '',
+  teamStatusKind: 'pending',
   tokenUsage: {},
   totalTokensUsed: 0,
 });
@@ -67,6 +77,12 @@ export const kikxState = new ReactiveState({
 export function getAgents(state = kikxState) {
   return state.agentIDs
     .map((agentID) => state.agentDetailsByID[agentID])
+    .filter(Boolean);
+}
+
+export function getTeams(state = kikxState) {
+  return state.teamIDs
+    .map((teamID) => state.teamDetailsByID[teamID])
     .filter(Boolean);
 }
 
@@ -196,6 +212,40 @@ export function removeAgent(agentID, state = kikxState) {
   state.agentDetailsByID = next;
 }
 
+export function setTeams(teams, state = kikxState) {
+  let teamIDs = [];
+  let teamDetailsByID = {};
+
+  for (let team of Array.isArray(teams) ? teams : []) {
+    if (!team?.id)
+      continue;
+
+    teamIDs.push(team.id);
+    teamDetailsByID[team.id] = normalizeTeam(team);
+  }
+
+  state.teamIDs = teamIDs;
+  state.teamDetailsByID = teamDetailsByID;
+}
+
+export function upsertTeam(team, state = kikxState) {
+  if (!team?.id)
+    return;
+
+  state.teamIDs = state.teamIDs.includes(team.id) ? state.teamIDs : [ team.id, ...state.teamIDs ];
+  state.teamDetailsByID = {
+    ...state.teamDetailsByID,
+    [team.id]: normalizeTeam(team),
+  };
+}
+
+export function removeTeam(teamID, state = kikxState) {
+  state.teamIDs = state.teamIDs.filter((id) => id !== teamID);
+  let next = { ...state.teamDetailsByID };
+  delete next[teamID];
+  state.teamDetailsByID = next;
+}
+
 export function resetAgentForm(state = kikxState) {
   let provider = state.agentProviders[0] || null;
   state.agentFormMode = 'create';
@@ -221,6 +271,20 @@ export function setAgentFormFromAgent(agent, state = kikxState) {
   state.agentFormPluginID = agent.pluginID || '';
   state.agentFormConfig = mergeAgentConfigWithProviderDefaults(provider, agent.config);
   state.agentFormSecrets = {};
+}
+
+export function resetTeamForm(state = kikxState) {
+  state.teamFormMode = 'create';
+  state.editingTeamID = '';
+  state.teamFormName = '';
+  state.teamFormMemberKeys = {};
+}
+
+export function setTeamFormFromTeam(team, state = kikxState) {
+  state.teamFormMode = 'edit';
+  state.editingTeamID = team.id;
+  state.teamFormName = team.name || '';
+  state.teamFormMemberKeys = memberKeysFromTeam(team);
 }
 
 export { countMessageFrames };
@@ -251,6 +315,25 @@ function normalizeTokenUsageSnapshot(input) {
   }
 
   return output;
+}
+
+function normalizeTeam(team) {
+  return {
+    ...team,
+    members: Array.isArray(team.members) ? team.members.map((member) => ({ ...member })) : [],
+  };
+}
+
+function memberKeysFromTeam(team = {}) {
+  let keys = {};
+  for (let member of Array.isArray(team.members) ? team.members : []) {
+    if (!member?.type || !member?.actorID)
+      continue;
+
+    keys[`${member.type}:${member.actorID}`] = true;
+  }
+
+  return keys;
 }
 
 function totalTokensUsedFromSnapshot(snapshot) {

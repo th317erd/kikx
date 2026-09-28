@@ -387,6 +387,9 @@ export class AgentInterface extends PluginInterface {
 
     let reviewControlFinalized = false;
     for await (let output of iterateAgentResult(result)) {
+      if (isInternalStreamingOutput(output))
+        continue;
+
       if (output?.type === 'LoopControl') {
         if (isCompletionReviewMetaResponseContent(output.content) && reviewOriginalFinalFrame) {
           state.finalFrame = reviewOriginalFinalFrame;
@@ -753,6 +756,19 @@ function isCompletionReviewMetaResponseContent(content = {}) {
     || prefix.includes('audit of the draft')
   )
     && /(?:have i completed|what did i miss|what did i forget|what could i have done better|requested tasks)/i.test(text);
+}
+
+function isInternalStreamingOutput(output) {
+  if (!output)
+    return false;
+
+  if (output.phantom === true)
+    return true;
+
+  return output.type === 'AgentThinking'
+    || output.type === 'AgentMessageDelta'
+    || output.type === 'BeginTyping'
+    || output.type === 'EndTyping';
 }
 
 function recordForward(state, forward) {

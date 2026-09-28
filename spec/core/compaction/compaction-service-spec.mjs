@@ -121,6 +121,74 @@ test('CompactionService runs one-shot compaction and stores a hidden CompactionF
   assert.deepEqual(services.events.map((event) => event.type), [ 'compaction.started', 'compaction.completed' ]);
 });
 
+test('CompactionService builds compaction windows from stitched FrameManager messages', async () => {
+  let pluginRegistry = new PluginRegistry();
+  pluginRegistry.registerAgentProvider('compactor', CompactorProvider);
+  let frameEngine = new FrameEngine({
+    clock: createClock(),
+    idGenerator: createIDs([ 'commit_1', 'compaction_frame_1', 'commit_2' ]),
+  });
+  frameEngine.merge([
+    userFrame('msg_1', 'question', 1),
+    agentFrame('agent_1', 'answer', 2),
+    {
+      id: 'agent_1:done',
+      type: 'MessageDone',
+      sessionID: 'ses_1',
+      parentID: 'agent_1',
+      order: 3,
+      hidden: true,
+      deleted: false,
+      content: {
+        frameID: 'agent_1',
+      },
+    },
+    userFrame('msg_2', 'active request', 4),
+  ], { silent: true });
+
+  let service = new CompactionService({
+    pluginRegistry,
+    agentManager: {
+      async getAgent() {
+        return {
+          id: 'agent_1',
+          name: 'Compactor',
+          pluginID: 'compactor',
+          secrets: {},
+          config: {},
+          enabled: true,
+        };
+      },
+    },
+    clock: () => 9000,
+    idGenerator: () => 'compaction_frame_1',
+    contextWindowTokens: 20,
+    promptReserveTokens: 1,
+    compactionAgentContextTokens: 1000,
+    compactionTriggerRatio: 0.1,
+    estimateTokens: () => 5,
+  });
+  let services = { calls: [] };
+
+  await service.prepareAgentContext({
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ] },
+    frameEngine,
+    triggerFrame: frameEngine.get('msg_2'),
+    agent: { id: 'agent_1' },
+    services,
+  });
+  await service.pendingCompactions.get('ses_1:agent_1').promise;
+
+  assert.deepEqual(frameEngine.toArray().map((frame) => frame.id), [
+    'msg_1',
+    'agent_1',
+    'agent_1:done',
+    'msg_2',
+    'compaction_frame_1',
+  ]);
+  assert.deepEqual(services.calls[0].frameIDs, [ 'msg_1', 'agent_1' ]);
+});
+
 test('CompactionService prefers the current agent before alternate participants when no compactor is configured', async () => {
   let pluginRegistry = new PluginRegistry();
   pluginRegistry.registerAgentProvider('secret-checking-compactor', SecretCheckingCompactorProvider);
@@ -315,6 +383,34 @@ function userFrame(id, text, order) {
     hidden: false,
     deleted: false,
     content: { text },
+  };
+}
+
+function agentFrame(id, text, order) {
+  return {
+    id,
+    type: 'AgentMessage',
+    sessionID: 'ses_1',
+    interactionID: `int_${order}`,
+    authorType: 'agent',
+    authorID: 'agent_1',
+    authorDisplayName: 'Agent One',
+    order,
+    createdAt: order,
+    updatedAt: order,
+    timestamp: order,
+    hidden: false,
+    deleted: false,
+    state: {
+      lifecycle: {
+        status: 'closed',
+        closedAt: order,
+      },
+    },
+    content: {
+      text,
+      status: 'complete',
+    },
   };
 }
 

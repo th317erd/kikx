@@ -947,7 +947,8 @@ kikx-typing-indicator {
   font-size: 14px;
 }
 
-.kikx-agent-form {
+.kikx-agent-form,
+.kikx-team-form {
   display: grid;
   align-content: start;
   gap: 10px;
@@ -1009,7 +1010,8 @@ kikx-typing-indicator {
 }
 
 .kikx-agent-form label,
-.kikx-account-form label {
+.kikx-account-form label,
+.kikx-team-form label {
   color: #aeb8c2;
   font-size: 12px;
   font-weight: 600;
@@ -1017,8 +1019,53 @@ kikx-typing-indicator {
 
 .kikx-agent-form aeor-input,
 .kikx-agent-form aeor-select,
-.kikx-account-form aeor-input {
+.kikx-account-form aeor-input,
+.kikx-team-form aeor-input {
   min-height: 36px;
+}
+
+.kikx-team-member-list {
+  display: grid;
+  gap: 8px;
+}
+
+.kikx-team-member-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #15191d;
+}
+
+.kikx-team-member-option .aeor-checkbox__input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.kikx-team-member-option .aeor-checkbox__caption {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kikx-team-member-option__name {
+  overflow: hidden;
+  color: #dce3ea;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-team-member-option__type {
+  color: #97a3ae;
+  font-size: 11px;
+  text-transform: uppercase;
 }
 
 .kikx-account-form {
@@ -1080,7 +1127,8 @@ kikx-typing-indicator {
     min-width: 0;
   }
 
-  .kikx-agent-form {
+  .kikx-agent-form,
+  .kikx-team-form {
     min-width: 0;
   }
 

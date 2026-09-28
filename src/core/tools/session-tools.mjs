@@ -556,6 +556,7 @@ function sanitizeSession(session = {}) {
     generation: sessionGeneration(session),
     messageCount: normalizeNonNegativeInteger(session.messageCount, 0),
     participantAgentIDs: normalizeStringArray(session.participantAgentIDs),
+    participantUserIDs: normalizeStringArray(session.participantUserIDs),
     coordinatorAgentID: session.coordinatorAgentID || null,
     createdAt: session.createdAt || null,
     updatedAt: session.updatedAt || null,

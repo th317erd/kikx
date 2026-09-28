@@ -92,6 +92,7 @@ export function findChromeExecutable() {
 
 export async function startStagehandUIServer(options = {}) {
   let agents = Array.isArray(options.agents) ? options.agents : [];
+  let teams = Array.isArray(options.teams) ? options.teams : [];
   let tokenUsage = options.tokenUsage || createTokenUsageStub(options.tokenUsageSnapshot || {});
   let frameRuntime = options.frameRuntime || new StagehandFrameRuntime({
     sessions: options.sessions || [],
@@ -100,6 +101,7 @@ export async function startStagehandUIServer(options = {}) {
   let context = new AppContext({
     aeordb: createAuthStub(),
     agentManager: createAgentManagerStub(agents),
+    teamManager: createTeamManagerStub(teams),
     frameRuntime,
     tokenUsage,
     ...(options.toolOutputStore ? { toolOutputStore: options.toolOutputStore } : {}),
@@ -346,6 +348,115 @@ function createAgentManagerStub(agents = []) {
     },
     async deleteAgent() {},
   };
+}
+
+function createTeamManagerStub(initialTeams = []) {
+  let teams = initialTeams.map((team, index) => normalizeTeam(team, index + 1));
+  let nextID = teams.length + 1;
+
+  return {
+    async listTeams({ limit = teams.length, offset = 0 } = {}) {
+      return teams.slice(offset, offset + limit);
+    },
+    async createTeam(input = {}) {
+      let team = normalizeTeam({
+        id: `team_${nextID++}`,
+        name: input.name,
+        members: input.members || [],
+      }, nextID);
+      teams.unshift(team);
+      return team;
+    },
+    async getTeam(teamID) {
+      let team = findTeam(teamID);
+      if (team)
+        return team;
+
+      throwTeamNotFound(teamID);
+    },
+    async resolveTeam(reference) {
+      let lowered = String(reference || '').trim().toLowerCase();
+      let team = teams.find((candidate) => (
+        candidate.id === reference
+        || candidate.name === reference
+        || candidate.name?.toLowerCase() === lowered
+      ));
+      if (team)
+        return team;
+
+      throwTeamNotFound(reference);
+    },
+    async updateTeam(teamID, input = {}) {
+      let index = teams.findIndex((candidate) => candidate.id === teamID);
+      if (index < 0)
+        throwTeamNotFound(teamID);
+
+      teams[index] = normalizeTeam({
+        ...teams[index],
+        ...input,
+        id: teamID,
+        members: input.members ?? teams[index].members,
+        updatedAt: Date.now(),
+      }, index + 1);
+      return teams[index];
+    },
+    async addMember(teamID, input = {}) {
+      let team = await this.getTeam(teamID);
+      let member = typeof input === 'string'
+        ? { type: 'agent', actorID: input, name: input }
+        : normalizeTeamMember(input);
+      let members = team.members.filter((candidate) => candidate.type !== member.type || candidate.actorID !== member.actorID);
+      members.push(member);
+      return await this.updateTeam(teamID, { members });
+    },
+    async removeMember(teamID, input = {}) {
+      let team = await this.getTeam(teamID);
+      let actorID = input.actorID || input.id || input.agentID || input.userID;
+      let type = input.type || '';
+      return await this.updateTeam(teamID, {
+        members: team.members.filter((member) => {
+          if (member.actorID !== actorID)
+            return true;
+
+          return type && member.type !== type;
+        }),
+      });
+    },
+    async deleteTeam(teamID) {
+      teams = teams.filter((team) => team.id !== teamID);
+    },
+  };
+
+  function findTeam(teamID) {
+    return teams.find((team) => team.id === teamID) || null;
+  }
+}
+
+function normalizeTeam(input = {}, fallbackIndex = 1) {
+  return {
+    id: input.id || `team_${fallbackIndex}`,
+    name: input.name || `Team ${fallbackIndex}`,
+    members: Array.isArray(input.members) ? input.members.map(normalizeTeamMember) : [],
+    createdAt: input.createdAt || Date.now(),
+    updatedAt: input.updatedAt || input.createdAt || Date.now(),
+  };
+}
+
+function normalizeTeamMember(input = {}) {
+  return {
+    type: input.type || 'agent',
+    actorID: input.actorID || input.id || input.agentID || input.userID,
+    name: input.name || input.username || input.fullName || input.actorID || input.id || input.agentID || input.userID,
+    ...(input.username ? { username: input.username } : {}),
+    ...(input.fullName ? { fullName: input.fullName } : {}),
+    ...(input.email ? { email: input.email } : {}),
+  };
+}
+
+function throwTeamNotFound(reference) {
+  let error = new Error(`Team not found: ${reference}`);
+  error.status = 404;
+  throw error;
 }
 
 async function listen(server) {

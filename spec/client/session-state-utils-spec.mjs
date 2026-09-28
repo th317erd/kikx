@@ -59,7 +59,7 @@ test('setSessionFramesState derives a fallback count only when the manifest has 
 
   assert.equal(next.sessionDetailsByID.ses_1.messageCount, 4);
   assert.equal(next.sessionDetailsByID.ses_2.messageCount, 11);
-  assert.deepEqual(next.framesBySessionID.ses_1.map((frame) => frame.id), [ 'agent_1', 'deleted_1', 'frm_1', 'hidden_1', 'msg_1', 'tool_1' ]);
+  assert.deepEqual(next.framesBySessionID.ses_1.map((frame) => frame.id), [ 'frm_1', 'msg_1', 'agent_1', 'tool_1', 'hidden_1', 'deleted_1' ]);
   assert.notEqual(next.framesBySessionID, previous.framesBySessionID);
   assert.notEqual(next.sessionDetailsByID, previous.sessionDetailsByID);
 });
@@ -506,6 +506,111 @@ test('upsertFrameState sorts finalized agent responses by visible completion ord
   });
 
   assert.deepEqual(next.framesBySessionID.ses_1.map((frame) => frame.id), [ 'user_1', 'agent_1' ]);
+});
+
+test('upsertFrameState ignores late phantoms for completed agent responses', () => {
+  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', [
+    {
+      id: 'user_1',
+      type: 'UserMessage',
+      order: 1,
+      createdClock: '0000000001000000-000000-runner',
+      updatedClock: '0000000001000000-000000-runner',
+      hidden: false,
+      content: { text: 'hello' },
+    },
+    {
+      id: 'agent_1',
+      type: 'AgentMessage',
+      order: 2,
+      createdClock: '0000000001001000-000000-runner',
+      updatedClock: '0000000001004000-000000-runner',
+      hidden: false,
+      responseFrameID: 'agent_1',
+      content: {
+        text: 'final answer',
+        thinking: {
+          text: 'finished thinking',
+          status: 'complete',
+        },
+        status: 'complete',
+      },
+    },
+  ]);
+
+  let next = upsertFrameState(state, 'ses_1', {
+    id: 'agent_1:late-thinking',
+    type: 'AgentThinking',
+    phantom: true,
+    responseFrameID: 'agent_1',
+    parentID: 'user_1',
+    updatedClock: '0000000001005000-000000-runner',
+    content: {
+      text: 'late internal review thought',
+      thinking: {
+        text: 'late internal review thought',
+        status: 'streaming',
+      },
+    },
+  });
+
+  assert.deepEqual(next.framesBySessionID.ses_1.map((frame) => frame.id), [ 'user_1', 'agent_1' ]);
+  assert.equal(next.framesBySessionID.ses_1[1].content.text, 'final answer');
+  assert.deepEqual(next.framesBySessionID.ses_1[1].content.thinking, {
+    text: 'finished thinking',
+    status: 'complete',
+  });
+  assert.equal(next.framesBySessionID.ses_1[1].content.status, 'complete');
+});
+
+test('setSessionFramesState keeps closed responses ordered by closed clock after metadata updates', () => {
+  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', [
+    {
+      id: 'user_1',
+      type: 'UserMessage',
+      order: 1,
+      createdClock: '0000000001000000-000000-runner',
+      updatedClock: '0000000001000000-000000-runner',
+      hidden: false,
+      content: { text: 'hello' },
+    },
+    {
+      id: 'agent_1',
+      type: 'AgentMessage',
+      order: 2,
+      createdClock: '0000000001001000-000000-runner',
+      updatedClock: '0000000009000000-000000-runner',
+      hidden: false,
+      content: {
+        text: 'answer',
+        status: 'complete',
+      },
+      state: {
+        lifecycle: {
+          status: 'closed',
+          closedClock: '0000000001002000-000000-runner',
+          closedAt: 1002,
+        },
+      },
+      tokenUsage: {
+        test: {
+          updatedAt: 9000,
+          tokensUsed: 10,
+        },
+      },
+    },
+    {
+      id: 'user_2',
+      type: 'UserMessage',
+      order: 3,
+      createdClock: '0000000001003000-000000-runner',
+      updatedClock: '0000000001003000-000000-runner',
+      hidden: false,
+      content: { text: 'next' },
+    },
+  ]);
+
+  assert.deepEqual(state.framesBySessionID.ses_1.map((frame) => frame.id), [ 'user_1', 'agent_1', 'user_2' ]);
 });
 
 test('setSessionFramesState places a completed tool-using agent summary after its tool frames', () => {

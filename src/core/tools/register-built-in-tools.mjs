@@ -25,6 +25,15 @@ import {
   SessionMessageTool,
   SessionSearchTool,
 } from './session-tools.mjs';
+import {
+  SessionInviteTeamTool,
+  TeamAddMemberTool,
+  TeamCreateTool,
+  TeamDeleteTool,
+  TeamListTool,
+  TeamRemoveMemberTool,
+  TeamUpdateTool,
+} from './team-tools.mjs';
 import { DatabaseFetchTool, DatabaseSearchTool } from './database-tools.mjs';
 import { OutputGrepTool } from './tool-output-grep-tool.mjs';
 import { OutputReadTool } from './tool-output-get-tool.mjs';
@@ -67,10 +76,17 @@ export const BUILT_IN_TOOLS = [
   [ 'session-list', SessionListTool ],
   [ 'session-create', SessionCreateTool ],
   [ 'session-invite-agents', SessionInviteAgentsTool ],
+  [ 'session-invite-team', SessionInviteTeamTool ],
   [ 'session-get', SessionGetTool ],
   [ 'session-frames', SessionFramesTool ],
   [ 'session-search', SessionSearchTool ],
   [ 'session-message', SessionMessageTool ],
+  [ 'team-list', TeamListTool ],
+  [ 'team-create', TeamCreateTool ],
+  [ 'team-update', TeamUpdateTool ],
+  [ 'team-delete', TeamDeleteTool ],
+  [ 'team-add-member', TeamAddMemberTool ],
+  [ 'team-remove-member', TeamRemoveMemberTool ],
   [ 'todo-get', TodoGetTool ],
   [ 'todo-add', TodoAddTool ],
   [ 'todo-update', TodoUpdateTool ],
