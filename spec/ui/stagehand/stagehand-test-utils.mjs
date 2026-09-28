@@ -93,6 +93,7 @@ export function findChromeExecutable() {
 export async function startStagehandUIServer(options = {}) {
   let agents = Array.isArray(options.agents) ? options.agents : [];
   let teams = Array.isArray(options.teams) ? options.teams : [];
+  let providers = Array.isArray(options.providers) ? options.providers : [];
   let tokenUsage = options.tokenUsage || createTokenUsageStub(options.tokenUsageSnapshot || {});
   let frameRuntime = options.frameRuntime || new StagehandFrameRuntime({
     sessions: options.sessions || [],
@@ -100,7 +101,7 @@ export async function startStagehandUIServer(options = {}) {
   });
   let context = new AppContext({
     aeordb: createAuthStub(),
-    agentManager: createAgentManagerStub(agents),
+    agentManager: createAgentManagerStub(agents, providers),
     teamManager: createTeamManagerStub(teams),
     frameRuntime,
     tokenUsage,
@@ -309,10 +310,10 @@ function createAuthStub() {
   };
 }
 
-function createAgentManagerStub(agents = []) {
+function createAgentManagerStub(agents = [], providers = []) {
   return {
     listProviders() {
-      return [];
+      return Promise.resolve(providers.slice());
     },
     async listAgents() {
       return agents.slice();

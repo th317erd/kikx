@@ -28,6 +28,7 @@ dist/
 .DS_Store
 .vscode-test/
 cxp.sh
+.playwright-mcp/
 
 # Local documentation symlinks
 docs/mythix-ui-*
