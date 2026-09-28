@@ -11,6 +11,7 @@ const DEFAULT_KIKX_URL = `http://${DEFAULT_KIKX_HOST}:${DEFAULT_KIKX_PORT}`;
 const DEFAULT_EMAIL = 'wegreenway@taraani.org';
 const DEFAULT_AEORDB_LOG_PATH = '/tmp/codex/kikx/aeordb.log';
 const DEFAULT_LINK_TIMEOUT_MS = 3000;
+const ANSI_ESCAPE_PATTERN = /\x1B\[[0-9;?]*[ -/]*[@-~]/g;
 
 async function main() {
   let args = process.argv.slice(2);
@@ -20,7 +21,10 @@ async function main() {
     return;
   }
 
-  let email = args[0] || process.env.KIKX_LOGIN_EMAIL || DEFAULT_EMAIL;
+  let flags = new Set(args.filter((arg) => arg.startsWith('-')));
+  let positionals = args.filter((arg) => !arg.startsWith('-'));
+  let wantsToken = flags.has('--token') || flags.has('-t');
+  let email = positionals[0] || process.env.KIKX_LOGIN_EMAIL || DEFAULT_EMAIL;
 
   let baseURL = (process.env.KIKX_URL || DEFAULT_KIKX_URL).replace(/\/+$/g, '');
   let publicURL = (process.env.KIKX_PUBLIC_URL || baseURL).replace(/\/+$/g, '');
@@ -44,14 +48,19 @@ async function main() {
   if (!response.ok)
     throw new Error(body?.error?.message || `Kikx returned HTTP ${response.status}`);
 
-  let link = await waitForLoginLink({
+  let code = await waitForLoginCode({
     logPath: aeorDBLogPath,
     offset: logOffset,
-    publicURL,
     timeoutMS: Number.parseInt(process.env.LOGIN_LINK_TIMEOUT_MS || `${DEFAULT_LINK_TIMEOUT_MS}`, 10),
   });
 
-  console.log(link);
+  if (wantsToken) {
+    let token = await exchangeMagicLinkCode({ baseURL, code });
+    console.log(token);
+    return;
+  }
+
+  console.log(`${publicURL}/?code=${encodeURIComponent(code)}`);
 }
 
 async function readJSON(response) {
@@ -68,7 +77,10 @@ async function readJSON(response) {
 
 function printUsage() {
   console.log([
-    'Usage: npm run login-link -- <email>',
+    'Usage: npm run login-link -- [email] [--token]',
+    '',
+    'Options:',
+    '  --token, -t       Exchange the link and print the bearer token instead.',
     '',
     'Environment:',
     `  KIKX_URL          Kikx server URL. Default: ${DEFAULT_KIKX_URL}`,
@@ -81,14 +93,14 @@ function printUsage() {
   ].join('\n'));
 }
 
-async function waitForLoginLink({ logPath, offset, publicURL, timeoutMS }) {
+async function waitForLoginCode({ logPath, offset, timeoutMS }) {
   let deadline = Date.now() + timeoutMS;
 
   while (Date.now() <= deadline) {
     let text = await readFileSlice(logPath, offset);
     let code = extractMagicLinkCode(text);
     if (code)
-      return `${publicURL}/?code=${encodeURIComponent(code)}`;
+      return code;
 
     await sleep(100);
   }
@@ -99,7 +111,33 @@ async function waitForLoginLink({ logPath, offset, publicURL, timeoutMS }) {
   ].join(' '));
 }
 
+async function exchangeMagicLinkCode({ baseURL, code }) {
+  let response;
+  try {
+    response = await fetch(`${baseURL}/api/v1/auth/magic-link/verify?code=${encodeURIComponent(code)}`, {
+      method: 'GET',
+    });
+  } catch (error) {
+    throw new Error(`Unable to reach Kikx at ${baseURL}: ${error.message}`);
+  }
+
+  let body = await readJSON(response);
+  if (!response.ok)
+    throw new Error(body?.error?.message || `Kikx returned HTTP ${response.status}`);
+
+  let token = body?.data?.token;
+  if (typeof token !== 'string' || token.trim() === '')
+    throw new Error('Kikx verify response did not include a token');
+
+  return token.trim();
+}
+
+function stripAnsi(text) {
+  return String(text ?? '').replace(ANSI_ESCAPE_PATTERN, '');
+}
+
 function extractMagicLinkCode(text) {
+  let clean = stripAnsi(text);
   let patterns = [
     /\/auth\/magic-link\/verify\?code=([^"'\s,}]+)/,
     /magic_link_url=[^?]*\?code=([^"'\s,}]+)/,
@@ -107,7 +145,7 @@ function extractMagicLinkCode(text) {
   ];
 
   for (let pattern of patterns) {
-    let match = pattern.exec(text);
+    let match = pattern.exec(clean);
     if (match)
       return decodeURIComponent(match[1]);
   }

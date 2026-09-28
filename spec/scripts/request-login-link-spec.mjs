@@ -101,6 +101,110 @@ test('request-login-link posts the email to the Kikx auth proxy', async () => {
   }
 });
 
+test('request-login-link strips ANSI escapes from the logged dev link', async () => {
+  let logPath = await createLogFile();
+  let { server, baseURL } = await listen(async (_request, response) => {
+    await fs.appendFile(
+      logPath,
+      '\x1b[2m2026\x1b[0m \x1b[34mDEBUG\x1b[0m magic_link_url\x1b[0m\x1b[34m: \x1b[34m/auth/magic-link/verify?code=ansi-code\x1b[0m\n',
+    );
+
+    response.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+    });
+    response.end(JSON.stringify({ data: { message: 'sent' } }));
+  });
+
+  try {
+    let result = await runScript([ 'alice@example.com' ], {
+      env: {
+        AEORDB_LOG_PATH: logPath,
+        KIKX_URL: baseURL,
+        KIKX_PUBLIC_URL: 'http://kikx.test',
+      },
+    });
+
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.trim(), 'http://kikx.test/?code=ansi-code');
+  } finally {
+    await close(server);
+    await fs.rm(path.dirname(logPath), { recursive: true, force: true });
+  }
+});
+
+test('request-login-link --token exchanges the code for a bearer token', async () => {
+  let seen = [];
+  let logPath = await createLogFile();
+  let { server, baseURL } = await listen(async (request, response) => {
+    seen.push({ method: request.method, url: request.url });
+    if (request.method === 'POST' && request.url === '/api/v1/auth/magic-link') {
+      await fs.appendFile(logPath, 'magic_link_url="/auth/magic-link/verify?code=token-code"\x1b[0m\n');
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ data: { message: 'sent' } }));
+      return;
+    }
+
+    if (request.method === 'GET' && request.url === '/api/v1/auth/magic-link/verify?code=token-code') {
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ data: { token: 'test-bearer-token', refresh_token: 'r' } }));
+      return;
+    }
+
+    response.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+    response.end(JSON.stringify({ error: { message: 'Not Found' } }));
+  });
+
+  try {
+    let result = await runScript([ 'alice@example.com', '--token' ], {
+      env: {
+        AEORDB_LOG_PATH: logPath,
+        KIKX_URL: baseURL,
+        KIKX_PUBLIC_URL: 'http://kikx.test',
+      },
+    });
+
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.trim(), 'test-bearer-token');
+    assert.deepEqual(seen.map((entry) => `${entry.method} ${entry.url}`), [
+      'POST /api/v1/auth/magic-link',
+      'GET /api/v1/auth/magic-link/verify?code=token-code',
+    ]);
+  } finally {
+    await close(server);
+    await fs.rm(path.dirname(logPath), { recursive: true, force: true });
+  }
+});
+
+test('request-login-link --token reports a verify response without a token', async () => {
+  let logPath = await createLogFile();
+  let { server, baseURL } = await listen(async (request, response) => {
+    if (request.method === 'POST') {
+      await fs.appendFile(logPath, 'magic_link_url="/auth/magic-link/verify?code=missing-token"\n');
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ data: { message: 'sent' } }));
+      return;
+    }
+
+    response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    response.end(JSON.stringify({ data: {} }));
+  });
+
+  try {
+    let result = await runScript([ 'alice@example.com', '-t' ], {
+      env: {
+        AEORDB_LOG_PATH: logPath,
+        KIKX_URL: baseURL,
+      },
+    });
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /did not include a token/);
+  } finally {
+    await close(server);
+    await fs.rm(path.dirname(logPath), { recursive: true, force: true });
+  }
+});
+
 test('request-login-link defaults to Wyatt email when no email is provided', async () => {
   let seen = {};
   let logPath = await createLogFile();

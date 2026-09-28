@@ -78,6 +78,12 @@ The login-link script defaults to `wegreenway@taraani.org`. To target another ac
 npm run magic-link -- user@example.com
 ```
 
+Print the bearer token instead of the browser link by exchanging the code:
+
+```bash
+npm run magic-link -- --token
+```
+
 The script talks to the running Kikx server. Override with `KIKX_URL` when needed.
 
 ## Useful Environment Variables
