@@ -1,8 +1,8 @@
 # Plan: Ollama Agent Provider + Async Provider Descriptors
 
-Status: PROPOSED (awaiting implementation authorization)
+Status: COMPLETE (2026-09-28)
 Date: 2026-09-28
-Repos touched: `kikx` (core), `kikx-plugin-ollama` (new), `kikx-plugin-codex` (spec only)
+Repos touched: `kikx` (core), `kikx-plugin-ollama` (new, private), `kikx-plugin-codex` (spec/fix)
 
 ## 1. Purpose
 
@@ -327,3 +327,33 @@ Design sketch (to be planned as its own phase, P3):
 - Note: the local CLI exposes no direct-key flow (`ollama signin` is daemon-managed);
   direct-key calls mean treating `ollama.com` as a plain HTTP endpoint with a Bearer
   token, not using the local daemon.
+
+## 12. Completion evidence (2026-09-28)
+
+Delivered:
+- P0 async provider descriptors: kikx `e87dedf`.
+- Core bug fix (provider Done usage lost in the shared ask loop): kikx `7d7a691`.
+- P2 Stagehand coverage + gitignore + this plan: kikx `f962c0a`.
+- Codex plugin completion-review handling, request timeout, usage specs:
+  `kikx-plugin-codex` `6b6fcfd`, `a2d1ccc` (private `th317erd/kikx-plugin-codex`).
+- New plugin `kikx-plugin-ollama` `7ec6c02` (private `th317erd/kikx-plugin-ollama`).
+
+Verification:
+- kikx `npm test`: 356 pass / 0 fail (was 351 before the usage fix).
+- `kikx-plugin-codex` `npm test`: 12 pass / 0 fail (2 pre-existing drift failures fixed).
+- `kikx-plugin-ollama` `npm test`: 10 pass / 0 fail.
+- kikx `npm run test:ui:stagehand`: 18 pass / 0 fail (AeorDB v0.9.5 running).
+- Real daemon `ask()` smoke: discovery returns `deepseek-v4.1-flash:cloud`; streams
+  thinking + final `pong`; usage `{inputTokens:74,outputTokens:16,totalTokens:90}`.
+- Real daemon tool loop: `get_weather({city:'Paris'})` executed, result fed back,
+  final answer produced, `content.toolResults` populated.
+- Real dev E2E through running Kikx (`127.0.0.1:3001`): created an `ollama-agent`
+  via API, created a session, `/invite`d it, sent a message, observed streamed
+  `pong`, and `/api/v1/tokens` recorded `ollama/ollama/ollama-agent`
+  (tokensUsed 48643). This also proves the P0 usage fix end to end.
+
+Outstanding / follow-ups:
+- P3 direct Ollama Cloud API key support (section 11) remains roadmap.
+- `kikx-plugin-claude` and `kikx-plugin-google` are still legacy-contract and
+  non-functional under the current loop; out of scope here. They expose empty
+  configFields and load without error.
