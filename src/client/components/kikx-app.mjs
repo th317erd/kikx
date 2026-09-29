@@ -10,7 +10,16 @@ import {
   getSessions,
   getSessionPreviews,
   getTeams,
+  getCurrentEntry,
+  getCurrentSessionID,
+  getGridParentSessionID,
+  getScopeNoun,
+  getStackDepth,
+  isCollapsed,
   kikxState,
+  navigateBack,
+  navigateGrid,
+  navigateThread,
   removeAgent,
   removeTeam,
   resetAccountState,
@@ -24,6 +33,7 @@ import {
   setAgentFormFromAgent,
   setAgentFormProvider,
   setClientComponents,
+  setCollapsedView,
   setSessionFrames,
   setSessionPreviews,
   setSessions,
@@ -32,7 +42,6 @@ import {
   setTeams,
   setTeamFormFromTeam,
   setTokenUsage,
-  setWorkspaceView,
   upsertFrames,
   upsertAgent,
   upsertSession,
@@ -52,9 +61,14 @@ import { loadClientComponentDescriptors } from './frame-component-registry.mjs';
 import './kikx-frame-item.mjs';
 import './kikx-chat-view.mjs';
 import './kikx-session-grid.mjs';
-import { cardViewModel, chunkSessionIDs, clampPreviewCount, previewsBySessionID } from './chat-view-model.mjs';
+import { childSessions, chunkSessionIDs, clampPreviewCount } from './chat-view-model.mjs';
+import {
+  HERO_VIEW_TRANSITION_NAME,
+  runViewTransition,
+  setViewTransitionName,
+} from './view-transition.mjs';
 
-const { div, header, main, section, h1, h2, p, span, button, form, input, label, textarea, ul, li, strong, option } = elements;
+const { div, header, main, nav, section, h1, h2, p, span, button, form, input, label, textarea, ul, li, strong, option } = elements;
 const aeorInput = elements['aeor-input'];
 const aeorModal = elements['aeor-modal'];
 const aeorSelect = elements['aeor-select'];
@@ -119,6 +133,11 @@ export class KikxApp extends HTMLElement {
       return;
 
     this._mounted = true;
+    // Sub-session cards bubble "enter" events; handle them once at the root.
+    this.addEventListener('kikx-session-enter', (event) => {
+      if (event.detail?.sessionID)
+        this._openSessionFromCard(event.detail.sessionID);
+    });
     this._render();
     if (this._state.authToken) {
       this._connectRuntimeEvents();
@@ -147,6 +166,7 @@ export class KikxApp extends HTMLElement {
             p('Agent runner'),
           ),
         ),
+        this._state.authToken ? this._buildBreadcrumb() : null,
         this._state.authToken
           ? div.class('kikx-topbar__actions')(
             span.class('kikx-account-chip')(this._state.account?.name || 'User'),
@@ -215,7 +235,48 @@ export class KikxApp extends HTMLElement {
     );
   }
 
+  _buildBreadcrumb() {
+    let stack = this._state.navigationStack || [];
+    let crumbs = [];
+
+    crumbs.push({
+      label: 'Projects',
+      depth: 1,
+      active: stack.length === 1,
+    });
+
+    for (let index = 1; index < stack.length; index++) {
+      let entry = stack[index];
+      let session = getSessions(this._state).find((candidate) => candidate.id === entry.sessionID);
+      let label = session?.title || (entry.sessionID ? String(entry.sessionID).slice(0, 8) : 'Session');
+      if (entry.collapsed)
+        label += ' (sub-sessions)';
+      crumbs.push({
+        label,
+        depth: index + 1,
+        active: index === stack.length - 1,
+      });
+    }
+
+    return nav.class('kikx-breadcrumb').ariaLabel('Session navigation')(
+      crumbs.flatMap((crumb, index) => {
+        let nodes = [];
+        if (index > 0)
+          nodes.push(span.class('kikx-breadcrumb__sep')('›'));
+        nodes.push(
+          crumb.active
+            ? span.class('kikx-breadcrumb__crumb kikx-breadcrumb__crumb--active')(crumb.label)
+            : button.type('button').class('kikx-breadcrumb__crumb').onClick(() => this._navigateToDepth(crumb.depth))(crumb.label),
+        );
+        return nodes;
+      }),
+    );
+  }
+
   _buildRunnerShell() {
+    let entry = getCurrentEntry(this._state);
+    let collapsed = entry.collapsed === true;
+
     return [
       main.class('kikx-main')(
         section.class('kikx-sessions')(
@@ -223,32 +284,71 @@ export class KikxApp extends HTMLElement {
             h2('Workspace'),
           ),
         ),
-        this._state.workspaceView === 'thread'
-          ? this._buildThreadSection()
-          : this._buildWorkspaceGrid(),
+        this._buildWindow(entry, collapsed),
       ),
     ];
+  }
+
+  // The unified work area: a maximized session over its parent, or the grid of
+  // children when collapsed. One container; the stack decides what is on top.
+  _buildWindow(entry, collapsed) {
+    let sessionID = entry.sessionID;
+
+    if (!sessionID)
+      return this._buildWorkspaceGrid();
+
+    return collapsed
+      ? this._buildChildGrid(sessionID)
+      : this._buildThreadSection(sessionID);
+  }
+
+  _scopeNoun() {
+    return getScopeNoun(this._state);
+  }
+
+  _buildChildGrid(parentSessionID) {
+    return section.class('kikx-workspace')(
+      div.class('kikx-workspace__header')(
+        h2(this._childGridTitle(parentSessionID)),
+        div.class('kikx-workspace__actions')(
+          span.class.bindState((state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`, ['previewsLoading', 'previewStatus'])(
+            span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
+          ),
+          button.type('button').class('kikx-icon-button').title(`Add ${this._scopeNoun()}`).onClick(this._createSession)('+'),
+        ),
+      ),
+      this._buildSessionGrid(parentSessionID),
+    );
   }
 
   _buildWorkspaceGrid() {
     return section.class('kikx-workspace')(
       div.class('kikx-workspace__header')(
-        h2('Sessions'),
+        h2('Projects'),
         div.class('kikx-workspace__actions')(
           span.class.bindState((state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`, ['previewsLoading', 'previewStatus'])(
             span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
           ),
-          button.type('button').class('kikx-icon-button').title('Create session').onClick(this._createSession)('+'),
+          button.type('button').class('kikx-icon-button').title('Add Project').onClick(this._createSession)('+'),
         ),
       ),
-      this._buildSessionGrid(),
+      this._buildSessionGrid(null),
     );
   }
 
-  _buildSessionGrid() {
+  _childGridTitle(parentSessionID) {
+    return getSelectedSession(this._state)?.title || `Session ${String(parentSessionID).slice(0, 8)}`;
+  }
+
+  _childSessions(parentSessionID) {
+    return childSessions(getSessions(this._state), parentSessionID);
+  }
+
+  _buildSessionGrid(parentSessionID) {
     let grid = document.createElement('kikx-session-grid');
     grid.update({
-      sessions: getSessions(this._state),
+      allSessions: getSessions(this._state),
+      parentSessionID,
       previews: getSessionPreviews(this._state),
       appState: this._state,
       selectedSessionID: this._state.selectedSessionID,
@@ -261,18 +361,26 @@ export class KikxApp extends HTMLElement {
     return div.class('kikx-workspace__grid')(grid);
   }
 
-  _buildThreadSection() {
-    let hasSelectedSession = Boolean(this._state.selectedSessionID);
+  _buildThreadSection(sessionID) {
+    let hasSelectedSession = Boolean(sessionID);
+    let childCount = this._childSessions(sessionID).length;
 
     return section.class('kikx-thread')(
       div.class('kikx-thread__header')(
         button
           .type('button')
           .class('kikx-icon-button kikx-thread__back')
-          .title('Back to sessions')
-          .ariaLabel('Back to sessions')
-          .onClick(this._showWorkspaceGrid)('‹'),
+          .title('Close session')
+          .ariaLabel('Close session')
+          .onClick(this._minimizeCurrent)('‹'),
         h2(this._selectedSession()?.title || 'No session'),
+        div.class('kikx-thread__actions')(
+          button
+            .type('button')
+            .class(`kikx-sign-out-button kikx-thread__subsessions${isCollapsed(this._state) ? ' is-active' : ''}`)
+            .title('Show sub-sessions')
+            .onClick(this._showSubSessions)(`Sub-sessions (${childCount})`),
+        ),
       ),
       div.class('kikx-thread__body')(
         this._buildFrameThread(),
@@ -729,7 +837,7 @@ export class KikxApp extends HTMLElement {
       this._syncFrameThread(selectedSessionID, { touchedFrameIDs });
 
     let affectedSessionIDs = [ ...framesBySessionID.keys() ].filter((sessionID) => sessionID !== selectedSessionID);
-    if (affectedSessionIDs.length > 0 && this._state.workspaceView === 'grid')
+    if (affectedSessionIDs.length > 0 && isCollapsed(this._state))
       this._schedulePreviewRefresh(affectedSessionIDs);
 
     if (this._pendingFrameRuntimeEvents.length > 0 && !this._frameRuntimeFlushScheduled) {
@@ -743,17 +851,10 @@ export class KikxApp extends HTMLElement {
       let result = await this._getJSON('/api/v1/sessions');
       setSessions(result.data.sessions || [], this._state);
 
-      let sessions = getSessions(this._state);
-      if (!this._state.selectedSessionID && sessions.length > 0)
-        this._state.selectedSessionID = sessions[0].id;
+      // Deep-link: ?session=<id> or ?view=thread opens a session's thread.
+      await this._applySessionDeepLink();
 
-      if (this._state.selectedSessionID) {
-        this._forceScrollToBottomAfterRender = true;
-        await this._loadFrames(this._state.selectedSessionID);
-      } else {
-        this._render();
-      }
-
+      this._render();
       await this._loadSessionPreviews();
     } catch (error) {
       this._state.status = error.message;
@@ -1351,10 +1452,9 @@ export class KikxApp extends HTMLElement {
       let result = await this._postJSON('/api/v1/sessions', {
       });
       upsertSession(result.data.session, this._state);
-      this._state.selectedSessionID = result.data.session.id;
-      setWorkspaceView('thread', this._state);
-      this._forceScrollToBottomAfterRender = true;
       await this._loadSessions();
+      // Enter the newly created session.
+      await this._openSessionFromCard(result.data.session.id);
       this._state.status = 'Session created';
       this._state.statusKind = 'ready';
       this._render();
@@ -1429,8 +1529,65 @@ export class KikxApp extends HTMLElement {
     return getSelectedSession(this._state);
   }
 
-  _showWorkspaceGrid() {
-    setWorkspaceView('grid', this._state);
+  // Minimize the current session (pop the stack). Only valid past the root.
+  _minimizeCurrent() {
+    if (getStackDepth(this._state) <= 1)
+      return;
+
+    // The session we are leaving; its card in the destination grid is the hero.
+    let leavingSessionID = getGridParentSessionID(this._state);
+    this._setHeroName(this._threadChatViewElement());
+
+    runViewTransition(() => {
+      navigateBack(this._state);
+      this._syncSelectedSessionToStack();
+      this._render();
+      let grid = this.querySelector('kikx-session-grid');
+      this._setHeroName(grid?.cardViewElement(leavingSessionID));
+    }).finally(() => this._clearHeroNames());
+  }
+
+  // Keep state.selectedSessionID aligned with the current stack entry so frames
+  // and titles reflect the active window.
+  _syncSelectedSessionToStack() {
+    let sessionID = getCurrentSessionID(this._state);
+    this._state.selectedSessionID = sessionID || '';
+  }
+
+  // Toggle "show sub-sessions" (collapsed) on the current entry. The thread view
+  // is replaced by a child grid; a crossfade transition plays without a shared
+  // element (the two views are different element trees).
+  async _showSubSessions() {
+    await runViewTransition(() => {
+      setCollapsedView(true, this._state);
+      this._render();
+    });
+
+    await this._loadSessionPreviews();
+  }
+
+  // Expand a collapsed grid back into the full chat for its session.
+  async _expandCurrent() {
+    let entry = getCurrentEntry(this._state);
+    if (!entry.collapsed || !entry.sessionID)
+      return;
+
+    await runViewTransition(() => {
+      setCollapsedView(false, this._state);
+      this._render();
+    });
+  }
+
+  _navigateToDepth(depth) {
+    if (!Number.isInteger(depth) || depth < 1)
+      return;
+
+    let stack = this._state.navigationStack || [];
+    if (depth >= stack.length)
+      return;
+
+    this._state.navigationStack = stack.slice(0, depth);
+    this._syncSelectedSessionToStack();
     this._render();
   }
 
@@ -1438,9 +1595,79 @@ export class KikxApp extends HTMLElement {
     if (!sessionID)
       return;
 
-    setWorkspaceView('thread', this._state);
-    await this._selectSession(sessionID);
+    // "Before" snapshot: only the source card's chat view carries the hero name.
+    let grid = this.querySelector('kikx-session-grid');
+    this._setHeroName(grid?.cardViewElement(sessionID));
+
+    // Enter the session (push a thread window) and start the morph immediately;
+    // load frames after, so the transition never waits on the network.
+    await runViewTransition(() => {
+      this._state.selectedSessionID = sessionID;
+      this._state.status = 'Loading session...';
+      this._state.statusKind = 'pending';
+      this._forceScrollToBottomAfterRender = true;
+      navigateThread(sessionID, this._state);
+      this._render();
+      this._setHeroName(this._threadChatViewElement());
+    });
+
+    this._clearHeroNames();
+
+    try {
+      await this._loadFrames(sessionID);
+      this._state.status = 'Session loaded';
+      this._state.statusKind = 'ready';
+      this._render();
+    } catch (error) {
+      this._state.status = error.message;
+      this._state.statusKind = 'error';
+      this._render();
+    }
+
     await this._loadSessionPreviews();
+  }
+
+  _threadChatViewElement() {
+    return this.querySelector('.kikx-thread__body kikx-chat-view');
+  }
+
+  _setHeroName(element) {
+    for (let view of this.querySelectorAll('kikx-chat-view'))
+      setViewTransitionName(view, view === element ? HERO_VIEW_TRANSITION_NAME : '');
+  }
+
+  _clearHeroNames() {
+    for (let view of this.querySelectorAll('kikx-chat-view'))
+      setViewTransitionName(view, '');
+  }
+
+  // Optional deep link on first load: ?session=<id> (or ?view=thread) opens a
+  // session thread directly, seeding the navigation stack.
+  async _applySessionDeepLink() {
+    if (this._deepLinkApplied)
+      return;
+
+    this._deepLinkApplied = true;
+    let params = new URLSearchParams(globalThis.location?.search || '');
+    let requested = params.get('session') || '';
+    if (!requested && params.get('view') === 'thread') {
+      let sessions = getSessions(this._state);
+      requested = sessions[0]?.id || '';
+    }
+
+    if (!requested)
+      return;
+
+    let exists = getSessions(this._state).some((session) => session.id === requested);
+    if (!exists)
+      return;
+
+    try {
+      navigateThread(requested, this._state);
+      this._state.selectedSessionID = requested;
+      this._forceScrollToBottomAfterRender = true;
+      await this._loadFrames(requested);
+    } catch (_error) {}
   }
 
   async _loadSessionPreviews() {
@@ -1464,7 +1691,7 @@ export class KikxApp extends HTMLElement {
       setPreviewStatus(error.message, this._state);
     } finally {
       setPreviewsLoading(false, this._state);
-      if (this._state.workspaceView === 'grid')
+      if (isCollapsed(this._state))
         this._requestRender();
     }
   }
@@ -1617,8 +1844,11 @@ export class KikxApp extends HTMLElement {
 
     let grid = this.querySelector('kikx-session-grid');
     if (grid) {
+      // Respect the current level's parent filter; the grid shows direct
+      // children of the active session, never the unfiltered list.
       grid.update({
-        sessions: getSessions(this._state),
+        allSessions: getSessions(this._state),
+        parentSessionID: getGridParentSessionID(this._state),
         previews: getSessionPreviews(this._state),
         appState: this._state,
         selectedSessionID: this._state.selectedSessionID,

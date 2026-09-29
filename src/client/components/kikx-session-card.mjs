@@ -47,6 +47,10 @@ export class KikxSessionCard extends HTMLElement {
     return this._session?.id || '';
   }
 
+  get viewElement() {
+    return this._shell?.view || null;
+  }
+
   connectedCallback() {
     if (!this._shell)
       this._build();

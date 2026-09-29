@@ -1,17 +1,24 @@
 'use strict';
 
 import './kikx-session-card.mjs';
-import { previewsBySessionID } from './chat-view-model.mjs';
+import { childSessions, previewsBySessionID } from './chat-view-model.mjs';
 
 export class KikxSessionGrid extends HTMLElement {
   constructor() {
     super();
-    this._sessions = [];
+    this._allSessions = [];
+    this._parentSessionID = null;
     this._previews = new Map();
     this._appState = {};
     this._selectedSessionID = '';
     this._loading = false;
     this._error = null;
+  }
+
+  // The grid always lists direct children of parentSessionID. It owns this
+  // filter so no caller can accidentally hand it an unfiltered list.
+  get _sessions() {
+    return childSessions(this._allSessions, this._parentSessionID);
   }
 
   connectedCallback() {
@@ -29,8 +36,12 @@ export class KikxSessionGrid extends HTMLElement {
   }
 
   update(input = {}) {
-    if (Array.isArray(input.sessions))
-      this._sessions = input.sessions;
+    if (Array.isArray(input.allSessions))
+      this._allSessions = input.allSessions;
+    else if (Array.isArray(input.sessions))
+      this._allSessions = input.sessions;
+    if (Object.hasOwn(input, 'parentSessionID'))
+      this._parentSessionID = input.parentSessionID || null;
     if (input.previews instanceof Map)
       this._previews = input.previews;
     else if (Array.isArray(input.previews))
@@ -62,6 +73,14 @@ export class KikxSessionGrid extends HTMLElement {
   _cardFor(sessionID) {
     return Array.from(this.querySelectorAll('kikx-session-card'))
       .find((card) => card.sessionID === sessionID) || null;
+  }
+
+  cardElement(sessionID) {
+    return this._cardFor(sessionID);
+  }
+
+  cardViewElement(sessionID) {
+    return this._cardFor(sessionID)?.querySelector('kikx-chat-view') || null;
   }
 
   _cardInputFor(sessionID) {

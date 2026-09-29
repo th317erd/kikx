@@ -8,7 +8,9 @@ import {
   frameTimestamp,
 } from './frame-labels.mjs';
 import { resolveFrameComponentDescriptor } from './frame-component-registry.mjs';
+import { sessionReferenceFromFrame } from './kikx-sub-session-frame.mjs';
 import './kikx-typing-indicator.mjs';
+import './kikx-sub-session-frame.mjs';
 
 const { div, p, span, strong, time } = elements;
 
@@ -85,6 +87,11 @@ export class KikxFrameItem extends HTMLElement {
   }
 
   _buildFrameContent(frame) {
+    // Any frame that declares a session reference renders as an enterable
+    // sub-session card, regardless of its underlying tool/frame type.
+    if (sessionReferenceFromFrame(frame))
+      return this._buildSubSessionCard(frame);
+
     let customContent = this._buildCustomFrameContent(frame);
     if (customContent)
       return customContent;
@@ -105,6 +112,13 @@ export class KikxFrameItem extends HTMLElement {
     }
 
     return p(frame.content?.text || frame.contentText || frame.id || '').build(document);
+  }
+
+  _buildSubSessionCard(frame) {
+    let element = document.createElement('kikx-sub-session-frame');
+    element.appState = this._appState;
+    element.updateFrame(frame, this._appState);
+    return div.class('kikx-frame__content kikx-frame__content--sub-session')(element).build(document);
   }
 
   _buildCustomFrameContent(frame) {
