@@ -34,6 +34,14 @@ import {
   upsertTeam,
 } from '../state/kikx-state.mjs';
 import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
+import {
+  composerCaretAllowsHistory,
+  composerHistoryEntriesFromFrames,
+  composerHistoryDirectionForKey,
+  createComposerHistoryState,
+  navigateComposerHistory,
+  recordComposerHistoryEntry,
+} from './composer-history.mjs';
 import { loadClientComponentDescriptors } from './frame-component-registry.mjs';
 import './kikx-frame-item.mjs';
 
@@ -60,6 +68,7 @@ export class KikxApp extends HTMLElement {
     this._renderScheduled = false;
     this._pendingFrameRuntimeEvents = [];
     this._frameRuntimeFlushScheduled = false;
+    this._composerHistory = createComposerHistoryState();
 
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
@@ -963,6 +972,7 @@ export class KikxApp extends HTMLElement {
         authorDisplayName: this._state.account?.name || null,
       });
       upsertSession(result.data.session, this._state);
+      recordComposerHistoryEntry(this._composerHistory, draft);
       this._forceScrollToBottomAfterRender = true;
       this._focusComposerAfterRender = true;
       await this._loadFrames(this._state.selectedSessionID, { render: false });
@@ -978,11 +988,53 @@ export class KikxApp extends HTMLElement {
   }
 
   _onComposerKeydown(event) {
+    if (this._handleComposerHistoryKey(event))
+      return;
+
     if (!shouldSubmitComposerKey(event))
       return;
 
     event.preventDefault();
     event.target?.form?.requestSubmit();
+  }
+
+  _handleComposerHistoryKey(event) {
+    let direction = composerHistoryDirectionForKey(event);
+    if (!direction)
+      return false;
+
+    let composer = event.target;
+    if (!composer)
+      return false;
+
+    if (!composerCaretAllowsHistory(direction, composer.value, composer.selectionStart))
+      return false;
+
+    this._syncComposerHistoryFromFrames();
+
+    let navigation = navigateComposerHistory(this._composerHistory, direction, composer.value);
+    if (!navigation.handled)
+      return false;
+
+    event.preventDefault();
+    composer.value = navigation.value ?? '';
+    this._state.draft = composer.value;
+
+    let caret = composer.value.length;
+    try {
+      composer.setSelectionRange(caret, caret);
+    } catch (_error) {}
+
+    return true;
+  }
+
+  _syncComposerHistoryFromFrames() {
+    if (this._composerHistory.cursor !== -1)
+      return;
+
+    let entries = composerHistoryEntriesFromFrames(getSelectedFrames(this._state));
+    if (entries.length > 0)
+      this._composerHistory.entries = entries;
   }
 
   async _loadAccount(options = {}) {
