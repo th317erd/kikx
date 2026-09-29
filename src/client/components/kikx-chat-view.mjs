@@ -1,7 +1,7 @@
 'use strict';
 
 import './kikx-frame-item.mjs';
-import { miniPreviewFrames } from './chat-view-model.mjs';
+import { miniPreviewFrames, miniScale, MINI_DESIGN_WIDTH, MINI_DESIGN_HEIGHT } from './chat-view-model.mjs';
 
 const FRAME_ENTER_ANIMATION_MS = 220;
 
@@ -13,6 +13,8 @@ export class KikxChatView extends HTMLElement {
     this._mode = 'full';
     this._frameList = null;
     this._frameStream = null;
+    this._miniScaler = null;
+    this._resizeObserver = null;
   }
 
   get mode() {
@@ -43,6 +45,28 @@ export class KikxChatView extends HTMLElement {
   connectedCallback() {
     if (this.childNodes.length === 0 && this._frames.length > 0)
       this._render();
+
+    this._observeResize();
+  }
+
+  disconnectedCallback() {
+    this._disconnectResize();
+  }
+
+  _observeResize() {
+    if (this._resizeObserver || typeof ResizeObserver !== 'function')
+      return;
+
+    this._resizeObserver = new ResizeObserver(() => this._applyMiniScale());
+    this._resizeObserver.observe(this);
+  }
+
+  _disconnectResize() {
+    if (!this._resizeObserver)
+      return;
+
+    this._resizeObserver.disconnect();
+    this._resizeObserver = null;
   }
 
   update(input = {}) {
@@ -164,16 +188,38 @@ export class KikxChatView extends HTMLElement {
     this.textContent = '';
     this.classList.add('kikx-chat-view--mini');
     this.classList.remove('kikx-chat-view--full');
-    this.removeAttribute('role');
+    this.setAttribute('aria-hidden', 'true');
 
-    let preview = document.createElement('div');
-    preview.className = 'kikx-chat-view__preview';
-    preview.setAttribute('aria-hidden', 'true');
+    // Render the real chat thread (same DOM as full mode) inside a scaler that
+    // is sized to the design dimensions and scaled down to fit the card.
+    let scaler = document.createElement('div');
+    scaler.className = 'kikx-chat-view__scaler';
+    scaler.style.setProperty('--kikx-mini-design-width', `${MINI_DESIGN_WIDTH}px`);
+    scaler.style.setProperty('--kikx-mini-design-height', `${MINI_DESIGN_HEIGHT}px`);
 
+    let list = document.createElement('div');
+    list.className = 'kikx-frame-list';
+    let stream = document.createElement('div');
+    stream.className = 'kikx-frame-stream';
     for (let frame of miniPreviewFrames(this._frames))
-      preview.appendChild(this._createFrameItem(frame));
+      stream.appendChild(this._createFrameItem(frame));
 
-    this.appendChild(preview);
+    list.appendChild(stream);
+    scaler.appendChild(list);
+    this.appendChild(scaler);
+
+    this._miniScaler = scaler;
+    this._applyMiniScale();
+  }
+
+  _applyMiniScale() {
+    if (this._mode !== 'mini' || !this._miniScaler)
+      return;
+
+    let rect = this.getBoundingClientRect();
+    let scale = miniScale({ containerWidth: rect.width, containerHeight: rect.height });
+    if (scale > 0)
+      this._miniScaler.style.setProperty('--kikx-mini-scale', String(scale));
   }
 
   _createFrameItem(frame) {

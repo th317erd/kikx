@@ -73,6 +73,7 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
 
     await page.waitForSelector('kikx-session-grid kikx-session-card', { timeout: 10000 });
     await waitForCardText(page, 'Alpha Session', 'Alpha Session');
+    await waitForCardFrameCount(page, 3);
 
     let gridState = await page.evaluate(() => ({
       view: document.querySelector('kikx-app')?._state?.workspaceView,
@@ -91,6 +92,26 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
     assert.equal(gridState.cards[0].frames, 3);
     assert.equal(gridState.cards[1].frames, 2);
     assert.match(gridState.cards[0].meta, /3 messages/);
+
+    // Mini cards render the real chat thread scaled down via a transform.
+    let scalerState = await page.evaluate(() => {
+      let view = document.querySelector('kikx-session-card kikx-chat-view');
+      let scaler = view?.querySelector('.kikx-chat-view__scaler');
+      let list = scaler?.querySelector('.kikx-frame-list');
+      let transform = scaler ? getComputedStyle(scaler).transform : '';
+      let scaleValue = scaler ? scaler.style.getPropertyValue('--kikx-mini-scale') : '';
+      return {
+        hasScaler: Boolean(scaler),
+        hasFrameList: Boolean(list),
+        transform,
+        scaleValue: Number(scaleValue),
+      };
+    });
+
+    assert.equal(scalerState.hasScaler, true);
+    assert.equal(scalerState.hasFrameList, true);
+    assert.match(scalerState.transform, /^matrix\(/);
+    assert.ok(scalerState.scaleValue > 0 && scalerState.scaleValue < 1, `mini scale in (0,1): ${scalerState.scaleValue}`);
 
     // Expand the Alpha card into the full chat.
     await page.evaluate(() => {
@@ -131,6 +152,20 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
       process.env.OPENAI_API_KEY = previousOpenAIAPIKey;
   }
 });
+
+async function waitForCardFrameCount(page, expectedCount, timeoutMS = 10000) {
+  let startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMS) {
+    let counts = await page.evaluate(() => Array.from(document.querySelectorAll('kikx-session-card'))
+      .map((card) => card.querySelectorAll('kikx-frame-item[data-frame-id]').length));
+    if (counts[0] >= expectedCount)
+      return;
+
+    await delay(50);
+  }
+
+  throw new Error(`Timed out waiting for card frame counts: ${expectedCount}`);
+}
 
 async function waitForCardText(page, expectedText, expectedTitle, timeoutMS = 10000) {
   let startedAt = Date.now();

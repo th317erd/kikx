@@ -5,11 +5,14 @@ import test from 'node:test';
 
 import {
   MAX_PREVIEW_COUNT,
+  MINI_DESIGN_HEIGHT,
+  MINI_DESIGN_WIDTH,
   cardViewModel,
   chunkSessionIDs,
   clampPreviewCount,
   isVisibleFrame,
   miniPreviewFrames,
+  miniScale,
   previewsBySessionID,
   sessionCardLabel,
   sessionCardMeta,
@@ -111,4 +114,30 @@ test('sessionCardLabel and meta describe the card chrome', () => {
   assert.equal(sessionCardMeta({ messageCount: 1 }, [], false), '1 message');
   assert.equal(sessionCardMeta({ messageCount: 34 }, [], true), '34 messages · preview');
   assert.equal(sessionCardMeta({}, [ { id: 'x' }, { id: 'y' } ], false), '2 messages');
+});
+
+test('miniScale fits a design-size chat inside the card without distortion', () => {
+  // Square design (760x760) into a 240x240 card -> 240/760.
+  assert.equal(miniScale({ containerWidth: 240, containerHeight: 240 }), 240 / MINI_DESIGN_WIDTH);
+
+  // Wider than tall container: height is the limiting dimension (letterboxed).
+  assert.equal(
+    miniScale({ containerWidth: 1000, containerHeight: 380 }),
+    380 / MINI_DESIGN_HEIGHT,
+  );
+
+  // Taller than wide container: width is the limiting dimension.
+  assert.equal(
+    miniScale({ containerWidth: 190, containerHeight: 800 }),
+    190 / MINI_DESIGN_WIDTH,
+  );
+});
+
+test('miniScale returns 0 for unusable container sizes', () => {
+  assert.equal(miniScale({ containerWidth: 0, containerHeight: 200 }), 0);
+  assert.equal(miniScale({ containerWidth: 200, containerHeight: 0 }), 0);
+  assert.equal(miniScale({ containerWidth: -5, containerHeight: 200 }), 0);
+  assert.equal(miniScale({ containerWidth: NaN, containerHeight: 200 }), 0);
+  assert.equal(miniScale({}), 0);
+  assert.equal(miniScale({ containerWidth: 200, containerHeight: 200, designWidth: 0 }), 0);
 });

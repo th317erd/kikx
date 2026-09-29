@@ -5,6 +5,30 @@ export const DEFAULT_PREVIEW_COUNT = 5;
 export const MAX_PREVIEW_COUNT = 20;
 export const MAX_PREVIEW_SESSIONS_PER_REQUEST = 100;
 
+// The mini card renders the real chat at this "design" size (CSS px) and
+// scales the whole thing down to the card, so it is literally a tiny chat.
+export const MINI_DESIGN_WIDTH = 760;
+export const MINI_DESIGN_HEIGHT = 760;
+
+// Uniform scale that fits a design-size box inside a container box without
+// distortion (letterboxed). Returns 0 for a non-positive container.
+export function miniScale({
+  containerWidth,
+  containerHeight,
+  designWidth = MINI_DESIGN_WIDTH,
+  designHeight = MINI_DESIGN_HEIGHT,
+} = {}) {
+  let width = Number(containerWidth);
+  let height = Number(containerHeight);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
+    return 0;
+
+  if (!Number.isFinite(designWidth) || designWidth <= 0 || !Number.isFinite(designHeight) || designHeight <= 0)
+    return 0;
+
+  return Math.min(width / designWidth, height / designHeight);
+}
+
 export function isVisibleFrame(frame) {
   return Boolean(frame?.id)
     && frame.hidden !== true
