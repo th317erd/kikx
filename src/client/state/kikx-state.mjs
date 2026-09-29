@@ -13,6 +13,18 @@ import {
   upsertFrameState,
   upsertSessionState,
 } from './session-state-utils.mjs';
+import {
+  createNavigationStack,
+  currentEntry,
+  currentSessionID,
+  gridParentSessionID,
+  popStack,
+  pushGrid,
+  pushThread,
+  scopeNounForDepth,
+  setCollapsed,
+  stackDepth,
+} from './navigation-stack.mjs';
 
 export const AUTH_STORAGE_KEY = 'kikx.auth.session';
 
@@ -72,7 +84,7 @@ export const kikxState = new ReactiveState({
   teamStatusKind: 'pending',
   tokenUsage: {},
   totalTokensUsed: 0,
-  workspaceView: params.get('view') === 'thread' ? 'thread' : 'grid',
+  navigationStack: createNavigationStack(),
   sessionPreviewsByID: {},
   previewsLoading: false,
   previewStatus: '',
@@ -155,8 +167,52 @@ export function upsertSessionPreview(sessionID, preview, state = kikxState) {
   };
 }
 
-export function setWorkspaceView(view, state = kikxState) {
-  state.workspaceView = view === 'thread' ? 'thread' : 'grid';
+export function getNavigationStack(state = kikxState) {
+  return state.navigationStack || createNavigationStack();
+}
+
+export function getCurrentEntry(state = kikxState) {
+  return currentEntry(getNavigationStack(state));
+}
+
+export function getCurrentSessionID(state = kikxState) {
+  return currentSessionID(getNavigationStack(state));
+}
+
+export function isCollapsed(state = kikxState) {
+  return getCurrentEntry(state).collapsed === true;
+}
+
+export function getStackDepth(state = kikxState) {
+  return stackDepth(getNavigationStack(state));
+}
+
+export function getGridParentSessionID(state = kikxState) {
+  return gridParentSessionID(getNavigationStack(state));
+}
+
+export function getScopeNoun(state = kikxState) {
+  return scopeNounForDepth(getStackDepth(state));
+}
+
+export function setNavigationStack(stack, state = kikxState) {
+  state.navigationStack = stack;
+}
+
+export function navigateThread(sessionID, state = kikxState) {
+  state.navigationStack = pushThread(getNavigationStack(state), sessionID);
+}
+
+export function navigateGrid(parentSessionID, state = kikxState) {
+  state.navigationStack = pushGrid(getNavigationStack(state), parentSessionID);
+}
+
+export function navigateBack(state = kikxState) {
+  state.navigationStack = popStack(getNavigationStack(state));
+}
+
+export function setCollapsedView(collapsed, state = kikxState) {
+  state.navigationStack = setCollapsed(getNavigationStack(state), collapsed === true);
 }
 
 export function setPreviewsLoading(loading, state = kikxState) {

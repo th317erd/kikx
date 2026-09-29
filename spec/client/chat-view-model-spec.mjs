@@ -8,6 +8,7 @@ import {
   MINI_DESIGN_HEIGHT,
   MINI_DESIGN_WIDTH,
   cardViewModel,
+  childSessions,
   chunkSessionIDs,
   clampPreviewCount,
   isVisibleFrame,
@@ -140,4 +141,23 @@ test('miniScale returns 0 for unusable container sizes', () => {
   assert.equal(miniScale({ containerWidth: NaN, containerHeight: 200 }), 0);
   assert.equal(miniScale({}), 0);
   assert.equal(miniScale({ containerWidth: 200, containerHeight: 200, designWidth: 0 }), 0);
+});
+
+test('childSessions filters direct children and falls back for flat legacy data', () => {
+  let sessions = [
+    { id: 'a', parentSessionID: null },
+    { id: 'b', parentSessionID: 'a' },
+    { id: 'c', parentSessionID: 'a' },
+    { id: 'd', parentSessionID: 'b' },
+  ];
+
+  assert.deepEqual(childSessions(sessions, null).map((s) => s.id), [ 'a' ]);
+  assert.deepEqual(childSessions(sessions, 'a').map((s) => s.id), [ 'b', 'c' ]);
+  assert.deepEqual(childSessions(sessions, 'b').map((s) => s.id), [ 'd' ]);
+  assert.deepEqual(childSessions(sessions, 'c').map((s) => s.id), []);
+
+  // No hierarchy at all: root falls back to the full list (legacy sessions).
+  let flat = [ { id: 'x' }, { id: 'y' } ];
+  assert.deepEqual(childSessions(flat, null).map((s) => s.id), [ 'x', 'y' ]);
+  assert.deepEqual(childSessions(null, null), []);
 });

@@ -72,6 +72,21 @@ export function chunkSessionIDs(sessionIDs, maxPerRequest = MAX_PREVIEW_SESSIONS
   return chunks;
 }
 
+// Direct children of a session (parentSessionID match). Root (null) lists
+// sessions with no parent. Legacy fallback: if no session declares a parent at
+// all, the root lists everything so older data stays reachable.
+export function childSessions(sessions = [], parentSessionID = null) {
+  let list = Array.isArray(sessions) ? sessions : [];
+  let parent = parentSessionID || null;
+  let children = list.filter((session) => (session?.parentSessionID || null) === parent);
+
+  let hasHierarchy = list.some((session) => Boolean(session?.parentSessionID));
+  if (parent === null && !hasHierarchy)
+    return list;
+
+  return children;
+}
+
 export function previewsBySessionID(previews) {
   let map = new Map();
   for (let preview of Array.isArray(previews) ? previews : []) {
@@ -103,9 +118,11 @@ export function sessionCardLabel(session) {
 }
 
 export function sessionCardMeta(session, heads = [], truncated = false) {
-  let count = typeof session?.messageCount === 'number'
-    ? session.messageCount
-    : heads.length;
+  let manifestCount = typeof session?.messageCount === 'number' ? session.messageCount : 0;
+  // When the preview is not truncated we fetched every frame, so the projected
+  // heads are the authoritative visible count and can repair a stale manifest.
+  // When truncated we only see a tail, so trust the maintained manifest count.
+  let count = truncated ? manifestCount : Math.max(manifestCount, heads.length);
   let label = `${count} message${count === 1 ? '' : 's'}`;
   if (truncated)
     label += ' · preview';
