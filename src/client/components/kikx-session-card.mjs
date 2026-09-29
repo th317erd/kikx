@@ -107,6 +107,8 @@ export class KikxSessionCard extends HTMLElement {
     let session = this._session;
     shell.title.textContent = sessionCardLabel(session);
     shell.meta.textContent = sessionCardMeta(session, this._heads, this._truncated);
+    // Stable accessible name: the session title only, not the preview text.
+    shell.root.setAttribute('aria-label', sessionCardLabel(session));
 
     shell.root.classList.toggle('is-selected', this._selected);
     shell.root.setAttribute('aria-pressed', this._selected ? 'true' : 'false');

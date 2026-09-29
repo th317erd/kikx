@@ -37,7 +37,7 @@ test('Puppeteer sends an @mention message and verifies mention metadata', async 
   try {
     let page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
-    await page.goto(`${fixture.baseURL}/?code=puppeteer-test`, {
+    await page.goto(`${fixture.baseURL}/?code=puppeteer-test&view=thread`, {
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });

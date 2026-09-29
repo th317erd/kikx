@@ -174,3 +174,29 @@ Bodies loaded are O(N·K), not O(total frames).
 - Env: wyatt-desktop is the local host; dual 2560x1440 @ 120Hz. UmbraLink has no
   navigation/JS-exec command in this build (`umbrafox.gfx.snapshot` also absent); the
   page self-reports and the URL is handed to the running Umbrafox via the CLI.
+
+## 12. Implementation status (2026-09-29)
+
+P1-P4 delivered:
+- `kikx-chat-view` (composable, `full`/`mini` modes) — full mode preserves the
+  existing `.kikx-frame-list`/`.kikx-frame-stream`/`kikx-frame-item` DOM contract.
+- `kikx-session-card` + `kikx-session-grid` + `chat-view-model.mjs` (pure view logic).
+- Work area defaults to the **grid**; the sidebar remains an **empty shell**.
+  A card or new session opens the full thread; back button returns to the grid;
+  deep-link `?view=thread`.
+- Preview data loaded in one bulk `POST /api/v1/sessions/previews` (chunked,
+  bounded), patched per-card from runtime SSE (debounced), not refetched wholesale.
+- Live SSE preview patch only applies while in grid view; selected session uses
+  the full thread.
+
+Verification:
+- Unit 388/388; Stagehand 19/19; Puppeteer 1/1; Playwright 1/1.
+- Live Brave E2E (debug port 9222): 22 real session cards with previews; expand
+  a card to a 257-frame chat and back to the grid; zero console errors.
+
+Notes / follow-ups:
+- Transition (card->full scale/crossfade) is currently a view swap, not an animated
+  shared-element transition; a later pass can animate it. Canvas full-redraw was
+  rejected; HTML chosen (a content-visibility + contain card keeps offscreen cost low).
+- Sidebar repurposing remains open by owner request (empty shell for now).
+- No canvas/WebGL is used.
