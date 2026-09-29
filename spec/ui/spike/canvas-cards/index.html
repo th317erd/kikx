@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kikx Canvas Cards Spike</title>
+  <link rel="stylesheet" href="./spike.css">
+</head>
+<body>
+  <header class="spike-toolbar">
+    <strong>Kikx work-area spike</strong>
+    <label>Mode
+      <select id="mode">
+        <option value="canvas">Canvas 2D</option>
+        <option value="html">HTML</option>
+      </select>
+    </label>
+    <span class="spike-stat">FPS <b id="fps">—</b></span>
+    <span class="spike-stat">Frame <b id="frame">—</b></span>
+    <span class="spike-stat">Render <b id="render">—</b></span>
+    <span class="spike-stat">Cards <b id="cards">—</b></span>
+  </header>
+  <main id="grid" class="spike-grid" aria-label="Session cards"></main>
+  <script type="module" src="./spike.mjs"></script>
+</body>
+</html>

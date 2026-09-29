@@ -1,0 +1,113 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0b0d12;
+  color: #e6e9ef;
+  font: 13px/1.4 system-ui, sans-serif;
+}
+
+.spike-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  padding: 10px 16px;
+  background: #12151c;
+  border-bottom: 1px solid #232833;
+}
+
+.spike-stat b {
+  color: #66e0a3;
+}
+
+.spike-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 260px);
+  gap: 16px;
+  padding: 16px;
+}
+
+.spike-card {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.spike-card--html {
+  display: flex;
+  flex-direction: column;
+  background: #171a21;
+  border: 1px solid #232833;
+  contain: content;
+}
+
+.spike-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 4px;
+  font-size: 12px;
+}
+
+.spike-card__title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spike-card__agent {
+  color: #7f8798;
+  flex: none;
+}
+
+.spike-bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 12px 12px;
+  overflow: hidden;
+}
+
+.spike-bubble {
+  max-width: 82%;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+}
+
+.spike-bubble--user {
+  align-self: flex-end;
+  background: #2b5cff;
+  color: #fff;
+  max-width: 72%;
+}
+
+.spike-bubble--agent {
+  align-self: flex-start;
+  background: #252a34;
+  color: #d7dbe4;
+}
+
+.spike-bubble--tool {
+  align-self: flex-start;
+  background: #1d2733;
+  color: #8fd0ff;
+  font-family: ui-monospace, monospace;
+}
+
+.spike-bubble.is-streaming {
+  border-bottom-right-radius: 2px;
+  box-shadow: inset 0 -2px 0 #66e0a3;
+}
