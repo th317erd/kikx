@@ -63,6 +63,9 @@ function createClient(options = {}) {
         if (options?.glob === '**/*.json' && !filePath.endsWith('.json'))
           continue;
 
+        if (options?.glob === '**/frames/*.json' && !filePath.includes('/frames/'))
+          continue;
+
         if (options?.depth === 1) {
           let relativePath = filePath.slice(prefix.length);
           if (relativePath.includes('/'))
@@ -72,8 +75,22 @@ function createClient(options = {}) {
         items.push({ path: filePath });
       }
 
+      // Match real AeorDB: basename-sorted (frame filenames are zero-padded order
+      // prefixes, so this is also chronological).
+      items.sort((left, right) => {
+        let leftName = left.path.split('/').pop();
+        let rightName = right.path.split('/').pop();
+        return leftName.localeCompare(rightName);
+      });
+
+      let offset = options?.offset || 0;
+      let limit = options?.limit || items.length;
+
       return {
-        items: items.slice(options?.offset || 0, (options?.offset || 0) + (options?.limit || items.length)),
+        items: items.slice(offset, offset + limit),
+        limit,
+        offset,
+        total: items.length,
       };
     },
   };
@@ -717,4 +734,144 @@ test('AeorDBFrameStore fails loudly when sessionID cannot be resolved', async ()
     () => store.saveCommit(null, frames.getLatestCommit(), frames.toArray(), frames),
     /sessionID is required/,
   );
+});
+
+function seedSessionWithFrames(aeordb, sessionID, count, options = {}) {
+  aeordb.files.set(`/kikx/sessions/${sessionID}/session.json`, {
+    id: sessionID,
+    title: options.title || `Session ${sessionID}`,
+    messageCount: count,
+    updatedAt: options.updatedAt || 1000,
+  });
+
+  for (let order = 1; order <= count; order++) {
+    let type = order % 3 === 0 ? 'AgentMessage' : 'UserMessage';
+    let frame = {
+      id: `${sessionID}_f${order}`,
+      type,
+      sessionID,
+      interactionID: 'int_1',
+      order,
+      commitOrder: order,
+      authorType: type === 'UserMessage' ? 'user' : 'agent',
+      authorID: type === 'UserMessage' ? 'usr_1' : 'agent_1',
+      createdAt: order,
+      createdClock: String(order).padStart(20, '0'),
+      hidden: false,
+      deleted: false,
+      content: { text: `frame ${order}` },
+    };
+    let padded = String(order).padStart(16, '0');
+    aeordb.files.set(`/kikx/sessions/${sessionID}/interactions/int_1/frames/${padded}-${type}-${frame.id}.json`, frame);
+  }
+}
+
+test('AeorDBFrameStore previews only the bounded tail per session', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_big', 300);
+
+  let previews = await store.listSessionPreviews([ 'ses_big' ], { previewCount: 5 });
+
+  assert.equal(previews.length, 1);
+  assert.equal(previews[0].sessionID, 'ses_big');
+  assert.equal(previews[0].session.title, 'Session ses_big');
+  assert.equal(previews[0].truncated, true);
+  assert.equal(previews[0].error, null);
+  assert.equal(previews[0].heads.length, 5);
+  // The heads must be the newest visible frames, in order.
+  assert.deepEqual(previews[0].heads.map((frame) => frame.order), [ 296, 297, 298, 299, 300 ]);
+
+  // Bodies fetched must be bounded, not all 300.
+  let fetchCalls = aeordb.calls.filter((call) => call.method === 'fetchFiles');
+  let frameFetch = fetchCalls.find((call) => call.paths.some((path) => path.includes('/frames/')));
+  assert.ok(frameFetch, 'preview fetched frame bodies');
+  assert.ok(frameFetch.paths.length <= 5 * 8, `bounded frame fetch (got ${frameFetch.paths.length})`);
+  assert.ok(frameFetch.paths.length < 300, 'did not fetch all frames');
+
+  // No FrameEngine / full listFrames path is used.
+  assert.equal(aeordb.calls.some((call) => call.method === 'getFile' && call.path.includes('/frames/')), false);
+});
+
+test('AeorDBFrameStore previews many sessions in one call', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_a', 12, { title: 'A' });
+  seedSessionWithFrames(aeordb, 'ses_b', 4, { title: 'B' });
+
+  let previews = await store.listSessionPreviews([ 'ses_a', 'ses_b' ], { previewCount: 3 });
+
+  assert.deepEqual(previews.map((entry) => entry.sessionID), [ 'ses_a', 'ses_b' ]);
+  assert.equal(previews[0].heads.length, 3);
+  assert.deepEqual(previews[0].heads.map((frame) => frame.order), [ 10, 11, 12 ]);
+  assert.equal(previews[0].truncated, true);
+  assert.equal(previews[1].heads.length, 3);
+  assert.deepEqual(previews[1].heads.map((frame) => frame.order), [ 2, 3, 4 ]);
+  assert.equal(previews[1].truncated, true);
+
+  // Manifests for both sessions come from a single bulk fetch.
+  let manifestFetch = aeordb.calls.find((call) => (
+    call.method === 'fetchFiles'
+    && call.paths.includes('/kikx/sessions/ses_a/session.json')
+    && call.paths.includes('/kikx/sessions/ses_b/session.json')
+  ));
+  assert.ok(manifestFetch, 'manifests fetched in one bulk call');
+});
+
+test('AeorDBFrameStore marks short sessions untruncated', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_small', 2);
+
+  let previews = await store.listSessionPreviews([ 'ses_small' ], { previewCount: 5 });
+
+  assert.equal(previews[0].truncated, false);
+  assert.deepEqual(previews[0].heads.map((frame) => frame.order), [ 1, 2 ]);
+});
+
+test('AeorDBFrameStore degrades a missing session to an error entry', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+
+  let previews = await store.listSessionPreviews([ 'ses_missing' ], { previewCount: 5 });
+
+  assert.deepEqual(previews[0].heads, []);
+  assert.equal(previews[0].session, null);
+  assert.match(previews[0].error, /not found/);
+});
+
+test('AeorDBFrameStore preview tolerates a corrupt tail frame', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_corrupt', 10);
+  // Corrupt the newest frame: multi-fetch returns a value that fails to project.
+  aeordb.files.set('/kikx/sessions/ses_corrupt/interactions/int_1/frames/0000000000000010-AgentMessage-ses_corrupt_f10.json', { junk: true });
+
+  let previews = await store.listSessionPreviews([ 'ses_corrupt' ], { previewCount: 3 });
+
+  assert.equal(previews[0].error, null);
+  // Valid frames still project; the bad one is skipped by id/type guard.
+  assert.ok(previews[0].heads.length >= 1);
+  assert.equal(previews[0].heads.every((frame) => frame.id && frame.type), true);
+});
+
+test('AeorDBFrameStore preview bounds previewCount and session count', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_big', 100);
+
+  // previewCount above the max clamps to MAX_PREVIEW_COUNT (20).
+  let previews = await store.listSessionPreviews([ 'ses_big' ], { previewCount: 999 });
+  assert.equal(previews[0].heads.length, 20);
+
+  // Invalid previewCount falls back to the default (5).
+  let fallback = await store.listSessionPreviews([ 'ses_big' ], { previewCount: 0 });
+  assert.equal(fallback[0].heads.length, 5);
+
+  // Deduplicates and caps session IDs.
+  let ids = [];
+  for (let index = 0; index < 150; index++)
+    ids.push('ses_big');
+  let deduped = await store.listSessionPreviews(ids, { previewCount: 2 });
+  assert.equal(deduped.length, 1);
 });

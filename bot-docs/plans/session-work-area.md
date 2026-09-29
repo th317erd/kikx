@@ -21,6 +21,9 @@ Engine: **HTML**, one component in two modes (`mini` | `full`), not canvas.
 - Replace sidebar with a grid of session cards, grouped into Projects.
 - Pivot explored: canvas/WebGL work area (fluid, animated, 12–30 live cards).
 - After measurement: **commit to HTML** for now; pivot later only if real issues appear.
+- Sidebar ruling (2026-09-29): a sidebar **is still wanted**; keep it as an **empty
+  shell** for now and repurpose it later. Do not delete the sidebar region in P0b/P1;
+  leave a placeholder container.
 
 ## 3. Territory (observed)
 
@@ -108,16 +111,32 @@ Problem: 30+ cards must not each fully load a session. Current
 `AeorDBFrameStore.listFrames()` lists **all** frames, bulk-fetches every body, joins
 commits; `FrameRuntime.ensureSessionEntry()` hydrates a whole `FrameEngine` per session.
 
-Proposed contract:
+Verified AeorDB facts (live probe + source, 2026-09-29):
+- Directory listings are **basename-sorted** (`btree` by child name; `sort_rebuilt_children`
+  sorts by name). Frame filenames are zero-padded `order` prefixes, so **listing order ==
+  frame `order`**, globally, across interaction subdirectories.
+- `listDirectory` returns `{ items, limit, offset, total }`; `offset=total-K` yields the
+  true tail (verified: last-5 returned the newest frames). Offsets beyond total return [].
+- `POST /files/fetch` bulk-reads bodies by path (≤10,000).
+- `query`/`search` need a registered index and are not used here.
+
+Contract (final):
 - **One bulk request**: `POST /api/v1/sessions/previews { sessionIDs, previewCount }`
-  → per session `{ sessionMeta, recentHeads, lastActivityAt }`.
-- Server lists with `limit` + bulk-fetches only the newest K frames per session (default
-  K≈5); no `FrameEngine` hydration, no full projection.
-- Explicit, tested bounds: preview K, max sessions per request, byte budget. Missing or
-  corrupt tail degrades to metadata-only.
+  → `{ data: { previews: [ { sessionID, session, heads, truncated, error } ] } }`.
+- Per session, in `AeorDBFrameStore.listSessionPreviews`:
+  1. List once with `limit=1` to read `total` (paths only, cheap).
+  2. List `limit=rawLimit, offset=max(0,total-rawLimit)` where
+     `rawLimit = min(MAX_PREVIEW_RAW, previewCount * PREVIEW_RAW_EXPANSION)`.
+  3. Bulk-fetch only those tail frame bodies.
+  4. `projectFrameMessages(tail)` → keep visible thread heads → take last `previewCount`.
+- Manifests fetched in one bulk `POST /files/fetch` for all requested IDs.
+- No `FrameEngine` hydration, no full-history fetch.
+- Bounds: `previewCount` default 5, max 20; `rawLimit` max 400; max sessionIDs per
+  request 100. Missing/corrupt tail degrades that session to `{ heads: [], error }`.
 - Client loader + SSE patching of individual card previews.
 
-Cost becomes ~O(N·K) frames per request instead of O(total frames).
+Cost: per request ≈ N×(2 path listings) + 1 bulk manifest fetch + 1 bulk tail fetch.
+Bodies loaded are O(N·K), not O(total frames).
 
 ## 8. Phases
 

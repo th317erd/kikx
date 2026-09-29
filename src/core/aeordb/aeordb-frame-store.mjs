@@ -1,12 +1,18 @@
 'use strict';
 
 import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
+import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
 
 const DEFAULT_ROOT_PATH = '/kikx';
 const ORDER_WIDTH = 16;
 const DEFAULT_FRAME_LIST_LIMIT = 1000;
 const MAX_FRAME_LIST_LIMIT = 5000;
 const DIRECTORY_PAGE_LIMIT = 500;
+const DEFAULT_PREVIEW_COUNT = 5;
+const MAX_PREVIEW_COUNT = 20;
+const DEFAULT_MAX_PREVIEW_SESSIONS = 100;
+const PREVIEW_RAW_EXPANSION = 8;
+const MAX_PREVIEW_RAW_FRAMES = 400;
 
 export class AeorDBFrameStore {
   constructor(options = {}) {
@@ -277,6 +283,112 @@ export class AeorDBFrameStore {
       return frames.sort(compareFrameOrder);
 
     return orderFramesByCommits(sessionID, frames, commits);
+  }
+
+  async listSessionPreviews(sessionIDs, options = {}) {
+    let ids = normalizeSessionIDs(sessionIDs, options.maxSessions);
+    if (ids.length === 0)
+      return [];
+
+    let previewCount = normalizePreviewCount(options.previewCount);
+    let rawLimit = Math.min(MAX_PREVIEW_RAW_FRAMES, previewCount * PREVIEW_RAW_EXPANSION);
+    let sessions = await this.loadSessionManifests(ids);
+    let previews = [];
+
+    for (let sessionID of ids) {
+      let session = sessions.get(sessionID) || null;
+
+      if (!session) {
+        previews.push({
+          sessionID,
+          session: null,
+          heads: [],
+          truncated: false,
+          error: 'session not found',
+        });
+        continue;
+      }
+
+      let entry = {
+        sessionID,
+        session,
+        heads: [],
+        truncated: false,
+        error: null,
+      };
+
+      try {
+        let tail = await this.loadSessionPreviewHeads(sessionID, { rawLimit, previewCount });
+        entry.heads = tail.heads;
+        entry.truncated = tail.truncated;
+      } catch (error) {
+        entry.error = error?.message || 'preview unavailable';
+      }
+
+      previews.push(entry);
+    }
+
+    return previews;
+  }
+
+  async loadSessionManifests(sessionIDs) {
+    let paths = sessionIDs.map((sessionID) => this.sessionPath(sessionID));
+    let reads = await readJSONFiles(this.aeordb, paths, {
+      fallbackOnBatchError: true,
+      continueOnError: true,
+    });
+    let sessions = new Map();
+
+    for (let read of reads) {
+      if (read.error || !read.value?.id)
+        continue;
+
+      sessions.set(read.value.id, read.value);
+    }
+
+    return sessions;
+  }
+
+  async loadSessionPreviewHeads(sessionID, { rawLimit, previewCount }) {
+    let interactionsPath = `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`;
+    let baseOptions = { depth: -1, glob: '**/frames/*.json', limit: 1, offset: 0 };
+    let probe = await this.aeordb.listDirectory(interactionsPath, baseOptions);
+    let total = normalizePreviewTotal(probe?.total);
+
+    if (total <= 0)
+      return { heads: [], truncated: false };
+
+    let offset = Math.max(0, total - rawLimit);
+    let tailPaths = await this.listDirectoryPaths(interactionsPath, {
+      depth: -1,
+      glob: '**/frames/*.json',
+      limit: rawLimit,
+      offset,
+    });
+    tailPaths = tailPaths.filter((path) => path.includes('/frames/'));
+    let sortedPaths = sortFramePathsByOrder(tailPaths);
+
+    let reads = await readJSONFiles(this.aeordb, sortedPaths, {
+      fallbackOnBatchError: true,
+      continueOnError: true,
+    });
+    let frames = [];
+    for (let read of reads) {
+      if (read.error)
+        continue;
+
+      let frame = read.value;
+      if (frame?.id && frame.type)
+        frames.push(frame);
+    }
+
+    let heads = projectFrameMessages(frames).filter(isPreviewVisibleFrame);
+    let truncated = heads.length > previewCount || offset > 0;
+
+    return {
+      heads: heads.slice(-previewCount),
+      truncated,
+    };
   }
 
   async listScheduledFrames(options = {}) {
@@ -648,6 +760,69 @@ function uniqueStrings(values) {
   }
 
   return unique;
+}
+
+function normalizeSessionIDs(sessionIDs, maxSessions) {
+  if (!Array.isArray(sessionIDs))
+    return [];
+
+  let limit = Number.isInteger(maxSessions) && maxSessions > 0 ? maxSessions : DEFAULT_MAX_PREVIEW_SESSIONS;
+  let ids = [];
+  let seen = new Set();
+
+  for (let sessionID of sessionIDs) {
+    if (typeof sessionID !== 'string' || sessionID.trim() === '')
+      continue;
+
+    let id = sessionID.trim();
+    if (seen.has(id))
+      continue;
+
+    seen.add(id);
+    ids.push(id);
+    if (ids.length >= limit)
+      break;
+  }
+
+  return ids;
+}
+
+function normalizePreviewCount(previewCount) {
+  let value = Number(previewCount);
+  if (!Number.isInteger(value) || value < 1)
+    return DEFAULT_PREVIEW_COUNT;
+
+  return Math.min(value, MAX_PREVIEW_COUNT);
+}
+
+function normalizePreviewTotal(total) {
+  let value = Number(total);
+  return Number.isInteger(value) && value > 0 ? value : 0;
+}
+
+function sortFramePathsByOrder(paths) {
+  return [ ...paths ].sort((left, right) => {
+    let leftOrder = frameOrderFromPath(left);
+    let rightOrder = frameOrderFromPath(right);
+    if (leftOrder !== rightOrder)
+      return leftOrder - rightOrder;
+
+    return String(left).localeCompare(String(right));
+  });
+}
+
+function frameOrderFromPath(path) {
+  let name = String(path).split('/').pop() || '';
+  let match = /^(\d+)-/.exec(name);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+function isPreviewVisibleFrame(frame) {
+  return Boolean(frame?.id)
+    && frame.hidden !== true
+    && frame.deleted !== true
+    && frame.phantom !== true
+    && frame.type !== 'MessageDone';
 }
 
 function compareSessionOrder(a, b) {

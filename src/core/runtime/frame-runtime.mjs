@@ -318,6 +318,10 @@ export class FrameRuntime extends EventEmitter {
     return frames;
   }
 
+  async listSessionPreviews(sessionIDs, options = {}) {
+    return await this.frameStore.listSessionPreviews(sessionIDs, options);
+  }
+
   async recoverStaleRuntimeFrames(options = {}) {
     let sessions = await this.listSessions({
       limit: normalizeRecoveryLimit(options.sessionLimit, 500),

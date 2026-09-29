@@ -100,6 +100,16 @@ function createRuntime() {
         { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } },
       ];
     },
+    async listSessionPreviews(sessionIDs, options) {
+      calls.push({ method: 'listSessionPreviews', sessionIDs, options });
+      return sessionIDs.map((sessionID) => ({
+        sessionID,
+        session: { id: sessionID, title: `Session ${sessionID}` },
+        heads: [ { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } } ],
+        truncated: false,
+        error: null,
+      }));
+    },
   };
 }
 
@@ -1724,5 +1734,74 @@ test('static routes reject path traversal outside configured roots', async () =>
   } finally {
     await close(server);
     await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test('POST /api/v1/sessions/previews returns bounded previews in one request', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/sessions/previews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionIDs: [ 'ses_1', 'ses_2' ], previewCount: 4 }),
+    });
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.data.previews.map((entry) => entry.sessionID), [ 'ses_1', 'ses_2' ]);
+    assert.equal(body.data.previews[0].heads[0].type, 'UserMessage');
+    assert.deepEqual(runtime.calls.at(-1), {
+      method: 'listSessionPreviews',
+      sessionIDs: [ 'ses_1', 'ses_2' ],
+      options: { previewCount: 4 },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('POST /api/v1/sessions/previews validates its request body', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let missing = await fetch(`${baseURL}/api/v1/sessions/previews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(missing.status, 400);
+
+    let badCount = await fetch(`${baseURL}/api/v1/sessions/previews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionIDs: [ 'ses_1' ], previewCount: 0 }),
+    });
+    assert.equal(badCount.status, 400);
+
+    let badBody = await fetch(`${baseURL}/api/v1/sessions/previews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: 'not json',
+    });
+    assert.equal(badBody.status, 400);
+  } finally {
+    await close(server);
   }
 });

@@ -345,6 +345,29 @@ async function routeRequest({ request, response, context, staticRoots }) {
     return;
   }
 
+  if (request.method === 'POST' && url.pathname === '/api/v1/sessions/previews') {
+    let body = await readJSON(request);
+    if (!Array.isArray(body.sessionIDs))
+      throw httpError(400, 'sessionIDs must be an array');
+
+    let previewCount;
+    if (body.previewCount != null) {
+      previewCount = Number(body.previewCount);
+      if (!Number.isInteger(previewCount) || previewCount < 1)
+        throw httpError(400, 'previewCount must be a positive integer');
+    }
+
+    let frameRuntime = context.require('frameRuntime');
+    let previews = await frameRuntime.listSessionPreviews(body.sessionIDs, { previewCount });
+
+    writeJSON(response, 200, {
+      data: {
+        previews,
+      },
+    });
+    return;
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/v1/agent-providers') {
     let agentManager = context.require('agentManager');
     writeJSON(response, 200, {
