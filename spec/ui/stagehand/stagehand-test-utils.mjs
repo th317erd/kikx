@@ -12,6 +12,8 @@ import {
 } from '../../../src/core/mentions/index.mjs';
 import { createServer } from '../../../src/server/create-server.mjs';
 
+let cachedOpenAIAPIKey = null;
+
 export async function loadStagehandOpenAIAPIKey(options = {}) {
   let envKey = firstNonEmpty(
     process.env.KIKX_STAGEHAND_OPENAI_API_KEY,
@@ -20,6 +22,16 @@ export async function loadStagehandOpenAIAPIKey(options = {}) {
   if (envKey)
     return envKey;
 
+  // Memoize across tests in one process: exchanging the AeorDB root key on every
+  // test trips AeorDB auth rate limiting when many UI tests run together.
+  if (cachedOpenAIAPIKey != null && !options.force)
+    return cachedOpenAIAPIKey;
+
+  cachedOpenAIAPIKey = await resolveStagehandOpenAIAPIKey(options);
+  return cachedOpenAIAPIKey;
+}
+
+async function resolveStagehandOpenAIAPIKey(options = {}) {
   let env = await readEnvFile(options.envPath || '.env.dev');
   let rootKey = firstNonEmpty(process.env.AEORDB_ROOT_KEY, env.AEORDB_ROOT_KEY);
   if (!rootKey)
@@ -27,14 +39,20 @@ export async function loadStagehandOpenAIAPIKey(options = {}) {
 
   let baseURL = firstNonEmpty(process.env.AEORDB_URL, env.AEORDB_URL, 'http://127.0.0.1:6830');
   let agentName = firstNonEmpty(options.agentName, process.env.KIKX_STAGEHAND_AGENT_NAME, 'Test 1');
-  let bootstrapClient = new AeorDBClient({
-    baseURL,
-    fetchImpl: globalThis.fetch,
-  });
-  let tokenResult = await bootstrapClient.exchangeAPIKey(rootKey);
+  // Reuse an existing JWT when one is provided (the test runner exchanges the
+  // root key once and passes AEORDB_TOKEN to every child process). AeorDB JWTs
+  // are valid for days, so re-exchanging per process is both wasteful and the
+  // cause of auth-token rate limiting under parallel test runs.
+  let token = firstNonEmpty(process.env.AEORDB_TOKEN);
+  if (!token) {
+    let bootstrapClient = new AeorDBClient({ baseURL, fetchImpl: globalThis.fetch });
+    let tokenResult = await bootstrapClient.exchangeAPIKey(rootKey);
+    token = tokenResult.token;
+  }
+
   let aeordb = new AeorDBClient({
     baseURL,
-    token: tokenResult.token,
+    token,
     fetchImpl: globalThis.fetch,
   });
 
@@ -143,6 +161,8 @@ class StagehandFrameRuntime extends EventEmitter {
     let session = normalizeSession({
       id: `session_${this.nextSessionNumber}`,
       title: input.title || `Session ${this.nextSessionNumber}`,
+      parentSessionID: input.parentSessionID || null,
+      generation: input.generation,
     });
     this.nextSessionNumber++;
     this.sessions.push(session);
@@ -289,6 +309,8 @@ function normalizeSession(input = {}) {
     title: input.title || input.id,
     organizationID: input.organizationID || null,
     createdByUserID: input.createdByUserID || null,
+    parentSessionID: input.parentSessionID || null,
+    generation: Number.isInteger(input.generation) ? input.generation : (input.parentSessionID ? 1 : 0),
     messageCount: input.messageCount || 0,
     participantAgentIDs: Array.isArray(input.participantAgentIDs) ? input.participantAgentIDs : [],
     createdAt: input.createdAt || Date.now(),

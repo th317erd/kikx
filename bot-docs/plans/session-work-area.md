@@ -200,3 +200,78 @@ Notes / follow-ups:
   rejected; HTML chosen (a content-visibility + contain card keeps offscreen cost low).
 - Sidebar repurposing remains open by owner request (empty shell for now).
 - No canvas/WebGL is used.
+
+## 13. Navigation stack for recursive maximize/minimize (2026-09-29)
+
+Owner ruling: maximize/minimize must work on a **DOM stack** because it is
+recursive — sessions have sub-sessions that can themselves be maximized and
+minimized. The flat `workspaceView: 'grid'|'thread'` boolean is replaced.
+
+Model:
+- `navigationStack: Entry[]`, root = `[{ kind: 'grid', parentSessionID: null }]`.
+- Entry kinds:
+  - `{ kind: 'grid', parentSessionID }` — cards for direct children of that
+    session (root grid: `parentSessionID: null`).
+  - `{ kind: 'thread', sessionID }` — a maximized session chat.
+- Maximize a card: push `{ kind: 'thread', sessionID }`.
+- Drill into sub-sessions: push `{ kind: 'grid', parentSessionID: sessionID }`.
+- Minimize / Back: pop; at depth 1 the back control is hidden.
+- Each entry renders its own DOM level; the shared-element hero morph runs
+  between the popped/ pushed levels. Recursion = stack depth.
+
+Data: session manifests carry `parentSessionID`/`generation`; `session-tools`
+already sets `parentSessionID` on child sessions. Grid levels filter sessions by
+`parentSessionID`.
+
+Blast radius: `kikx-state.mjs` (replace workspaceView with the stack), `kikx-app.mjs`
+(render by top entry; push/pop), the 2 Stagehand tests that read `workspaceView`.
+The transition infra, hero naming, chat-view/card/grid components are unchanged.
+
+Open decision (owner): what triggers drilling into sub-sessions?
+Option A: parent cards show a "N sub-sessions" affordance; thread header shows a
+  "Sub-sessions" button.
+Option B: thread view embeds an inline mini-grid of its children.
+Option C: both.
+Recommendation: A first (smallest, explicit), B later.
+
+## 14. Unified window-manager view + clickable messages (owner decisions 2026-09-29)
+
+Owner design (recorded):
+- Sub-sessions are a **normal message type**. Spawned sub-session frames render as a
+  **live mini card in the chat stream**, in a user or agent bubble depending on who
+  created it. Clicking enters the sub-session.
+- A **"Show sub-sessions" toggle** hides ALL non-sub-session messages, so the parent
+  chat collapses down to a grid of its sub-sessions. Grid view == "chat with everything
+  but sub-sessions hidden." One view, one filter.
+- **Unified single-screen window manager**: a session is maximized *over* the one under
+  it; a "Close" button in the upper-right minimizes. Breadcrumb lives in the existing
+  topbar.
+- **All chat messages are clickable** with a special action: tools show run/output/result;
+  user/agent messages show details (exact time, context); plugin frames can have custom
+  actions. Sub-session cards are just one such type whose action is "enter session".
+- Naming by scope: top-level = "Project", child = "Session", grandchild+ = "Sub-Session".
+  System treats them identically; only user-facing labels differ.
+- Empty card = "+ Add <scope noun>".
+- Sub-session previews: **bulk fetch up front**, then **listen to SSE** for updates.
+- Collapsed/grid mode shows what fits; **lazy-load older** as the user scrolls (sub-session
+  history is bounded in practice, not loaded whole).
+- Navigation is a **DOM stack** (session depth); recursion = stack depth.
+
+### Technical gap found (must resolve before sub-session cards work)
+The created child's ID is currently only inside the tool result frame's `preview` JSON
+string (`content.preview` -> parsed `session.id`). That is too fragile to build a
+first-class "enter" action on. Proposal: when a tool result creates/references a session,
+stamp an explicit first-class reference on the result frame, e.g.
+`content.references: { sessionID, parentSessionID }` (generic, not session-create specific),
+so any tool/plugin can declare "clicking me opens session X." This also serves the broader
+"all messages are clickable with a special action" model.
+
+### Proposed first slice (v1)
+1. Server: stamp `content.references.sessionID` (+ parent) on tool results that created a
+   session (starting with session-create). Backfill not required; new frames gain it.
+2. Client: sub-session frame renderer -> live mini card (reuse kikx-session-card mini mode),
+   click = enter (stack push + hero morph).
+3. State: replace `workspaceView` boolean with `navigationStack: [{ sessionID, collapsed }]`.
+4. Header: breadcrumb (topbar) + Close (minimize) + "Show sub-sessions" toggle (collapsed).
+5. Child previews: bulk by parentSessionID up front, patch via SSE.
+6. Lazy-load older frames on scroll-up (harden the chat view if needed).

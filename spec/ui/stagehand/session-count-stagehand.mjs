@@ -115,7 +115,7 @@ async function waitForPreviewFrames(page, expectedIDs, timeoutMS = 10000) {
   let startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMS) {
     let ids = await page.evaluate(() => Array.from(
-      document.querySelectorAll('kikx-session-card kikx-frame-item[data-frame-id]'),
+      document.querySelectorAll('kikx-session-grid > kikx-session-card kikx-frame-item[data-frame-id]'),
     ).map((node) => node.dataset.frameId));
     if (JSON.stringify(ids) === JSON.stringify(expectedIDs))
       return;

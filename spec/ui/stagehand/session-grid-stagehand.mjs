@@ -71,13 +71,13 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
       timeout: 10000,
     });
 
-    await page.waitForSelector('kikx-session-grid kikx-session-card', { timeout: 10000 });
+    await page.waitForSelector('kikx-session-grid > kikx-session-card', { timeout: 10000 });
     await waitForCardText(page, 'Alpha Session', 'Alpha Session');
     await waitForCardFrameCount(page, 3);
 
     let gridState = await page.evaluate(() => ({
-      view: document.querySelector('kikx-app')?._state?.workspaceView,
-      cards: Array.from(document.querySelectorAll('kikx-session-card')).map((card) => ({
+      stack: document.querySelector('kikx-app')?._state?.navigationStack,
+      cards: Array.from(document.querySelectorAll('kikx-session-grid > kikx-session-card')).map((card) => ({
         title: card.querySelector('.kikx-session-card__title')?.textContent || '',
         meta: card.querySelector('.kikx-session-card__meta')?.textContent || '',
         mode: card.querySelector('kikx-chat-view')?.mode || '',
@@ -85,7 +85,7 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
       })),
     }));
 
-    assert.equal(gridState.view, 'grid');
+    assert.equal(gridState.stack.length, 1);
     assert.equal(gridState.cards.length, 2);
     assert.deepEqual(gridState.cards.map((card) => card.title), [ 'Alpha Session', 'Beta Session' ]);
     assert.equal(gridState.cards.every((card) => card.mode === 'mini'), true);
@@ -115,20 +115,23 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
 
     // Expand the Alpha card into the full chat.
     await page.evaluate(() => {
-      let card = Array.from(document.querySelectorAll('kikx-session-card'))
+      let card = Array.from(document.querySelectorAll('kikx-session-grid > kikx-session-card'))
         .find((candidate) => candidate.querySelector('.kikx-session-card__title')?.textContent === 'Alpha Session');
       card.querySelector('.kikx-session-card').click();
     });
 
     await waitForThreadTitle(page, 'Alpha Session');
+    await waitForThreadFrames(page, [ 's1_user', 's1_agent', 's1_tool' ]);
     let threadState = await page.evaluate(() => ({
-      view: document.querySelector('kikx-app')?._state?.workspaceView,
+      stack: document.querySelector('kikx-app')?._state?.navigationStack,
       title: document.querySelector('.kikx-thread__header h2')?.textContent || '',
       frameIDs: Array.from(document.querySelectorAll('.kikx-thread__body kikx-frame-item[data-frame-id]')).map((node) => node.dataset.frameId),
       composer: Boolean(document.querySelector('.kikx-composer textarea')),
     }));
 
-    assert.equal(threadState.view, 'thread');
+    assert.equal(threadState.stack.length, 2);
+    assert.equal(threadState.stack[1].sessionID, 'session_1');
+    assert.deepEqual(threadState.stack[1].collapsed, false);
     assert.equal(threadState.title, 'Alpha Session');
     assert.deepEqual(threadState.frameIDs, [ 's1_user', 's1_agent', 's1_tool' ]);
     assert.equal(threadState.composer, true);
@@ -138,10 +141,10 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
     await waitForGridCardCount(page, 2);
 
     let backState = await page.evaluate(() => ({
-      view: document.querySelector('kikx-app')?._state?.workspaceView,
-      cards: document.querySelectorAll('kikx-session-card').length,
+      stack: document.querySelector('kikx-app')?._state?.navigationStack,
+      cards: document.querySelectorAll('kikx-session-grid > kikx-session-card').length,
     }));
-    assert.equal(backState.view, 'grid');
+    assert.equal(backState.stack.length, 1);
     assert.equal(backState.cards, 2);
   } finally {
     await stagehand.close().catch(() => {});
@@ -156,7 +159,7 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
 async function waitForCardFrameCount(page, expectedCount, timeoutMS = 10000) {
   let startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMS) {
-    let counts = await page.evaluate(() => Array.from(document.querySelectorAll('kikx-session-card'))
+    let counts = await page.evaluate(() => Array.from(document.querySelectorAll('kikx-session-grid > kikx-session-card'))
       .map((card) => card.querySelectorAll('kikx-frame-item[data-frame-id]').length));
     if (counts[0] >= expectedCount)
       return;
@@ -171,7 +174,7 @@ async function waitForCardText(page, expectedText, expectedTitle, timeoutMS = 10
   let startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMS) {
     let found = await page.evaluate(({ text, title }) => {
-      let card = Array.from(document.querySelectorAll('kikx-session-card'))
+      let card = Array.from(document.querySelectorAll('kikx-session-grid > kikx-session-card'))
         .find((candidate) => candidate.querySelector('.kikx-session-card__title')?.textContent === title);
       return Boolean(card?.textContent.includes(text));
     }, { text: expectedText, title: expectedTitle });
@@ -182,6 +185,21 @@ async function waitForCardText(page, expectedText, expectedTitle, timeoutMS = 10
   }
 
   throw new Error(`Timed out waiting for card text: ${expectedText}`);
+}
+
+async function waitForThreadFrames(page, expectedIDs, timeoutMS = 10000) {
+  let startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMS) {
+    let ids = await page.evaluate(() => Array.from(
+      document.querySelectorAll('.kikx-thread__body kikx-frame-item[data-frame-id]'),
+    ).map((node) => node.dataset.frameId));
+    if (JSON.stringify(ids) === JSON.stringify(expectedIDs))
+      return;
+
+    await delay(50);
+  }
+
+  throw new Error(`Timed out waiting for thread frames: ${expectedIDs.join(', ')}`);
 }
 
 async function waitForThreadTitle(page, expectedTitle, timeoutMS = 10000) {
@@ -200,7 +218,7 @@ async function waitForThreadTitle(page, expectedTitle, timeoutMS = 10000) {
 async function waitForGridCardCount(page, expectedCount, timeoutMS = 10000) {
   let startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMS) {
-    let count = await page.evaluate(() => document.querySelectorAll('kikx-session-card').length);
+    let count = await page.evaluate(() => document.querySelectorAll('kikx-session-grid > kikx-session-card').length);
     if (count === expectedCount)
       return;
 

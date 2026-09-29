@@ -69,13 +69,13 @@ test('Stagehand creates a new session from the workspace grid', async (t) => {
     );
     assert.equal(result.success, true, result.message || 'Stagehand did not report a successful click');
 
-    // Creating a session opens its thread view.
+    // Creating a session opens its thread view (stack depth 2).
     await waitForThreadTitle(page, 'Session 2');
-    let appView = await page.evaluate(() => document.querySelector('kikx-app')?._state?.workspaceView);
-    assert.equal(appView, 'thread');
+    let stackDepth = await page.evaluate(() => document.querySelector('kikx-app')?._state?.navigationStack?.length);
+    assert.equal(stackDepth, 2);
 
-    // Returning to the workspace shows the new card.
-    await clickButtonByTitle(page, 'Back to sessions');
+    // Closing it returns to the workspace grid with the new card.
+    await clickButtonByTitle(page, 'Close session');
     await waitForSessionCount(page, beforeCount + 1);
     let afterCount = await page.locator('kikx-session-card').count();
 
