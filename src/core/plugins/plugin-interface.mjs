@@ -13,6 +13,13 @@ export class PluginInterface {
   static riskLevel = 'high';
   static inputSchema = null;
 
+  // Optional: declare first-class entity references a tool result points at, so
+  // the UI can attach click actions (for example entering a session). Returns an
+  // array of { type, id, ... } or null. Default: none.
+  static referencesFor() {
+    return null;
+  }
+
   constructor(context = {}) {
     this.context = context;
     this.params = null;

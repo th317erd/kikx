@@ -254,6 +254,22 @@ export class SessionCreateTool extends SessionTool {
       initialFrame,
     };
   }
+
+  // A created/reused child session is a first-class reference: clicking the
+  // result frame can enter that session.
+  static referencesFor(result = {}) {
+    let session = result?.session;
+    if (!session?.id)
+      return null;
+
+    return [ {
+      type: 'session',
+      id: session.id,
+      parentSessionID: session.parentSessionID || null,
+      title: session.title || null,
+      generation: session.generation ?? null,
+    } ];
+  }
 }
 
 export class SessionInviteAgentsTool extends SessionTool {

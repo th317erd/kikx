@@ -2259,3 +2259,123 @@ function isProcessAlive(pid) {
     return false;
   }
 }
+
+class SessionCreatingTool {
+  constructor(context = {}) {
+    this.context = context;
+  }
+
+  async execute() {
+    return { session: { id: 'child_ses_1', parentSessionID: 'ses_1', title: 'Child', generation: 1 }, created: true };
+  }
+
+  static referencesFor(result = {}) {
+    if (!result?.session?.id)
+      return null;
+
+    return [ {
+      type: 'session',
+      id: result.session.id,
+      parentSessionID: result.session.parentSessionID || null,
+      title: result.session.title || null,
+    } ];
+  }
+}
+
+test('ToolExecutionService stamps content.references from a tool referencesFor()', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let store = new ToolOutputStore({
+    aeordb,
+    idGenerator: () => 'OUT_REF',
+    clock: () => '2026-06-08T00:00:00.000Z',
+  });
+  let frameEngine = createRecordingFrameEngine();
+
+  await new ToolExecutionService({ toolOutputStore: store }).executeTool({
+    toolName: 'session-create',
+    ToolClass: SessionCreatingTool,
+    input: {},
+    context: {
+      agent: { id: 'agent_1', name: 'Test Agent' },
+      session: { id: 'ses_1' },
+      frame: { id: 'frm_1', interactionID: 'int_1' },
+      responseFrameID: 'agent_response_1',
+      services: {
+        frameEngine,
+        clock: () => 1781035260000000,
+        frameRuntime: { frameStore: { async flush() {} } },
+      },
+    },
+  });
+
+  let resultFrame = frameEngine.frames.find((frame) => frame.content?.phase === 'result');
+  assert.ok(resultFrame, 'result frame recorded');
+  assert.deepEqual(resultFrame.content.references, [ {
+    type: 'session',
+    id: 'child_ses_1',
+    parentSessionID: 'ses_1',
+    title: 'Child',
+  } ]);
+});
+
+test('ToolExecutionService omits references when a tool does not declare them', async () => {
+  let aeordb = createFakeToolOutputDB();
+  let store = new ToolOutputStore({
+    aeordb,
+    idGenerator: () => 'OUT_NOREF',
+    clock: () => '2026-06-08T00:00:00.000Z',
+  });
+  let frameEngine = createRecordingFrameEngine();
+
+  await new ToolExecutionService({ toolOutputStore: store }).executeTool({
+    toolName: 'global-echo',
+    ToolClass: EchoTool,
+    input: { text: 'hi' },
+    context: {
+      agent: { id: 'agent_1' },
+      session: { id: 'ses_1' },
+      frame: { id: 'frm_1', interactionID: 'int_1' },
+      responseFrameID: 'agent_response_1',
+      services: {
+        frameEngine,
+        clock: () => 1781035260000000,
+        frameRuntime: { frameStore: { async flush() {} } },
+      },
+    },
+  });
+
+  let resultFrame = frameEngine.frames.find((frame) => frame.content?.phase === 'result');
+  assert.equal('references' in resultFrame.content, false);
+});
+
+test('ToolExecutionService tolerates a throwing referencesFor()', async () => {
+  class BadReferencesTool {
+    async execute() {
+      return { ok: true };
+    }
+
+    static referencesFor() {
+      throw new Error('boom');
+    }
+  }
+
+  let aeordb = createFakeToolOutputDB();
+  let store = new ToolOutputStore({ aeordb, idGenerator: () => 'OUT_BAD', clock: () => '2026-06-08T00:00:00.000Z' });
+  let frameEngine = createRecordingFrameEngine();
+
+  await new ToolExecutionService({ toolOutputStore: store }).executeTool({
+    toolName: 'bad-ref',
+    ToolClass: BadReferencesTool,
+    input: {},
+    context: {
+      agent: { id: 'agent_1' },
+      session: { id: 'ses_1' },
+      frame: { id: 'frm_1', interactionID: 'int_1' },
+      responseFrameID: 'agent_response_1',
+      services: { frameEngine, clock: () => 1781035260000000, frameRuntime: { frameStore: { async flush() {} } } },
+    },
+  });
+
+  let resultFrame = frameEngine.frames.find((frame) => frame.content?.phase === 'result');
+  assert.equal('references' in resultFrame.content, false);
+});

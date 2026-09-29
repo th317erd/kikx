@@ -226,6 +226,7 @@ async function recordToolResultFrame({
   let now = resolveClock(context)();
   let content = createToolResultContent({
     toolName,
+    ToolClass,
     toolCallFrame,
     input,
     storedOutput,
@@ -321,13 +322,14 @@ async function flushFrameStore(context = {}) {
   await resolveContextService(context, 'frameRuntime')?.frameStore?.flush?.();
 }
 
-function createToolResultContent({ toolName, toolCallFrame, input, storedOutput, agentResult, status, error, finishedAt, context = {} }) {
+function createToolResultContent({ toolName, ToolClass, toolCallFrame, input, storedOutput, agentResult, status, error, finishedAt, context = {} }) {
   let metadata = storedOutput?.metadata || {};
   let outputID = storedOutput?.id || agentResult?.toolOutputID || null;
   let sizeBytes = normalizeNonNegativeInteger(storedOutput?.sizeBytes ?? metadata.sizeBytes ?? agentResult?.sizeBytes, 0);
   let preview = typeof metadata.contentPreview === 'string'
     ? metadata.contentPreview
     : previewString(agentResult || serializeToolError(error));
+  let references = resolveToolReferences({ ToolClass, result: storedOutput?.result ?? agentResult, status });
 
   return {
     toolName,
@@ -348,11 +350,52 @@ function createToolResultContent({ toolName, toolCallFrame, input, storedOutput,
       : agentResult?.message || '',
     retrieval: agentResult?.retrieval || metadata.retrieval || null,
     finishedAt,
+    ...(references ? { references } : {}),
     ...crossSessionToolMetadata(context, input),
     ...(status === 'error' ? {
       error: serializeToolError(error),
     } : {}),
   };
+}
+
+// Ask the tool class to describe first-class entity references for its result.
+// Best-effort: a misbehaving tool must not break result recording.
+function resolveToolReferences({ ToolClass, result, status } = {}) {
+  if (status === 'error')
+    return null;
+
+  if (typeof ToolClass?.referencesFor !== 'function' && typeof ToolClass?.prototype?.referencesFor !== 'function')
+    return null;
+
+  try {
+    let resolver = typeof ToolClass.referencesFor === 'function'
+      ? ToolClass.referencesFor.bind(ToolClass)
+      : ToolClass.prototype.referencesFor.bind(ToolClass.prototype);
+    let references = resolver(result);
+    return normalizeToolReferences(references);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function normalizeToolReferences(references) {
+  if (!Array.isArray(references))
+    return null;
+
+  let output = [];
+  for (let reference of references) {
+    if (!reference || typeof reference !== 'object')
+      continue;
+
+    let type = typeof reference.type === 'string' ? reference.type.trim() : '';
+    let id = typeof reference.id === 'string' ? reference.id.trim() : '';
+    if (!type || !id)
+      continue;
+
+    output.push({ ...reference, type, id });
+  }
+
+  return output.length > 0 ? output : null;
 }
 
 function resolveToolCallParentID(context = {}) {
