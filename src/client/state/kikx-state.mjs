@@ -72,6 +72,10 @@ export const kikxState = new ReactiveState({
   teamStatusKind: 'pending',
   tokenUsage: {},
   totalTokensUsed: 0,
+  workspaceView: params.get('view') === 'thread' ? 'thread' : 'grid',
+  sessionPreviewsByID: {},
+  previewsLoading: false,
+  previewStatus: '',
 });
 
 export function getAgents(state = kikxState) {
@@ -121,6 +125,46 @@ export function getSelectedSession(state = kikxState) {
 
 export function getSelectedFrames(state = kikxState) {
   return state.framesBySessionID[state.selectedSessionID] || [];
+}
+
+export function getSessionPreviews(state = kikxState) {
+  let output = new Map();
+  for (let [sessionID, preview] of Object.entries(state.sessionPreviewsByID || {}))
+    output.set(sessionID, preview);
+
+  return output;
+}
+
+export function setSessionPreviews(previews, state = kikxState) {
+  let next = { ...state.sessionPreviewsByID };
+  for (let preview of Array.isArray(previews) ? previews : []) {
+    if (preview?.sessionID)
+      next[preview.sessionID] = preview;
+  }
+
+  state.sessionPreviewsByID = next;
+}
+
+export function upsertSessionPreview(sessionID, preview, state = kikxState) {
+  if (!sessionID || !preview)
+    return;
+
+  state.sessionPreviewsByID = {
+    ...state.sessionPreviewsByID,
+    [sessionID]: preview,
+  };
+}
+
+export function setWorkspaceView(view, state = kikxState) {
+  state.workspaceView = view === 'thread' ? 'thread' : 'grid';
+}
+
+export function setPreviewsLoading(loading, state = kikxState) {
+  state.previewsLoading = loading === true;
+}
+
+export function setPreviewStatus(status, state = kikxState) {
+  state.previewStatus = status || '';
 }
 
 export function setSessions(nextSessions, state = kikxState) {

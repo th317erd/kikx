@@ -157,6 +157,23 @@ class StagehandFrameRuntime extends EventEmitter {
     return this.framesBySessionID.get(sessionID) || [];
   }
 
+  async listSessionPreviews(sessionIDs = [], options = {}) {
+    let previewCount = Number.isInteger(options.previewCount) ? options.previewCount : 5;
+    return sessionIDs.map((sessionID) => {
+      let session = this.sessions.find((candidate) => candidate.id === sessionID) || null;
+      let frames = (this.framesBySessionID.get(sessionID) || [])
+        .filter((frame) => frame && frame.hidden !== true && frame.deleted !== true && frame.phantom !== true);
+      let heads = frames.slice(-previewCount);
+      return {
+        sessionID,
+        session,
+        heads,
+        truncated: frames.length > previewCount,
+        error: session ? null : 'session not found',
+      };
+    });
+  }
+
   async updateSession(sessionID, input = {}) {
     let session = this.sessions.find((candidate) => candidate.id === sessionID);
     if (!session) {

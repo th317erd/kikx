@@ -56,7 +56,7 @@ test('Stagehand sends an @mention message and the API exposes mention metadata',
   try {
     await stagehand.init();
     let page = stagehand.context.pages()[0];
-    await page.goto(`${fixture.baseURL}/?code=stagehand-test`, {
+    await page.goto(`${fixture.baseURL}/?code=stagehand-test&view=thread`, {
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });

@@ -111,7 +111,7 @@ test('Stagehand aligns user messages left and other messages right with bounded 
   try {
     await stagehand.init();
     let page = stagehand.context.pages()[0];
-    await page.goto(`${fixture.baseURL}/?code=stagehand-test`, {
+    await page.goto(`${fixture.baseURL}/?code=stagehand-test&view=thread`, {
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });

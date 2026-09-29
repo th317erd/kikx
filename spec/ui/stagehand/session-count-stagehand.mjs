@@ -11,7 +11,7 @@ import {
   startStagehandUIServer,
 } from './stagehand-test-utils.mjs';
 
-test('Stagehand repairs stale sidebar message counts from loaded visible thread frames', async (t) => {
+test('Stagehand repairs stale session counts from loaded visible frames on the workspace card', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
     t.skip('Stagehand local mode requires Chrome');
@@ -73,17 +73,21 @@ test('Stagehand repairs stale sidebar message counts from loaded visible thread 
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });
-    await page.waitForSelector('kikx-frame-item[data-frame-id="tool_1"]', { timeout: 10000 });
-    await waitForSidebarText(page, '3 messages');
+    await page.waitForSelector('kikx-session-card', { timeout: 10000 });
+    await waitForCardText(page, '3 messages');
+    await waitForPreviewFrames(page, [ 'user_1', 'agent_1', 'tool_1' ]);
 
-    let result = await page.evaluate(() => ({
-      sidebarText: document.querySelector('.kikx-session-list')?.textContent || '',
-      frameIDs: Array.from(document.querySelectorAll('kikx-frame-item')).map((node) => node.dataset.frameId),
-    }));
+    let result = await page.evaluate(() => {
+      let card = document.querySelector('kikx-session-card');
+      return {
+        cardText: card?.textContent || '',
+        previewFrameIDs: Array.from(card?.querySelectorAll('kikx-frame-item') || []).map((node) => node.dataset.frameId),
+      };
+    });
 
-    assert.match(result.sidebarText, /Stale Count/);
-    assert.match(result.sidebarText, /3 messages/);
-    assert.deepEqual(result.frameIDs, [ 'user_1', 'agent_1', 'tool_1' ]);
+    assert.match(result.cardText, /Stale Count/);
+    assert.match(result.cardText, /3 messages/);
+    assert.deepEqual(result.previewFrameIDs, [ 'user_1', 'agent_1', 'tool_1' ]);
   } finally {
     await stagehand.close().catch(() => {});
     await fixture.close().catch(() => {});
@@ -94,17 +98,32 @@ test('Stagehand repairs stale sidebar message counts from loaded visible thread 
   }
 });
 
-async function waitForSidebarText(page, expectedText, timeoutMS = 10000) {
+async function waitForCardText(page, expectedText, timeoutMS = 10000) {
   let startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMS) {
-    let found = await page.evaluate((text) => document.body.textContent.includes(text), expectedText);
+    let found = await page.evaluate((text) => document.querySelector('kikx-session-card')?.textContent.includes(text), expectedText);
     if (found)
       return;
 
     await delay(50);
   }
 
-  throw new Error(`Timed out waiting for sidebar text: ${expectedText}`);
+  throw new Error(`Timed out waiting for card text: ${expectedText}`);
+}
+
+async function waitForPreviewFrames(page, expectedIDs, timeoutMS = 10000) {
+  let startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMS) {
+    let ids = await page.evaluate(() => Array.from(
+      document.querySelectorAll('kikx-session-card kikx-frame-item[data-frame-id]'),
+    ).map((node) => node.dataset.frameId));
+    if (JSON.stringify(ids) === JSON.stringify(expectedIDs))
+      return;
+
+    await delay(50);
+  }
+
+  throw new Error(`Timed out waiting for preview frames: ${expectedIDs.join(', ')}`);
 }
 
 function delay(ms) {

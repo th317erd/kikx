@@ -83,7 +83,7 @@ test('Stagehand collapses tool start and result frames into one plugin-rendered 
   try {
     await stagehand.init();
     let page = stagehand.context.pages()[0];
-    await page.goto(`${fixture.baseURL}/?code=stagehand-test`, {
+    await page.goto(`${fixture.baseURL}/?code=stagehand-test&view=thread`, {
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });
@@ -191,7 +191,7 @@ test('Stagehand places a completed tool-using agent summary after its tool frame
   try {
     await stagehand.init();
     let page = stagehand.context.pages()[0];
-    await page.goto(`${fixture.baseURL}/?code=stagehand-test`, {
+    await page.goto(`${fixture.baseURL}/?code=stagehand-test&view=thread`, {
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });

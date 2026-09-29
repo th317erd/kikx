@@ -58,7 +58,7 @@ test('Stagehand keeps the message thread scrollable and anchored to the bottom',
   try {
     await stagehand.init();
     let page = stagehand.context.pages()[0];
-    await page.goto(`${fixture.baseURL}/?code=stagehand-test`, {
+    await page.goto(`${fixture.baseURL}/?code=stagehand-test&view=thread`, {
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });

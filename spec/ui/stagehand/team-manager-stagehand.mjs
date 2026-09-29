@@ -58,7 +58,7 @@ test('Stagehand creates, edits, and deletes teams from the topbar Teams modal', 
   try {
     await stagehand.init();
     let page = stagehand.context.pages()[0];
-    await page.goto(`${fixture.baseURL}/?code=stagehand-test`, {
+    await page.goto(`${fixture.baseURL}/?code=stagehand-test&view=thread`, {
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });

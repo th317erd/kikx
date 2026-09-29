@@ -11,7 +11,7 @@ import {
   startStagehandUIServer,
 } from './stagehand-test-utils.mjs';
 
-test('Stagehand creates a new session from the Sessions sidebar', async (t) => {
+test('Stagehand creates a new session from the workspace grid', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
     t.skip('Stagehand local mode requires Chrome');
@@ -57,11 +57,11 @@ test('Stagehand creates a new session from the Sessions sidebar', async (t) => {
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });
-    await page.waitForSelector('.kikx-session-list', { timeout: 10000 });
+    await page.waitForSelector('kikx-session-card', { timeout: 10000 });
 
-    let beforeCount = await page.locator('.kikx-session-list > li').count();
+    let beforeCount = await page.locator('kikx-session-card').count();
     let result = await stagehand.act(
-      'Click the plus button beside the Sessions heading to create a new session.',
+      'Click the plus button beside the Sessions heading in the workspace to create a new session.',
       {
         page,
         timeout: 20000,
@@ -69,12 +69,17 @@ test('Stagehand creates a new session from the Sessions sidebar', async (t) => {
     );
     assert.equal(result.success, true, result.message || 'Stagehand did not report a successful click');
 
+    // Creating a session opens its thread view.
+    await waitForThreadTitle(page, 'Session 2');
+    let appView = await page.evaluate(() => document.querySelector('kikx-app')?._state?.workspaceView);
+    assert.equal(appView, 'thread');
+
+    // Returning to the workspace shows the new card.
+    await clickButtonByTitle(page, 'Back to sessions');
     await waitForSessionCount(page, beforeCount + 1);
-    let afterCount = await page.locator('.kikx-session-list > li').count();
-    let selectedTitle = await page.locator('.kikx-session-list > li.is-selected strong').first().textContent();
+    let afterCount = await page.locator('kikx-session-card').count();
 
     assert.equal(afterCount, beforeCount + 1);
-    assert.equal(selectedTitle, 'Session 2');
   } finally {
     await stagehand.close().catch(() => {});
     await fixture.close().catch(() => {});
@@ -85,10 +90,33 @@ test('Stagehand creates a new session from the Sessions sidebar', async (t) => {
   }
 });
 
+async function waitForThreadTitle(page, expectedTitle, timeoutMS = 10000) {
+  let startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMS) {
+    let title = await page.evaluate(() => document.querySelector('.kikx-thread__header h2')?.textContent || '');
+    if (title === expectedTitle)
+      return;
+
+    await delay(100);
+  }
+
+  throw new Error(`Timed out waiting for thread title: ${expectedTitle}`);
+}
+
+async function clickButtonByTitle(page, title) {
+  await page.evaluate((label) => {
+    let button = Array.from(document.querySelectorAll('button')).find((candidate) => candidate.title === label);
+    if (!button)
+      throw new Error(`Missing button: ${label}`);
+
+    button.click();
+  }, title);
+}
+
 async function waitForSessionCount(page, expectedCount, timeoutMS = 10000) {
   let startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMS) {
-    let count = await page.locator('.kikx-session-list > li').count();
+    let count = await page.locator('kikx-session-card').count();
     if (count >= expectedCount)
       return;
 

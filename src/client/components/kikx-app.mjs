@@ -8,6 +8,7 @@ import {
   getSelectedAgentProvider,
   getSelectedSession,
   getSessions,
+  getSessionPreviews,
   getTeams,
   kikxState,
   removeAgent,
@@ -24,13 +25,18 @@ import {
   setAgentFormProvider,
   setClientComponents,
   setSessionFrames,
+  setSessionPreviews,
   setSessions,
+  setPreviewsLoading,
+  setPreviewStatus,
   setTeams,
   setTeamFormFromTeam,
   setTokenUsage,
+  setWorkspaceView,
   upsertFrames,
   upsertAgent,
   upsertSession,
+  upsertSessionPreview,
   upsertTeam,
 } from '../state/kikx-state.mjs';
 import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
@@ -44,6 +50,9 @@ import {
 } from './composer-history.mjs';
 import { loadClientComponentDescriptors } from './frame-component-registry.mjs';
 import './kikx-frame-item.mjs';
+import './kikx-chat-view.mjs';
+import './kikx-session-grid.mjs';
+import { cardViewModel, chunkSessionIDs, clampPreviewCount, previewsBySessionID } from './chat-view-model.mjs';
 
 const { div, header, main, section, h1, h2, p, span, button, form, input, label, textarea, ul, li, strong, option } = elements;
 const aeorInput = elements['aeor-input'];
@@ -69,6 +78,8 @@ export class KikxApp extends HTMLElement {
     this._pendingFrameRuntimeEvents = [];
     this._frameRuntimeFlushScheduled = false;
     this._composerHistory = createComposerHistoryState();
+    this._pendingPreviewSessionIDs = new Set();
+    this._previewRefreshScheduled = false;
 
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
@@ -205,41 +216,80 @@ export class KikxApp extends HTMLElement {
   }
 
   _buildRunnerShell() {
-    let hasSelectedSession = Boolean(this._state.selectedSessionID);
-
     return [
       main.class('kikx-main')(
         section.class('kikx-sessions')(
           div.class('kikx-sessions__header')(
-            h2('Sessions'),
-            button.type('button').class('kikx-icon-button').title('Create session').onClick(this._createSession)('+'),
-          ),
-          ul.class('kikx-session-list')(
-            this._buildSessionItems(),
+            h2('Workspace'),
           ),
         ),
-        section.class('kikx-thread')(
-          div.class('kikx-thread__header')(
-            h2(this._selectedSession()?.title || 'No session'),
-          ),
-          div.class('kikx-thread__body')(
-            this._buildFrameThread(),
-          ),
-          form.class('kikx-composer').onSubmit(this._onSubmit)(
-            label.class('kikx-composer__label')('Message'),
-            textarea
-              .name('message')
-              .placeholder(hasSelectedSession ? 'Send a message' : 'Create or select a session first')
-              .disabled(!hasSelectedSession)
-              .onKeydown(this._onComposerKeydown)
-              .onInput(this._syncDraft)(this._state.draft),
-            div.class('kikx-composer__actions')(
-              button.type('submit').class('kikx-send-button').disabled(!hasSelectedSession)('Send'),
-            ),
-          ),
-        ),
+        this._state.workspaceView === 'thread'
+          ? this._buildThreadSection()
+          : this._buildWorkspaceGrid(),
       ),
     ];
+  }
+
+  _buildWorkspaceGrid() {
+    return section.class('kikx-workspace')(
+      div.class('kikx-workspace__header')(
+        h2('Sessions'),
+        div.class('kikx-workspace__actions')(
+          span.class.bindState((state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`, ['previewsLoading', 'previewStatus'])(
+            span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
+          ),
+          button.type('button').class('kikx-icon-button').title('Create session').onClick(this._createSession)('+'),
+        ),
+      ),
+      this._buildSessionGrid(),
+    );
+  }
+
+  _buildSessionGrid() {
+    let grid = document.createElement('kikx-session-grid');
+    grid.update({
+      sessions: getSessions(this._state),
+      previews: getSessionPreviews(this._state),
+      appState: this._state,
+      selectedSessionID: this._state.selectedSessionID,
+      loading: this._state.previewsLoading,
+    });
+    grid.addEventListener('kikx-card-open', (event) => {
+      if (event.detail?.sessionID)
+        this._openSessionFromCard(event.detail.sessionID);
+    });
+    return div.class('kikx-workspace__grid')(grid);
+  }
+
+  _buildThreadSection() {
+    let hasSelectedSession = Boolean(this._state.selectedSessionID);
+
+    return section.class('kikx-thread')(
+      div.class('kikx-thread__header')(
+        button
+          .type('button')
+          .class('kikx-icon-button kikx-thread__back')
+          .title('Back to sessions')
+          .ariaLabel('Back to sessions')
+          .onClick(this._showWorkspaceGrid)('‹'),
+        h2(this._selectedSession()?.title || 'No session'),
+      ),
+      div.class('kikx-thread__body')(
+        this._buildFrameThread(),
+      ),
+      form.class('kikx-composer').onSubmit(this._onSubmit)(
+        label.class('kikx-composer__label')('Message'),
+        textarea
+          .name('message')
+          .placeholder(hasSelectedSession ? 'Send a message' : 'Create or select a session first')
+          .disabled(!hasSelectedSession)
+          .onKeydown(this._onComposerKeydown)
+          .onInput(this._syncDraft)(this._state.draft),
+        div.class('kikx-composer__actions')(
+          button.type('submit').class('kikx-send-button').disabled(!hasSelectedSession)('Send'),
+        ),
+      ),
+    );
   }
 
   _buildStatusBar() {
@@ -525,36 +575,6 @@ export class KikxApp extends HTMLElement {
     return parts.join(', ') || 'No members';
   }
 
-  _buildSessionItems() {
-    let sessions = getSessions(this._state);
-    if (sessions.length === 0) {
-      return li.class('kikx-session-list__empty')(
-        p('No Sessions.'),
-        button.type('button').class('kikx-inline-action').onClick(this._createSession)('+ New Session'),
-      );
-    }
-
-    return sessions.map((session) => {
-      let selected = session.id === this._state.selectedSessionID;
-      let count = typeof session.messageCount === 'number' ? session.messageCount : 0;
-
-      return li
-        .class(selected ? 'is-selected' : '')
-        .onClick(() => this._selectSession(session.id))(
-          div.class('kikx-session-item__header')(
-            strong(session.title || session.id),
-            button
-              .type('button')
-              .class('kikx-session-item__edit')
-              .title('Edit session')
-              .ariaLabel('Edit session')
-              .onClick((event) => this._openSessionEditor(event, session))('⚙'),
-          ),
-          span.class('kikx-session-item__meta')(`${count} message${count === 1 ? '' : 's'}`),
-        );
-    });
-  }
-
   _buildSessionEditor() {
     return aeorModal.title('Edit session').onClose(this._closeSessionEditor)(
       form.class('kikx-session-editor').onSubmit(this._onSessionEditSubmit)(
@@ -588,11 +608,14 @@ export class KikxApp extends HTMLElement {
       );
     }
 
-    return div.class('kikx-frame-list').role('list')(
-      div.class('kikx-frame-stream')(
-        frames.map((frame) => this._createFrameItemElement(frame)),
-      ),
-    );
+    return this._createChatViewElement(frames);
+  }
+
+  _createChatViewElement(frames, mode = 'full') {
+    let view = document.createElement('kikx-chat-view');
+    view.mode = mode;
+    view.update({ frames, appState: this._state });
+    return view;
   }
 
   _createFrameItemElement(frame) {
@@ -705,6 +728,10 @@ export class KikxApp extends HTMLElement {
     if (touchedFrameIDs)
       this._syncFrameThread(selectedSessionID, { touchedFrameIDs });
 
+    let affectedSessionIDs = [ ...framesBySessionID.keys() ].filter((sessionID) => sessionID !== selectedSessionID);
+    if (affectedSessionIDs.length > 0 && this._state.workspaceView === 'grid')
+      this._schedulePreviewRefresh(affectedSessionIDs);
+
     if (this._pendingFrameRuntimeEvents.length > 0 && !this._frameRuntimeFlushScheduled) {
       this._frameRuntimeFlushScheduled = true;
       scheduleAnimationFrame(this._flushFrameRuntimeEvents);
@@ -726,6 +753,8 @@ export class KikxApp extends HTMLElement {
       } else {
         this._render();
       }
+
+      await this._loadSessionPreviews();
     } catch (error) {
       this._state.status = error.message;
       this._state.statusKind = 'error';
@@ -1323,6 +1352,7 @@ export class KikxApp extends HTMLElement {
       });
       upsertSession(result.data.session, this._state);
       this._state.selectedSessionID = result.data.session.id;
+      setWorkspaceView('thread', this._state);
       this._forceScrollToBottomAfterRender = true;
       await this._loadSessions();
       this._state.status = 'Session created';
@@ -1397,6 +1427,87 @@ export class KikxApp extends HTMLElement {
 
   _selectedSession() {
     return getSelectedSession(this._state);
+  }
+
+  _showWorkspaceGrid() {
+    setWorkspaceView('grid', this._state);
+    this._render();
+  }
+
+  async _openSessionFromCard(sessionID) {
+    if (!sessionID)
+      return;
+
+    setWorkspaceView('thread', this._state);
+    await this._selectSession(sessionID);
+    await this._loadSessionPreviews();
+  }
+
+  async _loadSessionPreviews() {
+    let sessions = getSessions(this._state);
+    if (sessions.length === 0) {
+      setPreviewStatus('', this._state);
+      return;
+    }
+
+    setPreviewsLoading(true, this._state);
+
+    try {
+      let previewCount = clampPreviewCount(this._state.previewCount);
+      let previews = [];
+      for (let chunk of chunkSessionIDs(sessions.map((session) => session.id)))
+        previews.push(...await this._getSessionPreviews(chunk, previewCount));
+
+      setSessionPreviews(previews, this._state);
+      setPreviewStatus('', this._state);
+    } catch (error) {
+      setPreviewStatus(error.message, this._state);
+    } finally {
+      setPreviewsLoading(false, this._state);
+      if (this._state.workspaceView === 'grid')
+        this._requestRender();
+    }
+  }
+
+  async _getSessionPreviews(sessionIDs, previewCount) {
+    if (sessionIDs.length === 0)
+      return [];
+
+    let result = await this._postJSON('/api/v1/sessions/previews', { sessionIDs, previewCount });
+    return result.data?.previews || [];
+  }
+
+  _applyPreviewToGrid(sessionID, preview) {
+    upsertSessionPreview(sessionID, preview, this._state);
+    let grid = this.querySelector('kikx-session-grid');
+    if (grid)
+      grid.setPreview(sessionID, preview);
+  }
+
+  _schedulePreviewRefresh(sessionIDs) {
+    for (let sessionID of sessionIDs)
+      this._pendingPreviewSessionIDs.add(sessionID);
+
+    if (this._previewRefreshScheduled)
+      return;
+
+    this._previewRefreshScheduled = true;
+    setTimeout(() => this._flushPreviewRefresh(), 400);
+  }
+
+  async _flushPreviewRefresh() {
+    this._previewRefreshScheduled = false;
+    let sessionIDs = [ ...this._pendingPreviewSessionIDs ];
+    this._pendingPreviewSessionIDs.clear();
+    if (sessionIDs.length === 0)
+      return;
+
+    try {
+      let previewCount = clampPreviewCount(this._state.previewCount);
+      let previews = await this._getSessionPreviews(sessionIDs, previewCount);
+      for (let preview of previews)
+        this._applyPreviewToGrid(preview.sessionID, preview);
+    } catch (_error) {}
   }
 
   _captureRenderSnapshot() {
@@ -1499,20 +1610,24 @@ export class KikxApp extends HTMLElement {
   }
 
   _syncSessionShell() {
-    let sessionList = this.querySelector('.kikx-session-list');
-    if (!sessionList)
-      return false;
-
-    let sessionItems = this._buildSessionItems();
-    let sessionItemDefinitions = Array.isArray(sessionItems) ? sessionItems : [ sessionItems ];
-    sessionList.replaceChildren(...sessionItemDefinitions.map((item) => item.build(document)));
-
     let threadTitle = this.querySelector('.kikx-thread__header h2');
     let selectedSession = this._selectedSession();
     if (threadTitle)
       threadTitle.textContent = selectedSession?.title || 'No session';
 
-    return true;
+    let grid = this.querySelector('kikx-session-grid');
+    if (grid) {
+      grid.update({
+        sessions: getSessions(this._state),
+        previews: getSessionPreviews(this._state),
+        appState: this._state,
+        selectedSessionID: this._state.selectedSessionID,
+        loading: this._state.previewsLoading,
+      });
+      return true;
+    }
+
+    return Boolean(threadTitle);
   }
 
   _syncFrameThread(sessionID = this._state.selectedSessionID, options = {}) {
@@ -1524,17 +1639,8 @@ export class KikxApp extends HTMLElement {
       return;
 
     let frames = getSelectedFrames(this._state).filter((frame) => frame && !frame.deleted && !frame.hidden);
-    if (frames.length === 0) {
-      if (!body.querySelector('.kikx-thread__empty')) {
-        this._disconnectFrameListObserver();
-        body.replaceChildren(this._buildFrameThread().build(document));
-      }
-      return;
-    }
-
-    let frameList = body.querySelector('.kikx-frame-list');
-    let frameStream = frameList?.querySelector('.kikx-frame-stream');
-    if (!frameList || !frameStream) {
+    let view = body.querySelector('kikx-chat-view');
+    if (frames.length === 0 || !view) {
       this._disconnectFrameListObserver();
       body.replaceChildren(this._buildFrameThread().build(document));
       this._connectFrameListObserver();
@@ -1543,45 +1649,10 @@ export class KikxApp extends HTMLElement {
       return;
     }
 
-    let touchedFrameIDs = options.touchedFrameIDs instanceof Set ? options.touchedFrameIDs : null;
-    let wasAnchoredToBottom = this._frameListAnchoredToBottom || this._isFrameListNearBottom(frameList);
-    let existingByID = new Map();
-    for (let item of Array.from(frameStream.children).filter((node) => node.matches?.('kikx-frame-item[data-frame-id]')))
-      existingByID.set(item.dataset.frameId, item);
+    let wasAnchoredToBottom = this._frameListAnchoredToBottom || this._isFrameListNearBottom(view.frameList);
+    let result = view.syncFrames(frames, this._state, options);
 
-    let cursor = frameStream.firstElementChild;
-    let insertedNewFrame = false;
-    for (let frame of frames) {
-      let item = existingByID.get(frame.id);
-      let isNewItem = false;
-      if (!item) {
-        item = this._createFrameItemElement(frame);
-        isNewItem = true;
-      } else {
-        existingByID.delete(frame.id);
-        if (options.force === true || !touchedFrameIDs || touchedFrameIDs.has(frame.id))
-          item.updateFrame(frame, this._state, { force: options.force === true });
-      }
-
-      if (item === cursor) {
-        cursor = cursor.nextElementSibling;
-      } else {
-        if (isNewItem)
-          prepareFrameEntryAnimation(item);
-
-        frameStream.insertBefore(item, cursor);
-
-        if (isNewItem) {
-          insertedNewFrame = true;
-          startFrameEntryAnimation(item);
-        }
-      }
-    }
-
-    for (let stale of existingByID.values())
-      stale.remove();
-
-    if (insertedNewFrame && wasAnchoredToBottom) {
+    if (result.insertedNew && wasAnchoredToBottom) {
       this._frameListAnchoredToBottom = true;
       this._scheduleAnchoredFrameScroll();
     }
@@ -1671,30 +1742,6 @@ export class KikxApp extends HTMLElement {
   _onFrameListScroll(event) {
     this._frameListAnchoredToBottom = this._isFrameListNearBottom(event.currentTarget);
   }
-}
-
-function prepareFrameEntryAnimation(item) {
-  if (!item || prefersReducedMotion())
-    return;
-
-  item.classList.add('kikx-frame--animating', 'kikx-frame--entering');
-}
-
-function startFrameEntryAnimation(item) {
-  if (!item || prefersReducedMotion())
-    return;
-
-  scheduleAnimationFrame(() => {
-    item.classList.remove('kikx-frame--entering');
-    let finish = () => item.classList.remove('kikx-frame--animating');
-    item.addEventListener('transitionend', finish, { once: true });
-    setTimeout(finish, FRAME_ENTER_ANIMATION_MS + 80);
-  });
-}
-
-function prefersReducedMotion() {
-  return typeof matchMedia === 'function'
-    && matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 async function readResponse(response) {
