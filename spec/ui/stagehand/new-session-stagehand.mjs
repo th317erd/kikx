@@ -93,7 +93,7 @@ test('Stagehand creates a new session from the workspace grid', async (t) => {
 async function waitForThreadTitle(page, expectedTitle, timeoutMS = 10000) {
   let startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMS) {
-    let title = await page.evaluate(() => document.querySelector('.kikx-thread__header h2')?.textContent || '');
+    let title = await page.evaluate(() => document.querySelector('.kikx-window__header h2')?.textContent || '');
     if (title === expectedTitle)
       return;
 

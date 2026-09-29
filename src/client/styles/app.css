@@ -297,12 +297,6 @@ kikx-app {
   background: #101214;
 }
 
-.kikx-thread__header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-}
-
 .kikx-thread__body {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -1157,22 +1151,27 @@ kikx-typing-indicator {
   overflow: hidden;
 }
 
-.kikx-workspace__header {
+.kikx-window__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 14px 16px;
   border-bottom: 1px solid #232a31;
 }
 
-.kikx-workspace__header h2 {
+.kikx-window__header h2 {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
   font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.kikx-workspace__actions {
+.kikx-window__actions {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 12px;
 }
@@ -1287,12 +1286,6 @@ kikx-typing-indicator {
   pointer-events: none;
 }
 
-.kikx-thread__back {
-  margin-right: 8px;
-  font-size: 20px;
-  line-height: 1;
-}
-
 /* Seamless maximize/minimize: shared-element hero morph (View Transitions). */
 
 ::view-transition-group(kikx-chat-hero) {
@@ -1356,20 +1349,18 @@ kikx-typing-indicator {
   color: #6b7684;
 }
 
-.kikx-thread__header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.kikx-window__close {
+  flex: 0 0 auto;
+  font-size: 20px;
+  line-height: 1;
 }
 
-.kikx-thread__actions {
-  margin-left: auto;
-}
-
-.kikx-thread__subsessions.is-active {
+.kikx-window__view-toggle.is-active {
   border-color: #3d6cff;
   color: #f5f7fa;
 }
+
+
 
 .kikx-frame__content--sub-session {
   width: min(360px, 100%);

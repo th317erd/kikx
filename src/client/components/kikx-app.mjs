@@ -306,32 +306,53 @@ export class KikxApp extends HTMLElement {
     return getScopeNoun(this._state);
   }
 
+  // One window header for every level. The root grid has no Close; a nested
+  // session window always offers Close (minimize / pop). A session window also
+  // has a toggle between its chat and its sub-session grid, plus Add.
+  _buildWindowHeader({ title, sessionID = null, collapsed = false } = {}) {
+    let nested = getStackDepth(this._state) > 1;
+    let backButton = nested
+      ? button
+        .type('button')
+        .class('kikx-icon-button kikx-window__close')
+        .title('Close session')
+        .ariaLabel('Close session')
+        .onClick(this._minimizeCurrent)('‹')
+      : null;
+
+    return div.class('kikx-window__header')(
+      backButton,
+      h2(title),
+      div.class('kikx-window__actions')(
+        span.class.bindState((state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`, ['previewsLoading', 'previewStatus'])(
+          span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
+        ),
+        sessionID
+          ? button
+            .type('button')
+            .class(`kikx-sign-out-button kikx-window__view-toggle${collapsed ? ' is-active' : ''}`)
+            .title(collapsed ? 'Show chat' : 'Show sub-sessions')
+            .onClick(collapsed ? this._expandCurrent : this._showSubSessions)(collapsed ? 'Show chat' : `Sub-sessions (${this._childSessions(sessionID).length})`)
+          : null,
+        button.type('button').class('kikx-icon-button').title(`Add ${this._scopeNoun()}`).onClick(this._createSession)('+'),
+      ),
+    );
+  }
+
   _buildChildGrid(parentSessionID) {
     return section.class('kikx-workspace')(
-      div.class('kikx-workspace__header')(
-        h2(this._childGridTitle(parentSessionID)),
-        div.class('kikx-workspace__actions')(
-          span.class.bindState((state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`, ['previewsLoading', 'previewStatus'])(
-            span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
-          ),
-          button.type('button').class('kikx-icon-button').title(`Add ${this._scopeNoun()}`).onClick(this._createSession)('+'),
-        ),
-      ),
+      this._buildWindowHeader({
+        title: this._childGridTitle(parentSessionID),
+        sessionID: parentSessionID,
+        collapsed: true,
+      }),
       this._buildSessionGrid(parentSessionID),
     );
   }
 
   _buildWorkspaceGrid() {
     return section.class('kikx-workspace')(
-      div.class('kikx-workspace__header')(
-        h2('Projects'),
-        div.class('kikx-workspace__actions')(
-          span.class.bindState((state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`, ['previewsLoading', 'previewStatus'])(
-            span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
-          ),
-          button.type('button').class('kikx-icon-button').title('Add Project').onClick(this._createSession)('+'),
-        ),
-      ),
+      this._buildWindowHeader({ title: 'Projects' }),
       this._buildSessionGrid(null),
     );
   }
@@ -363,25 +384,13 @@ export class KikxApp extends HTMLElement {
 
   _buildThreadSection(sessionID) {
     let hasSelectedSession = Boolean(sessionID);
-    let childCount = this._childSessions(sessionID).length;
 
     return section.class('kikx-thread')(
-      div.class('kikx-thread__header')(
-        button
-          .type('button')
-          .class('kikx-icon-button kikx-thread__back')
-          .title('Close session')
-          .ariaLabel('Close session')
-          .onClick(this._minimizeCurrent)('‹'),
-        h2(this._selectedSession()?.title || 'No session'),
-        div.class('kikx-thread__actions')(
-          button
-            .type('button')
-            .class(`kikx-sign-out-button kikx-thread__subsessions${isCollapsed(this._state) ? ' is-active' : ''}`)
-            .title('Show sub-sessions')
-            .onClick(this._showSubSessions)(`Sub-sessions (${childCount})`),
-        ),
-      ),
+      this._buildWindowHeader({
+        title: this._selectedSession()?.title || 'No session',
+        sessionID,
+        collapsed: false,
+      }),
       div.class('kikx-thread__body')(
         this._buildFrameThread(),
       ),
@@ -1837,7 +1846,7 @@ export class KikxApp extends HTMLElement {
   }
 
   _syncSessionShell() {
-    let threadTitle = this.querySelector('.kikx-thread__header h2');
+    let threadTitle = this.querySelector('.kikx-window__header h2');
     let selectedSession = this._selectedSession();
     if (threadTitle)
       threadTitle.textContent = selectedSession?.title || 'No session';

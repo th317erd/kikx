@@ -109,11 +109,11 @@ test('Stagehand enters a sub-session card and collapses a session to a sub-sessi
     assert.deepEqual(stackAfterChild, [ null, 'parent', 'child' ]);
 
     // Close child -> back to parent.
-    await page.evaluate(() => document.querySelector('.kikx-thread__back').click());
+    await page.evaluate(() => document.querySelector('.kikx-window__close').click());
     await waitForThreadTitle(page, 'Parent Project');
 
     // Toggle "Show sub-sessions" -> collapsed grid of parent's children.
-    await page.evaluate(() => document.querySelector('.kikx-thread__subsessions').click());
+    await page.evaluate(() => document.querySelector('.kikx-window__view-toggle').click());
     await waitForCollapsed(page, true);
 
     let childGridTitles = await page.evaluate(() => Array.from(
@@ -151,7 +151,7 @@ function userFrame(id, sessionID, text, order) {
 async function waitForThreadTitle(page, expectedTitle, timeoutMS = 10000) {
   let startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMS) {
-    let title = await page.evaluate(() => document.querySelector('.kikx-thread__header h2')?.textContent || '');
+    let title = await page.evaluate(() => document.querySelector('.kikx-window__header h2')?.textContent || '');
     if (title === expectedTitle)
       return;
 
