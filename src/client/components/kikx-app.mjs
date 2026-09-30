@@ -594,25 +594,31 @@ export class KikxApp extends HTMLElement {
           : ul.class('kikx-agent-list')(
             agents.map((agent) => {
               let rank = masterRankByID.get(agent.id) || 0;
-              return li(
-                div.class('kikx-agent-list__details')(
-                  strong(agent.name),
-                  span(this._agentProviderLabel(agent)),
-                ),
-                button
-                  .type('button')
-                  .class(`kikx-agent-list__crown${rank ? ` is-master kikx-agent-list__crown--rank-${rank}` : ''}`)
-                  .title(rank ? `Master agent #${rank} (click to uncrown)` : 'Crown as master agent')
-                  .ariaLabel(rank ? `Master agent number ${rank}` : 'Crown as master agent')
-                  .ariaPressed(rank ? 'true' : 'false')
-                  .onClick(() => this._toggleAgentCrown(agent))('♛'),
-                button
-                  .type('button')
-                  .class('kikx-agent-list__edit')
-                  .title('Edit agent')
-                  .ariaLabel('Edit agent')
-                  .onClick(() => this._editAgent(agent))('⚙'),
-              );
+              return li
+                .class('kikx-agent-list__item')
+                .dataAgentId(agent.id)(
+                  div.class('kikx-agent-list__details')(
+                    strong(agent.name),
+                    span(this._agentProviderLabel(agent)),
+                  ),
+                  div.class('kikx-agent-list__row-actions')(
+                    button
+                      .type('button')
+                      .class(`kikx-agent-list__crown${rank ? ` is-master kikx-agent-list__crown--rank-${rank}` : ''}`)
+                      .dataAgentId(agent.id)
+                      .title(rank ? `Master agent #${rank} (click to uncrown)` : 'Crown as master agent')
+                      .ariaLabel(rank ? `Master agent number ${rank}` : 'Crown as master agent')
+                      .ariaPressed(rank ? 'true' : 'false')
+                      .onClick(() => this._toggleAgentCrown(agent))('♛'),
+                    button
+                      .type('button')
+                      .class('kikx-agent-list__edit')
+                      .dataAgentId(agent.id)
+                      .title('Edit agent')
+                      .ariaLabel('Edit agent')
+                      .onClick(() => this._editAgent(agent))('⚙'),
+                  ),
+                );
             }),
           ),
         div.class('modal-footer-actions')(
@@ -658,7 +664,7 @@ export class KikxApp extends HTMLElement {
               ...this._buildAgentConfigFields(provider),
               div.class('modal-footer-actions')(
                 ...(this._state.agentFormMode === 'edit'
-                  ? [ button.type('button').class('kikx-sign-out-button').onClick(() => this._deleteAgent(this._state.editingAgentID))('Delete') ]
+                  ? [ this._buildAgentDeleteButton() ]
                   : []),
                 button.type('button').class('kikx-sign-out-button').onClick(this._closeAgentEditor)('Cancel'),
                 button.type('button').class('kikx-send-button').onClick(this._onAgentFormSubmit)(this._state.agentFormMode === 'edit' ? 'Save' : 'Create'),
@@ -1563,6 +1569,19 @@ export class KikxApp extends HTMLElement {
     }
   }
 
+  // Hold-to-confirm delete: a red aeor-confirm-button (1s hold fills a progress
+  // bar) so a destructive delete cannot fire on a single stray click.
+  _buildAgentDeleteButton() {
+    let confirmButton = document.createElement('aeor-confirm-button');
+    confirmButton.setAttribute('label', 'Delete');
+    confirmButton.setAttribute('duration', '1000');
+    confirmButton.classList.add('confirm-button-danger');
+    confirmButton.addEventListener('confirm', () => {
+      this._deleteAgent(this._state.editingAgentID);
+    });
+    return confirmButton;
+  }
+
   async _deleteAgent(agentID) {
     this._state.agentStatus = 'Deleting agent...';
     this._state.agentStatusKind = 'pending';
@@ -1600,12 +1619,39 @@ export class KikxApp extends HTMLElement {
       upsertAgent(result.data.agent, this._state);
       this._state.agentStatus = crowned ? `Crowned ${agent.name}` : `Uncrowned ${agent.name}`;
       this._state.agentStatusKind = 'ready';
-      this._render();
+      // Repaint crown buttons in place: a full _render() rebuilds the modal
+      // element, which reads as the modal closing and reopening on every click.
+      this._repaintAgentCrowns();
+      this._syncAgentStatusText();
     } catch (error) {
       this._state.agentStatus = error.message;
       this._state.agentStatusKind = 'error';
-      this._render();
+      this._syncAgentStatusText();
     }
+  }
+
+  // Update each agent row's crown rank styling and status line without a full
+  // re-render (keeps the modal stable while toggling crowns).
+  _repaintAgentCrowns() {
+    let ranks = masterRankByAgentID(getAgents(this._state));
+    for (let button of this.querySelectorAll('.kikx-agent-list__crown[data-agent-id]')) {
+      let rank = ranks.get(button.dataset.agentId) || 0;
+      button.className = `kikx-agent-list__crown${rank ? ` is-master kikx-agent-list__crown--rank-${rank}` : ''}`;
+      button.title = rank ? `Master agent #${rank} (click to uncrown)` : 'Crown as master agent';
+      button.setAttribute('aria-label', rank ? `Master agent number ${rank}` : 'Crown as master agent');
+      button.setAttribute('aria-pressed', rank ? 'true' : 'false');
+    }
+  }
+
+  _syncAgentStatusText() {
+    let status = this.querySelector('.kikx-agent-manager .kikx-auth-status');
+    if (!status)
+      return;
+
+    status.className = `kikx-auth-status kikx-auth-status--${this._state.agentStatusKind}`;
+    let text = status.querySelector('span');
+    if (text)
+      text.textContent = this._state.agentStatus;
   }
 
   _secretPlaceholder(fieldName) {

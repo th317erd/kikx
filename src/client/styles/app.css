@@ -1437,7 +1437,6 @@ button.kikx-window__title:focus-visible {
 .kikx-window__title-input {
   flex: 1 1 auto;
   min-width: 0;
-  max-width: 420px;
   padding: 2px 6px;
   border: 1px solid #3d6cff;
   border-radius: 6px;
@@ -1496,4 +1495,11 @@ button.kikx-window__title:focus-visible {
   color: #c9803f;
   background: rgba(201, 128, 63, 0.08);
   opacity: 0.7;
+}
+
+.kikx-agent-list__row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
 }
