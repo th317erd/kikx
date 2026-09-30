@@ -172,7 +172,7 @@ function userFrame(id, sessionID, text, order) {
 async function waitForThreadTitle(page, expectedTitle, timeoutMS = 10000) {
   let startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMS) {
-    let title = await page.evaluate(() => document.querySelector('.kikx-window__header h2')?.textContent || '');
+    let title = await page.evaluate(() => document.querySelector('.kikx-window__header h2, .kikx-window__header .kikx-window__title')?.textContent || '');
     if (title === expectedTitle)
       return;
 

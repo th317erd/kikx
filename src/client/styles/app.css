@@ -1158,7 +1158,8 @@ kikx-typing-indicator {
   border-bottom: 1px solid #232a31;
 }
 
-.kikx-window__header h2 {
+.kikx-window__header h2,
+.kikx-window__header .kikx-window__title {
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
@@ -1404,22 +1405,44 @@ kikx-typing-indicator {
   pointer-events: none;
 }
 
-.kikx-breadcrumb__crumb--editable {
+/* Editable window title: the prominent session name, not the breadcrumb. */
+.kikx-window__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 15px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.kikx-window__title {
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #f5f7fa;
+  font: inherit;
+  font-size: 15px;
   cursor: text;
 }
 
-.kikx-breadcrumb__crumb--editable:hover {
+button.kikx-window__title:hover,
+button.kikx-window__title:focus-visible {
   border-color: #3c444d;
-  color: #f5f7fa;
+  outline: none;
 }
 
-.kikx-breadcrumb__input {
-  width: 16ch;
-  max-width: 240px;
+.kikx-window__title-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 420px;
   padding: 2px 6px;
   border: 1px solid #3d6cff;
   border-radius: 6px;
   background: #12161a;
   color: #f5f7fa;
   font: inherit;
+  font-size: 15px;
 }

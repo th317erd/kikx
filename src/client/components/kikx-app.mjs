@@ -276,69 +276,77 @@ export class KikxApp extends HTMLElement {
     );
   }
 
+  // The breadcrumb is a navigation control: every crumb (including the active
+  // one) navigates to that depth. Renaming happens on the window header title,
+  // which is where users expect to click.
   _buildBreadcrumbCrumb(crumb) {
-    if (!crumb.active)
-      return button.type('button').class('kikx-breadcrumb__crumb').onClick(() => this._navigateToDepth(crumb.depth))(crumb.label);
-
-    // The active crumb is editable in place (Projects root is not a session).
-    if (!crumb.sessionID)
+    if (crumb.active)
       return span.class('kikx-breadcrumb__crumb kikx-breadcrumb__crumb--active')(crumb.label);
 
-    if (this._state.editingBreadcrumbSessionID === crumb.sessionID) {
+    return button.type('button').class('kikx-breadcrumb__crumb').onClick(() => this._navigateToDepth(crumb.depth))(crumb.label);
+  }
+
+  // Editable window title: click the session name to rename it in place. This is
+  // the prominent title; the breadcrumb stays purely navigational.
+  _buildEditableTitle(title, sessionID) {
+    if (!sessionID)
+      return h2(title);
+
+    if (this._state.editingSessionNameID === sessionID) {
       // A native input: aeor-input does not re-dispatch keydown/focusout, which
       // this inline editor needs for Enter/Escape and click-away commit.
       return input
         .type('text')
-        .class('kikx-breadcrumb__input')
-        .name('breadcrumb-title')
-        .value(this._state.editingBreadcrumbTitle || '')
-        .onInput((event) => { this._state.editingBreadcrumbTitle = event.target.value; })
-        .onKeydown((event) => this._onBreadcrumbEditKeydown(event, crumb.sessionID))
-        .onFocusout(() => this._commitBreadcrumbEdit(crumb.sessionID))();
+        .class('kikx-window__title-input')
+        .name('session-name')
+        .value(this._state.editingSessionNameValue || '')
+        .onInput((event) => { this._state.editingSessionNameValue = event.target.value; })
+        .onKeydown((event) => this._onSessionNameKeydown(event, sessionID))
+        .onFocusout(() => this._commitSessionName(sessionID))();
     }
 
     return button
       .type('button')
-      .class('kikx-breadcrumb__crumb kikx-breadcrumb__crumb--active kikx-breadcrumb__crumb--editable')
+      .class('kikx-window__title kikx-window__title--editable')
       .title('Rename session')
-      .onClick(() => this._beginBreadcrumbEdit(crumb.sessionID, crumb.sessionTitle))(crumb.label);
+      .onClick(() => this._beginSessionNameEdit(sessionID, title))(title);
   }
 
-  _beginBreadcrumbEdit(sessionID, currentTitle) {
-    this._state.editingBreadcrumbSessionID = sessionID;
-    this._state.editingBreadcrumbTitle = currentTitle || '';
+  _beginSessionNameEdit(sessionID, currentTitle) {
+    this._state.editingSessionNameID = sessionID;
+    this._state.editingSessionNameValue = currentTitle || '';
     this._render();
     queueMicrotask(() => {
-      let field = this.querySelector('.kikx-breadcrumb input[name="breadcrumb-title"]');
+      let field = this.querySelector('input[name="session-name"]');
       field?.focus?.();
       field?.select?.();
     });
   }
 
-  _onBreadcrumbEditKeydown(event, sessionID) {
+  _onSessionNameKeydown(event, sessionID) {
     if (event.key === 'Enter') {
       event.preventDefault();
-      this._commitBreadcrumbEdit(sessionID);
+      this._commitSessionName(sessionID);
     } else if (event.key === 'Escape') {
       event.preventDefault();
-      this._cancelBreadcrumbEdit();
+      this._cancelSessionNameEdit();
     }
   }
 
-  _cancelBreadcrumbEdit() {
-    this._state.editingBreadcrumbSessionID = '';
-    this._state.editingBreadcrumbTitle = '';
+  _cancelSessionNameEdit() {
+    this._state.editingSessionNameID = '';
+    this._state.editingSessionNameValue = '';
     this._render();
   }
 
-  async _commitBreadcrumbEdit(sessionID) {
-    if (this._state.editingBreadcrumbSessionID !== sessionID)
+  async _commitSessionName(sessionID) {
+    if (this._state.editingSessionNameID !== sessionID)
       return;
 
-    let title = (this._state.editingBreadcrumbTitle || '').trim();
+    let title = (this._state.editingSessionNameValue || '').trim();
     let session = getSessions(this._state).find((candidate) => candidate.id === sessionID);
-    this._state.editingBreadcrumbSessionID = '';
-    this._state.editingBreadcrumbTitle = '';
+    this._state.editingSessionNameID = '';
+    this._state.editingSessionNameValue = '';
 
     if (!title || title === (session?.title || '')) {
       this._render();
@@ -406,7 +414,7 @@ export class KikxApp extends HTMLElement {
 
     return div.class('kikx-window__header')(
       backButton,
-      h2(title),
+      this._buildEditableTitle(title, sessionID),
       div.class('kikx-window__actions')(
         span.class.bindState((state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`, ['previewsLoading', 'previewStatus'])(
           span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
@@ -2034,7 +2042,9 @@ export class KikxApp extends HTMLElement {
   }
 
   _syncSessionShell() {
-    let threadTitle = this.querySelector('.kikx-window__header h2');
+    // The title can be an h2 (root) or an editable button (session window); in
+    // edit mode it is an input, which we leave alone.
+    let threadTitle = this.querySelector('.kikx-window__header .kikx-window__title, .kikx-window__header h2');
     let selectedSession = this._selectedSession();
     if (threadTitle)
       threadTitle.textContent = selectedSession?.title || 'No session';

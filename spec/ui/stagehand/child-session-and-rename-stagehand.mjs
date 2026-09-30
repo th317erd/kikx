@@ -11,7 +11,7 @@ import {
   startStagehandUIServer,
 } from './stagehand-test-utils.mjs';
 
-test('Stagehand adds a child session under a project and renames it from the breadcrumb', async (t) => {
+test('Stagehand adds a child session under a project and renames it from the window title', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
     t.skip('Stagehand local mode requires Chrome');
@@ -73,16 +73,16 @@ test('Stagehand adds a child session under a project and renames it from the bre
     assert.equal(created.length, 1);
     assert.equal(created[0].parentSessionID, 'project_1');
 
-    // The new child opens its thread; rename it from the active breadcrumb crumb.
-    await page.evaluate(() => document.querySelector('.kikx-breadcrumb__crumb--editable').click());
-    await page.waitForSelector('.kikx-breadcrumb input[name="breadcrumb-title"]', { timeout: 5000 });
+    // The new child opens its thread; rename it by clicking the window title.
+    await page.evaluate(() => document.querySelector('.kikx-window__title--editable').click());
+    await page.waitForSelector('.kikx-window__header input[name="session-name"]', { timeout: 5000 });
     await page.evaluate(() => {
-      let field = document.querySelector('.kikx-breadcrumb input[name="breadcrumb-title"]');
+      let field = document.querySelector('.kikx-window__header input[name="session-name"]');
       field.value = 'Renamed Child';
       field.dispatchEvent(new Event('input', { bubbles: true }));
       field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     });
-    await waitForCrumb(page, 'Renamed Child');
+    await waitForTitle(page, 'Renamed Child');
 
     // Close back to the project. The project entry was left collapsed, so closing
     // returns directly to its sub-session grid listing the renamed child.
@@ -101,11 +101,7 @@ test('Stagehand adds a child session under a project and renames it from the bre
 });
 
 async function waitForTitle(page, expectedTitle, timeoutMS = 10000) {
-  await waitFor(page, () => document.querySelector('.kikx-window__header h2')?.textContent || '', expectedTitle, timeoutMS, `title ${expectedTitle}`);
-}
-
-async function waitForCrumb(page, expected, timeoutMS = 10000) {
-  await waitFor(page, () => document.querySelector('.kikx-breadcrumb__crumb--active')?.textContent || '', expected, timeoutMS, `crumb ${expected}`);
+  await waitFor(page, () => document.querySelector('.kikx-window__header h2, .kikx-window__header .kikx-window__title')?.textContent || '', expectedTitle, timeoutMS, `title ${expectedTitle}`);
 }
 
 async function waitForCollapsed(page, expected, timeoutMS = 10000) {

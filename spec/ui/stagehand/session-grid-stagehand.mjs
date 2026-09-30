@@ -140,7 +140,7 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
     await waitForThreadFrames(page, [ 's1_user', 's1_agent', 's1_tool' ]);
     let threadState = await page.evaluate(() => ({
       stack: document.querySelector('kikx-app')?._state?.navigationStack,
-      title: document.querySelector('.kikx-window__header h2')?.textContent || '',
+      title: document.querySelector('.kikx-window__header h2, .kikx-window__header .kikx-window__title')?.textContent || '',
       frameIDs: Array.from(document.querySelectorAll('.kikx-thread__body kikx-frame-item[data-frame-id]')).map((node) => node.dataset.frameId),
       composer: Boolean(document.querySelector('.kikx-composer textarea')),
     }));
@@ -221,7 +221,7 @@ async function waitForThreadFrames(page, expectedIDs, timeoutMS = 10000) {
 async function waitForThreadTitle(page, expectedTitle, timeoutMS = 10000) {
   let startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMS) {
-    let title = await page.evaluate(() => document.querySelector('.kikx-window__header h2')?.textContent || '');
+    let title = await page.evaluate(() => document.querySelector('.kikx-window__header h2, .kikx-window__header .kikx-window__title')?.textContent || '');
     if (title === expectedTitle)
       return;
 
