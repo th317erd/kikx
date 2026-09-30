@@ -63,6 +63,7 @@ import './kikx-frame-item.mjs';
 import './kikx-chat-view.mjs';
 import './kikx-session-grid.mjs';
 import { childSessions, chunkSessionIDs, clampPreviewCount } from './chat-view-model.mjs';
+import { agentFilterPills, filterAgents } from './agent-list-model.mjs';
 import { stackFromSearchParams, stackToURL } from '../state/navigation-stack.mjs';
 import {
   HERO_VIEW_TRANSITION_NAME,
@@ -584,14 +585,32 @@ export class KikxApp extends HTMLElement {
   }
 
   _buildAgentManager() {
-    let agents = getAgents(this._state);
-    let masterRankByID = masterRankByAgentID(agents);
+    let allAgents = getAgents(this._state);
+    let filter = this._state.agentFilter || 'all';
+    let pills = agentFilterPills(allAgents, this._state.agentProviders);
+
+    // If the active filter no longer matches any pill (provider removed), fall
+    // back to All so the list is never mysteriously empty.
+    if (!pills.some((pill) => pill.id === filter))
+      filter = 'all';
+
+    let agents = filterAgents(allAgents, filter);
+    let masterRankByID = masterRankByAgentID(allAgents);
 
     return aeorModal.title('Agents').onClose(this._closeAgentManager)(
       div.class('kikx-agent-manager')(
-        agents.length === 0
+        div.class('kikx-agent-filters')(
+          pills.map((pill) => button
+            .type('button')
+            .class(`kikx-agent-filter${pill.id === filter ? ' is-active' : ''}`)
+            .ariaPressed(pill.id === filter ? 'true' : 'false')
+            .onClick(() => this._setAgentFilter(pill.id))(pill.label)),
+        ),
+        allAgents.length === 0
           ? p.class('kikx-muted')('No agents.')
-          : ul.class('kikx-agent-list')(
+          : agents.length === 0
+            ? p.class('kikx-muted')('No agents match this filter.')
+            : ul.class('kikx-agent-list')(
             agents.map((agent) => {
               let rank = masterRankByID.get(agent.id) || 0;
               return li
@@ -1607,17 +1626,20 @@ export class KikxApp extends HTMLElement {
   }
 
   async _toggleAgentCrown(agent) {
-    let crowned = !agent.crownedClock;
+    // Re-read the current agent from state: rows repaint in place (no modal
+    // re-render), so a captured agent object can be stale after a prior toggle.
+    let current = this._state.agentDetailsByID[agent.id] || agent;
+    let crowned = !current.crownedClock;
     this._state.agentStatus = crowned ? 'Crowning agent...' : 'Uncrowning agent...';
     this._state.agentStatusKind = 'pending';
 
     try {
       let result = await this._postJSON(
-        `/api/v1/agents/${encodeURIComponent(agent.id)}/${crowned ? 'crown' : 'uncrown'}`,
+        `/api/v1/agents/${encodeURIComponent(current.id)}/${crowned ? 'crown' : 'uncrown'}`,
         {},
       );
       upsertAgent(result.data.agent, this._state);
-      this._state.agentStatus = crowned ? `Crowned ${agent.name}` : `Uncrowned ${agent.name}`;
+      this._state.agentStatus = crowned ? `Crowned ${current.name}` : `Uncrowned ${current.name}`;
       this._state.agentStatusKind = 'ready';
       // Repaint crown buttons in place: a full _render() rebuilds the modal
       // element, which reads as the modal closing and reopening on every click.
@@ -1658,6 +1680,11 @@ export class KikxApp extends HTMLElement {
     let agent = this._state.agentDetailsByID[this._state.editingAgentID];
     let secret = agent?.secretState?.[fieldName];
     return secret?.present ? `Stored ending in ${secret.last4}` : '';
+  }
+
+  _setAgentFilter(filter) {
+    this._state.agentFilter = filter || 'all';
+    this._render();
   }
 
   _agentProviderLabel(agent) {

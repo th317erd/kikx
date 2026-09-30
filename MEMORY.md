@@ -60,26 +60,29 @@ Last updated: 2026-09-30 (session approaching context limit; compaction failing)
     UI crown toggle per row, rank colors gold/silver/copper with decreasing opacity.
     Master consumption (default agent for empty session etc.) is DEFERRED.
 
-## Current in-progress task (three latest screenshots + one more)
-From `/home/wyatt/wyatt-desktop/screenshots/Session-session-2026-09-30-03-17-02.742.png`,
-`...03-19-53.394.png`, `...03-21-04.640.png`, `...03-27-26.604.png`:
-
+## Recent task batch (4 screenshots) — ALL DONE (commit c63206d + next commit)
+From `Session-session-2026-09-30-03-17/03-19/03-21/03-27*.png`:
 1. **DONE** — Title input collapse on focus: removed `max-width: 420px` from
-   `.kikx-window__title-input` (it couldn't flex; actions jumped left). Verified actions stay
-   at x=1501. (CSS only, not yet committed with the rest.)
-2. **IN PROGRESS / ~done** — Edit Agent Delete → `aeor-confirm-button` (the component is
-   named `aeor-confirm-button`, NOT `aeor-progress-button`; hold-to-confirm, duration 1000ms).
-   Added import in `src/client/lib/aeor-ui.mjs`, CSS link in `src/client/index.html`,
-   `_buildAgentDeleteButton()` in `kikx-app.mjs` with `class="confirm-button-danger"`.
-   LIVE-VERIFIED: exists, label Delete, duration 1000, red fill `rgb(162,5,0)`, red text
-   `rgb(255,84,75)`. NEEDS: commit + Stagehand coverage.
-3. **PENDING** — Agents modal **filter pills**: plugin providers (Codex, DeepSeek, Gemini,
-   Claude, Grok) plus "Masters" and "Hidden" categories.
-4. **PENDING** — Crown icons must be **right-aligned** next to the gear icon (currently the
-   crown is in the middle and shifts with name length → looks bad).
-5. **PENDING** — Crown click must NOT close/reopen the Agents modal. Currently
-   `_toggleAgentCrown` calls `this._render()` which rebuilds the whole modal (flicker).
-   Fix: update the affected rows in place (like `_syncSessionShell`) instead of full render.
+   `.kikx-window__title-input`. Actions stay pinned.
+2. **DONE** — Edit Agent Delete → `aeor-confirm-button` (real component name; NOT
+   `aeor-progress-button`; hold-to-confirm, duration 1000ms, red `confirm-button-danger`).
+   Import in `src/client/lib/aeor-ui.mjs`, CSS link in `src/client/index.html`,
+   `_buildAgentDeleteButton()` in `kikx-app.mjs`.
+3. **DONE** — Agents modal filter pills: `src/client/components/agent-list-model.mjs`
+   (pure; `agentFilterPills`/`filterAgents`) + `.kikx-agent-filter` pills UI. Pills are
+   DERIVED from providers actually present (All, Masters, one per provider displayName,
+   Hidden). Spec `spec/client/agent-list-model-spec.mjs`.
+4. **DONE** — Crown icons right-aligned with gear via `.kikx-agent-list__row-actions`.
+5. **DONE** — Crown click no longer rebuilds the modal: `_repaintAgentCrowns()` updates
+   rank classes/pressed + `_syncAgentStatusText()` in place.
+   NOTE: this introduced a bug (stale agent refs on 2nd click) fixed by re-reading
+   `this._state.agentDetailsByID[agent.id]` in `_toggleAgentCrown`.
+
+## Next up (not started)
+- Stagehand coverage for the new crown alignment/flicker/confirm-button + filter pills
+  (crown toggle test already updated and passing).
+- Master-agent **consumption** (resolveDefaultAgent for empty-session default agents).
+- True lazy-loading of older frames on scroll-up.
 
 ## Key design constraints / owner rulings
 - **No canvas/WebGL** for the work area (HTML chosen; measured canvas failed at 120Hz).

@@ -66,6 +66,7 @@ export const kikxState = new ReactiveState({
   framesBySessionID: {},
   magicCode: params.get('code') || '',
   managingAgents: false,
+  agentFilter: 'all',
   managingTeams: false,
   refreshToken: savedAuth.refresh_token || '',
   selectedSessionID: '',

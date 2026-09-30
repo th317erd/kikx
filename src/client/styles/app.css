@@ -1503,3 +1503,34 @@ button.kikx-window__title:focus-visible {
   align-items: center;
   gap: 8px;
 }
+
+.kikx-agent-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.kikx-agent-filter {
+  padding: 4px 12px;
+  border: 1px solid #3c444d;
+  border-radius: 999px;
+  background: transparent;
+  color: #b9c2cc;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.kikx-agent-filter:hover,
+.kikx-agent-filter:focus-visible {
+  border-color: #6b7684;
+  color: #f5f7fa;
+  outline: none;
+}
+
+.kikx-agent-filter.is-active {
+  border-color: #3d6cff;
+  background: rgba(61, 108, 255, 0.15);
+  color: #f5f7fa;
+}

@@ -1,0 +1,67 @@
+'use strict';
+
+// Agent-list filtering for the Agents modal.
+//
+// Filters are derived from the providers actually present among agents, plus
+// two special filters:
+//   all     - every agent
+//   masters - crowned (master/coordinator) agents
+//   hidden  - disabled agents (hidden from normal operation)
+//
+// Provider filters are keyed `provider:<pluginID>` and labelled from the
+// provider descriptor's displayName (falling back to the pluginID), so a
+// Codex plugin yields a "Codex" pill, Google yields "Gemini", Ollama "Ollama",
+// and so on — without hardcoding plugin names.
+
+export function agentFilterPills(agents = [], providers = []) {
+  let list = Array.isArray(agents) ? agents : [];
+  let providerByID = new Map(
+    (Array.isArray(providers) ? providers : [])
+      .filter((provider) => provider?.pluginID)
+      .map((provider) => [ provider.pluginID, provider ]),
+  );
+
+  let pills = [
+    { id: 'all', label: 'All' },
+    { id: 'masters', label: 'Masters' },
+  ];
+
+  // One pill per provider that actually has agents, in first-seen order.
+  let seen = new Set();
+  for (let agent of list) {
+    if (!agent?.pluginID || seen.has(agent.pluginID))
+      continue;
+
+    seen.add(agent.pluginID);
+    let provider = providerByID.get(agent.pluginID);
+    pills.push({
+      id: `provider:${agent.pluginID}`,
+      label: provider?.displayName || agent.pluginID,
+    });
+  }
+
+  pills.push({ id: 'hidden', label: 'Hidden' });
+  return pills;
+}
+
+export function filterAgents(agents = [], filter = 'all') {
+  let list = Array.isArray(agents) ? agents : [];
+
+  if (filter === 'masters')
+    return list.filter((agent) => Boolean(agent.crownedClock));
+
+  if (filter === 'hidden')
+    return list.filter((agent) => agent.enabled === false);
+
+  if (typeof filter === 'string' && filter.startsWith('provider:')) {
+    let pluginID = filter.slice('provider:'.length);
+    return list.filter((agent) => agent.pluginID === pluginID);
+  }
+
+  return list;
+}
+
+export function agentFilterLabel(agents = [], providers = [], filter = 'all') {
+  let pill = agentFilterPills(agents, providers).find((candidate) => candidate.id === filter);
+  return pill?.label || 'All';
+}
