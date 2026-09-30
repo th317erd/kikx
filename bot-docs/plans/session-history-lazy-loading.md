@@ -1,5 +1,17 @@
 # Plan: Session history lazy-loading
 
+## Status: IMPLEMENTED (P0 + P1 + P2)
+
+- P0 server window API: commit `fe69202`.
+- P1 client newest-page + scroll-up prepend: commit `0d782ee`.
+- P2 verified: full unit suite (439 pass), full Stagehand suite (23/23,
+  including `session-history-stagehand.mjs`), and a live dev-server check
+  of the window contract (newest page, contiguous `before` paging, legacy
+  `offset` shape, 400 on invalid cursor).
+- Note: the window path deliberately bypasses engine hydration, so an
+  unknown session returns an empty window (200) rather than 404. The
+  client only fetches real sessions, so this is graceful, not a bug.
+
 ## Goal
 Open a long session and always see the NEWEST messages; scroll up to load older
 pages on demand; never load the whole session. Required for dogfooding.
@@ -44,8 +56,10 @@ pages on demand; never load the whole session. Required for dogfooding.
 
 ## Risks
 - Page boundary can split a tool call/result or agent deltas; mitigated by
-  merge-by-id-on-insert-only (existing heads win).
+  merge-by-id-on-insert-only (existing heads win). A split tool pair still
+  renders as separate heads until the neighbouring page loads.
 - SSE `frame.added` upserts must not recompute session messageCount from the
-  window (would corrupt counts); use `total`.
+  window (would corrupt counts); `total` stays paging metadata and messageCount
+  keeps the manifest value (repaired upward only by loaded visible heads).
 - `FrameEngine` remains for agents/commits; the client history path deliberately
   bypasses it.
