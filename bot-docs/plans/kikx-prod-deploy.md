@@ -1,6 +1,6 @@
 # Plan: Kikx durable "production" (stable dev) instance
 
-## Status: PROPOSED — awaiting authorization to implement P0
+## Status: IMPLEMENTED (P0–P2) — deployed `daa4a59`; P3 (dogfooding work area) pending
 
 ## Goal
 
@@ -71,11 +71,16 @@ Working name: **kikx-prod** (a stable development instance).
   `node:24-bookworm-slim` (verified).
 - First fresh-DB start prints, once: `ROOT API KEY (shown once...):
   aeor_k_<hex>_<hex>`; `aeordb emergency-reset -D <db> --force` regenerates it.
-- `POST /auth/token {api_key}` → `{ token, expires_in }`. JWT carries
-  `iat/exp/key_id`; **no refresh token returned**; `/auth/refresh` is a separate
-  flow that 401s for this auth mode. Renewal = re-exchange the root key.
-- `aeordb start` supports `--jwt-expiry <seconds>` (default 604800 = 7 days) and
-  `--hot-dir` (defaults to DB parent).
+- `POST /auth/token {api_key}` → `{ token, expires_in }`. With
+  `include_refresh: true` it ALSO returns `refresh_token` (`aeor_r_…`, 30-day
+  TTL). `POST /auth/refresh {refresh_token}` mints a new JWT + a new rotating
+  refresh token (with reuse detection).
+- **`--jwt-expiry` is a no-op in AeorDB 0.9.5.** Verified directly: the issued
+  JWT is always 604800 s. Source: `aeordb-cli/src/commands/start.rs`
+  destructures `jwt_expiry: _jwt_expiry` (unused); the exchange handler in
+  `aeordb-lib/src/server/routes.rs` hardcodes
+  `min(DEFAULT_EXPIRY_SECONDS, key_remaining)`, `DEFAULT_EXPIRY_SECONDS = 7 d`.
+  So JWTs are capped at 7 days with no config to extend them.
 - Kikx server has **no** runtime npm deps (`dependencies: {}`); runtime = Node
   builtins + AeorDB HTTP. `src/server/node_modules/` is untracked stray.
 - Env inputs: `AEORDB_URL`, `AEORDB_ROOT_KEY` (exchanged), `KIKX_HOST/PORT`,
@@ -165,17 +170,29 @@ A published/other operator just sets `KIKX_HOME` to their own home.
   mirror mounts per above.
 - One private network; only the two loopback publishes are host-visible.
 
-### Token rotation
+### Token rotation (entrypoint supervisor; approved)
 
-1. Prod aeordb issues 1-year JWTs (`--jwt-expiry 31536000`).
-2. `entrypoint.mjs` reads the root key from the mounted secret file, exchanges
-   it for a JWT, **unsets `AEORDB_ROOT_KEY`/`AEORDB_ROOT_KEY_FILE` from its own
-   environment**, then `exec`s Kikx with only `AEORDB_TOKEN`. Bots' `exec`
-   children therefore never inherit the root key.
-3. Any container restart (deploy, reboot, crash) re-exchanges → fresh JWT.
-4. Deferred follow-on: Kikx `AeorDBClient` runtime refresh (re-exchange on 401 /
-   near expiry) so a >1yr-running or published deployment never needs a
-   restart. Tracked as a Kikx feature, not part of this plan.
+JWTs are capped at 7 days and no client change is made, so the entrypoint
+(PID 1) supervises renewal:
+
+1. `entrypoint.mjs` reads the root key from `/run/secrets/aeordb_root_key`,
+   exchanges it with `include_refresh: true` → `{ token, refresh_token,
+   expires_in }`, **unsets `AEORDB_ROOT_KEY*` from its own environment**, and
+   persists the refresh token + expiry to `/data/runtime/aeordb-refresh.json`.
+2. Spawns `node src/server/index.mjs` as a child with only `AEORDB_TOKEN` set;
+   bots' `exec` children never inherit the root key.
+3. On start and on a timer (refresh at ~6 days, before the 7-day cap), it
+   re-mints a JWT — via the stored refresh token (`/auth/refresh`, rotating),
+   falling back to a root-key re-exchange if the refresh token is invalid — and
+   restarts the Kikx child with the new `AEORDB_TOKEN`. The restart is short
+   (~1-2 s) and does not touch data.
+4. Container restart (deploy/reboot/crash) re-mints on start.
+5. Prod aeordb drops the (no-op) `--jwt-expiry` flag; default JWT lifetime +
+   30-day refresh are used.
+
+Footgun note: this prevents accidental inheritance of the root key by child
+processes, not deliberate reads of the mounted secret by a bot running as the
+same uid. Acceptable per owner ("secrets aren't super critical").
 
 ### Plugins and Ollama
 
