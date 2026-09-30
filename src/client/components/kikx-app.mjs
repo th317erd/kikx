@@ -1671,6 +1671,11 @@ export class KikxApp extends HTMLElement {
         {},
       );
       upsertAgent(result.data.agent, this._state);
+      // Reconcile the WHOLE crown set from the authoritative server list:
+      // crowning a 4th evicts the oldest, and the client cannot know which
+      // agents were evicted from the single toggle response alone. Without this,
+      // client and server diverge and subsequent toggles act on the wrong state.
+      this._reconcileMasters(result.data.masters);
       this._state.agentStatus = crowned ? `Crowned ${current.name}` : `Uncrowned ${current.name}`;
       this._state.agentStatusKind = 'ready';
       // Repaint crown buttons in place: a full _render() rebuilds the modal
@@ -1684,6 +1689,30 @@ export class KikxApp extends HTMLElement {
     } finally {
       this._pendingCrownAgentIDs.delete(current.id);
       this._setAgentCrownBusy(current.id, false);
+    }
+  }
+
+  // Sync local agent crown state to the authoritative server master list:
+  // mark every listed master crowned and clear crownedClock on any agent not in
+  // the list (evicted). Keeps client and server identical after a crown toggle.
+  _reconcileMasters(masters) {
+    if (!Array.isArray(masters))
+      return;
+
+    let masterByID = new Map(masters.filter((agent) => agent?.id).map((agent) => [ agent.id, agent ]));
+
+    for (let agentID of this._state.agentIDs || []) {
+      let current = this._state.agentDetailsByID[agentID];
+      if (!current)
+        continue;
+
+      let master = masterByID.get(agentID);
+      let nextCrownedClock = master?.crownedClock || null;
+      let nextCrownedAt = master?.crownedAt || null;
+      if (current.crownedClock === nextCrownedClock && current.crownedAt === nextCrownedAt)
+        continue;
+
+      upsertAgent({ ...current, crownedClock: nextCrownedClock, crownedAt: nextCrownedAt }, this._state);
     }
   }
 

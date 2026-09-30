@@ -92,6 +92,20 @@ From `Session-session-2026-09-30-03-17/03-19/03-21/03-27*.png`:
    NOTE: existing DBs may still hold >3 crowned rows; they no longer rank, and the next crown
    evicts them. No backfill run.
 
+## Goal-post: crown divergence root cause (DONE)
+The "glitchy crown clicks" root cause was **client/server state divergence**, not just
+click racing: crowning a 4th master makes the SERVER evict the oldest, but the old crown
+response returned only the toggled agent, so the client kept stale crowned entries. After
+several crowns the client sent the wrong toggle, producing "Crowned X" with no icon change.
+FIX: crown endpoint now returns `data.masters` (authoritative top-3); client
+`_reconcileMasters(masters)` marks exactly those and clears all others. Verified: 8
+sequential crowns -> client===server===3, icon always matches, 0 mismatches.
+Also: `~/Projects/aeor-components` does NOT exist; the real path is
+`~/Projects/aeor-web-components` (Kikx vendors it at `/vendor/aeor-web-components/`).
+Framework offers `ReactiveState` + element `.bindState()` + a `$` query engine; Kikx uses
+kikxState/bindState for simple fields but the Agents modal is imperative (nested
+agentDetailsByID map does not fit bindState's top-level keys cleanly).
+
 ## Next up (not started)
 - Stagehand coverage for crown alignment/flicker/confirm-button + filter pills + top-3 cap.
 - Master-agent **consumption** (resolveDefaultAgent for empty-session default agents).

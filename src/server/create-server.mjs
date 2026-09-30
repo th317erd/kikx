@@ -465,9 +465,16 @@ async function routeRequest({ request, response, context, staticRoots }) {
   let agentCrownRoute = matchAgentCrownRoute(url.pathname);
   if (agentCrownRoute && request.method === 'POST') {
     let agentManager = context.require('agentManager');
+    let agent = await agentManager.setAgentCrowned(agentCrownRoute.agentID, agentCrownRoute.crowned);
+    // Return the full authoritative master set: crowning can evict an older
+    // master, so the client cannot derive the set from just the toggled agent.
+    // The client marks every agent in `masters` as crowned and clears any other
+    // locally-crowned agent, keeping client and server in sync.
+    let masters = await agentManager.listMasterAgents({ limit: 500 });
     writeJSON(response, 200, {
       data: {
-        agent: await agentManager.setAgentCrowned(agentCrownRoute.agentID, agentCrownRoute.crowned),
+        agent,
+        masters,
       },
     });
     return;

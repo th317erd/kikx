@@ -1307,6 +1307,8 @@ test('agent crown routes toggle master status and list masters', async () => {
     let crownBody = await crownResponse.json();
     assert.equal(crownResponse.status, 200);
     assert.ok(crownBody.data.agent.crownedAt > 0);
+    // The crown response includes the authoritative master set for client sync.
+    assert.deepEqual(crownBody.data.masters.map((agent) => agent.id), [ 'master_1' ]);
 
     let uncrownResponse = await jsonFetch(`${baseURL}/api/v1/agents/agent_1/uncrown`, {}, { method: 'POST' });
     assert.equal(uncrownResponse.status, 200);

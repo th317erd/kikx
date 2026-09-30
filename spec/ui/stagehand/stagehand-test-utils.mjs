@@ -375,7 +375,22 @@ function createAgentManagerStub(agents = [], providers = []) {
         agent.crownedClock = null;
       }
 
+      // Mirror the server: the master set is a rolling top-3.
+      let masters = agents
+        .filter((candidate) => candidate.crownedClock)
+        .sort((a, b) => String(b.crownedClock).localeCompare(String(a.crownedClock)));
+      for (let overflow of masters.slice(3)) {
+        overflow.crownedAt = null;
+        overflow.crownedClock = null;
+      }
+
       return agent;
+    },
+    async listMasterAgents() {
+      return agents
+        .filter((candidate) => candidate.crownedClock)
+        .sort((a, b) => String(b.crownedClock).localeCompare(String(a.crownedClock)))
+        .slice(0, 3);
     },
     async getAgent(agentID) {
       let agent = agents.find((candidate) => candidate.id === agentID);

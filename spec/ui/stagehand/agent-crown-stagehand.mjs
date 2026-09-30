@@ -107,13 +107,36 @@ test('Stagehand crowns master agents from the Agents modal with ranked styling',
     );
     assert.equal(ranks.every((row) => row.pressed === 'true'), true);
 
-    // Uncrown the master #1 and confirm it drops out of the ranked set.
+    // The master set is a rolling top-3: crowning a fourth evicts the oldest.
+    // Only three agents exist here, so first uncrown one, then re-crown it with
+    // a fresh timestamp so it becomes #1 and the oldest drops out.
     await page.evaluate(() => {
       let row = Array.from(document.querySelectorAll('.kikx-agent-list li'))
-        .find((candidate) => candidate.querySelector('strong')?.textContent === 'Charlie');
+        .find((candidate) => candidate.querySelector('strong')?.textContent === 'Alpha');
       row.querySelector('.kikx-agent-list__crown').click();
     });
     await waitForMasterCount(page, 2);
+
+    await page.evaluate(() => {
+      let row = Array.from(document.querySelectorAll('.kikx-agent-list li'))
+        .find((candidate) => candidate.querySelector('strong')?.textContent === 'Alpha');
+      row.querySelector('.kikx-agent-list__crown').click();
+    });
+    await waitForMasterCount(page, 3);
+
+    // Client crowned-count must equal the server's authoritative master count.
+    let synced = await page.evaluate(async () => {
+      let response = await fetch('/api/v1/agents/masters');
+      let body = await response.json();
+      let serverCount = (body.data.masters || []).length;
+      let stateIDs = document.querySelector('kikx-app')?._state?.agentIDs || [];
+      let details = document.querySelector('kikx-app')?._state?.agentDetailsByID || {};
+      let clientCount = stateIDs.filter((id) => details[id]?.crownedClock).length;
+      return { serverCount, clientCount, rankedCount: document.querySelectorAll('.kikx-agent-list__crown.is-master').length };
+    });
+    assert.equal(synced.serverCount, 3);
+    assert.equal(synced.clientCount, 3);
+    assert.equal(synced.rankedCount, 3);
   } finally {
     await stagehand.close().catch(() => {});
     await fixture.close().catch(() => {});
