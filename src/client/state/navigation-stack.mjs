@@ -87,3 +87,56 @@ export function gridParentSessionID(stack) {
   let entry = currentEntry(stack);
   return entry.sessionID;
 }
+
+// --- URL encoding for the navigation stack -------------------------------
+// Encodes the current stack into a search string so a reload restores the
+// exact view. Format:
+//   ?session=<root>&session=<child>&...   (one per entered session, root first)
+//   &collapsed=1                          (the top entry is collapsed)
+// The root entry (sessionID null) is implicit and never encoded.
+export function stackToSearchParams(stack, existing = '') {
+  let base = normalizeNavigationStack(stack);
+  let params = new URLSearchParams(existing);
+  params.delete('session');
+  params.delete('view');
+  params.delete('collapsed');
+
+  for (let entry of base.slice(1))
+    params.append('session', entry.sessionID);
+
+  if (base.length > 1 && base.at(-1).collapsed)
+    params.set('collapsed', '1');
+
+  return params;
+}
+
+export function stackToURL(stack, options = {}) {
+  let { origin = '', pathname = '/', search = '' } = options;
+  let params = stackToSearchParams(stack, search);
+  let query = params.toString();
+  return `${origin}${pathname}${query ? `?${query}` : ''}`;
+}
+
+// Rebuild a stack from URL search params. `session` may repeat (root first).
+// Preserves any non-navigation params (for example the magic-link `code`).
+// Legacy: `view=thread` with no session means "open the first session".
+export function stackFromSearchParams(search) {
+  let params = new URLSearchParams(search || '');
+  let sessionIDs = params.getAll('session')
+    .filter((id) => typeof id === 'string' && id.trim() !== '')
+    .map((id) => id.trim());
+  let collapsed = params.get('collapsed') === '1'
+    || params.get('view') === 'sub-sessions';
+
+  let stack = [ { sessionID: null, collapsed: true } ];
+  for (let sessionID of sessionIDs)
+    stack.push({ sessionID, collapsed: false });
+
+  if (collapsed && stack.length > 1)
+    stack[stack.length - 1] = { ...stack[stack.length - 1], collapsed: true };
+
+  return {
+    stack,
+    viewThread: sessionIDs.length === 0 && params.get('view') === 'thread',
+  };
+}

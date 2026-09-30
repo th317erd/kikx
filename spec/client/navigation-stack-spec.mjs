@@ -15,6 +15,8 @@ import {
   scopeNounForDepth,
   setCollapsed,
   stackDepth,
+  stackFromSearchParams,
+  stackToURL,
 } from '../../src/client/state/navigation-stack.mjs';
 
 test('createNavigationStack starts at the root grid', () => {
@@ -81,4 +83,47 @@ test('stackDepth and scopeNounForDepth map depth to user-facing scope', () => {
   assert.equal(scopeNounForDepth(2), 'Session');
   assert.equal(scopeNounForDepth(3), 'Sub-Session');
   assert.equal(scopeNounForDepth(5), 'Sub-Session');
+});
+
+test('stackToURL encodes entered sessions and collapsed state, preserving other params', () => {
+  let stack = pushThread(pushThread(createNavigationStack(), 'a'), 'b');
+  let collapsed = setCollapsed(stack, true);
+
+  assert.equal(stackToURL(stack, { pathname: '/', search: '' }), '/?session=a&session=b');
+  assert.equal(
+    stackToURL(collapsed, { pathname: '/', search: '' }),
+    '/?session=a&session=b&collapsed=1',
+  );
+  // Preserves unrelated params like the magic-link code.
+  assert.equal(
+    stackToURL(stack, { pathname: '/', search: '?code=abc' }),
+    '/?code=abc&session=a&session=b',
+  );
+  // Root has no session params.
+  assert.equal(stackToURL(createNavigationStack(), { pathname: '/' }), '/');
+});
+
+test('stackFromSearchParams rebuilds the stack and legacy view flags', () => {
+  let parsed = stackFromSearchParams('?code=abc&session=a&session=b&collapsed=1');
+  assert.deepEqual(parsed.stack, [
+    { sessionID: null, collapsed: true },
+    { sessionID: 'a', collapsed: false },
+    { sessionID: 'b', collapsed: true },
+  ]);
+  assert.equal(parsed.viewThread, false);
+
+  assert.deepEqual(stackFromSearchParams('').stack, [ { sessionID: null, collapsed: true } ]);
+
+  // Legacy ?view=thread with no session asks the caller to open the first.
+  assert.equal(stackFromSearchParams('?view=thread').viewThread, true);
+  // Legacy ?view=sub-sessions maps to collapsed.
+  let legacy = stackFromSearchParams('?session=a&view=sub-sessions');
+  assert.equal(legacy.stack.at(-1).collapsed, true);
+});
+
+test('stack URL round-trips', () => {
+  let stack = setCollapsed(pushThread(pushThread(createNavigationStack(), 'a'), 'b'), true);
+  let url = stackToURL(stack, { pathname: '/' });
+  let search = url.slice(url.indexOf('?'));
+  assert.deepEqual(stackFromSearchParams(search).stack, stack);
 });

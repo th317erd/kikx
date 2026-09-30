@@ -69,6 +69,8 @@ export const kikxState = new ReactiveState({
   managingTeams: false,
   refreshToken: savedAuth.refresh_token || '',
   selectedSessionID: '',
+  editingBreadcrumbSessionID: '',
+  editingBreadcrumbTitle: '',
   sessionDetailsByID: {},
   sessionIDs: [],
   status: 'Checking AeorDB event stream...',
