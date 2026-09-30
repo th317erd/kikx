@@ -560,11 +560,16 @@ async function routeRequest({ request, response, context, staticRoots }) {
     if (body.title != null && (typeof body.title !== 'string' || body.title.trim() === ''))
       throw httpError(400, 'title must be a non-empty string');
 
+    let parentSessionID = body.parentSessionID || body.parentSessionId || null;
+    if (parentSessionID != null && (typeof parentSessionID !== 'string' || parentSessionID.trim() === ''))
+      throw httpError(400, 'parentSessionID must be a non-empty string');
+
     let frameRuntime = context.require('frameRuntime');
     let session = await frameRuntime.createSession({
       title: body.title,
       organizationID: body.organizationID || null,
       createdByUserID: body.createdByUserID || body.userID || null,
+      parentSessionID: parentSessionID ? parentSessionID.trim() : null,
     });
 
     writeJSON(response, 201, {

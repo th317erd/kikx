@@ -386,6 +386,7 @@ test('POST /api/v1/sessions creates a runtime session', async () => {
         title: 'Scratch',
         organizationID: 'org_1',
         createdByUserID: null,
+        parentSessionID: null,
       },
     });
     assert.deepEqual(body, {
@@ -397,6 +398,35 @@ test('POST /api/v1/sessions creates a runtime session', async () => {
         },
       },
     });
+  } finally {
+    await close(server);
+  }
+});
+
+test('POST /api/v1/sessions creates a child session when parentSessionID is given', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await jsonFetch(`${baseURL}/api/v1/sessions`, {
+      title: 'Child',
+      parentSessionID: 'parent_1',
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal(runtime.calls[0].input.parentSessionID, 'parent_1');
+
+    let invalid = await jsonFetch(`${baseURL}/api/v1/sessions`, {
+      parentSessionID: '   ',
+    });
+    assert.equal(invalid.status, 400);
   } finally {
     await close(server);
   }
@@ -488,6 +518,7 @@ test('POST /api/v1/sessions allows runtime-generated session titles', async () =
         title: undefined,
         organizationID: null,
         createdByUserID: null,
+        parentSessionID: null,
       },
     });
     assert.equal(body.data.session.title, 'Session 1');
