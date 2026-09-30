@@ -1,18 +1,48 @@
 'use strict';
 
-import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { finished } from 'node:stream/promises';
 
-const DEFAULT_TEMP_ROOT = path.join(os.tmpdir(), 'kikx-processes');
-const PROCESS_AUTHOR_ID = 'internal:process-manager';
-const DEFAULT_PROCESS_READ_BYTES = 128 * 1024;
-const DEFAULT_GREP_MATCH_LIMIT = 50;
-const DEFAULT_EXEC_GRACE_MS = 2500;
-const DEFAULT_EXIT_STDIO_GRACE_MS = 250;
+import {
+  DEFAULT_EXEC_GRACE_MS,
+  DEFAULT_EXIT_STDIO_GRACE_MS,
+  DEFAULT_TEMP_ROOT,
+} from './process-manager-constants.mjs';
+import {
+  createProcessID,
+  encodeSegment,
+  isVisibleToAgent,
+  normalizeNonNegativeInteger,
+  normalizeOptionalString,
+  normalizeProcessID,
+  normalizeSignal,
+} from './process-manager-normalizers.mjs';
+import {
+  buildCompletionResult,
+  createCompletedExecResult,
+  createStartedResult,
+} from './process-manager-results.mjs';
+import {
+  grepProcess,
+  killProcess,
+  listProcesses,
+  readProcess,
+  statusProcess,
+} from './process-manager-queries.mjs';
+import {
+  forceCloseCaptureStreams,
+  waitForCompletion,
+  waitForRecords,
+} from './process-manager-streams.mjs';
+import {
+  resolveFrameRuntime,
+  scheduleWake,
+  setWake,
+  wakeOnCompletion,
+} from './process-manager-wake.mjs';
+import { buildDefaultWakePrompt } from './process-manager-prompts.mjs';
 
 export class ProcessManager {
   constructor(options = {}) {
@@ -150,10 +180,10 @@ export class ProcessManager {
     if (graceMs > 0 && options.returnCompletionIfReady !== false) {
       let completed = await waitForCompletion(record.completionPromise, graceMs);
       if (completed)
-        return await this.createCompletedExecResult(record);
+        return await createCompletedExecResult(record);
 
       if (record.status !== 'running')
-        return await this.createCompletedExecResult(record);
+        return await createCompletedExecResult(record);
     }
 
     if (options.autoWake !== false) {
@@ -162,7 +192,7 @@ export class ProcessManager {
         await this.scheduleWake(record);
     }
 
-    return this.createStartedResult(record);
+    return createStartedResult(record);
   }
 
   async resolveExecutionParams(params = {}, context = {}) {
@@ -186,121 +216,23 @@ export class ProcessManager {
   }
 
   list(params = {}) {
-    let agentID = normalizeOptionalString(params._agentID);
-    let statuses = normalizeStatusFilter(params.status || params.statuses);
-    let includeCompleted = params.includeCompleted !== false;
-    let limit = clampInteger(params.limit, 50, 1, 500);
-    let offset = clampInteger(params.offset, 0, 0, Number.MAX_SAFE_INTEGER);
-    let records = [];
-
-    for (let record of this.processes.values()) {
-      if (!isVisibleToAgent(record, agentID))
-        continue;
-
-      if (!includeCompleted && record.status !== 'running')
-        continue;
-
-      if (statuses.length > 0 && !statuses.includes(record.status))
-        continue;
-
-      records.push(this.publicRecord(record));
-    }
-
-    records.sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)) || a.processID.localeCompare(b.processID));
-    return {
-      processes: records.slice(offset, offset + limit),
-      total: records.length,
-      limit,
-      offset,
-    };
+    return listProcesses(this, params);
   }
 
   status(params = {}) {
-    let record = this.requireProcess(params.processID || params.id, params._agentID);
-    return this.publicRecord(record, { includeInstructions: true });
+    return statusProcess(this, params);
   }
 
   async read(params = {}) {
-    let record = this.requireProcess(params.processID || params.id, params._agentID);
-    let stream = normalizeStreamName(params.stream || 'combined');
-    let full = params.full === true;
-    let range = normalizeReadRange({
-      start: params.start,
-      end: params.end,
-      maxBytes: full ? null : params.maxBytes ?? DEFAULT_PROCESS_READ_BYTES,
-    });
-    let content = stream === 'combined'
-      ? await this.readCombined(record, range)
-      : await readFileRange(record[`${stream}Path`], range);
-    let sizeBytes = stream === 'combined'
-      ? record.stdoutBytes + record.stderrBytes + (record.stderrBytes > 0 ? Buffer.byteLength('\n--- stderr ---\n') : 0)
-      : record[`${stream}Bytes`];
-    let returnedBytes = Buffer.byteLength(content);
-
-    return {
-      processID: record.processID,
-      status: record.status,
-      stream,
-      start: range.start,
-      end: range.hasEnd ? range.end : range.start + returnedBytes,
-      returnedBytes,
-      sizeBytes,
-      truncated: range.hasEnd ? range.end < sizeBytes : returnedBytes < sizeBytes - range.start,
-      content,
-      completionToolOutputID: record.completionToolOutputID,
-      retrieval: record.completionRetrieval,
-    };
+    return await readProcess(this, params);
   }
 
   async grep(params = {}) {
-    let record = this.requireProcess(params.processID || params.id, params._agentID);
-    let stream = normalizeStreamName(params.stream || 'combined');
-    let pattern = normalizeRequiredString(params.pattern || params.regexp || params.regex, 'pattern');
-    let flags = normalizeRegexFlags(params.flags);
-    let maxMatches = clampInteger(params.maxMatches ?? params.limit, DEFAULT_GREP_MATCH_LIMIT, 1, 500);
-    let content = stream === 'combined'
-      ? await this.readCombined(record, { start: 0, end: null, hasEnd: false, maxBytes: null })
-      : await readWholeFile(record[`${stream}Path`]);
-    let matches = grepText(content, pattern, flags, maxMatches);
-
-    return {
-      processID: record.processID,
-      status: record.status,
-      stream,
-      pattern,
-      flags,
-      matches,
-      matchCount: matches.length,
-      truncated: matches.length >= maxMatches,
-      completionToolOutputID: record.completionToolOutputID,
-    };
+    return await grepProcess(this, params);
   }
 
   kill(params = {}) {
-    let record = this.requireProcess(params.processID || params.id, params._agentID);
-    let signal = normalizeSignal(params.signal || 'SIGTERM');
-    if (record.status !== 'running') {
-      return {
-        processID: record.processID,
-        status: record.status,
-        message: `Process ${record.processID} is not running.`,
-      };
-    }
-
-    record.killRequested = {
-      signal,
-      requestedAt: this.clock(),
-      agentID: normalizeOptionalString(params._agentID),
-    };
-    record.updatedAt = record.killRequested.requestedAt;
-    record.handle.kill(signal);
-
-    return {
-      processID: record.processID,
-      status: record.status,
-      signal,
-      message: `Sent ${signal} to process ${record.processID}.`,
-    };
+    return killProcess(this, params);
   }
 
   async shutdown(options = {}) {
@@ -351,36 +283,11 @@ export class ProcessManager {
   }
 
   async wakeOnCompletion(params = {}, context = {}) {
-    let record = this.requireProcess(params.processID || params.id, params._agentID || context.agent?.id);
-    let continuationPrompt = normalizeOptionalString(params.continuationPrompt || params.prompt)
-      || `Process ${record.processID} has completed. Inspect its status and output, then continue the task.`;
-    this.setWake(record, params, context, continuationPrompt);
-
-    if (record.status !== 'running')
-      await this.scheduleWake(record);
-
-    return {
-      processID: record.processID,
-      status: record.status,
-      wakeOnCompletion: true,
-      wakeFrameID: record.wakeFrameID,
-      continuationPrompt,
-      message: record.status === 'running'
-        ? `Kikx will wake this agent when process ${record.processID} completes.`
-        : `Process ${record.processID} is already ${record.status}; wake has been scheduled if runtime context is available.`,
-    };
+    return await wakeOnCompletion(this, params, context);
   }
 
   setWake(record, params = {}, context = {}, continuationPrompt = '') {
-    record.wakeOnCompletion = {
-      agentID: normalizeOptionalString(params._agentID || context.agent?.id || record.agentID),
-      sessionID: normalizeOptionalString(params._sessionID || context.session?.id || record.sessionID),
-      frameID: normalizeOptionalString(params._frameID || context.frame?.id || record.frameID),
-      continuationPrompt: normalizeOptionalString(continuationPrompt)
-        || `Process ${record.processID} has completed. Inspect its status and output, then continue the task.`,
-      requestedAt: this.clock(),
-    };
-    return record.wakeOnCompletion;
+    return setWake(this, record, params, context, continuationPrompt);
   }
 
   beginCompletion(record, completionParams) {
@@ -449,7 +356,7 @@ export class ProcessManager {
 
   async storeCompletionOutput(record) {
     try {
-      let result = await this.buildCompletionResult(record);
+      let result = await buildCompletionResult(record);
       let stored = await this.toolOutputStore.storeToolOutput({
         toolName: 'process-complete',
         input: {
@@ -474,123 +381,12 @@ export class ProcessManager {
     }
   }
 
-  async buildCompletionResult(record) {
-    let stdout = await readWholeFile(record.stdoutPath);
-    let stderr = await readWholeFile(record.stderrPath);
-    return {
-      processID: record.processID,
-      agentID: record.agentID || null,
-      sessionID: record.sessionID || null,
-      frameID: record.frameID || null,
-      command: record.command,
-      shell: record.shell,
-      cwd: record.cwd,
-      pid: record.pid,
-      status: record.status,
-      exitCode: record.exitCode,
-      signal: record.signal,
-      timedOut: record.timedOut,
-      timeoutMs: record.timeoutMs,
-      startedAt: record.startedAt,
-      completedAt: record.completedAt,
-      durationMs: record.durationMs,
-      stdout,
-      stderr,
-      stdoutBytes: Buffer.byteLength(stdout),
-      stderrBytes: Buffer.byteLength(stderr),
-      stdioClosedByManager: record.stdioClosedByManager,
-      stdioCloseGraceMs: record.stdioCloseGraceMs,
-      killRequested: record.killRequested,
-      error: record.error || null,
-    };
-  }
-
   async scheduleWake(record) {
-    if (record.wakeFrameID)
-      return record.wakeFrameID;
-
-    let frameRuntime = this.resolveFrameRuntime();
-    let wake = record.wakeOnCompletion;
-    if (!frameRuntime?.ensureSessionEntry || !wake?.sessionID || !wake?.agentID) {
-      record.wakeError = 'process wake requires frameRuntime, sessionID, and agentID';
-      return null;
-    }
-
-    try {
-      let entry = await frameRuntime.ensureSessionEntry(wake.sessionID);
-      let now = Number(frameRuntime.clock?.() || Date.now());
-      let frameID = frameRuntime.idGenerator?.() || createProcessID();
-      let frame = {
-        id: frameID,
-        type: 'UserMessage',
-        sessionID: wake.sessionID,
-        interactionID: `process:${record.processID}`,
-        parentID: wake.frameID || record.frameID || null,
-        authorType: 'system',
-        authorID: PROCESS_AUTHOR_ID,
-        targetAgentID: wake.agentID,
-        timestamp: now,
-        createdAt: now,
-        updatedAt: now,
-        scheduledAt: now,
-        scheduledStatus: 'pending',
-        hidden: true,
-        deleted: false,
-        continuation: {
-          kind: 'exec-wake-on-completion',
-          processID: record.processID,
-          completionToolOutputID: record.completionToolOutputID,
-          continuationPrompt: wake.continuationPrompt,
-          createdAt: now,
-        },
-        content: {
-          text: buildProcessWakePrompt(record, wake),
-          status: 'scheduled',
-          processID: record.processID,
-          processStatus: record.status,
-          completionToolOutputID: record.completionToolOutputID,
-          retrieval: record.completionRetrieval,
-          continuationPrompt: wake.continuationPrompt,
-        },
-      };
-
-      let merged = entry.frameEngine.merge([ frame ], {
-        authorType: 'system',
-        authorID: PROCESS_AUTHOR_ID,
-      });
-      await frameRuntime.frameStore?.flush?.();
-      record.wakeFrameID = merged[0]?.id || frameID;
-      await frameRuntime.processScheduledFrames?.();
-      return record.wakeFrameID;
-    } catch (error) {
-      record.wakeError = error.message || String(error);
-      this.logger?.error?.('Failed to schedule process completion wake', error);
-      return null;
-    }
+    return await scheduleWake(this, record);
   }
 
   resolveFrameRuntime() {
-    if (this.frameRuntime)
-      return this.frameRuntime;
-
-    let context = this.context;
-    if (context?.has?.('frameRuntime') && typeof context.require === 'function')
-      return context.require('frameRuntime');
-
-    if (typeof context?.require === 'function') {
-      try {
-        return context.require('frameRuntime');
-      } catch (_error) {}
-    }
-
-    return null;
-  }
-
-  async readCombined(record, range) {
-    let stdout = await readWholeFile(record.stdoutPath);
-    let stderr = await readWholeFile(record.stderrPath);
-    let combined = stderr ? `${stdout}\n--- stderr ---\n${stderr}` : stdout;
-    return sliceTextByByteRange(combined, range);
+    return resolveFrameRuntime(this);
   }
 
   requireProcess(processID, agentID) {
@@ -605,269 +401,6 @@ export class ProcessManager {
 
     return record;
   }
-
-  createStartedResult(record) {
-    return {
-      ...this.publicRecord(record, { includeInstructions: true }),
-      message: [
-        `Async exec ID# ${record.processID} is currently running.`,
-        record.wakeOnCompletion ? 'You will get the result automatically when it completes.' : '',
-        `Poll progress with exec-status {"processID":"${record.processID}"}.`,
-        `Read buffered output with exec-read {"processID":"${record.processID}","stream":"combined"}.`,
-        `Search buffered output with exec-grep {"processID":"${record.processID}","pattern":"..."}.`,
-        'Use agent-respond-and-continue to report progress and schedule yourself to poll later.',
-      ].filter(Boolean).join(' '),
-    };
-  }
-
-  async createCompletedExecResult(record) {
-    let result = await this.buildCompletionResult(record);
-    return {
-      ...this.publicRecord(record, { includeInstructions: true }),
-      completedWithinGrace: true,
-      message: `Async exec ID# ${record.processID} completed quickly with status ${record.status}.`,
-      result,
-    };
-  }
-
-  publicRecord(record, options = {}) {
-    let output = {
-      processID: record.processID,
-      agentID: record.agentID || null,
-      sessionID: record.sessionID || null,
-      frameID: record.frameID || null,
-      command: record.command,
-      cwd: record.cwd,
-      pid: record.pid,
-      status: record.status,
-      exitCode: record.exitCode,
-      signal: record.signal,
-      timedOut: record.timedOut,
-      timeoutMs: record.timeoutMs,
-      startedAt: record.startedAt,
-      updatedAt: record.updatedAt,
-      completedAt: record.completedAt,
-      durationMs: record.durationMs,
-      stdoutBytes: record.stdoutBytes,
-      stderrBytes: record.stderrBytes,
-      stdioClosedByManager: record.stdioClosedByManager,
-      stdioCloseGraceMs: record.stdioCloseGraceMs,
-      completionToolOutputID: record.completionToolOutputID,
-      completionSizeBytes: record.completionSizeBytes,
-      completionLarge: record.completionLarge,
-      retrieval: record.completionRetrieval,
-      wakeOnCompletion: Boolean(record.wakeOnCompletion),
-      wakeFrameID: record.wakeFrameID,
-      wakeError: record.wakeError,
-      completionStoreError: record.completionStoreError,
-    };
-
-    if (options.includeInstructions) {
-      output.tools = {
-        status: { tool: 'exec-status', arguments: { processID: record.processID } },
-        read: { tool: 'exec-read', arguments: { processID: record.processID, stream: 'combined' } },
-        grep: { tool: 'exec-grep', arguments: { processID: record.processID, pattern: '<regexp>' } },
-        kill: { tool: 'exec-kill', arguments: { processID: record.processID, signal: 'SIGTERM' } },
-      };
-
-      if (record.completionToolOutputID) {
-        output.tools.outputRead = { tool: 'output-read', arguments: { id: record.completionToolOutputID } };
-        output.tools.outputGrep = { tool: 'output-grep', arguments: { id: record.completionToolOutputID, pattern: '<regexp>' } };
-      }
-    }
-
-    return output;
-  }
-}
-
-function buildProcessWakePrompt(record, wake) {
-  let responseLine = record.completionLarge
-    ? [
-      `Async exec ID# ${record.processID} finished, but the completion response is large (${record.completionSizeBytes} bytes).`,
-      record.completionToolOutputID
-        ? `Use output-read with {"id":"${record.completionToolOutputID}","start":0,"end":<exclusive_byte_offset>} to fetch ranges of the persisted response.`
-        : '',
-      record.completionToolOutputID
-        ? `Use output-grep with {"id":"${record.completionToolOutputID}","pattern":"<regexp>"} to search/filter it without reading everything.`
-        : '',
-    ].filter(Boolean).join(' ')
-    : record.completionToolOutputID
-      ? `The full completion result was stored in AeorDB as tool output ${record.completionToolOutputID}. Use output-read {"id":"${record.completionToolOutputID}"} to read it.`
-      : 'The completion result could not be stored; inspect exec-status for the storage error.';
-
-  return [
-    `Async process ${record.processID} has completed with status ${record.status}.`,
-    `Command: ${record.command}`,
-    `Exit code: ${record.exitCode}; signal: ${record.signal}; durationMs: ${record.durationMs}.`,
-    responseLine,
-    wake.continuationPrompt,
-  ].filter(Boolean).join('\n\n');
-}
-
-function buildDefaultWakePrompt(record) {
-  return [
-    `Async exec ID# ${record.processID} has completed.`,
-    'Review the completion output, continue the user task if needed, and report the result when appropriate.',
-  ].join(' ');
-}
-
-async function waitForCompletion(promise, timeoutMs) {
-  let timeout;
-  let timeoutSymbol = Symbol('timeout');
-  let result = await Promise.race([
-    promise,
-    new Promise((resolve) => {
-      timeout = setTimeout(() => resolve(timeoutSymbol), timeoutMs);
-      timeout.unref?.();
-    }),
-  ]);
-  clearTimeout(timeout);
-  return result === timeoutSymbol ? null : result;
-}
-
-async function waitForRecords(records, timeoutMs) {
-  if (!records.length || timeoutMs <= 0)
-    return;
-
-  let timeout;
-  await Promise.race([
-    Promise.allSettled(records.map((record) => record.completionPromise)),
-    new Promise((resolve) => {
-      timeout = setTimeout(resolve, timeoutMs);
-      timeout.unref?.();
-    }),
-  ]);
-  clearTimeout(timeout);
-}
-
-async function readFileRange(filePath, range) {
-  let content = await readWholeFile(filePath);
-  return sliceTextByByteRange(content, range);
-}
-
-function forceCloseCaptureStreams(record, stdoutStream, stderrStream) {
-  record.stdioClosedByManager = true;
-
-  closeCaptureStream(record.handle?.child?.stdout, stdoutStream);
-  closeCaptureStream(record.handle?.child?.stderr, stderrStream);
-}
-
-function closeCaptureStream(readable, writable) {
-  try {
-    readable?.unpipe?.(writable);
-  } catch (_error) {}
-
-  try {
-    readable?.destroy?.();
-  } catch (_error) {}
-
-  try {
-    writable?.end?.();
-  } catch (_error) {}
-}
-
-async function readWholeFile(filePath) {
-  try {
-    return await fsp.readFile(filePath, 'utf8');
-  } catch (error) {
-    if (error.code === 'ENOENT')
-      return '';
-
-    throw error;
-  }
-}
-
-function sliceTextByByteRange(content, range) {
-  let buffer = Buffer.from(String(content ?? ''), 'utf8');
-  let start = Math.min(range.start, buffer.length);
-  let end = range.hasEnd ? Math.min(range.end, buffer.length) : buffer.length;
-  if (range.maxBytes != null)
-    end = Math.min(end, start + range.maxBytes);
-
-  return buffer.subarray(start, end).toString('utf8');
-}
-
-function grepText(content, pattern, flags, maxMatches) {
-  let regex = new RegExp(pattern, normalizeSearchFlags(flags));
-  let matches = [];
-  let byteOffset = 0;
-  let lines = String(content ?? '').split(/\n/g);
-
-  for (let index = 0; index < lines.length; index++) {
-    let line = lines[index];
-    regex.lastIndex = 0;
-    let match = regex.exec(line);
-    if (match) {
-      matches.push({
-        lineNumber: index + 1,
-        byteOffset,
-        match: match[0],
-        line,
-      });
-      if (matches.length >= maxMatches)
-        break;
-    }
-    byteOffset += Buffer.byteLength(line) + 1;
-  }
-
-  return matches;
-}
-
-function normalizeReadRange({ start, end, maxBytes }) {
-  let normalizedStart = normalizeNonNegativeInteger(start, 0);
-  let normalizedEnd = end == null ? null : normalizeNonNegativeInteger(end, 0);
-  if (normalizedEnd != null && normalizedEnd < normalizedStart)
-    throw new TypeError('end must be greater than or equal to start');
-
-  return {
-    start: normalizedStart,
-    end: normalizedEnd,
-    hasEnd: normalizedEnd != null,
-    maxBytes: maxBytes == null ? null : normalizePositiveInteger(maxBytes, 'maxBytes'),
-  };
-}
-
-function normalizeStatusFilter(value) {
-  let values = Array.isArray(value) ? value : value ? [ value ] : [];
-  return values
-    .map((item) => normalizeOptionalString(item))
-    .filter(Boolean);
-}
-
-function normalizeStreamName(value) {
-  let normalized = normalizeOptionalString(value || 'combined');
-  if (![ 'combined', 'stdout', 'stderr' ].includes(normalized))
-    throw new TypeError('stream must be combined, stdout, or stderr');
-
-  return normalized;
-}
-
-function normalizeSignal(value) {
-  let signal = normalizeOptionalString(value || 'SIGTERM').toUpperCase();
-  if (!/^SIG[A-Z0-9]+$/.test(signal))
-    throw new TypeError('signal must be a POSIX signal name such as SIGTERM');
-
-  return signal;
-}
-
-function normalizeRegexFlags(value) {
-  let flags = normalizeOptionalString(value);
-  if (!/^[dgimsuvy]*$/.test(flags))
-    throw new TypeError('flags contains unsupported regular expression flags');
-
-  return Array.from(new Set(flags.replace(/g/g, '').split(''))).join('');
-}
-
-function normalizeSearchFlags(flags) {
-  return normalizeRegexFlags(flags);
-}
-
-function normalizeProcessID(value) {
-  let normalized = normalizeRequiredString(value, 'processID');
-  if (!/^[A-Za-z0-9_-]+$/.test(normalized))
-    throw new TypeError('processID may only contain letters, numbers, underscores, and hyphens');
-
-  return normalized;
 }
 
 function resolveAgentCwdStore(context = {}, appContext = null) {
@@ -888,52 +421,4 @@ function resolveAgentCwdStore(context = {}, appContext = null) {
   }
 
   return null;
-}
-
-function createProcessID() {
-  return `proc-${randomBytes(8).toString('hex')}`;
-}
-
-function isVisibleToAgent(record, agentID) {
-  return !agentID || !record.agentID || record.agentID === agentID;
-}
-
-function encodeSegment(value) {
-  return encodeURIComponent(String(value)).replace(/%/g, '_');
-}
-
-function normalizeRequiredString(value, fieldName) {
-  if (typeof value !== 'string' || value.trim() === '')
-    throw new TypeError(`${fieldName} must be a non-empty string`);
-
-  return value.trim();
-}
-
-function normalizeOptionalString(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizePositiveInteger(value, fieldName) {
-  let number = Number(value);
-  if (!Number.isFinite(number) || number <= 0)
-    throw new TypeError(`${fieldName} must be a positive integer`);
-
-  return Math.trunc(number);
-}
-
-function normalizeNonNegativeInteger(value, defaultValue) {
-  let number = Number(value);
-  if (!Number.isFinite(number) || number < 0)
-    return defaultValue;
-
-  return Math.trunc(number);
-}
-
-function clampInteger(value, defaultValue, min, max) {
-  let number = Number(value);
-  if (!Number.isFinite(number))
-    number = defaultValue;
-
-  number = Math.trunc(number);
-  return Math.min(max, Math.max(min, number));
 }
