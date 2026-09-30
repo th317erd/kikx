@@ -3,6 +3,19 @@
 Last updated: 2026-09-30 (session approaching context limit; compaction failing)
 
 ## How to resume
+0. **AEOR HTML framework**: before touching ANY client UI, load the skill at
+   `~/.claude/skills/aeor-web-components/SKILL.md` (canonical checkout
+   `/home/wyatt/Projects/aeor-web-components`; NOT `~/Projects/aeor-components`). Read
+   `IMPLEMENTATION-GUIDE.md`, then the companion
+   `bot-docs/docs/framework-skill-reference.md`. Key contracts: use the real shared
+   modules (elements.js/reactive-state.js/query.js); `ReactiveState` observes top-level
+   assignments only (replace objects/arrays, no nested mutation); builder children use
+   `cond ? x : null` (boolean false becomes text "false"); events are `.onChange/.onInput/
+   .onKeydown` (first letter after "on" lowercased); binding attribute names are NOT
+   kebab-normalized (`['aria-label'].bindState(...)`); modals lift `.modal-footer-actions`
+   out of their parent (submit buttons there need native `form="id"`); don't rebuild a
+   modal/control just to update text (calls `__bindings` cleanup / can replay animations).
+   Kikx uses this framework; the client is under `src/client/`.
 1. Read `~/.codex/startup.md` (already mandatory), then `.codex/DETAILS.md`, `.codex/quirks.md`,
    `bot-docs/plans/session-work-area.md`, and this file.
 2. Repos: `kikx` (`main`, remote `th317erd/kikx`), `kikx-plugin-ollama` and
