@@ -166,7 +166,7 @@ export class KikxChatView extends HTMLElement {
       let empty = document.createElement('div');
       empty.className = 'kikx-thread__empty';
       let message = document.createElement('p');
-      message.textContent = 'No frames yet.';
+      message.textContent = 'No messages yet.';
       empty.appendChild(message);
       this.appendChild(empty);
       return;

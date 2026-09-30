@@ -855,7 +855,8 @@ export class KikxApp extends HTMLElement {
     let frames = getSelectedFrames(this._state).filter((frame) => frame && !frame.deleted && !frame.hidden);
     if (frames.length === 0) {
       return div.class('kikx-thread__empty')(
-        p('No frames yet.'),
+        p('No messages yet.'),
+        p.class('kikx-thread__empty-hint')("Type /invite 'name of party' to invite an agent, or other party"),
       );
     }
 
