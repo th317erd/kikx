@@ -65,7 +65,6 @@ test('Stagehand updates account profile and uses the display name on user messag
     await page.evaluate(() => {
       setAeorInputValue('.kikx-account-form aeor-input[name="name"] input', 'Stagehand User');
       setAeorInputValue('.kikx-account-form aeor-input[name="email"] input', 'stagehand@example.com');
-      document.querySelector('.kikx-account-form')?.requestSubmit();
 
       function setAeorInputValue(selector, value) {
         let input = document.querySelector(selector);
@@ -76,6 +75,17 @@ test('Stagehand updates account profile and uses the display name on user messag
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
       }
+    });
+    // Click the actual Save button. The modal lifts .modal-footer-actions out of
+    // the form, so this must be wired via onClick (not type=submit); clicking it
+    // is the behavior a user relies on and the case that regressed.
+    await page.evaluate(() => {
+      let save = Array.from(document.querySelectorAll('aeor-modal[title="Account"] button'))
+        .find((candidate) => candidate.textContent.trim() === 'Save');
+      if (!save)
+        throw new Error('Missing account Save button');
+
+      save.click();
     });
     await waitForPagePredicate(page, () => document.querySelector('.kikx-account-chip')?.textContent?.includes('Stagehand User'));
 

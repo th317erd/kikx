@@ -576,7 +576,10 @@ export class KikxApp extends HTMLElement {
           .onInput(this._syncAccountEmail)(),
         div.class('modal-footer-actions')(
           button.type('button').class('kikx-sign-out-button').onClick(this._closeAccountEditor)('Cancel'),
-          button.type('submit').class('kikx-send-button')('Save'),
+          // type=button + onClick: the modal lifts .modal-footer-actions out of
+          // the form, so a type=submit here would have no associated form to
+          // submit. Every Kikx modal footer uses this pattern.
+          button.type('button').class('kikx-send-button').onClick(this._onAccountSubmit)('Save'),
         ),
         p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.accountStatusKind}`, ['accountStatusKind'])(
           span.textContent.bindState((state) => state.accountStatus, ['accountStatus'])(),
