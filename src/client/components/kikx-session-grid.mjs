@@ -13,12 +13,23 @@ export class KikxSessionGrid extends HTMLElement {
     this._selectedSessionID = '';
     this._loading = false;
     this._error = null;
+    this._addLabel = 'Add Session';
   }
 
   // The grid always lists direct children of parentSessionID. It owns this
   // filter so no caller can accidentally hand it an unfiltered list.
   get _sessions() {
     return childSessions(this._allSessions, this._parentSessionID);
+  }
+
+  // Scope-aware label for the trailing add card ("Add Project" / "Add Session" /
+  // "Add Sub-Session"). Set by the app via update().
+  set addLabel(value) {
+    this._addLabel = typeof value === 'string' && value.trim() !== '' ? value.trim() : 'Add Session';
+  }
+
+  get addLabel() {
+    return this._addLabel || 'Add Session';
   }
 
   connectedCallback() {
@@ -54,6 +65,8 @@ export class KikxSessionGrid extends HTMLElement {
       this._loading = input.loading === true;
     if (Object.hasOwn(input, 'error'))
       this._error = input.error;
+    if (Object.hasOwn(input, 'addLabel'))
+      this.addLabel = input.addLabel;
 
     this._render();
   }
@@ -112,16 +125,6 @@ export class KikxSessionGrid extends HTMLElement {
       return;
     }
 
-    if (this._sessions.length === 0 && !this._loading) {
-      let empty = document.createElement('div');
-      empty.className = 'kikx-session-grid__empty';
-      let message = document.createElement('p');
-      message.textContent = 'No sessions yet.';
-      empty.appendChild(message);
-      this.appendChild(empty);
-      return;
-    }
-
     for (let session of this._sessions) {
       let card = document.createElement('kikx-session-card');
       card.setAttribute('role', 'listitem');
@@ -129,12 +132,34 @@ export class KikxSessionGrid extends HTMLElement {
       this.appendChild(card);
     }
 
+    // A trailing empty card that creates a new entry at this scope.
+    this.appendChild(this._buildAddCard());
+
     if (this._loading) {
       let loading = document.createElement('p');
       loading.className = 'kikx-session-grid__status';
       loading.textContent = 'Loading previews…';
       this.appendChild(loading);
     }
+  }
+
+  _buildAddCard() {
+    let card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'kikx-session-card kikx-session-card--add';
+    card.setAttribute('role', 'listitem');
+    let label = document.createElement('span');
+    label.className = 'kikx-session-card--add__label';
+    label.textContent = `+ ${this.addLabel}`;
+    card.appendChild(label);
+    card.addEventListener('click', () => {
+      this.dispatchEvent(new CustomEvent('kikx-card-add', {
+        bubbles: true,
+        composed: true,
+        detail: { parentSessionID: this._parentSessionID },
+      }));
+    });
+    return card;
   }
 }
 

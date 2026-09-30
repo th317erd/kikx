@@ -59,9 +59,9 @@ test('Stagehand creates a new session from the workspace grid', async (t) => {
     });
     await page.waitForSelector('kikx-session-card', { timeout: 10000 });
 
-    let beforeCount = await page.locator('kikx-session-card').count();
+    let beforeCount = await page.locator('kikx-session-grid > kikx-session-card').count();
     let result = await stagehand.act(
-      'Click the plus button beside the Sessions heading in the workspace to create a new session.',
+      'Click the "Add Project" card at the end of the session grid to create a new session.',
       {
         page,
         timeout: 20000,
@@ -77,7 +77,7 @@ test('Stagehand creates a new session from the workspace grid', async (t) => {
     // Closing it returns to the workspace grid with the new card.
     await clickButtonByTitle(page, 'Close session');
     await waitForSessionCount(page, beforeCount + 1);
-    let afterCount = await page.locator('kikx-session-card').count();
+    let afterCount = await page.locator('kikx-session-grid > kikx-session-card').count();
 
     assert.equal(afterCount, beforeCount + 1);
   } finally {

@@ -93,6 +93,22 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
     assert.equal(gridState.cards[1].frames, 2);
     assert.match(gridState.cards[0].meta, /3 messages/);
 
+    // The root grid ends with an "Add Project" card, and the window header has
+    // no "+" add button (Add lives in the grid).
+    let addState = await page.evaluate(() => {
+      let children = Array.from(document.querySelectorAll('kikx-session-grid > *'));
+      let add = children.at(-1);
+      return {
+        lastIsAdd: add?.classList.contains('kikx-session-card--add') || false,
+        addLabel: add?.textContent?.trim() || '',
+        headerAddButtons: Array.from(document.querySelectorAll('.kikx-window__actions button'))
+          .filter((b) => b.textContent.trim() === '+').length,
+      };
+    });
+    assert.equal(addState.lastIsAdd, true);
+    assert.equal(addState.addLabel, '+ Add Project');
+    assert.equal(addState.headerAddButtons, 0);
+
     // Mini cards render the real chat thread scaled down via a transform.
     let scalerState = await page.evaluate(() => {
       let view = document.querySelector('kikx-session-card kikx-chat-view');

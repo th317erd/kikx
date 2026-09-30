@@ -308,7 +308,8 @@ export class KikxApp extends HTMLElement {
 
   // One window header for every level. The root grid has no Close; a nested
   // session window always offers Close (minimize / pop). A session window also
-  // has a toggle between its chat and its sub-session grid, plus Add.
+  // has a toggle between its chat and its sub-session grid. Add lives in the
+  // grid as a trailing "Add" card, not in this header.
   _buildWindowHeader({ title, sessionID = null, collapsed = false } = {}) {
     let nested = getStackDepth(this._state) > 1;
     let backButton = nested
@@ -338,7 +339,6 @@ export class KikxApp extends HTMLElement {
               ` (${this._childSessions(sessionID).length})`,
             )
           : null,
-        button.type('button').class('kikx-icon-button').title(`Add ${this._scopeNoun()}`).onClick(this._createSession)('+'),
       ),
     );
   }
@@ -415,11 +415,13 @@ export class KikxApp extends HTMLElement {
       appState: this._state,
       selectedSessionID: this._state.selectedSessionID,
       loading: this._state.previewsLoading,
+      addLabel: `Add ${this._scopeNoun()}`,
     });
     grid.addEventListener('kikx-card-open', (event) => {
       if (event.detail?.sessionID)
         this._openSessionFromCard(event.detail.sessionID);
     });
+    grid.addEventListener('kikx-card-add', () => this._createSession());
     return div.class('kikx-workspace__grid')(grid);
   }
 

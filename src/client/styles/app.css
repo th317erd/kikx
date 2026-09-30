@@ -1381,3 +1381,25 @@ kikx-typing-indicator {
 .kikx-window__view-toggle.is-active .kikx-grid-icon {
   fill: #3d6cff;
 }
+
+.kikx-session-card--add {
+  display: grid;
+  place-items: center;
+  min-height: 140px;
+  border: 1px dashed #3c444d;
+  background: transparent;
+  color: #8b97a3;
+  font: inherit;
+  font-size: 14px;
+}
+
+.kikx-session-card--add:hover,
+.kikx-session-card--add:focus-visible {
+  border-color: #3d6cff;
+  color: #dce3ea;
+  outline: none;
+}
+
+.kikx-session-card--add__label {
+  pointer-events: none;
+}
