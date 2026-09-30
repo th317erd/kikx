@@ -112,7 +112,20 @@ test('Stagehand enters a sub-session card and collapses a session to a sub-sessi
     await page.evaluate(() => document.querySelector('.kikx-window__close').click());
     await waitForThreadTitle(page, 'Parent Project');
 
-    // Toggle "Show sub-sessions" -> collapsed grid of parent's children.
+    // The sub-session filter toggle is a grid icon + count, and is reversible.
+    let toggleOff = await page.evaluate(() => {
+      let toggle = document.querySelector('.kikx-window__view-toggle');
+      return {
+        hasGridIcon: Boolean(toggle?.querySelector('svg.kikx-grid-icon')),
+        text: toggle?.textContent?.trim(),
+        pressed: toggle?.getAttribute('aria-pressed'),
+      };
+    });
+    assert.equal(toggleOff.hasGridIcon, true);
+    assert.equal(toggleOff.text, '(1)');
+    assert.equal(toggleOff.pressed, 'false');
+
+    // Toggle on -> collapsed grid of parent's children.
     await page.evaluate(() => document.querySelector('.kikx-window__view-toggle').click());
     await waitForCollapsed(page, true);
 
@@ -120,6 +133,14 @@ test('Stagehand enters a sub-session card and collapses a session to a sub-sessi
       document.querySelectorAll('kikx-session-grid > kikx-session-card'),
     ).map((card) => card.querySelector('.kikx-session-card__title')?.textContent));
     assert.deepEqual(childGridTitles, [ 'Child Session' ]);
+
+    let toggleOn = await page.evaluate(() => document.querySelector('.kikx-window__view-toggle')?.getAttribute('aria-pressed'));
+    assert.equal(toggleOn, 'true');
+
+    // Toggle off -> back to the full chat.
+    await page.evaluate(() => document.querySelector('.kikx-window__view-toggle').click());
+    await waitForCollapsed(page, false);
+    assert.equal(await page.evaluate(() => Boolean(document.querySelector('.kikx-window__close'))), true);
   } finally {
     await stagehand.close().catch(() => {});
     await fixture.close().catch(() => {});

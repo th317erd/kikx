@@ -331,12 +331,53 @@ export class KikxApp extends HTMLElement {
           ? button
             .type('button')
             .class(`kikx-sign-out-button kikx-window__view-toggle${collapsed ? ' is-active' : ''}`)
-            .title(collapsed ? 'Show chat' : 'Show sub-sessions')
-            .onClick(collapsed ? this._expandCurrent : this._showSubSessions)(collapsed ? 'Show chat' : `Sub-sessions (${this._childSessions(sessionID).length})`)
+            .ariaPressed(collapsed ? 'true' : 'false')
+            .title(collapsed ? 'Show all chat messages' : 'Show only sub-sessions')
+            .onClick(this._toggleSubSessions)(
+              this._buildGridIcon(),
+              ` (${this._childSessions(sessionID).length})`,
+            )
           : null,
         button.type('button').class('kikx-icon-button').title(`Add ${this._scopeNoun()}`).onClick(this._createSession)('+'),
       ),
     );
+  }
+
+  // 6x6 grid glyph for the sub-session filter toggle, drawn as an inline SVG so
+  // no external asset or font is required.
+  _buildGridIcon() {
+    let size = 6;
+    let step = 2;
+    let dot = 1.1;
+    let span = (size - 1) * step + dot;
+    let svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${span} ${span}`);
+    svg.setAttribute('width', '14');
+    svg.setAttribute('height', '14');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    svg.classList.add('kikx-grid-icon');
+
+    for (let row = 0; row < size; row++) {
+      for (let column = 0; column < size; column++) {
+        let rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', String(column * step));
+        rect.setAttribute('y', String(row * step));
+        rect.setAttribute('width', String(dot));
+        rect.setAttribute('height', String(dot));
+        svg.appendChild(rect);
+      }
+    }
+
+    return svg;
+  }
+
+  // A pure toggle: on shows only sub-session cards, off shows all messages.
+  _toggleSubSessions() {
+    if (isCollapsed(this._state))
+      return this._expandCurrent();
+
+    return this._showSubSessions();
   }
 
   _buildChildGrid(parentSessionID) {

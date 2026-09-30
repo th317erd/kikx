@@ -188,8 +188,7 @@ kikx-app {
   font-weight: 600;
 }
 
-.kikx-sessions,
-.kikx-thread {
+.kikx-sessions {
   min-height: 0;
   min-width: 0;
   padding: 18px;
@@ -288,20 +287,31 @@ kikx-app {
   font-size: 12px;
 }
 
-.kikx-thread {
+/* Thread and workspace are the same window frame so the header never shifts
+   when toggling between chat and sub-session grid. */
+.kikx-thread,
+.kikx-workspace {
   display: grid;
   grid-template-rows: auto 1fr auto;
-  gap: 18px;
+  gap: 0;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
-  background: #101214;
+  border: 1px solid #232a31;
+  border-radius: 8px;
+  background: #12161a;
 }
 
 .kikx-thread__body {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
+  padding: 18px;
   overflow: hidden;
+}
+
+.kikx-thread .kikx-composer {
+  padding: 0 18px 18px;
 }
 
 .kikx-composer__actions {
@@ -1140,17 +1150,6 @@ kikx-typing-indicator {
 
 /* Workspace grid (Task 2) */
 
-.kikx-workspace {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  border: 1px solid #232a31;
-  border-radius: 8px;
-  background: #12161a;
-  overflow: hidden;
-}
-
 .kikx-window__header {
   display: flex;
   align-items: center;
@@ -1182,7 +1181,6 @@ kikx-typing-indicator {
 }
 
 .kikx-workspace__grid {
-  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   padding: 16px;
@@ -1355,13 +1353,6 @@ kikx-typing-indicator {
   line-height: 1;
 }
 
-.kikx-window__view-toggle.is-active {
-  border-color: #3d6cff;
-  color: #f5f7fa;
-}
-
-
-
 .kikx-frame__content--sub-session {
   width: min(360px, 100%);
 }
@@ -1374,4 +1365,19 @@ kikx-typing-indicator {
   margin: 0;
   color: #8b97a3;
   font-size: 12px;
+}
+
+.kikx-window__view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kikx-grid-icon {
+  flex: 0 0 auto;
+  fill: currentColor;
+}
+
+.kikx-window__view-toggle.is-active .kikx-grid-icon {
+  fill: #3d6cff;
 }
