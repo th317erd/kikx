@@ -40,6 +40,17 @@ export function normalizeOffset(offset) {
   return value;
 }
 
+export function normalizeOptionalOrder(value) {
+  if (value == null)
+    return null;
+
+  let number = Number(value);
+  if (!Number.isInteger(number) || number < 0)
+    throw new TypeError('before must be a non-negative integer');
+
+  return number;
+}
+
 export function uniqueStrings(values) {
   let unique = [];
 

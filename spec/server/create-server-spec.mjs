@@ -100,6 +100,16 @@ function createRuntime() {
         { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } },
       ];
     },
+    listFrameWindow(sessionID, options) {
+      calls.push({ method: 'listFrameWindow', sessionID, options });
+      return {
+        frames: [ { id: 'msg_9', type: 'UserMessage', order: 9, content: { text: 'newest' } } ],
+        total: 42,
+        hasMore: true,
+        oldestOrder: 9,
+        newestOrder: 12,
+      };
+    },
     async listSessionPreviews(sessionIDs, options) {
       calls.push({ method: 'listSessionPreviews', sessionIDs, options });
       return sessionIDs.map((sessionID) => ({
@@ -816,7 +826,7 @@ test('PATCH /api/v1/account saves display name and updates AeorDB email', async 
   }
 });
 
-test('GET /api/v1/sessions/:sessionID/frames lists runtime frames', async () => {
+test('GET /api/v1/sessions/:sessionID/frames defaults to the newest window', async () => {
   let runtime = createRuntime();
   let server = createServer({
     context: new AppContext({
@@ -834,25 +844,49 @@ test('GET /api/v1/sessions/:sessionID/frames lists runtime frames', async () => 
     assert.equal(response.status, 200);
     assert.deepEqual(body, {
       data: {
-        frames: [
-          { id: 'msg_1', type: 'UserMessage', content: { text: 'hello' } },
-        ],
+        frames: [ { id: 'msg_9', type: 'UserMessage', order: 9, content: { text: 'newest' } } ],
+        total: 42,
+        hasMore: true,
+        oldestOrder: 9,
+        newestOrder: 12,
       },
     });
     assert.deepEqual(runtime.calls.at(-1), {
-      method: 'listFrames',
+      method: 'listFrameWindow',
       sessionID: 'ses_1',
-      options: {
-        limit: 1000,
-        offset: 0,
-      },
+      options: { limit: 100, before: null },
     });
   } finally {
     await close(server);
   }
 });
 
-test('GET /api/v1/sessions/:sessionID/frames passes pagination options', async () => {
+test('GET /api/v1/sessions/:sessionID/frames passes the before cursor and limit', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/sessions/ses_1/frames?limit=30&before=9`);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(runtime.calls.at(-1), {
+      method: 'listFrameWindow',
+      sessionID: 'ses_1',
+      options: { limit: 30, before: 9 },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/sessions/:sessionID/frames keeps the legacy offset path', async () => {
   let runtime = createRuntime();
   let server = createServer({
     context: new AppContext({
@@ -870,11 +904,28 @@ test('GET /api/v1/sessions/:sessionID/frames passes pagination options', async (
     assert.deepEqual(runtime.calls.at(-1), {
       method: 'listFrames',
       sessionID: 'ses_1',
-      options: {
-        limit: 25,
-        offset: 50,
-      },
+      options: { limit: 25, offset: 50 },
     });
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/sessions/:sessionID/frames rejects an invalid before cursor', async () => {
+  let runtime = createRuntime();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/sessions/ses_1/frames?before=-1`);
+
+    assert.equal(response.status, 400);
   } finally {
     await close(server);
   }

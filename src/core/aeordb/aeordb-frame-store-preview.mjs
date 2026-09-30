@@ -3,16 +3,19 @@
 import { readJSONFiles } from './aeordb-file-utils.mjs';
 import { AeorDBFrameStoreScheduledBase } from './aeordb-frame-store-scheduled.mjs';
 import {
+  DEFAULT_FRAME_LIST_LIMIT,
   MAX_PREVIEW_RAW_FRAMES,
   PREVIEW_RAW_EXPANSION,
 } from './aeordb-frame-store-constants.mjs';
 import {
   isPreviewVisibleFrame,
+  normalizeLargeLimit,
+  normalizeOptionalOrder,
   normalizePreviewCount,
   normalizePreviewTotal,
   normalizeSessionIDs,
 } from './aeordb-frame-store-normalizers.mjs';
-import { sortFramePathsByOrder } from './aeordb-frame-store-ordering.mjs';
+import { frameOrderFromPath, sortFramePathsByOrder } from './aeordb-frame-store-ordering.mjs';
 import { encodeSegment } from './aeordb-frame-store-paths.mjs';
 import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
 
@@ -63,6 +66,71 @@ export class AeorDBFrameStorePreviewBase extends AeorDBFrameStoreScheduledBase {
     return previews;
   }
 
+  async listFrameWindow(sessionID, options = {}) {
+    if (!sessionID)
+      throw new TypeError('listFrameWindow() requires sessionID');
+
+    let limit = normalizeLargeLimit(options.limit, DEFAULT_FRAME_LIST_LIMIT);
+    let before = normalizeOptionalOrder(options.before);
+    let interactionsPath = `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`;
+    let listOptions = { depth: -1, glob: '**/frames/*.json' };
+    let probe;
+
+    try {
+      probe = await this.aeordb.listDirectory(interactionsPath, {
+        ...listOptions,
+        limit: 1,
+        offset: 0,
+      });
+    } catch (error) {
+      if (error?.status === 404)
+        return emptyFrameWindow();
+
+      throw error;
+    }
+
+    let allPaths = await this.listDirectoryPaths(interactionsPath, listOptions);
+    let framePaths = allPaths.filter((path) => path.includes('/frames/'));
+    let sortedPaths = sortFramePathsByOrder(framePaths);
+    let total = sortedPaths.length;
+
+    if (total === 0)
+      return emptyFrameWindow();
+
+    let endIndex = total;
+    if (before != null) {
+      let beforeIndex = sortedPaths.findIndex((path) => frameOrderFromPath(path) >= before);
+      endIndex = beforeIndex === -1 ? total : beforeIndex;
+    }
+
+    let startIndex = Math.max(0, endIndex - limit);
+    let windowPaths = sortedPaths.slice(startIndex, endIndex);
+
+    let frames = [];
+    let reads = await readJSONFiles(this.aeordb, windowPaths, {
+      fallbackOnBatchError: true,
+      continueOnError: true,
+    });
+    for (let read of reads) {
+      if (read.error)
+        continue;
+
+      let frame = read.value;
+      if (frame?.id && frame.type)
+        frames.push(frame);
+    }
+
+    let heads = projectFrameMessages(frames).filter(isPreviewVisibleFrame);
+
+    return {
+      frames: heads,
+      total,
+      hasMore: startIndex > 0,
+      oldestOrder: frameOrderFromPath(windowPaths[0]),
+      newestOrder: frameOrderFromPath(windowPaths[windowPaths.length - 1]),
+    };
+  }
+
   async loadSessionPreviewHeads(sessionID, { rawLimit, previewCount }) {
     let interactionsPath = `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`;
     let baseOptions = { depth: -1, glob: '**/frames/*.json', limit: 1, offset: 0 };
@@ -104,4 +172,14 @@ export class AeorDBFrameStorePreviewBase extends AeorDBFrameStoreScheduledBase {
       truncated,
     };
   }
+}
+
+function emptyFrameWindow() {
+  return {
+    frames: [],
+    total: 0,
+    hasMore: false,
+    oldestOrder: null,
+    newestOrder: null,
+  };
 }

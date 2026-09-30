@@ -4,6 +4,7 @@ import {
   getRequestAccount,
   httpError,
   parseNonNegativeInteger,
+  parseOptionalNonNegativeInteger,
   parsePositiveInteger,
   readJSON,
   writeJSON,
@@ -96,13 +97,28 @@ export async function handleSessionRoutes({ request, response, url, context }) {
     let frameRuntime = context.require('frameRuntime');
 
     if (request.method === 'GET' && sessionRoute.resource === 'frames') {
+      // A bounded tail window is the default: no `before` means the newest page,
+      // a `before` cursor means the newest page older than that raw order. An
+      // explicit `offset` keeps the legacy ascending whole-session listFrames
+      // behavior for existing callers.
+      if (url.searchParams.has('offset')) {
+        writeJSON(response, 200, {
+          data: {
+            frames: await frameRuntime.listFrames(sessionRoute.sessionID, {
+              limit: parsePositiveInteger(url.searchParams.get('limit'), 1000),
+              offset: parseNonNegativeInteger(url.searchParams.get('offset'), 0),
+            }),
+          },
+        });
+        return true;
+      }
+
+      let before = parseOptionalNonNegativeInteger(url.searchParams.get('before'));
       writeJSON(response, 200, {
-        data: {
-          frames: await frameRuntime.listFrames(sessionRoute.sessionID, {
-            limit: parsePositiveInteger(url.searchParams.get('limit'), 1000),
-            offset: parseNonNegativeInteger(url.searchParams.get('offset'), 0),
-          }),
-        },
+        data: await frameRuntime.listFrameWindow(sessionRoute.sessionID, {
+          limit: parsePositiveInteger(url.searchParams.get('limit'), 100),
+          before,
+        }),
       });
       return true;
     }

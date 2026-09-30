@@ -177,6 +177,24 @@ class StagehandFrameRuntime extends EventEmitter {
     return this.framesBySessionID.get(sessionID) || [];
   }
 
+  async listFrameWindow(sessionID, options = {}) {
+    let limit = Number.isInteger(options.limit) ? options.limit : 100;
+    let before = options.before;
+    let frames = (this.framesBySessionID.get(sessionID) || [])
+      .filter((frame) => frame && frame.hidden !== true && frame.deleted !== true && frame.phantom !== true);
+    let eligible = before == null
+      ? frames
+      : frames.filter((frame) => frame.order == null || frame.order < before);
+    let windowFrames = eligible.slice(-limit);
+    return {
+      frames: windowFrames,
+      total: frames.length,
+      hasMore: eligible.length > windowFrames.length,
+      oldestOrder: windowFrames[0]?.order ?? null,
+      newestOrder: windowFrames[windowFrames.length - 1]?.order ?? null,
+    };
+  }
+
   async listSessionPreviews(sessionIDs = [], options = {}) {
     let previewCount = Number.isInteger(options.previewCount) ? options.previewCount : 5;
     return sessionIDs.map((sessionID) => {

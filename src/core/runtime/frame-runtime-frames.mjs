@@ -32,6 +32,10 @@ const frameMethods = {
     return frames;
   },
 
+  async listFrameWindow(sessionID, options = {}) {
+    return await this.frameStore.listFrameWindow(sessionID, options);
+  },
+
   async listSessionPreviews(sessionIDs, options = {}) {
     return await this.frameStore.listSessionPreviews(sessionIDs, options);
   },

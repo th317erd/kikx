@@ -1085,6 +1085,30 @@ test('FrameRuntime rejects invalid session and message inputs', async () => {
   );
 });
 
+test('FrameRuntime delegates listFrameWindow to the frame store without hydrating an engine', async () => {
+  let calls = [];
+  let windowResult = {
+    frames: [ { id: 'msg_9', type: 'UserMessage', order: 9 } ],
+    total: 42,
+    hasMore: true,
+    oldestOrder: 9,
+    newestOrder: 12,
+  };
+  let frameStore = {
+    async listFrameWindow(sessionID, options) {
+      calls.push({ sessionID, options });
+      return windowResult;
+    },
+  };
+  let runtime = new FrameRuntime({ frameStore, clock: () => 1000 });
+
+  let result = await runtime.listFrameWindow('ses_1', { limit: 4, before: 13 });
+
+  assert.equal(result, windowResult);
+  assert.deepEqual(calls, [ { sessionID: 'ses_1', options: { limit: 4, before: 13 } } ]);
+  assert.equal(runtime.sessions.size, 0);
+});
+
 test('FrameRuntime surfaces AeorDB persistence failures', async () => {
   let aeordb = createClient({ failPut: 'disk is gone' });
   let runtime = createRuntime({ aeordb, ids: [ 'ses_1' ] });

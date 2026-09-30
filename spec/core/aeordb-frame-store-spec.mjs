@@ -875,3 +875,118 @@ test('AeorDBFrameStore preview bounds previewCount and session count', async () 
   let deduped = await store.listSessionPreviews(ids, { previewCount: 2 });
   assert.equal(deduped.length, 1);
 });
+
+test('AeorDBFrameStore window returns the newest frames by default', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_big', 300);
+
+  let result = await store.listFrameWindow('ses_big', { limit: 20 });
+
+  assert.equal(result.total, 300);
+  assert.equal(result.hasMore, true);
+  assert.equal(result.frames.length, 20);
+  // Newest frames, ascending display order.
+  assert.deepEqual(result.frames.map((frame) => frame.order), Array.from({ length: 20 }, (_value, index) => 281 + index));
+  assert.equal(result.newestOrder, 300);
+  assert.equal(result.oldestOrder, 281);
+
+  // Bodies fetched must be bounded, not all 300.
+  let frameFetch = aeordb.calls.find((call) => call.method === 'fetchFiles' && call.paths.some((path) => path.includes('/frames/')));
+  assert.ok(frameFetch, 'window fetched frame bodies');
+  assert.ok(frameFetch.paths.length < 300, 'did not fetch all frames');
+});
+
+test('AeorDBFrameStore window pages older frames with a before cursor', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_big', 300);
+
+  let firstPage = await store.listFrameWindow('ses_big', { limit: 20 });
+  let secondPage = await store.listFrameWindow('ses_big', { limit: 20, before: firstPage.oldestOrder });
+
+  assert.deepEqual(secondPage.frames.map((frame) => frame.order), Array.from({ length: 20 }, (_value, index) => 261 + index));
+  assert.equal(secondPage.newestOrder, 280);
+  assert.equal(secondPage.oldestOrder, 261);
+  assert.equal(secondPage.hasMore, true);
+  assert.equal(secondPage.total, 300);
+
+  // Pages do not overlap.
+  assert.equal(firstPage.frames.some((frame) => secondPage.frames.some((other) => other.id === frame.id)), false);
+});
+
+test('AeorDBFrameStore window marks the oldest page as no more', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_big', 300);
+
+  let result = await store.listFrameWindow('ses_big', { limit: 20, before: 41 });
+
+  assert.deepEqual(result.frames.map((frame) => frame.order), Array.from({ length: 20 }, (_value, index) => 21 + index));
+  assert.equal(result.oldestOrder, 21);
+  assert.equal(result.newestOrder, 40);
+  assert.equal(result.hasMore, true);
+
+  let finalPage = await store.listFrameWindow('ses_big', { limit: 20, before: 21 });
+  assert.deepEqual(finalPage.frames.map((frame) => frame.order), Array.from({ length: 20 }, (_value, index) => 1 + index));
+  assert.equal(finalPage.hasMore, false);
+  assert.equal(finalPage.oldestOrder, 1);
+  assert.equal(finalPage.newestOrder, 20);
+});
+
+test('AeorDBFrameStore window returns a whole small session untruncated', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_small', 3);
+
+  let result = await store.listFrameWindow('ses_small', { limit: 20 });
+
+  assert.equal(result.total, 3);
+  assert.equal(result.hasMore, false);
+  assert.deepEqual(result.frames.map((frame) => frame.order), [ 1, 2, 3 ]);
+  assert.equal(result.oldestOrder, 1);
+  assert.equal(result.newestOrder, 3);
+});
+
+test('AeorDBFrameStore window returns empty metadata for a session with no frames', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+
+  let result = await store.listFrameWindow('ses_empty', { limit: 20 });
+
+  assert.equal(result.total, 0);
+  assert.equal(result.hasMore, false);
+  assert.deepEqual(result.frames, []);
+  assert.equal(result.oldestOrder, null);
+  assert.equal(result.newestOrder, null);
+});
+
+test('AeorDBFrameStore window projects visible heads only', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_mixed', 5);
+  // Hide one middle frame and delete another; neither should surface.
+  aeordb.files.set('/kikx/sessions/ses_mixed/interactions/int_1/frames/0000000000000002-UserMessage-ses_mixed_f2.json', {
+    id: 'ses_mixed_f2',
+    type: 'UserMessage',
+    sessionID: 'ses_mixed',
+    interactionID: 'int_1',
+    order: 2,
+    hidden: true,
+    content: { text: 'hidden frame' },
+  });
+  aeordb.files.set('/kikx/sessions/ses_mixed/interactions/int_1/frames/0000000000000004-UserMessage-ses_mixed_f4.json', {
+    id: 'ses_mixed_f4',
+    type: 'UserMessage',
+    sessionID: 'ses_mixed',
+    interactionID: 'int_1',
+    order: 4,
+    deleted: true,
+    content: { text: 'deleted frame' },
+  });
+
+  let result = await store.listFrameWindow('ses_mixed', { limit: 20 });
+
+  assert.deepEqual(result.frames.map((frame) => frame.order), [ 1, 3, 5 ]);
+  assert.equal(result.newestOrder, 5);
+});
