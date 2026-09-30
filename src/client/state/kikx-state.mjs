@@ -7,8 +7,12 @@ import {
 } from './agent-state-utils.mjs';
 import {
   countMessageFrames,
+  mergeSessionFrameWindowState,
   mergeSessions,
+  prependSessionFramesState,
+  resetSessionPagingState,
   setSessionFramesState,
+  setSessionPagingState,
   upsertFramesState,
   upsertFrameState,
   upsertSessionState,
@@ -64,6 +68,7 @@ export const kikxState = new ReactiveState({
   editingSessionTitle: '',
   editingAgentID: '',
   framesBySessionID: {},
+  sessionPagingByID: {},
   magicCode: params.get('code') || '',
   managingAgents: false,
   agentFilter: 'all',
@@ -140,6 +145,10 @@ export function getSelectedSession(state = kikxState) {
 
 export function getSelectedFrames(state = kikxState) {
   return state.framesBySessionID[state.selectedSessionID] || [];
+}
+
+export function getSessionPaging(state = kikxState, sessionID = state.selectedSessionID) {
+  return state.sessionPagingByID[sessionID] || {};
 }
 
 export function getSessionPreviews(state = kikxState) {
@@ -234,8 +243,24 @@ export function upsertSession(session, state = kikxState) {
   applySessionSnapshot(state, upsertSessionState(state, session));
 }
 
-export function setSessionFrames(sessionID, frames, state = kikxState) {
-  applySessionSnapshot(state, setSessionFramesState(state, sessionID, frames));
+export function setSessionFrames(sessionID, frames, state = kikxState, paging = null) {
+  applySessionSnapshot(state, setSessionFramesState(state, sessionID, frames, paging));
+}
+
+export function prependSessionFrames(sessionID, frames, state = kikxState) {
+  applySessionSnapshot(state, prependSessionFramesState(state, sessionID, frames));
+}
+
+export function mergeSessionFrameWindow(sessionID, frames, state = kikxState, paging = null) {
+  applySessionSnapshot(state, mergeSessionFrameWindowState(state, sessionID, frames, paging));
+}
+
+export function setSessionPaging(sessionID, patch, state = kikxState) {
+  applySessionSnapshot(state, setSessionPagingState(state, sessionID, patch));
+}
+
+export function resetSessionPaging(sessionID, patch, state = kikxState) {
+  applySessionSnapshot(state, resetSessionPagingState(state, sessionID, patch));
 }
 
 export function upsertFrame(sessionID, frame, state = kikxState) {
@@ -258,6 +283,7 @@ export function resetSessionState(state = kikxState) {
   state.sessionIDs = [];
   state.sessionDetailsByID = {};
   state.framesBySessionID = {};
+  state.sessionPagingByID = {};
   state.selectedSessionID = '';
 }
 
@@ -396,6 +422,8 @@ function applySessionSnapshot(state, snapshot) {
   state.sessionIDs = snapshot.sessionIDs;
   state.sessionDetailsByID = snapshot.sessionDetailsByID;
   state.framesBySessionID = snapshot.framesBySessionID;
+  if (snapshot.sessionPagingByID)
+    state.sessionPagingByID = snapshot.sessionPagingByID;
 }
 
 function normalizeTokenUsageSnapshot(input) {

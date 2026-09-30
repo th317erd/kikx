@@ -107,6 +107,7 @@ export class KikxChatView extends HTMLElement {
     }
 
     let touchedFrameIDs = options.touchedFrameIDs instanceof Set ? options.touchedFrameIDs : null;
+    let animate = options.animate !== false;
     let existingByID = new Map();
     for (let item of Array.from(stream.children).filter((node) => node.matches?.('kikx-frame-item[data-frame-id]')))
       existingByID.set(item.dataset.frameId, item);
@@ -129,14 +130,15 @@ export class KikxChatView extends HTMLElement {
       if (item === cursor) {
         cursor = cursor.nextElementSibling;
       } else {
-        if (isNewItem)
+        if (isNewItem && animate)
           prepareFrameEntryAnimation(item);
 
         stream.insertBefore(item, cursor);
 
         if (isNewItem) {
           insertedNew = true;
-          startFrameEntryAnimation(item);
+          if (animate)
+            startFrameEntryAnimation(item);
         }
       }
     }

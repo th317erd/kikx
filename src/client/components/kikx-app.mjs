@@ -58,6 +58,7 @@ import {
   loadAgents,
   loadClientComponents,
   loadFrames,
+  loadOlderFrames,
   loadSessions,
   loadSessionPreviews,
   loadTeams,
@@ -242,6 +243,7 @@ export class KikxApp extends HTMLElement {
     this._loadTeams = async () => loadTeams(this);
     this._loadClientComponents = async () => loadClientComponents(this);
     this._loadFrames = async (sessionID, options = {}) => loadFrames(this, sessionID, options);
+    this._loadOlderFrames = async (sessionID = this._state.selectedSessionID) => loadOlderFrames(this, sessionID);
     this._loadTokenUsage = async () => loadTokenUsage(this);
     this._onMagicLinkSubmit = async (event) => onMagicLinkSubmit(this, event);
     this._verifyMagicLink = async (code) => verifyMagicLink(this, code);

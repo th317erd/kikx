@@ -6,8 +6,12 @@ import test from 'node:test';
 import {
   countMessageFrames,
   createSessionStateSnapshot,
+  mergeSessionFrameWindowState,
   mergeSessions,
+  prependSessionFramesState,
+  resetSessionPagingState,
   setSessionFramesState,
+  setSessionPagingState,
   upsertFramesState,
   upsertFrameState,
   upsertSessionState,
@@ -720,10 +724,155 @@ test('upsertFrameState ignores malformed frames and missing session ids', () => 
     sessionIDs: [],
     sessionDetailsByID: {},
     framesBySessionID: {},
+    sessionPagingByID: {},
   };
 
   assert.deepEqual(upsertFrameState(state, '', { id: 'frame_1' }), state);
   assert.deepEqual(upsertFrameState(state, 'ses_1', { type: 'MissingID' }), state);
+});
+
+test('prependSessionFramesState inserts older heads before newer ones and keeps the newer heads intact', () => {
+  let state = {
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: {
+      ses_1: { id: 'ses_1', title: 'Long', messageCount: 200 },
+    },
+    framesBySessionID: {
+      ses_1: [
+        { id: 'msg_101', type: 'UserMessage', order: 101, content: { text: 'newer A' } },
+        { id: 'msg_102', type: 'UserMessage', order: 102, content: { text: 'newer B' } },
+      ],
+    },
+  };
+
+  let next = prependSessionFramesState(state, 'ses_1', [
+    { id: 'msg_99', type: 'UserMessage', order: 99, content: { text: 'older A' } },
+    { id: 'msg_100', type: 'UserMessage', order: 100, content: { text: 'older B' } },
+  ]);
+
+  assert.deepEqual(next.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_99', 'msg_100', 'msg_101', 'msg_102' ]);
+  assert.equal(next.framesBySessionID.ses_1[2].content.text, 'newer A');
+  assert.equal(next.sessionDetailsByID.ses_1.messageCount, 200);
+  assert.notEqual(next.framesBySessionID, state.framesBySessionID);
+  assert.deepEqual(state.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_101', 'msg_102' ]);
+});
+
+test('prependSessionFramesState never overwrites an already-present newer head with an older partial', () => {
+  let state = {
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: {
+      ses_1: { id: 'ses_1', messageCount: 3 },
+    },
+    framesBySessionID: {
+      ses_1: [
+        { id: 'msg_2', type: 'UserMessage', order: 2, content: { text: 'complete newer head' } },
+      ],
+    },
+  };
+
+  let next = prependSessionFramesState(state, 'ses_1', [
+    { id: 'msg_1', type: 'UserMessage', order: 1, content: { text: 'older' } },
+    { id: 'msg_2', type: 'UserMessage', order: 2, content: { text: 'stale partial' } },
+  ]);
+
+  assert.deepEqual(next.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'msg_2' ]);
+  assert.equal(next.framesBySessionID.ses_1[1].content.text, 'complete newer head');
+});
+
+test('setSessionFramesState with paging keeps raw total out of messageCount', () => {
+  let state = {
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: {
+      ses_1: { id: 'ses_1', title: 'Huge', messageCount: 0 },
+    },
+    framesBySessionID: {},
+  };
+
+  let next = setSessionFramesState(state, 'ses_1', [
+    { id: 'msg_1', type: 'UserMessage' },
+    { id: 'msg_2', type: 'UserMessage' },
+  ], { total: 640, hasMoreOlder: true, oldestOrder: 1, newestOrder: 2 });
+
+  // `total` is a raw frame-file count (paging metadata), not a visible message
+  // count. messageCount is repaired upward only by the loaded visible heads.
+  assert.equal(next.sessionDetailsByID.ses_1.messageCount, 2);
+  assert.deepEqual(next.sessionPagingByID.ses_1, {
+    hasMoreOlder: true,
+    oldestOrder: 1,
+    newestOrder: 2,
+    total: 640,
+  });
+});
+
+test('prependSessionFramesState does not lower the authoritative messageCount', () => {
+  let state = {
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: {
+      ses_1: { id: 'ses_1', messageCount: 500 },
+    },
+    framesBySessionID: {
+      ses_1: [ { id: 'msg_10', type: 'UserMessage', order: 10 } ],
+    },
+  };
+
+  let next = prependSessionFramesState(state, 'ses_1', [
+    { id: 'msg_9', type: 'UserMessage', order: 9 },
+  ]);
+
+  assert.equal(next.sessionDetailsByID.ses_1.messageCount, 500);
+});
+
+test('setSessionPagingState patches an entry and resetSessionPagingState clears it', () => {
+  let state = {
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: {},
+    framesBySessionID: {},
+  };
+
+  let loaded = setSessionPagingState(state, 'ses_1', { hasMoreOlder: true, oldestOrder: 10, total: 300 });
+  let loading = setSessionPagingState(loaded, 'ses_1', { loading: true });
+
+  assert.deepEqual(loading.sessionPagingByID.ses_1, {
+    hasMoreOlder: true,
+    oldestOrder: 10,
+    total: 300,
+    loading: true,
+  });
+
+  let reset = resetSessionPagingState(loading, 'ses_1');
+  assert.deepEqual(reset.sessionPagingByID, {});
+  assert.deepEqual(loading.sessionPagingByID.ses_1, {
+    hasMoreOlder: true,
+    oldestOrder: 10,
+    total: 300,
+    loading: true,
+  });
+});
+
+test('mergeSessionFrameWindowState updates newer heads, appends new ones, and keeps prepended older heads', () => {
+  let state = {
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: {
+      ses_1: { id: 'ses_1', messageCount: 300 },
+    },
+    framesBySessionID: {
+      ses_1: [
+        { id: 'msg_1', type: 'UserMessage', order: 1, content: { text: 'older prepended' } },
+        { id: 'msg_99', type: 'UserMessage', order: 99, content: { text: 'stale' } },
+      ],
+    },
+  };
+
+  let next = mergeSessionFrameWindowState(state, 'ses_1', [
+    { id: 'msg_99', type: 'UserMessage', order: 99, content: { text: 'fresh' } },
+    { id: 'msg_100', type: 'UserMessage', order: 100, content: { text: 'newest' } },
+  ], { total: 300, hasMoreOlder: true, oldestOrder: 99, newestOrder: 100 });
+
+  assert.deepEqual(next.framesBySessionID.ses_1.map((frame) => frame.id), [ 'msg_1', 'msg_99', 'msg_100' ]);
+  assert.equal(next.framesBySessionID.ses_1.find((frame) => frame.id === 'msg_99').content.text, 'fresh');
+  assert.equal(next.sessionDetailsByID.ses_1.messageCount, 300);
+  assert.equal(next.sessionPagingByID.ses_1.oldestOrder, 99);
+  assert.equal(next.sessionPagingByID.ses_1.newestOrder, 100);
 });
 
 test('countMessageFrames counts visible thread frames and ignores hidden or deleted frames', () => {

@@ -11,6 +11,7 @@ export function createSessionStateSnapshot(input = {}) {
     sessionIDs: Array.isArray(input.sessionIDs) ? [ ...input.sessionIDs ] : [],
     sessionDetailsByID: { ...(input.sessionDetailsByID || {}) },
     framesBySessionID: { ...(input.framesBySessionID || {}) },
+    sessionPagingByID: { ...(input.sessionPagingByID || {}) },
   };
 }
 
@@ -54,7 +55,7 @@ export function upsertSessionState(state, session) {
   };
 }
 
-export function setSessionFramesState(state, sessionID, frames) {
+export function setSessionFramesState(state, sessionID, frames, paging = null) {
   let snapshot = createSessionStateSnapshot(state);
   let messages = projectFrameMessages(frames);
   let next = {
@@ -68,10 +69,16 @@ export function setSessionFramesState(state, sessionID, frames) {
   if (!sessionID)
     return next;
 
+  if (paging)
+    next = setSessionPagingState(next, sessionID, normalizeSessionPaging(paging));
+
   let previous = snapshot.sessionDetailsByID[sessionID];
   if (!previous)
     return next;
 
+  // The window `total` is a raw frame-file count, not a visible message count;
+  // it stays paging metadata. messageCount remains the manifest value, repaired
+  // upward only by the visible heads actually loaded.
   return {
     ...next,
     sessionDetailsByID: {
@@ -82,6 +89,86 @@ export function setSessionFramesState(state, sessionID, frames) {
       },
     },
   };
+}
+
+// Merge older heads BEFORE the loaded window. A head already present (loaded
+// from a newer page or an SSE upsert) always wins, so a page boundary cannot
+// regress a complete newer head with an older partial.
+export function prependSessionFramesState(state, sessionID, olderFrames) {
+  let snapshot = createSessionStateSnapshot(state);
+  if (!sessionID)
+    return snapshot;
+
+  let existing = snapshot.framesBySessionID[sessionID] || [];
+  let existingIDs = new Set();
+  for (let message of existing) {
+    if (message?.id)
+      existingIDs.add(message.id);
+  }
+
+  let prepended = [];
+  for (let message of projectFrameMessages(olderFrames)) {
+    if (!message?.id || existingIDs.has(message.id))
+      continue;
+
+    existingIDs.add(message.id);
+    prepended.push(message);
+  }
+
+  return {
+    ...snapshot,
+    framesBySessionID: {
+      ...snapshot.framesBySessionID,
+      [sessionID]: [ ...prepended, ...existing ],
+    },
+  };
+}
+
+export function setSessionPagingState(state, sessionID, patch = {}) {
+  let snapshot = createSessionStateSnapshot(state);
+  if (!sessionID)
+    return snapshot;
+
+  let previous = snapshot.sessionPagingByID[sessionID] || {};
+  return {
+    ...snapshot,
+    sessionPagingByID: {
+      ...snapshot.sessionPagingByID,
+      [sessionID]: {
+        ...previous,
+        ...patch,
+      },
+    },
+  };
+}
+
+export function resetSessionPagingState(state, sessionID, patch = {}) {
+  let snapshot = createSessionStateSnapshot(state);
+  let sessionPagingByID = { ...snapshot.sessionPagingByID };
+  if (!sessionID)
+    return { ...snapshot, sessionPagingByID };
+
+  delete sessionPagingByID[sessionID];
+  if (Object.keys(patch).length > 0)
+    sessionPagingByID[sessionID] = { ...patch };
+
+  return {
+    ...snapshot,
+    sessionPagingByID,
+  };
+}
+
+// Merge a freshly fetched newest page into the already-loaded window: new
+// frames are added and existing heads are updated in place by id, but heads
+// loaded from older pages are never dropped. Paging meta, when supplied, is
+// applied (and messageCount honours the authoritative total).
+export function mergeSessionFrameWindowState(state, sessionID, frames, paging = null) {
+  let snapshot = createSessionStateSnapshot(state);
+  if (!sessionID)
+    return snapshot;
+
+  let messages = upsertFrameMessages(snapshot.framesBySessionID[sessionID] || [], frames);
+  return setSessionFramesState(snapshot, sessionID, messages, paging);
 }
 
 export function upsertFrameState(state, sessionID, frame) {
@@ -118,6 +205,41 @@ function mergeLoadedFrameCount(previousCount, loadedFrameCount) {
     return Math.max(Math.trunc(previousCount), loaded);
 
   return loaded;
+}
+
+function normalizeSessionPaging(input = {}) {
+  let patch = {};
+  if ('hasMoreOlder' in input)
+    patch.hasMoreOlder = input.hasMoreOlder === true;
+  if ('loading' in input)
+    patch.loading = input.loading === true;
+  if ('oldestOrder' in input)
+    patch.oldestOrder = normalizeOptionalOrder(input.oldestOrder);
+  if ('newestOrder' in input)
+    patch.newestOrder = normalizeOptionalOrder(input.newestOrder);
+  if ('total' in input)
+    patch.total = normalizeOptionalCount(input.total);
+
+  return patch;
+}
+
+function normalizeOptionalOrder(value) {
+  if (value == null)
+    return null;
+
+  let number = Number(value);
+  return Number.isFinite(number) ? Math.trunc(number) : null;
+}
+
+function normalizeOptionalCount(value) {
+  if (value == null)
+    return null;
+
+  let number = Number(value);
+  if (!Number.isFinite(number) || number < 0)
+    return null;
+
+  return Math.trunc(number);
 }
 
 function mergeSessionDetail(previous = {}, next = {}) {

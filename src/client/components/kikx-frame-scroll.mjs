@@ -1,11 +1,12 @@
 'use strict';
 
-import { getGridParentSessionID, getSelectedFrames, getSessions, getSessionPreviews } from '../state/kikx-state.mjs';
+import { getGridParentSessionID, getSelectedFrames, getSessionPaging, getSessions, getSessionPreviews } from '../state/kikx-state.mjs';
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import { buildFrameThread } from './kikx-shell-builders.mjs';
 
 export const ANCHOR_THRESHOLD = 50;
 export const FRAME_ENTER_ANIMATION_MS = 260;
+export const LOAD_OLDER_THRESHOLD = 150;
 
 export function captureRenderSnapshot(app) {
   let frameList = app.querySelector('.kikx-frame-list');
@@ -129,6 +130,18 @@ export function syncFrameThread(app, sessionID = app._state.selectedSessionID, o
     return;
   }
 
+  if (options.prepend === true) {
+    let frameList = view.frameList;
+    let beforeScrollTop = frameList?.scrollTop ?? 0;
+    let beforeScrollHeight = frameList?.scrollHeight ?? 0;
+    view.syncFrames(frames, app._state, { ...options, animate: false });
+    if (frameList) {
+      let growth = frameList.scrollHeight - beforeScrollHeight;
+      frameList.scrollTop = Math.max(0, beforeScrollTop + growth);
+    }
+    return;
+  }
+
   let wasAnchoredToBottom = app._frameListAnchoredToBottom || isFrameListNearBottom(app, view.frameList);
   let result = view.syncFrames(frames, app._state, options);
 
@@ -221,4 +234,18 @@ export function onFrameContentResize(app) {
 
 export function onFrameListScroll(app, event) {
   app._frameListAnchoredToBottom = isFrameListNearBottom(app, event.currentTarget);
+  maybeLoadOlderFrames(app, event.currentTarget);
+}
+
+export function maybeLoadOlderFrames(app, frameList = app.querySelector('.kikx-frame-list')) {
+  if (!frameList || frameList.scrollTop > LOAD_OLDER_THRESHOLD)
+    return;
+
+  let sessionID = app._state.selectedSessionID;
+  let paging = getSessionPaging(app._state, sessionID);
+
+  if (paging.loading === true || paging.hasMoreOlder !== true)
+    return;
+
+  app._loadOlderFrames?.(sessionID);
 }

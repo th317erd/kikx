@@ -43,7 +43,7 @@ export async function onSubmit(app, event) {
     recordComposerHistoryEntry(app._composerHistory, draft);
     app._forceScrollToBottomAfterRender = true;
     app._focusComposerAfterRender = true;
-    await app._loadFrames(app._state.selectedSessionID, { render: false });
+    await app._loadFrames(app._state.selectedSessionID, { render: false, merge: true });
     app._state.status = 'Message committed';
     app._state.statusKind = 'ready';
     app._render();

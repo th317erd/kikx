@@ -1,8 +1,11 @@
 'use strict';
 
 import {
+  getSessionPaging,
   getSessions,
   isCollapsed,
+  mergeSessionFrameWindow,
+  prependSessionFrames,
   resetAgentForm,
   setAccount,
   setAccountFormFromAccount,
@@ -12,6 +15,7 @@ import {
   setPreviewsLoading,
   setPreviewStatus,
   setSessionFrames,
+  setSessionPaging,
   setSessionPreviews,
   setSessions,
   setTeams,
@@ -135,11 +139,92 @@ export async function loadClientComponents(app) {
   }
 }
 
+export const DEFAULT_FRAME_WINDOW_LIMIT = 100;
+
+function frameWindowURL(sessionID, { limit, before } = {}) {
+  let params = new URLSearchParams();
+  if (Number.isInteger(limit) && limit > 0)
+    params.set('limit', String(limit));
+  if (before != null)
+    params.set('before', String(before));
+
+  let query = params.toString();
+  let base = `/api/v1/sessions/${encodeURIComponent(sessionID)}/frames`;
+  return query ? `${base}?${query}` : base;
+}
+
+function frameWindowPaging(data = {}, limit = DEFAULT_FRAME_WINDOW_LIMIT) {
+  return {
+    hasMoreOlder: data.hasMore === true,
+    oldestOrder: data.oldestOrder ?? null,
+    newestOrder: data.newestOrder ?? null,
+    total: data.total ?? null,
+    limit,
+  };
+}
+
+// Fetch a frame window. With no `before`, the server returns the NEWEST page
+// (anchored to the bottom). With `before`, it returns the page just older than
+// that raw order; those heads are PREPENDED without discarding loaded newer
+// heads. Legacy whole-session callers pass `offset` to keep the old shape.
 export async function loadFrames(app, sessionID, options = {}) {
-  let result = await getJSON(app, `/api/v1/sessions/${encodeURIComponent(sessionID)}/frames`);
-  setSessionFrames(sessionID, result.data.frames || [], app._state);
-  if (options.render !== false)
-    app._render();
+  let limit = Number.isInteger(options.limit) ? options.limit : DEFAULT_FRAME_WINDOW_LIMIT;
+  let result = await getJSON(app, frameWindowURL(sessionID, {
+    limit,
+    before: options.before,
+  }));
+  let frames = result.data?.frames || [];
+  let paging = frameWindowPaging(result.data, limit);
+
+  if (options.before != null) {
+    prependSessionFrames(sessionID, frames, app._state);
+    setSessionPaging(sessionID, paging, app._state);
+    if (options.render !== false)
+      app._syncFrameThread(sessionID, { prepend: true, animate: false });
+    return result.data;
+  }
+
+  if (options.merge === true) {
+    mergeSessionFrameWindow(sessionID, frames, app._state, paging);
+  } else {
+    setSessionFrames(sessionID, frames, app._state, paging);
+  }
+
+  if (options.render !== false) {
+    if (options.merge === true)
+      app._syncFrameThread(sessionID, { force: true });
+    else
+      app._render();
+  }
+
+  return result.data;
+}
+
+// Load the previous (older) page for the selected session when the list nears
+// the top. Guards against concurrent loads and stops once `hasMoreOlder` false.
+export async function loadOlderFrames(app, sessionID = app._state.selectedSessionID) {
+  if (!sessionID)
+    return null;
+
+  let paging = getSessionPaging(app._state, sessionID);
+  if (paging.loading === true || paging.hasMoreOlder !== true || paging.oldestOrder == null)
+    return null;
+
+  setSessionPaging(sessionID, { loading: true }, app._state);
+
+  try {
+    return await loadFrames(app, sessionID, {
+      before: paging.oldestOrder,
+      limit: Number.isInteger(paging.limit) ? paging.limit : DEFAULT_FRAME_WINDOW_LIMIT,
+    });
+  } catch (error) {
+    app._state.status = error.message;
+    app._state.statusKind = 'error';
+    app._requestRender();
+    return null;
+  } finally {
+    setSessionPaging(sessionID, { loading: false }, app._state);
+  }
 }
 
 export async function loadTokenUsage(app) {
