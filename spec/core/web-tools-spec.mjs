@@ -1919,6 +1919,69 @@ test('WebSearchTool reports empty DuckDuckGo responses with query context', asyn
   );
 });
 
+test('WebSearchTool searches through the browser service when available', async () => {
+  let visitedURL = null;
+  let browserService = {
+    async withPage(callback) {
+      let page = {
+        setDefaultNavigationTimeout(timeout) {
+          assert.equal(timeout, 7000);
+        },
+        setDefaultTimeout(timeout) {
+          assert.equal(timeout, 7000);
+        },
+        async goto(url, options = {}) {
+          visitedURL = url;
+          assert.equal(options.waitUntil, 'domcontentloaded');
+        },
+        async evaluate(_fn, args) {
+          assert.deepEqual(args, { maxResults: 2 });
+          let evaluated = vm.runInNewContext(`(${_fn.toString()})(args)`, {
+            args,
+            URL,
+            document: {
+              querySelectorAll(selector) {
+                assert.equal(selector, 'a.result__a');
+                return [
+                  {
+                    getAttribute() { return '//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.test%2Fa&amp;rut=1'; },
+                    href: '//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.test%2Fa',
+                    textContent: 'Example A',
+                    closest() {
+                      return { querySelector: () => ({ textContent: 'Snippet A' }) };
+                    },
+                  },
+                  {
+                    getAttribute() { return 'https://example.test/b'; },
+                    href: 'https://example.test/b',
+                    textContent: 'Example B',
+                    closest() {
+                      return { querySelector: () => ({ textContent: 'Snippet B' }) };
+                    },
+                  },
+                ];
+              },
+            },
+          });
+          return JSON.parse(JSON.stringify(evaluated));
+        },
+      };
+      return await callback(page, { mode: 'cdp' });
+    },
+  };
+
+  let tool = new WebSearchTool({ services: { webBrowser: browserService } });
+  let result = await tool.execute({ query: 'example', maxResults: 2, timeoutMs: 7000 });
+
+  assert.equal(new URL(visitedURL).origin, 'https://html.duckduckgo.com');
+  assert.equal(new URL(visitedURL).searchParams.get('q'), 'example');
+  assert.equal(result.source, 'duckduckgo-browser');
+  assert.equal(result.resultCount, 2);
+  assert.deepEqual(result.results.map((item) => item.url), [ 'https://example.test/a', 'https://example.test/b' ]);
+  assert.equal(result.results[0].text, 'Snippet A');
+  assert.equal(result.results[0].source, 'example.test');
+});
+
 test('WebFetchTool extracts rendered page details through injected browser service', async () => {
   let visitedURL = null;
   let browserService = {
@@ -1929,9 +1992,6 @@ test('WebFetchTool extracts rendered page details through injected browser servi
         },
         setDefaultTimeout(timeout) {
           assert.equal(timeout, 5000);
-        },
-        async setUserAgent(userAgent) {
-          assert.match(userAgent, /Kikx/);
         },
         async goto(url, options = {}) {
           visitedURL = url;

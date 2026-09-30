@@ -9,7 +9,10 @@ const DEFAULT_VIEWPORT = { width: 1280, height: 900 };
 
 export class PuppeteerBrowserService {
   constructor(options = {}) {
-    this.debuggingURL = options.debuggingURL || process.env.KIKX_PUPPETEER_DEBUGGING_URL || DEFAULT_DEBUGGING_URL;
+    this.debuggingURL = options.debuggingURL
+      || process.env.KIKX_BROWSER_URL
+      || process.env.KIKX_PUPPETEER_DEBUGGING_URL
+      || DEFAULT_DEBUGGING_URL;
     this.launchOptions = options.launchOptions || {};
     this.defaultViewport = options.defaultViewport || DEFAULT_VIEWPORT;
     this.logger = options.logger || console;

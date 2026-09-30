@@ -2,6 +2,7 @@
 
 import { PluginInterface } from '../plugins/index.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
+import { resolveBrowserService } from './browser-service.mjs';
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_LINKS = 25;
@@ -55,6 +56,8 @@ export class WebFetchTool extends PluginInterface {
     let maxTextLength = normalizeOptionalPositiveInteger(params.maxTextLength);
     let maxLinks = clampInteger(params.maxLinks, DEFAULT_MAX_LINKS, 0, 100);
     let browserService = resolveBrowserService(this.context);
+    if (!browserService)
+      throw new Error('web-fetch requires a webBrowser service');
 
     return await browserService.withPage(async (page, browserInfo = {}) => {
       await configurePage(page, timeoutMs);
@@ -90,7 +93,6 @@ export class WebFetchTool extends PluginInterface {
 async function configurePage(page, timeoutMs) {
   page.setDefaultNavigationTimeout?.(timeoutMs);
   page.setDefaultTimeout?.(timeoutMs);
-  await page.setUserAgent?.('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari/537.36 Kikx/0.1');
 }
 
 function extractPageSnapshot({ selector, maxTextLength, maxLinks }) {
@@ -120,38 +122,6 @@ function extractPageSnapshot({ selector, maxTextLength, maxLinks }) {
     textTruncated: maxTextLength == null ? false : fullText.length > maxTextLength,
     links,
   };
-}
-
-function normalizeRenderedText(value) {
-  return String(value || '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
-}
-
-function resolveBrowserService(context = {}) {
-  let service = context.webBrowser || context.services?.webBrowser || resolveContextService(context, 'webBrowser');
-  if (!service?.withPage)
-    throw new Error('web-fetch requires a webBrowser service');
-
-  return service;
-}
-
-function resolveContextService(context, name) {
-  let appContext = context.services?.context || context.context;
-  if (appContext?.has?.(name) && typeof appContext.require === 'function')
-    return appContext.require(name);
-
-  if (typeof appContext?.require === 'function') {
-    try {
-      return appContext.require(name);
-    } catch (_error) {
-      return null;
-    }
-  }
-
-  return null;
 }
 
 function normalizeHTTPURL(value) {

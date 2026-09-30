@@ -2,6 +2,7 @@
 
 import { PluginInterface } from '../plugins/index.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
+import { resolveBrowserService } from './browser-service.mjs';
 
 const DUCKDUCKGO_API_URL = 'https://api.duckduckgo.com/';
 const DUCKDUCKGO_HTML_URL = 'https://html.duckduckgo.com/html/';
@@ -46,50 +47,87 @@ export class WebSearchTool extends PluginInterface {
     let query = normalizeRequiredString(params.query, 'query');
     let maxResults = clampInteger(params.maxResults, DEFAULT_MAX_RESULTS, 1, MAX_RESULTS_LIMIT);
     let timeoutMs = clampInteger(params.timeoutMs, DEFAULT_TIMEOUT_MS, 1000, 30000);
-    let fetchImpl = resolveFetch(this.context);
 
-    let url = new URL(DUCKDUCKGO_API_URL);
-    url.searchParams.set('q', query);
-    url.searchParams.set('format', 'json');
-    url.searchParams.set('no_html', '1');
-    url.searchParams.set('skip_disambig', '1');
+    // Prefer real-browser search (headed Chrome over CDP) so bot-blocking
+    // challenges are met with a genuine browser/WebGL context. Fall back to
+    // plain fetch when no browser service is available.
+    let browserService = resolveBrowserService(this.context);
+    if (browserService)
+      return await browserSearch(browserService, { query, maxResults, timeoutMs });
 
-    let data = await fetchDuckDuckGoJSON(fetchImpl, url, timeoutMs, { query });
-    let normalized = normalizeDuckDuckGoResults(data, {
-      query,
-      maxResults,
+    return await fetchSearch(this.context, { query, maxResults, timeoutMs });
+  }
+}
+
+async function browserSearch(browserService, { query, maxResults, timeoutMs }) {
+  let searchURL = new URL(DUCKDUCKGO_HTML_URL);
+  searchURL.searchParams.set('q', query);
+
+  let results = await browserService.withPage(async (page) => {
+    page.setDefaultNavigationTimeout?.(timeoutMs);
+    page.setDefaultTimeout?.(timeoutMs);
+    await page.goto(searchURL.href, {
+      waitUntil: 'domcontentloaded',
+      timeout: timeoutMs,
     });
 
-    if (normalized.results.length >= maxResults)
-      return normalized;
+    return await page.evaluate(extractDuckDuckGoResults, { maxResults });
+  });
 
-    let htmlResults;
-    try {
-      htmlResults = await fetchDuckDuckGoHTMLResults(fetchImpl, {
-        query,
-        timeoutMs,
-        maxResults,
-      });
-    } catch (error) {
-      if (normalized.results.length > 0)
-        return { ...normalized, warning: error.message };
+  return {
+    query,
+    source: 'duckduckgo-browser',
+    heading: '',
+    answerType: '',
+    results: Array.isArray(results) ? results.slice(0, maxResults) : [],
+    resultCount: Array.isArray(results) ? Math.min(results.length, maxResults) : 0,
+  };
+}
 
-      throw error;
-    }
+async function fetchSearch(context, { query, maxResults, timeoutMs }) {
+  let fetchImpl = resolveFetch(context);
 
-    if (htmlResults.length === 0)
-      return normalized;
+  let url = new URL(DUCKDUCKGO_API_URL);
+  url.searchParams.set('q', query);
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('no_html', '1');
+  url.searchParams.set('skip_disambig', '1');
 
-    let results = mergeSearchResults(normalized.results, htmlResults, maxResults);
-    return {
-      ...normalized,
-      source: normalized.results.length > 0
-        ? 'duckduckgo-instant-answer+html'
-        : 'duckduckgo-html',
-      results,
-      resultCount: results.length,
-    };
+  let data = await fetchDuckDuckGoJSON(fetchImpl, url, timeoutMs, { query });
+  let normalized = normalizeDuckDuckGoResults(data, {
+    query,
+    maxResults,
+  });
+
+  if (normalized.results.length >= maxResults)
+    return normalized;
+
+  let htmlResults;
+  try {
+    htmlResults = await fetchDuckDuckGoHTMLResults(fetchImpl, {
+      query,
+      timeoutMs,
+      maxResults,
+    });
+  } catch (error) {
+    if (normalized.results.length > 0)
+      return { ...normalized, warning: error.message };
+
+    throw error;
   }
+
+  if (htmlResults.length === 0)
+    return normalized;
+
+  let results = mergeSearchResults(normalized.results, htmlResults, maxResults);
+  return {
+    ...normalized,
+    source: normalized.results.length > 0
+      ? 'duckduckgo-instant-answer+html'
+      : 'duckduckgo-html',
+    results,
+    resultCount: results.length,
+  };
 }
 
 async function fetchDuckDuckGoJSON(fetchImpl, url, timeoutMs, { query }) {
@@ -214,6 +252,58 @@ function parseDuckDuckGoHTMLResults(html, { maxResults }) {
       text,
       url,
       source: hostnameFromURL(url),
+    });
+  }
+
+  return results;
+}
+
+// Runs inside the browser page context (page.evaluate). Must be self-contained.
+function extractDuckDuckGoResults({ maxResults }) {
+  function normalizeText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function resolveURL(raw) {
+    let url = String(raw || '');
+    let redirect = url.match(/[?&]uddg=([^&]+)/);
+    if (redirect) {
+      try {
+        return decodeURIComponent(redirect[1]);
+      } catch (_error) {}
+    }
+
+    if (url.startsWith('//'))
+      return `https:${url}`;
+
+    return url;
+  }
+
+  function hostname(value) {
+    try {
+      return new URL(value).hostname;
+    } catch (_error) {
+      return '';
+    }
+  }
+
+  let results = [];
+  for (let anchor of Array.from(document.querySelectorAll('a.result__a'))) {
+    if (results.length >= maxResults)
+      break;
+
+    let url = resolveURL(anchor.getAttribute('href') || anchor.href || '');
+    let title = normalizeText(anchor.textContent || '');
+    let container = anchor.closest('.result, .web-result') || anchor.parentElement;
+    let snippet = container?.querySelector?.('.result__snippet');
+    let text = normalizeText(snippet?.textContent || '');
+
+    results.push({
+      type: 'result',
+      title: title || text.split(/\s+/g).slice(0, 8).join(' '),
+      text,
+      url,
+      source: hostname(url),
     });
   }
 
