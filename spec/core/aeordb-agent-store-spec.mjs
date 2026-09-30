@@ -105,6 +105,8 @@ test('AeorDBAgentStore persists plugin-owned agent config and sanitizes secrets'
       apiKey: { present: true, last4: '1234' },
     },
     enabled: true,
+    crownedAt: null,
+    crownedClock: null,
     createdAt: 1000,
     updatedAt: 1000,
   });
@@ -249,4 +251,78 @@ test('AeorDBAgentStore treats a missing agents directory as an empty list', asyn
   });
 
   assert.deepEqual(await store.listAgents(), []);
+});
+
+test('AeorDBAgentStore crowns agents and orders master agents newest-first', async () => {
+  // Deterministic HLC: distinct micros per call so order is unambiguous.
+  let tick = 0;
+  let logicalClock = {
+    tick() {
+      tick++;
+      return { at: 1_000_000 + tick, clock: `${String(1_000_000 + tick).padStart(16, '0')}-000000-test` };
+    },
+  };
+  let store = new AeorDBAgentStore({ aeordb: createClient(), logicalClock });
+
+  let a = await store.createAgent({ name: 'Alpha', pluginID: 'test' });
+  let b = await store.createAgent({ name: 'Beta', pluginID: 'test' });
+  let c = await store.createAgent({ name: 'Gamma', pluginID: 'test' });
+
+  assert.equal(a.crownedAt, null);
+  assert.equal(a.crownedClock, null);
+
+  let crownedA = await store.setAgentCrowned(a.id, true);
+  assert.ok(crownedA.crownedAt > 0);
+  assert.match(crownedA.crownedClock, /^\d{16}-\d{6}-test$/);
+
+  let crownedB = await store.setAgentCrowned(b.id, true);
+  let crownedC = await store.setAgentCrowned(c.id, true);
+
+  let masters = await store.listMasterAgents();
+  // Newest crown first => C (#1), B (#2), A (#3).
+  assert.deepEqual(masters.map((agent) => agent.name), [ 'Gamma', 'Beta', 'Alpha' ]);
+  assert.ok(crownedC.crownedClock > crownedB.crownedClock);
+  assert.ok(crownedB.crownedClock > crownedA.crownedClock);
+});
+
+test('AeorDBAgentStore un-crowns agents and ignores idempotent re-crown', async () => {
+  let tick = 0;
+  let logicalClock = {
+    tick() {
+      tick++;
+      return { at: 2_000_000 + tick, clock: `${String(2_000_000 + tick).padStart(16, '0')}-000000-test` };
+    },
+  };
+  let store = new AeorDBAgentStore({ aeordb: createClient(), logicalClock });
+  let a = await store.createAgent({ name: 'Alpha', pluginID: 'test' });
+
+  let first = await store.setAgentCrowned(a.id, true);
+  // Re-crowning while already crowned must not move it (no new timestamp).
+  let again = await store.setAgentCrowned(a.id, true);
+  assert.equal(again.crownedClock, first.crownedClock);
+
+  let uncrowned = await store.setAgentCrowned(a.id, false);
+  assert.equal(uncrowned.crownedAt, null);
+  assert.equal(uncrowned.crownedClock, null);
+  assert.deepEqual(await store.listMasterAgents(), []);
+
+  // Re-crowning after uncrown gets a fresh, later stamp.
+  let recrowned = await store.setAgentCrowned(a.id, true);
+  assert.ok(recrowned.crownedClock > first.crownedClock);
+});
+
+test('AeorDBAgentStore rejects crowning a missing agent', async () => {
+  let store = new AeorDBAgentStore({
+    aeordb: {
+      async putFile() {},
+      async getFile() {
+        return null;
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => store.setAgentCrowned('missing', true),
+    /Unknown agent/,
+  );
 });

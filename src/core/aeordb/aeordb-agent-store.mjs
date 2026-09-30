@@ -3,6 +3,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
+import { HybridLogicalClock } from '../clock/hybrid-logical-clock.mjs';
 
 const DEFAULT_ROOT_PATH = '/kikx';
 
@@ -12,6 +13,7 @@ export class AeorDBAgentStore {
       aeordb,
       rootPath = DEFAULT_ROOT_PATH,
       clock = () => Date.now(),
+      logicalClock = null,
       idGenerator = () => randomUUID(),
     } = options;
 
@@ -21,6 +23,10 @@ export class AeorDBAgentStore {
     this.aeordb = aeordb;
     this.rootPath = normalizeRoot(rootPath);
     this.clock = clock;
+    // High-resolution, monotonic source for "crowned_at" ordering: the HLC tick
+    // yields a microsecond physical timestamp plus a logical counter, so rapid
+    // crowns still get a strict, stable order.
+    this.logicalClock = logicalClock || new HybridLogicalClock();
     this.idGenerator = idGenerator;
     this._indexesReady = false;
   }
@@ -37,6 +43,8 @@ export class AeorDBAgentStore {
       config: input.config || {},
       secrets: input.secrets || {},
       enabled: input.enabled !== false,
+      crownedAt: null,
+      crownedClock: null,
       createdAt: input.createdAt || now,
       updatedAt: input.updatedAt || now,
     });
@@ -222,11 +230,68 @@ export class AeorDBAgentStore {
       config: input.config ?? agent.config ?? {},
       secrets: mergeSecrets(agent.secrets, input.secrets, input.clearSecrets),
       enabled: input.enabled ?? agent.enabled,
+      crownedAt: agent.crownedAt ?? null,
+      crownedClock: agent.crownedClock ?? null,
       updatedAt: input.updatedAt || this.clock(),
     });
 
     await this.saveAgent(next, agent);
     return sanitizeAgent(next);
+  }
+
+  // Crown (master agent) or uncrown an agent. Crowned agents are ordered by
+  // crownedClock descending: the newest crown is master #1, the next #2, etc.
+  // Uncrowning clears the crown; re-crowning a previously crowned agent moves it
+  // to the front (a fresh crowned_at), which is the intuitive "crown now" action.
+  async setAgentCrowned(agentID, crowned = true) {
+    await this.ensureIndexConfigs();
+
+    let agent = await this.loadAgent(agentID);
+    if (!agent?.id)
+      throw notFound(agentID);
+
+    let wasCrowned = Boolean(agent.crownedClock);
+    let isCrowned = crowned === true;
+
+    if (isCrowned && wasCrowned) {
+      // Already crowned and asking to crown again: no-op (idempotent), so a
+      // double click does not reorder masters.
+      return sanitizeAgent(agent);
+    }
+
+    let crownedAt = null;
+    let crownedClock = null;
+    if (isCrowned) {
+      let stamp = this.nextCrownStamp();
+      crownedAt = stamp.at;
+      crownedClock = stamp.clock;
+    }
+
+    let next = normalizeAgent({
+      ...agent,
+      crownedAt,
+      crownedClock,
+      updatedAt: this.clock(),
+    });
+
+    await this.saveAgent(next, agent);
+    return sanitizeAgent(next);
+  }
+
+  // Master agents (crowned), most recently crowned first (master #1 first).
+  // Bounded by limit; defaults to all agents' worth in one request.
+  async listMasterAgents(options = {}) {
+    await this.ensureIndexConfigs();
+
+    let agents = await this.listAgents({ limit: options.limit || 500, offset: 0 });
+    return agents
+      .filter((agent) => Boolean(agent.crownedClock))
+      .sort(compareMasterOrder)
+      .slice(normalizeOffset(options.offset), normalizeOffset(options.offset) + normalizeLimit(options.limit, 500));
+  }
+
+  nextCrownStamp() {
+    return this.logicalClock.tick();
   }
 
   async deleteAgent(agentID) {
@@ -248,6 +313,7 @@ export class AeorDBAgentStore {
       ...agent,
       nameKey: normalizeAgentNameForLookup(agent.name),
       enabledIndex: String(agent.enabled !== false),
+      crownedIndex: String(Boolean(agent.crownedClock)),
     });
     await this.saveAgentNameLookup(agent);
 
@@ -274,6 +340,9 @@ export class AeorDBAgentStore {
         { name: 'nameKey', type: 'string' },
         { name: 'pluginID', type: 'string' },
         { name: 'enabled', type: 'string', source: [ 'enabledIndex' ] },
+        { name: 'crowned', type: 'string', source: [ 'crownedIndex' ] },
+        { name: 'crownedAt', type: 'timestamp' },
+        { name: 'crownedClock', type: 'string' },
         { name: 'createdAt', type: 'timestamp' },
         { name: 'updatedAt', type: 'timestamp' },
       ],
@@ -321,6 +390,8 @@ export function sanitizeAgent(agent) {
     config: isPlainObject(agent.config) ? { ...agent.config } : {},
     secretState: secretState(agent.secrets),
     enabled: agent.enabled !== false,
+    crownedAt: normalizeCrownTimestamp(agent.crownedAt),
+    crownedClock: normalizeCrownClock(agent.crownedClock),
     createdAt: agent.createdAt || null,
     updatedAt: agent.updatedAt || null,
   };
@@ -335,9 +406,28 @@ function normalizeAgent(agent) {
     config: normalizePlainObject(agent.config, 'config'),
     secrets: normalizePlainObject(agent.secrets, 'secrets'),
     enabled: agent.enabled !== false,
+    crownedAt: normalizeCrownTimestamp(agent.crownedAt),
+    crownedClock: normalizeCrownClock(agent.crownedClock),
     createdAt: agent.createdAt,
     updatedAt: agent.updatedAt,
   };
+}
+
+function normalizeCrownTimestamp(value) {
+  let number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.trunc(number) : null;
+}
+
+function normalizeCrownClock(value) {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+}
+
+// Master order: newest crowned_at first. crownedClock is a lexicographically
+// sortable HLC string; crownedAt breaks any HLC ties. Descending.
+function compareMasterOrder(a, b) {
+  return String(b.crownedClock || '').localeCompare(String(a.crownedClock || ''))
+    || (Number(b.crownedAt || 0) - Number(a.crownedAt || 0))
+    || String(a.id).localeCompare(String(b.id));
 }
 
 function normalizeAgentNameForLookup(name) {

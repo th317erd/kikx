@@ -437,6 +437,42 @@ async function routeRequest({ request, response, context, staticRoots }) {
     return;
   }
 
+  // Master agents (crowned), best first. Optionally resolve the effective
+  // default, skipping excluded agents (e.g. ones that just errored).
+  if (request.method === 'GET' && url.pathname === '/api/v1/agents/masters') {
+    let agentManager = context.require('agentManager');
+    let masters = await agentManager.listMasterAgents({
+      limit: parsePositiveInteger(url.searchParams.get('limit'), 50),
+      offset: parseNonNegativeInteger(url.searchParams.get('offset'), 0),
+    });
+    let defaults = false;
+    let resolved = null;
+    if (url.searchParams.get('resolve') === '1') {
+      let excludeAgentIDs = url.searchParams.getAll('exclude').filter((id) => id.trim() !== '');
+      resolved = await agentManager.resolveDefaultAgent({ excludeAgentIDs });
+      defaults = true;
+    }
+
+    writeJSON(response, 200, {
+      data: {
+        masters,
+        ...(defaults ? { defaultAgent: resolved } : {}),
+      },
+    });
+    return;
+  }
+
+  let agentCrownRoute = matchAgentCrownRoute(url.pathname);
+  if (agentCrownRoute && request.method === 'POST') {
+    let agentManager = context.require('agentManager');
+    writeJSON(response, 200, {
+      data: {
+        agent: await agentManager.setAgentCrowned(agentCrownRoute.agentID, agentCrownRoute.crowned),
+      },
+    });
+    return;
+  }
+
   let agentRoute = matchAgentRoute(url.pathname);
   if (agentRoute) {
     let agentManager = context.require('agentManager');
@@ -854,6 +890,18 @@ function matchAgentRoute(pathname) {
 
   return {
     agentID: decodeURIComponent(match[1]),
+  };
+}
+
+// POST /api/v1/agents/:id/crown and .../uncrown toggle master-agent status.
+function matchAgentCrownRoute(pathname) {
+  let match = /^\/api\/v1\/agents\/([^/]+)\/(crown|uncrown)$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    agentID: decodeURIComponent(match[1]),
+    crowned: match[2] === 'crown',
   };
 }
 

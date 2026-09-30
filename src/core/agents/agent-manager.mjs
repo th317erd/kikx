@@ -78,6 +78,32 @@ export class AgentManager {
     });
   }
 
+  async setAgentCrowned(agentID, crowned = true) {
+    return await this.agentStore.setAgentCrowned(agentID, crowned === true);
+  }
+
+  // Crowned master agents, best (master #1) first.
+  async listMasterAgents(options = {}) {
+    return await this.agentStore.listMasterAgents(options);
+  }
+
+  // Resolve the default agent for a session: the first enabled master agent, in
+  // master order (#1, then #2, ...). Agents listed in `excludeAgentIDs` (for
+  // example ones that just errored) are skipped, so callers get master #2 as the
+  // first backup, #3 as the second, and so on. Returns null when none qualify.
+  async resolveDefaultAgent(options = {}) {
+    let exclude = new Set(normalizeStringArray(options.excludeAgentIDs));
+    let masters = await this.listMasterAgents({ limit: options.limit || 500 });
+    for (let agent of masters) {
+      if (agent.enabled === false || exclude.has(agent.id))
+        continue;
+
+      return agent;
+    }
+
+    return null;
+  }
+
   async deleteAgent(agentID) {
     await this.agentStore.deleteAgent(agentID);
   }
@@ -147,6 +173,19 @@ export class AgentManager {
       enabled: input.enabled,
     });
   }
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value))
+    return [];
+
+  let output = [];
+  for (let item of value) {
+    if (typeof item === 'string' && item.trim() !== '')
+      output.push(item.trim());
+  }
+
+  return output;
 }
 
 function normalizeObject(value, fieldName) {

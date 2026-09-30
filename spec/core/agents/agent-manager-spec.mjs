@@ -324,3 +324,58 @@ test('AgentManager rejects missing required plugin fields on create', async () =
     /apiKey is required/,
   );
 });
+
+test('AgentManager crowns agents and resolves the default master agent in order', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerAgentProvider('test-agent', TestAgentProvider);
+
+  // Minimal store implementing the master-agent surface.
+  let masters = [
+    { id: 'agent_1', name: 'Master One', pluginID: 'test-agent', enabled: true, crownedClock: '0002', crownedAt: 2 },
+    { id: 'agent_2', name: 'Master Two', pluginID: 'test-agent', enabled: true, crownedClock: '0001', crownedAt: 1 },
+    { id: 'agent_3', name: 'Master Three', pluginID: 'test-agent', enabled: true, crownedClock: '0000', crownedAt: 0 },
+  ];
+  let crownCalls = [];
+  let store = {
+    async createAgent() { throw new Error('unused'); },
+    async getAgent() { return null; },
+    async updateAgent() { throw new Error('unused'); },
+    async setAgentCrowned(agentID, crowned) {
+      crownCalls.push({ agentID, crowned });
+      return { id: agentID, crownedClock: crowned ? '0009' : null, crownedAt: crowned ? 9 : null };
+    },
+    async listMasterAgents() { return masters; },
+  };
+
+  let manager = new AgentManager({ pluginRegistry, agentStore: store });
+
+  await manager.setAgentCrowned('agent_2', true);
+  assert.deepEqual(crownCalls, [ { agentID: 'agent_2', crowned: true } ]);
+
+  assert.deepEqual((await manager.listMasterAgents()).map((agent) => agent.name), [ 'Master One', 'Master Two', 'Master Three' ]);
+
+  // Default = master #1.
+  assert.equal((await manager.resolveDefaultAgent()).id, 'agent_1');
+  // Excluding #1 falls back to master #2, then #3.
+  assert.equal((await manager.resolveDefaultAgent({ excludeAgentIDs: [ 'agent_1' ] })).id, 'agent_2');
+  assert.equal((await manager.resolveDefaultAgent({ excludeAgentIDs: [ 'agent_1', 'agent_2' ] })).id, 'agent_3');
+  // All excluded => null.
+  assert.equal(await manager.resolveDefaultAgent({ excludeAgentIDs: [ 'agent_1', 'agent_2', 'agent_3' ] }), null);
+});
+
+test('AgentManager skips disabled master agents when resolving the default', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerAgentProvider('test-agent', TestAgentProvider);
+
+  let store = {
+    async listMasterAgents() {
+      return [
+        { id: 'agent_1', name: 'Disabled Master', pluginID: 'test-agent', enabled: false, crownedClock: '0002' },
+        { id: 'agent_2', name: 'Enabled Master', pluginID: 'test-agent', enabled: true, crownedClock: '0001' },
+      ];
+    },
+  };
+
+  let manager = new AgentManager({ pluginRegistry, agentStore: store });
+  assert.equal((await manager.resolveDefaultAgent()).id, 'agent_2');
+});

@@ -154,6 +154,20 @@ function createAgentManager() {
         secretState: { apiKey: { present: true, last4: '1234' } },
       };
     },
+    async setAgentCrowned(agentID, crowned) {
+      calls.push({ method: 'setAgentCrowned', agentID, crowned });
+      return { id: agentID, name: 'Coder', pluginID: 'test-agent', crownedClock: crowned ? '0000000000000005-000000-r' : null, crownedAt: crowned ? 5 : null };
+    },
+    async listMasterAgents(options) {
+      calls.push({ method: 'listMasterAgents', options });
+      return [
+        { id: 'master_1', name: 'Master One', pluginID: 'test-agent', crownedClock: '0000000000000002-000000-r', crownedAt: 2 },
+      ];
+    },
+    async resolveDefaultAgent(options) {
+      calls.push({ method: 'resolveDefaultAgent', options });
+      return { id: 'master_1', name: 'Master One', pluginID: 'test-agent' };
+    },
     async getAgent(agentID) {
       calls.push({ method: 'getAgent', agentID });
       if (agentID === 'missing') {
@@ -1272,6 +1286,45 @@ test('agent routes create, list, read, update, and delete through AgentManager',
     assert.deepEqual(agentManager.calls[1].options, { limit: 25, offset: 5 });
     assert.equal(agentManager.calls[0].input.character, 'You are a careful engineer.');
     assert.equal(agentManager.calls[3].input.character, 'You are a skeptical reviewer.');
+  } finally {
+    await close(server);
+  }
+});
+
+test('agent crown routes toggle master status and list masters', async () => {
+  let agentManager = createAgentManager();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      agentManager,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let crownResponse = await jsonFetch(`${baseURL}/api/v1/agents/agent_1/crown`, {}, { method: 'POST' });
+    let crownBody = await crownResponse.json();
+    assert.equal(crownResponse.status, 200);
+    assert.ok(crownBody.data.agent.crownedAt > 0);
+
+    let uncrownResponse = await jsonFetch(`${baseURL}/api/v1/agents/agent_1/uncrown`, {}, { method: 'POST' });
+    assert.equal(uncrownResponse.status, 200);
+    assert.equal((await uncrownResponse.json()).data.agent.crownedAt, null);
+
+    let mastersResponse = await fetch(`${baseURL}/api/v1/agents/masters`);
+    let mastersBody = await mastersResponse.json();
+    assert.equal(mastersResponse.status, 200);
+    assert.deepEqual(mastersBody.data.masters.map((agent) => agent.name), [ 'Master One' ]);
+    assert.equal('defaultAgent' in mastersBody.data, false);
+
+    let resolveResponse = await fetch(`${baseURL}/api/v1/agents/masters?resolve=1&exclude=master_1`);
+    let resolveBody = await resolveResponse.json();
+    assert.equal(resolveResponse.status, 200);
+    assert.equal(resolveBody.data.defaultAgent.id, 'master_1');
+
+    let resolveCall = agentManager.calls.find((call) => call.method === 'resolveDefaultAgent');
+    assert.deepEqual(resolveCall.options.excludeAgentIDs, [ 'master_1' ]);
   } finally {
     await close(server);
   }
