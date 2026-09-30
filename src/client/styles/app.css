@@ -1403,3 +1403,23 @@ kikx-typing-indicator {
 .kikx-session-card--add__label {
   pointer-events: none;
 }
+
+.kikx-breadcrumb__crumb--editable {
+  cursor: text;
+}
+
+.kikx-breadcrumb__crumb--editable:hover {
+  border-color: #3c444d;
+  color: #f5f7fa;
+}
+
+.kikx-breadcrumb__input {
+  width: 16ch;
+  max-width: 240px;
+  padding: 2px 6px;
+  border: 1px solid #3d6cff;
+  border-radius: 6px;
+  background: #12161a;
+  color: #f5f7fa;
+  font: inherit;
+}

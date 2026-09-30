@@ -34,6 +34,7 @@ import {
   setAgentFormProvider,
   setClientComponents,
   setCollapsedView,
+  setNavigationStack,
   setSessionFrames,
   setSessionPreviews,
   setSessions,
@@ -62,6 +63,7 @@ import './kikx-frame-item.mjs';
 import './kikx-chat-view.mjs';
 import './kikx-session-grid.mjs';
 import { childSessions, chunkSessionIDs, clampPreviewCount } from './chat-view-model.mjs';
+import { stackFromSearchParams, stackToURL } from '../state/navigation-stack.mjs';
 import {
   HERO_VIEW_TRANSITION_NAME,
   runViewTransition,
@@ -138,6 +140,9 @@ export class KikxApp extends HTMLElement {
       if (event.detail?.sessionID)
         this._openSessionFromCard(event.detail.sessionID);
     });
+    // Browser back/forward navigates the window stack.
+    this._onPopState = () => this._syncFromURL();
+    globalThis.addEventListener?.('popstate', this._onPopState);
     this._render();
     if (this._state.authToken) {
       this._connectRuntimeEvents();
@@ -253,6 +258,8 @@ export class KikxApp extends HTMLElement {
         label += ' (sub-sessions)';
       crumbs.push({
         label,
+        sessionTitle: session?.title || '',
+        sessionID: entry.sessionID,
         depth: index + 1,
         active: index === stack.length - 1,
       });
@@ -263,14 +270,90 @@ export class KikxApp extends HTMLElement {
         let nodes = [];
         if (index > 0)
           nodes.push(span.class('kikx-breadcrumb__sep')('›'));
-        nodes.push(
-          crumb.active
-            ? span.class('kikx-breadcrumb__crumb kikx-breadcrumb__crumb--active')(crumb.label)
-            : button.type('button').class('kikx-breadcrumb__crumb').onClick(() => this._navigateToDepth(crumb.depth))(crumb.label),
-        );
+        nodes.push(this._buildBreadcrumbCrumb(crumb));
         return nodes;
       }),
     );
+  }
+
+  _buildBreadcrumbCrumb(crumb) {
+    if (!crumb.active)
+      return button.type('button').class('kikx-breadcrumb__crumb').onClick(() => this._navigateToDepth(crumb.depth))(crumb.label);
+
+    // The active crumb is editable in place (Projects root is not a session).
+    if (!crumb.sessionID)
+      return span.class('kikx-breadcrumb__crumb kikx-breadcrumb__crumb--active')(crumb.label);
+
+    if (this._state.editingBreadcrumbSessionID === crumb.sessionID) {
+      // A native input: aeor-input does not re-dispatch keydown/focusout, which
+      // this inline editor needs for Enter/Escape and click-away commit.
+      return input
+        .type('text')
+        .class('kikx-breadcrumb__input')
+        .name('breadcrumb-title')
+        .value(this._state.editingBreadcrumbTitle || '')
+        .onInput((event) => { this._state.editingBreadcrumbTitle = event.target.value; })
+        .onKeydown((event) => this._onBreadcrumbEditKeydown(event, crumb.sessionID))
+        .onFocusout(() => this._commitBreadcrumbEdit(crumb.sessionID))();
+    }
+
+    return button
+      .type('button')
+      .class('kikx-breadcrumb__crumb kikx-breadcrumb__crumb--active kikx-breadcrumb__crumb--editable')
+      .title('Rename session')
+      .onClick(() => this._beginBreadcrumbEdit(crumb.sessionID, crumb.sessionTitle))(crumb.label);
+  }
+
+  _beginBreadcrumbEdit(sessionID, currentTitle) {
+    this._state.editingBreadcrumbSessionID = sessionID;
+    this._state.editingBreadcrumbTitle = currentTitle || '';
+    this._render();
+    queueMicrotask(() => {
+      let field = this.querySelector('.kikx-breadcrumb input[name="breadcrumb-title"]');
+      field?.focus?.();
+      field?.select?.();
+    });
+  }
+
+  _onBreadcrumbEditKeydown(event, sessionID) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      this._commitBreadcrumbEdit(sessionID);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      this._cancelBreadcrumbEdit();
+    }
+  }
+
+  _cancelBreadcrumbEdit() {
+    this._state.editingBreadcrumbSessionID = '';
+    this._state.editingBreadcrumbTitle = '';
+    this._render();
+  }
+
+  async _commitBreadcrumbEdit(sessionID) {
+    if (this._state.editingBreadcrumbSessionID !== sessionID)
+      return;
+
+    let title = (this._state.editingBreadcrumbTitle || '').trim();
+    let session = getSessions(this._state).find((candidate) => candidate.id === sessionID);
+    this._state.editingBreadcrumbSessionID = '';
+    this._state.editingBreadcrumbTitle = '';
+
+    if (!title || title === (session?.title || '')) {
+      this._render();
+      return;
+    }
+
+    try {
+      let result = await this._patchJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}`, { title });
+      upsertSession(result.data.session, this._state);
+    } catch (error) {
+      this._state.status = error.message;
+      this._state.statusKind = 'error';
+    }
+
+    this._render();
   }
 
   _buildRunnerShell() {
@@ -1501,7 +1584,10 @@ export class KikxApp extends HTMLElement {
     this._state.statusKind = 'pending';
 
     try {
+      // Create as a child of the session whose grid we are viewing (null at root).
+      let parentSessionID = getGridParentSessionID(this._state);
       let result = await this._postJSON('/api/v1/sessions', {
+        ...(parentSessionID ? { parentSessionID } : {}),
       });
       upsertSession(result.data.session, this._state);
       await this._loadSessions();
@@ -1593,6 +1679,7 @@ export class KikxApp extends HTMLElement {
     runViewTransition(() => {
       navigateBack(this._state);
       this._syncSelectedSessionToStack();
+      this._syncURLFromStack({ push: true });
       this._render();
       let grid = this.querySelector('kikx-session-grid');
       this._setHeroName(grid?.cardViewElement(leavingSessionID));
@@ -1612,6 +1699,7 @@ export class KikxApp extends HTMLElement {
   async _showSubSessions() {
     await runViewTransition(() => {
       setCollapsedView(true, this._state);
+      this._syncURLFromStack({ push: true });
       this._render();
     });
 
@@ -1626,6 +1714,7 @@ export class KikxApp extends HTMLElement {
 
     await runViewTransition(() => {
       setCollapsedView(false, this._state);
+      this._syncURLFromStack({ push: true });
       this._render();
     });
   }
@@ -1640,6 +1729,7 @@ export class KikxApp extends HTMLElement {
 
     this._state.navigationStack = stack.slice(0, depth);
     this._syncSelectedSessionToStack();
+    this._syncURLFromStack({ push: true });
     this._render();
   }
 
@@ -1659,6 +1749,7 @@ export class KikxApp extends HTMLElement {
       this._state.statusKind = 'pending';
       this._forceScrollToBottomAfterRender = true;
       navigateThread(sessionID, this._state);
+      this._syncURLFromStack({ push: true });
       this._render();
       this._setHeroName(this._threadChatViewElement());
     });
@@ -1693,6 +1784,28 @@ export class KikxApp extends HTMLElement {
       setViewTransitionName(view, '');
   }
 
+  // Resolve the navigation stack from the current URL, dropping any session IDs
+  // that no longer exist and truncating at the first missing link so a stale URL
+  // cannot open a broken stack.
+  _stackFromCurrentURL() {
+    let parsed = stackFromSearchParams(globalThis.location?.search || '');
+    let first = getSessions(this._state)[0]?.id;
+
+    if (parsed.viewThread && first)
+      return [ { sessionID: null, collapsed: true }, { sessionID: first, collapsed: false } ];
+
+    let known = new Set(getSessions(this._state).map((session) => session.id));
+    let stack = [ { sessionID: null, collapsed: true } ];
+    for (let entry of parsed.stack.slice(1)) {
+      if (!known.has(entry.sessionID))
+        break;
+
+      stack.push(entry);
+    }
+
+    return stack;
+  }
+
   // Optional deep link on first load: ?session=<id> (or ?view=thread) opens a
   // session thread directly, seeding the navigation stack.
   async _applySessionDeepLink() {
@@ -1700,26 +1813,58 @@ export class KikxApp extends HTMLElement {
       return;
 
     this._deepLinkApplied = true;
-    let params = new URLSearchParams(globalThis.location?.search || '');
-    let requested = params.get('session') || '';
-    if (!requested && params.get('view') === 'thread') {
-      let sessions = getSessions(this._state);
-      requested = sessions[0]?.id || '';
-    }
-
-    if (!requested)
+    let stack = this._stackFromCurrentURL();
+    if (stack.length <= 1)
       return;
 
-    let exists = getSessions(this._state).some((session) => session.id === requested);
-    if (!exists)
-      return;
+    setNavigationStack(stack, this._state);
+    let top = getCurrentSessionID(this._state);
+    this._state.selectedSessionID = top;
+    this._forceScrollToBottomAfterRender = true;
 
     try {
-      navigateThread(requested, this._state);
-      this._state.selectedSessionID = requested;
-      this._forceScrollToBottomAfterRender = true;
-      await this._loadFrames(requested);
+      if (top)
+        await this._loadFrames(top);
     } catch (_error) {}
+  }
+
+  // Keep the address bar in sync with the window stack so a reload (or a shared
+  // link) restores the exact view. Uses replaceState: the stack has its own
+  // back/forward handled below, so we do not push a history entry per navigation
+  // unless the owner asked for true browser history.
+  _syncURLFromStack({ push = false } = {}) {
+    if (typeof globalThis.location === 'undefined' || typeof globalThis.history === 'undefined')
+      return;
+
+    let url = stackToURL(this._state.navigationStack || [], {
+      origin: globalThis.location.origin,
+      pathname: globalThis.location.pathname,
+      search: globalThis.location.search,
+    });
+
+    if (url === globalThis.location.href)
+      return;
+
+    if (push)
+      globalThis.history.pushState({ kikxStack: true }, '', url);
+    else
+      globalThis.history.replaceState({ kikxStack: true }, '', url);
+  }
+
+  // Apply the URL's stack (browser back/forward).
+  async _syncFromURL() {
+    let stack = this._stackFromCurrentURL();
+
+    setNavigationStack(stack, this._state);
+    let top = getCurrentSessionID(this._state);
+    this._state.selectedSessionID = top || '';
+
+    try {
+      if (top && !isCollapsed(this._state))
+        await this._loadFrames(top);
+    } catch (_error) {}
+
+    this._render();
   }
 
   async _loadSessionPreviews() {
