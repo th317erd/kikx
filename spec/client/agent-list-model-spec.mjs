@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  MAX_MASTER_AGENTS,
   agentFilterLabel,
   agentFilterPills,
   filterAgents,
+  rankMasters,
 } from '../../src/client/components/agent-list-model.mjs';
 
 const AGENTS = [
@@ -50,4 +52,22 @@ test('agentFilterLabel resolves the active pill label', () => {
   assert.equal(agentFilterLabel(AGENTS, PROVIDERS, 'masters'), 'Masters');
   assert.equal(agentFilterLabel(AGENTS, PROVIDERS, 'provider:google-agent'), 'Gemini');
   assert.equal(agentFilterLabel(AGENTS, PROVIDERS, 'missing'), 'All');
+});
+
+test('rankMasters keeps only the newest three crowns, newest first', () => {
+  let crowned = [];
+  for (let index = 1; index <= 5; index++)
+    crowned.push({ id: `m${index}`, crownedClock: String(index).padStart(4, '0'), crownedAt: index });
+
+  let ranked = rankMasters(crowned);
+  assert.equal(ranked.length, MAX_MASTER_AGENTS);
+  assert.deepEqual(ranked.map((agent) => agent.id), [ 'm5', 'm4', 'm3' ]);
+});
+
+test('masters filter returns only the top three crowned agents', () => {
+  let agents = [];
+  for (let index = 1; index <= 4; index++)
+    agents.push({ id: `m${index}`, pluginID: 'codex-agent', enabled: true, crownedClock: String(index).padStart(4, '0'), crownedAt: index });
+
+  assert.deepEqual(filterAgents(agents, 'masters').map((agent) => agent.id), [ 'm4', 'm3', 'm2' ]);
 });

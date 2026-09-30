@@ -1,5 +1,20 @@
 'use strict';
 
+// The master list is a rolling top-N: only the most recently crowned agents
+// count as masters. Older crowns beyond the cap are not masters.
+export const MAX_MASTER_AGENTS = 3;
+
+export function rankMasters(agents = []) {
+  return (Array.isArray(agents) ? agents : [])
+    .filter((agent) => Boolean(agent.crownedClock))
+    .sort((a, b) => (
+      String(b.crownedClock || '').localeCompare(String(a.crownedClock || ''))
+      || (Number(b.crownedAt || 0) - Number(a.crownedAt || 0))
+      || String(a.id).localeCompare(String(b.id))
+    ))
+    .slice(0, MAX_MASTER_AGENTS);
+}
+
 // Agent-list filtering for the Agents modal.
 //
 // Filters are derived from the providers actually present among agents, plus
@@ -48,7 +63,7 @@ export function filterAgents(agents = [], filter = 'all') {
   let list = Array.isArray(agents) ? agents : [];
 
   if (filter === 'masters')
-    return list.filter((agent) => Boolean(agent.crownedClock));
+    return rankMasters(list);
 
   if (filter === 'hidden')
     return list.filter((agent) => agent.enabled === false);

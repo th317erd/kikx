@@ -6,6 +6,9 @@ import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
 import { HybridLogicalClock } from '../clock/hybrid-logical-clock.mjs';
 
 const DEFAULT_ROOT_PATH = '/kikx';
+// The master-agent list is exactly the most-recently-crowned three. Crowning a
+// fourth evicts (uncrowns) the oldest, so storage never keeps stale masters.
+export const MAX_MASTER_AGENTS = 3;
 
 export class AeorDBAgentStore {
   constructor(options = {}) {
@@ -275,19 +278,49 @@ export class AeorDBAgentStore {
     });
 
     await this.saveAgent(next, agent);
-    return sanitizeAgent(next);
+
+    // Crowning keeps at most MAX_MASTER_AGENTS masters: the oldest crown beyond
+    // the cap is evicted (uncrowned). The master set is a rolling top-N.
+    if (isCrowned)
+      await this.evictExcessMasters(agentID);
+
+    return sanitizeAgent(await this.loadAgent(agentID));
+  }
+
+  async evictExcessMasters(keepAgentID) {
+    // Use the UNCAPPED crowned list: listMasterAgents() itself caps at
+    // MAX_MASTER_AGENTS, so it can never reveal the overflow to evict.
+    let masters = await this.readCrownedAgents();
+    let overflow = masters.slice(MAX_MASTER_AGENTS);
+    for (let old of overflow) {
+      if (old.id === keepAgentID)
+        continue;
+
+      let loaded = await this.loadAgent(old.id);
+      if (!loaded?.id)
+        continue;
+
+      await this.saveAgent(normalizeAgent({ ...loaded, crownedAt: null, crownedClock: null, updatedAt: this.clock() }), loaded);
+    }
+  }
+
+  // All crowned agents, newest first, uncapped. Internal ordering source.
+  async readCrownedAgents() {
+    let agents = await this.listAgents({ limit: 500 });
+    return agents
+      .filter((agent) => Boolean(agent.crownedClock))
+      .sort(compareMasterOrder);
   }
 
   // Master agents (crowned), most recently crowned first (master #1 first).
-  // Bounded by limit; defaults to all agents' worth in one request.
+  // At most MAX_MASTER_AGENTS by construction; limit can only narrow further.
   async listMasterAgents(options = {}) {
     await this.ensureIndexConfigs();
 
-    let agents = await this.listAgents({ limit: options.limit || 500, offset: 0 });
-    return agents
-      .filter((agent) => Boolean(agent.crownedClock))
-      .sort(compareMasterOrder)
-      .slice(normalizeOffset(options.offset), normalizeOffset(options.offset) + normalizeLimit(options.limit, 500));
+    let limit = Math.min(normalizeLimit(options.limit, MAX_MASTER_AGENTS), MAX_MASTER_AGENTS);
+    let offset = normalizeOffset(options.offset);
+    let masters = await this.readCrownedAgents();
+    return masters.slice(offset, offset + limit);
   }
 
   nextCrownStamp() {

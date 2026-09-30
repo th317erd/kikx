@@ -63,7 +63,7 @@ import './kikx-frame-item.mjs';
 import './kikx-chat-view.mjs';
 import './kikx-session-grid.mjs';
 import { childSessions, chunkSessionIDs, clampPreviewCount } from './chat-view-model.mjs';
-import { agentFilterPills, filterAgents } from './agent-list-model.mjs';
+import { agentFilterPills, filterAgents, rankMasters } from './agent-list-model.mjs';
 import { stackFromSearchParams, stackToURL } from '../state/navigation-stack.mjs';
 import {
   HERO_VIEW_TRANSITION_NAME,
@@ -97,6 +97,7 @@ export class KikxApp extends HTMLElement {
     this._composerHistory = createComposerHistoryState();
     this._pendingPreviewSessionIDs = new Set();
     this._previewRefreshScheduled = false;
+    this._pendingCrownAgentIDs = new Set();
 
     this._onMagicLinkSubmit = this._onMagicLinkSubmit.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
@@ -585,6 +586,17 @@ export class KikxApp extends HTMLElement {
   }
 
   _buildAgentManager() {
+    return aeorModal.title('Agents').onClose(this._closeAgentManager)(
+      div.class('kikx-agent-manager')(
+        this._buildAgentManagerBody(),
+      ),
+    );
+  }
+
+  // The filter pills + agent list + status. Built separately so filter changes
+  // can swap just this content without rebuilding the modal element (which
+  // replays the modal's open animation and looks like a close/reopen).
+  _buildAgentManagerBody() {
     let allAgents = getAgents(this._state);
     let filter = this._state.agentFilter || 'all';
     let pills = agentFilterPills(allAgents, this._state.agentProviders);
@@ -597,57 +609,68 @@ export class KikxApp extends HTMLElement {
     let agents = filterAgents(allAgents, filter);
     let masterRankByID = masterRankByAgentID(allAgents);
 
-    return aeorModal.title('Agents').onClose(this._closeAgentManager)(
-      div.class('kikx-agent-manager')(
-        div.class('kikx-agent-filters')(
-          pills.map((pill) => button
-            .type('button')
-            .class(`kikx-agent-filter${pill.id === filter ? ' is-active' : ''}`)
-            .ariaPressed(pill.id === filter ? 'true' : 'false')
-            .onClick(() => this._setAgentFilter(pill.id))(pill.label)),
-        ),
-        allAgents.length === 0
-          ? p.class('kikx-muted')('No agents.')
-          : agents.length === 0
-            ? p.class('kikx-muted')('No agents match this filter.')
-            : ul.class('kikx-agent-list')(
-            agents.map((agent) => {
-              let rank = masterRankByID.get(agent.id) || 0;
-              return li
-                .class('kikx-agent-list__item')
-                .dataAgentId(agent.id)(
-                  div.class('kikx-agent-list__details')(
-                    strong(agent.name),
-                    span(this._agentProviderLabel(agent)),
-                  ),
-                  div.class('kikx-agent-list__row-actions')(
-                    button
-                      .type('button')
-                      .class(`kikx-agent-list__crown${rank ? ` is-master kikx-agent-list__crown--rank-${rank}` : ''}`)
-                      .dataAgentId(agent.id)
-                      .title(rank ? `Master agent #${rank} (click to uncrown)` : 'Crown as master agent')
-                      .ariaLabel(rank ? `Master agent number ${rank}` : 'Crown as master agent')
-                      .ariaPressed(rank ? 'true' : 'false')
-                      .onClick(() => this._toggleAgentCrown(agent))('♛'),
-                    button
-                      .type('button')
-                      .class('kikx-agent-list__edit')
-                      .dataAgentId(agent.id)
-                      .title('Edit agent')
-                      .ariaLabel('Edit agent')
-                      .onClick(() => this._editAgent(agent))('⚙'),
-                  ),
-                );
-            }),
-          ),
-        div.class('modal-footer-actions')(
-          button.type('button').class('kikx-send-button').onClick(this._createAgent)('+ Add Agent'),
-        ),
-        p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.agentStatusKind}`, ['agentStatusKind'])(
-          span.textContent.bindState((state) => state.agentStatus, ['agentStatus'])(),
-        ),
+    return [
+      div.class('kikx-agent-filters')(
+        pills.map((pill) => button
+          .type('button')
+          .class(`kikx-agent-filter${pill.id === filter ? ' is-active' : ''}`)
+          .ariaPressed(pill.id === filter ? 'true' : 'false')
+          .onClick(() => this._setAgentFilter(pill.id))(pill.label)),
       ),
-    );
+      allAgents.length === 0
+        ? p.class('kikx-muted')('No agents.')
+        : agents.length === 0
+          ? p.class('kikx-muted')('No agents match this filter.')
+          : ul.class('kikx-agent-list')(
+          agents.map((agent) => {
+            let rank = masterRankByID.get(agent.id) || 0;
+            return li
+              .class('kikx-agent-list__item')
+              .dataAgentId(agent.id)(
+                div.class('kikx-agent-list__details')(
+                  strong(agent.name),
+                  span(this._agentProviderLabel(agent)),
+                ),
+                div.class('kikx-agent-list__row-actions')(
+                  button
+                    .type('button')
+                    .class(`kikx-agent-list__crown${rank ? ` is-master kikx-agent-list__crown--rank-${rank}` : ''}`)
+                    .dataAgentId(agent.id)
+                    .title(rank ? `Master agent #${rank} (click to uncrown)` : 'Crown as master agent')
+                    .ariaLabel(rank ? `Master agent number ${rank}` : 'Crown as master agent')
+                    .ariaPressed(rank ? 'true' : 'false')
+                    .onClick(() => this._toggleAgentCrown(agent))('♛'),
+                  button
+                    .type('button')
+                    .class('kikx-agent-list__edit')
+                    .dataAgentId(agent.id)
+                    .title('Edit agent')
+                    .ariaLabel('Edit agent')
+                    .onClick(() => this._editAgent(agent))('⚙'),
+                ),
+              );
+          }),
+        ),
+      div.class('modal-footer-actions')(
+        button.type('button').class('kikx-send-button').onClick(this._createAgent)('+ Add Agent'),
+      ),
+      p.class(`kikx-auth-status kikx-auth-status--${this._state.agentStatusKind}`)(
+        span(this._state.agentStatus),
+      ),
+    ];
+  }
+
+  // Replace the agent-manager body in place (filters + list), keeping the modal
+  // element itself — avoids the close/reopen animation on filter changes.
+  _repaintAgentManagerBody() {
+    let manager = this.querySelector('.kikx-agent-manager');
+    if (!manager)
+      return false;
+
+    let definition = this._buildAgentManagerBody();
+    let nodes = [ definition ].flat(Infinity).map((item) => item.build(document));
+    manager.replaceChildren(...nodes);
+    return true;
   }
 
   _buildAgentEditor() {
@@ -1629,7 +1652,16 @@ export class KikxApp extends HTMLElement {
     // Re-read the current agent from state: rows repaint in place (no modal
     // re-render), so a captured agent object can be stale after a prior toggle.
     let current = this._state.agentDetailsByID[agent.id] || agent;
+
+    // Guard against concurrent toggles for the same agent: rapid clicks fire
+    // overlapping crown/uncrown requests whose responses race, leaving the final
+    // state unpredictable. Ignore a click while one is in flight for that agent.
+    if (this._pendingCrownAgentIDs.has(current.id))
+      return;
+
     let crowned = !current.crownedClock;
+    this._pendingCrownAgentIDs.add(current.id);
+    this._setAgentCrownBusy(current.id, true);
     this._state.agentStatus = crowned ? 'Crowning agent...' : 'Uncrowning agent...';
     this._state.agentStatusKind = 'pending';
 
@@ -1649,6 +1681,18 @@ export class KikxApp extends HTMLElement {
       this._state.agentStatus = error.message;
       this._state.agentStatusKind = 'error';
       this._syncAgentStatusText();
+    } finally {
+      this._pendingCrownAgentIDs.delete(current.id);
+      this._setAgentCrownBusy(current.id, false);
+    }
+  }
+
+  // Disable a crown button while its request is in flight so a second click
+  // cannot start an overlapping toggle.
+  _setAgentCrownBusy(agentID, busy) {
+    for (let button of this.querySelectorAll(`.kikx-agent-list__crown[data-agent-id="${cssEscape(agentID)}"]`)) {
+      button.disabled = busy;
+      button.classList.toggle('is-busy', busy);
     }
   }
 
@@ -1684,7 +1728,10 @@ export class KikxApp extends HTMLElement {
 
   _setAgentFilter(filter) {
     this._state.agentFilter = filter || 'all';
-    this._render();
+    // Swap only the modal body so the modal element (and its open animation
+    // state) survives; a full _render() would rebuild it and flicker.
+    if (!this._repaintAgentManagerBody())
+      this._render();
   }
 
   _agentProviderLabel(agent) {
@@ -2328,18 +2375,23 @@ function normalizeFieldOptions(options) {
 
 // Rank crowned agents so the newest crown is master #1, next #2, etc. Returns a
 // Map of agentID -> rank (1-based); uncrowned agents are absent.
+//
+// The master list is a rolling top-3: only the three most recently crowned
+// agents are masters, so older crowns (e.g. legacy data or crowns beyond the
+// cap) are not ranked and do not show as masters.
 function masterRankByAgentID(agents = []) {
-  let crowned = (Array.isArray(agents) ? agents : [])
-    .filter((agent) => Boolean(agent.crownedClock))
-    .sort((a, b) => (
-      String(b.crownedClock || '').localeCompare(String(a.crownedClock || ''))
-      || (Number(b.crownedAt || 0) - Number(a.crownedAt || 0))
-      || String(a.id).localeCompare(String(b.id))
-    ));
-
   let ranks = new Map();
-  crowned.forEach((agent, index) => ranks.set(agent.id, index + 1));
+  rankMasters(agents).forEach((agent, index) => ranks.set(agent.id, index + 1));
   return ranks;
+}
+
+// Escape a value for use inside an attribute selector (agent IDs are UUIDs, but
+// stay safe if that ever changes).
+function cssEscape(value) {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function')
+    return CSS.escape(String(value));
+
+  return String(value).replace(/["\\]/g, '\\$&');
 }
 
 function formatTokenUsageTotal(value) {

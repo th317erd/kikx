@@ -1534,3 +1534,8 @@ button.kikx-window__title:focus-visible {
   background: rgba(61, 108, 255, 0.15);
   color: #f5f7fa;
 }
+
+.kikx-agent-list__crown.is-busy {
+  opacity: 0.5;
+  cursor: progress;
+}

@@ -326,3 +326,34 @@ test('AeorDBAgentStore rejects crowning a missing agent', async () => {
     /Unknown agent/,
   );
 });
+
+test('AeorDBAgentStore caps masters at three, evicting the oldest crown', async () => {
+  let tick = 0;
+  let logicalClock = {
+    tick() {
+      tick++;
+      return { at: 3_000_000 + tick, clock: `${String(3_000_000 + tick).padStart(16, '0')}-000000-test` };
+    },
+  };
+  let store = new AeorDBAgentStore({ aeordb: createClient(), logicalClock });
+
+  let agents = [];
+  for (let index = 0; index < 5; index++)
+    agents.push(await store.createAgent({ name: `Agent ${index}`, pluginID: 'test' }));
+
+  for (let agent of agents)
+    await store.setAgentCrowned(agent.id, true);
+
+  let masters = await store.listMasterAgents();
+  // Only the last three crowns remain, newest first: Agent 4, 3, 2.
+  assert.deepEqual(masters.map((agent) => agent.name), [ 'Agent 4', 'Agent 3', 'Agent 2' ]);
+
+  // The evicted agents are genuinely uncrowned on disk.
+  let all = new Map((await store.listAgents()).map((agent) => [ agent.name, agent ]));
+  assert.equal(all.get('Agent 0').crownedClock, null);
+  assert.equal(all.get('Agent 1').crownedClock, null);
+  assert.ok(all.get('Agent 2').crownedClock);
+
+  // Asking for more than three still returns three.
+  assert.equal((await store.listMasterAgents({ limit: 500 })).length, 3);
+});

@@ -78,9 +78,22 @@ From `Session-session-2026-09-30-03-17/03-19/03-21/03-27*.png`:
    NOTE: this introduced a bug (stale agent refs on 2nd click) fixed by re-reading
    `this._state.agentDetailsByID[agent.id]` in `_toggleAgentCrown`.
 
+## Goal-post: filter-pill / crown / masters-cap fixes (DONE, this batch)
+1. **Pills no longer close/reopen the modal**: `_buildAgentManagerBody()` +
+   `_repaintAgentManagerBody()`; `_setAgentFilter` swaps only the body, not the modal.
+2. **Crown clicks reliable**: rapid clicks were racing concurrent requests (5 clicks -> 5
+   requests). Added `_pendingCrownAgentIDs` in-flight guard + `_setAgentCrownBusy()` (disables
+   the button while pending). 5 rapid clicks now -> 1 request.
+3. **Masters = rolling top-3**: `MAX_MASTER_AGENTS = 3` in BOTH
+   `src/core/aeordb/aeordb-agent-store.mjs` (crowning a 4th evicts the oldest; `readCrownedAgents()`
+   uncapped internal reader; `listMasterAgents()` capped) and
+   `src/client/components/agent-list-model.mjs` (`rankMasters()` caps at 3; `filterAgents`
+   'masters' uses it). Client `masterRankByAgentID` delegates to `rankMasters`.
+   NOTE: existing DBs may still hold >3 crowned rows; they no longer rank, and the next crown
+   evicts them. No backfill run.
+
 ## Next up (not started)
-- Stagehand coverage for the new crown alignment/flicker/confirm-button + filter pills
-  (crown toggle test already updated and passing).
+- Stagehand coverage for crown alignment/flicker/confirm-button + filter pills + top-3 cap.
 - Master-agent **consumption** (resolveDefaultAgent for empty-session default agents).
 - True lazy-loading of older frames on scroll-up.
 
