@@ -119,6 +119,22 @@ Framework offers `ReactiveState` + element `.bindState()` + a `$` query engine; 
 kikxState/bindState for simple fields but the Agents modal is imperative (nested
 agentDetailsByID map does not fit bindState's top-level keys cleanly).
 
+## Goal-post: source-file refactor wave (DONE, pushed a606fc4)
+Ran a 7-branch parallel refactor (one isolated git worktree per file, sub-agent each,
+disjoint file sets) to satisfy the new AGENTS.md line limits. All merged --no-ff.
+Target files after: kikx-app 2508->426; agent-interface 1518->369; create-server
+1216->264; agent-route-frame-plugin 1075->212; aeordb-frame-store 1064->7;
+process-manager 939->424; frame-runtime 802->315. 62 new modules, all <=426 lines.
+ZERO behavior changes: unit 424/424 on combined revision; Stagehand 22/22; live Brave
+smoke clean (app mounts, grid/agents/modals render, 0 console errors).
+**No hand-written src file now exceeds the 800 hard limit.** Still over the 500 soft
+limit (informational, future work): session-tools 798, markdown-renderer 677,
+tool-use-base 635, compaction-service 585, frame-engine 584, aeordb-agent-store 577,
+tool-execution-service 522, frame-manager 516.
+Notes: `src/server/node_modules/` was already gitignored (no action). kikx-app refactor
+used composition (builder fns take `app`); methods preserved as instance delegates.
+Flagged not fixed: `_deleteAgent` uses bare `fetch` without `_apiHeaders()`.
+
 ## Next up (not started)
 - Stagehand coverage for crown alignment/flicker/confirm-button + filter pills + top-3 cap.
 - Master-agent **consumption** (resolveDefaultAgent for empty-session default agents).
