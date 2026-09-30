@@ -585,24 +585,35 @@ export class KikxApp extends HTMLElement {
 
   _buildAgentManager() {
     let agents = getAgents(this._state);
+    let masterRankByID = masterRankByAgentID(agents);
 
     return aeorModal.title('Agents').onClose(this._closeAgentManager)(
       div.class('kikx-agent-manager')(
         agents.length === 0
           ? p.class('kikx-muted')('No agents.')
           : ul.class('kikx-agent-list')(
-            agents.map((agent) => li(
-              div.class('kikx-agent-list__details')(
-                strong(agent.name),
-                span(this._agentProviderLabel(agent)),
-              ),
-              button
-                .type('button')
-                .class('kikx-agent-list__edit')
-                .title('Edit agent')
-                .ariaLabel('Edit agent')
-                .onClick(() => this._editAgent(agent))('⚙'),
-            )),
+            agents.map((agent) => {
+              let rank = masterRankByID.get(agent.id) || 0;
+              return li(
+                div.class('kikx-agent-list__details')(
+                  strong(agent.name),
+                  span(this._agentProviderLabel(agent)),
+                ),
+                button
+                  .type('button')
+                  .class(`kikx-agent-list__crown${rank ? ` is-master kikx-agent-list__crown--rank-${rank}` : ''}`)
+                  .title(rank ? `Master agent #${rank} (click to uncrown)` : 'Crown as master agent')
+                  .ariaLabel(rank ? `Master agent number ${rank}` : 'Crown as master agent')
+                  .ariaPressed(rank ? 'true' : 'false')
+                  .onClick(() => this._toggleAgentCrown(agent))('♛'),
+                button
+                  .type('button')
+                  .class('kikx-agent-list__edit')
+                  .title('Edit agent')
+                  .ariaLabel('Edit agent')
+                  .onClick(() => this._editAgent(agent))('⚙'),
+              );
+            }),
           ),
         div.class('modal-footer-actions')(
           button.type('button').class('kikx-send-button').onClick(this._createAgent)('+ Add Agent'),
@@ -1576,6 +1587,27 @@ export class KikxApp extends HTMLElement {
     }
   }
 
+  async _toggleAgentCrown(agent) {
+    let crowned = !agent.crownedClock;
+    this._state.agentStatus = crowned ? 'Crowning agent...' : 'Uncrowning agent...';
+    this._state.agentStatusKind = 'pending';
+
+    try {
+      let result = await this._postJSON(
+        `/api/v1/agents/${encodeURIComponent(agent.id)}/${crowned ? 'crown' : 'uncrown'}`,
+        {},
+      );
+      upsertAgent(result.data.agent, this._state);
+      this._state.agentStatus = crowned ? `Crowned ${agent.name}` : `Uncrowned ${agent.name}`;
+      this._state.agentStatusKind = 'ready';
+      this._render();
+    } catch (error) {
+      this._state.agentStatus = error.message;
+      this._state.agentStatusKind = 'error';
+      this._render();
+    }
+  }
+
   _secretPlaceholder(fieldName) {
     let agent = this._state.agentDetailsByID[this._state.editingAgentID];
     let secret = agent?.secretState?.[fieldName];
@@ -2219,6 +2251,22 @@ function normalizeFieldOptions(options) {
       label: item?.label ?? item?.value ?? '',
     };
   });
+}
+
+// Rank crowned agents so the newest crown is master #1, next #2, etc. Returns a
+// Map of agentID -> rank (1-based); uncrowned agents are absent.
+function masterRankByAgentID(agents = []) {
+  let crowned = (Array.isArray(agents) ? agents : [])
+    .filter((agent) => Boolean(agent.crownedClock))
+    .sort((a, b) => (
+      String(b.crownedClock || '').localeCompare(String(a.crownedClock || ''))
+      || (Number(b.crownedAt || 0) - Number(a.crownedAt || 0))
+      || String(a.id).localeCompare(String(b.id))
+    ));
+
+  let ranks = new Map();
+  crowned.forEach((agent, index) => ranks.set(agent.id, index + 1));
+  return ranks;
 }
 
 function formatTokenUsageTotal(value) {

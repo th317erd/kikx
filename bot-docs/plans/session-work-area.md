@@ -275,3 +275,32 @@ so any tool/plugin can declare "clicking me opens session X." This also serves t
 4. Header: breadcrumb (topbar) + Close (minimize) + "Show sub-sessions" toggle (collapsed).
 5. Child previews: bulk by parentSessionID up front, patch via SSE.
 6. Lazy-load older frames on scroll-up (harden the chat view if needed).
+
+## 14. Master (coordinator) agents — crown feature (2026-09-30)
+
+Owner intent: crown agents as "master agents" (coordinators) from the Agents
+modal via a togglable crown. Record `crowned_at` (high-resolution timestamp).
+Multiple masters are ranked newest-first: master #1 is the primary default,
+#2 the first backup, #3 the second, etc. UI: #1 gold, #2 silver (slightly
+transparent), #3 copper (more transparent).
+
+Data:
+- Agent gains `crownedAt` (HLC physical micros) and `crownedClock` (monotonic HLC
+  string) used for ordering; `null`/`null` when uncrowned.
+- `AeorDBAgentStore.setAgentCrowned(agentID, crowned)`: crown stamps a fresh HLC
+  tick; uncrown clears; re-crowning an already-crowned agent is a no-op
+  (idempotent) so double clicks do not reorder. Indexes: `crowned`,
+  `crownedAt`, `crownedClock`.
+- `listMasterAgents()` returns crowned agents sorted newest-first.
+- `AgentManager.resolveDefaultAgent({ excludeAgentIDs })` returns the first
+  enabled master in order, skipping excluded IDs — this is the backup chain
+  (exclude #1 => get #2, etc.). Returns null when none qualify.
+
+HTTP:
+- `POST /api/v1/agents/:id/crown` and `.../uncrown`.
+- `GET /api/v1/agents/masters` (+ `?resolve=1&exclude=<id>` for the default).
+
+UI: crown toggle per agent row; ranked colors gold/silver/copper; aria-pressed.
+
+Deferred (owner): actually consuming masters (e.g. default agent for an empty
+session) is a later step; this phase is data + UI + interfaces only.

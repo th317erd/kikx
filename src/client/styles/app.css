@@ -1453,3 +1453,47 @@ button.kikx-window__title:focus-visible {
   font-size: 12px;
   text-align: center;
 }
+
+/* Master-agent crown toggle. Rank 1 = gold, 2 = silver, 3 = copper, each a bit
+   more transparent than the last. */
+.kikx-agent-list__crown {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: transparent;
+  color: #5c6672;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kikx-agent-list__crown:hover,
+.kikx-agent-list__crown:focus-visible {
+  border-color: #6b7684;
+  color: #cdd6df;
+  outline: none;
+}
+
+.kikx-agent-list__crown.is-master {
+  border-color: currentColor;
+}
+
+.kikx-agent-list__crown--rank-1 {
+  color: #f5c542;
+  background: rgba(245, 197, 66, 0.10);
+  opacity: 1;
+}
+
+.kikx-agent-list__crown--rank-2 {
+  color: #c7cdd4;
+  background: rgba(199, 205, 212, 0.08);
+  opacity: 0.82;
+}
+
+.kikx-agent-list__crown--rank-3 {
+  color: #c9803f;
+  background: rgba(201, 128, 63, 0.08);
+  opacity: 0.7;
+}

@@ -350,12 +350,32 @@ function createAuthStub() {
 }
 
 function createAgentManagerStub(agents = [], providers = []) {
+  let crownTick = 1_000_000;
   return {
     listProviders() {
       return Promise.resolve(providers.slice());
     },
     async listAgents() {
       return agents.slice();
+    },
+    async setAgentCrowned(agentID, crowned) {
+      let agent = agents.find((candidate) => candidate.id === agentID);
+      if (!agent) {
+        let error = new Error(`Unknown agent: ${agentID}`);
+        error.status = 404;
+        throw error;
+      }
+
+      if (crowned === true && !agent.crownedClock) {
+        crownTick++;
+        agent.crownedAt = crownTick;
+        agent.crownedClock = `${String(crownTick).padStart(16, '0')}-000000-test`;
+      } else if (crowned === false) {
+        agent.crownedAt = null;
+        agent.crownedClock = null;
+      }
+
+      return agent;
     },
     async getAgent(agentID) {
       let agent = agents.find((candidate) => candidate.id === agentID);
