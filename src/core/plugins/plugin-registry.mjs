@@ -2,14 +2,18 @@
 
 import { PluginInterface } from './plugin-interface.mjs';
 import { AgentInterface } from './agent-interface.mjs';
+import { ClassRegistry } from './class-registry.mjs';
 
-export class PluginRegistry {
+// PluginRegistry extends the universal ClassRegistry: tools/providers/selectors/
+// components live here, and *any* class can be registered and overridden via the
+// inherited stack methods (registerClass / getClass / unregisterPlugin).
+export class PluginRegistry extends ClassRegistry {
   constructor(options = {}) {
+    super();
     this.logger = options.logger || console;
     this._tools = new Map();
     this._agentProviders = new Map();
     this._selectors = [];
-    this._classes = new Map();
     this._frameComponents = new Map();
     this._toolComponents = new Map();
   }
@@ -147,31 +151,6 @@ export class PluginRegistry {
       ...this._frameComponents.values(),
       ...this._toolComponents.values(),
     ].map((descriptor) => ({ ...descriptor }));
-  }
-
-  registerClass(nameOrClass, ClassRef = null) {
-    let name = ClassRef ? nameOrClass : nameOrClass?.name;
-    let klass = ClassRef || nameOrClass;
-
-    if (!name || typeof name !== 'string')
-      throw new TypeError('Class registration requires a class name');
-
-    if (typeof klass !== 'function')
-      throw new TypeError(`Class "${name}" must be a function`);
-
-    if (!this._classes.has(name))
-      this._classes.set(name, []);
-
-    this._classes.get(name).push(klass);
-    return klass;
-  }
-
-  getClass(name) {
-    let stack = this._classes.get(name);
-    if (!stack || stack.length === 0)
-      return null;
-
-    return stack[stack.length - 1];
   }
 }
 
