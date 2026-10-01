@@ -50,36 +50,79 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
     if (!pluginRegistry)
       throw new Error('AgentRouteFramePlugin requires pluginRegistry');
 
-    let routeTargets = filterRedundantRouteTargets({
+    let coordinated = frame?.coordinated === true;
+    let hasExplicitTarget = typeof frame?.targetAgentID === 'string' && frame.targetAgentID.trim() !== '';
+    // The coordinator is the sole initial target for ordinary frames. An
+    // explicit targetAgentID bypass (scheduled continuation, process wake) goes
+    // straight to that agent instead, in both the coordinated and uncoordinated
+    // cases. resolveRouteTargets already implements the bypass precedence.
+    let initialRouteTargets;
+    if (hasExplicitTarget || coordinated)
+      initialRouteTargets = resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID });
+    else
+      initialRouteTargets = (coordinatorAgentID !== frame?.authorID && participantAgentIDs.includes(coordinatorAgentID))
+        ? [ coordinatorAgentID ]
+        : [];
+
+    let initialTargets = filterRedundantRouteTargets({
       frame,
-      routeTargets: resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID }),
+      routeTargets: initialRouteTargets,
       frameEngine: this.context.engine,
     });
-    if (routeTargets.length === 0) {
+
+    if (initialTargets.length === 0) {
       await next(this.context);
       return;
     }
 
-    let routeTasks = routeTargets.map((agentID) => this.routeAgent({
-      agentID,
-      coordinatorAgentID,
-      agentManager,
-      pluginRegistry,
-      services,
-      frame,
-    }));
     let frameRouter = resolveService(services, 'frameRouter') || services?.frameRuntime?.frameRouter;
+    let sessionID = this.context.session?.id || frame?.sessionID || '';
 
-    if (typeof frameRouter?.runBackground === 'function') {
-      for (let task of routeTasks)
-        frameRouter.runBackground(task);
-    } else {
-      let results = await Promise.allSettled(routeTasks);
-      for (let result of results) {
-        if (result.status === 'rejected')
-          this.logger.error?.('AgentRouteFramePlugin routeAgent failed', result.reason);
+    let dispatch = async () => {
+      for (let agentID of initialTargets) {
+        await this.routeAgent({
+          agentID,
+          coordinatorAgentID,
+          agentManager,
+          pluginRegistry,
+          services,
+          frame,
+        });
       }
-    }
+
+      // The coordinator has now had its turn and may have added or removed
+      // recipients via the route tool. If it routed, its re-enqueued
+      // `coordinated` pass dispatches recipients; otherwise this pass does.
+      // Recipients are read here (not before the coordinator ran), so the
+      // coordinator's `remove` is authoritative.
+      if (coordinated || hasExplicitTarget)
+        return;
+
+      let currentFrame = this.context.engine.get(frame?.id) || frame;
+      if (currentFrame?.coordinated === true)
+        return;
+
+      let recipientTargets = resolveRouteTargets({ frame: currentFrame, participantAgentIDs, coordinatorAgentID })
+        .filter((agentID) => agentID !== coordinatorAgentID);
+
+      for (let agentID of recipientTargets) {
+        await this.routeAgent({
+          agentID,
+          coordinatorAgentID,
+          agentManager,
+          pluginRegistry,
+          services,
+          frame: currentFrame,
+        });
+      }
+    };
+
+    if (typeof frameRouter?.runSerial === 'function')
+      frameRouter.runSerial(sessionID, dispatch);
+    else if (typeof frameRouter?.runBackground === 'function')
+      frameRouter.runBackground(dispatch);
+    else
+      await dispatch();
 
     done();
   }

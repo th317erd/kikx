@@ -10,6 +10,11 @@ export class FrameRouter {
     this._processing = false;
     this._backgroundTasks = new Set();
     this._flushWaiters = [];
+    // Per-session serial chains for agent runs. Agent (LLM) work is kept off the
+    // global commit queue so one slow agent does not block other sessions, while
+    // still running one-at-a-time within a session (coordinator first, then
+    // recipients).
+    this._sessionChains = new Map();
   }
 
   registerSelector(selector, PluginClass, pluginName = null) {
@@ -58,6 +63,25 @@ export class FrameRouter {
       this._resolveFlushWaiters();
     });
     return promise;
+  }
+
+  // Run a task on the session's serial chain: agent work for one session runs
+  // one-at-a-time and in submission order, without blocking other sessions or
+  // the global commit queue.
+  runSerial(sessionID, task) {
+    let key = sessionID || '';
+    let previous = this._sessionChains.get(key) || Promise.resolve();
+    let next = previous
+      .catch(() => {})
+      .then(() => task());
+
+    this._sessionChains.set(key, next);
+    next.finally(() => {
+      if (this._sessionChains.get(key) === next)
+        this._sessionChains.delete(key);
+    });
+
+    return this.runBackground(next);
   }
 
   async flush(options = {}) {

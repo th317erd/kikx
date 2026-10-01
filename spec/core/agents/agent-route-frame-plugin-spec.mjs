@@ -1193,12 +1193,12 @@ test('AgentRouteFramePlugin route removes a recipient from the trigger set', asy
     recipients: [ 'agent_2', 'agent_3' ],
   });
 
-  let calls = runtime.services.calls
-    .filter((call) => (call.method === 'ask' || call.method === 'run') && call.frameType === 'UserMessage');
-  // The coordinator always runs (it is the router); recipients run concurrently
-  // on ingress, so removal corrects the frame's trigger set rather than
-  // un-running a recipient that already started.
-  assert.equal(calls.some((call) => call.method === 'ask' && call.agentID === 'agent_1'), true);
+  let userCalls = runtime.services.calls
+    .filter((call) => call.method === 'run' && call.frameType === 'UserMessage');
+  // Serial dispatch makes the coordinator's remove authoritative: agent_3 was
+  // tagged by the user but removed before recipients dispatched, so it never
+  // runs. Only the retained recipient (agent_2) runs.
+  assert.deepEqual(userCalls.map((call) => call.agentID), [ 'agent_2' ]);
 
   let userFrame = (await runtime.listFrames('ses_1')).find((frame) => frame.type === 'UserMessage');
   assert.deepEqual(userFrame.recipients, [ 'agent_2' ]);
@@ -1725,6 +1725,120 @@ test('AgentRouteFramePlugin runs a non-coordinator only when it is a routed reci
   let userCalls = runtime.services.calls
     .filter((call) => call.method === 'run' && call.frameType === 'UserMessage');
   assert.deepEqual(userCalls.map((call) => call.agentID).sort(), [ 'coordinator', 'verbose' ]);
+});
+
+test('AgentRouteFramePlugin dispatches coordinator then recipients serially per session', async () => {
+  let releaseSlow;
+  let slowGate = {
+    promise: new Promise((resolve) => {
+      releaseSlow = resolve;
+    }),
+  };
+  let runtime = createRuntime({
+    services: { slowAgentGate: slowGate },
+    agents: new Map([
+      [ 'coordinator', {
+        id: 'coordinator',
+        name: 'Coordinator',
+        pluginID: 'slow-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+      [ 'recipient', {
+        id: 'recipient',
+        name: 'Recipient',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-r' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'coordinator', 'recipient' ],
+    coordinatorAgentID: 'coordinator',
+  });
+
+  let appendPromise = runtime.appendUserMessage('ses_1', {
+    text: 'recipient, take this',
+    userID: 'usr_1',
+    recipients: [ 'recipient' ],
+  });
+
+  await waitForCondition(() => runtime.services.calls.some((call) => call.method === 'slow-run-start'));
+  // The coordinator (slow) is running; the recipient must NOT have started yet.
+  assert.equal(runtime.services.calls.some((call) => call.method === 'run' && call.agentID === 'recipient'), false);
+
+  releaseSlow();
+  await appendPromise;
+
+  let userCalls = runtime.services.calls
+    .filter((call) => (call.method === 'slow-run-start' || call.method === 'run') && call.frameType === 'UserMessage');
+  assert.deepEqual(userCalls.map((call) => call.agentID), [ 'coordinator', 'recipient' ]);
+});
+
+test('AgentRouteFramePlugin routes an explicit targetAgentID wake to that agent, not the coordinator', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'coordinator', {
+        id: 'coordinator',
+        name: 'Coordinator',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-c' },
+        enabled: true,
+      } ],
+      [ 'worker', {
+        id: 'worker',
+        name: 'Worker',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-w' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'coordinator', 'worker' ],
+    coordinatorAgentID: 'coordinator',
+  });
+
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'wake_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'system',
+    authorID: 'internal:process-manager',
+    targetAgentID: 'worker',
+    hidden: true,
+    scheduledAt: 1,
+    scheduledStatus: 'firing',
+    content: { text: 'your process completed' },
+  }], { silent: true });
+
+  // The scheduled-frame queue enqueues the fired commit directly with
+  // scheduledDispatch, which is what un-defers hidden scheduled target frames.
+  runtime.frameRouter.enqueue(entry.frameEngine, {
+    id: 'scheduled:wake_1',
+    order: entry.frameEngine.getLatestCommit()?.order || 1,
+    scheduledDispatch: true,
+    authorType: 'system',
+    authorID: 'internal:scheduler',
+    silent: false,
+    changes: [ { frameID: 'wake_1', operation: 'create' } ],
+  }, entry.session, { services: runtime.services });
+  await runtime.frameRouter.flush();
+
+  let userCalls = runtime.services.calls
+    .filter((call) => call.method === 'run' && call.frameType === 'UserMessage');
+  assert.deepEqual(userCalls.map((call) => call.agentID), [ 'worker' ]);
 });
 
 function createRuntime(options = {}) {
