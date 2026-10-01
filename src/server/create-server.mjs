@@ -183,7 +183,8 @@ export function createServer(options = {}) {
   }
 
   if (!context.has('frameRuntime')) {
-    context.set('frameRuntime', new FrameRuntime({
+    let RuntimeClass = resolveCoreClass(context.require('pluginRegistry'), 'FrameRuntime', FrameRuntime);
+    context.set('frameRuntime', new RuntimeClass({
       aeordb: context.require('aeordb'),
       frameRouter: context.require('frameRouter'),
       services: { context },
@@ -191,7 +192,8 @@ export function createServer(options = {}) {
   }
 
   if (!context.has('compactionService')) {
-    context.set('compactionService', new CompactionService({
+    let CompactionClass = resolveCoreClass(context.require('pluginRegistry'), 'CompactionService', CompactionService);
+    context.set('compactionService', new CompactionClass({
       agentManager: context.require('agentManager'),
       pluginRegistry: context.require('pluginRegistry'),
       frameRuntime: context.require('frameRuntime'),
