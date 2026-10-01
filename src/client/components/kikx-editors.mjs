@@ -16,8 +16,6 @@ import {
   upsertSession,
   upsertTeam,
 } from '../state/kikx-state.mjs';
-import { coerceAgentFieldValue } from './agent-form-helpers.mjs';
-
 export function syncAuthEmail(app, event) {
   app._state.authEmail = event.target.value;
 }
@@ -211,21 +209,6 @@ export function toggleTeamMember(app, actor, checked) {
 export function teamMembersFromForm(app) {
   let selected = app._state.teamFormMemberKeys || {};
   return availableTeamActors(app).filter((actor) => selected[teamMemberKey(actor)]).map((actor) => ({ ...actor }));
-}
-
-export function syncAgentField(app, field, value) {
-  if (field.secret) {
-    app._state.agentFormSecrets = {
-      ...app._state.agentFormSecrets,
-      [field.name]: value,
-    };
-    return;
-  }
-
-  app._state.agentFormConfig = {
-    ...app._state.agentFormConfig,
-    [field.name]: coerceAgentFieldValue(field, value),
-  };
 }
 
 export async function createSession(app) {

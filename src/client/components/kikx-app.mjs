@@ -5,6 +5,7 @@ import {
   getSelectedSession,
   kikxState,
 } from '../state/kikx-state.mjs';
+import { applyAgentConfigValues } from '../state/agent-state-utils.mjs';
 import { createComposerHistoryState } from './composer-history.mjs';
 import './kikx-frame-item.mjs';
 import './kikx-chat-view.mjs';
@@ -32,8 +33,6 @@ import {
 } from './kikx-shell-builders.mjs';
 import {
   buildAccountEditor,
-  buildAgentConfigField,
-  buildAgentConfigFields,
   buildAgentDeleteButton,
   buildAgentEditor,
   buildAgentManager,
@@ -41,7 +40,6 @@ import {
   buildSessionEditor,
   buildTeamEditor,
   buildTeamManager,
-  agentConfigFieldValue,
   agentProviderLabel,
   teamMemberSummary,
 } from './kikx-modals.mjs';
@@ -140,7 +138,6 @@ import {
   signOut,
   syncAccountEmail,
   syncAccountName,
-  syncAgentField,
   syncAuthEmail,
   syncEditingSessionTitle,
   teamMemberChecked,
@@ -160,7 +157,6 @@ import {
   reconcileMasters,
   repaintAgentCrowns,
   repaintAgentManagerBody,
-  secretPlaceholder,
   selectAgentProvider,
   setAgentCrownBusy,
   setAgentFilter,
@@ -219,9 +215,6 @@ export class KikxApp extends HTMLElement {
     this._buildAgentEditor = () => buildAgentEditor(this);
     this._buildTeamManager = () => buildTeamManager(this);
     this._buildTeamEditor = () => buildTeamEditor(this);
-    this._buildAgentConfigFields = (provider) => buildAgentConfigFields(this, provider);
-    this._buildAgentConfigField = (field) => buildAgentConfigField(this, field);
-    this._agentConfigFieldValue = (field) => agentConfigFieldValue(this, field);
     this._availableTeamActors = () => availableTeamActors(this);
     this._teamMemberKey = (actor) => teamMemberKey(actor);
     this._teamMemberChecked = (actor) => teamMemberChecked(this, actor);
@@ -281,7 +274,7 @@ export class KikxApp extends HTMLElement {
     this._onTeamFormSubmit = async (event) => onTeamFormSubmit(this, event);
     this._deleteTeam = async (teamID) => deleteTeam(this, teamID);
     this._selectAgentProvider = (pluginID) => selectAgentProvider(this, pluginID);
-    this._syncAgentField = (field, value) => syncAgentField(this, field, value);
+    this._applyAgentConfigValues = (values) => applyAgentConfigValues(this._state, values);
     this._onAgentFormSubmit = async (event) => onAgentFormSubmit(this, event);
     this._buildAgentDeleteButton = () => buildAgentDeleteButton(this);
     this._deleteAgent = async (agentID) => deleteAgent(this, agentID);
@@ -290,7 +283,6 @@ export class KikxApp extends HTMLElement {
     this._setAgentCrownBusy = (agentID, busy) => setAgentCrownBusy(this, agentID, busy);
     this._repaintAgentCrowns = () => repaintAgentCrowns(this);
     this._syncAgentStatusText = () => syncAgentStatusText(this);
-    this._secretPlaceholder = (fieldName) => secretPlaceholder(this, fieldName);
     this._setAgentFilter = (filter) => setAgentFilter(this, filter);
     this._agentProviderLabel = (agent) => agentProviderLabel(this, agent);
     this._createSession = async () => createSession(this);

@@ -112,7 +112,7 @@ test('Stagehand renders a plugin-owned agent-config-form served from plugin asse
     });
 
     // The custom element must be registered (its module was fetched from the
-    // plugin asset route) and expose the readConfig contract.
+    // plugin asset route) and expose the readValues contract.
     let result = await page.evaluate(() => {
       let form = document.querySelector('.kikx-agent-form kog-agent-config-form');
       let modelSelect = form?.querySelector('.kog-config__model-select');
@@ -121,7 +121,7 @@ test('Stagehand renders a plugin-owned agent-config-form served from plugin asse
         hasBaseUrl: Boolean(form?.querySelector('.kog-config__base-url')),
         hasApiKey: Boolean(form?.querySelector('.kog-config__api-key')),
         modelValues: (modelSelect?.options || []).map((option) => option.value),
-        readConfig: form?.readConfig ? form.readConfig() : null,
+        readValues: form?.readValues ? form.readValues() : null,
       };
     });
 
@@ -129,7 +129,7 @@ test('Stagehand renders a plugin-owned agent-config-form served from plugin asse
     assert.equal(result.hasBaseUrl, true);
     assert.equal(result.hasApiKey, true);
     assert.ok(result.modelValues.includes('gpt-5.2'), 'static fallback model catalog must be offered');
-    assert.deepEqual(result.readConfig, {
+    assert.deepEqual(result.readValues, {
       config: { baseUrl: 'http://127.0.0.1:59999', model: 'gpt-5.2' },
       secrets: {},
     });
@@ -154,7 +154,7 @@ test('Stagehand renders a plugin-owned agent-config-form served from plugin asse
       document.querySelector('.kikx-agent-form kog-agent-config-form .kog-config__model-text:not([hidden])'),
     ));
 
-    let afterChange = await page.evaluate(() => document.querySelector('kog-agent-config-form').readConfig());
+    let afterChange = await page.evaluate(() => document.querySelector('kog-agent-config-form').readValues());
     assert.equal(afterChange.config.baseUrl, 'http://127.0.0.1:59998');
     assert.equal(afterChange.config.model, 'gpt-5.2');
   } finally {

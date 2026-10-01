@@ -2,9 +2,10 @@
 
 import { getAgents, removeAgent, resetAgentForm, setAgentFormFromAgent, setAgentFormProvider, upsertAgent } from '../state/kikx-state.mjs';
 import { masterRankByAgentID } from './master-agent-helpers.mjs';
-import { buildAgentManagerBody, readAgentConfigFromForm } from './kikx-modals.mjs';
+import { buildAgentManagerBody, findAgentConfigSection } from './kikx-modals.mjs';
 import { cssEscape } from './kikx-app-helpers.mjs';
 import { nonEmptyValues } from './agent-form-helpers.mjs';
+import { readAgentGutsValues, validateAgentGuts } from './agent-config-form-registry.mjs';
 
 export function openAgentManager(app) {
   app._state.managingAgents = true;
@@ -52,17 +53,36 @@ export function selectAgentProvider(app, pluginID) {
 export async function onAgentFormSubmit(app, event) {
   event.preventDefault();
 
-  // A plugin-supplied agent-config-form owns its section; read its values at
-  // submit rather than the generic agentFormConfig/agentFormSecrets state.
-  let custom = readAgentConfigFromForm(app, event.currentTarget);
+  // Read the provider-specific guts element from the app root. The Create
+  // button is wired via onClick, so event.currentTarget is the BUTTON, not the
+  // form; querying from the app root always finds the live guts regardless of
+  // which control triggered the submit.
+  let provider = app._state.agentProviders.find((candidate) => candidate.pluginID === app._state.agentFormPluginID) || null;
+  let guts = findAgentConfigSection(app, provider);
+
+  // Client-side validation first: if the guts rejects the input, show its
+  // errors in the modal and abort without a server round-trip.
+  let validation = await validateAgentGuts(guts);
+  if (!validation.valid) {
+    app._state.agentFormErrors = validation.errors;
+    app._state.agentStatus = '';
+    app._state.agentStatusKind = 'error';
+    app._render();
+    return;
+  }
+
+  let values = readAgentGutsValues(guts);
+  let config = values ? values.config : app._state.agentFormConfig;
+  let secrets = values ? values.secrets : app._state.agentFormSecrets;
 
   let body = {
     name: app._state.agentFormName,
     pluginID: app._state.agentFormPluginID,
-    config: custom ? custom.config : app._state.agentFormConfig,
-    secrets: nonEmptyValues(custom ? custom.secrets : app._state.agentFormSecrets),
+    config,
+    secrets: nonEmptyValues(secrets),
   };
 
+  app._state.agentFormErrors = {};
   app._state.agentStatus = app._state.agentFormMode === 'edit' ? 'Saving agent...' : 'Creating agent...';
   app._state.agentStatusKind = 'pending';
 
@@ -209,12 +229,6 @@ export function syncAgentStatusText(app) {
   let text = status.querySelector('span');
   if (text)
     text.textContent = app._state.agentStatus;
-}
-
-export function secretPlaceholder(app, fieldName) {
-  let agent = app._state.agentDetailsByID[app._state.editingAgentID];
-  let secret = agent?.secretState?.[fieldName];
-  return secret?.present ? `Stored ending in ${secret.last4}` : '';
 }
 
 export function setAgentFilter(app, filter) {

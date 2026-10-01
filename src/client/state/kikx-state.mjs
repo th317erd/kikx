@@ -45,6 +45,7 @@ export const kikxState = new ReactiveState({
   accountStatusKind: 'pending',
   agentDetailsByID: {},
   agentFormConfig: {},
+  agentFormErrors: {},
   agentFormMode: 'create',
   agentFormName: '',
   agentFormPluginID: '',
@@ -388,6 +389,7 @@ export function resetAgentForm(state = kikxState) {
   state.agentFormPluginID = provider?.pluginID || '';
   state.agentFormConfig = defaultConfigForProvider(provider);
   state.agentFormSecrets = {};
+  state.agentFormErrors = {};
 }
 
 export function setAgentFormProvider(pluginID, state = kikxState) {
@@ -395,6 +397,7 @@ export function setAgentFormProvider(pluginID, state = kikxState) {
   state.agentFormPluginID = pluginID || '';
   state.agentFormConfig = defaultConfigForProvider(provider);
   state.agentFormSecrets = {};
+  state.agentFormErrors = {};
 }
 
 export function setAgentFormFromAgent(agent, state = kikxState) {
@@ -405,7 +408,10 @@ export function setAgentFormFromAgent(agent, state = kikxState) {
   state.agentFormPluginID = agent.pluginID || '';
   state.agentFormConfig = mergeAgentConfigWithProviderDefaults(provider, agent.config);
   state.agentFormSecrets = {};
+  state.agentFormErrors = {};
 }
+
+
 
 export function resetTeamForm(state = kikxState) {
   state.teamFormMode = 'create';

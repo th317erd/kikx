@@ -8,8 +8,8 @@ import {
 } from '../state/kikx-state.mjs';
 import { agentFilterPills, filterAgents } from './agent-list-model.mjs';
 import { masterRankByAgentID } from './master-agent-helpers.mjs';
-import { normalizeFieldOptions } from './agent-form-helpers.mjs';
-import { readCustomAgentConfig, selectAgentConfigFormDescriptor } from './agent-config-form-registry.mjs';
+import { findAgentConfigFormElement, resolveAgentConfigFormTag } from './agent-config-form-registry.mjs';
+import './kikx-default-agent-config-form.mjs';
 
 const { div, p, span, button, form, label, ul, li, strong, option } = elements;
 const aeorInput = elements['aeor-input'];
@@ -123,12 +123,13 @@ export function buildAgentManagerBody(app) {
   ];
 }
 
-export function buildAgentEditor(app, configFormDescriptor = undefined) {
+// Agent create/edit "wrapper" dialog. It owns the modal chrome, the agent Name
+// field, the Provider selectbox, the footer actions and the submit call. The
+// provider-specific config UI (the "guts") is a separate custom element hosted
+// in the config section, resolved per provider by agent-config-form-registry.
+export function buildAgentEditor(app) {
   let providers = app._state.agentProviders;
   let provider = getSelectedAgentProvider(app._state);
-  let descriptor = configFormDescriptor === undefined
-    ? selectAgentConfigFormDescriptor(app._state, provider)
-    : configFormDescriptor;
 
   return aeorModal
     .title(app._state.agentFormMode === 'edit' ? 'Edit agent' : 'Create agent')
@@ -156,7 +157,7 @@ export function buildAgentEditor(app, configFormDescriptor = undefined) {
                     candidate.displayName || candidate.pluginID,
                   )),
               ),
-            ...buildAgentConfigSection(app, provider, descriptor),
+            ...buildAgentConfigSection(app, provider),
             div.class('modal-footer-actions')(
               ...(app._state.agentFormMode === 'edit'
                 ? [ buildAgentDeleteButton(app) ]
@@ -165,9 +166,7 @@ export function buildAgentEditor(app, configFormDescriptor = undefined) {
               button.type('button').class('kikx-send-button').onClick(app._onAgentFormSubmit)(app._state.agentFormMode === 'edit' ? 'Save' : 'Create'),
             ),
           ],
-        p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.agentStatusKind}`, ['agentStatusKind'])(
-          span.textContent.bindState((state) => state.agentStatus, ['agentStatus'])(),
-        ),
+        buildAgentFormStatus(app),
       ),
     );
 }
@@ -244,73 +243,75 @@ export function buildTeamEditor(app) {
     );
 }
 
-export function buildAgentConfigFields(app, provider) {
+// Build the guts element for the selected provider and seed it from app state.
+// A re-render rebuilds the whole shell, so setContext() must reseed the guts
+// from agentFormConfig/agentFormSecrets; onValuesChanged mirrors live edits
+// back into that state so they survive the rebuild.
+export function buildAgentConfigSection(app, provider) {
   if (!provider)
     return [];
 
-  return (provider.configFields || []).flatMap((field) => [
-    label(field.label || field.name),
-    buildAgentConfigField(app, field),
-  ]);
-}
-
-// A provider with a plugin-supplied agent-config-form gets that custom element
-// rendered in place of the generic fields. The element owns its section:
-// setContext({ config, secrets, pluginID }) is called after it is created and
-// readConfig() -> { config, secrets } is called on submit.
-export function buildAgentConfigSection(app, provider, descriptor = undefined) {
-  let resolved = descriptor === undefined
-    ? selectAgentConfigFormDescriptor(app._state, provider)
-    : descriptor;
-  if (!resolved)
-    return buildAgentConfigFields(app, provider);
-
-  let element = document.createElement(resolved.tagName);
+  let gutsTag = resolveAgentConfigFormTag(app._state, provider);
+  let element = document.createElement(gutsTag);
   if (typeof element.setContext === 'function') {
     let agent = app._state.agentDetailsByID?.[app._state.editingAgentID];
     element.setContext({
+      mode: app._state.agentFormMode,
+      pluginID: provider.pluginID || app._state.agentFormPluginID,
+      provider,
       config: { ...(app._state.agentFormConfig || {}) },
       secrets: { ...(app._state.agentFormSecrets || {}) },
-      pluginID: provider?.pluginID || app._state.agentFormPluginID,
-      mode: app._state.agentFormMode,
       secretState: agent?.secretState || {},
+      agent: agent || null,
+      onValuesChanged: (values) => app._applyAgentConfigValues(values),
     });
   }
 
   return [ element ];
 }
 
-// When a custom form is present, read its values on submit. Returns null when
-// the provider has no custom form or the element does not implement readConfig.
-export function readAgentConfigFromForm(app, form) {
-  return readCustomAgentConfig(app._state, getSelectedAgentProvider(app._state), form);
+// Locate the live guts element under the wrapper/app root. Query from the app
+// root (not from an event target) so it works regardless of which control
+// triggered the submit.
+export function findAgentConfigSection(app, provider = undefined) {
+  let selected = provider === undefined ? getSelectedAgentProvider(app._state) : provider;
+  let gutsTag = resolveAgentConfigFormTag(app._state || {}, selected);
+  return findAgentConfigFormElement(app, gutsTag);
 }
 
-export function buildAgentConfigField(app, field) {
-  if (field.type === 'select') {
-    return aeorSelect
-      .name(field.name)
-      .placeholder(field.label || field.name)
-      .value(agentConfigFieldValue(app, field))
-      .onChange((event) => app._syncAgentField(field, event.target.value))(
-        normalizeFieldOptions(field.options).map((item) => option
-          .value(item.value)
-          .selected(item.value === agentConfigFieldValue(app, field))(
-            item.label,
-          )),
-      );
+// The modal status line plus any client-side validation errors returned by the
+// guts element. Errors are plain (non-bound) nodes: setting agentFormErrors is
+// followed by a re-render, so they repaint from the snapshot.
+export function buildAgentFormStatus(app) {
+  let errors = app._state.agentFormErrors || {};
+  let messages = agentFormErrorMessages(errors);
+
+  return div.class('kikx-agent-form__status')(
+    p.class.bindState(
+      (state) => `kikx-auth-status kikx-auth-status--${hasAgentFormErrors(state.agentFormErrors) ? 'error' : state.agentStatusKind}`,
+      ['agentStatusKind', 'agentFormErrors'],
+    )(
+      span.textContent.bindState((state) => state.agentStatus, ['agentStatus'])(),
+    ),
+    ...messages.map((message) => p.class('kikx-agent-form__error')(message)),
+  );
+}
+
+export function hasAgentFormErrors(errors) {
+  return agentFormErrorMessages(errors).length > 0;
+}
+
+export function agentFormErrorMessages(errors) {
+  if (!errors || typeof errors !== 'object')
+    return [];
+
+  let messages = [];
+  for (let message of Object.values(errors)) {
+    if (typeof message === 'string' && message.trim() !== '')
+      messages.push(message.trim());
   }
 
-  return aeorInput
-    .type(field.secret ? 'password' : field.type || 'text')
-    .name(field.name)
-    .placeholder(field.secret ? app._secretPlaceholder(field.name) : '')
-    .value(field.secret ? '' : agentConfigFieldValue(app, field))
-    .onInput((event) => app._syncAgentField(field, event.target.value))();
-}
-
-export function agentConfigFieldValue(app, field) {
-  return app._state.agentFormConfig[field.name] ?? field.defaultValue ?? '';
+  return messages;
 }
 
 export function teamMemberSummary(team) {

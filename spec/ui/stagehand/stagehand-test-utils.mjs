@@ -117,9 +117,10 @@ export async function startStagehandUIServer(options = {}) {
     sessions: options.sessions || [],
     agents,
   });
+  let agentManager = createAgentManagerStub(agents, providers);
   let context = new AppContext({
     aeordb: createAuthStub(),
-    agentManager: createAgentManagerStub(agents, providers),
+    agentManager,
     teamManager: createTeamManagerStub(teams),
     frameRuntime,
     tokenUsage,
@@ -136,6 +137,7 @@ export async function startStagehandUIServer(options = {}) {
     baseURL,
     frameRuntime,
     tokenUsage,
+    agentManager,
     async close() {
       await closeServer(server);
     },
@@ -372,6 +374,7 @@ function createAuthStub() {
 
 function createAgentManagerStub(agents = [], providers = []) {
   let crownTick = 1_000_000;
+  let nextAgentNumber = agents.length + 1;
   return {
     listProviders() {
       return Promise.resolve(providers.slice());
@@ -436,14 +439,94 @@ function createAgentManagerStub(agents = [], providers = []) {
       error.status = 404;
       throw error;
     },
-    async createAgent() {
-      throw new Error('Agent creation is not available in Stagehand UI tests');
+    // Real create/update so the wrapper's POST/PATCH is observable end to end.
+    // Validation mirrors the server: unknown provider/fields reject, and a
+    // provider's static validateCreateAgent hook runs when present.
+    async createAgent(input = {}) {
+      let provider = providers.find((candidate) => candidate.pluginID === input.pluginID);
+      if (!provider) {
+        let error = new Error(`Unknown agent provider: ${input.pluginID || ''}`);
+        error.status = 400;
+        throw error;
+      }
+
+      await validateAgentInput(provider, input, true);
+
+      let agent = {
+        id: `agent_${nextAgentNumber++}`,
+        name: input.name,
+        pluginID: input.pluginID,
+        enabled: input.enabled ?? true,
+        character: input.character || '',
+        config: { ...(input.config || {}) },
+        secrets: { ...(input.secrets || {}) },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      agents.unshift(agent);
+      return agent;
     },
-    async updateAgent() {
-      throw new Error('Agent updates are not available in Stagehand UI tests');
+    async updateAgent(agentID, input = {}) {
+      let agent = agents.find((candidate) => candidate.id === agentID);
+      if (!agent) {
+        let error = new Error(`Unknown agent: ${agentID}`);
+        error.status = 404;
+        throw error;
+      }
+
+      let provider = providers.find((candidate) => candidate.pluginID === (input.pluginID || agent.pluginID));
+      await validateAgentInput(provider, { ...input, pluginID: input.pluginID || agent.pluginID }, false);
+      Object.assign(agent, {
+        name: input.name ?? agent.name,
+        config: input.config != null ? { ...agent.config, ...input.config } : agent.config,
+        secrets: input.secrets != null ? { ...agent.secrets, ...input.secrets } : agent.secrets,
+        updatedAt: Date.now(),
+      });
+      return agent;
     },
     async deleteAgent() {},
   };
+}
+
+// Mirror AgentManager.normalizeInput's validation closely enough for UI tests:
+// reject unknown config/secret fields and enforce static `required` flags.
+async function validateAgentInput(provider, input, creating) {
+  let fields = provider?.configFields || [];
+  let configFields = new Set(fields.filter((field) => !field.secret).map((field) => field.name));
+  let secretFields = new Set(fields.filter((field) => field.secret).map((field) => field.name));
+  let config = input.config || {};
+  let secrets = input.secrets || {};
+
+  for (let key of Object.keys(config)) {
+    if (!configFields.has(key))
+      throw badRequest(`Unknown config field for ${input.pluginID}: ${key}`);
+  }
+
+  for (let key of Object.keys(secrets)) {
+    if (!secretFields.has(key))
+      throw badRequest(`Unknown secret field for ${input.pluginID}: ${key}`);
+  }
+
+  if (!creating)
+    return;
+
+  for (let field of fields) {
+    if (!field.required)
+      continue;
+
+    let source = field.secret ? secrets : config;
+    if (source[field.name] == null || source[field.name] === '')
+      throw badRequest(`${field.name} is required`);
+  }
+
+  if (typeof provider?.validateCreateAgent === 'function')
+    await provider.validateCreateAgent({ config, secrets, pluginID: input.pluginID });
+}
+
+function badRequest(message) {
+  let error = new Error(message);
+  error.status = 400;
+  return error;
 }
 
 function createTeamManagerStub(initialTeams = []) {

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  applyAgentConfigValues,
   defaultConfigForProvider,
   mergeAgentConfigWithProviderDefaults,
 } from '../../src/client/state/agent-state-utils.mjs';
@@ -36,4 +37,28 @@ test('mergeAgentConfigWithProviderDefaults lets saved config override plugin def
     model: 'custom-model',
     temperature: 0.2,
   });
+});
+
+test('applyAgentConfigValues mirrors guts values into agent form state', () => {
+  let state = { agentFormConfig: {}, agentFormSecrets: {} };
+  applyAgentConfigValues(state, {
+    config: { baseUrl: 'http://127.0.0.1:8090', model: 'local' },
+    secrets: { apiKey: 'sk-x' },
+  });
+
+  assert.deepEqual(state.agentFormConfig, { baseUrl: 'http://127.0.0.1:8090', model: 'local' });
+  assert.deepEqual(state.agentFormSecrets, { apiKey: 'sk-x' });
+});
+
+test('applyAgentConfigValues resets to empty objects on malformed or missing input', () => {
+  let state = { agentFormConfig: { stale: true }, agentFormSecrets: { apiKey: 'old' } };
+
+  applyAgentConfigValues(state, { config: 'nope', secrets: null });
+  assert.deepEqual(state.agentFormConfig, {});
+  assert.deepEqual(state.agentFormSecrets, {});
+
+  applyAgentConfigValues(state, null);
+  assert.deepEqual(state.agentFormConfig, {});
+
+  applyAgentConfigValues(null, { config: { a: 1 } });
 });

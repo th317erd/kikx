@@ -4,8 +4,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  readCustomAgentConfig,
+  DEFAULT_AGENT_CONFIG_FORM_TAG,
+  findAgentConfigFormElement,
+  readAgentGutsValues,
+  resolveAgentConfigFormTag,
   selectAgentConfigFormDescriptor,
+  validateAgentGuts,
 } from '../../src/client/components/agent-config-form-registry.mjs';
 
 function descriptorFor(pluginID, tagName = 'kog-agent-config-form') {
@@ -48,54 +52,73 @@ test('selectAgentConfigFormDescriptor requires a tag name', () => {
   );
 });
 
-test('readCustomAgentConfig reads config and secrets from the custom form element', () => {
+test('resolveAgentConfigFormTag uses the plugin descriptor when present, else the core default', () => {
   let state = { clientAgentConfigFormsByPluginID: { 'codex-agent': descriptorFor('codex-agent') } };
+
+  assert.equal(
+    resolveAgentConfigFormTag(state, { pluginID: 'codex-agent' }, { isRegistered: () => true }),
+    'kog-agent-config-form',
+  );
+  assert.equal(
+    resolveAgentConfigFormTag(state, { pluginID: 'other' }, { isRegistered: () => true }),
+    DEFAULT_AGENT_CONFIG_FORM_TAG,
+  );
+  assert.equal(
+    resolveAgentConfigFormTag(state, null, { isRegistered: () => true }),
+    DEFAULT_AGENT_CONFIG_FORM_TAG,
+  );
+});
+
+test('findAgentConfigFormElement queries a host by guts tag', () => {
+  let element = { readValues() {} };
+  let host = { querySelector: (selector) => selector === 'kog-agent-config-form' ? element : null };
+
+  assert.equal(findAgentConfigFormElement(host, 'kog-agent-config-form'), element);
+  assert.equal(findAgentConfigFormElement(host, ''), null);
+  assert.equal(findAgentConfigFormElement(null, 'kog-agent-config-form'), null);
+});
+
+test('readAgentGutsValues reads and normalizes the guts readValues result', () => {
   let element = {
-    readConfig() {
+    readValues() {
       return {
         config: { baseUrl: 'http://127.0.0.1:8090', model: 'local' },
         secrets: { apiKey: 'sk-x' },
       };
     },
   };
-  let form = { querySelector: (selector) => selector === 'kog-agent-config-form' ? element : null };
 
-  assert.deepEqual(
-    readCustomAgentConfig(state, { pluginID: 'codex-agent' }, form, { isRegistered: () => true }),
-    {
-      config: { baseUrl: 'http://127.0.0.1:8090', model: 'local' },
-      secrets: { apiKey: 'sk-x' },
-    },
-  );
+  assert.deepEqual(readAgentGutsValues(element), {
+    config: { baseUrl: 'http://127.0.0.1:8090', model: 'local' },
+    secrets: { apiKey: 'sk-x' },
+  });
 });
 
-test('readCustomAgentConfig returns null without a form, element or readConfig', () => {
-  let state = { clientAgentConfigFormsByPluginID: { 'codex-agent': descriptorFor('codex-agent') } };
-  let provider = { pluginID: 'codex-agent' };
-
-  assert.equal(readCustomAgentConfig(state, provider, null, { isRegistered: () => true }), null);
-  assert.equal(
-    readCustomAgentConfig(state, provider, { querySelector: () => null }, { isRegistered: () => true }),
-    null,
-  );
-  assert.equal(
-    readCustomAgentConfig(state, provider, { querySelector: () => ({}) }, { isRegistered: () => true }),
-    null,
-  );
-  assert.equal(
-    readCustomAgentConfig(state, { pluginID: 'other' }, { querySelector: () => ({}) }, { isRegistered: () => true }),
-    null,
-  );
+test('readAgentGutsValues returns null without an element or readValues', () => {
+  assert.equal(readAgentGutsValues(null), null);
+  assert.equal(readAgentGutsValues({}), null);
 });
 
-test('readCustomAgentConfig normalizes a malformed readConfig result', () => {
-  let state = { clientAgentConfigFormsByPluginID: { 'codex-agent': descriptorFor('codex-agent') } };
-  let form = {
-    querySelector: () => ({ readConfig: () => ({ config: 'nope', secrets: null }) }),
-  };
+test('readAgentGutsValues normalizes a malformed result', () => {
+  let element = { readValues: () => ({ config: 'nope', secrets: null }) };
+  assert.deepEqual(readAgentGutsValues(element), { config: {}, secrets: {} });
+});
 
-  assert.deepEqual(
-    readCustomAgentConfig(state, { pluginID: 'codex-agent' }, form, { isRegistered: () => true }),
-    { config: {}, secrets: {} },
-  );
+test('validateAgentGuts treats a missing validate() as valid', async () => {
+  assert.deepEqual(await validateAgentGuts(null), { valid: true, errors: {} });
+  assert.deepEqual(await validateAgentGuts({}), { valid: true, errors: {} });
+});
+
+test('validateAgentGuts normalizes errors and supports async validate()', async () => {
+  let valid = await validateAgentGuts({ validate: () => ({ valid: true }) });
+  assert.deepEqual(valid, { valid: true, errors: {} });
+
+  let invalid = await validateAgentGuts({
+    validate: async () => ({ valid: false, errors: { apiKey: '  required  ', ignored: 5, empty: '' } }),
+  });
+  assert.deepEqual(invalid, { valid: false, errors: { apiKey: 'required' } });
+
+  // valid omitted but errors present is treated as valid (explicit false only).
+  let implicit = await validateAgentGuts({ validate: () => ({ errors: { apiKey: 'nope' } }) });
+  assert.equal(implicit.valid, true);
 });

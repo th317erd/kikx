@@ -1540,6 +1540,39 @@ button.kikx-window__title:focus-visible {
   cursor: progress;
 }
 
+.kikx-agent-form__status {
+  display: grid;
+  gap: 4px;
+}
+
+.kikx-agent-form__error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 12px;
+}
+
+.kikx-default-config {
+  display: grid;
+  gap: 10px;
+}
+
+.kikx-default-config__label {
+  color: #aeb8c2;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kikx-default-config aeor-input,
+.kikx-default-config aeor-select {
+  min-height: 36px;
+}
+
+.kikx-default-config__empty {
+  margin: 0;
+  color: #97a3ae;
+  font-size: 12px;
+}
+
 .kog-config {
   display: grid;
   gap: 10px;
