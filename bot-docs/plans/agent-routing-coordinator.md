@@ -132,6 +132,16 @@ Trace entry → orchestration → authority → storage → publication → clie
 - **Silence default**: the coordinator defaults to `agent-null-response` (silent)
   unless a rule below says otherwise.
 
+## Dispatch model (resolved this session)
+
+Delivery is **serial per session**: the coordinator runs to completion first,
+then recipients run one-at-a-time (owner: "make the coordinator process each
+message serially"). `FrameRouter.runSerial()` provides the per-session chain and
+keeps LLM turns off the global commit queue, so one slow agent does not block
+other sessions. Recipients are read from the frame *after* the coordinator's
+turn, making `route`/`remove` authoritative. The explicit `targetAgentID` bypass
+(scheduled continuations, process wakes) is preserved.
+
 ## Coordinator decision system (the prompt "process")
 
 Written as prompt rules AND encoded as the tool set. Default action is **silent**.
