@@ -18,7 +18,8 @@ Last updated: 2026-09-30 (session approaching context limit; compaction failing)
    Kikx uses this framework; the client is under `src/client/`.
 1. Read `~/.codex/startup.md` (already mandatory), then `.codex/DETAILS.md`, `.codex/quirks.md`,
    `bot-docs/plans/session-work-area.md`, and this file.
-2. Repos: `kikx` (`main`, remote `th317erd/kikx`), `kikx-plugin-ollama` and
+2. Repos: `kikx` (`main`, remote `th317erd/kikx`), `kikx-docker` (private,
+   `th317erd/kikx-docker` — the distribution container), `kikx-plugin-ollama` and
    `kikx-plugin-codex` (private, `th317erd/*`). All were pushed clean at last check.
 3. Dev stack: AeorDB at `127.0.0.1:6830` (binary v0.9.5), Kikx at `127.0.0.1:3001`.
    Restart Kikx after client changes: kill `start-kikx-dev`/`src/server/index.mjs`, then
@@ -34,6 +35,11 @@ Last updated: 2026-09-30 (session approaching context limit; compaction failing)
    `npm run test:ui:playwright`. Stagehand occasionally flakes with
    `ConnectionTimeoutError` (Chrome launch contention, 21 parallel browsers / 16 CPUs) —
    environmental, not a code failure.
+7. **Distribution container** (`kikx-docker`): a single self-contained Docker container
+   running Kikx + AeorDB + Chrome. Repo `th317erd/kikx-docker` (private), directory
+   `../kikx-docker`. Kikx at `http://127.0.0.1:3099`, AeorDB at `127.0.0.1:6833`
+   (inside the same container). Durability/state at `~/.local/share/kikx/`. See the
+   section below and `bot-docs/plans/kikx-docker-distribution.md`.
 
 ## What shipped this session (chronological, all pushed)
 1. **Ollama provider plugin** (`kikx-plugin-ollama`, private) + async provider descriptors
@@ -139,6 +145,41 @@ Flagged not fixed: `_deleteAgent` uses bare `fetch` without `_apiHeaders()`.
 - Stagehand coverage for crown alignment/flicker/confirm-button + filter pills + top-3 cap.
 - Master-agent **consumption** (resolveDefaultAgent for empty-session default agents).
 - True lazy-loading of older frames on scroll-up.
+
+## Distribution container (`kikx-docker`) — how to use it
+The single-container distribution is the intended way to run Kikx. It supersedes the
+old two-service `kikx-prod` stack (still archived in `bot-docs/plans/kikx-prod-deploy.md`).
+
+- **Repo/dir**: `th317erd/kikx-docker` (private) at `/home/wyatt/Projects/kikx-workspace/kikx-docker`.
+  Compose project / container / image are all named `kikx` (`kikx/kikx:<sha>`).
+- **One image, whole app**: `node:24-trixie-slim` base (glibc 2.41 — aeordb needs
+  GLIBC_2.38; bookworm's 2.36 can't run it), with the aeordb binary baked into
+  `/usr/local/bin/aeordb`, Kikx frozen under `/app`, and Chrome baked in. `/app` is
+  read-only at runtime; edits to `kikx` go live only via `./deploy.sh <ref>`.
+- **Host network mode**: the container shares the host net namespace, so it reaches the
+  host Brave on `127.0.0.1:9222` (Puppeteer driving) and host services; processes bind
+  loopback directly (no `ports:` mappings). Kikx `web-search`/`web-fetch` use the
+  container's own internal Chrome on CDP `127.0.0.1:9224` (self-contained).
+- **Mounts**: the whole `${KIKX_HOME}` (= `/home/wyatt`) is mounted rw at the same path,
+  so bots edit ANY project in place. `.ssh` and `.gnupg` are read-only overlays.
+- **Data**: `${KIKX_HOME}/.local/share/kikx/` — `kikx.aeordb`, `root_key` (0600,
+  captured once from aeordb's first-start banner), `runtime/` (JWT+refresh),
+  `chrome-profile/`, `chrome-home/`. The old `kikx-docker/data/kikx.aeordb` is the
+  orphaned pre-move DB (dummy data), left in place.
+- **Entrypoint** (`docker/entrypoint.mjs` + `docker/lib/{aeordb-supervisor,token-manager,user-bootstrap}.mjs`)
+  is PID 1: starts Chrome, supervises AeorDB, captures the root key, creates the first
+  user on a fresh DB (`KIKX_ADMIN_EMAIL`, username = email), mints a JWT (root key is
+  never in the server env), starts Kikx, re-mints every 6 days.
+- **Login**: open `http://127.0.0.1:3099`; the code appears in `docker logs kikx`
+  (grep `magic_link_url`, needs `AEORDB_LOG_MAGIC_LINKS=1` + `AEORDB_LOG=aeordb=debug,...`).
+  The link is `http://127.0.0.1:3099/?code=<code>` — the client reads `?code=` from the
+  app root and auto-verifies. Codes are **single-use**; do not curl the verify endpoint
+  yourself. `KIKX_ADMIN_EMAIL=wegreenway@taraani.org`.
+- **Scripts**: `./bootstrap.sh` (build+start+capture key; `--reset-root-key`),
+  `./deploy.sh <ref>` (stage pinned refs, rebuild, restart), `./rollback.sh`.
+  `bootstrap.sh` lets a caller-provided `KIKX_HOME` override `.env` (portability).
+- **Kikx's own unit/spec tests stay on the HOST** (`npm test` at `kikx/`), using
+  throwaway AeorDB instances — NOT in the container.
 
 ## Key design constraints / owner rulings
 - **No canvas/WebGL** for the work area (HTML chosen; measured canvas failed at 120Hz).
