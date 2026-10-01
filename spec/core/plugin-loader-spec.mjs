@@ -6,7 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { loadPlugins } from '../../src/core/plugins/plugin-loader.mjs';
+import { loadPlugins, unloadPlugin } from '../../src/core/plugins/plugin-loader.mjs';
+import { registerCoreClasses } from '../../src/core/plugins/core-classes.mjs';
 import { PluginRegistry } from '../../src/core/plugins/index.mjs';
 import { CommandRegistry } from '../../src/core/commands/index.mjs';
 
@@ -107,4 +108,43 @@ test('loadPlugins exposes client component registration to external plugins', as
   assert.equal(loaded.length, 1);
   assert.equal(registry.getFrameComponents().get('ToolResult').tagName, 'kikx-external-tool-result');
   assert.equal(registry.getToolComponents().get('external-tool').tagName, 'kikx-external-tool');
+});
+
+test('a plugin can override a core class and unloadPlugin restores it', async () => {
+  let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-plugin-override-'));
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ main: 'index.mjs' }));
+  await fs.writeFile(path.join(root, 'index.mjs'), `
+    export const pluginName = 'override-plugin';
+    export function setup(provide) {
+      provide(({ registry, registerClass }) => {
+        class CustomRouter {}
+        registerClass('FrameRouter', CustomRouter);
+      });
+      return () => {};
+    }
+  `);
+
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+  class CoreRouter {}
+  registry.registerClass('FrameRouter', CoreRouter, { pluginName: 'core' });
+
+  await loadPlugins({ pluginPaths: root, registry, logger: { warn() {} } });
+
+  let Overridden = registry.getClass('FrameRouter');
+  assert.notEqual(Overridden, CoreRouter);
+  assert.equal(Overridden.name, 'CustomRouter');
+
+  let unloaded = await unloadPlugin(registry, 'override-plugin');
+  assert.equal(unloaded, true);
+  assert.equal(registry.getClass('FrameRouter'), CoreRouter);
+});
+
+test('coreClasses registers the override-worthy core classes', async () => {
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+  registerCoreClasses(registry);
+
+  for (let key of [ 'FrameRouter', 'FrameRuntime', 'CompactionService', 'PluginRegistry', 'AgentInterface', 'PluginInterface' ])
+    assert.ok(registry.hasClass(key), `expected ${key} registered`);
+
+  assert.equal(registry.getClass('FrameRouter').name, 'FrameRouter');
 });

@@ -16,6 +16,7 @@ import { CompactionService } from '../core/compaction/index.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
+import { registerCoreClasses, resolveCoreClass } from '../core/plugins/core-classes.mjs';
 import { FrameRouter } from '../core/routing/index.mjs';
 import { FrameRuntime } from '../core/runtime/frame-runtime.mjs';
 import { FeedbackStore } from '../core/feedback/index.mjs';
@@ -63,6 +64,14 @@ export function createServer(options = {}) {
   if (!context.has('pluginRegistry'))
     context.set('pluginRegistry', new PluginRegistry());
 
+  // Register override-worthy core classes into the universal ClassRegistry so a
+  // plugin can replace them (registerClass the same key) and unregisterPlugin
+  // can pop back to core.
+  if (!context.has('coreClassesRegistered')) {
+    registerCoreClasses(context.require('pluginRegistry'));
+    context.set('coreClassesRegistered', true);
+  }
+
   if (!context.has('builtInToolsRegistered')) {
     registerBuiltInTools(context.require('pluginRegistry'));
     context.set('builtInToolsRegistered', true);
@@ -102,8 +111,11 @@ export function createServer(options = {}) {
     context.set('internalCommandsRegistered', true);
   }
 
-  if (!context.has('frameRouter'))
-    context.set('frameRouter', new FrameRouter());
+  if (!context.has('frameRouter')) {
+    // Resolve via the registry so a plugin can override FrameRouter.
+    let RouterClass = resolveCoreClass(context.require('pluginRegistry'), 'FrameRouter', FrameRouter);
+    context.set('frameRouter', new RouterClass());
+  }
 
   if (!context.has('tokenUsage')) {
     context.set('tokenUsage', new TokenUsageTracker({
