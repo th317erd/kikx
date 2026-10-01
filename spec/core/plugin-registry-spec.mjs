@@ -75,6 +75,50 @@ test('PluginRegistry registers client frame and tool component descriptors', () 
   ]);
 });
 
+test('PluginRegistry registers an agent config form keyed by pluginID', () => {
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+
+  let descriptor = registry.registerAgentConfigForm('codex-agent', {
+    tagName: 'kog-agent-config-form',
+    moduleURL: '/api/v1/plugin-assets/kikx-plugin-codex/agent-config-form.mjs',
+  });
+
+  assert.equal(descriptor.kind, 'agent-config-form');
+  assert.equal(descriptor.pluginID, 'codex-agent');
+  assert.equal(registry.getAgentConfigForms().get('codex-agent').tagName, 'kog-agent-config-form');
+  assert.deepEqual(registry.listClientComponentDescriptors(), [ descriptor ]);
+});
+
+test('PluginRegistry.registerComponent dispatches by kind', () => {
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+
+  let frame = registry.registerComponent('frame', 'ToolResult', {
+    tagName: 'kikx-tool-result-frame',
+    moduleURL: '/client/tool-result.mjs',
+  });
+  let form = registry.registerComponent('agent-config-form', 'codex-agent', {
+    tagName: 'kog-agent-config-form',
+    moduleURL: '/api/v1/plugin-assets/kikx-plugin-codex/agent-config-form.mjs',
+  });
+
+  assert.equal(frame.kind, 'frame');
+  assert.equal(form.kind, 'agent-config-form');
+  assert.equal(form.pluginID, 'codex-agent');
+  assert.throws(
+    () => registry.registerComponent('unknown', 'x', { tagName: 'x-y', moduleURL: '/x.mjs' }),
+    /Unknown client component kind/,
+  );
+});
+
+test('PluginRegistry records plugin paths keyed by plugin name and provider IDs', () => {
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+  registry.registerPluginPath('kikx-plugin-codex', '/plugins/codex', [ 'codex-agent' ]);
+
+  assert.equal(registry.getPluginPath('kikx-plugin-codex'), '/plugins/codex');
+  assert.equal(registry.getPluginPath('codex-agent'), '/plugins/codex');
+  assert.equal(registry.getPluginPath('missing'), null);
+});
+
 test('PluginRegistry auto-registers tool clientComponent metadata', () => {
   let registry = new PluginRegistry({ logger: { warn() {} } });
 

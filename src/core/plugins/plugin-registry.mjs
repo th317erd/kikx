@@ -16,6 +16,25 @@ export class PluginRegistry extends ClassRegistry {
     this._selectors = [];
     this._frameComponents = new Map();
     this._toolComponents = new Map();
+    this._agentConfigForms = new Map();
+    this._pluginPaths = new Map();
+  }
+
+  // Record the on-disk root of a loaded plugin so the server can serve its
+  // client assets from `<pluginPath>/client/`. Keyed by plugin name AND the
+  // plugin IDs it registers, since client descriptors and agent providers
+  // reference the plugin by ID (e.g. 'codex-agent') rather than its folder.
+  registerPluginPath(pluginName, pluginPath, pluginIDs = []) {
+    if (!pluginPath || typeof pluginPath !== 'string')
+      return;
+
+    let keys = [ pluginName, ...(Array.isArray(pluginIDs) ? pluginIDs : []) ].filter(Boolean);
+    for (let key of keys)
+      this._pluginPaths.set(key, pluginPath);
+  }
+
+  getPluginPath(pluginID) {
+    return this._pluginPaths.get(pluginID) || null;
   }
 
   registerTool(name, ToolClass) {
@@ -112,6 +131,21 @@ export class PluginRegistry extends ClassRegistry {
     return this._selectors.slice();
   }
 
+  // Generic client component registration keyed by kind. `frame` and `tool`
+  // are keyed by frameType/toolName; `agent-config-form` is keyed by pluginID.
+  registerComponent(kind, key, descriptor = {}) {
+    switch (kind) {
+      case 'frame':
+        return this.registerFrameComponent(key, descriptor);
+      case 'tool':
+        return this.registerToolComponent(key, descriptor);
+      case 'agent-config-form':
+        return this.registerAgentConfigForm(key, descriptor);
+      default:
+        throw new TypeError(`Unknown client component kind: ${kind}`);
+    }
+  }
+
   registerFrameComponent(frameType, descriptor = {}) {
     let normalized = normalizeComponentDescriptor(descriptor, {
       kind: 'frame',
@@ -138,6 +172,22 @@ export class PluginRegistry extends ClassRegistry {
     return normalized;
   }
 
+  // A plugin's own agent create/edit form, keyed by the agent provider's
+  // pluginID. The client renders this element in place of the generic
+  // config fields.
+  registerAgentConfigForm(pluginID, descriptor = {}) {
+    let normalized = normalizeComponentDescriptor(descriptor, {
+      kind: 'agent-config-form',
+      pluginID,
+    });
+
+    if (this._agentConfigForms.has(normalized.pluginID))
+      this.logger.warn?.(`Agent config form "${normalized.pluginID}" is being overridden`);
+
+    this._agentConfigForms.set(normalized.pluginID, normalized);
+    return normalized;
+  }
+
   getFrameComponents() {
     return new Map(this._frameComponents);
   }
@@ -146,10 +196,15 @@ export class PluginRegistry extends ClassRegistry {
     return new Map(this._toolComponents);
   }
 
+  getAgentConfigForms() {
+    return new Map(this._agentConfigForms);
+  }
+
   listClientComponentDescriptors() {
     return [
       ...this._frameComponents.values(),
       ...this._toolComponents.values(),
+      ...this._agentConfigForms.values(),
     ].map((descriptor) => ({ ...descriptor }));
   }
 }
@@ -163,8 +218,8 @@ function isSubclassOf(candidate, BaseClass) {
 function normalizeComponentDescriptor(descriptor, defaults = {}) {
   let input = normalizeDescriptorInput(descriptor);
   let kind = normalizeRequiredString(input.kind || defaults.kind, 'component kind');
-  if (kind !== 'frame' && kind !== 'tool')
-    throw new TypeError('Component kind must be "frame" or "tool"');
+  if (kind !== 'frame' && kind !== 'tool' && kind !== 'agent-config-form')
+    throw new TypeError('Component kind must be "frame", "tool" or "agent-config-form"');
 
   let output = {
     ...input,
@@ -175,8 +230,10 @@ function normalizeComponentDescriptor(descriptor, defaults = {}) {
 
   if (kind === 'frame')
     output.frameType = normalizeRequiredString(input.frameType || defaults.frameType, 'frameType');
-  else
+  else if (kind === 'tool')
     output.toolName = normalizeRequiredString(input.toolName || defaults.toolName, 'toolName');
+  else
+    output.pluginID = normalizeRequiredString(input.pluginID || defaults.pluginID, 'pluginID');
 
   delete output.tag;
   delete output.elementName;

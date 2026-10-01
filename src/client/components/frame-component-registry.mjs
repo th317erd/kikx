@@ -37,12 +37,14 @@ export function resolveFrameComponentDescriptor(frame, state = {}) {
   return null;
 }
 
+const CLIENT_COMPONENT_KINDS = [ 'frame', 'tool', 'agent-config-form' ];
+
 function normalizeDescriptors(components) {
   return (Array.isArray(components) ? components : [])
     .filter((component) => (
       component
       && typeof component.tagName === 'string'
       && typeof component.moduleURL === 'string'
-      && (component.kind === 'frame' || component.kind === 'tool')
+      && CLIENT_COMPONENT_KINDS.includes(component.kind)
     ));
 }

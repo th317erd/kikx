@@ -61,6 +61,7 @@ export const kikxState = new ReactiveState({
   clientComponentStatus: 'pending',
   clientFrameComponentsByType: {},
   clientToolComponentsByName: {},
+  clientAgentConfigFormsByPluginID: {},
   connectionStatus: 'Disconnected',
   connectionStatusKind: 'error',
   draft: '',
@@ -294,16 +295,20 @@ export function setAgentProviders(providers, state = kikxState) {
 export function setClientComponents(components, state = kikxState) {
   let frameComponents = {};
   let toolComponents = {};
+  let agentConfigForms = {};
 
   for (let component of Array.isArray(components) ? components : []) {
     if (component?.kind === 'frame' && component.frameType)
       frameComponents[component.frameType] = component;
     else if (component?.kind === 'tool' && component.toolName)
       toolComponents[component.toolName] = component;
+    else if (component?.kind === 'agent-config-form' && component.pluginID)
+      agentConfigForms[component.pluginID] = component;
   }
 
   state.clientFrameComponentsByType = frameComponents;
   state.clientToolComponentsByName = toolComponents;
+  state.clientAgentConfigFormsByPluginID = agentConfigForms;
   state.clientComponentStatus = 'ready';
 }
 

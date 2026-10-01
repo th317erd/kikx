@@ -2,6 +2,7 @@
 
 import { writeJSON } from './http-helpers.mjs';
 import { serveStaticRequest } from './static-files.mjs';
+import { handlePluginAssetRoutes } from './routes/plugin-asset-routes.mjs';
 import { handleInfraRoutes } from './routes/infra-routes.mjs';
 import { handleAccountRoutes } from './routes/account-routes.mjs';
 import { handleSessionRoutes } from './routes/session-routes.mjs';
@@ -19,6 +20,7 @@ export async function routeRequest({ request, response, context, staticRoots }) 
   let url = new URL(request.url, 'http://localhost');
 
   let handlers = [
+    handlePluginAssetRoutes,
     handleInfraRoutes,
     handleAccountRoutes,
     handleSessionRoutes,

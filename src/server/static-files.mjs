@@ -15,34 +15,46 @@ export async function serveStaticRequest({ request, response, url, staticRoots }
     return true;
   }
 
+  await serveResolvedFile({ request, response, filePath: match.filePath, cacheControl: match.cacheControl });
+  return true;
+}
+
+// Stream a known, already-resolved file. Shared by the static roots and the
+// plugin asset route. A missing/non-file path yields 404; a null path yields
+// 403 (used when a caller rejects a traversal attempt).
+export async function serveResolvedFile({ request, response, filePath, cacheControl = 'no-cache' }) {
+  if (!filePath) {
+    writeText(response, 403, 'Forbidden');
+    return;
+  }
+
   let stats;
   try {
-    stats = await fs.stat(match.filePath);
+    stats = await fs.stat(filePath);
   } catch (_error) {
     writeText(response, 404, 'Not Found');
-    return true;
+    return;
   }
 
   if (!stats.isFile()) {
     writeText(response, 404, 'Not Found');
-    return true;
+    return;
   }
 
   let headers = {
-    'Content-Type': contentTypeFor(match.filePath),
+    'Content-Type': contentTypeFor(filePath),
     'Content-Length': stats.size,
-    'Cache-Control': match.cacheControl || 'no-cache',
+    'Cache-Control': cacheControl,
   };
 
   response.writeHead(200, headers);
   if (request.method === 'HEAD') {
     response.end();
-    return true;
+    return;
   }
 
-  let body = await fs.readFile(match.filePath);
+  let body = await fs.readFile(filePath);
   response.end(body);
-  return true;
 }
 
 function getStaticAsset(pathname, staticRoots) {
@@ -85,20 +97,27 @@ function safeResolve(root, relativePath) {
     return null;
   }
 
-  if (decodedPath.includes('\0'))
+  return resolveWithin(root, decodedPath);
+}
+
+// Resolve `relativePath` under `root`, rejecting traversal (encoded or raw
+// `..`), null bytes, and absolute escapes. Returns the absolute candidate
+// path, or null when the path would escape the root.
+export function resolveWithin(root, relativePath) {
+  if (typeof relativePath !== 'string' || relativePath.includes('\0'))
     return null;
 
   let resolvedRoot = path.resolve(root);
-  let candidate = path.resolve(resolvedRoot, decodedPath);
+  let candidate = path.resolve(resolvedRoot, relativePath);
   let relative = path.relative(resolvedRoot, candidate);
 
-  if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative)))
-    return candidate;
+  if (relative.startsWith('..') || path.isAbsolute(relative))
+    return null;
 
-  return null;
+  return candidate;
 }
 
-function contentTypeFor(filePath) {
+export function contentTypeFor(filePath) {
   let ext = path.extname(filePath).toLowerCase();
   let types = {
     '.css': 'text/css; charset=utf-8',

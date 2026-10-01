@@ -33,6 +33,7 @@ export async function loadPlugins(options = {}) {
 
       let pluginName = pluginModule.pluginName || pluginNameFromPath(pluginPath);
       let record = { pluginPath, pluginName, modulePath, callbacks: [], teardown: null };
+      let providerIDsBefore = agentProviderIDs(registry);
       let teardown = await pluginModule.setup(createPluginSetupContext({
         registry,
         commandRegistry,
@@ -43,6 +44,16 @@ export async function loadPlugins(options = {}) {
       }));
       if (typeof teardown === 'function')
         record.teardown = teardown;
+
+      if (typeof registry.registerPluginPath === 'function') {
+        let registeredProviderIDs = [];
+        for (let key of agentProviderIDs(registry)) {
+          if (!providerIDsBefore.has(key))
+            registeredProviderIDs.push(key);
+        }
+
+        registry.registerPluginPath(pluginName, pluginPath, registeredProviderIDs);
+      }
 
       registerPluginRecord(registry, record);
       loaded.push({ path: pluginPath, modulePath, pluginName });
@@ -72,6 +83,13 @@ export async function unloadPlugin(registry, pluginName, { logger = console } = 
     registry.unregisterPlugin(pluginName);
 
   return true;
+}
+
+function agentProviderIDs(registry) {
+  if (typeof registry.getAgentProviders !== 'function')
+    return new Set();
+
+  return new Set(registry.getAgentProviders().keys());
 }
 
 function registerPluginRecord(registry, record) {
@@ -121,8 +139,10 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
       return commandRegistry.registerCommand(...args);
     },
     registerSelector: (...args) => registry.registerSelector(...args),
+    registerComponent: (...args) => registry.registerComponent(...args),
     registerFrameComponent: (...args) => registry.registerFrameComponent(...args),
     registerToolComponent: (...args) => registry.registerToolComponent(...args),
+    registerAgentConfigForm: (...args) => registry.registerAgentConfigForm(...args),
   };
 
   return (callback) => {

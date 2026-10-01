@@ -2,7 +2,7 @@
 
 import { getAgents, removeAgent, resetAgentForm, setAgentFormFromAgent, setAgentFormProvider, upsertAgent } from '../state/kikx-state.mjs';
 import { masterRankByAgentID } from './master-agent-helpers.mjs';
-import { buildAgentManagerBody } from './kikx-modals.mjs';
+import { buildAgentManagerBody, readAgentConfigFromForm } from './kikx-modals.mjs';
 import { cssEscape } from './kikx-app-helpers.mjs';
 import { nonEmptyValues } from './agent-form-helpers.mjs';
 
@@ -52,11 +52,15 @@ export function selectAgentProvider(app, pluginID) {
 export async function onAgentFormSubmit(app, event) {
   event.preventDefault();
 
+  // A plugin-supplied agent-config-form owns its section; read its values at
+  // submit rather than the generic agentFormConfig/agentFormSecrets state.
+  let custom = readAgentConfigFromForm(app, event.currentTarget);
+
   let body = {
     name: app._state.agentFormName,
     pluginID: app._state.agentFormPluginID,
-    config: app._state.agentFormConfig,
-    secrets: nonEmptyValues(app._state.agentFormSecrets),
+    config: custom ? custom.config : app._state.agentFormConfig,
+    secrets: nonEmptyValues(custom ? custom.secrets : app._state.agentFormSecrets),
   };
 
   app._state.agentStatus = app._state.agentFormMode === 'edit' ? 'Saving agent...' : 'Creating agent...';

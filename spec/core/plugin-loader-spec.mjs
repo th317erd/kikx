@@ -110,6 +110,37 @@ test('loadPlugins exposes client component registration to external plugins', as
   assert.equal(registry.getToolComponents().get('external-tool').tagName, 'kikx-external-tool');
 });
 
+test('loadPlugins exposes agent-config-form registration and records plugin path by provider ID', async () => {
+  let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-config-form-plugin-'));
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ main: 'index.mjs' }));
+  await fs.writeFile(path.join(root, 'index.mjs'), `
+    export const pluginName = 'config-form-plugin';
+    export function setup(provide) {
+      provide(({ registry, registerAgentConfigForm }) => {
+        let AgentInterface = registry.getClass('AgentInterface');
+        class CustomAgent extends AgentInterface {
+          static pluginId = 'custom-agent';
+          static displayName = 'Custom Agent';
+        }
+        registry.registerAgentType('custom-agent', CustomAgent);
+        registerAgentConfigForm('custom-agent', {
+          tagName: 'kog-agent-config-form',
+          moduleURL: '/api/v1/plugin-assets/config-form-plugin/agent-config-form.mjs',
+        });
+      });
+    }
+  `);
+
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+  let loaded = await loadPlugins({ pluginPaths: root, registry, logger: { warn() {} } });
+
+  assert.equal(loaded.length, 1);
+  assert.equal(registry.getAgentConfigForms().get('custom-agent').tagName, 'kog-agent-config-form');
+  // Provider ID -> plugin root, so asset requests can be resolved.
+  assert.equal(registry.getPluginPath('custom-agent'), root);
+  assert.equal(registry.getPluginPath('config-form-plugin'), root);
+});
+
 test('a plugin can override a core class and unloadPlugin restores it', async () => {
   let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-plugin-override-'));
   await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ main: 'index.mjs' }));

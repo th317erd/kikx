@@ -9,6 +9,7 @@ import {
 import { agentFilterPills, filterAgents } from './agent-list-model.mjs';
 import { masterRankByAgentID } from './master-agent-helpers.mjs';
 import { normalizeFieldOptions } from './agent-form-helpers.mjs';
+import { readCustomAgentConfig, selectAgentConfigFormDescriptor } from './agent-config-form-registry.mjs';
 
 const { div, p, span, button, form, label, ul, li, strong, option } = elements;
 const aeorInput = elements['aeor-input'];
@@ -122,9 +123,12 @@ export function buildAgentManagerBody(app) {
   ];
 }
 
-export function buildAgentEditor(app) {
+export function buildAgentEditor(app, configFormDescriptor = undefined) {
   let providers = app._state.agentProviders;
   let provider = getSelectedAgentProvider(app._state);
+  let descriptor = configFormDescriptor === undefined
+    ? selectAgentConfigFormDescriptor(app._state, provider)
+    : configFormDescriptor;
 
   return aeorModal
     .title(app._state.agentFormMode === 'edit' ? 'Edit agent' : 'Create agent')
@@ -152,7 +156,7 @@ export function buildAgentEditor(app) {
                     candidate.displayName || candidate.pluginID,
                   )),
               ),
-            ...buildAgentConfigFields(app, provider),
+            ...buildAgentConfigSection(app, provider, descriptor),
             div.class('modal-footer-actions')(
               ...(app._state.agentFormMode === 'edit'
                 ? [ buildAgentDeleteButton(app) ]
@@ -248,6 +252,38 @@ export function buildAgentConfigFields(app, provider) {
     label(field.label || field.name),
     buildAgentConfigField(app, field),
   ]);
+}
+
+// A provider with a plugin-supplied agent-config-form gets that custom element
+// rendered in place of the generic fields. The element owns its section:
+// setContext({ config, secrets, pluginID }) is called after it is created and
+// readConfig() -> { config, secrets } is called on submit.
+export function buildAgentConfigSection(app, provider, descriptor = undefined) {
+  let resolved = descriptor === undefined
+    ? selectAgentConfigFormDescriptor(app._state, provider)
+    : descriptor;
+  if (!resolved)
+    return buildAgentConfigFields(app, provider);
+
+  let element = document.createElement(resolved.tagName);
+  if (typeof element.setContext === 'function') {
+    let agent = app._state.agentDetailsByID?.[app._state.editingAgentID];
+    element.setContext({
+      config: { ...(app._state.agentFormConfig || {}) },
+      secrets: { ...(app._state.agentFormSecrets || {}) },
+      pluginID: provider?.pluginID || app._state.agentFormPluginID,
+      mode: app._state.agentFormMode,
+      secretState: agent?.secretState || {},
+    });
+  }
+
+  return [ element ];
+}
+
+// When a custom form is present, read its values on submit. Returns null when
+// the provider has no custom form or the element does not implement readConfig.
+export function readAgentConfigFromForm(app, form) {
+  return readCustomAgentConfig(app._state, getSelectedAgentProvider(app._state), form);
 }
 
 export function buildAgentConfigField(app, field) {

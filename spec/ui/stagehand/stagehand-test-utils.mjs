@@ -124,9 +124,12 @@ export async function startStagehandUIServer(options = {}) {
     frameRuntime,
     tokenUsage,
     ...(options.toolOutputStore ? { toolOutputStore: options.toolOutputStore } : {}),
-    pluginLoadPromise: Promise.resolve(),
+    ...(options.pluginPaths ? {} : { pluginLoadPromise: Promise.resolve() }),
   });
-  let server = createServer({ context });
+  let server = createServer({
+    context,
+    ...(options.pluginPaths ? { pluginPaths: options.pluginPaths } : {}),
+  });
   let baseURL = await listen(server);
 
   return {

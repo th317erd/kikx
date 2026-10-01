@@ -1539,3 +1539,39 @@ button.kikx-window__title:focus-visible {
   opacity: 0.5;
   cursor: progress;
 }
+
+.kog-config {
+  display: grid;
+  gap: 10px;
+}
+
+.kog-config__field {
+  display: grid;
+  gap: 4px;
+}
+
+.kog-config__label {
+  color: #aeb8c2;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kog-config__model-wrap {
+  display: grid;
+  gap: 4px;
+}
+
+.kog-config aeor-input,
+.kog-config aeor-select {
+  min-height: 36px;
+}
+
+.kog-config__status {
+  min-height: 16px;
+  color: #97a3ae;
+  font-size: 12px;
+}
+
+.kog-config__status--error {
+  color: #fca5a5;
+}
