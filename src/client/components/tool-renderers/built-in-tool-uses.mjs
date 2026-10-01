@@ -1,6 +1,7 @@
 'use strict';
 
 import {
+  AgentToolUse,
   CwdToolUse,
   ExecGrepUse,
   ExecKillUse,
@@ -34,6 +35,7 @@ defineToolElement('kikx-exec-read-use', ExecReadUse);
 defineToolElement('kikx-exec-grep-use', ExecGrepUse);
 defineToolElement('kikx-exec-kill-use', ExecKillUse);
 defineToolElement('kikx-session-tool-use', SessionToolUse);
+defineToolElement('kikx-agent-tool-use', AgentToolUse);
 defineToolElement('kikx-todo-tool-use', TodoToolUse);
 
 function defineToolElement(tagName, ToolUseClass) {
@@ -42,6 +44,7 @@ function defineToolElement(tagName, ToolUseClass) {
 }
 
 export {
+  AgentToolUse,
   CwdToolUse,
   ExecGrepUse,
   ExecKillUse,

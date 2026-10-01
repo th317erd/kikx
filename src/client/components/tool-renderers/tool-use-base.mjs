@@ -502,6 +502,28 @@ export class SessionToolUse extends ToolUse {
   }
 }
 
+export class AgentToolUse extends ToolUse {
+  displayName() {
+    return 'Agent';
+  }
+
+  callSummary() {
+    if (this.toolName === 'agent-list')
+      return 'Listing agents...';
+    if (this.toolName === 'agent-create')
+      return this.input.name ? `Creating agent: ${this.input.name}` : 'Creating agent...';
+    if (this.toolName === 'agent-update')
+      return this.input.agent ? `Editing agent: ${this.input.agent}` : 'Editing agent...';
+
+    return `${this.toolName}...`;
+  }
+
+  resultSummary() {
+    let outcome = this.status === 'error' ? 'failed' : 'completed';
+    return `${this.toolName} ${outcome}.`;
+  }
+}
+
 export class CwdToolUse extends ToolUse {
   displayName() {
     return 'Shell cwd';

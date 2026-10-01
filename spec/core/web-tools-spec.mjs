@@ -10,7 +10,9 @@ import vm from 'node:vm';
 
 import { PluginRegistry } from '../../src/core/plugins/index.mjs';
 import {
+  AgentCreateTool,
   AgentListTool,
+  AgentUpdateTool,
   CwdClearTool,
   CwdGetTool,
   CwdSetTool,
@@ -104,6 +106,8 @@ test('registerBuiltInTools registers global web tools with OpenAI-safe names', (
   assert.equal(registry.getTool('output-grep'), OutputGrepTool);
   assert.equal(registry.getTool('output-search'), OutputSearchTool);
   assert.equal(registry.getTool('agent-list'), AgentListTool);
+  assert.equal(registry.getTool('agent-create'), AgentCreateTool);
+  assert.equal(registry.getTool('agent-update'), AgentUpdateTool);
   assert.equal(registry.getTool('session-list'), SessionListTool);
   assert.equal(registry.getTool('session-create'), SessionCreateTool);
   assert.equal(registry.getTool('session-invite-agents'), SessionInviteAgentsTool);
@@ -2438,4 +2442,97 @@ test('ToolExecutionService tolerates a throwing referencesFor()', async () => {
 
   let resultFrame = frameEngine.frames.find((frame) => frame.content?.phase === 'result');
   assert.equal('references' in resultFrame.content, false);
+});
+
+test('Agent tools create and edit agents through the agent manager', async () => {
+  let providers = [
+    { pluginID: 'openai:codex', displayName: 'Codex', configFields: [ { name: 'apiKey', secret: true } ] },
+    { pluginID: 'ollama-agent', displayName: 'Ollama', configFields: [] },
+  ];
+  let agents = new Map([
+    [ 'agent_1', {
+      id: 'agent_1',
+      name: 'Iron-Hand',
+      pluginID: 'openai:codex',
+      character: 'Gruff.',
+      config: { model: 'gpt-5' },
+      secretState: { apiKey: true },
+      enabled: true,
+    } ],
+  ]);
+  let createdInput = null;
+  let agentManager = {
+    async listProviders() {
+      return providers;
+    },
+    async resolveAgent(reference) {
+      let normalized = String(reference).toLowerCase();
+      for (let agent of agents.values()) {
+        if (agent.id === reference || agent.name.toLowerCase() === normalized)
+          return agent;
+      }
+
+      let error = new Error(`Agent not found: ${reference}`);
+      error.status = 404;
+      throw error;
+    },
+    async createAgent(input) {
+      createdInput = { ...input };
+      let agent = {
+        id: 'agent_2',
+        name: input.name,
+        pluginID: input.pluginID,
+        character: input.character || '',
+        config: input.config || {},
+        secretState: input.secrets && Object.keys(input.secrets).length > 0 ? { apiKey: true } : {},
+        enabled: input.enabled !== false,
+      };
+      agents.set(agent.id, agent);
+      return agent;
+    },
+    async updateAgent(agentID, input) {
+      let agent = { ...agents.get(agentID), ...input };
+      agents.set(agentID, agent);
+      return agent;
+    },
+  };
+  let context = { agent: { id: 'agent_1', name: 'Coordinator' }, session: { id: 'ses_1', generation: 0 }, services: { agentManager } };
+
+  let made = await new AgentCreateTool(context).execute({
+    name: 'Scout',
+    pluginID: 'ollama-agent',
+    character: 'Curious.',
+    config: { model: 'llama3' },
+    secrets: { apiKey: 'secret-value' },
+  });
+  assert.equal(made.created, true);
+  assert.equal(made.agent.id, 'agent_2');
+  assert.equal(made.agent.name, 'Scout');
+  assert.equal(made.agent.pluginID, 'ollama-agent');
+  assert.equal(made.agent.character, 'Curious.');
+  assert.equal(made.agent.config.model, 'llama3');
+  assert.equal(made.agent.enabled, true);
+  assert.equal('secrets' in made.agent, false);
+  assert.equal(JSON.stringify(made.agent).includes('secret-value'), false);
+  assert.equal(createdInput.secrets.apiKey, 'secret-value');
+
+  let edited = await new AgentUpdateTool(context).execute({
+    agent: 'Iron-Hand',
+    character: 'Friendlier.',
+    enabled: false,
+  });
+  assert.equal(edited.updated, true);
+  assert.equal(edited.agent.id, 'agent_1');
+  assert.equal(edited.agent.character, 'Friendlier.');
+  assert.equal(edited.agent.enabled, false);
+
+  await assert.rejects(
+    () => new AgentCreateTool(context).execute({ name: 'Bad', pluginID: 'nope' }),
+    /Unknown agent provider: nope/,
+  );
+
+  await assert.rejects(
+    () => new AgentUpdateTool(context).execute({ agent: 'agent_1' }),
+    /at least one field/,
+  );
 });

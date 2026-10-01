@@ -1,5 +1,6 @@
 'use strict';
 
+import { AgentCreateTool, AgentUpdateTool } from './agent-tools.mjs';
 import { ExecTool } from './exec-tool.mjs';
 import { FeedbackReportTool } from './feedback-tool.mjs';
 import {
@@ -73,6 +74,8 @@ export const BUILT_IN_TOOLS = [
   [ 'output-grep', OutputGrepTool ],
   [ 'output-search', OutputSearchTool ],
   [ 'agent-list', AgentListTool ],
+  [ 'agent-create', AgentCreateTool ],
+  [ 'agent-update', AgentUpdateTool ],
   [ 'session-list', SessionListTool ],
   [ 'session-create', SessionCreateTool ],
   [ 'session-invite-agents', SessionInviteAgentsTool ],

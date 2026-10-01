@@ -1,5 +1,6 @@
 'use strict';
 
+export { AgentCreateTool, AgentUpdateTool } from './agent-tools.mjs';
 export { CwdClearTool, CwdGetTool, CwdSetTool } from './cwd-tools.mjs';
 export { ExecTool } from './exec-tool.mjs';
 export { FeedbackReportTool } from './feedback-tool.mjs';
