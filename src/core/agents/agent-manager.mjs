@@ -17,6 +17,26 @@ export class AgentManager {
     return this.pluginRegistry.listAgentProviderDescriptors();
   }
 
+  // Aggregate the model catalog across every registered agent provider, tagged
+  // with its pluginID. A provider that throws is skipped (never fails the list).
+  listModels() {
+    let models = [];
+    for (let [ pluginID, AgentClass ] of this.pluginRegistry.getAgentProviders()) {
+      if (typeof AgentClass?.getModels !== 'function')
+        continue;
+
+      try {
+        let providerModels = AgentClass.getModels();
+        for (let model of Array.isArray(providerModels) ? providerModels : [])
+          models.push({ pluginID, ...model });
+      } catch (_error) {
+        // Skip a misbehaving provider's models.
+      }
+    }
+
+    return models;
+  }
+
   async createAgent(input = {}) {
     let normalized = await this.normalizeInput(input, { creating: true });
     return await this.agentStore.createAgent(normalized);

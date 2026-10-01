@@ -385,7 +385,11 @@ export class AgentInterface extends PluginInterface {
     };
   }
 
-  static async resolveConfigFields() {
+  // Resolve the provider's config fields. Providers may override this to make
+  // fields dynamic (for example, populating a model list from the configured
+  // server). `context` carries the in-progress `{ config, secrets }` so a
+  // provider can discover options for a not-yet-saved configuration.
+  static async resolveConfigFields(_context = {}) {
     return this.configFields;
   }
 
@@ -394,4 +398,37 @@ export class AgentInterface extends PluginInterface {
   // AgentManager while creating an agent, after generic field validation. A
   // provider may throw (or reject) to reject the input. Default: no-op.
   static async validateCreateAgent() {}
+
+  // Model manifest. Providers override this with their available models so the
+  // system can aggregate a catalog (see AgentManager.listModels) for model
+  // selection and model-aware token budgeting. Descriptor fields:
+  //   { id, contextWindow, maxOutputTokens, displayName, description,
+  //     pricePerToken, useWhen }
+  static getModels() {
+    return [];
+  }
+
+  // Rough token estimate for a block of text. Providers may override with a
+  // more accurate tokenizer.
+  estimateTokens(text) {
+    let value = typeof text === 'string' ? text : JSON.stringify(text ?? '');
+    return Math.max(1, Math.ceil(value.length / 4));
+  }
+
+  // Context-window size for a model id, from the provider's manifest.
+  contextWindowFor(modelID) {
+    let models = this.constructor.getModels();
+    let match = models.find((model) => model.id === modelID) || models[0];
+    return match?.contextWindow || null;
+  }
+
+  // Whether the provider wants to compact given token statistics.
+  shouldCompact() {
+    return { compact: false, reason: '' };
+  }
+
+  // Max tokens the compaction summary may consume.
+  getMaxCompactionTokens() {
+    return 8000;
+  }
 }

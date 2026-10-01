@@ -21,6 +21,16 @@ export async function handleAgentRoutes({ request, response, url, context }) {
     return true;
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/v1/models') {
+    let agentManager = context.require('agentManager');
+    writeJSON(response, 200, {
+      data: {
+        models: agentManager.listModels(),
+      },
+    });
+    return true;
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/v1/agents') {
     let agentManager = context.require('agentManager');
     writeJSON(response, 200, {

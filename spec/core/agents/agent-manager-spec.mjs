@@ -416,3 +416,42 @@ test('AgentManager skips disabled master agents when resolving the default', asy
   let manager = new AgentManager({ pluginRegistry, agentStore: store });
   assert.equal((await manager.resolveDefaultAgent()).id, 'agent_2');
 });
+
+test('AgentManager.listModels aggregates provider model manifests tagged by pluginID', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+
+  class ProviderA extends AgentInterface {
+    static pluginID = 'provider-a';
+    static getModels() {
+      return [ { id: 'a-1', contextWindow: 128000, displayName: 'A One' } ];
+    }
+  }
+
+  class ProviderB extends AgentInterface {
+    static pluginID = 'provider-b';
+    static getModels() {
+      throw new Error('manifest unavailable');
+    }
+  }
+
+  class ProviderC extends AgentInterface {
+    static pluginID = 'provider-c';
+    static getModels() {
+      return [ { id: 'c-1', displayName: 'C One' }, { id: 'c-2', displayName: 'C Two' } ];
+    }
+  }
+
+  pluginRegistry.registerAgentProvider('provider-a', ProviderA);
+  pluginRegistry.registerAgentProvider('provider-b', ProviderB);
+  pluginRegistry.registerAgentProvider('provider-c', ProviderC);
+
+  let manager = new AgentManager({ pluginRegistry, agentStore: createStore() });
+  let models = manager.listModels();
+
+  assert.deepEqual(models.map((model) => `${model.pluginID}:${model.id}`).sort(), [
+    'provider-a:a-1',
+    'provider-c:c-1',
+    'provider-c:c-2',
+  ]);
+  assert.equal(models.find((model) => model.id === 'a-1').contextWindow, 128000);
+});
