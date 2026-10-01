@@ -163,6 +163,17 @@ export class AgentManager {
         throw badRequest(`${field.name} is required`);
     }
 
+    // Provider-specific validation (async hook). Generic `required` flags here
+    // are static; a provider may need conditional rules (for example, an API key
+    // required only when a default endpoint is used).
+    if (options.creating && typeof provider.validateCreateAgent === 'function') {
+      try {
+        await provider.validateCreateAgent({ config, secrets, pluginID: input.pluginID });
+      } catch (error) {
+        throw badRequest(error?.message || String(error));
+      }
+    }
+
     return withoutUndefined({
       name: input.name,
       pluginID: input.pluginID,

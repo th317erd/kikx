@@ -388,4 +388,10 @@ export class AgentInterface extends PluginInterface {
   static async resolveConfigFields() {
     return this.configFields;
   }
+
+  // Optional provider hook for provider-specific validation that cannot be
+  // expressed with static `required` flags on config fields. Called by
+  // AgentManager while creating an agent, after generic field validation. A
+  // provider may throw (or reject) to reject the input. Default: no-op.
+  static async validateCreateAgent() {}
 }

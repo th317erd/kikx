@@ -171,6 +171,43 @@ test('AgentManager creates agents using dynamically resolved plugin fields', asy
   );
 });
 
+test('AgentManager runs provider validateCreateAgent and rejects on its error', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  let calls = [];
+
+  class ConditionalProvider extends AgentInterface {
+    static pluginID = 'conditional-agent';
+
+    static configFields = [
+      { name: 'baseUrl', type: 'text' },
+      { name: 'apiKey', secret: true },
+    ];
+
+    static async validateCreateAgent({ config }) {
+      calls.push(config);
+      if (config.baseUrl !== 'http://127.0.0.1:8090')
+        throw new Error('apiKey is required for the default endpoint');
+    }
+  }
+
+  pluginRegistry.registerAgentProvider('conditional-agent', ConditionalProvider);
+  let manager = new AgentManager({ pluginRegistry, agentStore: createStore() });
+
+  await assert.rejects(
+    () => manager.createAgent({ name: 'A', pluginID: 'conditional-agent', config: {}, secrets: {} }),
+    /apiKey is required for the default endpoint/,
+  );
+
+  let agent = await manager.createAgent({
+    name: 'Local',
+    pluginID: 'conditional-agent',
+    config: { baseUrl: 'http://127.0.0.1:8090' },
+    secrets: {},
+  });
+  assert.equal(agent.config.baseUrl, 'http://127.0.0.1:8090');
+  assert.deepEqual(calls, [{}, { baseUrl: 'http://127.0.0.1:8090' }]);
+});
+
 test('AgentManager rejects agent creation when provider config resolution fails', async () => {
   let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
 
