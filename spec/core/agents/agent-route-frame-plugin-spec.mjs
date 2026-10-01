@@ -1649,6 +1649,84 @@ test('AgentRouteFramePlugin passes compaction-aware memory frames to providers',
   assert.deepEqual(runCall.frameTypes, [ 'CompactionFrame', 'UserMessage' ]);
 });
 
+test('AgentRouteFramePlugin keeps a verbose non-coordinator silent on an unaddressed user message', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'coordinator', {
+        id: 'coordinator',
+        name: 'DeepSeek',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-c' },
+        enabled: true,
+      } ],
+      [ 'verbose', {
+        id: 'verbose',
+        name: 'Captain Blackbeard',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-v' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Session 32',
+    participantAgentIDs: [ 'coordinator', 'verbose' ],
+    coordinatorAgentID: 'coordinator',
+  });
+  await runtime.appendUserMessage('ses_1', { text: 'Hello everyone!', userID: 'usr_1' });
+
+  let userCalls = runtime.services.calls
+    .filter((call) => call.method === 'run' && call.frameType === 'UserMessage');
+  // The verbose persona is not addressed, so it must not run at all — this is
+  // the Session 32 cascade regression.
+  assert.deepEqual(userCalls.map((call) => call.agentID), [ 'coordinator' ]);
+
+  let visibleAgentFrames = (await runtime.listFrames('ses_1'))
+    .filter((frame) => frame.type === 'AgentMessage' && frame.parentID === 'msg_1');
+  assert.deepEqual(visibleAgentFrames.map((frame) => frame.authorID), [ 'coordinator' ]);
+});
+
+test('AgentRouteFramePlugin runs a non-coordinator only when it is a routed recipient', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'coordinator', {
+        id: 'coordinator',
+        name: 'DeepSeek',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-c' },
+        enabled: true,
+      } ],
+      [ 'verbose', {
+        id: 'verbose',
+        name: 'Captain Blackbeard',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-v' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Session 32',
+    participantAgentIDs: [ 'coordinator', 'verbose' ],
+    coordinatorAgentID: 'coordinator',
+  });
+  await runtime.appendUserMessage('ses_1', {
+    text: '@Captain Blackbeard, what say ye?',
+    userID: 'usr_1',
+    recipients: [ 'verbose' ],
+  });
+
+  let userCalls = runtime.services.calls
+    .filter((call) => call.method === 'run' && call.frameType === 'UserMessage');
+  assert.deepEqual(userCalls.map((call) => call.agentID).sort(), [ 'coordinator', 'verbose' ]);
+});
+
 function createRuntime(options = {}) {
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
   pluginRegistry.registerAgentProvider('streaming-agent', StreamingAgentProvider);

@@ -1,6 +1,6 @@
 # Plan: Coordinator-routed messaging (trigger vs. context)
 
-## Status: PROPOSED — awaiting authorization to implement P0
+## Status: IMPLEMENTED (P0–P3) — 468/468; verified in unit + scenario specs
 
 ## Goal
 
