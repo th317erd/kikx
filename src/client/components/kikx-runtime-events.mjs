@@ -4,6 +4,19 @@ import { isCollapsed, setTokenUsage, upsertFrames, upsertSession } from '../stat
 import { scheduleAnimationFrame, parseRuntimeEvent } from './kikx-app-helpers.mjs';
 import { addFrameToBatch, addTouchedFrameIDs, renderedFrameIDsFor } from './frame-runtime-batch.mjs';
 
+// Runtime events that are informational only: they carry no frame data the
+// client has not ALREADY received via frame.added / frame.updated (the server
+// emits per-frame events AND a `commit` event for every commit). These must
+// never trigger a full application re-render -- a whole-app rebuild per commit
+// is what wedged the main thread while an agent streamed many small commits.
+const INFORMATIONAL_RUNTIME_EVENTS = new Set([
+  'commit',
+  'compaction.started',
+  'compaction.completed',
+  'compaction.failed',
+  'frame.scheduled.fired',
+]);
+
 export function connectRuntimeEvents(app) {
   disconnectRuntimeEvents(app);
 
@@ -73,10 +86,41 @@ export function onRuntimeEvent(app, event) {
     return;
   }
 
-  if (data.sessionID === app._state.selectedSessionID && app._frameListAnchoredToBottom)
-    app._forceScrollToBottomAfterRender = true;
+  // Informational events (see INFORMATIONAL_RUNTIME_EVENTS) reconcile on the next
+  // animation frame instead of rebuilding the app. They are coalesced so a burst
+  // of commits during streaming produces at most one cheap task per frame.
+  if (INFORMATIONAL_RUNTIME_EVENTS.has(data.type)) {
+    scheduleRuntimeReconcile(app, data.sessionID);
+    return;
+  }
 
-  app._requestRender();
+  // Unknown event types are intentionally ignored. Re-rendering the whole app for
+  // an event we do not understand is never correct, and it is exactly the kind of
+  // blanket rebuild that can freeze the UI.
+}
+
+export function scheduleRuntimeReconcile(app, sessionID = '') {
+  // A commit for a session that is not on screen changes nothing in the current
+  // view, so skip it entirely.
+  if (sessionID && sessionID !== app._state.selectedSessionID)
+    return;
+
+  if (app._runtimeReconcileScheduled)
+    return;
+
+  app._runtimeReconcileScheduled = true;
+  scheduleAnimationFrame(() => {
+    app._runtimeReconcileScheduled = false;
+    if (!app.isConnected)
+      return;
+
+    // Stay pinned to the bottom only when the user has not scrolled away. This is
+    // O(1) and never rebuilds the app; the heavy per-frame work is already handled
+    // by the coalesced frame.added / frame.updated batch.
+    let frameList = app._frameListAnchoredToBottom ? app.querySelector('.kikx-frame-list') : null;
+    if (frameList)
+      app._scrollFramesToBottomImmediate?.(frameList);
+  });
 }
 
 export function queueFrameRuntimeEvent(app, data) {

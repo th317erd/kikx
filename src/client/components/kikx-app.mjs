@@ -185,6 +185,7 @@ export class KikxApp extends HTMLElement {
     this._renderScheduled = false;
     this._pendingFrameRuntimeEvents = [];
     this._frameRuntimeFlushScheduled = false;
+    this._runtimeReconcileScheduled = false;
     this._composerHistory = createComposerHistoryState();
     this._pendingPreviewSessionIDs = new Set();
     this._previewRefreshScheduled = false;
