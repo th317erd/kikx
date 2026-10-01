@@ -1,6 +1,11 @@
 # Plan: Kikx durable "production" (stable dev) instance
 
-## Status: IMPLEMENTED (P0–P2) — deployed `daa4a59`; P3 (dogfooding work area) pending
+## Status: SUPERSEDED (P0–P2 delivered; topology replaced by `kikx-docker-distribution.md`)
+
+> The two-service stack this plan describes (separate `aeordb` + `kikx`
+> containers) was delivered and verified, then reshaped into a single
+> self-contained container. See `kikx-docker-distribution.md` for the current
+> design. Retained for history.
 
 ## Goal
 
