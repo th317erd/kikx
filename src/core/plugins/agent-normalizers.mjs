@@ -31,6 +31,23 @@ export function normalizeForwardRequest(target, message) {
   };
 }
 
+// Normalize the coordinator `route` tool input:
+//   { recipients?, remove?, note? }
+// into the internal forward shape { targets, remove, message }.
+export function normalizeRouteRequest(input = {}) {
+  if (typeof input === 'string')
+    return { targets: normalizeForwardTargets(input), remove: [], message: undefined };
+
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    return { targets: [], remove: [], message: undefined };
+
+  return {
+    targets: normalizeForwardTargets(input.recipients || input.targets || input.target || input.actors),
+    remove: normalizeForwardTargets(input.remove || input.removed || input.exclude),
+    message: input.note || input.message || input.reason,
+  };
+}
+
 export function normalizeToolResponseContent(content) {
   if (typeof content === 'string')
     return { text: content };

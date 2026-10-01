@@ -88,10 +88,11 @@ export function handleLoopControl(output, state) {
     return true;
   }
 
-  if (output.action === 'forward') {
+  if (output.action === 'forward' || output.action === 'route') {
     recordForward(state, {
       targets: normalizeForwardTargets(output.targets || output.target),
-      message: output.message,
+      remove: normalizeForwardTargets(output.remove),
+      message: output.message || output.note,
     });
     return true;
   }
@@ -103,7 +104,8 @@ export function recordForward(state, forward) {
   state.forwarded = true;
   let normalized = {
     targets: normalizeForwardTargets(forward.targets || forward.target),
-    message: forward.message,
+    remove: normalizeForwardTargets(forward.remove),
+    message: forward.message || forward.note,
   };
   let key = JSON.stringify(normalized);
   if (!state.forwards.some((existing) => JSON.stringify(existing) === key))

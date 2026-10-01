@@ -307,20 +307,41 @@ export class AgentRouteFramePluginBase extends BaseFramePlugin {
     });
   }
 
-  async forwardFrame({ frame, targets = [], message = '', services = {}, agent = null }) {
+  async forwardFrame({ frame, targets = [], remove = [], message = '', services = {}, agent = null }) {
     let participantAgentIDs = normalizeStringArray(this.context.session?.participantAgentIDs);
     let coordinatorAgentID = resolveCoordinatorAgentID(this.context.session, participantAgentIDs);
     if (!agent?.id || agent.id !== coordinatorAgentID)
-      throw new Error('Only the session coordinator can forward frames');
+      throw new Error('Only the session coordinator can route frames');
 
     let targetMentions = await resolveMentionActors(targets, {
       ...this.context.services,
       ...services,
     });
+    let mentionedIDs = Object.entries(targetMentions)
+      .filter(([actorID, mention]) => mention?.type === 'agent' || participantAgentIDs.includes(actorID))
+      .map(([actorID]) => actorID);
+    let removeIDs = new Set(normalizeStringArray(remove));
+
+    // Recipients are the trigger truth: start from the frame's existing
+    // recipients (or its resolved mentions), then add routed targets and drop
+    // any removed actors.
+    let existing = normalizeStringArray(frame.recipients);
+    if (existing.length === 0 && frame.mentions && typeof frame.mentions === 'object')
+      existing = Object.keys(frame.mentions);
+
+    let recipients = [];
+    for (let actorID of [ ...existing, ...mentionedIDs ]) {
+      if (!actorID || removeIDs.has(actorID) || recipients.includes(actorID))
+        continue;
+
+      recipients.push(actorID);
+    }
+
     let mentions = mergeMentionMaps(frame.mentions, targetMentions);
     let updated = {
       ...frame,
       mentions,
+      recipients,
       coordinated: true,
     };
     if (message)

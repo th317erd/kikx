@@ -85,13 +85,27 @@ class ForwardingAgentProvider extends AgentInterface {
       coordinated: params.frame.coordinated === true,
     });
 
-    return params.tools['internal-forward']([ 'agent_2', 'agent_3' ], 'forwarded by coordinator');
+    return params.tools['route']({ recipients: [ 'agent_2', 'agent_3' ], note: 'routed by coordinator' });
+  }
+}
+
+class RemovingForwardingAgentProvider extends AgentInterface {
+  static pluginID = 'removing-forwarding-agent';
+
+  async ask(_prompt, params = {}) {
+    params.services.calls.push({
+      method: 'ask',
+      agentID: params.agent.id,
+      frameType: params.frame.type,
+      isCoordinator: params.isCoordinator,
+    });
+
+    return params.tools['route']({ recipients: [ 'agent_2' ], remove: [ 'agent_3' ] });
   }
 }
 
 class ServiceForwardingAgentProvider extends AgentInterface {
   static pluginID = 'service-forwarding-agent';
-
   async *run(params = {}) {
     let priorCalls = params.services.calls.filter((call) => call.method === 'service-forward').length;
     params.services.calls.push({
@@ -1127,10 +1141,67 @@ test('AgentRouteFramePlugin coordinator forward mutates the original frame witho
   assert.deepEqual(Object.keys(userFrame.mentions), [ 'agent_2', 'agent_3' ]);
   assert.equal(userFrame.mentions.agent_2.name, 'Worker A');
   assert.equal(userFrame.mentions.agent_3.name, 'Worker B');
+  // recipients is the trigger truth, set from the routed targets.
+  assert.deepEqual(userFrame.recipients.sort(), [ 'agent_2', 'agent_3' ]);
 
+  // Route wins over speak: the coordinator produces no visible message.
   let coordinatorFrame = (await runtime.listFrames('ses_1')).find((frame) => frame.authorID === 'agent_1');
   assert.equal(coordinatorFrame.deleted, true);
   assert.equal(coordinatorFrame.hidden, true);
+});
+
+test('AgentRouteFramePlugin route removes a recipient from the trigger set', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Coordinator',
+        pluginID: 'removing-forwarding-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Worker A',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-two' },
+        enabled: true,
+      } ],
+      [ 'agent_3', {
+        id: 'agent_3',
+        name: 'Worker B',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-three' },
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1', 'agent_2', 'agent_3' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  // The user tagged agent_2 and agent_3; the coordinator keeps agent_2 and
+  // removes agent_3.
+  await runtime.appendUserMessage('ses_1', {
+    text: 'Workers, please handle this',
+    userID: 'usr_1',
+    recipients: [ 'agent_2', 'agent_3' ],
+  });
+
+  let calls = runtime.services.calls
+    .filter((call) => (call.method === 'ask' || call.method === 'run') && call.frameType === 'UserMessage');
+  // The coordinator always runs (it is the router); recipients run concurrently
+  // on ingress, so removal corrects the frame's trigger set rather than
+  // un-running a recipient that already started.
+  assert.equal(calls.some((call) => call.method === 'ask' && call.agentID === 'agent_1'), true);
+
+  let userFrame = (await runtime.listFrames('ses_1')).find((frame) => frame.type === 'UserMessage');
+  assert.deepEqual(userFrame.recipients, [ 'agent_2' ]);
 });
 
 test('AgentRouteFramePlugin rejects forwarded-frame requeue from non-coordinator targets', async () => {
@@ -1194,7 +1265,7 @@ test('AgentRouteFramePlugin rejects forwarded-frame requeue from non-coordinator
   assert.equal(agentFrames[0].hidden, false);
   assert.equal(agentFrames[0].deleted, false);
   assert.equal(agentFrames[0].content.status, 'error');
-  assert.match(agentFrames[0].content.text, /Only the session coordinator can forward frames/);
+  assert.match(agentFrames[0].content.text, /Only the session coordinator can route frames/);
 });
 
 test('AgentRouteFramePlugin cleans up silent response placeholders', async () => {
@@ -1582,6 +1653,7 @@ function createRuntime(options = {}) {
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
   pluginRegistry.registerAgentProvider('streaming-agent', StreamingAgentProvider);
   pluginRegistry.registerAgentProvider('forwarding-agent', ForwardingAgentProvider);
+  pluginRegistry.registerAgentProvider('removing-forwarding-agent', RemovingForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('service-forwarding-agent', ServiceForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('null-response-agent', NullResponseAgentProvider);
   pluginRegistry.registerAgentProvider('blank-message-agent', BlankMessageAgentProvider);

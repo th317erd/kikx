@@ -242,7 +242,7 @@ class BreakAgent extends AgentInterface {
 
 class ForwardingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    return options.tools['internal-forward']([ 'agent_2', 'agent_3' ], 'please handle this');
+    return options.tools['route']({ recipients: [ 'agent_2', 'agent_3' ], note: 'please handle this' });
   }
 }
 
@@ -557,9 +557,9 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].prompt, /Avoid racing, overwriting, or reimplementing work/i);
   assert.match(agent.calls[1].prompt, /inspect their work/i);
   assert.match(agent.calls[1].prompt, /What could you have done better\?/i);
-  assert.match(agent.calls[1].prompt, /If this message is not for you/i);
+  assert.match(agent.calls[1].prompt, /silence is the safe default/i);
   assert.match(agent.calls[1].prompt, /use agent-null-response/i);
-  assert.doesNotMatch(agent.calls[1].prompt, /use the internal-forward tool with that actor id/u);
+  assert.doesNotMatch(agent.calls[1].prompt, /use the route tool with that actor id/u);
   assert.match(agent.calls[1].prompt, /Agent character:/);
   assert.match(agent.calls[1].prompt, /You are a pragmatic engineer\./);
   assert.match(agent.calls[1].prompt, /Available tools:/);
@@ -570,8 +570,8 @@ test('AgentInterface base loop runs first-message hook before asking the provide
     'agent-progress',
     'agent-respond',
     'agent-respond-and-continue',
-    'internal-forward',
     'loop-break',
+    'route',
   ]);
   assert.equal(agent.calls[1].toolNames.includes('agent-null-response'), false);
   assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'agent-character-set'));
@@ -859,7 +859,7 @@ test('AgentInterface prompt describes agent-authored trigger frames accurately',
   assert.ok(askCall);
   assert.match(askCall.prompt, /Agent Reviewer \(agent_2\) has just sent a message:/);
   assert.match(askCall.prompt, /Coder, can you sanity-check this\?/);
-  assert.match(askCall.prompt, /This is an agent-authored message in the shared session/);
+  assert.match(askCall.prompt, /This message was authored by another agent/);
   assert.match(askCall.prompt, /use agent-null-response/i);
   assert.doesNotMatch(askCall.prompt, /The user has just sent you a message:/);
 });
@@ -1231,12 +1231,12 @@ test('AgentInterface does not offer forwarding tools to non-coordinators', async
   let askCall = agent.calls.find((call) => call.method === 'ask');
   assert.ok(askCall);
   assert.equal(askCall.isCoordinator, false);
-  assert.equal(askCall.toolNames.includes('internal-forward'), false);
-  assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'internal-forward'), false);
+  assert.equal(askCall.toolNames.includes('route'), false);
+  assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'route'), false);
   assert.match(askCall.prompt, /You are the coordinator\?: false/);
-  assert.match(askCall.prompt, /This frame has already been coordinated/);
-  assert.match(askCall.prompt, /do not forward it again/i);
-  assert.doesNotMatch(askCall.prompt, /use the internal-forward tool/u);
+  assert.match(askCall.prompt, /routed this message to you/);
+  assert.match(askCall.prompt, /do not route or forward it again/i);
+  assert.doesNotMatch(askCall.prompt, /use the route tool/u);
 });
 
 test('AgentInterface offers silence tools to coordinated mentioned targets', async () => {
@@ -1267,11 +1267,11 @@ test('AgentInterface offers silence tools to coordinated mentioned targets', asy
   let askCall = agent.calls.find((call) => call.method === 'ask');
   assert.ok(askCall);
   assert.equal(askCall.isCoordinator, false);
-  assert.equal(askCall.toolNames.includes('internal-forward'), false);
+  assert.equal(askCall.toolNames.includes('route'), false);
   assert.equal(askCall.toolNames.includes('agent-null-response'), true);
-  assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'internal-forward'), false);
+  assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'route'), false);
   assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'agent-null-response'), true);
-  assert.match(askCall.prompt, /forwarded to you/);
+  assert.match(askCall.prompt, /routed this message to you/);
   assert.match(askCall.prompt, /answer if it is for you/i);
   assert.match(askCall.prompt, /use agent-null-response/i);
 });

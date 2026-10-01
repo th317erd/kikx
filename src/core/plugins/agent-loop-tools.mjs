@@ -11,10 +11,10 @@ import {
 import {
   cloneJSON,
   normalizeContinuationRequest,
-  normalizeForwardRequest,
   normalizeOptionalPromptString,
   normalizeReason,
   normalizeRequiredToolString,
+  normalizeRouteRequest,
   normalizeStringArray,
   normalizeToolResponseContent,
   readToolString,
@@ -64,10 +64,10 @@ export function createLoopTools(state, context) {
     state.nullResponse = true;
     return { type: 'LoopControl', action: 'null-response', reason: normalizeReason(reason) };
   };
-  let forward = (target, message) => {
-    let forwardRequest = normalizeForwardRequest(target, message);
-    recordForward(state, forwardRequest);
-    return { type: 'LoopControl', action: 'forward', ...forwardRequest };
+  let route = (input = {}) => {
+    let request = normalizeRouteRequest(input);
+    recordForward(state, request);
+    return { type: 'LoopControl', action: 'route', ...request };
   };
   let breakLoop = (reason = '') => {
     state.break = true;
@@ -89,7 +89,7 @@ export function createLoopTools(state, context) {
     tools['agent-null-response'] = nullResponse;
 
   if (context.isCoordinator === true)
-    tools['internal-forward'] = forward;
+    tools['route'] = route;
 
   for (let [toolName, handler] of Object.entries(createRegisteredToolHandlers(context))) {
     if (!tools[toolName])
@@ -100,7 +100,7 @@ export function createLoopTools(state, context) {
 }
 
 export function shouldExposeLoopTool(toolName, context = {}) {
-  if (toolName === 'internal-forward')
+  if (toolName === 'route')
     return context.isCoordinator === true;
 
   if (toolName === 'agent-null-response' && isSoleAgentUserTurn(context))
@@ -277,6 +277,7 @@ export async function dispatchForwards(context, state) {
       agent: context.agent,
       session: context.session,
       targets: forward.targets,
+      remove: forward.remove,
       message: forward.message,
     });
   }

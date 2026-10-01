@@ -100,25 +100,37 @@ export const AGENT_TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'internal-forward',
-    description: 'Forward the current user frame to one or more mentioned or selected actors.',
-    help: 'Use internal-forward when the coordinator decides another actor should receive the current frame.',
+    name: 'route',
+    description: 'Route the current message to one or more actors without speaking yourself.',
+    help: [
+      'Coordinator only. Use route to direct the current message to the actor(s) best suited to handle it.',
+      'Recipients may be actor IDs, agent IDs, or names from the session roster; Kikx resolves them.',
+      'Use remove to un-tag an actor that was already set as a recipient.',
+      'Routing does not produce a visible message from you; the routed actor(s) respond instead.',
+      'If the message is best handled by you, respond normally instead of routing.',
+    ].join(' '),
     parameters: {
       type: 'object',
       properties: {
-        targets: {
+        recipients: {
           type: 'array',
-          description: 'Actor IDs, agent IDs, or exact names from Session agents JSON to route the frame to.',
+          description: 'Actor IDs, agent IDs, or exact names to route the message to.',
           items: {
             type: 'string',
           },
         },
-        message: {
+        remove: {
+          type: 'array',
+          description: 'Actor IDs to remove from the current recipient set.',
+          items: {
+            type: 'string',
+          },
+        },
+        note: {
           type: 'string',
-          description: 'Optional coordination note for downstream actors.',
+          description: 'Optional short coordination note for the routed actor(s).',
         },
       },
-      required: [ 'targets' ],
       additionalProperties: false,
     },
   },

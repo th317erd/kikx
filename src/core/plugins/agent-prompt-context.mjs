@@ -66,18 +66,24 @@ export function totalTokensUsed(snapshot) {
 export function buildRoutingPromptLines(context = {}) {
   if (context.isCoordinator === true) {
     let lines = [
-      'If you are the coordinator, then you are the preferred agent. You evaluate first, and you are usually the best agent to answer broad, general, or ambiguous messages.',
-      'Recipient decision checklist: ask "Who is this message really for: me, another session agent, the user, or everyone?" before answering.',
-      'Use turn-taking: if the immediately prior visible response came from another agent and the user asks a follow-up with "you", "your", or a short ambiguous question, treat it as meant for that prior agent unless the user clearly redirects to you.',
-      'If this message is not for you based on mentions, names, nicknames, turn-taking, or recent context, use agent-null-response and stay silent.',
-      'Do not answer on behalf of another session agent just because you are the coordinator.',
-      'Keep internal-forward available only for explicit forwarding workflows, such as external services or future sleeper agents; do not use it as normal intra-session handoff.',
-      'If the message is targeted to you, deeply consider it in the context of the available user and project rules.',
+      'You are the coordinator and the router for this session. Every message reaches you so you can decide what happens next. You are the default handler for broad, general, or ambiguous user messages, but you must NOT answer messages that are meant for another actor.',
+      'Decide in this order:',
+      '1) Explicitly addressed to another actor (a @mention, a name, or a clear "ask X" instruction, even misspelled): use the route tool to tag that actor, then stay silent. Do not answer it yourself.',
+      '2) Explicitly addressed to you (your name/mention, or a reply to your own message): answer normally.',
+      '3) A broad, unaddressed user message: answer it yourself as the default handler.',
+      '4) Clearly best handled by a specialist present in the session (by skills, knowledge, or role): route it to them and stay silent.',
+      '5) An agent reply that already satisfies the open request: stay silent. Do not acknowledge or repeat it.',
+      '6) An agent reply that asks you something, needs a decision, or addresses you: answer or route as appropriate.',
+      'Otherwise: stay silent.',
+      'Routing means tagging recipients with the route tool; you may also remove a recipient the user tagged by mistake. Routing never produces a visible message from you, so do not both route and answer the same message.',
+      'You may route to more than one actor when several are genuinely needed.',
+      'Use turn-taking: if the immediately prior visible response came from another agent and the user asks a short follow-up with "you"/"your", treat it as meant for that agent unless the user clearly redirects.',
+      'Stay silent (agent-null-response) whenever you are not the right responder; silence is the safe default.',
     ];
 
     if (context.frame?.authorType === 'agent') {
-      lines.splice(3, 0,
-        'This is an agent-authored message in the shared session. Answer only if that agent directly asks you, mentions you, delegates to you, or your contribution is clearly needed.',
+      lines.splice(2, 0,
+        'This message was authored by another agent. The exchange is usually complete once an agent has answered; prefer silence unless that agent asks you something or a decision is genuinely needed.',
       );
     }
 
@@ -87,22 +93,22 @@ export function buildRoutingPromptLines(context = {}) {
   if (context.frame?.coordinated === true) {
     if (isCoordinatedMentionTarget(context)) {
       return [
-        'You are not the coordinator. This frame has already been coordinated and forwarded to you.',
+        'You are not the coordinator. The coordinator has routed this message to you.',
         'You are an intended recipient; answer if it is for you.',
-        'If this message is not for you after checking mentions, names, turn-taking, and recent context, use agent-null-response and stay silent.',
-        'Do not forward it again.',
+        'If this message is not for you after checking the recipient list, mentions, names, turn-taking, and recent context, use agent-null-response and stay silent.',
+        'Do not route or forward it again.',
       ];
     }
 
     return [
-      'You are not the coordinator. This frame has already been coordinated and forwarded to its mentioned recipients.',
-      'You are not an intended recipient. Use agent-null-response and do not forward it again.',
+      'You are not the coordinator. This message was routed to other actors, not you.',
+      'You are not an intended recipient. Use agent-null-response and stay silent. Do not route or forward it again.',
     ];
   }
 
   return [
-    'You are not the coordinator. Answer only when the message is targeted to you.',
-    'If this message is not for you, use agent-null-response and let routing continue elsewhere.',
+    'You are not the coordinator. Answer only when the message is routed or addressed to you.',
+    'If this message is not for you, use agent-null-response and let the coordinator route it.',
   ];
 }
 

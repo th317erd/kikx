@@ -67,6 +67,9 @@ export function isCoordinatedMentionTarget(context = {}) {
   if (!agentID)
     return false;
 
+  if (normalizeStringArray(context.frame?.recipients).includes(agentID))
+    return true;
+
   let mentions = normalizeMentions(context.mentions || context.frame?.mentions);
   return Object.prototype.hasOwnProperty.call(mentions, agentID);
 }

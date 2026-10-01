@@ -108,10 +108,11 @@ After completion review, Kikx also applies a deterministic deferral guard. If th
 
 `AgentInterface` still builds routing-specific lines because they depend on frame state:
 
-- coordinators are preferred for broad or ambiguous messages
-- coordinators do not answer on behalf of another session agent
-- coordinators keep `internal-forward` for explicit forwarding workflows, not normal intra-session handoff
-- non-coordinators answer only when directly targeted, coordinated to, mentioned, delegated to, or clearly useful
+- the coordinator is the router for all traffic and the default handler for broad, unaddressed user messages
+- the coordinator routes (rather than answers) messages intended for another actor, using the `route` tool
+- routing produces no visible message from the coordinator; routed recipients respond
+- coordinators stay silent when another agent's reply already satisfies the request
+- non-coordinators answer only when the coordinator routes the message to them
 
 ## Vocabulary
 
