@@ -169,6 +169,7 @@ export class FrameRuntime extends EventEmitter {
       updatedClock: input.updatedClock || stamp.clock,
       hidden: false,
       deleted: false,
+      recipients: normalizeStringArray(input.recipients),
       content: { text },
     };
 

@@ -404,7 +404,7 @@ test('AgentRouteFramePlugin dispatches normal user messages to invited provider 
   assert.equal(phantoms[0].authorDisplayName, 'Coder');
 });
 
-test('AgentRouteFramePlugin dispatches normal user messages to all session agents with coordinator first', async () => {
+test('AgentRouteFramePlugin routes normal user messages to the coordinator only', async () => {
   let runtime = createRuntime({
     agents: new Map([
       [ 'agent_1', {
@@ -435,42 +435,41 @@ test('AgentRouteFramePlugin dispatches normal user messages to all session agent
 
   let calls = runtime.services.calls
     .filter((call) => call.method === 'run' && call.frameType === 'UserMessage');
-  let userCalls = calls.filter((call) => call.frameType === 'UserMessage');
-  assert.deepEqual(userCalls.map((call) => call.agentID), [ 'agent_2', 'agent_1' ]);
-  assert.equal(userCalls[0].apiKey, 'sk-two');
-  assert.equal(userCalls[0].isCoordinator, true);
-  assert.equal(userCalls[0].coordinatorAgentID, 'agent_2');
-  assert.deepEqual(userCalls[0].responseFrameAgentRoute.path, [ 'agent_2' ]);
-  assert.equal(userCalls[1].apiKey, 'sk-one');
-  assert.equal(userCalls[1].isCoordinator, false);
-  assert.equal(userCalls[1].coordinatorAgentID, 'agent_2');
-  assert.deepEqual(userCalls[1].responseFrameAgentRoute.path, [ 'agent_1' ]);
+  // Only the coordinator is triggered for an unaddressed user message; every
+  // other agent still receives it as passive context (params.frames), but does
+  // not run.
+  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_2' ]);
+  assert.equal(calls[0].apiKey, 'sk-two');
+  assert.equal(calls[0].isCoordinator, true);
+  assert.equal(calls[0].coordinatorAgentID, 'agent_2');
+  assert.deepEqual(calls[0].responseFrameAgentRoute.path, [ 'agent_2' ]);
 });
 
-test('AgentRouteFramePlugin does not let a slow coordinator block other session agents from starting', async () => {
-  let releaseSlowAgent;
-  let slowAgentGate = {
-    promise: new Promise((resolve) => {
-      releaseSlowAgent = resolve;
-    }),
-  };
+test('AgentRouteFramePlugin routes user messages to explicit recipients plus the coordinator', async () => {
   let runtime = createRuntime({
-    services: { slowAgentGate },
     agents: new Map([
-      [ 'agent_slow', {
-        id: 'agent_slow',
-        name: 'Slow Coordinator',
-        pluginID: 'slow-agent',
-        config: {},
-        secrets: {},
-        enabled: true,
-      } ],
-      [ 'agent_worker', {
-        id: 'agent_worker',
-        name: 'Worker',
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Coder',
         pluginID: 'streaming-agent',
         config: {},
-        secrets: { apiKey: 'sk-worker' },
+        secrets: { apiKey: 'sk-one' },
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Reviewer',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-two' },
+        enabled: true,
+      } ],
+      [ 'agent_3', {
+        id: 'agent_3',
+        name: 'Observer',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: { apiKey: 'sk-three' },
         enabled: true,
       } ],
     ]),
@@ -478,27 +477,23 @@ test('AgentRouteFramePlugin does not let a slow coordinator block other session 
 
   await runtime.createSession({
     title: 'Scratch',
-    participantAgentIDs: [ 'agent_slow', 'agent_worker' ],
-    coordinatorAgentID: 'agent_slow',
+    participantAgentIDs: [ 'agent_1', 'agent_2', 'agent_3' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  await runtime.appendUserMessage('ses_1', {
+    text: 'Reviewer, take a look.',
+    userID: 'usr_1',
+    recipients: [ 'agent_2' ],
   });
 
-  let appendPromise = runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
-  await waitForCondition(() => runtime.services.calls.some((call) => call.method === 'run' && call.agentID === 'agent_worker'));
-
-  assert.ok(runtime.services.calls.some((call) => call.method === 'slow-run-start' && call.agentID === 'agent_slow'));
-  assert.ok(runtime.services.calls.some((call) => call.method === 'run' && call.agentID === 'agent_worker'));
-  assert.equal(runtime.services.calls.some((call) => call.method === 'slow-run-release' && call.agentID === 'agent_slow'), false);
-  assert.equal(await promiseState(appendPromise), 'pending');
-
-  releaseSlowAgent();
-  await appendPromise;
-
-  let firstPassAgentFrames = (await runtime.listFrames('ses_1'))
-    .filter((frame) => frame.parentID === 'msg_1' && frame.type === 'AgentMessage');
-  assert.deepEqual(firstPassAgentFrames.map((frame) => frame.authorID).sort(), [ 'agent_slow', 'agent_worker' ]);
+  let calls = runtime.services.calls
+    .filter((call) => call.method === 'run' && call.frameType === 'UserMessage');
+  // Coordinator is always triggered (it is the router); the explicit recipient
+  // is triggered too. Non-recipients stay as passive context only.
+  assert.deepEqual(calls.map((call) => call.agentID).sort(), [ 'agent_1', 'agent_2' ]);
 });
 
-test('AgentRouteFramePlugin broadcasts visible agent messages to other session agents', async () => {
+test('AgentRouteFramePlugin routes visible agent messages back to the coordinator only', async () => {
   let runtime = createRuntime({
     agents: new Map([
       [ 'agent_1', {
@@ -541,34 +536,29 @@ test('AgentRouteFramePlugin broadcasts visible agent messages to other session a
     interactionID: 'int_1',
     parentID: 'user_msg_1',
     authorType: 'agent',
-    authorID: 'agent_1',
-    authorDisplayName: 'Speaker',
+    authorID: 'agent_2',
+    authorDisplayName: 'Listener A',
     hidden: false,
     content: {
-      text: 'Agent one has a point.',
+      text: 'Agent two has a point.',
       status: 'complete',
     },
     agentRoute: {
       rootFrameID: 'user_msg_1',
       sourceFrameID: 'user_msg_1',
-      path: [ 'agent_1' ],
+      path: [ 'agent_2' ],
     },
   }]);
   await runtime.frameRouter.flush();
 
   let calls = runtime.services.calls
     .filter((call) => call.method === 'run' && call.frameType === 'AgentMessage');
-  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_2', 'agent_3' ]);
-  assert.deepEqual(calls.map((call) => call.frameType), [ 'AgentMessage', 'AgentMessage' ]);
-  assert.deepEqual(calls.map((call) => call.frameAuthorID), [ 'agent_1', 'agent_1' ]);
-  assert.deepEqual(calls.map((call) => call.text), [
-    'Agent one has a point.',
-    'Agent one has a point.',
-  ]);
-  assert.deepEqual(calls.map((call) => call.responseFrameAgentRoute.path), [
-    [ 'agent_1', 'agent_2' ],
-    [ 'agent_1', 'agent_3' ],
-  ]);
+  // An agent reply re-wakes only the coordinator (the router); peers stay as
+  // passive context and do not run.
+  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_1' ]);
+  assert.deepEqual(calls.map((call) => call.frameAuthorID), [ 'agent_2' ]);
+  assert.deepEqual(calls.map((call) => call.text), [ 'Agent two has a point.' ]);
+  assert.deepEqual(calls.map((call) => call.responseFrameAgentRoute.path), [ [ 'agent_2', 'agent_1' ] ]);
 });
 
 test('AgentRouteFramePlugin ignores hidden and streaming agent message placeholders', async () => {
@@ -641,7 +631,7 @@ test('AgentRouteFramePlugin ignores hidden and streaming agent message placehold
   assert.deepEqual(runtime.services.calls.filter((call) => call.method === 'run'), []);
 });
 
-test('AgentRouteFramePlugin broadcasts second-hop agent responses to other participants', async () => {
+test('AgentRouteFramePlugin routes second-hop agent responses to the coordinator only', async () => {
   let runtime = createRuntime({
     agents: new Map([
       [ 'agent_1', {
@@ -701,8 +691,9 @@ test('AgentRouteFramePlugin broadcasts second-hop agent responses to other parti
 
   let calls = runtime.services.calls
     .filter((call) => call.method === 'run' && call.frameType === 'AgentMessage');
-  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_1', 'agent_3' ]);
-  assert.deepEqual(calls.map((call) => call.frameAuthorID), [ 'agent_2', 'agent_2' ]);
+  // Only the coordinator is re-woken; the other peer (agent_3) is context only.
+  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_1' ]);
+  assert.deepEqual(calls.map((call) => call.frameAuthorID), [ 'agent_2' ]);
 });
 
 test('AgentRouteFramePlugin does not rebroadcast agent messages to agents that already answered the same root turn', async () => {
@@ -804,8 +795,9 @@ test('AgentRouteFramePlugin does not rebroadcast agent messages to agents that a
 
   let calls = runtime.services.calls
     .filter((call) => call.method === 'run' && call.frameType === 'AgentMessage');
-  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_3' ]);
-  assert.deepEqual(calls[0].responseFrameAgentRoute.path, [ 'agent_2', 'agent_1', 'agent_3' ]);
+  // The coordinator already answered the root; the follow-up from agent_1 must
+  // not re-wake it, and no peer is triggered (context only).
+  assert.deepEqual(calls, []);
 });
 
 test('AgentRouteFramePlugin does not route coordinated replays to agents already handling the source frame', async () => {
@@ -1128,7 +1120,7 @@ test('AgentRouteFramePlugin coordinator forward mutates the original frame witho
     'run:agent_3',
   ]);
   assert.equal(calls[0].isCoordinator, true);
-  assert.deepEqual(calls.slice(1).map((call) => call.coordinated), [ false, false ]);
+  assert.deepEqual(calls.slice(1).map((call) => call.coordinated), [ true, true ]);
 
   let userFrame = (await runtime.listFrames('ses_1')).find((frame) => frame.type === 'UserMessage');
   assert.equal(userFrame.coordinated, true);
@@ -1424,7 +1416,7 @@ test('AgentRouteFramePlugin routes individual agent failures without stopping ot
     participantAgentIDs: [ 'agent_failing', 'agent_worker' ],
     coordinatorAgentID: 'agent_failing',
   });
-  await runtime.appendUserMessage('ses_1', { text: 'hello' });
+  await runtime.appendUserMessage('ses_1', { text: 'hello', recipients: [ 'agent_worker' ] });
 
   let frames = await runtime.listFrames('ses_1');
   let firstPassAgentFrames = frames.filter((frame) => frame.parentID === 'msg_1' && frame.type === 'AgentMessage');
@@ -1441,10 +1433,10 @@ test('AgentRouteFramePlugin routes individual agent failures without stopping ot
   assert.equal(firstPassAgentFrames[1].content.text, 'Echo: hello');
   assert.deepEqual(firstPassAgentFrames[1].agentRoute.path, [ 'agent_worker' ]);
 
+  // The failing coordinator errors before producing a run call; the worker is
+  // the only agent that actually runs.
   let secondPassAgentFrames = frames.filter((frame) => frame.type === 'AgentMessage' && frame.parentID !== 'msg_1');
-  assert.deepEqual(secondPassAgentFrames.map((frame) => frame.agentRoute.path), [
-    [ 'agent_failing', 'agent_worker' ],
-  ]);
+  assert.deepEqual(secondPassAgentFrames.map((frame) => frame.agentRoute.path), []);
   assert.deepEqual(
     runtime.services.calls
       .filter((call) => call.method === 'run' && call.frameType === 'UserMessage')
@@ -1480,7 +1472,7 @@ test('AgentRouteFramePlugin writes a visible error when the coordinator is disab
     participantAgentIDs: [ 'agent_disabled', 'agent_enabled' ],
     coordinatorAgentID: 'agent_disabled',
   });
-  await runtime.appendUserMessage('ses_1', { text: 'hello' });
+  await runtime.appendUserMessage('ses_1', { text: 'hello', recipients: [ 'agent_enabled' ] });
 
   let frames = await runtime.listFrames('ses_1');
   let firstPassFrames = frames.filter((frame) => frame.parentID === 'msg_1' || frame.type === 'UserMessage');
@@ -1493,6 +1485,7 @@ test('AgentRouteFramePlugin writes a visible error when the coordinator is disab
   assert.equal(firstPassFrames[2].content.text, 'Echo: hello');
   assert.deepEqual(firstPassFrames[2].agentRoute.path, [ 'agent_enabled' ]);
 
+  // The worker's reply re-wakes the disabled coordinator, which errors again.
   let deliveryErrors = frames.filter((frame) => frame.parentID === firstPassFrames[2].id && frame.type === 'AgentError');
   assert.equal(deliveryErrors.length, 1);
   assert.equal(deliveryErrors[0].authorID, 'agent_disabled');

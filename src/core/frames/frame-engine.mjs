@@ -255,6 +255,7 @@ export class FrameEngine extends EventEmitter {
       hidden: input.hidden ?? existing?.hidden ?? true,
       deleted: input.deleted ?? existing?.deleted ?? false,
       targets: Array.isArray(input.targets) ? input.targets.slice() : [],
+      recipients: Array.isArray(input.recipients) ? input.recipients.slice() : (existing?.recipients || []),
       parentID: input.parentID ?? input.parentId ?? null,
       groupID: input.groupID ?? input.groupId ?? null,
       groupType: input.groupType ?? null,

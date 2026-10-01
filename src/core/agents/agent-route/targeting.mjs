@@ -58,24 +58,45 @@ function shouldRouteAgentMessage(context, frame) {
 }
 
 export function resolveRouteTargets({ frame, participantAgentIDs, coordinatorAgentID }) {
+  // Explicit single-target bypass (scheduled continuations, async process wakes)
+  // wins over everything else.
   let targetAgentID = normalizeOptionalString(frame?.targetAgentID);
   if (targetAgentID)
     return participantAgentIDs.includes(targetAgentID) ? [ targetAgentID ] : [];
 
-  if (frame?.type === 'AgentMessage') {
-    return participantAgentIDs.filter((agentID) => agentID !== frame.authorID);
-  }
+  let recipients = resolveFrameRecipients(frame);
 
+  // A coordinated frame was already routed by the coordinator; trigger only its
+  // recipients (never re-wake the coordinator on its own routing decision).
   if (frame?.coordinated === true) {
-    let mentionedAgentIDs = Object.entries(frame.mentions || {})
-      .filter(([actorID, mention]) => mention?.type === 'agent' || participantAgentIDs.includes(actorID))
-      .map(([actorID]) => actorID)
-      .filter((actorID) => actorID !== coordinatorAgentID && participantAgentIDs.includes(actorID));
-
-    return uniqueStrings(mentionedAgentIDs);
+    return uniqueStrings(recipients)
+      .filter((agentID) => participantAgentIDs.includes(agentID) && agentID !== frame?.authorID);
   }
 
-  return uniqueStrings([ coordinatorAgentID, ...participantAgentIDs ]);
+  // Otherwise the coordinator is the router for all traffic: it is always
+  // triggered (so it can decide), plus any explicit recipients. The author is
+  // never a target of its own message.
+  let targets = [];
+  if (coordinatorAgentID)
+    targets.push(coordinatorAgentID);
+  targets.push(...recipients);
+
+  return uniqueStrings(targets)
+    .filter((agentID) => participantAgentIDs.includes(agentID) && agentID !== frame?.authorID);
+}
+
+// Trigger truth for a frame: explicit `recipients` when present, else derived
+// from resolved `mentions`. `recipients` is a generic actor-id list (agents
+// today; users/plugin actors later).
+export function resolveFrameRecipients(frame) {
+  let recipients = normalizeStringArray(frame?.recipients);
+  if (recipients.length > 0)
+    return recipients;
+
+  if (frame?.mentions && typeof frame.mentions === 'object' && !Array.isArray(frame.mentions))
+    return Object.keys(frame.mentions);
+
+  return [];
 }
 
 export function filterRedundantRouteTargets({ frame, routeTargets, frameEngine }) {
@@ -152,6 +173,9 @@ function isExplicitAgentTarget(frame, agentID) {
     return false;
 
   if (frame.targetAgentID === agentID)
+    return true;
+
+  if (normalizeStringArray(frame.recipients).includes(agentID))
     return true;
 
   let mention = frame.mentions?.[agentID];
