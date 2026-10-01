@@ -40,6 +40,12 @@ import {
   createLoopTools,
   dispatchForwards,
 } from './agent-loop-tools.mjs';
+import {
+  SESSION_SYSTEM_PROMPT,
+  buildModelMessages,
+  frameToModelTurn,
+  resolvePromptContent,
+} from './agent-model-context.mjs';
 import { PluginInterface } from './plugin-interface.mjs';
 
 export { normalizeConfigFields } from './agent-normalizers.mjs';
@@ -49,6 +55,22 @@ export class AgentInterface extends PluginInterface {
   static serviceType = null;
   static configFields = [];
   static maxLoopSteps = 8;
+
+  // Shared frame -> model turn projection. Providers use these so a new core
+  // frame type is handled once rather than silently dropped by each adapter.
+  static SESSION_SYSTEM_PROMPT = SESSION_SYSTEM_PROMPT;
+
+  static frameToModelTurn(frame, options) {
+    return frameToModelTurn(frame, options);
+  }
+
+  static buildModelMessages(params, options) {
+    return buildModelMessages(params, options);
+  }
+
+  static resolvePromptContent(params) {
+    return resolvePromptContent(params);
+  }
 
   async *run(params = {}) {
     yield* this.runAgentLoop(params);

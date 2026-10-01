@@ -57,34 +57,41 @@ boundary): only 5–7 model messages survived, and the compaction frame mapped t
 
 ## Fix
 
-Map `CompactionFrame` to a `user` message in each provider, before the hidden
-guard:
+### Structural fix (supersedes the local per-plugin patch)
 
-```js
-if (isCompactionFrame(frame))
-  return compactionFrameToMessage(frame);
-```
+Compaction is a *core* concept but the frame→model projection lived in each
+*adapter*, so a new core frame type silently vanished everywhere it was not
+taught. Centralize the decision in core:
 
-where the message is:
+`src/core/plugins/agent-model-context.mjs` now owns frame→turn mapping:
+`frameToModelTurn`, `buildModelMessages`, `resolvePromptContent`, compaction
+handling, and the session system prompt. `AgentInterface` re-exposes them as
+statics. Providers call `this.constructor.buildModelMessages(params)` and keep
+only their API-specific wrapping; they no longer each re-implement (or
+miss) frame handling.
+
+- `kikx-plugin-ollama/index.mjs` — deleted its local mapper; uses the shared one.
+- `kikx-plugin-codex/index.mjs` — same.
+- A future adapter (or a new internal frame type) is now handled once.
+
+Shared handling includes compaction: `CompactionFrame` (or
+`content.kind === 'compaction_frame'`) maps to a user turn
 
 ```
 [Compacted context memory — earlier turns summarized]
 <content.summary || content.text>
 ```
 
-Files changed:
-- `kikx-plugin-ollama/index.mjs` — `frameToOllamaMessage` + helpers.
-- `kikx-plugin-codex/index.mjs` — `frameToOpenAIMessage` + helpers.
+before the hidden-frame guard.
 
-## Regression coverage
+### Regression coverage
 
-- `kikx-plugin-ollama/spec/setup-spec.mjs` — "includes a CompactionFrame summary
-  in the model prompt".
-- `kikx-plugin-codex/spec/setup-spec.mjs` — same.
-
-Each drives a real `agent.run()` with a `hidden` `CompactionFrame` in
-`params.frames` and asserts the summary text appears in the outgoing model
-request.
+- `kikx/spec/core/plugins/agent-model-context-spec.mjs` (10 cases) — the shared
+  projection, including a hidden `CompactionFrame`, by-type and by-kind.
+- `kikx-plugin-ollama/spec/setup-spec.mjs` — the summary appears in the outgoing
+  `/api/chat` request.
+- `kikx-plugin-codex/spec/setup-spec.mjs` — the summary appears in the outgoing
+  `/v1/responses` request.
 
 ## Why tests missed it
 
