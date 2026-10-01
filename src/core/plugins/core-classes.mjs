@@ -17,6 +17,7 @@ import { FrameRouter } from '../routing/frame-router.mjs';
 import { FrameRuntime } from '../runtime/frame-runtime.mjs';
 import { CompactionService } from '../compaction/compaction-service.mjs';
 import { CommandRegistry } from '../commands/command-registry.mjs';
+import { FRAME_TYPE_REGISTRATIONS } from '../frames/frame-types/index.mjs';
 
 // Classes registered for override. Kept to the classes a plugin has a plausible
 // reason to replace (engine/router/runtime/compaction registries), not the whole
@@ -37,6 +38,21 @@ export function registerCoreClasses(registry) {
 
   for (let ClassRef of CORE_CLASSES)
     registry.registerClass(ClassRef.name, ClassRef, { pluginName: 'core' });
+
+  registerFrameTypeClasses(registry);
+
+  return registry;
+}
+
+// Register the frame-type class hierarchy under `FrameType<Type>` keys so a
+// plugin can override or add a frame type through the same registry. Called by
+// registerCoreClasses() at the shared bootstrap path.
+export function registerFrameTypeClasses(registry, { pluginName = 'core' } = {}) {
+  if (!registry || typeof registry.registerClass !== 'function')
+    throw new TypeError('registerFrameTypeClasses() requires a registry');
+
+  for (let [ key, ClassRef ] of Object.entries(FRAME_TYPE_REGISTRATIONS))
+    registry.registerClass(key, ClassRef, { pluginName });
 
   return registry;
 }
