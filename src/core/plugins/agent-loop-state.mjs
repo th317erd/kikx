@@ -16,6 +16,8 @@ export function createLoopState() {
     forwarded: false,
     forwardDispatched: false,
     completionReviewed: false,
+    deferralGuarded: false,
+    suppressFinalFrame: false,
     finalFrame: null,
     continuation: null,
     yieldedAgentMessage: false,
@@ -147,14 +149,25 @@ export function mergeCompletionReviewFrame(finalFrame, reviewFrame) {
   };
 }
 
+// When a visible user turn's draft is an "avoidable deferral" (asking the user
+// whether to continue, or which obvious next step to take), we schedule an
+// immediate self-continuation so the agent keeps working instead of stalling.
+//
+// Fix A: never REPLACE the visible answer. The original draft text is dropped
+// from view (suppressed) rather than being swapped for a canned meta sentence —
+// the user should either see the real answer from the continuation, or nothing
+// yet, never a robotic "I'm going to continue…". Fires at most once per turn
+// chain so a still-deferring continuation cannot loop.
 export function applyAvoidableDeferralGuard(context = {}, state = {}) {
-  if (state.continuation || !state.finalFrame?.content || !isVisibleUserTurn(context))
+  if (state.continuation || state.deferralGuarded || !state.finalFrame?.content || !isVisibleUserTurn(context))
     return;
 
   let text = finalFrameText(state.finalFrame);
   if (!isAvoidableDeferralQuestion(text))
     return;
 
+  state.deferralGuarded = true;
+  state.suppressFinalFrame = true;
   state.continuation = {
     delayMs: 0,
     continuationPrompt: [
@@ -162,13 +175,6 @@ export function applyAvoidableDeferralGuard(context = {}, state = {}) {
       'The user expects you to infer the next safe implied step and continue without asking for permission.',
       'Continue now. Use tools if needed. Ask only if there is a real blocker, a destructive/risky action, or a genuinely important decision that cannot be inferred.',
     ].join(' '),
-  };
-  state.finalFrame = {
-    ...state.finalFrame,
-    content: {
-      ...state.finalFrame.content,
-      text: 'I’m going to continue with the next safe implied step instead of stopping for confirmation.',
-    },
   };
 }
 

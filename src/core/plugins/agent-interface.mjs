@@ -161,8 +161,14 @@ export class AgentInterface extends PluginInterface {
         return;
       }
 
-      if (state.finalFrame && !state.yieldedAgentMessage)
+      // The avoidable-deferral guard suppresses a stalling draft: the agent will
+      // answer via its immediate continuation instead, so no visible frame is
+      // emitted this turn (and the placeholder must not dangle).
+      if (state.suppressFinalFrame) {
+        yield { type: 'SuppressFinalFrame' };
+      } else if (state.finalFrame && !state.yieldedAgentMessage) {
         yield state.finalFrame;
+      }
 
       yield {
         type: 'Done',

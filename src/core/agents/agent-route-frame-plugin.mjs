@@ -221,6 +221,14 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
       };
 
       for await (let output of provider.run(runParams)) {
+        // The agent suppressed its own visible frame (avoidable-deferral guard):
+        // finalize the placeholder invisible+complete so it neither renders nor
+        // dangles, and let any scheduled continuation deliver the real answer.
+        if (output?.type === 'SuppressFinalFrame') {
+          this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status: 'suppressed' });
+          continue;
+        }
+
         if (output?.type === 'Done') {
           let status = normalizeDoneStatus(output.content?.status);
           doneStatus = status || doneStatus;

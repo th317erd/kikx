@@ -965,13 +965,10 @@ test('AgentInterface reviews direct provider messages and converts avoidable def
   })));
 
   assert.deepEqual(agent.calls, [ 'ask', 'completion-review' ]);
+  // Fix A: the stalling draft is suppressed (no visible frame, no canned meta
+  // sentence); the agent answers via the immediate continuation instead.
   assert.deepEqual(outputs, [
-    {
-      type: 'AgentMessage',
-      content: {
-        text: 'I’m going to continue with the next safe implied step instead of stopping for confirmation.',
-      },
-    },
+    { type: 'SuppressFinalFrame' },
     {
       type: 'Done',
       content: {
@@ -992,8 +989,7 @@ test('AgentInterface converts permission-seeking file-change deferrals to contin
   })));
 
   assert.deepEqual(agent.calls, [ 'ask', 'completion-review' ]);
-  assert.equal(outputs[0].type, 'AgentMessage');
-  assert.match(outputs[0].content.text, /continue with the next safe implied step/i);
+  assert.equal(outputs[0].type, 'SuppressFinalFrame');
   assert.equal(outputs[1].type, 'Done');
   assert.equal(outputs[1].content.status, 'respond-and-continue');
 });
