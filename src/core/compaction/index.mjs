@@ -24,6 +24,20 @@ export {
   selectCompactor,
 } from './select-compactor.mjs';
 export {
+  DEFAULT_CHARS_PER_TOKEN,
+  MAX_CHUNK_DEPTH,
+  TRUNCATED_FRAME_TYPE,
+  planCompactionChunks,
+  runChunkedCompaction,
+  trimOldestToFit,
+} from './chunked-compaction.mjs';
+export {
+  DEFAULT_COMPACTION_OUTPUT_RESERVE_TOKENS,
+  computeCompactionBudget,
+  countCompactionMetadataTokens,
+  resolveCompactorWindow,
+} from './compaction-budget.mjs';
+export {
   COMPACTION_LEVELS,
   COMPACTION_SECTION_HEADER,
   MEDIUM_CONTEXT_WINDOW_TOKENS,

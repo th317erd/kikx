@@ -56,6 +56,20 @@ class DeferredCompactorProvider extends AgentInterface {
   }
 }
 
+class BudgetRecordingProvider extends AgentInterface {
+  static pluginID = 'budget-recorder';
+
+  async ask(prompt, params = {}) {
+    params.services.calls.push({
+      method: 'budget-recorder.ask',
+      maxInputTokens: params.maxInputTokens,
+      frameIDs: params.frames.map((frame) => frame.id),
+      prompt,
+    });
+    return `summary of ${params.frames.map((frame) => frame.id).join(',')}`;
+  }
+}
+
 class SecretCheckingCompactorProvider extends AgentInterface {
   static pluginID = 'secret-checking-compactor';
 
@@ -95,7 +109,7 @@ test('CompactionService runs one-shot compaction and stores a hidden CompactionF
           name: 'Compactor',
           pluginID: 'compactor',
           secrets: {},
-          config: { contextWindowTokens: 20 },
+          config: { contextWindowTokens: 20000 },
           enabled: true,
         };
       },
@@ -120,6 +134,9 @@ test('CompactionService runs one-shot compaction and stores a hidden CompactionF
     frameEngine,
     triggerFrame: frameEngine.get('msg_3'),
     agent: { id: 'agent_1' },
+    // Trigger off a tiny participant window while the compactor's own window is
+    // large, so the trigger fires without chunking the (small) window.
+    agentContextWindowTokens: 20,
     services,
   });
 
@@ -174,7 +191,7 @@ test('CompactionService builds compaction windows from stitched FrameManager mes
           name: 'Compactor',
           pluginID: 'compactor',
           secrets: {},
-          config: { contextWindowTokens: 20 },
+          config: { contextWindowTokens: 20000 },
           enabled: true,
         };
       },
@@ -194,6 +211,7 @@ test('CompactionService builds compaction windows from stitched FrameManager mes
     frameEngine,
     triggerFrame: frameEngine.get('msg_2'),
     agent: { id: 'agent_1' },
+    agentContextWindowTokens: 20,
     services,
   });
   await service.pendingCompactions.get('ses_1:agent_1').promise;
@@ -487,6 +505,183 @@ test('CompactionService triggers off the smallest participant window resolved fr
   });
 
   assert.equal(result.shouldCompact, true);
+});
+
+test('CompactionService sizes the request from the selected compactor window, not the global default', async () => {
+  let pluginRegistry = new PluginRegistry();
+  pluginRegistry.registerAgentProvider('budget-recorder', BudgetRecordingProvider);
+  let frameEngine = new FrameEngine({
+    clock: createClock(),
+    idGenerator: createIDs([ 'commit_1', 'compaction_frame_1', 'commit_2' ]),
+  });
+  frameEngine.merge([
+    userFrame('msg_1', 'older project detail', 1),
+    userFrame('msg_2', 'active request', 2),
+  ], { silent: true });
+  let service = new CompactionService({
+    pluginRegistry,
+    agentManager: {
+      async getAgent() {
+        return {
+          id: 'agent_1',
+          name: 'Compactor',
+          pluginID: 'budget-recorder',
+          secrets: {},
+          config: { model: 'tiny', contextWindowTokens: 8000 },
+          enabled: true,
+        };
+      },
+      listModels() {
+        return [];
+      },
+    },
+    clock: () => 9000,
+    idGenerator: () => 'compaction_frame_1',
+    compactionAgentContextTokens: 128000,
+    estimateTokens: (text) => Math.max(1, Math.ceil(String(text || '').length / 4)),
+  });
+  let services = { calls: [] };
+
+  await service.runCompaction({
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ] },
+    frameEngine,
+    compactionWindow: {
+      frames: [ frameEngine.get('msg_1') ],
+      startFrameID: 'msg_1',
+      boundaryFrameID: 'msg_1',
+      boundaryOrder: 1,
+      tokens: 5,
+    },
+    agent: { id: 'agent_1' },
+    services,
+  });
+
+  let call = services.calls[0];
+  assert.equal(call.maxInputTokens < 8000, true);
+  assert.equal(call.maxInputTokens > 2000, true);
+  assert.equal(call.maxInputTokens < 128000, true);
+});
+
+test('CompactionService falls back to the legacy budget when the compactor window is unknown', async () => {
+  let pluginRegistry = new PluginRegistry();
+  pluginRegistry.registerAgentProvider('budget-recorder', BudgetRecordingProvider);
+  let frameEngine = new FrameEngine({
+    clock: createClock(),
+    idGenerator: createIDs([ 'commit_1', 'compaction_frame_1', 'commit_2' ]),
+  });
+  frameEngine.merge([
+    userFrame('msg_1', 'older project detail', 1),
+    userFrame('msg_2', 'active request', 2),
+  ], { silent: true });
+  class NullWindowProvider extends BudgetRecordingProvider {
+    resolveContextWindow() {
+      return null;
+    }
+
+    contextWindowFor() {
+      return null;
+    }
+  }
+  pluginRegistry.registerAgentProvider('budget-recorder', NullWindowProvider);
+  let service = new CompactionService({
+    pluginRegistry,
+    agentManager: {
+      async getAgent() {
+        return {
+          id: 'agent_1',
+          name: 'Compactor',
+          pluginID: 'budget-recorder',
+          secrets: {},
+          config: {},
+          enabled: true,
+        };
+      },
+      listModels() {
+        return [];
+      },
+    },
+    clock: () => 9000,
+    idGenerator: () => 'compaction_frame_1',
+    compactionAgentContextTokens: 20000,
+    estimateTokens: (text) => Math.max(1, Math.ceil(String(text || '').length / 4)),
+  });
+  let services = { calls: [] };
+
+  await service.runCompaction({
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ] },
+    frameEngine,
+    compactionWindow: {
+      frames: [ frameEngine.get('msg_1') ],
+      startFrameID: 'msg_1',
+      boundaryFrameID: 'msg_1',
+      boundaryOrder: 1,
+      tokens: 5,
+    },
+    agent: { id: 'agent_1' },
+    services,
+  });
+
+  let call = services.calls[0];
+  // The legacy budget is used (not the 32768 shared default).
+  assert.equal(call.maxInputTokens < 20000, true);
+  assert.equal(call.maxInputTokens > 10000, true);
+});
+
+test('CompactionService chunks and reduces when a small compactor window cannot fit the input', async () => {
+  let pluginRegistry = new PluginRegistry();
+  pluginRegistry.registerAgentProvider('budget-recorder', BudgetRecordingProvider);
+  let frameEngine = new FrameEngine({
+    clock: createClock(),
+    idGenerator: createIDs([ 'commit_1', 'compaction_frame_1', 'commit_2' ]),
+  });
+  let big = 'x'.repeat(4000);
+  frameEngine.merge([
+    userFrame('msg_1', big, 1),
+    userFrame('msg_2', big, 2),
+    userFrame('msg_3', big, 3),
+    userFrame('msg_4', 'active request', 4),
+  ], { silent: true });
+  let service = new CompactionService({
+    pluginRegistry,
+    agentManager: {
+      async getAgent() {
+        return {
+          id: 'agent_1',
+          name: 'Compactor',
+          pluginID: 'budget-recorder',
+          secrets: {},
+          config: { contextWindowTokens: 4000 },
+          enabled: true,
+        };
+      },
+      listModels() {
+        return [];
+      },
+    },
+    clock: () => 9000,
+    idGenerator: () => 'compaction_frame_1',
+    compactionAgentContextTokens: 128000,
+    estimateTokens: (text) => Math.max(1, Math.ceil(String(text || '').length / 4)),
+  });
+  let services = { calls: [] };
+
+  let frame = await service.runCompaction({
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ] },
+    frameEngine,
+    compactionWindow: {
+      frames: [ frameEngine.get('msg_1'), frameEngine.get('msg_2'), frameEngine.get('msg_3') ],
+      startFrameID: 'msg_1',
+      boundaryFrameID: 'msg_3',
+      boundaryOrder: 3,
+      tokens: 3000,
+    },
+    agent: { id: 'agent_1' },
+    services,
+  });
+
+  assert.equal(services.calls.length > 1, true);
+  assert.equal(services.calls.some((call) => call.frameIDs.length < 3), true);
+  assert.match(frame.content.summary, /summary of/);
 });
 
 function userFrame(id, text, order) {

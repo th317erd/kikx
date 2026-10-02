@@ -4,18 +4,24 @@ import { randomUUID } from 'node:crypto';
 
 import { AgentInterface } from '../plugins/agent-interface.mjs';
 import {
-  COMPACTION_FRAME_KIND,
-  COMPACTION_FRAME_TYPE,
   buildAgentCompactionPrompt,
   buildDefaultCompactionInstructions,
 } from './agent-compaction-template.mjs';
+import { buildCompactionFrame, buildCompactionFrameUpdate } from './compaction-frame.mjs';
 import { buildCompactionSummaryJSON } from './compaction-summary.mjs';
+import {
+  DEFAULT_COMPACTION_OUTPUT_RESERVE_TOKENS,
+  computeCompactionBudget,
+  countCompactionMetadataTokens,
+  resolveCompactorWindow,
+} from './compaction-budget.mjs';
+import { runChunkedCompaction } from './chunked-compaction.mjs';
+import { resolveCompactionAgent as resolveCompactionAgentForSession } from './compactor-resolver.mjs';
 import { resolveSessionWindows } from './effective-windows.mjs';
 import {
   FrameContextBuilder,
   serializeFramesForCompaction,
 } from './frame-context-builder.mjs';
-import { selectCompactor } from './select-compactor.mjs';
 import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
@@ -37,6 +43,12 @@ export class CompactionService {
     this.compactionAgentContextTokens = normalizePositiveInteger(options.compactionAgentContextTokens, DEFAULT_COMPACTION_AGENT_CONTEXT_TOKENS);
     this.promptReserveTokens = normalizeNonNegativeInteger(options.promptReserveTokens, DEFAULT_PROMPT_RESERVE_TOKENS);
     this.baseReserveTokens = normalizeNonNegativeInteger(options.baseReserveTokens, this.promptReserveTokens);
+    // R2/R4: room the compactor's own completion needs, subtracted from its
+    // window before the serialized input is sized.
+    this.compactionOutputReserveTokens = normalizeNonNegativeInteger(
+      options.compactionOutputReserveTokens,
+      DEFAULT_COMPACTION_OUTPUT_RESERVE_TOKENS,
+    );
     // Non-history overhead (system + start brief + current message + tools). When
     // unknown it stays 0: the estimate is never silently inflated (R2).
     this.usageOverheadTokens = normalizeNonNegativeInteger(options.usageOverheadTokens, 0);
@@ -303,31 +315,51 @@ export class CompactionService {
     if (provider.ask === AgentInterface.prototype.ask)
       throw new Error(`Agent provider ${ProviderClass.name} does not expose a one-shot ask() method for compaction`);
 
-    let contextBudget = Math.max(1, this.compactionAgentContextTokens - this.countInstructionTokens());
-    let contextText = compactionWindow.contextText || serializeFramesForCompaction(compactionWindow.frames);
-    let prompt = buildAgentCompactionPrompt({
-      instructions: this.instructions,
-      contextText,
-      sessionID: session.id,
-      frameCount: compactionWindow.frames.length,
-      startFrameID: compactionWindow.startFrameID,
-      boundaryFrameID: compactionWindow.boundaryFrameID,
-      contextTokenBudget: contextBudget,
+    // R2/R4: size the request to the SELECTED compactor's real window, not the
+    // process-wide default. Everything the request must fit is subtracted:
+    // instructions + metadata overhead + output reserve.
+    let contextBudget = this.resolveCompactionBudget({
+      input,
+      compactorAgent,
+      provider,
+      ProviderClass,
+      compactionWindow,
     });
-    let summary = await collectCompactionText(provider.ask(prompt, {
-      compaction: true,
-      oneShot: true,
-      agent: compactorAgent,
-      session,
+
+    // R4: if the serialized input does not fit, compact in chunks and reduce the
+    // summaries. `compactOnce` keeps the single-call path byte-for-byte
+    // identical when everything fits.
+    let summary = await runChunkedCompaction({
       frames: compactionWindow.frames,
-      sessionFrames: compactionWindow.frames,
-      config: compactorAgent.config || {},
-      secrets: compactorAgent.secrets || {},
-      tools: {},
-      toolDefinitions: [],
-      services: input.services || {},
-      maxInputTokens: contextBudget,
-    }));
+      budgetTokens: contextBudget,
+      estimateTokens: (text) => this.contextBuilder.estimateTokens(text),
+      compactOnce: async (frames) => {
+        let contextText = serializeFramesForCompaction(frames);
+        let prompt = buildAgentCompactionPrompt({
+          instructions: this.instructions,
+          contextText,
+          sessionID: session.id,
+          frameCount: frames.length,
+          startFrameID: frames[0]?.id || compactionWindow.startFrameID,
+          boundaryFrameID: frames.at(-1)?.id || compactionWindow.boundaryFrameID,
+          contextTokenBudget: contextBudget,
+        });
+        return await collectCompactionText(provider.ask(prompt, {
+          compaction: true,
+          oneShot: true,
+          agent: compactorAgent,
+          session,
+          frames,
+          sessionFrames: frames,
+          config: compactorAgent.config || {},
+          secrets: compactorAgent.secrets || {},
+          tools: {},
+          toolDefinitions: [],
+          services: input.services || {},
+          maxInputTokens: contextBudget,
+        }));
+      },
+    });
 
     if (summary.trim() === '')
       throw new Error('Compaction provider returned an empty summary');
@@ -366,67 +398,12 @@ export class CompactionService {
     return merged[0] || frameEngine.get(frame.id) || frame;
   }
 
-  createCompactionFrame({
-    session,
-    compactorAgent,
-    compactionWindow,
-    summary,
-    summaryJSON,
-    status = 'complete',
-    hidden = true,
-    manual = false,
-    requestedByFrameID = null,
-    message = '',
-  }) {
-    let now = this.clock();
-    let frameIDs = compactionWindow.frames.map((frame) => frame.id);
-    let boundaryFrame = compactionWindow.frames.at(-1);
-    let frameTime = manual ? now : boundaryFrame?.createdAt || boundaryFrame?.timestamp || now;
-    let sections = summaryJSON || buildCompactionSummaryJSON(summary);
-    return {
+  createCompactionFrame(input = {}) {
+    return buildCompactionFrame({
+      ...input,
       id: this.idGenerator(),
-      type: COMPACTION_FRAME_TYPE,
-      sessionID: session.id,
-      interactionID: `compaction-${compactionWindow.boundaryFrameID || now}`,
-      parentID: compactionWindow.boundaryFrameID || null,
-      authorType: 'system',
-      authorID: 'internal:compaction',
-      authorDisplayName: 'Kikx compaction',
-      timestamp: manual ? now : boundaryFrame?.timestamp || now,
-      createdAt: frameTime,
-      updatedAt: now,
-      hidden,
-      deleted: false,
-      compaction: {
-        kind: COMPACTION_FRAME_KIND,
-        status,
-        manual,
-        requestedByFrameID,
-        compactorAgentID: compactorAgent?.id || null,
-        compactorAgentName: compactorAgent?.name || compactorAgent?.id || null,
-        frameCount: frameIDs.length,
-        frameIDs,
-        startFrameID: compactionWindow.startFrameID,
-        boundaryFrameID: compactionWindow.boundaryFrameID,
-        boundaryOrder: compactionWindow.boundaryOrder,
-        contextTokens: compactionWindow.tokens,
-        createdAt: now,
-      },
-      content: {
-        kind: COMPACTION_FRAME_KIND,
-        status,
-        text: message || summary,
-        summary,
-        summaryJSON: sections,
-        manual,
-        requestedByFrameID,
-        compactorAgentID: compactorAgent?.id || null,
-        frameCount: frameIDs.length,
-        startFrameID: compactionWindow.startFrameID,
-        boundaryFrameID: compactionWindow.boundaryFrameID,
-        boundaryOrder: compactionWindow.boundaryOrder,
-      },
-    };
+      now: this.clock(),
+    });
   }
 
   updateCompactionFrame({ frameEngine, frameID, compactionWindow, status, summary, summaryJSON, message, compactorAgent }) {
@@ -434,39 +411,16 @@ export class CompactionService {
     if (!existing)
       throw new Error(`Unknown compaction frame: ${frameID}`);
 
-    let now = this.clock();
-    let frameIDs = compactionWindow.frames.map((frame) => frame.id);
-    let sections = summaryJSON || (typeof summary === 'string' ? buildCompactionSummaryJSON(summary) : existing.content?.summaryJSON);
-    let nextFrame = {
-      ...existing,
-      updatedAt: now,
-      compaction: {
-        ...(existing.compaction || {}),
-        status,
-        compactorAgentID: compactorAgent?.id || existing.compaction?.compactorAgentID || null,
-        compactorAgentName: compactorAgent?.name || compactorAgent?.id || existing.compaction?.compactorAgentName || null,
-        frameCount: frameIDs.length,
-        frameIDs,
-        startFrameID: compactionWindow.startFrameID,
-        boundaryFrameID: compactionWindow.boundaryFrameID,
-        boundaryOrder: compactionWindow.boundaryOrder,
-        contextTokens: compactionWindow.tokens,
-        updatedAt: now,
-      },
-      content: {
-        ...(existing.content || {}),
-        kind: COMPACTION_FRAME_KIND,
-        status,
-        text: message || summary || existing.content?.text || '',
-        summary: summary ?? existing.content?.summary ?? '',
-        summaryJSON: sections,
-        compactorAgentID: compactorAgent?.id || existing.content?.compactorAgentID || null,
-        frameCount: frameIDs.length,
-        startFrameID: compactionWindow.startFrameID,
-        boundaryFrameID: compactionWindow.boundaryFrameID,
-        boundaryOrder: compactionWindow.boundaryOrder,
-      },
-    };
+    let nextFrame = buildCompactionFrameUpdate({
+      existing,
+      now: this.clock(),
+      compactionWindow,
+      status,
+      summary,
+      summaryJSON,
+      message,
+      compactorAgent,
+    });
     let merged = frameEngine.merge([ nextFrame ], {
       authorType: 'system',
       authorID: 'internal:compaction',
@@ -479,59 +433,13 @@ export class CompactionService {
     let pluginRegistry = this.pluginRegistry || resolveService(input.services, 'pluginRegistry');
     let catalog = input.catalog || this.catalog || agentManager?.listModels?.() || [];
 
-    // Env/config override remains the highest priority (unchanged behavior).
-    if (this.compactionAgentID)
-      return await this.loadCompactionAgent(agentManager, this.compactionAgentID, input);
-
-    let session = input.session || {};
-    let windows = await resolveSessionWindows({
-      session,
+    return await resolveCompactionAgentForSession({
+      compactionAgentID: this.compactionAgentID,
       agentManager,
       pluginRegistry,
       catalog,
+      input,
     });
-    let participantAgentsWithMeta = windows.participants;
-    // Rung 2 of selection reads the manager's SYNCHRONOUS compaction-bot
-    // snapshot. Refresh it from the store first so designation changes made
-    // through any path are visible at selection time.
-    if (typeof agentManager?.refreshCompactionBots === 'function')
-      await agentManager.refreshCompactionBots();
-
-    let selection = selectCompactor({
-      session,
-      participantAgentsWithMeta,
-      agentManager,
-      pluginRegistry,
-      catalog,
-    });
-
-    if (!selection.agentID) {
-      // No participant resolved (for example a session with no participants).
-      // Preserve the historical current-agent fallback for that degenerate case.
-      let currentAgentID = normalizeOptionalString(input.agent?.id);
-      return currentAgentID ? await this.loadCompactionAgent(agentManager, currentAgentID, input) : null;
-    }
-
-    let selected = await this.loadCompactionAgent(agentManager, selection.agentID, input);
-    if (selected)
-      return selected;
-
-    // The selected agent could not be loaded (for example a stub manager that
-    // only knows the routing agent). Preserve the historical fallback to the
-    // current agent when it is a participant.
-    let currentAgentID = normalizeOptionalString(input.agent?.id);
-    if (currentAgentID && participantAgentsWithMeta.some((participant) => participant.id === currentAgentID))
-      return input.agent;
-
-    return null;
-  }
-
-  async loadCompactionAgent(agentManager, agentID, input = {}) {
-    if (!agentManager?.getAgent)
-      return normalizeOptionalString(input.agent?.id) === agentID ? input.agent : null;
-
-    let agent = await agentManager.getAgent(agentID, { includeSecrets: true });
-    return agent?.id && agent.enabled !== false ? agent : null;
   }
 
   resolveProviderClass(agent) {
@@ -544,6 +452,29 @@ export class CompactionService {
 
   countInstructionTokens() {
     return this.contextBuilder.estimateTokens(this.instructions);
+  }
+
+  // R2/R4: the input budget for the compactor request. The window comes from the
+  // selected provider instance's resolver when present, else shared resolution.
+  // The legacy `compactionAgentContextTokens` is only a fallback when the window
+  // cannot be determined.
+  resolveCompactionBudget({ input = {}, compactorAgent, provider, ProviderClass, compactionWindow } = {}) {
+    let agentManager = this.agentManager || resolveService(input.services, 'agentManager');
+    let catalog = input.catalog || this.catalog || agentManager?.listModels?.() || [];
+    let window = resolveCompactorWindow({ compactorAgent, provider, ProviderClass, catalog });
+    let metadataTokens = countCompactionMetadataTokens({
+      estimateTokens: (text) => this.contextBuilder.estimateTokens(text),
+      compactionWindow,
+      frameCount: compactionWindow?.frames?.length || 0,
+    });
+
+    return computeCompactionBudget({
+      window,
+      fallbackWindow: this.compactionAgentContextTokens,
+      instructionTokens: this.countInstructionTokens(),
+      metadataTokens,
+      outputReserveTokens: this.compactionOutputReserveTokens,
+    });
   }
 
   emitCompactionEvent(type, payload = {}) {
