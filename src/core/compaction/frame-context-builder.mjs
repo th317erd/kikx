@@ -50,6 +50,9 @@ export class FrameContextBuilder {
     let latestCompaction = findLatestCompletedCompaction(allFrames);
     let contextFrames = buildContextFramesAfterCompaction(allFrames, latestCompaction);
     let contextTokens = this.countFrameTokens(contextFrames) + usageOverheadTokens;
+    // R5: the trigger uses the SMALLEST window (this build call). For the per-bot
+    // hold decision the service checks each bot against ITS OWN window; here we
+    // also expose whether this bot's projected context exceeds its own hard limit.
     let activeIndex = activeFrameID
       ? allFrames.findIndex((frame) => frame.id === activeFrameID)
       : allFrames.length;
@@ -70,6 +73,9 @@ export class FrameContextBuilder {
       hardLimit,
       usageOverheadTokens,
       usageRatio: contextTokens / hardLimit,
+      // True when THIS bot's projected context exceeds its OWN window: the
+      // condition under which a bot must wait for an in-flight compaction (R5).
+      exceedsOwnWindow: contextTokens >= hardLimit,
       shouldCompact: contextTokens >= Math.floor(hardLimit * triggerRatio) && compactionWindow.frames.length > 0,
       shouldWaitForCompaction: contextTokens >= Math.floor(hardLimit * hardLimitRatio) && compactionWindow.frames.length > 0,
       compactionWindow,

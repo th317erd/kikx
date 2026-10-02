@@ -730,6 +730,90 @@ function agentFrame(id, text, order) {
   };
 }
 
+test('per-bot hold: a bot whose own window is exceeded waits; one that fits does not (R5)', async () => {
+  let frameEngine = new FrameEngine({ clock: createClock(), idGenerator: createIDs([ 'msg_1', 'msg_2', 'msg_3' ]) });
+  frameEngine.merge([
+    userFrame('msg_1', 'older request about /tmp/project', 1),
+    userFrame('msg_2', 'middle request', 2),
+    userFrame('msg_3', 'current request', 3),
+  ], { silent: true });
+
+  // Small-window bot: its OWN window is tiny, so its projected context exceeds it
+  // and it must wait for the in-flight compaction.
+  let small = createHoldService({ ownWindowTokens: 3 });
+  let smallResult = await small.service.prepareAgentContext({
+    session: { id: 'ses_small', participantAgentIDs: [ 'agent_1' ] },
+    frameEngine,
+    triggerFrame: frameEngine.get('msg_3'),
+    agent: { id: 'agent_1' },
+    agentContextWindowTokens: 20,
+    services: small.services,
+  });
+  assert.equal(smallResult.heldForCompaction, true, 'the small-window bot must be held for compaction');
+
+  // Large-window bot: same session, but its own window easily fits the context,
+  // so it is NOT held (compaction may still start in the background).
+  let frameEngine2 = new FrameEngine({ clock: createClock(), idGenerator: createIDs([ 'msg_1', 'msg_2', 'msg_3' ]) });
+  frameEngine2.merge([
+    userFrame('msg_1', 'older request', 1),
+    userFrame('msg_2', 'middle request', 2),
+    userFrame('msg_3', 'current request', 3),
+  ], { silent: true });
+  let large = createHoldService({ ownWindowTokens: 1_000_000 });
+  let largeResult = await large.service.prepareAgentContext({
+    session: { id: 'ses_large', participantAgentIDs: [ 'agent_1' ] },
+    frameEngine: frameEngine2,
+    triggerFrame: frameEngine2.get('msg_3'),
+    agent: { id: 'agent_1' },
+    agentContextWindowTokens: 20,
+    services: large.services,
+  });
+  // Not held: returns immediately with compactionPending, without awaiting.
+  assert.equal(largeResult.compactionPending, true);
+});
+
+function createHoldService({ ownWindowTokens }) {
+  let services = { calls: [] };
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerAgentProvider('hold-agent', HoldProvider);
+  let service = new CompactionService({
+    pluginRegistry,
+    agentManager: {
+      async getAgent() {
+        return {
+          id: 'agent_1',
+          name: 'Hold',
+          pluginID: 'hold-agent',
+          secrets: {},
+          config: { contextWindowTokens: ownWindowTokens },
+          enabled: true,
+        };
+      },
+    },
+    clock: createClock(),
+    idGenerator: () => 'compaction_frame_1',
+    contextWindowTokens: 20,
+    promptReserveTokens: 1,
+    compactionAgentContextTokens: 1000,
+    compactionTriggerRatio: 0.1,
+    estimateTokens: () => 5,
+    frameRuntime: { emitRuntimeEvent() {} },
+  });
+  return { service, services };
+}
+
+class HoldProvider extends AgentInterface {
+  static pluginID = 'hold-agent';
+
+  resolveContextWindow() {
+    return this.context?.agent?.config?.contextWindowTokens || null;
+  }
+
+  async ask() {
+    return 'hold compacted summary';
+  }
+}
+
 function createClock() {
   let value = 0;
   return () => ++value;

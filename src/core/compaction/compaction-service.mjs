@@ -17,7 +17,7 @@ import {
 } from './compaction-budget.mjs';
 import { runChunkedCompaction } from './chunked-compaction.mjs';
 import { resolveCompactionAgent as resolveCompactionAgentForSession } from './compactor-resolver.mjs';
-import { resolveSessionWindows } from './effective-windows.mjs';
+import { resolveEffectiveContextWindow, resolveSessionWindows } from './effective-windows.mjs';
 import {
   FrameContextBuilder,
   serializeFramesForCompaction,
@@ -87,25 +87,69 @@ export class CompactionService {
       compactionWindow: result.compactionWindow,
     });
 
-    if (result.shouldWaitForCompaction && pending) {
+    // R5: hold a bot awaiting an in-flight compaction only when the context it
+    // would actually send exceeds ITS OWN window. Bots that still fit proceed.
+    // The trigger uses the session's smallest window, so this bot's own window
+    // must be resolved separately.
+    if (pending && await this.shouldHoldAgentForCompaction(input, result)) {
       await pending.catch((error) => {
         this.logger.error?.('Kikx compaction failed while waiting at hard context limit', error);
       });
 
       let nextFrames = projectFrameMessages(typeof frameEngine?.toArray === 'function' ? frameEngine.toArray() : frames);
-      return this.contextBuilder.build(nextFrames, {
+      let rebuilt = this.contextBuilder.build(nextFrames, {
         activeFrameID: input.triggerFrame?.id || input.activeFrameID,
         ...triggerOptions,
         compactionContextBudgetTokens: Math.max(1, this.compactionAgentContextTokens - this.countInstructionTokens()),
         compactionTriggerRatio: input.compactionTriggerRatio || this.compactionTriggerRatio,
         hardLimitRatio: input.hardLimitRatio || this.hardLimitRatio,
       });
+      // This bot waited for the in-flight compaction because its own window was
+      // exceeded (R5); the rebuilt context reflects the new compaction frame.
+      return { ...rebuilt, compactionPending: false, heldForCompaction: true };
     }
 
     return {
       ...result,
       compactionPending: true,
     };
+  }
+
+  // Whether the current agent must wait for the in-flight compaction because its
+  // own projected context exceeds its own window (R5). Unknown windows keep the
+  // legacy behavior: wait only at the hard limit.
+  async shouldHoldAgentForCompaction(input = {}, result = {}) {
+    let agentID = input.agent?.id || null;
+    if (!agentID)
+      return result.shouldWaitForCompaction === true;
+
+    let agentManager = this.agentManager || resolveService(input.services, 'agentManager');
+    let pluginRegistry = this.pluginRegistry || resolveService(input.services, 'pluginRegistry');
+    let catalog = input.catalog || this.catalog || agentManager?.listModels?.() || [];
+    let agent = input.agent;
+    try {
+      if (agentManager?.getAgent && (!agent || agent.config == null))
+        agent = await agentManager.getAgent(agentID, { includeSecrets: false });
+    } catch (_error) {
+      agent = input.agent;
+    }
+
+    let providerClass = pluginRegistry?.getAgentProvider?.(agent?.pluginID) || null;
+    let ownWindow;
+    try {
+      let provider = providerClass
+        ? new providerClass({ ...(input.routerContext || {}), agent, services: input.services || {} })
+        : null;
+      ownWindow = provider?.resolveContextWindow?.({ config: agent?.config || {} });
+    } catch (_error) {
+      ownWindow = null;
+    }
+    if (!Number.isFinite(ownWindow) || ownWindow <= 0)
+      ownWindow = resolveEffectiveContextWindow({ agent, providerClass, catalog });
+
+    let baseReserveTokens = normalizeNonNegativeInteger(input.baseReserveTokens, this.baseReserveTokens);
+    let ownHardLimit = Math.max(1, ownWindow - baseReserveTokens);
+    return (result.contextTokens || 0) >= ownHardLimit;
   }
 
   // P0: the trigger follows the SMALLEST participant window (R1) and counts the
