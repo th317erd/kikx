@@ -14,6 +14,21 @@
 
 ---
 
+## Progress ledger (all phases landed)
+
+- P0 — trigger off the smallest bot window + full-request accounting. DONE (1d6c387).
+- P1 — 4-step compactor selection. DONE (1d6c387).
+- P2 — `/set-*`/`/clear-*` designation commands + session fields. DONE (5c2514e).
+- P3 — parallel compaction-bot list (store/manager/REST/client, `⊟` glyph;
+  independent from crown). DONE (5e8c203).
+- P4 — compactor-window budget + recursive chunked fallback + oldest-trim. DONE (923076f).
+- P5 — per-bot conditional hold (`exceedsOwnWindow`/`heldForCompaction`). DONE (eb5acf2).
+- P6 — instruction prune + base64/blob discard + realign blurb. DONE (1e265f7).
+- Gates: core 663/663, eslint clean. E2E: smallest window (32768) drives the
+  trigger (hardLimit 24768), not the large bot (200000).
+- Known follow-up: `src/core/aeordb/aeordb-agent-store.mjs` is ~704 lines (over the
+  500 soft limit) after the P3 clone; candidate for extraction.
+
 ## 0. Owner rulings (verbatim, 2026-10-02)
 
 - **R1 — trigger off the smallest bot.** `contextWindowTokens` must become the
