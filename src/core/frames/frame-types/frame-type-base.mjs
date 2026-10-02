@@ -183,9 +183,12 @@ export class FrameTypeBase {
     if (typeof summary !== 'string' || summary.trim() === '')
       return null;
 
+    // The summary is priority-tagged ([high]/[medium]/[low]) so a small model
+    // knows what it may drop. Tell it how to treat the tags on re-projection.
     return {
       role: 'user',
-      content: `[Compacted context memory — earlier turns summarized]\n${summary}`,
+      content: `[Compacted context memory — earlier turns summarized]\n`
+        + `Sections are priority-tagged: [high] is must-keep, [medium] is useful context, [low] is droppable if space is tight. Never drop [high].\n${summary}`,
     };
   }
 }

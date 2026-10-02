@@ -9,6 +9,25 @@ import {
   buildModelMessages,
   frameToModelTurn,
 } from '../../../src/core/plugins/agent-model-context.mjs';
+import {
+  buildMessageBrief,
+  buildStartBrief,
+} from '../../../src/core/plugins/agent-script-template.mjs';
+import {
+  AGIS_PRECEPTS_LINES,
+  START_BRIEF_BANNER_PREFIX,
+  packageVersion,
+} from '../../../src/core/plugins/agent-precepts.mjs';
+
+function startBriefMessages(messages) {
+  return messages.filter((message) => typeof message.content === 'string'
+    && message.content.startsWith(START_BRIEF_BANNER_PREFIX));
+}
+
+function messageBriefMessages(messages) {
+  return messages.filter((message) => typeof message.content === 'string'
+    && message.content.startsWith('Message from '));
+}
 
 test('frameToModelTurn maps a UserMessage to a user turn', () => {
   let turn = frameToModelTurn({ id: 'f1', type: 'UserMessage', content: { text: 'hello' } });
@@ -45,6 +64,9 @@ test('frameToModelTurn projects a hidden CompactionFrame summary into a user tur
   assert.equal(turn.role, 'user');
   assert.match(turn.content, /Compacted context memory/);
   assert.match(turn.content, /Earlier the user asked about deploys\./);
+  // Re-projection guidance tells a small model how to treat priority tags.
+  assert.match(turn.content, /priority-tagged/);
+  assert.match(turn.content, /Never drop \[high\]/);
 });
 
 test('frameToModelTurn recognizes a compaction frame by content.kind alone', () => {
@@ -75,11 +97,97 @@ test('frameToModelTurn drops other hidden, deleted, empty, and unknown frames', 
   assert.equal(frameToModelTurn(null), null);
 });
 
-test('buildModelMessages assembles system, frame turns (sans trigger frame), then the newest prompt', () => {
+test('Brief A carries the version banner, precepts, tools, and behavior', () => {
+  let { text } = buildStartBrief({
+    agent: { id: 'agent_1', name: 'Gemma', character: 'You are terse.' },
+    isCoordinator: false,
+    session: {
+      id: 'ses_1',
+      participantAgentIDs: [ 'agent_1' ],
+      participantUserIDs: [ 'usr_1' ],
+      coordinatorAgentID: 'agent_1',
+    },
+  });
+
+  assert.ok(text.startsWith(`${START_BRIEF_BANNER_PREFIX}${packageVersion()}`));
+  assert.match(text, /Character: You are terse\./);
+  assert.match(text, /Precepts — always on/);
+  assert.match(text, /Orient:/);
+  assert.match(text, /Proof: never claim done/i);
+  assert.match(text, /agent-respond-and-continue/);
+  assert.match(text, /Delegation: agent-list/);
+  assert.match(text, /Behavior:/);
+  // 2-party session (1 agent + 1 user): no coordinator preamble.
+  assert.doesNotMatch(text, /COORDINATOR PREAMBLE/);
+});
+
+test('Brief A includes the coordinator preamble only for the coordinator with 3+ parties', () => {
+  let multiparty = {
+    agent: { id: 'agent_1', name: 'Kikx' },
+    isCoordinator: true,
+    session: {
+      id: 'ses_1',
+      participantAgentIDs: [ 'agent_1', 'agent_2' ],
+      participantUserIDs: [ 'usr_1' ],
+      coordinatorAgentID: 'agent_1',
+    },
+  };
+
+  // 3 parties counting the user (D3) and the assigned coordinator.
+  assert.match(buildStartBrief(multiparty).text, /COORDINATOR PREAMBLE/);
+  // A non-coordinator never gets it.
+  assert.doesNotMatch(buildStartBrief({ ...multiparty, isCoordinator: false }).text, /COORDINATOR PREAMBLE/);
+  // Two parties (1 user + 1 agent) suppress it entirely.
+  assert.doesNotMatch(buildStartBrief({
+    ...multiparty,
+    session: {
+      id: 'ses_2',
+      participantAgentIDs: [ 'agent_1' ],
+      participantUserIDs: [ 'usr_1' ],
+      coordinatorAgentID: 'agent_1',
+    },
+  }).text, /COORDINATOR PREAMBLE/);
+});
+
+test('Brief B carries sender, message, and compact dynamic state', () => {
+  let { text } = buildMessageBrief({
+    frame: {
+      id: 'msg_1',
+      type: 'UserMessage',
+      authorType: 'user',
+      authorDisplayName: 'Wyatt Greenway',
+      authorID: 'usr_1',
+      timestamp: Date.UTC(2026, 9, 1),
+      content: { text: 'How are you Gemma?' },
+    },
+    agent: { id: 'agent_1', name: 'Gemma' },
+    isCoordinator: true,
+    cwdState: { cwd: '/tmp/kikx-work' },
+    todoState: { items: [ { id: 't1' }, { id: 't2' } ] },
+    session: {
+      id: 'ses_1',
+      participantAgentIDs: [ 'agent_1' ],
+      participantUserIDs: [ 'usr_1', 'usr_2' ],
+      coordinatorAgentID: 'agent_1',
+    },
+  });
+
+  assert.ok(text.startsWith('Message from Wyatt Greenway '));
+  assert.match(text, /How are you Gemma\?/);
+  assert.match(text, /todo:    2 item\(s\); review with todo\.list/);
+  assert.match(text, /cwd:     \/tmp\/kikx-work/);
+  assert.match(text, /coord:   true/);
+  assert.match(text, /parties: .*agent_1.* - Coordinator/);
+  assert.match(text, /usr_1/);
+  assert.match(text, /Answer, or agent-null-response to stay silent\./);
+});
+
+test('buildModelMessages assembles system, Brief A (once), history (sans trigger), then Brief B', () => {
   let messages = buildModelMessages({
     prompt: 'newest question',
-    frame: { id: 'trigger', type: 'UserMessage', content: { text: 'newest question' } },
+    frame: { id: 'trigger', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'newest question' } },
     agent: { id: 'agent_1' },
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' },
     frames: [
       { id: 'cmp_1', type: 'CompactionFrame', hidden: true, content: { kind: 'compaction_frame', summary: 'old memory' } },
       { id: 'old_user', type: 'UserMessage', content: { text: 'older turn' } },
@@ -89,28 +197,124 @@ test('buildModelMessages assembles system, frame turns (sans trigger frame), the
 
   assert.equal(messages[0].role, 'system');
   assert.equal(messages[0].content, SESSION_SYSTEM_PROMPT);
-  assert.equal(messages[1].role, 'user');
-  assert.match(messages[1].content, /old memory/);
-  assert.deepEqual(messages[2], { role: 'user', content: 'older turn' });
-  assert.deepEqual(messages.at(-1), { role: 'user', content: 'newest question' });
-  // The trigger frame must not be duplicated as a history turn.
-  assert.equal(messages.filter((m) => m.content === 'newest question').length, 1);
+  // Brief A appears exactly once, before history.
+  assert.equal(startBriefMessages(messages).length, 1);
+  let briefAIndex = messages.findIndex((message) => message.role === 'user'
+    && typeof message.content === 'string' && message.content.startsWith(START_BRIEF_BANNER_PREFIX));
+  let historyIndex = messages.findIndex((message) => message.content === 'older turn');
+  assert.ok(briefAIndex < historyIndex, 'Brief A precedes history');
+  // Brief B is the final user turn and the message appears exactly once.
+  assert.equal(messageBriefMessages(messages).length, 1);
+  assert.match(messages.at(-1).content, /Message from /);
+  assert.match(messages.at(-1).content, /newest question/);
+  assert.equal(messages.filter((m) => typeof m.content === 'string' && m.content === 'newest question').length, 0);
+  assert.equal(messages.filter((m) => typeof m.content === 'string' && m.content.includes('newest question')).length, 1);
 });
 
 test('buildModelMessages uses the triggering frame text when no prompt is supplied', () => {
   let messages = buildModelMessages({
-    frame: { id: 'trigger', type: 'UserMessage', content: { text: 'from frame' } },
+    frame: { id: 'trigger', type: 'UserMessage', authorType: 'user', content: { text: 'from frame' } },
     frames: [],
   });
-  assert.deepEqual(messages.at(-1), { role: 'user', content: 'from frame' });
+  assert.match(messages.at(-1).content, /Message from /);
+  assert.match(messages.at(-1).content, /from frame/);
+});
+
+test('buildModelMessages sends Brief A only once across a multi-turn restart boundary', () => {
+  let session = {
+    id: 'ses_multi',
+    participantAgentIDs: [ 'agent_1' ],
+    participantUserIDs: [ 'usr_1' ],
+    coordinatorAgentID: 'agent_1',
+  };
+  let base = {
+    agent: { id: 'agent_1' },
+    session,
+  };
+  let priorAgentMessage = {
+    id: 'agent_msg_1',
+    type: 'AgentMessage',
+    authorID: 'agent_1',
+    order: 3,
+    content: { text: 'prior answer' },
+  };
+
+  // Turn 1: no prior agent message -> Brief A.
+  let first = buildModelMessages({
+    ...base,
+    frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'first' } },
+    frames: [],
+  });
+  assert.equal(startBriefMessages(first).length, 1);
+
+  // Turn 2: a prior agent message and no new boundary -> no Brief A.
+  let second = buildModelMessages({
+    ...base,
+    frame: { id: 'msg_2', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'second' } },
+    frames: [ priorAgentMessage ],
+  });
+  assert.equal(startBriefMessages(second).length, 0);
+  assert.equal(messageBriefMessages(second).length, 1);
+
+  // Post-compaction: a boundary newer than the newest agent message -> Brief A.
+  let third = buildModelMessages({
+    ...base,
+    frame: { id: 'msg_3', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'third' } },
+    frames: [
+      { id: 'cmp_1', type: 'CompactionFrame', hidden: true, order: 4, content: { kind: 'compaction_frame', boundaryOrder: 4, summary: 'memory' } },
+      priorAgentMessage,
+    ],
+  });
+  assert.equal(startBriefMessages(third).length, 1);
+});
+
+test('buildModelMessages never re-sends Brief A on a completion-review step', () => {
+  let messages = buildModelMessages({
+    prompt: 'review this draft',
+    rawPrompt: true,
+    frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', content: { text: 'hello' } },
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_review', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' },
+    frames: [],
+    step: { type: 'completion-review' },
+  });
+
+  assert.equal(startBriefMessages(messages).length, 0);
+  assert.equal(messages.at(-1).role, 'user');
+  assert.equal(messages.at(-1).content, 'review this draft');
+});
+
+test('buildModelMessages keeps raw one-shot/compaction prompts verbatim', () => {
+  let messages = buildModelMessages({
+    prompt: 'compaction instructions',
+    rawPrompt: true,
+    compaction: true,
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_cmp', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' },
+    frames: [],
+  });
+
+  assert.equal(startBriefMessages(messages).length, 0);
+  assert.equal(messages.length, 2);
+  assert.equal(messages.at(-1).content, 'compaction instructions');
 });
 
 test('AgentInterface exposes the shared projection', () => {
   assert.equal(typeof AgentInterface.buildModelMessages, 'function');
   assert.equal(typeof AgentInterface.frameToModelTurn, 'function');
   assert.equal(AgentInterface.SESSION_SYSTEM_PROMPT, SESSION_SYSTEM_PROMPT);
+
+  // Deterministic context: an explicit frame timestamp keeps Brief B stable. Each
+  // call gets a fresh session object so the per-agent "Brief A sent" marker from
+  // the first call does not suppress Brief A in the second.
+  let makeParams = () => ({
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' },
+    frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', timestamp: 1000, content: { text: 'p' } },
+    frames: [],
+  });
   assert.deepEqual(
-    AgentInterface.buildModelMessages({ prompt: 'p', frames: [] }),
-    buildModelMessages({ prompt: 'p', frames: [] }),
+    AgentInterface.buildModelMessages(makeParams()),
+    buildModelMessages(makeParams()),
   );
 });

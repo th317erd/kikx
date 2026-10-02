@@ -3,7 +3,14 @@
 import {
   buildAgenticScriptPrompt,
   buildCompletionReviewScriptPrompt,
+  buildMessageBrief,
+  buildStartBrief,
 } from './agent-script-template.mjs';
+import {
+  budgetForModel,
+  estimateTokens,
+  fitMessagesToBudget,
+} from './agent-context-budget.mjs';
 import {
   iterateAgentResult,
   normalizeCoordinatorAgentID,
@@ -55,10 +62,31 @@ export class AgentInterface extends PluginInterface {
   static serviceType = null;
   static configFields = [];
   static maxLoopSteps = 8;
+  // Models at or below this context window receive the super-compressed
+  // agentic-script prompt variant. Larger models keep the full prompt.
+  static compressedPromptThresholdTokens = 32768;
+  // Output reserve used when deciding whether a completion self-review request
+  // can fit the model window at all.
+  static reviewOutputReserveTokens = 1024;
 
   // Shared frame -> model turn projection. Providers use these so a new core
   // frame type is handled once rather than silently dropped by each adapter.
   static SESSION_SYSTEM_PROMPT = SESSION_SYSTEM_PROMPT;
+
+  // Model-aware context budgeting, exposed to providers that build their own
+  // request payloads (for example the Codex plugin) so they do not duplicate
+  // the estimation/trimming logic.
+  static estimateTokens(text) {
+    return estimateTokens(text);
+  }
+
+  static budgetForModel(options) {
+    return budgetForModel(options);
+  }
+
+  static fitMessagesToBudget(messages, options) {
+    return fitMessagesToBudget(messages, options);
+  }
 
   static frameToModelTurn(frame, options) {
     return frameToModelTurn(frame, options);
@@ -177,19 +205,26 @@ export class AgentInterface extends PluginInterface {
     };
   }
 
-  createAgentLoopScript(context = {}) {
-    return [{
-      type: 'ask',
-      prompt: this.buildDefaultAgentPrompt(context),
-    }];
+  createAgentLoopScript(_context = {}) {
+    // The default loop is a single ask. The per-turn message text is derived
+    // from the trigger frame in `executeAskStep`; the model-facing prompt shape
+    // (Brief A once + Brief B every turn) is assembled by `buildModelMessages`.
+    return [{ type: 'ask' }];
   }
 
   async *executeAskStep(step, context, state) {
     let tools = createLoopTools(state, context);
     let toolDefinitions = createLoopToolDefinitions(context);
     let yieldedOutput = false;
-    let result = this.ask(step.prompt || this.buildDefaultAgentPrompt(context), {
+    // Pass the raw message text (not a pre-built prompt); providers expose it as
+    // `params.prompt` and `buildModelMessages` wraps it in the message brief. Keep
+    // a non-empty fallback so providers never reject an empty prompt for a routed
+    // frame that happens to carry no text (the old monolith always had boilerplate).
+    let messageText = step.prompt || context.frame?.content?.text || 'Please continue what you were doing.';
+    let result = this.ask(messageText, {
       ...context,
+      prompt: step.prompt || null,
+      rawPrompt: step.rawPrompt === true,
       tools,
       toolDefinitions,
       step,
@@ -246,6 +281,12 @@ export class AgentInterface extends PluginInterface {
 
     state.completionReviewed = true;
     let prompt = this.buildCompletionReviewPrompt(context, state);
+    // Skip a doomed review request: if the (already capped) review prompt alone
+    // cannot fit the model window, finalize directly instead of sending a
+    // request that will be rejected. Models with ample room are unaffected.
+    if (!this.canFitCompletionReview(context, prompt))
+      return;
+
     let step = {
       type: 'completion-review',
       prompt,
@@ -336,6 +377,17 @@ export class AgentInterface extends PluginInterface {
     return Number.isInteger(value) && value > 0 ? value : 8;
   }
 
+  // Instance wrappers around the pure two-tier builders so tests and providers
+  // can assemble either brief directly. These are the model-facing API; the old
+  // monolith builder below is retained only for reference until P9.
+  buildStartBrief(context = {}) {
+    return buildStartBrief(context);
+  }
+
+  buildMessageBrief(context = {}) {
+    return buildMessageBrief(context);
+  }
+
   buildDefaultAgentPrompt(context = {}) {
     let frameMessage = context.frame?.content?.text || '';
     let mentions = normalizeMentions(context.mentions || context.frame?.mentions);
@@ -361,7 +413,46 @@ export class AgentInterface extends PluginInterface {
       triggerFrameLines: buildTriggerFramePromptLines(context),
       routingLines: buildRoutingPromptLines(context),
       toolDefinitions: createLoopToolDefinitions(context),
+      compressed: this.shouldUseCompressedPrompt(context),
     });
+  }
+
+  // Small-context models get the super-compressed agentic-script variant; the
+  // full prompt is kept for models with ample room. Providers can override.
+  shouldUseCompressedPrompt(context = {}) {
+    let window = this.resolveContextWindow(context);
+    let threshold = Number(this.constructor.compressedPromptThresholdTokens);
+    if (!Number.isFinite(window) || !Number.isFinite(threshold) || threshold <= 0)
+      return false;
+
+    return window <= threshold;
+  }
+
+  // The model's context window: from the model manifest first, then from an
+  // explicit `config.contextWindowTokens` override. Returns null when unknown.
+  resolveContextWindow(context = {}) {
+    let modelID = context.config?.model;
+    let fromModel = this.contextWindowFor(modelID);
+    if (Number.isFinite(fromModel) && fromModel > 0)
+      return fromModel;
+
+    let configured = Number(context.config?.contextWindowTokens);
+    return Number.isFinite(configured) && configured > 0 ? Math.trunc(configured) : null;
+  }
+
+  // Whether a completion self-review prompt can fit the model window. Unknown
+  // windows are treated as fitting so large/opaque models keep their review.
+  canFitCompletionReview(context = {}, prompt = '') {
+    let window = this.resolveContextWindow(context);
+    if (!Number.isFinite(window) || window <= 0)
+      return true;
+
+    let reserve = Number(this.constructor.reviewOutputReserveTokens);
+    let budget = budgetForModel({
+      contextWindow: window,
+      maxOutputTokens: Number.isFinite(reserve) && reserve > 0 ? reserve : 0,
+    });
+    return estimateTokens(prompt) <= budget;
   }
 
   buildCompletionReviewPrompt(context = {}, state = {}) {

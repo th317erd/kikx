@@ -59,6 +59,41 @@ export function normalizeParticipantAgent(agent, options = {}) {
   return item;
 }
 
+// Collect every party in the session for the coordinator/party-count rule
+// (decision D3: parties include users). Agents come from the normalized roster;
+// users come from `session.participantUserIDs` plus the triggering user frame.
+export function collectPartyActors(context = {}) {
+  let agents = normalizeParticipantAgents(context.participantAgents || context.sessionAgents, {
+    participantAgentIDs: context.participantAgentIDs || context.session?.participantAgentIDs,
+    coordinatorAgentID: context.coordinatorAgentID || context.session?.coordinatorAgentID,
+    selfAgentID: context.agent?.id,
+  });
+
+  let users = normalizeStringArray(context.session?.participantUserIDs);
+  let authorID = normalizeOptionalPromptString(context.frame?.authorID);
+  if (context.frame?.authorType === 'user' && authorID && !users.includes(authorID))
+    users.push(authorID);
+
+  return { agents, users };
+}
+
+// Total party count counting both agents and users.
+export function countParties(context = {}) {
+  let { agents, users } = collectPartyActors(context);
+  return agents.length + users.length;
+}
+
+// Whether more than one party is present. At 2+ parties a character-aware agent
+// should defer to silence unless it genuinely adds value.
+export function hasMultiparty(context = {}) {
+  return countParties(context) >= 2;
+}
+
+// Whether the coordinator role applies: 3+ parties (decision D3).
+export function hasCoordinatorParties(context = {}) {
+  return countParties(context) >= 3;
+}
+
 export function isCoordinatedMentionTarget(context = {}) {
   if (context.frame?.coordinated !== true)
     return false;

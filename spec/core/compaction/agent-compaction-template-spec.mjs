@@ -29,3 +29,13 @@ test('agent compaction template names compaction frames and preserves critical i
   assert.match(prompt, /Return only the compacted context memory/);
 });
 
+test('default compaction instructions request priority-tagged sections', () => {
+  let instructions = buildDefaultCompactionInstructions();
+  assert.match(instructions, /PRIORITIZED summary/);
+  assert.match(instructions, /\[high\]: must-keep/);
+  assert.match(instructions, /\[medium\]: useful context/);
+  assert.match(instructions, /\[low\]: chatter/);
+  assert.match(instructions, /three priority sections/);
+  assert.match(instructions, /safe to drop first/i);
+});
+

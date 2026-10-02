@@ -1,8 +1,27 @@
 'use strict';
 
+export {
+  buildMessageBrief,
+  buildStartBrief,
+} from './agent-brief-template.mjs';
+
 export const AGENTIC_SCRIPT_NAME = 'agentic script';
 
+// Review inputs are capped so a completion self-review request cannot explode
+// when the draft itself is enormous. Large draft frames are truncated with an
+// explicit marker; the review path additionally skips the pass entirely when
+// the capped prompt still does not fit the model budget.
+export const DEFAULT_MAX_REVIEW_FRAME_CHARS = 8000;
+export const DEFAULT_MAX_REVIEW_DRAFT_CHARS = 24000;
+
 export function buildAgenticScriptPrompt(input = {}) {
+  let {
+    compressed = false,
+  } = input;
+
+  if (compressed)
+    return buildCompressedAgenticScriptPrompt(input);
+
   let {
     frameMessage = '',
     mentions = {},
@@ -77,6 +96,77 @@ export function buildAgenticScriptPrompt(input = {}) {
     '',
     ...normalizeLineArray(routingLines),
     'When you are ready to answer, use agent-respond/agent-finalize or return a final agent message.',
+  ].join('\n');
+}
+
+// Super-compressed agentic-script variant for small context models. It keeps
+// the executable contract (routing, silence, tools, finalize, loop) and the
+// dynamic JSON blocks, but drops the long explanatory prose so a model with a
+// small window can still operate. Structure mirrors the full prompt so prompt
+// assertions and provider wiring stay stable.
+export function buildCompressedAgenticScriptPrompt(input = {}) {
+  let {
+    frameMessage = '',
+    mentions = {},
+    participantAgents = [],
+    character = '',
+    tokenUsage = {},
+    todoState = null,
+    cwdState = null,
+    sessionGeneration = 0,
+    isCoordinator = false,
+    triggerFrameLines = [],
+    routingLines = [],
+    toolDefinitions = [],
+  } = input;
+
+  return [
+    'You are in a Kikx agentic coordination loop. Respond as needed, but only as needed.',
+    'The current routed frame is the highest priority. Obey it over older todo/context/continuation memory.',
+    '',
+    ...normalizeLineArray(triggerFrameLines),
+    '',
+    frameMessage,
+    '',
+    'Decide: answer (agent-respond/agent-finalize), stay silent (agent-null-response), or route.',
+    'Before speaking ask: who is this for, and do I add value? If not, use agent-null-response.',
+    'If not the coordinator, only act when useful beyond what the coordinator will add.',
+    'If the direct user follow-up is for you, continue the implied task; do not ask permission for safe next steps.',
+    'For multi-step work, call agent-progress before each single tool, then run the tool, then choose the next action.',
+    'Use tools before finalizing. Visible responses are final; do not promise future tool work.',
+    'Before finalizing, self-review: is everything the user requested actually complete?',
+    ...(normalizeSessionGeneration(sessionGeneration) > 0
+      ? [
+        'This is a delegated child session: do not create sessions or invite agents.',
+        'Use session-message/session-frames/session-search with session_id to coordinate.',
+      ]
+      : [
+        'Delegation: use agent-list, session-create (includeSelf), session-invite-agents, session-message, session-frames when the user asks to coordinate agents.',
+      ]),
+    '',
+    'Agent character:',
+    character || 'No custom character set. Act as a careful, technically rigorous Kikx agent.',
+    '',
+    ...buildTodoPromptLines(todoState),
+    '',
+    ...buildCwdPromptLines(cwdState),
+    '',
+    `You are the coordinator?: ${isCoordinator === true}`,
+    '',
+    'Session agents JSON:',
+    JSON.stringify(participantAgents, null, 2),
+    '',
+    'Mentions JSON:',
+    JSON.stringify(mentions, null, 2),
+    '',
+    'Token usage summary JSON:',
+    JSON.stringify(tokenUsage, null, 2),
+    '',
+    'Available tools:',
+    formatAgenticScriptToolHelp(toolDefinitions),
+    '',
+    ...normalizeLineArray(routingLines),
+    'When ready to answer, use agent-respond/agent-finalize.',
   ].join('\n');
 }
 
@@ -210,7 +300,12 @@ export function buildCompletionReviewScriptPrompt(input = {}) {
     frameMessage = '',
     finalFrameContent = {},
     toolDefinitions = [],
+    maxFrameChars = DEFAULT_MAX_REVIEW_FRAME_CHARS,
+    maxDraftChars = DEFAULT_MAX_REVIEW_DRAFT_CHARS,
   } = input;
+
+  let cappedFrameMessage = capText(frameMessage, maxFrameChars);
+  let cappedDraft = capText(JSON.stringify(finalFrameContent || {}, null, 2), maxDraftChars);
 
   return [
     'Completion self-review.',
@@ -232,16 +327,27 @@ export function buildCompletionReviewScriptPrompt(input = {}) {
     'Do not repeat completed tool calls unless the self-review identifies a concrete missing check or missing task.',
     '',
     'Original user/request frame text:',
-    frameMessage,
+    cappedFrameMessage,
     '',
     'Draft visible response JSON:',
-    JSON.stringify(finalFrameContent || {}, null, 2),
+    cappedDraft,
     '',
     'Available tools:',
     formatAgenticScriptToolHelp(toolDefinitions),
     '',
     'Now complete the self-review and take the correct next action.',
   ].join('\n');
+}
+
+// Truncate oversized review inputs with an explicit marker so the prompt cannot
+// grow without bound. Non-positive limits disable the cap.
+export function capText(value, maxChars) {
+  let text = typeof value === 'string' ? value : String(value ?? '');
+  if (!Number.isFinite(maxChars) || maxChars <= 0 || text.length <= maxChars)
+    return text;
+
+  let omitted = text.length - maxChars;
+  return `${text.slice(0, maxChars)}\n[truncated: ${omitted} characters omitted]`;
 }
 
 export function formatAgenticScriptToolHelp(toolDefinitions) {

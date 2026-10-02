@@ -37,6 +37,8 @@ class LoopAgent extends AgentInterface {
     this.calls.push({
       method: 'ask',
       prompt,
+      startBrief: this.buildStartBrief(options).text,
+      messageBrief: this.buildMessageBrief(options).text,
       toolDefinitions: options.toolDefinitions,
       toolNames: Object.keys(options.tools).sort(),
       isCoordinator: options.isCoordinator,
@@ -49,6 +51,21 @@ class LoopAgent extends AgentInterface {
       type: 'Done',
       content: { ok: true },
     };
+  }
+}
+
+class PromptProbeAgent extends AgentInterface {
+  constructor(options = {}) {
+    super(options);
+    this.prompt = '';
+  }
+
+  async ask(prompt, options = {}) {
+    if (options.step?.type === 'completion-review')
+      return options.tools['agent-finalize']({ text: 'final' });
+
+    this.prompt = prompt;
+    return options.tools['agent-respond']({ text: 'answer' });
   }
 }
 
@@ -365,6 +382,8 @@ class GlobalToolCallingAgent extends AgentInterface {
     let askCall = {
       stepType: options.step?.type || 'ask',
       prompt: _prompt,
+      startBrief: this.buildStartBrief(options).text,
+      messageBrief: this.buildMessageBrief(options).text,
       toolDefinitions: options.toolDefinitions,
       toolNames: Object.keys(options.tools).sort(),
     };
@@ -470,6 +489,33 @@ test('agentic script templates generate the named Kikx agent script', () => {
   assert.match(reviewPrompt, /agent-finalize: Finalize\./);
 });
 
+test('buildCompletionReviewScriptPrompt caps oversized frame and draft inputs', () => {
+  let hugeDraft = { text: 'D'.repeat(60000) };
+  let prompt = buildCompletionReviewScriptPrompt({
+    frameMessage: 'F'.repeat(60000),
+    finalFrameContent: hugeDraft,
+  });
+
+  // The review prompt must not explode with the draft size.
+  assert.ok(prompt.length < 40000, `review prompt stayed bounded (got ${prompt.length})`);
+  assert.match(prompt, /\[truncated: \d+ characters omitted\]/);
+  assert.equal(prompt.includes('D'.repeat(60000)), false);
+  assert.equal(prompt.includes('F'.repeat(60000)), false);
+});
+
+test('AgentInterface asks with the raw trigger message and builds two-tier briefs', async () => {
+  let agent = new LoopAgent();
+  await collect(agent.run(baseLoopParams()));
+
+  let askCall = agent.calls.find((call) => call.method === 'ask');
+  // The provider receives the raw message text (Brief B wraps it), not a monolith.
+  assert.equal(askCall.prompt, 'hello');
+  assert.match(askCall.startBrief, /^Kikx Advanced Agent Harness - v/);
+  assert.match(askCall.startBrief, /Precepts — always on/);
+  assert.match(askCall.messageBrief, /^Message from /);
+  assert.match(askCall.messageBrief, /hello/);
+});
+
 test('AgentInterface base loop runs first-message hook before asking the provider', async () => {
   let agent = new LoopAgent();
   let params = baseLoopParams();
@@ -481,89 +527,27 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.equal(agent.calls[0].isCoordinator, true);
   assert.equal(agent.calls[1].method, 'ask');
   assert.equal(agent.calls[1].isCoordinator, true);
-  assert.match(agent.calls[1].prompt, /User usr_1 has just sent you a message:/);
-  assert.match(agent.calls[1].prompt, /hello/);
-  assert.match(agent.calls[1].prompt, /highest-priority input/i);
-  assert.match(agent.calls[1].prompt, /background memory only/i);
-  assert.match(agent.calls[1].prompt, /You are the coordinator\?: true/);
-  assert.match(agent.calls[1].prompt, /Mentions JSON:/);
-  assert.match(agent.calls[1].prompt, /Session agents JSON:/);
-  assert.match(agent.calls[1].prompt, /Who is this message really for\?/);
-  assert.match(agent.calls[1].prompt, /Was this message for me, or am I the coordinator\/default handler/i);
-  assert.match(agent.calls[1].prompt, /If I am not the coordinator, is it useful beyond what the coordinator will likely contribute\?/);
-  assert.match(agent.calls[1].prompt, /absolutely confident that speaking or acting is what I should do/i);
-  assert.match(agent.calls[1].prompt, /only invited agent in the session/i);
-  assert.match(agent.calls[1].prompt, /direct user follow-ups/i);
-  assert.match(agent.calls[1].prompt, /costing the user real money/i);
-  assert.match(agent.calls[1].prompt, /Minimize the number of interactions/i);
-  assert.match(agent.calls[1].prompt, /Token usage summary JSON:/);
-  assert.match(agent.calls[1].prompt, /"totalTokensUsed": 42/);
-  assert.match(agent.calls[1].prompt, /Agent todo list:/);
-  assert.match(agent.calls[1].prompt, /persistent todo list/i);
-  assert.match(agent.calls[1].prompt, /todo-add/);
-  assert.match(agent.calls[1].prompt, /todo-focus-set/);
-  assert.match(agent.calls[1].prompt, /Session working directory:/);
-  assert.match(agent.calls[1].prompt, /cwd-set/);
-  assert.match(agent.calls[1].prompt, /feedback-report/);
-  assert.match(agent.calls[1].prompt, /AEOR Development/);
-  assert.match(agent.calls[1].prompt, /turn-taking/i);
-  assert.match(agent.calls[1].prompt, /immediately prior visible response/i);
-  assert.match(agent.calls[1].prompt, /broad read-only requests/i);
-  assert.match(agent.calls[1].prompt, /Do not stop after listing files/i);
-  assert.match(agent.calls[1].prompt, /continue reading, searching, and synthesizing/i);
-  assert.match(agent.calls[1].prompt, /AGIS critical-thinking compact/i);
-  assert.match(agent.calls[1].prompt, /what is the user actually asking for/i);
-  assert.match(agent.calls[1].prompt, /search instead of guessing/i);
-  assert.match(agent.calls[1].prompt, /qa_tester/);
-  assert.match(agent.calls[1].prompt, /sane timeouts/i);
-  assert.match(agent.calls[1].prompt, /If the work is not actually complete, continue/i);
-  assert.match(agent.calls[1].prompt, /Proper agent behavior compact/i);
-  assert.match(agent.calls[1].prompt, /Plan first for meaningful work/i);
-  assert.match(agent.calls[1].prompt, /proof of completion/i);
-  assert.match(agent.calls[1].prompt, /Concrete claims about files/i);
-  assert.match(agent.calls[1].prompt, /Do not claim "I implemented"/i);
-  assert.match(agent.calls[1].prompt, /Do not have fear of missing out/i);
-  assert.match(agent.calls[1].prompt, /first call agent-progress with a short visible note/i);
-  assert.match(agent.calls[1].prompt, /What is the next most important thing to do\?/);
-  assert.match(agent.calls[1].prompt, /call agent-progress again before calling that next tool/i);
-  assert.match(agent.calls[1].prompt, /choose the next action yourself/i);
-  assert.match(agent.calls[1].prompt, /safe, read-only, reversible/i);
-  assert.match(agent.calls[1].prompt, /important decision to make/i);
-  assert.match(agent.calls[1].prompt, /important new concern/i);
-  assert.match(agent.calls[1].prompt, /real blocker/i);
-  assert.match(agent.calls[1].prompt, /pre-tool progress notes are not final answers/i);
-  assert.match(agent.calls[1].prompt, /Use agent-progress, not agent-respond or agent-finalize/i);
-  assert.match(agent.calls[1].prompt, /Visible responses are final/i);
-  assert.match(agent.calls[1].prompt, /Should I continue\?/);
-  assert.match(agent.calls[1].prompt, /Complete the tool work in this turn first/i);
-  assert.match(agent.calls[1].prompt, /completion self-review/i);
-  assert.match(agent.calls[1].prompt, /What did you miss\?/i);
-  assert.match(agent.calls[1].prompt, /optional session_id parameter/i);
-  assert.match(agent.calls[1].prompt, /session-message with session_id/i);
-  assert.match(agent.calls[1].prompt, /delegated sub-agent work/i);
-  assert.match(agent.calls[1].prompt, /agent-list to discover available agents/i);
-  assert.match(agent.calls[1].prompt, /session-invite-agents with session_id/i);
-  assert.match(agent.calls[1].prompt, /session-create\.initialMessage/i);
-  assert.match(agent.calls[1].prompt, /coordinate with bots, sub-agents, or groups of agents/i);
-  assert.match(agent.calls[1].prompt, /reusedExisting/i);
-  assert.match(agent.calls[1].prompt, /Do not leak stale names or paths/i);
-  assert.match(agent.calls[1].prompt, /forbidden anti-examples/i);
-  assert.match(agent.calls[1].prompt, /definition of done, tests\/checks that prove completion/i);
-  assert.match(agent.calls[1].prompt, /call cwd-set before file or exec tools/i);
-  assert.match(agent.calls[1].prompt, /initial orientation or assignment from the coordinator is actionable work/i);
-  assert.match(agent.calls[1].prompt, /Stay inside the assignment boundaries/i);
-  assert.match(agent.calls[1].prompt, /do not call write-file for implementation code/i);
-  assert.match(agent.calls[1].prompt, /coordinate and verify instead of implementing/i);
-  assert.match(agent.calls[1].prompt, /Avoid racing, overwriting, or reimplementing work/i);
-  assert.match(agent.calls[1].prompt, /inspect their work/i);
-  assert.match(agent.calls[1].prompt, /What could you have done better\?/i);
-  assert.match(agent.calls[1].prompt, /silence is the safe default/i);
-  assert.match(agent.calls[1].prompt, /use agent-null-response/i);
-  assert.doesNotMatch(agent.calls[1].prompt, /use the route tool with that actor id/u);
-  assert.match(agent.calls[1].prompt, /Agent character:/);
-  assert.match(agent.calls[1].prompt, /You are a pragmatic engineer\./);
-  assert.match(agent.calls[1].prompt, /Available tools:/);
-  assert.match(agent.calls[1].prompt, /agent-character-set/);
+  // The provider receives the raw message text; the two-tier shape is applied
+  // by the model-context assembly (covered in agent-model-context-spec).
+  assert.equal(agent.calls[1].prompt, 'hello');
+  // Brief A: version banner, character, precepts, tools.
+  assert.match(agent.calls[1].startBrief, /Kikx Advanced Agent Harness - v/);
+  assert.match(agent.calls[1].startBrief, /Precepts — always on/);
+  assert.match(agent.calls[1].startBrief, /Orient:/);
+  assert.match(agent.calls[1].startBrief, /Proof: never claim done/i);
+  assert.match(agent.calls[1].startBrief, /agent-respond-and-continue/);
+  assert.match(agent.calls[1].startBrief, /Character: You are a pragmatic engineer\./);
+  assert.match(agent.calls[1].startBrief, /Behavior:/);
+  // Brief B: sender, message, compact state.
+  assert.match(agent.calls[1].messageBrief, /^Message from /);
+  assert.match(agent.calls[1].messageBrief, /hello/);
+  assert.match(agent.calls[1].messageBrief, /todo:/);
+  assert.match(agent.calls[1].messageBrief, /cwd:/);
+  assert.match(agent.calls[1].messageBrief, /coord:/);
+  assert.match(agent.calls[1].messageBrief, /parties:/);
+  // The old monolith must not appear anywhere.
+  assert.doesNotMatch(agent.calls[1].startBrief, /Kikx agentic coordination loop/);
+  assert.doesNotMatch(agent.calls[1].messageBrief, /Kikx agentic coordination loop/);
   assert.deepEqual(agent.calls[1].toolNames, [
     'agent-character-set',
     'agent-finalize',
@@ -685,8 +669,8 @@ test('AgentInterface hides delegation tools from child-session agents', async ()
   assert.equal(firstAsk.toolNames.includes('session-invite-agents'), false);
   assert.equal(firstAsk.toolDefinitions.some((tool) => tool.name === 'session-create'), false);
   assert.equal(firstAsk.toolDefinitions.some((tool) => tool.name === 'session-invite-agents'), false);
-  assert.match(firstAsk.prompt, /Session delegation generation: 1/);
-  assert.match(firstAsk.prompt, /Do not create more sessions and do not invite agents/);
+  assert.match(firstAsk.startBrief, /Delegation: this is a delegated child session/);
+  assert.match(firstAsk.startBrief, /Do not create more sessions/);
 });
 
 test('AgentInterface routes registered global plugin tools through the tool executor service', async () => {
@@ -820,14 +804,12 @@ test('AgentInterface prompt includes session participant names without secrets',
 
   let askCall = agent.calls.find((call) => call.method === 'ask');
   assert.ok(askCall);
-  assert.match(askCall.prompt, /"id": "agent_1"/);
-  assert.match(askCall.prompt, /"name": "Iron-Hand McGuffin"/);
-  assert.match(askCall.prompt, /"isSelf": true/);
-  assert.match(askCall.prompt, /"id": "agent_2"/);
-  assert.match(askCall.prompt, /"name": "Mr\. Bennett"/);
-  assert.doesNotMatch(askCall.prompt, /sk-should-not-appear/);
-  assert.doesNotMatch(askCall.prompt, /gpt-test/);
-  assert.doesNotMatch(askCall.prompt, /secret-ish personality/);
+  assert.match(askCall.messageBrief, /Iron-Hand McGuffin/);
+  assert.match(askCall.messageBrief, /Mr\. Bennett/);
+  assert.doesNotMatch(askCall.messageBrief, /sk-should-not-appear/);
+  assert.doesNotMatch(askCall.messageBrief, /gpt-test/);
+  assert.doesNotMatch(askCall.messageBrief, /secret-ish personality/);
+  assert.doesNotMatch(askCall.startBrief, /sk-should-not-appear/);
 });
 
 test('AgentInterface prompt describes agent-authored trigger frames accurately', async () => {
@@ -857,11 +839,11 @@ test('AgentInterface prompt describes agent-authored trigger frames accurately',
 
   let askCall = agent.calls.find((call) => call.method === 'ask');
   assert.ok(askCall);
-  assert.match(askCall.prompt, /Agent Reviewer \(agent_2\) has just sent a message:/);
-  assert.match(askCall.prompt, /Coder, can you sanity-check this\?/);
-  assert.match(askCall.prompt, /This message was authored by another agent/);
-  assert.match(askCall.prompt, /use agent-null-response/i);
-  assert.doesNotMatch(askCall.prompt, /The user has just sent you a message:/);
+  // Brief B labels the sender accurately and carries the agent-authored message.
+  assert.match(askCall.messageBrief, /Message from Reviewer /);
+  assert.match(askCall.messageBrief, /Coder, can you sanity-check this\?/);
+  // Only 2 parties (two agents) are present, so no coordinator preamble (D3).
+  assert.doesNotMatch(askCall.startBrief, /COORDINATOR PREAMBLE/);
 });
 
 test('AgentInterface detects first-message hooks inherited from provider base classes', async () => {
@@ -1233,10 +1215,9 @@ test('AgentInterface does not offer forwarding tools to non-coordinators', async
   assert.equal(askCall.isCoordinator, false);
   assert.equal(askCall.toolNames.includes('route'), false);
   assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'route'), false);
-  assert.match(askCall.prompt, /You are the coordinator\?: false/);
-  assert.match(askCall.prompt, /routed this message to you/);
-  assert.match(askCall.prompt, /do not route or forward it again/i);
-  assert.doesNotMatch(askCall.prompt, /use the route tool/u);
+  assert.match(askCall.messageBrief, /coord:   false/);
+  assert.match(askCall.messageBrief, /hello worker/);
+  assert.doesNotMatch(askCall.startBrief, /COORDINATOR PREAMBLE/);
 });
 
 test('AgentInterface offers silence tools to coordinated mentioned targets', async () => {
@@ -1271,9 +1252,9 @@ test('AgentInterface offers silence tools to coordinated mentioned targets', asy
   assert.equal(askCall.toolNames.includes('agent-null-response'), true);
   assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'route'), false);
   assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'agent-null-response'), true);
-  assert.match(askCall.prompt, /routed this message to you/);
-  assert.match(askCall.prompt, /answer if it is for you/i);
-  assert.match(askCall.prompt, /use agent-null-response/i);
+  assert.match(askCall.messageBrief, /coord:   false/);
+  assert.match(askCall.messageBrief, /Hello Mr\. Bennett, how are you today\?/);
+  assert.match(askCall.messageBrief, /agent-null-response to stay silent/);
 });
 
 test('AgentInterface exposes agent-owned self-configuration tools', async () => {

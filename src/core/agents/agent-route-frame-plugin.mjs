@@ -127,6 +127,21 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
     done();
   }
 
+  // True when the pre-created response placeholder is still an unfinalized
+  // hidden `streaming`/`pending` AgentMessage. A visible/complete frame, or a
+  // deleted/cleanup-finalized placeholder, is not dangling.
+  hasDanglingResponsePlaceholder(responseFrameID) {
+    if (!responseFrameID)
+      return false;
+
+    let responseFrame = this.context.engine.get(responseFrameID);
+    if (!responseFrame || responseFrame.hidden !== true || responseFrame.deleted === true)
+      return false;
+
+    return responseFrame.content?.status === 'streaming'
+      || responseFrame.content?.status === 'pending';
+  }
+
   async routeAgent({ agentID, coordinatorAgentID, agentManager, pluginRegistry, services, frame }) {
     let agent;
     let responseFrameID = null;
@@ -230,6 +245,21 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
 
       if (continuation && responseFrameID)
         await this.scheduleAgentContinuation({ agent, frame, responseFrameID, continuation, services });
+
+      // A turn that ends without a visible response (and without a silent
+      // status that cleaned the placeholder) would otherwise leave the
+      // pre-created hidden `streaming` frame dangling. Finalize it as a visible
+      // error so the placeholder never survives the turn.
+      if (this.hasDanglingResponsePlaceholder(responseFrameID)) {
+        this.appendAgentError({
+          agent: agent || { id: agentID, name: agentID },
+          frame,
+          error: new Error('Agent provider finished without producing a response'),
+          responseFrameID,
+        });
+        await services?.frameRuntime?.frameStore?.flush?.();
+        doneStatus = doneStatus || 'error';
+      }
 
       return { status: doneStatus };
     } catch (error) {

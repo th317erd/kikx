@@ -14,6 +14,11 @@
 // into the prompt even though they are hidden.
 
 import { createTypedFrame } from '../frames/frame-types/create-typed-frame.mjs';
+import { shouldSendStartBrief, markStartBriefSent } from './agent-brief-state.mjs';
+import {
+  buildMessageBrief,
+  buildStartBrief,
+} from './agent-script-template.mjs';
 
 export { isCompactionFrame } from '../frames/frame-types/frame-type-helpers.mjs';
 
@@ -41,17 +46,33 @@ export function frameToModelTurn(frame, options = {}) {
   return typed.toAgentMessage(options);
 }
 
-// Build the full ordered message list for a provider request: the session system
-// prompt, every projected frame turn (skipping the current trigger frame), then
-// the newest prompt as a final user message.
+// Build the full ordered message list for a provider request (two-tier, P3):
+//
+//   [system]                        — stable session base
+//   [Brief A as a user turn]        — ONLY when shouldSendStartBrief (P4)
+//   [history…]                      — projected frame turns, trigger skipped
+//   [Brief B as the final user turn]
+//
+// The trigger/message text appears exactly once, inside Brief B. On a
+// completion-review step Brief A is never re-sent.
 export function buildModelMessages(params = {}, options = {}) {
   let frames = Array.isArray(params.frames) ? params.frames : [];
   let messages = [];
   let currentFrameID = params.frame?.id || null;
   let currentAgentID = params.agent?.id || '';
   let systemPrompt = typeof options.systemPrompt === 'string' ? options.systemPrompt : DEFAULT_SESSION_SYSTEM_PROMPT;
+  let isCompletionReview = params.step?.type === 'completion-review';
+  let isRawPrompt = params.rawPrompt === true || params.compaction === true || params.oneShot === true;
 
   messages.push({ role: 'system', content: systemPrompt });
+
+  if (!isCompletionReview && !isRawPrompt && shouldSendStartBrief(params).send) {
+    let startBrief = buildStartBrief(params);
+    if (startBrief.text.trim() !== '') {
+      messages.push({ role: 'user', content: startBrief.text });
+      markStartBriefSent(params);
+    }
+  }
 
   for (let frame of frames) {
     if (currentFrameID && frame?.id === currentFrameID)
@@ -66,7 +87,23 @@ export function buildModelMessages(params = {}, options = {}) {
       messages.push(message);
   }
 
-  messages.push({ role: 'user', content: resolvePromptContent(params) });
+  // Raw-prompt mode: one-shot/compaction turns (P3) and the completion-review ask
+  // carry their own bespoke prompt rather than a session message. Keep it as-is
+  // so the review/compaction contract is preserved; only the normal agent turn
+  // gets the Brief A + Brief B shape.
+  if (isRawPrompt || isCompletionReview) {
+    messages.push({ role: 'user', content: resolvePromptContent(params) });
+    return messages;
+  }
+
+  let messageBrief = buildMessageBrief({ ...params, messageText: resolvePromptContent(params) });
+  // A hidden/continuation frame must still carry its message. Providers fall back
+  // to `frame.content.text` when the prompt is empty, so only substitute that
+  // fallback when no brief text can be produced at all.
+  let briefContent = messageBrief.text.trim() !== ''
+    ? messageBrief.text
+    : resolvePromptContent(params);
+  messages.push({ role: 'user', content: briefContent });
 
   return messages;
 }
