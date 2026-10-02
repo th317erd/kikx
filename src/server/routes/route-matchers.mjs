@@ -21,6 +21,19 @@ export function matchSessionRoute(pathname) {
   };
 }
 
+// POST /api/v1/sessions/:id/compaction/:frameID/retry re-runs compaction for the
+// same boundary a prior compaction frame used, overwriting that frame in place.
+export function matchSessionCompactionRetryRoute(pathname) {
+  let match = /^\/api\/v1\/sessions\/([^/]+)\/compaction\/([^/]+)\/retry$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    sessionID: decodeURIComponent(match[1]),
+    frameID: decodeURIComponent(match[2]),
+  };
+}
+
 export function matchAgentRoute(pathname) {
   let match = /^\/api\/v1\/agents\/([^/]+)$/.exec(pathname);
   if (!match)

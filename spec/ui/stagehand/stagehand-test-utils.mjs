@@ -125,6 +125,7 @@ export async function startStagehandUIServer(options = {}) {
     frameRuntime,
     tokenUsage,
     ...(options.toolOutputStore ? { toolOutputStore: options.toolOutputStore } : {}),
+    ...(options.compactionService ? { compactionService: options.compactionService } : {}),
     ...(options.pluginPaths ? {} : { pluginLoadPromise: Promise.resolve() }),
   });
   let server = createServer({
@@ -180,6 +181,26 @@ class StagehandFrameRuntime extends EventEmitter {
 
   async listFrames(sessionID) {
     return this.framesBySessionID.get(sessionID) || [];
+  }
+
+  // Minimal live-entry access for the compaction retry route: it resolves the
+  // session and a frame-engine-like reader over the in-memory frames so an
+  // unknown frame is a 404 just like production.
+  requireSessionEntry(sessionID) {
+    let session = this.sessions.find((candidate) => candidate.id === sessionID) || null;
+    if (!session) {
+      let error = new Error(`Unknown session: ${sessionID}`);
+      error.status = 404;
+      throw error;
+    }
+
+    let frames = this.framesBySessionID.get(sessionID) || [];
+    return {
+      session,
+      frameEngine: {
+        get: (frameID) => frames.find((frame) => frame.id === frameID) || null,
+      },
+    };
   }
 
   async listFrameWindow(sessionID, options = {}) {

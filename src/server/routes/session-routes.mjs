@@ -9,7 +9,11 @@ import {
   readJSON,
   writeJSON,
 } from '../http-helpers.mjs';
-import { matchSessionRoute, matchSessionUpdateRoute } from './route-matchers.mjs';
+import {
+  matchSessionCompactionRetryRoute,
+  matchSessionRoute,
+  matchSessionUpdateRoute,
+} from './route-matchers.mjs';
 
 export async function handleSessionRoutes({ request, response, url, context }) {
   if (request.method === 'GET' && url.pathname === '/api/v1/sessions') {
@@ -87,6 +91,41 @@ export async function handleSessionRoutes({ request, response, url, context }) {
     writeJSON(response, 200, {
       data: {
         session,
+      },
+    });
+    return true;
+  }
+
+  // P8: retry a prior compaction, overwriting its frame in place. Frames are
+  // immutable history, so the frame must exist; an unknown frame is a 404.
+  let retryRoute = matchSessionCompactionRetryRoute(url.pathname);
+  if (request.method === 'POST' && retryRoute) {
+    let frameRuntime = context.require('frameRuntime');
+    let entry = frameRuntime.requireSessionEntry(retryRoute.sessionID);
+    if (!entry.frameEngine?.get?.(retryRoute.frameID))
+      throw httpError(404, `Unknown compaction frame: ${retryRoute.frameID}`);
+
+    let compactionService = context.has('compactionService') ? context.require('compactionService') : null;
+    if (typeof compactionService?.retryCompaction !== 'function')
+      throw httpError(500, 'Compaction service is unavailable');
+
+    let services = typeof frameRuntime.routerServices === 'function'
+      ? frameRuntime.routerServices()
+      : { context, frameRuntime };
+
+    let frame = await compactionService.retryCompaction({
+      session: entry.session,
+      frameEngine: entry.frameEngine,
+      compactionFrameID: retryRoute.frameID,
+      services,
+    });
+
+    if (!frame)
+      throw httpError(404, `Unknown compaction frame: ${retryRoute.frameID}`);
+
+    writeJSON(response, 200, {
+      data: {
+        frame,
       },
     });
     return true;

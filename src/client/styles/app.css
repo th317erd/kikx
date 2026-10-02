@@ -722,6 +722,79 @@ kikx-app {
   color: #cfd8e3;
 }
 
+.kikx-tool-card__status--trimmed {
+  border-color: #8a6d1f;
+  color: #f2d488;
+}
+
+/* Compaction bubble status coloring. The accent border and faint tint make the
+   compaction boundary visually distinct from an ordinary tool card: neutral for
+   an in-flight compaction, green on success, red on failure, amber when the
+   context had to be trimmed to proceed. */
+.kikx-compaction-card {
+  padding: 10px 12px;
+  border: 1px solid #36434d;
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: #14191d;
+}
+
+.kikx-compaction-card--running {
+  border-left-color: #57636f;
+  background: #151b21;
+}
+
+.kikx-compaction-card--success {
+  border-left-color: #2f8f5b;
+  background: #121c16;
+}
+
+.kikx-compaction-card--error {
+  border-left-color: #b4534f;
+  background: #1d1414;
+}
+
+.kikx-compaction-card--trimmed {
+  border-left-color: #b98a24;
+  background: #1d1a12;
+}
+
+.kikx-compaction-card__issues {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.kikx-compaction-card__issues--warning {
+  color: #f2d488;
+}
+
+.kikx-compaction-card__issues--error {
+  color: #fca5a5;
+}
+
+.kikx-compaction-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kikx-compaction-card__retry-error {
+  min-width: 0;
+  color: #fca5a5;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.kikx-compaction-card__retry:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
 .kikx-tool-card__details {
   min-width: 0;
 }

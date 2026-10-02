@@ -22,6 +22,7 @@ import {
   FrameContextBuilder,
   serializeFramesForCompaction,
 } from './frame-context-builder.mjs';
+import { buildRetryWindow } from './retry-window.mjs';
 import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
@@ -269,6 +270,37 @@ export class CompactionService {
       frameCount: input.compactionWindow.frames.length,
     });
     return promise;
+  }
+
+  // P8 (ruling Q3): re-run compaction for the SAME boundary a prior frame used.
+  // Frames are immutable history — the stored `frameIDs` still exist, so the
+  // window is rebuilt from the frame's metadata, not re-selected. The compactor
+  // and its window are recomputed from the CURRENT session (a newly joined
+  // smaller bot must change the effective window). The result overwrites the
+  // SAME frame id via `runCompaction`/`writeTrimmedBoundary`; it is never a bare
+  // null and the original boundary metadata is restored on the overwritten frame.
+  async retryCompaction({ session, frameEngine, compactionFrameID, services, ...input } = {}) {
+    if (!compactionFrameID || typeof frameEngine?.get !== 'function')
+      throw new Error('Retry compaction requires a compaction frame id and frame engine');
+
+    let existing = frameEngine.get(compactionFrameID);
+    if (!existing)
+      throw new Error(`Unknown compaction frame: ${compactionFrameID}`);
+
+    let compactionWindow = buildRetryWindow(existing, frameEngine);
+    if (!compactionWindow)
+      return existing;
+
+    let retryInput = {
+      ...input,
+      session,
+      frameEngine,
+      compactionWindow,
+      compactionFrameID,
+      services: services || input.services || {},
+    };
+
+    return await this.startCompaction(retryInput);
   }
 
   startManualCompaction(input = {}) {
