@@ -29,6 +29,47 @@
 - Known follow-up: `src/core/aeordb/aeordb-agent-store.mjs` is ~704 lines (over the
   500 soft limit) after the P3 clone; candidate for extraction.
 
+## Part 2 — Visible UI, warnings/errors, trim fallback, retry (P7–P10)
+
+Owner rulings (2026-10-02), captured in
+`exports/kikx-compaction-ui-failure-review.md`:
+- **Never delete frames.** Compaction picks a frame in history; every frame before
+  it is the "context". The context calculation ALWAYS starts from the most recent
+  compaction frame and includes everything after it. Nothing is lost; re-compact
+  from any point at any time.
+- **Always visible.** Every compaction is visible and inspectable (future: tunable).
+- **Retry** targets the same prior boundary, but the strategy may change (e.g. a
+  new smaller bot joined).
+- **Trim fallback lets bots proceed** (warned), never deletes.
+
+### P7 — Frame shape + boundary model + failure→trim fallback (core)
+- Add `content.warnings[]`, `content.errors[]`; always `hidden:false`.
+- Make the "latest boundary" that projection starts from include completed AND
+  failed/trimmed compaction frames (not just completed).
+- On unrecoverable failure: write a visible boundary compaction frame
+  (`status:'trimmed'`, `warnings:[…]`, `errors:[…]`, no summary) at the attempted
+  boundary so the requesting bot's projection skips the old context. Frames remain
+  in storage. Never return bare `null`.
+- **Pass:** failure yields a trimmed boundary; projection starts after it; old
+  frames still present; re-compaction from that boundary restores memory.
+
+### P8 — Retry (core + server)
+- `POST /api/v1/sessions/:id/compaction/:frameID/retry`: re-run compaction for the
+  SAME boundary, recomputing strategy from the CURRENT session; **overwrite the
+  same frame id**; emit `frame.updated`; on failure overwrite with the new error.
+- **Pass:** retry after a new small bot joins uses the new window; success overwrites
+  and a large context shrinks; failure overwrites with the new error.
+
+### P9 — Compaction bubble UI (client)
+- Extend `kikx-compaction-frame.mjs`: status coloring, warnings section, errors
+  section, a **Retry** button (warn/failed), collapsed by default, always visible.
+- **Pass:** client spec/Stagehand for color + warnings/errors + retry wiring.
+
+### P10 — Resilience tests
+- Visibility; projection correct when visible; failure writes a warning/error
+  boundary (never deletes); trim moves the projection start and warns; re-compaction
+  from any historical boundary; retry overwrite on success and failure.
+
 ## 0. Owner rulings (verbatim, 2026-10-02)
 
 - **R1 — trigger off the smallest bot.** `contextWindowTokens` must become the

@@ -24,11 +24,34 @@ import {
 } from './compaction-resilience-fixtures.mjs';
 
 // Deliberate failures and the Part A fail-safe. Fakes only: no real models are
-// called. Every test proves the caller is not crashed: async failures resolve
-// `startCompaction` to `null`, raw paths reject with the exact message, and
+// called. P7 (ruling Q4): an async failure never returns a bare null — it writes
+// a visible trimmed boundary frame so the bot proceeds with a trimmed context.
+// Raw `runCompaction` paths still reject with the exact message, and
 // `prepareAgentContext` never throws when hold/window resolution breaks.
 
-test('failure: provider ask() throws -> compaction.failed, null, and no frame stored', async () => {
+function assertTrimmedBoundary(outcome, frameEngine, message) {
+  assert.equal(outcome.type, COMPACTION_FRAME_TYPE);
+  assert.equal(outcome.content.status, 'trimmed');
+  assert.equal(outcome.hidden, false);
+  assert.equal(outcome.content.summary, '');
+  assert.equal(outcome.content.warnings.length, 1);
+  assert.equal(outcome.content.warnings[0].message, 'Compaction failed; context was trimmed to proceed.');
+  assert.equal(typeof outcome.content.warnings[0].at, 'number');
+  assert.equal(outcome.content.warnings[0].kind, 'compaction');
+  assert.equal(outcome.content.errors.length, 1);
+  assert.equal(outcome.content.errors[0].message, message);
+  assert.equal(typeof outcome.content.errors[0].at, 'number');
+  assert.equal(outcome.content.errors[0].kind, 'compaction');
+  // The boundary metadata is exact, so projection starts after it.
+  assert.equal(outcome.content.boundaryFrameID, 'msg_1');
+  assert.equal(outcome.content.boundaryOrder, 1);
+  assert.deepEqual(outcome.content.frameIDs, [ 'msg_1' ]);
+  // The frame is stored AND the original context frame is still present.
+  assert.equal(frameEngine.toArray().some((frame) => frame.type === COMPACTION_FRAME_TYPE), true);
+  assert.equal(frameEngine.get('msg_1') != null, true);
+}
+
+test('failure: provider ask() throws -> trimmed boundary frame, not null, old frame kept', async () => {
   let { service, frameEngine, events } = createStartService(ThrowingProvider, 'throwing');
 
   let outcome;
@@ -36,12 +59,12 @@ test('failure: provider ask() throws -> compaction.failed, null, and no frame st
     outcome = await service.startCompaction(runInput(frameEngine));
   });
 
-  assert.equal(outcome, null);
-  assert.equal(frameEngine.toArray().some((frame) => frame.type === COMPACTION_FRAME_TYPE), false);
+  assertTrimmedBoundary(outcome, frameEngine, 'provider exploded');
   assert.equal(lastEvent(events, 'compaction.failed').payload.error.message, 'provider exploded');
+  assert.equal(lastEvent(events, 'compaction.trimmed') != null, true);
 });
 
-test('failure: provider ask() returns empty -> empty-summary error, null, no frame', async () => {
+test('failure: provider ask() returns empty -> trimmed boundary frame, not null', async () => {
   let { service, frameEngine, events } = createStartService(EmptyProvider, 'empty');
 
   let outcome;
@@ -49,15 +72,14 @@ test('failure: provider ask() returns empty -> empty-summary error, null, no fra
     outcome = await service.startCompaction(runInput(frameEngine));
   });
 
-  assert.equal(outcome, null);
-  assert.equal(frameEngine.toArray().some((frame) => frame.type === COMPACTION_FRAME_TYPE), false);
+  assertTrimmedBoundary(outcome, frameEngine, 'Compaction provider returned an empty summary');
   assert.equal(
     lastEvent(events, 'compaction.failed').payload.error.message,
     'Compaction provider returned an empty summary',
   );
 });
 
-test('failure: no agent available -> "No agent available for context compaction"', async () => {
+test('failure: no agent available -> trimmed boundary, not null', async () => {
   let frameEngine = singleFrameEngine();
   let events = [];
   let service = new CompactionService({
@@ -82,14 +104,14 @@ test('failure: no agent available -> "No agent available for context compaction"
     });
   });
 
-  assert.equal(outcome, null);
+  assertTrimmedBoundary(outcome, frameEngine, 'No agent available for context compaction');
   assert.equal(
     lastEvent(events, 'compaction.failed').payload.error.message,
     'No agent available for context compaction',
   );
 });
 
-test('failure: no provider class registered -> "No compaction provider found"', async () => {
+test('failure: no provider class registered -> trimmed boundary, not null', async () => {
   let frameEngine = singleFrameEngine();
   let events = [];
   let service = new CompactionService({
@@ -116,14 +138,16 @@ test('failure: no provider class registered -> "No compaction provider found"', 
     });
   });
 
-  assert.equal(outcome, null);
+  assert.match(outcome.content.errors[0].message, /No compaction provider found/);
+  assert.equal(outcome.content.status, 'trimmed');
+  assert.equal(frameEngine.get('msg_1') != null, true);
   assert.match(
     lastEvent(events, 'compaction.failed').payload.error.message,
     /No compaction provider found/,
   );
 });
 
-test('failure: provider with no one-shot ask() -> explicit error, null, no frame', async () => {
+test('failure: provider with no one-shot ask() -> trimmed boundary, not null', async () => {
   let { service, frameEngine, events } = createStartService(NoAskProvider, 'no-ask');
 
   let outcome;
@@ -131,8 +155,9 @@ test('failure: provider with no one-shot ask() -> explicit error, null, no frame
     outcome = await service.startCompaction(runInput(frameEngine));
   });
 
-  assert.equal(outcome, null);
-  assert.equal(frameEngine.toArray().some((frame) => frame.type === COMPACTION_FRAME_TYPE), false);
+  assert.match(outcome.content.errors[0].message, /does not expose a one-shot ask\(\)/);
+  assert.equal(outcome.content.status, 'trimmed');
+  assert.equal(frameEngine.toArray().some((frame) => frame.type === COMPACTION_FRAME_TYPE), true);
   assert.match(
     lastEvent(events, 'compaction.failed').payload.error.message,
     /does not expose a one-shot ask\(\)/,
@@ -320,12 +345,17 @@ test('failure: compaction fails while a bot waits at the hard limit -> resolves 
     });
   });
 
-  // The bot waited, compaction failed, but the turn continues with the original
-  // context.
+  // The bot waited, compaction failed, and it now proceeds with the REBUILT
+  // trimmed context: the old boundary frame (msg_1) is skipped, the trimmed
+  // boundary and the frames after it remain. Nothing was deleted.
   assert.equal(result.heldForCompaction, true);
-  assert.deepEqual(result.frames.map((frame) => frame.id), [ 'msg_1', 'msg_2' ]);
-  assert.equal(frameEngine.toArray().some((frame) => frame.type === COMPACTION_FRAME_TYPE), false);
+  assert.deepEqual(result.frames.map((frame) => frame.id), [ 'cmp_1', 'msg_2' ]);
+  let trimmed = frameEngine.get('cmp_1');
+  assert.equal(trimmed.content.status, 'trimmed');
+  assert.equal(trimmed.hidden, false);
+  assert.equal(frameEngine.get('msg_1') != null, true);
   assert.equal(lastEvent(events, 'compaction.failed') != null, true);
+  assert.equal(lastEvent(events, 'compaction.trimmed') != null, true);
 });
 
 test('failure: manual compaction failure produces a failed frame and compaction.failed', async () => {
@@ -367,6 +397,8 @@ test('failure: manual compaction failure produces a failed frame and compaction.
 
   assert.equal(failedFrame.content.status, 'failed');
   assert.equal(failedFrame.hidden, false);
+  assert.equal(failedFrame.content.errors.length, 1);
+  assert.equal(failedFrame.content.errors[0].message, 'provider exploded');
   assert.equal(lastEvent(events, 'compaction.failed').payload.manual, true);
   assert.equal(lastEvent(events, 'compaction.failed').payload.error.message, 'provider exploded');
 });

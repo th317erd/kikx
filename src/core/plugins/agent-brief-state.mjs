@@ -46,7 +46,9 @@ export function latestCompactionFrame(context = {}) {
     if (!isCompactionFrame(frame))
       continue;
 
-    if (frame.content?.status === 'started' || frame.content?.status === 'failed')
+    // P7: a completed OR trimmed/failed boundary is a real boundary (it advances
+    // the agent's memory start). Only an in-flight frame is not yet a boundary.
+    if (frame.content?.status === 'started' || frame.content?.status === 'running')
       continue;
 
     if (!latest || compactionBoundaryOrder(frame) >= compactionBoundaryOrder(latest))

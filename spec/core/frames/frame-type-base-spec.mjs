@@ -146,6 +146,30 @@ test('CompactionFrame projection filters summaryJSON levels by compactionLevels'
   assert.match(large.content, /chatter/);
 });
 
+test('CompactionFrame failure/trim boundary with no summary projects a short notice, not null', () => {
+  for (let status of [ 'failed', 'trimmed' ]) {
+    let raw = {
+      id: `cmp_${status}`,
+      type: 'CompactionFrame',
+      hidden: false,
+      // The real boundary carries a UI text message; the notice must win over it.
+      content: { kind: 'compaction_frame', status, summary: '', text: 'Context was trimmed to proceed.' },
+    };
+    let turn = createTypedFrame(raw).toAgentMessage();
+    assert.equal(turn.role, 'user');
+    assert.match(turn.content, /\[context trimmed here — earlier history omitted\]/);
+    assert.doesNotMatch(turn.content, /Context was trimmed to proceed/);
+  }
+
+  // A complete frame with no summary still projects null (no false notice).
+  let empty = createTypedFrame({
+    id: 'cmp_empty',
+    type: 'CompactionFrame',
+    content: { kind: 'compaction_frame', status: 'complete', summary: '' },
+  }).toAgentMessage();
+  assert.equal(empty, null);
+});
+
 test('CompactionFrame projection ignores compactionLevels without summaryJSON', () => {
   // Back-compat: a pre-P7 frame with only the summary string projects verbatim.
   let raw = {

@@ -183,10 +183,23 @@ export class FrameTypeBase {
 
   _compactionTurn(options = {}) {
     let content = this._frameData.content || {};
+    // Compaction memory is `summary`/`summaryJSON`; `content.text` is a UI
+    // message, so it is only a legacy fallback when no memory is stored.
     let rendered = this._renderCompactionSummary(content, options.compactionLevels);
-    let summary = rendered !== '' ? rendered : (content.summary || content.text || '');
-    if (typeof summary !== 'string' || summary.trim() === '')
-      return null;
+    let summary = rendered !== '' ? rendered : (content.summary || '');
+
+    if (typeof summary !== 'string' || summary.trim() === '') {
+      // P7: a failure/trim boundary carries no memory. Project a short notice
+      // (never null) so the model resuming after it knows the earlier history was
+      // omitted, while the old frames remain in storage for a later Retry.
+      if (content.status === 'failed' || content.status === 'trimmed')
+        return { role: 'user', content: '[context trimmed here — earlier history omitted]' };
+
+      // Legacy fallback: a compaction frame with only a display text.
+      summary = content.text || '';
+      if (typeof summary !== 'string' || summary.trim() === '')
+        return null;
+    }
 
     // The summary is priority-tagged ([high]/[medium]/[low]) so a small model
     // knows what it may drop. Tell it how to treat the tags on re-projection.

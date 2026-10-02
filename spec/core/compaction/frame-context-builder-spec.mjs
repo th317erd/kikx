@@ -16,7 +16,7 @@ test('FrameContextBuilder starts agent memory at latest compaction frame', () =>
     frame('msg_2', 'AgentMessage', 'old agent', 2),
     {
       ...frame('cmp_1', COMPACTION_FRAME_TYPE, 'summary of old user and old agent', 3),
-      hidden: true,
+      hidden: false,
       content: {
         kind: COMPACTION_FRAME_KIND,
         status: 'complete',
@@ -197,6 +197,66 @@ test('FrameContextBuilder keeps the global window when no agent window is provid
 
   assert.equal(result.hardLimit, 980);
   assert.equal(result.availableTokens, 980);
+});
+
+test('FrameContextBuilder starts projection after a trimmed boundary and keeps old frames', () => {
+  let old = [
+    frame('msg_1', 'UserMessage', 'old one', 1),
+    frame('msg_2', 'UserMessage', 'old two', 2),
+  ];
+  let trimmed = {
+    ...frame('cmp_trim', COMPACTION_FRAME_TYPE, '', 3),
+    hidden: false,
+    content: {
+      kind: COMPACTION_FRAME_KIND,
+      status: 'trimmed',
+      text: 'Context was trimmed to proceed.',
+      summary: '',
+      warnings: [ 'Compaction failed; context was trimmed to proceed.' ],
+      errors: [ { message: 'provider exploded', at: 3, kind: 'compaction' } ],
+      boundaryFrameID: 'msg_2',
+      boundaryOrder: 2,
+    },
+  };
+  let frames = [ ...old, trimmed, frame('msg_3', 'UserMessage', 'new user', 4) ];
+  let builder = new FrameContextBuilder({ contextWindowTokens: 1000, promptReserveTokens: 10 });
+
+  let result = builder.build(frames, { activeFrameID: 'msg_3' });
+
+  assert.equal(result.latestCompaction.id, 'cmp_trim');
+  assert.deepEqual(result.frames.map((item) => item.id), [ 'cmp_trim', 'msg_3' ]);
+  // Nothing is deleted: the old frames remain in `allFrames` and in storage.
+  assert.deepEqual(result.allFrames.map((item) => item.id), [ 'msg_1', 'msg_2', 'cmp_trim', 'msg_3' ]);
+});
+
+test('FrameContextBuilder treats a failed boundary as a boundary and ignores an in-flight one', () => {
+  let failed = {
+    ...frame('cmp_failed', COMPACTION_FRAME_TYPE, 'failed', 3),
+    content: {
+      kind: COMPACTION_FRAME_KIND,
+      status: 'failed',
+      summary: '',
+      boundaryFrameID: 'msg_2',
+      boundaryOrder: 2,
+    },
+  };
+  let frames = [
+    frame('msg_1', 'UserMessage', 'old one', 1),
+    frame('msg_2', 'UserMessage', 'old two', 2),
+    failed,
+    frame('msg_3', 'UserMessage', 'new user', 4),
+  ];
+  let builder = new FrameContextBuilder({ contextWindowTokens: 1000, promptReserveTokens: 10 });
+
+  let result = builder.build(frames, { activeFrameID: 'msg_3' });
+  assert.equal(result.latestCompaction.id, 'cmp_failed');
+  assert.deepEqual(result.frames.map((item) => item.id), [ 'cmp_failed', 'msg_3' ]);
+
+  // An in-flight `running` boundary is not yet a boundary to start from.
+  let running = { ...failed, id: 'cmp_running', content: { ...failed.content, status: 'running' } };
+  let inFlight = new FrameContextBuilder({ contextWindowTokens: 1000, promptReserveTokens: 10 })
+    .build([ frame('msg_1', 'UserMessage', 'old one', 1), running, frame('msg_2', 'UserMessage', 'new', 2) ], { activeFrameID: 'msg_2' });
+  assert.equal(inFlight.latestCompaction, null);
 });
 
 function frame(id, type, text, order) {

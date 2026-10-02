@@ -7,6 +7,7 @@ import {
   COMPACTION_FRAME_KIND,
   COMPACTION_FRAME_TYPE,
   CompactionService,
+  FrameContextBuilder,
 } from '../../../src/core/compaction/index.mjs';
 import { AgentInterface, PluginRegistry } from '../../../src/core/plugins/index.mjs';
 import { FrameEngine } from '../../../src/core/frames/index.mjs';
@@ -87,7 +88,7 @@ class SecretCheckingCompactorProvider extends AgentInterface {
   }
 }
 
-test('CompactionService runs one-shot compaction and stores a hidden CompactionFrame', async () => {
+test('CompactionService runs one-shot compaction and stores a visible CompactionFrame', async () => {
   let pluginRegistry = new PluginRegistry();
   pluginRegistry.registerAgentProvider('compactor', CompactorProvider);
   let frameEngine = new FrameEngine({
@@ -145,8 +146,11 @@ test('CompactionService runs one-shot compaction and stores a hidden CompactionF
 
   let compactionFrame = frameEngine.get('compaction_frame_1');
   assert.equal(compactionFrame.type, COMPACTION_FRAME_TYPE);
-  assert.equal(compactionFrame.hidden, true);
+  // P7 (Q2): the automatic compaction frame is always visible.
+  assert.equal(compactionFrame.hidden, false);
   assert.equal(compactionFrame.content.kind, COMPACTION_FRAME_KIND);
+  assert.deepEqual(compactionFrame.content.warnings, []);
+  assert.deepEqual(compactionFrame.content.errors, []);
   assert.equal(compactionFrame.content.boundaryFrameID, 'msg_2');
   assert.match(compactionFrame.content.summary, /\/tmp\/project/);
   // The structured form is stored alongside the verbatim string. An untagged
@@ -771,6 +775,109 @@ test('per-bot hold: a bot whose own window is exceeded waits; one that fits does
   // Not held: returns immediately with compactionPending, without awaiting.
   assert.equal(largeResult.compactionPending, true);
 });
+
+test('P7: a failed auto-compaction writes a visible trimmed boundary, then re-compaction restores memory', async () => {
+  let pluginRegistry = new PluginRegistry();
+  pluginRegistry.registerAgentProvider('throwing', ThrowingProvider);
+  let frameEngine = new FrameEngine({
+    clock: createClock(),
+    idGenerator: createIDs([ 'commit_1', 'commit_2' ]),
+  });
+  frameEngine.merge([
+    userFrame('msg_1', 'keep /tmp/project/app.mjs', 1),
+    userFrame('msg_2', 'current request', 2),
+  ], { silent: true });
+
+  let service = new CompactionService({
+    pluginRegistry,
+    agentManager: {
+      async getAgent() {
+        return {
+          id: 'agent_1',
+          name: 'Agent',
+          pluginID: 'throwing',
+          secrets: {},
+          config: { contextWindowTokens: 200000 },
+          enabled: true,
+        };
+      },
+    },
+    clock: () => 9000,
+    idGenerator: () => 'trim_boundary_1',
+    compactionAgentContextTokens: 1000,
+    estimateTokens: () => 5,
+    logger: { error() {}, warn() {} },
+    frameRuntime: { emitRuntimeEvent() {} },
+  });
+  let services = { calls: [] };
+
+  let trimmed = await service.startCompaction({
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ] },
+    frameEngine,
+    compactionWindow: {
+      frames: [ frameEngine.get('msg_1') ],
+      startFrameID: 'msg_1',
+      boundaryFrameID: 'msg_1',
+      boundaryOrder: 1,
+      tokens: 5,
+    },
+    agent: { id: 'agent_1' },
+    services,
+  });
+
+  assert.equal(trimmed.content.status, 'trimmed');
+  assert.equal(trimmed.hidden, false);
+  // Projection now starts after the trimmed boundary; msg_1 is still stored.
+  let boundaryBuilder = new FrameContextBuilder({ contextWindowTokens: 1000, promptReserveTokens: 10 });
+  let projected = boundaryBuilder.build(frameEngine.toArray(), { activeFrameID: 'msg_2' });
+  assert.deepEqual(projected.frames.map((frame) => frame.id), [ 'trim_boundary_1', 'msg_2' ]);
+  assert.equal(frameEngine.get('msg_1') != null, true);
+
+  // Re-compaction from the SAME boundary with a working provider overwrites the
+  // trimmed boundary in place and restores memory.
+  pluginRegistry.registerAgentProvider('compactor', CompactorProvider);
+  service.agentManager = {
+    async getAgent() {
+      return {
+        id: 'agent_1',
+        name: 'Compactor',
+        pluginID: 'compactor',
+        secrets: {},
+        config: { contextWindowTokens: 200000 },
+        enabled: true,
+      };
+    },
+  };
+  service.idGenerator = () => 'trim_boundary_1';
+  let restored = await service.runCompaction({
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ] },
+    frameEngine,
+    compactionWindow: {
+      frames: [ frameEngine.get('msg_1') ],
+      startFrameID: 'msg_1',
+      boundaryFrameID: 'msg_1',
+      boundaryOrder: 1,
+      tokens: 5,
+    },
+    compactionFrameID: 'trim_boundary_1',
+    agent: { id: 'agent_1' },
+    services,
+  });
+
+  assert.equal(restored.id, 'trim_boundary_1');
+  assert.equal(restored.content.status, 'complete');
+  assert.match(restored.content.summary, /\/tmp\/project/);
+  assert.equal(restored.content.errors.length, 0);
+  assert.equal(frameEngine.get('msg_1') != null, true);
+});
+
+class ThrowingProvider extends AgentInterface {
+  static pluginID = 'throwing';
+
+  async ask() {
+    throw new Error('provider exploded');
+  }
+}
 
 function createHoldService({ ownWindowTokens }) {
   let services = { calls: [] };

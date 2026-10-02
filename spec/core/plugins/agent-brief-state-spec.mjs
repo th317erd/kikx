@@ -214,6 +214,10 @@ test('compaction and agent-message order helpers read the expected fields', () =
   assert.equal(compactionBoundaryKey(cmp), 'b7');
   assert.equal(latestCompactionFrame({ frames: [ cmp ] }), cmp);
   assert.equal(latestCompactionFrame({ frames: [ { ...cmp, content: { ...cmp.content, status: 'started' } } ] }), null);
+  assert.equal(latestCompactionFrame({ frames: [ { ...cmp, content: { ...cmp.content, status: 'running' } } ] }), null);
+  // P7: a trimmed boundary is a real boundary (it advances Brief A's key).
+  let trimmed = { ...cmp, content: { ...cmp.content, status: 'trimmed' } };
+  assert.equal(latestCompactionFrame({ frames: [ trimmed ] }), trimmed);
 
   let newest = newestAgentMessageOrder({
     frames: [

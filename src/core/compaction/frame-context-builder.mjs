@@ -47,7 +47,7 @@ export class FrameContextBuilder {
     // R2: count EVERYTHING that must fit, not just history. `usageOverheadTokens`
     // is the caller's estimate of system + start brief + current message + tools.
     let usageOverheadTokens = normalizeNonNegativeInteger(options.usageOverheadTokens, 0);
-    let latestCompaction = findLatestCompletedCompaction(allFrames);
+    let latestCompaction = findLatestBoundaryCompaction(allFrames);
     let contextFrames = buildContextFramesAfterCompaction(allFrames, latestCompaction);
     let contextTokens = this.countFrameTokens(contextFrames) + usageOverheadTokens;
     // R5: the trigger uses the SMALLEST window (this build call). For the per-bot
@@ -202,11 +202,16 @@ function isCompactableFrame(frame) {
   return frame.hidden !== true || isCompactionFrame(frame);
 }
 
-function findLatestCompletedCompaction(frames) {
+// The latest boundary the projection must start from. P7 (ruling Q1): a
+// `complete` compaction AND a `failed`/`trimmed` boundary both advance the
+// start-point — a trimmed boundary is a degraded compaction, not a deletion, so
+// the bot resumes with a trimmed context instead of re-sending the old one. Only
+// an in-flight `started`/`running` frame is skipped. Frames before the boundary
+// remain in storage and can be re-compacted later.
+function findLatestBoundaryCompaction(frames) {
   let compactFrames = normalizeFrameArray(frames)
     .filter((frame) => isCompactionFrame(frame))
-    .filter((frame) => frame.content?.status !== 'started' && frame.content?.status !== 'failed')
-    .filter((frame) => typeof (frame.content?.summary || frame.content?.text) === 'string');
+    .filter((frame) => frame.content?.status !== 'started' && frame.content?.status !== 'running');
 
   compactFrames.sort((a, b) => {
     return compareNumber(compactionBoundaryOrder(a), compactionBoundaryOrder(b))

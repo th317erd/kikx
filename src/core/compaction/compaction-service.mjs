@@ -233,16 +233,30 @@ export class CompactionService {
         });
         return frame;
       })
-      .catch((error) => {
-        this.logger.error?.('Kikx async compaction failed', error);
+      .catch(async (error) => {
+        // P7 failure -> trim fallback. Never delete frames and never return a
+        // bare null: write a VISIBLE boundary compaction frame with status
+        // `trimmed`, no summary, and the failure recorded as warnings/errors, so
+        // the requesting bot's projection starts after it and it has room.
+        this.logger.error?.('Kikx async compaction failed; trimming context to proceed', error);
+        let trimmedFrame = this.writeTrimmedBoundary(input, error);
+        await this.flushFrameStores(input.services);
         this.emitCompactionEvent('compaction.failed', {
           sessionID,
           boundaryFrameID,
+          compactionFrameID: trimmedFrame?.id || null,
           error: {
             message: error?.message || 'Compaction failed',
           },
         });
-        return null;
+        this.emitCompactionEvent('compaction.trimmed', {
+          sessionID,
+          boundaryFrameID,
+          frame: trimmedFrame,
+          compactionFrameID: trimmedFrame?.id || null,
+          warning: 'Compaction failed; context was trimmed to proceed.',
+        });
+        return trimmedFrame;
       })
       .finally(() => {
         this.pendingCompactions.delete(key);
@@ -333,6 +347,7 @@ export class CompactionService {
         return frame;
       })
       .catch(async (error) => {
+        // P7: manual failures stay `failed` but now carry the structured error.
         let failedFrame = this.updateCompactionFrame({
           frameEngine,
           frameID: visibleFrame.id,
@@ -341,6 +356,7 @@ export class CompactionService {
           summary: '',
           message: error?.message || 'Compaction failed.',
           compactorAgent: input.agent || null,
+          errors: [ { message: error?.message || 'Compaction failed.', kind: 'compaction' } ],
         });
         await this.flushFrameStores(input.services);
         this.logger.error?.('Kikx manual compaction failed', error);
@@ -441,6 +457,8 @@ export class CompactionService {
         summaryJSON,
         message: 'Compaction complete.',
         compactorAgent,
+        warnings: [],
+        errors: [],
       })
       : this.createCompactionFrame({
         session,
@@ -472,7 +490,7 @@ export class CompactionService {
     });
   }
 
-  updateCompactionFrame({ frameEngine, frameID, compactionWindow, status, summary, summaryJSON, message, compactorAgent }) {
+  updateCompactionFrame({ frameEngine, frameID, compactionWindow, status, summary, summaryJSON, message, compactorAgent, warnings, errors }) {
     let existing = frameEngine.get(frameID);
     if (!existing)
       throw new Error(`Unknown compaction frame: ${frameID}`);
@@ -486,12 +504,49 @@ export class CompactionService {
       summaryJSON,
       message,
       compactorAgent,
+      warnings,
+      errors,
     });
     let merged = frameEngine.merge([ nextFrame ], {
       authorType: 'system',
       authorID: 'internal:compaction',
     });
     return merged[0] || frameEngine.get(frameID) || nextFrame;
+  }
+
+  // P7 failure -> trim fallback. Write (or update) a VISIBLE boundary frame with
+  // `status:'trimmed'`, no summary, and the failure recorded as a warning plus
+  // errors. It carries the full `compactionWindow` metadata so the projection
+  // start is exact (`boundaryFrameID`/`boundaryOrder`). Old frames stay in
+  // storage untouched. Returns the stored frame so callers always get a frame.
+  writeTrimmedBoundary(input = {}, error = null) {
+    let { frameEngine, compactionWindow } = input;
+    let sessionID = input.session?.id || input.sessionID || input.triggerFrame?.sessionID;
+    if (!frameEngine || !sessionID || !compactionWindow)
+      return null;
+
+    let session = input.session?.id ? input.session : { id: sessionID };
+    let message = error?.message || 'Compaction failed';
+    let fields = {
+      session,
+      compactorAgent: input.agent || null,
+      compactionWindow,
+      status: 'trimmed',
+      summary: '',
+      message: 'Context was trimmed to proceed.',
+      warnings: [ 'Compaction failed; context was trimmed to proceed.' ],
+      errors: [ { message, kind: 'compaction' } ],
+    };
+
+    if (input.compactionFrameID && frameEngine.get(input.compactionFrameID))
+      return this.updateCompactionFrame({ ...fields, frameEngine, frameID: input.compactionFrameID });
+
+    let frame = this.createCompactionFrame(fields);
+    let merged = frameEngine.merge([ frame ], {
+      authorType: 'system',
+      authorID: 'internal:compaction',
+    });
+    return merged[0] || frameEngine.get(frame.id) || frame;
   }
 
   async resolveCompactionAgent(input = {}) {
