@@ -22,6 +22,7 @@ import {
   sessionGeneration,
 } from './agent-normalizers.mjs';
 import { recordForward } from './agent-loop-state.mjs';
+import { hasCoordinatorParties } from './agent-participants.mjs';
 import {
   CHARACTER_COMPRESSED_FIELD,
   MAX_CHARACTER_COMPRESSED_LENGTH,
@@ -109,20 +110,14 @@ export function shouldExposeLoopTool(toolName, context = {}) {
   if (toolName === 'route')
     return context.isCoordinator === true;
 
-  if (toolName === 'agent-null-response' && isSoleAgentUserTurn(context))
+  // Staying silent only makes sense when the agent is not the obvious sole
+  // responder — i.e. with 3+ parties present (counting users). In a 1:1
+  // session the agent must answer, so the silence tool is neither offered nor
+  // mentioned anywhere (tool list, briefs, or help).
+  if (toolName === 'agent-null-response' && !hasCoordinatorParties(context))
     return false;
 
   return true;
-}
-
-export function isSoleAgentUserTurn(context = {}) {
-  let participantAgentIDs = normalizeStringArray(context.participantAgentIDs || context.session?.participantAgentIDs);
-  let frame = context.frame || {};
-
-  return participantAgentIDs.length <= 1
-    && frame.authorType === 'user'
-    && frame.hidden !== true
-    && frame.deleted !== true;
 }
 
 export function createRegisteredToolDefinitions(context = {}) {

@@ -51,12 +51,10 @@ function escapeRegExp(value) {
 
 // Static, compact tool map from the rev-3 Brief A. Grouped by purpose; the
 // per-tool `help` text lives in the tool definitions and is referenced here.
-const BRIEF_TOOL_LINES = [
-  'Tools:',
+const BRIEF_TOOL_LINES_COMMON = [
   '  finalize:  agent-respond, agent-finalize',
   '  yield:     agent-respond-and-continue',
   '  progress:  agent-progress',
-  '  silence:   agent-null-response',
   '  route:     route (coordinator only)',
   '  control:   loop-break, agent-character-set',
   '  help:      help (lists all tools; each tool has its own help)',
@@ -65,6 +63,34 @@ const BRIEF_TOOL_LINES = [
   '             session-frames, session-search, agent-list',
   '  state:     todo-*, cwd-*',
 ];
+
+// The silence tool is only advertised with 3+ parties (its exposure rule also
+// lives in `shouldExposeLoopTool`). Below that, neither the tool map nor the
+// briefs mention agent-null-response at all.
+const BRIEF_TOOL_LINES_SILENCE = [ '  silence:   agent-null-response' ];
+
+function buildBriefToolLines(context = {}) {
+  if (hasCoordinatorParties(context))
+    return [ 'Tools:', BRIEF_TOOL_LINES_SILENCE[0], ...BRIEF_TOOL_LINES_COMMON ];
+
+  return [ 'Tools:', ...BRIEF_TOOL_LINES_COMMON ];
+}
+
+function buildMessageBriefAnswerLine(context = {}) {
+  if (hasCoordinatorParties(context))
+    return 'Answer, or agent-null-response to stay silent.';
+
+  return 'Answer the message.';
+}
+
+// AGIS precept lines reference the silence tool; drop the ones that mention it
+// when the tool is not offered (below 3 parties).
+function buildBriefPreceptLines(context = {}) {
+  if (hasCoordinatorParties(context))
+    return AGIS_PRECEPTS_LINES;
+
+  return AGIS_PRECEPTS_LINES.filter((line) => !/agent-null-response/.test(line));
+}
 
 // Brief A ("start brief") — sent ONCE per (re)start: session start, new agent,
 // after compaction, coordinator change.
@@ -78,25 +104,36 @@ export function buildStartBrief(context = {}) {
       || context.character,
   ) || 'No custom character has been set. Act as a careful, technically rigorous Kikx agent.';
 
+  let canStaySilent = hasCoordinatorParties(context);
+  let intro = canStaySilent
+    ? [
+      'Act as a careful, technically rigorous agent. Decide whether to answer, stay',
+      'silent, or route. Feel free to use any tools as-needed. Never claim work your own',
+      'tool frames do not show; always leave a truth/proof artifact.',
+    ]
+    : [
+      'Act as a careful, technically rigorous agent. Answer the message, using any tools',
+      'as-needed. Never claim work your own tool frames do not show; always leave a',
+      'truth/proof artifact.',
+    ];
+
   let lines = [
     `Kikx Advanced Agent Harness - v${packageVersion()}`,
     '',
-    'Act as a careful, technically rigorous agent. Decide whether to answer, stay',
-    'silent, or route. Feel free to use any tools as-needed. Never claim work your own',
-    'tool frames do not show; always leave a truth/proof artifact.',
+    ...intro,
     '',
     `Character: ${character}`,
   ];
 
-  if (hasMultiparty(context)) {
+  if (hasMultiparty(context) && canStaySilent) {
     lines.push('');
     lines.push(...MULTIPARTY_CHARACTER_NOTE_LINES);
   }
 
   lines.push('');
-  lines.push(...AGIS_PRECEPTS_LINES);
+  lines.push(...buildBriefPreceptLines(context));
   lines.push('');
-  lines.push(...BRIEF_TOOL_LINES);
+  lines.push(...buildBriefToolLines(context));
   lines.push('');
   lines.push(...STANDARD_TOOL_NOTES_LINES);
   lines.push('');
@@ -131,7 +168,7 @@ export function buildMessageBrief(context = {}) {
       `coord:   ${coordinator}`,
       `parties: ${parties}`,
       '',
-      'Answer, or agent-null-response to stay silent.',
+      buildMessageBriefAnswerLine(context),
     ].join('\n'),
   };
 }

@@ -1199,6 +1199,8 @@ test('AgentInterface offers silence tools to coordinated mentioned targets', asy
     frame: {
       id: 'msg_1',
       type: 'UserMessage',
+      authorType: 'user',
+      authorID: 'usr_1',
       coordinated: true,
       content: { text: 'Hello Mr. Bennett, how are you today?' },
       mentions: {
@@ -1221,6 +1223,37 @@ test('AgentInterface offers silence tools to coordinated mentioned targets', asy
   assert.match(askCall.messageBrief, /coord:   false/);
   assert.match(askCall.messageBrief, /Hello Mr\. Bennett, how are you today\?/);
   assert.match(askCall.messageBrief, /agent-null-response to stay silent/);
+});
+
+test('AgentInterface hides the silence tool and all mention of it below 3 parties', async () => {
+  // One user + one agent = 2 parties: the agent must answer, so silence must be
+  // neither offered nor referenced in the briefs or tool definitions.
+  let agent = new LoopAgent();
+  await collect(agent.run(baseLoopParams({
+    agent: { id: 'agent_1', name: 'Gemma', character: 'Careful.' },
+    session: {
+      id: 'ses_1',
+      participantAgentIDs: [ 'agent_1' ],
+      coordinatorAgentID: 'agent_1',
+    },
+    isCoordinator: true,
+    frame: {
+      id: 'msg_1',
+      type: 'UserMessage',
+      authorType: 'user',
+      authorID: 'usr_1',
+      content: { text: 'Hello! How are you today Gemma?' },
+    },
+  })));
+
+  let askCall = agent.calls.find((call) => call.method === 'ask');
+  assert.ok(askCall);
+  assert.equal(askCall.toolNames.includes('agent-null-response'), false);
+  assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'agent-null-response'), false);
+  assert.doesNotMatch(askCall.startBrief, /agent-null-response/);
+  assert.doesNotMatch(askCall.messageBrief, /agent-null-response/);
+  assert.doesNotMatch(askCall.startBrief, /stay silent/);
+  assert.match(askCall.messageBrief, /Answer the message\./);
 });
 
 test('AgentInterface exposes agent-owned self-configuration tools', async () => {
