@@ -11,6 +11,7 @@ import { countMessageFrames } from '../../shared/frame-manager/frame-manager.mjs
 import {
   normalizeCoordinatorAgentID,
   normalizeCount,
+  normalizeDesignationAgentID,
   normalizeOptionalString,
   normalizeSessionGeneration,
   normalizeStringArray,
@@ -81,6 +82,7 @@ export class FrameRuntime extends EventEmitter {
       participantAgentIDs,
       participantUserIDs,
       coordinatorAgentID: normalizeCoordinatorAgentID(input.coordinatorAgentID, participantAgentIDs),
+      compactionAgentID: normalizeDesignationAgentID(input.compactionAgentID, participantAgentIDs, 'compactionAgentID'),
       createdAt: input.createdAt || now,
       updatedAt: input.updatedAt || now,
       createdClock: input.createdClock || stamp.clock,
@@ -123,10 +125,22 @@ export class FrameRuntime extends EventEmitter {
       throw error;
     }
 
+    let participantAgentIDs = normalizeStringArray(session.participantAgentIDs);
+
+    if (Object.hasOwn(input, 'title'))
+      session.title = normalizeTitle(input.title);
+
+    // Explicit bot designations (compaction P2, ruling R8). Only written when the
+    // caller supplies the field, so title-only updates never disturb them. A
+    // supplied value must be a current participant; null clears it.
+    if (Object.hasOwn(input, 'coordinatorAgentID'))
+      session.coordinatorAgentID = normalizeDesignationAgentID(input.coordinatorAgentID, participantAgentIDs, 'coordinatorAgentID');
+
+    if (Object.hasOwn(input, 'compactionAgentID'))
+      session.compactionAgentID = normalizeDesignationAgentID(input.compactionAgentID, participantAgentIDs, 'compactionAgentID');
+
     let stamp = this.nextClockStamp();
     let now = stamp.at;
-
-    session.title = normalizeTitle(input.title);
     session.updatedAt = input.updatedAt || now;
     session.updatedClock = input.updatedClock || stamp.clock;
 

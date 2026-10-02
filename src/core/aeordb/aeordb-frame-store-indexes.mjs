@@ -13,6 +13,7 @@ export function buildGlobalIndexConfigs(rootPath) {
           { name: 'organizationID', type: 'string' },
           { name: 'title', type: [ 'string', 'trigram' ] },
           { name: 'coordinatorAgentID', type: 'string' },
+          { name: 'compactionAgentID', type: 'string' },
           { name: 'createdByAgentID', type: 'string' },
           { name: 'parentSessionID', type: 'string' },
           { name: 'generation', type: 'u64' },

@@ -139,6 +139,69 @@ test('FrameRuntime renames sessions and persists the manifest', async () => {
   assert.equal(aeordb.calls.at(-1).body.title, 'Project Alpha');
 });
 
+test('FrameRuntime updates explicit bot designations on session manifests', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({ aeordb, ids: [ 'ses_1' ], now: 1000 });
+
+  await runtime.createSession({ title: 'Scratch', participantAgentIDs: [ 'agent_1', 'agent_2' ] });
+  runtime.clock = () => 2000;
+  let session = await runtime.updateSession('ses_1', {
+    coordinatorAgentID: 'agent_2',
+    compactionAgentID: 'agent_1',
+  });
+
+  assert.equal(session.title, 'Scratch');
+  assert.equal(session.coordinatorAgentID, 'agent_2');
+  assert.equal(session.compactionAgentID, 'agent_1');
+  assert.equal(session.updatedAt, 2_000_000);
+  assert.equal(aeordb.calls.at(-1).path, '/kikx/sessions/ses_1/session.json');
+  assert.equal(aeordb.calls.at(-1).body.title, 'Scratch');
+  assert.equal(aeordb.calls.at(-1).body.coordinatorAgentID, 'agent_2');
+  assert.equal(aeordb.calls.at(-1).body.compactionAgentID, 'agent_1');
+});
+
+test('FrameRuntime rejects bot designations for non-participants without mutating state', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({ aeordb, ids: [ 'ses_1' ], now: 1000 });
+
+  await runtime.createSession({ title: 'Scratch', participantAgentIDs: [ 'agent_1' ] });
+
+  await assert.rejects(
+    () => runtime.updateSession('ses_1', { coordinatorAgentID: 'agent_2' }),
+    /coordinatorAgentID must be a session participant: agent_2/,
+  );
+  await assert.rejects(
+    () => runtime.updateSession('ses_1', { compactionAgentID: 'agent_2' }),
+    /compactionAgentID must be a session participant: agent_2/,
+  );
+
+  let session = runtime.getSession('ses_1');
+  assert.equal(session.coordinatorAgentID, 'agent_1');
+  assert.equal(session.compactionAgentID, null);
+});
+
+test('FrameRuntime clears bot designations with an explicit null and preserves the others', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({ aeordb, ids: [ 'ses_1' ], now: 1000 });
+
+  await runtime.createSession({ title: 'Scratch', participantAgentIDs: [ 'agent_1', 'agent_2' ] });
+  await runtime.updateSession('ses_1', { coordinatorAgentID: 'agent_2', compactionAgentID: 'agent_2' });
+
+  let cleared = await runtime.updateSession('ses_1', { compactionAgentID: null });
+  assert.equal(cleared.compactionAgentID, null);
+  assert.equal(cleared.coordinatorAgentID, 'agent_2');
+
+  let renamed = await runtime.updateSession('ses_1', { title: 'Renamed' });
+  assert.equal(renamed.title, 'Renamed');
+  assert.equal(renamed.compactionAgentID, null);
+  assert.equal(renamed.coordinatorAgentID, 'agent_2');
+
+  let manifest = await aeordb.getFile('/kikx/sessions/ses_1/session.json');
+  assert.equal(manifest.compactionAgentID, null);
+  assert.equal(manifest.coordinatorAgentID, 'agent_2');
+  assert.equal(manifest.title, 'Renamed');
+});
+
 test('FrameRuntime lists sessions from AeorDB instead of active memory', async () => {
   let aeordb = createClient();
   aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'Persisted', updatedAt: 2_000_000 });

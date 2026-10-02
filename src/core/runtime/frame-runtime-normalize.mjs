@@ -133,6 +133,28 @@ export function normalizeCoordinatorAgentID(coordinatorAgentID, participantAgent
   return participantAgentIDs[0] || null;
 }
 
+// Explicit-bot designation fields (compaction P2, ruling R8). Unlike
+// `normalizeCoordinatorAgentID`, an absent/blank value clears the designation
+// (returns null) and there is no implicit first-participant fallback: these are
+// only ever written when a user runs an explicit `set-*` command. A non-empty
+// value must name a current participant, otherwise a clear error is thrown.
+export function normalizeDesignationAgentID(agentID, participantAgentIDs, fieldName) {
+  if (agentID == null)
+    return null;
+
+  if (typeof agentID !== 'string' || agentID.trim() === '')
+    return null;
+
+  let trimmed = agentID.trim();
+  if (!participantAgentIDs.includes(trimmed)) {
+    let error = new Error(`${fieldName} must be a session participant: ${trimmed}`);
+    error.status = 400;
+    throw error;
+  }
+
+  return trimmed;
+}
+
 export function maxFrameTimestamp(frames) {
   let max = null;
   for (let frame of Array.isArray(frames) ? frames : []) {
