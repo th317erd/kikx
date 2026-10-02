@@ -31,6 +31,21 @@ class CompactorProvider extends AgentInterface {
   }
 }
 
+class TaggedCompactorProvider extends AgentInterface {
+  static pluginID = 'tagged-compactor';
+
+  async ask() {
+    return [
+      '[high]',
+      'Keep /tmp/project/app.mjs',
+      '[medium]',
+      'Rationale noted',
+      '[low]',
+      'chatter',
+    ].join('\n');
+  }
+}
+
 class DeferredCompactorProvider extends AgentInterface {
   static pluginID = 'deferred-compactor';
 
@@ -117,6 +132,10 @@ test('CompactionService runs one-shot compaction and stores a hidden CompactionF
   assert.equal(compactionFrame.content.kind, COMPACTION_FRAME_KIND);
   assert.equal(compactionFrame.content.boundaryFrameID, 'msg_2');
   assert.match(compactionFrame.content.summary, /\/tmp\/project/);
+  // The structured form is stored alongside the verbatim string. An untagged
+  // summary is folded into `high` so nothing must-keep is lost.
+  assert.equal(compactionFrame.content.summaryJSON.unstructured, true);
+  assert.deepEqual(compactionFrame.content.summaryJSON.low, []);
   assert.deepEqual(services.calls[0].frameIDs, [ 'msg_1', 'msg_2' ]);
   assert.deepEqual(services.events.map((event) => event.type), [ 'compaction.started', 'compaction.completed' ]);
 });
@@ -249,6 +268,59 @@ test('CompactionService prefers the current agent before alternate participants 
     apiKey: 'secret',
     model: 'test-model',
   }]);
+});
+
+test('CompactionService stores tagged output as structured summaryJSON', async () => {
+  let pluginRegistry = new PluginRegistry();
+  pluginRegistry.registerAgentProvider('tagged-compactor', TaggedCompactorProvider);
+  let frameEngine = new FrameEngine({
+    clock: createClock(),
+    idGenerator: createIDs([ 'commit_1', 'compaction_frame_1', 'commit_2' ]),
+  });
+  frameEngine.merge([
+    userFrame('msg_1', 'older project detail', 1),
+    userFrame('msg_2', 'active request', 2),
+  ], { silent: true });
+  let service = new CompactionService({
+    pluginRegistry,
+    agentManager: {
+      async getAgent() {
+        return {
+          id: 'agent_1',
+          name: 'Compactor',
+          pluginID: 'tagged-compactor',
+          secrets: {},
+          config: {},
+          enabled: true,
+        };
+      },
+    },
+    clock: () => 9000,
+    idGenerator: () => 'compaction_frame_1',
+    compactionAgentContextTokens: 1000,
+    estimateTokens: () => 5,
+  });
+  let services = { calls: [] };
+
+  let frame = await service.runCompaction({
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ] },
+    frameEngine,
+    compactionWindow: {
+      frames: [ frameEngine.get('msg_1') ],
+      startFrameID: 'msg_1',
+      boundaryFrameID: 'msg_1',
+      boundaryOrder: 1,
+      tokens: 5,
+    },
+    agent: { id: 'agent_1' },
+    services,
+  });
+
+  assert.match(frame.content.summary, /Keep \/tmp\/project/);
+  assert.equal(frame.content.summaryJSON.unstructured, false);
+  assert.deepEqual(frame.content.summaryJSON.high, [ 'Keep /tmp/project/app.mjs' ]);
+  assert.deepEqual(frame.content.summaryJSON.medium, [ 'Rationale noted' ]);
+  assert.deepEqual(frame.content.summaryJSON.low, [ 'chatter' ]);
 });
 
 test('CompactionService waits at hard context limit and returns rebuilt compacted memory', async () => {

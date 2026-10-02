@@ -20,6 +20,34 @@ import {
   resolveParticipantName,
 } from './agent-participants.mjs';
 import { sessionGeneration } from './agent-normalizers.mjs';
+import { resolveCompressedCharacter } from '../agents/character-limits.mjs';
+
+// P8.3: language that nudges a model to hurry, stop early, or act out of fear
+// of missing out. The two-tier briefs must never reintroduce it; the brief
+// spec greps both assembled briefs against this explicit denylist. Matched
+// case-insensitively with word boundaries (so "stops serving" is not flagged
+// by the `stop` entry).
+export const BRIEF_FORBIDDEN_PHRASES = [
+  'prefer completing the task in one turn',
+  'complete the task in one turn',
+  'fear of missing out',
+  'stop',
+];
+
+export function findForbiddenBriefPhrase(text) {
+  let haystack = String(text ?? '').toLowerCase();
+  for (let phrase of BRIEF_FORBIDDEN_PHRASES) {
+    let pattern = new RegExp(`\\b${escapeRegExp(phrase)}\\b`);
+    if (pattern.test(haystack))
+      return phrase;
+  }
+
+  return null;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 // Static, compact tool map from the rev-3 Brief A. Grouped by purpose; the
 // per-tool `help` text lives in the tool definitions and is referenced here.
@@ -41,13 +69,11 @@ const BRIEF_TOOL_LINES = [
 // Brief A ("start brief") — sent ONCE per (re)start: session start, new agent,
 // after compaction, coordinator change.
 export function buildStartBrief(context = {}) {
-  // D2 will add a stored compressed character; until then fall back to the full
-  // character so Brief A always carries the agent's persona.
+  // Prefer the stored compressed character (P6/D2); fall back through the
+  // historical aliases and finally the full character so Brief A always carries
+  // the agent's persona, including agents created before the compressed field.
   let character = normalizeBriefString(
-    context.agent?.characterCompressed
-      || context.agent?.compressedCharacter
-      || context.agent?.characterShort
-      || context.agent?.shortCharacter
+    resolveCompressedCharacter(context.agent)
       || context.agent?.character
       || context.character,
   ) || 'No custom character has been set. Act as a careful, technically rigorous Kikx agent.';

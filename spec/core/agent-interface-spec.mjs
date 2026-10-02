@@ -7,7 +7,6 @@ import { FrameEngine } from '../../src/core/frames/index.mjs';
 import {
   AGENTIC_SCRIPT_NAME,
   AgentInterface,
-  buildAgenticScriptPrompt,
   buildCompletionReviewScriptPrompt,
   PluginInterface,
   PluginRegistry,
@@ -275,6 +274,7 @@ class CharacterSettingAgent extends AgentInterface {
 
     this.toolResult = await options.tools['agent-character-set']({
       character: 'You are a dirty swearing pirate and fantastic engineer.',
+      compressedCharacter: 'Pirate engineer; direct and technical.',
     });
     return options.tools['agent-respond']({ text: 'Character updated.' });
   }
@@ -283,6 +283,23 @@ class CharacterSettingAgent extends AgentInterface {
 class InvalidCharacterSettingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
     return await options.tools['agent-character-set']({ character: '' });
+  }
+}
+
+class MissingCompressedCharacterSettingAgent extends AgentInterface {
+  async ask(_prompt, options = {}) {
+    return await options.tools['agent-character-set']({
+      character: 'You are a careful engineer.',
+    });
+  }
+}
+
+class OverLimitCompressedCharacterSettingAgent extends AgentInterface {
+  async ask(_prompt, options = {}) {
+    return await options.tools['agent-character-set']({
+      character: 'You are a careful engineer.',
+      compressedCharacter: 'x'.repeat(401),
+    });
   }
 }
 
@@ -413,80 +430,23 @@ class ProgressThenToolAgent extends AgentInterface {
   }
 }
 
-test('agentic script templates generate the named Kikx agent script', () => {
-  let prompt = buildAgenticScriptPrompt({
-    frameMessage: 'Please inspect this.',
-    mentions: { agent_1: { id: 'agent_1', name: 'Iron-Hand' } },
-    participantAgents: [ { id: 'agent_1', name: 'Iron-Hand', isSelf: true } ],
-    character: 'You are terse.',
-    tokenUsage: { totalTokensUsed: 12, services: {} },
-    cwdState: {
-      cwd: '/tmp/kikx-work',
-      configured: true,
-    },
-    todoState: {
-      agentID: 'agent_1',
-      items: [ {
-        id: 'todo_1',
-        title: 'Build todo tools',
-        status: 'pending',
-        children: [],
-      } ],
-      focus: { itemID: 'todo_1', childID: null, name: 'Build todo tools', setAt: 1 },
-    },
-    isCoordinator: true,
-    triggerFrameLines: [ 'The user has just sent you a message:' ],
-    routingLines: [ 'Coordinator routing line.' ],
-    toolDefinitions: [
-      { name: 'agent-progress', help: 'Progress before one tool.' },
-      { name: 'database-fetch', description: 'Fetch ranges.' },
-    ],
-  });
-
+test('agentic script completion review carries per-tool help', () => {
   assert.equal(AGENTIC_SCRIPT_NAME, 'agentic script');
-  assert.match(prompt, /Kikx agentic coordination loop/);
-  assert.match(prompt, /Please inspect this\./);
-  assert.match(prompt, /current routed frame below is the highest-priority input/i);
-  assert.match(prompt, /obey the current user message first/i);
-  assert.ok(prompt.indexOf('The user has just sent you a message:') < prompt.indexOf('Agent todo list JSON:'));
-  assert.ok(prompt.indexOf('Please inspect this.') < prompt.indexOf('Agent todo list JSON:'));
-  assert.match(prompt, /You are the coordinator\?: true/);
-  assert.match(prompt, /Session agents JSON:/);
-  assert.match(prompt, /Mentions JSON:/);
-  assert.match(prompt, /Session delegation generation: 0/);
-  assert.match(prompt, /For delegated sub-agent work/);
-  assert.match(prompt, /session-create\.initialMessage/);
-  assert.match(prompt, /compact orientation handoff/);
-  assert.match(prompt, /Agent todo list JSON:/);
-  assert.match(prompt, /Build todo tools/);
-  assert.match(prompt, /Where am I at on my todo list/);
-  assert.match(prompt, /Session working directory:/);
-  assert.match(prompt, /\/tmp\/kikx-work/);
-  assert.match(prompt, /feedback-report/);
-  assert.match(prompt, /global \/feedback\//);
-  assert.match(prompt, /Treat broad read-only requests/);
-  assert.match(prompt, /Do not stop after listing files/);
-  assert.match(prompt, /AGIS critical-thinking compact/);
-  assert.match(prompt, /Understand intent first/);
-  assert.match(prompt, /Map the territory before changing shared systems/);
-  assert.match(prompt, /engineer, cynic, qa_tester, security_officer, end_user, and minimalist/);
-  assert.match(prompt, /what could give false confidence/);
-  assert.match(prompt, /what did you miss, forget, assume, or leave unverified/i);
-  assert.match(prompt, /Proper agent behavior compact/);
-  assert.match(prompt, /Plan first for meaningful work/);
-  assert.match(prompt, /create or update your todo list before implementation/i);
-  assert.match(prompt, /Do not claim done until you have proof/i);
-  assert.match(prompt, /database-fetch: Fetch ranges\./);
 
   let reviewPrompt = buildCompletionReviewScriptPrompt({
     frameMessage: 'Please inspect this.',
     finalFrameContent: { text: 'Draft' },
-    toolDefinitions: [ { name: 'agent-finalize', help: 'Finalize.' } ],
+    toolDefinitions: [
+      { name: 'agent-finalize', help: 'Finalize.' },
+      { name: 'database-fetch', description: 'Fetch ranges.' },
+    ],
   });
   assert.match(reviewPrompt, /Completion self-review/);
+  assert.match(reviewPrompt, /Have you completed all the tasks the user requested of you\?/);
   assert.match(reviewPrompt, /Draft visible response JSON:/);
   assert.match(reviewPrompt, /obvious next safe\/read-only step/);
   assert.match(reviewPrompt, /agent-finalize: Finalize\./);
+  assert.match(reviewPrompt, /database-fetch: Fetch ranges\./);
 });
 
 test('buildCompletionReviewScriptPrompt caps oversized frame and draft inputs', () => {
@@ -554,6 +514,7 @@ test('AgentInterface base loop runs first-message hook before asking the provide
     'agent-progress',
     'agent-respond',
     'agent-respond-and-continue',
+    'help',
     'loop-break',
     'route',
   ]);
@@ -562,6 +523,11 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'agent-progress'));
   assert.equal(agent.calls[1].toolDefinitions.every((tool) => /^[A-Za-z0-9_-]+$/.test(tool.name)), true);
   assert.equal(agent.calls[1].toolNames.every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
+
+  // P6/D2: the character tool schema requires a length-limited compressed form.
+  let characterTool = agent.calls[1].toolDefinitions.find((tool) => tool.name === 'agent-character-set');
+  assert.deepEqual(characterTool.parameters.required, [ 'character', 'compressedCharacter' ]);
+  assert.equal(characterTool.parameters.properties.compressedCharacter.maxLength, 400);
 });
 
 test('AgentInterface exposes registered global plugin tools to agent turns', async () => {
@@ -1263,11 +1229,12 @@ test('AgentInterface exposes agent-owned self-configuration tools', async () => 
   let outputs = await collect(agent.run(baseLoopParams({
     services: {
       agentManager: {
-        async updateAgentCharacter(agentID, character) {
-          updates.push({ agentID, character });
+        async updateAgentCharacter(agentID, character, characterCompressed) {
+          updates.push({ agentID, character, characterCompressed });
           return {
             id: agentID,
             character,
+            characterCompressed,
           };
         },
       },
@@ -1289,6 +1256,7 @@ test('AgentInterface exposes agent-owned self-configuration tools', async () => 
   assert.deepEqual(updates, [{
     agentID: 'agent_1',
     character: 'You are a dirty swearing pirate and fantastic engineer.',
+    characterCompressed: 'Pirate engineer; direct and technical.',
   }]);
   assert.deepEqual(agent.toolResult, {
     type: 'ToolResult',
@@ -1296,6 +1264,7 @@ test('AgentInterface exposes agent-owned self-configuration tools', async () => 
     content: {
       agentID: 'agent_1',
       character: 'You are a dirty swearing pirate and fantastic engineer.',
+      characterCompressed: 'Pirate engineer; direct and technical.',
     },
   });
 });
@@ -1312,6 +1281,32 @@ test('AgentInterface self-configuration tools fail loud for invalid input', asyn
       },
     }))),
     /character must be a non-empty string/,
+  );
+
+  await assert.rejects(
+    () => collect(new MissingCompressedCharacterSettingAgent().run(baseLoopParams({
+      services: {
+        agentManager: {
+          async updateAgentCharacter() {
+            throw new Error('should not update');
+          },
+        },
+      },
+    }))),
+    /compressedCharacter must be a non-empty string/,
+  );
+
+  await assert.rejects(
+    () => collect(new OverLimitCompressedCharacterSettingAgent().run(baseLoopParams({
+      services: {
+        agentManager: {
+          async updateAgentCharacter() {
+            throw new Error('should not update');
+          },
+        },
+      },
+    }))),
+    /compressedCharacter must be 400 characters or fewer/,
   );
 
   await assert.rejects(

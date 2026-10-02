@@ -13,5 +13,16 @@ export {
   serializeFrameForContext,
   serializeFramesForCompaction,
 } from './frame-context-builder.mjs';
+export {
+  COMPACTION_LEVELS,
+  COMPACTION_SECTION_HEADER,
+  MEDIUM_CONTEXT_WINDOW_TOKENS,
+  SMALL_CONTEXT_WINDOW_TOKENS,
+  buildCompactionSummaryJSON,
+  hasCompactionSections,
+  parseCompactionSections,
+  renderCompactionSections,
+  selectCompactionLevels,
+} from './compaction-summary.mjs';
 export { CompactionService } from './compaction-service.mjs';
 

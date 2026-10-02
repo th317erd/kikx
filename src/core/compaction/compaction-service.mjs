@@ -9,6 +9,7 @@ import {
   buildAgentCompactionPrompt,
   buildDefaultCompactionInstructions,
 } from './agent-compaction-template.mjs';
+import { buildCompactionSummaryJSON } from './compaction-summary.mjs';
 import {
   FrameContextBuilder,
   serializeFramesForCompaction,
@@ -287,6 +288,7 @@ export class CompactionService {
     if (summary.trim() === '')
       throw new Error('Compaction provider returned an empty summary');
 
+    let summaryJSON = buildCompactionSummaryJSON(summary);
     let frame = input.compactionFrameID
       ? this.updateCompactionFrame({
         frameEngine,
@@ -294,6 +296,7 @@ export class CompactionService {
         compactionWindow,
         status: 'complete',
         summary,
+        summaryJSON,
         message: 'Compaction complete.',
         compactorAgent,
       })
@@ -302,6 +305,7 @@ export class CompactionService {
         compactorAgent,
         compactionWindow,
         summary,
+        summaryJSON,
       });
 
     if (input.compactionFrameID) {
@@ -323,6 +327,7 @@ export class CompactionService {
     compactorAgent,
     compactionWindow,
     summary,
+    summaryJSON,
     status = 'complete',
     hidden = true,
     manual = false,
@@ -333,6 +338,7 @@ export class CompactionService {
     let frameIDs = compactionWindow.frames.map((frame) => frame.id);
     let boundaryFrame = compactionWindow.frames.at(-1);
     let frameTime = manual ? now : boundaryFrame?.createdAt || boundaryFrame?.timestamp || now;
+    let sections = summaryJSON || buildCompactionSummaryJSON(summary);
     return {
       id: this.idGenerator(),
       type: COMPACTION_FRAME_TYPE,
@@ -367,6 +373,7 @@ export class CompactionService {
         status,
         text: message || summary,
         summary,
+        summaryJSON: sections,
         manual,
         requestedByFrameID,
         compactorAgentID: compactorAgent?.id || null,
@@ -378,13 +385,14 @@ export class CompactionService {
     };
   }
 
-  updateCompactionFrame({ frameEngine, frameID, compactionWindow, status, summary, message, compactorAgent }) {
+  updateCompactionFrame({ frameEngine, frameID, compactionWindow, status, summary, summaryJSON, message, compactorAgent }) {
     let existing = frameEngine.get(frameID);
     if (!existing)
       throw new Error(`Unknown compaction frame: ${frameID}`);
 
     let now = this.clock();
     let frameIDs = compactionWindow.frames.map((frame) => frame.id);
+    let sections = summaryJSON || (typeof summary === 'string' ? buildCompactionSummaryJSON(summary) : existing.content?.summaryJSON);
     let nextFrame = {
       ...existing,
       updatedAt: now,
@@ -407,6 +415,7 @@ export class CompactionService {
         status,
         text: message || summary || existing.content?.text || '',
         summary: summary ?? existing.content?.summary ?? '',
+        summaryJSON: sections,
         compactorAgentID: compactorAgent?.id || existing.content?.compactorAgentID || null,
         frameCount: frameIDs.length,
         startFrameID: compactionWindow.startFrameID,

@@ -1411,6 +1411,16 @@ test('agent routes validate request bodies and report missing agents', async () 
     }, { method: 'PATCH' });
     assert.equal(invalidCharacter.status, 400);
 
+    let invalidCharacterCompressed = await jsonFetch(`${baseURL}/api/v1/agents/agent_1`, {
+      characterCompressed: {},
+    }, { method: 'PATCH' });
+    assert.equal(invalidCharacterCompressed.status, 400);
+
+    let overLimitCharacterCompressed = await jsonFetch(`${baseURL}/api/v1/agents/agent_1`, {
+      characterCompressed: 'x'.repeat(401),
+    }, { method: 'PATCH' });
+    assert.equal(overLimitCharacterCompressed.status, 400);
+
     let missing = await fetch(`${baseURL}/api/v1/agents/missing`);
     let body = await missing.json();
     assert.equal(missing.status, 404);

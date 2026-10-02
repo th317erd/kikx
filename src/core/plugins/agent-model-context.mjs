@@ -14,6 +14,7 @@
 // into the prompt even though they are hidden.
 
 import { createTypedFrame } from '../frames/frame-types/create-typed-frame.mjs';
+import { selectCompactionLevels } from '../compaction/compaction-summary.mjs';
 import { shouldSendStartBrief, markStartBriefSent } from './agent-brief-state.mjs';
 import {
   buildMessageBrief,
@@ -63,6 +64,9 @@ export function buildModelMessages(params = {}, options = {}) {
   let systemPrompt = typeof options.systemPrompt === 'string' ? options.systemPrompt : DEFAULT_SESSION_SYSTEM_PROMPT;
   let isCompletionReview = params.step?.type === 'completion-review';
   let isRawPrompt = params.rawPrompt === true || params.compaction === true || params.oneShot === true;
+  // Which compaction priority levels this model's window can afford (P7). An
+  // unknown window yields every level, so this never filters when unsure.
+  let compactionLevels = selectCompactionLevels(resolveContextWindowTokens(params));
 
   messages.push({ role: 'system', content: systemPrompt });
 
@@ -82,6 +86,7 @@ export function buildModelMessages(params = {}, options = {}) {
       currentAgentID,
       currentFrameID,
       registry: options.registry || null,
+      compactionLevels,
     });
     if (message)
       messages.push(message);
@@ -106,4 +111,21 @@ export function buildModelMessages(params = {}, options = {}) {
   messages.push({ role: 'user', content: briefContent });
 
   return messages;
+}
+
+// Total context window available to this request. Providers may pass a resolved
+// window as `params.contextWindow`; otherwise the agent config override
+// (`contextWindowTokens`) is used. Returns null when neither is known, which
+// tells `selectCompactionLevels` not to filter.
+export function resolveContextWindowTokens(params = {}) {
+  for (let value of [ params.contextWindow, params.config?.contextWindowTokens ]) {
+    if (value == null || value === '')
+      continue;
+
+    let number = Number(value);
+    if (Number.isFinite(number) && number > 0)
+      return number;
+  }
+
+  return null;
 }

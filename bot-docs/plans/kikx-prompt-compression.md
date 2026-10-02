@@ -23,12 +23,21 @@
 - P2/P3/P4/P5 — two-tier briefs, send-once, coordinator+party gating. STATUS: done.
   Bug found + fixed during review: Brief A was re-sent on every agent alternation
   (single shared marker); now per-agent. Cold-start (process restart) re-sends.
-- P6 — compressed character (D2). STATUS: in progress.
-- P7 — prioritized JSON compaction + small-bot filtering (D6). STATUS: in progress.
-- P8/P9 — cleanups + monolith removal. STATUS: pending.
-- Gates: core 557/557, codex 33/33, ollama 17/17, eslint clean.
+- P6 — compressed character (D2): field `characterCompressed`, max length 400,
+  required on `agent-character-set`, persisted through manager/store/REST; Brief A
+  uses it with a fallback. STATUS: done.
+- P7 — prioritized JSON compaction + small-bot filtering (D6): `content.summaryJSON`
+  with `{high,medium,low,unstructured}`; `selectCompactionLevels(window)` drops
+  low/medium for small windows; providers pass the resolved window. STATUS: done.
+- P8 — content cleanups: token usage no longer sent to the model; added `help` tool
+  + per-tool help; added a stop/FOMO denylist spec. STATUS: done.
+- P9 — monolith removed (`agent-prompt-context.mjs` deleted, `buildDefaultAgentPrompt`
+  and the old builders gone); zero-reference grep clean. STATUS: done.
+- Gates: core 582/582, codex 33/33, ollama 17/17, eslint clean.
 - Live e2e (Gemma, :8090): shape `system > BriefA > BriefB`, version `0.1.0` from
-  package.json, message once, 1,827 tok « 32,768. PASS.
+  package.json, message once, 1,952 tok « 32,768. PASS.
+
+ALL PHASES P0–P9 COMPLETE. Remaining: owner verification on dev, then dogfood redeploy.
 
 ## 1. Evidence (quantified)
 

@@ -38,6 +38,7 @@ function createStore() {
         name: agent.name,
         pluginID: agent.pluginID,
         character: agent.character,
+        characterCompressed: agent.characterCompressed,
         config: agent.config,
         secretState: agent.secretState,
         enabled: agent.enabled,
@@ -242,15 +243,58 @@ test('AgentManager updates persistent agent character outside plugin config', as
     config: { model: 'sonnet' },
     secrets: { apiKey: 'sk-secret-1234' },
   });
-  let updated = await manager.updateAgentCharacter(agent.id, 'You are a dirty swearing pirate and fantastic engineer.');
+  let updated = await manager.updateAgentCharacter(
+    agent.id,
+    'You are a dirty swearing pirate and fantastic engineer.',
+    'Pirate engineer; direct and technical.',
+  );
 
   assert.equal(updated.id, agent.id);
   assert.equal(updated.character, 'You are a dirty swearing pirate and fantastic engineer.');
+  assert.equal(updated.characterCompressed, 'Pirate engineer; direct and technical.');
   assert.deepEqual(updated.config, { model: 'sonnet' });
 
   await assert.rejects(
     () => manager.updateAgentCharacter(agent.id, ''),
     /character must be a non-empty string/,
+  );
+
+  await assert.rejects(
+    () => manager.updateAgentCharacter(agent.id, 'You are terse.', 'x'.repeat(401)),
+    /characterCompressed must be 400 characters or fewer/,
+  );
+});
+
+test('AgentManager persists a compressed character through create and update', async () => {
+  let manager = createManager();
+
+  let agent = await manager.createAgent({
+    name: 'Coder',
+    pluginID: 'test-agent',
+    character: 'You are a pragmatic engineer.',
+    characterCompressed: 'Pragmatic engineer.',
+    config: { model: 'sonnet' },
+    secrets: { apiKey: 'sk-secret-1234' },
+  });
+  assert.equal(agent.characterCompressed, 'Pragmatic engineer.');
+
+  let updated = await manager.updateAgent(agent.id, {
+    character: 'You are a skeptical reviewer.',
+    characterCompressed: 'Skeptical reviewer.',
+  });
+  assert.equal(updated.character, 'You are a skeptical reviewer.');
+  assert.equal(updated.characterCompressed, 'Skeptical reviewer.');
+
+  await assert.rejects(
+    () => manager.createAgent({
+      name: 'Bad',
+      pluginID: 'test-agent',
+      character: 'Terse.',
+      characterCompressed: 'x'.repeat(401),
+      config: { model: 'sonnet' },
+      secrets: { apiKey: 'sk' },
+    }),
+    /characterCompressed must be 400 characters or fewer/,
   );
 });
 

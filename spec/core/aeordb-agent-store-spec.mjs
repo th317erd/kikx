@@ -100,6 +100,7 @@ test('AeorDBAgentStore persists plugin-owned agent config and sanitizes secrets'
     name: 'Coder',
     pluginID: 'test-agent',
     character: 'You are a careful engineering partner.',
+    characterCompressed: '',
     config: { model: 'sonnet' },
     secretState: {
       apiKey: { present: true, last4: '1234' },

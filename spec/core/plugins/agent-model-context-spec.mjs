@@ -10,8 +10,10 @@ import {
   frameToModelTurn,
 } from '../../../src/core/plugins/agent-model-context.mjs';
 import {
+  BRIEF_FORBIDDEN_PHRASES,
   buildMessageBrief,
   buildStartBrief,
+  findForbiddenBriefPhrase,
 } from '../../../src/core/plugins/agent-script-template.mjs';
 import {
   AGIS_PRECEPTS_LINES,
@@ -121,6 +123,45 @@ test('Brief A carries the version banner, precepts, tools, and behavior', () => 
   assert.doesNotMatch(text, /COORDINATOR PREAMBLE/);
 });
 
+test('Brief A prefers the compressed character and falls back to the full character', () => {
+  let session = {
+    id: 'ses_1',
+    participantAgentIDs: [ 'agent_1' ],
+    participantUserIDs: [ 'usr_1' ],
+    coordinatorAgentID: 'agent_1',
+  };
+
+  // Compressed value present: Brief A uses it, not the full character.
+  let compressed = buildStartBrief({
+    agent: {
+      id: 'agent_1',
+      name: 'Gemma',
+      character: 'You are terse but verbose when explaining things at length.',
+      characterCompressed: 'Terse.',
+    },
+    isCoordinator: false,
+    session,
+  }).text;
+  assert.match(compressed, /Character: Terse\./);
+  assert.doesNotMatch(compressed, /verbose when explaining/);
+
+  // Historical alias still works for pre-P6 records.
+  let aliased = buildStartBrief({
+    agent: { id: 'agent_1', name: 'Gemma', character: 'Full.', shortCharacter: 'Short.' },
+    isCoordinator: false,
+    session,
+  }).text;
+  assert.match(aliased, /Character: Short\./);
+
+  // No compressed value: fall back to the full character (back-compat).
+  let fallback = buildStartBrief({
+    agent: { id: 'agent_1', name: 'Gemma', character: 'You are terse.' },
+    isCoordinator: false,
+    session,
+  }).text;
+  assert.match(fallback, /Character: You are terse\./);
+});
+
 test('Brief A includes the coordinator preamble only for the coordinator with 3+ parties', () => {
   let multiparty = {
     agent: { id: 'agent_1', name: 'Kikx' },
@@ -209,6 +250,69 @@ test('buildModelMessages assembles system, Brief A (once), history (sans trigger
   assert.match(messages.at(-1).content, /newest question/);
   assert.equal(messages.filter((m) => typeof m.content === 'string' && m.content === 'newest question').length, 0);
   assert.equal(messages.filter((m) => typeof m.content === 'string' && m.content.includes('newest question')).length, 1);
+});
+
+test('buildModelMessages filters compaction levels by the available context window', () => {
+  let compactionFrame = {
+    id: 'cmp_1',
+    type: 'CompactionFrame',
+    hidden: true,
+    content: {
+      kind: 'compaction_frame',
+      status: 'complete',
+      summary: '[high]\nkeep /tmp/project\n[medium]\nrationale\n[low]\nchatter',
+      summaryJSON: {
+        high: [ 'keep /tmp/project' ],
+        medium: [ 'rationale' ],
+        low: [ 'chatter' ],
+        unstructured: false,
+      },
+    },
+  };
+  let base = {
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' },
+    frame: { id: 'trigger', type: 'UserMessage', authorType: 'user', content: { text: 'next' } },
+    frames: [ compactionFrame, { id: 'trigger', type: 'UserMessage', content: { text: 'next' } } ],
+  };
+
+  // Small window (explicit params.contextWindow): [low] and [medium] dropped.
+  let small = buildModelMessages({ ...base, contextWindow: 8192 });
+  let smallMemory = small.find((message) => typeof message.content === 'string' && message.content.includes('Compacted context memory'));
+  assert.match(smallMemory.content, /keep \/tmp\/project/);
+  assert.doesNotMatch(smallMemory.content, /rationale/);
+  assert.doesNotMatch(smallMemory.content, /chatter/);
+
+  // Window via config.contextWindowTokens works too.
+  let fromConfig = buildModelMessages({ ...base, config: { contextWindowTokens: 8192 } });
+  let configMemory = fromConfig.find((message) => typeof message.content === 'string' && message.content.includes('Compacted context memory'));
+  assert.doesNotMatch(configMemory.content, /chatter/);
+
+  // Large window: unchanged in meaning (all levels present).
+  let large = buildModelMessages({ ...base, contextWindow: 200000 });
+  let largeMemory = large.find((message) => typeof message.content === 'string' && message.content.includes('Compacted context memory'));
+  assert.match(largeMemory.content, /keep \/tmp\/project/);
+  assert.match(largeMemory.content, /rationale/);
+  assert.match(largeMemory.content, /chatter/);
+});
+
+test('buildModelMessages projects an unknown-window compaction summary unfiltered', () => {
+  let messages = buildModelMessages({
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' },
+    frame: { id: 'trigger', type: 'UserMessage', authorType: 'user', content: { text: 'next' } },
+    frames: [{
+      id: 'cmp_1',
+      type: 'CompactionFrame',
+      hidden: true,
+      content: {
+        kind: 'compaction_frame',
+        summaryJSON: { high: [ 'keep' ], medium: [ 'maybe' ], low: [ 'drop' ], unstructured: false },
+      },
+    }, { id: 'trigger', type: 'UserMessage', content: { text: 'next' } }],
+  });
+  let memory = messages.find((message) => typeof message.content === 'string' && message.content.includes('Compacted context memory'));
+  assert.match(memory.content, /drop/);
 });
 
 test('buildModelMessages uses the triggering frame text when no prompt is supplied', () => {
@@ -317,4 +421,51 @@ test('AgentInterface exposes the shared projection', () => {
     AgentInterface.buildModelMessages(makeParams()),
     buildModelMessages(makeParams()),
   );
+});
+
+test('the assembled two-tier brief never feeds token usage to the model (P8.1)', () => {
+  let messages = buildModelMessages({
+    prompt: 'How are you?',
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' },
+    frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'How are you?' } },
+    frames: [],
+    tokenUsage: { 'openai/chatgpt/codex-agent': { tokensUsed: 42 } },
+    totalTokensUsed: 42,
+  });
+
+  let assembled = messages.map((message) => message.content).join('\n');
+  assert.doesNotMatch(assembled, /token\s*usage/i);
+  assert.doesNotMatch(assembled, /tokenUsage/i);
+  assert.doesNotMatch(assembled, /totalTokensUsed/i);
+  assert.doesNotMatch(assembled, /\b42\b/);
+});
+
+test('the built briefs reject stop-inducing and FOMO language (P8.3)', () => {
+  assert.ok(BRIEF_FORBIDDEN_PHRASES.includes('stop'));
+  assert.ok(BRIEF_FORBIDDEN_PHRASES.includes('fear of missing out'));
+
+  let session = {
+    id: 'ses_1',
+    participantAgentIDs: [ 'agent_1', 'agent_2' ],
+    participantUserIDs: [ 'usr_1' ],
+    coordinatorAgentID: 'agent_1',
+  };
+  let startBrief = buildStartBrief({
+    agent: { id: 'agent_1', name: 'Kikx' },
+    isCoordinator: true,
+    session,
+  }).text;
+  let messageBrief = buildMessageBrief({
+    frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'go' } },
+    agent: { id: 'agent_1' },
+    isCoordinator: true,
+    session,
+  }).text;
+
+  for (let brief of [ startBrief, messageBrief ])
+    assert.equal(findForbiddenBriefPhrase(brief), null, `no forbidden phrase in brief: ${findForbiddenBriefPhrase(brief)}`);
+
+  // The detector itself is meaningful: it flags a planted phrase.
+  assert.equal(findForbiddenBriefPhrase('We must avoid fear of missing out.'), 'fear of missing out');
 });

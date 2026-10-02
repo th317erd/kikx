@@ -1,6 +1,7 @@
 'use strict';
 
 import { httpError } from '../http-helpers.mjs';
+import { MAX_CHARACTER_COMPRESSED_LENGTH } from '../../core/agents/character-limits.mjs';
 
 export function validateAgentBody(body, options = {}) {
   if (options.creating && (!body.name || typeof body.name !== 'string' || body.name.trim() === ''))
@@ -17,6 +18,12 @@ export function validateAgentBody(body, options = {}) {
 
   if (body.character != null && typeof body.character !== 'string')
     throw httpError(400, 'character must be a string');
+
+  if (body.characterCompressed != null && typeof body.characterCompressed !== 'string')
+    throw httpError(400, 'characterCompressed must be a string');
+
+  if (typeof body.characterCompressed === 'string' && body.characterCompressed.trim().length > MAX_CHARACTER_COMPRESSED_LENGTH)
+    throw httpError(400, `characterCompressed must be ${MAX_CHARACTER_COMPRESSED_LENGTH} characters or fewer`);
 
   if (body.config != null && (typeof body.config !== 'object' || Array.isArray(body.config)))
     throw httpError(400, 'config must be an object');

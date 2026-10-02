@@ -4,6 +4,10 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
 import { HybridLogicalClock } from '../clock/hybrid-logical-clock.mjs';
+import {
+  CHARACTER_COMPRESSED_FIELD,
+  MAX_CHARACTER_COMPRESSED_LENGTH,
+} from '../agents/character-limits.mjs';
 
 const DEFAULT_ROOT_PATH = '/kikx';
 // The master-agent list is exactly the most-recently-crowned three. Crowning a
@@ -43,6 +47,7 @@ export class AeorDBAgentStore {
       name: input.name,
       pluginID: input.pluginID,
       character: input.character || '',
+      [CHARACTER_COMPRESSED_FIELD]: input[CHARACTER_COMPRESSED_FIELD] || '',
       config: input.config || {},
       secrets: input.secrets || {},
       enabled: input.enabled !== false,
@@ -230,6 +235,7 @@ export class AeorDBAgentStore {
       name: input.name ?? agent.name,
       pluginID: input.pluginID ?? agent.pluginID,
       character: input.character ?? agent.character ?? '',
+      [CHARACTER_COMPRESSED_FIELD]: input[CHARACTER_COMPRESSED_FIELD] ?? agent[CHARACTER_COMPRESSED_FIELD] ?? '',
       config: input.config ?? agent.config ?? {},
       secrets: mergeSecrets(agent.secrets, input.secrets, input.clearSecrets),
       enabled: input.enabled ?? agent.enabled,
@@ -420,6 +426,7 @@ export function sanitizeAgent(agent) {
     name: agent.name,
     pluginID: agent.pluginID,
     character: normalizeOptionalString(agent.character, 'character'),
+    [CHARACTER_COMPRESSED_FIELD]: normalizeCompressedCharacter(agent[CHARACTER_COMPRESSED_FIELD]),
     config: isPlainObject(agent.config) ? { ...agent.config } : {},
     secretState: secretState(agent.secrets),
     enabled: agent.enabled !== false,
@@ -436,6 +443,7 @@ function normalizeAgent(agent) {
     name: normalizeRequiredString(agent.name, 'name'),
     pluginID: normalizeRequiredString(agent.pluginID, 'pluginID'),
     character: normalizeOptionalString(agent.character, 'character'),
+    [CHARACTER_COMPRESSED_FIELD]: normalizeCompressedCharacter(agent[CHARACTER_COMPRESSED_FIELD]),
     config: normalizePlainObject(agent.config, 'config'),
     secrets: normalizePlainObject(agent.secrets, 'secrets'),
     enabled: agent.enabled !== false,
@@ -495,6 +503,19 @@ function normalizeOptionalString(value, fieldName) {
     throw new TypeError(`${fieldName} must be a string`);
 
   return value.trim();
+}
+
+// Optional at the storage boundary (pre-P6 records load fine), but bounded when
+// present. The self-service tool enforces a non-empty value at its own boundary.
+function normalizeCompressedCharacter(value) {
+  let normalized = normalizeOptionalString(value, CHARACTER_COMPRESSED_FIELD);
+  if (normalized === '')
+    return '';
+
+  if (normalized.length > MAX_CHARACTER_COMPRESSED_LENGTH)
+    throw new TypeError(`${CHARACTER_COMPRESSED_FIELD} must be ${MAX_CHARACTER_COMPRESSED_LENGTH} characters or fewer`);
+
+  return normalized;
 }
 
 function normalizePlainObject(value, fieldName) {

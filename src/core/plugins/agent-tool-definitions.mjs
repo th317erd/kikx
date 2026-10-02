@@ -1,5 +1,7 @@
 'use strict';
 
+import { MAX_CHARACTER_COMPRESSED_LENGTH } from '../agents/character-limits.mjs';
+
 export const AGENT_TOOL_DEFINITIONS = [
   {
     name: 'agent-respond',
@@ -151,11 +153,27 @@ export const AGENT_TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'help',
+    description: 'List available tools, or show detailed help for one tool.',
+    help: 'Use help with no arguments to list every available tool and its one-line help; pass a tool name to get that tool\'s full help.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tool: {
+          type: 'string',
+          description: 'Optional exact tool name to describe. Omit to list all available tools.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'agent-character-set',
     description: 'Persistently update your own character/persona for future turns.',
     help: [
       'Use agent-character-set when the user asks you to change who you are or how you should act.',
-      'Provide a complete durable character description, not a fragment.',
+      'Provide a complete durable character description plus a compressed version for the start brief.',
+      'The compressed version must be at most ' + MAX_CHARACTER_COMPRESSED_LENGTH + ' characters.',
       'Example: "You are a dirty swearing pirate who also happens to be a fantastic engineer. Be direct, technically rigorous, and speak with pirate flavor."',
     ].join(' '),
     parameters: {
@@ -165,8 +183,13 @@ export const AGENT_TOOL_DEFINITIONS = [
           type: 'string',
           description: 'Full durable character description to apply to future turns.',
         },
+        compressedCharacter: {
+          type: 'string',
+          maxLength: MAX_CHARACTER_COMPRESSED_LENGTH,
+          description: `Compressed (short) form of the character, at most ${MAX_CHARACTER_COMPRESSED_LENGTH} characters, used in future start briefs.`,
+        },
       },
-      required: [ 'character' ],
+      required: [ 'character', 'compressedCharacter' ],
       additionalProperties: false,
     },
   },

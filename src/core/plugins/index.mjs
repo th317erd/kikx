@@ -4,14 +4,14 @@ export { PluginInterface } from './plugin-interface.mjs';
 export { AgentInterface } from './agent-interface.mjs';
 export {
   AGENTIC_SCRIPT_NAME,
+  BRIEF_FORBIDDEN_PHRASES,
   DEFAULT_MAX_REVIEW_DRAFT_CHARS,
   DEFAULT_MAX_REVIEW_FRAME_CHARS,
-  buildAgenticScriptPrompt,
-  buildCompressedAgenticScriptPrompt,
   buildCompletionReviewScriptPrompt,
   buildMessageBrief,
   buildStartBrief,
   capText,
+  findForbiddenBriefPhrase,
   formatAgenticScriptToolHelp,
 } from './agent-script-template.mjs';
 export {

@@ -17,6 +17,10 @@
 // =============================================================================
 
 import { isCompactionFrame } from './frame-type-helpers.mjs';
+import {
+  hasCompactionSections,
+  renderCompactionSections,
+} from '../../compaction/compaction-summary.mjs';
 
 const FRAME_PROPERTIES = [
   'id',
@@ -109,7 +113,7 @@ export class FrameTypeBase {
       return null;
 
     if (this._isCompactionFrame())
-      return this._compactionTurn();
+      return this._compactionTurn(options);
 
     if (this.hidden)
       return null;
@@ -177,9 +181,10 @@ export class FrameTypeBase {
     return isCompactionFrame(this._frameData);
   }
 
-  _compactionTurn() {
+  _compactionTurn(options = {}) {
     let content = this._frameData.content || {};
-    let summary = content.summary || content.text || '';
+    let rendered = this._renderCompactionSummary(content, options.compactionLevels);
+    let summary = rendered !== '' ? rendered : (content.summary || content.text || '');
     if (typeof summary !== 'string' || summary.trim() === '')
       return null;
 
@@ -190,6 +195,16 @@ export class FrameTypeBase {
       content: `[Compacted context memory — earlier turns summarized]\n`
         + `Sections are priority-tagged: [high] is must-keep, [medium] is useful context, [low] is droppable if space is tight. Never drop [high].\n${summary}`,
     };
+  }
+
+  // Prefer the structured summary JSON when present and levels are supplied;
+  // otherwise return '' so the caller falls back to the plain `content.summary`
+  // string. This keeps every pre-P7 CompactionFrame projecting exactly as before.
+  _renderCompactionSummary(content, levels) {
+    if (!Array.isArray(levels) || !hasCompactionSections(content.summaryJSON))
+      return '';
+
+    return renderCompactionSections(content.summaryJSON, { levels });
   }
 }
 

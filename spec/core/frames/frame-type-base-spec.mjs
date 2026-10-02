@@ -110,6 +110,57 @@ test('CommandResult and CompactionFrame project to their expected turns', () => 
   assert.equal(compaction.isHidden(), true);
 });
 
+test('CompactionFrame projection filters summaryJSON levels by compactionLevels', () => {
+  let raw = {
+    id: 'cmp_filtered',
+    type: 'CompactionFrame',
+    hidden: true,
+    content: {
+      kind: 'compaction_frame',
+      status: 'complete',
+      summary: '[high]\nkeep /tmp/project\n[medium]\nrationale\n[low]\nchatter',
+      summaryJSON: {
+        high: [ 'keep /tmp/project' ],
+        medium: [ 'rationale' ],
+        low: [ 'chatter' ],
+        unstructured: false,
+      },
+    },
+  };
+
+  // Small window: only [high] survives.
+  let small = createTypedFrame(raw).toAgentMessage({ compactionLevels: [ 'high' ] });
+  assert.match(small.content, /keep \/tmp\/project/);
+  assert.doesNotMatch(small.content, /rationale/);
+  assert.doesNotMatch(small.content, /chatter/);
+
+  // Medium window: [high] and [medium].
+  let medium = createTypedFrame(raw).toAgentMessage({ compactionLevels: [ 'high', 'medium' ] });
+  assert.match(medium.content, /rationale/);
+  assert.doesNotMatch(medium.content, /chatter/);
+
+  // Large window: everything, unchanged in meaning.
+  let large = createTypedFrame(raw).toAgentMessage({ compactionLevels: [ 'high', 'medium', 'low' ] });
+  assert.match(large.content, /keep \/tmp\/project/);
+  assert.match(large.content, /rationale/);
+  assert.match(large.content, /chatter/);
+});
+
+test('CompactionFrame projection ignores compactionLevels without summaryJSON', () => {
+  // Back-compat: a pre-P7 frame with only the summary string projects verbatim.
+  let raw = {
+    id: 'cmp_legacy',
+    type: 'CompactionFrame',
+    hidden: true,
+    content: { kind: 'compaction_frame', summary: '[high]\nlegacy memory\n[low]\nnoise' },
+  };
+  let turn = createTypedFrame(raw).toAgentMessage({ compactionLevels: [ 'high' ] });
+  assert.match(turn.content, /\[high\]/);
+  assert.match(turn.content, /legacy memory/);
+  // The string is re-projected as-is; filtering only applies to structured JSON.
+  assert.match(turn.content, /noise/);
+});
+
 test('base projection drops deleted, hidden, empty, and unknown frames', () => {
   assert.equal(createTypedFrame({ type: 'UserMessage', deleted: true, content: { text: 'x' } }).toAgentMessage(), null);
   assert.equal(createTypedFrame({ type: 'UserMessage', hidden: true, content: { text: 'x' } }).toAgentMessage(), null);

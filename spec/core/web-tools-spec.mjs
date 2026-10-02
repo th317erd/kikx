@@ -2502,6 +2502,7 @@ test('Agent tools create and edit agents through the agent manager', async () =>
     name: 'Scout',
     pluginID: 'ollama-agent',
     character: 'Curious.',
+    compressedCharacter: 'Curious scout.',
     config: { model: 'llama3' },
     secrets: { apiKey: 'secret-value' },
   });
@@ -2510,6 +2511,7 @@ test('Agent tools create and edit agents through the agent manager', async () =>
   assert.equal(made.agent.name, 'Scout');
   assert.equal(made.agent.pluginID, 'ollama-agent');
   assert.equal(made.agent.character, 'Curious.');
+  assert.equal(createdInput.characterCompressed, 'Curious scout.');
   assert.equal(made.agent.config.model, 'llama3');
   assert.equal(made.agent.enabled, true);
   assert.equal('secrets' in made.agent, false);
@@ -2519,12 +2521,23 @@ test('Agent tools create and edit agents through the agent manager', async () =>
   let edited = await new AgentUpdateTool(context).execute({
     agent: 'Iron-Hand',
     character: 'Friendlier.',
+    compressedCharacter: 'Friendly.',
     enabled: false,
   });
   assert.equal(edited.updated, true);
   assert.equal(edited.agent.id, 'agent_1');
   assert.equal(edited.agent.character, 'Friendlier.');
+  assert.equal(edited.agent.characterCompressed, 'Friendly.');
   assert.equal(edited.agent.enabled, false);
+
+  await assert.rejects(
+    () => new AgentCreateTool(context).execute({
+      name: 'Bad',
+      pluginID: 'ollama-agent',
+      compressedCharacter: 'x'.repeat(401),
+    }),
+    /characterCompressed must be 400 characters or fewer/,
+  );
 
   await assert.rejects(
     () => new AgentCreateTool(context).execute({ name: 'Bad', pluginID: 'nope' }),

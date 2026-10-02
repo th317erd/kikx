@@ -22,6 +22,10 @@ import {
   sessionGeneration,
 } from './agent-normalizers.mjs';
 import { recordForward } from './agent-loop-state.mjs';
+import {
+  CHARACTER_COMPRESSED_FIELD,
+  MAX_CHARACTER_COMPRESSED_LENGTH,
+} from '../agents/character-limits.mjs';
 
 export function createLoopToolDefinitions(context = {}) {
   let loopDefinitions = AGENT_TOOL_DEFINITIONS
@@ -75,6 +79,7 @@ export function createLoopTools(state, context) {
   };
   let progress = async (content) => await recordAgentProgress(content, context);
   let setCharacter = async (input) => await setAgentCharacter(input, context);
+  let help = (input) => formatToolHelp(input, context);
 
   let tools = {
     'agent-respond': respond,
@@ -83,6 +88,7 @@ export function createLoopTools(state, context) {
     'loop-break': breakLoop,
     'agent-progress': progress,
     'agent-character-set': setCharacter,
+    'help': help,
   };
 
   if (shouldExposeLoopTool('agent-null-response', context))
@@ -283,8 +289,74 @@ export async function dispatchForwards(context, state) {
   }
 }
 
+// `help` tool: list every exposed tool with its one-line help, or return the
+// full help/description/parameters for a single named tool. Builds the list from
+// the same definitions the model received, so help can never drift from the
+// actual tool set (including plugin-registered tools).
+export function formatToolHelp(input = {}, context = {}) {
+  let definitions = createLoopToolDefinitions(context);
+  let requestedTool = readToolString(input, [ 'tool', 'toolName', 'name' ]).trim();
+
+  if (requestedTool) {
+    let match = definitions.find((definition) => definition.name === requestedTool);
+    if (!match) {
+      let names = definitions.map((definition) => definition.name).sort();
+      return {
+        type: 'ToolResult',
+        action: 'help',
+        content: {
+          tool: requestedTool,
+          found: false,
+          message: `Unknown tool: ${requestedTool}. Available tools: ${names.join(', ')}`,
+        },
+      };
+    }
+
+    return {
+      type: 'ToolResult',
+      action: 'help',
+      content: {
+        tool: match.name,
+        found: true,
+        description: match.description || '',
+        help: match.help || match.description || '',
+        parameters: cloneJSON(match.parameters || {}),
+      },
+    };
+  }
+
+  let tools = definitions.map((definition) => ({
+    name: definition.name,
+    help: definition.help || definition.description || '',
+  })).sort((left, right) => left.name.localeCompare(right.name));
+  let text = tools.map((tool) => `- ${tool.name}: ${tool.help}`).join('\n');
+
+  return {
+    type: 'ToolResult',
+    action: 'help',
+    content: {
+      tools,
+      text,
+    },
+  };
+}
+
 export async function setAgentCharacter(input, context = {}) {
   let character = normalizeRequiredToolString(readToolString(input, [ 'character', 'description', 'text' ]), 'character');
+  let compressedCharacter = normalizeRequiredToolString(
+    readToolString(input, [
+      'compressedCharacter',
+      'compressedVersion',
+      'shortVersion',
+      'compressed',
+      'characterShort',
+      'shortCharacter',
+    ]),
+    'compressedCharacter',
+  );
+  if (compressedCharacter.length > MAX_CHARACTER_COMPRESSED_LENGTH)
+    throw new TypeError(`compressedCharacter must be ${MAX_CHARACTER_COMPRESSED_LENGTH} characters or fewer`);
+
   let agentID = normalizeRequiredToolString(context.agent?.id, 'agent.id');
   let agentManager = resolveService(context.services, 'agentManager');
   if (!agentManager)
@@ -292,15 +364,20 @@ export async function setAgentCharacter(input, context = {}) {
 
   let updated;
   if (typeof agentManager.updateAgentCharacter === 'function') {
-    updated = await agentManager.updateAgentCharacter(agentID, character);
+    updated = await agentManager.updateAgentCharacter(agentID, character, compressedCharacter);
   } else if (typeof agentManager.updateAgent === 'function') {
-    updated = await agentManager.updateAgent(agentID, { character });
+    updated = await agentManager.updateAgent(agentID, {
+      character,
+      [CHARACTER_COMPRESSED_FIELD]: compressedCharacter,
+    });
   } else {
     throw new Error('agent-character-set requires agentManager.updateAgentCharacter()');
   }
 
-  if (context.agent)
+  if (context.agent) {
     context.agent.character = updated?.character || character;
+    context.agent[CHARACTER_COMPRESSED_FIELD] = updated?.[CHARACTER_COMPRESSED_FIELD] || compressedCharacter;
+  }
 
   return {
     type: 'ToolResult',
@@ -308,6 +385,7 @@ export async function setAgentCharacter(input, context = {}) {
     content: {
       agentID,
       character: updated?.character || character,
+      [CHARACTER_COMPRESSED_FIELD]: updated?.[CHARACTER_COMPRESSED_FIELD] || compressedCharacter,
     },
   };
 }

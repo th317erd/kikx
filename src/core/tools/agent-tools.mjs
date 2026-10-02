@@ -2,6 +2,10 @@
 
 import { PluginInterface } from '../plugins/index.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
+import {
+  CHARACTER_COMPRESSED_FIELD,
+  MAX_CHARACTER_COMPRESSED_LENGTH,
+} from '../agents/character-limits.mjs';
 
 class AgentTool extends PluginInterface {
   static pluginID = 'internal:agents';
@@ -72,6 +76,11 @@ export class AgentCreateTool extends AgentTool {
         type: 'string',
         description: 'Optional durable persona/character prompt for the agent.',
       },
+      compressedCharacter: {
+        type: 'string',
+        maxLength: MAX_CHARACTER_COMPRESSED_LENGTH,
+        description: `Optional compressed (short) form of the character, at most ${MAX_CHARACTER_COMPRESSED_LENGTH} characters, used in start briefs.`,
+      },
       config: {
         type: 'object',
         description: 'Optional non-secret provider config (for example model, baseURL).',
@@ -101,6 +110,9 @@ export class AgentCreateTool extends AgentTool {
       name,
       pluginID,
       character: params.character === undefined ? '' : normalizeOptionalString(params.character),
+      [CHARACTER_COMPRESSED_FIELD]: params.compressedCharacter === undefined
+        ? ''
+        : normalizeCompressedCharacter(params.compressedCharacter),
       config: normalizeOptionalObject(params.config, 'config'),
       secrets: normalizeOptionalObject(params.secrets, 'secrets'),
       enabled: params.enabled === undefined ? true : params.enabled === true,
@@ -132,6 +144,11 @@ export class AgentUpdateTool extends AgentTool {
       character: {
         type: 'string',
         description: 'New persona/character prompt. An empty string clears it.',
+      },
+      compressedCharacter: {
+        type: 'string',
+        maxLength: MAX_CHARACTER_COMPRESSED_LENGTH,
+        description: `New compressed (short) character used in start briefs, at most ${MAX_CHARACTER_COMPRESSED_LENGTH} characters. An empty string clears it.`,
       },
       pluginID: {
         type: 'string',
@@ -176,6 +193,9 @@ export class AgentUpdateTool extends AgentTool {
     if (params.character !== undefined)
       patch.character = normalizeOptionalString(params.character);
 
+    if (params.compressedCharacter !== undefined)
+      patch[CHARACTER_COMPRESSED_FIELD] = normalizeCompressedCharacter(params.compressedCharacter);
+
     if (params.pluginID !== undefined) {
       let pluginID = normalizeRequiredString(params.pluginID, 'pluginID');
       await this.assertKnownProvider(pluginID);
@@ -211,6 +231,7 @@ function sanitizeAgent(agent = {}) {
     name: agent.name || agent.id || '',
     pluginID: agent.pluginID || null,
     character: typeof agent.character === 'string' ? agent.character : '',
+    [CHARACTER_COMPRESSED_FIELD]: typeof agent[CHARACTER_COMPRESSED_FIELD] === 'string' ? agent[CHARACTER_COMPRESSED_FIELD] : '',
     config: isPlainObject(agent.config) ? { ...agent.config } : {},
     secretState: agent.secretState || null,
     enabled: agent.enabled !== false,
@@ -259,6 +280,16 @@ function normalizeRequiredString(value, fieldName) {
 
 function normalizeOptionalString(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+// Optional at the tool boundary (create/edit may legitimately omit it), but
+// bounded when supplied (D2).
+function normalizeCompressedCharacter(value) {
+  let normalized = normalizeOptionalString(value);
+  if (normalized.length > MAX_CHARACTER_COMPRESSED_LENGTH)
+    throw new TypeError(`${CHARACTER_COMPRESSED_FIELD} must be ${MAX_CHARACTER_COMPRESSED_LENGTH} characters or fewer`);
+
+  return normalized;
 }
 
 function sessionGeneration(session) {

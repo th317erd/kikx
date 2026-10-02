@@ -1,6 +1,10 @@
 'use strict';
 
 import { AeorDBAgentStore } from '../aeordb/aeordb-agent-store.mjs';
+import {
+  CHARACTER_COMPRESSED_FIELD,
+  MAX_CHARACTER_COMPRESSED_LENGTH,
+} from './character-limits.mjs';
 
 export class AgentManager {
   constructor(options = {}) {
@@ -92,10 +96,19 @@ export class AgentManager {
     return await this.agentStore.updateAgent(agentID, normalized);
   }
 
-  async updateAgentCharacter(agentID, character) {
-    return await this.updateAgent(agentID, {
+  async updateAgentCharacter(agentID, character, characterCompressed) {
+    let patch = {
       character: normalizeRequiredString(character, 'character'),
-    });
+    };
+
+    if (characterCompressed !== undefined) {
+      patch[CHARACTER_COMPRESSED_FIELD] = normalizeCompressedCharacter(
+        characterCompressed,
+        CHARACTER_COMPRESSED_FIELD,
+      );
+    }
+
+    return await this.updateAgent(agentID, patch);
   }
 
   async setAgentCrowned(agentID, crowned = true) {
@@ -156,6 +169,10 @@ export class AgentManager {
     let character = hasCharacter
       ? normalizeOptionalString(input.character, 'character')
       : (options.creating ? '' : undefined);
+    let hasCompressed = Object.hasOwn(input, CHARACTER_COMPRESSED_FIELD);
+    let characterCompressed = hasCompressed
+      ? normalizeCompressedCharacter(input[CHARACTER_COMPRESSED_FIELD], CHARACTER_COMPRESSED_FIELD)
+      : (options.creating ? '' : undefined);
 
     for (let key of Object.keys(config || {})) {
       if (!configFields.has(key))
@@ -198,6 +215,7 @@ export class AgentManager {
       name: input.name,
       pluginID: input.pluginID,
       character,
+      [CHARACTER_COMPRESSED_FIELD]: characterCompressed,
       config,
       secrets,
       clearSecrets: input.clearSecrets,
@@ -243,6 +261,20 @@ function normalizeRequiredString(value, fieldName) {
   let normalized = normalizeOptionalString(value, fieldName);
   if (normalized === '')
     throw badRequest(`${fieldName} must be a non-empty string`);
+
+  return normalized;
+}
+
+// The compressed character is required by the self-service tool but optional at
+// this storage boundary, so pre-P6 records without one keep loading. When a
+// non-empty value is supplied it must be within the limit (D2).
+function normalizeCompressedCharacter(value, fieldName) {
+  let normalized = normalizeOptionalString(value, fieldName);
+  if (normalized === '')
+    return '';
+
+  if (normalized.length > MAX_CHARACTER_COMPRESSED_LENGTH)
+    throw badRequest(`${fieldName} must be ${MAX_CHARACTER_COMPRESSED_LENGTH} characters or fewer`);
 
   return normalized;
 }

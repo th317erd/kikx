@@ -1,7 +1,6 @@
 'use strict';
 
 import {
-  buildAgenticScriptPrompt,
   buildCompletionReviewScriptPrompt,
   buildMessageBrief,
   buildStartBrief,
@@ -15,22 +14,12 @@ import {
   iterateAgentResult,
   normalizeCoordinatorAgentID,
   normalizeConfigFields,
-  normalizeOptionalPromptString,
   normalizeStringArray,
   normalizeToolResponseContent,
-  sessionGeneration,
 } from './agent-normalizers.mjs';
 import {
-  normalizeMentions,
   normalizeParticipantAgents,
 } from './agent-participants.mjs';
-import {
-  buildRoutingPromptLines,
-  buildTriggerFramePromptLines,
-  normalizeCwdPromptContext,
-  normalizeTodoPromptContext,
-  normalizeTokenUsagePromptContext,
-} from './agent-prompt-context.mjs';
 import {
   applyAvoidableDeferralGuard,
   buildLoopDoneContent,
@@ -62,9 +51,6 @@ export class AgentInterface extends PluginInterface {
   static serviceType = null;
   static configFields = [];
   static maxLoopSteps = 8;
-  // Models at or below this context window receive the super-compressed
-  // agentic-script prompt variant. Larger models keep the full prompt.
-  static compressedPromptThresholdTokens = 32768;
   // Output reserve used when deciding whether a completion self-review request
   // can fit the model window at all.
   static reviewOutputReserveTokens = 1024;
@@ -378,54 +364,13 @@ export class AgentInterface extends PluginInterface {
   }
 
   // Instance wrappers around the pure two-tier builders so tests and providers
-  // can assemble either brief directly. These are the model-facing API; the old
-  // monolith builder below is retained only for reference until P9.
+  // can assemble either brief directly. These are the model-facing API.
   buildStartBrief(context = {}) {
     return buildStartBrief(context);
   }
 
   buildMessageBrief(context = {}) {
     return buildMessageBrief(context);
-  }
-
-  buildDefaultAgentPrompt(context = {}) {
-    let frameMessage = context.frame?.content?.text || '';
-    let mentions = normalizeMentions(context.mentions || context.frame?.mentions);
-    let participantAgents = normalizeParticipantAgents(context.participantAgents || context.sessionAgents, {
-      participantAgentIDs: context.participantAgentIDs || context.session?.participantAgentIDs,
-      coordinatorAgentID: context.coordinatorAgentID || context.session?.coordinatorAgentID,
-      selfAgentID: context.agent?.id,
-    });
-    let character = normalizeOptionalPromptString(context.agent?.character || context.character);
-    let tokenUsage = normalizeTokenUsagePromptContext(context);
-    let todoState = normalizeTodoPromptContext(context.todoState || context.todoList || context.todos);
-    let cwdState = normalizeCwdPromptContext(context.cwdState || context.shellCwd || context.cwd);
-    return buildAgenticScriptPrompt({
-      frameMessage,
-      mentions,
-      participantAgents,
-      character,
-      tokenUsage,
-      todoState,
-      cwdState,
-      sessionGeneration: sessionGeneration(context.session),
-      isCoordinator: context.isCoordinator === true,
-      triggerFrameLines: buildTriggerFramePromptLines(context),
-      routingLines: buildRoutingPromptLines(context),
-      toolDefinitions: createLoopToolDefinitions(context),
-      compressed: this.shouldUseCompressedPrompt(context),
-    });
-  }
-
-  // Small-context models get the super-compressed agentic-script variant; the
-  // full prompt is kept for models with ample room. Providers can override.
-  shouldUseCompressedPrompt(context = {}) {
-    let window = this.resolveContextWindow(context);
-    let threshold = Number(this.constructor.compressedPromptThresholdTokens);
-    if (!Number.isFinite(window) || !Number.isFinite(threshold) || threshold <= 0)
-      return false;
-
-    return window <= threshold;
   }
 
   // The model's context window: from the model manifest first, then from an

@@ -4,80 +4,31 @@ In Kikx, **agentic script** means the runtime prompt script and loop contract th
 
 The exact source of truth is executable code:
 
-- `buildAgenticScriptPrompt(input)` in `src/core/plugins/agent-script-template.mjs`
-- `buildCompletionReviewScriptPrompt(input)` in `src/core/plugins/agent-script-template.mjs`
-- `AgentInterface.buildDefaultAgentPrompt(context)` in `src/core/plugins/agent-interface.mjs`
-- `AgentInterface.buildCompletionReviewPrompt(context, state)` in `src/core/plugins/agent-interface.mjs`
+- `buildStartBrief(context)` in `src/core/plugins/agent-brief-template.mjs` — **Brief A**, the start brief.
+- `buildMessageBrief(context)` in `src/core/plugins/agent-brief-template.mjs` — **Brief B**, the per-message brief.
+- `AgentInterface.buildStartBrief(context)` / `AgentInterface.buildMessageBrief(context)` in `src/core/plugins/agent-interface.mjs`.
+- `buildModelMessages(params, options)` in `src/core/plugins/agent-model-context.mjs` — the single place that decides the emitted message shape.
+- `buildCompletionReviewScriptPrompt(input)` in `src/core/plugins/agent-script-template.mjs`.
+- `AgentInterface.buildCompletionReviewPrompt(context, state)` in `src/core/plugins/agent-interface.mjs`.
 
-Do not maintain a separate hand-copied prompt as the authoritative version. The template functions are the copy that reflects exactly what the code sends.
+Do not maintain a separate hand-copied prompt as the authoritative version. The builder functions are the copy that reflects exactly what the code sends.
 
-## Main Agentic Script
+## Two-Tier Briefs
 
-`buildAgenticScriptPrompt(input)` accepts:
+The monolith per-turn prompt is gone. Agents now receive two tiers:
 
-- `frameMessage`
-- `mentions`
-- `participantAgents`
-- `character`
-- `tokenUsage`
-- `sessionGeneration`
-- `isCoordinator`
-- `triggerFrameLines`
-- `routingLines`
-- `toolDefinitions`
+- **Brief A — once per (re)start** (session start, new agent, after compaction, coordinator change): version banner, compressed character, AGIS precepts, the tool map, tool notes, behavior rules, and (coordinator-only, with 3+ parties) the coordinator preamble.
+- **Brief B — every turn and every tool round**: `Message from {sender} {timestamp}:`, the message, and compact dynamic state (todo, cwd, coordinator flag, participants).
 
-The generated script tells the agent to:
+`buildModelMessages` emits `[system] + [Brief A user turn when required] + [history…] + [Brief B user turn]`. The trigger message appears exactly once, inside Brief B. Brief A is protected from budget trimming and is not re-sent on completion review.
 
-- participate in the Kikx agentic coordination loop
-- decide whether to answer, stay silent, or use explicit forwarding for special workflows
-- treat token usage as real user cost
-- ask "Who is this message really for?" before tool use or visible response
-- pass strict speaking gates before any visible progress note or answer, with coordinators treated as default handlers for broad user messages
-- use `agent-null-response` when it should stay silent
-- presume user-authored messages are for the agent when it is the only invited agent, unless the message explicitly targets someone else
-- use explicit mentions, names, nicknames, turn-taking, and recent context to infer intended recipients
-- treat broad read-only requests such as "inspect this", "read the docs", "get familiar", "review the project", and "figure out what is going on" as permission to continue through obvious safe next steps
-- use a compact AGIS critical-thinking checklist:
-  - understand the user's intent and important uncertainty
-  - map producers, consumers, data flows, hidden dependencies, and aliases before changing shared systems
-  - consider alternatives and risks through engineer, cynic, QA, security, end-user, and minimalist perspectives
-  - test and verify before claiming done, with clear proof and sane timeouts
-  - review what was missed, forgotten, assumed, or left unverified before finalizing
-- follow a compact proper-agent-behavior standard:
-  - plan first for meaningful work
-  - create or update todos before multi-step implementation
-  - define proof of completion before acting
-  - ground concrete claims in visible context, tool output, search locators, or user-provided data
-  - avoid claiming "I implemented", "I changed", or "I updated" unless the agent's own recent tool frames prove it performed the implementation
-  - avoid claiming done until proof exists
-  - contribute from character, role, expertise, or assigned ownership
-  - avoid fear-of-missing-out replies by using `agent-null-response` when there is nothing useful to add
-- before each tool call, use `agent-progress` with a short visible note describing only the next tool action
-- run one tool at a time, inspect the result, then ask "What is the next most important thing to do?"
-- after each tool result, choose the next safe, reversible, clearly implied, or necessary verification step without asking the user for permission
-- ask the user only for unresolved important decisions, important new concerns not already addressed, destructive or risky steps, real blockers, or significant resource costs
-- finish tool work before `agent-respond` or `agent-finalize`
-- avoid finalizing with "Should I continue?" when an obvious next safe step would move the requested task forward
-- run a completion self-review before finalizing
-- use `agent-respond-and-continue` when it must report progress and resume later
-- use `session_id` on registered task tools when the visible tool call/result belongs in another session
-- use `session-message` for visible cross-session agent-authored messages
-- use `agent-list`, `session-create`, `session-invite-agents`, `session-message`, and `session-frames` for delegated sub-agent work only from first-generation/root sessions
-- when the user explicitly asks for coordination with bots, sub-agents, or groups of agents, avoid doing the whole task alone; create a child session with `includeSelf`, invite useful collaborators, seed it, monitor it, and verify the result unless delegation is impossible
-- reuse an existing child session when a continuation resumes the same delegated task; `session-create` returns `reusedExisting` for same-title child sessions under the same parent and creator
-- set `session-create.initialMessage` when creating a delegated child session, using a compact orientation handoff with the project or task name, shell/file cwd, parent-session goal, definition of done, tests/checks that prove completion, current status, important constraints, initial todo list, and first concrete assignment
-- audit project names, directories, and filenames against the current routed user message before handoff or file writes, so stale paths from previous projects do not leak into new work
-- treat negative examples such as "not X" and "do not use X" as forbidden anti-examples, not candidate names or paths to copy
-- tell delegated agents to call `cwd-set` before using relative file or exec paths, or to use absolute paths; if the project directory does not exist yet, use an existing parent workspace cwd and create the project directory beneath it
-- treat coordinator initial handoffs and explicit role assignments in delegated child sessions as actionable work
-- stay inside assignment boundaries: implementation agents implement, QA agents define/run checks, and UX agents review/suggest focused fixes instead of duplicating implementation file writes
-- avoid implementation writes from QA, UX, security, product, or coordinator roles unless the user/coordinator explicitly reassigns them to fix a specific defect
-- understand that Kikx may hide `write-file` from obvious QA, UX, product, security, reviewer, or coordinator roles until explicit write permission or reassignment is present
-- coordinate and verify instead of taking over implementation when another agent owns the implementation assignment
-- inspect recent frames or obvious tool output before writing shared project files in a multi-agent session, so agents avoid racing, overwriting, or reimplementing work already assigned to someone else
-- keep delegated child-session initial messages small and useful so sub-agents start in the right project and task context without guessing
-- avoid creating sessions or inviting agents when already working inside a delegated child session
-- use `session-search`, `output-search`, and `database-fetch` for large history or stored tool-output lookup
+Brief A and Brief B are pure builders returning `{ text }`. Providers stay ignorant of the split. Stored constants — AGIS precepts, tool notes, behavior rules, coordinator preamble and the multiparty character note — live in `src/core/plugins/agent-precepts.mjs`. Per-tool help text lives on the tool definitions in `src/core/plugins/agent-tool-definitions.mjs` and in each registered plugin tool's static `help`.
+
+The built briefs must never carry stop-inducing or FOMO language; the explicit denylist is `BRIEF_FORBIDDEN_PHRASES` in `agent-brief-template.mjs` and is checked by the brief spec.
+
+## `help` Tool
+
+Every agent turn exposes a `help` tool. With no argument it lists every available tool (including plugin-registered tools) with its one-line help; with a `tool` argument it returns that tool's full help and parameter schema. Help is derived from the same definitions the model received, so it cannot drift from the actual tool set.
 
 ## Completion Review Script
 
@@ -104,15 +55,17 @@ If a completion review emits meta-review text such as "Self-review..." instead o
 
 After completion review, Kikx also applies a deterministic deferral guard. If the final text is an avoidable permission/continuation question such as "should I continue?", "would you like me to...", or "which step should I do next?" for a visible user turn, Kikx converts the turn into an immediate `respond-and-continue` instead of stopping for another user confirmation.
 
-## Routing Script
+## Routing
 
-`AgentInterface` still builds routing-specific lines because they depend on frame state:
+Coordinator routing guidance is part of Brief A, not a separate per-turn prompt:
 
 - the coordinator is the router for all traffic and the default handler for broad, unaddressed user messages
 - the coordinator routes (rather than answers) messages intended for another actor, using the `route` tool
 - routing produces no visible message from the coordinator; routed recipients respond
 - coordinators stay silent when another agent's reply already satisfies the request
 - non-coordinators answer only when the coordinator routes the message to them
+
+The coordinator-only preamble (`COORDINATOR_PREAMBLE_LINES`) is emitted only to the assigned coordinator and only when there are 3+ parties, counting users.
 
 ## Vocabulary
 
