@@ -14,7 +14,11 @@ const DEFAULT_HARD_LIMIT_RATIO = 1;
 export class FrameContextBuilder {
   constructor(options = {}) {
     this.contextWindowTokens = normalizePositiveInteger(options.contextWindowTokens, DEFAULT_CONTEXT_WINDOW_TOKENS);
+    // Fixed overhead that must still fit after the history: system prompt, start
+    // brief, tool-schema headroom and the output reserve. Historically this was
+    // `promptReserveTokens`; it keeps that value for compatibility.
     this.promptReserveTokens = normalizeNonNegativeInteger(options.promptReserveTokens, DEFAULT_PROMPT_RESERVE_TOKENS);
+    this.baseReserveTokens = normalizeNonNegativeInteger(options.baseReserveTokens, this.promptReserveTokens);
     this.compactionTriggerRatio = normalizeRatio(options.compactionTriggerRatio, DEFAULT_COMPACTION_TRIGGER_RATIO);
     this.hardLimitRatio = normalizeRatio(options.hardLimitRatio, DEFAULT_HARD_LIMIT_RATIO);
     this.estimateTokens = typeof options.estimateTokens === 'function'
@@ -25,14 +29,27 @@ export class FrameContextBuilder {
   build(frames, options = {}) {
     let allFrames = normalizeFrameArray(frames);
     let activeFrameID = normalizeOptionalString(options.activeFrameID);
-    let contextWindowTokens = normalizePositiveInteger(options.contextWindowTokens, this.contextWindowTokens);
-    let promptReserveTokens = normalizeNonNegativeInteger(options.promptReserveTokens, this.promptReserveTokens);
+    // R1: the trigger follows the SMALLEST bot in the session. Callers pass
+    // `agentContextWindowTokens`; otherwise the legacy global window is used.
+    let contextWindowTokens = normalizePositiveInteger(
+      options.agentContextWindowTokens,
+      normalizePositiveInteger(options.contextWindowTokens, this.contextWindowTokens),
+    );
+    // The compactor budget sizes the request; the trigger reserve is the fixed
+    // overhead the consuming request must still fit.
+    let baseReserveTokens = normalizeNonNegativeInteger(
+      options.baseReserveTokens,
+      normalizeNonNegativeInteger(options.promptReserveTokens, this.baseReserveTokens),
+    );
     let triggerRatio = normalizeRatio(options.compactionTriggerRatio, this.compactionTriggerRatio);
     let hardLimitRatio = normalizeRatio(options.hardLimitRatio, this.hardLimitRatio);
-    let availableTokens = Math.max(1, contextWindowTokens - promptReserveTokens);
+    let hardLimit = Math.max(1, contextWindowTokens - baseReserveTokens);
+    // R2: count EVERYTHING that must fit, not just history. `usageOverheadTokens`
+    // is the caller's estimate of system + start brief + current message + tools.
+    let usageOverheadTokens = normalizeNonNegativeInteger(options.usageOverheadTokens, 0);
     let latestCompaction = findLatestCompletedCompaction(allFrames);
     let contextFrames = buildContextFramesAfterCompaction(allFrames, latestCompaction);
-    let contextTokens = this.countFrameTokens(contextFrames);
+    let contextTokens = this.countFrameTokens(contextFrames) + usageOverheadTokens;
     let activeIndex = activeFrameID
       ? allFrames.findIndex((frame) => frame.id === activeFrameID)
       : allFrames.length;
@@ -40,7 +57,7 @@ export class FrameContextBuilder {
       frames: allFrames,
       latestCompaction,
       activeIndex,
-      tokenBudget: normalizePositiveInteger(options.compactionContextBudgetTokens, availableTokens),
+      tokenBudget: normalizePositiveInteger(options.compactionContextBudgetTokens, hardLimit),
       estimateTokens: this.estimateTokens,
     });
 
@@ -49,10 +66,12 @@ export class FrameContextBuilder {
       allFrames,
       latestCompaction,
       contextTokens,
-      availableTokens,
-      usageRatio: contextTokens / availableTokens,
-      shouldCompact: contextTokens >= Math.floor(availableTokens * triggerRatio) && compactionWindow.frames.length > 0,
-      shouldWaitForCompaction: contextTokens >= Math.floor(availableTokens * hardLimitRatio) && compactionWindow.frames.length > 0,
+      availableTokens: hardLimit,
+      hardLimit,
+      usageOverheadTokens,
+      usageRatio: contextTokens / hardLimit,
+      shouldCompact: contextTokens >= Math.floor(hardLimit * triggerRatio) && compactionWindow.frames.length > 0,
+      shouldWaitForCompaction: contextTokens >= Math.floor(hardLimit * hardLimitRatio) && compactionWindow.frames.length > 0,
       compactionWindow,
     };
   }

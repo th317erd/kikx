@@ -95,7 +95,7 @@ test('CompactionService runs one-shot compaction and stores a hidden CompactionF
           name: 'Compactor',
           pluginID: 'compactor',
           secrets: {},
-          config: {},
+          config: { contextWindowTokens: 20 },
           enabled: true,
         };
       },
@@ -174,7 +174,7 @@ test('CompactionService builds compaction windows from stitched FrameManager mes
           name: 'Compactor',
           pluginID: 'compactor',
           secrets: {},
-          config: {},
+          config: { contextWindowTokens: 20 },
           enabled: true,
         };
       },
@@ -208,7 +208,7 @@ test('CompactionService builds compaction windows from stitched FrameManager mes
   assert.deepEqual(services.calls[0].frameIDs, [ 'msg_1', 'agent_1' ]);
 });
 
-test('CompactionService prefers the current agent before alternate participants when no compactor is configured', async () => {
+test('CompactionService selects the largest-window participant when no compactor is designated', async () => {
   let pluginRegistry = new PluginRegistry();
   pluginRegistry.registerAgentProvider('secret-checking-compactor', SecretCheckingCompactorProvider);
   let frameEngine = new FrameEngine({
@@ -230,7 +230,10 @@ test('CompactionService prefers the current agent before alternate participants 
           name: agentID,
           pluginID: 'secret-checking-compactor',
           secrets: agentID === 'current_agent' ? { apiKey: 'secret' } : {},
-          config: { model: 'test-model' },
+          config: {
+            model: 'test-model',
+            contextWindowTokens: agentID === 'current_agent' ? 200000 : 100000,
+          },
           enabled: true,
         };
       },
@@ -259,7 +262,7 @@ test('CompactionService prefers the current agent before alternate participants 
     services,
   });
 
-  assert.deepEqual(requestedAgentIDs, [ 'current_agent' ]);
+  assert.equal(requestedAgentIDs.at(-1), 'current_agent');
   assert.equal(frame.content.compactorAgentID, 'current_agent');
   assert.match(frame.content.summary, /current agent secret/);
   assert.deepEqual(services.calls, [{
@@ -345,7 +348,7 @@ test('CompactionService waits at hard context limit and returns rebuilt compacte
           name: 'Compactor',
           pluginID: 'deferred-compactor',
           secrets: {},
-          config: {},
+          config: { contextWindowTokens: 11 },
           enabled: true,
         };
       },
@@ -438,6 +441,52 @@ test('CompactionService manual compaction creates a visible running frame and up
   assert.equal(completedFrame.hidden, false);
   assert.match(completedFrame.content.summary, /deferred compacted summary/);
   assert.deepEqual(events.map((event) => event.type), [ 'compaction.started', 'compaction.completed' ]);
+});
+
+test('CompactionService triggers off the smallest participant window resolved from agents', async () => {
+  let pluginRegistry = new PluginRegistry();
+  pluginRegistry.registerAgentProvider('compactor', CompactorProvider);
+  let frameEngine = new FrameEngine({
+    clock: createClock(),
+    idGenerator: createIDs([ 'commit_1', 'compaction_frame_1', 'commit_2' ]),
+  });
+  frameEngine.merge([
+    userFrame('msg_1', 'older', 1),
+    userFrame('msg_2', 'older still', 2),
+    userFrame('msg_3', 'active request', 3),
+  ], { silent: true });
+  let agents = new Map([
+    [ 'small', { id: 'small', name: 'Small', pluginID: 'compactor', secrets: {}, config: { contextWindowTokens: 100 }, enabled: true } ],
+    [ 'large', { id: 'large', name: 'Large', pluginID: 'compactor', secrets: {}, config: { contextWindowTokens: 1000 }, enabled: true } ],
+  ]);
+  let service = new CompactionService({
+    pluginRegistry,
+    agentManager: {
+      async getAgent(agentID) {
+        return agents.get(agentID) || null;
+      },
+      listModels() {
+        return [];
+      },
+    },
+    clock: () => 9000,
+    idGenerator: () => 'compaction_frame_1',
+    compactionAgentContextTokens: 1000,
+    baseReserveTokens: 20,
+    compactionTriggerRatio: 0.7,
+    estimateTokens: () => 30,
+  });
+  let services = { calls: [] };
+
+  let result = await service.prepareAgentContext({
+    session: { id: 'ses_1', participantAgentIDs: [ 'small', 'large' ] },
+    frameEngine,
+    triggerFrame: frameEngine.get('msg_3'),
+    agent: { id: 'small' },
+    services,
+  });
+
+  assert.equal(result.shouldCompact, true);
 });
 
 function userFrame(id, text, order) {

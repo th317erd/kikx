@@ -10,10 +10,12 @@ import {
   buildDefaultCompactionInstructions,
 } from './agent-compaction-template.mjs';
 import { buildCompactionSummaryJSON } from './compaction-summary.mjs';
+import { resolveSessionWindows } from './effective-windows.mjs';
 import {
   FrameContextBuilder,
   serializeFramesForCompaction,
 } from './frame-context-builder.mjs';
+import { selectCompactor } from './select-compactor.mjs';
 import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
@@ -34,11 +36,16 @@ export class CompactionService {
     this.contextWindowTokens = normalizePositiveInteger(options.contextWindowTokens, DEFAULT_CONTEXT_WINDOW_TOKENS);
     this.compactionAgentContextTokens = normalizePositiveInteger(options.compactionAgentContextTokens, DEFAULT_COMPACTION_AGENT_CONTEXT_TOKENS);
     this.promptReserveTokens = normalizeNonNegativeInteger(options.promptReserveTokens, DEFAULT_PROMPT_RESERVE_TOKENS);
+    this.baseReserveTokens = normalizeNonNegativeInteger(options.baseReserveTokens, this.promptReserveTokens);
+    // Non-history overhead (system + start brief + current message + tools). When
+    // unknown it stays 0: the estimate is never silently inflated (R2).
+    this.usageOverheadTokens = normalizeNonNegativeInteger(options.usageOverheadTokens, 0);
     this.compactionTriggerRatio = normalizeRatio(options.compactionTriggerRatio, DEFAULT_COMPACTION_TRIGGER_RATIO);
     this.hardLimitRatio = normalizeRatio(options.hardLimitRatio, DEFAULT_HARD_LIMIT_RATIO);
     this.instructions = options.instructions || buildDefaultCompactionInstructions();
     this.contextBuilder = options.contextBuilder || new FrameContextBuilder({
       contextWindowTokens: this.contextWindowTokens,
+      baseReserveTokens: this.baseReserveTokens,
       promptReserveTokens: this.promptReserveTokens,
       compactionTriggerRatio: this.compactionTriggerRatio,
       hardLimitRatio: this.hardLimitRatio,
@@ -50,10 +57,10 @@ export class CompactionService {
   async prepareAgentContext(input = {}) {
     let frameEngine = input.frameEngine;
     let frames = projectFrameMessages(typeof frameEngine?.toArray === 'function' ? frameEngine.toArray() : input.frames || []);
+    let triggerOptions = await this.resolveTriggerOptions(input);
     let result = this.contextBuilder.build(frames, {
       activeFrameID: input.triggerFrame?.id || input.activeFrameID,
-      contextWindowTokens: input.contextWindowTokens || this.contextWindowTokens,
-      promptReserveTokens: input.promptReserveTokens || this.promptReserveTokens,
+      ...triggerOptions,
       compactionContextBudgetTokens: Math.max(1, this.compactionAgentContextTokens - this.countInstructionTokens()),
       compactionTriggerRatio: input.compactionTriggerRatio || this.compactionTriggerRatio,
       hardLimitRatio: input.hardLimitRatio || this.hardLimitRatio,
@@ -76,8 +83,7 @@ export class CompactionService {
       let nextFrames = projectFrameMessages(typeof frameEngine?.toArray === 'function' ? frameEngine.toArray() : frames);
       return this.contextBuilder.build(nextFrames, {
         activeFrameID: input.triggerFrame?.id || input.activeFrameID,
-        contextWindowTokens: input.contextWindowTokens || this.contextWindowTokens,
-        promptReserveTokens: input.promptReserveTokens || this.promptReserveTokens,
+        ...triggerOptions,
         compactionContextBudgetTokens: Math.max(1, this.compactionAgentContextTokens - this.countInstructionTokens()),
         compactionTriggerRatio: input.compactionTriggerRatio || this.compactionTriggerRatio,
         hardLimitRatio: input.hardLimitRatio || this.hardLimitRatio,
@@ -87,6 +93,44 @@ export class CompactionService {
     return {
       ...result,
       compactionPending: true,
+    };
+  }
+
+  // P0: the trigger follows the SMALLEST participant window (R1) and counts the
+  // full projected request (R2). An explicit `input.agentContextWindowTokens`
+  // wins (tests, callers with a known window); otherwise the session's effective
+  // windows are resolved. When nothing resolves, the builder's global default is
+  // preserved.
+  async resolveTriggerOptions(input = {}) {
+    // Explicit overrides win: the new per-agent option, then the legacy
+    // `contextWindowTokens`. Otherwise resolve the session's smallest window.
+    let agentContextWindowTokens = normalizePositiveInteger(input.agentContextWindowTokens)
+      || normalizePositiveInteger(input.contextWindowTokens);
+    if (agentContextWindowTokens == null) {
+      let agentManager = this.agentManager || resolveService(input.services, 'agentManager');
+      let pluginRegistry = this.pluginRegistry || resolveService(input.services, 'pluginRegistry');
+      let session = input.session || resolveService(input.services, 'session');
+      let catalog = input.catalog || this.catalog || agentManager?.listModels?.() || [];
+      let resolved = await resolveSessionWindows({
+        session,
+        agentManager,
+        pluginRegistry,
+        catalog,
+      });
+      agentContextWindowTokens = resolved.smallestWindow || null;
+    }
+
+    // Preserve an explicit reserve override, else fall back to the legacy
+    // `promptReserveTokens` option name.
+    let baseReserveTokens = normalizeNonNegativeInteger(
+      input.baseReserveTokens,
+      normalizeNonNegativeInteger(input.promptReserveTokens),
+    );
+
+    return {
+      agentContextWindowTokens: agentContextWindowTokens || this.contextWindowTokens,
+      usageOverheadTokens: normalizeNonNegativeInteger(input.usageOverheadTokens, this.usageOverheadTokens),
+      ...(baseReserveTokens != null ? { baseReserveTokens } : {}),
     };
   }
 
@@ -431,30 +475,57 @@ export class CompactionService {
   }
 
   async resolveCompactionAgent(input = {}) {
-    let participantAgentIDs = normalizeStringArray(input.session?.participantAgentIDs);
-    let agentIDs = normalizeStringArray([
-      this.compactionAgentID,
-      normalizeOptionalString(input.session?.compactionAgentID),
-      normalizeOptionalString(input.agent?.id),
-      ...participantAgentIDs,
-    ]);
-
-    if (agentIDs.length === 0)
-      return null;
-
     let agentManager = this.agentManager || resolveService(input.services, 'agentManager');
-    if (!agentManager?.getAgent) {
+    let pluginRegistry = this.pluginRegistry || resolveService(input.services, 'pluginRegistry');
+    let catalog = input.catalog || this.catalog || agentManager?.listModels?.() || [];
+
+    // Env/config override remains the highest priority (unchanged behavior).
+    if (this.compactionAgentID)
+      return await this.loadCompactionAgent(agentManager, this.compactionAgentID, input);
+
+    let session = input.session || {};
+    let windows = await resolveSessionWindows({
+      session,
+      agentManager,
+      pluginRegistry,
+      catalog,
+    });
+    let participantAgentsWithMeta = windows.participants;
+    let selection = selectCompactor({
+      session,
+      participantAgentsWithMeta,
+      agentManager,
+      pluginRegistry,
+      catalog,
+    });
+
+    if (!selection.agentID) {
+      // No participant resolved (for example a session with no participants).
+      // Preserve the historical current-agent fallback for that degenerate case.
       let currentAgentID = normalizeOptionalString(input.agent?.id);
-      return currentAgentID && agentIDs.includes(currentAgentID) ? input.agent : null;
+      return currentAgentID ? await this.loadCompactionAgent(agentManager, currentAgentID, input) : null;
     }
 
-    for (let agentID of agentIDs) {
-      let agent = await agentManager.getAgent(agentID, { includeSecrets: true });
-      if (agent?.id && agent.enabled !== false)
-        return agent;
-    }
+    let selected = await this.loadCompactionAgent(agentManager, selection.agentID, input);
+    if (selected)
+      return selected;
+
+    // The selected agent could not be loaded (for example a stub manager that
+    // only knows the routing agent). Preserve the historical fallback to the
+    // current agent when it is a participant.
+    let currentAgentID = normalizeOptionalString(input.agent?.id);
+    if (currentAgentID && participantAgentsWithMeta.some((participant) => participant.id === currentAgentID))
+      return input.agent;
 
     return null;
+  }
+
+  async loadCompactionAgent(agentManager, agentID, input = {}) {
+    if (!agentManager?.getAgent)
+      return normalizeOptionalString(input.agent?.id) === agentID ? input.agent : null;
+
+    let agent = await agentManager.getAgent(agentID, { includeSecrets: true });
+    return agent?.id && agent.enabled !== false ? agent : null;
   }
 
   resolveProviderClass(agent) {
@@ -543,23 +614,6 @@ function resolveService(services, name) {
   }
 
   return null;
-}
-
-function normalizeStringArray(values) {
-  if (!Array.isArray(values))
-    return [];
-
-  let result = [];
-  for (let value of values) {
-    if (typeof value !== 'string' || value.trim() === '')
-      continue;
-
-    let item = value.trim();
-    if (!result.includes(item))
-      result.push(item);
-  }
-
-  return result;
 }
 
 function normalizeOptionalString(value) {

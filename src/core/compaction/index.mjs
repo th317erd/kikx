@@ -14,6 +14,16 @@ export {
   serializeFramesForCompaction,
 } from './frame-context-builder.mjs';
 export {
+  DEFAULT_EFFECTIVE_CONTEXT_WINDOW_TOKENS,
+  resolveEffectiveContextWindow,
+  resolveSessionWindows,
+  smallestParticipantWindow,
+} from './effective-windows.mjs';
+export {
+  COMPACTOR_REASON,
+  selectCompactor,
+} from './select-compactor.mjs';
+export {
   COMPACTION_LEVELS,
   COMPACTION_SECTION_HEADER,
   MEDIUM_CONTEXT_WINDOW_TOKENS,

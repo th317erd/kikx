@@ -100,6 +100,105 @@ test('FrameContextBuilder selects future compaction windows from boundary order,
   assert.equal(result.compactionWindow.boundaryFrameID, 'msg_3');
 });
 
+test('FrameContextBuilder triggers off the smallest participant window, not the global window', () => {
+  let frames = [
+    frame('msg_1', 'UserMessage', 'one', 1),
+    frame('msg_2', 'UserMessage', 'two', 2),
+  ];
+  let builder = new FrameContextBuilder({
+    contextWindowTokens: 1000,
+    baseReserveTokens: 20,
+    compactionTriggerRatio: 0.7,
+    estimateTokens: () => 36,
+  });
+
+  // hardLimit = 120 - 20 = 100; 0.7 * 100 = 70; history = 72 tokens.
+  let result = builder.build(frames, { agentContextWindowTokens: 120 });
+
+  assert.equal(result.hardLimit, 100);
+  assert.equal(result.availableTokens, 100);
+  assert.equal(result.contextTokens, 72);
+  assert.equal(result.shouldCompact, true);
+});
+
+test('FrameContextBuilder does not compact below the soft limit at the smallest window', () => {
+  let frames = [
+    frame('msg_1', 'UserMessage', 'one', 1),
+    frame('msg_2', 'UserMessage', 'two', 2),
+  ];
+  let builder = new FrameContextBuilder({
+    contextWindowTokens: 1000,
+    baseReserveTokens: 20,
+    compactionTriggerRatio: 0.7,
+    estimateTokens: () => 34,
+  });
+
+  // history = 68 < 70 soft limit, but 68 >= 0 (hard wait = 100).
+  let result = builder.build(frames, { agentContextWindowTokens: 120 });
+
+  assert.equal(result.shouldCompact, false);
+  assert.equal(result.shouldWaitForCompaction, false);
+});
+
+test('FrameContextBuilder waits at the hard limit (smallest window minus reserve)', () => {
+  let frames = [
+    frame('msg_1', 'UserMessage', 'one', 1),
+    frame('msg_2', 'UserMessage', 'two', 2),
+  ];
+  let builder = new FrameContextBuilder({
+    contextWindowTokens: 1000,
+    baseReserveTokens: 20,
+    compactionTriggerRatio: 0.7,
+    hardLimitRatio: 1,
+    estimateTokens: () => 50,
+  });
+
+  // history = 100 == hardLimit.
+  let result = builder.build(frames, { agentContextWindowTokens: 120 });
+
+  assert.equal(result.shouldCompact, true);
+  assert.equal(result.shouldWaitForCompaction, true);
+});
+
+test('FrameContextBuilder counts non-history overhead toward the trigger', () => {
+  let frames = [
+    frame('msg_1', 'UserMessage', 'one', 1),
+    frame('msg_2', 'UserMessage', 'two', 2),
+  ];
+  let builder = new FrameContextBuilder({
+    contextWindowTokens: 1000,
+    baseReserveTokens: 20,
+    compactionTriggerRatio: 0.7,
+    estimateTokens: () => 25,
+  });
+
+  // history alone = 50 < 70; history (50) + overhead (20) = 70 == soft limit.
+  let withoutOverhead = builder.build(frames, { agentContextWindowTokens: 120 });
+  let withOverhead = builder.build(frames, {
+    agentContextWindowTokens: 120,
+    usageOverheadTokens: 20,
+  });
+
+  assert.equal(withoutOverhead.shouldCompact, false);
+  assert.equal(withOverhead.contextTokens, 70);
+  assert.equal(withOverhead.usageOverheadTokens, 20);
+  assert.equal(withOverhead.shouldCompact, true);
+});
+
+test('FrameContextBuilder keeps the global window when no agent window is provided', () => {
+  let frames = [ frame('msg_1', 'UserMessage', 'one', 1) ];
+  let builder = new FrameContextBuilder({
+    contextWindowTokens: 1000,
+    baseReserveTokens: 20,
+    estimateTokens: () => 5,
+  });
+
+  let result = builder.build(frames);
+
+  assert.equal(result.hardLimit, 980);
+  assert.equal(result.availableTokens, 980);
+});
+
 function frame(id, type, text, order) {
   return {
     id,
