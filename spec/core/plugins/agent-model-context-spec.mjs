@@ -190,6 +190,24 @@ test('Brief A includes the coordinator preamble only for the coordinator with 3+
   }).text, /COORDINATOR PREAMBLE/);
 });
 
+test('Brief B renders microsecond frame timestamps as a sane ISO date', () => {
+  // Frame timestamps are Unix microseconds; a bug treated them as milliseconds
+  // and produced a year ~58600. The header must show the real 2026 date.
+  let micros = 1_790_918_811_000_000;
+  let { text } = buildMessageBrief({
+    frame: {
+      id: 'msg_1', type: 'UserMessage', authorType: 'user',
+      authorDisplayName: 'Save Test 544', authorID: 'usr_1',
+      timestamp: micros, content: { text: 'Hello!' },
+    },
+    agent: { id: 'agent_1', name: 'Gemma' },
+    session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' },
+  });
+  let header = text.split('\n')[0];
+  assert.match(header, /^Message from Save Test 544 2026-/);
+  assert.doesNotMatch(header, /058\d\d/);
+});
+
 test('Brief B carries sender, message, and compact dynamic state', () => {
   let { text } = buildMessageBrief({
     frame: {

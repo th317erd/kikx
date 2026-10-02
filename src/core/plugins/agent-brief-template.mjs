@@ -211,9 +211,24 @@ function resolveBriefSender(context = {}) {
   return context.frame?.authorType === 'user' ? 'User' : 'System';
 }
 
+// Frame timestamps are Unix MICROseconds (HybridLogicalClock/defaultUnixMicros),
+// while `Date` expects milliseconds. Anything at or above the microsecond
+// threshold is scaled down; smaller values are treated as milliseconds.
+const MICROSECOND_TIMESTAMP_THRESHOLD = 100_000_000_000_000;
+
 function resolveBriefTimestamp(context = {}) {
   let raw = context.frame?.timestamp ?? context.frame?.createdAt ?? null;
-  let date = raw == null ? new Date() : new Date(Number(raw) || raw);
+  if (raw == null)
+    return new Date().toISOString();
+
+  let value = Number(raw);
+  if (!Number.isFinite(value))
+    return '';
+
+  let milliseconds = value >= MICROSECOND_TIMESTAMP_THRESHOLD
+    ? Math.floor(value / 1000)
+    : Math.trunc(value);
+  let date = new Date(milliseconds);
   if (Number.isNaN(date.getTime()))
     return '';
 
