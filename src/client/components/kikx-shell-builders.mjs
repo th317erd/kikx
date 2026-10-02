@@ -146,7 +146,7 @@ export function scopeNoun(app) {
 // One window header for every level. The root grid has no Close; a nested
 // session window always offers Close (minimize / pop). A session window also
 // has a toggle between its chat and its sub-session grid. Add lives in the
-// grid as a trailing "Add" card, not in this header.
+// grid as a leading "Add" card, not in this header.
 export function buildWindowHeader(app, { title, sessionID = null, collapsed = false } = {}) {
   let nested = getStackDepth(app._state) > 1;
   let backButton = nested

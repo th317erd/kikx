@@ -22,7 +22,7 @@ export class KikxSessionGrid extends HTMLElement {
     return childSessions(this._allSessions, this._parentSessionID);
   }
 
-  // Scope-aware label for the trailing add card ("Add Project" / "Add Session" /
+  // Scope-aware label for the leading add card ("Add Project" / "Add Session" /
   // "Add Sub-Session"). Set by the app via update().
   set addLabel(value) {
     this._addLabel = typeof value === 'string' && value.trim() !== '' ? value.trim() : 'Add Session';
@@ -125,15 +125,15 @@ export class KikxSessionGrid extends HTMLElement {
       return;
     }
 
+    // A leading empty card that creates a new entry at this scope.
+    this.appendChild(this._buildAddCard());
+
     for (let session of this._sessions) {
       let card = document.createElement('kikx-session-card');
       card.setAttribute('role', 'listitem');
       card.update(this._cardInputFor(session.id));
       this.appendChild(card);
     }
-
-    // A trailing empty card that creates a new entry at this scope.
-    this.appendChild(this._buildAddCard());
 
     if (this._loading) {
       let loading = document.createElement('p');

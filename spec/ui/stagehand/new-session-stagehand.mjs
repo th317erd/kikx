@@ -61,7 +61,7 @@ test('Stagehand creates a new session from the workspace grid', async (t) => {
 
     let beforeCount = await page.locator('kikx-session-grid > kikx-session-card').count();
     let result = await stagehand.act(
-      'Click the "Add Project" card at the end of the session grid to create a new session.',
+      'Click the "Add Project" card at the start of the session grid to create a new session.',
       {
         page,
         timeout: 20000,

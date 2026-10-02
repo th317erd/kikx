@@ -442,21 +442,28 @@ test('AgentInterface exposes the shared projection', () => {
 });
 
 test('the assembled two-tier brief never feeds token usage to the model (P8.1)', () => {
+  // A distinctive sentinel avoids colliding with the wall-clock timestamp that
+  // Brief B embeds (a plain `42` can appear in the seconds/minutes); pinning the
+  // frame timestamp keeps the assembly deterministic regardless of run time.
+  let sentinel = 987654321;
   let messages = buildModelMessages({
     prompt: 'How are you?',
     agent: { id: 'agent_1' },
     session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' },
-    frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'How are you?' } },
+    frame: {
+      id: 'msg_1', type: 'UserMessage', authorType: 'user', authorID: 'usr_1',
+      timestamp: 1_790_918_811_000_000, content: { text: 'How are you?' },
+    },
     frames: [],
-    tokenUsage: { 'openai/chatgpt/codex-agent': { tokensUsed: 42 } },
-    totalTokensUsed: 42,
+    tokenUsage: { 'openai/chatgpt/codex-agent': { tokensUsed: sentinel } },
+    totalTokensUsed: sentinel,
   });
 
   let assembled = messages.map((message) => message.content).join('\n');
   assert.doesNotMatch(assembled, /token\s*usage/i);
   assert.doesNotMatch(assembled, /tokenUsage/i);
   assert.doesNotMatch(assembled, /totalTokensUsed/i);
-  assert.doesNotMatch(assembled, /\b42\b/);
+  assert.equal(assembled.includes(String(sentinel)), false);
 });
 
 test('the built briefs reject stop-inducing and FOMO language (P8.3)', () => {
