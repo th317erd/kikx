@@ -91,7 +91,20 @@ export class CompactionService {
     // would actually send exceeds ITS OWN window. Bots that still fit proceed.
     // The trigger uses the session's smallest window, so this bot's own window
     // must be resolved separately.
-    if (pending && await this.shouldHoldAgentForCompaction(input, result)) {
+    //
+    // Fail-safe: resolving the per-bot hold decision touches the agent manager,
+    // constructs the agent's provider and reads its context window, any of which
+    // can throw (missing agent, throwing provider constructor, throwing catalog).
+    // A failure here must NEVER propagate out of `prepareAgentContext` and break
+    // the agent's turn. Log it and fall back to the legacy hard-limit wait.
+    let holdForCompaction = result.shouldWaitForCompaction === true;
+    try {
+      holdForCompaction = await this.shouldHoldAgentForCompaction(input, result);
+    } catch (error) {
+      this.logger.error?.('Kikx compaction hold decision failed; falling back to legacy wait', error);
+    }
+
+    if (pending && holdForCompaction) {
       await pending.catch((error) => {
         this.logger.error?.('Kikx compaction failed while waiting at hard context limit', error);
       });
@@ -163,17 +176,26 @@ export class CompactionService {
     let agentContextWindowTokens = normalizePositiveInteger(input.agentContextWindowTokens)
       || normalizePositiveInteger(input.contextWindowTokens);
     if (agentContextWindowTokens == null) {
-      let agentManager = this.agentManager || resolveService(input.services, 'agentManager');
-      let pluginRegistry = this.pluginRegistry || resolveService(input.services, 'pluginRegistry');
-      let session = input.session || resolveService(input.services, 'session');
-      let catalog = input.catalog || this.catalog || agentManager?.listModels?.() || [];
-      let resolved = await resolveSessionWindows({
-        session,
-        agentManager,
-        pluginRegistry,
-        catalog,
-      });
-      agentContextWindowTokens = resolved.smallestWindow || null;
+      // Fail-safe: window resolution loads every participant through the agent
+      // manager (which can reject), reads the catalog and probes providers. Any
+      // failure here must not break the agent's turn, so fall back to the legacy
+      // global window instead of throwing out of `prepareAgentContext`.
+      try {
+        let agentManager = this.agentManager || resolveService(input.services, 'agentManager');
+        let pluginRegistry = this.pluginRegistry || resolveService(input.services, 'pluginRegistry');
+        let session = input.session || resolveService(input.services, 'session');
+        let catalog = input.catalog || this.catalog || agentManager?.listModels?.() || [];
+        let resolved = await resolveSessionWindows({
+          session,
+          agentManager,
+          pluginRegistry,
+          catalog,
+        });
+        agentContextWindowTokens = resolved.smallestWindow || null;
+      } catch (error) {
+        this.logger.error?.('Kikx compaction window resolution failed; using legacy global window', error);
+        agentContextWindowTokens = null;
+      }
     }
 
     // Preserve an explicit reserve override, else fall back to the legacy
