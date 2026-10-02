@@ -26,8 +26,15 @@
 - P6 — instruction prune + base64/blob discard + realign blurb. DONE (1e265f7).
 - Gates: core 663/663, eslint clean. E2E: smallest window (32768) drives the
   trigger (hardLimit 24768), not the large bot (200000).
-- Known follow-up: `src/core/aeordb/aeordb-agent-store.mjs` is ~704 lines (over the
-  500 soft limit) after the P3 clone; candidate for extraction.
+- P7 — visible boundaries + warnings/errors + failure→trim fallback (never delete).
+  DONE (2589f38).
+- P8 — retry route (overwrite in place, strategy recomputed from current session).
+  DONE (fca191d).
+- P9 — compaction bubble UI: status colors, warnings/errors, Retry button. DONE (fca191d).
+- P10 — resilience/UI tests: core 708/708, Stagehand UI 27/27. DONE.
+- Known follow-ups: `aeordb-agent-store.mjs` ~704 lines and
+  `compaction-service.mjs` ~738 lines are over the 500 soft limit; candidates for
+  extraction (under the 800 hard limit, not urgent).
 
 ## Part 2 — Visible UI, warnings/errors, trim fallback, retry (P7–P10)
 
