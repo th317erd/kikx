@@ -8,6 +8,12 @@ import {
 } from '../state/kikx-state.mjs';
 import { agentFilterPills, filterAgents } from './agent-list-model.mjs';
 import { masterRankByAgentID } from './master-agent-helpers.mjs';
+import {
+  COMPACTION_BOT_ICON,
+  compactionBotButtonAriaLabel,
+  compactionBotButtonTitle,
+  compactionBotRankByAgentID,
+} from './compaction-bot-helpers.mjs';
 import { findAgentConfigFormElement, resolveAgentConfigFormTag } from './agent-config-form-registry.mjs';
 import './kikx-default-agent-config-form.mjs';
 
@@ -71,6 +77,7 @@ export function buildAgentManagerBody(app) {
 
   let agents = filterAgents(allAgents, filter);
   let masterRankByID = masterRankByAgentID(allAgents);
+  let compactionBotRankByID = compactionBotRankByAgentID(allAgents);
 
   return [
     div.class('kikx-agent-filters')(
@@ -87,6 +94,7 @@ export function buildAgentManagerBody(app) {
         : ul.class('kikx-agent-list')(
         agents.map((agent) => {
           let rank = masterRankByID.get(agent.id) || 0;
+          let compactionRank = compactionBotRankByID.get(agent.id) || 0;
           return li
             .class('kikx-agent-list__item')
             .dataAgentId(agent.id)(
@@ -103,6 +111,14 @@ export function buildAgentManagerBody(app) {
                   .ariaLabel(rank ? `Master agent number ${rank}` : 'Crown as master agent')
                   .ariaPressed(rank ? 'true' : 'false')
                   .onClick(() => app._toggleAgentCrown(agent))('♛'),
+                button
+                  .type('button')
+                  .class(`kikx-agent-list__compaction-bot${compactionRank ? ` is-compaction-bot kikx-agent-list__compaction-bot--rank-${compactionRank}` : ''}`)
+                  .dataAgentId(agent.id)
+                  .title(compactionBotButtonTitle(compactionRank))
+                  .ariaLabel(compactionBotButtonAriaLabel(compactionRank))
+                  .ariaPressed(compactionRank ? 'true' : 'false')
+                  .onClick(() => app._toggleAgentCompactionBot(agent))(COMPACTION_BOT_ICON),
                 button
                   .type('button')
                   .class('kikx-agent-list__edit')

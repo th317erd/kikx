@@ -7,7 +7,7 @@ import {
   readJSON,
   writeJSON,
 } from '../http-helpers.mjs';
-import { matchAgentCrownRoute, matchAgentRoute } from './route-matchers.mjs';
+import { matchAgentCompactionCrownRoute, matchAgentCrownRoute, matchAgentRoute } from './route-matchers.mjs';
 import { validateAgentBody } from './validators.mjs';
 
 export async function handleAgentRoutes({ request, response, url, context }) {
@@ -82,6 +82,21 @@ export async function handleAgentRoutes({ request, response, url, context }) {
     return true;
   }
 
+  // Designated compaction bots, best (#1) first. Parallel to /masters but a
+  // fully independent rolling top-3.
+  if (request.method === 'GET' && url.pathname === '/api/v1/agents/compaction-bots') {
+    let agentManager = context.require('agentManager');
+    let compactionBots = typeof agentManager.refreshCompactionBots === 'function'
+      ? await agentManager.refreshCompactionBots()
+      : agentManager.listCompactionBots({ limit: 500 });
+    writeJSON(response, 200, {
+      data: {
+        compactionBots,
+      },
+    });
+    return true;
+  }
+
   let agentCrownRoute = matchAgentCrownRoute(url.pathname);
   if (agentCrownRoute && request.method === 'POST') {
     let agentManager = context.require('agentManager');
@@ -95,6 +110,23 @@ export async function handleAgentRoutes({ request, response, url, context }) {
       data: {
         agent,
         masters,
+      },
+    });
+    return true;
+  }
+
+  // Compaction-bot designation routes: the parallel-but-independent list to the
+  // crown. Same shape as the crown pair, including the authoritative list so the
+  // client can reconcile evictions.
+  let agentCompactionCrownRoute = matchAgentCompactionCrownRoute(url.pathname);
+  if (agentCompactionCrownRoute && request.method === 'POST') {
+    let agentManager = context.require('agentManager');
+    let agent = await agentManager.setAgentCompactionBotCrowned(agentCompactionCrownRoute.agentID, agentCompactionCrownRoute.crowned);
+    let compactionBots = await agentManager.listCompactionBots({ limit: 500 });
+    writeJSON(response, 200, {
+      data: {
+        agent,
+        compactionBots,
       },
     });
     return true;

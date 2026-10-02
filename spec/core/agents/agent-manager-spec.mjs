@@ -461,6 +461,68 @@ test('AgentManager skips disabled master agents when resolving the default', asy
   assert.equal((await manager.resolveDefaultAgent()).id, 'agent_2');
 });
 
+test('AgentManager manages compaction bots independently of masters', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerAgentProvider('test-agent', TestAgentProvider);
+
+  // Store exposing the parallel compaction-bot surface; master list is separate.
+  let masters = [
+    { id: 'agent_1', name: 'Master One', pluginID: 'test-agent', enabled: true, crownedClock: '0002' },
+  ];
+  let storageBots = [
+    { id: 'bot_1', name: 'Bot One', pluginID: 'test-agent', enabled: true, compactionCrownedClock: '0002' },
+    { id: 'bot_2', name: 'Bot Two', pluginID: 'test-agent', enabled: true, compactionCrownedClock: '0001' },
+  ];
+  let calls = [];
+  let store = {
+    async setAgentCompactionBotCrowned(agentID, crowned) {
+      calls.push({ method: 'setAgentCompactionBotCrowned', agentID, crowned });
+      return { id: agentID, name: 'Bot', pluginID: 'test-agent', compactionCrownedClock: crowned ? '0009' : null, compactionCrownedAt: crowned ? 9 : null };
+    },
+    async listCompactionBots() { return storageBots; },
+    async listMasterAgents() { return masters; },
+  };
+
+  let manager = new AgentManager({ pluginRegistry, agentStore: store });
+
+  // The snapshot is empty until a toggle or refresh populates it.
+  assert.deepEqual(manager.listCompactionBots(), []);
+
+  let toggled = await manager.setAgentCompactionBotCrowned('bot_1', true);
+  assert.equal(toggled.compactionCrownedClock, '0009');
+  assert.deepEqual(calls, [ { method: 'setAgentCompactionBotCrowned', agentID: 'bot_1', crowned: true } ]);
+
+  // Synchronous snapshot now reflects the store list, #1 first.
+  assert.deepEqual(manager.listCompactionBots().map((agent) => agent.name), [ 'Bot One', 'Bot Two' ]);
+  // Synchronous limit narrows the snapshot.
+  assert.deepEqual(manager.listCompactionBots({ limit: 1 }).map((agent) => agent.id), [ 'bot_1' ]);
+
+  // Master list is untouched by compaction-bot work.
+  assert.deepEqual((await manager.listMasterAgents()).map((agent) => agent.name), [ 'Master One' ]);
+
+  // resolveCompactionBot returns the first enabled, non-excluded bot.
+  assert.equal((await manager.resolveCompactionBot()).id, 'bot_1');
+  assert.equal((await manager.resolveCompactionBot({ excludeAgentIDs: [ 'bot_1' ] })).id, 'bot_2');
+  assert.equal(await manager.resolveCompactionBot({ excludeAgentIDs: [ 'bot_1', 'bot_2' ] }), null);
+});
+
+test('AgentManager.resolveCompactionBot skips disabled bots', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  pluginRegistry.registerAgentProvider('test-agent', TestAgentProvider);
+
+  let store = {
+    async listCompactionBots() {
+      return [
+        { id: 'bot_1', name: 'Disabled', pluginID: 'test-agent', enabled: false, compactionCrownedClock: '0002' },
+        { id: 'bot_2', name: 'Enabled', pluginID: 'test-agent', enabled: true, compactionCrownedClock: '0001' },
+      ];
+    },
+  };
+
+  let manager = new AgentManager({ pluginRegistry, agentStore: store });
+  assert.equal((await manager.resolveCompactionBot()).id, 'bot_2');
+});
+
 test('AgentManager.listModels aggregates provider model manifests tagged by pluginID', async () => {
   let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
 

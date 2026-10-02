@@ -1540,6 +1540,56 @@ button.kikx-window__title:focus-visible {
   cursor: progress;
 }
 
+/* Compaction-bot toggle: the parallel list to the crown, with a compact glyph.
+   Rank 1-3 use a teal/blue palette so it reads as distinct from the crown's
+   gold/silver/copper. */
+.kikx-agent-list__compaction-bot {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: transparent;
+  color: #5c6672;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kikx-agent-list__compaction-bot:hover,
+.kikx-agent-list__compaction-bot:focus-visible {
+  border-color: #6b7684;
+  color: #cdd6df;
+  outline: none;
+}
+
+.kikx-agent-list__compaction-bot.is-compaction-bot {
+  border-color: currentColor;
+}
+
+.kikx-agent-list__compaction-bot--rank-1 {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.10);
+  opacity: 1;
+}
+
+.kikx-agent-list__compaction-bot--rank-2 {
+  color: #5eead4;
+  background: rgba(94, 234, 212, 0.08);
+  opacity: 0.82;
+}
+
+.kikx-agent-list__compaction-bot--rank-3 {
+  color: #818cf8;
+  background: rgba(129, 140, 248, 0.08);
+  opacity: 0.7;
+}
+
+.kikx-agent-list__compaction-bot.is-busy {
+  opacity: 0.5;
+  cursor: progress;
+}
+
 .kikx-agent-form__status {
   display: grid;
   gap: 4px;

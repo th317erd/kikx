@@ -2,6 +2,11 @@
 
 import { getAgents, removeAgent, resetAgentForm, setAgentFormFromAgent, setAgentFormProvider, upsertAgent } from '../state/kikx-state.mjs';
 import { masterRankByAgentID } from './master-agent-helpers.mjs';
+import {
+  compactionBotButtonAriaLabel,
+  compactionBotButtonTitle,
+  compactionBotRankByAgentID,
+} from './compaction-bot-helpers.mjs';
 import { buildAgentManagerBody, findAgentConfigSection } from './kikx-modals.mjs';
 import { cssEscape } from './kikx-app-helpers.mjs';
 import { nonEmptyValues } from './agent-form-helpers.mjs';
@@ -216,6 +221,88 @@ export function repaintAgentCrowns(app) {
     button.className = `kikx-agent-list__crown${rank ? ` is-master kikx-agent-list__crown--rank-${rank}` : ''}`;
     button.title = rank ? `Master agent #${rank} (click to uncrown)` : 'Crown as master agent';
     button.setAttribute('aria-label', rank ? `Master agent number ${rank}` : 'Crown as master agent');
+    button.setAttribute('aria-pressed', rank ? 'true' : 'false');
+  }
+}
+
+// Parallel to toggleAgentCrown, but for the independent compaction-bot list. The
+// endpoints return the authoritative list, so reconciliation is identical.
+export async function toggleAgentCompactionBot(app, agent) {
+  let current = app._state.agentDetailsByID[agent.id] || agent;
+
+  // Guard against concurrent toggles for the same agent (rapid clicks race).
+  if (app._pendingCompactionBotAgentIDs.has(current.id))
+    return;
+
+  let crowned = !current.compactionCrownedClock;
+  app._pendingCompactionBotAgentIDs.add(current.id);
+  setAgentCompactionBotBusy(app, current.id, true);
+  app._state.agentStatus = crowned ? 'Setting compaction bot...' : 'Clearing compaction bot...';
+  app._state.agentStatusKind = 'pending';
+
+  try {
+    let result = await app._postJSON(
+      `/api/v1/agents/${encodeURIComponent(current.id)}/${crowned ? 'compact-crown' : 'compact-uncrown'}`,
+      {},
+    );
+    upsertAgent(result.data.agent, app._state);
+    // Reconcile the WHOLE compaction-bot set from the authoritative server list:
+    // designating a 4th evicts the oldest, which the client cannot derive from
+    // the single toggle response alone.
+    reconcileCompactionBots(app, result.data.compactionBots);
+    app._state.agentStatus = crowned ? `Compaction bot set: ${current.name}` : `Compaction bot cleared: ${current.name}`;
+    app._state.agentStatusKind = 'ready';
+    repaintAgentCompactionBots(app);
+    syncAgentStatusText(app);
+  } catch (error) {
+    app._state.agentStatus = error.message;
+    app._state.agentStatusKind = 'error';
+    syncAgentStatusText(app);
+  } finally {
+    app._pendingCompactionBotAgentIDs.delete(current.id);
+    setAgentCompactionBotBusy(app, current.id, false);
+  }
+}
+
+// Sync local compaction-bot state to the authoritative server list, exactly as
+// reconcileMasters does for the crown but over the independent fields.
+export function reconcileCompactionBots(app, compactionBots) {
+  if (!Array.isArray(compactionBots))
+    return;
+
+  let botByID = new Map(compactionBots.filter((agent) => agent?.id).map((agent) => [ agent.id, agent ]));
+
+  for (let agentID of app._state.agentIDs || []) {
+    let current = app._state.agentDetailsByID[agentID];
+    if (!current)
+      continue;
+
+    let bot = botByID.get(agentID);
+    let nextClock = bot?.compactionCrownedClock || null;
+    let nextAt = bot?.compactionCrownedAt || null;
+    if (current.compactionCrownedClock === nextClock && current.compactionCrownedAt === nextAt)
+      continue;
+
+    upsertAgent({ ...current, compactionCrownedClock: nextClock, compactionCrownedAt: nextAt }, app._state);
+  }
+}
+
+// Disable a compaction-bot button while its request is in flight.
+export function setAgentCompactionBotBusy(app, agentID, busy) {
+  for (let button of app.querySelectorAll(`.kikx-agent-list__compaction-bot[data-agent-id="${cssEscape(agentID)}"]`)) {
+    button.disabled = busy;
+    button.classList.toggle('is-busy', busy);
+  }
+}
+
+// Repaint each row's compaction-bot rank styling without a full re-render.
+export function repaintAgentCompactionBots(app) {
+  let ranks = compactionBotRankByAgentID(getAgents(app._state));
+  for (let button of app.querySelectorAll('.kikx-agent-list__compaction-bot[data-agent-id]')) {
+    let rank = ranks.get(button.dataset.agentId) || 0;
+    button.className = `kikx-agent-list__compaction-bot${rank ? ` is-compaction-bot kikx-agent-list__compaction-bot--rank-${rank}` : ''}`;
+    button.title = compactionBotButtonTitle(rank);
+    button.setAttribute('aria-label', compactionBotButtonAriaLabel(rank));
     button.setAttribute('aria-pressed', rank ? 'true' : 'false');
   }
 }

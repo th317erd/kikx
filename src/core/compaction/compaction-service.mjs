@@ -491,6 +491,12 @@ export class CompactionService {
       catalog,
     });
     let participantAgentsWithMeta = windows.participants;
+    // Rung 2 of selection reads the manager's SYNCHRONOUS compaction-bot
+    // snapshot. Refresh it from the store first so designation changes made
+    // through any path are visible at selection time.
+    if (typeof agentManager?.refreshCompactionBots === 'function')
+      await agentManager.refreshCompactionBots();
+
     let selection = selectCompactor({
       session,
       participantAgentsWithMeta,

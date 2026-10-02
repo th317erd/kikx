@@ -4,10 +4,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  MAX_COMPACTION_BOTS,
   MAX_MASTER_AGENTS,
   agentFilterLabel,
   agentFilterPills,
   filterAgents,
+  rankCompactionBots,
   rankMasters,
 } from '../../src/client/components/agent-list-model.mjs';
 
@@ -70,4 +72,25 @@ test('masters filter returns only the top three crowned agents', () => {
     agents.push({ id: `m${index}`, pluginID: 'codex-agent', enabled: true, crownedClock: String(index).padStart(4, '0'), crownedAt: index });
 
   assert.deepEqual(filterAgents(agents, 'masters').map((agent) => agent.id), [ 'm4', 'm3', 'm2' ]);
+});
+
+test('rankCompactionBots keeps only the newest three designations, newest first', () => {
+  let bots = [];
+  for (let index = 1; index <= 5; index++)
+    bots.push({ id: `b${index}`, compactionCrownedClock: String(index).padStart(4, '0'), compactionCrownedAt: index });
+
+  let ranked = rankCompactionBots(bots);
+  assert.equal(ranked.length, MAX_COMPACTION_BOTS);
+  assert.deepEqual(ranked.map((agent) => agent.id), [ 'b5', 'b4', 'b3' ]);
+});
+
+test('rankCompactionBots ignores crowned-only agents and vice versa', () => {
+  let agents = [
+    { id: 'crown_only', crownedClock: '0001', crownedAt: 1 },
+    { id: 'bot_only', compactionCrownedClock: '0001', compactionCrownedAt: 1 },
+    { id: 'both', crownedClock: '0002', crownedAt: 2, compactionCrownedClock: '0002', compactionCrownedAt: 2 },
+  ];
+
+  assert.deepEqual(rankMasters(agents).map((agent) => agent.id), [ 'both', 'crown_only' ]);
+  assert.deepEqual(rankCompactionBots(agents).map((agent) => agent.id), [ 'both', 'bot_only' ]);
 });

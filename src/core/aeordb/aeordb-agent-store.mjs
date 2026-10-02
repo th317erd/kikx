@@ -13,6 +13,11 @@ const DEFAULT_ROOT_PATH = '/kikx';
 // The master-agent list is exactly the most-recently-crowned three. Crowning a
 // fourth evicts (uncrowns) the oldest, so storage never keeps stale masters.
 export const MAX_MASTER_AGENTS = 3;
+// The compaction-bot list is a parallel rolling top-3. It uses its own fields
+// (`compactionCrownedAt`/`compactionCrownedClock`) so the two lists never
+// interfere: crowning a master never changes the compaction-bot list, and vice
+// versa. Same cap as the crown for identical behavior.
+export const MAX_COMPACTION_BOTS = 3;
 
 export class AeorDBAgentStore {
   constructor(options = {}) {
@@ -53,6 +58,8 @@ export class AeorDBAgentStore {
       enabled: input.enabled !== false,
       crownedAt: null,
       crownedClock: null,
+      compactionCrownedAt: null,
+      compactionCrownedClock: null,
       createdAt: input.createdAt || now,
       updatedAt: input.updatedAt || now,
     });
@@ -241,6 +248,8 @@ export class AeorDBAgentStore {
       enabled: input.enabled ?? agent.enabled,
       crownedAt: agent.crownedAt ?? null,
       crownedClock: agent.crownedClock ?? null,
+      compactionCrownedAt: agent.compactionCrownedAt ?? null,
+      compactionCrownedClock: agent.compactionCrownedClock ?? null,
       updatedAt: input.updatedAt || this.clock(),
     });
 
@@ -333,6 +342,88 @@ export class AeorDBAgentStore {
     return this.logicalClock.tick();
   }
 
+  // Compaction-bot designation: a rolling top-3 parallel to the crown, but with
+  // its own fields so the two lists are fully independent. Crowning a master
+  // never changes the compaction-bot list and vice versa.
+  async setAgentCompactionBotCrowned(agentID, crowned = true) {
+    await this.ensureIndexConfigs();
+
+    let agent = await this.loadAgent(agentID);
+    if (!agent?.id)
+      throw notFound(agentID);
+
+    let wasCrowned = Boolean(agent.compactionCrownedClock);
+    let isCrowned = crowned === true;
+
+    if (isCrowned && wasCrowned) {
+      // Idempotent re-designation must not reorder the list.
+      return sanitizeAgent(agent);
+    }
+
+    let compactionCrownedAt = null;
+    let compactionCrownedClock = null;
+    if (isCrowned) {
+      let stamp = this.nextCompactionCrownStamp();
+      compactionCrownedAt = stamp.at;
+      compactionCrownedClock = stamp.clock;
+    }
+
+    let next = normalizeAgent({
+      ...agent,
+      compactionCrownedAt,
+      compactionCrownedClock,
+      updatedAt: this.clock(),
+    });
+
+    await this.saveAgent(next, agent);
+
+    if (isCrowned)
+      await this.evictExcessCompactionBots(agentID);
+
+    return sanitizeAgent(await this.loadAgent(agentID));
+  }
+
+  async evictExcessCompactionBots(keepAgentID) {
+    // Uncapped read: listCompactionBots() itself caps at MAX_COMPACTION_BOTS,
+    // so it can never reveal the overflow to evict.
+    let bots = await this.readCompactionBotCrowned();
+    let overflow = bots.slice(MAX_COMPACTION_BOTS);
+    for (let old of overflow) {
+      if (old.id === keepAgentID)
+        continue;
+
+      let loaded = await this.loadAgent(old.id);
+      if (!loaded?.id)
+        continue;
+
+      await this.saveAgent(normalizeAgent({ ...loaded, compactionCrownedAt: null, compactionCrownedClock: null, updatedAt: this.clock() }), loaded);
+    }
+  }
+
+  // All compaction-bot-crowned agents, newest first, uncapped. Ordering source.
+  async readCompactionBotCrowned() {
+    let agents = await this.listAgents({ limit: 500 });
+    return agents
+      .filter((agent) => Boolean(agent.compactionCrownedClock))
+      .sort(compareCompactionBotOrder);
+  }
+
+  // Compaction bots, most recently designated first (#1 first), capped at
+  // MAX_COMPACTION_BOTS by construction. The ordering source for rung 2 of
+  // compactor selection.
+  async listCompactionBots(options = {}) {
+    await this.ensureIndexConfigs();
+
+    let limit = Math.min(normalizeLimit(options.limit, MAX_COMPACTION_BOTS), MAX_COMPACTION_BOTS);
+    let offset = normalizeOffset(options.offset);
+    let bots = await this.readCompactionBotCrowned();
+    return bots.slice(offset, offset + limit);
+  }
+
+  nextCompactionCrownStamp() {
+    return this.logicalClock.tick();
+  }
+
   async deleteAgent(agentID) {
     await this.ensureIndexConfigs();
 
@@ -353,6 +444,7 @@ export class AeorDBAgentStore {
       nameKey: normalizeAgentNameForLookup(agent.name),
       enabledIndex: String(agent.enabled !== false),
       crownedIndex: String(Boolean(agent.crownedClock)),
+      compactionCrownedIndex: String(Boolean(agent.compactionCrownedClock)),
     });
     await this.saveAgentNameLookup(agent);
 
@@ -382,6 +474,9 @@ export class AeorDBAgentStore {
         { name: 'crowned', type: 'string', source: [ 'crownedIndex' ] },
         { name: 'crownedAt', type: 'timestamp' },
         { name: 'crownedClock', type: 'string' },
+        { name: 'compactionCrowned', type: 'string', source: [ 'compactionCrownedIndex' ] },
+        { name: 'compactionCrownedAt', type: 'timestamp' },
+        { name: 'compactionCrownedClock', type: 'string' },
         { name: 'createdAt', type: 'timestamp' },
         { name: 'updatedAt', type: 'timestamp' },
       ],
@@ -432,6 +527,8 @@ export function sanitizeAgent(agent) {
     enabled: agent.enabled !== false,
     crownedAt: normalizeCrownTimestamp(agent.crownedAt),
     crownedClock: normalizeCrownClock(agent.crownedClock),
+    compactionCrownedAt: normalizeCrownTimestamp(agent.compactionCrownedAt),
+    compactionCrownedClock: normalizeCrownClock(agent.compactionCrownedClock),
     createdAt: agent.createdAt || null,
     updatedAt: agent.updatedAt || null,
   };
@@ -449,6 +546,8 @@ function normalizeAgent(agent) {
     enabled: agent.enabled !== false,
     crownedAt: normalizeCrownTimestamp(agent.crownedAt),
     crownedClock: normalizeCrownClock(agent.crownedClock),
+    compactionCrownedAt: normalizeCrownTimestamp(agent.compactionCrownedAt),
+    compactionCrownedClock: normalizeCrownClock(agent.compactionCrownedClock),
     createdAt: agent.createdAt,
     updatedAt: agent.updatedAt,
   };
@@ -468,6 +567,13 @@ function normalizeCrownClock(value) {
 function compareMasterOrder(a, b) {
   return String(b.crownedClock || '').localeCompare(String(a.crownedClock || ''))
     || (Number(b.crownedAt || 0) - Number(a.crownedAt || 0))
+    || String(a.id).localeCompare(String(b.id));
+}
+
+// Compaction-bot order: identical to master order but over the parallel fields.
+function compareCompactionBotOrder(a, b) {
+  return String(b.compactionCrownedClock || '').localeCompare(String(a.compactionCrownedClock || ''))
+    || (Number(b.compactionCrownedAt || 0) - Number(a.compactionCrownedAt || 0))
     || String(a.id).localeCompare(String(b.id));
 }
 

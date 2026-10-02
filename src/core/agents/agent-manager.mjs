@@ -1,6 +1,6 @@
 'use strict';
 
-import { AeorDBAgentStore } from '../aeordb/aeordb-agent-store.mjs';
+import { AeorDBAgentStore, MAX_COMPACTION_BOTS } from '../aeordb/aeordb-agent-store.mjs';
 import {
   CHARACTER_COMPRESSED_FIELD,
   MAX_CHARACTER_COMPRESSED_LENGTH,
@@ -120,6 +120,48 @@ export class AgentManager {
     return await this.agentStore.listMasterAgents(options);
   }
 
+  async setAgentCompactionBotCrowned(agentID, crowned = true) {
+    let agent = await this.agentStore.setAgentCompactionBotCrowned(agentID, crowned === true);
+    // Refresh the synchronous snapshot so `selectCompactor` sees the change the
+    // moment this await resolves.
+    await this.refreshCompactionBots();
+    return agent;
+  }
+
+  // Designated compaction bots, best (#1) first. This is a SYNCHRONOUS snapshot
+  // of the last-known list: `selectCompactor` rung 2 reads it synchronously, so
+  // the manager caches the store's async result and serves it from memory. The
+  // cache is refreshed by `refreshCompactionBots()` — awaited by the compaction
+  // service before selection — and after every compaction-bot toggle.
+  listCompactionBots(options = {}) {
+    let bots = Array.isArray(this._compactionBots) ? this._compactionBots : [];
+    let limit = normalizePositiveInteger(options.limit, MAX_COMPACTION_BOTS);
+    let offset = normalizeNonNegativeInteger(options.offset, 0);
+    return bots.slice(offset, offset + limit);
+  }
+
+  // Refresh the synchronous compaction-bot snapshot from the store. Callers that
+  // need the authoritative list (REST, toggles) await this.
+  async refreshCompactionBots() {
+    this._compactionBots = await this.agentStore.listCompactionBots({ limit: MAX_COMPACTION_BOTS });
+    return this._compactionBots;
+  }
+
+  // First designated compaction bot that is enabled and not excluded, mirroring
+  // `resolveDefaultAgent` for the compaction-bot list. Returns null when none.
+  async resolveCompactionBot(options = {}) {
+    let exclude = new Set(normalizeStringArray(options.excludeAgentIDs));
+    let bots = await this.agentStore.listCompactionBots({ limit: options.limit || 500 });
+    for (let agent of bots) {
+      if (agent.enabled === false || exclude.has(agent.id))
+        continue;
+
+      return agent;
+    }
+
+    return null;
+  }
+
   // Resolve the default agent for a session: the first enabled master agent, in
   // master order (#1, then #2, ...). Agents listed in `excludeAgentIDs` (for
   // example ones that just errored) are skipped, so callers get master #2 as the
@@ -235,6 +277,22 @@ function normalizeStringArray(value) {
   }
 
   return output;
+}
+
+function normalizePositiveInteger(value, fallback) {
+  if (value == null)
+    return fallback;
+
+  let parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function normalizeNonNegativeInteger(value, fallback) {
+  if (value == null)
+    return fallback;
+
+  let parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function normalizeObject(value, fieldName) {

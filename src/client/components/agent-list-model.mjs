@@ -4,6 +4,11 @@
 // count as masters. Older crowns beyond the cap are not masters.
 export const MAX_MASTER_AGENTS = 3;
 
+// The compaction-bot list is a parallel rolling top-N, keyed on the independent
+// `compactionCrownedClock`/`compactionCrownedAt` fields. Same cap and ordering,
+// but never affected by crowning (and vice versa).
+export const MAX_COMPACTION_BOTS = 3;
+
 export function rankMasters(agents = []) {
   return (Array.isArray(agents) ? agents : [])
     .filter((agent) => Boolean(agent.crownedClock))
@@ -13,6 +18,18 @@ export function rankMasters(agents = []) {
       || String(a.id).localeCompare(String(b.id))
     ))
     .slice(0, MAX_MASTER_AGENTS);
+}
+
+// Parallel to rankMasters, over the independent compaction-bot fields.
+export function rankCompactionBots(agents = []) {
+  return (Array.isArray(agents) ? agents : [])
+    .filter((agent) => Boolean(agent.compactionCrownedClock))
+    .sort((a, b) => (
+      String(b.compactionCrownedClock || '').localeCompare(String(a.compactionCrownedClock || ''))
+      || (Number(b.compactionCrownedAt || 0) - Number(a.compactionCrownedAt || 0))
+      || String(a.id).localeCompare(String(b.id))
+    ))
+    .slice(0, MAX_COMPACTION_BOTS);
 }
 
 // Agent-list filtering for the Agents modal.

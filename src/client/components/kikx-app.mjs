@@ -154,13 +154,17 @@ import {
   editAgent,
   onAgentFormSubmit,
   openAgentManager,
+  reconcileCompactionBots,
   reconcileMasters,
+  repaintAgentCompactionBots,
   repaintAgentCrowns,
   repaintAgentManagerBody,
   selectAgentProvider,
+  setAgentCompactionBotBusy,
   setAgentCrownBusy,
   setAgentFilter,
   syncAgentStatusText,
+  toggleAgentCompactionBot,
   toggleAgentCrown,
 } from './kikx-agent-controller.mjs';
 import { onMagicLinkSubmit, verifyMagicLink } from './kikx-auth.mjs';
@@ -186,6 +190,7 @@ export class KikxApp extends HTMLElement {
     this._pendingPreviewSessionIDs = new Set();
     this._previewRefreshScheduled = false;
     this._pendingCrownAgentIDs = new Set();
+    this._pendingCompactionBotAgentIDs = new Set();
 
     this._buildAuthShell = () => buildAuthShell(this);
     this._buildBreadcrumb = () => buildBreadcrumb(this);
@@ -282,6 +287,10 @@ export class KikxApp extends HTMLElement {
     this._reconcileMasters = (masters) => reconcileMasters(this, masters);
     this._setAgentCrownBusy = (agentID, busy) => setAgentCrownBusy(this, agentID, busy);
     this._repaintAgentCrowns = () => repaintAgentCrowns(this);
+    this._toggleAgentCompactionBot = async (agent) => toggleAgentCompactionBot(this, agent);
+    this._reconcileCompactionBots = (compactionBots) => reconcileCompactionBots(this, compactionBots);
+    this._setAgentCompactionBotBusy = (agentID, busy) => setAgentCompactionBotBusy(this, agentID, busy);
+    this._repaintAgentCompactionBots = () => repaintAgentCompactionBots(this);
     this._syncAgentStatusText = () => syncAgentStatusText(this);
     this._setAgentFilter = (filter) => setAgentFilter(this, filter);
     this._agentProviderLabel = (agent) => agentProviderLabel(this, agent);

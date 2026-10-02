@@ -108,6 +108,8 @@ test('AeorDBAgentStore persists plugin-owned agent config and sanitizes secrets'
     enabled: true,
     crownedAt: null,
     crownedClock: null,
+    compactionCrownedAt: null,
+    compactionCrownedClock: null,
     createdAt: 1000,
     updatedAt: 1000,
   });
@@ -357,4 +359,120 @@ test('AeorDBAgentStore caps masters at three, evicting the oldest crown', async 
 
   // Asking for more than three still returns three.
   assert.equal((await store.listMasterAgents({ limit: 500 })).length, 3);
+});
+
+test('AeorDBAgentStore designates compaction bots and orders them newest-first', async () => {
+  let tick = 0;
+  let logicalClock = {
+    tick() {
+      tick++;
+      return { at: 4_000_000 + tick, clock: `${String(4_000_000 + tick).padStart(16, '0')}-000000-cb` };
+    },
+  };
+  let store = new AeorDBAgentStore({ aeordb: createClient(), logicalClock });
+
+  let a = await store.createAgent({ name: 'Alpha', pluginID: 'test' });
+  let b = await store.createAgent({ name: 'Beta', pluginID: 'test' });
+  let c = await store.createAgent({ name: 'Gamma', pluginID: 'test' });
+
+  assert.equal(a.compactionCrownedAt, null);
+  assert.equal(a.compactionCrownedClock, null);
+
+  await store.setAgentCompactionBotCrowned(a.id, true);
+  await store.setAgentCompactionBotCrowned(b.id, true);
+  let crownedC = await store.setAgentCompactionBotCrowned(c.id, true);
+  assert.ok(crownedC.compactionCrownedAt > 0);
+  assert.match(crownedC.compactionCrownedClock, /^\d{16}-\d{6}-cb$/);
+
+  let bots = await store.listCompactionBots();
+  assert.deepEqual(bots.map((agent) => agent.name), [ 'Gamma', 'Beta', 'Alpha' ]);
+
+  // Idempotent re-designation keeps the order.
+  await store.setAgentCompactionBotCrowned(c.id, true);
+  assert.deepEqual((await store.listCompactionBots()).map((agent) => agent.name), [ 'Gamma', 'Beta', 'Alpha' ]);
+
+  // Clearing removes it from the list and clears the fields.
+  let cleared = await store.setAgentCompactionBotCrowned(c.id, false);
+  assert.equal(cleared.compactionCrownedAt, null);
+  assert.equal(cleared.compactionCrownedClock, null);
+  assert.deepEqual((await store.listCompactionBots()).map((agent) => agent.name), [ 'Beta', 'Alpha' ]);
+});
+
+test('AeorDBAgentStore caps compaction bots at three, evicting the oldest', async () => {
+  let tick = 0;
+  let logicalClock = {
+    tick() {
+      tick++;
+      return { at: 5_000_000 + tick, clock: `${String(5_000_000 + tick).padStart(16, '0')}-000000-cb` };
+    },
+  };
+  let store = new AeorDBAgentStore({ aeordb: createClient(), logicalClock });
+
+  let agents = [];
+  for (let index = 0; index < 5; index++)
+    agents.push(await store.createAgent({ name: `Agent ${index}`, pluginID: 'test' }));
+
+  for (let agent of agents)
+    await store.setAgentCompactionBotCrowned(agent.id, true);
+
+  assert.deepEqual((await store.listCompactionBots()).map((agent) => agent.name), [ 'Agent 4', 'Agent 3', 'Agent 2' ]);
+
+  let all = new Map((await store.listAgents()).map((agent) => [ agent.name, agent ]));
+  assert.equal(all.get('Agent 0').compactionCrownedClock, null);
+  assert.equal(all.get('Agent 1').compactionCrownedClock, null);
+  assert.ok(all.get('Agent 2').compactionCrownedClock);
+  assert.equal((await store.listCompactionBots({ limit: 500 })).length, 3);
+});
+
+test('AeorDBAgentStore keeps the crown and compaction-bot lists independent', async () => {
+  let tick = 0;
+  let logicalClock = {
+    tick() {
+      tick++;
+      return { at: 6_000_000 + tick, clock: `${String(6_000_000 + tick).padStart(16, '0')}-000000-both` };
+    },
+  };
+  let store = new AeorDBAgentStore({ aeordb: createClient(), logicalClock });
+
+  let a = await store.createAgent({ name: 'Alpha', pluginID: 'test' });
+  let b = await store.createAgent({ name: 'Beta', pluginID: 'test' });
+
+  // Crown Alpha as a master only. The compaction-bot list must stay empty.
+  await store.setAgentCrowned(a.id, true);
+  assert.deepEqual((await store.listMasterAgents()).map((agent) => agent.name), [ 'Alpha' ]);
+  assert.deepEqual(await store.listCompactionBots(), []);
+  assert.equal((await store.getAgent(a.id)).compactionCrownedClock, null);
+
+  // Designate Beta as a compaction bot only. The crown list must not change.
+  await store.setAgentCompactionBotCrowned(b.id, true);
+  assert.deepEqual((await store.listCompactionBots()).map((agent) => agent.name), [ 'Beta' ]);
+  assert.deepEqual((await store.listMasterAgents()).map((agent) => agent.name), [ 'Alpha' ]);
+  assert.equal((await store.getAgent(b.id)).crownedClock, null);
+
+  // Both designations coexist on the same agent without clobbering each other.
+  await store.setAgentCrowned(b.id, true);
+  await store.setAgentCompactionBotCrowned(a.id, true);
+  assert.deepEqual((await store.listMasterAgents()).map((agent) => agent.name).sort(), [ 'Alpha', 'Beta' ]);
+  assert.deepEqual((await store.listCompactionBots()).map((agent) => agent.name).sort(), [ 'Alpha', 'Beta' ]);
+
+  // Clearing the crown leaves the compaction-bot designation intact.
+  await store.setAgentCrowned(a.id, false);
+  assert.deepEqual((await store.listMasterAgents()).map((agent) => agent.name), [ 'Beta' ]);
+  assert.deepEqual((await store.listCompactionBots()).map((agent) => agent.name).sort(), [ 'Alpha', 'Beta' ]);
+});
+
+test('AeorDBAgentStore rejects designating a missing compaction bot', async () => {
+  let store = new AeorDBAgentStore({
+    aeordb: {
+      async putFile() {},
+      async getFile() {
+        return null;
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => store.setAgentCompactionBotCrowned('missing', true),
+    /Unknown agent/,
+  );
 });

@@ -43,6 +43,19 @@ export function matchAgentCrownRoute(pathname) {
   };
 }
 
+// POST /api/v1/agents/:id/compact-crown and .../compact-uncrown toggle
+// compaction-bot designation — the parallel, independent list to the crown.
+export function matchAgentCompactionCrownRoute(pathname) {
+  let match = /^\/api\/v1\/agents\/([^/]+)\/(compact-crown|compact-uncrown)$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    agentID: decodeURIComponent(match[1]),
+    crowned: match[2] === 'compact-crown',
+  };
+}
+
 export function matchTeamRoute(pathname) {
   let match = /^\/api\/v1\/teams\/([^/]+)$/.exec(pathname);
   if (!match)

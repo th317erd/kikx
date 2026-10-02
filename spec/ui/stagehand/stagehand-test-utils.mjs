@@ -416,6 +416,45 @@ function createAgentManagerStub(agents = [], providers = []) {
         .sort((a, b) => String(b.crownedClock).localeCompare(String(a.crownedClock)))
         .slice(0, 3);
     },
+    async setAgentCompactionBotCrowned(agentID, crowned) {
+      let agent = agents.find((candidate) => candidate.id === agentID);
+      if (!agent) {
+        let error = new Error(`Unknown agent: ${agentID}`);
+        error.status = 404;
+        throw error;
+      }
+
+      if (crowned === true && !agent.compactionCrownedClock) {
+        crownTick++;
+        agent.compactionCrownedAt = crownTick;
+        agent.compactionCrownedClock = `${String(crownTick).padStart(16, '0')}-000000-test`;
+      } else if (crowned === false) {
+        agent.compactionCrownedAt = null;
+        agent.compactionCrownedClock = null;
+      }
+
+      // Mirror the server: the compaction-bot set is a rolling top-3, fully
+      // independent of the crown list.
+      let bots = agents
+        .filter((candidate) => candidate.compactionCrownedClock)
+        .sort((a, b) => String(b.compactionCrownedClock).localeCompare(String(a.compactionCrownedClock)));
+      for (let overflow of bots.slice(3)) {
+        overflow.compactionCrownedAt = null;
+        overflow.compactionCrownedClock = null;
+      }
+
+      return agent;
+    },
+    // Synchronous snapshot, just like the real manager.
+    listCompactionBots() {
+      return agents
+        .filter((candidate) => candidate.compactionCrownedClock)
+        .sort((a, b) => String(b.compactionCrownedClock).localeCompare(String(a.compactionCrownedClock)))
+        .slice(0, 3);
+    },
+    async refreshCompactionBots() {
+      return this.listCompactionBots();
+    },
     async getAgent(agentID) {
       let agent = agents.find((candidate) => candidate.id === agentID);
       if (agent)

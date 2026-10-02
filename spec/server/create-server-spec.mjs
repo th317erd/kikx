@@ -174,6 +174,20 @@ function createAgentManager() {
         { id: 'master_1', name: 'Master One', pluginID: 'test-agent', crownedClock: '0000000000000002-000000-r', crownedAt: 2 },
       ];
     },
+    async setAgentCompactionBotCrowned(agentID, crowned) {
+      calls.push({ method: 'setAgentCompactionBotCrowned', agentID, crowned });
+      return { id: agentID, name: 'Coder', pluginID: 'test-agent', compactionCrownedClock: crowned ? '0000000000000007-000000-r' : null, compactionCrownedAt: crowned ? 7 : null };
+    },
+    listCompactionBots(options = {}) {
+      calls.push({ method: 'listCompactionBots', options });
+      return [
+        { id: 'bot_1', name: 'Bot One', pluginID: 'test-agent', compactionCrownedClock: '0000000000000003-000000-r', compactionCrownedAt: 3 },
+      ];
+    },
+    async refreshCompactionBots() {
+      calls.push({ method: 'refreshCompactionBots' });
+      return this.listCompactionBots({ limit: 500 });
+    },
     async resolveDefaultAgent(options) {
       calls.push({ method: 'resolveDefaultAgent', options });
       return { id: 'master_1', name: 'Master One', pluginID: 'test-agent' };
@@ -1378,6 +1392,41 @@ test('agent crown routes toggle master status and list masters', async () => {
 
     let resolveCall = agentManager.calls.find((call) => call.method === 'resolveDefaultAgent');
     assert.deepEqual(resolveCall.options.excludeAgentIDs, [ 'master_1' ]);
+  } finally {
+    await close(server);
+  }
+});
+
+test('agent compaction-bot routes toggle designation and list bots', async () => {
+  let agentManager = createAgentManager();
+  let server = createServer({
+    context: new AppContext({
+      aeordb: {},
+      agentManager,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let crownResponse = await jsonFetch(`${baseURL}/api/v1/agents/agent_1/compact-crown`, {}, { method: 'POST' });
+    let crownBody = await crownResponse.json();
+    assert.equal(crownResponse.status, 200);
+    assert.ok(crownBody.data.agent.compactionCrownedAt > 0);
+    // The response includes the authoritative compaction-bot list for sync.
+    assert.deepEqual(crownBody.data.compactionBots.map((agent) => agent.id), [ 'bot_1' ]);
+
+    let uncrownResponse = await jsonFetch(`${baseURL}/api/v1/agents/agent_1/compact-uncrown`, {}, { method: 'POST' });
+    assert.equal(uncrownResponse.status, 200);
+    assert.equal((await uncrownResponse.json()).data.agent.compactionCrownedAt, null);
+
+    let botsResponse = await fetch(`${baseURL}/api/v1/agents/compaction-bots`);
+    let botsBody = await botsResponse.json();
+    assert.equal(botsResponse.status, 200);
+    assert.deepEqual(botsBody.data.compactionBots.map((agent) => agent.name), [ 'Bot One' ]);
+
+    let called = agentManager.calls.find((call) => call.method === 'setAgentCompactionBotCrowned');
+    assert.deepEqual(called, { method: 'setAgentCompactionBotCrowned', agentID: 'agent_1', crowned: true });
   } finally {
     await close(server);
   }

@@ -38,11 +38,11 @@ export function selectCompactor({ session, participantAgentsWithMeta, agentManag
   if (sessionCompactionAgentID && byID.has(sessionCompactionAgentID))
     return { agentID: sessionCompactionAgentID, reason: COMPACTOR_REASON.SESSION };
 
-  // 2. User-designated compaction bots (top-3, newest first).
-  // TODO(P3): the parallel compaction-bot list/crown does not exist yet. Until it
-  // does, this rung is empty. When P3 lands, `agentManager.listCompactionBots()`
-  // will return the rolling top-3 (`compactionCrownedAt` ordering); the first
-  // entry that is a session participant should win.
+  // 2. User-designated compaction bots (top-3, newest first). The list is the
+  // parallel-but-independent crown clone: a rolling top-3 keyed on
+  // `compactionCrownedClock`. `listCompactionBots()` is synchronous (the manager
+  // keeps a refreshed in-memory snapshot), so selection stays a pure function.
+  // The first entry that is a session participant wins.
   let designated = callListCompactionBots(agentManager);
   if (Array.isArray(designated)) {
     for (let agent of designated) {
@@ -75,9 +75,9 @@ export function selectCompactor({ session, participantAgentsWithMeta, agentManag
     : { agentID: null, reason: null };
 }
 
-// P3 seam: the parallel compaction-bot list does not exist yet. Guard the call
-// so a future implementation (which may be async or throw) cannot break
-// selection; an array result is authoritative, anything else means "no list".
+// Rung 2 reads the manager's synchronous compaction-bot snapshot. Guard the call
+// so a stub manager or a misbehaving implementation cannot break selection; an
+// array result is authoritative, anything else means "no list".
 function callListCompactionBots(agentManager) {
   try {
     let result = agentManager?.listCompactionBots?.();
