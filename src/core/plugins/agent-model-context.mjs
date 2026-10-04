@@ -54,8 +54,7 @@ export function frameToModelTurn(frame, options = {}) {
 //   [history…]                      — projected frame turns, trigger skipped
 //   [Brief B as the final user turn]
 //
-// The trigger/message text appears exactly once, inside Brief B. On a
-// completion-review step Brief A is never re-sent.
+// The trigger/message text appears exactly once, inside Brief B.
 export function buildModelMessages(params = {}, options = {}) {
   let frames = Array.isArray(params.frames) ? params.frames : [];
   let messages = [];

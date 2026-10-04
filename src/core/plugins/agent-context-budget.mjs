@@ -32,7 +32,7 @@ export function estimateTokens(text) {
 //   - `toolsChars` (serialized tool schemas, re-estimated at chars/4),
 //   - `reserveChars` (provider-specific fixed overhead such as tool schemas or
 //     the prompt scaffolding),
-//   - `promptReserveTokens` (a safety margin for the completion-review prompt),
+//   - `promptReserveTokens` (a safety margin for prompt scaffolding),
 //   - `maxOutputTokens` (space the model needs for its own completion).
 //
 // Returns a non-negative integer; an unknown context window falls back to the

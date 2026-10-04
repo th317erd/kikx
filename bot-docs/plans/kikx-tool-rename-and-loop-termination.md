@@ -1,8 +1,19 @@
 # Kikx: Tool Rename + Agent Completion/Loop-Termination Redesign
 
-Status: **PROPOSED — awaiting owner authorization to implement.**
-Owner rulings R1–R3 recorded 2026-10-03 (see §5). Baseline commit `e473c8d`
+Status: **IMPLEMENTED (P0–P7 landed on branch `kikx-tool-rename`), pending owner
+review and authorization to push/deploy.**
+Owner rulings R1–R6 recorded 2026-10-03 (see §5). Baseline commit `e473c8d`
 (local main, one unpushed dogfood commit) / upstream `e5282b4`.
+
+Implemented commits (kikx):
+- `0976ffe` P1 — remove the agent completion self-review.
+- `cca9cf0` P2 — bound autonomous chains (single-shot wakes, cancel on user turn, fail-safe).
+- `2e47110` P3 — dual-verb rename (`end-turn`/`continue-turn`) + remove silence tool.
+- `73708ce` P4 — autonomous-run clue in Brief B.
+- `c61682c` P6 — docs updated; exports superseded.
+- `f168084` P7 — incident regression spec.
+Provider plugins: codex `66ff4e0`, ollama `4b9b93a` (claude/google needed none).
+Gates: core 715/715, codex 36/36, ollama 17/17, eslint clean.
 
 Motivating incident: production session `a07faa16-4eed-44a9-b823-f2e9c0c10df5`
 ("Kikx") reached **1287 frames / ~1240 messages** in a self-sustaining turn
@@ -408,8 +419,10 @@ guard (with the high fail-safe as backstop).
 
 ## 8. Open items
 
-- Authorization to implement — **granted** by owner ("Go.").
+- Authorization to implement — **granted** by owner ("Go."); implemented.
 - High fail-safe threshold value (default 64) — accepted by owner.
+- **Owed after-change gate:** a bounded real end-to-end dev exercise driving an
+  async wake chain (owner test), and push/deploy authorization.
 
 ## 9. Roadmap (out of scope here, dependency-ordered)
 
