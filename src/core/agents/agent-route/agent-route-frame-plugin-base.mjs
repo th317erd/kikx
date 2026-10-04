@@ -440,7 +440,7 @@ export class AgentRouteFramePluginBase extends BaseFramePlugin {
       deleted: false,
       continuation: {
         ...continuation,
-        kind: 'agent-respond-and-continue',
+        kind: 'send',
         continuationDepth: chainDepth,
         createdAt: now,
       },

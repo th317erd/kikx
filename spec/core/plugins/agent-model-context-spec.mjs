@@ -116,7 +116,7 @@ test('Brief A carries the version banner, precepts, tools, and behavior', () => 
   assert.match(text, /Precepts — always on/);
   assert.match(text, /Orient:/);
   assert.match(text, /Proof: never claim done/i);
-  assert.match(text, /agent-respond-and-continue/);
+  assert.match(text, /continue-turn/);
   assert.match(text, /Delegation: agent-list/);
   assert.match(text, /Behavior:/);
   // 2-party session (1 agent + 1 user): no coordinator preamble.
@@ -238,7 +238,9 @@ test('Brief B carries sender, message, and compact dynamic state', () => {
   assert.match(text, /coord:   true/);
   assert.match(text, /parties: .*agent_1.* - Coordinator/);
   assert.match(text, /usr_1/);
-  assert.match(text, /Answer, or agent-null-response to stay silent\./);
+  assert.match(text, /End every turn one of two ways:/);
+  assert.match(text, /- end-turn — with a report for the user — when your queue is empty\./);
+  assert.match(text, /- continue-turn — with the next thing you're going to work on — when it isn't\./);
 });
 
 test('buildModelMessages assembles system, Brief A (once), history (sans trigger), then Brief B', () => {
@@ -451,7 +453,8 @@ test('the assembled two-tier brief never feeds token usage to the model (P8.1)',
 });
 
 test('the built briefs reject stop-inducing and FOMO language (P8.3)', () => {
-  assert.ok(BRIEF_FORBIDDEN_PHRASES.includes('stop'));
+  // The `stop` keyword was removed from the denylist: it now collides with the
+  // `stop` control tool, so `end your turn`/`stop` wording is legitimate.
   assert.ok(BRIEF_FORBIDDEN_PHRASES.includes('fear of missing out'));
 
   let session = {

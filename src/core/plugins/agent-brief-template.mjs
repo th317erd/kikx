@@ -22,16 +22,14 @@ import {
 import { sessionGeneration } from './agent-normalizers.mjs';
 import { resolveCompressedCharacter } from '../agents/character-limits.mjs';
 
-// P8.3: language that nudges a model to hurry, stop early, or act out of fear
-// of missing out. The two-tier briefs must never reintroduce it; the brief
-// spec greps both assembled briefs against this explicit denylist. Matched
-// case-insensitively with word boundaries (so "stops serving" is not flagged
-// by the `stop` entry).
+// P8.3: language that nudges a model to hurry or act out of fear of missing
+// out. The two-tier briefs must never reintroduce it; the brief spec greps both
+// assembled briefs against this explicit denylist. Matched case-insensitively
+// with word boundaries.
 export const BRIEF_FORBIDDEN_PHRASES = [
   'prefer completing the task in one turn',
   'complete the task in one turn',
   'fear of missing out',
-  'stop',
 ];
 
 export function findForbiddenBriefPhrase(text) {
@@ -52,11 +50,10 @@ function escapeRegExp(value) {
 // Static, compact tool map from the rev-3 Brief A. Grouped by purpose; the
 // per-tool `help` text lives in the tool definitions and is referenced here.
 const BRIEF_TOOL_LINES_COMMON = [
-  '  finalize:  agent-respond, agent-finalize',
-  '  yield:     agent-respond-and-continue',
-  '  progress:  agent-progress',
+  '  turn:      end-turn (with a report, or silent), continue-turn',
+  '             (keep working, wake later), progress',
   '  route:     route (coordinator only)',
-  '  control:   loop-break, agent-character-set',
+  '  control:   stop, set-character',
   '  help:      help (lists all tools; each tool has its own help)',
   '  work:      read-file, write-file, exec, fetch, search, feedback-report',
   '  session:   session-create, session-invite-agents, session-message,',
@@ -64,32 +61,28 @@ const BRIEF_TOOL_LINES_COMMON = [
   '  state:     todo-*, cwd-*',
 ];
 
-// The silence tool is only advertised with 3+ parties (its exposure rule also
-// lives in `shouldExposeLoopTool`). Below that, neither the tool map nor the
-// briefs mention agent-null-response at all.
-const BRIEF_TOOL_LINES_SILENCE = [ '  silence:   agent-null-response' ];
-
-function buildBriefToolLines(context = {}) {
-  if (hasCoordinatorParties(context))
-    return [ 'Tools:', BRIEF_TOOL_LINES_SILENCE[0], ...BRIEF_TOOL_LINES_COMMON ];
-
+function buildBriefToolLines(_context = {}) {
   return [ 'Tools:', ...BRIEF_TOOL_LINES_COMMON ];
 }
 
-function buildMessageBriefAnswerLine(context = {}) {
-  if (hasCoordinatorParties(context))
-    return 'Answer, or agent-null-response to stay silent.';
+// The turn-ending phrase (dual verb). It carries the queue-as-definition-of-done
+// rule and biases toward continuing: uncertainty is a reason to keep working,
+// not to stop. This is the whole per-turn contract for ending a turn.
+export const TURN_ENDING_LINES = [
+  'End every turn one of two ways:',
+  '- end-turn — with a report for the user — when your queue is empty.',
+  '- continue-turn — with the next thing you\'re going to work on — when it isn\'t.',
+  'If you don\'t know the next step yet, keep working to plan it out.',
+];
 
-  return 'Answer the message.';
+function buildMessageBriefAnswerLine(_context = {}) {
+  return TURN_ENDING_LINES.join('\n');
 }
 
-// AGIS precept lines reference the silence tool; drop the ones that mention it
-// when the tool is not offered (below 3 parties).
-function buildBriefPreceptLines(context = {}) {
-  if (hasCoordinatorParties(context))
-    return AGIS_PRECEPTS_LINES;
-
-  return AGIS_PRECEPTS_LINES.filter((line) => !/agent-null-response/.test(line));
+// AGIS precept lines are always included; the tool map and turn-ending phrase
+// carry the turn contract.
+function buildBriefPreceptLines(_context = {}) {
+  return AGIS_PRECEPTS_LINES;
 }
 
 // Brief A ("start brief") — sent ONCE per (re)start: session start, new agent,
@@ -105,17 +98,10 @@ export function buildStartBrief(context = {}) {
   ) || 'No custom character has been set. Act as a careful, technically rigorous Kikx agent.';
 
   let canStaySilent = hasCoordinatorParties(context);
-  let intro = canStaySilent
-    ? [
-      'Act as a careful, technically rigorous agent. Decide whether to answer, stay',
-      'silent, or route. Feel free to use any tools as-needed. Never claim work your own',
-      'tool frames do not show; always leave a truth/proof artifact.',
-    ]
-    : [
-      'Act as a careful, technically rigorous agent. Answer the message, using any tools',
-      'as-needed. Never claim work your own tool frames do not show; always leave a',
-      'truth/proof artifact.',
-    ];
+  let intro = [
+    'Act as a careful, technically rigorous agent. Use any tools as-needed. Never',
+    'claim work your own tool frames do not show; always leave a truth/proof artifact.',
+  ];
 
   let lines = [
     `Kikx Advanced Agent Harness - v${packageVersion()}`,

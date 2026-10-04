@@ -22,7 +22,6 @@ import {
   sessionGeneration,
 } from './agent-normalizers.mjs';
 import { recordForward } from './agent-loop-state.mjs';
-import { hasCoordinatorParties } from './agent-participants.mjs';
 import {
   CHARACTER_COMPRESSED_FIELD,
   MAX_CHARACTER_COMPRESSED_LENGTH,
@@ -40,34 +39,37 @@ export function createLoopToolDefinitions(context = {}) {
 }
 
 export function createLoopTools(state, context) {
-  let respond = (content) => {
+  // `end-turn` sends a visible report when `text` is present, or ends the turn
+  // silently when it is omitted/empty (this replaces the old null-response).
+  let endTurn = (content) => {
     state.finalized = true;
     state.continuation = null;
-    state.finalFrame = {
-      type: 'AgentMessage',
-      content: normalizeToolResponseContent(content),
-    };
-    return { type: 'LoopControl', action: 'finalize', content: state.finalFrame.content };
+    let normalized = normalizeToolResponseContent(content);
+    let hasText = typeof normalized.text === 'string' && normalized.text.trim() !== '';
+    state.finalFrame = hasText
+      ? { type: 'AgentMessage', content: normalized }
+      : null;
+    return { type: 'LoopControl', action: 'finalize', content: normalized };
   };
-  let respondAndContinue = (content) => {
-    let continuation = normalizeContinuationRequest(content);
+  let continueTurn = (content) => {
+    let payload = (content && typeof content === 'object' && !Array.isArray(content)) ? content : {};
+    let continuation = normalizeContinuationRequest({
+      ...payload,
+      prompt: payload.nextAction || payload.continuationPrompt || payload.text,
+    });
     state.finalized = true;
     state.continuation = continuation;
-    state.finalFrame = {
-      type: 'AgentMessage',
-      content: normalizeToolResponseContent(content),
-    };
+    let normalized = normalizeToolResponseContent(content);
+    let hasText = typeof normalized.text === 'string' && normalized.text.trim() !== '';
+    state.finalFrame = hasText
+      ? { type: 'AgentMessage', content: normalized }
+      : null;
     return {
       type: 'LoopControl',
       action: 'respond-and-continue',
-      content: state.finalFrame.content,
+      content: normalized,
       continuation,
     };
-  };
-  let finalize = (content) => respond(content);
-  let nullResponse = (reason = '') => {
-    state.nullResponse = true;
-    return { type: 'LoopControl', action: 'null-response', reason: normalizeReason(reason) };
   };
   let route = (input = {}) => {
     let request = normalizeRouteRequest(input);
@@ -83,17 +85,13 @@ export function createLoopTools(state, context) {
   let help = (input) => formatToolHelp(input, context);
 
   let tools = {
-    'agent-respond': respond,
-    'agent-respond-and-continue': respondAndContinue,
-    'agent-finalize': finalize,
-    'loop-break': breakLoop,
-    'agent-progress': progress,
-    'agent-character-set': setCharacter,
+    'end-turn': endTurn,
+    'continue-turn': continueTurn,
+    'stop': breakLoop,
+    'progress': progress,
+    'set-character': setCharacter,
     'help': help,
   };
-
-  if (shouldExposeLoopTool('agent-null-response', context))
-    tools['agent-null-response'] = nullResponse;
 
   if (context.isCoordinator === true)
     tools['route'] = route;
@@ -109,13 +107,6 @@ export function createLoopTools(state, context) {
 export function shouldExposeLoopTool(toolName, context = {}) {
   if (toolName === 'route')
     return context.isCoordinator === true;
-
-  // Staying silent only makes sense when the agent is not the obvious sole
-  // responder — i.e. with 3+ parties present (counting users). In a 1:1
-  // session the agent must answer, so the silence tool is neither offered nor
-  // mentioned anywhere (tool list, briefs, or help).
-  if (toolName === 'agent-null-response' && !hasCoordinatorParties(context))
-    return false;
 
   return true;
 }
@@ -355,7 +346,7 @@ export async function setAgentCharacter(input, context = {}) {
   let agentID = normalizeRequiredToolString(context.agent?.id, 'agent.id');
   let agentManager = resolveService(context.services, 'agentManager');
   if (!agentManager)
-    throw new Error('agent-character-set requires agentManager');
+    throw new Error('set-character requires agentManager');
 
   let updated;
   if (typeof agentManager.updateAgentCharacter === 'function') {
@@ -366,7 +357,7 @@ export async function setAgentCharacter(input, context = {}) {
       [CHARACTER_COMPRESSED_FIELD]: compressedCharacter,
     });
   } else {
-    throw new Error('agent-character-set requires agentManager.updateAgentCharacter()');
+    throw new Error('set-character requires agentManager.updateAgentCharacter()');
   }
 
   if (context.agent) {
@@ -376,7 +367,7 @@ export async function setAgentCharacter(input, context = {}) {
 
   return {
     type: 'ToolResult',
-    action: 'agent-character-set',
+    action: 'set-character',
     content: {
       agentID,
       character: updated?.character || character,
@@ -393,7 +384,7 @@ export async function recordAgentProgress(input, context = {}) {
   if (!frameEngine || !sessionID || !agentID) {
     return {
       type: 'ToolResult',
-      action: 'agent-progress',
+      action: 'progress',
       content: {
         text,
         visible: false,
@@ -403,7 +394,7 @@ export async function recordAgentProgress(input, context = {}) {
 
   let now = resolveClock(context)();
   let progressFrame = {
-    id: typeof frameEngine.idGenerator === 'function' ? frameEngine.idGenerator() : `agent-progress:${now}`,
+    id: typeof frameEngine.idGenerator === 'function' ? frameEngine.idGenerator() : `progress:${now}`,
     type: 'AgentProgress',
     sessionID,
     interactionID: context.frame?.interactionID || null,
@@ -432,7 +423,7 @@ export async function recordAgentProgress(input, context = {}) {
 
   return {
     type: 'ToolResult',
-    action: 'agent-progress',
+    action: 'progress',
     content: {
       text,
       visible: true,

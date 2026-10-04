@@ -157,6 +157,19 @@ class NullResponseAgentProvider extends AgentInterface {
   }
 }
 
+class SilentEndTurnAgentProvider extends AgentInterface {
+  static pluginID = 'silent-end-turn-agent';
+
+  async ask(_prompt, params = {}) {
+    params.services.calls.push({
+      method: 'silent-end-turn',
+      agentID: params.agent.id,
+    });
+
+    return params.tools['end-turn']({ reason: 'nothing to add' });
+  }
+}
+
 class BlankMessageAgentProvider extends AgentInterface {
   static pluginID = 'blank-message-agent';
 
@@ -1404,6 +1417,45 @@ test('AgentRouteFramePlugin cleans up blank visible agent messages', async () =>
   assert.equal(agentFrames[0].content.text, '');
 });
 
+test('AgentRouteFramePlugin ends the turn silently for end-turn with no text', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Quiet Worker',
+        pluginID: 'silent-end-turn-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  await runtime.appendUserMessage('ses_1', { text: 'hello', userID: 'usr_1' });
+
+  let calls = runtime.services.calls.filter((call) => call.method === 'silent-end-turn');
+  assert.deepEqual(calls, [{
+    method: 'silent-end-turn',
+    agentID: 'agent_1',
+  }]);
+
+  // No visible AgentMessage frame is produced: the pre-created placeholder is
+  // cleaned up hidden+deleted, so the silent end never renders.
+  let agentFrames = (await runtime.listFrames('ses_1')).filter((frame) => frame.authorID === 'agent_1');
+  assert.equal(agentFrames.filter((frame) => frame.hidden === false).length, 0);
+  assert.equal(agentFrames.length, 1);
+  assert.equal(agentFrames[0].type, 'AgentMessage');
+  assert.equal(agentFrames[0].hidden, true);
+  assert.equal(agentFrames[0].deleted, true);
+  assert.equal(agentFrames[0].content.status, 'empty');
+  assert.equal(agentFrames[0].content.text, '');
+});
+
 test('AgentRouteFramePlugin treats Done as a hard provider stream boundary', async () => {
   let runtime = createRuntime({
     agents: new Map([
@@ -1478,6 +1530,7 @@ test('AgentRouteFramePlugin schedules respond-and-continue as a generic schedule
   assert.equal(continuationFrame.parentID, 'agent_frame_1');
   assert.equal(continuationFrame.scheduledStatus, 'fired');
   assert.equal(continuationFrame.scheduledAt, 1000);
+  assert.equal(continuationFrame.continuation.kind, 'send');
   assert.equal(continuationFrame.content.continuationPrompt, 'Please run the next step now.');
   assert.match(continuationFrame.content.text, /scheduled respond-and-continue prompt has fired/);
 
@@ -2049,6 +2102,7 @@ function createRuntime(options = {}) {
   pluginRegistry.registerAgentProvider('removing-forwarding-agent', RemovingForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('service-forwarding-agent', ServiceForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('null-response-agent', NullResponseAgentProvider);
+  pluginRegistry.registerAgentProvider('silent-end-turn-agent', SilentEndTurnAgentProvider);
   pluginRegistry.registerAgentProvider('blank-message-agent', BlankMessageAgentProvider);
   pluginRegistry.registerAgentProvider('late-phantom-agent', LatePhantomAfterDoneAgentProvider);
   pluginRegistry.registerAgentProvider('failing-agent', FailingAgentProvider);

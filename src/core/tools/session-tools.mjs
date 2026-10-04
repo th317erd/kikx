@@ -490,7 +490,7 @@ export class SessionMessageTool extends SessionTool {
     required: [ 'text' ],
     additionalProperties: false,
   };
-  static help = 'Use session-message with session_id to post a visible agent-authored message into another session. This is different from agent-respond, which finalizes your current routed turn.';
+  static help = 'Use session-message with session_id to post a visible agent-authored message into another session. This is different from end-turn, which ends your current routed turn.';
 
   async _execute(params = {}) {
     let text = normalizeRequiredString(params.text, 'text');

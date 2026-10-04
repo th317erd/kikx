@@ -36,19 +36,19 @@ test('the help tool lists all exposed tools with their help', () => {
   assert.ok(listed.content.tools.length > 0);
   assert.equal(listed.content.tools.every((tool) => tool.help.trim() !== ''), true);
   assert.ok(listed.content.tools.some((tool) => tool.name === 'help'));
-  assert.match(listed.content.text, /- agent-respond: /);
+  assert.match(listed.content.text, /- end-turn: /);
 });
 
 test('the help tool returns the full help for a single named tool', () => {
   let tools = createLoopTools(createLoopState(), { isCoordinator: true });
-  let described = tools['help']({ tool: 'agent-respond' });
+  let described = tools['help']({ tool: 'end-turn' });
 
   assert.equal(described.action, 'help');
   assert.equal(described.content.found, true);
-  assert.equal(described.content.tool, 'agent-respond');
-  assert.match(described.content.help, /completed any needed tool work/);
+  assert.equal(described.content.tool, 'end-turn');
+  assert.match(described.content.help, /when your queue is empty/);
   assert.equal(described.content.parameters.type, 'object');
-  assert.deepEqual(described.content.parameters.required, [ 'text' ]);
+  assert.deepEqual(described.content.parameters.required, undefined);
 });
 
 test('the help tool fails loud for an unknown tool name', () => {
@@ -57,7 +57,7 @@ test('the help tool fails loud for an unknown tool name', () => {
 
   assert.equal(missing.content.found, false);
   assert.match(missing.content.message, /Unknown tool: does-not-exist/);
-  assert.match(missing.content.message, /Available tools: .*agent-respond/);
+  assert.match(missing.content.message, /Available tools: .*end-turn/);
 });
 
 test('the help tool includes plugin-registered tools', () => {

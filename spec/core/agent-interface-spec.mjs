@@ -54,7 +54,7 @@ class LoopAgent extends AgentInterface {
 
 class ToolFinalizingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    options.tools['agent-respond']({ text: 'tool final answer' });
+    options.tools['end-turn']({ text: 'tool final answer' });
     return { done: true };
   }
 }
@@ -93,19 +93,19 @@ class PermissionSeekingDirectAgent extends AgentInterface {
   }
 }
 
-class RespondAndContinueAgent extends AgentInterface {
+class ContinueTurnAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    return options.tools['agent-respond-and-continue']({
+    return options.tools['continue-turn']({
       text: 'I started the work and will continue shortly.',
       delayMs: 0,
-      continuationPrompt: 'Run the next smoke check.',
+      nextAction: 'Run the next smoke check.',
     });
   }
 }
 
 class ToolFinalizingProviderFrameAgent extends AgentInterface {
   async *ask(_prompt, options = {}) {
-    options.tools['agent-respond']({ text: 'tool final answer' });
+    options.tools['end-turn']({ text: 'tool final answer' });
     yield {
       id: 'provider_frame_1',
       type: 'AgentMessage',
@@ -138,15 +138,15 @@ class ToolFinalizingProviderFrameAgent extends AgentInterface {
   }
 }
 
-class NullResponseAgent extends AgentInterface {
+class EndTurnSilentAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    return options.tools['agent-null-response']('forwarded elsewhere');
+    return options.tools['end-turn']({});
   }
 }
 
-class BreakAgent extends AgentInterface {
+class StopAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    return options.tools['loop-break']('stop now');
+    return options.tools['stop']('stop now');
   }
 }
 
@@ -163,23 +163,23 @@ class CharacterSettingAgent extends AgentInterface {
   }
 
   async ask(_prompt, options = {}) {
-    this.toolResult = await options.tools['agent-character-set']({
+    this.toolResult = await options.tools['set-character']({
       character: 'You are a dirty swearing pirate and fantastic engineer.',
       compressedCharacter: 'Pirate engineer; direct and technical.',
     });
-    return options.tools['agent-respond']({ text: 'Character updated.' });
+    return options.tools['end-turn']({ text: 'Character updated.' });
   }
 }
 
 class InvalidCharacterSettingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    return await options.tools['agent-character-set']({ character: '' });
+    return await options.tools['set-character']({ character: '' });
   }
 }
 
 class MissingCompressedCharacterSettingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    return await options.tools['agent-character-set']({
+    return await options.tools['set-character']({
       character: 'You are a careful engineer.',
     });
   }
@@ -187,7 +187,7 @@ class MissingCompressedCharacterSettingAgent extends AgentInterface {
 
 class OverLimitCompressedCharacterSettingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
-    return await options.tools['agent-character-set']({
+    return await options.tools['set-character']({
       character: 'You are a careful engineer.',
       compressedCharacter: 'x'.repeat(401),
     });
@@ -298,7 +298,7 @@ class GlobalToolCallingAgent extends AgentInterface {
     this.askCalls.push(askCall);
     this.askCall = askCall;
     this.toolResult = await options.tools['global-echo']({ text: 'hello' });
-    return options.tools['agent-respond']({ text: this.toolResult.text });
+    return options.tools['end-turn']({ text: this.toolResult.text });
   }
 }
 
@@ -309,9 +309,9 @@ class ProgressThenToolAgent extends AgentInterface {
   }
 
   async ask(_prompt, options = {}) {
-    await options.tools['agent-progress']({ text: 'I will echo the requested value now.' });
+    await options.tools['progress']({ text: 'I will echo the requested value now.' });
     this.toolResult = await options.tools['global-echo']({ text: 'hello' });
-    return options.tools['agent-respond']({ text: this.toolResult.text });
+    return options.tools['end-turn']({ text: this.toolResult.text });
   }
 }
 
@@ -351,7 +351,7 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].startBrief, /Precepts — always on/);
   assert.match(agent.calls[1].startBrief, /Orient:/);
   assert.match(agent.calls[1].startBrief, /Proof: never claim done/i);
-  assert.match(agent.calls[1].startBrief, /agent-respond-and-continue/);
+  assert.match(agent.calls[1].startBrief, /continue-turn/);
   assert.match(agent.calls[1].startBrief, /Character: You are a pragmatic engineer\./);
   assert.match(agent.calls[1].startBrief, /Behavior:/);
   // Brief B: sender, message, compact state.
@@ -365,23 +365,22 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.doesNotMatch(agent.calls[1].startBrief, /Kikx agentic coordination loop/);
   assert.doesNotMatch(agent.calls[1].messageBrief, /Kikx agentic coordination loop/);
   assert.deepEqual(agent.calls[1].toolNames, [
-    'agent-character-set',
-    'agent-finalize',
-    'agent-progress',
-    'agent-respond',
-    'agent-respond-and-continue',
+    'continue-turn',
+    'end-turn',
     'help',
-    'loop-break',
+    'progress',
     'route',
+    'set-character',
+    'stop',
   ]);
   assert.equal(agent.calls[1].toolNames.includes('agent-null-response'), false);
-  assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'agent-character-set'));
-  assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'agent-progress'));
+  assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'set-character'));
+  assert.ok(agent.calls[1].toolDefinitions.some((tool) => tool.name === 'progress'));
   assert.equal(agent.calls[1].toolDefinitions.every((tool) => /^[A-Za-z0-9_-]+$/.test(tool.name)), true);
   assert.equal(agent.calls[1].toolNames.every((name) => /^[A-Za-z0-9_-]+$/.test(name)), true);
 
   // P6/D2: the character tool schema requires a length-limited compressed form.
-  let characterTool = agent.calls[1].toolDefinitions.find((tool) => tool.name === 'agent-character-set');
+  let characterTool = agent.calls[1].toolDefinitions.find((tool) => tool.name === 'set-character');
   assert.deepEqual(characterTool.parameters.required, [ 'character', 'compressedCharacter' ]);
   assert.equal(characterTool.parameters.properties.compressedCharacter.maxLength, 400);
 });
@@ -532,7 +531,7 @@ test('AgentInterface routes registered global plugin tools through the tool exec
   });
 });
 
-test('AgentInterface persists agent-progress frames before registered tool calls', async () => {
+test('AgentInterface persists progress frames before registered tool calls', async () => {
   let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
   pluginRegistry.registerTool('global-echo', GlobalEchoTool);
 
@@ -795,12 +794,13 @@ test('AgentInterface base loop preserves provider frame metadata after response-
   ]);
 });
 
-test('AgentInterface base loop supports respond-and-continue control', async () => {
-  assert.deepEqual(await collect(new RespondAndContinueAgent().run(baseLoopParams())), [
+test('AgentInterface base loop supports continue-turn control', async () => {
+  assert.deepEqual(await collect(new ContinueTurnAgent().run(baseLoopParams())), [
     {
       type: 'AgentMessage',
       content: {
         text: 'I started the work and will continue shortly.',
+        nextAction: 'Run the next smoke check.',
       },
     },
     {
@@ -816,8 +816,10 @@ test('AgentInterface base loop supports respond-and-continue control', async () 
   ]);
 });
 
-test('AgentInterface base loop handles null-response and break loop controls', async () => {
-  assert.deepEqual(await collect(new NullResponseAgent().run(baseLoopParams({
+test('AgentInterface base loop ends the turn silently for end-turn with no text and handles stop', async () => {
+  // `end-turn` with no text is the replacement for the removed silence tool:
+  // the loop finalizes with an empty final frame and no visible report.
+  assert.deepEqual(await collect(new EndTurnSilentAgent().run(baseLoopParams({
     session: {
       id: 'ses_1',
       participantAgentIDs: [ 'agent_1', 'agent_2' ],
@@ -825,14 +827,18 @@ test('AgentInterface base loop handles null-response and break loop controls', a
     },
   }))), [
     {
+      type: 'AgentMessage',
+      content: {},
+    },
+    {
       type: 'Done',
       content: {
-        status: 'null-response',
+        status: 'finalized',
       },
     },
   ]);
 
-  assert.deepEqual(await collect(new BreakAgent().run(baseLoopParams())), [
+  assert.deepEqual(await collect(new StopAgent().run(baseLoopParams())), [
     {
       type: 'Done',
       content: {
@@ -853,7 +859,7 @@ test('AgentInterface base loop forwards provider Done usage through the agent lo
       this.calls++;
 
       if (this.calls === 1) {
-        options.tools['agent-respond']({ text: 'usage answer' });
+        options.tools['end-turn']({ text: 'usage answer' });
         return {
           type: 'Done',
           content: {
@@ -862,7 +868,7 @@ test('AgentInterface base loop forwards provider Done usage through the agent lo
         };
       }
 
-      options.tools['agent-finalize']({ text: 'usage answer' });
+      options.tools['end-turn']({ text: 'usage answer' });
       return { type: 'Done', content: {} };
     }
   }
@@ -943,7 +949,7 @@ test('AgentInterface does not offer forwarding tools to non-coordinators', async
   assert.doesNotMatch(askCall.startBrief, /COORDINATOR PREAMBLE/);
 });
 
-test('AgentInterface offers silence tools to coordinated mentioned targets', async () => {
+test('AgentInterface exposes the dual-verb turn tools to coordinated mentioned targets', async () => {
   let agent = new LoopAgent();
   await collect(agent.run(baseLoopParams({
     agent: { id: 'agent_2', name: 'Mr. Bennett' },
@@ -974,17 +980,19 @@ test('AgentInterface offers silence tools to coordinated mentioned targets', asy
   assert.ok(askCall);
   assert.equal(askCall.isCoordinator, false);
   assert.equal(askCall.toolNames.includes('route'), false);
-  assert.equal(askCall.toolNames.includes('agent-null-response'), true);
+  assert.equal(askCall.toolNames.includes('end-turn'), true);
+  assert.equal(askCall.toolNames.includes('continue-turn'), true);
+  assert.equal(askCall.toolNames.some((name) => name.startsWith('agent-')), false);
   assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'route'), false);
-  assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'agent-null-response'), true);
+  assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'end-turn'), true);
   assert.match(askCall.messageBrief, /coord:   false/);
   assert.match(askCall.messageBrief, /Hello Mr\. Bennett, how are you today\?/);
-  assert.match(askCall.messageBrief, /agent-null-response to stay silent/);
+  assert.match(askCall.messageBrief, /End every turn one of two ways:/);
 });
 
-test('AgentInterface hides the silence tool and all mention of it below 3 parties', async () => {
-  // One user + one agent = 2 parties: the agent must answer, so silence must be
-  // neither offered nor referenced in the briefs or tool definitions.
+test('AgentInterface offers no silence tool below 3 parties; the dual-verb turn phrase still applies', async () => {
+  // One user + one agent = 2 parties. The old silence tool is gone entirely, so
+  // there is nothing to withhold; silence is now the text-less `end-turn`.
   let agent = new LoopAgent();
   await collect(agent.run(baseLoopParams({
     agent: { id: 'agent_1', name: 'Gemma', character: 'Careful.' },
@@ -1009,8 +1017,8 @@ test('AgentInterface hides the silence tool and all mention of it below 3 partie
   assert.equal(askCall.toolDefinitions.some((tool) => tool.name === 'agent-null-response'), false);
   assert.doesNotMatch(askCall.startBrief, /agent-null-response/);
   assert.doesNotMatch(askCall.messageBrief, /agent-null-response/);
-  assert.doesNotMatch(askCall.startBrief, /stay silent/);
-  assert.match(askCall.messageBrief, /Answer the message\./);
+  assert.match(askCall.messageBrief, /End every turn one of two ways:/);
+  assert.match(askCall.messageBrief, /- end-turn — with a report for the user/);
 });
 
 test('AgentInterface exposes agent-owned self-configuration tools', async () => {
@@ -1050,7 +1058,7 @@ test('AgentInterface exposes agent-owned self-configuration tools', async () => 
   }]);
   assert.deepEqual(agent.toolResult, {
     type: 'ToolResult',
-    action: 'agent-character-set',
+    action: 'set-character',
     content: {
       agentID: 'agent_1',
       character: 'You are a dirty swearing pirate and fantastic engineer.',
@@ -1101,7 +1109,7 @@ test('AgentInterface self-configuration tools fail loud for invalid input', asyn
 
   await assert.rejects(
     () => collect(new CharacterSettingAgent().run(baseLoopParams())),
-    /agent-character-set requires agentManager/,
+    /set-character requires agentManager/,
   );
 });
 

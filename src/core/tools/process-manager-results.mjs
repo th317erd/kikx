@@ -42,7 +42,7 @@ function createStartedResult(record) {
       `Poll progress with exec-status {"processID":"${record.processID}"}.`,
       `Read buffered output with exec-read {"processID":"${record.processID}","stream":"combined"}.`,
       `Search buffered output with exec-grep {"processID":"${record.processID}","pattern":"..."}.`,
-      'Use agent-respond-and-continue to report progress and schedule yourself to poll later.',
+      'Use continue-turn to report progress and schedule yourself to poll later.',
     ].filter(Boolean).join(' '),
   };
 }

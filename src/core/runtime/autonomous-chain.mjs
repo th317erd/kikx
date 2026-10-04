@@ -13,7 +13,7 @@
 export const MAX_AUTONOMOUS_CHAIN_STEPS = 64;
 export const AUTONOMOUS_CONTINUATION_KINDS = [
   'exec-wake-on-completion',
-  'agent-respond-and-continue',
+  'send',
 ];
 export const AUTONOMOUS_PAUSE_NOTICE_TEXT = 'Autonomous run paused — reply to continue.';
 

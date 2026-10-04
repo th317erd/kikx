@@ -4,90 +4,63 @@ import { MAX_CHARACTER_COMPRESSED_LENGTH } from '../agents/character-limits.mjs'
 
 export const AGENT_TOOL_DEFINITIONS = [
   {
-    name: 'agent-respond',
-    description: 'Finalize this turn with a visible response from this agent after required work is complete.',
-    help: 'Use agent-respond only after you have completed any needed tool work for this turn. Do not use it to announce future tool work.',
-    parameters: {
-      type: 'object',
-      properties: {
-        text: {
-          type: 'string',
-          description: 'Visible response text.',
-        },
-      },
-      required: [ 'text' ],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'agent-respond-and-continue',
-    description: 'Finalize this turn with a visible response, then schedule a delayed continuation back to this same agent.',
+    name: 'end-turn',
+    description: 'End this turn. Pass text to send a visible report; omit text to end the turn silently.',
     help: [
-      'Use agent-respond-and-continue when you need to tell the user or other agents what you did now, then resume your own work at a scheduled time.',
-      'This is a boomerang: your visible response ends this turn, and Kikx will route a hidden continuation frame back to you after delayMs.',
-      'This is the proper tool for progress updates when you must continue the task yourself after reporting progress.',
-      'Do not use this for ordinary final answers.',
+      'Use end-turn when your queue is empty. Include text for a visible report to the user, or omit text to end with nothing to say.',
+      'If real work remains, use continue-turn instead and name the next step.',
     ].join(' '),
     parameters: {
       type: 'object',
       properties: {
         text: {
           type: 'string',
-          description: 'Visible response text for this turn.',
+          description: 'Optional visible report for the user. Omit to end the turn silently.',
         },
-        delayMs: {
-          type: 'integer',
-          description: 'Delay in milliseconds before this same agent receives a continuation frame. Defaults to 1000. May be 0 or any future delay.',
-        },
-        continuationPrompt: {
+        reason: {
           type: 'string',
-          description: 'Prompt text Kikx will send back to you when the timer fires. Defaults to "Please continue what you were doing."',
+          description: 'Optional short internal note; not shown to the user.',
         },
       },
-      required: [ 'text' ],
       additionalProperties: false,
     },
   },
   {
-    name: 'agent-finalize',
-    description: 'Finalize this turn with a visible response from this agent after required work is complete.',
-    help: 'Use agent-finalize as an explicit synonym for agent-respond after needed tool work is complete.',
+    name: 'continue-turn',
+    description: 'End this turn and schedule your next step back to you.',
+    help: [
+      'Use continue-turn when your queue is not empty: you still have work to do.',
+      'Include an optional visible text update, then Kikx schedules a hidden continuation back to you after delayMs.',
+      'Name the next thing you will work on in nextAction; it becomes your continuation prompt.',
+      'If you are not sure of the next step, keep working to plan it out rather than stopping.',
+    ].join(' '),
     parameters: {
       type: 'object',
       properties: {
         text: {
           type: 'string',
-          description: 'Visible response text.',
+          description: 'Optional visible progress text for this turn.',
         },
-      },
-      required: [ 'text' ],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'agent-null-response',
-    description: 'End this turn silently without a visible response.',
-    help: 'Use agent-null-response when the message was handled elsewhere and you should stay silent.',
-    parameters: {
-      type: 'object',
-      properties: {
-        reason: {
+        nextAction: {
           type: 'string',
-          description: 'Short internal reason for staying silent.',
+          description: 'The next thing you will work on. Sent back to you when the continuation fires; defaults to your text.',
+        },
+        delayMs: {
+          type: 'integer',
+          description: 'Delay in milliseconds before this same agent receives a continuation frame. Defaults to 1000. May be 0 or any future delay.',
         },
       },
-      required: [ 'reason' ],
       additionalProperties: false,
     },
   },
   {
-    name: 'agent-progress',
+    name: 'progress',
     description: 'Write a visible, non-final progress note before using another tool.',
     help: [
-      'Use agent-progress before every individual read, write, fetch, search, exec, or other task tool call.',
+      'Use progress before every individual read, write, fetch, search, exec, or other task tool call.',
       'Keep the note short: one paragraph at most, describing the single next tool action you are about to take.',
       'Do not group several future tool calls under one progress note.',
-      'This does not finalize your turn; continue with the tool call after the progress note succeeds.',
+      'This does not end your turn; continue with the tool call after the progress note succeeds.',
     ].join(' '),
     parameters: {
       type: 'object',
@@ -137,9 +110,9 @@ export const AGENT_TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'loop-break',
+    name: 'stop',
     description: 'Stop this short-lived agentic loop without producing a visible response.',
-    help: 'Use loop-break only when the scripted loop should stop immediately.',
+    help: 'Use stop only when the scripted loop should stop immediately.',
     parameters: {
       type: 'object',
       properties: {
@@ -168,10 +141,10 @@ export const AGENT_TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'agent-character-set',
+    name: 'set-character',
     description: 'Persistently update your own character/persona for future turns.',
     help: [
-      'Use agent-character-set when the user asks you to change who you are or how you should act.',
+      'Use set-character when the user asks you to change who you are or how you should act.',
       'Provide a complete durable character description plus a compressed version for the start brief.',
       'The compressed version must be at most ' + MAX_CHARACTER_COMPRESSED_LENGTH + ' characters.',
       'Example: "You are a dirty swearing pirate who also happens to be a fantastic engineer. Be direct, technically rigorous, and speak with pirate flavor."',

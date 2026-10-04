@@ -704,7 +704,7 @@ test('FrameRuntime cancelAutonomousWakes cancels pending exec-wake and continuat
     createScheduledAutonomousFrame({
       id: 'cont_1',
       sessionID: 'ses_1',
-      continuation: { kind: 'agent-respond-and-continue' },
+      continuation: { kind: 'send' },
     }),
     createScheduledAutonomousFrame({
       id: 'manual_1',

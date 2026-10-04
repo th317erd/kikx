@@ -47,10 +47,10 @@ export const STANDARD_TOOL_NOTES_LINES = [
   'Tool notes:',
   '- route tags the actor(s) best suited; `remove` un-tags; routing never speaks — if',
   '  the message is best handled by you, respond instead.',
-  '- agent-respond-and-continue reports progress now and resumes on a schedule; use it',
-  '  regularly for progress reports and musings.',
-  '- agent-progress is a short visible pre-tool note (≤1 paragraph) for the single next',
-  '  tool action; it does not finalize the turn.',
+  '- continue-turn keeps you working: it reports progress now and wakes you later to',
+  '  take the next step. Use it whenever your queue is not empty.',
+  '- progress is a short visible pre-tool note (≤1 paragraph) for the single next',
+  '  tool action; it does not end the turn.',
   '- All tools accept `session_id` to target a session; intersession messaging is',
   '  possible — see tool `help`.',
   '- Delegation: agent-list, session-create(includeSelf), session-invite-agents,',
@@ -94,7 +94,7 @@ export const COORDINATOR_PREAMBLE_LINES = [
 export const MULTIPARTY_CHARACTER_NOTE_LINES = [
   'With 2+ parties present, lean on your character and speak only when your',
   'expertise adds value, or when a documented project rule is violated; otherwise',
-  'stay silent (agent-null-response).',
+  'end your turn silently with end-turn (no text).',
 ];
 
 let cachedVersion = null;
