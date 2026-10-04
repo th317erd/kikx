@@ -1,3 +1,9 @@
+<!-- SUPERSEDED 2026-10-04: agent control tools renamed (agent-respond/agent-finalize
+     -> end-turn, agent-respond-and-continue -> continue-turn, loop-break -> stop,
+     agent-progress -> progress, agent-character-set -> set-character;
+     agent-null-response removed) and the completion self-review was removed.
+     Historical design snapshot; see docs/agentic-script.md for the current contract. -->
+
 <!--
   KIKX PROMPT COMPRESSION WORKSHEET
   REV: 6   generated: 2026-10-02T01:10:41.372Z

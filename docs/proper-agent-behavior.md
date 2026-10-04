@@ -85,7 +85,7 @@ Before speaking or acting, the agent should ask:
 4. Is my contribution grounded in my assigned character, role, expertise, or current work?
 5. Am I confident enough to speak or act?
 
-If the answer is no, the agent should use `agent-null-response` and stay silent.
+If the answer is no, the agent should end the turn silently with `end-turn` (no text).
 
 Special cases:
 
@@ -158,7 +158,7 @@ Kikx should grow toward shared project todo lists. A coordinator may own the sha
 
 For complex work, the agent should follow this loop:
 
-1. Send a short `agent-progress` message describing the next single action.
+1. Send a short `progress` message describing the next single action.
 2. Run exactly the tool needed for that action.
 3. Read the result.
 4. Ask: "What is the next most important thing to do?"
@@ -184,7 +184,7 @@ When mentioning file paths, functions, commands, API behavior, test results, log
 - a session/tool-output search result with locators
 - direct user-provided data
 
-If grounding was lost, hidden, compacted away, or replaced by a failed self-review, the agent should re-read or search before giving a concrete report. It must not reconstruct specific file names or findings from vague memory.
+If grounding was lost, hidden, or compacted away, the agent should re-read or search before giving a concrete report. It must not reconstruct specific file names or findings from vague memory.
 
 An agent should not claim "I implemented", "I changed", or "I updated" unless its own recent tool frames show that it performed the implementation. If another agent performed the work, it should say that it coordinated, reviewed, or verified it.
 
@@ -241,18 +241,14 @@ This orientation should be compact. It is not a giant report, and it should not 
 
 Project orientation should become a first-class session value that tools can read and update. This should include goals, project definition, relevant documentation, cwd, todo ownership, and verification expectations.
 
-## Completion Review
+## Ending a Turn
 
-Before finalizing, agents should privately ask:
+Agents end every turn one of two ways:
 
-1. Did I complete all tasks the user requested?
-2. What evidence proves completion?
-3. What did I miss?
-4. What did I forget?
-5. What could I have done better?
-6. If I am not done, what is the next useful action?
+- `end-turn` — when the queue is empty. Include `text` for a visible report, or omit it to end silently.
+- `continue-turn` — when the queue is not empty. Include `text` for a visible update and `nextAction` naming the next step.
 
-If not done, the agent should continue or use `agent-respond-and-continue`. It should not convert the self-review itself into the user-visible message.
+The queue is: open todos (with focus), still-running async processes, and the next action named on a `continue-turn`. If the agent does not know the next step, it should keep working to plan it out rather than stopping.
 
 Final responses should usually include:
 
@@ -290,7 +286,7 @@ Rules:
 - Non-coordinators should stay silent unless directly targeted, delegated to, mentioned, or clearly useful.
 - Agents should not echo each other, restate obvious points, or answer merely because they can.
 - If multiple agents are involved, each agent should contribute from its own character, soul, role, expertise, or assigned ownership.
-- Agents should avoid recursive chatter. If another agent's message does not require a response, use `agent-null-response`.
+- Agents should avoid recursive chatter. If another agent's message does not require a response, end the turn silently with `end-turn` (no text).
 - Agents should surface new concerns that have immediate or future importance, especially when other agents are involved and the concern needs coordination.
 
 Forwarding remains available for explicit routing workflows, external services, or future sleeper agents. It should not be the normal way for active agents in the same session to hand off intra-session conversation.
@@ -325,7 +321,7 @@ In delegated child sessions, the coordinator's initial orientation is actionable
 
 Sub-agents should stay inside their assigned lane. An implementation agent can write implementation files. A QA agent should define checks, inspect outputs, and verify behavior. A UX agent should review interaction, wording, layout, and accessibility, then suggest focused fixes or apply only clearly scoped UX corrections. A support agent should not duplicate another agent's file writes just because it is capable of doing so.
 
-QA, UX review, security review, product review, and coordinator roles should not call `write-file` for implementation code unless the user or coordinator explicitly reassigns them to fix a specific defect. They should prefer `read-file`, browser/fetch verification, concise findings, or `agent-null-response`.
+QA, UX review, security review, product review, and coordinator roles should not call `write-file` for implementation code unless the user or coordinator explicitly reassigns them to fix a specific defect. They should prefer `read-file`, browser/fetch verification, concise findings, or a silent `end-turn`.
 
 Kikx may hide `write-file` from obvious QA, UX, product, security, reviewer, or coordinator roles until explicit write permission or reassignment is present. Agents should not work around missing tools; they should perform review, verification, or report the needed patch.
 
@@ -420,7 +416,6 @@ Good visible messages are:
 
 Agents should avoid:
 
-- self-review dumps
 - repetitive apologies
 - vague promises
 - pretending to have done tool work
