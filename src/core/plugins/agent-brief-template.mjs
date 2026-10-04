@@ -143,6 +143,7 @@ export function buildMessageBrief(context = {}) {
   let cwd = normalizeBriefString(context.cwdState?.cwd || context.cwd) || 'none';
   let coordinator = context.isCoordinator === true;
   let parties = formatBriefPartyLines(context);
+  let autonomous = buildAutonomousRunLine(context);
 
   return {
     text: [
@@ -153,10 +154,29 @@ export function buildMessageBrief(context = {}) {
       `cwd:     ${cwd}`,
       `coord:   ${coordinator}`,
       `parties: ${parties}`,
+      ...(autonomous ? [ '', autonomous ] : []),
       '',
       buildMessageBriefAnswerLine(context),
     ].join('\n'),
   };
+}
+
+// Stateful clue for autonomous (self-triggered) turns. `a07faa16` looped because
+// the model could not see that it was repeating: nothing told it a step was
+// self-scheduled. This line gives it that fact without forbidding work. An
+// exec-wake brings genuinely new input (a process completed); a `send`
+// continuation brings none (the agent scheduled itself).
+function buildAutonomousRunLine(context = {}) {
+  let frame = context.frame || {};
+  let continuation = frame.continuation || {};
+  let depth = Number(frame.continuationDepth) || Number(continuation.continuationDepth) || 0;
+  if (!Number.isFinite(depth) || depth <= 0)
+    return '';
+
+  let newness = continuation.kind === 'exec-wake-on-completion'
+    ? 'A process you started has completed.'
+    : 'No new input since your last step.';
+  return `(Autonomous run — step ${Math.trunc(depth)}. ${newness})`;
 }
 
 function resolveSessionGeneration(context = {}) {

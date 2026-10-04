@@ -481,3 +481,51 @@ test('the built briefs reject stop-inducing and FOMO language (P8.3)', () => {
   // The detector itself is meaningful: it flags a planted phrase.
   assert.equal(findForbiddenBriefPhrase('We must avoid fear of missing out.'), 'fear of missing out');
 });
+
+test('Brief B carries the dual-verb turn-ending phrase', () => {
+  let brief = buildMessageBrief({
+    frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'go' } },
+    agent: { id: 'agent_1' },
+  }).text;
+
+  assert.match(brief, /End every turn one of two ways:/);
+  assert.match(brief, /end-turn — with a report for the user — when your queue is empty\./);
+  assert.match(brief, /continue-turn — with the next thing you're going to work on — when it isn't\./);
+  assert.match(brief, /If you don't know the next step yet, keep working to plan it out\./);
+});
+
+test('Brief B shows an autonomous-run clue only on self-triggered turns', () => {
+  let userTurn = buildMessageBrief({
+    frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'go' } },
+    agent: { id: 'agent_1' },
+  }).text;
+  assert.doesNotMatch(userTurn, /Autonomous run/);
+
+  let sendTurn = buildMessageBrief({
+    frame: {
+      id: 'cont_1',
+      type: 'UserMessage',
+      authorType: 'system',
+      authorID: 'internal:agent-continuation',
+      continuationDepth: 3,
+      continuation: { kind: 'send' },
+      content: { text: 'keep going' },
+    },
+    agent: { id: 'agent_1' },
+  }).text;
+  assert.match(sendTurn, /\(Autonomous run — step 3\. No new input since your last step\.\)/);
+
+  let wakeTurn = buildMessageBrief({
+    frame: {
+      id: 'wake_1',
+      type: 'UserMessage',
+      authorType: 'system',
+      authorID: 'internal:process',
+      continuationDepth: 5,
+      continuation: { kind: 'exec-wake-on-completion' },
+      content: { text: 'process done' },
+    },
+    agent: { id: 'agent_1' },
+  }).text;
+  assert.match(wakeTurn, /\(Autonomous run — step 5\. A process you started has completed\.\)/);
+});
