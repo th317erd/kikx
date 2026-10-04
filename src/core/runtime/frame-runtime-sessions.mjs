@@ -11,8 +11,49 @@ import {
   normalizeStringArray,
 } from './frame-runtime-normalize.mjs';
 import { countMessageFrames } from '../../shared/frame-manager/frame-manager.mjs';
+import {
+  buildAutonomousCancellation,
+  isAutonomousContinuation,
+} from './autonomous-chain.mjs';
 
 const sessionMethods = {
+  // Supersede pending autonomous wakes in a session. A user message is new
+  // authority: any exec-wake or respond-and-continue frame that has not fired is
+  // marked `cancelled` so it does not dispatch a stale turn. A no-op when none
+  // are pending.
+  async cancelAutonomousWakes(sessionID) {
+    let pending = this.scheduledFrames?.entries;
+    if (!pending || pending.size === 0)
+      return 0;
+
+    let entry = this.sessions.get(sessionID) || await this.ensureSessionEntry(sessionID);
+    let updates = [];
+    let now = Number(this.clock?.() || Date.now());
+
+    for (let tracked of pending.values()) {
+      if (tracked.sessionID !== sessionID)
+        continue;
+
+      let frame = entry.frameEngine?.get(tracked.frameID) || tracked.frame;
+      if (!isAutonomousContinuation(frame?.continuation))
+        continue;
+
+      updates.push(buildAutonomousCancellation(frame, now));
+    }
+
+    if (updates.length === 0)
+      return 0;
+
+    let merged = entry.frameEngine.merge(updates, {
+      authorType: 'system',
+      authorID: 'internal:scheduled-frame-cancel',
+      silent: true,
+    });
+    this.scheduledFrames.trackFrames(merged.length > 0 ? merged : updates);
+    await this.frameStore?.flush?.();
+    return updates.length;
+  },
+
   requireSessionEntry(sessionID) {
     let entry = this.sessions.get(sessionID);
     if (!entry) {

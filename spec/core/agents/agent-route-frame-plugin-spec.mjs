@@ -8,6 +8,10 @@ import { CommandRegistry } from '../../../src/core/commands/index.mjs';
 import { AgentInterface, PluginRegistry } from '../../../src/core/plugins/index.mjs';
 import { FrameRouter } from '../../../src/core/routing/index.mjs';
 import { FrameRuntime } from '../../../src/core/runtime/frame-runtime.mjs';
+import {
+  MAX_AUTONOMOUS_CHAIN_STEPS,
+  AUTONOMOUS_PAUSE_NOTICE_TEXT,
+} from '../../../src/core/runtime/autonomous-chain.mjs';
 
 class StreamingAgentProvider extends AgentInterface {
   static pluginID = 'streaming-agent';
@@ -1487,6 +1491,96 @@ test('AgentRouteFramePlugin schedules respond-and-continue as a generic schedule
   let continuedFrame = frames.find((frame) => frame.parentID === continuationFrame.id && frame.type === 'AgentMessage');
   assert.equal(continuedFrame.authorID, 'agent_1');
   assert.equal(continuedFrame.content.text, 'Continued after timer.');
+});
+
+test('AgentRouteFramePlugin carries continuationDepth on a scheduled continuation frame', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Worker',
+        pluginID: 'continuing-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Observer',
+        pluginID: 'null-response-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1', 'agent_2' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  let entry = runtime.requireSessionEntry('ses_1');
+  // A user-triggered turn has depth 0, so the first scheduled continuation is 1.
+  await runtime.appendUserMessage('ses_1', { text: 'start', parentID: null });
+
+  let rawFrames = entry.frameEngine.toArray();
+  let continuationFrame = rawFrames.find((frame) => frame.authorID === 'internal:agent-continuation');
+  assert.ok(continuationFrame);
+  assert.equal(continuationFrame.continuationDepth, 1);
+  assert.equal(continuationFrame.continuation.continuationDepth, 1);
+});
+
+test('AgentRouteFramePlugin pauses an over-limit continuation chain with one notice instead of scheduling', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Worker',
+        pluginID: 'continuing-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  let entry = runtime.requireSessionEntry('ses_1');
+  // Simulate a chain already at the limit: the provider turn returns a
+  // respond-and-continue from a frame whose depth is exactly the max.
+  entry.frameEngine.merge([{
+    id: 'deep_user_msg',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'user',
+    authorID: 'usr_1',
+    continuationDepth: MAX_AUTONOMOUS_CHAIN_STEPS,
+    hidden: false,
+    content: { text: 'keep going' },
+  }]);
+
+  runtime.frameRouter.enqueue(entry.frameEngine, {
+    id: 'deep_commit',
+    order: entry.frameEngine.getLatestCommit()?.order || 1,
+    authorType: 'user',
+    authorID: 'usr_1',
+    changes: [ { frameID: 'deep_user_msg', operation: 'create' } ],
+  }, entry.session, { services: runtime.services });
+  await runtime.frameRouter.flush();
+  await runtime.frameStore.flush();
+
+  let rawFrames = entry.frameEngine.toArray();
+  let continuationFrame = rawFrames.find((frame) => frame.authorID === 'internal:agent-continuation');
+  assert.equal(continuationFrame, undefined);
+  let notices = rawFrames.filter((frame) => frame.type === 'SystemNotice');
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].content.text, AUTONOMOUS_PAUSE_NOTICE_TEXT);
 });
 
 test('AgentRouteFramePlugin does nothing when a session has no invited agents', async () => {

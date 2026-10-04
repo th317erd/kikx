@@ -686,6 +686,161 @@ test('FrameRuntime reloads unfired scheduled frames from AeorDB before dispatch'
   assert.equal(runtime.requireSessionEntry('ses_1').frameEngine.get('scheduled_msg_1').scheduledStatus, 'fired');
 });
 
+test('FrameRuntime cancelAutonomousWakes cancels pending exec-wake and continuation frames only', async () => {
+  let runtime = new FrameRuntime({
+    aeordb: createClient(),
+    clock: () => 1000,
+    idGenerator: createIDGenerator([ 'ses_1', 'int_1' ]),
+  });
+
+  await runtime.createSession({ title: 'Scratch' });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([
+    createScheduledAutonomousFrame({
+      id: 'wake_1',
+      sessionID: 'ses_1',
+      continuation: { kind: 'exec-wake-on-completion', processID: 'PROC1' },
+    }),
+    createScheduledAutonomousFrame({
+      id: 'cont_1',
+      sessionID: 'ses_1',
+      continuation: { kind: 'agent-respond-and-continue' },
+    }),
+    createScheduledAutonomousFrame({
+      id: 'manual_1',
+      sessionID: 'ses_1',
+      continuation: null,
+    }),
+  ], { authorType: 'system', authorID: 'test' });
+
+  let cancelled = await runtime.cancelAutonomousWakes('ses_1');
+
+  assert.equal(cancelled, 2);
+  assert.equal(entry.frameEngine.get('wake_1').scheduledStatus, 'cancelled');
+  assert.equal(entry.frameEngine.get('cont_1').scheduledStatus, 'cancelled');
+  assert.equal(entry.frameEngine.get('manual_1').scheduledStatus, 'pending');
+  assert.equal(runtime.scheduledFrames.entries.size, 1);
+});
+
+test('FrameRuntime cancelAutonomousWakes is a no-op when nothing is pending', async () => {
+  let runtime = new FrameRuntime({
+    aeordb: createClient(),
+    clock: () => 1000,
+    idGenerator: createIDGenerator([ 'ses_1' ]),
+  });
+
+  await runtime.createSession({ title: 'Scratch' });
+
+  assert.equal(await runtime.cancelAutonomousWakes('ses_1'), 0);
+});
+
+test('FrameRuntime appendUserMessage cancels prior pending autonomous wakes', async () => {
+  let runtime = new FrameRuntime({
+    aeordb: createClient(),
+    clock: () => 1000,
+    idGenerator: createIDGenerator([ 'ses_1', 'int_1', 'msg_1', 'commit_1' ]),
+  });
+
+  await runtime.createSession({ title: 'Scratch' });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([ createScheduledAutonomousFrame({
+    id: 'wake_1',
+    sessionID: 'ses_1',
+    continuation: { kind: 'exec-wake-on-completion', processID: 'PROC1' },
+  }) ], { authorType: 'system', authorID: 'test' });
+
+  await runtime.appendUserMessage('ses_1', { text: 'hello' });
+
+  assert.equal(entry.frameEngine.get('wake_1').scheduledStatus, 'cancelled');
+  assert.equal(runtime.scheduledFrames.entries.size, 0);
+});
+
+function createScheduledAutonomousFrame({ id, sessionID, continuation }) {
+  return {
+    id,
+    type: 'UserMessage',
+    sessionID,
+    interactionID: 'int_1',
+    authorType: 'system',
+    authorID: 'internal:test',
+    targetAgentID: 'agent_1',
+    scheduledAt: 2000,
+    scheduledStatus: 'pending',
+    hidden: true,
+    deleted: false,
+    continuation,
+    content: { text: 'scheduled', status: 'scheduled' },
+  };
+}
+
+test('FrameRuntime does not route a silent SystemNotice commit but still surfaces it', async () => {
+  let routed = [];
+  let events = [];
+  let aeordb = createClient();
+  let router = new FrameRouter({ logger: quietLogger() });
+
+  class NoticeObserver {
+    constructor(context = {}) {
+      this.context = context;
+    }
+
+    process(next) {
+      routed.push(this.context.newFrame.id);
+      next(this.context);
+    }
+  }
+
+  router.registerSelector('Type:SystemNotice', NoticeObserver, 'notice-observer');
+  let runtime = new FrameRuntime({
+    aeordb,
+    frameRouter: router,
+    clock: () => 1000,
+    idGenerator: createIDGenerator([ 'ses_1' ]),
+  });
+  runtime.on('event', (event) => events.push(event.type));
+
+  await runtime.createSession({ title: 'Scratch' });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'notice_1',
+    type: 'SystemNotice',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'system',
+    authorID: 'internal:autonomous-chain',
+    hidden: false,
+    deleted: false,
+    content: { text: 'Autonomous run paused — reply to continue.' },
+  }], {
+    authorType: 'system',
+    authorID: 'internal:autonomous-chain',
+    silent: true,
+  });
+  await runtime.frameRouter.flush();
+
+  // Silent commit: the router never sees it, so it cannot re-trigger agents.
+  assert.deepEqual(routed, []);
+  // It is still a normal frame runtime event, so clients receive it.
+  assert.ok(events.includes('frame.added'));
+  assert.equal(entry.frameEngine.get('notice_1').hidden, false);
+
+  // Control: the same type committed non-silently does reach the router.
+  entry.frameEngine.merge([{
+    id: 'notice_2',
+    type: 'SystemNotice',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'system',
+    authorID: 'internal:autonomous-chain',
+    hidden: false,
+    deleted: false,
+    content: { text: 'routed' },
+  }], { authorType: 'system', authorID: 'internal:autonomous-chain' });
+  await runtime.frameRouter.flush();
+
+  assert.deepEqual(routed, [ 'notice_2' ]);
+});
+
 test('FrameRuntime emits runtime events for persistent and phantom frames', async () => {
   let events = [];
   let aeordb = createClient();

@@ -132,6 +132,7 @@ export class ProcessManager {
       killRequested: null,
       wakeOnCompletion: null,
       wakeFrameID: null,
+      wakeCompletionOutputID: null,
       wakeError: null,
       handle,
       completionPromise: null,

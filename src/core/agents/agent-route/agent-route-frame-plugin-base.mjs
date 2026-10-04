@@ -33,6 +33,12 @@ import {
   normalizeContinuation,
   normalizeContinuationDelay,
 } from './continuation.mjs';
+import {
+  createAutonomousPauseFrame,
+  exceedsChainLimit,
+  nextChainDepth,
+  normalizeChainDepth,
+} from '../../runtime/autonomous-chain.mjs';
 
 export class AgentRouteFramePluginBase extends BaseFramePlugin {
   async loadParticipantAgents({ participantAgentIDs, agentManager, currentAgent = null }) {
@@ -380,6 +386,7 @@ export class AgentRouteFramePluginBase extends BaseFramePlugin {
     let delayMs = normalizeContinuationDelay(continuation.delayMs);
     let now = this.clock();
     let scheduledAt = now + delayMsToClockUnits(delayMs, now);
+    let chainDepth = nextChainDepth(frame);
     let schedule = {
       agentID: agent.id,
       responseFrameID,
@@ -387,6 +394,7 @@ export class AgentRouteFramePluginBase extends BaseFramePlugin {
       delayMs,
       continuationPrompt: continuation.continuationPrompt || DEFAULT_CONTINUATION_PROMPT,
       scheduledAt,
+      chainDepth,
     };
     return await this.createScheduledAgentContinuationFrame({
       agent,
@@ -403,6 +411,16 @@ export class AgentRouteFramePluginBase extends BaseFramePlugin {
       return null;
 
     let now = this.clock();
+    let chainDepth = normalizeChainDepth(continuation.chainDepth);
+
+    // Fail-safe: an over-limit chain pauses instead of scheduling past the
+    // threshold. Post one visible notice (non-routing, silent commit) and stop.
+    if (exceedsChainLimit(chainDepth)) {
+      this.postAutonomousPauseNotice({ frame, now });
+      await services?.frameRuntime?.frameStore?.flush?.();
+      return null;
+    }
+
     let continuationFrame = {
       id: this.context.engine.idGenerator(),
       type: 'UserMessage',
@@ -412,6 +430,7 @@ export class AgentRouteFramePluginBase extends BaseFramePlugin {
       authorType: 'system',
       authorID: 'internal:agent-continuation',
       targetAgentID: agent.id,
+      continuationDepth: chainDepth,
       timestamp: continuation.scheduledAt,
       createdAt: now,
       updatedAt: now,
@@ -422,6 +441,7 @@ export class AgentRouteFramePluginBase extends BaseFramePlugin {
       continuation: {
         ...continuation,
         kind: 'agent-respond-and-continue',
+        continuationDepth: chainDepth,
         createdAt: now,
       },
       content: {
@@ -441,5 +461,21 @@ export class AgentRouteFramePluginBase extends BaseFramePlugin {
     });
     await services?.frameRuntime?.frameStore?.flush?.();
     return merged[0] || this.context.engine.get(continuationFrame.id) || continuationFrame;
+  }
+
+  postAutonomousPauseNotice({ frame, now }) {
+    let pauseFrame = createAutonomousPauseFrame({
+      id: this.context.engine.idGenerator(),
+      sessionID: frame.sessionID,
+      interactionID: frame.interactionID || null,
+      parentID: frame.id || null,
+      now,
+    });
+
+    this.context.engine.merge([ pauseFrame ], {
+      authorType: 'system',
+      authorID: 'internal:autonomous-chain',
+      silent: true,
+    });
   }
 }

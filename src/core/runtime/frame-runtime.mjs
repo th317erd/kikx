@@ -163,6 +163,7 @@ export class FrameRuntime extends EventEmitter {
 
   async appendUserMessage(sessionID, input = {}) {
     let entry = await this.ensureSessionEntry(sessionID);
+    await this.cancelAutonomousWakes(sessionID);
     let text = normalizeText(input.text);
     let stamp = this.nextClockStamp();
     let now = stamp.at;

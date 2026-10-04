@@ -3,6 +3,17 @@
 import { PROCESS_AUTHOR_ID } from './process-manager-constants.mjs';
 import { createProcessID, normalizeOptionalString } from './process-manager-normalizers.mjs';
 import { buildProcessWakePrompt } from './process-manager-prompts.mjs';
+import {
+  createAutonomousPauseFrame,
+  exceedsChainLimit,
+  nextChainDepth,
+} from '../runtime/autonomous-chain.mjs';
+
+// Depth of the frame that caused this wake. The first wake scheduled from a
+// user-triggered frame has depth 1; each subsequent autonomous hop increments.
+function resolveTriggerDepth(context = {}) {
+  return Number(context.frame?.continuationDepth) || 0;
+}
 
 function setWake(manager, record, params = {}, context = {}, continuationPrompt = '') {
   record.wakeOnCompletion = {
@@ -12,6 +23,7 @@ function setWake(manager, record, params = {}, context = {}, continuationPrompt 
     continuationPrompt: normalizeOptionalString(continuationPrompt)
       || `Process ${record.processID} has completed. Inspect its status and output, then continue the task.`,
     requestedAt: manager.clock(),
+    triggerDepth: resolveTriggerDepth(context),
   };
   return record.wakeOnCompletion;
 }
@@ -41,6 +53,11 @@ async function scheduleWake(manager, record) {
   if (record.wakeFrameID)
     return record.wakeFrameID;
 
+  // Single-shot per completion: if a wake already fired for this exact
+  // completion output, a duplicate completion must schedule nothing.
+  if (record.completionToolOutputID && record.wakeCompletionOutputID === record.completionToolOutputID)
+    return record.wakeFrameID || null;
+
   let frameRuntime = resolveFrameRuntime(manager);
   let wake = record.wakeOnCompletion;
   if (!frameRuntime?.ensureSessionEntry || !wake?.sessionID || !wake?.agentID) {
@@ -48,9 +65,19 @@ async function scheduleWake(manager, record) {
     return null;
   }
 
+  let depth = nextChainDepth({ continuationDepth: wake.triggerDepth });
+
   try {
     let entry = await frameRuntime.ensureSessionEntry(wake.sessionID);
     let now = Number(frameRuntime.clock?.() || Date.now());
+
+    if (exceedsChainLimit(depth)) {
+      await postPauseNotice(frameRuntime, entry, wake, now);
+      record.wakePausedAt = now;
+      record.wakeCompletionOutputID = record.completionToolOutputID || null;
+      return null;
+    }
+
     let frameID = frameRuntime.idGenerator?.() || createProcessID();
     let frame = {
       id: frameID,
@@ -61,6 +88,7 @@ async function scheduleWake(manager, record) {
       authorType: 'system',
       authorID: PROCESS_AUTHOR_ID,
       targetAgentID: wake.agentID,
+      continuationDepth: depth,
       timestamp: now,
       createdAt: now,
       updatedAt: now,
@@ -73,6 +101,7 @@ async function scheduleWake(manager, record) {
         processID: record.processID,
         completionToolOutputID: record.completionToolOutputID,
         continuationPrompt: wake.continuationPrompt,
+        continuationDepth: depth,
         createdAt: now,
       },
       content: {
@@ -92,6 +121,7 @@ async function scheduleWake(manager, record) {
     });
     await frameRuntime.frameStore?.flush?.();
     record.wakeFrameID = merged[0]?.id || frameID;
+    record.wakeCompletionOutputID = record.completionToolOutputID || null;
     await frameRuntime.processScheduledFrames?.();
     return record.wakeFrameID;
   } catch (error) {
@@ -99,6 +129,24 @@ async function scheduleWake(manager, record) {
     manager.logger?.error?.('Failed to schedule process completion wake', error);
     return null;
   }
+}
+
+async function postPauseNotice(frameRuntime, entry, wake, now) {
+  let frame = createAutonomousPauseFrame({
+    id: frameRuntime.idGenerator?.() || createProcessID(),
+    sessionID: wake.sessionID,
+    parentID: wake.frameID || null,
+    now,
+  });
+
+  try {
+    entry.frameEngine.merge([ frame ], {
+      authorType: 'system',
+      authorID: 'internal:autonomous-chain',
+      silent: true,
+    });
+    await frameRuntime.frameStore?.flush?.();
+  } catch (_error) {}
 }
 
 function resolveFrameRuntime(manager) {
