@@ -1798,6 +1798,9 @@ test('WebSearchTool queries DuckDuckGo instant answers and normalizes results', 
     fetchImpl: async (url, options = {}) => {
       requestedURL = new URL(url);
       assert.equal(options.headers.Accept, 'application/json');
+      assert.equal(options.headers.Referer, 'https://duckduckgo.com/');
+      assert.match(options.headers['User-Agent'], /^Mozilla\/5\.0 .*Chrome\//);
+      assert.equal(options.headers['Accept-Language'], 'en-US,en;q=0.9');
       return {
         ok: true,
         async text() {
@@ -1853,6 +1856,7 @@ test('WebSearchTool falls back to DuckDuckGo HTML results when instant answers a
       requests.push({
         url: requestedURL,
         accept: options.headers.Accept,
+        headers: options.headers,
       });
 
       if (requestedURL.origin === 'https://api.duckduckgo.com') {
@@ -1898,7 +1902,10 @@ test('WebSearchTool falls back to DuckDuckGo HTML results when instant answers a
   assert.equal(requests.length, 2);
   assert.equal(requests[0].url.origin, 'https://api.duckduckgo.com');
   assert.equal(requests[1].url.origin, 'https://html.duckduckgo.com');
-  assert.equal(requests[1].accept, 'text/html,application/xhtml+xml');
+  assert.equal(requests[1].accept, 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8');
+  assert.equal(requests[1].headers.Referer, 'https://duckduckgo.com/');
+  assert.match(requests[1].headers['User-Agent'], /^Mozilla\/5\.0 .*Chrome\//);
+  assert.equal(requests[1].headers['Accept-Language'], 'en-US,en;q=0.9');
   assert.equal(result.source, 'duckduckgo-html');
   assert.equal(result.resultCount, 2);
   assert.equal(result.results[0].url, 'https://forecast.weather.gov/zipcity.php?inputstring=Phoenix,AZ');
@@ -1925,6 +1932,7 @@ test('WebSearchTool reports empty DuckDuckGo responses with query context', asyn
 
 test('WebSearchTool searches through the browser service when available', async () => {
   let visitedURL = null;
+  let extraHeaders = null;
   let browserService = {
     async withPage(callback) {
       let page = {
@@ -1933,6 +1941,9 @@ test('WebSearchTool searches through the browser service when available', async 
         },
         setDefaultTimeout(timeout) {
           assert.equal(timeout, 7000);
+        },
+        async setExtraHTTPHeaders(headers) {
+          extraHeaders = headers;
         },
         async goto(url, options = {}) {
           visitedURL = url;
@@ -1979,6 +1990,9 @@ test('WebSearchTool searches through the browser service when available', async 
 
   assert.equal(new URL(visitedURL).origin, 'https://html.duckduckgo.com');
   assert.equal(new URL(visitedURL).searchParams.get('q'), 'example');
+  assert.equal(extraHeaders.Referer, 'https://duckduckgo.com/');
+  assert.match(extraHeaders['User-Agent'], /^Mozilla\/5\.0 .*Chrome\//);
+  assert.equal(extraHeaders['Accept-Language'], 'en-US,en;q=0.9');
   assert.equal(result.source, 'duckduckgo-browser');
   assert.equal(result.resultCount, 2);
   assert.deepEqual(result.results.map((item) => item.url), [ 'https://example.test/a', 'https://example.test/b' ]);

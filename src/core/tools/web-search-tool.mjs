@@ -6,6 +6,14 @@ import { resolveBrowserService } from './browser-service.mjs';
 
 const DUCKDUCKGO_API_URL = 'https://api.duckduckgo.com/';
 const DUCKDUCKGO_HTML_URL = 'https://html.duckduckgo.com/html/';
+// DuckDuckGo answers an HTTP 202 bot challenge to requests that lack a browser
+// Referer. A same-site Referer (plus a realistic Chrome UA/Accept-Language)
+// suppresses the challenge; keep these on every DuckDuckGo request, browser and
+// fetch alike.
+const DUCKDUCKGO_REFERER = 'https://duckduckgo.com/';
+const SEARCH_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const SEARCH_ACCEPT_HTML = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
+const SEARCH_ACCEPT_LANGUAGE = 'en-US,en;q=0.9';
 const DEFAULT_MAX_RESULTS = 8;
 const MAX_RESULTS_LIMIT = 20;
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -66,6 +74,7 @@ async function browserSearch(browserService, { query, maxResults, timeoutMs }) {
   let results = await browserService.withPage(async (page) => {
     page.setDefaultNavigationTimeout?.(timeoutMs);
     page.setDefaultTimeout?.(timeoutMs);
+    await page.setExtraHTTPHeaders?.(duckDuckGoHeaders());
     await page.goto(searchURL.href, {
       waitUntil: 'domcontentloaded',
       timeout: timeoutMs,
@@ -139,7 +148,7 @@ async function fetchDuckDuckGoJSON(fetchImpl, url, timeoutMs, { query }) {
     let response = await fetchImpl(url, {
       headers: {
         Accept: 'application/json',
-        'User-Agent': 'Kikx/0.1 (+https://aeor.dev)',
+        ...duckDuckGoHeaders(),
       },
       signal: controller.signal,
     });
@@ -172,8 +181,8 @@ async function fetchDuckDuckGoHTMLResults(fetchImpl, { query, timeoutMs, maxResu
   try {
     let response = await fetchImpl(url, {
       headers: {
-        Accept: 'text/html,application/xhtml+xml',
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari/537.36 Kikx/0.1',
+        Accept: SEARCH_ACCEPT_HTML,
+        ...duckDuckGoHeaders(),
       },
       signal: controller.signal,
     });
@@ -377,6 +386,18 @@ function resolveFetch(context = {}) {
     throw new Error('web-search requires fetch');
 
   return fetchImpl;
+}
+
+// DuckDuckGo serves a bot challenge (HTTP 202) unless the request looks like a
+// same-site browser navigation. Setting these on both the browser page and the
+// fetch fallback keeps searches answering with real results. `Accept` is left to
+// the caller because the JSON and HTML endpoints want different values.
+function duckDuckGoHeaders() {
+  return {
+    'User-Agent': SEARCH_USER_AGENT,
+    'Accept-Language': SEARCH_ACCEPT_LANGUAGE,
+    Referer: DUCKDUCKGO_REFERER,
+  };
 }
 
 function normalizeRequiredString(value, fieldName) {
