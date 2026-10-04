@@ -10,6 +10,10 @@ import { resolveWithin } from '../../src/server/static-files.mjs';
 import { createServer } from '../../src/server/create-server.mjs';
 import { AppContext } from '../../src/core/app/app-context.mjs';
 import { PluginRegistry } from '../../src/core/plugins/index.mjs';
+// Isolate from ambient plugin discovery (e.g. KIKX_PLUGIN_PATHS injected by a
+// container/CI environment) so these fixture registries are not polluted by
+// real plugins, which makes the assertions below env-dependent.
+delete process.env.KIKX_PLUGIN_PATHS;
 
 function listen(server) {
   return new Promise((resolve) => {
