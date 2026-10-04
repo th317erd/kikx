@@ -127,9 +127,6 @@ export function getStartBriefAgentEntry(session, agentID) {
 // Whether Brief A should be sent for this turn (P4). Returns `{ send, reason }`.
 // Reasons are diagnostic only and must not affect behavior.
 export function shouldSendStartBrief(context = {}) {
-  if (context.step?.type === 'completion-review')
-    return { send: false, reason: 'completion-review' };
-
   let session = context.session;
   let agentID = context.agent?.id || '';
   let entry = getStartBriefAgentEntry(session, agentID);

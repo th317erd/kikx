@@ -7,7 +7,6 @@ import { FrameEngine } from '../../src/core/frames/index.mjs';
 import {
   AGENTIC_SCRIPT_NAME,
   AgentInterface,
-  buildCompletionReviewScriptPrompt,
   PluginInterface,
   PluginRegistry,
 } from '../../src/core/plugins/index.mjs';
@@ -53,115 +52,10 @@ class LoopAgent extends AgentInterface {
   }
 }
 
-class PromptProbeAgent extends AgentInterface {
-  constructor(options = {}) {
-    super(options);
-    this.prompt = '';
-  }
-
-  async ask(prompt, options = {}) {
-    if (options.step?.type === 'completion-review')
-      return options.tools['agent-finalize']({ text: 'final' });
-
-    this.prompt = prompt;
-    return options.tools['agent-respond']({ text: 'answer' });
-  }
-}
-
 class ToolFinalizingAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
     options.tools['agent-respond']({ text: 'tool final answer' });
     return { done: true };
-  }
-}
-
-class SelfReviewingAgent extends AgentInterface {
-  constructor(options = {}) {
-    super(options);
-    this.calls = [];
-  }
-
-  async ask(prompt, options = {}) {
-    this.calls.push({
-      prompt,
-      stepType: options.step?.type || 'ask',
-      toolNames: Object.keys(options.tools).sort(),
-    });
-
-    if (options.step?.type === 'completion-review')
-      return options.tools['agent-finalize']({ text: 'reviewed final answer' });
-
-    return options.tools['agent-respond']({ text: 'draft final answer' });
-  }
-}
-
-class StreamingSelfReviewAgent extends AgentInterface {
-  async *ask(_prompt, options = {}) {
-    if (options.step?.type === 'completion-review') {
-      yield {
-        id: 'review_typing',
-        type: 'BeginTyping',
-        phantom: true,
-      };
-      yield {
-        id: 'review_thinking',
-        type: 'AgentThinking',
-        phantom: true,
-        content: { text: 'internal review thinking' },
-      };
-      yield {
-        id: 'review_delta',
-        type: 'AgentMessageDelta',
-        phantom: true,
-        content: { text: 'internal review draft' },
-      };
-      yield options.tools['agent-finalize']({ text: 'reviewed final answer' });
-      yield {
-        id: 'review_typing',
-        type: 'EndTyping',
-        phantom: true,
-      };
-      return;
-    }
-
-    yield options.tools['agent-respond']({ text: 'draft final answer' });
-  }
-}
-
-class IncompleteSelfReviewAgent extends AgentInterface {
-  async ask(_prompt, options = {}) {
-    if (options.step?.type === 'completion-review') {
-      return options.tools['agent-respond-and-continue']({
-        text: 'I found one missing check. I will run it next.',
-        delayMs: 0,
-        continuationPrompt: 'Run the missing check.',
-      });
-    }
-
-    return options.tools['agent-respond']({ text: 'draft final answer' });
-  }
-}
-
-class MetaSelfReviewAgent extends AgentInterface {
-  constructor(options = {}) {
-    super(options);
-    this.calls = [];
-  }
-
-  async ask(_prompt, options = {}) {
-    this.calls.push(options.step?.type || 'ask');
-    if (options.step?.type === 'completion-review') {
-      return options.tools['agent-finalize']({
-        text: [
-          'Self-review of the draft/report:',
-          '1. Have I completed all requested tasks? Yes.',
-          '2. What did I miss? Nothing.',
-          'Which follow-up would you prefer?',
-        ].join('\n'),
-      });
-    }
-
-    return options.tools['agent-respond']({ text: 'Actual code review report with concrete findings.' });
   }
 }
 
@@ -269,9 +163,6 @@ class CharacterSettingAgent extends AgentInterface {
   }
 
   async ask(_prompt, options = {}) {
-    if (options.step?.type === 'completion-review')
-      return options.tools['agent-finalize']({ text: 'Character updated.' });
-
     this.toolResult = await options.tools['agent-character-set']({
       character: 'You are a dirty swearing pirate and fantastic engineer.',
       compressedCharacter: 'Pirate engineer; direct and technical.',
@@ -406,9 +297,6 @@ class GlobalToolCallingAgent extends AgentInterface {
     };
     this.askCalls.push(askCall);
     this.askCall = askCall;
-    if (options.step?.type === 'completion-review')
-      return options.tools['agent-finalize']({ text: this.toolResult?.text || 'hello' });
-
     this.toolResult = await options.tools['global-echo']({ text: 'hello' });
     return options.tools['agent-respond']({ text: this.toolResult.text });
   }
@@ -421,46 +309,14 @@ class ProgressThenToolAgent extends AgentInterface {
   }
 
   async ask(_prompt, options = {}) {
-    if (options.step?.type === 'completion-review')
-      return options.tools['agent-finalize']({ text: this.toolResult?.text || 'hello' });
-
     await options.tools['agent-progress']({ text: 'I will echo the requested value now.' });
     this.toolResult = await options.tools['global-echo']({ text: 'hello' });
     return options.tools['agent-respond']({ text: this.toolResult.text });
   }
 }
 
-test('agentic script completion review carries per-tool help', () => {
+test('the agentic script name is stable', () => {
   assert.equal(AGENTIC_SCRIPT_NAME, 'agentic script');
-
-  let reviewPrompt = buildCompletionReviewScriptPrompt({
-    frameMessage: 'Please inspect this.',
-    finalFrameContent: { text: 'Draft' },
-    toolDefinitions: [
-      { name: 'agent-finalize', help: 'Finalize.' },
-      { name: 'database-fetch', description: 'Fetch ranges.' },
-    ],
-  });
-  assert.match(reviewPrompt, /Completion self-review/);
-  assert.match(reviewPrompt, /Have you completed all the tasks the user requested of you\?/);
-  assert.match(reviewPrompt, /Draft visible response JSON:/);
-  assert.match(reviewPrompt, /obvious next safe\/read-only step/);
-  assert.match(reviewPrompt, /agent-finalize: Finalize\./);
-  assert.match(reviewPrompt, /database-fetch: Fetch ranges\./);
-});
-
-test('buildCompletionReviewScriptPrompt caps oversized frame and draft inputs', () => {
-  let hugeDraft = { text: 'D'.repeat(60000) };
-  let prompt = buildCompletionReviewScriptPrompt({
-    frameMessage: 'F'.repeat(60000),
-    finalFrameContent: hugeDraft,
-  });
-
-  // The review prompt must not explode with the draft size.
-  assert.ok(prompt.length < 40000, `review prompt stayed bounded (got ${prompt.length})`);
-  assert.match(prompt, /\[truncated: \d+ characters omitted\]/);
-  assert.equal(prompt.includes('D'.repeat(60000)), false);
-  assert.equal(prompt.includes('F'.repeat(60000)), false);
 });
 
 test('AgentInterface asks with the raw trigger message and builds two-tier briefs', async () => {
@@ -817,7 +673,7 @@ test('AgentInterface detects first-message hooks inherited from provider base cl
   let outputs = await collect(agent.run(baseLoopParams()));
 
   assert.deepEqual(outputs.map((output) => output.type), [ 'AgentThinking', 'AgentMessage', 'Done' ]);
-  assert.deepEqual(agent.calls, [ 'onFirstMessage', 'ask', 'ask' ]);
+  assert.deepEqual(agent.calls, [ 'onFirstMessage', 'ask' ]);
 });
 
 test('AgentInterface skips the first-message hook after the agent has a durable response', async () => {
@@ -840,7 +696,7 @@ test('AgentInterface skips the first-message hook after the agent has a durable 
   })));
 
   assert.deepEqual(outputs.map((output) => output.type), [ 'AgentMessage', 'Done' ]);
-  assert.deepEqual(agent.calls.map((call) => call.method), [ 'ask', 'ask' ]);
+  assert.deepEqual(agent.calls.map((call) => call.method), [ 'ask' ]);
 });
 
 test('AgentInterface base loop exposes response tools that can finalize without provider frames', async () => {
@@ -863,108 +719,13 @@ test('AgentInterface base loop exposes response tools that can finalize without 
   ]);
 });
 
-test('AgentInterface runs a completion self-review before emitting a finalized response', async () => {
-  let agent = new SelfReviewingAgent();
-  let outputs = await collect(agent.run(baseLoopParams({
-    frames: [],
-  })));
-
-  assert.deepEqual(outputs, [
-    {
-      type: 'AgentMessage',
-      content: { text: 'reviewed final answer' },
-    },
-    {
-      type: 'Done',
-      content: {
-        status: 'finalized',
-      },
-    },
-  ]);
-  assert.deepEqual(agent.calls.map((call) => call.stepType), [ 'ask', 'completion-review' ]);
-  assert.match(agent.calls[1].prompt, /Have you completed all the tasks the user requested of you\?/);
-  assert.match(agent.calls[1].prompt, /What did you miss\?/);
-  assert.match(agent.calls[1].prompt, /What did you forget\?/);
-  assert.match(agent.calls[1].prompt, /What could you have done better\?/);
-  assert.match(agent.calls[1].prompt, /Draft visible response JSON:/);
-  assert.match(agent.calls[1].prompt, /draft final answer/);
-  assert.ok(agent.calls[1].toolNames.includes('agent-progress'));
-});
-
-test('AgentInterface suppresses internal completion-review streaming frames', async () => {
-  let outputs = await collect(new StreamingSelfReviewAgent().run(baseLoopParams({
-    frames: [],
-  })));
-
-  assert.deepEqual(outputs, [
-    {
-      type: 'AgentMessage',
-      content: { text: 'reviewed final answer' },
-    },
-    {
-      type: 'Done',
-      content: {
-        status: 'finalized',
-      },
-    },
-  ]);
-});
-
-test('AgentInterface completion self-review can convert a draft final answer into a continuation', async () => {
-  let outputs = await collect(new IncompleteSelfReviewAgent().run(baseLoopParams({
-    frames: [],
-  })));
-
-  assert.deepEqual(outputs, [
-    {
-      type: 'AgentMessage',
-      content: {
-        text: 'I found one missing check. I will run it next.',
-      },
-    },
-    {
-      type: 'Done',
-      content: {
-        status: 'respond-and-continue',
-        continuation: {
-          delayMs: 0,
-          continuationPrompt: 'Run the missing check.',
-        },
-      },
-    },
-  ]);
-});
-
-test('AgentInterface preserves the draft when completion self-review emits meta-review text', async () => {
-  let agent = new MetaSelfReviewAgent();
-  let outputs = await collect(agent.run(baseLoopParams({
-    frames: [],
-  })));
-
-  assert.deepEqual(agent.calls, [ 'ask', 'completion-review' ]);
-  assert.deepEqual(outputs, [
-    {
-      type: 'AgentMessage',
-      content: {
-        text: 'Actual code review report with concrete findings.',
-      },
-    },
-    {
-      type: 'Done',
-      content: {
-        status: 'finalized',
-      },
-    },
-  ]);
-});
-
-test('AgentInterface reviews direct provider messages and converts avoidable deferral questions to continuations', async () => {
+test('AgentInterface converts avoidable deferral questions to continuations', async () => {
   let agent = new DeferringDirectAgent();
   let outputs = await collect(agent.run(baseLoopParams({
     frames: [],
   })));
 
-  assert.deepEqual(agent.calls, [ 'ask', 'completion-review' ]);
+  assert.deepEqual(agent.calls, [ 'ask' ]);
   // Fix A: the stalling draft is suppressed (no visible frame, no canned meta
   // sentence); the agent answers via the immediate continuation instead.
   assert.deepEqual(outputs, [
@@ -988,7 +749,7 @@ test('AgentInterface converts permission-seeking file-change deferrals to contin
     frames: [],
   })));
 
-  assert.deepEqual(agent.calls, [ 'ask', 'completion-review' ]);
+  assert.deepEqual(agent.calls, [ 'ask' ]);
   assert.equal(outputs[0].type, 'SuppressFinalFrame');
   assert.equal(outputs[1].type, 'Done');
   assert.equal(outputs[1].content.status, 'respond-and-continue');
@@ -1027,7 +788,7 @@ test('AgentInterface base loop preserves provider frame metadata after response-
       content: {
         status: 'finalized',
         usage: {
-          totalTokens: 24,
+          totalTokens: 12,
         },
       },
     },

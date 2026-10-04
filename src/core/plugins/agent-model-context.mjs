@@ -62,7 +62,6 @@ export function buildModelMessages(params = {}, options = {}) {
   let currentFrameID = params.frame?.id || null;
   let currentAgentID = params.agent?.id || '';
   let systemPrompt = typeof options.systemPrompt === 'string' ? options.systemPrompt : DEFAULT_SESSION_SYSTEM_PROMPT;
-  let isCompletionReview = params.step?.type === 'completion-review';
   let isRawPrompt = params.rawPrompt === true || params.compaction === true || params.oneShot === true;
   // Which compaction priority levels this model's window can afford (P7). An
   // unknown window yields every level, so this never filters when unsure.
@@ -70,7 +69,7 @@ export function buildModelMessages(params = {}, options = {}) {
 
   messages.push({ role: 'system', content: systemPrompt });
 
-  if (!isCompletionReview && !isRawPrompt && shouldSendStartBrief(params).send) {
+  if (!isRawPrompt && shouldSendStartBrief(params).send) {
     let startBrief = buildStartBrief(params);
     if (startBrief.text.trim() !== '') {
       messages.push({ role: 'user', content: startBrief.text });
@@ -92,11 +91,10 @@ export function buildModelMessages(params = {}, options = {}) {
       messages.push(message);
   }
 
-  // Raw-prompt mode: one-shot/compaction turns (P3) and the completion-review ask
-  // carry their own bespoke prompt rather than a session message. Keep it as-is
-  // so the review/compaction contract is preserved; only the normal agent turn
-  // gets the Brief A + Brief B shape.
-  if (isRawPrompt || isCompletionReview) {
+  // Raw-prompt mode: one-shot/compaction turns (P3) carry their own bespoke
+  // prompt rather than a session message. Keep it as-is so the compaction
+  // contract is preserved; only the normal agent turn gets Brief A + Brief B.
+  if (isRawPrompt) {
     messages.push({ role: 'user', content: resolvePromptContent(params) });
     return messages;
   }

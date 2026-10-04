@@ -250,19 +250,6 @@ class SilentTerminalAgentProvider extends AgentInterface {
   }
 }
 
-class CompletionReviewFailingAgentProvider extends AgentInterface {
-  static pluginID = 'review-failing-agent';
-
-  async ask(_prompt, options = {}) {
-    // The draft finalizes normally, then the completion-review request blows the
-    // context window, exactly like the reported fetch #14.
-    if (options.step?.type === 'completion-review')
-      throw new Error('OpenAI HTTP 400: request (66704 tokens) exceeds the available context size (32768 tokens)');
-
-    return options.tools['agent-respond']({ text: 'Draft answer.' });
-  }
-}
-
 class SlowAgentProvider extends AgentInterface {
   static pluginID = 'slow-agent';
 
@@ -1961,34 +1948,6 @@ test('AgentRouteFramePlugin never leaves a dangling streaming placeholder when a
   assert.match(agentFrames[0].content.text, /without producing a response/);
 });
 
-test('AgentRouteFramePlugin finalizes the placeholder when the completion-review request fails', async () => {
-  let runtime = createRuntime({
-    agents: new Map([
-      [ 'agent_1', {
-        id: 'agent_1',
-        name: 'Gemma',
-        pluginID: 'review-failing-agent',
-        config: {},
-        secrets: {},
-        enabled: true,
-      } ],
-    ]),
-  });
-
-  await runtime.createSession({
-    title: 'Scratch',
-    participantAgentIDs: [ 'agent_1' ],
-    coordinatorAgentID: 'agent_1',
-  });
-  await runtime.appendUserMessage('ses_1', { text: 'How are you Gemma?', userID: 'usr_1' });
-
-  let agentFrames = assertNoDanglingStreamingPlaceholder(runtime, 'ses_1', { agentID: 'agent_1' });
-  assert.equal(agentFrames.length, 1, 'exactly one agent frame must result from the failed turn');
-  assert.equal(agentFrames[0].hidden, false, 'the placeholder must not remain hidden');
-  assert.equal(agentFrames[0].content.status, 'error', 'the placeholder must be finalized as an error');
-  assert.match(agentFrames[0].content.text, /exceeds the available context size/);
-});
-
 function createRuntime(options = {}) {
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
   pluginRegistry.registerAgentProvider('streaming-agent', StreamingAgentProvider);
@@ -2000,7 +1959,6 @@ function createRuntime(options = {}) {
   pluginRegistry.registerAgentProvider('late-phantom-agent', LatePhantomAfterDoneAgentProvider);
   pluginRegistry.registerAgentProvider('failing-agent', FailingAgentProvider);
   pluginRegistry.registerAgentProvider('streaming-failing-agent', StreamingThenFailingAgentProvider);
-  pluginRegistry.registerAgentProvider('review-failing-agent', CompletionReviewFailingAgentProvider);
   pluginRegistry.registerAgentProvider('silent-terminal-agent', SilentTerminalAgentProvider);
   pluginRegistry.registerAgentProvider('slow-agent', SlowAgentProvider);
   pluginRegistry.registerAgentProvider('continuing-agent', ContinuingAgentProvider);

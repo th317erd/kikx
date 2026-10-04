@@ -15,7 +15,6 @@ export function createLoopState() {
     finalized: false,
     forwarded: false,
     forwardDispatched: false,
-    completionReviewed: false,
     deferralGuarded: false,
     suppressFinalFrame: false,
     finalFrame: null,
@@ -131,24 +130,6 @@ export function mergeFinalizedProviderFrame(providerFrame, finalFrame) {
   };
 }
 
-export function mergeCompletionReviewFrame(finalFrame, reviewFrame) {
-  if (!reviewFrame?.content)
-    return finalFrame;
-
-  return {
-    ...(finalFrame || {}),
-    ...reviewFrame,
-    content: {
-      ...(finalFrame?.content && typeof finalFrame.content === 'object' && !Array.isArray(finalFrame.content)
-        ? finalFrame.content
-        : {}),
-      ...(reviewFrame.content && typeof reviewFrame.content === 'object' && !Array.isArray(reviewFrame.content)
-        ? reviewFrame.content
-        : {}),
-    },
-  };
-}
-
 // When a visible user turn's draft is an "avoidable deferral" (asking the user
 // whether to continue, or which obvious next step to take), we schedule an
 // immediate self-continuation so the agent keeps working instead of stalling.
@@ -196,21 +177,6 @@ export function isAvoidableDeferralQuestion(text) {
     return false;
 
   return AVOIDABLE_DEFERRAL_PATTERNS.some((pattern) => pattern.test(value));
-}
-
-export function isCompletionReviewMetaResponseContent(content = {}) {
-  let text = normalizeOptionalPromptString(content.text || content.markdown || content.html);
-  if (!text)
-    return false;
-
-  let prefix = text.slice(0, 240).toLowerCase();
-  return (
-    prefix.includes('self-review')
-    || prefix.includes('self review')
-    || prefix.includes('completion self-review')
-    || prefix.includes('audit of the draft')
-  )
-    && /(?:have i completed|what did i miss|what did i forget|what could i have done better|requested tasks)/i.test(text);
 }
 
 export function isInternalStreamingOutput(output) {

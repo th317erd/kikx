@@ -187,13 +187,6 @@ test('shouldSendStartBrief is per-agent: alternating speakers do not re-send Bri
   assert.deepEqual(shouldSendStartBrief(agentAAgain), { send: false, reason: 'unchanged' });
 });
 
-test('shouldSendStartBrief is suppressed on a completion-review step', () => {
-  assert.deepEqual(shouldSendStartBrief(context({ step: { type: 'completion-review' } })), {
-    send: false,
-    reason: 'completion-review',
-  });
-});
-
 test('markStartBriefSent records the boundary and party signature in process memory', () => {
   let ctx = context({
     frames: [ { id: 'cmp_1', type: 'CompactionFrame', hidden: true, order: 9, content: { kind: 'compaction_frame', boundaryOrder: 9, boundaryFrameID: 'boundary_9', summary: 'm' } } ],

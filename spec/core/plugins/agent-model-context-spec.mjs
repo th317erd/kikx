@@ -390,22 +390,6 @@ test('buildModelMessages sends Brief A only once across a multi-turn restart bou
   assert.equal(startBriefMessages(third).length, 1);
 });
 
-test('buildModelMessages never re-sends Brief A on a completion-review step', () => {
-  let messages = buildModelMessages({
-    prompt: 'review this draft',
-    rawPrompt: true,
-    frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', content: { text: 'hello' } },
-    agent: { id: 'agent_1' },
-    session: { id: 'ses_review', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' },
-    frames: [],
-    step: { type: 'completion-review' },
-  });
-
-  assert.equal(startBriefMessages(messages).length, 0);
-  assert.equal(messages.at(-1).role, 'user');
-  assert.equal(messages.at(-1).content, 'review this draft');
-});
-
 test('buildModelMessages keeps raw one-shot/compaction prompts verbatim', () => {
   let messages = buildModelMessages({
     prompt: 'compaction instructions',

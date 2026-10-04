@@ -1,7 +1,6 @@
 'use strict';
 
 import {
-  buildCompletionReviewScriptPrompt,
   buildMessageBrief,
   buildStartBrief,
 } from './agent-script-template.mjs';
@@ -26,9 +25,7 @@ import {
   captureProviderDoneUsage,
   createLoopState,
   handleLoopControl,
-  isCompletionReviewMetaResponseContent,
   isInternalStreamingOutput,
-  mergeCompletionReviewFrame,
   mergeFinalizedProviderFrame,
 } from './agent-loop-state.mjs';
 import {
@@ -51,9 +48,6 @@ export class AgentInterface extends PluginInterface {
   static serviceType = null;
   static configFields = [];
   static maxLoopSteps = 8;
-  // Output reserve used when deciding whether a completion self-review request
-  // can fit the model window at all.
-  static reviewOutputReserveTokens = 1024;
 
   // Shared frame -> model turn projection. Providers use these so a new core
   // frame type is handled once rather than silently dropped by each adapter.
@@ -142,7 +136,6 @@ export class AgentInterface extends PluginInterface {
     }
 
     if (state.finalized) {
-      yield* this.runCompletionReview(context, state);
       applyAvoidableDeferralGuard(context, state);
 
       if (state.nullResponse) {
@@ -267,81 +260,6 @@ export class AgentInterface extends PluginInterface {
     }
   }
 
-  async *runCompletionReview(context, state) {
-    if (state.completionReviewed || !state.finalFrame || state.nullResponse || state.forwarded || this.ask === AgentInterface.prototype.ask)
-      return;
-
-    state.completionReviewed = true;
-    let prompt = this.buildCompletionReviewPrompt(context, state);
-    // Skip a doomed review request: if the (already capped) review prompt alone
-    // cannot fit the model window, finalize directly instead of sending a
-    // request that will be rejected. Models with ample room are unaffected.
-    if (!this.canFitCompletionReview(context, prompt))
-      return;
-
-    let step = {
-      type: 'completion-review',
-      prompt,
-    };
-    let tools = createLoopTools(state, context);
-    let toolDefinitions = createLoopToolDefinitions(context);
-    let reviewOriginalFinalFrame = state.finalFrame;
-    let reviewStartFinalFrame = state.finalFrame;
-    let result = this.ask(prompt, {
-      ...context,
-      tools,
-      toolDefinitions,
-      step,
-      completionReview: true,
-    });
-
-    let reviewControlFinalized = false;
-    for await (let output of iterateAgentResult(result)) {
-      if (isInternalStreamingOutput(output))
-        continue;
-
-      if (output?.type === 'LoopControl') {
-        if (isCompletionReviewMetaResponseContent(output.content) && reviewOriginalFinalFrame) {
-          state.finalFrame = reviewOriginalFinalFrame;
-          state.continuation = null;
-          continue;
-        }
-
-        reviewControlFinalized = output.action === 'finalize' || output.action === 'respond-and-continue';
-        handleLoopControl(output, state);
-        continue;
-      }
-
-      if (output?.type === 'AgentMessage') {
-        if (isCompletionReviewMetaResponseContent(output.content) && reviewOriginalFinalFrame) {
-          state.finalFrame = reviewOriginalFinalFrame;
-          state.continuation = null;
-          continue;
-        }
-
-        let responseToolSelectedFrame = reviewControlFinalized || state.finalFrame !== reviewStartFinalFrame;
-        state.finalFrame = responseToolSelectedFrame
-          ? mergeFinalizedProviderFrame(output, state.finalFrame)
-          : mergeCompletionReviewFrame(state.finalFrame, output);
-        reviewStartFinalFrame = state.finalFrame;
-        continue;
-      }
-
-      if (output?.type === 'Done') {
-        captureProviderDoneUsage(state, output);
-        continue;
-      }
-
-      if (output?.type)
-        yield output;
-    }
-
-    if (state.forwarded && !state.forwardDispatched) {
-      state.forwardDispatched = true;
-      await dispatchForwards(context, state);
-    }
-  }
-
   async ask() {
     throw new Error(`${this.constructor.name}.ask() is not implemented`);
   }
@@ -389,30 +307,6 @@ export class AgentInterface extends PluginInterface {
 
     let configured = Number(context.config?.contextWindowTokens);
     return Number.isFinite(configured) && configured > 0 ? Math.trunc(configured) : null;
-  }
-
-  // Whether a completion self-review prompt can fit the model window. Unknown
-  // windows are treated as fitting so large/opaque models keep their review.
-  canFitCompletionReview(context = {}, prompt = '') {
-    let window = this.resolveContextWindow(context);
-    if (!Number.isFinite(window) || window <= 0)
-      return true;
-
-    let reserve = Number(this.constructor.reviewOutputReserveTokens);
-    let budget = budgetForModel({
-      contextWindow: window,
-      maxOutputTokens: Number.isFinite(reserve) && reserve > 0 ? reserve : 0,
-    });
-    return estimateTokens(prompt) <= budget;
-  }
-
-  buildCompletionReviewPrompt(context = {}, state = {}) {
-    let frameMessage = context.frame?.content?.text || '';
-    return buildCompletionReviewScriptPrompt({
-      frameMessage,
-      finalFrameContent: state.finalFrame?.content || {},
-      toolDefinitions: createLoopToolDefinitions(context),
-    });
   }
 
   static async getAgentProviderDescriptor() {
