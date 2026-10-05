@@ -1,9 +1,9 @@
 # Kikx: Tool Rename + Agent Completion/Loop-Termination Redesign
 
-Status: **IMPLEMENTED (P0–P7 landed on branch `kikx-tool-rename`), pending owner
-review and authorization to push/deploy.**
-Owner rulings R1–R6 recorded 2026-10-03 (see §5). Baseline commit `e473c8d`
-(local main, one unpushed dogfood commit) / upstream `e5282b4`.
+Status: **P0–P7 + P8 implemented and pushed to `main`** (`b9b0a63`, core
+deployed as image `b9b0a63`); **P9 (AeorDB scheduled-frame fallback) implemented
+on `main` (`ac5bef5`) but NOT pushed and NOT deployed** — pending dev
+verification. Owner rulings R1–R7 recorded (see §5).
 
 Implemented commits (kikx):
 - `0976ffe` P1 — remove the agent completion self-review.
@@ -12,8 +12,10 @@ Implemented commits (kikx):
 - `73708ce` P4 — autonomous-run clue in Brief B.
 - `c61682c` P6 — docs updated; exports superseded.
 - `f168084` P7 — incident regression spec.
+- `9b9feae` P8 — boot-time stale autonomous-wake sweep.
+- `ac5bef5` P9 — AeorDB scheduled-frame query fallback (unpushed/undeployed).
 Provider plugins: codex `66ff4e0`, ollama `4b9b93a` (claude/google needed none).
-Gates: core 715/715, codex 36/36, ollama 17/17, eslint clean.
+Gates: core 719/719, codex 36/36, ollama 17/17, eslint clean.
 
 Motivating incident: production session `a07faa16-4eed-44a9-b823-f2e9c0c10df5`
 ("Kikx") reached **1287 frames / ~1240 messages** in a self-sustaining turn
@@ -349,6 +351,48 @@ green and is one-unit revertible. Hotspots (`agent-interface.mjs`,
   and asserts it terminates and cancels on user input; plus a bounded live dev
   exercise.
 - **Exit:** all gates green (core + provider suites).
+- **Landed:** `f168084`.
+
+### P8 — Boot-time stale autonomous-wake sweep
+- **Deliverable:** `FrameRuntime.sweepStaleAutonomousWakes()` marks every pending
+  autonomous wake/continuation older than one hour (config-overridable) as
+  `cancelled`, across all sessions, before the scheduled worker arms. Non-
+  autonomous scheduled frames untouched. `startScheduledFrameWorker` runs it
+  best-effort at boot.
+- **Motivation:** post-fix production restart could resurrect pre-fix orphaned
+  wakes via `ScheduledFrameQueue.load()`.
+- **Landed:** `9b9feae`.
+- **Finding (deferred to P9):** the sweep is a no-op when the store's
+  scheduled-frame query returns nothing (below).
+
+### P9 — AeorDB scheduled-frame query fallback (blocking fix)
+- **Defect:** AeorDB 0.9.5 has no `/files/query`; `queryFiles` 404s. But
+  `AeorDBFrameStore.searchScheduledFrames` (`aeordb-frame-store-scheduled.mjs`)
+  treated a 404 as "no results" and returned `[]`, so `listScheduledFrames()`
+  always returned empty. This silently disabled scheduled-frame loading — and
+  P8's sweep — on production.
+- **Evidence (live):** `queryFiles` → HTTP 404; `searchFiles` → 29 matching
+  paths; `listScheduledFrames()` → 0. 22 orphaned 09-30 wakes visible in
+  `/api/v1/sessions/:id/frames` but never loaded/cancelled.
+- **Fix:** `searchScheduledFrames` tries `queryFiles` → `searchFiles` → scan;
+  `shouldFallbackToScheduledFrameScan` treats 404 as fallback (missing endpoint)
+  alongside 400/500.
+- **Landed:** `ac5bef5` (core 719/719). **Unpushed/undeployed** pending dev
+  verification.
+- **Also fixes (latent):** on 0.9.5 the queue never re-loaded *any* persisted
+  scheduled frame on boot; new in-process wakes were unaffected.
+
+### P9 verification gate (dev, pre-deploy)
+1. Boot dev (`kikx-dev`) on `ac5bef5`; confirm the sweep log line
+   `Cancelled N stale autonomous scheduled frame(s)` where N matches the dev
+   DB's stale count.
+2. Confirm a known-stale dev wake flips to `scheduledStatus:'cancelled'` and is
+   absent from `scheduledFrames.entries`.
+3. Confirm `listScheduledFrames()` returns the pending frames (non-zero) via the
+   `searchFiles` path.
+4. Run a bounded async-wake chain on dev; confirm normal termination and the
+   user-turn cancel.
+5. Only then push + deploy (separate authorization).
 
 ---
 
@@ -371,6 +415,10 @@ green and is one-unit revertible. Hotspots (`agent-interface.mjs`,
   punitive cap. Verbatim final phrase in §3.1.
 - **R6** (2026-10-03). Storage contract §3.3: don't store per-turn fluff; store
   messages (and thinking); post-compaction preamble is intentionally projected.
+- **R7** (2026-10-04). "I want you to update the plan as well. And no, we are
+  NOT going to deploy the change yet. We will test in Dev first." — P9 (the
+  scheduled-frame fallback fix) is implemented and committed but must be verified
+  on dev before any push/deploy.
 
 Self-answered (evidence-based): `route`/`help` kept (collision cost > benefit);
 LoopControl action strings unchanged internally (`finalize`, etc.) to limit
@@ -416,11 +464,14 @@ guard (with the high fail-safe as backstop).
 | Unpushed `e473c8d` divergence | branch from `e473c8d`; do not push without owner |
 | Provider repos drift | pin plugin refs at implementation start; separate commits |
 | `agent-interface.mjs` growth | P1 must net-shrink the file (explicit gate) |
+| AeorDB build lacks `/files/query` | P9 falls back to `searchFiles`/scan; do not read endpoint absence as empty |
+| Stale persisted wakes resurrect on restart | P8 boot sweep cancels pending autonomous frames older than 1h |
 
 ## 8. Open items
 
 - Authorization to implement — **granted** by owner ("Go."); implemented.
 - High fail-safe threshold value (default 64) — accepted by owner.
+- **P9 verification on dev (R7)** before push/deploy — see §4 P9 verification gate.
 - **Owed after-change gate:** a bounded real end-to-end dev exercise driving an
   async wake chain (owner test), and push/deploy authorization.
 
@@ -431,4 +482,6 @@ guard (with the high fail-safe as backstop).
    — largely subsumed by R3.
 2. Exec default timeout policy (`process-manager.mjs:88-89`).
 3. Optional turn/token budget layer if R5's queue guard proves insufficient.
-4. Deploy of this campaign (separate authorization).
+4. Push + deploy of P9 (separate authorization; R7 requires dev verification first).
+5. Consider whether `continuation.kind` should be renamed `'continue-turn'`
+   (currently persisted as `'send'`; no reader depends on the literal).
