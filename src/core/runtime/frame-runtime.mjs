@@ -233,6 +233,17 @@ export class FrameRuntime extends EventEmitter {
   }
 
   async startScheduledFrameWorker() {
+    // Cancel orphaned pre-existing autonomous wakes before arming the worker, so
+    // a restart cannot resurrect stale pending turns (see
+    // sweepStaleAutonomousWakes). Best effort: never block worker startup.
+    try {
+      let swept = await this.sweepStaleAutonomousWakes?.();
+      if (swept > 0)
+        this.logger?.warn?.(`Cancelled ${swept} stale autonomous scheduled frame(s) on startup`);
+    } catch (error) {
+      this.logger?.error?.('Stale autonomous wake sweep failed', error);
+    }
+
     return await this.scheduledFrames.start();
   }
 

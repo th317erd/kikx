@@ -16,6 +16,19 @@ import {
   isAutonomousContinuation,
 } from './autonomous-chain.mjs';
 
+// Default staleness horizon for the boot sweep: a pending autonomous frame older
+// than one hour is assumed orphaned and cancelled. Clock values are Unix
+// microseconds (>1e14); anything below is treated as milliseconds.
+const DEFAULT_STALE_WAKE_MAX_AGE_MS = 60 * 60 * 1000;
+
+function nowMs(value) {
+  let number = Number(value);
+  if (!Number.isFinite(number))
+    return number;
+
+  return Math.abs(number) >= 100_000_000_000_000 ? Math.trunc(number / 1000) : number;
+}
+
 const sessionMethods = {
   // Supersede pending autonomous wakes in a session. A user message is new
   // authority: any exec-wake or respond-and-continue frame that has not fired is
@@ -52,6 +65,70 @@ const sessionMethods = {
     this.scheduledFrames.trackFrames(merged.length > 0 ? merged : updates);
     await this.frameStore?.flush?.();
     return updates.length;
+  },
+
+  // Boot-time hygiene: a pending autonomous wake/continuation that is older than
+  // `maxAgeMs` is stale (e.g. it predates a fix, or was orphaned by a crash) and
+  // must not fire. Mark it `cancelled` across every session. Non-autonomous
+  // scheduled frames are left alone. Bypasses the per-session entry lookup so it
+  // can sweep persisted frames before their sessions are loaded. A no-op when
+  // nothing qualifies.
+  async sweepStaleAutonomousWakes(options = {}) {
+    let maxAgeMs = Number(options.maxAgeMs);
+    if (!Number.isFinite(maxAgeMs) || maxAgeMs <= 0)
+      maxAgeMs = DEFAULT_STALE_WAKE_MAX_AGE_MS;
+
+    let listScheduled = this.frameStore?.listScheduledFrames;
+    if (typeof listScheduled !== 'function')
+      return 0;
+
+    let pending = [];
+    let offset = 0;
+    let limit = 500;
+    while (true) {
+      let page = await listScheduled.call(this.frameStore, { limit, offset });
+      pending.push(...page);
+      if (page.length < limit)
+        break;
+
+      offset += page.length;
+    }
+
+    let now = Number(this.clock?.() || Date.now());
+    let perSession = new Map();
+    for (let frame of pending) {
+      if (!isAutonomousContinuation(frame?.continuation))
+        continue;
+
+      let scheduledAt = Number(frame.scheduledAt) || 0;
+      if (scheduledAt > 0 && nowMs(now) - nowMs(scheduledAt) <= maxAgeMs)
+        continue;
+
+      let frames = perSession.get(frame.sessionID);
+      if (!frames) {
+        frames = [];
+        perSession.set(frame.sessionID, frames);
+      }
+      frames.push(frame);
+    }
+
+    let cancelled = 0;
+    for (let [sessionID, frames] of perSession) {
+      let entry = this.sessions.get(sessionID) || await this.ensureSessionEntry(sessionID);
+      let updates = frames.map((frame) => buildAutonomousCancellation(frame, now));
+      let merged = entry.frameEngine.merge(updates, {
+        authorType: 'system',
+        authorID: 'internal:stale-wake-sweep',
+        silent: true,
+      });
+      this.scheduledFrames?.trackFrames?.(merged.length > 0 ? merged : updates);
+      cancelled += updates.length;
+    }
+
+    if (cancelled > 0)
+      await this.frameStore?.flush?.();
+
+    return cancelled;
   },
 
   requireSessionEntry(sessionID) {

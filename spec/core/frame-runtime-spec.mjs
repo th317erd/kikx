@@ -773,6 +773,63 @@ function createScheduledAutonomousFrame({ id, sessionID, continuation }) {
   };
 }
 
+test('FrameRuntime sweepStaleAutonomousWakes cancels only old autonomous frames', async () => {
+  // Clock is Unix MICROseconds; staleness horizon is 1h = 3_600_000_000 micros.
+  let now = 10_000_000_000_000;
+  let runtime = new FrameRuntime({
+    aeordb: createClient(),
+    clock: () => now,
+    idGenerator: createIDGenerator([ 'ses_1', 'int_1' ]),
+  });
+  await runtime.createSession({ title: 'Scratch' });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([
+    { ...createScheduledAutonomousFrame({ id: 'old_wake', sessionID: 'ses_1', continuation: { kind: 'exec-wake-on-completion' } }), scheduledAt: now - 7_200_000_000 },
+    { ...createScheduledAutonomousFrame({ id: 'fresh_wake', sessionID: 'ses_1', continuation: { kind: 'send' } }), scheduledAt: now - 1000 },
+    { ...createScheduledAutonomousFrame({ id: 'old_manual', sessionID: 'ses_1', continuation: { kind: 'user-scheduled' } }), scheduledAt: now - 7_200_000_000 },
+  ], { authorType: 'system', authorID: 'test' });
+
+  let swept = await runtime.sweepStaleAutonomousWakes();
+  assert.equal(swept, 1);
+  assert.equal(entry.frameEngine.get('old_wake').scheduledStatus, 'cancelled');
+  assert.equal(entry.frameEngine.get('fresh_wake').scheduledStatus, 'pending');
+  assert.equal(entry.frameEngine.get('old_manual').scheduledStatus, 'pending');
+});
+
+test('FrameRuntime startScheduledFrameWorker sweeps stale autonomous wakes on boot', async () => {
+  let now = 10_000_000_000_000;
+  let aeordb = createClient();
+
+  // First runtime: create a real session and persist a stale autonomous wake.
+  let seed = new FrameRuntime({
+    aeordb,
+    clock: () => now,
+    idGenerator: createIDGenerator([ 'ses_1', 'int_1' ]),
+  });
+  await seed.createSession({ title: 'Scratch' });
+  let seedEntry = seed.requireSessionEntry('ses_1');
+  seedEntry.frameEngine.merge([{
+    ...createScheduledAutonomousFrame({ id: 'old_wake', sessionID: 'ses_1', continuation: { kind: 'exec-wake-on-completion' } }),
+    scheduledAt: now - 7_200_000_000,
+  }], { authorType: 'system', authorID: 'test' });
+  await seed.frameStore.flush();
+
+  // Second runtime: a fresh process over the same store boots the worker.
+  let runtime = new FrameRuntime({
+    aeordb,
+    clock: () => now,
+    idGenerator: createIDGenerator([ 'ses_2', 'int_2' ]),
+    scheduledFrameWorkerIntervalMS: 1000000,
+  });
+  let swept = await runtime.sweepStaleAutonomousWakes();
+  runtime.stopScheduledFrameWorker();
+
+  assert.equal(swept, 1);
+  let entry = await runtime.ensureSessionEntry('ses_1');
+  assert.equal(entry.frameEngine.get('old_wake').scheduledStatus, 'cancelled');
+});
+
+
 test('FrameRuntime does not route a silent SystemNotice commit but still surfaces it', async () => {
   let routed = [];
   let events = [];
