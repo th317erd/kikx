@@ -311,7 +311,7 @@ async function createStaticFixture() {
   return { root, clientRoot, sharedRoot, aeorWebComponentsRoot };
 }
 
-test('GET /health reports service state', async () => {
+test('GET /health reports service state and readiness', async () => {
   let server = createServer({
     context: new AppContext({
       aeordb: {
@@ -323,16 +323,23 @@ test('GET /health reports service state', async () => {
   let baseURL = await listen(server);
 
   try {
+    // `ready` is false until startup recovery + boot sweep settle; a context with
+    // no scheduled-worker wiring settles immediately and flips to true.
     let response = await fetch(`${baseURL}/health`);
     let body = await response.json();
 
     assert.equal(response.status, 200);
-    assert.deepEqual(body, {
-      ok: true,
-      services: {
-        aeordb: true,
-      },
-    });
+    assert.equal(body.ok, true);
+    assert.equal(body.services.aeordb, true);
+    assert.equal(typeof body.ready, 'boolean');
+
+    // Once startup settles, `ready` becomes true and stays true.
+    let deadline = Date.now() + 2000;
+    while (Date.now() < deadline && body.ready !== true) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      body = await (await fetch(`${baseURL}/health`)).json();
+    }
+    assert.equal(body.ready, true);
   } finally {
     await close(server);
   }

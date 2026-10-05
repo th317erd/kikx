@@ -14,8 +14,12 @@ const DEFAULT_TOOL_OUTPUT_API_BYTES = 128 * 1024;
 
 export async function handleInfraRoutes({ request, response, url, context }) {
   if (request.method === 'GET' && url.pathname === '/health') {
+    // `ready` is false until startup recovery and the boot-time stale-wake sweep
+    // have finished, so probes (and the deploy verifier) never observe the
+    // transient window where stale autonomous wakes are still pending.
     writeJSON(response, 200, {
       ok: true,
+      ready: context.get?.('startupReady') === true,
       services: {
         aeordb: context.has('aeordb'),
       },
