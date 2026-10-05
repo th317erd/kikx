@@ -157,7 +157,9 @@ mapping `models[].name -> {value,label}`. Requirements:
 4. Build `tools` from `options.toolDefinitions` as native
    `{type:'function', function:{name, description, parameters}}`; validate names
    against `/^[A-Za-z0-9_-]+$/`; dedupe.
-5. Tool loop (bound `MAX_OLLAMA_TOOL_ROUNDS = 64`):
+5. Tool loop (runs until the model stops calling tools or a control tool ends
+   the turn; no round cap — the old `MAX_OLLAMA_TOOL_ROUNDS = 64` bound was
+   removed 2026-10-05):
    - POST `${baseUrl}/api/chat` `{model, messages, tools, stream:true}` with timeout.
    - Parse NDJSON (split on `\n`, ignore blank lines, JSON.parse each).
    - `message.thinking` non-empty => append to `thinkingText`, seq++, set
@@ -267,8 +269,10 @@ Landing gate: `cd ../kikx-plugin-ollama && npm test` green.
 - **`baseUrl` in discovery**: descriptor has no per-agent config; discovery uses
   `OLLAMA_HOST` default. Multi-host setups would need a larger contract change —
   explicitly out of scope.
-- **Tool loop runaway**: bounded at 64 rounds; base `maxLoopSteps` still guards script
-  steps.
+- **Tool loop runaway**: no round cap (the `MAX_OLLAMA_TOOL_ROUNDS`/64 design was
+  removed 2026-10-05); the loop terminates only when the model stops calling tools
+  or a control tool ends the turn. Governed by the per-request timeout,
+  context-window trimming, and the core autonomous-chain fail-safe.
 - **chunks as array**: must stay object-keyed (AeorDB merge-patch) — asserted in spec.
 - **Repos**: three separate git repos; land P0 (kikx + codex specs) and P1 (plugin)
   as coherent commits. Do not commit until authorized.
