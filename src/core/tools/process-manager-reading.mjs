@@ -20,9 +20,15 @@ async function readFileRange(filePath, range) {
   return sliceTextByByteRange(content, range);
 }
 
+async function readStreamRange(record, stream, range) {
+  let durable = record?.[`durable${stream === 'stdout' ? 'Stdout' : 'Stderr'}`];
+  let content = durable != null ? durable : await readWholeFile(record?.[`${stream}Path`]);
+  return sliceTextByByteRange(content, range);
+}
+
 async function readCombined(record, range) {
-  let stdout = await readWholeFile(record.stdoutPath);
-  let stderr = await readWholeFile(record.stderrPath);
+  let stdout = record?.durableStdout != null ? record.durableStdout : await readWholeFile(record?.stdoutPath);
+  let stderr = record?.durableStderr != null ? record.durableStderr : await readWholeFile(record?.stderrPath);
   let combined = stderr ? `${stdout}\n--- stderr ---\n${stderr}` : stdout;
   return sliceTextByByteRange(combined, range);
 }
@@ -67,6 +73,7 @@ export {
   grepText,
   readCombined,
   readFileRange,
+  readStreamRange,
   readWholeFile,
   sliceTextByByteRange,
 };

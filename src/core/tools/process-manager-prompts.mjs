@@ -15,8 +15,12 @@ function buildProcessWakePrompt(record, wake) {
       ? `The full completion result was stored in AeorDB as tool output ${record.completionToolOutputID}. Use output-read {"id":"${record.completionToolOutputID}"} to read it.`
       : 'The completion result could not be stored; inspect exec-status for the storage error.';
 
+  let statusLine = record.status === 'interrupted'
+    ? `Async process ${record.processID} was interrupted by a server restart; its child is no longer managed. Captured output is preserved below.`
+    : `Async process ${record.processID} has completed with status ${record.status}.`;
+
   return [
-    `Async process ${record.processID} has completed with status ${record.status}.`,
+    statusLine,
     `Command: ${record.command}`,
     `Exit code: ${record.exitCode}; signal: ${record.signal}; durationMs: ${record.durationMs}.`,
     responseLine,

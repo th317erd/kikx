@@ -18,8 +18,7 @@ import {
 import {
   grepText,
   readCombined,
-  readFileRange,
-  readWholeFile,
+  readStreamRange,
 } from './process-manager-reading.mjs';
 import { publicRecord } from './process-manager-results.mjs';
 
@@ -69,7 +68,7 @@ async function readProcess(manager, params = {}) {
   });
   let content = stream === 'combined'
     ? await readCombined(record, range)
-    : await readFileRange(record[`${stream}Path`], range);
+    : await readStreamRange(record, stream, range);
   let sizeBytes = stream === 'combined'
     ? record.stdoutBytes + record.stderrBytes + (record.stderrBytes > 0 ? Buffer.byteLength('\n--- stderr ---\n') : 0)
     : record[`${stream}Bytes`];
@@ -98,7 +97,7 @@ async function grepProcess(manager, params = {}) {
   let maxMatches = clampInteger(params.maxMatches ?? params.limit, DEFAULT_GREP_MATCH_LIMIT, 1, 500);
   let content = stream === 'combined'
     ? await readCombined(record, { start: 0, end: null, hasEnd: false, maxBytes: null })
-    : await readWholeFile(record[`${stream}Path`]);
+    : await readStreamRange(record, stream, { start: 0, end: null, hasEnd: false, maxBytes: null });
   let matches = grepText(content, pattern, flags, maxMatches);
 
   return {

@@ -7,6 +7,7 @@ export { FeedbackReportTool } from './feedback-tool.mjs';
 export { LocalCommandExecutionService } from './local-command-execution-service.mjs';
 export { LocalFileAccessService } from './local-file-access-service.mjs';
 export { ProcessManager } from './process-manager.mjs';
+export { DEFAULT_PROCESS_ROOT_PATH, ProcessStore } from './process-manager-store.mjs';
 export {
   ExecGrepTool,
   ExecKillTool,

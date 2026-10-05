@@ -210,6 +210,7 @@ export function createServer(options = {}) {
     context.set('processManager', new ProcessManager({
       commandExecutor: context.require('commandExecutor'),
       toolOutputStore: context.require('toolOutputStore'),
+      aeordb: context.require('aeordb'),
       frameRuntime: context.require('frameRuntime'),
       context,
       logger: options.logger || console,
@@ -235,14 +236,50 @@ export function createServer(options = {}) {
     }));
   }
 
+  // Rehydrate durable process records before the scheduled-frame worker fires any
+  // reloaded wake, so an `exec-status` on a persisted process resolves instead of
+  // throwing "Unknown process".
+  if (!context.has('processRecoveryPromise')) {
+    let processManager = context.require('processManager');
+    let aeordb = context.require('aeordb');
+    let logger = options.logger || console;
+    let canList = typeof aeordb?.listDirectory === 'function';
+    context.set('processRecoveryPromise', Promise.resolve(context.require('runtimeRecoveryPromise')).then(async () => {
+      if (!canList || typeof processManager.rehydrate !== 'function')
+        return { rehydrated: 0, skipped: true };
+
+      let result = await processManager.rehydrate();
+      if (result.interrupted > 0)
+        logger.warn?.('Kikx rehydrated interrupted async processes', { interrupted: result.interrupted });
+
+      return result;
+    }).catch((error) => {
+      logger.error?.('Kikx process rehydration failed', error);
+      return { rehydrated: 0, interrupted: 0, error };
+    }));
+  }
+
   if (!context.has('scheduledFrameWorkerPromise')) {
     let frameRuntime = context.require('frameRuntime');
-    context.set('scheduledFrameWorkerPromise', Promise.resolve(context.require('runtimeRecoveryPromise')).then(() => (
-      typeof frameRuntime.startScheduledFrameWorker === 'function' && canLoadScheduledFrames(frameRuntime)
-        ? frameRuntime.startScheduledFrameWorker()
-        : null
-    )).catch((error) => {
-      (options.logger || console)?.error?.('Kikx scheduled frame worker failed to start', error);
+    let processManager = context.require('processManager');
+    let logger = options.logger || console;
+    context.set('scheduledFrameWorkerPromise', Promise.resolve(context.require('processRecoveryPromise')).then(async () => {
+      let worker = (typeof frameRuntime.startScheduledFrameWorker === 'function' && canLoadScheduledFrames(frameRuntime))
+        ? await frameRuntime.startScheduledFrameWorker()
+        : null;
+
+      // After the worker has loaded persisted timers, reschedule any completed
+      // process whose wake was never persisted (the scheduling step was
+      // interrupted). Already-persisted pending wakes are left to the worker.
+      if (typeof processManager.recoverPendingWakes === 'function') {
+        let recovered = await processManager.recoverPendingWakes({ frameRuntime });
+        if (recovered.recovered > 0)
+          logger.warn?.('Kikx rescheduled async process wakes', { recovered: recovered.recovered });
+      }
+
+      return worker;
+    }).catch((error) => {
+      logger.error?.('Kikx scheduled frame worker failed to start', error);
       return null;
     }));
   }

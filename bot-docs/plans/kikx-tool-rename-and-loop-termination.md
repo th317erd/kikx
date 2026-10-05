@@ -366,7 +366,9 @@ green and is one-unit revertible. Hotspots (`agent-interface.mjs`,
   someday discover truly stale timers that never fired when they should, we would
   fix the bug causing stale timers, not just wipe them all on every boot."
   Timers now always reload and fire when due. Follow-up: plan
-  `kikx-durable-process-state.md` closes the two gaps.
+  `kikx-durable-process-state.md` closes the two gaps. **That follow-up is now
+  implemented (D1–D6)** — durable process records, stdio, boot rehydration,
+  durable wake-consumption marker, and honest interrupted-wake semantics.
 
 ### P9 — Scheduled-frame lookup uses the correct AeorDB API (blocking fix)
 - **Defect (corrected):** Kikx loaded scheduled frames via a path-scoped

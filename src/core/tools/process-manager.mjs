@@ -43,12 +43,20 @@ import {
   wakeOnCompletion,
 } from './process-manager-wake.mjs';
 import { buildDefaultWakePrompt } from './process-manager-prompts.mjs';
+import {
+  persist as persistRecord,
+  recoverPendingWakes,
+  rehydrate as rehydrateProcesses,
+} from './process-manager-recovery.mjs';
+import { ProcessStore } from './process-manager-store.mjs';
 
 export class ProcessManager {
   constructor(options = {}) {
     let {
       commandExecutor,
       toolOutputStore,
+      processStore = null,
+      aeordb = null,
       frameRuntime = null,
       context = null,
       tempRoot = DEFAULT_TEMP_ROOT,
@@ -67,6 +75,7 @@ export class ProcessManager {
 
     this.commandExecutor = commandExecutor;
     this.toolOutputStore = toolOutputStore;
+    this.processStore = processStore || (aeordb ? new ProcessStore({ aeordb, clock }) : null);
     this.frameRuntime = frameRuntime;
     this.context = context;
     this.tempRoot = tempRoot;
@@ -192,6 +201,11 @@ export class ProcessManager {
       if (record.status !== 'running')
         await this.scheduleWake(record);
     }
+
+    // Persist the running (or already-completed) record for boot rehydration.
+    // Done after the child listeners are wired so no early output is missed; the
+    // await here only delays the return value, not capture.
+    await this.persist(record);
 
     return createStartedResult(record);
   }
@@ -351,6 +365,8 @@ export class ProcessManager {
 
     if (record.wakeOnCompletion)
       await this.scheduleWake(record);
+    else
+      await this.persist(record);
 
     return record;
   }
@@ -384,6 +400,46 @@ export class ProcessManager {
 
   async scheduleWake(record) {
     return await scheduleWake(this, record);
+  }
+
+  // Durable record persistence + boot recovery live in process-manager-recovery.
+  async persist(record) {
+    return await persistRecord(this, record);
+  }
+
+  async rehydrate(options = {}) {
+    return await rehydrateProcesses(this, options);
+  }
+
+  async recoverPendingWakes(options = {}) {
+    return await recoverPendingWakes(this, options);
+  }
+
+  async storeCompletionOutput(record) {
+    try {
+      let result = await buildCompletionResult(record);
+      let stored = await this.toolOutputStore.storeToolOutput({
+        toolName: 'process-complete',
+        input: {
+          processID: record.processID,
+          command: record.command,
+        },
+        result,
+        context: {
+          agent: record.agentID ? { id: record.agentID } : null,
+          session: record.sessionID ? { id: record.sessionID } : null,
+          frame: record.frameID ? { id: record.frameID } : null,
+        },
+      });
+      record.completionToolOutputID = stored.id;
+      record.completionSizeBytes = stored.sizeBytes;
+      record.completionInlineLimitBytes = this.toolOutputStore.inlineLimitBytes || null;
+      record.completionLarge = Boolean(record.completionInlineLimitBytes && stored.sizeBytes > record.completionInlineLimitBytes);
+      record.completionRetrieval = this.toolOutputStore.createRetrievalInstructions?.(stored.id, stored.sizeBytes) || null;
+    } catch (error) {
+      record.completionStoreError = error.message || String(error);
+      this.logger?.error?.('Failed to store async process completion output', error);
+    }
   }
 
   resolveFrameRuntime() {

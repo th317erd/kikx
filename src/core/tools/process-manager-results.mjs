@@ -3,8 +3,8 @@
 import { readWholeFile } from './process-manager-reading.mjs';
 
 async function buildCompletionResult(record) {
-  let stdout = await readWholeFile(record.stdoutPath);
-  let stderr = await readWholeFile(record.stderrPath);
+  let stdout = record.durableStdout != null ? record.durableStdout : await readWholeFile(record.stdoutPath);
+  let stderr = record.durableStderr != null ? record.durableStderr : await readWholeFile(record.stderrPath);
   return {
     processID: record.processID,
     agentID: record.agentID || null,

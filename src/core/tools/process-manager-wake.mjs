@@ -62,6 +62,7 @@ async function scheduleWake(manager, record) {
   let wake = record.wakeOnCompletion;
   if (!frameRuntime?.ensureSessionEntry || !wake?.sessionID || !wake?.agentID) {
     record.wakeError = 'process wake requires frameRuntime, sessionID, and agentID';
+    await manager.persist?.(record);
     return null;
   }
 
@@ -75,6 +76,7 @@ async function scheduleWake(manager, record) {
       await postPauseNotice(frameRuntime, entry, wake, now);
       record.wakePausedAt = now;
       record.wakeCompletionOutputID = record.completionToolOutputID || null;
+      await manager.persist?.(record);
       return null;
     }
 
@@ -99,6 +101,7 @@ async function scheduleWake(manager, record) {
       continuation: {
         kind: 'exec-wake-on-completion',
         processID: record.processID,
+        processStatus: record.status,
         completionToolOutputID: record.completionToolOutputID,
         continuationPrompt: wake.continuationPrompt,
         continuationDepth: depth,
@@ -122,10 +125,12 @@ async function scheduleWake(manager, record) {
     await frameRuntime.frameStore?.flush?.();
     record.wakeFrameID = merged[0]?.id || frameID;
     record.wakeCompletionOutputID = record.completionToolOutputID || null;
+    await manager.persist?.(record);
     await frameRuntime.processScheduledFrames?.();
     return record.wakeFrameID;
   } catch (error) {
     record.wakeError = error.message || String(error);
+    await manager.persist?.(record);
     manager.logger?.error?.('Failed to schedule process completion wake', error);
     return null;
   }

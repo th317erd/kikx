@@ -1,7 +1,7 @@
 # Kikx: Durable Process & Consumption State Across Restarts
 
-Status: **PROPOSED.** Depends on the scheduled-frame lookup fix (plan
-`kikx-tool-rename-and-loop-termination.md`, P9) being landed.
+Status: **IMPLEMENTED (D1–D6).** Depends on the scheduled-frame lookup fix (plan
+`kikx-tool-rename-and-loop-termination.md`, P9), which is landed.
 
 ## 1. Purpose and intent (owner ruling)
 
@@ -58,38 +58,53 @@ destroyed durable state the design wanted to replay.
 
 ## 4. Phases
 
-- **D1 — Persist process records.** Write/update a process record document on
-  start, on significant transitions (running → completed/failed/killed), and on
-  wake scheduling. Reuse `frameStore`'s AeorDB client; store under
-  `/kikx/sessions/<sid>/processes/<processID>.json` (indexed for listing).
-- **D2 — Persist stdio.** Move `stdout.txt`/`stderr.txt` off `/tmp` into the
-  session's durable space (or store completed output via `ToolOutputStore` and
-  keep only the live stream on disk, deleted once stored).
-- **D3 — Rehydrate at boot.** `ProcessManager` loads persisted records; mark
-  shutdown-time `running` records `interrupted`; wire into the existing startup
-  promise chain so `ready` (see below) only flips after rehydration.
-- **D4 — Durable consumption marker.** Persist `wakeCompletionOutputID`
-  (single-shot already keys on it) so reloaded wakes are idempotent. A re-fired
-  wake for a consumed output posts nothing.
-- **D5 — Boot semantics for reloaded wakes.** A reloaded `exec-wake-on-completion`
-  for an interrupted process wakes the agent with a status-resolution message
-  ("process X was interrupted by a restart; its captured output is …; continue"),
-  never a silent drop.
-- **D6 — Remove any residual purge logic and document the invariant.** Grep-gate:
-  no age-based cancellation of autonomous frames anywhere.
+- **D1 — Persist process records.** ✅ `ProcessStore.saveRecord()` writes a
+  sanitized record (no live handles/streams/promises) to
+  `/kikx/sessions/<sessionID>/processes/<processID>.json` on start, on
+  completion, and after wake scheduling.
+- **D2 — Persist stdio.** ✅ `ProcessStore.saveStdio()` mirrors stdout/stderr
+  bodies next to the record; `readStdio()` prefers the live capture file and
+  falls back to the durable copy, so a host reboot does not lose buffered output.
+- **D3 — Rehydrate at boot.** ✅ `ProcessManager.rehydrate()` loads persisted
+  records, marks shutdown-time `running` records `interrupted`, stores their
+  completion output, and installs them into `processes`. Wired into the
+  `processRecoveryPromise` before the scheduled-frame worker, so `ready` only
+  flips after rehydration.
+- **D4 — Durable consumption marker.** ✅ `wakeFrameID`/`wakeCompletionOutputID`
+  are persisted. `recoverPendingWakes()` (run after the worker loads persisted
+  timers) reschedules only completed wakes that were never persisted and skips
+  process IDs already pending in the queue, so a reloaded wake fires exactly once.
+- **D5 — Boot semantics for reloaded wakes.** ✅ Interrupted records store a
+  completion output and their wake carries `processStatus: 'interrupted'`; the
+  wake prompt states the process was interrupted by a restart and output is
+  preserved.
+- **D6 — Remove any residual purge logic and document the invariant.** ✅ Grep-gate
+  clean: `sweepStaleAutonomousWakes` and any staleness horizon are absent from
+  `src/`, `spec/`, `scripts/`, `kikx-docker/`.
 
 ## 5. Verification spine
 
-- **Durability round-trip spec:** start a process, persist, tear the runtime
-  down, build a fresh one over the same AeorDB, assert the record resolves and
-  status is correct (`completed` or `interrupted`).
-- **Wake idempotency spec:** a consumed output's reloaded wake fires zero turns;
-  an unconsumed one fires exactly one.
+- **Durability round-trip spec:** ✅ `ProcessStore round-trips a process record
+  and its captured stdio` + `durable stdio survives a reboot that clears the
+  volatile capture directory`.
+- **Rehydration spec:** ✅ `ProcessManager.rehydrate marks a shutdown-time running
+  process interrupted and resolves it` (also proves `exec-read` returns the
+  captured output under the interrupted status).
+- **Wake idempotency spec:** ✅ `recoverPendingWakes reschedules an unconsumed
+  completed wake exactly once and skips a consumed one`, plus `scheduleWake
+  persists the wake frame id and consumed output so a reload is idempotent`.
 - **Reload spec (landed):** `FrameRuntime reloads persisted scheduled frames
   across a restart instead of discarding them` (proves timers survive, not swept).
-- **End-to-end:** kill/restart the dev server mid-process; confirm the agent is
-  woken with correct process resolution and no duplicate turns.
-- **Grep-gate:** `sweepStaleAutonomousWakes` and any staleness horizon absent.
+- **End-to-end (unit):** ✅ `an interrupted process yields exactly one reloaded,
+  dispatched wake` — a crash-time `running` record rehydrates to `interrupted`,
+  schedules one wake, fires it once, and a second pass recovers zero.
+- **End-to-end (real AeorDB, dev 0.9.5):** ✅ seeded a running record, rebuilt a
+  fresh `FrameRuntime`/`ProcessManager` over the same DB, rehydrated
+  (`interrupted: 1`, durable stdout preserved, completion output stored),
+  recovered one wake, fired it once (`scheduledStatus: fired`,
+  `processStatus: interrupted`), second pass recovered 0. Dev server boots
+  `ready:true` with no recovery errors.
+- **Grep-gate:** `sweepStaleAutonomousWakes` and any staleness horizon absent. ✅
 
 ## 6. Notes / risks
 
@@ -103,3 +118,10 @@ destroyed durable state the design wanted to replay.
 - **No data migration:** records are additive; missing persisted records simply
   mean "no known process" (the pre-existing behavior), with a clear error rather
   than a crash.
+- **Unbounded process history (open follow-up):** every finished exec now leaves a
+  durable record that `rehydrate()` loads into memory at boot, so unlike the old
+  in-memory-only map a restart no longer clears history. This is deliberate
+  (owner R8 wants full session state to survive), but it grows without bound.
+  Retention/pruning of *completed* process records is a separate policy decision
+  and is not addressed here; it is explicitly **not** an age-based purge of
+  pending timers.
