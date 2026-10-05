@@ -235,6 +235,9 @@ export function onFrameContentResize(app) {
 export function onFrameListScroll(app, event) {
   app._frameListAnchoredToBottom = isFrameListNearBottom(app, event.currentTarget);
   maybeLoadOlderFrames(app, event.currentTarget);
+
+  if (app._frameListAnchoredToBottom)
+    maybeLoadNewerFrames(app, event.currentTarget);
 }
 
 export function maybeLoadOlderFrames(app, frameList = app.querySelector('.kikx-frame-list')) {
@@ -248,4 +251,18 @@ export function maybeLoadOlderFrames(app, frameList = app.querySelector('.kikx-f
     return;
 
   app._loadOlderFrames?.(sessionID);
+}
+
+// When the user returns to the bottom after trimming, refetch the newest page.
+export function maybeLoadNewerFrames(app, frameList = app.querySelector('.kikx-frame-list')) {
+  if (!frameList || !isFrameListNearBottom(app, frameList))
+    return;
+
+  let sessionID = app._state.selectedSessionID;
+  let paging = getSessionPaging(app._state, sessionID);
+
+  if (paging.loading === true || paging.hasMoreNewer !== true)
+    return;
+
+  app._loadNewerFrames?.(sessionID);
 }

@@ -227,6 +227,40 @@ export async function loadOlderFrames(app, sessionID = app._state.selectedSessio
   }
 }
 
+// The state window is capped, so scrolling up can trim the newest end. When the
+// user returns to the bottom, refetch the newest page and merge it back in.
+export async function loadNewerFrames(app, sessionID = app._state.selectedSessionID) {
+  if (!sessionID)
+    return null;
+
+  let paging = getSessionPaging(app._state, sessionID);
+  if (paging.loading === true || paging.hasMoreNewer !== true)
+    return null;
+
+  setSessionPaging(sessionID, { loading: true }, app._state);
+
+  try {
+    let wasAnchored = app._frameListAnchoredToBottom;
+    let result = await loadFrames(app, sessionID, {
+      merge: true,
+      limit: Number.isInteger(paging.limit) ? paging.limit : DEFAULT_FRAME_WINDOW_LIMIT,
+      render: false,
+    });
+    setSessionPaging(sessionID, { hasMoreNewer: false }, app._state);
+    if (wasAnchored)
+      app._forceScrollToBottomAfterRender = true;
+    app._render();
+    return result;
+  } catch (error) {
+    app._state.status = error.message;
+    app._state.statusKind = 'error';
+    app._requestRender();
+    return null;
+  } finally {
+    setSessionPaging(sessionID, { loading: false }, app._state);
+  }
+}
+
 export async function loadTokenUsage(app) {
   try {
     let result = await getJSON(app, '/api/v1/tokens');

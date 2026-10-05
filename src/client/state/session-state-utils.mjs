@@ -6,6 +6,13 @@ import {
   upsertFrameMessages,
 } from '../../shared/frame-manager/frame-manager.mjs';
 
+// Hard cap on the number of projected ("visual") messages held per session.
+// Phantoms are already folded away by projection, so this bounds the live DOM:
+// each retained message owns at most one UI element. Older pages are trimmed as
+// the user scrolls up; the newest end is trimmed only when prepending, and the
+// client refetches the newest window when the user scrolls back down.
+export const MAX_SESSION_MESSAGES = 200;
+
 export function createSessionStateSnapshot(input = {}) {
   return {
     sessionIDs: Array.isArray(input.sessionIDs) ? [ ...input.sessionIDs ] : [],
@@ -58,6 +65,24 @@ export function upsertSessionState(state, session) {
 export function setSessionFramesState(state, sessionID, frames, paging = null) {
   let snapshot = createSessionStateSnapshot(state);
   let messages = projectFrameMessages(frames);
+  // When the window is detached from the tail (the user scrolled up and older
+  // pages were trimmed), live appends must not evict the region being read: drop
+  // the newest overflow instead. The tail is refetched when they return to the
+  // bottom. A fresh/anchored window keeps the newest and drops the oldest.
+  let detached = !paging && snapshot.sessionPagingByID[sessionID]?.hasMoreNewer === true;
+  let trimmedNewest = false;
+  let trimmedOldest = false;
+
+  if (messages.length > MAX_SESSION_MESSAGES) {
+    if (detached) {
+      messages = messages.slice(0, MAX_SESSION_MESSAGES);
+      trimmedNewest = true;
+    } else {
+      messages = messages.slice(-MAX_SESSION_MESSAGES);
+      trimmedOldest = true;
+    }
+  }
+
   let next = {
     ...snapshot,
     framesBySessionID: {
@@ -69,8 +94,17 @@ export function setSessionFramesState(state, sessionID, frames, paging = null) {
   if (!sessionID)
     return next;
 
-  if (paging)
-    next = setSessionPagingState(next, sessionID, normalizeSessionPaging(paging));
+  if (paging) {
+    // A fresh window is anchored to the newest page, so any prior "newer frames
+    // were trimmed" flag is stale.
+    next = setSessionPagingState(next, sessionID, { ...normalizeSessionPaging(paging), hasMoreNewer: false });
+  } else if (trimmedOldest) {
+    // A legacy/whole-session load that overflowed dropped the oldest end, so the
+    // window is no longer anchored to the session start.
+    next = setSessionPagingState(next, sessionID, { hasMoreOlder: true });
+  } else if (trimmedNewest) {
+    next = setSessionPagingState(next, sessionID, { hasMoreNewer: true });
+  }
 
   let previous = snapshot.sessionDetailsByID[sessionID];
   if (!previous)
@@ -93,7 +127,9 @@ export function setSessionFramesState(state, sessionID, frames, paging = null) {
 
 // Merge older heads BEFORE the loaded window. A head already present (loaded
 // from a newer page or an SSE upsert) always wins, so a page boundary cannot
-// regress a complete newer head with an older partial.
+// regress a complete newer head with an older partial. When the combined window
+// overflows the cap the NEWEST end is trimmed (the user is scrolling upward),
+// and `hasMoreNewer` is set so the client refetches the tail when they return.
 export function prependSessionFramesState(state, sessionID, olderFrames) {
   let snapshot = createSessionStateSnapshot(state);
   if (!sessionID)
@@ -115,13 +151,26 @@ export function prependSessionFramesState(state, sessionID, olderFrames) {
     prepended.push(message);
   }
 
-  return {
+  let combined = [ ...prepended, ...existing ];
+  let hasMoreNewer = snapshot.sessionPagingByID[sessionID]?.hasMoreNewer === true;
+
+  if (combined.length > MAX_SESSION_MESSAGES) {
+    combined = combined.slice(0, MAX_SESSION_MESSAGES);
+    hasMoreNewer = true;
+  }
+
+  let next = {
     ...snapshot,
     framesBySessionID: {
       ...snapshot.framesBySessionID,
-      [sessionID]: [ ...prepended, ...existing ],
+      [sessionID]: combined,
     },
   };
+
+  if (prepended.length > 0)
+    next = setSessionPagingState(next, sessionID, { hasMoreNewer });
+
+  return next;
 }
 
 export function setSessionPagingState(state, sessionID, patch = {}) {
@@ -219,6 +268,8 @@ function normalizeSessionPaging(input = {}) {
     patch.newestOrder = normalizeOptionalOrder(input.newestOrder);
   if ('total' in input)
     patch.total = normalizeOptionalCount(input.total);
+  if ('hasMoreNewer' in input)
+    patch.hasMoreNewer = input.hasMoreNewer === true;
 
   return patch;
 }
