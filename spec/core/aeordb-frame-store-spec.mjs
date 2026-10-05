@@ -398,6 +398,68 @@ test('AeorDBFrameStore queries pending scheduled frames through the structured q
   });
 });
 
+test('AeorDBFrameStore falls back to searchFiles when the query endpoint is missing (404)', async () => {
+  // AeorDB 0.9.5 has no /files/query: queryFiles 404s. That must be treated as
+  // "endpoint unavailable" and fall back to searchFiles, NOT as "no results".
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let laterPath = '/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-later.json';
+  aeordb.files.set(laterPath, {
+    id: 'later',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    order: 1,
+    scheduledAt: 5000,
+    scheduledStatus: 'pending',
+    content: { text: 'later' },
+  });
+  aeordb.queryFiles = async (query) => {
+    aeordb.calls.push({ method: 'queryFiles', query });
+    let error = new Error('AeorDB HTTP 404');
+    error.status = 404;
+    throw error;
+  };
+  aeordb.searchFiles = async (search) => {
+    aeordb.calls.push({ method: 'searchFiles', search });
+    return { results: [ { path: laterPath } ] };
+  };
+
+  let scheduledFrames = await store.listScheduledFrames();
+
+  assert.deepEqual(scheduledFrames.map((frame) => frame.id), [ 'later' ]);
+  assert.ok(aeordb.calls.some((call) => call.method === 'queryFiles'));
+  assert.ok(aeordb.calls.some((call) => call.method === 'searchFiles'));
+});
+
+test('AeorDBFrameStore falls back to scanning when both query and search are unsupported', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First' });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-later.json', {
+    id: 'later',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    order: 1,
+    scheduledAt: 5000,
+    scheduledStatus: 'pending',
+    content: { text: 'later' },
+  });
+  let missing = () => {
+    let error = new Error('AeorDB HTTP 404');
+    error.status = 404;
+    throw error;
+  };
+  aeordb.queryFiles = async () => missing();
+  aeordb.searchFiles = async () => missing();
+
+  let scheduledFrames = await store.listScheduledFrames();
+
+  assert.deepEqual(scheduledFrames.map((frame) => frame.id), [ 'later' ]);
+});
+
+
 test('AeorDBFrameStore falls back to scanning when scheduled-frame query is unsupported', async () => {
   let aeordb = createClient();
   let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });

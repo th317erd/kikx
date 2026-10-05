@@ -18,35 +18,52 @@ export class AeorDBFrameStoreScheduledBase extends AeorDBFrameStoreCommitBase {
   }
 
   async searchScheduledFrames({ limit, offset }) {
-    if (typeof this.aeordb.queryFiles !== 'function' && typeof this.aeordb.searchFiles !== 'function')
+    let hasQuery = typeof this.aeordb.queryFiles === 'function';
+    let hasSearch = typeof this.aeordb.searchFiles === 'function';
+    if (!hasQuery && !hasSearch)
       return null;
 
-    let result;
-    try {
-      let query = {
-        path: `${this.rootPath}/sessions`,
-        where: {
-          and: [
-            { field: 'scheduledAt', op: 'gt', value: 0 },
-            { not: { field: 'scheduledStatus', op: 'eq', value: 'fired' } },
-            { not: { field: 'scheduledStatus', op: 'eq', value: 'cancelled' } },
-          ],
-        },
-        limit,
-        offset,
-      };
-      result = typeof this.aeordb.queryFiles === 'function'
-        ? await this.aeordb.queryFiles(query)
-        : await this.aeordb.searchFiles(query);
-    } catch (error) {
-      if (error?.status === 404)
-        return [];
+    let query = {
+      path: `${this.rootPath}/sessions`,
+      where: {
+        and: [
+          { field: 'scheduledAt', op: 'gt', value: 0 },
+          { not: { field: 'scheduledStatus', op: 'eq', value: 'fired' } },
+          { not: { field: 'scheduledStatus', op: 'eq', value: 'cancelled' } },
+        ],
+      },
+      limit,
+      offset,
+    };
 
-      if (!shouldFallbackToScheduledFrameScan(error))
-        throw error;
+    // Prefer the structured query endpoint, but an unavailable endpoint must not
+    // be read as "no results" (AeorDB 0.9.5 has no /files/query and 404s). Fall
+    // through to search, then to the scan fallback in `listScheduledFrames`.
+    let result = null;
+    if (hasQuery) {
+      try {
+        result = await this.aeordb.queryFiles(query);
+      } catch (error) {
+        if (!shouldFallbackToScheduledFrameScan(error))
+          throw error;
 
-      return null;
+        result = null;
+      }
     }
+
+    if (result == null && hasSearch) {
+      try {
+        result = await this.aeordb.searchFiles(query);
+      } catch (error) {
+        if (!shouldFallbackToScheduledFrameScan(error))
+          throw error;
+
+        result = null;
+      }
+    }
+
+    if (result == null)
+      return null;
 
     return await this.readScheduledFramePaths(pathsFromItems(result?.results || result?.items || []));
   }

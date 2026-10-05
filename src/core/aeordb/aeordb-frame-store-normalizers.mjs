@@ -130,6 +130,11 @@ export function shouldFallbackToScheduledFrameScan(error) {
   if (!error)
     return false;
 
+  // A missing endpoint (404) means the structured query API is unavailable, not
+  // that there are no matching frames — fall back to search/scan.
+  if (error.status === 404)
+    return true;
+
   if (error.status === 500)
     return true;
 
