@@ -950,6 +950,44 @@ test('AeorDBFrameStore window returns the newest frames by default', async () =>
   assert.ok(frameFetch.paths.length < 300, 'did not fetch all frames');
 });
 
+test('AeorDBFrameStore window anchors to the true newest frame in a large session', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  // Regression: a session with more frames than the default list cap (1000) must
+  // still anchor the newest page to the real tail, not to the end of the first
+  // scanned page. Before the fix, `total` reported 1000 and the recent frames were
+  // unreachable — the browser showed stale history after a reload.
+  seedSessionWithFrames(aeordb, 'ses_huge', 2500);
+
+  let result = await store.listFrameWindow('ses_huge', { limit: 20 });
+
+  assert.equal(result.total, 2500);
+  assert.equal(result.newestOrder, 2500);
+  assert.equal(result.oldestOrder, 2481);
+  assert.deepEqual(result.frames.map((frame) => frame.order), Array.from({ length: 20 }, (_value, index) => 2481 + index));
+
+  // Paging back from the window's oldest order reaches the next-older page, not
+  // the session start.
+  let page = await store.listFrameWindow('ses_huge', { limit: 20, before: result.oldestOrder });
+  assert.deepEqual(page.frames.map((frame) => frame.order), Array.from({ length: 20 }, (_value, index) => 2461 + index));
+  assert.equal(page.newestOrder, 2480);
+  assert.equal(page.oldestOrder, 2461);
+  assert.equal(page.hasMore, true);
+  assert.equal(page.total, 2500);
+});
+
+test('AeorDBFrameStore window anchors correctly just above the default scan cap', async () => {
+  let aeordb = createClient();
+  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_over', 1001);
+
+  let result = await store.listFrameWindow('ses_over', { limit: 10 });
+
+  assert.equal(result.total, 1001);
+  assert.equal(result.newestOrder, 1001);
+  assert.equal(result.oldestOrder, 992);
+});
+
 test('AeorDBFrameStore window pages older frames with a before cursor', async () => {
   let aeordb = createClient();
   let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });

@@ -1,9 +1,10 @@
 'use strict';
 
-import { readJSONFiles } from './aeordb-file-utils.mjs';
+import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
 import { AeorDBFrameStoreScheduledBase } from './aeordb-frame-store-scheduled.mjs';
 import {
   DEFAULT_FRAME_LIST_LIMIT,
+  MAX_FRAME_LIST_LIMIT,
   MAX_PREVIEW_RAW_FRAMES,
   PREVIEW_RAW_EXPANSION,
 } from './aeordb-frame-store-constants.mjs';
@@ -89,22 +90,38 @@ export class AeorDBFrameStorePreviewBase extends AeorDBFrameStoreScheduledBase {
       throw error;
     }
 
-    let allPaths = await this.listDirectoryPaths(interactionsPath, listOptions);
-    let framePaths = allPaths.filter((path) => path.includes('/frames/'));
-    let sortedPaths = sortFramePathsByOrder(framePaths);
-    let total = sortedPaths.length;
+    // The window must anchor to the true tail of the session. Scanning with the
+    // default limit would silently stop after the first page, so the newest frames
+    // (everything after the cap) would be unreachable in large sessions. Use the
+    // directory total to seek the tail, and binary-search the `before` boundary.
+    let total = normalizePreviewTotal(probe?.total);
+    let windowPaths;
+    let startOffset;
 
-    if (total === 0)
-      return emptyFrameWindow();
-
-    let endIndex = total;
-    if (before != null) {
-      let beforeIndex = sortedPaths.findIndex((path) => frameOrderFromPath(path) >= before);
-      endIndex = beforeIndex === -1 ? total : beforeIndex;
+    if (total > 0) {
+      let endOffset = before == null
+        ? total
+        : await this.findFrameOffsetAtOrAfter(interactionsPath, before, total);
+      startOffset = Math.max(0, endOffset - limit);
+      windowPaths = await this.listDirectoryPaths(interactionsPath, {
+        ...listOptions,
+        limit: endOffset - startOffset,
+        offset: startOffset,
+      });
+    } else {
+      // No pagination metadata: fall back to a full (uncapped) scan.
+      let allPaths = await this.listDirectoryPaths(interactionsPath, { ...listOptions, limit: MAX_FRAME_LIST_LIMIT });
+      let allSorted = sortFramePathsByOrder(allPaths.filter((path) => path.includes('/frames/')));
+      total = allSorted.length;
+      let endOffset = before == null ? total : findOrderBoundary(allSorted, before);
+      startOffset = Math.max(0, endOffset - limit);
+      windowPaths = allSorted.slice(startOffset, endOffset);
     }
 
-    let startIndex = Math.max(0, endIndex - limit);
-    let windowPaths = sortedPaths.slice(startIndex, endIndex);
+    windowPaths = sortFramePathsByOrder(windowPaths.filter((path) => path.includes('/frames/')));
+
+    if (total === 0 || windowPaths.length === 0)
+      return { ...emptyFrameWindow(), total };
 
     let frames = [];
     let reads = await readJSONFiles(this.aeordb, windowPaths, {
@@ -125,10 +142,37 @@ export class AeorDBFrameStorePreviewBase extends AeorDBFrameStoreScheduledBase {
     return {
       frames: heads,
       total,
-      hasMore: startIndex > 0,
+      hasMore: startOffset > 0,
       oldestOrder: frameOrderFromPath(windowPaths[0]),
       newestOrder: frameOrderFromPath(windowPaths[windowPaths.length - 1]),
     };
+  }
+
+  // First directory offset whose frame order is >= `before`. The directory lists
+  // frame paths in ascending basename (zero-padded order) order, so a binary search
+  // finds the boundary with O(log total) one-entry probes instead of a full scan.
+  async findFrameOffsetAtOrAfter(interactionsPath, before, total) {
+    let low = 0;
+    let high = total;
+
+    while (low < high) {
+      let mid = Math.floor((low + high) / 2);
+      let page = await this.aeordb.listDirectory(interactionsPath, {
+        depth: -1,
+        glob: '**/frames/*.json',
+        limit: 1,
+        offset: mid,
+      });
+      let [ path ] = pathsFromItems(page?.items);
+      let order = path ? frameOrderFromPath(path) : Number.MAX_SAFE_INTEGER;
+
+      if (order >= before)
+        high = mid;
+      else
+        low = mid + 1;
+    }
+
+    return low;
   }
 
   async loadSessionPreviewHeads(sessionID, { rawLimit, previewCount }) {
@@ -182,4 +226,11 @@ function emptyFrameWindow() {
     oldestOrder: null,
     newestOrder: null,
   };
+}
+
+// First index in a frame-path array whose order is >= `before` (paths are sorted
+// ascending by zero-padded order). Returns the array length when none match.
+function findOrderBoundary(sortedPaths, before) {
+  let index = sortedPaths.findIndex((path) => frameOrderFromPath(path) >= before);
+  return index === -1 ? sortedPaths.length : index;
 }
