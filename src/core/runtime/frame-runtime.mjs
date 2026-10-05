@@ -233,17 +233,11 @@ export class FrameRuntime extends EventEmitter {
   }
 
   async startScheduledFrameWorker() {
-    // Cancel orphaned pre-existing autonomous wakes before arming the worker, so
-    // a restart cannot resurrect stale pending turns (see
-    // sweepStaleAutonomousWakes). Best effort: never block worker startup.
-    try {
-      let swept = await this.sweepStaleAutonomousWakes?.();
-      if (swept > 0)
-        this.logger?.warn?.(`Cancelled ${swept} stale autonomous scheduled frame(s) on startup`);
-    } catch (error) {
-      this.logger?.error?.('Stale autonomous wake sweep failed', error);
-    }
-
+    // Load persisted scheduled frames back into memory and arm the worker.
+    // Timers are durable state: they always reload across restarts and fire when
+    // due. A wake whose process no longer exists is resolved at fire time (the
+    // completion output is durable in AeorDB); timers are never discarded merely
+    // for being old.
     return await this.scheduledFrames.start();
   }
 

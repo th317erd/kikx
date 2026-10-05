@@ -323,8 +323,9 @@ test('GET /health reports service state and readiness', async () => {
   let baseURL = await listen(server);
 
   try {
-    // `ready` is false until startup recovery + boot sweep settle; a context with
-    // no scheduled-worker wiring settles immediately and flips to true.
+    // `ready` is false until startup recovery + the scheduled-frame worker
+    // settle; a context with no scheduled-worker wiring settles immediately and
+    // flips to true.
     let response = await fetch(`${baseURL}/health`);
     let body = await response.json();
 

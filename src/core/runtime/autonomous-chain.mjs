@@ -14,9 +14,8 @@ export const MAX_AUTONOMOUS_CHAIN_STEPS = 64;
 export const AUTONOMOUS_CONTINUATION_KINDS = [
   'exec-wake-on-completion',
   'send',
-  // Legacy: pre-rename continuations persisted this kind. Tolerate it on read
-  // so the cancel/sweep paths recognise and retire old frames instead of
-  // letting them fire.
+  // Legacy: pre-rename continuations persisted this kind. Tolerate it on read so
+  // cancel paths recognise and retire old frames correctly.
   'agent-respond-and-continue',
 ];
 export const AUTONOMOUS_PAUSE_NOTICE_TEXT = 'Autonomous run paused — reply to continue.';

@@ -1,9 +1,10 @@
 # Kikx: Tool Rename + Agent Completion/Loop-Termination Redesign
 
-Status: **P0–P7 + P8 implemented and pushed to `main`** (`b9b0a63`, core
-deployed as image `b9b0a63`); **P9 (AeorDB scheduled-frame fallback) implemented
-in the working tree but NOT pushed and NOT deployed** — pending final dev
-verification. Owner rulings R1–R7 recorded (see §5).
+Status: **P0–P10 implemented.** P0–P7 + P8 landed and pushed (`b9b0a63`).
+P8 (age-based boot sweep) was later **removed** (owner ruling 2026-10-05:
+durable timers must always reload). P9 (scheduled-frame lookup) and P10 (dev
+health gate + repeatable deploy verification) are implemented; see §5 rulings.
+Owner rulings R1–R8 recorded.
 
 Implemented commits (kikx):
 - `0976ffe` P1 — remove the agent completion self-review.
@@ -12,7 +13,7 @@ Implemented commits (kikx):
 - `73708ce` P4 — autonomous-run clue in Brief B.
 - `c61682c` P6 — docs updated; exports superseded.
 - `f168084` P7 — incident regression spec.
-- `9b9feae` P8 — boot-time stale autonomous-wake sweep.
+- `9b9feae` P8 — boot-time stale autonomous-wake sweep (later removed; see R8).
 - `ac5bef5` P9 — scheduled-frame lookup fix (superseded by corrected P9).
 - P10 — dev health gate + repeatable `verify-scheduled-frames.mjs` + deploy `verify_deploy`.
 Provider plugins: codex `66ff4e0`, ollama `4b9b93a` (claude/google needed none).
@@ -354,17 +355,18 @@ green and is one-unit revertible. Hotspots (`agent-interface.mjs`,
 - **Exit:** all gates green (core + provider suites).
 - **Landed:** `f168084`.
 
-### P8 — Boot-time stale autonomous-wake sweep
-- **Deliverable:** `FrameRuntime.sweepStaleAutonomousWakes()` marks every pending
-  autonomous wake/continuation older than one hour (config-overridable) as
-  `cancelled`, across all sessions, before the scheduled worker arms. Non-
-  autonomous scheduled frames untouched. `startScheduledFrameWorker` runs it
-  best-effort at boot.
-- **Motivation:** post-fix production restart could resurrect pre-fix orphaned
-  wakes via `ScheduledFrameQueue.load()`.
-- **Landed:** `9b9feae`.
-- **Finding (deferred to P9):** the sweep is a no-op when the store's
-  scheduled-frame query returns nothing (below).
+### P8 — Boot-time stale autonomous-wake sweep (REMOVED)
+- **Deliverable (original):** `FrameRuntime.sweepStaleAutonomousWakes()` cancelled
+  every pending autonomous wake/continuation older than one hour at boot.
+- **Landed:** `9b9feae`. **Removed** 2026-10-05.
+- **Why removed (owner ruling):** durable scheduled frames exist precisely so
+  session state survives restarts; discarding timers by age contradicts that.
+  The sweep was a workaround for two real gaps — non-durable process records and
+  a non-durable wake-consumed marker — not a fix for "old timers". Owner: "IF we
+  someday discover truly stale timers that never fired when they should, we would
+  fix the bug causing stale timers, not just wipe them all on every boot."
+  Timers now always reload and fire when due. Follow-up: plan
+  `kikx-durable-process-state.md` closes the two gaps.
 
 ### P9 — Scheduled-frame lookup uses the correct AeorDB API (blocking fix)
 - **Defect (corrected):** Kikx loaded scheduled frames via a path-scoped
@@ -439,6 +441,14 @@ green and is one-unit revertible. Hotspots (`agent-interface.mjs`,
   scheduled-frame fallback fix) is implemented and committed but must be verified
   on dev before any push/deploy.
 
+- **R8** (2026-10-05). "We WANT the entire and full state of every session to
+  survive server restarts — this is the entire reason we put the timers into the
+  DB to begin with." … "I DO NOT want 'sweep stays'… IF we SOMEDAY discover
+  truly stale timers that never fired when they should, well then, we would fix
+  the bug causing stale timers, not just wipe them all on every boot." — the
+  P8 age-based sweep is **removed**; persisted timers always reload and fire
+  when due. The real gaps (non-durable process records + wake-consumed marker)
+  are tracked in `kikx-durable-process-state.md`.
 Self-answered (evidence-based): `route`/`help` kept (collision cost > benefit);
 LoopControl action strings unchanged internally (`finalize`, etc.) to limit
 blast radius; frame type `AgentProgress` unchanged; no data migration; turn/token
@@ -484,7 +494,6 @@ guard (with the high fail-safe as backstop).
 | Provider repos drift | pin plugin refs at implementation start; separate commits |
 | `agent-interface.mjs` growth | P1 must net-shrink the file (explicit gate) |
 | AeorDB build lacks `/files/query` | P9 falls back to `searchFiles`/scan; do not read endpoint absence as empty |
-| Stale persisted wakes resurrect on restart | P8 boot sweep cancels pending autonomous frames older than 1h |
 
 ## 8. Open items
 

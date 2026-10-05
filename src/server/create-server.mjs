@@ -248,9 +248,9 @@ export function createServer(options = {}) {
   }
 
   // Readiness gate for probes and the deploy verifier: false until startup
-  // recovery and the boot-time stale-wake sweep have settled, so a probe never
-  // observes the transient window where stale autonomous wakes are still
-  // pending. Exposed verbatim as `ready` on GET /health.
+  // recovery and the scheduled-frame worker have settled, so a probe never
+  // observes the transient window before persisted scheduled frames are loaded.
+  // Exposed verbatim as `ready` on GET /health.
   if (!context.has('startupReady')) {
     context.set('startupReady', false);
     Promise.resolve(context.require('scheduledFrameWorkerPromise'))
