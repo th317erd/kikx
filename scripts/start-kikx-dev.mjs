@@ -74,7 +74,11 @@ async function waitForAeorDBReady(baseURL) {
 
   while (Date.now() < deadline) {
     let health = await getAeorDBHealth(baseURL);
-    if (health?.status === 'healthy')
+    // AeorDB 0.9.5 reports "degraded" for benign engine conditions (e.g. the
+    // inactive index runtime) while still serving data normally; only "failed"
+    // is fatal. Match the container supervisor (docker/lib/aeordb-supervisor.mjs)
+    // and accept healthy or degraded.
+    if (health?.status === 'healthy' || health?.status === 'degraded')
       return;
 
     if (health?.status === 'failed')

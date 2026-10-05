@@ -1,40 +1,54 @@
-# P9 dev verification — AeorDB scheduled-frame fallback
+# P9 dev verification — scheduled-frame lookup (CORRECTED)
 
-Date: 2026-10-04. Commit: `ac5bef5` + `8ca3c21` (legacy kind), not pushed.
+Date: 2026-10-04. Status: corrected diagnosis after reading
+`~/Projects/aeordb-workspace/aeordb/docs`.
 
-## Environment
-- Dev AeorDB `127.0.0.1:6830`, build **0.9.5**.
-- The dev `kikx-dev` systemd service could NOT be booted for this check: its
-  launcher (`scripts/start-kikx-dev.mjs:waitForAeorDBReady`) requires
-  `status === 'healthy'`, but the 6-day-old manually-started dev AeorDB reports
-  `degraded` (a known-benign 0.9.5 state). This is a pre-existing, unrelated dev
-  environment issue, not caused by the P9 change.
+## Correction of an earlier wrong diagnosis
 
-## Method
-Ran the patched code directly against the live dev AeorDB, exercising exactly
-what booting dev would: `new FrameRuntime({ aeordb })` → `frameStore.listScheduledFrames()`
-→ `sweepStaleAutonomousWakes()`.
+An earlier commit (`ac5bef5`) stated: "AeorDB 0.9.5 has no `/files/query`
+endpoint." **That was wrong.** Per `docs/src/api/querying.md`, `POST /files/query`
+exists, and a 404 there means **"Query path or index not found"** — a missing
+index at that path, not a missing endpoint.
 
-## Results
-- `queryFiles` → **HTTP 404** (endpoint absent on 0.9.5); `searchFiles` → 11 matches.
-- `listScheduledFrames()` **before fix would be 0**; with the patched store → **1**
-  (`7e1a689f`, `scheduledStatus:'firing'`, `continuation.kind:'agent-respond-and-continue'`, ~4 days old).
-- `sweepStaleAutonomousWakes()` → **cancelled 1**.
-- Re-read of the frame: `scheduledStatus:'cancelled'`.
-- `listScheduledFrames()` after → **0** pending.
+The real cause: Kikx queried `${root}/sessions` for fields `scheduledAt`/
+`scheduledStatus`, but those are indexed **per session** under
+`.../interactions/.aeordb-config/indexes.json` (glob `**/frames/*.json`). The
+live 404 body is exactly:
 
-## Conclusion
-- P9 fallback works: the store now finds persisted scheduled frames on AeorDB 0.9.5
-  instead of silently returning empty.
-- The boot sweep cancels the stale pre-fix wake, and the legacy
-  `agent-respond-and-continue` kind is recognised (so it is retired, not fired).
+```
+{"error":"Index not found for field 'scheduledAt' at path '/kikx/sessions'"}
+```
 
-## Not yet run
-- A full `kikx-dev` boot on the new commit (blocked by the unrelated dev-AeorDB
-  `degraded` gate). Recommend either restarting the dev AeorDB or relaxing the
-  launcher's health gate to accept `degraded`, then booting dev for the live
-  end-to-end pass.
-- A bounded live async-wake chain on dev.
+A cross-session lookup must use the global `POST /files/search` endpoint, which
+fans out across every directory indexing the requested fields.
+
+## Correct fix
+
+`AeorDBFrameStore.searchScheduledFrames` now calls `/files/search` (scoped to
+the root) and, on any index/search error, falls back to the authoritative
+per-session scan. Every returned frame is re-verified with
+`isPendingScheduledFrame`, so correctness never depends on the index filter.
+
+Observed AeorDB behavior worth noting: `/files/search` combinator filtering on
+`scheduledStatus` is **index-only** and can return non-pending frames; the body
+check is authoritative.
+
+## Verification (dev + live)
+
+1. Live dev AeorDB 0.9.5: `/files/search` for `scheduledAt > 0` returns matching
+   frame paths; body verification of each yields the pending set.
+2. `node scripts/verify-scheduled-frames.mjs` against dev →
+   `OK: store returned 0 pending scheduled frame(s), matching body verification.`
+   (the one previously-stale wake `7e1a689f` was already cancelled).
+3. The earlier stale-wake cancellation (`7e1a689f` → `scheduledStatus:'cancelled'`)
+   remains valid and is the boot-sweep behavior working against the real DB.
+
+## Repeatability
+
+`scripts/verify-scheduled-frames.mjs` is the reusable check; `kikx-docker/deploy.sh`
+runs it post-start (`verify_deploy`, non-fatal by default, enforced with
+`DEPLOY_VERIFY_REQUIRED=1`). This is what would have caught the original miss.
 
 ## Deploy status
-NOT pushed, NOT deployed (owner ruling R7).
+
+NOT pushed, NOT deployed (owner ruling R7). Awaiting final dev pass + owner go.

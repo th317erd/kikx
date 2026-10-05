@@ -2,7 +2,7 @@
 
 Status: **P0–P7 + P8 implemented and pushed to `main`** (`b9b0a63`, core
 deployed as image `b9b0a63`); **P9 (AeorDB scheduled-frame fallback) implemented
-on `main` (`ac5bef5`) but NOT pushed and NOT deployed** — pending dev
+in the working tree but NOT pushed and NOT deployed** — pending final dev
 verification. Owner rulings R1–R7 recorded (see §5).
 
 Implemented commits (kikx):
@@ -13,9 +13,10 @@ Implemented commits (kikx):
 - `c61682c` P6 — docs updated; exports superseded.
 - `f168084` P7 — incident regression spec.
 - `9b9feae` P8 — boot-time stale autonomous-wake sweep.
-- `ac5bef5` P9 — AeorDB scheduled-frame query fallback (unpushed/undeployed).
+- `ac5bef5` P9 — scheduled-frame lookup fix (superseded by corrected P9).
+- P10 — dev health gate + repeatable `verify-scheduled-frames.mjs` + deploy `verify_deploy`.
 Provider plugins: codex `66ff4e0`, ollama `4b9b93a` (claude/google needed none).
-Gates: core 719/719, codex 36/36, ollama 17/17, eslint clean.
+Gates: core 720/720, codex 36/36, ollama 17/17, eslint clean. P9/P10 unpushed/undeployed.
 
 Motivating incident: production session `a07faa16-4eed-44a9-b823-f2e9c0c10df5`
 ("Kikx") reached **1287 frames / ~1240 messages** in a self-sustaining turn
@@ -365,34 +366,52 @@ green and is one-unit revertible. Hotspots (`agent-interface.mjs`,
 - **Finding (deferred to P9):** the sweep is a no-op when the store's
   scheduled-frame query returns nothing (below).
 
-### P9 — AeorDB scheduled-frame query fallback (blocking fix)
-- **Defect:** AeorDB 0.9.5 has no `/files/query`; `queryFiles` 404s. But
-  `AeorDBFrameStore.searchScheduledFrames` (`aeordb-frame-store-scheduled.mjs`)
-  treated a 404 as "no results" and returned `[]`, so `listScheduledFrames()`
-  always returned empty. This silently disabled scheduled-frame loading — and
-  P8's sweep — on production.
-- **Evidence (live):** `queryFiles` → HTTP 404; `searchFiles` → 29 matching
-  paths; `listScheduledFrames()` → 0. 22 orphaned 09-30 wakes visible in
-  `/api/v1/sessions/:id/frames` but never loaded/cancelled.
-- **Fix:** `searchScheduledFrames` tries `queryFiles` → `searchFiles` → scan;
-  `shouldFallbackToScheduledFrameScan` treats 404 as fallback (missing endpoint)
-  alongside 400/500.
-- **Landed:** `ac5bef5` (core 719/719). **Unpushed/undeployed** pending dev
-  verification.
+### P9 — Scheduled-frame lookup uses the correct AeorDB API (blocking fix)
+- **Defect (corrected):** Kikx loaded scheduled frames via a path-scoped
+  `POST /files/query` at `${root}/sessions`. `scheduledAt`/`scheduledStatus` are
+  indexed **per session** under `.../interactions/.aeordb-config/indexes.json`
+  (glob `**/frames/*.json`), not at the sessions root. AeorDB correctly returns
+  `404 {"error":"Index not found for field 'scheduledAt' at path '/kikx/sessions'"}`.
+  The old code treated any 404 as "no results" (`return []`), so
+  `listScheduledFrames()` was always empty, silently disabling scheduled-frame
+  loading and P8's sweep.
+- **Retraction:** an earlier commit (`ac5bef5`) claimed "AeorDB 0.9.5 has no
+  `/files/query` endpoint." That was **wrong** — the endpoint exists
+  (`docs/src/api/querying.md`: `POST /files/query`, 404 = "Query path or index
+  not found"). Corrected after reading `~/Projects/aeordb-workspace/aeordb/docs`.
+- **Fix:** use the global `POST /files/search` endpoint (fans out across every
+  directory that indexes the fields — the correct API for a cross-session
+  lookup), scoped to the root, with the same fired/cancelled exclusion; on
+  index/search error fall back to the authoritative per-session scan. Every
+  returned frame is re-verified with `isPendingScheduledFrame`, so correctness
+  never depends on the index filter.
+- **Note:** `/files/search` combinator filtering on `scheduledStatus` is
+  index-only and may return non-pending frames; the body check is authoritative.
+- **Landed:** `ac5bef5` (superseded) → corrected in this phase. Tests rewritten
+  to the search-first model (`spec/core/aeordb-frame-store-spec.mjs`). 720/720.
 - **Also fixes (latent):** on 0.9.5 the queue never re-loaded *any* persisted
   scheduled frame on boot; new in-process wakes were unaffected.
 
-### P9 verification gate (dev, pre-deploy)
-1. Boot dev (`kikx-dev`) on `ac5bef5`; confirm the sweep log line
-   `Cancelled N stale autonomous scheduled frame(s)` where N matches the dev
-   DB's stale count.
-2. Confirm a known-stale dev wake flips to `scheduledStatus:'cancelled'` and is
-   absent from `scheduledFrames.entries`.
-3. Confirm `listScheduledFrames()` returns the pending frames (non-zero) via the
-   `searchFiles` path.
-4. Run a bounded async-wake chain on dev; confirm normal termination and the
-   user-turn cancel.
-5. Only then push + deploy (separate authorization).
+### P10 — Dev launcher health gate + repeatable deploy verification
+- **Dev gate:** `scripts/start-kikx-dev.mjs:waitForAeorDBReady` required exactly
+  `healthy`, but AeorDB 0.9.5 reports `degraded` for benign conditions while
+  serving normally (the container supervisor already accepts `degraded`). Now
+  accepts `healthy` or `degraded`; only `failed` is fatal. This is why dev would
+  not boot.
+- **Repeatable verification:** new `scripts/verify-scheduled-frames.mjs`
+  exchanges the root key for a token and asserts the real store path: global
+  search finds scheduled frames, and the body-verified pending set matches.
+  `kikx-docker/deploy.sh` runs it post-start (`verify_deploy`); non-fatal by
+  default, `DEPLOY_VERIFY_REQUIRED=1` to enforce. This is the check that would
+  have caught P9.
+
+### P9/P10 verification gate (dev, pre-deploy)
+1. `node scripts/verify-scheduled-frames.mjs` against dev → OK (done:
+   0 pending, matching body verification).
+2. Boot `kikx-dev` on the fixed launcher → listening (done; the `degraded` gate
+   no longer blocks).
+3. Confirm a known-stale dev wake is cancelled (done earlier: `7e1a689f`).
+4. Then push + deploy (separate authorization); deploy runs `verify_deploy`.
 
 ---
 

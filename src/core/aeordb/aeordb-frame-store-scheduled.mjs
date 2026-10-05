@@ -18,53 +18,43 @@ export class AeorDBFrameStoreScheduledBase extends AeorDBFrameStoreCommitBase {
   }
 
   async searchScheduledFrames({ limit, offset }) {
-    let hasQuery = typeof this.aeordb.queryFiles === 'function';
-    let hasSearch = typeof this.aeordb.searchFiles === 'function';
-    if (!hasQuery && !hasSearch)
+    // Scheduled frames live under each session's `interactions` directory, where
+    // `scheduledAt`/`scheduledStatus` are indexed with glob `**/frames/*.json`.
+    // This is a CROSS-session lookup, so the global search endpoint — which fans
+    // out across every directory that indexes the requested fields — is the
+    // correct API. A path-scoped `/files/query` at the sessions root has no such
+    // index and returns 404 by design ("Index not found for field ... at path").
+    if (typeof this.aeordb.searchFiles !== 'function')
       return null;
 
-    let query = {
-      path: `${this.rootPath}/sessions`,
-      where: {
-        and: [
-          { field: 'scheduledAt', op: 'gt', value: 0 },
-          { not: { field: 'scheduledStatus', op: 'eq', value: 'fired' } },
-          { not: { field: 'scheduledStatus', op: 'eq', value: 'cancelled' } },
-        ],
-      },
-      limit,
-      offset,
-    };
+    let result;
+    try {
+      result = await this.aeordb.searchFiles({
+        path: this.rootPath,
+        where: {
+          and: [
+            { field: 'scheduledAt', op: 'gt', value: 0 },
+            { not: { field: 'scheduledStatus', op: 'eq', value: 'fired' } },
+            { not: { field: 'scheduledStatus', op: 'eq', value: 'cancelled' } },
+          ],
+        },
+        limit,
+        offset,
+      });
+    } catch (error) {
+      // A missing index at a scanned path (404), an unsupported query feature
+      // (400/500), or a query/search error all mean "cannot answer via the
+      // index" — fall through to the authoritative per-session scan. Never treat
+      // an error as an empty result set.
+      if (!shouldFallbackToScheduledFrameScan(error))
+        throw error;
 
-    // Prefer the structured query endpoint, but an unavailable endpoint must not
-    // be read as "no results" (AeorDB 0.9.5 has no /files/query and 404s). Fall
-    // through to search, then to the scan fallback in `listScheduledFrames`.
-    let result = null;
-    if (hasQuery) {
-      try {
-        result = await this.aeordb.queryFiles(query);
-      } catch (error) {
-        if (!shouldFallbackToScheduledFrameScan(error))
-          throw error;
-
-        result = null;
-      }
-    }
-
-    if (result == null && hasSearch) {
-      try {
-        result = await this.aeordb.searchFiles(query);
-      } catch (error) {
-        if (!shouldFallbackToScheduledFrameScan(error))
-          throw error;
-
-        result = null;
-      }
-    }
-
-    if (result == null)
       return null;
+    }
 
+    // `readScheduledFramePaths` re-verifies every returned frame against
+    // `isPendingScheduledFrame`, so correctness does not depend on the index's
+    // fired/cancelled exclusion.
     return await this.readScheduledFramePaths(pathsFromItems(result?.results || result?.items || []));
   }
 

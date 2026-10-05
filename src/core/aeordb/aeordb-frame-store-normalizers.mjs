@@ -130,8 +130,9 @@ export function shouldFallbackToScheduledFrameScan(error) {
   if (!error)
     return false;
 
-  // A missing endpoint (404) means the structured query API is unavailable, not
-  // that there are no matching frames — fall back to search/scan.
+  // A 404 from /files/query|search means the field index is absent at the
+  // queried path (e.g. "Index not found for field 'scheduledAt' at path ..."),
+  // not that there are no matching frames. Fall back to the authoritative scan.
   if (error.status === 404)
     return true;
 
