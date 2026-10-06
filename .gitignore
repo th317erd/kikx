@@ -9,6 +9,8 @@ npm-debug.log*
 # Environment
 .env
 .env.*
+.env*.json
+*.env.json
 !.env.example
 
 # Runtime data

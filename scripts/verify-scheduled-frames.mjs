@@ -17,8 +17,7 @@
 // Exit 0 = the store path is healthy. Exit 1 = a real problem (with detail).
 // Exit 2 = usage/config problem (unreachable, bad/absent credentials).
 
-import fs from 'node:fs/promises';
-
+import { loadEnvFile } from '../src/core/config/env-loader.mjs';
 import { AeorDBClient } from '../src/core/aeordb/aeordb-client.mjs';
 import { AeorDBFrameStore } from '../src/core/aeordb/aeordb-frame-store.mjs';
 import { isPendingScheduledFrame } from '../src/core/aeordb/aeordb-frame-store-normalizers.mjs';
@@ -110,27 +109,4 @@ function log(message) {
 function fail(code, message) {
   process.stderr.write(`[verify-scheduled-frames] ERROR: ${message}\n`);
   process.exit(code);
-}
-
-async function loadEnvFile(path) {
-  try {
-    let text = await fs.readFile(path, 'utf8');
-    for (let line of text.split(/\r?\n/g)) {
-      line = line.trim();
-      if (!line || line.startsWith('#'))
-        continue;
-
-      let index = line.indexOf('=');
-      if (index < 1)
-        continue;
-
-      let key = line.slice(0, index).trim();
-      let value = line.slice(index + 1).trim();
-      if (!(key in process.env))
-        process.env[key] = value;
-    }
-  } catch (error) {
-    if (error.code !== 'ENOENT')
-      throw error;
-  }
 }

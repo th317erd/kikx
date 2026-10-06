@@ -10,3 +10,4 @@ export {
   loadJsonEnvFile,
 } from './config-providers.mjs';
 export { ConfigStore, createConfigStore } from './config-store.mjs';
+export { loadEnvFile, loadJsonEnv, loadEnvSources } from './env-loader.mjs';

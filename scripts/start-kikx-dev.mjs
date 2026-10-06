@@ -1,11 +1,11 @@
 'use strict';
 
-import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 
+import { loadEnvFile } from '../src/core/config/env-loader.mjs';
 import { createParentExitMonitor } from './parent-exit-monitor.mjs';
 
-loadEnvFile('.env.dev');
+await loadEnvFile('.env.dev');
 
 let aeorDBURL = process.env.AEORDB_URL || 'http://127.0.0.1:6830';
 let rootKey = process.env.AEORDB_ROOT_KEY || '';
@@ -120,26 +120,4 @@ function describeAeorDBHealth(health) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function loadEnvFile(path) {
-  if (!fs.existsSync(path))
-    return;
-
-  let text = fs.readFileSync(path, 'utf8');
-  for (let line of text.split(/\r?\n/g)) {
-    line = line.trim();
-    if (!line || line.startsWith('#'))
-      continue;
-
-    let index = line.indexOf('=');
-    if (index < 1)
-      continue;
-
-    let key = line.slice(0, index).trim();
-    let value = line.slice(index + 1).trim();
-
-    if (!(key in process.env))
-      process.env[key] = value;
-  }
 }

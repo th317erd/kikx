@@ -5,6 +5,10 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 
+import { loadEnvFile } from '../src/core/config/env-loader.mjs';
+
+export { loadEnvFile };
+
 const DEFAULT_WATCH_ENTRIES = [
   'src',
   'scripts',
@@ -288,33 +292,6 @@ function parseWatchEntries(value) {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
-}
-
-export async function loadEnvFile(envPath) {
-  let text;
-  try {
-    text = await fs.readFile(envPath, 'utf8');
-  } catch (error) {
-    if (error.code === 'ENOENT')
-      return;
-
-    throw error;
-  }
-
-  for (let rawLine of text.split(/\r?\n/g)) {
-    let line = rawLine.trim();
-    if (!line || line.startsWith('#'))
-      continue;
-
-    let index = line.indexOf('=');
-    if (index < 1)
-      continue;
-
-    let key = line.slice(0, index).trim();
-    let value = line.slice(index + 1).trim();
-    if (!(key in process.env))
-      process.env[key] = value;
-  }
 }
 
 function sleep(ms) {
