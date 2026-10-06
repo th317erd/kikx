@@ -131,6 +131,10 @@ kikx-app {
   background: #f87171;
 }
 
+.kikx-statusbar--pending .kikx-statusbar__dot {
+  background: #eab308;
+}
+
 .kikx-main {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(360px, 1fr);

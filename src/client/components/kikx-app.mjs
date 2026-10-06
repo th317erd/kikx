@@ -68,6 +68,7 @@ import {
   connectRuntimeEvents,
   disconnectRuntimeEvents,
   flushFrameRuntimeEvents,
+  noteRuntimeEvent,
   onRuntimeEvent,
   onRuntimeEventsError,
   onRuntimeEventsOpen,
@@ -234,8 +235,13 @@ export class KikxApp extends HTMLElement {
     this._connectRuntimeEvents = () => connectRuntimeEvents(this);
     this._disconnectRuntimeEvents = () => disconnectRuntimeEvents(this);
     this._onRuntimeEventsOpen = () => onRuntimeEventsOpen(this);
-    this._onRuntimeEventsError = () => onRuntimeEventsError(this);
+    this._onRuntimeEventsError = (event) => onRuntimeEventsError(this, event);
     this._onRuntimeEvent = (event) => onRuntimeEvent(this, event);
+    // Any event, handled or not, proves the stream is alive.
+    this._runtimeEventsDispatch = (event) => {
+      noteRuntimeEvent(this);
+      onRuntimeEvent(this, event);
+    };
     this._queueFrameRuntimeEvent = (data) => queueFrameRuntimeEvent(this, data);
     this._flushFrameRuntimeEvents = () => flushFrameRuntimeEvents(this);
     this._loadSessions = async () => loadSessions(this);

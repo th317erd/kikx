@@ -10,6 +10,9 @@ export function streamRuntimeEvents({ request, response, frameRuntime, sessionID
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
+    // A buffering proxy would hold events back until the stream closes, which
+    // looks exactly like a dropped connection to the client.
+    'X-Accel-Buffering': 'no',
   });
 
   writeSSE(response, 'connected', { ok: true });
@@ -25,8 +28,9 @@ export function streamRuntimeEvents({ request, response, frameRuntime, sessionID
     clearInterval(heartbeat);
   };
   let heartbeat = setInterval(() => {
-    if (!response.destroyed)
-      response.write(': heartbeat\n\n');
+    // A real event, not an SSE comment: the client needs a signal it can
+    // actually observe to tell a live stream from a half-open one.
+    writeSSE(response, 'heartbeat', { ok: true });
   }, 25000);
   heartbeat.unref?.();
 
@@ -35,8 +39,24 @@ export function streamRuntimeEvents({ request, response, frameRuntime, sessionID
 }
 
 function writeSSE(response, event, data) {
+  // The socket can go away between the cleanup listener firing and the next
+  // event; writing to it then would raise an async 'error' on the response.
+  if (!response || response.destroyed || response.writableEnded)
+    return;
+
+  let payload;
+  try {
+    payload = JSON.stringify(data);
+  } catch (error) {
+    // One unserializable payload must never take the whole stream down with it:
+    // a half-written SSE frame makes the client drop the connection.
+    response.write(`event: ${event}\n`);
+    response.write(`data: ${JSON.stringify({ type: event, error: 'unserializable runtime event' })}\n\n`);
+    return;
+  }
+
   response.write(`event: ${event}\n`);
-  response.write(`data: ${JSON.stringify(data)}\n\n`);
+  response.write(`data: ${payload}\n\n`);
 }
 
 export function connectTokenUsageToRuntime(tokenUsage, frameRuntime) {

@@ -3,6 +3,20 @@
 import { isCollapsed, setTokenUsage, upsertFrames, upsertSession } from '../state/kikx-state.mjs';
 import { scheduleAnimationFrame, parseRuntimeEvent } from './kikx-app-helpers.mjs';
 import { addFrameToBatch, addTouchedFrameIDs, renderedFrameIDsFor } from './frame-runtime-batch.mjs';
+import { CONNECTED_STATUS, setConnectionStatus } from './runtime-events-connection.mjs';
+
+export {
+  CONNECTED_STATUS,
+  DISCONNECTED_STATUS,
+  RECONNECTING_STATUS,
+  checkRuntimeEventsConnection,
+  connectRuntimeEvents,
+  disconnectRuntimeEvents,
+  isRuntimeEventsOpen,
+  noteRuntimeEvent,
+  onRuntimeEventsError,
+  onRuntimeEventsOpen,
+} from './runtime-events-connection.mjs';
 
 // Runtime events that are informational only: they carry no frame data the
 // client has not ALREADY received via frame.added / frame.updated (the server
@@ -17,57 +31,20 @@ const INFORMATIONAL_RUNTIME_EVENTS = new Set([
   'frame.scheduled.fired',
 ]);
 
-export function connectRuntimeEvents(app) {
-  disconnectRuntimeEvents(app);
-
-  if (typeof EventSource !== 'function') {
-    app._state.connectionStatus = 'Disconnected';
-    app._state.connectionStatusKind = 'error';
-    return;
-  }
-
-  try {
-    app._eventSource = new EventSource('/api/v1/events');
-    app._eventSource.addEventListener('open', app._onRuntimeEventsOpen);
-    app._eventSource.addEventListener('error', app._onRuntimeEventsError);
-    for (let eventType of [ 'connected', 'session.saved', 'frame.added', 'frame.updated', 'frame.phantom', 'commit', 'tokens.updated' ])
-      app._eventSource.addEventListener(eventType, app._onRuntimeEvent);
-  } catch (error) {
-    app._state.connectionStatus = 'Disconnected';
-    app._state.connectionStatusKind = 'error';
-    app._state.status = error.message;
-    app._state.statusKind = 'error';
-  }
-}
-
-export function disconnectRuntimeEvents(app) {
-  if (!app._eventSource)
-    return;
-
-  app._eventSource.close();
-  app._eventSource = null;
-}
-
-export function onRuntimeEventsOpen(app) {
-  app._state.connectionStatus = 'Connected';
-  app._state.connectionStatusKind = 'ready';
-}
-
-export function onRuntimeEventsError(app) {
-  app._state.connectionStatus = 'Disconnected';
-  app._state.connectionStatusKind = 'error';
-}
-
 export function onRuntimeEvent(app, event) {
   let data = parseRuntimeEvent(event);
   if (!data)
     return;
 
-  if (data.type === 'connected') {
-    app._state.connectionStatus = 'Connected';
-    app._state.connectionStatusKind = 'ready';
+  if (data.type === 'connected' || data.type === 'open') {
+    setConnectionStatus(app, CONNECTED_STATUS, 'ready');
     return;
   }
+
+  // Keepalive from the server (see runtime-events-connection.mjs); liveness was
+  // already recorded by the dispatcher. Nothing in the UI depends on it.
+  if (data.type === 'heartbeat')
+    return;
 
   if (data.type === 'tokens.updated') {
     setTokenUsage(data.tokenUsage || {}, data.totalTokensUsed, app._state);

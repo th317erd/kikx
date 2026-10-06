@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -1224,6 +1225,54 @@ test('GET /api/v1/events streams runtime events as SSE', async () => {
     assert.equal(second.data.frame.type, 'AgentThinking');
 
     await reader.cancel();
+  } finally {
+    await close(server);
+  }
+});
+
+test('GET /api/v1/events drops the connection when the stream fails after its headers', async () => {
+  let runtime = new EventEmitter();
+  // The handshake succeeds (headers + `connected` frame are already on the wire)
+  // and then the subscription blows in a way the route cannot report: the old
+  // code answered with writeJSON, which throws ERR_HTTP_HEADERS_SENT inside the
+  // error handler itself.
+  runtime.on = () => {
+    throw new Error('frame runtime exploded');
+  };
+  let server = await createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let chunks = [];
+    let complete = null;
+    await new Promise((resolve) => {
+      let request = http.get(`${baseURL}/api/v1/events`, (response) => {
+        assert.equal(response.statusCode, 200);
+        assert.match(response.headers['content-type'], /text\/event-stream/);
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('error', () => {});
+        response.on('close', () => {
+          complete = response.complete;
+          resolve();
+        });
+      });
+      request.on('error', () => resolve());
+    });
+
+    let body = Buffer.concat(chunks).toString();
+    // No JSON error may be appended to a half-written event stream: the browser
+    // would read it as a fatal protocol error instead of a reconnectable drop.
+    assert.equal(body.includes('Internal Server Error'), false);
+    assert.equal(body.includes('"error"'), false);
+    // The response was torn down rather than completed, which is what tells the
+    // client to re-establish the stream.
+    assert.notEqual(complete, true);
   } finally {
     await close(server);
   }

@@ -460,6 +460,14 @@ export async function createServer(options = {}) {
     try {
       await routeRequest({ request, response, context, staticRoots });
     } catch (error) {
+      // A streaming response (SSE) has already sent its headers: there is no way
+      // to report the failure as JSON without corrupting the stream, so drop the
+      // connection instead. The client reconnects.
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
+
       writeJSON(response, error.status || 500, {
         error: {
           message: error.message || 'Internal Server Error',
