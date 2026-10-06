@@ -23,11 +23,12 @@ lower-precedence source; it does not have to mutate `process.env`.
   `loadEnvFile` copies into the shared loader built on the config providers;
   migrate `scripts/*`; add `.json` env patterns to `.gitignore`; document keys
   in `.env.example`.
-- **P0b-3 — `src/` migration + async bootstrap.** Replace all 22 `process.env`
-  reads in `src/` with ConfigStore access; make `src/server/index.mjs` an async
-  `main()`; resolve whether `createServer()` becomes async; update the ~55 spec
-  call sites; add the grep-gate forbidding raw `process.env` in `src/` outside
-  the config module.
+- **P0b-3 — `src/` migration + async bootstrap.** DONE: `createServer()` is
+  async; all raw `process.env` in `src/` routed through `ConfigStore` (or the
+  config module's `snapshotEnvironment` ambient helper); `src/server/index.mjs`
+  is an async `main()`; grep-gate `spec/core/config/no-process-env-spec.mjs`
+  forbids raw env reads outside `src/core/config/`; `create-server-config-spec.mjs`
+  proves wiring.
 
 ## P0b-1 module layout
 
@@ -73,9 +74,20 @@ spec/core/config/
 - `getDriver()` convenience is **deferred to P1**, where driver selection
   semantics are pinned.
 
-## Open decision for P0b-3
+## Decided (P0b-3)
 
-`async createServer()` vs deferred store construction. Plan §4.5 explicitly
-plans for an async `createServer()`; that ripples to `src/server/index.mjs` and
-~55 spec call sites and is a breaking change to the public `createServer` export
-in `src/index.mjs`. Resolve with the owner before starting P0b-3.
+- **`createServer()` is async.** Plan §4.5/§6 called for the async boundary;
+  D6 permits pulling it forward from P1. All 53 module `createServer(...)` spec
+  call sites now `await`.
+- **Legacy env names preserved.** Property paths are chosen so `envKeyFor(path)`
+  equals the existing env var (`/kikx/host` -> `KIKX_HOST`), so `.env.dev` and
+  deployments did not change. New database config uses the
+  `/org/aeor/kikx/database/...` namespace.
+- **Ambient vs config.** Kikx settings go through `ConfigStore`; genuinely
+  process-level values (spawned-command env, `SHELL`, puppeteer executable/
+  channel, and direct-construction client/service defaults) read through the
+  config module's `snapshotEnvironment()` helper. Raw `process.env` exists only
+  in `src/core/config/`.
+- **Atomic composition.** `createServer` resolves every config value before any
+  store guard, so the guard/`set` pairs run in one synchronous section for a
+  shared `context`.
