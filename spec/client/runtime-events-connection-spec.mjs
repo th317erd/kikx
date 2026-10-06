@@ -16,6 +16,7 @@ import {
   noteRuntimeEvent,
   onRuntimeEventsError,
   onRuntimeEventsOpen,
+  reconnectDelayFor,
   setConnectionStatus,
 } from '../../src/client/components/runtime-events-connection.mjs';
 
@@ -100,17 +101,24 @@ function withFakeTimers(callback) {
   let originalClearTimeout = globalThis.clearTimeout;
   let scheduled = [];
   globalThis.setTimeout = (fn, delay) => {
-    let handle = { delay, fn, unref() {} };
+    let handle = { cleared: false, delay, fn, unref() {} };
     scheduled.push(handle);
     return handle;
   };
-  globalThis.clearTimeout = () => {};
+  globalThis.clearTimeout = (handle) => {
+    if (handle)
+      handle.cleared = true;
+  };
   try {
     return callback(scheduled);
   } finally {
     globalThis.setTimeout = originalSetTimeout;
     globalThis.clearTimeout = originalClearTimeout;
   }
+}
+
+function pendingTimers(scheduled) {
+  return scheduled.filter((timer) => !timer.cleared);
 }
 
 test('connectRuntimeEvents opens the SSE route and subscribes to every runtime event', async () => {
@@ -204,7 +212,7 @@ test('a CLOSED stream is reported Disconnected and rebuilt without the browser r
 
     assert.equal(app._state.connectionStatus, DISCONNECTED_STATUS);
     assert.equal(app._state.connectionStatusKind, 'error');
-    assert.ok(app._runtimeEventsReconnectTimer, 'expected a scheduled manual reconnect');
+    assert.ok(app._runtimeEventsReconnectTimers, 'expected a scheduled manual reconnect');
 
     await new Promise((resolve) => setTimeout(resolve, 1200));
     assert.equal(FakeEventSource.instances.length, 2);
@@ -311,7 +319,7 @@ test('disconnectRuntimeEvents closes the stream and stops the watchdog', async (
     assert.equal(source.closed, true);
     assert.equal(app._eventSource, null);
     assert.ok(!app._runtimeEventsWatchdog);
-    assert.ok(!app._runtimeEventsReconnectTimer);
+    assert.ok(!app._runtimeEventsReconnectTimers);
   });
 });
 
@@ -368,23 +376,100 @@ test('a drop after the first open re-arms the stale-handshake watchdog', async (
   });
 });
 
-test('a permanently closed stream backs off instead of retrying every second', () => {
+test('the reconnect ladder is gentle: five attempts per rung, capped at 15s', () => {
+  let ladder = [];
+  for (let attempt = 0; attempt < 28; attempt++)
+    ladder.push(reconnectDelayFor(attempt));
+
+  assert.deepEqual(ladder, [
+    1000, 1000, 1000, 1000, 1000,
+    2000, 2000, 2000, 2000, 2000,
+    4000, 4000, 4000, 4000, 4000,
+    8000, 8000, 8000, 8000, 8000,
+    15000, 15000, 15000, 15000, 15000, 15000, 15000, 15000,
+  ]);
+
+  // The cap is the last rung, held forever -- retrying never stops.
+  assert.equal(reconnectDelayFor(500), 15000);
+  assert.equal(reconnectDelayFor(-3), 1000);
+});
+
+test('each rung schedules staggered timers and only one of them reconnects', () => {
+  withFakeTimers((scheduled) => {
+    withFakeEventSource(() => {
+      let app = createApp();
+      connectRuntimeEvents(app);
+      let first = app._eventSource;
+
+      first.close();
+      onRuntimeEventsError(app, { target: first });
+
+      let rung = pendingTimers(scheduled);
+      assert.deepEqual(rung.map((timer) => timer.delay), [ 1000, 1250, 1500 ]);
+
+      // Let the redundant timer land instead of the primary one.
+      rung[1].fn();
+      assert.equal(FakeEventSource.instances.length, 2, 'exactly one reconnect per rung');
+
+      // The remaining timer is a no-op: it must not open a second socket.
+      rung[2].fn();
+      assert.equal(FakeEventSource.instances.length, 2);
+      assert.equal(app._runtimeEventsRetryCount, 1, 'a rung advances the ladder exactly once');
+
+      disconnectRuntimeEvents(app);
+    });
+  });
+});
+
+test('a late timer from an older rung cannot cancel the pending rung', () => {
   withFakeTimers((scheduled) => {
     withFakeEventSource(() => {
       let app = createApp();
       connectRuntimeEvents(app);
 
-      for (let i = 0; i < 6; i++) {
+      app._eventSource.close();
+      onRuntimeEventsError(app, { target: app._eventSource });
+      let firstRung = pendingTimers(scheduled);
+      firstRung[0].fn();
+
+      // The reconnect failed too, so a second rung is now pending.
+      app._eventSource.close();
+      onRuntimeEventsError(app, { target: app._eventSource });
+      let secondRung = pendingTimers(scheduled).filter((timer) => !firstRung.includes(timer));
+      assert.equal(secondRung.length, 3);
+
+      // A straggler from rung 1 must leave rung 2 alone and do nothing itself.
+      firstRung[2].fn();
+      assert.deepEqual(pendingTimers(scheduled).filter((timer) => !timer.cleared).length, 3);
+      assert.equal(FakeEventSource.instances.length, 2);
+
+      secondRung[0].fn();
+      assert.equal(FakeEventSource.instances.length, 3);
+      disconnectRuntimeEvents(app);
+    });
+  });
+});
+
+test('a permanently closed stream keeps climbing the ladder forever', () => {
+  withFakeTimers((scheduled) => {
+    withFakeEventSource(() => {
+      let app = createApp();
+      connectRuntimeEvents(app);
+
+      let delays = [];
+      for (let i = 0; i < 12; i++) {
         app._eventSource.close();
         onRuntimeEventsError(app, { target: app._eventSource });
-        let timer = scheduled[scheduled.length - 1];
+        let timer = pendingTimers(scheduled)[0];
         assert.ok(timer, 'expected a scheduled reconnect');
+        delays.push(timer.delay);
         timer.fn();
       }
 
-      assert.deepEqual(scheduled.map((timer) => timer.delay), [ 1000, 2000, 4000, 8000, 16000, 30000 ]);
-      assert.equal(app._runtimeEventsRetryCount, 6);
+      assert.deepEqual(delays, [ 1000, 1000, 1000, 1000, 1000, 2000, 2000, 2000, 2000, 2000, 4000, 4000 ]);
+      assert.equal(app._runtimeEventsRetryCount, 12);
       disconnectRuntimeEvents(app);
+      assert.ok(!app._runtimeEventsReconnectTimers, 'teardown cancels the pending rung');
     });
   });
 });

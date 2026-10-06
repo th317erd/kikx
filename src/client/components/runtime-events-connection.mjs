@@ -42,8 +42,22 @@ const STALE_STREAM_MS = 90000;
 // The browser backs off on its own, but it never retries a CLOSED stream, so we
 // do -- and we must back off too, or a permanently closed stream (a proxy
 // returning 502 during a restart) becomes a 1 Hz retry loop.
+//
+// The ladder is "gentle": every delay is used `RECONNECT_RUNG_ATTEMPTS` times
+// before doubling, and the final rung is held forever. So a server that stays
+// down is retried at 1s x5, 2s x5, 4s x5, 8s x5, then every 15s -- forever. It
+// never gives up, because giving up permanently is what left the indicator stuck
+// in the first place.
 const MANUAL_RECONNECT_DELAY_MS = 1000;
-const MAX_RECONNECT_DELAY_MS = 30000;
+const RECONNECT_RUNG_ATTEMPTS = 5;
+const MAX_RECONNECT_DELAY_MS = 15000;
+// "Minimize hammering" without relying on a single timer surviving: each rung
+// schedules this many timers, staggered by RECONNECT_STAGGER_MS, so one dropped
+// or coalesced timer cannot stall recovery. Only the first one to land performs
+// the reconnect -- the rest see the rung already claimed and do nothing -- so the
+// extra timers can never open extra sockets.
+const MAX_IN_FLIGHT_RECONNECTS = 3;
+const RECONNECT_STAGGER_MS = 250;
 
 const CONNECTING = 0;
 const OPEN = 1;
@@ -166,21 +180,58 @@ export function isRuntimeEventsOpen(app) {
   return app._eventSource?.readyState === OPEN;
 }
 
+// Exported for its own tests: the delay for the Nth reconnect attempt, e.g.
+// 1000 x5, 2000 x5, 4000 x5, 8000 x5, then 15000 forever.
+export function reconnectDelayFor(attempt, options = {}) {
+  let rungAttempts = options.rungAttempts ?? RECONNECT_RUNG_ATTEMPTS;
+  let base = options.baseDelay ?? MANUAL_RECONNECT_DELAY_MS;
+  let max = options.maxDelay ?? MAX_RECONNECT_DELAY_MS;
+  let rung = Math.floor(Math.max(attempt, 0) / rungAttempts);
+  return Math.min(base * 2 ** rung, max);
+}
+
 function scheduleManualReconnect(app) {
-  if (app._runtimeEventsReconnectTimer)
+  // One rung is pending at a time, so repeated errors cannot stack timers.
+  if (app._runtimeEventsReconnectTimers)
     return;
 
   let attempt = app._runtimeEventsRetryCount || 0;
-  let delay = Math.min(MANUAL_RECONNECT_DELAY_MS * 2 ** attempt, MAX_RECONNECT_DELAY_MS);
   app._runtimeEventsRetryCount = attempt + 1;
-  app._runtimeEventsReconnectTimer = setTimeout(() => {
-    app._runtimeEventsReconnectTimer = null;
-    if (!app.isConnected)
-      return;
 
-    connectRuntimeEvents(app);
-  }, delay);
-  app._runtimeEventsReconnectTimer.unref?.();
+  let delay = reconnectDelayFor(attempt);
+  let pending = { attempt, timers: [] };
+  app._runtimeEventsReconnectTimers = pending;
+
+  for (let index = 0; index < MAX_IN_FLIGHT_RECONNECTS; index++) {
+    let timer = setTimeout(() => {
+      // Clear only this rung's timers: a late timer from an older rung must not
+      // cancel the rung that was scheduled in the meantime.
+      clearReconnectTimers(app, pending);
+
+      // The first timer to land owns the rung; its staggered siblings are just
+      // insurance against a dropped timer.
+      if (app._runtimeEventsAttemptedRung === attempt)
+        return;
+
+      app._runtimeEventsAttemptedRung = attempt;
+      if (!app.isConnected)
+        return;
+
+      connectRuntimeEvents(app);
+    }, delay + index * RECONNECT_STAGGER_MS);
+    timer.unref?.();
+    pending.timers.push(timer);
+  }
+}
+
+function clearReconnectTimers(app, pending = null) {
+  let current = app._runtimeEventsReconnectTimers;
+  if (!current || (pending && current !== pending))
+    return;
+
+  app._runtimeEventsReconnectTimers = null;
+  for (let timer of current.timers)
+    clearTimeout(timer);
 }
 
 function startWatchdog(app) {
@@ -209,10 +260,7 @@ function stopWatchdog(app) {
     app._runtimeEventsWatchdog = null;
   }
 
-  if (app._runtimeEventsReconnectTimer) {
-    clearTimeout(app._runtimeEventsReconnectTimer);
-    app._runtimeEventsReconnectTimer = null;
-  }
+  clearReconnectTimers(app);
 
   if (app._runtimeEventsVisibilityHandler && typeof globalThis.document?.removeEventListener === 'function') {
     globalThis.document.removeEventListener('visibilitychange', app._runtimeEventsVisibilityHandler);
