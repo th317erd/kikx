@@ -316,7 +316,7 @@ export function signOut(app) {
 
 export function applyAuth(app, auth) {
   if (!auth?.token)
-    throw new Error('AeorDB did not return an auth token');
+    throw new Error('Kikx did not return an auth token');
 
   app._state.authToken = auth.token;
   app._state.refreshToken = auth.refresh_token || '';

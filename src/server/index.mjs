@@ -25,6 +25,10 @@ async function main() {
   let port = Number.parseInt(await config.get(KIKX_PORT_PATH) || '3000', 10);
   server = await createServer({ config });
 
+  // Wait for the best-effort auth bootstrap so the first-run admin magic link is
+  // logged before the port opens (it never rejects; failures are swallowed).
+  await server.kikxContext?.get?.('authBootstrapPromise');
+
   server.listen(port, host, () => {
     console.log(`Kikx listening on http://${host}:${port}`);
   });

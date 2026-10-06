@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 
 import { AppContext } from '../core/app/app-context.mjs';
 import { AccountStore } from '../core/account/index.mjs';
+import { createAuthService } from '../core/auth/index.mjs';
+import { createMailer } from '../core/auth/mailer.mjs';
 import {
   AEORDB_TOKEN_PATH,
   AEORDB_URL_PATH,
@@ -12,6 +14,15 @@ import {
   DATABASE_DRIVER_PATH,
   DATABASE_PATH_PATH,
   DATABASE_URL_PATH,
+  KIKX_ADMIN_EMAIL_PATH,
+  KIKX_ADMIN_NAME_PATH,
+  KIKX_AUTH_ACCESS_TTL_SECONDS_PATH,
+  KIKX_AUTH_MAGIC_LINK_TTL_SECONDS_PATH,
+  KIKX_AUTH_MAILER_FROM_PATH,
+  KIKX_AUTH_MAILER_MODE_PATH,
+  KIKX_AUTH_MAILER_SMTP_URL_PATH,
+  KIKX_AUTH_PUBLIC_URL_PATH,
+  KIKX_AUTH_REFRESH_TTL_SECONDS_PATH,
   KIKX_COMPACTION_AGENT_ID_PATH,
   KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH,
   KIKX_COMPACTION_HARD_RATIO_PATH,
@@ -85,6 +96,15 @@ export async function createServer(options = {}) {
   let promptReserveTokens = parseEnvNonNegativeInteger(await config.get(KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH), 8000);
   let compactionTriggerRatio = parseEnvRatio(await config.get(KIKX_COMPACTION_TRIGGER_RATIO_PATH), 0.7);
   let hardLimitRatio = parseEnvRatio(await config.get(KIKX_COMPACTION_HARD_RATIO_PATH), 1);
+  let authAdminEmail = options.authAdminEmail || await config.get(KIKX_ADMIN_EMAIL_PATH) || '';
+  let authAdminName = options.authAdminName || await config.get(KIKX_ADMIN_NAME_PATH) || '';
+  let authPublicURL = options.authPublicURL || await config.get(KIKX_AUTH_PUBLIC_URL_PATH) || '';
+  let authMailerMode = options.authMailerMode || await config.get(KIKX_AUTH_MAILER_MODE_PATH) || 'log';
+  let authMailerSMTPURL = options.authMailerSMTPURL || await config.get(KIKX_AUTH_MAILER_SMTP_URL_PATH) || '';
+  let authMailerFrom = options.authMailerFrom || await config.get(KIKX_AUTH_MAILER_FROM_PATH) || 'Kikx <no-reply@localhost>';
+  let authAccessTTLSeconds = parseEnvPositiveInteger(await config.get(KIKX_AUTH_ACCESS_TTL_SECONDS_PATH), 3600);
+  let authRefreshTTLSeconds = parseEnvPositiveInteger(await config.get(KIKX_AUTH_REFRESH_TTL_SECONDS_PATH), 2592000);
+  let authMagicLinkTTLSeconds = parseEnvPositiveInteger(await config.get(KIKX_AUTH_MAGIC_LINK_TTL_SECONDS_PATH), 900);
 
   let staticRoots = {
     client: options.clientRoot || CLIENT_ROOT,
@@ -191,6 +211,20 @@ export async function createServer(options = {}) {
   if (context.has('db') && !context.has('aeordb'))
     context.set('aeordb', context.require('db'));
 
+  if (!context.has('authService')) {
+    let logger = options.logger || console;
+    let mailer = createMailer({ mode: authMailerMode, log: logger, smtpUrl: authMailerSMTPURL, from: authMailerFrom });
+    context.set('authService', createAuthService({
+      db: context.require('db'),
+      mailer,
+      logger,
+      accessTTLSeconds: authAccessTTLSeconds,
+      refreshTTLSeconds: authRefreshTTLSeconds,
+      magicLinkTTLSeconds: authMagicLinkTTLSeconds,
+      publicURL: authPublicURL || '',
+    }));
+  }
+
   if (!context.has('toolOutputStore')) {
     context.set('toolOutputStore', new ToolOutputStore({
       db: context.require('db'),
@@ -211,7 +245,41 @@ export async function createServer(options = {}) {
   if (!context.has('accountStore')) {
     context.set('accountStore', new AccountStore({
       db: context.require('db'),
+      authService: context.require('authService'),
     }));
+  }
+
+  // Best-effort first-run bootstrap. It is never awaited and never fatal: a
+  // storage failure (or a test double without list/put) only produces a
+  // warning, so an existing server still starts and serves traffic.
+  if (!context.has('authBootstrapPromise')) {
+    let authService = context.require('authService');
+    let logger = options.logger || console;
+    let canList = typeof context.require('db')?.list === 'function';
+    context.set('authBootstrapPromise', (async () => {
+      try {
+        if (options.skipAuthBootstrap)
+          return { skipped: true };
+
+        if (authAdminEmail) {
+          let { user, created } = await authService.ensureAdmin({ email: authAdminEmail, name: authAdminName });
+          if (created) {
+            logger.info?.(`Kikx created the initial admin account ${user.email}`);
+            await authService.requestMagicLink(user.email);
+          }
+
+          return { created };
+        }
+
+        if (canList && (await authService.users.count()) === 0)
+          logger.warn?.('Kikx has no user accounts; set KIKX_ADMIN_EMAIL to create the first account.');
+
+        return { created: false };
+      } catch (error) {
+        logger.warn?.(`Kikx auth bootstrap skipped: ${error?.message || error}`);
+        return { error };
+      }
+    })());
   }
 
   if (!context.has('tokenUsageLoadPromise')) {

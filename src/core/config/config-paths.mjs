@@ -34,3 +34,15 @@ export const KIKX_DATABASE_PATH = '/kikx/database/path';
 // connect to a network server (e.g. PostgreSQL); AeorDB keeps its own keys.
 export const DATABASE_URL_PATH = '/org/aeor/kikx/database/url';
 export const KIKX_DATABASE_URL = '/kikx/database/url';
+
+// Kikx-native authentication configuration. Each path round-trips to the
+// documented environment name via `envKeyFor`.
+export const KIKX_ADMIN_EMAIL_PATH = '/kikx/admin/email';
+export const KIKX_ADMIN_NAME_PATH = '/kikx/admin/name';
+export const KIKX_AUTH_PUBLIC_URL_PATH = '/kikx/auth/public/url';
+export const KIKX_AUTH_MAILER_MODE_PATH = '/kikx/auth/mailer/mode';
+export const KIKX_AUTH_MAILER_SMTP_URL_PATH = '/kikx/auth/mailer/smtp/url';
+export const KIKX_AUTH_MAILER_FROM_PATH = '/kikx/auth/mailer/from';
+export const KIKX_AUTH_ACCESS_TTL_SECONDS_PATH = '/kikx/auth/session/access/ttl/seconds';
+export const KIKX_AUTH_REFRESH_TTL_SECONDS_PATH = '/kikx/auth/session/refresh/ttl/seconds';
+export const KIKX_AUTH_MAGIC_LINK_TTL_SECONDS_PATH = '/kikx/auth/magic/link/ttl/seconds';

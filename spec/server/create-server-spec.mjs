@@ -712,11 +712,16 @@ test('POST /api/v1/sessions/:sessionID/messages stamps account author metadata w
   let server = await createServer({
     context: new AppContext({
       aeordb: {
-        async getFile() {
+        async get() {
           return { id: 'usr_1', name: 'Wyatt Greenway', email: 'wyatt@example.com' };
         },
-        async getSystemUser() {
-          return { user_id: 'usr_1', username: 'wyatt@example.com', email: 'wyatt@example.com' };
+      },
+      authService: {
+        async verifyAccessToken(accessToken) {
+          return accessToken === token ? { id: 'usr_1', sessionId: 'sess_1' } : null;
+        },
+        async getUser() {
+          return { id: 'usr_1', name: 'Wyatt Greenway', username: 'wyatt@example.com', email: 'wyatt@example.com' };
         },
       },
       frameRuntime: runtime,
@@ -756,16 +761,18 @@ test('GET /api/v1/account returns a Kikx profile for the signed-in user', async 
   let server = await createServer({
     context: new AppContext({
       aeordb: {
-        async getFile(pathname) {
-          if (pathname === '/kikx/tokens.json')
-            return null;
-
+        async get(pathname) {
           assert.equal(pathname, '/kikx/users/usr_1/profile.json');
           return { id: 'usr_1', name: 'Wyatt', email: 'wyatt@kikx.test' };
         },
-        async getSystemUser(userID) {
+      },
+      authService: {
+        async verifyAccessToken(accessToken) {
+          return accessToken === token ? { id: 'usr_1', sessionId: 'sess_1' } : null;
+        },
+        async getUser(userID) {
           assert.equal(userID, 'usr_1');
-          return { user_id: 'usr_1', username: 'wyatt@example.com', email: 'wyatt@example.com' };
+          return { id: 'usr_1', username: 'wyatt@example.com', email: 'wyatt@example.com' };
         },
       },
     }),
@@ -787,7 +794,7 @@ test('GET /api/v1/account returns a Kikx profile for the signed-in user', async 
       name: 'Wyatt',
       email: 'wyatt@kikx.test',
       username: 'wyatt@example.com',
-      source: 'aeordb-user',
+      source: 'kikx-user',
       createdAt: null,
       updatedAt: null,
     });
@@ -796,26 +803,29 @@ test('GET /api/v1/account returns a Kikx profile for the signed-in user', async 
   }
 });
 
-test('PATCH /api/v1/account saves display name and updates AeorDB email', async () => {
+test('PATCH /api/v1/account saves display name and updates the Kikx user', async () => {
   let token = unsignedJWT({ sub: 'usr_1' });
   let writes = [];
   let updatedUser;
   let server = await createServer({
     context: new AppContext({
       aeordb: {
-        async getFile() {
+        async get(pathname) {
+          assert.equal(pathname, '/kikx/users/usr_1/profile.json');
           return { id: 'usr_1', name: 'Old Name', email: 'old@example.com', createdAt: 1000 };
         },
-        async putFile(pathname, body) {
+        async put(pathname, body) {
           writes.push({ pathname, body });
           return { path: pathname };
         },
-        async getSystemUser() {
-          return { user_id: 'usr_1', username: 'wyatt@example.com', email: 'old@example.com' };
+      },
+      authService: {
+        async verifyAccessToken(accessToken) {
+          return accessToken === token ? { id: 'usr_1', sessionId: 'sess_1' } : null;
         },
-        async updateSystemUser(userID, body) {
+        async updateUser(userID, body) {
           updatedUser = { userID, body };
-          return { user_id: 'usr_1', username: 'wyatt@example.com', email: body.email };
+          return { id: 'usr_1', name: body.name || 'Old Name', email: body.email || 'old@example.com' };
         },
       },
     }),
@@ -838,13 +848,12 @@ test('PATCH /api/v1/account saves display name and updates AeorDB email', async 
     assert.equal(response.status, 200);
     assert.deepEqual(updatedUser, {
       userID: 'usr_1',
-      body: { email: 'new@example.com' },
+      body: { name: 'New Name', email: 'new@example.com' },
     });
-    assert.equal(writes.length, 2);
+    assert.equal(writes.length, 1);
     assert.equal(writes[0].pathname, '/kikx/users/usr_1/profile.json');
     assert.equal(writes[0].body.name, 'New Name');
     assert.equal(writes[0].body.email, 'new@example.com');
-    assert.equal(writes[1].body.email, 'new@example.com');
     assert.equal(body.data.account.name, 'New Name');
     assert.equal(body.data.account.email, 'new@example.com');
   } finally {
@@ -1593,14 +1602,15 @@ test('team routes validate request bodies and report missing teams', async () =>
   }
 });
 
-test('POST /api/v1/auth/magic-link forwards email to AeorDB', async () => {
-  let seenEmail;
+test('POST /api/v1/auth/magic-link forwards email to the auth service', async () => {
+  let seen;
   let server = await createServer({
     context: new AppContext({
-      aeordb: {
-        requestMagicLink: async (email) => {
-          seenEmail = email;
-          return { message: 'If an account exists, a login link has been sent.' };
+      aeordb: {},
+      authService: {
+        async requestMagicLink(email, options) {
+          seen = { email, options };
+          return { ok: true };
         },
       },
     }),
@@ -1615,25 +1625,24 @@ test('POST /api/v1/auth/magic-link forwards email to AeorDB', async () => {
     let body = await response.json();
 
     assert.equal(response.status, 200);
-    assert.equal(seenEmail, 'alice@example.com');
-    assert.deepEqual(body, {
-      data: {
-        message: 'If an account exists, a login link has been sent.',
-      },
-    });
+    assert.equal(seen.email, 'alice@example.com');
+    assert.equal(typeof seen.options.userAgent, 'string');
+    assert.equal(typeof seen.options.ip, 'string');
+    assert.deepEqual(body, { data: { ok: true } });
   } finally {
     await close(server);
   }
 });
 
-test('GET /api/v1/auth/magic-link/verify forwards code to AeorDB', async () => {
+test('GET /api/v1/auth/magic-link/verify forwards code to the auth service', async () => {
   let seenCode;
   let server = await createServer({
     context: new AppContext({
-      aeordb: {
-        verifyMagicLink: async (code) => {
+      aeordb: {},
+      authService: {
+        async verifyMagicLink(code) {
           seenCode = code;
-          return { token: 'jwt', expires_in: 3600 };
+          return { token: 'access', refresh_token: 'refresh', expires_at: 123 };
         },
       },
     }),
@@ -1649,8 +1658,9 @@ test('GET /api/v1/auth/magic-link/verify forwards code to AeorDB', async () => {
     assert.equal(seenCode, 'abc 123');
     assert.deepEqual(body, {
       data: {
-        token: 'jwt',
-        expires_in: 3600,
+        token: 'access',
+        refresh_token: 'refresh',
+        expires_at: 123,
       },
     });
   } finally {
@@ -1658,14 +1668,15 @@ test('GET /api/v1/auth/magic-link/verify forwards code to AeorDB', async () => {
   }
 });
 
-test('POST /api/v1/auth/token forwards api_key to AeorDB', async () => {
+test('POST /api/v1/auth/token forwards api_key to the auth service', async () => {
   let seenAPIKey;
   let server = await createServer({
     context: new AppContext({
-      aeordb: {
-        exchangeAPIKey: async (apiKey) => {
+      aeordb: {},
+      authService: {
+        async exchangeApiKey(apiKey) {
           seenAPIKey = apiKey;
-          return { token: 'jwt', refresh_token: 'refresh', expires_in: 3600 };
+          return { token: 'access', refresh_token: 'refresh', expires_at: 123 };
         },
       },
     }),
@@ -1675,17 +1686,17 @@ test('POST /api/v1/auth/token forwards api_key to AeorDB', async () => {
 
   try {
     let response = await jsonFetch(`${baseURL}/api/v1/auth/token`, {
-      api_key: 'aeor_secret',
+      api_key: 'kikx_secret',
     });
     let body = await response.json();
 
     assert.equal(response.status, 200);
-    assert.equal(seenAPIKey, 'aeor_secret');
+    assert.equal(seenAPIKey, 'kikx_secret');
     assert.deepEqual(body, {
       data: {
-        token: 'jwt',
+        token: 'access',
         refresh_token: 'refresh',
-        expires_in: 3600,
+        expires_at: 123,
       },
     });
   } finally {
@@ -1693,14 +1704,15 @@ test('POST /api/v1/auth/token forwards api_key to AeorDB', async () => {
   }
 });
 
-test('POST /api/v1/auth/refresh forwards refresh_token to AeorDB', async () => {
+test('POST /api/v1/auth/refresh forwards refresh_token to the auth service', async () => {
   let seenRefreshToken;
   let server = await createServer({
     context: new AppContext({
-      aeordb: {
-        refreshToken: async (refreshToken) => {
+      aeordb: {},
+      authService: {
+        async refreshToken(refreshToken) {
           seenRefreshToken = refreshToken;
-          return { token: 'new-jwt', refresh_token: 'new-refresh', expires_in: 3600 };
+          return { token: 'new-access', refresh_token: 'new-refresh', expires_at: 456 };
         },
       },
     }),
@@ -1718,9 +1730,9 @@ test('POST /api/v1/auth/refresh forwards refresh_token to AeorDB', async () => {
     assert.equal(seenRefreshToken, 'rt_secret');
     assert.deepEqual(body, {
       data: {
-        token: 'new-jwt',
+        token: 'new-access',
         refresh_token: 'new-refresh',
-        expires_in: 3600,
+        expires_at: 456,
       },
     });
   } finally {

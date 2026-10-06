@@ -16,7 +16,7 @@ export async function onMagicLinkSubmit(app, event) {
 
   try {
     await app._postJSON('/api/v1/auth/magic-link', { email });
-    app._state.authStatus = 'If the account exists, AeorDB sent a login link.';
+    app._state.authStatus = 'If the account exists, a login link has been sent.';
     app._state.authStatusKind = 'ready';
   } catch (error) {
     app._state.authStatus = error.message;

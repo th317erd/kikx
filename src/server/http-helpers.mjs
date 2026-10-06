@@ -38,7 +38,7 @@ export async function getRequestAccount(context, request) {
   let identity;
 
   try {
-    identity = accountStore.resolveIdentity(request);
+    identity = await accountStore.resolveIdentity(request);
   } catch (error) {
     if (error?.status === 401)
       return null;
