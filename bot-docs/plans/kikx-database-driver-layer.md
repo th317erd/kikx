@@ -334,7 +334,10 @@ the path with every `/` replaced by `_` (uppercase). Verbatim example:
 
 → the plugin reads `process.env['ORG_AEOR_KIKX_DATABASE_CONFIG_HOSTNAME']`.
 
-- **Canonical rule:** `key = propertyPath.replaceAll('/', '_').toUpperCase()`.
+- **Canonical rule:** strip the leading/trailing `/`, then
+  `key = propertyPath.replaceAll('/', '_').toUpperCase()` — i.e.
+  `/org/aeor/kikx/...` -> `ORG_AEOR_KIKX_...` (the worked examples above show
+  the stripped form; the raw `replaceAll` alone would yield a leading `_`).
   Non-alphanumeric beyond `/` is normalized to `_` (documented); `@version` is
   preserved in the *value* (the driver id), never in a key.
 - **Driver id is itself a property path value:** `/org/aeor/kikx/database/driver`
