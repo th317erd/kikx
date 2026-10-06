@@ -55,6 +55,21 @@ test('AgentCwdStore rejects missing cwd directories', async () => {
   );
 });
 
+test('AgentCwdStore defaults a session with no stored cwd to the user home', async () => {
+  let store = new AgentCwdStore({ db: createClient() });
+  let state = await store.getCWD('agent_1', 'ses_1');
+
+  assert.equal(state.cwd, os.homedir());
+  assert.equal(state.configured, false);
+});
+
+test('AgentCwdStore explicit baseCWD overrides the home default', () => {
+  let explicit = path.resolve('/tmp/kikx-explicit-base-cwd');
+  let store = new AgentCwdStore({ db: createClient(), baseCWD: explicit });
+
+  assert.equal(store.baseCWD, explicit);
+});
+
 function createClient() {
   return {
     files: new Map(),

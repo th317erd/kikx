@@ -1,6 +1,7 @@
 'use strict';
 
 import http from 'node:http';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { AppContext } from '../core/app/app-context.mjs';
@@ -29,6 +30,7 @@ import {
   KIKX_COMPACTION_TRIGGER_RATIO_PATH,
   KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH,
   KIKX_CONTEXT_WINDOW_TOKENS_PATH,
+  KIKX_CWD_PATH,
   KIKX_DATABASE_PATH,
   KIKX_DATABASE_URL,
   KIKX_PLUGIN_PATHS_PATH,
@@ -109,6 +111,10 @@ export async function createServer(options = {}) {
   let authRefreshTTLSeconds = parseEnvPositiveInteger(await config.get(KIKX_AUTH_REFRESH_TTL_SECONDS_PATH), 2592000);
   let authMagicLinkTTLSeconds = parseEnvPositiveInteger(await config.get(KIKX_AUTH_MAGIC_LINK_TTL_SECONDS_PATH), 900);
 
+  // Default the working directory to the HOME of the user running the service
+  // (never the launcher's CWD); KIKX_CWD can override it.
+  let baseCWD = options.cwd || await config.get(KIKX_CWD_PATH) || os.homedir();
+
   let staticRoots = {
     client: options.clientRoot || CLIENT_ROOT,
     shared: options.sharedRoot || SHARED_ROOT,
@@ -138,10 +144,10 @@ export async function createServer(options = {}) {
   }
 
   if (!context.has('fileAccess'))
-    context.set('fileAccess', new LocalFileAccessService({ cwd: process.cwd() }));
+    context.set('fileAccess', new LocalFileAccessService({ cwd: baseCWD }));
 
   if (!context.has('commandExecutor'))
-    context.set('commandExecutor', new LocalCommandExecutionService({ cwd: process.cwd() }));
+    context.set('commandExecutor', new LocalCommandExecutionService({ cwd: baseCWD }));
 
   if (!context.has('commandRegistry'))
     context.set('commandRegistry', new CommandRegistry());
@@ -315,7 +321,7 @@ export async function createServer(options = {}) {
   if (!context.has('agentCwdStore')) {
     context.set('agentCwdStore', new AgentCwdStore({
       db: context.require('db'),
-      baseCWD: process.cwd(),
+      baseCWD,
     }));
   }
 

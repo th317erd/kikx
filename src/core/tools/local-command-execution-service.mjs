@@ -1,6 +1,7 @@
 'use strict';
 
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 
 import { snapshotEnvironment } from '../config/index.mjs';
@@ -19,7 +20,7 @@ const RVM_NOUNSET_COMPAT_PROLOGUE = [
 
 export class LocalCommandExecutionService {
   constructor(options = {}) {
-    this.cwd = options.cwd || process.cwd();
+    this.cwd = options.cwd || os.homedir();
     let ambient = snapshotEnvironment();
     this.shell = options.shell || ambient.SHELL || '/bin/bash';
     this.env = {

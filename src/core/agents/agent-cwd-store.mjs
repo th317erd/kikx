@@ -1,6 +1,7 @@
 'use strict';
 
 import fsp from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 const DEFAULT_ROOT_PATH = '/kikx';
@@ -11,7 +12,7 @@ export class AgentCwdStore {
     let {
       rootPath = DEFAULT_ROOT_PATH,
       clock = () => Date.now(),
-      baseCWD = process.cwd(),
+      baseCWD = os.homedir(),
       validateDirectory = true,
     } = options;
 
@@ -99,7 +100,7 @@ function normalizeCWDState(value, defaults = {}) {
   let state = isPlainObject(value) ? value : {};
   let cwd = typeof state.cwd === 'string' && state.cwd.trim() !== ''
     ? path.resolve(state.cwd)
-    : path.resolve(defaults.cwd || process.cwd());
+    : path.resolve(defaults.cwd || os.homedir());
 
   return {
     namespace: 'agent-runtime',

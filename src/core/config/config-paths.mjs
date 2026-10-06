@@ -7,6 +7,7 @@
 
 export const KIKX_HOST_PATH = '/kikx/host';
 export const KIKX_PORT_PATH = '/kikx/port';
+export const KIKX_CWD_PATH = '/kikx/cwd';
 export const AEORDB_URL_PATH = '/aeordb/url';
 export const AEORDB_TOKEN_PATH = '/aeordb/token';
 export const KIKX_PLUGIN_PATHS_PATH = '/kikx/plugin/paths';

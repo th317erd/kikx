@@ -1,11 +1,12 @@
 'use strict';
 
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 export class LocalFileAccessService {
   constructor(options = {}) {
-    this.cwd = options.cwd || process.cwd();
+    this.cwd = options.cwd || os.homedir();
   }
 
   async readFile(params = {}) {

@@ -14,6 +14,7 @@ export { loadEnvFile, loadJsonEnv, loadEnvSources, snapshotEnvironment } from '.
 export {
   KIKX_HOST_PATH,
   KIKX_PORT_PATH,
+  KIKX_CWD_PATH,
   AEORDB_URL_PATH,
   AEORDB_TOKEN_PATH,
   KIKX_PLUGIN_PATHS_PATH,

@@ -1,11 +1,13 @@
 'use strict';
 
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
 
 import {
   AEORDB_URL_PATH,
   ConfigStore,
+  KIKX_CWD_PATH,
   createConfigStore,
 } from '../../src/core/config/index.mjs';
 import { AeorDBClient } from '../../src/core/aeordb/aeordb-client.mjs';
@@ -142,4 +144,41 @@ test('direct construction falls back to ambient env but explicit options win', a
   assert.equal(explicitClient.baseURL, 'http://explicit.aeordb.test');
   assert.equal(explicitClient.token, 'explicit-token');
   assert.equal(new CompactionService({ compactionAgentID: 'agent-explicit' }).compactionAgentID, 'agent-explicit');
+});
+
+// Kikx runs as a global service, so its working directory must come from the
+// KIKX_CWD config (falling back to the user's home), never the launcher's CWD.
+// The same resolved value must feed every service that defaults a cwd.
+test('createServer resolves baseCWD from KIKX_CWD for file, command, and agent cwd', async () => {
+  let dir = path.resolve('/tmp/kikx-cwd-config');
+  let injected = await createConfigStore({ env: { KIKX_CWD: dir } });
+
+  assert.equal(await injected.get(KIKX_CWD_PATH), dir);
+
+  let server = await createServer({
+    config: injected,
+    fetchImpl: stubFetch,
+  });
+  let context = server.kikxContext;
+
+  assert.equal(context.require('fileAccess').cwd, dir);
+  assert.equal(context.require('commandExecutor').cwd, dir);
+  assert.equal(context.require('agentCwdStore').baseCWD, dir);
+});
+
+test('options.cwd takes precedence over the KIKX_CWD config', async () => {
+  let configuredDir = path.resolve('/tmp/kikx-cwd-configured');
+  let explicitDir = path.resolve('/tmp/kikx-cwd-explicit');
+  let injected = await createConfigStore({ env: { KIKX_CWD: configuredDir } });
+
+  let server = await createServer({
+    config: injected,
+    cwd: explicitDir,
+    fetchImpl: stubFetch,
+  });
+  let context = server.kikxContext;
+
+  assert.equal(context.require('fileAccess').cwd, explicitDir);
+  assert.equal(context.require('commandExecutor').cwd, explicitDir);
+  assert.equal(context.require('agentCwdStore').baseCWD, explicitDir);
 });
