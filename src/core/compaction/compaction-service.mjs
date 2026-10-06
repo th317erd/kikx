@@ -39,7 +39,7 @@ export class CompactionService {
     this.clock = options.clock || (() => Date.now());
     this.idGenerator = options.idGenerator || (() => randomUUID());
     this.logger = options.logger || console;
-    this.compactionAgentID = normalizeOptionalString(options.compactionAgentID || process.env.KIKX_COMPACTION_AGENT_ID);
+    this.compactionAgentID = normalizeOptionalString(options.compactionAgentID);
     this.contextWindowTokens = normalizePositiveInteger(options.contextWindowTokens, DEFAULT_CONTEXT_WINDOW_TOKENS);
     this.compactionAgentContextTokens = normalizePositiveInteger(options.compactionAgentContextTokens, DEFAULT_COMPACTION_AGENT_CONTEXT_TOKENS);
     this.promptReserveTokens = normalizeNonNegativeInteger(options.promptReserveTokens, DEFAULT_PROMPT_RESERVE_TOKENS);

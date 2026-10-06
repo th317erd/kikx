@@ -4,14 +4,17 @@ import puppeteerCore from 'puppeteer-core';
 import { addExtra } from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
+import { snapshotEnvironment } from '../config/index.mjs';
+
 const DEFAULT_DEBUGGING_URL = 'http://127.0.0.1:9223';
 const DEFAULT_VIEWPORT = { width: 1280, height: 900 };
 
 export class PuppeteerBrowserService {
   constructor(options = {}) {
+    this.environment = options.environment || snapshotEnvironment();
     this.debuggingURL = options.debuggingURL
-      || process.env.KIKX_BROWSER_URL
-      || process.env.KIKX_PUPPETEER_DEBUGGING_URL
+      || this.environment.KIKX_BROWSER_URL
+      || this.environment.KIKX_PUPPETEER_DEBUGGING_URL
       || DEFAULT_DEBUGGING_URL;
     this.launchOptions = options.launchOptions || {};
     this.defaultViewport = options.defaultViewport || DEFAULT_VIEWPORT;
@@ -69,7 +72,7 @@ export class PuppeteerBrowserService {
           ...(Array.isArray(this.launchOptions.args) ? this.launchOptions.args : []),
         ],
         ...this.launchOptions,
-      }));
+      }, this.environment));
       this._browserMode = 'launch';
       this._browser.on?.('disconnected', () => {
         if (this._browserMode === 'launch')
@@ -112,13 +115,13 @@ function createStealthPuppeteer(puppeteerCore) {
   return puppeteer;
 }
 
-function normalizeLaunchOptions(options) {
+function normalizeLaunchOptions(options, environment = snapshotEnvironment()) {
   let normalized = { ...options };
-  if (!normalized.executablePath && process.env.PUPPETEER_EXECUTABLE_PATH)
-    normalized.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (!normalized.executablePath && environment.PUPPETEER_EXECUTABLE_PATH)
+    normalized.executablePath = environment.PUPPETEER_EXECUTABLE_PATH;
 
   if (!normalized.executablePath && !normalized.channel)
-    normalized.channel = process.env.KIKX_PUPPETEER_CHANNEL || 'chrome';
+    normalized.channel = environment.KIKX_PUPPETEER_CHANNEL || 'chrome';
 
   return normalized;
 }

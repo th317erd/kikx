@@ -10,7 +10,7 @@ export {
   loadJsonEnvFile,
 } from './config-providers.mjs';
 export { ConfigStore, createConfigStore } from './config-store.mjs';
-export { loadEnvFile, loadJsonEnv, loadEnvSources } from './env-loader.mjs';
+export { loadEnvFile, loadJsonEnv, loadEnvSources, snapshotEnvironment } from './env-loader.mjs';
 export {
   KIKX_HOST_PATH,
   KIKX_PORT_PATH,
@@ -18,6 +18,7 @@ export {
   AEORDB_TOKEN_PATH,
   KIKX_PLUGIN_PATHS_PATH,
   KIKX_CONTEXT_WINDOW_TOKENS_PATH,
+  KIKX_COMPACTION_AGENT_ID_PATH,
   KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH,
   KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH,
   KIKX_COMPACTION_TRIGGER_RATIO_PATH,

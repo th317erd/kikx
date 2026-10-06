@@ -3,6 +3,8 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 
+import { snapshotEnvironment } from '../config/index.mjs';
+
 const DEFAULT_TIMEOUT_MS = 60000;
 const MAX_TIMEOUT_MS = 10 * 60 * 1000;
 const FORCE_KILL_DELAY_MS = 1000;
@@ -18,9 +20,10 @@ const RVM_NOUNSET_COMPAT_PROLOGUE = [
 export class LocalCommandExecutionService {
   constructor(options = {}) {
     this.cwd = options.cwd || process.cwd();
-    this.shell = options.shell || process.env.SHELL || '/bin/bash';
+    let ambient = snapshotEnvironment();
+    this.shell = options.shell || ambient.SHELL || '/bin/bash';
     this.env = {
-      ...process.env,
+      ...ambient,
       ...(options.env || {}),
     };
     this.defaultTimeoutMs = normalizeTimeout(options.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS, 'defaultTimeoutMs');

@@ -11,6 +11,7 @@ export const AEORDB_URL_PATH = '/aeordb/url';
 export const AEORDB_TOKEN_PATH = '/aeordb/token';
 export const KIKX_PLUGIN_PATHS_PATH = '/kikx/plugin/paths';
 export const KIKX_CONTEXT_WINDOW_TOKENS_PATH = '/kikx/context/window/tokens';
+export const KIKX_COMPACTION_AGENT_ID_PATH = '/kikx/compaction/agent/id';
 export const KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH = '/kikx/compaction/agent/context/tokens';
 export const KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH = '/kikx/context/prompt/reserve/tokens';
 export const KIKX_COMPACTION_TRIGGER_RATIO_PATH = '/kikx/compaction/trigger/ratio';

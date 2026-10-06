@@ -10,6 +10,14 @@ import { envKeyFor } from './property-path.mjs';
 // they never overwrite a key that is already present, so real process-env
 // values always win, and an earlier-loaded source beats a later one.
 
+// Capture a shallow copy of the ambient environment. Callers in `src/` use this
+// instead of touching `process.env` directly; copying prevents them from
+// mutating the live environment. `src/core/config/` is the only module allowed
+// to read `process.env`, guarded by `spec/core/config/no-process-env-spec.mjs`.
+export function snapshotEnvironment(env = process.env) {
+  return { ...env };
+}
+
 // Parse a `.env`-style file and copy absent keys into `env`. Missing files are
 // not an error; any other read failure propagates. Lines are trimmed; blank
 // lines and `#` comments are skipped; a line whose first `=` is at index < 1 is

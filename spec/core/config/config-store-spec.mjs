@@ -208,6 +208,7 @@ test('index re-exports the public config surface', async () => {
     'loadEnvFile',
     'loadJsonEnv',
     'loadEnvSources',
+    'snapshotEnvironment',
   ];
 
   for (const name of expected)
