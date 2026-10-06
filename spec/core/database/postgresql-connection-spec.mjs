@@ -54,7 +54,7 @@ async function truncateDocuments() {
     truncatePool = new Pool({ connectionString: TEST_URL });
   }
 
-  await truncatePool.query('TRUNCATE documents');
+  await truncatePool.query('DELETE FROM documents WHERE path COLLATE "C" >= $1 AND path COLLATE "C" < $2', [ '/kikx/', '/kikx0' ]);
 }
 
 after(async () => {
@@ -94,11 +94,11 @@ test('PostgreSQLConnection capabilities match the declared document surface', ()
     mergePatch: true,
     list: true,
     getMany: true,
-    search: false,
-    query: false,
+    search: true,
+    query: true,
     events: false,
     auth: false,
-    ranges: false,
+    ranges: true,
   });
 });
 
@@ -113,16 +113,23 @@ test('PostgreSQLConnection exposes connection config fields and the database url
   assert.equal(password.secret, true, 'password must be marked secret');
 });
 
-test('PostgreSQLConnection hides the unsupported search surface behind a typed capability error', async () => {
+test('PostgreSQLConnection exposes the search/query/ranges surface it advertises', async () => {
   let db = new PostgreSQLConnection({ url: TEST_URL });
 
   try {
-    assert.equal(typeof db.searchFiles, 'undefined');
-    assert.equal(typeof db.queryFiles, 'undefined');
-    assert.equal(typeof db.fetchFileRanges, 'undefined');
+    assert.equal(db.supports('search'), true);
+    assert.equal(db.supports('query'), true);
+    assert.equal(db.supports('ranges'), true);
+    assert.equal(typeof db.searchFiles, 'function');
+    assert.equal(typeof db.queryFiles, 'function');
+    assert.equal(typeof db.fetchFileRanges, 'function');
+    assert.equal(typeof db.search, 'function');
+    assert.equal(typeof db.query, 'function');
+    assert.equal(typeof db.getRanges, 'function');
 
+    // events/auth remain unsupported and still fail with a typed error.
     await assert.rejects(
-      () => db.search({ path: '/kikx' }),
+      async () => db.eventsURL(),
       (error) => error instanceof DatabaseError && error.code === 'capability_unsupported',
     );
   } finally {

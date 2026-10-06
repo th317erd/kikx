@@ -10,6 +10,12 @@ import {
   paginate,
   selectDocumentPaths,
 } from './document-utils.mjs';
+import {
+  ensureSearchIndexes,
+  queryDocuments,
+  searchDocuments,
+} from './postgresql-search.mjs';
+import { fetchDocumentRanges } from './postgresql-ranges.mjs';
 
 const CREATE_DOCUMENTS_TABLE = [
   'CREATE TABLE IF NOT EXISTS documents (',
@@ -40,11 +46,11 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
     mergePatch: true,
     list: true,
     getMany: true,
-    search: false,
-    query: false,
+    search: true,
+    query: true,
     events: false,
     auth: false,
-    ranges: false,
+    ranges: true,
   };
   static configFields = [
     {
@@ -99,6 +105,9 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
     super(options);
     this.pgConfig = resolvePostgresConfig(options);
     this.pool = null;
+    // Whether the optional pg_trgm extension/index was installable. Search is
+    // fully functional without it; the flag only enables a similarity score.
+    this.trigram = false;
   }
 
   async connect() {
@@ -109,6 +118,7 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
       let { Pool } = await import('pg');
       this.pool = new Pool(this.pgConfig);
       await this.pool.query(CREATE_DOCUMENTS_TABLE);
+      this.trigram = await ensureSearchIndexes(this.pool);
       this._connected = true;
       return this;
     } catch (error) {
@@ -191,6 +201,18 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
       yielded++;
       yield { path: key };
     }
+  }
+
+  async search(request = {}) {
+    return searchDocuments(this.pool, request, { trigram: this.trigram });
+  }
+
+  async query(request = {}) {
+    return queryDocuments(this.pool, request);
+  }
+
+  async getRanges(items, options = {}) {
+    return fetchDocumentRanges(this.pool, items, options);
   }
 
   async getMany(paths) {
