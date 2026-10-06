@@ -18,6 +18,16 @@ export function basename(key) {
   return key.slice(key.lastIndexOf('/') + 1);
 }
 
+// Half-open path bounds `[lower, upper)` covering every descendant of a
+// normalized prefix. `/` is the only prefix whose `base + '/'` sentinel would
+// not be the lower bound of its descendants; every absolute path already
+// starts with `/`. Shared so indexed SQL and JS scans narrow paths identically.
+export function pathBounds(base) {
+  if (base === '/')
+    return [ '/', '0' ];
+  return [ `${base}/`, `${base}0` ];
+}
+
 // Select the descendant paths of `prefix` that survive the recursive/glob
 // filters, sorted by basename (then full path) so zero-padded frame filenames
 // keep chronological order. Accepts any iterable of stored keys.

@@ -7,16 +7,14 @@
 // documents (so malformed/raw bodies are excluded from structured filters),
 // while locators are built in JS from the selected bodies. All user input is
 // passed as bound parameters; only identifiers we control appear in SQL text.
+//
+// Result shaping is shared with the streaming scan fallback
+// (`document-results.mjs`) so the envelope cannot drift between drivers.
 
-import { normalizePath } from './document-utils.mjs';
-import { buildLocator, findMatchRanges } from './postgresql-locators.mjs';
-import {
-  byteLength,
-  clampInteger,
-  contentHash,
-  invalidQuery,
-  normalizeOptionalString,
-} from './postgresql-utils.mjs';
+import { normalizePath, pathBounds } from './document-utils.mjs';
+import { buildSearchResult, projectQueryItem, resolveProjection } from './document-results.mjs';
+import { invalidQuery } from './document-errors.mjs';
+import { clampInteger, normalizeOptionalString } from './document-text-utils.mjs';
 
 const DEFAULT_SEARCH_LIMIT = 20;
 const MAX_SEARCH_LIMIT = 1000;
@@ -87,7 +85,13 @@ export async function searchDocuments(pool, request = {}, options = {}) {
   ]);
 
   let total = Number(countResult.rows[0]?.total ?? 0);
-  let results = pageResult.rows.map((row) => buildSearchResult(row, query, locatorOptions));
+  let results = pageResult.rows.map((row) => buildSearchResult({
+    path: row.path,
+    body: row.body,
+    raw: row.raw,
+    updated_at: row.updated_at,
+    trgmScore: row.trgm_score,
+  }, query, locatorOptions));
 
   return {
     results,
@@ -95,26 +99,6 @@ export async function searchDocuments(pool, request = {}, options = {}) {
     has_more: offset + results.length < total,
     next_cursor: null,
     prev_cursor: null,
-  };
-}
-
-function buildSearchResult(row, query, options) {
-  let body = row.body;
-  let ranges = options.includeMatches && query ? findMatchRanges(body, query, options.maxMatches) : [];
-  let matches = ranges.map((range, index) => buildLocator(body, range, query, index, options));
-  let similarityScore = Number(row.trgm_score);
-
-  return {
-    path: row.path,
-    score: matches.length + (Number.isFinite(similarityScore) ? similarityScore : 0),
-    matched_by: matches.length > 0 ? [ 'content' ] : [],
-    content_hash: contentHash(body),
-    updated_at: Number(row.updated_at),
-    size: byteLength(body),
-    content_type: row.raw ? 'text/plain' : 'application/json',
-    matches,
-    matches_truncated: false,
-    locator_status: matches.length > 0 ? 'complete' : 'unsupported',
   };
 }
 
@@ -128,7 +112,7 @@ export async function queryDocuments(pool, request = {}) {
 
   let limit = clampInteger(request.limit, DEFAULT_SEARCH_LIMIT, 1, MAX_SEARCH_LIMIT);
   let offset = clampInteger(request.offset, 0, 0, Number.MAX_SAFE_INTEGER);
-  let select = Array.isArray(request.select) && request.select.length > 0 ? request.select : null;
+  let projection = resolveProjection(request.select);
 
   let params = [ ...pathBounds(base) ];
   let clauses = [ 'path COLLATE "C" >= $1', 'path COLLATE "C" < $2' ];
@@ -145,7 +129,6 @@ export async function queryDocuments(pool, request = {}) {
   ]);
 
   let total = Number(countResult.rows[0]?.total ?? 0);
-  let projection = select ? select.map(mapSelectField) : null;
   let results = pageResult.rows.map((row) => projectQueryItem(row, projection));
 
   return {
@@ -156,77 +139,6 @@ export async function queryDocuments(pool, request = {}) {
     prev_cursor: null,
   };
 }
-
-function projectQueryItem(row, projection) {
-  let meta = {
-    path: row.path,
-    size: byteLength(row.body),
-    content_type: row.raw ? 'text/plain' : 'application/json',
-    updated_at: Number(row.updated_at),
-    content_hash: contentHash(row.body),
-    score: 1,
-    matched_by: [],
-  };
-
-  if (!projection)
-    return meta;
-
-  let item = {};
-  for (let field of projection) {
-    if (field === 'path')
-      item.path = row.path;
-    else if (field === 'updated_at')
-      item.updated_at = Number(row.updated_at);
-    else if (field === 'size')
-      item.size = meta.size;
-    else if (field === 'content_type')
-      item.content_type = meta.content_type;
-    else if (field === 'content_hash')
-      item.content_hash = meta.content_hash;
-    else if (field === 'score')
-      item.score = 1;
-    else if (field === 'matched_by')
-      item.matched_by = [];
-    else
-      item[field] = readDocumentField(row, field);
-  }
-
-  return item;
-}
-
-function readDocumentField(row, field) {
-  if (row.raw)
-    return undefined;
-
-  try {
-    let value = JSON.parse(row.body);
-    return value && typeof value === 'object' ? value[field] : undefined;
-  } catch (_error) {
-    return undefined;
-  }
-}
-
-function mapSelectField(name) {
-  let value = String(name);
-  if (!value.startsWith('@'))
-    return value;
-
-  return VIRTUAL_FIELDS[value] || value.slice(1);
-}
-
-const VIRTUAL_FIELDS = {
-  '@path': 'path',
-  '@size': 'size',
-  '@content_type': 'content_type',
-  '@created_at': 'created_at',
-  '@updated_at': 'updated_at',
-  '@content_hash': 'content_hash',
-  '@matched_by': 'matched_by',
-  '@score': 'score',
-  '@file_key': 'file_key',
-  '@record_revision': 'record_revision',
-  '@matches': 'matches',
-};
 
 // --- where -> SQL ----------------------------------------------------------
 
@@ -299,14 +211,4 @@ function jsonParam(params, value) {
 function addParam(params, value) {
   params.push(value);
   return `$${params.length}`;
-}
-
-// --- shared helpers --------------------------------------------------------
-
-function pathBounds(base) {
-  // `/` is the only prefix whose `base + '/'` sentinel would not be the lower
-  // bound of its descendants; every absolute path already starts with `/`.
-  if (base === '/')
-    return [ '/', '0' ];
-  return [ `${base}/`, `${base}0` ];
 }

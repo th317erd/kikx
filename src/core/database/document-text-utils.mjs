@@ -1,12 +1,11 @@
 'use strict';
 
-// Small shared primitives for the PostgreSQL search/query/range helpers. Kept
-// in one place so the search, locator, and range modules agree on hashing,
-// byte counting, numeric clamping, and typed error construction.
+// Driver-agnostic text primitives shared by every search/query/range path.
+// Kept in one place so PostgreSQL, SQLite (scan fallback) and any future driver
+// agree on hashing, byte counting and numeric clamping. Nothing here imports a
+// database client.
 
 import { createHash } from 'node:crypto';
-
-import { DatabaseError } from './database-error.mjs';
 
 export function byteLength(text) {
   return Buffer.byteLength(text, 'utf8');
@@ -27,16 +26,4 @@ export function clampInteger(value, defaultValue, min, max) {
 
 export function normalizeOptionalString(value) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-export function invalidQuery(message) {
-  return new DatabaseError(message, { status: 400, code: 'invalid_query' });
-}
-
-export function invalidRange(message) {
-  return new DatabaseError(message, { status: 400, code: 'invalid_range' });
-}
-
-export function staleDocument(message) {
-  return new DatabaseError(message, { status: 409, code: 'conflict' });
 }

@@ -1,26 +1,28 @@
 'use strict';
 
-// Ranged document fetch for PostgreSQLConnection. Ranges are extracted in JS
-// from the stored body so the line/char/byte/JSON-pointer semantics are
-// explicit and match the AeorDB range contract:
+// Driver-agnostic ranged document fetch. Ranges are extracted in JS from an
+// already-fetched stored body so the line/char/byte/JSON-pointer semantics are
+// explicit and identical across drivers, matching the AeorDB range contract:
 //   - lines: 1-based inclusive, CRLF-aware, max_bytes-capped
 //   - chars: 0-based inclusive start, exclusive end, Unicode scalars
 //   - bytes: 0-based inclusive start, exclusive end, UTF-8, lossy decode
 //   - json_pointer: RFC 6901 pointer into the parsed stored JSON
+//
+// `readDocument(path)` returns `{ body, raw, updated_at }` for a stored
+// document or `null` when it does not exist. Drivers supply that reader; this
+// module owns every byte/line decision.
 
 import { DatabaseError } from './database-error.mjs';
+import { invalidRange, staleDocument } from './document-errors.mjs';
 import { basename, normalizePath } from './document-utils.mjs';
-import {
-  byteLength,
-  contentHash,
-  invalidRange,
-  staleDocument,
-} from './postgresql-utils.mjs';
+import { byteLength, contentHash } from './document-text-utils.mjs';
 
 const DEFAULT_RANGE_MAX_BYTES = 4 * 1024 * 1024;
 const ABSOLUTE_RANGE_MAX_BYTES = 16 * 1024 * 1024;
 
-export async function fetchDocumentRanges(pool, items, options = {}) {
+export async function fetchDocumentRanges(readDocument, items, options = {}) {
+  if (typeof readDocument !== 'function')
+    throw new TypeError('fetchDocumentRanges() requires a readDocument(path) function');
   if (!Array.isArray(items))
     throw new TypeError('getRanges() items must be an array');
 
@@ -31,7 +33,7 @@ export async function fetchDocumentRanges(pool, items, options = {}) {
 
   for (let item of items) {
     try {
-      results.push(await fetchOneRange(pool, item, defaultMaxBytes));
+      results.push(await fetchOneRange(readDocument, item, defaultMaxBytes));
     } catch (error) {
       if (!continueOnError)
         throw error;
@@ -44,18 +46,19 @@ export async function fetchDocumentRanges(pool, items, options = {}) {
   return { items: results, has_errors: hasErrors };
 }
 
-async function fetchOneRange(pool, item, defaultMaxBytes) {
+async function fetchOneRange(readDocument, item, defaultMaxBytes) {
   if (!item || typeof item !== 'object' || Array.isArray(item))
     throw invalidRange('getRanges() items must be objects');
   if (!item.path || typeof item.path !== 'string')
     throw invalidRange('getRanges() item.path must be a non-empty string');
 
   let path = normalizePath(item.path);
-  let row = (await pool.query('SELECT body, raw, updated_at FROM documents WHERE path = $1', [ path ])).rows[0];
+  let row = await readDocument(path);
   if (!row)
     throw DatabaseError.notFound(path);
 
-  let hash = contentHash(row.body);
+  let body = row.body;
+  let hash = contentHash(body);
   let updatedAt = Number(row.updated_at);
   if (item.if_content_hash != null && String(item.if_content_hash) !== hash)
     throw staleDocument('File content hash changed');
@@ -64,13 +67,13 @@ async function fetchOneRange(pool, item, defaultMaxBytes) {
 
   let range = normalizeRangeSpec(item);
   let maxBytes = item.max_bytes ?? item.maxBytes ?? defaultMaxBytes;
-  let extracted = extractRange(row.body, range, maxBytes);
+  let extracted = extractRange(body, range, maxBytes);
 
   return {
     id: item.id ?? null,
     path,
     name: basename(path),
-    size: byteLength(row.body),
+    size: byteLength(body),
     created_at: updatedAt,
     updated_at: updatedAt,
     content_hash: hash,
@@ -81,7 +84,7 @@ async function fetchOneRange(pool, item, defaultMaxBytes) {
       end: extracted.end,
       pointer: extracted.pointer,
     },
-    source_size: byteLength(row.body),
+    source_size: byteLength(body),
     content: extracted.content,
     truncated: extracted.truncated,
     status: 'ok',

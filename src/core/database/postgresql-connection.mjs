@@ -15,7 +15,7 @@ import {
   queryDocuments,
   searchDocuments,
 } from './postgresql-search.mjs';
-import { fetchDocumentRanges } from './postgresql-ranges.mjs';
+import { fetchDocumentRanges } from './document-ranges.mjs';
 
 const CREATE_DOCUMENTS_TABLE = [
   'CREATE TABLE IF NOT EXISTS documents (',
@@ -212,7 +212,15 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
   }
 
   async getRanges(items, options = {}) {
-    return fetchDocumentRanges(this.pool, items, options);
+    return fetchDocumentRanges((path) => this._readDocumentRow(path), items, options);
+  }
+
+  // Raw row reader for the shared range extractor: body text plus the metadata
+  // the locator/range contract needs. Returns null for a missing document so
+  // document-ranges.mjs can raise the driver-agnostic 404.
+  async _readDocumentRow(path) {
+    let row = (await this.pool.query('SELECT body, raw, updated_at FROM documents WHERE path = $1', [ path ])).rows[0];
+    return row ?? null;
   }
 
   async getMany(paths) {

@@ -10,12 +10,15 @@ import {
   paginate,
   selectDocumentPaths,
 } from './document-utils.mjs';
+import { fetchDocumentRanges } from './document-ranges.mjs';
+import { scanQuery, scanSearch } from './scan-search.mjs';
 
 const CREATE_DOCUMENTS_TABLE = [
   'CREATE TABLE IF NOT EXISTS documents (',
   '  path TEXT PRIMARY KEY,',
   '  body TEXT NOT NULL,',
-  '  raw INTEGER NOT NULL DEFAULT 0',
+  '  raw INTEGER NOT NULL DEFAULT 0,',
+  '  updated_at INTEGER NOT NULL DEFAULT 0',
   ')',
 ].join('\n');
 
@@ -35,11 +38,11 @@ export class SQLiteConnection extends DatabaseConnectionBase {
     mergePatch: true,
     list: true,
     getMany: true,
-    search: false,
-    query: false,
+    search: true,
+    query: true,
     events: false,
     auth: false,
-    ranges: false,
+    ranges: true,
   };
   static configFields = [
     {
@@ -87,8 +90,8 @@ export class SQLiteConnection extends DatabaseConnectionBase {
     let key = normalizePath(path);
     let raw = options.raw === true;
     let text = raw ? String(body ?? '') : JSON.stringify(body ?? null);
-    this.sqlite.prepare('INSERT OR REPLACE INTO documents (path, body, raw) VALUES (?, ?, ?)')
-      .run(key, text, raw ? 1 : 0);
+    this.sqlite.prepare('INSERT OR REPLACE INTO documents (path, body, raw, updated_at) VALUES (?, ?, ?, ?)')
+      .run(key, text, raw ? 1 : 0, Date.now());
     return { path: key };
   }
 
@@ -112,8 +115,8 @@ export class SQLiteConnection extends DatabaseConnectionBase {
 
     let current = JSON.parse(row.body);
     let merged = applyMergePatch(current, patch);
-    this.sqlite.prepare('UPDATE documents SET body = ?, raw = 0 WHERE path = ?')
-      .run(JSON.stringify(merged ?? null), key);
+    this.sqlite.prepare('UPDATE documents SET body = ?, raw = 0, updated_at = ? WHERE path = ?')
+      .run(JSON.stringify(merged ?? null), Date.now(), key);
     return merged;
   }
 
@@ -126,14 +129,19 @@ export class SQLiteConnection extends DatabaseConnectionBase {
 
   async getMany(paths) {
     let result = {};
-    let select = this.sqlite.prepare('SELECT body FROM documents WHERE path = ?');
+    let select = this.sqlite.prepare('SELECT body, raw, updated_at FROM documents WHERE path = ?');
     for (let path of paths) {
       let key = normalizePath(path);
       let row = select.get(key);
       if (!row)
         throw notFound(key);
 
-      result[path] = { path: key, content: row.body };
+      result[path] = {
+        path: key,
+        content: row.body,
+        raw: row.raw === 1,
+        updated_at: Number(row.updated_at),
+      };
     }
 
     return result;
@@ -171,6 +179,29 @@ export class SQLiteConnection extends DatabaseConnectionBase {
       yielded++;
       yield { path: key };
     }
+  }
+
+  // SQLite has no searchable text index, so search/query/ranges run over the
+  // shared streaming scan fallback. Candidate narrowing is the indexed path
+  // range scan in entries(); matching and locator construction happen in JS.
+  async search(request = {}) {
+    return scanSearch(this, request);
+  }
+
+  async query(request = {}) {
+    return scanQuery(this, request);
+  }
+
+  async getRanges(items, options = {}) {
+    return fetchDocumentRanges((path) => this._readDocumentRow(path), items, options);
+  }
+
+  async _readDocumentRow(path) {
+    let row = this.sqlite.prepare('SELECT body, raw, updated_at FROM documents WHERE path = ?').get(path);
+    if (!row)
+      return null;
+
+    return { body: row.body, raw: row.raw === 1, updated_at: Number(row.updated_at) };
   }
 
   async batch(operations) {

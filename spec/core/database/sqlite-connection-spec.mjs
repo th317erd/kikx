@@ -36,11 +36,11 @@ test('SQLiteConnection capabilities match the declared document surface', () => 
     mergePatch: true,
     list: true,
     getMany: true,
-    search: false,
-    query: false,
+    search: true,
+    query: true,
     events: false,
     auth: false,
-    ranges: false,
+    ranges: true,
   });
 });
 
@@ -49,17 +49,24 @@ test('SQLiteConnection exposes a filename config field and the database path key
   assert.deepEqual(SQLiteConnection.configKeys, [ '/org/aeor/kikx/database/path' ]);
 });
 
-test('SQLiteConnection hides the unsupported search surface behind a typed capability error', async () => {
+test('SQLiteConnection exposes the scan-backed search/query/ranges surface', async () => {
   let db = new SQLiteConnection({ filename: ':memory:' });
   await db.connect();
 
   try {
-    assert.equal(typeof db.searchFiles, 'undefined');
-    assert.equal(typeof db.queryFiles, 'undefined');
-    assert.equal(typeof db.fetchFileRanges, 'undefined');
+    assert.equal(db.supports('search'), true);
+    assert.equal(db.supports('query'), true);
+    assert.equal(db.supports('ranges'), true);
+    assert.equal(typeof db.searchFiles, 'function');
+    assert.equal(typeof db.queryFiles, 'function');
+    assert.equal(typeof db.fetchFileRanges, 'function');
+    assert.equal(typeof db.search, 'function');
+    assert.equal(typeof db.query, 'function');
+    assert.equal(typeof db.getRanges, 'function');
 
+    // events/auth remain unsupported and still fail with a typed error.
     await assert.rejects(
-      () => db.search({ path: '/kikx' }),
+      async () => db.eventsURL(),
       (error) => error instanceof DatabaseError && error.code === 'capability_unsupported',
     );
   } finally {

@@ -1,13 +1,15 @@
 'use strict';
 
-// Locator construction for PostgreSQL full-text-style search. Locators are
-// computed in JS over the stored serialized body so byte/line/char semantics
-// stay explicit and testable, independent of the SQL that selects candidates.
+// Locator construction shared by every driver. Locators are computed in JS over
+// the stored serialized body so byte/line/char semantics stay explicit and
+// testable, independent of whatever SQL or scan selected the candidates.
 // The shapes mirror the AeorDB locator contract: 1-based lines, UTF-8 byte
 // offsets, Unicode-scalar char/column offsets, and a `fetch` hint spanning a
 // snippet around the match.
 
-import { byteLength } from './postgresql-utils.mjs';
+import { byteLength, contentHash } from './document-text-utils.mjs';
+
+export { contentHash };
 
 // Case-insensitive substring scan. `String.prototype.toLowerCase` can change
 // a string's length for a handful of exotic code points, which would skew the
@@ -80,7 +82,7 @@ export function buildLocator(content, range, query, index, options) {
   };
 }
 
-function buildSnippet(text, matchStart, matchEnd, snippetChars) {
+export function buildSnippet(text, matchStart, matchEnd, snippetChars) {
   let beforeChars = Math.trunc(snippetChars / 2);
   let afterChars = snippetChars - beforeChars;
   let snippetStart = moveByChars(text, matchStart, -beforeChars);
@@ -105,7 +107,7 @@ function buildSnippet(text, matchStart, matchEnd, snippetChars) {
 // Line/column/global-scalar position of a code-unit offset. CRLF is counted as
 // a single line break, matching the stored-file line semantics used by ranged
 // fetch (a lone LF still breaks the line).
-function lineInfoForOffset(content, offset) {
+export function lineInfoForOffset(content, offset) {
   let line = 1;
   let column = 0;
   let globalChar = 0;
@@ -134,7 +136,7 @@ function lineInfoForOffset(content, offset) {
 }
 
 // Move `amount` Unicode scalars from a code-unit offset, clamped to the string.
-function moveByChars(text, index, amount) {
+export function moveByChars(text, index, amount) {
   if (amount === 0)
     return index;
 
@@ -159,7 +161,7 @@ function moveByChars(text, index, amount) {
   return cursor;
 }
 
-function codePointCount(text) {
+export function codePointCount(text) {
   let count = 0;
   for (let index = 0; index < text.length; ) {
     let codePoint = text.codePointAt(index);
