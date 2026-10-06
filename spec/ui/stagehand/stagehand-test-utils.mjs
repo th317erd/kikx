@@ -128,7 +128,7 @@ export async function startStagehandUIServer(options = {}) {
     ...(options.compactionService ? { compactionService: options.compactionService } : {}),
     ...(options.pluginPaths ? {} : { pluginLoadPromise: Promise.resolve() }),
   });
-  let server = createServer({
+  let server = await createServer({
     context,
     ...(options.pluginPaths ? { pluginPaths: options.pluginPaths } : {}),
   });

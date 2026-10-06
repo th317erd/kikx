@@ -9,7 +9,7 @@ import { PluginInterface } from './plugin-interface.mjs';
 
 export async function loadPlugins(options = {}) {
   let {
-    pluginPaths = process.env.KIKX_PLUGIN_PATHS || '',
+    pluginPaths = '',
     registry,
     commandRegistry = null,
     context = {},

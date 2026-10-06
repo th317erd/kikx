@@ -1,26 +1,33 @@
 'use strict';
 
+import { createConfigStore, KIKX_HOST_PATH, KIKX_PORT_PATH } from '../core/config/index.mjs';
 import { createServer } from './create-server.mjs';
 import { shutdownHTTPServer } from './shutdown.mjs';
 
-let host = process.env.KIKX_HOST || '127.0.0.1';
-let port = Number.parseInt(process.env.KIKX_PORT || '3000', 10);
 let shuttingDown = false;
+let server;
 
-let server = createServer();
+async function main() {
+  let config = await createConfigStore({});
+  let host = await config.get(KIKX_HOST_PATH) || '127.0.0.1';
+  let port = Number.parseInt(await config.get(KIKX_PORT_PATH) || '3000', 10);
+  server = await createServer({ config });
 
-server.listen(port, host, () => {
-  console.log(`Kikx listening on http://${host}:${port}`);
-});
-
-for (let signal of [ 'SIGINT', 'SIGTERM' ]) {
-  process.on(signal, () => {
-    shutdown(signal).catch((error) => {
-      console.error(`Kikx shutdown failed after ${signal}:`, error);
-      process.exit(1);
-    });
+  server.listen(port, host, () => {
+    console.log(`Kikx listening on http://${host}:${port}`);
   });
+
+  for (let signal of [ 'SIGINT', 'SIGTERM' ]) {
+    process.on(signal, () => {
+      shutdown(signal).catch((error) => {
+        console.error(`Kikx shutdown failed after ${signal}:`, error);
+        process.exit(1);
+      });
+    });
+  }
 }
+
+await main();
 
 async function shutdown(signal) {
   if (shuttingDown)

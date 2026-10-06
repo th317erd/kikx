@@ -312,7 +312,7 @@ async function createStaticFixture() {
 }
 
 test('GET /health reports service state and readiness', async () => {
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {
         eventsURL: () => 'http://aeor.test/system/events',
@@ -352,7 +352,7 @@ test('GET /api/v1/client-components returns plugin renderer descriptors', async 
     tagName: 'kikx-tool-call-frame',
     moduleURL: '/client/components/tool-renderers/kikx-tool-call-frame.mjs',
   });
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       pluginRegistry,
@@ -386,7 +386,7 @@ test('GET /api/v1/client-components returns plugin renderer descriptors', async 
 
 test('GET /api/v1/sessions validates pagination parameters', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -413,7 +413,7 @@ test('GET /api/v1/sessions validates pagination parameters', async () => {
 
 test('POST /api/v1/sessions creates a runtime session', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -455,7 +455,7 @@ test('POST /api/v1/sessions creates a runtime session', async () => {
 
 test('POST /api/v1/sessions creates a child session when parentSessionID is given', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -484,7 +484,7 @@ test('POST /api/v1/sessions creates a child session when parentSessionID is give
 
 test('GET /api/v1/sessions lists runtime sessions', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -519,7 +519,7 @@ test('GET /api/v1/sessions lists runtime sessions', async () => {
 
 test('runtime routes validate session title when provided', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -548,7 +548,7 @@ test('runtime routes validate session title when provided', async () => {
 
 test('POST /api/v1/sessions allows runtime-generated session titles', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -579,7 +579,7 @@ test('POST /api/v1/sessions allows runtime-generated session titles', async () =
 
 test('PATCH /api/v1/sessions/:sessionID updates a runtime session title', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -617,7 +617,7 @@ test('PATCH /api/v1/sessions/:sessionID updates a runtime session title', async 
 
 test('PATCH /api/v1/sessions/:sessionID validates title input', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -646,7 +646,7 @@ test('PATCH /api/v1/sessions/:sessionID validates title input', async () => {
 
 test('PATCH /api/v1/sessions/:sessionID reports missing sessions as 404', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -674,7 +674,7 @@ test('PATCH /api/v1/sessions/:sessionID reports missing sessions as 404', async 
 
 test('POST /api/v1/sessions/:sessionID/messages appends a user message', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -709,7 +709,7 @@ test('POST /api/v1/sessions/:sessionID/messages appends a user message', async (
 test('POST /api/v1/sessions/:sessionID/messages stamps account author metadata when signed in', async () => {
   let runtime = createRuntime();
   let token = unsignedJWT({ sub: 'usr_1' });
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {
         async getFile() {
@@ -753,7 +753,7 @@ test('POST /api/v1/sessions/:sessionID/messages stamps account author metadata w
 
 test('GET /api/v1/account returns a Kikx profile for the signed-in user', async () => {
   let token = unsignedJWT({ sub: 'usr_1' });
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {
         async getFile(pathname) {
@@ -800,7 +800,7 @@ test('PATCH /api/v1/account saves display name and updates AeorDB email', async 
   let token = unsignedJWT({ sub: 'usr_1' });
   let writes = [];
   let updatedUser;
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {
         async getFile() {
@@ -854,7 +854,7 @@ test('PATCH /api/v1/account saves display name and updates AeorDB email', async 
 
 test('GET /api/v1/sessions/:sessionID/frames defaults to the newest window', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -889,7 +889,7 @@ test('GET /api/v1/sessions/:sessionID/frames defaults to the newest window', asy
 
 test('GET /api/v1/sessions/:sessionID/frames passes the before cursor and limit', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -914,7 +914,7 @@ test('GET /api/v1/sessions/:sessionID/frames passes the before cursor and limit'
 
 test('GET /api/v1/sessions/:sessionID/frames keeps the legacy offset path', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -939,7 +939,7 @@ test('GET /api/v1/sessions/:sessionID/frames keeps the legacy offset path', asyn
 
 test('GET /api/v1/sessions/:sessionID/frames rejects an invalid before cursor', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -959,7 +959,7 @@ test('GET /api/v1/sessions/:sessionID/frames rejects an invalid before cursor', 
 
 test('GET /api/v1/tool-outputs/:outputID reads stored tool output with bounded defaults', async () => {
   let calls = [];
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       processManager: {},
@@ -1003,7 +1003,7 @@ test('GET /api/v1/tool-outputs/:outputID reads stored tool output with bounded d
 
 test('GET /api/v1/tool-outputs/:outputID forwards explicit ranges', async () => {
   let calls = [];
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       processManager: {},
@@ -1048,7 +1048,7 @@ test('GET /api/v1/tool-outputs/:outputID forwards explicit ranges', async () => 
 
 test('runtime routes validate message text', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -1077,7 +1077,7 @@ test('runtime routes validate message text', async () => {
 
 test('runtime routes report missing sessions as 404', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -1104,7 +1104,7 @@ test('runtime routes report missing sessions as 404', async () => {
 });
 
 test('GET /api/v1/aeordb/events-url returns delegated AeorDB events URL', async () => {
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {
         eventsURL: (params) => `events:${params.events}:${params.path_prefix}`,
@@ -1130,7 +1130,7 @@ test('GET /api/v1/aeordb/events-url returns delegated AeorDB events URL', async 
 });
 
 test('GET /api/v1/tokens returns token usage totals', async () => {
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       tokenUsage: {
@@ -1176,7 +1176,7 @@ test('GET /api/v1/tokens returns token usage totals', async () => {
 
 test('GET /api/v1/events streams runtime events as SSE', async () => {
   let runtime = new EventEmitter();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -1224,7 +1224,7 @@ test('GET /api/v1/events streams token usage updates as SSE', async () => {
   let runtime = new EventEmitter();
   let tokenUsage = new EventEmitter();
   tokenUsage.snapshot = () => ({});
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -1291,7 +1291,7 @@ async function readSSEEvent(reader) {
 
 test('GET /api/v1/agent-providers lists plugin-declared providers', async () => {
   let agentManager = createAgentManager();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       agentManager,
@@ -1315,7 +1315,7 @@ test('GET /api/v1/agent-providers lists plugin-declared providers', async () => 
 
 test('agent routes create, list, read, update, and delete through AgentManager', async () => {
   let agentManager = createAgentManager();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       agentManager,
@@ -1370,7 +1370,7 @@ test('agent routes create, list, read, update, and delete through AgentManager',
 
 test('agent crown routes toggle master status and list masters', async () => {
   let agentManager = createAgentManager();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       agentManager,
@@ -1411,7 +1411,7 @@ test('agent crown routes toggle master status and list masters', async () => {
 
 test('agent compaction-bot routes toggle designation and list bots', async () => {
   let agentManager = createAgentManager();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       agentManager,
@@ -1446,7 +1446,7 @@ test('agent compaction-bot routes toggle designation and list bots', async () =>
 
 test('agent routes validate request bodies and report missing agents', async () => {
   let agentManager = createAgentManager();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       agentManager,
@@ -1493,7 +1493,7 @@ test('agent routes validate request bodies and report missing agents', async () 
 
 test('team routes create, list, read, update, add/remove members, and delete through TeamManager', async () => {
   let teamManager = createTeamManager();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       agentManager: createAgentManager(),
@@ -1557,7 +1557,7 @@ test('team routes create, list, read, update, add/remove members, and delete thr
 
 test('team routes validate request bodies and report missing teams', async () => {
   let teamManager = createTeamManager();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       agentManager: createAgentManager(),
@@ -1595,7 +1595,7 @@ test('team routes validate request bodies and report missing teams', async () =>
 
 test('POST /api/v1/auth/magic-link forwards email to AeorDB', async () => {
   let seenEmail;
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {
         requestMagicLink: async (email) => {
@@ -1628,7 +1628,7 @@ test('POST /api/v1/auth/magic-link forwards email to AeorDB', async () => {
 
 test('GET /api/v1/auth/magic-link/verify forwards code to AeorDB', async () => {
   let seenCode;
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {
         verifyMagicLink: async (code) => {
@@ -1660,7 +1660,7 @@ test('GET /api/v1/auth/magic-link/verify forwards code to AeorDB', async () => {
 
 test('POST /api/v1/auth/token forwards api_key to AeorDB', async () => {
   let seenAPIKey;
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {
         exchangeAPIKey: async (apiKey) => {
@@ -1695,7 +1695,7 @@ test('POST /api/v1/auth/token forwards api_key to AeorDB', async () => {
 
 test('POST /api/v1/auth/refresh forwards refresh_token to AeorDB', async () => {
   let seenRefreshToken;
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {
         refreshToken: async (refreshToken) => {
@@ -1729,7 +1729,7 @@ test('POST /api/v1/auth/refresh forwards refresh_token to AeorDB', async () => {
 });
 
 test('auth routes reject malformed JSON', async () => {
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
     }),
@@ -1759,7 +1759,7 @@ test('auth routes reject malformed JSON', async () => {
 });
 
 test('auth routes validate required fields', async () => {
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
     }),
@@ -1783,7 +1783,7 @@ test('auth routes validate required fields', async () => {
 });
 
 test('unknown routes return JSON 404', async () => {
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {
         eventsURL: () => 'unused',
@@ -1810,7 +1810,7 @@ test('unknown routes return JSON 404', async () => {
 
 test('GET / serves the browser client index', async () => {
   let fixture = await createStaticFixture();
-  let server = createServer({
+  let server = await createServer({
     clientRoot: fixture.clientRoot,
     aeorWebComponentsRoot: fixture.aeorWebComponentsRoot,
     context: new AppContext({
@@ -1837,7 +1837,7 @@ test('GET / serves the browser client index', async () => {
 
 test('GET /vendor/aeor-web-components serves shared component assets', async () => {
   let fixture = await createStaticFixture();
-  let server = createServer({
+  let server = await createServer({
     clientRoot: fixture.clientRoot,
     aeorWebComponentsRoot: fixture.aeorWebComponentsRoot,
     context: new AppContext({
@@ -1864,7 +1864,7 @@ test('GET /vendor/aeor-web-components serves shared component assets', async () 
 
 test('GET /client/*.mjs serves browser modules with JavaScript MIME type', async () => {
   let fixture = await createStaticFixture();
-  let server = createServer({
+  let server = await createServer({
     clientRoot: fixture.clientRoot,
     sharedRoot: fixture.sharedRoot,
     aeorWebComponentsRoot: fixture.aeorWebComponentsRoot,
@@ -1892,7 +1892,7 @@ test('GET /client/*.mjs serves browser modules with JavaScript MIME type', async
 
 test('GET /shared/*.mjs serves shared browser-safe modules with JavaScript MIME type', async () => {
   let fixture = await createStaticFixture();
-  let server = createServer({
+  let server = await createServer({
     clientRoot: fixture.clientRoot,
     sharedRoot: fixture.sharedRoot,
     aeorWebComponentsRoot: fixture.aeorWebComponentsRoot,
@@ -1920,7 +1920,7 @@ test('GET /shared/*.mjs serves shared browser-safe modules with JavaScript MIME 
 
 test('static routes reject path traversal outside configured roots', async () => {
   let fixture = await createStaticFixture();
-  let server = createServer({
+  let server = await createServer({
     clientRoot: fixture.clientRoot,
     sharedRoot: fixture.sharedRoot,
     aeorWebComponentsRoot: fixture.aeorWebComponentsRoot,
@@ -1947,7 +1947,7 @@ test('static routes reject path traversal outside configured roots', async () =>
 
 test('POST /api/v1/sessions/previews returns bounded previews in one request', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,
@@ -1979,7 +1979,7 @@ test('POST /api/v1/sessions/previews returns bounded previews in one request', a
 
 test('POST /api/v1/sessions/previews validates its request body', async () => {
   let runtime = createRuntime();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime: runtime,

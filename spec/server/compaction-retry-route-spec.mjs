@@ -73,7 +73,7 @@ function createCompactionService() {
 test('POST /api/v1/sessions/:id/compaction/:frameID/retry returns the updated frame', async () => {
   let frameRuntime = createFrameRuntime();
   let compactionService = createCompactionService();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime,
@@ -100,7 +100,7 @@ test('POST /api/v1/sessions/:id/compaction/:frameID/retry returns the updated fr
 test('POST /api/v1/sessions/:id/compaction/:frameID/retry 404s an unknown frame', async () => {
   let frameRuntime = createFrameRuntime();
   let compactionService = createCompactionService();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime,
@@ -125,7 +125,7 @@ test('POST /api/v1/sessions/:id/compaction/:frameID/retry 404s an unknown frame'
 test('POST compaction retry 404s an unknown session before touching the frame', async () => {
   let frameRuntime = createFrameRuntime();
   let compactionService = createCompactionService();
-  let server = createServer({
+  let server = await createServer({
     context: new AppContext({
       aeordb: {},
       frameRuntime,

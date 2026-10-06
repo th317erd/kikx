@@ -38,8 +38,8 @@ async function createPluginAssetFixture() {
   return root;
 }
 
-function createPluginServer(pluginRegistry) {
-  return createServer({
+async function createPluginServer(pluginRegistry) {
+  return await createServer({
     context: new AppContext({ aeordb: {}, pluginRegistry, builtInToolsRegistered: true }),
   });
 }
@@ -70,7 +70,7 @@ test('GET /api/v1/client-components includes plugin agent-config-form descriptor
     tagName: 'kog-agent-config-form',
     moduleURL: '/api/v1/plugin-assets/kikx-plugin-codex/agent-config-form.mjs',
   });
-  let server = createPluginServer(pluginRegistry);
+  let server = await createPluginServer(pluginRegistry);
   let baseURL = await listen(server);
 
   try {
@@ -95,7 +95,7 @@ test('GET /api/v1/plugin-assets serves a plugin client asset with JS MIME type',
   let pluginRoot = await createPluginAssetFixture();
   let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
   pluginRegistry.registerPluginPath('kikx-plugin-codex', pluginRoot, [ 'codex-agent' ]);
-  let server = createPluginServer(pluginRegistry);
+  let server = await createPluginServer(pluginRegistry);
   let baseURL = await listen(server);
 
   try {
@@ -119,7 +119,7 @@ test('GET /api/v1/plugin-assets rejects traversal and unknown plugins', async ()
   let pluginRoot = await createPluginAssetFixture();
   let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
   pluginRegistry.registerPluginPath('kikx-plugin-codex', pluginRoot, []);
-  let server = createPluginServer(pluginRegistry);
+  let server = await createPluginServer(pluginRegistry);
   let baseURL = await listen(server);
 
   try {

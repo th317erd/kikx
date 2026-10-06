@@ -16,8 +16,8 @@ export class AeorDBError extends Error {
 export class AeorDBClient {
   constructor(options = {}) {
     let {
-      baseURL = process.env.AEORDB_URL,
-      token = process.env.AEORDB_TOKEN,
+      baseURL,
+      token = '',
       timeoutMS = DEFAULT_TIMEOUT_MS,
       fetchImpl = globalThis.fetch,
     } = options;

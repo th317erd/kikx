@@ -5,6 +5,18 @@ import { fileURLToPath } from 'node:url';
 
 import { AppContext } from '../core/app/app-context.mjs';
 import { AccountStore } from '../core/account/index.mjs';
+import {
+  AEORDB_TOKEN_PATH,
+  AEORDB_URL_PATH,
+  AEOR_WEB_COMPONENTS_DIR_PATH,
+  KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH,
+  KIKX_COMPACTION_HARD_RATIO_PATH,
+  KIKX_COMPACTION_TRIGGER_RATIO_PATH,
+  KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH,
+  KIKX_CONTEXT_WINDOW_TOKENS_PATH,
+  KIKX_PLUGIN_PATHS_PATH,
+  createConfigStore,
+} from '../core/config/index.mjs';
 import { AeorDBClient } from '../core/aeordb/aeordb-client.mjs';
 import {
   AgentCwdStore,
@@ -45,18 +57,26 @@ const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
 const SHARED_ROOT = fileURLToPath(new URL('../shared/', import.meta.url));
 const DEFAULT_AEOR_WEB_COMPONENTS_ROOT = '/home/wyatt/Projects/aeor-web-components';
 
-export function createServer(options = {}) {
+export async function createServer(options = {}) {
   let context = options.context || new AppContext();
+  let config = options.config;
+  if (!config)
+    config = await createConfigStore({ jsonEnvPath: options.jsonEnvPath });
+
+  if (!context.has('config'))
+    context.set('config', config);
+
+  let pluginPaths = options.pluginPaths || await config.get(KIKX_PLUGIN_PATHS_PATH) || '';
   let staticRoots = {
     client: options.clientRoot || CLIENT_ROOT,
     shared: options.sharedRoot || SHARED_ROOT,
-    aeorWebComponents: options.aeorWebComponentsRoot || process.env.AEOR_WEB_COMPONENTS_DIR || DEFAULT_AEOR_WEB_COMPONENTS_ROOT,
+    aeorWebComponents: options.aeorWebComponentsRoot || await config.get(AEOR_WEB_COMPONENTS_DIR_PATH) || DEFAULT_AEOR_WEB_COMPONENTS_ROOT,
   };
 
   if (!context.has('aeordb')) {
     context.set('aeordb', new AeorDBClient({
-      baseURL: options.aeorDBURL || process.env.AEORDB_URL || 'http://127.0.0.1:6830',
-      token: options.aeorDBToken || process.env.AEORDB_TOKEN || '',
+      baseURL: options.aeorDBURL || await config.get(AEORDB_URL_PATH) || 'http://127.0.0.1:6830',
+      token: options.aeorDBToken || await config.get(AEORDB_TOKEN_PATH) || '',
       fetchImpl: options.fetchImpl || globalThis.fetch,
     }));
   }
@@ -139,7 +159,7 @@ export function createServer(options = {}) {
   if (!context.has('pluginLoadPromise')) {
     context.set('pluginLoadPromise', (async () => {
       await loadPlugins({
-        pluginPaths: options.pluginPaths || process.env.KIKX_PLUGIN_PATHS || '',
+        pluginPaths,
         registry: context.require('pluginRegistry'),
         commandRegistry: context.require('commandRegistry'),
         context,
@@ -197,11 +217,11 @@ export function createServer(options = {}) {
       agentManager: context.require('agentManager'),
       pluginRegistry: context.require('pluginRegistry'),
       frameRuntime: context.require('frameRuntime'),
-      contextWindowTokens: parseEnvPositiveInteger(process.env.KIKX_CONTEXT_WINDOW_TOKENS, 128000),
-      compactionAgentContextTokens: parseEnvPositiveInteger(process.env.KIKX_COMPACTION_AGENT_CONTEXT_TOKENS, 128000),
-      promptReserveTokens: parseEnvNonNegativeInteger(process.env.KIKX_CONTEXT_PROMPT_RESERVE_TOKENS, 8000),
-      compactionTriggerRatio: parseEnvRatio(process.env.KIKX_COMPACTION_TRIGGER_RATIO, 0.7),
-      hardLimitRatio: parseEnvRatio(process.env.KIKX_COMPACTION_HARD_RATIO, 1),
+      contextWindowTokens: parseEnvPositiveInteger(await config.get(KIKX_CONTEXT_WINDOW_TOKENS_PATH), 128000),
+      compactionAgentContextTokens: parseEnvPositiveInteger(await config.get(KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH), 128000),
+      promptReserveTokens: parseEnvNonNegativeInteger(await config.get(KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH), 8000),
+      compactionTriggerRatio: parseEnvRatio(await config.get(KIKX_COMPACTION_TRIGGER_RATIO_PATH), 0.7),
+      hardLimitRatio: parseEnvRatio(await config.get(KIKX_COMPACTION_HARD_RATIO_PATH), 1),
       logger: options.logger || console,
     }));
   }
