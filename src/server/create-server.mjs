@@ -18,6 +18,7 @@ import {
   KIKX_AUTH_ACCESS_TTL_SECONDS_PATH,
   KIKX_AUTH_MAGIC_LINK_TTL_SECONDS_PATH,
   KIKX_AUTH_MAILER_FROM_PATH,
+  KIKX_AUTH_MAILER_LOG_PATH,
   KIKX_AUTH_MAILER_MODE_PATH,
   KIKX_AUTH_MAILER_SMTP_URL_PATH,
   KIKX_AUTH_PUBLIC_URL_PATH,
@@ -101,6 +102,7 @@ export async function createServer(options = {}) {
   let authAdminName = options.authAdminName || await config.get(KIKX_ADMIN_NAME_PATH) || '';
   let authPublicURL = options.authPublicURL || await config.get(KIKX_AUTH_PUBLIC_URL_PATH) || '';
   let authMailerMode = options.authMailerMode || await config.get(KIKX_AUTH_MAILER_MODE_PATH) || 'log';
+  let authMailerLogPath = options.authMailerLogPath || await config.get(KIKX_AUTH_MAILER_LOG_PATH) || '';
   let authMailerSMTPURL = options.authMailerSMTPURL || await config.get(KIKX_AUTH_MAILER_SMTP_URL_PATH) || '';
   let authMailerFrom = options.authMailerFrom || await config.get(KIKX_AUTH_MAILER_FROM_PATH) || 'Kikx <no-reply@localhost>';
   let authAccessTTLSeconds = parseEnvPositiveInteger(await config.get(KIKX_AUTH_ACCESS_TTL_SECONDS_PATH), 3600);
@@ -214,7 +216,7 @@ export async function createServer(options = {}) {
 
   if (!context.has('authService')) {
     let logger = options.logger || console;
-    let mailer = createMailer({ mode: authMailerMode, log: logger, smtpUrl: authMailerSMTPURL, from: authMailerFrom });
+    let mailer = createMailer({ mode: authMailerMode, log: logger, logPath: authMailerLogPath, smtpUrl: authMailerSMTPURL, from: authMailerFrom });
     context.set('authService', createAuthService({
       db: context.require('db'),
       mailer,

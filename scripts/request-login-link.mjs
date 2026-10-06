@@ -11,6 +11,7 @@ const DEFAULT_KIKX_HOST = process.env.KIKX_HOST || '127.0.0.1';
 const DEFAULT_KIKX_PORT = process.env.KIKX_PORT || 3000;
 const DEFAULT_KIKX_URL = `http://${DEFAULT_KIKX_HOST}:${DEFAULT_KIKX_PORT}`;
 const DEFAULT_EMAIL = 'wegreenway@taraani.org';
+const DEFAULT_KIKX_AUTH_LOG_PATH = '/tmp/codex/kikx/kikx-auth.log';
 const DEFAULT_AEORDB_LOG_PATH = '/tmp/codex/kikx/aeordb.log';
 const DEFAULT_LINK_TIMEOUT_MS = 3000;
 const ANSI_ESCAPE_PATTERN = /\x1B\[[0-9;?]*[ -/]*[@-~]/g;
@@ -30,8 +31,12 @@ async function main() {
 
   let baseURL = (process.env.KIKX_URL || DEFAULT_KIKX_URL).replace(/\/+$/g, '');
   let publicURL = (process.env.KIKX_PUBLIC_URL || baseURL).replace(/\/+$/g, '');
+  let kikxAuthLogPath = process.env.KIKX_AUTH_MAILER_LOG_PATH || DEFAULT_KIKX_AUTH_LOG_PATH;
   let aeorDBLogPath = process.env.AEORDB_LOG_PATH || DEFAULT_AEORDB_LOG_PATH;
-  let logOffset = await fileSize(aeorDBLogPath);
+  let logTargets = [
+    { path: kikxAuthLogPath, offset: await fileSize(kikxAuthLogPath) },
+    { path: aeorDBLogPath, offset: await fileSize(aeorDBLogPath) },
+  ];
   let response;
 
   try {
@@ -51,8 +56,7 @@ async function main() {
     throw new Error(body?.error?.message || `Kikx returned HTTP ${response.status}`);
 
   let code = await waitForLoginCode({
-    logPath: aeorDBLogPath,
-    offset: logOffset,
+    logTargets,
     timeoutMS: Number.parseInt(process.env.LOGIN_LINK_TIMEOUT_MS || `${DEFAULT_LINK_TIMEOUT_MS}`, 10),
   });
 
@@ -88,28 +92,32 @@ function printUsage() {
     `  KIKX_URL          Kikx server URL. Default: ${DEFAULT_KIKX_URL}`,
     `  KIKX_PUBLIC_URL   Public browser URL for generated links. Default: KIKX_URL`,
     `  KIKX_LOGIN_EMAIL  Email address if not passed as an argument. Default: ${DEFAULT_EMAIL}`,
-    `  AEORDB_LOG_PATH   AeorDB log to scan for dev magic links. Default: ${DEFAULT_AEORDB_LOG_PATH}`,
-    `  LOGIN_LINK_TIMEOUT_MS  How long to wait for the AeorDB log line. Default: ${DEFAULT_LINK_TIMEOUT_MS}`,
+    `  KIKX_AUTH_MAILER_LOG_PATH  Kikx dev mailer log to scan for magic links. Default: ${DEFAULT_KIKX_AUTH_LOG_PATH}`,
+    `  AEORDB_LOG_PATH   Legacy AeorDB log to scan as a fallback. Default: ${DEFAULT_AEORDB_LOG_PATH}`,
+    `  LOGIN_LINK_TIMEOUT_MS  How long to wait for the dev log line. Default: ${DEFAULT_LINK_TIMEOUT_MS}`,
     '',
-    'AeorDB must be started with AEORDB_LOG_MAGIC_LINKS=1 for this dev script to print a link.',
+    'Set the dev mailer to log mode (default) and KIKX_AUTH_MAILER_LOG_PATH, then restart Kikx.',
   ].join('\n'));
 }
 
-async function waitForLoginCode({ logPath, offset, timeoutMS }) {
+async function waitForLoginCode({ logTargets, timeoutMS }) {
   let deadline = Date.now() + timeoutMS;
 
   while (Date.now() <= deadline) {
-    let text = await readFileSlice(logPath, offset);
-    let code = extractMagicLinkCode(text);
-    if (code)
-      return code;
+    for (let target of logTargets) {
+      let text = await readFileSlice(target.path, target.offset);
+      let code = extractMagicLinkCode(text);
+      if (code)
+        return code;
+    }
 
     await sleep(100);
   }
 
   throw new Error([
-    'Magic link was requested, but no dev login link appeared in the AeorDB log.',
-    'Restart AeorDB with AEORDB_LOG_MAGIC_LINKS=1 and make sure AEORDB_LOG_PATH points to its log file.',
+    'Magic link was requested, but no dev login link appeared in the Kikx mailer log or the legacy AeorDB log.',
+    'Set the dev mailer to log mode (default) and KIKX_AUTH_MAILER_LOG_PATH, then restart Kikx.',
+    'AEORDB_LOG_PATH remains as a legacy fallback.',
   ].join(' '));
 }
 

@@ -1,17 +1,38 @@
 'use strict';
 
+import fs from 'node:fs/promises';
+import { dirname } from 'node:path';
+
 import { authError } from './auth-error.mjs';
 
 const MAGIC_LINK_PATH = '/api/v1/auth/magic-link/verify';
 
 // Dev mailer: writes the magic-link URL so a developer can click it from the
 // server log. Mirrors AeorDB's AEORDB_LOG_MAGIC_LINKS behaviour. `log` may be a
-// function, a logger with .info()/.error(), or omitted (console).
-export function createLogMailer({ log } = {}) {
+// function, a logger with .info()/.error(), or omitted (console). When
+// `logPath` is a non-empty string the same line is also appended to that file;
+// a file write failure is reported as a warning and never fails the login.
+export function createLogMailer({ log, logPath } = {}) {
   let write = resolveLog(log);
+  let filePath = typeof logPath === 'string' && logPath.trim() !== '' ? logPath : '';
+
+  async function appendToFile(message) {
+    if (!filePath)
+      return;
+
+    try {
+      await fs.mkdir(dirname(filePath), { recursive: true });
+      await fs.appendFile(filePath, `${message}\n`);
+    } catch (error) {
+      write(`[kikx-auth] unable to write magic-link log ${filePath}: ${error.message}`);
+    }
+  }
+
   return {
     async sendMagicLink({ to, url, code, expiresAt }) {
-      write(`[kikx-auth] magic link for ${to}: ${url} (code=${code} expires=${formatExpiry(expiresAt)})`);
+      let message = `[kikx-auth] magic link for ${to}: ${url} (code=${code} expires=${formatExpiry(expiresAt)})`;
+      write(message);
+      await appendToFile(message);
       return { to, url, code, expiresAt };
     },
   };
@@ -21,10 +42,10 @@ export function createLogMailer({ log } = {}) {
 // nodemailer lazily on first send so the package stays optional and a missing
 // package surfaces as a clear authError instead of a boot failure.
 export function createMailer(options = {}) {
-  let { mode = 'log', log, smtpUrl, from = '' } = options;
+  let { mode = 'log', log, logPath, smtpUrl, from = '' } = options;
 
   if (mode === 'log')
-    return createLogMailer({ log });
+    return createLogMailer({ log, logPath });
 
   if (mode !== 'smtp')
     throw authError(400, 'invalid_mailer_mode', `Unknown mailer mode: ${mode}`);

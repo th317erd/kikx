@@ -350,10 +350,85 @@ test('request-login-link fails loudly when AeorDB does not log the dev link', as
     });
 
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /AEORDB_LOG_MAGIC_LINKS=1/);
+    assert.match(result.stderr, /KIKX_AUTH_MAILER_LOG_PATH/);
   } finally {
     await close(server);
     await fs.rm(path.dirname(logPath), { recursive: true, force: true });
+  }
+});
+
+test('request-login-link reads the Kikx mailer log when the AeorDB log has no code', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-login-link-'));
+  let kikxLogPath = path.join(dir, 'kikx-auth.log');
+  let aeorDBLogPath = path.join(dir, 'aeordb.log');
+  await fs.writeFile(kikxLogPath, 'startup log\n');
+  await fs.writeFile(aeorDBLogPath, 'startup log\n');
+
+  let { server, baseURL } = await listen(async (_request, response) => {
+    await fs.appendFile(
+      kikxLogPath,
+      '[kikx-auth] magic link for alice@example.com: /api/v1/auth/magic-link/verify?code=kikx-only (code=kikx-only expires=2026-01-01T00:00:00.000Z)\n',
+    );
+
+    response.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+    });
+    response.end(JSON.stringify({ data: { message: 'sent' } }));
+  });
+
+  try {
+    let result = await runScript([ 'alice@example.com' ], {
+      env: {
+        KIKX_AUTH_MAILER_LOG_PATH: kikxLogPath,
+        AEORDB_LOG_PATH: aeorDBLogPath,
+        KIKX_URL: baseURL,
+        KIKX_PUBLIC_URL: 'http://kikx.test',
+      },
+    });
+
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.trim(), 'http://kikx.test/?code=kikx-only');
+  } finally {
+    await close(server);
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('request-login-link prefers the Kikx mailer log when both logs receive a code', async () => {
+  let dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-login-link-'));
+  let kikxLogPath = path.join(dir, 'kikx-auth.log');
+  let aeorDBLogPath = path.join(dir, 'aeordb.log');
+  await fs.writeFile(kikxLogPath, 'startup log\n');
+  await fs.writeFile(aeorDBLogPath, 'startup log\n');
+
+  let { server, baseURL } = await listen(async (_request, response) => {
+    await fs.appendFile(
+      kikxLogPath,
+      '[kikx-auth] magic link for alice@example.com: /api/v1/auth/magic-link/verify?code=kikx-code (code=kikx-code expires=2026-01-01T00:00:00.000Z)\n',
+    );
+    await fs.appendFile(aeorDBLogPath, 'magic_link_url="/auth/magic-link/verify?code=aeordb-code"\n');
+
+    response.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+    });
+    response.end(JSON.stringify({ data: { message: 'sent' } }));
+  });
+
+  try {
+    let result = await runScript([ 'alice@example.com' ], {
+      env: {
+        KIKX_AUTH_MAILER_LOG_PATH: kikxLogPath,
+        AEORDB_LOG_PATH: aeorDBLogPath,
+        KIKX_URL: baseURL,
+        KIKX_PUBLIC_URL: 'http://kikx.test',
+      },
+    });
+
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.trim(), 'http://kikx.test/?code=kikx-code');
+  } finally {
+    await close(server);
+    await fs.rm(dir, { recursive: true, force: true });
   }
 });
 
