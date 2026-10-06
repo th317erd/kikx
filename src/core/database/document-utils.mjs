@@ -28,6 +28,12 @@ export function pathBounds(base) {
   return [ `${base}/`, `${base}0` ];
 }
 
+// Path of `key` relative to its normalized `base`. `/` is the only base where
+// the naive `base.length + 1` slice would drop a real leading character.
+export function relativePath(base, key) {
+  return base === '/' ? key.slice(1) : key.slice(base.length + 1);
+}
+
 // Select the descendant paths of `prefix` that survive the recursive/glob
 // filters, sorted by basename (then full path) so zero-padded frame filenames
 // keep chronological order. Accepts any iterable of stored keys.
@@ -35,13 +41,14 @@ export function selectDocumentPaths(paths, prefix, options = {}) {
   let base = normalizePath(prefix);
   let recursive = options.recursive === true;
   let glob = options.glob || '**';
+  let boundary = base === '/' ? '/' : `${base}/`;
   let matches = [];
 
   for (let key of paths) {
-    if (key === base || !key.startsWith(`${base}/`))
+    if (key === base || !key.startsWith(boundary))
       continue;
 
-    let relative = key.slice(base.length + 1);
+    let relative = relativePath(base, key);
     if (!recursive && relative.includes('/'))
       continue;
 

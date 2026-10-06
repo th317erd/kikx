@@ -8,6 +8,8 @@ import {
   matchGlob,
   normalizePath,
   paginate,
+  pathBounds,
+  relativePath,
   selectDocumentPaths,
 } from './document-utils.mjs';
 import {
@@ -26,10 +28,10 @@ const CREATE_DOCUMENTS_TABLE = [
   ')',
 ].join('\n');
 
-// Range scan: '/' (0x2f) sorts before '0' (0x30), so every descendant of a
-// normalized prefix lives in [base + '/', base + '0'). The explicit "C"
-// collation is required: the database default locale is not byte-ordered and
-// would otherwise break both the sentinel bound and the stream paging order.
+// Range scan: `/` (0x2f) sorts before `0` (0x30), so every descendant of a
+// normalized prefix lives in `pathBounds(prefix)`. The explicit "C" collation
+// is required: the database default locale is not byte-ordered and would
+// otherwise break both the sentinel bound and the stream paging order.
 const DESCENDANT_QUERY = 'SELECT path FROM documents WHERE path COLLATE "C" >= $1 AND path COLLATE "C" < $2 ORDER BY path COLLATE "C"';
 const STREAM_PAGE_SIZE = 500;
 
@@ -171,7 +173,7 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
 
   async list(prefix, options = {}) {
     let base = normalizePath(prefix);
-    let result = await this.pool.query(DESCENDANT_QUERY, [ base + '/', base + '0' ]);
+    let result = await this.pool.query(DESCENDANT_QUERY, pathBounds(base));
     let matches = selectDocumentPaths(result.rows.map((row) => row.path), prefix, options);
     let items = paginate(matches, options).map((key) => ({ path: key }));
     return { items, total: matches.length };
@@ -187,7 +189,7 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
     let seen = 0;
     let yielded = 0;
     for await (let key of this._iteratePaths(base)) {
-      let relative = key.slice(base.length + 1);
+      let relative = relativePath(base, key);
       if (!recursive && relative.includes('/'))
         continue;
       if (!matchGlob(relative, glob))
@@ -319,7 +321,7 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
     while (true) {
       let result = await this.pool.query(
         `${DESCENDANT_QUERY} LIMIT $3 OFFSET $4`,
-        [ base + '/', base + '0', STREAM_PAGE_SIZE, offset ],
+        [ ...pathBounds(base), STREAM_PAGE_SIZE, offset ],
       );
       for (let row of result.rows)
         yield row.path;

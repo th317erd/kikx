@@ -253,6 +253,38 @@ export function runDatabaseContractSuite(label, factory, options = {}) {
         await db.close();
       }
     });
+
+    // Regression: the root prefix is the only one where the `base + '/'` bound
+    // and the `base.length + 1` relative slice do not apply, so it needs its own
+    // coverage. Assert membership (not exact totals) because the target may hold
+    // documents outside the prefixes this suite owns.
+    describe('list() and entries() enumerate descendants of the root prefix', async () => {
+      let db = await factory();
+      try {
+        await db.put('/kikx/rootcheck/a.json', { a: 1 });
+        await db.put('/kikx/rootcheck/deep/b.json', { b: 1 });
+
+        let page = await db.list('/', { recursive: true, glob: '**/rootcheck/**/*.json' });
+        let listed = page.items.map((item) => item.path);
+        assert.ok(listed.includes('/kikx/rootcheck/a.json'), 'root list() must include shallow descendants');
+        assert.ok(listed.includes('/kikx/rootcheck/deep/b.json'), 'root list() must include deep descendants');
+
+        let flat = await db.list('/', { recursive: false, glob: '**' });
+        assert.ok(
+          !flat.items.some((item) => item.path === '/kikx/rootcheck/a.json'),
+          'root non-recursive list() must not include nested descendants',
+        );
+
+        let streamed = [];
+        for await (let entry of db.entries('/', { recursive: true }))
+          streamed.push(entry.path);
+
+        assert.ok(streamed.includes('/kikx/rootcheck/a.json'), 'root entries() must include shallow descendants');
+        assert.ok(streamed.includes('/kikx/rootcheck/deep/b.json'), 'root entries() must include deep descendants');
+      } finally {
+        await db.close();
+      }
+    });
   }
 
   describe('entries() streams {path} objects and never materializes the full table', async () => {

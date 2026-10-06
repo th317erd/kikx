@@ -8,6 +8,8 @@ import {
   matchGlob,
   normalizePath,
   paginate,
+  pathBounds,
+  relativePath,
   selectDocumentPaths,
 } from './document-utils.mjs';
 import { fetchDocumentRanges } from './document-ranges.mjs';
@@ -163,9 +165,9 @@ export class SQLiteConnection extends DatabaseConnectionBase {
 
     let seen = 0;
     let yielded = 0;
-    for (let row of this.sqlite.prepare(DESCENDANT_QUERY).iterate(base + '/', base + '0')) {
+    for (let row of this.sqlite.prepare(DESCENDANT_QUERY).iterate(...pathBounds(base))) {
       let key = row.path;
-      let relative = key.slice(base.length + 1);
+      let relative = relativePath(base, key);
       if (!recursive && relative.includes('/'))
         continue;
       if (!matchGlob(relative, glob))
@@ -244,11 +246,11 @@ export class SQLiteConnection extends DatabaseConnectionBase {
   }
 
   // Loads the descendant keys under a normalized prefix with a single indexed
-  // range scan (`path >= base/` and `path < base0`), then sorts in JS for the
-  // stable basename order the contract requires.
+  // range scan (`pathBounds(prefix)`), then sorts in JS for the stable basename
+  // order the contract requires.
   _queryPaths(base) {
     return this.sqlite.prepare(DESCENDANT_QUERY)
-      .all(base + '/', base + '0')
+      .all(...pathBounds(base))
       .map((row) => row.path);
   }
 }
