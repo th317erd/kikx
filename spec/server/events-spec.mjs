@@ -117,6 +117,22 @@ test('streamRuntimeEvents heartbeats a stream that has no traffic', (t) => {
   assert.equal(response.body.length, length);
 });
 
+test('a throwing subscription cannot leak the heartbeat interval', (t) => {
+  t.mock.timers.enable({ apis: [ 'setInterval' ] });
+  let response = createResponse();
+  let frameRuntime = createFrameRuntime();
+  frameRuntime.on = () => {
+    throw new Error('subscription failed');
+  };
+
+  assert.throws(() => streamRuntimeEvents({ request: createRequest(), response, frameRuntime }), /subscription failed/);
+
+  let length = response.body.length;
+  t.mock.timers.tick(25000);
+  assert.equal(response.body.length, length, 'the heartbeat must be cleared when the subscription fails');
+  assert.equal(frameRuntime.listenerCount('event'), 0);
+});
+
 test('an unserializable event cannot tear down the stream', () => {
   let response = createResponse();
   let frameRuntime = createFrameRuntime();

@@ -166,6 +166,24 @@ test('createServer resolves baseCWD from KIKX_CWD for file, command, and agent c
   assert.equal(context.require('agentCwdStore').baseCWD, dir);
 });
 
+test('a relative KIKX_CWD is resolved once instead of leaking into the services', async () => {
+  let injected = await createConfigStore({ env: { KIKX_CWD: 'kikx-relative-workspace' } });
+  let server = await createServer({
+    config: injected,
+    fetchImpl: stubFetch,
+  });
+  let context = server.kikxContext;
+
+  // The exact base is whatever the process cwd is; what matters is that it was
+  // resolved here (once) so the services cannot resolve it against a *different*
+  // cwd later.
+  let expected = path.resolve('kikx-relative-workspace');
+  assert.equal(path.isAbsolute(context.require('fileAccess').cwd), true);
+  assert.equal(context.require('fileAccess').cwd, expected);
+  assert.equal(context.require('commandExecutor').cwd, expected);
+  assert.equal(context.require('agentCwdStore').baseCWD, expected);
+});
+
 test('options.cwd takes precedence over the KIKX_CWD config', async () => {
   let configuredDir = path.resolve('/tmp/kikx-cwd-configured');
   let explicitDir = path.resolve('/tmp/kikx-cwd-explicit');

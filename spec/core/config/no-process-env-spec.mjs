@@ -32,7 +32,7 @@ function stripComments(source) {
     .replace(/(^|[^\\:])\/\/[^\n]*/g, '$1');
 }
 
-async function collectSourceFiles(dir) {
+async function collectSourceFiles(dir, { excludeConfig = true } = {}) {
   let entries = await readdir(dir, { withFileTypes: true });
   let files = [];
 
@@ -41,11 +41,11 @@ async function collectSourceFiles(dir) {
     if (absolute.includes(`${path.sep}node_modules${path.sep}`))
       continue;
 
-    if (absolute === CONFIG_ROOT || absolute.startsWith(`${CONFIG_ROOT}${path.sep}`))
+    if (excludeConfig && (absolute === CONFIG_ROOT || absolute.startsWith(`${CONFIG_ROOT}${path.sep}`)))
       continue;
 
     if (entry.isDirectory()) {
-      for (let file of await collectSourceFiles(absolute))
+      for (let file of await collectSourceFiles(absolute, { excludeConfig }))
         files.push(file);
 
       continue;
@@ -70,4 +70,26 @@ test('src/ contains no raw process.env reads outside the config module', async (
   }
 
   assert.deepEqual(offenders, [], `raw process.env reads found in: ${offenders.join(', ')}`);
+});
+
+// The same shape of gate for the working directory: the service cwd comes from
+// `KIKX_CWD` or the user's home, never from whatever directory the process was
+// launched in. Unlike the env gate this one covers `src/core/config/` too.
+const RAW_CWD_READ_PATTERNS = [
+  /(?:globalThis\s*\.\s*)?process\s*\??\.\s*cwd\s*\(/,
+  /\{[^}]*\bcwd\b[^}]*\}\s*=\s*(?:globalThis\s*\.\s*)?process\b/,
+];
+
+test('src/ contains no process.cwd() reads', async () => {
+  let files = await collectSourceFiles(SRC_ROOT, { excludeConfig: false });
+  assert.ok(files.length > 0, 'expected the scan to find source files under src/');
+
+  let offenders = [];
+  for (let file of files) {
+    let content = stripComments(await readFile(file, 'utf8'));
+    if (RAW_CWD_READ_PATTERNS.some((pattern) => pattern.test(content)))
+      offenders.push(path.relative(SRC_ROOT, file));
+  }
+
+  assert.deepEqual(offenders, [], `process.cwd() reads found in: ${offenders.join(', ')}`);
 });

@@ -78,18 +78,39 @@ async function withFakeEventSource(callback) {
 function createApp() {
   let app = {
     isConnected: true,
+    handled: [],
     _state: { connectionStatus: DISCONNECTED_STATUS, connectionStatusKind: 'error', status: '', statusKind: 'pending' },
   };
 
   // Mirror how kikx-app.mjs wires the element's bound handlers.
   app._onRuntimeEventsOpen = () => onRuntimeEventsOpen(app);
   app._onRuntimeEventsError = (event) => onRuntimeEventsError(app, event);
-  app._onRuntimeEvent = () => {};
+  app._onRuntimeEvent = (event) => app.handled.push(event);
   app._runtimeEventsDispatch = (event) => {
     noteRuntimeEvent(app);
     app._onRuntimeEvent(event);
   };
   return app;
+}
+
+// The manual reconnect path schedules through setTimeout; capture the delays
+// instead of waiting on the real clock.
+function withFakeTimers(callback) {
+  let originalSetTimeout = globalThis.setTimeout;
+  let originalClearTimeout = globalThis.clearTimeout;
+  let scheduled = [];
+  globalThis.setTimeout = (fn, delay) => {
+    let handle = { delay, fn, unref() {} };
+    scheduled.push(handle);
+    return handle;
+  };
+  globalThis.clearTimeout = () => {};
+  try {
+    return callback(scheduled);
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
 }
 
 test('connectRuntimeEvents opens the SSE route and subscribes to every runtime event', async () => {
@@ -295,14 +316,87 @@ test('disconnectRuntimeEvents closes the stream and stops the watchdog', async (
 });
 
 test('setConnectionStatus skips redundant writes so bindings are not woken needlessly', () => {
-  let app = createApp();
-  app._state.connectionStatus = CONNECTED_STATUS;
-  app._state.connectionStatusKind = 'ready';
+  let writes = [];
+  let target = { connectionStatus: CONNECTED_STATUS, connectionStatusKind: 'ready' };
+  let app = { _state: new Proxy(target, {
+    set(object, key, value) {
+      writes.push(key);
+      object[key] = value;
+      return true;
+    },
+  }) };
 
   setConnectionStatus(app, CONNECTED_STATUS, 'ready');
-  assert.equal(app._state.connectionStatus, CONNECTED_STATUS);
+  assert.deepEqual(writes, []);
 
   setConnectionStatus(app, RECONNECTING_STATUS, 'pending');
-  assert.equal(app._state.connectionStatus, RECONNECTING_STATUS);
-  assert.equal(app._state.connectionStatusKind, 'pending');
+  assert.deepEqual(writes, [ 'connectionStatus', 'connectionStatusKind' ]);
+  assert.equal(target.connectionStatus, RECONNECTING_STATUS);
+  assert.equal(target.connectionStatusKind, 'pending');
+});
+
+test('every stream event reaches the app handler after refreshing liveness', async () => {
+  await withFakeEventSource(async () => {
+    let app = createApp();
+    connectRuntimeEvents(app);
+    app._eventSource.emit('open');
+    app._runtimeEventsLastEventAt = Date.now() - 120000;
+
+    app._eventSource.emit('frame.added', { data: '{"type":"frame.added"}' });
+
+    assert.equal(app.handled.length, 1, 'the event must still be handed to onRuntimeEvent');
+    assert.ok(Date.now() - app._runtimeEventsLastEventAt < 1000);
+    disconnectRuntimeEvents(app);
+  });
+});
+
+test('a drop after the first open re-arms the stale-handshake watchdog', async () => {
+  await withFakeEventSource(async () => {
+    let app = createApp();
+    connectRuntimeEvents(app);
+    app._eventSource.emit('open');
+    assert.equal(app._runtimeEventsConnectingSince, 0);
+
+    app._eventSource.readyState = FakeEventSource.CONNECTING;
+    onRuntimeEventsError(app, { target: app._eventSource });
+
+    assert.equal(app._state.connectionStatus, RECONNECTING_STATUS);
+    assert.ok(app._runtimeEventsConnectingSince > 0, 'expected the handshake clock to be re-armed');
+    assert.equal(checkRuntimeEventsConnection(app, app._runtimeEventsConnectingSince + 60000), true);
+    assert.equal(FakeEventSource.instances.length, 2);
+    disconnectRuntimeEvents(app);
+  });
+});
+
+test('a permanently closed stream backs off instead of retrying every second', () => {
+  withFakeTimers((scheduled) => {
+    withFakeEventSource(() => {
+      let app = createApp();
+      connectRuntimeEvents(app);
+
+      for (let i = 0; i < 6; i++) {
+        app._eventSource.close();
+        onRuntimeEventsError(app, { target: app._eventSource });
+        let timer = scheduled[scheduled.length - 1];
+        assert.ok(timer, 'expected a scheduled reconnect');
+        timer.fn();
+      }
+
+      assert.deepEqual(scheduled.map((timer) => timer.delay), [ 1000, 2000, 4000, 8000, 16000, 30000 ]);
+      assert.equal(app._runtimeEventsRetryCount, 6);
+      disconnectRuntimeEvents(app);
+    });
+  });
+});
+
+test('a successful open resets the reconnect backoff', async () => {
+  await withFakeEventSource(async () => {
+    let app = createApp();
+    connectRuntimeEvents(app);
+    app._runtimeEventsRetryCount = 5;
+
+    app._eventSource.emit('open');
+    assert.equal(app._runtimeEventsRetryCount, 0);
+    disconnectRuntimeEvents(app);
+  });
 });

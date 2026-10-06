@@ -2,6 +2,7 @@
 
 import http from 'node:http';
 import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { AppContext } from '../core/app/app-context.mjs';
@@ -112,8 +113,10 @@ export async function createServer(options = {}) {
   let authMagicLinkTTLSeconds = parseEnvPositiveInteger(await config.get(KIKX_AUTH_MAGIC_LINK_TTL_SECONDS_PATH), 900);
 
   // Default the working directory to the HOME of the user running the service
-  // (never the launcher's CWD); KIKX_CWD can override it.
-  let baseCWD = options.cwd || await config.get(KIKX_CWD_PATH) || os.homedir();
+  // (never the launcher's CWD); KIKX_CWD can override it. Resolved here, once,
+  // so a relative override cannot reach the services and resolve against the
+  // launcher's CWD after all.
+  let baseCWD = path.resolve(options.cwd || await config.get(KIKX_CWD_PATH) || os.homedir());
 
   let staticRoots = {
     client: options.clientRoot || CLIENT_ROOT,

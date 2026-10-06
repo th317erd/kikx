@@ -89,6 +89,9 @@ The script talks to the running Kikx server. Override with `KIKX_URL` when neede
 ## Useful Environment Variables
 
 - `KIKX_HOST`, `KIKX_PORT`: Kikx bind host/port.
+- `KIKX_CWD`: absolute working directory for agents, the shell tool and the
+  file tools. Defaults to the HOME directory of the user running the
+  service, never the directory Kikx was launched from.
 - `AEORDB_URL`: AeorDB base URL used by Kikx.
 - `AEORDB_BIN`: AeorDB executable path.
 - `AEORDB_DATABASE`: local `.aeordb` database path.

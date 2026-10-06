@@ -34,8 +34,15 @@ export function streamRuntimeEvents({ request, response, frameRuntime, sessionID
   }, 25000);
   heartbeat.unref?.();
 
-  frameRuntime.on('event', handler);
+  // Register the cleanup BEFORE subscribing: a throwing `.on` would otherwise
+  // leave the heartbeat interval running for the life of the process.
   request.on('close', cleanup);
+  try {
+    frameRuntime.on('event', handler);
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
 }
 
 function writeSSE(response, event, data) {

@@ -39,7 +39,11 @@ const STALE_CONNECTING_MS = 45000;
 // forever from the browser's point of view: without a liveness check the status
 // would keep reading Connected while nothing is arriving at all.
 const STALE_STREAM_MS = 90000;
+// The browser backs off on its own, but it never retries a CLOSED stream, so we
+// do -- and we must back off too, or a permanently closed stream (a proxy
+// returning 502 during a restart) becomes a 1 Hz retry loop.
 const MANUAL_RECONNECT_DELAY_MS = 1000;
+const MAX_RECONNECT_DELAY_MS = 30000;
 
 const CONNECTING = 0;
 const OPEN = 1;
@@ -66,6 +70,7 @@ export function connectRuntimeEvents(app) {
     app._eventSource = source;
     app._runtimeEventsConnectingSince = Date.now();
     app._runtimeEventsLastEventAt = Date.now();
+    app._runtimeEventsRetryCount = app._runtimeEventsRetryCount || 0;
     source.addEventListener('open', app._onRuntimeEventsOpen);
     source.addEventListener('error', app._onRuntimeEventsError);
     for (let eventType of RUNTIME_EVENT_TYPES)
@@ -91,6 +96,7 @@ export function disconnectRuntimeEvents(app) {
 export function onRuntimeEventsOpen(app) {
   app._runtimeEventsConnectingSince = 0;
   app._runtimeEventsLastEventAt = Date.now();
+  app._runtimeEventsRetryCount = 0;
   setConnectionStatus(app, CONNECTED_STATUS, 'ready');
 }
 
@@ -117,6 +123,11 @@ export function onRuntimeEventsError(app, event = null) {
     scheduleManualReconnect(app);
     return;
   }
+
+  // A drop *after* the first open must re-arm the stale-handshake clock, or the
+  // watchdog's CONNECTING branch could never fire again.
+  if (source.readyState === CONNECTING)
+    app._runtimeEventsConnectingSince = Date.now();
 
   setConnectionStatus(app, RECONNECTING_STATUS, 'pending');
 }
@@ -159,13 +170,16 @@ function scheduleManualReconnect(app) {
   if (app._runtimeEventsReconnectTimer)
     return;
 
+  let attempt = app._runtimeEventsRetryCount || 0;
+  let delay = Math.min(MANUAL_RECONNECT_DELAY_MS * 2 ** attempt, MAX_RECONNECT_DELAY_MS);
+  app._runtimeEventsRetryCount = attempt + 1;
   app._runtimeEventsReconnectTimer = setTimeout(() => {
     app._runtimeEventsReconnectTimer = null;
     if (!app.isConnected)
       return;
 
     connectRuntimeEvents(app);
-  }, MANUAL_RECONNECT_DELAY_MS);
+  }, delay);
   app._runtimeEventsReconnectTimer.unref?.();
 }
 
@@ -176,7 +190,10 @@ function startWatchdog(app) {
     app._runtimeEventsVisibilityHandler = () => {
       // Coming back to a tab that was frozen or throttled is exactly when a dead
       // stream becomes visible to the user, so re-check immediately.
-      if (globalThis.document.visibilityState === 'visible' && !isRuntimeEventsOpen(app))
+      if (!app.isConnected || globalThis.document.visibilityState !== 'visible')
+        return;
+
+      if (!isRuntimeEventsOpen(app))
         connectRuntimeEvents(app);
     };
     globalThis.document.addEventListener('visibilitychange', app._runtimeEventsVisibilityHandler);
