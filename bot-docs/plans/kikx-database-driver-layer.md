@@ -1,6 +1,7 @@
 # Kikx: Pluggable Database Connectivity Layer
 
-Status: **PROPOSED.** Planning only; implementation not authorized.
+Status: **IMPLEMENTED (P0–P6).** AeorDB, SQLite and PostgreSQL drivers ship behind
+plugin-resolved selection; see `bot-docs/database-drivers.md`.
 
 ## 1. Purpose and intent (owner rulings)
 
@@ -404,16 +405,16 @@ trigram/phonetic/fuzzy search stack needs no elevated privileges.
 
 One owner (coordinator); hotspots (`create-server.mjs`, `plugin-registry.mjs`,
 `aeordb-frame-store-*`) serialized. Each phase independently green, one-unit
-revertible.
+revertible. Status: **P0–P6 DONE.**
 
-- **P0 — Base + registry + contract specs (foundational).** `DatabaseConnectionBase`,
+- **P0 — Base + registry + contract specs (foundational) — DONE.** `DatabaseConnectionBase`,
   `DatabaseError` (preserving `status`), capability model (`search`/`query`/
   `auth`/`ranges`; `events` optional), and the **required streaming `entries()`**
   plus **atomic `batch()`** contracts. Pin `list` semantics (recursive glob,
   stable basename order, total) and the frame-store atomicity/ordering spec (2.2)
   **before** P2. Registry methods + descriptors + spec. Register base in core.
   No store changes.
-- **P0b — `ConfigStore` + property scheme (D7, D9).** Async property accessor
+- **P0b — `ConfigStore` + property scheme (D7, D9) — DONE.** Async property accessor
   (`get`/`require`/`list`) with ordered sources; property-path scheme
   (`/org/.../path` → `ORG_..._PATH`, `/`→`_` uppercase); `.env` + optional `.json`
   env documents; precedence `process.env > json > default`; `envKeyFor()` pure
@@ -428,18 +429,52 @@ revertible.
   selection via the canonical property path (default `aeordb`); sets `db` +
   alias `aeordb`. **Gate:** dev boots via the plugin-resolved driver; `/health`
   ready.
-- **P2 — Repoint stores to `db`.** Swap `aeordb`→`db` across stores and
+- **P2 — Repoint stores to `db` — DONE.** Swap `aeordb`→`db` across stores and
   `create-server`; align method names; introduce the frame-store composition layer
   (2.2) if not already in P1. **Gate: full core + provider suites green (749+),
   zero behavior change.**
-- **P3 — Isolate AeorDB coupling.** Index configs into the driver; `AuthProvider`
+- **P3 — Isolate AeorDB coupling — DONE.** Index configs into the driver; `AuthProvider`
   boundary; capability-gate `search`/`query`/`events`; parity ledger.
-- **P4 — PostgreSQL driver.** Connection + document store + search (trigram,
+- **P4 — PostgreSQL driver — DONE.** Connection + document store + search (trigram,
   phonetic, fuzzy) per 4.3; dedicated search design pass; shared driver harness.
   Gate: store + search contracts pass against Postgres.
-- **P5 — SQLite driver (optional).** Scan-fallback search; same harness.
-- **P6 — First-class selection + docs.** Config surface listing drivers; switching
+- **P5 — SQLite driver (optional) — DONE.** Scan-fallback search; same harness.
+- **P6 — First-class selection + docs — DONE.** Config surface listing drivers; switching
   docs; `.env.example` keys.
+
+## P2–P6 decisions (implemented)
+
+- **`db` is canonical; `aeordb` remains the transition alias.** P2 repointed every
+  store to the `db` service; `createServer` still sets `aeordb` to the same
+  connection for hosts/tests that inject or read it, and the frame store is wired
+  to both.
+- **Capability probes are meaningful again.** `DatabaseConnectionBase` defines the
+  historical file-verb adapters on its prototype, which made `typeof
+  db.searchFiles === 'function'` true even for drivers with no search. The base
+  now shadows the gated adapters (`searchFiles`/`queryFiles`/`fetchFileRanges`)
+  with own `undefined` when the corresponding capability is absent, so callers
+  and `canLoadScheduledFrames` cannot be misled.
+- **Index configuration is a driver concern.** `configureIndexes(configs)` is a
+  base no-op that drivers with a persistent index (AeorDB) override; the legacy
+  `.aeordb-config/indexes.json` write path is routed through it.
+- **SQLite shares the document helpers and has a real batch.** `document-utils.mjs`
+  (`normalizePath`/`matchGlob`/`paginate`/`applyMergePatch`/`selectDocumentPaths`)
+  is shared by the SQL and SQLite drivers, and SQLite `batch()` is a genuine
+  all-or-nothing transaction (declared `batchAtomicity: 'atomic'`).
+- **PostgreSQL uses an optional `pg` and a private dev cluster.** `pg` is imported
+  lazily inside `connect()`, so registering the driver never requires the
+  dependency. Search uses JS-built locators over the stored body (line/byte/char
+  semantics) plus an optional `pg_trgm` similarity index; the dev/test cluster
+  runs on `[::1]:55432` (`KIKX_TEST_PG_URL`) because `127.0.0.1:55432` may be an
+  SSH tunnel.
+- **Selection is a first-class, read-only surface.** `GET /api/v1/database-drivers`
+  returns every registered driver's static descriptor plus the active
+  `databaseDriverID`, mirroring `/api/v1/agent-providers`. It requires no live
+  connection and does not alter auth posture.
+- **Deferred.** SQLite streaming scan-fallback search (D2) and extracting the
+  AeorDB auth surface into an explicit `AuthProvider` boundary are still open;
+  SQLite advertises no `search`/`query`/`ranges`/`auth` and AeorDB keeps its
+  current auth path.
 
 ## 7. Verification spine
 
