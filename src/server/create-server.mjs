@@ -11,7 +11,6 @@ import {
   AEORDB_TOKEN_PATH,
   AEORDB_URL_PATH,
   AEOR_WEB_COMPONENTS_DIR_PATH,
-  DATABASE_DRIVER_PATH,
   DATABASE_PATH_PATH,
   DATABASE_URL_PATH,
   KIKX_ADMIN_EMAIL_PATH,
@@ -29,13 +28,15 @@ import {
   KIKX_COMPACTION_TRIGGER_RATIO_PATH,
   KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH,
   KIKX_CONTEXT_WINDOW_TOKENS_PATH,
-  KIKX_DATABASE_DRIVER_PATH,
   KIKX_DATABASE_PATH,
   KIKX_DATABASE_URL,
   KIKX_PLUGIN_PATHS_PATH,
   createConfigStore,
 } from '../core/config/index.mjs';
-import { resolveDatabaseDriver } from '../core/database/index.mjs';
+import {
+  resolveConfiguredDriverID,
+  resolveDatabaseDriver,
+} from '../core/database/index.mjs';
 import {
   AgentCwdStore,
   AgentManager,
@@ -87,7 +88,7 @@ export async function createServer(options = {}) {
   let aeorWebComponentsRoot = options.aeorWebComponentsRoot || await config.get(AEOR_WEB_COMPONENTS_DIR_PATH) || DEFAULT_AEOR_WEB_COMPONENTS_ROOT;
   let aeorDBURL = options.aeorDBURL || await config.get(AEORDB_URL_PATH) || 'http://127.0.0.1:6830';
   let aeorDBToken = options.aeorDBToken || await config.get(AEORDB_TOKEN_PATH) || '';
-  let databaseDriver = options.databaseDriver || await config.get(DATABASE_DRIVER_PATH) || await config.get(KIKX_DATABASE_DRIVER_PATH) || 'aeordb';
+  let databaseDriver = options.databaseDriver || await resolveConfiguredDriverID(config, 'aeordb');
   let databasePath = options.databasePath || await config.get(DATABASE_PATH_PATH) || await config.get(KIKX_DATABASE_PATH) || null;
   let databaseURL = options.databaseURL || await config.get(DATABASE_URL_PATH) || await config.get(KIKX_DATABASE_URL) || null;
   let contextWindowTokens = parseEnvPositiveInteger(await config.get(KIKX_CONTEXT_WINDOW_TOKENS_PATH), 128000);

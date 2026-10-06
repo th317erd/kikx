@@ -3,30 +3,42 @@
 import { spawn } from 'node:child_process';
 
 import { loadEnvFile } from '../src/core/config/env-loader.mjs';
+import { createConfigStore } from '../src/core/config/index.mjs';
+import {
+  isAeorDBDriver,
+  resolveConfiguredDriverID,
+} from '../src/core/database/database-driver-selection.mjs';
 import { createParentExitMonitor } from './parent-exit-monitor.mjs';
 
 await loadEnvFile('.env.dev');
+
+let config = await createConfigStore();
+let driverID = await resolveConfiguredDriverID(config, 'aeordb');
 
 let aeorDBURL = process.env.AEORDB_URL || 'http://127.0.0.1:6830';
 let rootKey = process.env.AEORDB_ROOT_KEY || '';
 let shuttingDown = false;
 
-await waitForAeorDBReady(aeorDBURL);
+if (isAeorDBDriver(driverID)) {
+  await waitForAeorDBReady(aeorDBURL);
 
-if (rootKey) {
-  let response = await fetch(new URL('/auth/token', aeorDBURL), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ api_key: rootKey }),
-  });
-  let body = await response.json().catch(() => ({}));
+  if (rootKey) {
+    let response = await fetch(new URL('/auth/token', aeorDBURL), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ api_key: rootKey }),
+    });
+    let body = await response.json().catch(() => ({}));
 
-  if (!response.ok || !body.token)
-    throw new Error(body?.error || body?.message || `Unable to exchange AeorDB root key: HTTP ${response.status}`);
+    if (!response.ok || !body.token)
+      throw new Error(body?.error || body?.message || `Unable to exchange AeorDB root key: HTTP ${response.status}`);
 
-  process.env.AEORDB_TOKEN = body.token;
+    process.env.AEORDB_TOKEN = body.token;
+  }
+} else {
+  console.log(`Database driver '${driverID}': skipping AeorDB startup.`);
 }
 
 let child = spawn(process.execPath, [ 'src/server/index.mjs' ], {

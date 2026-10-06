@@ -4,9 +4,17 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 
 import { loadEnvFile } from '../src/core/config/env-loader.mjs';
+import { createConfigStore } from '../src/core/config/index.mjs';
+import {
+  isAeorDBDriver,
+  resolveConfiguredDriverID,
+} from '../src/core/database/database-driver-selection.mjs';
 import { createParentExitMonitor } from './parent-exit-monitor.mjs';
 
 await loadEnvFile('.env.dev');
+
+let config = await createConfigStore();
+let driverID = await resolveConfiguredDriverID(config, 'aeordb');
 
 let aeorDBURL = new URL(process.env.AEORDB_URL || 'http://127.0.0.1:6830');
 let aeorDBHost = process.env.AEORDB_HOST || aeorDBURL.hostname || '127.0.0.1';
@@ -17,12 +25,16 @@ let children = [];
 let shuttingDown = false;
 let parentMonitor = null;
 
-if (!(await isListening(aeorDBHost, aeorDBPort))) {
-  startChild('AeorDB', [ 'run', 'start:aeordb:dev' ]);
+if (isAeorDBDriver(driverID)) {
+  if (!(await isListening(aeorDBHost, aeorDBPort))) {
+    startChild('AeorDB', [ 'run', 'start:aeordb:dev' ]);
+  } else {
+    console.log(`AeorDB already listening on ${aeorDBHost}:${aeorDBPort}`);
+  }
+  await waitForAeorDBReady(aeorDBURL);
 } else {
-  console.log(`AeorDB already listening on ${aeorDBHost}:${aeorDBPort}`);
+  console.log(`Database driver '${driverID}': skipping AeorDB startup.`);
 }
-await waitForAeorDBReady(aeorDBURL);
 
 if (!(await isListening(kikxHost, kikxPort))) {
   startChild('Kikx', [ 'run', 'start:kikx:dev' ]);
@@ -115,10 +127,11 @@ async function waitForAeorDBReady(baseURL) {
 
   while (Date.now() < deadline) {
     let health = await getAeorDBHealth(baseURL);
-    if (health?.status === 'healthy') {
-      console.log(`AeorDB healthy at ${new URL('/system/health', baseURL)}`);
+    // AeorDB 0.9.5 reports "degraded" for benign engine conditions while still
+    // serving data normally; only "failed" is fatal. Accept healthy or degraded
+    // to match start-kikx-dev.mjs and the container supervisor.
+    if (health?.status === 'healthy' || health?.status === 'degraded')
       return;
-    }
 
     if (health?.status === 'failed')
       throw new Error(`AeorDB startup failed: ${health.message || 'unknown failure'}`);
