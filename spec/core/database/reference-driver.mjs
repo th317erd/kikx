@@ -7,6 +7,15 @@
 
 import { DatabaseConnectionBase } from '../../../src/core/database/database-connection-base.mjs';
 import { DatabaseError } from '../../../src/core/database/database-error.mjs';
+import {
+  applyMergePatch,
+  matchGlob,
+  normalizePath,
+  paginate,
+  selectDocumentPaths,
+} from '../../../src/core/database/document-utils.mjs';
+
+export { applyMergePatch, matchGlob, normalizePath };
 
 export class InMemoryDatabaseConnection extends DatabaseConnectionBase {
   static driverID = 'in-memory';
@@ -136,122 +145,11 @@ export class InMemoryDatabaseConnection extends DatabaseConnectionBase {
   }
 
   _collect(prefix, options = {}) {
-    let base = normalizePath(prefix);
-    let recursive = options.recursive === true;
-    let glob = options.glob || '**';
-    let matches = [];
-
-    for (let [ key, text ] of this._documents) {
-      if (key === base || !key.startsWith(`${base}/`))
-        continue;
-
-      let relative = key.slice(base.length + 1);
-      if (!recursive && relative.includes('/'))
-        continue;
-
-      if (!matchGlob(relative, glob))
-        continue;
-
-      matches.push({ key, text });
-    }
-
-    matches.sort((left, right) => {
-      let leftBase = basename(left.key);
-      let rightBase = basename(right.key);
-      if (leftBase < rightBase)
-        return -1;
-      if (leftBase > rightBase)
-        return 1;
-
-      return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
-    });
-
-    return matches;
+    return selectDocumentPaths(this._documents.keys(), prefix, options)
+      .map((key) => ({ key, text: this._documents.get(key) }));
   }
-}
-
-export function normalizePath(path) {
-  if (!path || typeof path !== 'string')
-    throw new TypeError('Database path must be a non-empty string');
-
-  let trimmed = path.replace(/^\/+/g, '').replace(/\/+$/g, '');
-  return `/${trimmed}`;
-}
-
-function basename(key) {
-  return key.slice(key.lastIndexOf('/') + 1);
-}
-
-// `_collect` returns the full, sorted match set; pagination is applied here so
-// `total` is always the unconditional match count, not the page size.
-function paginate(matches, options = {}) {
-  let offset = Number.isInteger(options.offset) && options.offset > 0 ? options.offset : 0;
-  let limit = Number.isInteger(options.limit) && options.limit >= 0 ? options.limit : null;
-  return limit == null ? matches.slice(offset) : matches.slice(offset, offset + limit);
 }
 
 function notFound(path) {
   return new DatabaseError(`Database document not found: ${path}`, { status: 404, code: 'not_found' });
-}
-
-// Minimal glob supporting `*` (within a segment) and `**` (across segments).
-export function matchGlob(relativePath, pattern) {
-  let pathSegments = relativePath.split('/');
-  let patternSegments = pattern.split('/');
-  return matchSegments(pathSegments, 0, patternSegments, 0);
-}
-
-function matchSegments(pathSegments, pathIndex, patternSegments, patternIndex) {
-  while (patternIndex < patternSegments.length) {
-    let patternSegment = patternSegments[patternIndex];
-
-    if (patternSegment === '**') {
-      // `**` matches zero or more path segments.
-      if (patternIndex === patternSegments.length - 1)
-        return true;
-
-      for (let skip = pathIndex; skip <= pathSegments.length; skip++) {
-        if (matchSegments(pathSegments, skip, patternSegments, patternIndex + 1))
-          return true;
-      }
-
-      return false;
-    }
-
-    if (pathIndex >= pathSegments.length)
-      return false;
-
-    if (!matchSegment(pathSegments[pathIndex], patternSegment))
-      return false;
-
-    pathIndex++;
-    patternIndex++;
-  }
-
-  return pathIndex === pathSegments.length;
-}
-
-function matchSegment(value, pattern) {
-  let escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
-  return new RegExp(`^${escaped}$`).test(value);
-}
-
-// RFC 7386 JSON merge-patch (recursive object merge; null deletes).
-export function applyMergePatch(target, patch) {
-  if (!isPlainObject(patch))
-    return patch;
-
-  let output = isPlainObject(target) ? { ...target } : {};
-  for (let [ key, value ] of Object.entries(patch)) {
-    if (value === null)
-      delete output[key];
-    else
-      output[key] = applyMergePatch(output[key], value);
-  }
-
-  return output;
-}
-
-function isPlainObject(value) {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

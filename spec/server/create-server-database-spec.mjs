@@ -14,6 +14,7 @@ import test from 'node:test';
 import { AppContext } from '../../src/core/app/app-context.mjs';
 import { AeorDBConnection } from '../../src/core/aeordb/aeordb-connection.mjs';
 import { DatabaseConnectionBase } from '../../src/core/database/database-connection-base.mjs';
+import { SQLiteConnection } from '../../src/core/database/sqlite-connection.mjs';
 import { resolveDatabaseDriver } from '../../src/core/database/index.mjs';
 import { registerCoreClasses } from '../../src/core/plugins/core-classes.mjs';
 import { loadPlugins } from '../../src/core/plugins/plugin-loader.mjs';
@@ -82,6 +83,51 @@ test('createServer selects the built-in aeordb driver by default', async () => {
     await close(server);
   }
 });
+
+test('createServer selects the built-in sqlite driver from config', async () => {
+  let previousDriver = process.env.ORG_AEOR_KIKX_DATABASE_DRIVER;
+  let previousPath = process.env.ORG_AEOR_KIKX_DATABASE_PATH;
+  process.env.ORG_AEOR_KIKX_DATABASE_DRIVER = 'sqlite';
+  process.env.ORG_AEOR_KIKX_DATABASE_PATH = ':memory:';
+
+  let context = new AppContext({
+    pluginLoadPromise: Promise.resolve(),
+  });
+
+  let server;
+  try {
+    server = await createServer({ context });
+
+    let db = context.require('db');
+    assert.ok(db instanceof SQLiteConnection, 'db must be the built-in SQLite driver');
+    assert.equal(context.require('db'), context.require('aeordb'));
+    assert.equal(context.get('databaseDriverID'), 'sqlite');
+    assert.equal(db.filename, ':memory:');
+  } finally {
+    // Let startup recovery/worker promises settle before closing the driver so
+    // the background work does not race the close.
+    try {
+      await context.require?.('scheduledFrameWorkerPromise');
+    } catch (_error) {
+      // Recovery failures are already logged and non-fatal.
+    }
+
+    if (server)
+      await close(server);
+
+    await context.require('db')?.close?.();
+
+    restoreEnv('ORG_AEOR_KIKX_DATABASE_DRIVER', previousDriver);
+    restoreEnv('ORG_AEOR_KIKX_DATABASE_PATH', previousPath);
+  }
+});
+
+function restoreEnv(key, value) {
+  if (value === undefined)
+    delete process.env[key];
+  else
+    process.env[key] = value;
+}
 
 test('registerCoreClasses + resolveDatabaseDriver selects the built-in aeordb driver', () => {
   let registry = new PluginRegistry({ logger: { warn() {} } });

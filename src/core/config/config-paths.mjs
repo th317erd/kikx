@@ -22,3 +22,9 @@ export const AEOR_WEB_COMPONENTS_DIR_PATH = '/aeor/web/components/dir';
 // with a transition alias retained for convenience (env KIKX_DATABASE_DRIVER).
 export const DATABASE_DRIVER_PATH = '/org/aeor/kikx/database/driver';
 export const KIKX_DATABASE_DRIVER_PATH = '/kikx/database/driver';
+
+// Canonical database-location path (env ORG_AEOR_KIKX_DATABASE_PATH) with a
+// transition alias (env KIKX_DATABASE_PATH). Drivers that take a file/URL
+// location (e.g. SQLite) read this; AeorDB ignores it and keeps its own keys.
+export const DATABASE_PATH_PATH = '/org/aeor/kikx/database/path';
+export const KIKX_DATABASE_PATH = '/kikx/database/path';

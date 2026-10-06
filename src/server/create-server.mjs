@@ -10,6 +10,7 @@ import {
   AEORDB_URL_PATH,
   AEOR_WEB_COMPONENTS_DIR_PATH,
   DATABASE_DRIVER_PATH,
+  DATABASE_PATH_PATH,
   KIKX_COMPACTION_AGENT_ID_PATH,
   KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH,
   KIKX_COMPACTION_HARD_RATIO_PATH,
@@ -17,6 +18,7 @@ import {
   KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH,
   KIKX_CONTEXT_WINDOW_TOKENS_PATH,
   KIKX_DATABASE_DRIVER_PATH,
+  KIKX_DATABASE_PATH,
   KIKX_PLUGIN_PATHS_PATH,
   createConfigStore,
 } from '../core/config/index.mjs';
@@ -73,6 +75,7 @@ export async function createServer(options = {}) {
   let aeorDBURL = options.aeorDBURL || await config.get(AEORDB_URL_PATH) || 'http://127.0.0.1:6830';
   let aeorDBToken = options.aeorDBToken || await config.get(AEORDB_TOKEN_PATH) || '';
   let databaseDriver = options.databaseDriver || await config.get(DATABASE_DRIVER_PATH) || await config.get(KIKX_DATABASE_DRIVER_PATH) || 'aeordb';
+  let databasePath = options.databasePath || await config.get(DATABASE_PATH_PATH) || await config.get(KIKX_DATABASE_PATH) || null;
   let contextWindowTokens = parseEnvPositiveInteger(await config.get(KIKX_CONTEXT_WINDOW_TOKENS_PATH), 128000);
   let compactionAgentID = await config.get(KIKX_COMPACTION_AGENT_ID_PATH);
   let compactionAgentContextTokens = parseEnvPositiveInteger(await config.get(KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH), 128000);
@@ -162,8 +165,11 @@ export async function createServer(options = {}) {
         config,
         baseURL: options.aeorDBURL || aeorDBURL,
         url: options.aeorDBURL || aeorDBURL,
+        // Generic location option for drivers that take a file/URL (e.g.
+        // SQLite). AeorDB ignores it and keeps its own baseURL/url defaults.
+        filename: databasePath || undefined,
         token: options.aeorDBToken ?? aeorDBToken,
-        secrets: { url: aeorDBURL, token: aeorDBToken },
+        secrets: { url: aeorDBURL, token: aeorDBToken, filename: databasePath || undefined },
         fetchImpl: options.fetchImpl || globalThis.fetch,
       });
       if (typeof db.connect === 'function')

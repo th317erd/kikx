@@ -81,6 +81,12 @@ async function shutdownRuntimeServices(server) {
   } catch (error) {
     console.error('Kikx frame runtime shutdown failed:', error);
   }
+
+  try {
+    await context.require?.('db')?.close?.();
+  } catch (error) {
+    console.error('Kikx database shutdown failed:', error);
+  }
 }
 
 async function withTimeout(promise, timeoutMS) {

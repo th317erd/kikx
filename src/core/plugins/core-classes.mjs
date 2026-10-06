@@ -19,6 +19,7 @@ import { CompactionService } from '../compaction/compaction-service.mjs';
 import { CommandRegistry } from '../commands/command-registry.mjs';
 import { FRAME_TYPE_REGISTRATIONS } from '../frames/frame-types/index.mjs';
 import { DatabaseConnectionBase } from '../database/database-connection-base.mjs';
+import { SQLiteConnection } from '../database/sqlite-connection.mjs';
 import { AeorDBConnection } from '../aeordb/aeordb-connection.mjs';
 
 // Classes registered for override. Kept to the classes a plugin has a plausible
@@ -44,11 +45,15 @@ export function registerCoreClasses(registry) {
 
   registerFrameTypeClasses(registry);
 
-  // Register the built-in AeorDB driver so a default boot never depends on a
-  // user plugin. PluginRegistry guards the driver type; a plain ClassRegistry
-  // without the plural driver registry is left untouched.
-  if (typeof registry.registerDatabaseDriver === 'function')
+  // Register the built-in AeorDB and SQLite drivers so a default boot never
+  // depends on a user plugin. SQLiteConnection imports `node:sqlite` lazily, so
+  // registering it does not load the experimental module. PluginRegistry guards
+  // the driver type; a plain ClassRegistry without the plural driver registry is
+  // left untouched.
+  if (typeof registry.registerDatabaseDriver === 'function') {
     registry.registerDatabaseDriver('aeordb', AeorDBConnection);
+    registry.registerDatabaseDriver('sqlite', SQLiteConnection);
+  }
 
   return registry;
 }
