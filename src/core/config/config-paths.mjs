@@ -17,3 +17,8 @@ export const KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH = '/kikx/context/prompt/res
 export const KIKX_COMPACTION_TRIGGER_RATIO_PATH = '/kikx/compaction/trigger/ratio';
 export const KIKX_COMPACTION_HARD_RATIO_PATH = '/kikx/compaction/hard/ratio';
 export const AEOR_WEB_COMPONENTS_DIR_PATH = '/aeor/web/components/dir';
+
+// Canonical database-driver selection path (env ORG_AEOR_KIKX_DATABASE_DRIVER)
+// with a transition alias retained for convenience (env KIKX_DATABASE_DRIVER).
+export const DATABASE_DRIVER_PATH = '/org/aeor/kikx/database/driver';
+export const KIKX_DATABASE_DRIVER_PATH = '/kikx/database/driver';

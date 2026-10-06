@@ -9,16 +9,18 @@ import {
   AEORDB_TOKEN_PATH,
   AEORDB_URL_PATH,
   AEOR_WEB_COMPONENTS_DIR_PATH,
+  DATABASE_DRIVER_PATH,
   KIKX_COMPACTION_AGENT_ID_PATH,
   KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH,
   KIKX_COMPACTION_HARD_RATIO_PATH,
   KIKX_COMPACTION_TRIGGER_RATIO_PATH,
   KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH,
   KIKX_CONTEXT_WINDOW_TOKENS_PATH,
+  KIKX_DATABASE_DRIVER_PATH,
   KIKX_PLUGIN_PATHS_PATH,
   createConfigStore,
 } from '../core/config/index.mjs';
-import { AeorDBClient } from '../core/aeordb/aeordb-client.mjs';
+import { resolveDatabaseDriver } from '../core/database/index.mjs';
 import {
   AgentCwdStore,
   AgentManager,
@@ -70,6 +72,7 @@ export async function createServer(options = {}) {
   let aeorWebComponentsRoot = options.aeorWebComponentsRoot || await config.get(AEOR_WEB_COMPONENTS_DIR_PATH) || DEFAULT_AEOR_WEB_COMPONENTS_ROOT;
   let aeorDBURL = options.aeorDBURL || await config.get(AEORDB_URL_PATH) || 'http://127.0.0.1:6830';
   let aeorDBToken = options.aeorDBToken || await config.get(AEORDB_TOKEN_PATH) || '';
+  let databaseDriver = options.databaseDriver || await config.get(DATABASE_DRIVER_PATH) || await config.get(KIKX_DATABASE_DRIVER_PATH) || 'aeordb';
   let contextWindowTokens = parseEnvPositiveInteger(await config.get(KIKX_CONTEXT_WINDOW_TOKENS_PATH), 128000);
   let compactionAgentID = await config.get(KIKX_COMPACTION_AGENT_ID_PATH);
   let compactionAgentContextTokens = parseEnvPositiveInteger(await config.get(KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH), 128000);
@@ -82,14 +85,6 @@ export async function createServer(options = {}) {
     shared: options.sharedRoot || SHARED_ROOT,
     aeorWebComponents: aeorWebComponentsRoot,
   };
-
-  if (!context.has('aeordb')) {
-    context.set('aeordb', new AeorDBClient({
-      baseURL: aeorDBURL,
-      token: aeorDBToken,
-      fetchImpl: options.fetchImpl || globalThis.fetch,
-    }));
-  }
 
   if (!context.has('pluginRegistry'))
     context.set('pluginRegistry', new PluginRegistry());
@@ -119,17 +114,6 @@ export async function createServer(options = {}) {
   if (!context.has('commandExecutor'))
     context.set('commandExecutor', new LocalCommandExecutionService({ cwd: process.cwd() }));
 
-  if (!context.has('toolOutputStore')) {
-    context.set('toolOutputStore', new ToolOutputStore({
-      aeordb: context.require('aeordb'),
-    }));
-  }
-
-  if (!context.has('toolExecutor'))
-    context.set('toolExecutor', new ToolExecutionService({
-      toolOutputStore: context.require('toolOutputStore'),
-    }));
-
   if (!context.has('commandRegistry'))
     context.set('commandRegistry', new CommandRegistry());
 
@@ -146,6 +130,66 @@ export async function createServer(options = {}) {
     let RouterClass = resolveCoreClass(context.require('pluginRegistry'), 'FrameRouter', FrameRouter);
     context.set('frameRouter', new RouterClass());
   }
+
+  if (!context.has('pluginLoadPromise')) {
+    context.set('pluginLoadPromise', (async () => {
+      await loadPlugins({
+        pluginPaths,
+        registry: context.require('pluginRegistry'),
+        commandRegistry: context.require('commandRegistry'),
+        context,
+      });
+      context.require('frameRouter').loadFromRegistry(context.require('pluginRegistry'));
+      registerAgentRouting(context.require('frameRouter'));
+    })());
+  }
+
+  // Plugins must be loaded before the driver is resolved: a plugin may register
+  // the selected driver. The built-in aeordb driver is registered by
+  // registerCoreClasses, so a default boot always has at least one driver.
+  await context.require('pluginLoadPromise');
+
+  if (!context.has('db')) {
+    // P2 will repoint stores to `db`; for now `aeordb` is the alias they read.
+    let injectedLegacy = context.has('aeordb') && !options.databaseDriver;
+    if (injectedLegacy) {
+      // Tests/host embeddings may inject a ready client; expose it under both names.
+      context.set('db', context.require('aeordb'));
+    } else {
+      let { driverID, DriverClass } = resolveDatabaseDriver(context.require('pluginRegistry'), databaseDriver);
+      let db = new DriverClass({
+        context,
+        config,
+        baseURL: options.aeorDBURL || aeorDBURL,
+        url: options.aeorDBURL || aeorDBURL,
+        token: options.aeorDBToken ?? aeorDBToken,
+        secrets: { url: aeorDBURL, token: aeorDBToken },
+        fetchImpl: options.fetchImpl || globalThis.fetch,
+      });
+      if (typeof db.connect === 'function')
+        await db.connect();
+
+      context.set('db', db);
+      context.set('aeordb', db);
+      context.set('databaseDriverID', driverID);
+    }
+  }
+
+  // Stores below still read `aeordb`; P2 repoints them to `db`. If a host
+  // injected only `db`, mirror it so the alias is never missing.
+  if (context.has('db') && !context.has('aeordb'))
+    context.set('aeordb', context.require('db'));
+
+  if (!context.has('toolOutputStore')) {
+    context.set('toolOutputStore', new ToolOutputStore({
+      aeordb: context.require('aeordb'),
+    }));
+  }
+
+  if (!context.has('toolExecutor'))
+    context.set('toolExecutor', new ToolExecutionService({
+      toolOutputStore: context.require('toolOutputStore'),
+    }));
 
   if (!context.has('tokenUsage')) {
     context.set('tokenUsage', new TokenUsageTracker({
@@ -164,19 +208,6 @@ export async function createServer(options = {}) {
     context.set('tokenUsageLoadPromise', Promise.resolve(
       typeof tokenUsage.load === 'function' ? tokenUsage.load() : tokenUsage.snapshot?.() || {},
     ));
-  }
-
-  if (!context.has('pluginLoadPromise')) {
-    context.set('pluginLoadPromise', (async () => {
-      await loadPlugins({
-        pluginPaths,
-        registry: context.require('pluginRegistry'),
-        commandRegistry: context.require('commandRegistry'),
-        context,
-      });
-      context.require('frameRouter').loadFromRegistry(context.require('pluginRegistry'));
-      registerAgentRouting(context.require('frameRouter'));
-    })());
   }
 
   if (!context.has('agentManager')) {

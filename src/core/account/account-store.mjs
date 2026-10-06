@@ -78,15 +78,18 @@ export class AccountStore {
   }
 
   async verifyIdentity(identity) {
-    if (identity.isFallback || typeof this.aeordb.withToken !== 'function')
+    if (identity.isFallback || typeof this.aeordb.withToken !== 'function' || this.aeordb.supports?.('auth') === false)
       return false;
 
     try {
       let userClient = this.aeordb.withToken(identity.token);
       if (typeof userClient?.listOwnAPIKeys === 'function')
         await userClient.listOwnAPIKeys();
+      else if (typeof userClient?.request === 'function')
+        await userClient.request('GET', '/auth/keys');
       else
-        await userClient?.request?.('GET', '/auth/keys');
+        return false;
+
       return true;
     } catch (error) {
       if (error?.status === 401 || error?.status === 403) {

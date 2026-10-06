@@ -39,6 +39,10 @@ test('DatabaseConnectionBase declares the full capability surface with safe defa
   assert.equal(DatabaseConnectionBase.capabilities.write, true);
 
   assert.equal(DatabaseConnectionBase.batchAtomicity, 'atomic');
+
+  // `withToken` is the opt-in auth surface; AccountStore gates no-auth drivers
+  // on its absence, so the base must not define a no-op.
+  assert.equal(typeof DatabaseConnectionBase.prototype.withToken, 'undefined');
 });
 
 test('DatabaseConnectionBase requires connect() to be implemented by a driver', async () => {

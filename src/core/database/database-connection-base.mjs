@@ -129,6 +129,58 @@ export class DatabaseConnectionBase extends PluginInterface {
     this.requireCapability('auth');
     throw unimplemented(this, 'auth');
   }
+
+  // --- Historical document surface (driver compatibility adapters) ----------
+  // Existing Kikx stores call these "file verb" methods directly. Drivers
+  // implement the modern document methods above; these adapters preserve the
+  // historical semantics, in particular getFile() throwing on a missing
+  // document while get() returns null.
+  async getFile(path, options = {}) {
+    let value = await this.get(path, options);
+    if (value == null)
+      throw DatabaseError.notFound(path);
+
+    return value;
+  }
+
+  async putFile(path, body, options = {}) {
+    return await this.put(path, body, options);
+  }
+
+  async patchFile(path, patch, options = {}) {
+    return await this.merge(path, patch, options);
+  }
+
+  async deleteFile(path, options = {}) {
+    return await this.delete(path, options);
+  }
+
+  async listDirectory(path, options = {}) {
+    let { depth, glob, limit, offset, ...rest } = options;
+    let recursive = depth == null ? false : Number(depth) < 0;
+    return await this.list(path, { ...rest, recursive, glob, limit, offset });
+  }
+
+  async fetchFiles(paths, options = {}) {
+    return await this.getMany(paths, options);
+  }
+
+  async fetchFileRanges(items, options = {}) {
+    return await this.getRanges(items, options);
+  }
+
+  async searchFiles(search, options = {}) {
+    return await this.search(search, options);
+  }
+
+  async queryFiles(query, options = {}) {
+    return await this.query(query, options);
+  }
+
+  // `withToken` is intentionally NOT defined here. It is the auth surface a
+  // driver opts into, and AccountStore uses `typeof db.withToken === 'function'`
+  // as its no-auth gate; a base no-op would silently disable that gate for
+  // drivers that declare `capabilities.auth === false`.
 }
 
 function unimplemented(instance, method) {

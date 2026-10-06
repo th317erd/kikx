@@ -19,6 +19,7 @@ import { CompactionService } from '../compaction/compaction-service.mjs';
 import { CommandRegistry } from '../commands/command-registry.mjs';
 import { FRAME_TYPE_REGISTRATIONS } from '../frames/frame-types/index.mjs';
 import { DatabaseConnectionBase } from '../database/database-connection-base.mjs';
+import { AeorDBConnection } from '../aeordb/aeordb-connection.mjs';
 
 // Classes registered for override. Kept to the classes a plugin has a plausible
 // reason to replace (engine/router/runtime/compaction registries), not the whole
@@ -42,6 +43,12 @@ export function registerCoreClasses(registry) {
     registry.registerClass(ClassRef.name, ClassRef, { pluginName: 'core' });
 
   registerFrameTypeClasses(registry);
+
+  // Register the built-in AeorDB driver so a default boot never depends on a
+  // user plugin. PluginRegistry guards the driver type; a plain ClassRegistry
+  // without the plural driver registry is left untouched.
+  if (typeof registry.registerDatabaseDriver === 'function')
+    registry.registerDatabaseDriver('aeordb', AeorDBConnection);
 
   return registry;
 }

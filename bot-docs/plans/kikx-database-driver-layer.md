@@ -422,11 +422,12 @@ revertible.
   the loader. Add `.json` env files to `.gitignore`; document keys in
   `.env.example`. **Grep-gate:** no raw `process.env` in `src/` outside the
   config module.
-- **P1 — AeorDB driver + wiring.** `AeorDBConnection` wrapping `AeorDBClient`
-  (incl. best-effort `batch`, streaming `entries` over `listDirectory`); make
-  `createServer()` async; resolve the driver after plugin load; selection via the
-  canonical property path (default `aeordb`); set `db` + alias. **Gate:** dev
-  boots via the plugin-resolved driver; `/health` ready.
+- **P1 — AeorDB driver + wiring — DONE.** `AeorDBConnection` wrapping
+  `AeorDBClient` (incl. best-effort `batch`, streaming `entries` over
+  `listDirectory`); `createServer()` resolves the driver after plugin load;
+  selection via the canonical property path (default `aeordb`); sets `db` +
+  alias `aeordb`. **Gate:** dev boots via the plugin-resolved driver; `/health`
+  ready.
 - **P2 — Repoint stores to `db`.** Swap `aeordb`→`db` across stores and
   `create-server`; align method names; introduce the frame-store composition layer
   (2.2) if not already in P1. **Gate: full core + provider suites green (749+),
@@ -522,3 +523,27 @@ Gaps found by re-reading against the code and folded in above:
 8. No schema/bootstrap story → idempotent, privilege-safe DDL (4.3).
 9. `DatabaseError` must preserve `status`/404 behavior for existing fallbacks
    (4.7).
+
+## P1 decisions (implemented)
+
+- **Stores keep the historical file-verb surface via base adapters.**
+  `DatabaseConnectionBase` now provides `getFile`/`putFile`/`patchFile`/
+  `deleteFile`/`listDirectory`/`fetchFiles`/`fetchFileRanges`/`searchFiles`/
+  `queryFiles`/`withToken` on top of the modern document methods. Drivers
+  implement only the modern methods; `getFile` throws `DatabaseError` 404 while
+  `get()` returns `null`.
+- **`db` is canonical; `aeordb` is a transition alias.** `createServer` sets
+  both to the same connection and records `databaseDriverID`. P2 repoints stores
+  to `db`.
+- **Driver selection** reads `/org/aeor/kikx/database/driver`
+  (`ORG_AEOR_KIKX_DATABASE_DRIVER`), then the alias `/kikx/database/driver`
+  (`KIKX_DATABASE_DRIVER`), then defaults to `aeordb`. Plugin property-path
+  values such as `/org/aeor/kikx/plugins/database/postgresql@0.4.5` resolve to
+  the registered `postgresql` driver. Unknown drivers fail closed with
+  `database_driver_unknown`.
+- **AeorDB `connect()` does not ping.** It only flips connection state, so no
+  extra HTTP request is introduced at boot (important for fetch-sequence stubs
+  and fail-closed startup).
+- **AeorDB `batch()` is best-effort** (sequential, non-transactional) and
+  declared via `static batchAtomicity = 'best-effort'`; the contract harness
+  asserts the error surfaces without rollback.
