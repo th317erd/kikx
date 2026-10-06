@@ -1,6 +1,6 @@
 # Kikx-native authentication + PostgreSQL-primary storage
 
-Status: **IN PROGRESS (Phase A)** — owner directive 2026-10-05.
+Status: **DONE (Phases A–C)** — owner approved 2026-10-06; PostgreSQL is the live primary store.
 
 ## Goal
 
@@ -111,12 +111,19 @@ Rewire `auth-routes.mjs` and `AccountStore` to `AuthService`; remove the
 `withToken`/`getSystemUser` dependence. New endpoints: `GET /auth/me`,
 `POST /auth/logout`, `GET|POST|DELETE /auth/api-keys`.
 
-### Phase C — Migrate AeorDB documents → PostgreSQL
+### Phase C — Migrate AeorDB documents → PostgreSQL (done)
 
-Copy every document via the driver contract (`entries()` + `getMany()` →
-`put()`/`batch()`), verified by count + content hash. Flip the deploy default;
-keep the AeorDB file as a read-only fallback. Only after Phase B makes login
-independent of AeorDB.
+Copied every non-internal document with `scripts/migrate-database.mjs` over the
+generic driver contract (`entries()` + `get()` + `put()`), skipping AeorDB's
+`.aeordb-*` index/config files. The tool records a size+sha256 manifest and
+verifies each target document byte-for-byte (dry-run / verify-only / resume
+supported).
+
+Live result (2026-10-06): 9202 source paths, 77 AeorDB-internal excluded,
+**9125 documents migrated and verified, 0 mismatch**; the target holds those
+plus 3 bootstrap auth documents. `kikx.aeordb` is untouched as a read-only
+fallback. `deploy.sh` is PostgreSQL-primary and now runs the legacy AeorDB
+scheduled-frame verifier only when AeorDB is the active driver.
 
 ## Decisions (owner)
 
@@ -133,3 +140,6 @@ independent of AeorDB.
 - `kikx-docker`: image builds; throwaway container boots Postgres, creates the
   cluster once, restarts idempotently, data persists across container
   recreate, and Kikx reaches `ready:true` against it.
+- Phase C: live migration + byte-for-byte verification; a Postgres-backed
+  magic-link → verify → `/auth/me` → `/account` → API-key → session-list
+  round-trip against the migrated data.
