@@ -24,6 +24,9 @@
     "node": ">=22"
   },
   "license": "GPL-3.0-or-later",
+  "optionalDependencies": {
+    "pg": "^8.23.1"
+  },
   "devDependencies": {
     "@browserbasehq/stagehand": "^3.5.0",
     "playwright": "^1.60.0",

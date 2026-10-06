@@ -15,6 +15,7 @@ import { AppContext } from '../../src/core/app/app-context.mjs';
 import { AeorDBConnection } from '../../src/core/aeordb/aeordb-connection.mjs';
 import { DatabaseConnectionBase } from '../../src/core/database/database-connection-base.mjs';
 import { SQLiteConnection } from '../../src/core/database/sqlite-connection.mjs';
+import { PostgreSQLConnection } from '../../src/core/database/postgresql-connection.mjs';
 import { resolveDatabaseDriver } from '../../src/core/database/index.mjs';
 import { registerCoreClasses } from '../../src/core/plugins/core-classes.mjs';
 import { loadPlugins } from '../../src/core/plugins/plugin-loader.mjs';
@@ -43,6 +44,24 @@ function stubFetch() {
     },
   };
 }
+
+// `[::1]` avoids the owner's SSH tunnel that occupies 127.0.0.1:55432.
+const PG_TEST_URL = process.env.KIKX_TEST_PG_URL || 'postgres://postgres@[::1]:55432/postgres';
+
+async function probePostgres() {
+  try {
+    let { Client } = await import('pg');
+    let client = new Client({ connectionString: PG_TEST_URL, connectionTimeoutMillis: 2000 });
+    await client.connect();
+    await client.query('SELECT 1');
+    await client.end();
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+let postgresAvailable = await probePostgres();
 
 test('createServer aliases an injected legacy aeordb to db', async () => {
   let legacy = { eventsURL: () => 'unused' };
@@ -128,6 +147,45 @@ function restoreEnv(key, value) {
   else
     process.env[key] = value;
 }
+
+test('createServer selects the built-in postgresql driver from config', { skip: !postgresAvailable && 'PostgreSQL test cluster unavailable' }, async () => {
+  let previousDriver = process.env.ORG_AEOR_KIKX_DATABASE_DRIVER;
+  let previousURL = process.env.ORG_AEOR_KIKX_DATABASE_URL;
+  process.env.ORG_AEOR_KIKX_DATABASE_DRIVER = 'postgresql';
+  process.env.ORG_AEOR_KIKX_DATABASE_URL = PG_TEST_URL;
+
+  let context = new AppContext({
+    pluginLoadPromise: Promise.resolve(),
+  });
+
+  let server;
+  try {
+    server = await createServer({ context });
+
+    let db = context.require('db');
+    assert.ok(db instanceof PostgreSQLConnection, 'db must be the built-in PostgreSQL driver');
+    assert.equal(context.require('db'), context.require('aeordb'));
+    assert.equal(context.get('databaseDriverID'), 'postgresql');
+    assert.equal(db.pgConfig.host, '::1');
+    assert.equal(db.pgConfig.port, 55432);
+  } finally {
+    // Let startup recovery/worker promises settle before closing the driver so
+    // the background work does not race the close.
+    try {
+      await context.require?.('scheduledFrameWorkerPromise');
+    } catch (_error) {
+      // Recovery failures are already logged and non-fatal.
+    }
+
+    if (server)
+      await close(server);
+
+    await context.require('db')?.close?.();
+
+    restoreEnv('ORG_AEOR_KIKX_DATABASE_DRIVER', previousDriver);
+    restoreEnv('ORG_AEOR_KIKX_DATABASE_URL', previousURL);
+  }
+});
 
 test('registerCoreClasses + resolveDatabaseDriver selects the built-in aeordb driver', () => {
   let registry = new PluginRegistry({ logger: { warn() {} } });

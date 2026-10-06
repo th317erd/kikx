@@ -20,6 +20,7 @@ import { CommandRegistry } from '../commands/command-registry.mjs';
 import { FRAME_TYPE_REGISTRATIONS } from '../frames/frame-types/index.mjs';
 import { DatabaseConnectionBase } from '../database/database-connection-base.mjs';
 import { SQLiteConnection } from '../database/sqlite-connection.mjs';
+import { PostgreSQLConnection } from '../database/postgresql-connection.mjs';
 import { AeorDBConnection } from '../aeordb/aeordb-connection.mjs';
 
 // Classes registered for override. Kept to the classes a plugin has a plausible
@@ -53,6 +54,7 @@ export function registerCoreClasses(registry) {
   if (typeof registry.registerDatabaseDriver === 'function') {
     registry.registerDatabaseDriver('aeordb', AeorDBConnection);
     registry.registerDatabaseDriver('sqlite', SQLiteConnection);
+    registry.registerDatabaseDriver('postgresql', PostgreSQLConnection);
   }
 
   return registry;

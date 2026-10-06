@@ -21,6 +21,8 @@ import {
   KIKX_DATABASE_DRIVER_PATH,
   DATABASE_PATH_PATH,
   KIKX_DATABASE_PATH,
+  DATABASE_URL_PATH,
+  KIKX_DATABASE_URL,
 } from '../../../src/core/config/config-paths.mjs';
 
 // Compatibility guard: each property path must derive the exact historical
@@ -44,6 +46,8 @@ test('config paths derive the historical environment-variable names', () => {
     [DATABASE_DRIVER_PATH, 'ORG_AEOR_KIKX_DATABASE_DRIVER'],
     [KIKX_DATABASE_PATH, 'KIKX_DATABASE_PATH'],
     [DATABASE_PATH_PATH, 'ORG_AEOR_KIKX_DATABASE_PATH'],
+    [KIKX_DATABASE_URL, 'KIKX_DATABASE_URL'],
+    [DATABASE_URL_PATH, 'ORG_AEOR_KIKX_DATABASE_URL'],
   ];
 
   for (const [propertyPath, expectedEnvKey] of cases)

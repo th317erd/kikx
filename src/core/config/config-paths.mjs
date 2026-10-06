@@ -28,3 +28,9 @@ export const KIKX_DATABASE_DRIVER_PATH = '/kikx/database/driver';
 // location (e.g. SQLite) read this; AeorDB ignores it and keeps its own keys.
 export const DATABASE_PATH_PATH = '/org/aeor/kikx/database/path';
 export const KIKX_DATABASE_PATH = '/kikx/database/path';
+
+// Canonical database-URL path (env ORG_AEOR_KIKX_DATABASE_URL) with a
+// transition alias (env KIKX_DATABASE_URL). URLs are consumed by drivers that
+// connect to a network server (e.g. PostgreSQL); AeorDB keeps its own keys.
+export const DATABASE_URL_PATH = '/org/aeor/kikx/database/url';
+export const KIKX_DATABASE_URL = '/kikx/database/url';
