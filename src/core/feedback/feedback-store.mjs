@@ -6,17 +6,18 @@ const DEFAULT_FEEDBACK_ROOT = '/feedback';
 
 export class FeedbackStore {
   constructor(options = {}) {
+    let db = options.db || options.aeordb;
     let {
-      aeordb,
       rootPath = DEFAULT_FEEDBACK_ROOT,
       clock = () => new Date().toISOString(),
       idGenerator = createFeedbackID,
     } = options;
 
-    if (!aeordb)
-      throw new TypeError('FeedbackStore requires an aeordb client');
+    if (!db)
+      throw new TypeError('FeedbackStore requires db (or the aeordb alias)');
 
-    this.aeordb = aeordb;
+    this.aeordb = db;
+    this.db = db;
     this.rootPath = normalizeRoot(rootPath);
     this.clock = clock;
     this.idGenerator = idGenerator;

@@ -21,18 +21,19 @@ export const MAX_COMPACTION_BOTS = 3;
 
 export class AeorDBAgentStore {
   constructor(options = {}) {
+    let db = options.db || options.aeordb;
     let {
-      aeordb,
       rootPath = DEFAULT_ROOT_PATH,
       clock = () => Date.now(),
       logicalClock = null,
       idGenerator = () => randomUUID(),
     } = options;
 
-    if (!aeordb)
-      throw new TypeError('AeorDBAgentStore requires an aeordb client');
+    if (!db)
+      throw new TypeError('AeorDBAgentStore requires db (or the aeordb alias)');
 
-    this.aeordb = aeordb;
+    this.aeordb = db;
+    this.db = db;
     this.rootPath = normalizeRoot(rootPath);
     this.clock = clock;
     // High-resolution, monotonic source for "crowned_at" ordering: the HLC tick

@@ -23,12 +23,14 @@ import { DEFAULT_ROOT_PATH } from './aeordb-frame-store-constants.mjs';
 
 export class AeorDBFrameStoreSessionBase {
   constructor(options = {}) {
-    let { aeordb, rootPath = DEFAULT_ROOT_PATH } = options;
+    let db = options.db || options.aeordb;
+    let { rootPath = DEFAULT_ROOT_PATH } = options;
 
-    if (!aeordb)
-      throw new TypeError('AeorDBFrameStore requires an aeordb client');
+    if (!db)
+      throw new TypeError('AeorDBFrameStore requires db (or the aeordb alias)');
 
-    this.aeordb = aeordb;
+    this.aeordb = db;
+    this.db = db;
     this.rootPath = normalizeRoot(rootPath);
     this._writeChain = Promise.resolve();
   }

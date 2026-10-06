@@ -7,18 +7,19 @@ const DEFAULT_ROOT_PATH = '/kikx';
 
 export class AgentCwdStore {
   constructor(options = {}) {
+    let db = options.db || options.aeordb;
     let {
-      aeordb,
       rootPath = DEFAULT_ROOT_PATH,
       clock = () => Date.now(),
       baseCWD = process.cwd(),
       validateDirectory = true,
     } = options;
 
-    if (!aeordb)
-      throw new TypeError('AgentCwdStore requires an aeordb client');
+    if (!db)
+      throw new TypeError('AgentCwdStore requires db (or the aeordb alias)');
 
-    this.aeordb = aeordb;
+    this.aeordb = db;
+    this.db = db;
     this.rootPath = normalizeRoot(rootPath);
     this.clock = clock;
     this.baseCWD = path.resolve(baseCWD);

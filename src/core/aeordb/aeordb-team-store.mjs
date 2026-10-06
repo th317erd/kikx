@@ -8,17 +8,18 @@ const DEFAULT_ROOT_PATH = '/kikx';
 
 export class AeorDBTeamStore {
   constructor(options = {}) {
+    let db = options.db || options.aeordb;
     let {
-      aeordb,
       rootPath = DEFAULT_ROOT_PATH,
       clock = () => Date.now(),
       idGenerator = () => randomUUID(),
     } = options;
 
-    if (!aeordb)
-      throw new TypeError('AeorDBTeamStore requires an aeordb client');
+    if (!db)
+      throw new TypeError('AeorDBTeamStore requires db (or the aeordb alias)');
 
-    this.aeordb = aeordb;
+    this.aeordb = db;
+    this.db = db;
     this.rootPath = normalizeRoot(rootPath);
     this.clock = clock;
     this.idGenerator = idGenerator;

@@ -150,7 +150,7 @@ export async function createServer(options = {}) {
   await context.require('pluginLoadPromise');
 
   if (!context.has('db')) {
-    // P2 will repoint stores to `db`; for now `aeordb` is the alias they read.
+    // `aeordb` remains an alias for hosts/tests that inject it directly.
     let injectedLegacy = context.has('aeordb') && !options.databaseDriver;
     if (injectedLegacy) {
       // Tests/host embeddings may inject a ready client; expose it under both names.
@@ -175,14 +175,14 @@ export async function createServer(options = {}) {
     }
   }
 
-  // Stores below still read `aeordb`; P2 repoints them to `db`. If a host
+  // Keep the `aeordb` alias for hosts/tests that read it. If a host
   // injected only `db`, mirror it so the alias is never missing.
   if (context.has('db') && !context.has('aeordb'))
     context.set('aeordb', context.require('db'));
 
   if (!context.has('toolOutputStore')) {
     context.set('toolOutputStore', new ToolOutputStore({
-      aeordb: context.require('aeordb'),
+      db: context.require('db'),
     }));
   }
 
@@ -193,13 +193,13 @@ export async function createServer(options = {}) {
 
   if (!context.has('tokenUsage')) {
     context.set('tokenUsage', new TokenUsageTracker({
-      aeordb: context.require('aeordb'),
+      db: context.require('db'),
     }));
   }
 
   if (!context.has('accountStore')) {
     context.set('accountStore', new AccountStore({
-      aeordb: context.require('aeordb'),
+      db: context.require('db'),
     }));
   }
 
@@ -212,41 +212,41 @@ export async function createServer(options = {}) {
 
   if (!context.has('agentManager')) {
     context.set('agentManager', new AgentManager({
-      aeordb: context.require('aeordb'),
+      db: context.require('db'),
       pluginRegistry: context.require('pluginRegistry'),
     }));
   }
 
   if (!context.has('teamManager')) {
     context.set('teamManager', new TeamManager({
-      aeordb: context.require('aeordb'),
+      db: context.require('db'),
       agentManager: context.require('agentManager'),
     }));
   }
 
   if (!context.has('agentTodoStore')) {
     context.set('agentTodoStore', new AgentTodoStore({
-      aeordb: context.require('aeordb'),
+      db: context.require('db'),
     }));
   }
 
   if (!context.has('agentCwdStore')) {
     context.set('agentCwdStore', new AgentCwdStore({
-      aeordb: context.require('aeordb'),
+      db: context.require('db'),
       baseCWD: process.cwd(),
     }));
   }
 
   if (!context.has('feedbackStore')) {
     context.set('feedbackStore', new FeedbackStore({
-      aeordb: context.require('aeordb'),
+      db: context.require('db'),
     }));
   }
 
   if (!context.has('frameRuntime')) {
     let RuntimeClass = resolveCoreClass(context.require('pluginRegistry'), 'FrameRuntime', FrameRuntime);
     context.set('frameRuntime', new RuntimeClass({
-      aeordb: context.require('aeordb'),
+      db: context.require('db'),
       frameRouter: context.require('frameRouter'),
       services: { context },
     }));
@@ -272,7 +272,7 @@ export async function createServer(options = {}) {
     context.set('processManager', new ProcessManager({
       commandExecutor: context.require('commandExecutor'),
       toolOutputStore: context.require('toolOutputStore'),
-      aeordb: context.require('aeordb'),
+      db: context.require('db'),
       frameRuntime: context.require('frameRuntime'),
       context,
       logger: options.logger || console,

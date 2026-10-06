@@ -4,10 +4,11 @@ import { AeorDBTeamStore } from '../aeordb/aeordb-team-store.mjs';
 
 export class TeamManager {
   constructor(options = {}) {
-    let { teamStore, aeordb, agentManager = null } = options;
+    let { teamStore, agentManager = null } = options;
+    let db = options.db || options.aeordb;
 
     this.agentManager = agentManager;
-    this.teamStore = teamStore || new AeorDBTeamStore({ aeordb });
+    this.teamStore = teamStore || new AeorDBTeamStore({ db });
   }
 
   async createTeam(input = {}) {

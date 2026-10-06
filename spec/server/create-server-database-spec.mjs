@@ -73,6 +73,11 @@ test('createServer selects the built-in aeordb driver by default', async () => {
     assert.ok(db instanceof AeorDBConnection, 'db must be the built-in AeorDB driver');
     assert.equal(context.get('aeordb'), db);
     assert.equal(context.get('databaseDriverID'), 'aeordb');
+
+    // The frame store built by createServer is wired to the canonical driver.
+    let frameRuntime = context.require('frameRuntime');
+    assert.equal(frameRuntime.frameStore.aeordb, db);
+    assert.equal(frameRuntime.frameStore.db, db);
   } finally {
     await close(server);
   }

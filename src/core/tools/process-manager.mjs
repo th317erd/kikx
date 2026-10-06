@@ -66,6 +66,7 @@ export class ProcessManager {
       exitStdioGraceMs = DEFAULT_EXIT_STDIO_GRACE_MS,
       logger = console,
     } = options;
+    let db = options.db || aeordb;
 
     if (!commandExecutor?.startProcess)
       throw new TypeError('ProcessManager requires a commandExecutor with startProcess()');
@@ -75,7 +76,7 @@ export class ProcessManager {
 
     this.commandExecutor = commandExecutor;
     this.toolOutputStore = toolOutputStore;
-    this.processStore = processStore || (aeordb ? new ProcessStore({ aeordb, clock }) : null);
+    this.processStore = processStore || (db ? new ProcessStore({ db, clock }) : null);
     this.frameRuntime = frameRuntime;
     this.context = context;
     this.tempRoot = tempRoot;

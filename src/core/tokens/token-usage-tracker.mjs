@@ -8,7 +8,8 @@ export class TokenUsageTracker extends EventEmitter {
   constructor(options = {}) {
     super();
 
-    this.aeordb = options.aeordb || null;
+    this.aeordb = options.db || options.aeordb || null;
+    this.db = this.aeordb;
     this.path = normalizePath(options.path || DEFAULT_TOKEN_USAGE_PATH);
     this.clock = options.clock || Date.now;
     this.flushOnAdd = options.flushOnAdd !== false;

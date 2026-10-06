@@ -8,13 +8,14 @@ import {
 
 export class AgentManager {
   constructor(options = {}) {
-    let { agentStore, aeordb, pluginRegistry } = options;
+    let { agentStore, pluginRegistry } = options;
+    let db = options.db || options.aeordb;
 
     if (!pluginRegistry)
       throw new TypeError('AgentManager requires pluginRegistry');
 
     this.pluginRegistry = pluginRegistry;
-    this.agentStore = agentStore || new AeorDBAgentStore({ aeordb });
+    this.agentStore = agentStore || new AeorDBAgentStore({ db });
   }
 
   listProviders() {

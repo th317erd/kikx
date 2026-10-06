@@ -9,8 +9,8 @@ export const OUTPUT_READ_TOOL_NAME = 'output-read';
 
 export class ToolOutputStore {
   constructor(options = {}) {
+    let db = options.db || options.aeordb;
     let {
-      aeordb,
       rootPath = DEFAULT_TOOL_OUTPUT_ROOT,
       inlineLimitBytes = DEFAULT_TOOL_OUTPUT_INLINE_LIMIT_BYTES,
       defaultReadBytes = DEFAULT_TOOL_OUTPUT_READ_BYTES,
@@ -18,10 +18,11 @@ export class ToolOutputStore {
       idGenerator = createToolOutputID,
     } = options;
 
-    if (!aeordb)
-      throw new TypeError('ToolOutputStore requires an aeordb client');
+    if (!db)
+      throw new TypeError('ToolOutputStore requires db (or the aeordb alias)');
 
-    this.aeordb = aeordb;
+    this.aeordb = db;
+    this.db = db;
     this.rootPath = normalizeRootPath(rootPath);
     this.inlineLimitBytes = normalizePositiveInteger(inlineLimitBytes, 'inlineLimitBytes');
     this.defaultReadBytes = normalizePositiveInteger(defaultReadBytes, 'defaultReadBytes');

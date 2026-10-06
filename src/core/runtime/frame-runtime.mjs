@@ -26,8 +26,8 @@ export class FrameRuntime extends EventEmitter {
   constructor(options = {}) {
     super();
 
+    let db = options.db || options.aeordb;
     let {
-      aeordb,
       frameStore,
       frameRouter = null,
       services = null,
@@ -38,8 +38,8 @@ export class FrameRuntime extends EventEmitter {
       scheduledFrameWorkerIntervalMS = 1000,
     } = options;
 
-    if (!aeordb && !frameStore)
-      throw new TypeError('FrameRuntime requires aeordb or frameStore');
+    if (!db && !frameStore)
+      throw new TypeError('FrameRuntime requires db (or the aeordb alias) or frameStore');
 
     this.clock = clock;
     this.logicalClock = logicalClock || new HybridLogicalClock({
@@ -47,7 +47,8 @@ export class FrameRuntime extends EventEmitter {
       runnerID,
     });
     this.idGenerator = idGenerator;
-    this.frameStore = frameStore || new AeorDBFrameStore({ aeordb });
+    this.frameStore = frameStore || new AeorDBFrameStore({ db });
+    this.db = this.frameStore.aeordb || db || null;
     this.frameRouter = frameRouter;
     this.services = services || {};
     this.tokenUsage = options.tokenUsage || resolveService(this.services, 'tokenUsage');

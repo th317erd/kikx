@@ -57,16 +57,17 @@ const PERSISTED_RECORD_FIELDS = [
 // reloaded wake without the volatile /tmp capture files.
 export class ProcessStore {
   constructor(options = {}) {
+    let db = options.db || options.aeordb;
     let {
-      aeordb,
       rootPath = DEFAULT_PROCESS_ROOT_PATH,
       clock = () => new Date().toISOString(),
     } = options;
 
-    if (!aeordb)
-      throw new TypeError('ProcessStore requires an aeordb client');
+    if (!db)
+      throw new TypeError('ProcessStore requires db (or the aeordb alias)');
 
-    this.aeordb = aeordb;
+    this.aeordb = db;
+    this.db = db;
     this.rootPath = normalizeRoot(rootPath);
     this.clock = clock;
   }

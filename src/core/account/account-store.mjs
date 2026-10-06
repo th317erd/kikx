@@ -5,15 +5,16 @@ const LOCAL_USER_ID = 'local-user';
 
 export class AccountStore {
   constructor(options = {}) {
+    let db = options.db || options.aeordb;
     let {
-      aeordb,
       clock = () => Date.now(),
     } = options;
 
-    if (!aeordb)
-      throw new TypeError('AccountStore requires aeordb');
+    if (!db)
+      throw new TypeError('AccountStore requires db (or the aeordb alias)');
 
-    this.aeordb = aeordb;
+    this.aeordb = db;
+    this.db = db;
     this.clock = clock;
     this.memoryProfiles = new Map();
   }
