@@ -7,6 +7,18 @@ import { shutdownHTTPServer } from './shutdown.mjs';
 let shuttingDown = false;
 let server;
 
+// Register handlers before `main()` runs so a signal during startup cannot kill
+// the process before shutdown wiring exists. `shutdown()` is a no-op until the
+// server is assigned.
+for (let signal of [ 'SIGINT', 'SIGTERM' ]) {
+  process.on(signal, () => {
+    shutdown(signal).catch((error) => {
+      console.error(`Kikx shutdown failed after ${signal}:`, error);
+      process.exit(1);
+    });
+  });
+}
+
 async function main() {
   let config = await createConfigStore({});
   let host = await config.get(KIKX_HOST_PATH) || '127.0.0.1';
@@ -16,21 +28,12 @@ async function main() {
   server.listen(port, host, () => {
     console.log(`Kikx listening on http://${host}:${port}`);
   });
-
-  for (let signal of [ 'SIGINT', 'SIGTERM' ]) {
-    process.on(signal, () => {
-      shutdown(signal).catch((error) => {
-        console.error(`Kikx shutdown failed after ${signal}:`, error);
-        process.exit(1);
-      });
-    });
-  }
 }
 
 await main();
 
 async function shutdown(signal) {
-  if (shuttingDown)
+  if (shuttingDown || !server)
     return;
 
   shuttingDown = true;

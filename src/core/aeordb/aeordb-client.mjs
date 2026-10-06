@@ -1,5 +1,7 @@
 'use strict';
 
+import { snapshotEnvironment } from '../config/index.mjs';
+
 const DEFAULT_TIMEOUT_MS = 15000;
 
 export class AeorDBError extends Error {
@@ -15,9 +17,10 @@ export class AeorDBError extends Error {
 
 export class AeorDBClient {
   constructor(options = {}) {
+    let ambient = snapshotEnvironment();
     let {
-      baseURL,
-      token = '',
+      baseURL = ambient.AEORDB_URL,
+      token = ambient.AEORDB_TOKEN ?? '',
       timeoutMS = DEFAULT_TIMEOUT_MS,
       fetchImpl = globalThis.fetch,
     } = options;

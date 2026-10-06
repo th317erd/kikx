@@ -60,24 +60,33 @@ const DEFAULT_AEOR_WEB_COMPONENTS_ROOT = '/home/wyatt/Projects/aeor-web-componen
 
 export async function createServer(options = {}) {
   let context = options.context || new AppContext();
-  let config = options.config;
-  if (!config)
-    config = await createConfigStore({ jsonEnvPath: options.jsonEnvPath });
+  let config = options.config || context.get('config') || await createConfigStore({ jsonEnvPath: options.jsonEnvPath });
+  context.set('config', config);
 
-  if (!context.has('config'))
-    context.set('config', config);
-
+  // Resolve every config-derived value ONCE, before any store guard. All awaits
+  // happen here so the guard/set pairs below run as one synchronous section: a
+  // shared `context` is never observed half-wired while values are pending.
   let pluginPaths = options.pluginPaths || await config.get(KIKX_PLUGIN_PATHS_PATH) || '';
+  let aeorWebComponentsRoot = options.aeorWebComponentsRoot || await config.get(AEOR_WEB_COMPONENTS_DIR_PATH) || DEFAULT_AEOR_WEB_COMPONENTS_ROOT;
+  let aeorDBURL = options.aeorDBURL || await config.get(AEORDB_URL_PATH) || 'http://127.0.0.1:6830';
+  let aeorDBToken = options.aeorDBToken || await config.get(AEORDB_TOKEN_PATH) || '';
+  let contextWindowTokens = parseEnvPositiveInteger(await config.get(KIKX_CONTEXT_WINDOW_TOKENS_PATH), 128000);
+  let compactionAgentID = await config.get(KIKX_COMPACTION_AGENT_ID_PATH);
+  let compactionAgentContextTokens = parseEnvPositiveInteger(await config.get(KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH), 128000);
+  let promptReserveTokens = parseEnvNonNegativeInteger(await config.get(KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH), 8000);
+  let compactionTriggerRatio = parseEnvRatio(await config.get(KIKX_COMPACTION_TRIGGER_RATIO_PATH), 0.7);
+  let hardLimitRatio = parseEnvRatio(await config.get(KIKX_COMPACTION_HARD_RATIO_PATH), 1);
+
   let staticRoots = {
     client: options.clientRoot || CLIENT_ROOT,
     shared: options.sharedRoot || SHARED_ROOT,
-    aeorWebComponents: options.aeorWebComponentsRoot || await config.get(AEOR_WEB_COMPONENTS_DIR_PATH) || DEFAULT_AEOR_WEB_COMPONENTS_ROOT,
+    aeorWebComponents: aeorWebComponentsRoot,
   };
 
   if (!context.has('aeordb')) {
     context.set('aeordb', new AeorDBClient({
-      baseURL: options.aeorDBURL || await config.get(AEORDB_URL_PATH) || 'http://127.0.0.1:6830',
-      token: options.aeorDBToken || await config.get(AEORDB_TOKEN_PATH) || '',
+      baseURL: aeorDBURL,
+      token: aeorDBToken,
       fetchImpl: options.fetchImpl || globalThis.fetch,
     }));
   }
@@ -218,12 +227,12 @@ export async function createServer(options = {}) {
       agentManager: context.require('agentManager'),
       pluginRegistry: context.require('pluginRegistry'),
       frameRuntime: context.require('frameRuntime'),
-      contextWindowTokens: parseEnvPositiveInteger(await config.get(KIKX_CONTEXT_WINDOW_TOKENS_PATH), 128000),
-      compactionAgentID: await config.get(KIKX_COMPACTION_AGENT_ID_PATH),
-      compactionAgentContextTokens: parseEnvPositiveInteger(await config.get(KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH), 128000),
-      promptReserveTokens: parseEnvNonNegativeInteger(await config.get(KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH), 8000),
-      compactionTriggerRatio: parseEnvRatio(await config.get(KIKX_COMPACTION_TRIGGER_RATIO_PATH), 0.7),
-      hardLimitRatio: parseEnvRatio(await config.get(KIKX_COMPACTION_HARD_RATIO_PATH), 1),
+      contextWindowTokens,
+      compactionAgentID,
+      compactionAgentContextTokens,
+      promptReserveTokens,
+      compactionTriggerRatio,
+      hardLimitRatio,
       logger: options.logger || console,
     }));
   }
