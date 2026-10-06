@@ -18,6 +18,7 @@ npm-debug.log*
 *.pid
 .claude/
 .codex/
+.pi/
 
 # Coverage and build output
 coverage/

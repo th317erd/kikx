@@ -18,6 +18,7 @@ import { FrameRuntime } from '../runtime/frame-runtime.mjs';
 import { CompactionService } from '../compaction/compaction-service.mjs';
 import { CommandRegistry } from '../commands/command-registry.mjs';
 import { FRAME_TYPE_REGISTRATIONS } from '../frames/frame-types/index.mjs';
+import { DatabaseConnectionBase } from '../database/database-connection-base.mjs';
 
 // Classes registered for override. Kept to the classes a plugin has a plausible
 // reason to replace (engine/router/runtime/compaction registries), not the whole
@@ -30,6 +31,7 @@ const CORE_CLASSES = [
   FrameRouter,
   FrameRuntime,
   CompactionService,
+  DatabaseConnectionBase,
 ];
 
 export function registerCoreClasses(registry) {

@@ -3,6 +3,8 @@
 import { PluginInterface } from './plugin-interface.mjs';
 import { AgentInterface } from './agent-interface.mjs';
 import { ClassRegistry } from './class-registry.mjs';
+import { normalizeConfigFields } from './agent-normalizers.mjs';
+import { DatabaseConnectionBase } from '../database/database-connection-base.mjs';
 
 // PluginRegistry extends the universal ClassRegistry: tools/providers/selectors/
 // components live here, and *any* class can be registered and overridden via the
@@ -13,6 +15,7 @@ export class PluginRegistry extends ClassRegistry {
     this.logger = options.logger || console;
     this._tools = new Map();
     this._agentProviders = new Map();
+    this._databaseDrivers = new Map();
     this._selectors = [];
     this._frameComponents = new Map();
     this._toolComponents = new Map();
@@ -112,6 +115,48 @@ export class PluginRegistry extends ClassRegistry {
           displayName: AgentClass.displayName || pluginID || AgentClass.name,
           description: AgentClass.description || '',
           configFields: [],
+        };
+      }
+    }));
+  }
+
+  registerDatabaseDriver(driverID, DriverClass) {
+    if (!driverID || typeof driverID !== 'string')
+      throw new TypeError('Database driver ID must be a non-empty string');
+
+    if (!isSubclassOf(DriverClass, DatabaseConnectionBase))
+      throw new TypeError(`Database driver "${driverID}" must extend DatabaseConnectionBase`);
+
+    if (this._databaseDrivers.has(driverID))
+      this.logger.warn?.(`Database driver "${driverID}" is being overridden`);
+
+    this._databaseDrivers.set(driverID, DriverClass);
+    return DriverClass;
+  }
+
+  getDatabaseDriver(driverID) {
+    return this._databaseDrivers.get(driverID) || null;
+  }
+
+  getDatabaseDrivers() {
+    return new Map(this._databaseDrivers);
+  }
+
+  listDatabaseDriverDescriptors() {
+    return Promise.all([ ...this._databaseDrivers.values() ].map(async (DriverClass) => {
+      try {
+        return await DriverClass.getDatabaseDriverDescriptor();
+      } catch (error) {
+        let driverID = DriverClass.driverID || DriverClass.name;
+        this.logger.warn?.(`Failed to resolve database driver descriptor for "${driverID}": ${error?.message || error}`);
+
+        return {
+          driverID,
+          displayName: DriverClass.displayName || driverID,
+          description: DriverClass.description || '',
+          capabilities: { ...(DriverClass.capabilities || {}) },
+          configFields: normalizeConfigFields(DriverClass.configFields),
+          configKeys: Array.isArray(DriverClass.configKeys) ? DriverClass.configKeys.slice() : [],
         };
       }
     }));
