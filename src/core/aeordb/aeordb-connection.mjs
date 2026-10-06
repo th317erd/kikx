@@ -204,6 +204,14 @@ export class AeorDBConnection extends DatabaseConnectionBase {
     }
   }
 
+  // Index configuration is a driver concern: AeorDB persists each index
+  // document through its client, matching the historical per-document putFile
+  // writes the stores used to perform directly.
+  async configureIndexes(configs = []) {
+    for (let config of configs)
+      await this.client.putFile(config.path, config.body);
+  }
+
   eventsURL(params = {}) {
     return this.client.eventsURL(params);
   }

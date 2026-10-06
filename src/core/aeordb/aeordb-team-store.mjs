@@ -3,6 +3,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
+import { writeIndexConfigs } from '../database/index-configs.mjs';
 
 const DEFAULT_ROOT_PATH = '/kikx';
 
@@ -101,6 +102,17 @@ export class AeorDBTeamStore {
 
     if (lookupMatches.length === 1)
       return lookupMatches[0];
+
+    // A driver without the query capability hides the adapter entirely, so
+    // skip straight to the bounded-list fallback instead of calling a missing
+    // method. Real query errors still fall through to the 404 branch below.
+    if (typeof this.aeordb.queryFiles !== 'function') {
+      let legacyMatch = await this.findTeamByNameFromBoundedList(reference);
+      if (legacyMatch)
+        await this.saveTeamNameLookup(legacyMatch);
+
+      return legacyMatch;
+    }
 
     let result;
     try {
@@ -260,18 +272,23 @@ export class AeorDBTeamStore {
     if (this._indexesReady)
       return;
 
-    await this.aeordb.putFile(`${this.rootPath}/teams/.aeordb-config/indexes.json`, {
-      glob: '*/team.json',
-      indexes: [
-        { name: 'id', type: 'string' },
-        { name: 'name', type: [ 'string', 'trigram' ] },
-        { name: 'nameKey', type: 'string' },
-        { name: 'memberActorIDs', type: 'string' },
-        { name: 'memberTypes', type: 'string' },
-        { name: 'createdAt', type: 'timestamp' },
-        { name: 'updatedAt', type: 'timestamp' },
-      ],
-    });
+    await writeIndexConfigs(this.db, [
+      {
+        path: `${this.rootPath}/teams/.aeordb-config/indexes.json`,
+        body: {
+          glob: '*/team.json',
+          indexes: [
+            { name: 'id', type: 'string' },
+            { name: 'name', type: [ 'string', 'trigram' ] },
+            { name: 'nameKey', type: 'string' },
+            { name: 'memberActorIDs', type: 'string' },
+            { name: 'memberTypes', type: 'string' },
+            { name: 'createdAt', type: 'timestamp' },
+            { name: 'updatedAt', type: 'timestamp' },
+          ],
+        },
+      },
+    ]);
     this._indexesReady = true;
   }
 

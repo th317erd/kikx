@@ -132,3 +132,32 @@ test('merge() on a missing document throws DatabaseError, not AeorDBError', asyn
     await db.close();
   }
 });
+
+test('configureIndexes writes each index document through the client', async () => {
+  let db = new AeorDBConnection({ client: new FakeAeorDBClient() });
+  await db.connect();
+
+  try {
+    await db.configureIndexes([
+      {
+        path: '/kikx/agents/.aeordb-config/indexes.json',
+        body: { glob: '*/agent.json', indexes: [ { name: 'id', type: 'string' } ] },
+      },
+      {
+        path: '/kikx/teams/.aeordb-config/indexes.json',
+        body: { glob: '*/team.json', indexes: [] },
+      },
+    ]);
+
+    assert.deepEqual(await db.getFile('/kikx/agents/.aeordb-config/indexes.json'), {
+      glob: '*/agent.json',
+      indexes: [ { name: 'id', type: 'string' } ],
+    });
+    assert.deepEqual(await db.getFile('/kikx/teams/.aeordb-config/indexes.json'), {
+      glob: '*/team.json',
+      indexes: [],
+    });
+  } finally {
+    await db.close();
+  }
+});

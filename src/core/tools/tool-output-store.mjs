@@ -2,6 +2,8 @@
 
 import { randomBytes } from 'node:crypto';
 
+import { writeIndexConfigs } from '../database/index-configs.mjs';
+
 export const DEFAULT_TOOL_OUTPUT_ROOT = '/kikx/tool-outputs';
 export const DEFAULT_TOOL_OUTPUT_INLINE_LIMIT_BYTES = 192 * 1024;
 export const DEFAULT_TOOL_OUTPUT_READ_BYTES = 128 * 1024;
@@ -149,6 +151,9 @@ export class ToolOutputStore {
     if (!normalizedQuery && !where)
       throw new TypeError('query or where is required');
 
+    if (typeof this.aeordb.searchFiles !== 'function')
+      throw new Error('Tool output search is unsupported by the active database driver');
+
     await this.ensureIndexConfig();
     let search = {
       path: this.rootPath,
@@ -232,22 +237,27 @@ export class ToolOutputStore {
     if (this._indexesReady)
       return;
 
-    await this.aeordb.putFile(`${this.rootPath}/.aeordb-config/indexes.json`, {
-      glob: '*/*',
-      indexes: [
-        { name: 'id', type: 'string' },
-        { name: 'toolName', type: [ 'string', 'trigram' ] },
-        { name: 'agentID', type: 'string' },
-        { name: 'sessionID', type: 'string' },
-        { name: 'frameID', type: 'string' },
-        { name: 'createdAt', type: 'timestamp' },
-        { name: 'updatedAt', type: 'timestamp' },
-        { name: 'format', type: 'string' },
-        { name: 'sizeBytes', type: 'u64' },
-        { name: 'contentPreview', type: [ 'string', 'trigram' ] },
-        { name: 'resultText', type: 'trigram', source: [ 'text' ] },
-      ],
-    });
+    await writeIndexConfigs(this.db, [
+      {
+        path: `${this.rootPath}/.aeordb-config/indexes.json`,
+        body: {
+          glob: '*/*',
+          indexes: [
+            { name: 'id', type: 'string' },
+            { name: 'toolName', type: [ 'string', 'trigram' ] },
+            { name: 'agentID', type: 'string' },
+            { name: 'sessionID', type: 'string' },
+            { name: 'frameID', type: 'string' },
+            { name: 'createdAt', type: 'timestamp' },
+            { name: 'updatedAt', type: 'timestamp' },
+            { name: 'format', type: 'string' },
+            { name: 'sizeBytes', type: 'u64' },
+            { name: 'contentPreview', type: [ 'string', 'trigram' ] },
+            { name: 'resultText', type: 'trigram', source: [ 'text' ] },
+          ],
+        },
+      },
+    ]);
     this._indexesReady = true;
   }
 

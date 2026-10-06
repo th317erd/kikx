@@ -33,6 +33,22 @@ export class DatabaseConnectionBase extends PluginInterface {
     this.config = options.config || {};
     this.secrets = options.secrets || {};
     this._connected = false;
+
+    // The historical file-verb adapters below are defined on the prototype for
+    // every driver, which would make `typeof db.searchFiles === 'function'`
+    // true even for a driver that does not advertise the capability. Shadow
+    // them with own `undefined` so capability probes stay meaningful for
+    // drivers without search/query/ranges. The modern `search`/`query`/
+    // `getRanges`/`eventsURL` methods are deliberately left in place so they
+    // keep throwing the typed `capability_unsupported` DatabaseError.
+    if (!this.supports('search'))
+      this.searchFiles = undefined;
+
+    if (!this.supports('query'))
+      this.queryFiles = undefined;
+
+    if (!this.supports('ranges'))
+      this.fetchFileRanges = undefined;
   }
 
   static async resolveConfigFields(_context = {}) {
@@ -100,6 +116,11 @@ export class DatabaseConnectionBase extends PluginInterface {
   async getMany() {
     throw unimplemented(this, 'getMany');
   }
+
+  // Index configuration is a driver concern. Drivers backed by a store with a
+  // persistent index (AeorDB) override this; drivers that have no index
+  // concept inherit the no-op and simply ignore the request.
+  async configureIndexes(_configs) {}
 
   async batch() {
     throw unimplemented(this, 'batch');

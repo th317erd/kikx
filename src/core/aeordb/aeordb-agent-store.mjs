@@ -8,6 +8,7 @@ import {
   CHARACTER_COMPRESSED_FIELD,
   MAX_CHARACTER_COMPRESSED_LENGTH,
 } from '../agents/character-limits.mjs';
+import { writeIndexConfigs } from '../database/index-configs.mjs';
 
 const DEFAULT_ROOT_PATH = '/kikx';
 // The master-agent list is exactly the most-recently-crowned three. Crowning a
@@ -128,6 +129,17 @@ export class AeorDBAgentStore {
 
     if (lookupMatches.length === 1)
       return lookupMatches[0];
+
+    // A driver without the query capability hides the adapter entirely, so
+    // skip straight to the bounded-list fallback instead of calling a missing
+    // method. Real query errors still fall through to the 404 branch below.
+    if (typeof this.aeordb.queryFiles !== 'function') {
+      let legacyMatch = await this.findAgentByNameFromBoundedList(reference);
+      if (legacyMatch)
+        await this.saveAgentNameLookup(legacyMatch);
+
+      return legacyMatch;
+    }
 
     let result;
     try {
@@ -464,24 +476,29 @@ export class AeorDBAgentStore {
     if (this._indexesReady)
       return;
 
-    await this.aeordb.putFile(`${this.rootPath}/agents/.aeordb-config/indexes.json`, {
-      glob: '*/agent.json',
-      indexes: [
-        { name: 'id', type: 'string' },
-        { name: 'name', type: [ 'string', 'trigram' ] },
-        { name: 'nameKey', type: 'string' },
-        { name: 'pluginID', type: 'string' },
-        { name: 'enabled', type: 'string', source: [ 'enabledIndex' ] },
-        { name: 'crowned', type: 'string', source: [ 'crownedIndex' ] },
-        { name: 'crownedAt', type: 'timestamp' },
-        { name: 'crownedClock', type: 'string' },
-        { name: 'compactionCrowned', type: 'string', source: [ 'compactionCrownedIndex' ] },
-        { name: 'compactionCrownedAt', type: 'timestamp' },
-        { name: 'compactionCrownedClock', type: 'string' },
-        { name: 'createdAt', type: 'timestamp' },
-        { name: 'updatedAt', type: 'timestamp' },
-      ],
-    });
+    await writeIndexConfigs(this.db, [
+      {
+        path: `${this.rootPath}/agents/.aeordb-config/indexes.json`,
+        body: {
+          glob: '*/agent.json',
+          indexes: [
+            { name: 'id', type: 'string' },
+            { name: 'name', type: [ 'string', 'trigram' ] },
+            { name: 'nameKey', type: 'string' },
+            { name: 'pluginID', type: 'string' },
+            { name: 'enabled', type: 'string', source: [ 'enabledIndex' ] },
+            { name: 'crowned', type: 'string', source: [ 'crownedIndex' ] },
+            { name: 'crownedAt', type: 'timestamp' },
+            { name: 'crownedClock', type: 'string' },
+            { name: 'compactionCrowned', type: 'string', source: [ 'compactionCrownedIndex' ] },
+            { name: 'compactionCrownedAt', type: 'timestamp' },
+            { name: 'compactionCrownedClock', type: 'string' },
+            { name: 'createdAt', type: 'timestamp' },
+            { name: 'updatedAt', type: 'timestamp' },
+          ],
+        },
+      },
+    ]);
     this._indexesReady = true;
   }
 

@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AeorDBAgentStore } from '../../src/core/aeordb/aeordb-agent-store.mjs';
+import { AeorDBConnection } from '../../src/core/aeordb/aeordb-connection.mjs';
+import { FakeAeorDBClient } from './database/fake-aeordb-client.mjs';
 
 function createClient() {
   return {
@@ -214,6 +216,37 @@ test('AeorDBAgentStore falls back to bounded exact-name list lookup for legacy r
   assert.ok(aeordb.calls.some((call) => call.method === 'queryFiles'));
   assert.ok(aeordb.calls.some((call) => call.method === 'listDirectory' && call.options.limit === 500));
   assert.ok([ ...aeordb.files.keys() ].some((path) => path.startsWith('/kikx/agent-name-lookup/') && path.endsWith('/agent_1.json')));
+});
+
+test('AeorDBAgentStore uses the bounded-list fallback when the driver cannot query', async () => {
+  // A driver with capabilities.query === false hides the queryFiles adapter in
+  // DatabaseConnectionBase; the lookup must skip straight to the bounded list
+  // instead of calling a missing method.
+  class QuerylessConnection extends AeorDBConnection {
+    static driverID = 'aeordb-queryless';
+    static capabilities = { ...AeorDBConnection.capabilities, query: false };
+  }
+
+  let client = new FakeAeorDBClient();
+  let db = new QuerylessConnection({ client });
+  let store = new AeorDBAgentStore({ db });
+
+  // A legacy record with no pre-built name lookup, so the bounded list is the
+  // only path that can find it.
+  await client.putFile('/kikx/agents/agent_1/agent.json', {
+    id: 'agent_1',
+    name: 'Mr. Bennett',
+    pluginID: 'test-agent',
+    config: {},
+    secrets: {},
+  });
+
+  assert.equal(typeof db.queryFiles, 'undefined');
+  assert.equal((await store.findAgentByIDOrName('Mr. Bennett')).id, 'agent_1');
+  assert.ok(
+    [ ...client._store.keys() ].some((path) => path.startsWith('kikx/agent-name-lookup/') && path.endsWith('/agent_1.json')),
+    'the bounded-list match is saved as a name lookup',
+  );
 });
 
 test('AeorDBAgentStore rejects malformed agents and missing records', async () => {

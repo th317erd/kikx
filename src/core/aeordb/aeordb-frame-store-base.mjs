@@ -1,6 +1,7 @@
 'use strict';
 
 import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
+import { writeIndexConfigs } from '../database/index-configs.mjs';
 import { buildGlobalIndexConfigs, buildSessionIndexConfigs } from './aeordb-frame-store-indexes.mjs';
 import {
   normalizeLimit,
@@ -59,8 +60,7 @@ export class AeorDBFrameStoreSessionBase {
   }
 
   async ensureIndexConfigs() {
-    for (let config of this.indexConfigs())
-      await this.aeordb.putFile(config.path, config.body);
+    await writeIndexConfigs(this.db, this.indexConfigs());
   }
 
   indexConfigs() {
@@ -71,8 +71,7 @@ export class AeorDBFrameStoreSessionBase {
     if (!sessionID)
       throw new TypeError('ensureSessionIndexConfigs() requires sessionID');
 
-    for (let config of this.sessionIndexConfigs(sessionID))
-      await this.aeordb.putFile(config.path, config.body);
+    await writeIndexConfigs(this.db, this.sessionIndexConfigs(sessionID));
   }
 
   sessionIndexConfigs(sessionID) {

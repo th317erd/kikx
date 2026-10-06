@@ -109,6 +109,50 @@ test('DatabaseConnectionBase.requireCapability throws a typed error for a missin
   assert.doesNotThrow(() => db.requireCapability('read'));
 });
 
+test('DatabaseConnectionBase hides the file-verb adapters a driver does not advertise', () => {
+  let db = new InMemoryDatabaseConnection();
+
+  assert.equal(db.supports('search'), false);
+  assert.equal(db.supports('query'), false);
+  assert.equal(db.supports('ranges'), false);
+  assert.equal(typeof db.searchFiles, 'undefined');
+  assert.equal(typeof db.queryFiles, 'undefined');
+  assert.equal(typeof db.fetchFileRanges, 'undefined');
+
+  // Only the legacy file-verb adapters are shadowed; the modern methods survive
+  // so callers still get the typed capability error rather than a TypeError.
+  assert.equal(typeof db.search, 'function');
+  assert.equal(typeof db.query, 'function');
+  assert.equal(typeof db.getRanges, 'function');
+});
+
+test('DatabaseConnectionBase exposes the file-verb adapters for advertised capabilities', () => {
+  class CapableDriver extends DatabaseConnectionBase {
+    static driverID = 'capable';
+    static capabilities = {
+      ...DatabaseConnectionBase.capabilities,
+      search: true,
+      query: true,
+      ranges: true,
+    };
+  }
+
+  let db = new CapableDriver();
+
+  assert.equal(typeof db.searchFiles, 'function');
+  assert.equal(typeof db.queryFiles, 'function');
+  assert.equal(typeof db.fetchFileRanges, 'function');
+});
+
+test('DatabaseConnectionBase.configureIndexes is a no-op for drivers without an index', async () => {
+  let db = new InMemoryDatabaseConnection();
+
+  assert.equal(typeof db.configureIndexes, 'function');
+  await assert.doesNotReject(() => db.configureIndexes([
+    { path: '/kikx/.aeordb-config/indexes.json', body: { indexes: [] } },
+  ]));
+});
+
 test('InMemoryDatabaseConnection stores raw text when options.raw is set', async () => {
   let db = new InMemoryDatabaseConnection();
   await db.connect();

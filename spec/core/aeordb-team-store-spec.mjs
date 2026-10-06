@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AeorDBTeamStore } from '../../src/core/aeordb/aeordb-team-store.mjs';
+import { AeorDBConnection } from '../../src/core/aeordb/aeordb-connection.mjs';
+import { FakeAeorDBClient } from './database/fake-aeordb-client.mjs';
 
 function createClient() {
   return {
@@ -144,6 +146,30 @@ test('AeorDBTeamStore lists, updates, deletes, and resolves teams by name', asyn
   await store.deleteTeam('team_1');
   assert.equal(await store.loadTeam('team_1'), null);
   assert.equal([ ...aeordb.files.values() ].some((value) => value?.teamID === 'team_1'), false);
+});
+
+test('AeorDBTeamStore uses the bounded-list fallback when the driver cannot query', async () => {
+  class QuerylessConnection extends AeorDBConnection {
+    static driverID = 'aeordb-queryless';
+    static capabilities = { ...AeorDBConnection.capabilities, query: false };
+  }
+
+  let client = new FakeAeorDBClient();
+  let db = new QuerylessConnection({ client });
+  let store = new AeorDBTeamStore({ db });
+
+  await client.putFile('/kikx/teams/team_1/team.json', {
+    id: 'team_1',
+    name: 'Core Team',
+    members: [],
+  });
+
+  assert.equal(typeof db.queryFiles, 'undefined');
+  assert.equal((await store.findTeamByIDOrName('Core Team')).id, 'team_1');
+  assert.ok(
+    [ ...client._store.keys() ].some((path) => path.startsWith('kikx/team-name-lookup/') && path.endsWith('/team_1.json')),
+    'the bounded-list match is saved as a name lookup',
+  );
 });
 
 test('AeorDBTeamStore rejects malformed teams and treats a missing directory as empty', async () => {
