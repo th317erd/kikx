@@ -14,20 +14,119 @@ import './kikx-sub-session-frame.mjs';
 
 const { div, p, span, strong, time } = elements;
 
+// Browsers expose element.tagName in UPPERCASE and element.localName in
+// lowercase, while descriptors/specs use lowercase names. Normalize once so
+// the reuse checks cannot drift apart.
+function normalizeTagName(name) {
+  return String(name ?? '').toLowerCase();
+}
+
+function hasTagName(element, expected) {
+  if (!element)
+    return false;
+  return normalizeTagName(element.localName || element.tagName) === normalizeTagName(expected);
+}
+
+// The runtime replaces frame objects on every event, so object identity is not
+// a stable key. Type + id identifies the logical frame and decides whether the
+// item may be reconciled in place.
+function frameKey(frame) {
+  if (!frame)
+    return null;
+  return `${frame.type ?? ''}\u0000${frame.id ?? ''}`;
+}
+
+function streamText(frame) {
+  return frame.content?.text || frame.content?.delta || '';
+}
+
+function thinkingText(frame) {
+  return frame.content?.text || '';
+}
+
+function plainText(frame) {
+  return frame.content?.text || frame.contentText || '';
+}
+
+function markdownText(frame) {
+  return frame.content?.text || frame.contentText || '';
+}
+
+function typingAgentName(frame) {
+  return frame.content?.agentName || frame.authorDisplayName || frame.authorID || 'Agent';
+}
+
+function typingThinkingText(frame) {
+  return frame.content?.thinkingText || frame.content?.text || '';
+}
+
+// Describes the content subtree so reconciliation can tell when it may be
+// reused (same kind + tag) versus replaced.
+function frameContentDescriptor(frame, appState) {
+  if (sessionReferenceFromFrame(frame))
+    return { kind: 'sub-session', tagName: 'kikx-sub-session-frame' };
+
+  let descriptor = resolveFrameComponentDescriptor(frame, appState);
+  if (descriptor?.tagName)
+    return { kind: 'custom', tagName: descriptor.tagName };
+
+  if (frame.type === 'AgentMessageDelta')
+    return { kind: 'stream', tagName: null };
+
+  if (frame.type === 'AgentThinking')
+    return { kind: 'thinking', tagName: null };
+
+  if (frame.type === 'AgentMessage')
+    return { kind: frame.content?.status === 'streaming' ? 'stream' : 'markdown', tagName: null };
+
+  return { kind: 'text', tagName: null };
+}
+
+function setTextIfChanged(node, next) {
+  let value = next ?? '';
+  if (node.textContent !== value)
+    node.textContent = value;
+}
+
 export class KikxFrameItem extends HTMLElement {
   constructor() {
     super();
     this._frame = null;
     this._appState = null;
+    this._frameKey = null;
+    this._metaElement = null;
+    this._contentElement = null;
+    this._contentKind = null;
+    this._contentTag = null;
+    this._lastMarkdownText = null;
   }
 
   updateFrame(frame, appState = {}, options = {}) {
-    if (options.force !== true && this._frame === frame && this._appState === appState)
+    let nextFrame = frame || null;
+    let nextAppState = appState || {};
+    let nextKey = frameKey(nextFrame);
+    let keyChanged = this._frameKey !== nextKey;
+    let appStateChanged = this._appState !== nextAppState;
+
+    if (
+      options.force !== true
+      && !keyChanged
+      && !appStateChanged
+      && this._frame === nextFrame
+    )
       return;
 
-    this._frame = frame || null;
-    this._appState = appState || {};
-    this._render();
+    this._frame = nextFrame;
+    this._appState = nextAppState;
+    this._frameKey = nextKey;
+
+    // Object identity is only one rebuild trigger: a different key or app state
+    // requires a wholesale rebuild, but a fresh frame object for the same logical
+    // frame is reconciled in place so the subtree (and its animations) survive.
+    if (options.force === true || keyChanged || appStateChanged)
+      this._render();
+    else
+      this._reconcile();
   }
 
   connectedCallback() {
@@ -46,26 +145,192 @@ export class KikxFrameItem extends HTMLElement {
 
     this._cleanupReactiveBindings();
     $(this).empty();
+    this._metaElement = null;
+    this._contentElement = null;
+    this._contentKind = null;
+    this._contentTag = null;
+    this._lastMarkdownText = null;
+
     this.className = `kikx-frame kikx-frame--${frame.type}`;
     this.setAttribute('role', 'listitem');
     this.dataset.frameId = frame.id || '';
     this.dataset.frameType = frame.type || '';
 
     if (frame.type === 'BeginTyping') {
-      this.appendChild(this._buildTypingIndicator(frame));
+      this._contentElement = this._buildTypingIndicator(frame);
+      this.appendChild(this._contentElement);
       return;
     }
 
-    this.append(
-      this._buildFrameMeta(frame),
-      this._buildFrameContent(frame),
-    );
+    this._metaElement = this._buildFrameMeta(frame);
+    this._contentElement = this._buildFrameContent(frame);
+    this.append(this._metaElement, this._contentElement);
+  }
+
+  _reconcile() {
+    let frame = this._frame;
+    if (!frame) {
+      this._render();
+      return;
+    }
+
+    this.className = `kikx-frame kikx-frame--${frame.type}`;
+    this.dataset.frameId = frame.id || '';
+    this.dataset.frameType = frame.type || '';
+
+    if (frame.type === 'BeginTyping') {
+      this._reconcileTypingIndicator(frame);
+      return;
+    }
+
+    if (!this._metaElement) {
+      this._render();
+      return;
+    }
+
+    this._reconcileFrameMeta(frame);
+    this._reconcileFrameContent(frame);
+  }
+
+  _reconcileTypingIndicator(frame) {
+    let indicator = this._contentElement;
+    if (!hasTagName(indicator, 'kikx-typing-indicator')) {
+      this._discardContentElement();
+      this._contentElement = this._buildTypingIndicator(frame);
+      this.appendChild(this._contentElement);
+      return;
+    }
+
+    indicator.agentName = typingAgentName(frame);
+    indicator.thinkingText = typingThinkingText(frame);
+  }
+
+  _reconcileFrameMeta(frame) {
+    let main = this._metaElement.querySelector('.kikx-frame__meta-main');
+    let label = main?.querySelector('strong');
+    if (label)
+      setTextIfChanged(label, frameDisplayLabel(frame, this._appState));
+
+    let timestamp = frameTimestamp(frame);
+    let timeElement = main?.querySelector('.kikx-frame__timestamp');
+    if (timestamp) {
+      if (!timeElement) {
+        timeElement = time.class('kikx-frame__timestamp')
+          .datetime(timestamp.dateTime)
+          .title(timestamp.title)('')
+          .build(document);
+        main?.appendChild(timeElement);
+      }
+      if (timeElement.getAttribute('datetime') !== timestamp.dateTime)
+        timeElement.setAttribute('datetime', timestamp.dateTime);
+      if (timeElement.getAttribute('title') !== timestamp.title)
+        timeElement.setAttribute('title', timestamp.title);
+      setTextIfChanged(timeElement, timestamp.label);
+    } else if (timeElement) {
+      timeElement.remove();
+    }
+
+    let secondary = this._metaElement.querySelector('.kikx-frame__secondary');
+    if (secondary)
+      setTextIfChanged(secondary, frameSecondaryLabel(frame));
+  }
+
+  _reconcileFrameContent(frame) {
+    let descriptor = frameContentDescriptor(frame, this._appState);
+    if (
+      !this._contentElement
+      || this._contentKind !== descriptor.kind
+      || normalizeTagName(this._contentTag) !== normalizeTagName(descriptor.tagName)
+    ) {
+      this._replaceContentElement(frame);
+      return;
+    }
+
+    if (descriptor.kind === 'sub-session') {
+      let child = this._contentElement.firstElementChild;
+      if (hasTagName(child, descriptor.tagName)) {
+        child.appState = this._appState;
+        child.updateFrame(frame, this._appState);
+        return;
+      }
+      this._replaceContentElement(frame);
+      return;
+    }
+
+    if (descriptor.kind === 'custom') {
+      let child = this._contentElement.firstElementChild;
+      if (hasTagName(child, descriptor.tagName)) {
+        child.appState = this._appState;
+        if (typeof child.updateFrame === 'function')
+          child.updateFrame(frame, this._appState);
+        else
+          child.frame = frame;
+        return;
+      }
+      this._replaceContentElement(frame);
+      return;
+    }
+
+    if (descriptor.kind === 'stream') {
+      setTextIfChanged(this._contentElement, streamText(frame));
+      return;
+    }
+
+    if (descriptor.kind === 'thinking') {
+      setTextIfChanged(this._contentElement, thinkingText(frame));
+      return;
+    }
+
+    if (descriptor.kind === 'text') {
+      setTextIfChanged(this._contentElement, plainText(frame) || frame.id || '');
+      return;
+    }
+
+    if (descriptor.kind === 'markdown')
+      this._reconcileMarkdown(frame);
+  }
+
+  _reconcileMarkdown(frame) {
+    let text = markdownText(frame);
+    if (this._lastMarkdownText === text)
+      return;
+
+    let rendered = renderMarkdownToElement(document, text, {
+      className: this._contentElement.className,
+    });
+
+    this._cleanupReactiveBindings(this._contentElement);
+    while (this._contentElement.firstChild)
+      this._contentElement.removeChild(this._contentElement.firstChild);
+
+    for (let child of [ ...rendered.childNodes ])
+      this._contentElement.appendChild(child);
+
+    this._lastMarkdownText = text;
+  }
+
+  _replaceContentElement(frame) {
+    this._discardContentElement();
+    this._contentElement = this._buildFrameContent(frame);
+    this.appendChild(this._contentElement);
+  }
+
+  _discardContentElement() {
+    if (!this._contentElement)
+      return;
+
+    this._cleanupReactiveBindings(this._contentElement);
+    this._contentElement.remove();
+    this._contentElement = null;
+    this._contentKind = null;
+    this._contentTag = null;
+    this._lastMarkdownText = null;
   }
 
   _buildTypingIndicator(frame) {
     let indicator = document.createElement('kikx-typing-indicator');
-    indicator.agentName = frame.content?.agentName || frame.authorDisplayName || frame.authorID || 'Agent';
-    indicator.thinkingText = frame.content?.thinkingText || frame.content?.text || '';
+    indicator.agentName = typingAgentName(frame);
+    indicator.thinkingText = typingThinkingText(frame);
     return indicator;
   }
 
@@ -87,31 +352,30 @@ export class KikxFrameItem extends HTMLElement {
   }
 
   _buildFrameContent(frame) {
-    // Any frame that declares a session reference renders as an enterable
-    // sub-session card, regardless of its underlying tool/frame type.
-    if (sessionReferenceFromFrame(frame))
+    let descriptor = frameContentDescriptor(frame, this._appState);
+    this._contentKind = descriptor.kind;
+    this._contentTag = descriptor.tagName;
+
+    if (descriptor.kind === 'sub-session')
       return this._buildSubSessionCard(frame);
 
-    let customContent = this._buildCustomFrameContent(frame);
-    if (customContent)
-      return customContent;
+    if (descriptor.kind === 'custom')
+      return this._buildCustomFrameContent(frame);
 
-    if (frame.type === 'AgentMessageDelta')
-      return div.class('kikx-frame__content kikx-frame__stream')(frame.content?.text || frame.content?.delta || '').build(document);
+    if (descriptor.kind === 'stream')
+      return div.class('kikx-frame__content kikx-frame__stream')(streamText(frame)).build(document);
 
-    if (frame.type === 'AgentThinking')
-      return p.class('kikx-frame__thinking')(frame.content?.text || '').build(document);
+    if (descriptor.kind === 'thinking')
+      return p.class('kikx-frame__thinking')(thinkingText(frame)).build(document);
 
-    if (frame.type === 'AgentMessage') {
-      if (frame.content?.status === 'streaming')
-        return div.class('kikx-frame__content kikx-frame__stream')(frame.content?.text || frame.contentText || '').build(document);
-
-      return renderMarkdownToElement(document, frame.content?.text || frame.contentText || '', {
+    if (descriptor.kind === 'markdown') {
+      this._lastMarkdownText = markdownText(frame);
+      return renderMarkdownToElement(document, markdownText(frame), {
         className: 'kikx-frame__content kikx-markdown',
       });
     }
 
-    return p(frame.content?.text || frame.contentText || frame.id || '').build(document);
+    return p(plainText(frame) || frame.id || '').build(document);
   }
 
   _buildSubSessionCard(frame) {

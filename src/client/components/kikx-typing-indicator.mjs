@@ -44,15 +44,20 @@ export class KikxTypingIndicator extends HTMLElement {
     let name = this.querySelector('.kikx-typing-indicator__name');
     let thinking = this.querySelector('.kikx-typing-indicator__thinking span');
 
-    if (name)
-      name.textContent = this._agentName ? `${this._agentName}:` : 'Agent:';
+    if (name) {
+      let nextName = this._agentName ? `${this._agentName}:` : 'Agent:';
+      if (name.textContent !== nextName)
+        name.textContent = nextName;
+    }
 
     if (thinking) {
       let preview = this._thinkingText.length > 300
         ? this._thinkingText.slice(-300)
         : this._thinkingText;
       preview = preview.replace(/\n+/g, ' • ').replace(/\s+/g, ' ').trim();
-      thinking.textContent = preview ? `${preview}    •    ${preview}` : '';
+      let nextThinking = preview ? `${preview}    •    ${preview}` : '';
+      if (thinking.textContent !== nextThinking)
+        thinking.textContent = nextThinking;
     }
   }
 }

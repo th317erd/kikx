@@ -1002,6 +1002,13 @@ kikx-typing-indicator {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .kikx-typing-indicator__dots span,
+  .kikx-typing-indicator__thinking span {
+    animation: none;
+  }
+}
+
 .kikx-composer {
   display: grid;
   gap: 10px;
