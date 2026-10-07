@@ -298,12 +298,16 @@ export function buildStatusBar(app) {
   );
 }
 
+// Always returns a built ELEMENT — never a builder. Callers use the result both
+// as a DOM node (body.replaceChildren(...)) and as a builder child (the DSL
+// passes pre-built nodes through unchanged), so the previous mixed return type
+// (a builder for some branches, an element for others) broke both call styles.
 export function buildFrameThread(app) {
   if (!app._state.selectedSessionID) {
     return div.class('kikx-thread__empty')(
       p('Create a session to start.'),
       button.type('button').class('kikx-inline-action').onClick(app._createSession)('+ New Session'),
-    );
+    ).build(document);
   }
 
   let frames = getSelectedFrames(app._state).filter((frame) => frame && !frame.deleted && !frame.hidden);
@@ -311,7 +315,7 @@ export function buildFrameThread(app) {
     return div.class('kikx-thread__empty')(
       p('No messages yet.'),
       p.class('kikx-thread__empty-hint')("Type /invite 'name of party' to invite an agent, or other party"),
-    );
+    ).build(document);
   }
 
   return createChatViewElement(app, frames);

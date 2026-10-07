@@ -123,7 +123,12 @@ export function syncFrameThread(app, sessionID = app._state.selectedSessionID, o
   let view = body.querySelector('kikx-chat-view');
   if (frames.length === 0 || !view) {
     disconnectFrameListObserver(app);
-    body.replaceChildren(buildFrameThread(app).build(document));
+    // buildFrameThread() always returns a built element, so swap it in directly.
+    // (The old `.build(document)` call assumed it was always a builder; the
+    // chat-view branch returns an element, so it threw
+    // "...build is not a function" and left the thread body unreplaced whenever
+    // a session gained its first visible frame.)
+    body.replaceChildren(buildFrameThread(app));
     connectFrameListObserver(app);
     if (app._frameListAnchoredToBottom)
       scrollFramesToBottomImmediate(app);

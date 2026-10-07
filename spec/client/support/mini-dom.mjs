@@ -275,6 +275,16 @@ export class MiniElement extends MiniNode {
     return node;
   }
 
+  // Replaces every child with the given nodes (strings become text nodes, like
+  // the real DOM). The client uses this to swap a rebuilt thread body in place.
+  replaceChildren(...nodes) {
+    for (let child of [ ...this.childNodes ])
+      this.removeChild(child);
+
+    for (let node of nodes)
+      this.appendChild(typeof node === 'string' ? new MiniText(node) : node);
+  }
+
   get textContent() {
     let text = '';
     for (let child of this.childNodes)
