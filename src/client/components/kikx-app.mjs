@@ -46,6 +46,7 @@ import {
 import {
   apiHeaders,
   deleteJSON,
+  deleteSession,
   getJSON,
   patchJSON,
   postJSON,
@@ -102,6 +103,7 @@ import {
   navigateToDepth,
   onSessionNameKeydown,
   openSessionFromCard,
+  pruneMissingSessionsFromStack,
   setHeroName,
   showSubSessions,
   stackFromCurrentURL,
@@ -191,6 +193,7 @@ export class KikxApp extends HTMLElement {
     this._composerHistory = createComposerHistoryState();
     this._pendingPreviewSessionIDs = new Set();
     this._previewRefreshScheduled = false;
+    this._deletingSessionIDs = new Set();
     this._pendingCrownAgentIDs = new Set();
     this._pendingCompactionBotAgentIDs = new Set();
 
@@ -343,6 +346,38 @@ export class KikxApp extends HTMLElement {
     this._restoreFrameListScroll = (snapshot = {}) => restoreFrameListScroll(this, snapshot);
     this._onFrameContentResize = () => onFrameContentResize(this);
     this._onFrameListScroll = (event) => onFrameListScroll(this, event);
+  }
+
+  // Soft-delete a session from its card. The pending set lives on the app, not
+  // the rebuilt grid, so it survives a full re-render; a second hold/click for
+  // the same id is ignored while the request is in flight, and the flag is
+  // cleared on both success and failure.
+  async _deleteSession(sessionID) {
+    if (!sessionID || this._deletingSessionIDs.has(sessionID))
+      return;
+
+    this._deletingSessionIDs.add(sessionID);
+    this._state.status = 'Deleting session...';
+    this._state.statusKind = 'pending';
+    // Paint the pending card (dimmed, toolbar locked, delete disabled) before the
+    // request resolves; without this render the pending flag is set and cleared
+    // within the same tick and the user never sees that state at all.
+    this._render();
+
+    try {
+      await deleteSession(this, sessionID);
+      // The session is gone from state, so drop it (and anything nested under
+      // it) from the window stack and the URL before the final render.
+      pruneMissingSessionsFromStack(this);
+      this._state.status = 'Session deleted';
+      this._state.statusKind = 'ready';
+    } catch (error) {
+      this._state.status = error.message;
+      this._state.statusKind = 'error';
+    } finally {
+      this._deletingSessionIDs.delete(sessionID);
+      this._render();
+    }
   }
 
   connectedCallback() {

@@ -106,6 +106,26 @@ export function syncSelectedSessionToStack(app) {
   app._state.selectedSessionID = sessionID || '';
 }
 
+// Drop sessions that no longer exist (soft delete) from the window stack and
+// re-sync the address bar, truncating at the first missing link the way
+// stackFromCurrentURL does on load. Keeps the thread from pointing at a deleted
+// session after the grid removes it.
+export function pruneMissingSessionsFromStack(app, { push = false } = {}) {
+  let stack = app._state.navigationStack || [];
+  let known = new Set(getSessions(app._state).map((session) => session.id));
+  let pruned = [ stack[0] || { sessionID: null, collapsed: true } ];
+  for (let entry of stack.slice(1)) {
+    if (!known.has(entry.sessionID))
+      break;
+
+    pruned.push(entry);
+  }
+
+  setNavigationStack(pruned, app._state);
+  syncSelectedSessionToStack(app);
+  syncURLFromStack(app, { push });
+}
+
 // Toggle "show sub-sessions" (collapsed) on the current entry. The thread view
 // is replaced by a child grid; a crossfade transition plays without a shared
 // element (the two views are different element trees).

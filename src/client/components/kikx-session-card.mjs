@@ -3,7 +3,49 @@
 import './kikx-chat-view.mjs';
 import { sessionCardLabel, sessionCardMeta } from './chat-view-model.mjs';
 
-function createCardShell() {
+function createToolbar(owner) {
+  let toolbar = document.createElement('footer');
+  toolbar.className = 'kikx-session-card__toolbar';
+
+  // The bottom toolbar holds per-session actions. Both controls are radial
+  // aeor-progress-buttons (the icon-centric form the design calls for): Open is
+  // click-to-activate (duration 0); Delete requires a 1s hold so a stray click
+  // can never destroy a session.
+  let openButton = document.createElement('aeor-progress-button');
+  openButton.className = 'kikx-session-card__action kikx-session-card__action--open';
+  openButton.setAttribute('icon', 'open');
+  openButton.setAttribute('label', 'Open session');
+  openButton.setAttribute('title', 'Open session');
+  openButton.setAttribute('duration', '0');
+  openButton.setAttribute('size', '1.75rem');
+
+  let deleteButton = document.createElement('aeor-progress-button');
+  deleteButton.className = 'kikx-session-card__action kikx-session-card__action--delete progress-button-danger';
+  deleteButton.setAttribute('icon', 'delete');
+  deleteButton.setAttribute('label', 'Delete session');
+  deleteButton.setAttribute('title', 'Hold 1s to delete');
+  deleteButton.setAttribute('duration', '1000');
+  deleteButton.setAttribute('size', '1.75rem');
+
+  toolbar.append(openButton, deleteButton);
+
+  // The card root is itself clickable (open). Actions inside the toolbar must
+  // not trigger that, so stop click/keydown at the toolbar boundary.
+  toolbar.addEventListener('click', (event) => event.stopPropagation());
+  toolbar.addEventListener('keydown', (event) => event.stopPropagation());
+  // aeor-progress-button fires `confirm` when its hold (or click) completes.
+  toolbar.addEventListener('confirm', (event) => {
+    event.stopPropagation();
+    if (event.target === deleteButton)
+      owner._emitDelete();
+    else
+      owner._emitOpen();
+  });
+
+  return { toolbar, openButton, deleteButton };
+}
+
+function createCardShell(owner) {
   let root = document.createElement('article');
   root.className = 'kikx-session-card';
 
@@ -26,9 +68,12 @@ function createCardShell() {
   status.className = 'kikx-session-card__status';
   status.hidden = true;
 
-  root.append(header, body, status);
+  // One toolbar per card, owned by the card so its confirm handler can reach
+  // back and emit open/delete. Built here, never rebuilt.
+  let { toolbar, openButton, deleteButton } = createToolbar(owner);
+  root.append(header, body, status, toolbar);
 
-  return { root, title, meta, view, status, body };
+  return { root, title, meta, view, status, body, toolbar, openButton, deleteButton };
 }
 
 export class KikxSessionCard extends HTMLElement {
@@ -40,6 +85,7 @@ export class KikxSessionCard extends HTMLElement {
     this._error = null;
     this._truncated = false;
     this._selected = false;
+    this._deleting = false;
     this._shell = null;
   }
 
@@ -58,9 +104,9 @@ export class KikxSessionCard extends HTMLElement {
 
   _build() {
     this.textContent = '';
-    this._shell = createCardShell();
+    this._shell = createCardShell(this);
+
     this._shell.root.tabIndex = 0;
-    this._shell.root.setAttribute('role', 'button');
     this._shell.root.addEventListener('click', () => this._emitOpen());
     this._shell.root.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
@@ -83,6 +129,17 @@ export class KikxSessionCard extends HTMLElement {
     }));
   }
 
+  _emitDelete() {
+    if (!this.sessionID)
+      return;
+
+    this.dispatchEvent(new CustomEvent('kikx-card-delete', {
+      bubbles: true,
+      composed: true,
+      detail: { sessionID: this.sessionID },
+    }));
+  }
+
   update(input = {}) {
     if (Object.hasOwn(input, 'session'))
       this._session = input.session;
@@ -96,6 +153,8 @@ export class KikxSessionCard extends HTMLElement {
       this._truncated = input.truncated === true;
     if (Object.hasOwn(input, 'selected'))
       this._selected = input.selected === true;
+    if (Object.hasOwn(input, 'deleting'))
+      this._deleting = input.deleting === true;
 
     if (!this._shell)
       this._build();
@@ -109,13 +168,33 @@ export class KikxSessionCard extends HTMLElement {
       return;
 
     let session = this._session;
-    shell.title.textContent = sessionCardLabel(session);
+    let label = sessionCardLabel(session);
+    shell.title.textContent = label;
     shell.meta.textContent = sessionCardMeta(session, this._heads, this._truncated);
     // Stable accessible name: the session title only, not the preview text.
-    shell.root.setAttribute('aria-label', sessionCardLabel(session));
+    shell.root.setAttribute('aria-label', label);
 
     shell.root.classList.toggle('is-selected', this._selected);
-    shell.root.setAttribute('aria-pressed', this._selected ? 'true' : 'false');
+    // The root is not a button (it contains real controls), so mark the current
+    // item instead of aria-pressed; clear it when unselected so no stale
+    // attribute survives a re-render.
+    if (this._selected)
+      shell.root.setAttribute('aria-current', 'true');
+    else
+      shell.root.removeAttribute('aria-current');
+
+    // Name the actions after the session so screen readers announce the target.
+    if (shell.openButton) {
+      shell.openButton.setAttribute('label', label ? `Open ${label}` : 'Open session');
+      shell.openButton.setAttribute('title', 'Open session');
+    }
+    if (shell.deleteButton) {
+      shell.deleteButton.setAttribute('label', label ? `Delete ${label}` : 'Delete session');
+      shell.deleteButton.setAttribute('title', 'Hold 1s to delete');
+      shell.deleteButton.disabled = this._deleting;
+    }
+    shell.root.classList.toggle('is-deleting', this._deleting);
+    shell.root.setAttribute('aria-busy', this._deleting ? 'true' : 'false');
 
     shell.view.update({ frames: this._heads, appState: this._appState });
 

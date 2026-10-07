@@ -1,8 +1,10 @@
 'use strict';
 
 import { isCollapsed, setTokenUsage, upsertFrames, upsertSession } from '../state/kikx-state.mjs';
+import { isDeletedSession } from '../state/session-state-utils.mjs';
 import { scheduleAnimationFrame, parseRuntimeEvent } from './kikx-app-helpers.mjs';
 import { addFrameToBatch, addTouchedFrameIDs, renderedFrameIDsFor } from './frame-runtime-batch.mjs';
+import { pruneMissingSessionsFromStack } from './kikx-navigation.mjs';
 import { CONNECTED_STATUS, setConnectionStatus } from './runtime-events-connection.mjs';
 
 export {
@@ -52,7 +54,15 @@ export function onRuntimeEvent(app, event) {
   }
 
   if (data.type === 'session.saved' && data.session?.id) {
+    let wasListed = (app._state.sessionIDs || []).includes(data.session.id);
     upsertSession(data.session, app._state);
+    // A soft delete performed in another tab arrives as session.saved with a
+    // deletedAt stamp. upsertSession removes the id; the navigation stack (and
+    // the address bar) still point at it, so prune before rendering or this tab
+    // would show a thread for a card that no longer exists.
+    if (wasListed && isDeletedSession(data.session))
+      pruneMissingSessionsFromStack(app);
+
     if (!app._syncSessionShell())
       app._requestRender();
     return;

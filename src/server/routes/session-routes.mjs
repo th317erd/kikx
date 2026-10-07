@@ -11,6 +11,7 @@ import {
 } from '../http-helpers.mjs';
 import {
   matchSessionCompactionRetryRoute,
+  matchSessionDeleteRoute,
   matchSessionRoute,
   matchSessionUpdateRoute,
 } from './route-matchers.mjs';
@@ -87,6 +88,21 @@ export async function handleSessionRoutes({ request, response, url, context }) {
     let session = await frameRuntime.updateSession(sessionUpdateRoute.sessionID, {
       title: body.title,
     });
+
+    writeJSON(response, 200, {
+      data: {
+        session,
+      },
+    });
+    return true;
+  }
+
+  // Soft delete: stamp the session manifest with deletedAt. Nothing is
+  // removed; a later "show deleted sessions" filter reads this field.
+  let sessionDeleteRoute = matchSessionDeleteRoute(url.pathname);
+  if (request.method === 'DELETE' && sessionDeleteRoute) {
+    let frameRuntime = context.require('frameRuntime');
+    let session = await frameRuntime.deleteSession(sessionDeleteRoute.sessionID);
 
     writeJSON(response, 200, {
       data: {

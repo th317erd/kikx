@@ -99,6 +99,20 @@ function createRuntime() {
         commit: { id: 'commit_1', order: 1 },
       };
     },
+    async deleteSession(sessionID) {
+      calls.push({ method: 'deleteSession', sessionID });
+      if (sessionID === 'missing') {
+        let error = new Error('Unknown session: missing');
+        error.status = 404;
+        throw error;
+      }
+
+      return {
+        id: sessionID,
+        title: 'Scratch',
+        deletedAt: '2026-01-01T00:00:00.000Z',
+      };
+    },
     listFrames(sessionID, options) {
       calls.push({ method: 'listFrames', sessionID, options });
       return [
@@ -667,6 +681,70 @@ test('PATCH /api/v1/sessions/:sessionID reports missing sessions as 404', async 
       error: {
         message: 'Unknown session: missing',
       },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('DELETE /api/v1/sessions/:sessionID soft-deletes a runtime session', async () => {
+  let runtime = createRuntime();
+  let server = await createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/sessions/ses_1`, { method: 'DELETE' });
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(runtime.calls[0], {
+      method: 'deleteSession',
+      sessionID: 'ses_1',
+    });
+    assert.deepEqual(body, {
+      data: {
+        session: {
+          id: 'ses_1',
+          title: 'Scratch',
+          deletedAt: '2026-01-01T00:00:00.000Z',
+        },
+      },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test('DELETE /api/v1/sessions/:sessionID reports missing sessions as 404', async () => {
+  let runtime = createRuntime();
+  let server = await createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let response = await fetch(`${baseURL}/api/v1/sessions/missing`, { method: 'DELETE' });
+    let body = await response.json();
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(body, {
+      error: {
+        message: 'Unknown session: missing',
+      },
+    });
+    assert.deepEqual(runtime.calls[0], {
+      method: 'deleteSession',
+      sessionID: 'missing',
     });
   } finally {
     await close(server);

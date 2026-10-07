@@ -7,9 +7,11 @@ import {
 } from './agent-state-utils.mjs';
 import {
   countMessageFrames,
+  isDeletedSession,
   mergeSessionFrameWindowState,
   mergeSessions,
   prependSessionFramesState,
+  removeSession as removeSessionState,
   resetSessionPagingState,
   setSessionFramesState,
   setSessionPagingState,
@@ -136,9 +138,13 @@ export function getSelectedAgentProvider(state = kikxState) {
 }
 
 export function getSessions(state = kikxState) {
+  // Filter defensively so no future path can leak a soft-deleted session into
+  // the UI. Deep links to a deleted id therefore stop opening; when the future
+  // "show deleted" filter lands it must reintroduce them via an explicit
+  // includeDeleted path here and in mergeSessions/upsertSessionState.
   return state.sessionIDs
     .map((sessionID) => state.sessionDetailsByID[sessionID])
-    .filter(Boolean);
+    .filter((session) => session && !isDeletedSession(session));
 }
 
 export function getSelectedSession(state = kikxState) {
@@ -243,6 +249,10 @@ export function setSessions(nextSessions, state = kikxState) {
 
 export function upsertSession(session, state = kikxState) {
   applySessionSnapshot(state, upsertSessionState(state, session));
+}
+
+export function removeSession(sessionID, state = kikxState) {
+  applySessionSnapshot(state, removeSessionState(state, sessionID));
 }
 
 export function setSessionFrames(sessionID, frames, state = kikxState, paging = null) {

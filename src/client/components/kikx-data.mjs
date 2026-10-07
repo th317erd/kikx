@@ -6,6 +6,7 @@ import {
   isCollapsed,
   mergeSessionFrameWindow,
   prependSessionFrames,
+  removeSession,
   resetAgentForm,
   setAccount,
   setAccountFormFromAccount,
@@ -89,6 +90,17 @@ export async function loadSessions(app) {
     app._state.statusKind = 'error';
     app._render();
   }
+}
+
+export async function deleteSession(app, sessionID) {
+  let result = await deleteJSON(app, `/api/v1/sessions/${encodeURIComponent(sessionID)}`);
+  // The DELETE 200 means the server stamped deletedAt, so drop the session from
+  // local state directly. Re-fetching instead would be masked by loadSessions()
+  // swallowing fetch errors (a failed refresh would look like a clean delete),
+  // and the SSE session.saved frame keeps other tabs consistent via #1.
+  removeSession(sessionID, app._state);
+  app._render();
+  return result?.data?.session || null;
 }
 
 export async function loadAgents(app) {

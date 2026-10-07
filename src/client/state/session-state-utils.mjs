@@ -22,13 +22,43 @@ export function createSessionStateSnapshot(input = {}) {
   };
 }
 
+// Soft-deleted sessions carry a `deletedAt` stamp but stay in the store. The
+// client must never show one: the delete flow and the SSE `session.saved` frame
+// both run through here so a second tab cannot resurrect a deleted card.
+export function isDeletedSession(session) {
+  return Boolean(session?.deletedAt);
+}
+
+// Return a new snapshot with the session's id, detail, frames, and paging all
+// dropped. Used by the delete flow and by the deleted branch of the SSE upsert.
+export function removeSession(state, sessionID) {
+  let snapshot = createSessionStateSnapshot(state);
+  if (!sessionID)
+    return snapshot;
+
+  let sessionDetailsByID = { ...snapshot.sessionDetailsByID };
+  let framesBySessionID = { ...snapshot.framesBySessionID };
+  let sessionPagingByID = { ...snapshot.sessionPagingByID };
+  delete sessionDetailsByID[sessionID];
+  delete framesBySessionID[sessionID];
+  delete sessionPagingByID[sessionID];
+
+  return {
+    ...snapshot,
+    sessionIDs: snapshot.sessionIDs.filter((id) => id !== sessionID),
+    sessionDetailsByID,
+    framesBySessionID,
+    sessionPagingByID,
+  };
+}
+
 export function mergeSessions(state, nextSessions) {
   let snapshot = createSessionStateSnapshot(state);
   let sessionIDs = [];
   let sessionDetailsByID = {};
 
   for (let session of Array.isArray(nextSessions) ? nextSessions : []) {
-    if (!session?.id)
+    if (!session?.id || isDeletedSession(session))
       continue;
 
     let previous = snapshot.sessionDetailsByID[session.id] || {};
@@ -47,6 +77,11 @@ export function upsertSessionState(state, session) {
   let snapshot = createSessionStateSnapshot(state);
   if (!session?.id)
     return snapshot;
+
+  // A deleted session.saved payload removes the id locally instead of adding or
+  // keeping it, so the SSE frame cannot undo a soft delete.
+  if (isDeletedSession(session))
+    return removeSession(snapshot, session.id);
 
   let sessionIDs = snapshot.sessionIDs.includes(session.id)
     ? snapshot.sessionIDs

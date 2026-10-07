@@ -10,6 +10,17 @@ export function matchSessionUpdateRoute(pathname) {
   };
 }
 
+// DELETE /api/v1/sessions/:id soft-deletes a session (stamps deletedAt).
+export function matchSessionDeleteRoute(pathname) {
+  let match = /^\/api\/v1\/sessions\/([^/]+)$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    sessionID: decodeURIComponent(match[1]),
+  };
+}
+
 export function matchSessionRoute(pathname) {
   let match = /^\/api\/v1\/sessions\/([^/]+)\/(frames|messages)$/.exec(pathname);
   if (!match)

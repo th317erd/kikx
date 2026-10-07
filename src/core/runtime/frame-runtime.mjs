@@ -88,6 +88,7 @@ export class FrameRuntime extends EventEmitter {
       updatedAt: input.updatedAt || now,
       createdClock: input.createdClock || stamp.clock,
       updatedClock: input.updatedClock || stamp.clock,
+      deletedAt: input.deletedAt || null,
     };
 
     if (!session.id || typeof session.id !== 'string')
@@ -140,6 +141,12 @@ export class FrameRuntime extends EventEmitter {
     if (Object.hasOwn(input, 'compactionAgentID'))
       session.compactionAgentID = normalizeDesignationAgentID(input.compactionAgentID, participantAgentIDs, 'compactionAgentID');
 
+    // Restore-from-deleted (the future "show deleted" filter's undo). Only
+    // written when the caller supplies the field, so ordinary edits never
+    // disturb it.
+    if (Object.hasOwn(input, 'deletedAt'))
+      session.deletedAt = input.deletedAt || null;
+
     let stamp = this.nextClockStamp();
     let now = stamp.at;
     session.updatedAt = input.updatedAt || now;
@@ -154,12 +161,51 @@ export class FrameRuntime extends EventEmitter {
     return session;
   }
 
+  // Soft delete only: stamp the manifest and nothing else. Frames, tool
+  // outputs, and the session record itself are never removed — a later "show
+  // deleted sessions" filter (and an undo) reads this field. Hard deletion of a
+  // session is deliberately unsupported.
+  async deleteSession(sessionID, input = {}) {
+    let entry = this.sessions.get(sessionID);
+    let session = entry?.session || await this.frameStore.loadSession(sessionID);
+    if (!session?.id) {
+      let error = new Error(`Unknown session: ${sessionID}`);
+      error.status = 404;
+      throw error;
+    }
+
+    let stamp = this.nextClockStamp();
+    let now = stamp.at;
+    session.deletedAt = input.deletedAt || now;
+    session.updatedAt = now;
+    session.updatedClock = stamp.clock;
+
+    await this.frameStore.saveSession(session);
+    this.emitRuntimeEvent('session.saved', { sessionID: session.id, session });
+
+    if (entry)
+      entry.session = session;
+
+    return session;
+  }
+
   getSession(sessionID) {
     return this.sessions.get(sessionID)?.session || null;
   }
 
+  // Soft-deleted sessions are hidden from the normal listing but remain in the
+  // store: includeDeleted:true is the "show deleted" escape hatch, and
+  // getSession/ensureSessionEntry still resolve them by id.
   async listSessions(options = {}) {
-    return await this.frameStore.listSessions(options);
+    // Filtering happens here, after the store already applied limit/offset, so a
+    // page can come back short by the number of deleted sessions it contains.
+    // The workspace GET caps at 50 and session counts are small, so this is
+    // acceptable; do not add a DB-level filter (all drivers share this path).
+    let sessions = await this.frameStore.listSessions(options);
+    if (options.includeDeleted === true)
+      return sessions;
+
+    return sessions.filter((session) => !session.deletedAt);
   }
 
   async appendUserMessage(sessionID, input = {}) {

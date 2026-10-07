@@ -14,6 +14,9 @@ export class KikxSessionGrid extends HTMLElement {
     this._loading = false;
     this._error = null;
     this._addLabel = 'Add Session';
+    // Session ids with an in-flight soft delete. The app owns the set and hands
+    // it in via update() so a full re-render cannot lose the pending state.
+    this._deletingSessionIDs = new Set();
   }
 
   // The grid always lists direct children of parentSessionID. It owns this
@@ -67,6 +70,8 @@ export class KikxSessionGrid extends HTMLElement {
       this._error = input.error;
     if (Object.hasOwn(input, 'addLabel'))
       this.addLabel = input.addLabel;
+    if (input.deletingSessionIDs instanceof Set)
+      this._deletingSessionIDs = input.deletingSessionIDs;
 
     this._render();
   }
@@ -106,6 +111,7 @@ export class KikxSessionGrid extends HTMLElement {
       error: preview?.error || null,
       appState: this._appState,
       selected: sessionID === this._selectedSessionID,
+      deleting: this._deletingSessionIDs.has(sessionID),
     };
   }
 

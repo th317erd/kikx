@@ -245,12 +245,17 @@ export function buildSessionGrid(app, parentSessionID) {
     selectedSessionID: app._state.selectedSessionID,
     loading: app._state.previewsLoading,
     addLabel: `Add ${scopeNoun(app)}`,
+    deletingSessionIDs: app._deletingSessionIDs,
   });
   grid.addEventListener('kikx-card-open', (event) => {
     if (event.detail?.sessionID)
       app._openSessionFromCard(event.detail.sessionID);
   });
   grid.addEventListener('kikx-card-add', () => app._createSession());
+  grid.addEventListener('kikx-card-delete', (event) => {
+    if (event.detail?.sessionID)
+      app._deleteSession(event.detail.sessionID);
+  });
   return div.class('kikx-workspace__grid')(grid);
 }
 

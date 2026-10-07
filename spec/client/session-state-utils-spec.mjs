@@ -2,14 +2,18 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { register } from 'node:module';
 
+import { installDom } from './support/mini-dom.mjs';
 import {
   MAX_SESSION_MESSAGES,
   countMessageFrames,
   createSessionStateSnapshot,
+  isDeletedSession,
   mergeSessionFrameWindowState,
   mergeSessions,
   prependSessionFramesState,
+  removeSession,
   resetSessionPagingState,
   setSessionFramesState,
   setSessionPagingState,
@@ -17,6 +21,13 @@ import {
   upsertFrameState,
   upsertSessionState,
 } from '../../src/client/state/session-state-utils.mjs';
+
+// getSessions() lives in kikx-state, which reaches the browser-only aeor-ui via
+// /vendor imports; redirect those and install the mini DOM before importing it.
+register(new URL('./support/frame-item-loader.mjs', import.meta.url).href, import.meta.url);
+installDom();
+
+const { getSessions } = await import('../../src/client/state/kikx-state.mjs');
 
 test('mergeSessions preserves existing message counts when manifests are missing counts', () => {
   let previous = {
@@ -122,6 +133,110 @@ test('upsertSessionState adds new sessions without clearing cached inactive deta
   assert.equal(next.sessionDetailsByID.ses_1.messageCount, 5);
   assert.equal(next.sessionDetailsByID.ses_2.title, 'Created');
   assert.deepEqual(next.framesBySessionID.ses_1, [ { id: 'msg_1', type: 'UserMessage' } ]);
+});
+
+test('isDeletedSession treats a deletedAt stamp as deleted', () => {
+  assert.equal(isDeletedSession({ id: 'ses_1', deletedAt: 'stamp-1' }), true);
+  assert.equal(isDeletedSession({ id: 'ses_1', deletedAt: null }), false);
+  assert.equal(isDeletedSession({ id: 'ses_1' }), false);
+  assert.equal(isDeletedSession(null), false);
+});
+
+// The delete emits session.saved with deletedAt; without this the SSE handler's
+// upsertSession() would resurrect the card (or race its own delete).
+test('upsertSessionState removes a session when its SSE payload carries deletedAt', () => {
+  let previous = {
+    sessionIDs: [ 'ses_1', 'ses_2' ],
+    sessionDetailsByID: {
+      ses_1: { id: 'ses_1', title: 'Live' },
+      ses_2: { id: 'ses_2', title: 'Sibling' },
+    },
+    framesBySessionID: {
+      ses_1: [ { id: 'msg_1', type: 'UserMessage' } ],
+      ses_2: [ { id: 'msg_2', type: 'UserMessage' } ],
+    },
+    sessionPagingByID: {
+      ses_1: { total: 1 },
+      ses_2: { total: 2 },
+    },
+  };
+
+  let next = upsertSessionState(previous, { id: 'ses_1', title: 'Live', deletedAt: 'stamp-1' });
+
+  assert.deepEqual(next.sessionIDs, [ 'ses_2' ]);
+  assert.equal(next.sessionDetailsByID.ses_1, undefined);
+  assert.equal(next.framesBySessionID.ses_1, undefined);
+  assert.equal(next.sessionPagingByID.ses_1, undefined);
+  assert.equal(next.sessionDetailsByID.ses_2.title, 'Sibling');
+  // Immutability: the source snapshot is untouched.
+  assert.deepEqual(previous.sessionIDs, [ 'ses_1', 'ses_2' ]);
+  assert.ok(previous.sessionDetailsByID.ses_1);
+
+  // getSessions() is the last line of defence and must not return it either.
+  assert.deepEqual(getSessions(next).map((session) => session.id), [ 'ses_2' ]);
+});
+
+// The deleted filter must not swallow ordinary session.saved updates.
+test('a live session.saved payload still prepends new ids and merges existing ones', () => {
+  let previous = {
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: { ses_1: { id: 'ses_1', title: 'Existing', messageCount: 5 } },
+    framesBySessionID: {},
+  };
+
+  let created = upsertSessionState(previous, { id: 'ses_2', title: 'Created', messageCount: 0 });
+  assert.deepEqual(created.sessionIDs, [ 'ses_2', 'ses_1' ]);
+  assert.equal(created.sessionDetailsByID.ses_2.title, 'Created');
+
+  let merged = upsertSessionState(created, { id: 'ses_1', title: 'Renamed' });
+  assert.deepEqual(merged.sessionIDs, [ 'ses_2', 'ses_1' ]);
+  assert.equal(merged.sessionDetailsByID.ses_1.title, 'Renamed');
+  assert.equal(merged.sessionDetailsByID.ses_1.messageCount, 5);
+});
+
+test('removeSession drops the id, detail, frames, and paging and leaves siblings untouched', () => {
+  let previous = {
+    sessionIDs: [ 'ses_1', 'ses_2' ],
+    sessionDetailsByID: {
+      ses_1: { id: 'ses_1', title: 'Gone' },
+      ses_2: { id: 'ses_2', title: 'Keep' },
+    },
+    framesBySessionID: {
+      ses_1: [ { id: 'msg_1', type: 'UserMessage' } ],
+      ses_2: [ { id: 'msg_2', type: 'UserMessage' } ],
+    },
+    sessionPagingByID: {
+      ses_1: { total: 1 },
+      ses_2: { total: 2 },
+    },
+  };
+
+  let next = removeSession(previous, 'ses_1');
+
+  assert.deepEqual(next.sessionIDs, [ 'ses_2' ]);
+  assert.equal(next.sessionDetailsByID.ses_1, undefined);
+  assert.equal(next.framesBySessionID.ses_1, undefined);
+  assert.equal(next.sessionPagingByID.ses_1, undefined);
+  assert.deepEqual(next.sessionDetailsByID.ses_2, { id: 'ses_2', title: 'Keep' });
+  assert.deepEqual(next.framesBySessionID.ses_2, [ { id: 'msg_2', type: 'UserMessage' } ]);
+  assert.deepEqual(next.sessionPagingByID.ses_2, { total: 2 });
+  // Immutability: the source snapshot keeps everything.
+  assert.deepEqual(previous.sessionIDs, [ 'ses_1', 'ses_2' ]);
+  assert.ok(previous.framesBySessionID.ses_1);
+
+  // Unknown or empty ids are a no-op snapshot.
+  assert.deepEqual(removeSession(previous, '').sessionIDs, [ 'ses_1', 'ses_2' ]);
+  assert.deepEqual(removeSession(previous, 'unknown').sessionIDs, [ 'ses_1', 'ses_2' ]);
+});
+
+test('mergeSessions skips deleted sessions from a fetched page', () => {
+  let next = mergeSessions(createSessionStateSnapshot(), [
+    { id: 'ses_live', title: 'Live' },
+    { id: 'ses_gone', title: 'Gone', deletedAt: 'stamp-1' },
+  ]);
+
+  assert.deepEqual(next.sessionIDs, [ 'ses_live' ]);
+  assert.equal(next.sessionDetailsByID.ses_gone, undefined);
 });
 
 test('upsertFrameState appends and replaces frames by id without losing session details', () => {

@@ -9,3 +9,4 @@ import '/vendor/aeor-web-components/components/aeor-modal.js';
 import '/vendor/aeor-web-components/components/aeor-select.js';
 import '/vendor/aeor-web-components/components/aeor-checkbox.js';
 import '/vendor/aeor-web-components/components/aeor-confirm-button.js';
+import '/vendor/aeor-web-components/components/aeor-progress-button.js';

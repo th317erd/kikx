@@ -1349,6 +1349,39 @@ kikx-typing-indicator {
   font-size: 11px;
 }
 
+/* Bottom action toolbar: a distinct row of radial progress buttons separated
+   from the preview by a hairline rule. It stays quiet so the card still reads
+   as a single click target until an action is hovered. */
+.kikx-session-card__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #2a3138;
+}
+
+.kikx-session-card__action {
+  cursor: pointer;
+}
+
+/* A soft delete is in flight: dim the card and lock the toolbar so a second
+   hold cannot be started while the request completes. */
+.kikx-session-card.is-deleting {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.kikx-session-card.is-deleting .kikx-session-card__toolbar {
+  pointer-events: none;
+}
+
+/* Embedded cards are sub-session previews, not workspace cards: no toolbar.
+   display:none also removes the actions from the tab order. */
+.kikx-session-card--embedded .kikx-session-card__toolbar {
+  display: none;
+}
+
 /* Mini mode renders the real chat thread at a fixed "design" size and scales
    it down with a transform, so it is literally a tiny chat, not a restyle. */
 .kikx-chat-view--mini {

@@ -331,10 +331,66 @@ export class MiniElement extends MiniNode {
   }
 
   dispatchEvent(event) {
-    event.target = this;
-    for (let listener of this._listeners.get(event.type) || [])
-      listener.call(this, event);
-    return true;
+    // `target`/`currentTarget` are read-only accessors on the platform Event, so
+    // assign our own shadowing properties instead of writing to them.
+    Object.defineProperty(event, 'target', {
+      configurable: true,
+      value: this,
+    });
+
+    // Track propagation so a listener's stopPropagation() halts the bubble walk.
+    // The platform method keeps its own internal flag we cannot read back.
+    let stopped = false;
+    let defaultPrevented = false;
+    let platformStop = typeof event.stopPropagation === 'function' ? event.stopPropagation : null;
+    Object.defineProperty(event, 'stopPropagation', {
+      configurable: true,
+      writable: true,
+      value: () => {
+        stopped = true;
+        platformStop?.call(event);
+      },
+    });
+
+    // Model cancellation so dispatchEvent() can return false the way the DOM
+    // does; preventDefault only cancels a cancelable event.
+    Object.defineProperty(event, 'defaultPrevented', {
+      configurable: true,
+      get: () => defaultPrevented,
+    });
+    if (typeof event.preventDefault === 'function') {
+      let platformPreventDefault = event.preventDefault;
+      Object.defineProperty(event, 'preventDefault', {
+        configurable: true,
+        writable: true,
+        value: () => {
+          if (event.cancelable === true)
+            defaultPrevented = true;
+          platformPreventDefault?.call(event);
+        },
+      });
+    }
+
+    let path = [];
+    for (let node = this; node; node = node.parentNode)
+      path.push(node);
+
+    for (let current of path) {
+      Object.defineProperty(event, 'currentTarget', {
+        configurable: true,
+        value: current,
+      });
+      for (let listener of current._listeners.get(event.type) || [])
+        listener.call(current, event);
+      if (stopped)
+        break;
+      // Real DOM defaults `bubbles` to false, so anything not explicitly true
+      // must not bubble.
+      if (!event.bubbles)
+        break;
+    }
+
+    return !event.defaultPrevented;
   }
 }
 
