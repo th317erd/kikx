@@ -1,6 +1,7 @@
 'use strict';
 
 import { elements, ReactiveState, $ } from '../../lib/aeor-ui.mjs';
+import { extractDeletedTodo, extractTodoItems, todoCallSummary, todoResultSummary } from './todo-summary.mjs';
 
 const { div, span, strong, p, pre, code, details, summary } = elements;
 const DEFAULT_OUTPUT_READ_BYTES = 128 * 1024;
@@ -566,30 +567,34 @@ export class TodoToolUse extends ToolUse {
     return 'Todo';
   }
 
-  callSummary() {
-    if (this.toolName === 'todo-get')
-      return 'Reading todo list...';
-    if (this.toolName === 'todo-add')
-      return this.input.title ? `Adding todo: ${this.input.title}` : 'Adding todo...';
-    if (this.toolName === 'todo-update')
-      return this.input.id ? `Updating todo: ${this.input.id}` : 'Updating todo...';
-    if (this.toolName === 'todo-complete')
-      return this.input.id ? `Completing todo: ${this.input.id}` : 'Completing todo...';
-    if (this.toolName === 'todo-delete')
-      return this.input.id ? `Deleting todo: ${this.input.id}` : 'Deleting todo...';
-    if (this.toolName === 'todo-clear')
-      return 'Clearing todo list...';
-    if (this.toolName === 'todo-focus-set')
-      return this.input.id ? `Focusing todo: ${this.input.id}` : 'Setting todo focus...';
-    if (this.toolName === 'todo-focus-clear')
-      return 'Clearing todo focus...';
+  // The parsed todo state/result the summary helpers read. The result preview
+  // (or a loaded output) is the whole todo state as JSON; read it without
+  // forcing the card to expand.
+  todoResult() {
+    let output = this.state.output || this.previewOutput();
+    if (!output)
+      return null;
 
-    return `${this.toolName}...`;
+    return parseToolOutput(output);
+  }
+
+  todoItems() {
+    return extractTodoItems(this.todoResult());
+  }
+
+  callSummary() {
+    return todoCallSummary({ toolName: this.toolName, input: this.input, items: this.todoItems() });
   }
 
   resultSummary() {
-    let outcome = this.status === 'error' ? 'failed' : 'completed';
-    return `${this.toolName} ${outcome}.`;
+    let result = this.todoResult();
+    return todoResultSummary({
+      toolName: this.toolName,
+      status: this.status,
+      input: this.input,
+      items: extractTodoItems(result),
+      deleted: extractDeletedTodo(result),
+    });
   }
 }
 

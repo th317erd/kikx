@@ -154,10 +154,14 @@ export class AgentTodoStore {
     if (state.focus && (state.focus.itemID === id || state.focus.childID === id))
       state.focus = null;
 
-    return await this.saveTodoState({
+    let saved = await this.saveTodoState({
       ...state,
       updatedAt: now,
     });
+    // The removed item rides along on the RETURNED object only: saveTodoState
+    // normalizes and strips unknown keys before persisting, so `deleted` is
+    // never written to disk. It lets the tool result name the deleted todo.
+    return { ...saved, deleted: removed };
   }
 
   async clearTodoState(agentID) {
