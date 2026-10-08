@@ -35,6 +35,11 @@ import {
   KIKX_DATABASE_PATH,
   KIKX_DATABASE_URL,
   KIKX_PLUGIN_PATHS_PATH,
+  KIKX_MONITORING_MEMORY_ENABLED_PATH,
+  KIKX_MONITORING_MEMORY_GROWTH_THRESHOLD_MB_PATH,
+  KIKX_MONITORING_MEMORY_GROWTH_WINDOW_SAMPLES_PATH,
+  KIKX_MONITORING_MEMORY_INTERVAL_SECONDS_PATH,
+  KIKX_MONITORING_MEMORY_SAMPLES_PATH,
   createConfigStore,
 } from '../core/config/index.mjs';
 import {
@@ -68,11 +73,13 @@ import {
 } from '../core/tools/index.mjs';
 
 import {
+  parseBoolean,
   parseEnvNonNegativeInteger,
   parseEnvPositiveInteger,
   parseEnvRatio,
   writeJSON,
 } from './http-helpers.mjs';
+import { createMemorySampler, DEFAULT_MEMORY_GROWTH_WINDOW_SAMPLES, DEFAULT_MEMORY_SAMPLE_LIMIT } from './memory-sampler.mjs';
 import { connectTokenUsageToRuntime } from './events.mjs';
 import { routeRequest } from './router.mjs';
 
@@ -118,6 +125,15 @@ export async function createServer(options = {}) {
   // launcher's CWD after all.
   let baseCWD = path.resolve(options.cwd || await config.get(KIKX_CWD_PATH) || os.homedir());
 
+  // S5 memory monitoring (off by default). The interval is configured in
+  // seconds; the sampler works in milliseconds and clamps a too-small value.
+  let memorySamplerEnabled = parseBoolean(await config.get(KIKX_MONITORING_MEMORY_ENABLED_PATH), false);
+  let memorySamplerIntervalMS = parseEnvPositiveInteger(await config.get(KIKX_MONITORING_MEMORY_INTERVAL_SECONDS_PATH), 30) * 1000;
+  let memorySamplerLimit = parseEnvPositiveInteger(await config.get(KIKX_MONITORING_MEMORY_SAMPLES_PATH), DEFAULT_MEMORY_SAMPLE_LIMIT);
+  let memorySamplerGrowthWindow = parseEnvPositiveInteger(await config.get(KIKX_MONITORING_MEMORY_GROWTH_WINDOW_SAMPLES_PATH), DEFAULT_MEMORY_GROWTH_WINDOW_SAMPLES);
+  // 0 disables the growth warning entirely (e.g. sampling without alerting).
+  let memorySamplerGrowthThresholdBytes = parseEnvNonNegativeInteger(await config.get(KIKX_MONITORING_MEMORY_GROWTH_THRESHOLD_MB_PATH), 64) * 1024 * 1024;
+
   let staticRoots = {
     client: options.clientRoot || CLIENT_ROOT,
     shared: options.sharedRoot || SHARED_ROOT,
@@ -126,6 +142,17 @@ export async function createServer(options = {}) {
 
   if (!context.has('pluginRegistry'))
     context.set('pluginRegistry', new PluginRegistry());
+
+  if (!context.has('memorySampler')) {
+    context.set('memorySampler', createMemorySampler({
+      enabled: memorySamplerEnabled,
+      intervalMS: memorySamplerIntervalMS,
+      maxSamples: memorySamplerLimit,
+      growthWindowSamples: memorySamplerGrowthWindow,
+      growthThresholdBytes: memorySamplerGrowthThresholdBytes,
+      logger: options.logger || console,
+    }));
+  }
 
   // Register override-worthy core classes into the universal ClassRegistry so a
   // plugin can replace them (registerClass the same key) and unregisterPlugin
@@ -479,6 +506,11 @@ export async function createServer(options = {}) {
     }
   });
   server.kikxContext = context;
+  // Off by default: `start()` is a no-op unless the sampler was enabled. The
+  // interval is unref'd, and closing the server stops it.
+  let memorySampler = context.require('memorySampler');
+  memorySampler.start();
+  server.on('close', () => memorySampler.stop());
   return server;
 }
 

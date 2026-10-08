@@ -3,6 +3,7 @@
 import './kikx-frame-item.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { miniPreviewFrames, miniScale, MINI_DESIGN_WIDTH, MINI_DESIGN_HEIGHT } from './chat-view-model.mjs';
+import { countRebuild } from './render-stats.mjs';
 
 const FRAME_ENTER_ANIMATION_MS = 220;
 
@@ -170,6 +171,7 @@ export class KikxChatView extends HTMLElement {
   }
 
   _renderFull() {
+    countRebuild('chatView');
     this.textContent = '';
     this.classList.add('kikx-chat-view--full');
     this.classList.remove('kikx-chat-view--mini');
@@ -198,6 +200,7 @@ export class KikxChatView extends HTMLElement {
   }
 
   _renderMini() {
+    countRebuild('chatView');
     this.textContent = '';
     this.classList.add('kikx-chat-view--mini');
     this.classList.remove('kikx-chat-view--full');

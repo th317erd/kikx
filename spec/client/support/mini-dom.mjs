@@ -315,6 +315,14 @@ export class MiniElement extends MiniNode {
   }
 
   insertBefore(node, reference) {
+    // Browser semantics: pre-insert rewrites a referenceChild that IS the node
+    // to the node's next sibling, so inserting a node before itself is a no-op.
+    // Modelling that here keeps reconciliation callers from tearing a node out
+    // and re-appending it (which would fire disconnect/connect on real custom
+    // elements) when the order is already correct.
+    if (node === reference)
+      return node;
+
     if (!reference)
       return this.appendChild(node);
 

@@ -10,6 +10,7 @@ import {
 } from './frame-labels.mjs';
 import { resolveFrameComponentDescriptor } from './frame-component-registry.mjs';
 import { sessionReferenceFromFrame } from './kikx-sub-session-frame.mjs';
+import { countRebuild } from './render-stats.mjs';
 import './kikx-typing-indicator.mjs';
 import './kikx-sub-session-frame.mjs';
 
@@ -144,6 +145,7 @@ export class KikxFrameItem extends HTMLElement {
     if (!frame)
       return;
 
+    countRebuild('frameItem');
     let previous = {
       contentKind: this._contentKind,
       contentTag: this._contentTag,

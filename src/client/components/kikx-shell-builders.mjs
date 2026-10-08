@@ -14,6 +14,7 @@ import {
 } from '../state/kikx-state.mjs';
 import { childSessions } from './chat-view-model.mjs';
 import { formatTokenUsageTotal } from './kikx-app-helpers.mjs';
+import { countRebuild } from './render-stats.mjs';
 
 const { div, main, nav, section, header, h1, h2, p, span, button, form, input, label, textarea } = elements;
 const aeorInput = elements['aeor-input'];
@@ -22,6 +23,7 @@ const aeorInput = elements['aeor-input'];
 // app, so the whole build runs inside the error boundary; on failure the
 // previous children are put back so the UI is not left blank.
 export function renderAppShell(app) {
+  countRebuild('shell');
   let renderSnapshot = app._captureRenderSnapshot();
   let previousChildren = Array.from(app.childNodes);
 

@@ -176,12 +176,17 @@ import {
   toggleAgentCrown,
 } from './kikx-agent-controller.mjs';
 import { onMagicLinkSubmit, verifyMagicLink } from './kikx-auth.mjs';
+import { renderStats } from './render-stats.mjs';
 
 export class KikxApp extends HTMLElement {
   constructor() {
     super();
 
     this._state = kikxState;
+    // S3: shared, tiny full-rebuild counters. A browser probe can read
+    // `document.querySelector('kikx-app')._renderStats` to confirm a streaming
+    // burst did not cause a rebuild storm.
+    this._renderStats = renderStats;
     this._eventSource = null;
     this._frameListResizeObserver = null;
     this._observedFrameList = null;

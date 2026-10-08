@@ -23,6 +23,26 @@ export async function handleInfraRoutes({ request, response, url, context }) {
       services: {
         aeordb: context.has('aeordb'),
       },
+      // Compact summary only (no sample ring) so the probe stays cheap. Absent
+      // when the server was composed without the sampler.
+      memory: context.has('memorySampler')
+        ? context.require('memorySampler').snapshot()
+        : null,
+    });
+    return true;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/v1/infra/memory') {
+    // Same unauthenticated infra surface as `/health` (deploy verifier). The
+    // ring is only returned when `?samples=1`, so routine calls stay bounded.
+    let sampler = context.has('memorySampler') ? context.require('memorySampler') : null;
+    let includeSamples = parseBoolean(url.searchParams.get('samples'), false);
+    writeJSON(response, 200, {
+      data: {
+        memory: sampler
+          ? sampler.snapshot({ includeSamples })
+          : { enabled: false, running: false, sampleCount: 0, warningCount: 0, latest: null, samples: [] },
+      },
     });
     return true;
   }

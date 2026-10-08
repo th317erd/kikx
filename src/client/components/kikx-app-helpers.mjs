@@ -25,15 +25,56 @@ export function formatTokenUsageTotal(value) {
   return `Tokens: ${Math.trunc(total).toLocaleString('en-US')}`;
 }
 
-export function parseRuntimeEvent(event) {
+// Bound on the payload excerpt carried as diagnostic context. A malformed
+// event must not be able to stuff an unbounded string into the error ring.
+const PARSE_PREVIEW_LIMIT = 200;
+
+function boundedPreview(raw) {
+  if (typeof raw === 'string')
+    return raw.slice(0, PARSE_PREVIEW_LIMIT);
+
+  if (raw === undefined || raw === null)
+    return '';
+
+  return String(raw).slice(0, PARSE_PREVIEW_LIMIT);
+}
+
+// Parse-result variant used by the dispatcher so a malformed payload can be
+// reported (with the parse error and a bounded excerpt) instead of vanishing.
+// `parseRuntimeEvent` below stays the null-on-failure helper for callers that
+// only care about the data. Neither variant throws, even when reading
+// `event.data` or `event.type` throws (a poisoned payload from the stream).
+export function parseRuntimeEventResult(event) {
+  let raw;
   try {
-    let data = JSON.parse(event.data || '{}');
+    raw = event?.data;
+  } catch (error) {
+    return { ok: false, data: null, error, preview: '<unreadable>' };
+  }
+
+  try {
+    let data = JSON.parse(raw || '{}');
     if (!data.type && event.type)
       data.type = event.type;
-    return data;
-  } catch (_error) {
-    return null;
+    return { ok: true, data, error: null, preview: boundedPreview(raw) };
+  } catch (error) {
+    return { ok: false, data: null, error, preview: boundedPreview(raw) };
   }
+}
+
+export function parseRuntimeEvent(event) {
+  return parseRuntimeEventResult(event).data;
+}
+
+// Deterministic-scheduler seam for specs. When installed, `scheduleAnimationFrame`
+// routes to the supplied function instead of rAF/setTimeout, so a spec can drive
+// deferred paint/reconcile work explicitly at a chosen point rather than racing
+// real timers. Passing anything that is not a function restores production
+// behavior; production never installs one.
+let animationFrameScheduler = null;
+
+export function setAnimationFrameScheduler(scheduler) {
+  animationFrameScheduler = typeof scheduler === 'function' ? scheduler : null;
 }
 
 // W8: requestAnimationFrame is paused while the tab is hidden, so scheduling a
@@ -43,6 +84,9 @@ export function parseRuntimeEvent(event) {
 // keeps the cheaper rAF. Environments with no `visibilityState` (plain Node) are
 // unchanged.
 export function scheduleAnimationFrame(callback) {
+  if (animationFrameScheduler)
+    return animationFrameScheduler(callback);
+
   let visibilityState = globalThis.document?.visibilityState;
   if (visibilityState && visibilityState !== 'visible')
     return setTimeout(callback, 0);

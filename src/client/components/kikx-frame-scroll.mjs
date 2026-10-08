@@ -4,6 +4,7 @@ import { getGridParentSessionID, getSelectedFrames, getSessionPaging, getSession
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import { buildFrameThread } from './kikx-shell-builders.mjs';
+import { countRebuild } from './render-stats.mjs';
 
 export const ANCHOR_THRESHOLD = 50;
 export const FRAME_ENTER_ANIMATION_MS = 260;
@@ -90,15 +91,21 @@ export function syncSessionShell(app) {
   // The title can be an h2 (root) or an editable button (session window); in
   // edit mode it is an input, which we leave alone.
   let threadTitle = app.querySelector('.kikx-window__header .kikx-window__title, .kikx-window__header h2');
-  let selectedSession = app._selectedSession();
-  if (threadTitle)
+  let editingTitle = app.querySelector('.kikx-window__header .kikx-window__title-input');
+  if (threadTitle && !editingTitle) {
+    let selectedSession = app._selectedSession();
     threadTitle.textContent = selectedSession?.title || 'No session';
+  }
 
   let grid = app.querySelector('kikx-session-grid');
   if (grid) {
     // Respect the current level's parent filter; the grid shows direct
     // children of the active session, never the unfiltered list.
-    grid.update({
+    //
+    // S3: use the coalesced grid sync. A burst of `session.saved` events used to
+    // call grid.update() (a full grid + card rebuild) once per event; sync()
+    // reconciles cards by id and repaints at most once per animation frame.
+    grid.sync({
       allSessions: getSessions(app._state),
       parentSessionID: getGridParentSessionID(app._state),
       previews: getSessionPreviews(app._state),
@@ -109,7 +116,10 @@ export function syncSessionShell(app) {
     return true;
   }
 
-  return Boolean(threadTitle);
+  // While the inline title editor is open there is no title button/h2, but the
+  // window shell is still present. Returning false here would force a full app
+  // rebuild on every `session.saved`, destroying the editor and its focus.
+  return Boolean(threadTitle || editingTitle);
 }
 
 export function syncFrameThread(app, sessionID = app._state.selectedSessionID, options = {}) {
@@ -136,6 +146,7 @@ function syncFrameThreadBody(app, sessionID, options) {
     // "...build is not a function" and left the thread body unreplaced whenever
     // a session gained its first visible frame.)
     body.replaceChildren(buildFrameThread(app));
+    countRebuild('thread');
     connectFrameListObserver(app);
     if (app._frameListAnchoredToBottom)
       scrollFramesToBottomImmediate(app);

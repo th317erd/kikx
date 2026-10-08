@@ -61,16 +61,51 @@ may grow without bound; a failure must be visible to the user (and to us).
 - Timer/listener/observer lifecycle: nothing may be registered per render or per
   reconnect without a matching teardown.
 
-### S3 — Responsiveness under streaming load
+### S3 — Responsiveness under streaming load — ✅ DONE (round 5 finished the spec)
+> `grid.sync()` reconciles cards by id and repaints at most once per animation
+> frame, so a live `session.saved` burst no longer calls `grid.update()` per event;
+> `syncSessionShell` returns true under an open title editor so a streaming save
+> cannot tear the editor down. Round 5 removed the *spec's own* timing fragility:
+> deferred frames are driven by an injected scheduler (no real timers), render
+> counters are read as per-spec deltas (never a global reset another spec could
+> touch), and "cards reused" is asserted by element reference rather than
+> structural deep-equality of live DOM nodes. Prove: 2000/2000 concurrent spec
+> runs under 8 busy CPU loops, 0 failures; all 4 S3 tests pass in every one of 30
+> consecutive full-suite runs under load. Raw logs: `/tmp/pi/kikx/round5`.
 - Remaining step of the smoothness pass (`3f8b5e1` did element stability):
   throttle/coalesce the re-render storm during a live turn so typing/scrolling
   stays smooth; keep the compositor-friendly animation rules.
 - Re-verify with the in-page probe used for `3f8b5e1`.
 
-### S4 — Failure-path coverage for stability-critical paths
+### S4 — Failure-path coverage for stability-critical paths — ✅ DONE (round 5 closed both recorded findings)
+> Specs for: stream error/close mid-burst, malformed runtime event, unknown frame
+> type, oversized frame body, storage read failure, delete failure, hidden->visible
+> transition with a backed-up queue. Round 5 un-skipped and fixed the two
+> contracts those specs had recorded as skipped:
+> - **Malformed payloads were dropped silently.** `dispatchRuntimeEvent` now uses
+>   `parseRuntimeEventResult` and reports through the error boundary under
+>   `kikx-runtime-events.parse` with the event type, the parse error, and a bounded
+>   (200-char) payload excerpt. The message is constant, so the boundary's
+>   label+message repeat throttle bounds the ring and the console: a 400-event
+>   malformed flood is one entry, one log line, `count=400`.
+> - **`deleteSession` mutated before it persisted.** Soft delete now stamps and
+>   persists a copy first and only swaps the live entry on success, so a failed
+>   write leaves `getSession`/`listSessions` byte-for-byte unchanged.
+> Pre-fix, the un-skipped specs fail: `a malformed payload must reach the error
+> boundary`, `a failed delete must not look deleted` (actual `deletedAt=1000000`,
+> expected `null`), and `the cached fields must be unchanged by a failed delete`.
 - Specs for: stream error/close mid-burst, malformed runtime event, unknown frame
   type, oversized frame body, storage read failure, delete failure, hidden->visible
   transition with a backed-up queue.
+
+## Accepted known limitations (not fixed this round)
+- **No per-frame body size cap.** A frame's `content.text` is bounded only by the
+  SSE buffer (1 MiB per event, S2). The oversized-frame-body spec pins that a
+  multi-megabyte body parses, queues, and applies intact and that the pending queue
+  holds its hard cap, but there is deliberately no per-frame size limit: a
+  legitimate large tool result must not be rejected, and the SSE buffer is the
+  practical inbound bound. Revisit only if a frame body can arrive through a path
+  that is not SSE-bounded.
 
 ### S5 — Monitoring (keep running)
 - Client leak watchdog `leak-watch.py` (armed, tracks Kikx pids; captures an

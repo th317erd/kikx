@@ -2,6 +2,8 @@
 
 import './kikx-session-card.mjs';
 import { childSessions, previewsBySessionID } from './chat-view-model.mjs';
+import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
+import { countRebuild } from './render-stats.mjs';
 
 export class KikxSessionGrid extends HTMLElement {
   constructor() {
@@ -14,6 +16,8 @@ export class KikxSessionGrid extends HTMLElement {
     this._loading = false;
     this._error = null;
     this._addLabel = 'Add Session';
+    this._addCard = null;
+    this._paintScheduled = false;
     // Session ids with an in-flight soft delete. The app owns the set and hands
     // it in via update() so a full re-render cannot lose the pending state.
     this._deletingSessionIDs = new Set();
@@ -50,6 +54,23 @@ export class KikxSessionGrid extends HTMLElement {
   }
 
   update(input = {}) {
+    this._applyInput(input);
+    this._render();
+  }
+
+  // S3: coalesced live-sync path used by syncSessionShell() for SSE
+  // `session.saved` bursts. State is applied immediately, the card list is
+  // reconciled by id (existing cards are reused, so element identity and any
+  // running animation survive), and the card repaint runs at most once per
+  // animation frame. A burst of N session saves therefore costs one repaint,
+  // not N full grid rebuilds.
+  sync(input = {}) {
+    this._applyInput(input);
+    this._reconcileCards();
+    this._schedulePaint();
+  }
+
+  _applyInput(input = {}) {
     if (Array.isArray(input.allSessions))
       this._allSessions = input.allSessions;
     else if (Array.isArray(input.sessions))
@@ -72,8 +93,6 @@ export class KikxSessionGrid extends HTMLElement {
       this.addLabel = input.addLabel;
     if (input.deletingSessionIDs instanceof Set)
       this._deletingSessionIDs = input.deletingSessionIDs;
-
-    this._render();
   }
 
   setSelected(sessionID) {
@@ -120,7 +139,80 @@ export class KikxSessionGrid extends HTMLElement {
       card.update(this._cardInputFor(card.sessionID));
   }
 
+  _schedulePaint() {
+    if (this._paintScheduled)
+      return;
+
+    this._paintScheduled = true;
+    scheduleAnimationFrame(() => {
+      this._paintScheduled = false;
+      this._paintCards();
+    });
+  }
+
+  _createCard() {
+    let card = document.createElement('kikx-session-card');
+    card.setAttribute('role', 'listitem');
+    return card;
+  }
+
+  // Reuse existing cards by session id, inserting/removing only the difference.
+  // A new card is painted immediately so it has a session id for later paints.
+  _reconcileCards() {
+    if (this._error) {
+      this._render();
+      return;
+    }
+
+    let cardsByID = new Map();
+    for (let child of [ ...this.children ]) {
+      if (child.matches?.('kikx-session-card') && child.sessionID) {
+        cardsByID.set(child.sessionID, child);
+        continue;
+      }
+
+      if (child === this._addCard)
+        continue;
+
+      // Loading/status text nodes are re-created below.
+      child.remove();
+    }
+
+    if (!this._addCard)
+      this._addCard = this._buildAddCard();
+
+    this.insertBefore(this._addCard, this.firstChild);
+
+    let cursor = this._addCard.nextElementSibling;
+    for (let session of this._sessions) {
+      let card = cardsByID.get(session.id);
+      if (card) {
+        cardsByID.delete(session.id);
+      } else {
+        card = this._createCard();
+        card.update(this._cardInputFor(session.id));
+      }
+
+      if (card === cursor)
+        cursor = card.nextElementSibling;
+      else
+        this.insertBefore(card, cursor);
+    }
+
+    for (let stale of cardsByID.values())
+      stale.remove();
+
+    if (this._loading) {
+      let loading = document.createElement('p');
+      loading.className = 'kikx-session-grid__status';
+      loading.textContent = 'Loading previews…';
+      this.appendChild(loading);
+    }
+  }
+
   _render() {
+    countRebuild('grid');
+    this._addCard = null;
     this.textContent = '';
 
     if (this._error) {
@@ -132,11 +224,11 @@ export class KikxSessionGrid extends HTMLElement {
     }
 
     // A leading empty card that creates a new entry at this scope.
-    this.appendChild(this._buildAddCard());
+    this._addCard = this._buildAddCard();
+    this.appendChild(this._addCard);
 
     for (let session of this._sessions) {
-      let card = document.createElement('kikx-session-card');
-      card.setAttribute('role', 'listitem');
+      let card = this._createCard();
       card.update(this._cardInputFor(session.id));
       this.appendChild(card);
     }

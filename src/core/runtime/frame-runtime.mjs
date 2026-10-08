@@ -180,17 +180,25 @@ export class FrameRuntime extends EventEmitter {
 
     let stamp = this.nextClockStamp();
     let now = stamp.at;
-    session.deletedAt = input.deletedAt || now;
-    session.updatedAt = now;
-    session.updatedClock = stamp.clock;
+    // Persist the deleted shape as a copy and only swap it into the live entry
+    // after the write succeeds. Previously the live session was stamped first,
+    // so a failed save left the cache looking deleted (getSession reported a
+    // deletedAt and the object was mutated) while nothing was persisted. Now a
+    // throw leaves the caller's view -- getSession and listSessions -- unchanged.
+    let deleted = {
+      ...session,
+      deletedAt: input.deletedAt || now,
+      updatedAt: now,
+      updatedClock: stamp.clock,
+    };
 
-    await this.frameStore.saveSession(session);
-    this.emitRuntimeEvent('session.saved', { sessionID: session.id, session });
+    await this.frameStore.saveSession(deleted);
+    this.emitRuntimeEvent('session.saved', { sessionID: deleted.id, session: deleted });
 
     if (entry)
-      entry.session = session;
+      entry.session = deleted;
 
-    return session;
+    return deleted;
   }
 
   getSession(sessionID) {

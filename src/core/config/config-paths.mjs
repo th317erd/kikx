@@ -48,3 +48,13 @@ export const KIKX_AUTH_MAILER_FROM_PATH = '/kikx/auth/mailer/from';
 export const KIKX_AUTH_ACCESS_TTL_SECONDS_PATH = '/kikx/auth/session/access/ttl/seconds';
 export const KIKX_AUTH_REFRESH_TTL_SECONDS_PATH = '/kikx/auth/session/refresh/ttl/seconds';
 export const KIKX_AUTH_MAGIC_LINK_TTL_SECONDS_PATH = '/kikx/auth/magic/link/ttl/seconds';
+
+// Optional server-side memory monitoring (S5). Off unless explicitly enabled;
+// when on, the sampler keeps a bounded ring of process-memory samples and
+// warns once when RSS growth across a trailing window crosses the threshold.
+// It never logs per sample. Each path round-trips to KIKX_* via `envKeyFor`.
+export const KIKX_MONITORING_MEMORY_ENABLED_PATH = '/kikx/monitoring/memory/enabled';
+export const KIKX_MONITORING_MEMORY_INTERVAL_SECONDS_PATH = '/kikx/monitoring/memory/interval/seconds';
+export const KIKX_MONITORING_MEMORY_SAMPLES_PATH = '/kikx/monitoring/memory/samples';
+export const KIKX_MONITORING_MEMORY_GROWTH_THRESHOLD_MB_PATH = '/kikx/monitoring/memory/growth/threshold/mb';
+export const KIKX_MONITORING_MEMORY_GROWTH_WINDOW_SAMPLES_PATH = '/kikx/monitoring/memory/growth/window/samples';

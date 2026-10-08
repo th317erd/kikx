@@ -2,8 +2,8 @@
 
 import { isCollapsed, setTokenUsage, upsertFrames, upsertSession } from '../state/kikx-state.mjs';
 import { isDeletedSession } from '../state/session-state-utils.mjs';
-import { guardClientOperation } from '../lib/error-boundary.mjs';
-import { scheduleAnimationFrame, parseRuntimeEvent } from './kikx-app-helpers.mjs';
+import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
+import { scheduleAnimationFrame, parseRuntimeEventResult } from './kikx-app-helpers.mjs';
 import { addFrameToBatch, addTouchedFrameIDs, renderedFrameIDsFor } from './frame-runtime-batch.mjs';
 import { pruneMissingSessionsFromStack } from './kikx-navigation.mjs';
 import { CONNECTED_STATUS, setConnectionStatus } from './runtime-events-connection.mjs';
@@ -48,9 +48,23 @@ export function onRuntimeEvent(app, event) {
 }
 
 function dispatchRuntimeEvent(app, event) {
-  let data = parseRuntimeEvent(event);
-  if (!data)
+  let parsed = parseRuntimeEventResult(event);
+  if (!parsed.ok) {
+    // A malformed payload used to return here without a trace, so a systematic
+    // serialization fault (a bad proxy, an encoder regression) would drop every
+    // event silently. Report it through the same boundary as other failures.
+    // The message is deliberately constant so the boundary's label+message
+    // repeat throttle bounds the ring and the console; the event type, the
+    // parse error, and a bounded payload excerpt carry the diagnostic context.
+    reportClientError('kikx-runtime-events.parse', new Error('Malformed runtime event payload'), {
+      eventType: safeEventType(event),
+      dataPreview: parsed.preview,
+      parseError: parsed.error?.message || String(parsed.error || ''),
+    });
     return;
+  }
+
+  let data = parsed.data;
 
   if (data.type === 'connected' || data.type === 'open') {
     setConnectionStatus(app, CONNECTED_STATUS, 'ready');
@@ -98,6 +112,16 @@ function dispatchRuntimeEvent(app, event) {
   // Unknown event types are intentionally ignored. Re-rendering the whole app for
   // an event we do not understand is never correct, and it is exactly the kind of
   // blanket rebuild that can freeze the UI.
+}
+
+// Reading `event.type` can itself throw on a poisoned payload; the diagnostic
+// context must never turn a contained failure into an uncontained one.
+function safeEventType(event) {
+  try {
+    return event?.type ?? null;
+  } catch {
+    return '<unreadable>';
+  }
 }
 
 export function scheduleRuntimeReconcile(app, sessionID = '') {
