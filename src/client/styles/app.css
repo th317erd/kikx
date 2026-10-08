@@ -1775,3 +1775,85 @@ button.kikx-window__title:focus-visible {
 .kog-config__status--error {
   color: #fca5a5;
 }
+
+/* S1: bounded, dismissible error surface. It is mounted as a direct child of
+   `kikx-app` (outside the rebuilt `.kikx-shell`), so fixed positioning keeps it
+   visible even when the shell itself failed to build. */
+.kikx-error-surface {
+  position: fixed;
+  top: 76px;
+  right: 20px;
+  z-index: 50;
+  display: grid;
+  gap: 6px;
+  max-width: min(360px, calc(100vw - 40px));
+  padding: 6px;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  background: #1d1416;
+  color: #fca5a5;
+  font-size: 13px;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 45%);
+}
+
+.kikx-error-surface--empty {
+  display: none;
+}
+
+.kikx-error-surface__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kikx-error-surface__chip,
+.kikx-error-surface__dismiss {
+  padding: 6px 10px;
+  border: 1px solid #7f1d1d;
+  border-radius: 999px;
+  background: #2a1a1c;
+  color: #fecaca;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kikx-error-surface__chip {
+  font-weight: 600;
+}
+
+.kikx-error-surface__dismiss {
+  padding: 5px 9px;
+}
+
+.kikx-error-surface__chip:hover,
+.kikx-error-surface__dismiss:hover {
+  background: #3a2225;
+}
+
+.kikx-error-surface__chip:focus-visible,
+.kikx-error-surface__dismiss:focus-visible {
+  outline: 2px solid #fca5a5;
+  outline-offset: 2px;
+}
+
+.kikx-error-surface__list {
+  max-height: 40vh;
+  margin: 0;
+  padding: 6px 8px;
+  overflow: auto;
+  border-radius: 6px;
+  background: #160f10;
+  list-style: none;
+}
+
+.kikx-error-surface__item {
+  padding: 3px 0;
+  color: #fecaca;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.kikx-error-surface__item + .kikx-error-surface__item {
+  border-top: 1px solid #3f2427;
+}

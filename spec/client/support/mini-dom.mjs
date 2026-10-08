@@ -42,6 +42,45 @@ class ClassList {
   }
 }
 
+function datasetKeyToAttribute(key) {
+  return `data-${String(key).replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)}`;
+}
+
+function attributeToDatasetKey(name) {
+  return name.slice(5).replace(/-([a-z])/g, (_match, char) => char.toUpperCase());
+}
+
+// Real HTML lowercases `data-*` attribute names, so `setAttribute('data-Foo', )`
+// and `dataset.foo` address the same attribute. Other attributes keep their case
+// (SVG `viewBox`, ARIA names) -- only the data family is normalized.
+function normalizeAttributeName(name) {
+  let key = String(name);
+  return key.length >= 5 && key.slice(0, 5).toLowerCase() === 'data-' ? key.toLowerCase() : key;
+}
+
+// Custom-element reactions bubble through the whole inserted/removed subtree in
+// the real DOM (tree order, root first). The shim must do the same or nested
+// component teardown/startup is never exercised.
+function connectSubtree(node) {
+  if (node.nodeType === 1 && typeof node.connectedCallback === 'function' && node._connected !== true) {
+    node._connected = true;
+    node.connectedCallback();
+  }
+
+  for (let child of node.childNodes || [])
+    connectSubtree(child);
+}
+
+function disconnectSubtree(node) {
+  if (node.nodeType === 1 && typeof node.disconnectedCallback === 'function' && node._connected === true) {
+    node._connected = false;
+    node.disconnectedCallback();
+  }
+
+  for (let child of node.childNodes || [])
+    disconnectSubtree(child);
+}
+
 export class MiniNode {
   constructor(nodeType, nodeName) {
     this.nodeType = nodeType;
@@ -75,6 +114,14 @@ export class MiniNode {
   remove() {
     if (this.parentNode)
       this.parentNode.removeChild(this);
+  }
+
+  contains(node) {
+    for (let current = node; current; current = current.parentNode) {
+      if (current === this)
+        return true;
+    }
+    return false;
   }
 }
 
@@ -110,7 +157,43 @@ export class MiniElement extends MiniNode {
     this._classes = new Set();
     this._attributes = new Map();
     this._listeners = new Map();
-    this.dataset = {};
+    // `dataset` is a live view over the `data-*` attributes (both directions),
+    // matching the browser: `element.dataset.frameId = 'x'` sets
+    // `data-frame-id`, and `setAttribute('data-frame-id', 'x')` is readable as
+    // `element.dataset.frameId`.
+    this.dataset = new Proxy({}, {
+      get: (_target, key) => {
+        if (typeof key !== 'string')
+          return undefined;
+        let value = this.getAttribute(datasetKeyToAttribute(key));
+        return value === null ? undefined : value;
+      },
+      set: (_target, key, value) => {
+        this.setAttribute(datasetKeyToAttribute(key), value);
+        return true;
+      },
+      has: (_target, key) => typeof key === 'string' && this.hasAttribute(datasetKeyToAttribute(key)),
+      deleteProperty: (_target, key) => {
+        this.removeAttribute(datasetKeyToAttribute(key));
+        return true;
+      },
+      ownKeys: () => {
+        let keys = [];
+        for (let [ name ] of this._attributes) {
+          if (name.startsWith('data-'))
+            keys.push(attributeToDatasetKey(name));
+        }
+        return keys;
+      },
+      getOwnPropertyDescriptor: (_target, key) => {
+        if (typeof key !== 'string')
+          return undefined;
+        let value = this.getAttribute(datasetKeyToAttribute(key));
+        if (value === null)
+          return undefined;
+        return { value, writable: true, enumerable: true, configurable: true };
+      },
+    });
   }
 
   get className() {
@@ -175,7 +258,7 @@ export class MiniElement extends MiniNode {
   }
 
   setAttribute(name, value) {
-    let key = String(name);
+    let key = normalizeAttributeName(name);
     if (key === 'class')
       this.className = value;
     else
@@ -183,20 +266,20 @@ export class MiniElement extends MiniNode {
   }
 
   getAttribute(name) {
-    let key = String(name);
+    let key = normalizeAttributeName(name);
     if (key === 'class')
       return this._classes.size > 0 ? this.className : null;
     return this._attributes.has(key) ? this._attributes.get(key) : null;
   }
 
   hasAttribute(name) {
-    if (String(name) === 'class')
+    if (normalizeAttributeName(name) === 'class')
       return this._classes.size > 0;
-    return this._attributes.has(String(name));
+    return this._attributes.has(normalizeAttributeName(name));
   }
 
   removeAttribute(name) {
-    let key = String(name);
+    let key = normalizeAttributeName(name);
     if (key === 'class') {
       this._classes = new Set();
       this._attributes.delete('class');
@@ -221,10 +304,7 @@ export class MiniElement extends MiniNode {
     node.parentNode = this;
     this.childNodes.push(node);
 
-    if (typeof node.connectedCallback === 'function' && node._connected !== true) {
-      node._connected = true;
-      node.connectedCallback();
-    }
+    connectSubtree(node);
 
     return node;
   }
@@ -254,10 +334,7 @@ export class MiniElement extends MiniNode {
     else
       this.childNodes.push(node);
 
-    if (typeof node.connectedCallback === 'function' && node._connected !== true) {
-      node._connected = true;
-      node.connectedCallback();
-    }
+    connectSubtree(node);
 
     return node;
   }
@@ -267,10 +344,7 @@ export class MiniElement extends MiniNode {
     if (index >= 0) {
       this.childNodes.splice(index, 1);
       node.parentNode = null;
-      if (typeof node.disconnectedCallback === 'function' && node._connected === true) {
-        node._connected = false;
-        node.disconnectedCallback();
-      }
+      disconnectSubtree(node);
     }
     return node;
   }
@@ -293,7 +367,8 @@ export class MiniElement extends MiniNode {
   }
 
   set textContent(value) {
-    this.childNodes = [];
+    for (let child of [ ...this.childNodes ])
+      this.removeChild(child);
     if (value !== undefined && value !== null && String(value) !== '')
       this.appendChild(new MiniText(value));
   }
@@ -305,7 +380,8 @@ export class MiniElement extends MiniNode {
 
   set innerHTML(html) {
     let root = this.localName === 'template' ? this.content : this;
-    root.childNodes = [];
+    for (let child of [ ...root.childNodes ])
+      root.removeChild(child);
     parseHTMLInto(this.ownerDocument, root, String(html ?? ''));
   }
 
@@ -479,6 +555,44 @@ export class MiniDocument extends MiniNode {
   }
 }
 
+// A minimal `window` event target so client code can install and tear down
+// process-level listeners (`window.onerror`, `unhandledrejection`) under Node.
+// Browsers expose this on globalThis; the shim keeps it as a distinct object so
+// a spec can assert that a listener was actually removed.
+export class MiniWindow {
+  constructor() {
+    this.onerror = null;
+    this._listeners = new Map();
+  }
+
+  addEventListener(type, listener) {
+    let bucket = this._listeners.get(type);
+    if (!bucket) {
+      bucket = [];
+      this._listeners.set(type, bucket);
+    }
+    bucket.push(listener);
+  }
+
+  removeEventListener(type, listener) {
+    let bucket = this._listeners.get(type);
+    if (!bucket)
+      return;
+    let index = bucket.indexOf(listener);
+    if (index >= 0)
+      bucket.splice(index, 1);
+  }
+
+  dispatchEvent(event) {
+    for (let listener of [ ...(this._listeners.get(event.type) || []) ])
+      listener(event);
+  }
+
+  listenerCount(type) {
+    return (this._listeners.get(type) || []).length;
+  }
+}
+
 class CustomElementRegistry {
   constructor() {
     this._byName = new Map();
@@ -501,7 +615,7 @@ class CustomElementRegistry {
   }
 }
 
-const installed = { registry: null, document: null };
+const installed = { registry: null, document: null, window: null };
 
 export function installDom() {
   if (installed.registry)
@@ -511,9 +625,11 @@ export function installDom() {
   let document = new MiniDocument(registry);
   installed.registry = registry;
   installed.document = document;
+  installed.window = new MiniWindow();
 
   globalThis.HTMLElement = MiniElement;
   globalThis.document = document;
+  globalThis.window = installed.window;
   globalThis.customElements = registry;
 
   if (typeof globalThis.CustomEvent === 'undefined') {

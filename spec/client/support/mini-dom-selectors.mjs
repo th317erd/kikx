@@ -4,7 +4,13 @@
 // `*`, and descendant combinator only — enough for the client-component specs.
 
 function parseCompound(compound) {
-  let result = { tag: null, classes: [], id: null };
+  // `[attr^=]`, `[attr$=]`, `[attr*=]`, `[attr~=]` and `[attr|=]` are not
+  // implemented. Silently ignoring them would make a query match everything or
+  // nothing while the spec still "passes"; fail loud instead.
+  if (/\[[^\]]*[~|^$*]=[^\]]*\]/.test(compound))
+    throw new Error(`mini-dom-selectors: unsupported attribute operator in "${compound}"`);
+
+  let result = { tag: null, classes: [], id: null, attributes: [] };
   if (!compound || compound === '*')
     return result;
 
@@ -18,6 +24,8 @@ function parseCompound(compound) {
   let idMatch = firstMatch(/#[\w-]+/, remainder);
   if (idMatch)
     result.id = idMatch.slice(1);
+  for (let match of remainder.matchAll(/\[([\w-]+)(?:=["']?([^"'\]]*)["']?)?\]/g))
+    result.attributes.push({ name: match[1], value: match[2] ?? null });
 
   return result;
 }
@@ -37,6 +45,13 @@ function elementMatches(element, compound) {
     return false;
   if (spec.id && element.getAttribute('id') !== spec.id)
     return false;
+  for (let attribute of spec.attributes) {
+    let value = element.getAttribute(attribute.name);
+    if (value === null || value === undefined)
+      return false;
+    if (attribute.value !== null && String(value) !== attribute.value)
+      return false;
+  }
   for (let className of spec.classes) {
     if (!element.classList.contains(className))
       return false;

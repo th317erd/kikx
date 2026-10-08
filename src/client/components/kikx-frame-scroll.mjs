@@ -1,6 +1,7 @@
 'use strict';
 
 import { getGridParentSessionID, getSelectedFrames, getSessionPaging, getSessions, getSessionPreviews } from '../state/kikx-state.mjs';
+import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import { buildFrameThread } from './kikx-shell-builders.mjs';
 
@@ -115,6 +116,12 @@ export function syncFrameThread(app, sessionID = app._state.selectedSessionID, o
   if (!sessionID || sessionID !== app._state.selectedSessionID)
     return;
 
+  guardClientOperation('kikx-frame-scroll.syncFrameThread', () => {
+    syncFrameThreadBody(app, sessionID, options);
+  }, { sessionID });
+}
+
+function syncFrameThreadBody(app, sessionID, options) {
   let body = app.querySelector('.kikx-thread__body');
   if (!body)
     return;

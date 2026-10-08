@@ -1,6 +1,8 @@
 'use strict';
 
-import { elements } from '../lib/aeor-ui.mjs';
+import { elements, $ } from '../lib/aeor-ui.mjs';
+import { guardClientOperation } from '../lib/error-boundary.mjs';
+import { createErrorSurfaceElement } from './kikx-error-surface.mjs';
 import {
   getCurrentEntry,
   getScopeNoun,
@@ -13,8 +15,95 @@ import {
 import { childSessions } from './chat-view-model.mjs';
 import { formatTokenUsageTotal } from './kikx-app-helpers.mjs';
 
-const { div, main, nav, section, h2, p, span, button, form, input, label, textarea } = elements;
+const { div, main, nav, section, header, h1, h2, p, span, button, form, input, label, textarea } = elements;
 const aeorInput = elements['aeor-input'];
+
+// S1: the app render entry point. A throwing shell builder must never wedge the
+// app, so the whole build runs inside the error boundary; on failure the
+// previous children are put back so the UI is not left blank.
+export function renderAppShell(app) {
+  let renderSnapshot = app._captureRenderSnapshot();
+  let previousChildren = Array.from(app.childNodes);
+
+  // If the app currently has no error surface (the very first render, or a
+  // previous render that left none), mount a standalone one OUTSIDE the shell
+  // before building. A throwing builder must not leave a blank, silent app; on
+  // success the shell's own surface supersedes it.
+  if (!app.querySelector('kikx-error-surface'))
+    app.appendChild(createErrorSurfaceElement());
+
+  let rendered = guardClientOperation('kikx-app.render', () => {
+    let shellChildren = [
+      header.class('kikx-topbar')(
+        div.class('kikx-brand')(
+          span.class('kikx-brand__mark')('K'),
+          div.class('kikx-brand__copy')(
+            h1('Kikx'),
+            p('Agent runner'),
+          ),
+        ),
+        app._state.authToken ? app._buildBreadcrumb() : null,
+        app._state.authToken
+          ? div.class('kikx-topbar__actions')(
+            span.class('kikx-account-chip')(app._state.account?.name || 'User'),
+            button.type('button').class('kikx-sign-out-button').onClick(app._openAccountEditor)('Account'),
+            button.type('button').class('kikx-sign-out-button').onClick(app._openAgentManager)('Agents'),
+            button.type('button').class('kikx-sign-out-button').onClick(app._openTeamManager)('Teams'),
+            button.type('button').class('kikx-sign-out-button').onClick(app._signOut)('Sign out'),
+          )
+          : span.class('kikx-topbar__spacer')(),
+      ),
+      app._state.authToken ? app._buildRunnerShell() : app._buildAuthShell(),
+    ];
+
+    if (app._state.authToken)
+      shellChildren.push(app._buildStatusBar());
+
+    if (app._state.editingSessionID)
+      shellChildren.push(app._buildSessionEditor());
+
+    if (app._state.accountEditorOpen)
+      shellChildren.push(app._buildAccountEditor());
+
+    if (app._state.managingAgents)
+      shellChildren.push(app._buildAgentManager());
+
+    if (app._state.agentEditorOpen)
+      shellChildren.push(app._buildAgentEditor());
+
+    if (app._state.managingTeams)
+      shellChildren.push(app._buildTeamManager());
+
+    if (app._state.teamEditorOpen)
+      shellChildren.push(app._buildTeamEditor());
+
+    shellChildren.push(createErrorSurfaceElement());
+
+    let tree = div.class('kikx-shell').context(app)(shellChildren).build(document);
+
+    // Only touch the live DOM once the whole new shell built successfully; a
+    // throwing builder must leave the previous DOM and its bindings untouched.
+    app._disconnectFrameListObserver();
+    app._cleanupReactiveBindings();
+    $(app).empty();
+
+    app.appendChild(tree);
+    app._afterRender(renderSnapshot);
+    return true;
+  }, { sessionID: app._state.selectedSessionID });
+
+  if (!rendered) {
+    if (app.childNodes.length === 0) {
+      for (let child of previousChildren)
+        app.appendChild(child);
+    }
+
+    // First-render (or post-teardown) failure: nothing survived to show the
+    // error, so mount a standalone surface now.
+    if (!app.querySelector('kikx-error-surface'))
+      app.appendChild(createErrorSurfaceElement());
+  }
+}
 
 export function buildAuthShell(app) {
   return main.class('kikx-auth-main')(

@@ -2,6 +2,7 @@
 
 import { isCollapsed, setTokenUsage, upsertFrames, upsertSession } from '../state/kikx-state.mjs';
 import { isDeletedSession } from '../state/session-state-utils.mjs';
+import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame, parseRuntimeEvent } from './kikx-app-helpers.mjs';
 import { addFrameToBatch, addTouchedFrameIDs, renderedFrameIDsFor } from './frame-runtime-batch.mjs';
 import { pruneMissingSessionsFromStack } from './kikx-navigation.mjs';
@@ -34,6 +35,12 @@ const INFORMATIONAL_RUNTIME_EVENTS = new Set([
 ]);
 
 export function onRuntimeEvent(app, event) {
+  guardClientOperation('kikx-runtime-events.dispatch', () => {
+    dispatchRuntimeEvent(app, event);
+  }, { eventType: event?.type });
+}
+
+function dispatchRuntimeEvent(app, event) {
   let data = parseRuntimeEvent(event);
   if (!data)
     return;
@@ -98,15 +105,17 @@ export function scheduleRuntimeReconcile(app, sessionID = '') {
   app._runtimeReconcileScheduled = true;
   scheduleAnimationFrame(() => {
     app._runtimeReconcileScheduled = false;
-    if (!app.isConnected)
-      return;
+    guardClientOperation('kikx-runtime-events.reconcile', () => {
+      if (!app.isConnected)
+        return;
 
-    // Stay pinned to the bottom only when the user has not scrolled away. This is
-    // O(1) and never rebuilds the app; the heavy per-frame work is already handled
-    // by the coalesced frame.added / frame.updated batch.
-    let frameList = app._frameListAnchoredToBottom ? app.querySelector('.kikx-frame-list') : null;
-    if (frameList)
-      app._scrollFramesToBottomImmediate?.(frameList);
+      // Stay pinned to the bottom only when the user has not scrolled away. This is
+      // O(1) and never rebuilds the app; the heavy per-frame work is already handled
+      // by the coalesced frame.added / frame.updated batch.
+      let frameList = app._frameListAnchoredToBottom ? app.querySelector('.kikx-frame-list') : null;
+      if (frameList)
+        app._scrollFramesToBottomImmediate?.(frameList);
+    });
   });
 }
 
@@ -122,6 +131,17 @@ export function queueFrameRuntimeEvent(app, data) {
 
 export function flushFrameRuntimeEvents(app) {
   app._frameRuntimeFlushScheduled = false;
+  guardClientOperation('kikx-runtime-events.flush', () => {
+    processFrameRuntimeEvents(app);
+  });
+
+  if (app._pendingFrameRuntimeEvents.length > 0 && !app._frameRuntimeFlushScheduled) {
+    app._frameRuntimeFlushScheduled = true;
+    scheduleAnimationFrame(app._flushFrameRuntimeEvents);
+  }
+}
+
+function processFrameRuntimeEvents(app) {
   let events = app._pendingFrameRuntimeEvents.splice(0);
   if (events.length === 0)
     return;
@@ -129,22 +149,42 @@ export function flushFrameRuntimeEvents(app) {
   let framesBySessionID = new Map();
   let touchedFrameIDsBySessionID = new Map();
   for (let data of events) {
-    addFrameToBatch(framesBySessionID, data.sessionID, data.frame);
-    addTouchedFrameIDs(touchedFrameIDsBySessionID, data.sessionID, renderedFrameIDsFor(data.frame));
+    // Guard each entry: a poison payload (e.g. a throwing frame getter) must not
+    // abort the whole spliced batch and leave the queue silently empty. The bad
+    // entry is reported and skipped; the rest of the batch still builds. Meta is
+    // built lazily inside the boundary -- touching `data.frame` out here would
+    // re-introduce the very throw we are containing.
+    let frameID = null;
+    try {
+      frameID = data.frame?.id ?? null;
+    } catch {
+      frameID = null;
+    }
+
+    guardClientOperation('kikx-runtime-events.batchEntry', () => {
+      addFrameToBatch(framesBySessionID, data.sessionID, data.frame);
+      addTouchedFrameIDs(touchedFrameIDsBySessionID, data.sessionID, renderedFrameIDsFor(data.frame));
+    }, { sessionID: data.sessionID, frameID });
   }
-  upsertFrames(framesBySessionID, app._state);
+
+  // Each step is its own boundary: a bad session state or a throwing thread sync
+  // must not skip the preview refresh for the other sessions in the same batch.
+  guardClientOperation('kikx-runtime-events.upsertFrames', () => {
+    upsertFrames(framesBySessionID, app._state);
+  }, { sessionCount: framesBySessionID.size });
 
   let selectedSessionID = app._state.selectedSessionID;
   let touchedFrameIDs = touchedFrameIDsBySessionID.get(selectedSessionID);
-  if (touchedFrameIDs)
-    app._syncFrameThread(selectedSessionID, { touchedFrameIDs });
+  if (touchedFrameIDs) {
+    guardClientOperation('kikx-runtime-events.syncThread', () => {
+      app._syncFrameThread(selectedSessionID, { touchedFrameIDs });
+    }, { sessionID: selectedSessionID });
+  }
 
   let affectedSessionIDs = [ ...framesBySessionID.keys() ].filter((sessionID) => sessionID !== selectedSessionID);
-  if (affectedSessionIDs.length > 0 && isCollapsed(app._state))
-    app._schedulePreviewRefresh(affectedSessionIDs);
-
-  if (app._pendingFrameRuntimeEvents.length > 0 && !app._frameRuntimeFlushScheduled) {
-    app._frameRuntimeFlushScheduled = true;
-    scheduleAnimationFrame(app._flushFrameRuntimeEvents);
+  if (affectedSessionIDs.length > 0 && isCollapsed(app._state)) {
+    guardClientOperation('kikx-runtime-events.previewRefresh', () => {
+      app._schedulePreviewRefresh(affectedSessionIDs);
+    }, { sessionCount: affectedSessionIDs.length });
   }
 }

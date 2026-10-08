@@ -1,6 +1,7 @@
 'use strict';
 
 import { elements, $ } from '../lib/aeor-ui.mjs';
+import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
 import {
   frameDisplayLabel,
@@ -143,28 +144,50 @@ export class KikxFrameItem extends HTMLElement {
     if (!frame)
       return;
 
-    this._cleanupReactiveBindings();
-    $(this).empty();
-    this._metaElement = null;
-    this._contentElement = null;
-    this._contentKind = null;
-    this._contentTag = null;
-    this._lastMarkdownText = null;
+    let previous = {
+      contentKind: this._contentKind,
+      contentTag: this._contentTag,
+      lastMarkdownText: this._lastMarkdownText,
+    };
 
-    this.className = `kikx-frame kikx-frame--${frame.type}`;
-    this.setAttribute('role', 'listitem');
-    this.dataset.frameId = frame.id || '';
-    this.dataset.frameType = frame.type || '';
+    // Build the new subtree against a detached tree first, then swap it in. A
+    // throwing renderer must leave the previous DOM (and its refs) untouched.
+    let rendered = guardClientOperation('kikx-frame-item.render', () => {
+      let meta = null;
+      let content = null;
+      if (frame.type === 'BeginTyping') {
+        content = this._buildTypingIndicator(frame);
+        this._contentKind = null;
+        this._contentTag = null;
+        this._lastMarkdownText = null;
+      } else {
+        meta = this._buildFrameMeta(frame);
+        content = this._buildFrameContent(frame);
+      }
 
-    if (frame.type === 'BeginTyping') {
-      this._contentElement = this._buildTypingIndicator(frame);
-      this.appendChild(this._contentElement);
-      return;
+      this._cleanupReactiveBindings();
+      $(this).empty();
+      this._metaElement = meta;
+      this._contentElement = content;
+
+      this.className = `kikx-frame kikx-frame--${frame.type}`;
+      this.setAttribute('role', 'listitem');
+      this.dataset.frameId = frame.id || '';
+      this.dataset.frameType = frame.type || '';
+
+      if (meta)
+        this.appendChild(meta);
+      if (content)
+        this.appendChild(content);
+
+      return true;
+    }, { frameID: frame.id, frameType: frame.type });
+
+    if (!rendered) {
+      this._contentKind = previous.contentKind;
+      this._contentTag = previous.contentTag;
+      this._lastMarkdownText = previous.lastMarkdownText;
     }
-
-    this._metaElement = this._buildFrameMeta(frame);
-    this._contentElement = this._buildFrameContent(frame);
-    this.append(this._metaElement, this._contentElement);
   }
 
   _reconcile() {
@@ -174,22 +197,24 @@ export class KikxFrameItem extends HTMLElement {
       return;
     }
 
-    this.className = `kikx-frame kikx-frame--${frame.type}`;
-    this.dataset.frameId = frame.id || '';
-    this.dataset.frameType = frame.type || '';
+    guardClientOperation('kikx-frame-item.reconcile', () => {
+      this.className = `kikx-frame kikx-frame--${frame.type}`;
+      this.dataset.frameId = frame.id || '';
+      this.dataset.frameType = frame.type || '';
 
-    if (frame.type === 'BeginTyping') {
-      this._reconcileTypingIndicator(frame);
-      return;
-    }
+      if (frame.type === 'BeginTyping') {
+        this._reconcileTypingIndicator(frame);
+        return;
+      }
 
-    if (!this._metaElement) {
-      this._render();
-      return;
-    }
+      if (!this._metaElement) {
+        this._render();
+        return;
+      }
 
-    this._reconcileFrameMeta(frame);
-    this._reconcileFrameContent(frame);
+      this._reconcileFrameMeta(frame);
+      this._reconcileFrameContent(frame);
+    }, { frameID: frame.id, frameType: frame.type });
   }
 
   _reconcileTypingIndicator(frame) {

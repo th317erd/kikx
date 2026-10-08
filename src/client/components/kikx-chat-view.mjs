@@ -1,6 +1,7 @@
 'use strict';
 
 import './kikx-frame-item.mjs';
+import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { miniPreviewFrames, miniScale, MINI_DESIGN_WIDTH, MINI_DESIGN_HEIGHT } from './chat-view-model.mjs';
 
 const FRAME_ENTER_ANIMATION_MS = 220;
@@ -119,12 +120,20 @@ export class KikxChatView extends HTMLElement {
       let item = existingByID.get(frame.id);
       let isNewItem = false;
       if (!item) {
-        item = this._createFrameItem(frame);
+        item = guardClientOperation('kikx-chat-view.createFrameItem', () => this._createFrameItem(frame), {
+          frameID: frame.id,
+          frameType: frame.type,
+        });
+        if (!item)
+          continue;
         isNewItem = true;
       } else {
         existingByID.delete(frame.id);
-        if (options.force === true || !touchedFrameIDs || touchedFrameIDs.has(frame.id))
-          item.updateFrame(frame, this._appState, { force: options.force === true });
+        if (options.force === true || !touchedFrameIDs || touchedFrameIDs.has(frame.id)) {
+          guardClientOperation('kikx-chat-view.updateFrame', () => {
+            item.updateFrame(frame, this._appState, { force: options.force === true });
+          }, { frameID: frame.id, frameType: frame.type });
+        }
       }
 
       if (item === cursor) {
@@ -150,12 +159,14 @@ export class KikxChatView extends HTMLElement {
   }
 
   _render() {
-    if (this._mode === 'mini') {
-      this._renderMini();
-      return;
-    }
+    guardClientOperation('kikx-chat-view.render', () => {
+      if (this._mode === 'mini') {
+        this._renderMini();
+        return;
+      }
 
-    this._renderFull();
+      this._renderFull();
+    });
   }
 
   _renderFull() {

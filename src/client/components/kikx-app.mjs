@@ -1,6 +1,5 @@
 'use strict';
 
-import { elements, $ } from '../lib/aeor-ui.mjs';
 import {
   getSelectedSession,
   kikxState,
@@ -10,6 +9,7 @@ import { createComposerHistoryState } from './composer-history.mjs';
 import './kikx-frame-item.mjs';
 import './kikx-chat-view.mjs';
 import './kikx-session-grid.mjs';
+import { installGlobalErrorCapture, uninstallGlobalErrorCapture } from '../lib/error-boundary.mjs';
 import {
   buildAuthShell,
   buildBreadcrumb,
@@ -29,6 +29,7 @@ import {
   childSessionsFor,
   createChatViewElement,
   createFrameItemElement,
+  renderAppShell,
   scopeNoun,
 } from './kikx-shell-builders.mjs';
 import {
@@ -173,8 +174,6 @@ import {
 } from './kikx-agent-controller.mjs';
 import { onMagicLinkSubmit, verifyMagicLink } from './kikx-auth.mjs';
 
-const { div, header, h1, p, span, button } = elements;
-
 export class KikxApp extends HTMLElement {
   constructor() {
     super();
@@ -196,6 +195,8 @@ export class KikxApp extends HTMLElement {
     this._deletingSessionIDs = new Set();
     this._pendingCrownAgentIDs = new Set();
     this._pendingCompactionBotAgentIDs = new Set();
+    this._installGlobalErrorCapture = () => installGlobalErrorCapture(this);
+    this._uninstallGlobalErrorCapture = () => uninstallGlobalErrorCapture(this);
 
     this._buildAuthShell = () => buildAuthShell(this);
     this._buildBreadcrumb = () => buildBreadcrumb(this);
@@ -381,6 +382,11 @@ export class KikxApp extends HTMLElement {
   }
 
   connectedCallback() {
+    // Global capture is idempotent per app and is torn down on every disconnect,
+    // so (re)install it before the mount guard: a disconnect -> reconnect cycle
+    // must not lose `window.onerror` / `unhandledrejection` capture.
+    this._installGlobalErrorCapture();
+
     if (this._mounted)
       return;
 
@@ -407,62 +413,11 @@ export class KikxApp extends HTMLElement {
   }
 
   _render() {
-    let renderSnapshot = this._captureRenderSnapshot();
-    this._disconnectFrameListObserver();
-    this._cleanupReactiveBindings();
-    $(this).empty();
-
-    let shellChildren = [
-      header.class('kikx-topbar')(
-        div.class('kikx-brand')(
-          span.class('kikx-brand__mark')('K'),
-          div.class('kikx-brand__copy')(
-            h1('Kikx'),
-            p('Agent runner'),
-          ),
-        ),
-        this._state.authToken ? this._buildBreadcrumb() : null,
-        this._state.authToken
-          ? div.class('kikx-topbar__actions')(
-            span.class('kikx-account-chip')(this._state.account?.name || 'User'),
-            button.type('button').class('kikx-sign-out-button').onClick(this._openAccountEditor)('Account'),
-            button.type('button').class('kikx-sign-out-button').onClick(this._openAgentManager)('Agents'),
-            button.type('button').class('kikx-sign-out-button').onClick(this._openTeamManager)('Teams'),
-            button.type('button').class('kikx-sign-out-button').onClick(this._signOut)('Sign out'),
-          )
-          : span.class('kikx-topbar__spacer')(),
-      ),
-      this._state.authToken ? this._buildRunnerShell() : this._buildAuthShell(),
-    ];
-
-    if (this._state.authToken)
-      shellChildren.push(this._buildStatusBar());
-
-    if (this._state.editingSessionID)
-      shellChildren.push(this._buildSessionEditor());
-
-    if (this._state.accountEditorOpen)
-      shellChildren.push(this._buildAccountEditor());
-
-    if (this._state.managingAgents)
-      shellChildren.push(this._buildAgentManager());
-
-    if (this._state.agentEditorOpen)
-      shellChildren.push(this._buildAgentEditor());
-
-    if (this._state.managingTeams)
-      shellChildren.push(this._buildTeamManager());
-
-    if (this._state.teamEditorOpen)
-      shellChildren.push(this._buildTeamEditor());
-
-    let tree = div.class('kikx-shell').context(this)(shellChildren).build(document);
-
-    this.appendChild(tree);
-    this._afterRender(renderSnapshot);
+    renderAppShell(this);
   }
 
   disconnectedCallback() {
+    this._uninstallGlobalErrorCapture();
     this._disconnectRuntimeEvents();
     this._disconnectFrameListObserver();
     this._cleanupReactiveBindings();
