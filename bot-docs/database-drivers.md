@@ -115,8 +115,14 @@ registering the driver never requires the dependency and an AeorDB boot with
 
 ```sh
 ORG_AEOR_KIKX_DATABASE_DRIVER=postgresql
-ORG_AEOR_KIKX_DATABASE_URL=postgres://kikx-dev@127.0.0.1:5432/kikx-dev
+ORG_AEOR_KIKX_DATABASE_URL=postgres://kikx-dev@127.0.0.1:5434/kikx-dev
 ```
+
+> **Ports on this host (2026-10-08):** the development database `kikx-dev` lives
+> on the host's PostgreSQL 16 cluster, which moved to **5434**; the production
+> cluster (bundled PG17, data under `${KIKX_HOME}/.local/share/kikx/postgres`) is
+> on **5433**; **5432** is now an SSH tunnel for an unrelated database. The port
+> above is therefore host-specific — adjust it for your own setup.
 
 ## Capability matrix
 
