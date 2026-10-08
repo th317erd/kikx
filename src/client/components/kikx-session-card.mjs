@@ -3,29 +3,72 @@
 import './kikx-chat-view.mjs';
 import { sessionCardLabel, sessionCardMeta } from './chat-view-model.mjs';
 
+const PROGRESS_BUTTON_TAG = 'aeor-progress-button';
+
+function hasProgressButton() {
+  return typeof customElements !== 'undefined'
+    && Boolean(customElements.get(PROGRESS_BUTTON_TAG));
+}
+
+// Build an action control as a radial aeor-progress-button when the vendored
+// component is defined, otherwise degrade to a plain button. The plain button
+// keeps the same classes and labels so the toolbar layout and accessibility
+// survive; Delete loses its hold safety because a plain button has no hold.
+function createActionButton({ className, icon, label, title, duration }) {
+  if (hasProgressButton()) {
+    let button = document.createElement(PROGRESS_BUTTON_TAG);
+    button.className = className;
+    button.setAttribute('icon', icon);
+    button.setAttribute('label', label);
+    button.setAttribute('title', title);
+    button.setAttribute('duration', duration);
+    button.setAttribute('size', '1.75rem');
+    return { button, usesProgressButton: true };
+  }
+
+  let button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.setAttribute('aria-label', label);
+  button.setAttribute('title', title);
+  button.textContent = icon;
+  return { button, usesProgressButton: false };
+}
+
+// Plain fallback buttons carry their accessible name on aria-label; keep it in
+// sync when the card repaints with a session-specific label.
+function syncFallbackLabel(button) {
+  if (button.localName !== 'button')
+    return;
+  button.setAttribute('aria-label', button.getAttribute('label') || '');
+}
+
 function createToolbar(owner) {
   let toolbar = document.createElement('footer');
   toolbar.className = 'kikx-session-card__toolbar';
 
-  // The bottom toolbar holds per-session actions. Both controls are radial
-  // aeor-progress-buttons (the icon-centric form the design calls for): Open is
-  // click-to-activate (duration 0); Delete requires a 1s hold so a stray click
-  // can never destroy a session.
-  let openButton = document.createElement('aeor-progress-button');
-  openButton.className = 'kikx-session-card__action kikx-session-card__action--open';
-  openButton.setAttribute('icon', 'open');
-  openButton.setAttribute('label', 'Open session');
-  openButton.setAttribute('title', 'Open session');
-  openButton.setAttribute('duration', '0');
-  openButton.setAttribute('size', '1.75rem');
-
-  let deleteButton = document.createElement('aeor-progress-button');
-  deleteButton.className = 'kikx-session-card__action kikx-session-card__action--delete progress-button-danger';
-  deleteButton.setAttribute('icon', 'delete');
-  deleteButton.setAttribute('label', 'Delete session');
-  deleteButton.setAttribute('title', 'Hold 1s to delete');
-  deleteButton.setAttribute('duration', '1000');
-  deleteButton.setAttribute('size', '1.75rem');
+  // The bottom toolbar holds per-session actions. When the vendored radial
+  // aeor-progress-button is available both controls are progress buttons (the
+  // icon-centric form the design calls for): Open is click-to-activate
+  // (duration 0); Delete requires a 1s hold so a stray click can never destroy
+  // a session. If the component failed to load, both degrade to plain buttons
+  // so the card still works.
+  let openAction = createActionButton({
+    className: 'kikx-session-card__action kikx-session-card__action--open',
+    icon: 'open',
+    label: 'Open session',
+    title: 'Open session',
+    duration: '0',
+  });
+  let deleteAction = createActionButton({
+    className: 'kikx-session-card__action kikx-session-card__action--delete progress-button-danger',
+    icon: 'delete',
+    label: 'Delete session',
+    title: 'Hold 1s to delete',
+    duration: '1000',
+  });
+  let openButton = openAction.button;
+  let deleteButton = deleteAction.button;
 
   toolbar.append(openButton, deleteButton);
 
@@ -41,6 +84,20 @@ function createToolbar(owner) {
     else
       owner._emitOpen();
   });
+
+  // Plain fallback buttons never emit `confirm`; wire their clicks directly.
+  if (!openAction.usesProgressButton) {
+    openButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      owner._emitOpen();
+    });
+  }
+  if (!deleteAction.usesProgressButton) {
+    deleteButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      owner._emitDelete();
+    });
+  }
 
   return { toolbar, openButton, deleteButton };
 }
@@ -187,11 +244,13 @@ export class KikxSessionCard extends HTMLElement {
     if (shell.openButton) {
       shell.openButton.setAttribute('label', label ? `Open ${label}` : 'Open session');
       shell.openButton.setAttribute('title', 'Open session');
+      syncFallbackLabel(shell.openButton);
     }
     if (shell.deleteButton) {
       shell.deleteButton.setAttribute('label', label ? `Delete ${label}` : 'Delete session');
       shell.deleteButton.setAttribute('title', 'Hold 1s to delete');
       shell.deleteButton.disabled = this._deleting;
+      syncFallbackLabel(shell.deleteButton);
     }
     shell.root.classList.toggle('is-deleting', this._deleting);
     shell.root.setAttribute('aria-busy', this._deleting ? 'true' : 'false');
