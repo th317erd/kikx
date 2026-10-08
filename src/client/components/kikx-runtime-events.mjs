@@ -34,6 +34,13 @@ const INFORMATIONAL_RUNTIME_EVENTS = new Set([
   'frame.scheduled.fired',
 ]);
 
+// W8: hard bound on queued frame runtime events. Coalescing keeps repeated
+// updates for one frame from consuming slots at all, so the cap only bites when
+// a session streams many DISTINCT frames faster than the drain can run (a hidden
+// or frozen tab). On overflow the oldest payloads are dropped and their sessions
+// are marked for a full re-fetch so nothing is silently lost.
+export const MAX_PENDING_FRAME_RUNTIME_EVENTS = 500;
+
 export function onRuntimeEvent(app, event) {
   guardClientOperation('kikx-runtime-events.dispatch', () => {
     dispatchRuntimeEvent(app, event);
@@ -119,9 +126,42 @@ export function scheduleRuntimeReconcile(app, sessionID = '') {
   });
 }
 
-export function queueFrameRuntimeEvent(app, data) {
-  app._pendingFrameRuntimeEvents.push(data);
+function frameRuntimeEventKey(data) {
+  let sessionID = typeof data?.sessionID === 'string' ? data.sessionID : '';
+  if (!sessionID)
+    return '';
 
+  let frameID = '';
+  try {
+    frameID = data?.frame?.id ?? '';
+  } catch {
+    return '';
+  }
+
+  return typeof frameID === 'string' && frameID ? `${sessionID}::${frameID}` : '';
+}
+
+function rebuildFrameRuntimeEventKeys(app, queue) {
+  let keys = new Map();
+  for (let index = 0; index < queue.length; index += 1) {
+    let key = frameRuntimeEventKey(queue[index]);
+    if (key)
+      keys.set(key, index);
+  }
+
+  app._pendingFrameRuntimeEventKeys = keys;
+  return keys;
+}
+
+function ensureFrameRuntimeEventKeys(app, queue) {
+  let keys = app._pendingFrameRuntimeEventKeys;
+  if (!(keys instanceof Map) || keys.size !== queue.length)
+    return rebuildFrameRuntimeEventKeys(app, queue);
+
+  return keys;
+}
+
+function scheduleFrameRuntimeFlush(app) {
   if (app._frameRuntimeFlushScheduled)
     return;
 
@@ -129,20 +169,130 @@ export function queueFrameRuntimeEvent(app, data) {
   scheduleAnimationFrame(app._flushFrameRuntimeEvents);
 }
 
+function markSessionForRefresh(app, sessionID) {
+  if (!sessionID)
+    return;
+
+  if (!(app._frameRuntimeRefreshSessionIDs instanceof Set))
+    app._frameRuntimeRefreshSessionIDs = new Set();
+
+  app._frameRuntimeRefreshSessionIDs.add(sessionID);
+}
+
+function evictFrameRuntimeOverflow(app, queue) {
+  let overflow = queue.length - MAX_PENDING_FRAME_RUNTIME_EVENTS;
+  if (overflow <= 0)
+    return;
+
+  let dropped = queue.splice(0, overflow);
+  for (let data of dropped) {
+    let sessionID = typeof data?.sessionID === 'string' ? data.sessionID : '';
+    markSessionForRefresh(app, sessionID);
+  }
+
+  rebuildFrameRuntimeEventKeys(app, queue);
+}
+
+export function queueFrameRuntimeEvent(app, data) {
+  let queue = Array.isArray(app._pendingFrameRuntimeEvents)
+    ? app._pendingFrameRuntimeEvents
+    : (app._pendingFrameRuntimeEvents = []);
+
+  let key = frameRuntimeEventKey(data);
+  if (key) {
+    let keys = ensureFrameRuntimeEventKeys(app, queue);
+    let index = keys.get(key);
+    if (typeof index === 'number' && index < queue.length && frameRuntimeEventKey(queue[index]) === key) {
+      // Same session+frame: the newest payload supersedes the queued one, so a
+      // streaming frame occupies one slot instead of one per commit.
+      queue[index] = data;
+      scheduleFrameRuntimeFlush(app);
+      return;
+    }
+
+    keys.set(key, queue.length);
+  }
+
+  queue.push(data);
+  if (queue.length > MAX_PENDING_FRAME_RUNTIME_EVENTS)
+    evictFrameRuntimeOverflow(app, queue);
+
+  scheduleFrameRuntimeFlush(app);
+}
+
+function drainFrameRuntimeRefresh(app) {
+  let refresh = app._frameRuntimeRefreshSessionIDs;
+  if (!(refresh instanceof Set) || refresh.size === 0)
+    return;
+
+  app._frameRuntimeRefreshSessionIDs = new Set();
+  let refreshedSessionIDs = [];
+  for (let sessionID of refresh) {
+    guardClientOperation('kikx-runtime-events.refreshDroppedSession', () => {
+      app._loadFrames?.(sessionID, { merge: true });
+    }, { sessionID });
+    refreshedSessionIDs.push(sessionID);
+  }
+
+  // The dropped window also invalidates the session card preview, and
+  // syncFrameThread() early-returns for non-selected sessions, so refresh the
+  // grid previews here explicitly. Only the collapsed grid shows cards.
+  if (refreshedSessionIDs.length > 0 && isCollapsed(app._state)) {
+    guardClientOperation('kikx-runtime-events.refreshDroppedSessionPreviews', () => {
+      app._schedulePreviewRefresh?.(refreshedSessionIDs);
+    }, { sessionCount: refreshedSessionIDs.length });
+  }
+}
+
 export function flushFrameRuntimeEvents(app) {
   app._frameRuntimeFlushScheduled = false;
-  guardClientOperation('kikx-runtime-events.flush', () => {
-    processFrameRuntimeEvents(app);
-  });
-
-  if (app._pendingFrameRuntimeEvents.length > 0 && !app._frameRuntimeFlushScheduled) {
-    app._frameRuntimeFlushScheduled = true;
-    scheduleAnimationFrame(app._flushFrameRuntimeEvents);
+  try {
+    guardClientOperation('kikx-runtime-events.flush', () => {
+      processFrameRuntimeEvents(app);
+    });
+    drainFrameRuntimeRefresh(app);
+  } finally {
+    if (app._pendingFrameRuntimeEvents?.length > 0 && !app._frameRuntimeFlushScheduled)
+      scheduleFrameRuntimeFlush(app);
   }
+}
+
+// W8: when the tab comes back to the foreground, flush whatever is still queued
+// instead of waiting for the (previously paused) rAF. The connection module
+// already re-checks the SSE stream on visibilitychange; this only drains the
+// data queue and leaves that behavior alone.
+export function installFrameRuntimeVisibilityDrain(app, target = globalThis.document) {
+  if (!target || typeof target.addEventListener !== 'function')
+    return false;
+
+  uninstallFrameRuntimeVisibilityDrain(app);
+
+  app._frameRuntimeVisibilityTarget = target;
+  app._frameRuntimeVisibilityHandler = () => {
+    if (target.visibilityState && target.visibilityState !== 'visible')
+      return;
+
+    guardClientOperation('kikx-runtime-events.visibilityDrain', () => {
+      flushFrameRuntimeEvents(app);
+    });
+  };
+  target.addEventListener('visibilitychange', app._frameRuntimeVisibilityHandler);
+  return true;
+}
+
+export function uninstallFrameRuntimeVisibilityDrain(app) {
+  let target = app._frameRuntimeVisibilityTarget;
+  let handler = app._frameRuntimeVisibilityHandler;
+  app._frameRuntimeVisibilityTarget = null;
+  app._frameRuntimeVisibilityHandler = null;
+
+  if (target && handler && typeof target.removeEventListener === 'function')
+    target.removeEventListener('visibilitychange', handler);
 }
 
 function processFrameRuntimeEvents(app) {
   let events = app._pendingFrameRuntimeEvents.splice(0);
+  app._pendingFrameRuntimeEventKeys = new Map();
   if (events.length === 0)
     return;
 

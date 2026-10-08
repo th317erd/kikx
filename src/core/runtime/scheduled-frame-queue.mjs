@@ -125,61 +125,70 @@ export class ScheduledFrameQueue {
     }
 
     let sessionEntry = await this.runtime.ensureSessionEntry(entry.sessionID);
-    let frame = sessionEntry.frameEngine.get(entry.frameID);
+    // The router flush yields, and ordinary LRU pressure could evict this
+    // runtime while it is in flight. The final `fired` merge would then land in
+    // a detached engine and the wake status would be lost. Pin the session for
+    // the whole dispatch; release on every exit path.
+    this.runtime.pinSession?.(entry.sessionID);
+    try {
+      let frame = sessionEntry.frameEngine.get(entry.frameID);
 
-    if (!frame && entry.frame) {
-      sessionEntry.frameEngine.hydrate(uniqueFrames([
-        ...sessionEntry.frameEngine.toArray(),
-        entry.frame,
-      ]));
-      frame = sessionEntry.frameEngine.get(entry.frameID);
-    }
+      if (!frame && entry.frame) {
+        sessionEntry.frameEngine.hydrate(uniqueFrames([
+          ...sessionEntry.frameEngine.toArray(),
+          entry.frame,
+        ]));
+        frame = sessionEntry.frameEngine.get(entry.frameID);
+      }
 
-    if (!isPendingScheduledFrame(frame)) {
+      if (!isPendingScheduledFrame(frame)) {
+        this.entries.delete(entry.frameID);
+        return null;
+      }
+
+      if (normalizeScheduledAt(frame.scheduledAt) > this.now())
+        return null;
+
+      let firingFrame = await this.markFrameStatus({
+        sessionEntry,
+        frame,
+        status: 'firing',
+      });
+
+      let commit = {
+        id: `scheduled:${firingFrame.id}:${firingFrame.scheduledFiringAt || this.now()}`,
+        order: sessionEntry.frameEngine.getLatestCommit()?.order || firingFrame.commitOrder || firingFrame.order || 0,
+        scheduledDispatch: true,
+        authorType: 'system',
+        authorID: SCHEDULER_AUTHOR_ID,
+        silent: false,
+        changes: [{
+          frameID: firingFrame.id,
+          operation: 'create',
+        }],
+      };
+
+      this.runtime.frameRouter?.enqueue?.(sessionEntry.frameEngine, commit, sessionEntry.session, {
+        services: this.runtime.routerServices(),
+      });
+      await this.runtime.frameRouter?.flush?.();
+
+      let firedFrame = await this.markFrameStatus({
+        sessionEntry,
+        frame: sessionEntry.frameEngine.get(firingFrame.id) || firingFrame,
+        status: 'fired',
+      });
+
       this.entries.delete(entry.frameID);
-      return null;
+      this.runtime.emitRuntimeEvent?.('frame.scheduled.fired', {
+        sessionID: sessionEntry.session.id,
+        frame: firedFrame,
+      });
+
+      return firedFrame;
+    } finally {
+      this.runtime.unpinSession?.(entry.sessionID);
     }
-
-    if (normalizeScheduledAt(frame.scheduledAt) > this.now())
-      return null;
-
-    let firingFrame = await this.markFrameStatus({
-      sessionEntry,
-      frame,
-      status: 'firing',
-    });
-
-    let commit = {
-      id: `scheduled:${firingFrame.id}:${firingFrame.scheduledFiringAt || this.now()}`,
-      order: sessionEntry.frameEngine.getLatestCommit()?.order || firingFrame.commitOrder || firingFrame.order || 0,
-      scheduledDispatch: true,
-      authorType: 'system',
-      authorID: SCHEDULER_AUTHOR_ID,
-      silent: false,
-      changes: [{
-        frameID: firingFrame.id,
-        operation: 'create',
-      }],
-    };
-
-    this.runtime.frameRouter?.enqueue?.(sessionEntry.frameEngine, commit, sessionEntry.session, {
-      services: this.runtime.routerServices(),
-    });
-    await this.runtime.frameRouter?.flush?.();
-
-    let firedFrame = await this.markFrameStatus({
-      sessionEntry,
-      frame: sessionEntry.frameEngine.get(firingFrame.id) || firingFrame,
-      status: 'fired',
-    });
-
-    this.entries.delete(entry.frameID);
-    this.runtime.emitRuntimeEvent?.('frame.scheduled.fired', {
-      sessionID: sessionEntry.session.id,
-      frame: firedFrame,
-    });
-
-    return firedFrame;
   }
 
   async markFrameStatus({ sessionEntry, frame, status }) {

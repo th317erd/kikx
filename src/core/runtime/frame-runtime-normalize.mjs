@@ -3,6 +3,23 @@
 const DEFAULT_SESSION_FRAME_LIMIT = 1000;
 export const MAX_SESSION_FRAME_LIMIT = 5000;
 
+// Live session runtimes hold a hydrated FrameEngine (up to MAX_SESSION_FRAME_LIMIT
+// frames each). Sessions are durable, so the in-memory runtime is a pure cache:
+// cap it and evict the least-recently-used entry. The cap is generous enough
+// that ordinary working sets never churn; heavy multi-session bots are bounded.
+export const DEFAULT_SESSION_RUNTIME_LIMIT = 200;
+
+export function normalizeSessionRuntimeLimit(value) {
+  if (value == null)
+    return DEFAULT_SESSION_RUNTIME_LIMIT;
+
+  let number = Number(value);
+  if (!Number.isInteger(number) || number < 1)
+    throw new TypeError('session runtime limit must be a positive integer');
+
+  return number;
+}
+
 export function resolveService(services, name) {
   if (services?.[name])
     return services[name];

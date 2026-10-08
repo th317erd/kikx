@@ -76,10 +76,14 @@ export class FrameRouter {
       .then(() => task());
 
     this._sessionChains.set(key, next);
+    // `.finally()` returns a derived promise that rejects when `next` rejects.
+    // Nothing observes it, so a failing agent turn would surface as an
+    // unhandled rejection (and, on modern Node, tear down the process). Observe
+    // it explicitly; the real rejection is reported through `runBackground`.
     next.finally(() => {
       if (this._sessionChains.get(key) === next)
         this._sessionChains.delete(key);
-    });
+    }).catch(() => {});
 
     return this.runBackground(next);
   }

@@ -62,7 +62,7 @@ const sessionMethods = {
       throw error;
     }
 
-    return entry;
+    return this.touchSession?.(sessionID) || entry;
   },
 
   async ensureSessionEntry(sessionID, options = {}) {
@@ -74,11 +74,14 @@ const sessionMethods = {
           limit: frameLimit,
         });
         entry.frameEngine.hydrate(frames);
+        // A window of exactly `frameLimit` frames may be truncated; remember
+        // that so a recomputed messageCount from it cannot lower the manifest.
+        entry.framesWindowComplete = frames.length < frameLimit;
         this.syncSessionManifestFromEngine(entry, { persist: true });
         entry.framesLoaded = true;
         entry.framesLoadedLimit = frameLimit;
       }
-      return entry;
+      return this.touchSession(sessionID) || entry;
     }
 
     let session = await this.frameStore.loadSession(sessionID);
@@ -95,12 +98,14 @@ const sessionMethods = {
       commitValidator: options.commitValidator || null,
     });
 
+    let framesWindowComplete = false;
     if (options.loadFrames !== false) {
       let frameLimit = normalizeFrameLimit(options.frameLimit);
       let frames = await this.frameStore.listFrames(sessionID, {
         limit: frameLimit,
       });
       frameEngine.hydrate(frames);
+      framesWindowComplete = frames.length < frameLimit;
     }
 
     let disconnect = this.connectFrameEngine(frameEngine, session);
@@ -110,8 +115,11 @@ const sessionMethods = {
       disconnectStore: disconnect,
       framesLoaded: options.loadFrames !== false,
       framesLoadedLimit: options.loadFrames === false ? 0 : normalizeFrameLimit(options.frameLimit),
+      framesWindowComplete,
+      activeRuns: 0,
     };
     this.sessions.set(sessionID, entry);
+    this.evictOverflowSessionRuntimes();
     if (options.loadFrames !== false)
       this.syncSessionManifestFromEngine(entry, { persist: true });
     return entry;
@@ -180,7 +188,13 @@ const sessionMethods = {
     let changedFrames = Array.isArray(options.frames) ? options.frames : frames;
     let nextCount = countMessageFrames(frames);
     let frameUpdatedAt = maxFrameTimestamp(changedFrames);
-    let changed = entry.session.messageCount !== nextCount;
+    // A truncated hydration window undercounts message heads. Never lower a
+    // persisted count from a window that may be partial; a complete window (or
+    // an upward correction that is a lower bound anyway) may still update it.
+    let countWouldDecrease = typeof entry.session.messageCount === 'number'
+      && nextCount < entry.session.messageCount;
+    let applyCount = entry.framesWindowComplete !== false || !countWouldDecrease;
+    let changed = applyCount && entry.session.messageCount !== nextCount;
 
     if (changed)
       entry.session.messageCount = nextCount;

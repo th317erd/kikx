@@ -62,6 +62,7 @@ import {
   loadOlderFrames,
   loadSessions,
   loadSessionPreviews,
+  resyncAfterRuntimeEventsReconnect,
   loadTeams,
   loadTokenUsage,
   schedulePreviewRefresh,
@@ -70,11 +71,13 @@ import {
   connectRuntimeEvents,
   disconnectRuntimeEvents,
   flushFrameRuntimeEvents,
+  installFrameRuntimeVisibilityDrain,
   noteRuntimeEvent,
   onRuntimeEvent,
   onRuntimeEventsError,
   onRuntimeEventsOpen,
   queueFrameRuntimeEvent,
+  uninstallFrameRuntimeVisibilityDrain,
 } from './kikx-runtime-events.mjs';
 import {
   afterRender,
@@ -187,6 +190,8 @@ export class KikxApp extends HTMLElement {
     this._focusComposerAfterRender = false;
     this._renderScheduled = false;
     this._pendingFrameRuntimeEvents = [];
+    this._pendingFrameRuntimeEventKeys = new Map();
+    this._frameRuntimeRefreshSessionIDs = new Set();
     this._frameRuntimeFlushScheduled = false;
     this._runtimeReconcileScheduled = false;
     this._composerHistory = createComposerHistoryState();
@@ -239,6 +244,7 @@ export class KikxApp extends HTMLElement {
     this._connectRuntimeEvents = () => connectRuntimeEvents(this);
     this._disconnectRuntimeEvents = () => disconnectRuntimeEvents(this);
     this._onRuntimeEventsOpen = () => onRuntimeEventsOpen(this);
+    this._onRuntimeEventsReconnect = () => resyncAfterRuntimeEventsReconnect(this);
     this._onRuntimeEventsError = (event) => onRuntimeEventsError(this, event);
     this._onRuntimeEvent = (event) => onRuntimeEvent(this, event);
     // Any event, handled or not, proves the stream is alive.
@@ -386,19 +392,14 @@ export class KikxApp extends HTMLElement {
     // so (re)install it before the mount guard: a disconnect -> reconnect cycle
     // must not lose `window.onerror` / `unhandledrejection` capture.
     this._installGlobalErrorCapture();
+    // App-level listeners are managed separately from the one-time mount guard:
+    // a reconnect must re-add them, and a disconnect must always remove them.
+    this._installAppListeners();
 
     if (this._mounted)
       return;
 
     this._mounted = true;
-    // Sub-session cards bubble "enter" events; handle them once at the root.
-    this.addEventListener('kikx-session-enter', (event) => {
-      if (event.detail?.sessionID)
-        this._openSessionFromCard(event.detail.sessionID);
-    });
-    // Browser back/forward navigates the window stack.
-    this._onPopState = () => this._syncFromURL();
-    globalThis.addEventListener?.('popstate', this._onPopState);
     this._render();
     if (this._state.authToken) {
       this._connectRuntimeEvents();
@@ -412,11 +413,43 @@ export class KikxApp extends HTMLElement {
     }
   }
 
+  _installAppListeners() {
+    if (this._appListenersInstalled)
+      return;
+
+    this._appListenersInstalled = true;
+    // Sub-session cards bubble "enter" events; handle them once at the root.
+    this._onSessionEnter = (event) => {
+      if (event.detail?.sessionID)
+        this._openSessionFromCard(event.detail.sessionID);
+    };
+    this.addEventListener('kikx-session-enter', this._onSessionEnter);
+    // Browser back/forward navigates the window stack.
+    this._onPopState = () => this._syncFromURL();
+    (globalThis.window || globalThis).addEventListener?.('popstate', this._onPopState);
+    installFrameRuntimeVisibilityDrain(this);
+  }
+
+  _uninstallAppListeners() {
+    if (!this._appListenersInstalled)
+      return;
+
+    this._appListenersInstalled = false;
+    if (this._onSessionEnter)
+      this.removeEventListener('kikx-session-enter', this._onSessionEnter);
+    if (this._onPopState)
+      (globalThis.window || globalThis).removeEventListener?.('popstate', this._onPopState);
+    this._onSessionEnter = null;
+    this._onPopState = null;
+    uninstallFrameRuntimeVisibilityDrain(this);
+  }
+
   _render() {
     renderAppShell(this);
   }
 
   disconnectedCallback() {
+    this._uninstallAppListeners();
     this._uninstallGlobalErrorCapture();
     this._disconnectRuntimeEvents();
     this._disconnectFrameListObserver();

@@ -19,7 +19,11 @@ function createResponse() {
       this.headersSent = true;
     },
     write(chunk) {
-      this.chunks.push(String(chunk));
+      let text = String(chunk);
+      this.chunks.push(text);
+      // Model a socket buffer: every write adds unflushed bytes. A stalled client
+      // never drains, so `writableLength` only ever grows.
+      this.writableLength = (this.writableLength || 0) + text.length;
       return true;
     },
     destroy() {
@@ -148,6 +152,43 @@ test('an unserializable event cannot tear down the stream', () => {
 
   frameRuntime.emit('event', { type: 'frame.updated', sessionID: 's1', frameID: 'f9' });
   assert.equal(response.body.includes('"f9"'), true);
+});
+
+test('a stalled client is destroyed once its SSE buffer exceeds the cap', () => {
+  let response = createResponse();
+  let frameRuntime = createFrameRuntime();
+  streamRuntimeEvents({ request: createRequest(), response, frameRuntime, maxBufferedBytes: 256 });
+
+  for (let index = 0; index < 50; index++)
+    frameRuntime.emit('event', { type: 'frame.updated', sessionID: 's1', frameID: 'f1', text: 'x'.repeat(64) });
+
+  assert.equal(response.destroyed, true, 'a response that cannot drain must be destroyed');
+  assert.ok(response.writableLength <= 256 + 512, `SSE buffer grew unbounded: ${response.writableLength}`);
+
+  // No further writes once destroyed: the payload must not keep accumulating.
+  let writesAtDestroy = response.chunks.length;
+  frameRuntime.emit('event', { type: 'frame.updated', sessionID: 's1', frameID: 'f2' });
+  assert.equal(response.chunks.length, writesAtDestroy);
+});
+
+test('a draining client is never destroyed by the buffer cap', () => {
+  let response = createResponse();
+  let frameRuntime = createFrameRuntime();
+  let write = response.write.bind(response);
+  response.write = (chunk) => {
+    let result = write(chunk);
+    // Simulate the socket flushing between events.
+    response.writableLength = 0;
+    return result;
+  };
+
+  streamRuntimeEvents({ request: createRequest(), response, frameRuntime, maxBufferedBytes: 128 });
+
+  for (let index = 0; index < 50; index++)
+    frameRuntime.emit('event', { type: 'frame.added', sessionID: 's1', frameID: `f${index}`, text: 'x'.repeat(64) });
+
+  assert.equal(response.destroyed, false);
+  assert.equal(response.chunks.length > 50, true);
 });
 
 test('a destroyed response is not written to', () => {

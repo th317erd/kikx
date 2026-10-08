@@ -2,7 +2,15 @@
 
 import { httpError } from './http-helpers.mjs';
 
-export function streamRuntimeEvents({ request, response, frameRuntime, sessionID = '' }) {
+// A client that opens the stream and stops reading would otherwise let the
+// response's writable buffer grow with every event for the life of the process.
+// A healthy client drains continuously, so a backlog above this cap means the
+// socket is stalled: destroy it and let the client's reconnect ladder retry.
+// The check runs before each write, so a single large event that pushes the
+// buffer past the cap is still delivered; the next event evicts the stream.
+export const DEFAULT_MAX_SSE_BUFFERED_BYTES = 1024 * 1024;
+
+export function streamRuntimeEvents({ request, response, frameRuntime, sessionID = '', maxBufferedBytes = DEFAULT_MAX_SSE_BUFFERED_BYTES }) {
   if (!frameRuntime || typeof frameRuntime.on !== 'function')
     throw httpError(500, 'Frame runtime does not support events');
 
@@ -15,13 +23,13 @@ export function streamRuntimeEvents({ request, response, frameRuntime, sessionID
     'X-Accel-Buffering': 'no',
   });
 
-  writeSSE(response, 'connected', { ok: true });
+  writeSSE(response, 'connected', { ok: true }, maxBufferedBytes);
 
   let handler = (event) => {
     if (sessionID && event.sessionID && event.sessionID !== sessionID)
       return;
 
-    writeSSE(response, event.type || 'message', event);
+    writeSSE(response, event.type || 'message', event, maxBufferedBytes);
   };
   let cleanup = () => {
     frameRuntime.off?.('event', handler);
@@ -30,7 +38,7 @@ export function streamRuntimeEvents({ request, response, frameRuntime, sessionID
   let heartbeat = setInterval(() => {
     // A real event, not an SSE comment: the client needs a signal it can
     // actually observe to tell a live stream from a half-open one.
-    writeSSE(response, 'heartbeat', { ok: true });
+    writeSSE(response, 'heartbeat', { ok: true }, maxBufferedBytes);
   }, 25000);
   heartbeat.unref?.();
 
@@ -45,11 +53,16 @@ export function streamRuntimeEvents({ request, response, frameRuntime, sessionID
   }
 }
 
-function writeSSE(response, event, data) {
+function writeSSE(response, event, data, maxBufferedBytes = DEFAULT_MAX_SSE_BUFFERED_BYTES) {
   // The socket can go away between the cleanup listener firing and the next
   // event; writing to it then would raise an async 'error' on the response.
   if (!response || response.destroyed || response.writableEnded)
     return;
+
+  if (isResponseStalled(response, maxBufferedBytes)) {
+    response.destroy();
+    return;
+  }
 
   let payload;
   try {
@@ -64,6 +77,14 @@ function writeSSE(response, event, data) {
 
   response.write(`event: ${event}\n`);
   response.write(`data: ${payload}\n\n`);
+}
+
+function isResponseStalled(response, maxBufferedBytes) {
+  let cap = Number(maxBufferedBytes);
+  if (!Number.isFinite(cap) || cap <= 0)
+    return false;
+
+  return typeof response.writableLength === 'number' && response.writableLength > cap;
 }
 
 export function connectTokenUsageToRuntime(tokenUsage, frameRuntime) {

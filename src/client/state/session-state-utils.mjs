@@ -13,6 +13,13 @@ import {
 // client refetches the newest window when the user scrolls back down.
 export const MAX_SESSION_MESSAGES = 200;
 
+// Add-only per-session caches (loaded frame windows, paging, previews) are
+// bounded so a long-lived tab cannot grow without limit. These are caches, not
+// user-visible state: the selected session is NEVER evicted, and a session that
+// falls out is re-fetched on demand when the user opens it again.
+export const MAX_CACHED_SESSION_FRAME_SETS = 40;
+export const MAX_SESSION_PREVIEWS = 200;
+
 export function createSessionStateSnapshot(input = {}) {
   return {
     sessionIDs: Array.isArray(input.sessionIDs) ? [ ...input.sessionIDs ] : [],
@@ -20,6 +27,65 @@ export function createSessionStateSnapshot(input = {}) {
     framesBySessionID: { ...(input.framesBySessionID || {}) },
     sessionPagingByID: { ...(input.sessionPagingByID || {}) },
   };
+}
+
+// Bound the per-session frame windows and paging to `MAX_CACHED_SESSION_FRAME_SETS`
+// sessions. `selectedSessionID` is always kept and moved to the end; the rest
+// are kept in insertion order. This is deliberately NOT a true LRU: we do not
+// track per-session access, so a session the user re-opens may already have been
+// evicted and simply re-fetches on demand. That is safe because these windows
+// and paging records are derived cache, never user-visible source of truth.
+// Paging is retained only for sessions whose frames are still cached (there is
+// nothing to page otherwise).
+export function boundSessionFrameCaches(framesBySessionID = {}, sessionPagingByID = {}, selectedSessionID = '') {
+  let frames = framesBySessionID && typeof framesBySessionID === 'object' ? framesBySessionID : {};
+  let paging = sessionPagingByID && typeof sessionPagingByID === 'object' ? sessionPagingByID : {};
+  let ids = Object.keys(frames);
+
+  let ordered = selectedSessionID ? ids.filter((id) => id !== selectedSessionID) : ids.slice();
+  if (selectedSessionID && Object.hasOwn(frames, selectedSessionID))
+    ordered.push(selectedSessionID);
+
+  let keep = new Set(ordered.slice(-MAX_CACHED_SESSION_FRAME_SETS));
+  let boundedFrames = {};
+  for (let id of ids) {
+    if (keep.has(id))
+      boundedFrames[id] = frames[id];
+  }
+
+  return {
+    framesBySessionID: boundedFrames,
+    sessionPagingByID: keepPagingFor(boundedFrames, paging),
+  };
+}
+
+// Bound the preview cache: drop previews for sessions no longer in the live
+// list (deleted elsewhere) and keep only the most recently fetched
+// `MAX_SESSION_PREVIEWS` entries. Previews are derived, so an evicted entry is
+// re-fetched on demand; the session card itself stays.
+export function boundSessionPreviews(previewsByID = {}, sessionIDs = [], options = {}) {
+  let max = Number.isInteger(options.max) ? options.max : MAX_SESSION_PREVIEWS;
+  let live = new Set(Array.isArray(sessionIDs) ? sessionIDs : []);
+  let entries = Object.entries(previewsByID && typeof previewsByID === 'object' ? previewsByID : {})
+    .filter(([id]) => live.has(id));
+  if (entries.length > max)
+    entries = entries.slice(-max);
+
+  let output = {};
+  for (let [id, preview] of entries)
+    output[id] = preview;
+
+  return output;
+}
+
+function keepPagingFor(framesBySessionID, sessionPagingByID) {
+  let output = {};
+  for (let id of Object.keys(sessionPagingByID)) {
+    if (Object.hasOwn(framesBySessionID, id))
+      output[id] = sessionPagingByID[id];
+  }
+
+  return output;
 }
 
 // Soft-deleted sessions carry a `deletedAt` stamp but stay in the store. The

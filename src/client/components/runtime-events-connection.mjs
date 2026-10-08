@@ -108,10 +108,20 @@ export function disconnectRuntimeEvents(app) {
 }
 
 export function onRuntimeEventsOpen(app) {
+  // A stream that reopens after a drop has missed every event sent while it was
+  // down (the server keeps no replay buffer, and backpressure destroys a stalled
+  // stream). Only a RE-open needs a resync: the first open is already followed by
+  // the initial loadSessions()/loadFrames() in connectedCallback, so resyncing
+  // here would double-fetch on every page load.
+  let reopened = app._runtimeEventsOpenedOnce === true;
   app._runtimeEventsConnectingSince = 0;
   app._runtimeEventsLastEventAt = Date.now();
   app._runtimeEventsRetryCount = 0;
   setConnectionStatus(app, CONNECTED_STATUS, 'ready');
+  app._runtimeEventsOpenedOnce = true;
+
+  if (reopened)
+    app._onRuntimeEventsReconnect?.();
 }
 
 // Every runtime event means bytes arrived on this stream, which is the only

@@ -16,68 +16,79 @@ export class ToolExecutionService {
 
     let normalizedInput = normalizeToolInput(input);
     let executionContext = await createToolExecutionContext(context, normalizedInput);
-    let tool = new ToolClass(executionContext);
-    if (typeof tool.execute !== 'function')
-      throw new TypeError(`${toolName} does not provide execute()`);
-
-    let enrichedInput = enrichToolInput(normalizedInput, executionContext);
-    let toolCallFrame = await recordToolCallFrame({ toolName, ToolClass, input: enrichedInput, context: executionContext });
-    let toolOutputStore = resolveToolOutputStore(this, executionContext);
-
-    let result;
     try {
-      result = await tool.execute(enrichedInput);
-    } catch (error) {
-      await recordToolErrorFrame({
-        toolName,
-        ToolClass,
-        input: enrichedInput,
-        context: executionContext,
-        toolCallFrame,
-        toolOutputStore,
-        error,
-      });
-      throw error;
+      return await runTool({ executor: this, toolName, ToolClass, input: normalizedInput, executionContext });
+    } finally {
+      // A cross-session call pins the target runtime for the whole call (see
+      // createToolExecutionContext); release it on success and on failure so an
+      // evictable session does not leak a pin for the life of the process.
+      releaseToolTargetSession(executionContext);
     }
+  }
+}
 
-    if (!toolOutputStore?.storeToolOutput) {
-      await recordToolResultFrame({
-        toolName,
-        ToolClass,
-        input: enrichedInput,
-        context: executionContext,
-        toolCallFrame,
-        agentResult: result,
-        status: 'success',
-      });
-      return result;
-    }
+async function runTool({ executor, toolName, ToolClass, input, executionContext }) {
+  let enrichedInput = enrichToolInput(input, executionContext);
+  let tool = new ToolClass(executionContext);
+  if (typeof tool.execute !== 'function')
+    throw new TypeError(`${toolName} does not provide execute()`);
 
-    let storedOutput = await toolOutputStore.storeToolOutput({
+  let toolCallFrame = await recordToolCallFrame({ toolName, ToolClass, input: enrichedInput, context: executionContext });
+  let toolOutputStore = resolveToolOutputStore(executor, executionContext);
+
+  let result;
+  try {
+    result = await tool.execute(enrichedInput);
+  } catch (error) {
+    await recordToolErrorFrame({
       toolName,
       ToolClass,
       input: enrichedInput,
-      result,
       context: executionContext,
+      toolCallFrame,
+      toolOutputStore,
+      error,
     });
+    throw error;
+  }
 
-    let agentResult = typeof toolOutputStore.createAgentResult === 'function'
-      ? toolOutputStore.createAgentResult(storedOutput)
-      : result;
-
+  if (!toolOutputStore?.storeToolOutput) {
     await recordToolResultFrame({
       toolName,
       ToolClass,
       input: enrichedInput,
       context: executionContext,
       toolCallFrame,
-      storedOutput,
-      agentResult,
+      agentResult: result,
       status: 'success',
     });
-
-    return agentResult;
+    return result;
   }
+
+  let storedOutput = await toolOutputStore.storeToolOutput({
+    toolName,
+    ToolClass,
+    input: enrichedInput,
+    result,
+    context: executionContext,
+  });
+
+  let agentResult = typeof toolOutputStore.createAgentResult === 'function'
+    ? toolOutputStore.createAgentResult(storedOutput)
+    : result;
+
+  await recordToolResultFrame({
+    toolName,
+    ToolClass,
+    input: enrichedInput,
+    context: executionContext,
+    toolCallFrame,
+    storedOutput,
+    agentResult,
+    status: 'success',
+  });
+
+  return agentResult;
 }
 
 async function createToolExecutionContext(context = {}, input = {}) {
@@ -105,6 +116,12 @@ async function createToolExecutionContext(context = {}, input = {}) {
   if (!entry?.session || !entry?.frameEngine)
     throw new Error(`Unable to open target session for tool call: ${targetSessionID}`);
 
+  // Pin the target for the whole tool call. `tool.execute()` can run for minutes
+  // and ordinary LRU pressure could otherwise evict this runtime mid-call: the
+  // captured engine would be detached from the store and the successful result
+  // frame would silently vanish. Released in executeTool()'s finally.
+  runtime.pinSession?.(targetSessionID);
+
   return {
     ...baseContext,
     session: entry.session,
@@ -113,8 +130,17 @@ async function createToolExecutionContext(context = {}, input = {}) {
     sourceFrame: context.frame || null,
     sourceResponseFrameID: context.responseFrameID || null,
     toolTargetSessionID: targetSessionID,
+    targetFrameRuntime: runtime,
     crossSessionToolCall: true,
   };
+}
+
+function releaseToolTargetSession(context = {}) {
+  let runtime = context.targetFrameRuntime;
+  if (!runtime || typeof runtime.unpinSession !== 'function')
+    return;
+
+  runtime.unpinSession(context.toolTargetSessionID);
 }
 
 function enrichToolInput(input, context = {}) {

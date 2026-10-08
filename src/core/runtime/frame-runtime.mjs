@@ -14,6 +14,7 @@ import {
   normalizeDesignationAgentID,
   normalizeOptionalString,
   normalizeSessionGeneration,
+  normalizeSessionRuntimeLimit,
   normalizeStringArray,
   normalizeText,
   normalizeTitle,
@@ -54,6 +55,7 @@ export class FrameRuntime extends EventEmitter {
     this.tokenUsage = options.tokenUsage || resolveService(this.services, 'tokenUsage');
     this._disconnectTokenUsage = this.connectTokenUsage(this.tokenUsage);
     this.logger = options.logger || console;
+    this.sessionRuntimeLimit = normalizeSessionRuntimeLimit(options.sessionRuntimeLimit);
     this.scheduledFrames = new ScheduledFrameQueue({
       runtime: this,
       intervalMS: scheduledFrameWorkerIntervalMS,
@@ -113,7 +115,9 @@ export class FrameRuntime extends EventEmitter {
       disconnectStore: disconnect,
       framesLoaded: true,
       framesLoadedLimit: Number.POSITIVE_INFINITY,
+      activeRuns: 0,
     });
+    this.evictOverflowSessionRuntimes();
 
     return session;
   }
@@ -193,6 +197,84 @@ export class FrameRuntime extends EventEmitter {
     return this.sessions.get(sessionID)?.session || null;
   }
 
+  // Move a session to the most-recently-used end of the LRU order. Eviction
+  // relies on Map insertion order, so every access must touch.
+  touchSession(sessionID) {
+    let entry = this.sessions.get(sessionID);
+    if (!entry)
+      return null;
+
+    this.sessions.delete(sessionID);
+    this.sessions.set(sessionID, entry);
+    return entry;
+  }
+
+  // Pin a session while long-running work holds a captured FrameEngine. Without
+  // a pin, an unrelated session load could evict the entry mid-run and the work's
+  // later commits would never reach the store (the engine would be detached).
+  pinSession(sessionID) {
+    let entry = this.sessions.get(sessionID);
+    if (!entry)
+      return null;
+
+    entry.activeRuns = (entry.activeRuns || 0) + 1;
+    return this.touchSession(sessionID);
+  }
+
+  unpinSession(sessionID) {
+    let entry = this.sessions.get(sessionID);
+    if (!entry)
+      return null;
+
+    entry.activeRuns = Math.max(0, (entry.activeRuns || 0) - 1);
+    this.evictOverflowSessionRuntimes();
+    return entry;
+  }
+
+  // Evict a live runtime without touching persisted state: disconnect listeners
+  // and the store, then drop the cache entry. The session and its frames remain
+  // in the durable store and rehydrate on the next access.
+  evictSession(sessionID) {
+    let entry = this.sessions.get(sessionID);
+    if (!entry)
+      return false;
+
+    this.sessions.delete(sessionID);
+    try {
+      entry.disconnectStore?.();
+    } catch (error) {
+      this.logger?.warn?.('FrameRuntime failed to disconnect an evicted session runtime', error);
+    }
+
+    return true;
+  }
+
+  // Enforce the live-runtime cap. Iteration follows Map insertion order, which is
+  // the LRU order because every access touches. Pinned entries are skipped; if
+  // every over-cap entry is pinned the cap is temporarily exceeded rather than
+  // breaking an in-flight run.
+  evictOverflowSessionRuntimes() {
+    let limit = this.sessionRuntimeLimit;
+    if (!Number.isFinite(limit) || limit <= 0)
+      return;
+
+    while (this.sessions.size > limit) {
+      let victim = null;
+      for (let [sessionID, entry] of this.sessions) {
+        if ((entry.activeRuns || 0) > 0)
+          continue;
+
+        victim = sessionID;
+        break;
+      }
+
+      if (victim == null)
+        return;
+
+      this.evictSession(victim);
+    }
+  }
+
   // Soft-deleted sessions are hidden from the normal listing but remain in the
   // store: includeDeleted:true is the "show deleted" escape hatch, and
   // getSession/ensureSessionEntry still resolve them by id.
@@ -210,55 +292,64 @@ export class FrameRuntime extends EventEmitter {
 
   async appendUserMessage(sessionID, input = {}) {
     let entry = await this.ensureSessionEntry(sessionID);
-    await this.cancelAutonomousWakes(sessionID);
-    let text = normalizeText(input.text);
-    let stamp = this.nextClockStamp();
-    let now = stamp.at;
-    let interactionID = input.interactionID || input.interactionId || this.idGenerator();
-    let frame = {
-      id: input.id || this.idGenerator(),
-      type: 'UserMessage',
-      sessionID,
-      interactionID,
-      parentID: input.parentID || input.parentId || null,
-      authorType: 'user',
-      authorID: input.userID || input.authorID || null,
-      authorDisplayName: normalizeOptionalString(input.authorDisplayName || input.userDisplayName) || null,
-      timestamp: input.timestamp || now,
-      createdAt: input.createdAt || now,
-      updatedAt: input.updatedAt || now,
-      createdClock: input.createdClock || stamp.clock,
-      updatedClock: input.updatedClock || stamp.clock,
-      hidden: false,
-      deleted: false,
-      recipients: normalizeStringArray(input.recipients),
-      content: { text },
-    };
+    // cancelAutonomousWakes() and the router flush both yield. Ordinary LRU
+    // pressure could evict this runtime in between and detach the captured
+    // engine, silently dropping the user message and its manifest update. Pin
+    // for the whole call; release on both the success and throw paths.
+    this.pinSession(sessionID);
+    try {
+      await this.cancelAutonomousWakes(sessionID);
+      let text = normalizeText(input.text);
+      let stamp = this.nextClockStamp();
+      let now = stamp.at;
+      let interactionID = input.interactionID || input.interactionId || this.idGenerator();
+      let frame = {
+        id: input.id || this.idGenerator(),
+        type: 'UserMessage',
+        sessionID,
+        interactionID,
+        parentID: input.parentID || input.parentId || null,
+        authorType: 'user',
+        authorID: input.userID || input.authorID || null,
+        authorDisplayName: normalizeOptionalString(input.authorDisplayName || input.userDisplayName) || null,
+        timestamp: input.timestamp || now,
+        createdAt: input.createdAt || now,
+        updatedAt: input.updatedAt || now,
+        createdClock: input.createdClock || stamp.clock,
+        updatedClock: input.updatedClock || stamp.clock,
+        hidden: false,
+        deleted: false,
+        recipients: normalizeStringArray(input.recipients),
+        content: { text },
+      };
 
-    let frames = entry.frameEngine.merge([ frame ], {
-      authorType: 'user',
-      authorID: frame.authorID,
-    });
+      let frames = entry.frameEngine.merge([ frame ], {
+        authorType: 'user',
+        authorID: frame.authorID,
+      });
 
-    if (frames.length === 0)
-      throw new Error('UserMessage commit produced no frames');
+      if (frames.length === 0)
+        throw new Error('UserMessage commit produced no frames');
 
-    let manifestSave = this._sessionManifestSaves.get(sessionID);
-    await this.frameStore.flush();
+      let manifestSave = this._sessionManifestSaves.get(sessionID);
+      await this.frameStore.flush();
 
-    entry.session.updatedAt = now;
-    entry.session.updatedClock = stamp.clock;
-    entry.session.messageCount = countMessageFrames(entry.frameEngine.toArray());
-    if (!manifestSave)
-      manifestSave = this.queueSessionManifestSave(entry);
-    await manifestSave;
-    await this.frameRouter?.flush?.();
+      entry.session.updatedAt = now;
+      entry.session.updatedClock = stamp.clock;
+      entry.session.messageCount = countMessageFrames(entry.frameEngine.toArray());
+      if (!manifestSave)
+        manifestSave = this.queueSessionManifestSave(entry);
+      await manifestSave;
+      await this.frameRouter?.flush?.();
 
-    return {
-      session: entry.session,
-      frame: frames[0],
-      commit: entry.frameEngine.getLatestCommit(),
-    };
+      return {
+        session: entry.session,
+        frame: frames[0],
+        commit: entry.frameEngine.getLatestCommit(),
+      };
+    } finally {
+      this.unpinSession(sessionID);
+    }
   }
 
   async ensureIndexConfigs() {

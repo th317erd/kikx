@@ -77,6 +77,7 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
 
     let frameRouter = resolveService(services, 'frameRouter') || services?.frameRuntime?.frameRouter;
     let sessionID = this.context.session?.id || frame?.sessionID || '';
+    let frameRuntime = resolveService(services, 'frameRuntime') || services?.frameRuntime;
 
     let dispatch = async () => {
       for (let agentID of initialTargets) {
@@ -117,12 +118,24 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
       }
     };
 
+    // Pin the session runtime across the whole serial run. Without this, an
+    // unrelated session load could evict the runtime mid-run, detaching the
+    // engine captured in `this.context` and dropping every later commit.
+    frameRuntime?.pinSession?.(sessionID);
+    let runPinned = async () => {
+      try {
+        await dispatch();
+      } finally {
+        frameRuntime?.unpinSession?.(sessionID);
+      }
+    };
+
     if (typeof frameRouter?.runSerial === 'function')
-      frameRouter.runSerial(sessionID, dispatch);
+      frameRouter.runSerial(sessionID, runPinned);
     else if (typeof frameRouter?.runBackground === 'function')
-      frameRouter.runBackground(dispatch);
+      frameRouter.runBackground(runPinned);
     else
-      await dispatch();
+      await runPinned();
 
     done();
   }

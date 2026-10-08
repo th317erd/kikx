@@ -3,6 +3,11 @@
 export const HISTORY_DIRECTION_UP = 'up';
 export const HISTORY_DIRECTION_DOWN = 'down';
 
+// Add-only: every submitted message used to be retained for the life of the tab.
+// Keep a generous window of recent submissions; ArrowUp history is a convenience,
+// not a durable log.
+export const MAX_COMPOSER_HISTORY_ENTRIES = 200;
+
 export function createComposerHistoryState() {
   return { entries: [], cursor: -1, draft: '' };
 }
@@ -30,8 +35,12 @@ export function composerHistoryEntriesFromFrames(frames) {
 
 export function recordComposerHistoryEntry(history, text) {
   let normalized = typeof text === 'string' ? text.trim() : '';
-  if (normalized)
+  if (normalized) {
     history.entries.push(normalized);
+    let overflow = history.entries.length - MAX_COMPOSER_HISTORY_ENTRIES;
+    if (overflow > 0)
+      history.entries.splice(0, overflow);
+  }
 
   resetComposerHistoryNavigation(history);
   return history;

@@ -416,6 +416,10 @@ export class MiniElement extends MiniNode {
       list.splice(index, 1);
   }
 
+  listenerCount(type) {
+    return (this._listeners.get(type) || []).length;
+  }
+
   dispatchEvent(event) {
     // `target`/`currentTarget` are read-only accessors on the platform Event, so
     // assign our own shadowing properties instead of writing to them.

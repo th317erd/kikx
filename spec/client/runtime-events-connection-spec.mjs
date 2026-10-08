@@ -165,6 +165,30 @@ test('open marks the stream Connected', async () => {
   });
 });
 
+test('the first open stays quiet, a re-open resyncs missed state', async () => {
+  await withFakeEventSource(async () => {
+    let app = createApp();
+    let resyncs = 0;
+    app._onRuntimeEventsReconnect = () => { resyncs += 1; };
+
+    connectRuntimeEvents(app);
+    app._eventSource.emit('open');
+    assert.equal(resyncs, 0, 'the initial load already runs on first connect, so do not double-fetch');
+
+    // A backpressure destroy / transient drop followed by a successful
+    // reconnect opens a new source; the gap may have missed frames and sessions.
+    connectRuntimeEvents(app);
+    app._eventSource.emit('open');
+    assert.equal(resyncs, 1, 'a re-open must trigger a resync');
+
+    // EventSource can fire 'open' again after it rebuilds its underlying
+    // connection, so every open after the first is another missed gap.
+    app._eventSource.emit('open');
+    assert.equal(resyncs, 2, 'each re-open resyncs the gap it represents');
+    disconnectRuntimeEvents(app);
+  });
+});
+
 test('a transient drop while still CONNECTING shows Reconnecting, not Disconnected', async () => {
   await withFakeEventSource(async () => {
     let app = createApp();

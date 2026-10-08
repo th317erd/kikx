@@ -177,6 +177,11 @@ export function cleanupReactiveBindings(app, root = app) {
 }
 
 export function connectFrameListObserver(app) {
+  // W8 lifecycle: renderers call this after every thread rebuild. Tear down the
+  // previous listener + observer first so a re-render/re-connect can never stack
+  // them (and so a detached stream is not left observed).
+  disconnectFrameListObserver(app);
+
   let frameList = app.querySelector('.kikx-frame-list');
   let frameStream = frameList?.querySelector('.kikx-frame-stream');
   if (!frameList || !frameStream || typeof ResizeObserver !== 'function')

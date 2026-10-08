@@ -6,6 +6,8 @@ import {
   mergeAgentConfigWithProviderDefaults,
 } from './agent-state-utils.mjs';
 import {
+  boundSessionFrameCaches,
+  boundSessionPreviews,
   countMessageFrames,
   isDeletedSession,
   mergeSessionFrameWindowState,
@@ -174,17 +176,17 @@ export function setSessionPreviews(previews, state = kikxState) {
       next[preview.sessionID] = preview;
   }
 
-  state.sessionPreviewsByID = next;
+  state.sessionPreviewsByID = boundSessionPreviews(next, state.sessionIDs);
 }
 
 export function upsertSessionPreview(sessionID, preview, state = kikxState) {
   if (!sessionID || !preview)
     return;
 
-  state.sessionPreviewsByID = {
+  state.sessionPreviewsByID = boundSessionPreviews({
     ...state.sessionPreviewsByID,
     [sessionID]: preview,
-  };
+  }, state.sessionIDs);
 }
 
 export function getNavigationStack(state = kikxState) {
@@ -442,9 +444,13 @@ export { countMessageFrames };
 function applySessionSnapshot(state, snapshot) {
   state.sessionIDs = snapshot.sessionIDs;
   state.sessionDetailsByID = snapshot.sessionDetailsByID;
-  state.framesBySessionID = snapshot.framesBySessionID;
-  if (snapshot.sessionPagingByID)
-    state.sessionPagingByID = snapshot.sessionPagingByID;
+  let bounded = boundSessionFrameCaches(
+    snapshot.framesBySessionID,
+    snapshot.sessionPagingByID ?? state.sessionPagingByID,
+    state.selectedSessionID,
+  );
+  state.framesBySessionID = bounded.framesBySessionID;
+  state.sessionPagingByID = bounded.sessionPagingByID;
 }
 
 function normalizeTokenUsageSnapshot(input) {

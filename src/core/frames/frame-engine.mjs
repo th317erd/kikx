@@ -7,6 +7,14 @@ import { HybridLogicalClock, defaultUnixMicros } from '../clock/hybrid-logical-c
 import { cloneValue, deepMerge } from './deep-merge.mjs';
 
 const MERGEABLE_FIELDS = new Set([ 'content', 'hidden', 'deleted', 'updatedAt', 'state' ]);
+
+// Retention bounds. A user/agent frame is updated once per streamed delta, so
+// without a cap `_history` grows with the token count and `_commits` with the
+// delta count, forever. Both are caches over durable state: keep the newest
+// window. `_history` keeps the newest versions per frame; `_commits` keeps the
+// newest commits and indexes them by order so `getCommit` stays O(1).
+const DEFAULT_HISTORY_LIMIT = 200;
+const DEFAULT_COMMIT_LIMIT = 2000;
 const TERMINAL_CONTENT_STATUSES = new Set([
   'break',
   'complete',
@@ -31,6 +39,8 @@ export class FrameEngine extends EventEmitter {
     });
     this.idGenerator = options.idGenerator || (() => randomUUID());
     this.commitValidator = options.commitValidator || null;
+    this.historyLimit = normalizePositiveLimit(options.historyLimit, DEFAULT_HISTORY_LIMIT);
+    this.commitLimit = normalizePositiveLimit(options.commitLimit, DEFAULT_COMMIT_LIMIT);
 
     this._frameOrder = 0;
     this._commitOrder = 0;
@@ -38,6 +48,7 @@ export class FrameEngine extends EventEmitter {
     this._history = new Map();
     this._children = new Map();
     this._commits = [];
+    this._commitsByOrder = new Map();
     this._refs = new Map();
   }
 
@@ -48,7 +59,10 @@ export class FrameEngine extends EventEmitter {
     if (frames.length === 0)
       return [];
 
-    let snapshot = this._snapshot();
+    // Only the commit validator needs a rollback point. Cloning all history on
+    // every merge is the O(n^2) hot path when history is retained for replay, so
+    // snapshot lazily.
+    let snapshot = this.commitValidator ? this._snapshot() : null;
     let results = [];
     let changes = [];
     let frameEvents = [];
@@ -90,7 +104,7 @@ export class FrameEngine extends EventEmitter {
       }
     }
 
-    this._commits.push(commit);
+    this._recordCommit(commit);
     this._refs.set('heads/main', commit.order);
     this._applyCommitOrder(results, commit.order);
 
@@ -129,7 +143,7 @@ export class FrameEngine extends EventEmitter {
   }
 
   getCommit(order) {
-    return this._commits.find((commit) => commit.order === order);
+    return this._commitsByOrder.get(order);
   }
 
   getCommits(fromOrder = 0, toOrder = Infinity) {
@@ -148,6 +162,7 @@ export class FrameEngine extends EventEmitter {
     this._history.clear();
     this._children.clear();
     this._commits = [];
+    this._commitsByOrder.clear();
     this._refs.clear();
     this._frameOrder = 0;
     this._commitOrder = 0;
@@ -419,13 +434,34 @@ export class FrameEngine extends EventEmitter {
   }
 
   _appendHistory(id, frame) {
-    if (!this._history.has(id))
-      this._history.set(id, []);
+    let versions;
+    if (this.history) {
+      versions = this._history.get(id);
+      if (!versions) {
+        versions = [];
+        this._history.set(id, versions);
+      }
 
-    if (this.history)
-      this._history.get(id).push(frame);
-    else
-      this._history.set(id, [ frame ]);
+      versions.push(frame);
+      if (versions.length > this.historyLimit)
+        versions.splice(0, versions.length - this.historyLimit);
+      return;
+    }
+
+    // History disabled: retain only the newest version.
+    this._history.set(id, [ frame ]);
+  }
+
+  _recordCommit(commit) {
+    this._commits.push(commit);
+    this._commitsByOrder.set(commit.order, commit);
+
+    if (this._commits.length <= this.commitLimit)
+      return;
+
+    let removed = this._commits.splice(0, this._commits.length - this.commitLimit);
+    for (let commit of removed)
+      this._commitsByOrder.delete(commit.order);
   }
 
   _addChild(parentID, childID) {
@@ -481,8 +517,20 @@ export class FrameEngine extends EventEmitter {
     this._history = snapshot.history;
     this._children = snapshot.children;
     this._commits = snapshot.commits;
+    this._commitsByOrder = new Map();
+    for (let commit of this._commits)
+      this._commitsByOrder.set(commit.order, commit);
+
     this._refs = snapshot.refs;
   }
+}
+
+function normalizePositiveLimit(value, fallback) {
+  let number = Number(value);
+  if (!Number.isInteger(number) || number < 1)
+    return fallback;
+
+  return number;
 }
 
 function compareFrameOrder(a, b) {

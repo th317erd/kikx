@@ -2,10 +2,29 @@
 
 import { createConfigStore, KIKX_HOST_PATH, KIKX_PORT_PATH } from '../core/config/index.mjs';
 import { createServer } from './create-server.mjs';
+import { installProcessErrorPolicy } from './process-error-policy.mjs';
 import { shutdownHTTPServer } from './shutdown.mjs';
 
 let shuttingDown = false;
 let server;
+
+// Install the process error policy before anything else: a throw during startup
+// must follow the same log-then-shutdown path as one under load. Rejections are
+// logged but never terminate the server (a single stray promise must not drop
+// every connected client); an uncaught exception drains and exits non-zero.
+installProcessErrorPolicy({
+  processRef: process,
+  logger: console,
+  onFatal: (error, type) => {
+    if (type !== 'uncaughtException')
+      return;
+
+    console.error('Kikx shutting down after uncaughtException:', error);
+    shutdown('uncaughtException', 1)
+      .catch((shutdownError) => console.error('Kikx shutdown failed after uncaughtException:', shutdownError))
+      .finally(() => process.exit(1));
+  },
+});
 
 // Register handlers before `main()` runs so a signal during startup cannot kill
 // the process before shutdown wiring exists. `shutdown()` is a no-op until the
@@ -36,7 +55,7 @@ async function main() {
 
 await main();
 
-async function shutdown(signal) {
+async function shutdown(signal, exitCode = 0) {
   if (shuttingDown || !server)
     return;
 
@@ -54,7 +73,7 @@ async function shutdown(signal) {
     process.exit(1);
   }
 
-  process.exit(0);
+  process.exit(exitCode);
 }
 
 async function shutdownRuntimeServices(server) {

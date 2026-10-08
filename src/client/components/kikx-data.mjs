@@ -92,6 +92,32 @@ export async function loadSessions(app) {
   }
 }
 
+// A runtime-events stream that reopens after a drop can be missing frames and
+// session changes emitted while it was down: the server keeps no replay buffer
+// and backpressure destroys a stalled stream. Re-fetch the session list (which
+// also refreshes the card previews) and merge the selected session's newest
+// frame window, so nothing missed during the gap stays silently stale. This is
+// NOT called on the first connect: connectedCallback already runs the initial
+// loads, so resyncing then would double-fetch every page load.
+export async function resyncAfterRuntimeEventsReconnect(app) {
+  if (!app?.isConnected || app._runtimeEventsResyncInFlight)
+    return;
+
+  app._runtimeEventsResyncInFlight = true;
+  try {
+    await app._loadSessions();
+    let sessionID = app._state.selectedSessionID;
+    if (sessionID)
+      await app._loadFrames(sessionID, { merge: true });
+  } catch (error) {
+    app._state.status = error.message;
+    app._state.statusKind = 'error';
+    app._requestRender?.();
+  } finally {
+    app._runtimeEventsResyncInFlight = false;
+  }
+}
+
 export async function deleteSession(app, sessionID) {
   let result = await deleteJSON(app, `/api/v1/sessions/${encodeURIComponent(sessionID)}`);
   // The DELETE 200 means the server stamped deletedAt, so drop the session from
