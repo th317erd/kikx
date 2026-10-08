@@ -61,7 +61,7 @@ may grow without bound; a failure must be visible to the user (and to us).
 - Timer/listener/observer lifecycle: nothing may be registered per render or per
   reconnect without a matching teardown.
 
-### S3 — Responsiveness under streaming load — ✅ DONE (round 5 finished the spec)
+### S3 — Responsiveness under streaming load — ✅ DONE (`ec3bd2f`)
 > `grid.sync()` reconciles cards by id and repaints at most once per animation
 > frame, so a live `session.saved` burst no longer calls `grid.update()` per event;
 > `syncSessionShell` returns true under an open title editor so a streaming save
@@ -77,7 +77,7 @@ may grow without bound; a failure must be visible to the user (and to us).
   stays smooth; keep the compositor-friendly animation rules.
 - Re-verify with the in-page probe used for `3f8b5e1`.
 
-### S4 — Failure-path coverage for stability-critical paths — ✅ DONE (round 5 closed both recorded findings)
+### S4 — Failure-path coverage for stability-critical paths — ✅ DONE (`ec3bd2f`)
 > Specs for: stream error/close mid-burst, malformed runtime event, unknown frame
 > type, oversized frame body, storage read failure, delete failure, hidden->visible
 > transition with a backed-up queue. Round 5 un-skipped and fixed the two
@@ -107,11 +107,14 @@ may grow without bound; a failure must be visible to the user (and to us).
   practical inbound bound. Revisit only if a frame body can arrive through a path
   that is not SSE-bounded.
 
-### S5 — Monitoring (keep running)
+### S5 — Monitoring — ✅ server sampler DONE (`ec3bd2f`); watchdog/ongoing
 - Client leak watchdog `leak-watch.py` (armed, tracks Kikx pids; captures an
   attribution bundle before a blow-up).
-- Add a cheap server-side RSS sampler for the container + dev server so server
-  growth is caught as early as client growth.
+- **Server-side RSS sampler: DONE** (`src/server/memory-sampler.mjs`, off by
+  default, config-driven, bounded ring, one warning per breach) surfaced on
+  `/health` (compact) and `GET /api/v1/infra/memory` (`?samples=1` for the ring),
+  so server growth is caught as early as client growth. Opt in with
+  `KIKX_MONITORING_MEMORY_ENABLED=1`.
 - Keep the caveat prominent: `127.0.0.1` pages share one site process, so
   attribute any blow-up to the *site*, not automatically to Kikx.
 
