@@ -37,7 +37,20 @@ may grow without bound; a failure must be visible to the user (and to us).
 - Specs: a frame renderer that throws must not stop later frames/sessions from
   updating; the error must be reported exactly once.
 
-### S2 — Unbounded-growth hardening
+### S2 — Unbounded-growth hardening — ✅ DONE (`079cce4`)
+
+> Client: hidden tabs drain via `setTimeout` instead of a paused rAF and flush on
+> `visibilitychange`; the pending queue is capped (500) + coalesced per `session::frame` with
+> overflow → full refresh; bounded LRU caches for module URLs, per-session frame windows
+> (selected always kept), previews, composer history; app listeners now install/uninstall with
+> the element. Server: `FrameRuntime.sessions` is an LRU (200) that disconnects without touching
+> persisted state — and every in-flight path (agent run, tool target, user message, scheduled
+> wake) pins its session so a merge can never land in a detached engine; `FrameEngine` caps
+> per-frame history (200) and commits (2000) with an order index; SSE buffers cap at 1 MiB with
+> reconnect resync; unhandled rejections are contained and uncaught exceptions are fatal after a
+> bounded shutdown. 1253/1253. Real-browser verified: a burst queued in a **hidden** tab drained
+> in ~1.1 s (rAF would have stalled), a 600-event flood stayed at 500 and marked the session for
+> refresh, and the app stayed connected.
 - `queueFrameRuntimeEvent`: add a `setTimeout` fallback so the queue drains while
   hidden, flush on `visibilitychange`, and a hard cap with coalescing (collapse
   repeated updates for the same frame id; drop payloads beyond the cap and mark
