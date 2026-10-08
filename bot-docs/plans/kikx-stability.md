@@ -19,7 +19,16 @@ may grow without bound; a failure must be visible to the user (and to us).
 
 ## Work items (ranked)
 
-### S1 — Error containment: one bad render must not wedge the app
+### S1 — Error containment: one bad render must not wedge the app — ✅ DONE (`b54cd80`)
+
+> Containment at every render/update entry point (runtime-event dispatch, each flush step,
+> frame-thread sync, chat-view sync, frame items, app shell) with a bounded recent-errors
+> store, global `error`/`unhandledrejection` capture, throttled repeats, and a styled,
+> accessible, dismissible surface that also survives a first-render failure. 1205/1205.
+> Real-browser verified on a throwaway instance: a throwing frame update is contained and
+> later frames/sessions still render, an uncaught page error reaches the surface, dismiss
+> returns to the empty state, and the app never wedges. The browser pass also caught what
+> specs could not: the surface's host never carried its own class, so its CSS never applied.
 - Guard the render/update entry points (shell render, frame-item update, chat-view
   sync, SSE dispatch) so a throw is caught, reported, and the rest of the UI keeps
   working; keep the previous DOM instead of half-applying.
