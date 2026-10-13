@@ -56,6 +56,11 @@ test('Puppeteer filters sessions, reveals soft-deleted ones with the eye, and re
     await page.goto(`${fixture.baseURL}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('kikx-session-grid > kikx-session-card', { timeout: 15000 });
     await waitForCardTitles(page, [ 'Alpha Session', 'Beta Session' ]);
+    // The startup loaders (account/agents/token-usage) each schedule a full shell
+    // rebuild and can resolve AFTER the grid first paints; interacting now would
+    // type/press into a node about to be swapped out. Let the shell settle (no new
+    // rebuild for a quiet window) before driving the UI.
+    await waitForRenderSettled(page);
 
     // The centered search bar and its floating eye live in the window header.
     assert.equal(await count(page, '.kikx-window__header .kikx-session-search__input'), 1, 'search input is in the header');
@@ -84,6 +89,7 @@ test('Puppeteer filters sessions, reveals soft-deleted ones with the eye, and re
 
     // 3) Activating Recycle undeletes the session: it returns to life, untinted,
     //    with a Delete action again, and leaves the deleted view.
+    await waitForRenderSettled(page);
     await pressProgressButton(page, 'Gamma Deleted');
 
     await waitForCondition(page, (wanted) => {
@@ -177,6 +183,27 @@ async function waitForCardTitles(page, expected, timeoutMS = 10000) {
 async function cardTitles(page) {
   return page.evaluate(() => Array.from(document.querySelectorAll('kikx-session-grid > kikx-session-card'))
     .map((card) => card.querySelector('.kikx-session-card__title')?.textContent || ''));
+}
+
+// Wait until the app stops rebuilding its shell. The startup loaders each fire a
+// full-shell rebuild and can land just after the grid first paints; driving the
+// UI before that settles types/presses into a node about to be swapped out.
+async function waitForRenderSettled(page, quietMS = 250, timeoutMS = 6000) {
+  let startedAt = Date.now();
+  let lastShell = Symbol('unset');
+  let stableSince = Date.now();
+  while (Date.now() - startedAt < timeoutMS) {
+    let shell = await page.evaluate(() => document.querySelector('kikx-app')?._renderStats?.shell ?? null);
+    if (shell === null)
+      return;
+    if (shell !== lastShell) {
+      lastShell = shell;
+      stableSince = Date.now();
+    } else if (Date.now() - stableSince >= quietMS) {
+      return;
+    }
+    await delay(25);
+  }
 }
 
 async function waitForCondition(page, predicate, message, arg, timeoutMS = 10000) {
