@@ -10,6 +10,7 @@ import {
   getSelectedFrames,
   getSelectedSession,
   getSessionPreviews,
+  getSessions,
   getStackDepth,
   getVisibleSessions,
 } from '../state/kikx-state.mjs';

@@ -51,7 +51,14 @@ test('Puppeteer commit bursts do not rebuild the thread or move the viewport', a
   try {
     let page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });
-    await page.goto(`${fixture.baseURL}/?code=puppeteer-test&view=thread`, {
+    // Kikx gates its initial load on a session token read from sessionStorage at
+    // module load (Kikx-native auth), so seed one before the app boots; the
+    // fixture's auth stub accepts any token.
+    await page.evaluateOnNewDocument(() => {
+      sessionStorage.setItem('kikx.auth.session', JSON.stringify({ token: 'puppeteer-test-token', refresh_token: 'puppeteer-test-refresh' }));
+    });
+
+    await page.goto(`${fixture.baseURL}/?view=thread`, {
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });

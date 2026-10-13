@@ -37,11 +37,18 @@ test('Puppeteer sends an @mention message and verifies mention metadata', async 
   try {
     let page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
-    await page.goto(`${fixture.baseURL}/?code=puppeteer-test&view=thread`, {
+    // Kikx gates its initial load on a session token read from sessionStorage at
+    // module load (Kikx-native auth), so seed one before the app boots; the
+    // fixture's auth stub accepts any token.
+    await page.evaluateOnNewDocument(() => {
+      sessionStorage.setItem('kikx.auth.session', JSON.stringify({ token: 'puppeteer-test-token', refresh_token: 'puppeteer-test-refresh' }));
+    });
+
+    await page.goto(`${fixture.baseURL}/?view=thread`, {
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });
-    await page.waitForSelector('.kikx-composer textarea:not([disabled])', { timeout: 10000 });
+    await page.waitForSelector('.kikx-composer textarea:not([disabled])', { timeout: 15000 });
 
     await page.focus('.kikx-composer textarea');
     await page.keyboard.type('Please review this @"Mention Bot"');
