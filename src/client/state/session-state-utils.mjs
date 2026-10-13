@@ -26,6 +26,11 @@ export function createSessionStateSnapshot(input = {}) {
     sessionDetailsByID: { ...(input.sessionDetailsByID || {}) },
     framesBySessionID: { ...(input.framesBySessionID || {}) },
     sessionPagingByID: { ...(input.sessionPagingByID || {}) },
+    // Soft-deleted sessions live in their own bucket: they never enter
+    // sessionIDs, so getSessions()/the delete prune path are untouched, and the
+    // "show deleted" view reads this bucket instead.
+    deletedSessionIDs: Array.isArray(input.deletedSessionIDs) ? [ ...input.deletedSessionIDs ] : [],
+    deletedSessionDetailsByID: { ...(input.deletedSessionDetailsByID || {}) },
   };
 }
 
@@ -115,6 +120,68 @@ export function removeSession(state, sessionID) {
     sessionDetailsByID,
     framesBySessionID,
     sessionPagingByID,
+  };
+}
+
+// Replace the deleted bucket with exactly the soft-deleted sessions supplied
+// (the includeDeleted=1 fetch). Non-deleted entries are ignored so a live
+// manifest can never leak into the deleted view.
+export function setDeletedSessionsState(state, sessions) {
+  let snapshot = createSessionStateSnapshot(state);
+  let deletedSessionIDs = [];
+  let deletedSessionDetailsByID = {};
+  for (let session of Array.isArray(sessions) ? sessions : []) {
+    if (!session?.id || !isDeletedSession(session))
+      continue;
+
+    deletedSessionIDs.push(session.id);
+    deletedSessionDetailsByID[session.id] = { ...session };
+  }
+
+  return {
+    ...snapshot,
+    deletedSessionIDs,
+    deletedSessionDetailsByID,
+  };
+}
+
+// Add (or refresh) one soft-deleted session in the bucket. Used by the local
+// delete flow and by the SSE session.saved(deletedAt) branch so the "show
+// deleted" view stays correct without a refetch.
+export function recordDeletedSessionState(state, session) {
+  let snapshot = createSessionStateSnapshot(state);
+  if (!session?.id || !isDeletedSession(session))
+    return snapshot;
+
+  let deletedSessionIDs = snapshot.deletedSessionIDs.includes(session.id)
+    ? snapshot.deletedSessionIDs
+    : [ session.id, ...snapshot.deletedSessionIDs ];
+  let previous = snapshot.deletedSessionDetailsByID[session.id];
+
+  return {
+    ...snapshot,
+    deletedSessionIDs,
+    deletedSessionDetailsByID: {
+      ...snapshot.deletedSessionDetailsByID,
+      [session.id]: previous ? mergeSessionDetail(previous, session) : { ...session },
+    },
+  };
+}
+
+// Drop one session from the deleted bucket (its restore, or a live session.saved
+// that proves it is no longer deleted).
+export function forgetDeletedSessionState(state, sessionID) {
+  let snapshot = createSessionStateSnapshot(state);
+  if (!sessionID)
+    return snapshot;
+
+  let deletedSessionDetailsByID = { ...snapshot.deletedSessionDetailsByID };
+  delete deletedSessionDetailsByID[sessionID];
+
+  return {
+    ...snapshot,
+    deletedSessionIDs: snapshot.deletedSessionIDs.filter((id) => id !== sessionID),
+    deletedSessionDetailsByID,
   };
 }
 

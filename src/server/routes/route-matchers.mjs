@@ -21,6 +21,18 @@ export function matchSessionDeleteRoute(pathname) {
   };
 }
 
+// POST /api/v1/sessions/:id/restore clears the soft-delete stamp, bringing a
+// deleted session back to life (the "show deleted sessions" undo).
+export function matchSessionRestoreRoute(pathname) {
+  let match = /^\/api\/v1\/sessions\/([^/]+)\/restore$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    sessionID: decodeURIComponent(match[1]),
+  };
+}
+
 export function matchSessionRoute(pathname) {
   let match = /^\/api\/v1\/sessions\/([^/]+)\/(frames|messages)$/.exec(pathname);
   if (!match)

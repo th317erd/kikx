@@ -1,6 +1,6 @@
 'use strict';
 
-import { getGridParentSessionID, getSelectedFrames, getSessionPaging, getSessions, getSessionPreviews } from '../state/kikx-state.mjs';
+import { getDeletedSessions, getGridParentSessionID, getSelectedFrames, getSessionPaging, getSessionPreviews, getVisibleSessions } from '../state/kikx-state.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import { buildFrameThread } from './kikx-shell-builders.mjs';
@@ -88,14 +88,17 @@ export function requestRender(app) {
 }
 
 export function syncSessionShell(app) {
-  // The title can be an h2 (root) or an editable button (session window); in
-  // edit mode it is an input, which we leave alone.
-  let threadTitle = app.querySelector('.kikx-window__header .kikx-window__title, .kikx-window__header h2');
-  let editingTitle = app.querySelector('.kikx-window__header .kikx-window__title-input');
+  // The title can be an h2 (root), the relocated breadcrumb title (session
+  // window), or an inline input while editing (left alone).
+  let threadTitle = app.querySelector('.kikx-breadcrumb__title, .kikx-window__header h2');
+  let editingTitle = app.querySelector('.kikx-breadcrumb__title-input, .kikx-window__header .kikx-window__title-input');
   if (threadTitle && !editingTitle) {
     let selectedSession = app._selectedSession();
     threadTitle.textContent = selectedSession?.title || 'No session';
   }
+
+  // Repaint the "show deleted" eye in place (on/off tint) without a rebuild.
+  app._paintSessionSearch?.();
 
   let grid = app.querySelector('kikx-session-grid');
   if (grid) {
@@ -106,12 +109,13 @@ export function syncSessionShell(app) {
     // call grid.update() (a full grid + card rebuild) once per event; sync()
     // reconciles cards by id and repaints at most once per animation frame.
     grid.sync({
-      allSessions: getSessions(app._state),
+      allSessions: getVisibleSessions(app._state),
       parentSessionID: getGridParentSessionID(app._state),
       previews: getSessionPreviews(app._state),
       appState: app._state,
       selectedSessionID: app._state.selectedSessionID,
       loading: app._state.previewsLoading,
+      deletedSessionIDs: new Set(getDeletedSessions(app._state).map((session) => session.id)),
     });
     return true;
   }

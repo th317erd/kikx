@@ -6,6 +6,7 @@ import {
   getGridParentSessionID,
   getSessions,
   getStackDepth,
+  getVisibleSessions,
   isCollapsed,
   navigateBack,
   navigateThread,
@@ -72,6 +73,24 @@ export async function commitSessionName(app, sessionID) {
   app._render();
 }
 
+// Toggle the "show deleted sessions" eye. Turning it on fetches the deleted
+// bucket (includeDeleted=1) so previously-deleted sessions appear tinted; off
+// hides them again. The live list is untouched either way.
+export function toggleShowDeleted(app) {
+  app._state.showDeletedSessions = app._state.showDeletedSessions !== true;
+  if (app._state.showDeletedSessions)
+    app._loadDeletedSessions();
+  app._render();
+}
+
+// Update the title filter. Repaint only the grid (and the eye) rather than the
+// whole shell so the search field keeps focus while the user types.
+export function onSessionSearchInput(app, value) {
+  app._state.sessionSearch = typeof value === 'string' ? value : '';
+  if (!app._syncSessionShell())
+    app._requestRender();
+}
+
 // A pure toggle: on shows only sub-session cards, off shows all messages.
 export function toggleSubSessions(app) {
   if (isCollapsed(app._state))
@@ -112,7 +131,9 @@ export function syncSelectedSessionToStack(app) {
 // session after the grid removes it.
 export function pruneMissingSessionsFromStack(app, { push = false } = {}) {
   let stack = app._state.navigationStack || [];
-  let known = new Set(getSessions(app._state).map((session) => session.id));
+  // Visible = live, plus soft-deleted while the eye is on; a card the user can
+  // still see must not be pruned from the stack.
+  let known = new Set(getVisibleSessions(app._state).map((session) => session.id));
   let pruned = [ stack[0] || { sessionID: null, collapsed: true } ];
   for (let entry of stack.slice(1)) {
     if (!known.has(entry.sessionID))

@@ -1424,6 +1424,127 @@ kikx-typing-indicator {
   }
 }
 
+
+/* --- Session workspace: centered search + eye, relocated name --- */
+
+/* The header is a 3-slot row: name/close on the left, the centered search in
+   the middle, actions on the right. The search is centered by giving the middle
+   slot flex:1 and letting the container shrink to a comfortable max width. */
+.kikx-session-search {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.kikx-session-search__input {
+  width: 100%;
+  padding: 6px 34px 6px 12px;
+  border: 1px solid #2a3138;
+  border-radius: 999px;
+  background: #12161a;
+  color: #e8edf2;
+  font: inherit;
+  font-size: 13px;
+}
+
+.kikx-session-search__input::placeholder {
+  color: #6b7684;
+}
+
+.kikx-session-search__input:focus-visible {
+  border-color: #3d6cff;
+  outline: none;
+}
+
+/* The floating eye toggle sits inside the field's right edge. */
+.kikx-session-search__eye {
+  position: absolute;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+
+.kikx-session-search__eye:hover,
+.kikx-session-search__eye:focus-visible {
+  border-color: #3c444d;
+  outline: none;
+}
+
+/* Eye on: "show deleted sessions" is active. */
+.kikx-session-search__eye.is-on {
+  filter: none;
+  opacity: 1;
+}
+
+/* The editable session name, relocated off the header center. */
+.kikx-breadcrumb__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #f5f7fa;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.kikx-breadcrumb__title:hover,
+.kikx-breadcrumb__title:focus-visible {
+  border-color: #3c444d;
+  outline: none;
+}
+
+.kikx-breadcrumb__title-input {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  padding: 2px 6px;
+  border: 1px solid #3d6cff;
+  border-radius: 6px;
+  background: #12161a;
+  color: #f5f7fa;
+  font: inherit;
+  font-size: 14px;
+}
+
+/* A soft-deleted session card: reddish tint to signal it is recoverable. */
+.kikx-session-card.is-deleted {
+  border-color: #7a3b3b;
+  background: #1e1416;
+}
+
+.kikx-session-card.is-deleted:hover,
+.kikx-session-card.is-deleted:focus-visible {
+  border-color: #b45454;
+}
+
+.kikx-session-card.is-deleted .kikx-session-card__title {
+  color: #e6b0b0;
+}
+
 /* Window-manager breadcrumb + sub-session affordances. */
 
 .kikx-breadcrumb {

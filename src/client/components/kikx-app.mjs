@@ -21,11 +21,13 @@ import {
   buildRunnerShell,
   buildSessionGrid,
   buildStatusBar,
+  buildSessionSearch,
   buildThreadSection,
   buildWindow,
   buildWindowHeader,
   buildWorkspaceGrid,
   childGridTitle,
+  paintSessionSearch,
   childSessionsFor,
   createChatViewElement,
   createFrameItemElement,
@@ -49,6 +51,8 @@ import {
   deleteJSON,
   deleteSession,
   getJSON,
+  loadDeletedSessions,
+  restoreSession,
   patchJSON,
   postJSON,
   applyPreviewToGrid,
@@ -106,8 +110,10 @@ import {
   minimizeCurrent,
   navigateToDepth,
   onSessionNameKeydown,
+  onSessionSearchInput,
   openSessionFromCard,
   pruneMissingSessionsFromStack,
+  toggleShowDeleted,
   setHeroName,
   showSubSessions,
   stackFromCurrentURL,
@@ -214,6 +220,7 @@ export class KikxApp extends HTMLElement {
     this._buildEditableTitle = (title, sessionID) => buildEditableTitle(this, title, sessionID);
     this._beginSessionNameEdit = (sessionID, currentTitle) => beginSessionNameEdit(this, sessionID, currentTitle);
     this._onSessionNameKeydown = (event, sessionID) => onSessionNameKeydown(this, event, sessionID);
+    this._onSessionSearchInput = (value) => onSessionSearchInput(this, value);
     this._cancelSessionNameEdit = () => cancelSessionNameEdit(this);
     this._commitSessionName = async (sessionID) => commitSessionName(this, sessionID);
     this._buildRunnerShell = () => buildRunnerShell(this);
@@ -227,6 +234,10 @@ export class KikxApp extends HTMLElement {
     this._childGridTitle = (parentSessionID) => childGridTitle(this, parentSessionID);
     this._childSessions = (parentSessionID) => childSessionsFor(this, parentSessionID);
     this._buildSessionGrid = (parentSessionID) => buildSessionGrid(this, parentSessionID);
+    this._buildSessionSearch = () => buildSessionSearch(this);
+    this._paintSessionSearch = () => paintSessionSearch(this);
+    this._toggleShowDeleted = () => toggleShowDeleted(this);
+    this._loadDeletedSessions = async () => loadDeletedSessions(this);
     this._buildThreadSection = (sessionID) => buildThreadSection(this, sessionID);
     this._buildStatusBar = () => buildStatusBar(this);
     this._buildAccountEditor = () => buildAccountEditor(this);
@@ -389,6 +400,31 @@ export class KikxApp extends HTMLElement {
     } finally {
       this._deletingSessionIDs.delete(sessionID);
       this._render();
+    }
+  }
+
+  // Restore (undelete) a soft-deleted session from its card's recycle action.
+  // The id is guarded against a concurrent restore the same way delete guards
+  // against a concurrent delete; the render happens in the data layer.
+  async _restoreSession(sessionID) {
+    if (!sessionID || this._restoringSessionIDs?.has(sessionID))
+      return;
+
+    this._restoringSessionIDs ||= new Set();
+    this._restoringSessionIDs.add(sessionID);
+    this._state.status = 'Restoring session...';
+    this._state.statusKind = 'pending';
+
+    try {
+      await restoreSession(this, sessionID);
+      this._state.status = 'Session restored';
+      this._state.statusKind = 'ready';
+    } catch (error) {
+      this._state.status = error.message;
+      this._state.statusKind = 'error';
+      this._render();
+    } finally {
+      this._restoringSessionIDs.delete(sessionID);
     }
   }
 

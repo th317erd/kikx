@@ -5,12 +5,13 @@ import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { createErrorSurfaceElement } from './kikx-error-surface.mjs';
 import {
   getCurrentEntry,
+  getDeletedSessions,
   getScopeNoun,
   getSelectedFrames,
   getSelectedSession,
-  getSessions,
   getSessionPreviews,
   getStackDepth,
+  getVisibleSessions,
 } from '../state/kikx-state.mjs';
 import { childSessions } from './chat-view-model.mjs';
 import { formatTokenUsageTotal } from './kikx-app-helpers.mjs';
@@ -251,7 +252,8 @@ export function buildWindowHeader(app, { title, sessionID = null, collapsed = fa
 
   return div.class('kikx-window__header')(
     backButton,
-    buildEditableTitle(app, title, sessionID),
+    buildBreadcrumbTitle(app, title, sessionID),
+    buildSessionSearch(app),
     div.class('kikx-window__actions')(
       span.class.bindState((state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`, ['previewsLoading', 'previewStatus'])(
         span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
@@ -328,8 +330,12 @@ export function childSessionsFor(app, parentSessionID) {
 
 export function buildSessionGrid(app, parentSessionID) {
   let grid = document.createElement('kikx-session-grid');
+  // getVisibleSessions applies the title filter and (while the eye is on) the
+  // soft-deleted bucket; childSessions inside the grid narrows to this level.
+  let visible = getVisibleSessions(app._state);
+  let deletedSessionIDs = new Set(getDeletedSessions(app._state).map((session) => session.id));
   grid.update({
-    allSessions: getSessions(app._state),
+    allSessions: visible,
     parentSessionID,
     previews: getSessionPreviews(app._state),
     appState: app._state,
@@ -337,6 +343,7 @@ export function buildSessionGrid(app, parentSessionID) {
     loading: app._state.previewsLoading,
     addLabel: `Add ${scopeNoun(app)}`,
     deletingSessionIDs: app._deletingSessionIDs,
+    deletedSessionIDs,
   });
   grid.addEventListener('kikx-card-open', (event) => {
     if (event.detail?.sessionID)
@@ -347,7 +354,87 @@ export function buildSessionGrid(app, parentSessionID) {
     if (event.detail?.sessionID)
       app._deleteSession(event.detail.sessionID);
   });
+  grid.addEventListener('kikx-card-restore', (event) => {
+    if (event.detail?.sessionID)
+      app._restoreSession(event.detail.sessionID);
+  });
   return div.class('kikx-workspace__grid')(grid);
+}
+
+// The centered session-workspace controls: a title filter with a floating eye
+// toggle. Placed in the window header (decision A: the search takes the header
+// center; the editable name relocates to the breadcrumb's active crumb).
+export function buildSessionSearch(app) {
+  let input = document.createElement('input');
+  input.type = 'search';
+  input.className = 'kikx-session-search__input';
+  input.name = 'session-search';
+  input.placeholder = 'Search sessions';
+  input.setAttribute('aria-label', 'Search sessions by title');
+  input.value = app._state.sessionSearch || '';
+  input.addEventListener('input', (event) => app._onSessionSearchInput(event.target.value));
+  input.addEventListener('keydown', (event) => event.stopPropagation());
+
+  let eye = document.createElement('button');
+  eye.type = 'button';
+  eye.className = 'kikx-session-search__eye';
+  eye.setAttribute('aria-label', 'Show deleted sessions');
+  // Reflect the current eye state at build time so a full shell rebuild (every
+  // toggle calls _render) shows the right on/off affordance without waiting for
+  // paintSessionSearch; paintSessionSearch handles in-place updates while typing.
+  applyEyeState(eye, app._state.showDeletedSessions === true);
+  eye.addEventListener('click', (event) => {
+    event.stopPropagation();
+    app._toggleShowDeleted();
+  });
+
+  let container = document.createElement('div');
+  container.className = 'kikx-session-search';
+  container.append(input, eye);
+  return container;
+}
+
+// Repaint the eye's on/off state in place (no shell rebuild while typing).
+export function paintSessionSearch(app) {
+  let eye = app.querySelector('.kikx-session-search__eye');
+  if (!eye)
+    return;
+
+  applyEyeState(eye, app._state.showDeletedSessions === true);
+}
+
+// The eye's on/off affordance: class, aria-pressed, tooltip, and glyph. Shared
+// by the builder (initial state) and paintSessionSearch (in-place repaint).
+function applyEyeState(eye, on) {
+  eye.classList.toggle('is-on', on);
+  eye.setAttribute('aria-pressed', on ? 'true' : 'false');
+  eye.setAttribute('aria-label', on ? 'Hide deleted sessions' : 'Show deleted sessions');
+  eye.title = on ? 'Hide deleted sessions' : 'Show deleted sessions';
+  eye.textContent = on ? '\u{1F441}' : '\u{1F441}\u{200D}\u{1F5E8}';
+}
+
+// The editable session name, relocated off the header center. Click to rename;
+// an inline input while editing. Returns an h2 for non-session headers.
+export function buildBreadcrumbTitle(app, title, sessionID) {
+  if (!sessionID)
+    return h2(title);
+
+  if (app._state.editingSessionNameID === sessionID) {
+    return input
+      .type('text')
+      .class('kikx-breadcrumb__title-input')
+      .name('session-name')
+      .value(app._state.editingSessionNameValue || '')
+      .onInput((event) => { app._state.editingSessionNameValue = event.target.value; })
+      .onKeydown((event) => app._onSessionNameKeydown(event, sessionID))
+      .onFocusout(() => app._commitSessionName(sessionID))();
+  }
+
+  return button
+    .type('button')
+    .class('kikx-breadcrumb__title')
+    .title('Rename session')
+    .onClick(() => app._beginSessionNameEdit(sessionID, title))(title);
 }
 
 export function buildThreadSection(app, sessionID) {

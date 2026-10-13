@@ -14,6 +14,14 @@ import { AeorDBClient } from '../../src/core/aeordb/aeordb-client.mjs';
 import { CompactionService } from '../../src/core/compaction/index.mjs';
 import { createServer } from '../../src/server/create-server.mjs';
 
+// The host that runs these tests may export the dev stack's database wiring
+// (ORG_AEOR_KIKX_DATABASE_DRIVER/_URL). Left ambient those force a PostgreSQL
+// driver into env-resolution assertions that expect the built-in AeorDB default,
+// so clear them before any test runs. applyEnvironment captures/restores per
+// test, so this only removes the unintended ambient leak.
+delete process.env.ORG_AEOR_KIKX_DATABASE_DRIVER;
+delete process.env.ORG_AEOR_KIKX_DATABASE_URL;
+
 const ENV_KEYS = [
   'AEORDB_URL',
   'AEORDB_TOKEN',

@@ -140,6 +140,82 @@ test('deleting: true disables Delete and marks the card busy', () => {
   assert.equal(cardRoot(card).getAttribute('aria-busy'), 'false');
 });
 
+test('a soft-deleted card is tinted and its second action becomes Recycle', () => {
+  let card = mountCard({ session: { id: 'ses_1', title: 'Alpha', deletedAt: 'stamp-1' }, deleted: true });
+
+  assert.ok(cardRoot(card).classList.contains('is-deleted'), 'the card is reddish-tinted');
+
+  let [ , second ] = progressButtons(card);
+  assert.equal(second.getAttribute('icon'), 'recycle');
+  assert.equal(second.getAttribute('duration'), '0', 'recycle is click-to-activate, no hold');
+  assert.ok(second.classList.contains('progress-button-success'), 'recycle is success-themed');
+  assert.ok(!second.classList.contains('progress-button-danger'), 'the danger theme is cleared');
+});
+
+test('confirming Recycle on a deleted card emits kikx-card-restore, never kikx-card-delete', () => {
+  let card = mountCard({ session: { id: 'ses_1', title: 'Alpha', deletedAt: 'stamp-1' }, deleted: true });
+  let restores = [];
+  let deletes = [];
+  card.addEventListener('kikx-card-restore', (event) => restores.push(event.detail));
+  card.addEventListener('kikx-card-delete', (event) => deletes.push(event.detail));
+
+  let [ , recycle ] = progressButtons(card);
+  recycle.fireConfirm();
+
+  assert.deepEqual(restores, [ { sessionID: 'ses_1' } ]);
+  assert.deepEqual(deletes, [], 'a deleted card must never re-delete');
+});
+
+test('an undelete retargets the second action back to Delete 1s-hold', () => {
+  let card = mountCard({ session: { id: 'ses_1', title: 'Alpha', deletedAt: 'stamp-1' }, deleted: true });
+  card.update({ session: { id: 'ses_1', title: 'Alpha' }, deleted: false });
+
+  assert.ok(!cardRoot(card).classList.contains('is-deleted'));
+  let [ , second ] = progressButtons(card);
+  assert.equal(second.getAttribute('icon'), 'delete');
+  assert.equal(second.getAttribute('duration'), '1000');
+  assert.ok(second.classList.contains('progress-button-danger'));
+  assert.ok(!second.classList.contains('progress-button-success'));
+});
+
+test('a soft-deleted card is tinted and its second action becomes Recycle', () => {
+  let card = mountCard({ session: { id: 'ses_1', title: 'Alpha', deletedAt: 'stamp-1' }, deleted: true });
+
+  assert.ok(cardRoot(card).classList.contains('is-deleted'), 'the card is reddish-tinted');
+
+  let [ , second ] = progressButtons(card);
+  assert.equal(second.getAttribute('icon'), 'recycle');
+  assert.equal(second.getAttribute('duration'), '0', 'recycle is click-to-activate, no hold');
+  assert.ok(second.classList.contains('progress-button-success'), 'recycle is success-themed');
+  assert.ok(!second.classList.contains('progress-button-danger'), 'the danger theme is cleared');
+});
+
+test('confirming Recycle on a deleted card emits kikx-card-restore, never kikx-card-delete', () => {
+  let card = mountCard({ session: { id: 'ses_1', title: 'Alpha', deletedAt: 'stamp-1' }, deleted: true });
+  let restores = [];
+  let deletes = [];
+  card.addEventListener('kikx-card-restore', (event) => restores.push(event.detail));
+  card.addEventListener('kikx-card-delete', (event) => deletes.push(event.detail));
+
+  let [ , recycle ] = progressButtons(card);
+  recycle.fireConfirm();
+
+  assert.deepEqual(restores, [ { sessionID: 'ses_1' } ]);
+  assert.deepEqual(deletes, [], 'a deleted card must never re-delete');
+});
+
+test('an undelete retargets the second action back to Delete 1s-hold', () => {
+  let card = mountCard({ session: { id: 'ses_1', title: 'Alpha', deletedAt: 'stamp-1' }, deleted: true });
+  card.update({ session: { id: 'ses_1', title: 'Alpha' }, deleted: false });
+
+  assert.ok(!cardRoot(card).classList.contains('is-deleted'));
+  let [ , second ] = progressButtons(card);
+  assert.equal(second.getAttribute('icon'), 'delete');
+  assert.equal(second.getAttribute('duration'), '1000');
+  assert.ok(second.classList.contains('progress-button-danger'));
+  assert.ok(!second.classList.contains('progress-button-success'));
+});
+
 test('the card root is not a button and marks selection with aria-current', () => {
   let card = mountCard({ selected: true });
   let root = cardRoot(card);

@@ -518,6 +518,7 @@ test('GET /api/v1/sessions lists runtime sessions', async () => {
       options: {
         limit: 50,
         offset: 0,
+        includeDeleted: false,
       },
     });
     assert.deepEqual(body, {

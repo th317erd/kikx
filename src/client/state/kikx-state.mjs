@@ -9,18 +9,22 @@ import {
   boundSessionFrameCaches,
   boundSessionPreviews,
   countMessageFrames,
+  forgetDeletedSessionState,
   isDeletedSession,
   mergeSessionFrameWindowState,
   mergeSessions,
   prependSessionFramesState,
+  recordDeletedSessionState,
   removeSession as removeSessionState,
   resetSessionPagingState,
+  setDeletedSessionsState,
   setSessionFramesState,
   setSessionPagingState,
   upsertFramesState,
   upsertFrameState,
   upsertSessionState,
 } from './session-state-utils.mjs';
+import { visibleSessions } from './session-visibility.mjs';
 import {
   createNavigationStack,
   currentEntry,
@@ -69,6 +73,11 @@ export const kikxState = new ReactiveState({
   clientAgentConfigFormsByPluginID: {},
   connectionStatus: 'Disconnected',
   connectionStatusKind: 'error',
+  // The "show deleted sessions" eye and the title filter. deletedSessionIDs /
+  // deletedSessionDetailsByID hold the soft-deleted bucket, which getSessions()
+  // never returns; getVisibleSessions() merges it in only while the eye is on.
+  deletedSessionDetailsByID: {},
+  deletedSessionIDs: [],
   draft: '',
   editingSessionID: '',
   editingSessionTitle: '',
@@ -85,6 +94,8 @@ export const kikxState = new ReactiveState({
   editingSessionNameValue: '',
   sessionDetailsByID: {},
   sessionIDs: [],
+  sessionSearch: '',
+  showDeletedSessions: false,
   status: 'Checking AeorDB event stream...',
   statusKind: 'pending',
   editingTeamID: '',
@@ -245,6 +256,39 @@ export function setPreviewStatus(status, state = kikxState) {
   state.previewStatus = status || '';
 }
 
+export function getDeletedSessions(state = kikxState) {
+  return state.deletedSessionIDs
+    .map((sessionID) => state.deletedSessionDetailsByID[sessionID])
+    .filter(Boolean);
+}
+
+// The single source the workspace grid renders from: live sessions always, plus
+// the soft-deleted bucket while the eye is on, both narrowed by the title query.
+export function getVisibleSessions(state = kikxState) {
+  return visibleSessions({
+    liveSessions: getSessions(state),
+    deletedSessions: getDeletedSessions(state),
+    showDeleted: state.showDeletedSessions === true,
+    query: state.sessionSearch,
+  });
+}
+
+export function isShowingDeletedSessions(state = kikxState) {
+  return state.showDeletedSessions === true;
+}
+
+export function getSessionSearch(state = kikxState) {
+  return state.sessionSearch || '';
+}
+
+export function setSessionSearch(query, state = kikxState) {
+  state.sessionSearch = typeof query === 'string' ? query : '';
+}
+
+export function setShowDeletedSessions(show, state = kikxState) {
+  state.showDeletedSessions = show === true;
+}
+
 export function setSessions(nextSessions, state = kikxState) {
   applySessionSnapshot(state, mergeSessions(state, nextSessions));
 }
@@ -255,6 +299,18 @@ export function upsertSession(session, state = kikxState) {
 
 export function removeSession(sessionID, state = kikxState) {
   applySessionSnapshot(state, removeSessionState(state, sessionID));
+}
+
+export function setDeletedSessions(sessions, state = kikxState) {
+  applyDeletedSessionSnapshot(state, setDeletedSessionsState(state, sessions));
+}
+
+export function recordDeletedSession(session, state = kikxState) {
+  applyDeletedSessionSnapshot(state, recordDeletedSessionState(state, session));
+}
+
+export function forgetDeletedSession(sessionID, state = kikxState) {
+  applyDeletedSessionSnapshot(state, forgetDeletedSessionState(state, sessionID));
 }
 
 export function setSessionFrames(sessionID, frames, state = kikxState, paging = null) {
@@ -299,6 +355,10 @@ export function resetSessionState(state = kikxState) {
   state.framesBySessionID = {};
   state.sessionPagingByID = {};
   state.selectedSessionID = '';
+  state.deletedSessionIDs = [];
+  state.deletedSessionDetailsByID = {};
+  state.sessionSearch = '';
+  state.showDeletedSessions = false;
 }
 
 export function setAgentProviders(providers, state = kikxState) {
@@ -439,7 +499,12 @@ export function setTeamFormFromTeam(team, state = kikxState) {
   state.teamFormMemberKeys = memberKeysFromTeam(team);
 }
 
-export { countMessageFrames };
+export { countMessageFrames, isDeletedSession };
+
+function applyDeletedSessionSnapshot(state, snapshot) {
+  state.deletedSessionIDs = snapshot.deletedSessionIDs;
+  state.deletedSessionDetailsByID = snapshot.deletedSessionDetailsByID;
+}
 
 function applySessionSnapshot(state, snapshot) {
   state.sessionIDs = snapshot.sessionIDs;

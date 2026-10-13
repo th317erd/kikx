@@ -160,7 +160,10 @@ class StagehandFrameRuntime extends EventEmitter {
   async listSessions(options = {}) {
     let offset = options.offset || 0;
     let limit = options.limit || this.sessions.length;
-    return this.sessions.slice(offset, offset + limit);
+    let listed = options.includeDeleted === true
+      ? this.sessions.slice()
+      : this.sessions.filter((session) => !session.deletedAt);
+    return listed.slice(offset, offset + limit);
   }
 
   async createSession(input = {}) {
@@ -246,8 +249,32 @@ class StagehandFrameRuntime extends EventEmitter {
       throw error;
     }
 
-    session.title = input.title || session.title;
+    if (Object.hasOwn(input, 'title'))
+      session.title = input.title || session.title;
+    if (Object.hasOwn(input, 'deletedAt'))
+      session.deletedAt = input.deletedAt || null;
     session.updatedAt = Date.now();
+    this.emitEvent('session.saved', {
+      sessionID: session.id,
+      session,
+    });
+    return session;
+  }
+
+  // Soft delete: stamp deletedAt, emit session.saved. Mirrors FrameRuntime so
+  // the restore flow is exercised end to end.
+  async deleteSession(sessionID) {
+    let session = this.sessions.find((candidate) => candidate.id === sessionID);
+    if (!session) {
+      let error = new Error(`Unknown session: ${sessionID}`);
+      error.status = 404;
+      throw error;
+    }
+
+    let stamp = Date.now();
+    session.deletedAt = stamp;
+    session.title = session.title || session.id;
+    session.updatedAt = stamp;
     this.emitEvent('session.saved', {
       sessionID: session.id,
       session,
@@ -361,6 +388,7 @@ function normalizeSession(input = {}) {
     updatedAt: input.updatedAt || input.createdAt || Date.now(),
     createdClock: input.createdClock || null,
     updatedClock: input.updatedClock || input.createdClock || null,
+    deletedAt: input.deletedAt || null,
   };
 }
 

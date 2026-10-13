@@ -23,6 +23,11 @@ import { PluginRegistry } from '../../src/core/plugins/index.mjs';
 import { createServer } from '../../src/server/create-server.mjs';
 
 delete process.env.KIKX_PLUGIN_PATHS;
+// The host may export the dev stack's database wiring; left ambient it forces a
+// PostgreSQL driver into the driver-default assertions. Clear it so the built-in
+// AeorDB default is what is exercised.
+delete process.env.ORG_AEOR_KIKX_DATABASE_DRIVER;
+delete process.env.ORG_AEOR_KIKX_DATABASE_URL;
 
 function close(server) {
   return new Promise((resolve, reject) => {

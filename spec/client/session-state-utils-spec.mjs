@@ -841,6 +841,8 @@ test('upsertFrameState ignores malformed frames and missing session ids', () => 
     sessionDetailsByID: {},
     framesBySessionID: {},
     sessionPagingByID: {},
+    deletedSessionIDs: [],
+    deletedSessionDetailsByID: {},
   };
 
   assert.deepEqual(upsertFrameState(state, '', { id: 'frame_1' }), state);

@@ -3,6 +3,7 @@
 import {
   getRequestAccount,
   httpError,
+  parseBoolean,
   parseNonNegativeInteger,
   parseOptionalNonNegativeInteger,
   parsePositiveInteger,
@@ -12,6 +13,7 @@ import {
 import {
   matchSessionCompactionRetryRoute,
   matchSessionDeleteRoute,
+  matchSessionRestoreRoute,
   matchSessionRoute,
   matchSessionUpdateRoute,
 } from './route-matchers.mjs';
@@ -24,6 +26,9 @@ export async function handleSessionRoutes({ request, response, url, context }) {
         sessions: await frameRuntime.listSessions({
           limit: parsePositiveInteger(url.searchParams.get('limit'), 50),
           offset: parseNonNegativeInteger(url.searchParams.get('offset'), 0),
+          // "Show deleted sessions": the workspace opts in with includeDeleted=1
+          // so soft-deleted manifests are listed alongside live ones.
+          includeDeleted: parseBoolean(url.searchParams.get('includeDeleted'), false),
         }),
       },
     });
@@ -103,6 +108,24 @@ export async function handleSessionRoutes({ request, response, url, context }) {
   if (request.method === 'DELETE' && sessionDeleteRoute) {
     let frameRuntime = context.require('frameRuntime');
     let session = await frameRuntime.deleteSession(sessionDeleteRoute.sessionID);
+
+    writeJSON(response, 200, {
+      data: {
+        session,
+      },
+    });
+    return true;
+  }
+
+  // Restore (undelete): clear the soft-delete stamp so the session returns to
+  // life. The inverse of DELETE, and the "show deleted sessions" undo. Nothing
+  // is created or destroyed; only the manifest field changes.
+  let sessionRestoreRoute = matchSessionRestoreRoute(url.pathname);
+  if (request.method === 'POST' && sessionRestoreRoute) {
+    let frameRuntime = context.require('frameRuntime');
+    let session = await frameRuntime.updateSession(sessionRestoreRoute.sessionID, {
+      deletedAt: null,
+    });
 
     writeJSON(response, 200, {
       data: {

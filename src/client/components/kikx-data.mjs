@@ -1,11 +1,14 @@
 'use strict';
 
 import {
+  forgetDeletedSession,
   getSessionPaging,
   getSessions,
   isCollapsed,
+  isDeletedSession,
   mergeSessionFrameWindow,
   prependSessionFrames,
+  recordDeletedSession,
   removeSession,
   resetAgentForm,
   setAccount,
@@ -17,10 +20,12 @@ import {
   setPreviewStatus,
   setSessionFrames,
   setSessionPaging,
+  setDeletedSessions,
   setSessionPreviews,
   setSessions,
   setTeams,
   setTokenUsage,
+  upsertSession,
   upsertSessionPreview,
 } from '../state/kikx-state.mjs';
 import { loadClientComponentDescriptors } from './frame-component-registry.mjs';
@@ -80,6 +85,11 @@ export async function loadSessions(app) {
     let result = await getJSON(app, '/api/v1/sessions');
     setSessions(result.data.sessions || [], app._state);
 
+    // The eye may already be on (e.g. after a reconnect); keep the deleted
+    // bucket fresh alongside the live list.
+    if (app._state.showDeletedSessions === true)
+      await loadDeletedSessions(app);
+
     // Deep-link: ?session=<id> or ?view=thread opens a session's thread.
     await app._applySessionDeepLink();
 
@@ -125,8 +135,44 @@ export async function deleteSession(app, sessionID) {
   // swallowing fetch errors (a failed refresh would look like a clean delete),
   // and the SSE session.saved frame keeps other tabs consistent via #1.
   removeSession(sessionID, app._state);
+  // Keep the deleted manifest in the "show deleted" bucket so the eye reveals it
+  // without a refetch.
+  let deleted = result?.data?.session || null;
+  if (deleted && isDeletedSession(deleted))
+    recordDeletedSession(deleted, app._state);
   app._render();
-  return result?.data?.session || null;
+  return deleted;
+}
+
+// Fetch every soft-deleted session (includeDeleted=1) and replace the bucket.
+// Called when the eye turns on, and again on a session-list refresh while it is
+// on, so the deleted view is current without polling.
+export async function loadDeletedSessions(app) {
+  try {
+    let result = await getJSON(app, '/api/v1/sessions?includeDeleted=1');
+    let all = result.data.sessions || [];
+    setDeletedSessions(all.filter((session) => isDeletedSession(session)), app._state);
+  } catch (error) {
+    app._state.status = error.message;
+    app._state.statusKind = 'error';
+  } finally {
+    // The fetch resolves after the eye was toggled, so repaint here for the
+    // deleted cards to appear. requestRender coalesces with any render already
+    // scheduled by the caller.
+    app._requestRender?.();
+  }
+}
+
+// Restore (undelete) a soft-deleted session: clear the stamp server-side, drop
+// it from the deleted bucket, and return it to the live list.
+export async function restoreSession(app, sessionID) {
+  let result = await postJSON(app, `/api/v1/sessions/${encodeURIComponent(sessionID)}/restore`, {});
+  let session = result?.data?.session || null;
+  forgetDeletedSession(sessionID, app._state);
+  if (session)
+    upsertSession(session, app._state);
+  app._render();
+  return session;
 }
 
 export async function loadAgents(app) {

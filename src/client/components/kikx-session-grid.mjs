@@ -21,6 +21,10 @@ export class KikxSessionGrid extends HTMLElement {
     // Session ids with an in-flight soft delete. The app owns the set and hands
     // it in via update() so a full re-render cannot lose the pending state.
     this._deletingSessionIDs = new Set();
+    // Soft-deleted ids shown by the "show deleted" eye. The app owns the list
+    // and hands it in via update(); a card in this set renders the recycle
+    // action and the reddish tint.
+    this._deletedSessionIDs = new Set();
   }
 
   // The grid always lists direct children of parentSessionID. It owns this
@@ -93,6 +97,8 @@ export class KikxSessionGrid extends HTMLElement {
       this.addLabel = input.addLabel;
     if (input.deletingSessionIDs instanceof Set)
       this._deletingSessionIDs = input.deletingSessionIDs;
+    if (input.deletedSessionIDs instanceof Set)
+      this._deletedSessionIDs = input.deletedSessionIDs;
   }
 
   setSelected(sessionID) {
@@ -131,6 +137,7 @@ export class KikxSessionGrid extends HTMLElement {
       appState: this._appState,
       selected: sessionID === this._selectedSessionID,
       deleting: this._deletingSessionIDs.has(sessionID),
+      deleted: this._deletedSessionIDs.has(sessionID),
     };
   }
 

@@ -50,9 +50,12 @@ function createToolbar(owner) {
   // The bottom toolbar holds per-session actions. When the vendored radial
   // aeor-progress-button is available both controls are progress buttons (the
   // icon-centric form the design calls for): Open is click-to-activate
-  // (duration 0); Delete requires a 1s hold so a stray click can never destroy
-  // a session. If the component failed to load, both degrade to plain buttons
-  // so the card still works.
+  // (duration 0). The second control is a single element that retargets per
+  // state: for a live session it is Delete (a 1s hold, so a stray click can
+  // never destroy a session); for a soft-deleted session it becomes Recycle, a
+  // click-to-activate undelete. One element, so retargeting updates attributes
+  // in place and never rebuilds the toolbar. If the component failed to load
+  // both degrade to plain buttons so the card still works.
   let openAction = createActionButton({
     className: 'kikx-session-card__action kikx-session-card__action--open',
     icon: 'open',
@@ -79,10 +82,14 @@ function createToolbar(owner) {
   // aeor-progress-button fires `confirm` when its hold (or click) completes.
   toolbar.addEventListener('confirm', (event) => {
     event.stopPropagation();
-    if (event.target === deleteButton)
-      owner._emitDelete();
-    else
+    if (event.target === deleteButton) {
+      if (owner._deleted)
+        owner._emitRestore();
+      else
+        owner._emitDelete();
+    } else {
       owner._emitOpen();
+    }
   });
 
   // Plain fallback buttons never emit `confirm`; wire their clicks directly.
@@ -95,7 +102,10 @@ function createToolbar(owner) {
   if (!deleteAction.usesProgressButton) {
     deleteButton.addEventListener('click', (event) => {
       event.stopPropagation();
-      owner._emitDelete();
+      if (owner._deleted)
+        owner._emitRestore();
+      else
+        owner._emitDelete();
     });
   }
 
@@ -143,6 +153,7 @@ export class KikxSessionCard extends HTMLElement {
     this._truncated = false;
     this._selected = false;
     this._deleting = false;
+    this._deleted = false;
     this._shell = null;
   }
 
@@ -197,6 +208,17 @@ export class KikxSessionCard extends HTMLElement {
     }));
   }
 
+  _emitRestore() {
+    if (!this.sessionID)
+      return;
+
+    this.dispatchEvent(new CustomEvent('kikx-card-restore', {
+      bubbles: true,
+      composed: true,
+      detail: { sessionID: this.sessionID },
+    }));
+  }
+
   update(input = {}) {
     if (Object.hasOwn(input, 'session'))
       this._session = input.session;
@@ -212,6 +234,8 @@ export class KikxSessionCard extends HTMLElement {
       this._selected = input.selected === true;
     if (Object.hasOwn(input, 'deleting'))
       this._deleting = input.deleting === true;
+    if (Object.hasOwn(input, 'deleted'))
+      this._deleted = input.deleted === true;
 
     if (!this._shell)
       this._build();
@@ -232,6 +256,8 @@ export class KikxSessionCard extends HTMLElement {
     shell.root.setAttribute('aria-label', label);
 
     shell.root.classList.toggle('is-selected', this._selected);
+    // A soft-deleted card is tinted reddish and its action becomes Recycle.
+    shell.root.classList.toggle('is-deleted', this._deleted);
     // The root is not a button (it contains real controls), so mark the current
     // item instead of aria-pressed; clear it when unselected so no stale
     // attribute survives a re-render.
@@ -247,8 +273,23 @@ export class KikxSessionCard extends HTMLElement {
       syncFallbackLabel(shell.openButton);
     }
     if (shell.deleteButton) {
-      shell.deleteButton.setAttribute('label', label ? `Delete ${label}` : 'Delete session');
-      shell.deleteButton.setAttribute('title', 'Hold 1s to delete');
+      // The same control is Delete (hold) for a live session and Recycle
+      // (click) for a soft-deleted one; retarget in place.
+      if (this._deleted) {
+        shell.deleteButton.setAttribute('icon', 'recycle');
+        shell.deleteButton.setAttribute('duration', '0');
+        shell.deleteButton.setAttribute('label', label ? `Restore ${label}` : 'Restore session');
+        shell.deleteButton.setAttribute('title', 'Restore session');
+        shell.deleteButton.classList.remove('progress-button-danger');
+        shell.deleteButton.classList.add('progress-button-success');
+      } else {
+        shell.deleteButton.setAttribute('icon', 'delete');
+        shell.deleteButton.setAttribute('duration', '1000');
+        shell.deleteButton.setAttribute('label', label ? `Delete ${label}` : 'Delete session');
+        shell.deleteButton.setAttribute('title', 'Hold 1s to delete');
+        shell.deleteButton.classList.remove('progress-button-success');
+        shell.deleteButton.classList.add('progress-button-danger');
+      }
       shell.deleteButton.disabled = this._deleting;
       syncFallbackLabel(shell.deleteButton);
     }

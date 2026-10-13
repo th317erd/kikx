@@ -1,6 +1,6 @@
 'use strict';
 
-import { isCollapsed, setTokenUsage, upsertFrames, upsertSession } from '../state/kikx-state.mjs';
+import { forgetDeletedSession, isCollapsed, recordDeletedSession, setTokenUsage, upsertFrames, upsertSession } from '../state/kikx-state.mjs';
 import { isDeletedSession } from '../state/session-state-utils.mjs';
 import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame, parseRuntimeEventResult } from './kikx-app-helpers.mjs';
@@ -88,8 +88,16 @@ function dispatchRuntimeEvent(app, event) {
     // deletedAt stamp. upsertSession removes the id; the navigation stack (and
     // the address bar) still point at it, so prune before rendering or this tab
     // would show a thread for a card that no longer exists.
-    if (wasListed && isDeletedSession(data.session))
-      pruneMissingSessionsFromStack(app);
+    if (isDeletedSession(data.session)) {
+      // Keep the "show deleted" bucket current so the eye reveals the card.
+      recordDeletedSession(data.session, app._state);
+      if (wasListed)
+        pruneMissingSessionsFromStack(app);
+    } else {
+      // A live save proves the session is not deleted (e.g. a restore in another
+      // tab); drop any stale deleted-bucket entry.
+      forgetDeletedSession(data.session.id, app._state);
+    }
 
     if (!app._syncSessionShell())
       app._requestRender();
