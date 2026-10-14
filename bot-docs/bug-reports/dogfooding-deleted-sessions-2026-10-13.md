@@ -46,5 +46,22 @@ monitored the bot's implementation through the UI.
 - Tests: new `session-visibility-spec`, `session-deleted-bucket-spec`,
   `session-restore-route-spec`, `deleted-sessions-stagehand`; existing specs
   updated.
-- At the time of this report the bot was still iterating tests and a
-  real-browser proof; **not yet committed**.
+
+## Outcome (verified)
+
+Committed and pushed as `0fba2f9` "Add view & recover soft-deleted sessions",
+plus follow-ups `ef3cb2c` (restore the `getSessions` import — a regression the
+feature work introduced, caught and fixed), `0517367` and `23fa412` (browser-spec
+stabilization). Full suite: **1321 tests / 1292 pass / 0 fail / 29 skipped**.
+
+Independently verified by driving the **dev** UI (`:3001`, real Chromium):
+- Search input + eye toggle present in the header.
+- Default view 6 cards, 0 deleted (hidden).
+- Eye ON → 12 cards, 6 deleted, rendered reddish
+  (`bg rgb(30,20,22)` / `border rgb(122,59,59)` vs live `rgb(23,28,33)`).
+- Search filters by title (2 results for "Ring Probe").
+- Recycle on a deleted card → deleted 6 → 5; the session returned live
+  (`deletedAt=null`, live 6 → 7). Soft-delete semantics preserved.
+
+Note: prod (`:3099`) still runs `kikx/kikx:28bcfd9` without this feature; dev has
+it. Not deployed (deploy not requested).
