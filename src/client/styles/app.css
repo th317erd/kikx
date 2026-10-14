@@ -1242,9 +1242,19 @@ kikx-typing-indicator {
   border-bottom: 1px solid #232a31;
 }
 
+/* Left slot: back button + title. flex:1 balances the right actions slot so the
+   centered search sits in the true middle at EVERY level (root h2 included). */
+.kikx-window__lead {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .kikx-window__header h2,
 .kikx-window__header .kikx-window__title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -1255,8 +1265,9 @@ kikx-typing-indicator {
 
 .kikx-window__actions {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1 1 0;
   align-items: center;
+  justify-content: flex-end;
   gap: 12px;
 }
 
@@ -1433,10 +1444,9 @@ kikx-typing-indicator {
 .kikx-session-search {
   position: relative;
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 1 420px;
   align-items: center;
-  max-width: 420px;
-  margin: 0 auto;
+  min-width: 0;
 }
 
 .kikx-session-search__input {

@@ -252,8 +252,10 @@ export function buildWindowHeader(app, { title, sessionID = null, collapsed = fa
     : null;
 
   return div.class('kikx-window__header')(
-    backButton,
-    buildBreadcrumbTitle(app, title, sessionID),
+    div.class('kikx-window__lead')(
+      backButton,
+      buildBreadcrumbTitle(app, title, sessionID),
+    ),
     buildSessionSearch(app),
     div.class('kikx-window__actions')(
       span.class.bindState((state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`, ['previewsLoading', 'previewStatus'])(
