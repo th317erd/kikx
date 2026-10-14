@@ -411,7 +411,11 @@ function applyEyeState(eye, on) {
   eye.setAttribute('aria-pressed', on ? 'true' : 'false');
   eye.setAttribute('aria-label', on ? 'Hide deleted sessions' : 'Show deleted sessions');
   eye.title = on ? 'Hide deleted sessions' : 'Show deleted sessions';
-  eye.textContent = on ? '\u{1F441}' : '\u{1F441}\u{200D}\u{1F5E8}';
+  // A single eye glyph for both states; the on/off affordance is the `is-on`
+  // class (color/opacity), never a different glyph. The previous off-state used
+  // the "eye in speech bubble" ZWJ emoji (U+1F441 ZWJ U+1F5E8), which renders as
+  // two smashed-together glyphs in most fonts.
+  eye.textContent = '\u{1F441}';
 }
 
 // The editable session name, relocated off the header center. Click to rename;
