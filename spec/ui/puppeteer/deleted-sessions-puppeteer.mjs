@@ -188,8 +188,24 @@ async function cardTitles(page) {
 // Wait until the app stops rebuilding its shell. The startup loaders each fire a
 // full-shell rebuild and can land just after the grid first paints; driving the
 // UI before that settles types/presses into a node about to be swapped out.
-async function waitForRenderSettled(page, quietMS = 250, timeoutMS = 6000) {
+async function waitForRenderSettled(page, quietMS = 250, timeoutMS = 15000) {
   let startedAt = Date.now();
+
+  // Startup loaders (account/agents/sessions/token-usage/client-components) each
+  // end in a full shell rebuild. Wait until they have all SETTLED before we
+  // type or press: a rebuild landing just after we focus the search field would
+  // detach the focused node and swallow the keystrokes. The app sets
+  // `_startupSettled` once every loader has resolved.
+  while (Date.now() - startedAt < timeoutMS) {
+    let settled = await page.evaluate(() => document.querySelector('kikx-app')?._startupSettled === true);
+    if (settled)
+      break;
+
+    await delay(25);
+  }
+
+  // Then require a quiet window on the shell-rebuild counter, in case a settled
+  // startup still scheduled a trailing animation-frame rebuild.
   let lastShell = Symbol('unset');
   let stableSince = Date.now();
   while (Date.now() - startedAt < timeoutMS) {

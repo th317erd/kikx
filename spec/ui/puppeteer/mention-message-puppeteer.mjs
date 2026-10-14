@@ -50,6 +50,12 @@ test('Puppeteer sends an @mention message and verifies mention metadata', async 
     });
     await page.waitForSelector('.kikx-composer textarea:not([disabled])', { timeout: 15000 });
 
+    // Wait for the startup loaders to settle: each ends in a full shell rebuild,
+    // and one landing right after the composer enables would swap out the
+    // focused textarea and swallow the typed keystrokes (the flake this smoke
+    // hit under load).
+    await page.waitForFunction(() => document.querySelector('kikx-app')?._startupSettled === true, { timeout: 15000 });
+
     await page.focus('.kikx-composer textarea');
     await page.keyboard.type('Please review this @"Mention Bot"');
     await page.keyboard.press('Enter');

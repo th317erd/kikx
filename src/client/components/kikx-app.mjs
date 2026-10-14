@@ -442,15 +442,27 @@ export class KikxApp extends HTMLElement {
 
     this._mounted = true;
     this._render();
+    this._startupSettled = false;
     if (this._state.authToken) {
       this._connectRuntimeEvents();
-      this._loadClientComponents();
-      this._loadAccount();
-      this._loadAgents();
-      this._loadSessions();
-      this._loadTokenUsage();
+      // The startup loaders each end in a full shell rebuild. Track when they
+      // all settle (each swallows its own errors) so a browser probe can wait
+      // for startup to finish before driving the UI, instead of racing a late
+      // rebuild that would detach the focused search field mid-typing.
+      let startupLoads = [
+        this._loadClientComponents(),
+        this._loadAccount(),
+        this._loadAgents(),
+        this._loadSessions(),
+        this._loadTokenUsage(),
+      ];
+      Promise.allSettled(startupLoads).then(() => {
+        this._startupSettled = true;
+        this.dispatchEvent(new CustomEvent('kikx-startup-settled', { bubbles: true, composed: true }));
+      });
     } else if (this._state.magicCode) {
       this._verifyMagicLink(this._state.magicCode);
+      this._startupSettled = true;
     }
   }
 
