@@ -5,10 +5,10 @@ import { MAX_CHARACTER_COMPRESSED_LENGTH } from '../agents/character-limits.mjs'
 export const AGENT_TOOL_DEFINITIONS = [
   {
     name: 'end-turn',
-    description: 'End this turn. Pass text to send a visible report; omit text to end the turn silently.',
+    description: 'End this turn — with a report, or silently. Use it when the request is satisfied or when you are only waiting.',
     help: [
-      'Use end-turn when your queue is empty. Include text for a visible report to the user, or omit text to end with nothing to say.',
-      'If real work remains, use continue-turn instead and name the next step.',
+      'Use end-turn when the request is satisfied — include text for a visible report — or when you are only waiting on a process, the user, or another agent (omit text to end silently; the completion or reply will wake you).',
+      'If you have actionable work you can do right now, use continue-turn instead and name the next step.',
     ].join(' '),
     parameters: {
       type: 'object',
@@ -27,12 +27,11 @@ export const AGENT_TOOL_DEFINITIONS = [
   },
   {
     name: 'continue-turn',
-    description: 'End this turn and schedule your next step back to you.',
+    description: 'End this turn and schedule a continuation when you have concrete work to do next.',
     help: [
-      'Use continue-turn when your queue is not empty: you still have work to do.',
+      'Use continue-turn only when you have actionable work you can do right now — not to wait or poll (a process completion or a new user message will wake you).',
       'Include an optional visible text update, then Kikx schedules a hidden continuation back to you after delayMs.',
-      'Name the next thing you will work on in nextAction; it becomes your continuation prompt.',
-      'If you are not sure of the next step, keep working to plan it out rather than stopping.',
+      'Name the next concrete step in nextAction; it becomes your continuation prompt.',
     ].join(' '),
     parameters: {
       type: 'object',

@@ -38,11 +38,11 @@ function createStartedResult(record) {
     ...publicRecord(record, { includeInstructions: true }),
     message: [
       `Async exec ID# ${record.processID} is currently running.`,
-      record.wakeOnCompletion ? 'You will get the result automatically when it completes.' : '',
-      `Poll progress with exec-status {"processID":"${record.processID}"}.`,
+      record.wakeOnCompletion ? 'You will be woken with the result when it completes; there is no need to poll.' : '',
+      `Check status with exec-status {"processID":"${record.processID}"}.`,
       `Read buffered output with exec-read {"processID":"${record.processID}","stream":"combined"}.`,
       `Search buffered output with exec-grep {"processID":"${record.processID}","pattern":"..."}.`,
-      'Use continue-turn to report progress and schedule yourself to poll later.',
+      'If you have no other actionable work meanwhile, end the turn — waiting is not work.',
     ].filter(Boolean).join(' '),
   };
 }

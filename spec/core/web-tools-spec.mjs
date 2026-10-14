@@ -770,7 +770,7 @@ test('ExecTool returns running process instructions and stores completion output
 
   assert.equal(result.status, 'running');
   assert.match(result.message, /Async exec ID#/);
-  assert.match(result.message, /automatically when it completes/);
+  assert.match(result.message, /woken with the result when it completes/);
   assert.equal(result.tools.status.tool, 'exec-status');
 
   await waitFor(async () => processManager.status({

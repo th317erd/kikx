@@ -35,6 +35,6 @@ export function buildContinuationPromptText({ agent, responseFrame, continuation
     `Your scheduled respond-and-continue prompt has fired for ${agent.name || agent.id}.`,
     continuationPrompt,
     priorText ? `Your previous visible response was:\n${priorText}` : '',
-    'Decide whether to use tools, respond visibly, schedule another continuation, or stay silent.',
+    'Take the next concrete step; if the work is now done or you are only waiting, end the turn rather than scheduling another continuation.',
   ].filter(Boolean).join('\n\n');
 }

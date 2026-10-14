@@ -65,14 +65,16 @@ function buildBriefToolLines(_context = {}) {
   return [ 'Tools:', ...BRIEF_TOOL_LINES_COMMON ];
 }
 
-// The turn-ending phrase (dual verb). It carries the queue-as-definition-of-done
-// rule and biases toward continuing: uncertainty is a reason to keep working,
-// not to stop. This is the whole per-turn contract for ending a turn.
+// The turn-ending phrase (dual verb). It carries the definition-of-done rule:
+// stop when the request is satisfied OR when you are only waiting; continue only
+// for actionable work you can do right now. Waiting (on a process, the user, or
+// another agent) is never a reason to keep turning — each will wake you. This is
+// the whole per-turn contract for ending a turn.
 export const TURN_ENDING_LINES = [
   'End every turn one of two ways:',
-  '- end-turn — with a report for the user — when your queue is empty.',
-  '- continue-turn — with the next thing you\'re going to work on — when it isn\'t.',
-  'If you don\'t know the next step yet, keep working to plan it out.',
+  '- end-turn — with a report for the user — when the request is satisfied, or when you are only waiting (on a process, the user, or another agent).',
+  '- continue-turn — with the next concrete step — only when you have actionable work you can do right now.',
+  'Waiting is not working: never poll or loop to await a process, the user, or another agent — a completion or a reply will wake you. If clearly-required work remains but you do not yet know the step, keep planning.',
 ];
 
 function buildMessageBriefAnswerLine(_context = {}) {

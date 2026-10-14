@@ -46,7 +46,7 @@ test('the help tool returns the full help for a single named tool', () => {
   assert.equal(described.action, 'help');
   assert.equal(described.content.found, true);
   assert.equal(described.content.tool, 'end-turn');
-  assert.match(described.content.help, /when your queue is empty/);
+  assert.match(described.content.help, /when the request is satisfied/);
   assert.equal(described.content.parameters.type, 'object');
   assert.deepEqual(described.content.parameters.required, undefined);
 });

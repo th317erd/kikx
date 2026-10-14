@@ -239,8 +239,8 @@ test('Brief B carries sender, message, and compact dynamic state', () => {
   assert.match(text, /parties: .*agent_1.* - Coordinator/);
   assert.match(text, /usr_1/);
   assert.match(text, /End every turn one of two ways:/);
-  assert.match(text, /- end-turn — with a report for the user — when your queue is empty\./);
-  assert.match(text, /- continue-turn — with the next thing you're going to work on — when it isn't\./);
+  assert.match(text, /- end-turn — with a report for the user — when the request is satisfied, or when you are only waiting \(on a process, the user, or another agent\)\./);
+  assert.match(text, /- continue-turn — with the next concrete step — only when you have actionable work you can do right now\./);
 });
 
 test('buildModelMessages assembles system, Brief A (once), history (sans trigger), then Brief B', () => {
@@ -489,9 +489,9 @@ test('Brief B carries the dual-verb turn-ending phrase', () => {
   }).text;
 
   assert.match(brief, /End every turn one of two ways:/);
-  assert.match(brief, /end-turn — with a report for the user — when your queue is empty\./);
-  assert.match(brief, /continue-turn — with the next thing you're going to work on — when it isn't\./);
-  assert.match(brief, /If you don't know the next step yet, keep working to plan it out\./);
+  assert.match(brief, /end-turn — with a report for the user — when the request is satisfied, or when you are only waiting \(on a process, the user, or another agent\)\./);
+  assert.match(brief, /continue-turn — with the next concrete step — only when you have actionable work you can do right now\./);
+  assert.match(brief, /Waiting is not working: never poll or loop to await a process, the user, or another agent — a completion or a reply will wake you\./);
 });
 
 test('Brief B shows an autonomous-run clue only on self-triggered turns', () => {
