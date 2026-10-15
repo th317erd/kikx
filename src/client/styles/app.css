@@ -2052,8 +2052,14 @@ kikx-thinking-panel {
 
 /* The fixed window: newest line pinned to the bottom; older lines scroll up and
    fade out via the top mask. */
+/* The fixed window: the flex column bottom-aligns its content, so the newest
+   line is pinned to the bottom and older lines overflow out the TOP (clipped +
+   faded by the mask). */
 .kikx-thinking-panel__window {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
   min-height: 0;
   padding: 6px 10px;
   overflow: hidden;
@@ -2062,10 +2068,9 @@ kikx-thinking-panel {
 }
 
 .kikx-thinking-panel__lines {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  min-height: 100%;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
   line-height: 1.35;
