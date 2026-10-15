@@ -3,6 +3,7 @@
 import { elements, $ } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { createErrorSurfaceElement } from './kikx-error-surface.mjs';
+import './kikx-thinking-rack.mjs';
 import {
   getCurrentEntry,
   getDeletedSessions,
@@ -14,6 +15,7 @@ import {
   getStackDepth,
   getVisibleSessions,
 } from '../state/kikx-state.mjs';
+import { threadVisibleFrames } from '../state/thinking-state.mjs';
 import { childSessions } from './chat-view-model.mjs';
 import { formatTokenUsageTotal } from './kikx-app-helpers.mjs';
 import { countRebuild } from './render-stats.mjs';
@@ -447,6 +449,10 @@ export function buildBreadcrumbTitle(app, title, sessionID) {
 export function buildThreadSection(app, sessionID) {
   let hasSelectedSession = Boolean(sessionID);
 
+  // Pinned to the lower-left (participant space): per-agent "thinking" panels,
+  // so the thread never grows/collapses as an agent streams.
+  let thinkingRack = document.createElement('kikx-thinking-rack');
+
   return section.class('kikx-thread')(
     buildWindowHeader(app, {
       title: app._selectedSession()?.title || 'No session',
@@ -456,6 +462,7 @@ export function buildThreadSection(app, sessionID) {
     div.class('kikx-thread__body')(
       buildFrameThread(app),
     ),
+    thinkingRack,
     form.class('kikx-composer').onSubmit(app._onSubmit)(
       label.class('kikx-composer__label')('Message'),
       textarea
@@ -495,7 +502,7 @@ export function buildFrameThread(app) {
     ).build(document);
   }
 
-  let frames = getSelectedFrames(app._state).filter((frame) => frame && !frame.deleted && !frame.hidden);
+  let frames = threadVisibleFrames(getSelectedFrames(app._state)).filter((frame) => frame && !frame.deleted && !frame.hidden);
   if (frames.length === 0) {
     return div.class('kikx-thread__empty')(
       p('No messages yet.'),

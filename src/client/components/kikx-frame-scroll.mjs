@@ -1,6 +1,7 @@
 'use strict';
 
 import { getDeletedSessions, getGridParentSessionID, getSelectedFrames, getSessionPaging, getSessionPreviews, getVisibleSessions } from '../state/kikx-state.mjs';
+import { thinkingAgents, threadVisibleFrames } from '../state/thinking-state.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import { buildFrameThread } from './kikx-shell-builders.mjs';
@@ -72,7 +73,20 @@ export function afterRender(app, snapshot = {}) {
     });
   }
 
+  syncThinkingRack(app);
   connectFrameListObserver(app);
+}
+
+// Repaint the pinned thinking rack from the session's live frames. Cheap: it
+// only updates the per-agent panels, never the thread or the whole shell.
+export function syncThinkingRack(app) {
+  let rack = app.querySelector('kikx-thinking-rack');
+  if (!rack)
+    return;
+
+  guardClientOperation('kikx-frame-scroll.syncThinkingRack', () => {
+    rack.update(thinkingAgents(app._thinking));
+  });
 }
 
 export function requestRender(app) {
@@ -136,11 +150,13 @@ export function syncFrameThread(app, sessionID = app._state.selectedSessionID, o
 }
 
 function syncFrameThreadBody(app, sessionID, options) {
+  syncThinkingRack(app);
+
   let body = app.querySelector('.kikx-thread__body');
   if (!body)
     return;
 
-  let frames = getSelectedFrames(app._state).filter((frame) => frame && !frame.deleted && !frame.hidden);
+  let frames = threadVisibleFrames(getSelectedFrames(app._state));
   let view = body.querySelector('kikx-chat-view');
   if (frames.length === 0 || !view) {
     disconnectFrameListObserver(app);
