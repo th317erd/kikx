@@ -398,7 +398,8 @@ kikx-app {
 .kikx-frame {
   display: grid;
   gap: 8px;
-  justify-self: end;
+  /* Participants (agents, tools, etc.) sit on the left; the operator sits on the right. */
+  justify-self: start;
   width: fit-content;
   max-width: min(78%, 960px);
   max-height: 20000px;
@@ -419,7 +420,7 @@ kikx-app {
 }
 
 .kikx-frame--UserMessage {
-  justify-self: start;
+  justify-self: end;
   border-color: #294c51;
   background: #101d20;
 }
