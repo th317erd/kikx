@@ -75,6 +75,7 @@ export const TURN_ENDING_LINES = [
   '- end-turn — with a report for the user — when the request is satisfied, or when you are only waiting (on a process, the user, or another agent).',
   '- continue-turn — with the next concrete step — only when you have actionable work you can do right now.',
   'Waiting is not working: never poll or loop to await a process, the user, or another agent — a completion or a reply will wake you. If clearly-required work remains but you do not yet know the step, keep planning.',
+  'Stay aligned with the task the user gave you — vision → mission → current todos. If what you\'re doing isn\'t the user-assigned work, stop.',
 ];
 
 function buildMessageBriefAnswerLine(_context = {}) {
