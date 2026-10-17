@@ -94,3 +94,21 @@ test('FrameEngine rejects a commit and restores the retained history window', ()
   assert.equal(engine.getCommits().length, 1);
   assert.equal(engine.getLatestCommit().order, 1);
 });
+
+test('FrameEngine hydration ignores out-of-range stored orders so the counter cannot be poisoned', () => {
+  let engine = createEngine();
+
+  engine.hydrate([
+    { id: 'msg_1', type: 'UserMessage', order: 5 },
+    { id: 'load-error:x:missing', type: 'FrameLoadError', order: Number.MAX_SAFE_INTEGER, commitOrder: 9 },
+  ]);
+
+  // A load-error placeholder at MAX_SAFE_INTEGER must not become the watermark; a new
+  // frame continues from the real frames instead of overflowing to 2^53 (and sticking).
+  engine.merge([{ id: 'msg_2', type: 'UserMessage', content: { text: 'hi' } }]);
+
+  let order = engine.get('msg_2').order;
+  assert.ok(Number.isInteger(order));
+  assert.ok(order < Number.MAX_SAFE_INTEGER, `order ${order} must be below MAX_SAFE_INTEGER`);
+  assert.notEqual(order, 9007199254740992);
+});

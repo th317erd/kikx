@@ -335,7 +335,7 @@ test('FrameRuntime recovers stale streaming agent responses and running tool cal
   assert.ok(aeordb.calls.some((call) => call.method === 'putFile' && call.path.includes('tool_call.json')));
 });
 
-test('FrameRuntime appends user messages through FrameEngine and AeorDBFrameStore', async () => {
+test('FrameRuntime appends user messages through FrameEngine and FrameStore', async () => {
   let aeordb = createClient();
   let runtime = createRuntime({ aeordb, ids: [ 'ses_1', 'int_1', 'msg_1', 'commit_1' ] });
 

@@ -3,7 +3,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 
-import { AeorDBFrameStore } from '../aeordb/aeordb-frame-store.mjs';
+import { FrameStore } from '../aeordb/frame-store.mjs';
 import { HybridLogicalClock, defaultUnixMicros } from '../clock/hybrid-logical-clock.mjs';
 import { FrameEngine } from '../frames/frame-engine.mjs';
 import { ScheduledFrameQueue } from './scheduled-frame-queue.mjs';
@@ -48,7 +48,7 @@ export class FrameRuntime extends EventEmitter {
       runnerID,
     });
     this.idGenerator = idGenerator;
-    this.frameStore = frameStore || new AeorDBFrameStore({ db });
+    this.frameStore = frameStore || new FrameStore({ db });
     this.db = this.frameStore.aeordb || db || null;
     this.frameRouter = frameRouter;
     this.services = services || {};

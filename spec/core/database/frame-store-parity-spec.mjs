@@ -1,6 +1,6 @@
 'use strict';
 
-// Parity: the real AeorDBFrameStore runs over the driver contract, not just a
+// Parity: the real FrameStore runs over the driver contract, not just a
 // raw file-verb client. The store is constructed with the AeorDBConnection
 // driver wrapping FakeAeorDBClient and round-trips sessions, frames and commits
 // through the public document methods. This is the P2 gate proving the stores
@@ -11,25 +11,25 @@ import test from 'node:test';
 
 import { FrameEngine } from '../../../src/core/frames/index.mjs';
 import { AeorDBConnection } from '../../../src/core/aeordb/aeordb-connection.mjs';
-import { AeorDBFrameStore } from '../../../src/core/aeordb/aeordb-frame-store.mjs';
+import { FrameStore } from '../../../src/core/aeordb/frame-store.mjs';
 import { AgentTodoStore } from '../../../src/core/agents/agent-todo-store.mjs';
 import { ToolOutputStore } from '../../../src/core/tools/tool-output-store.mjs';
 import { FakeAeorDBClient } from './fake-aeordb-client.mjs';
 
 function createStore(options = {}) {
   let db = new AeorDBConnection({ client: new FakeAeorDBClient() });
-  let store = new AeorDBFrameStore({ db, ...options });
+  let store = new FrameStore({ db, ...options });
   return { db, store };
 }
 
-test('AeorDBFrameStore accepts db and wires the driver', () => {
+test('FrameStore accepts db and wires the driver', () => {
   let { db, store } = createStore();
 
   assert.equal(store.aeordb, db);
   assert.equal(store.db, db);
 });
 
-test('AeorDBFrameStore round-trips a session over the driver contract', async () => {
+test('FrameStore round-trips a session over the driver contract', async () => {
   let { db, store } = createStore();
 
   try {
@@ -46,7 +46,7 @@ test('AeorDBFrameStore round-trips a session over the driver contract', async ()
   }
 });
 
-test('AeorDBFrameStore persists frames and a commit over the driver contract', async () => {
+test('FrameStore persists frames and a commit over the driver contract', async () => {
   let { db, store } = createStore();
 
   try {

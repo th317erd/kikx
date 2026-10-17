@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { FrameEngine } from '../../src/core/frames/index.mjs';
-import { AeorDBFrameStore } from '../../src/core/aeordb/aeordb-frame-store.mjs';
+import { FrameStore } from '../../src/core/aeordb/frame-store.mjs';
 
 function createClient(options = {}) {
   let calls = [];
@@ -96,8 +96,8 @@ function createClient(options = {}) {
   };
 }
 
-test('AeorDBFrameStore builds stable Kikx paths', () => {
-  let store = new AeorDBFrameStore({ aeordb: createClient(), rootPath: '/kikx' });
+test('FrameStore builds stable Kikx paths', () => {
+  let store = new FrameStore({ aeordb: createClient(), rootPath: '/kikx' });
 
   assert.equal(store.sessionPath('ses_1'), '/kikx/sessions/ses_1/session.json');
   assert.equal(store.commitPath('ses_1', { order: 7, id: 'commit_1' }), '/kikx/sessions/ses_1/commits/0000000000000007-commit_1.json');
@@ -110,9 +110,9 @@ test('AeorDBFrameStore builds stable Kikx paths', () => {
   assert.equal(store.refPath('ses_1', 'processed/agent_1'), '/kikx/sessions/ses_1/refs/processed%2Fagent_1.json');
 });
 
-test('AeorDBFrameStore writes global and session-local index configs', async () => {
+test('FrameStore writes global and session-local index configs', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
 
   await store.ensureIndexConfigs();
   await store.ensureSessionIndexConfigs('ses_1');
@@ -132,9 +132,9 @@ test('AeorDBFrameStore writes global and session-local index configs', async () 
   assert.ok(aeordb.calls[0].body.indexes.some((index) => index.name === 'coordinatorAgentID'));
 });
 
-test('AeorDBFrameStore saves session manifests after creating session-local indexes', async () => {
+test('FrameStore saves session manifests after creating session-local indexes', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
 
   await store.saveSession({
     id: 'ses_1',
@@ -150,9 +150,9 @@ test('AeorDBFrameStore saves session manifests after creating session-local inde
   ]);
 });
 
-test('AeorDBFrameStore lists persisted session manifests with a bounded query', async () => {
+test('FrameStore lists persisted session manifests with a bounded query', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   aeordb.files.set('/kikx/sessions/ses_2/session.json', { id: 'ses_2', title: 'Second', updatedAt: 20 });
   aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First', updatedAt: 10 });
   aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-msg_1.json', { id: 'msg_1' });
@@ -180,12 +180,12 @@ test('AeorDBFrameStore lists persisted session manifests with a bounded query', 
   });
 });
 
-test('AeorDBFrameStore skips unreadable session manifests without modifying evidence', async () => {
+test('FrameStore skips unreadable session manifests without modifying evidence', async () => {
   let aeordb = createClient({
     failGetPath: '/kikx/sessions/ses_bad/session.json',
     failGetMessage: 'fetch failed',
   });
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   aeordb.files.set('/kikx/sessions/ses_good/session.json', { id: 'ses_good', title: 'Good', updatedAt: 20 });
   aeordb.files.set('/kikx/sessions/ses_bad/session.json', { id: 'ses_bad', title: 'Unreadable', updatedAt: 10 });
 
@@ -197,9 +197,9 @@ test('AeorDBFrameStore skips unreadable session manifests without modifying evid
   assert.equal(aeordb.calls.some((call) => call.method === 'putFile' || call.method === 'patchFile'), false);
 });
 
-test('AeorDBFrameStore treats a missing sessions directory as an empty list', async () => {
+test('FrameStore treats a missing sessions directory as an empty list', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
 
   aeordb.listDirectory = async (path, options) => {
     aeordb.calls.push({ method: 'listDirectory', path, options });
@@ -223,9 +223,9 @@ test('AeorDBFrameStore treats a missing sessions directory as an empty list', as
   ]);
 });
 
-test('AeorDBFrameStore falls back to shallow session manifests when recursive listing fails', async () => {
+test('FrameStore falls back to shallow session manifests when recursive listing fails', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   aeordb.files.set('/kikx/sessions/ses_2/session.json', { id: 'ses_2', title: 'Second', updatedAt: 20 });
   aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First', updatedAt: 10 });
   aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/bad.json', { id: 'bad' });
@@ -279,9 +279,9 @@ test('AeorDBFrameStore falls back to shallow session manifests when recursive li
   ]);
 });
 
-test('AeorDBFrameStore loads one session manifest and its frames on demand', async () => {
+test('FrameStore loads one session manifest and its frames on demand', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First' });
   aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000002-UserMessage-msg_2.json', {
     id: 'msg_2',
@@ -298,9 +298,9 @@ test('AeorDBFrameStore loads one session manifest and its frames on demand', asy
   assert.deepEqual((await store.listFrames('ses_1')).map((frame) => frame.id), [ 'msg_1', 'msg_2' ]);
 });
 
-test('AeorDBFrameStore walks AeorDB pages for large session histories', async () => {
+test('FrameStore walks AeorDB pages for large session histories', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
 
   for (let index = 1; index <= 520; index++) {
     let padded = String(index).padStart(16, '0');
@@ -331,9 +331,9 @@ test('AeorDBFrameStore walks AeorDB pages for large session histories', async ()
   assert.deepEqual(commitCalls.map((call) => call.options.offset), [ 0, 500 ]);
 });
 
-test('AeorDBFrameStore lists pending scheduled frames for runtime queue hydration', async () => {
+test('FrameStore lists pending scheduled frames for runtime queue hydration', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First' });
   aeordb.files.set('/kikx/sessions/ses_2/session.json', { id: 'ses_2', title: 'Second' });
   aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-later.json', {
@@ -362,9 +362,9 @@ test('AeorDBFrameStore lists pending scheduled frames for runtime queue hydratio
   assert.deepEqual(scheduledFrames.map((frame) => frame.id), [ 'later' ]);
 });
 
-test('AeorDBFrameStore finds pending scheduled frames through global search', async () => {
+test('FrameStore finds pending scheduled frames through global search', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   let laterPath = '/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-later.json';
   aeordb.files.set(laterPath, {
     id: 'later',
@@ -400,11 +400,11 @@ test('AeorDBFrameStore finds pending scheduled frames through global search', as
   });
 });
 
-test('AeorDBFrameStore skips a frame the search returns but the body says is not pending', async () => {
+test('FrameStore skips a frame the search returns but the body says is not pending', async () => {
   // The index must not be trusted as result authority: readScheduledFramePaths
   // re-checks isPendingScheduledFrame against the stored body.
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   let firedPath = '/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-fired.json';
   aeordb.files.set(firedPath, {
     id: 'fired',
@@ -422,9 +422,9 @@ test('AeorDBFrameStore skips a frame the search returns but the body says is not
   assert.deepEqual(scheduledFrames, []);
 });
 
-test('AeorDBFrameStore falls back to scanning when global search errors', async () => {
+test('FrameStore falls back to scanning when global search errors', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First' });
   aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-later.json', {
     id: 'later',
@@ -451,9 +451,9 @@ test('AeorDBFrameStore falls back to scanning when global search errors', async 
 });
 
 
-test('AeorDBFrameStore falls back to scanning when scheduled-frame search is unsupported', async () => {
+test('FrameStore falls back to scanning when scheduled-frame search is unsupported', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'First' });
   aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-later.json', {
     id: 'later',
@@ -480,9 +480,9 @@ test('AeorDBFrameStore falls back to scanning when scheduled-frame search is uns
   assert.ok(aeordb.calls.some((call) => call.method === 'listDirectory'));
 });
 
-test('AeorDBFrameStore keeps stable frame order and exposes missing committed frames last', async () => {
+test('FrameStore keeps stable frame order and exposes missing committed frames last', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
 
   aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000010-AgentMessage-agent_1.json', {
     id: 'agent_1',
@@ -530,9 +530,9 @@ test('AeorDBFrameStore keeps stable frame order and exposes missing committed fr
   assert.match(frames[2].content.text, /Committed frame could not be loaded/);
 });
 
-test('AeorDBFrameStore orders frames by stable creation clocks before legacy commit order', async () => {
+test('FrameStore orders frames by stable creation clocks before legacy commit order', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
 
   aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-AgentMessage-agent_1.json', {
     id: 'agent_1',
@@ -568,9 +568,9 @@ test('AeorDBFrameStore orders frames by stable creation clocks before legacy com
   assert.deepEqual(frames.map((frame) => frame.id), [ 'agent_1', 'user_1' ]);
 });
 
-test('AeorDBFrameStore orders closed agent responses by close clock on reload', async () => {
+test('FrameStore orders closed agent responses by close clock on reload', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
 
   aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-user_1.json', {
     id: 'user_1',
@@ -613,12 +613,12 @@ test('AeorDBFrameStore orders closed agent responses by close clock on reload', 
   assert.deepEqual(frames.map((frame) => frame.id), [ 'user_1', 'agent_1', 'user_2' ]);
 });
 
-test('AeorDBFrameStore preserves frame load failures as visible non-persisted placeholders', async () => {
+test('FrameStore preserves frame load failures as visible non-persisted placeholders', async () => {
   let aeordb = createClient({
     failGetPath: '0000000000000002-AgentMessage-bad_msg.json',
     failGetMessage: 'fetch failed',
   });
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-msg_1.json', {
     id: 'msg_1',
     type: 'UserMessage',
@@ -648,7 +648,7 @@ test('AeorDBFrameStore preserves frame load failures as visible non-persisted pl
   assert.equal(frames[1].hidden, false);
   assert.equal(frames[1].deleted, false);
   assert.equal(frames[1].order, 2);
-  assert.equal(frames[1].content.text, 'Frame could not be loaded from AeorDB. Original database evidence was not modified.');
+  assert.equal(frames[1].content.text, 'Frame could not be loaded from the document store. Original database evidence was not modified.');
   assert.equal(frames[1].content.path, '/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000002-AgentMessage-bad_msg.json');
   assert.equal(frames[1].content.error, 'fetch failed');
   assert.equal(aeordb.calls.some((call) => call.method === 'putFile' || call.method === 'patchFile'), false);
@@ -656,12 +656,12 @@ test('AeorDBFrameStore preserves frame load failures as visible non-persisted pl
   assert.equal(aeordb.calls.filter((call) => call.method === 'getFile').length, 3);
 });
 
-test('AeorDBFrameStore falls back to individual frame reads when multi-fetch is all-or-nothing', async () => {
+test('FrameStore falls back to individual frame reads when multi-fetch is all-or-nothing', async () => {
   let aeordb = createClient({
     failGetPath: '0000000000000002-AgentMessage-bad_msg.json',
     failGetMessage: 'multi-fetch 404',
   });
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-msg_1.json', {
     id: 'msg_1',
     type: 'UserMessage',
@@ -681,9 +681,9 @@ test('AeorDBFrameStore falls back to individual frame reads when multi-fetch is 
   assert.equal(aeordb.calls.filter((call) => call.method === 'getFile').length, 2);
 });
 
-test('AeorDBFrameStore persists a commit and changed frames', async () => {
+test('FrameStore persists a commit and changed frames', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   let frames = new FrameEngine({
     clock: () => 1000,
     idGenerator: () => 'commit_1',
@@ -716,9 +716,9 @@ test('AeorDBFrameStore persists a commit and changed frames', async () => {
   assert.equal(aeordb.calls[2].body.commitOrder, 1);
 });
 
-test('AeorDBFrameStore connects to FrameEngine commits and serializes writes', async () => {
+test('FrameStore connects to FrameEngine commits and serializes writes', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   let frames = new FrameEngine({
     clock: () => 1000,
     idGenerator: (() => {
@@ -744,7 +744,7 @@ test('AeorDBFrameStore connects to FrameEngine commits and serializes writes', a
   ]);
 });
 
-test('AeorDBFrameStore keeps accepting queued writes after a failed write is observed', async () => {
+test('FrameStore keeps accepting queued writes after a failed write is observed', async () => {
   let calls = [];
   let aeordb = {
     async putFile(path, body) {
@@ -756,7 +756,7 @@ test('AeorDBFrameStore keeps accepting queued writes after a failed write is obs
       return { path };
     },
   };
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   let frames = new FrameEngine({
     clock: () => 1000,
     idGenerator: (() => {
@@ -777,8 +777,8 @@ test('AeorDBFrameStore keeps accepting queued writes after a failed write is obs
   assert.ok(calls.some((call) => call.path === '/kikx/sessions/ses_1/commits/0000000000000002-commit_2.json'));
 });
 
-test('AeorDBFrameStore fails loudly when sessionID cannot be resolved', async () => {
-  let store = new AeorDBFrameStore({ aeordb: createClient() });
+test('FrameStore fails loudly when sessionID cannot be resolved', async () => {
+  let store = new FrameStore({ aeordb: createClient() });
   let frames = new FrameEngine();
 
   frames.merge([{ id: 'frm_1', type: 'UserMessage', interactionID: 'int_1' }]);
@@ -819,9 +819,9 @@ function seedSessionWithFrames(aeordb, sessionID, count, options = {}) {
   }
 }
 
-test('AeorDBFrameStore previews only the bounded tail per session', async () => {
+test('FrameStore previews only the bounded tail per session', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   seedSessionWithFrames(aeordb, 'ses_big', 300);
 
   let previews = await store.listSessionPreviews([ 'ses_big' ], { previewCount: 5 });
@@ -846,9 +846,9 @@ test('AeorDBFrameStore previews only the bounded tail per session', async () => 
   assert.equal(aeordb.calls.some((call) => call.method === 'getFile' && call.path.includes('/frames/')), false);
 });
 
-test('AeorDBFrameStore previews many sessions in one call', async () => {
+test('FrameStore previews many sessions in one call', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   seedSessionWithFrames(aeordb, 'ses_a', 12, { title: 'A' });
   seedSessionWithFrames(aeordb, 'ses_b', 4, { title: 'B' });
 
@@ -871,9 +871,9 @@ test('AeorDBFrameStore previews many sessions in one call', async () => {
   assert.ok(manifestFetch, 'manifests fetched in one bulk call');
 });
 
-test('AeorDBFrameStore marks short sessions untruncated', async () => {
+test('FrameStore marks short sessions untruncated', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   seedSessionWithFrames(aeordb, 'ses_small', 2);
 
   let previews = await store.listSessionPreviews([ 'ses_small' ], { previewCount: 5 });
@@ -882,9 +882,9 @@ test('AeorDBFrameStore marks short sessions untruncated', async () => {
   assert.deepEqual(previews[0].heads.map((frame) => frame.order), [ 1, 2 ]);
 });
 
-test('AeorDBFrameStore degrades a missing session to an error entry', async () => {
+test('FrameStore degrades a missing session to an error entry', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
 
   let previews = await store.listSessionPreviews([ 'ses_missing' ], { previewCount: 5 });
 
@@ -893,9 +893,9 @@ test('AeorDBFrameStore degrades a missing session to an error entry', async () =
   assert.match(previews[0].error, /not found/);
 });
 
-test('AeorDBFrameStore preview tolerates a corrupt tail frame', async () => {
+test('FrameStore preview tolerates a corrupt tail frame', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   seedSessionWithFrames(aeordb, 'ses_corrupt', 10);
   // Corrupt the newest frame: multi-fetch returns a value that fails to project.
   aeordb.files.set('/kikx/sessions/ses_corrupt/interactions/int_1/frames/0000000000000010-AgentMessage-ses_corrupt_f10.json', { junk: true });
@@ -908,9 +908,9 @@ test('AeorDBFrameStore preview tolerates a corrupt tail frame', async () => {
   assert.equal(previews[0].heads.every((frame) => frame.id && frame.type), true);
 });
 
-test('AeorDBFrameStore preview bounds previewCount and session count', async () => {
+test('FrameStore preview bounds previewCount and session count', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   seedSessionWithFrames(aeordb, 'ses_big', 100);
 
   // previewCount above the max clamps to MAX_PREVIEW_COUNT (20).
@@ -929,9 +929,9 @@ test('AeorDBFrameStore preview bounds previewCount and session count', async () 
   assert.equal(deduped.length, 1);
 });
 
-test('AeorDBFrameStore window returns the newest frames by default', async () => {
+test('FrameStore window returns the newest frames by default', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   seedSessionWithFrames(aeordb, 'ses_big', 300);
 
   let result = await store.listFrameWindow('ses_big', { limit: 20 });
@@ -950,9 +950,9 @@ test('AeorDBFrameStore window returns the newest frames by default', async () =>
   assert.ok(frameFetch.paths.length < 300, 'did not fetch all frames');
 });
 
-test('AeorDBFrameStore window anchors to the true newest frame in a large session', async () => {
+test('FrameStore window anchors to the true newest frame in a large session', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   // Regression: a session with more frames than the default list cap (1000) must
   // still anchor the newest page to the real tail, not to the end of the first
   // scanned page. Before the fix, `total` reported 1000 and the recent frames were
@@ -976,9 +976,9 @@ test('AeorDBFrameStore window anchors to the true newest frame in a large sessio
   assert.equal(page.total, 2500);
 });
 
-test('AeorDBFrameStore window anchors correctly just above the default scan cap', async () => {
+test('FrameStore window anchors correctly just above the default scan cap', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   seedSessionWithFrames(aeordb, 'ses_over', 1001);
 
   let result = await store.listFrameWindow('ses_over', { limit: 10 });
@@ -988,9 +988,9 @@ test('AeorDBFrameStore window anchors correctly just above the default scan cap'
   assert.equal(result.oldestOrder, 992);
 });
 
-test('AeorDBFrameStore window pages older frames with a before cursor', async () => {
+test('FrameStore window pages older frames with a before cursor', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   seedSessionWithFrames(aeordb, 'ses_big', 300);
 
   let firstPage = await store.listFrameWindow('ses_big', { limit: 20 });
@@ -1006,9 +1006,9 @@ test('AeorDBFrameStore window pages older frames with a before cursor', async ()
   assert.equal(firstPage.frames.some((frame) => secondPage.frames.some((other) => other.id === frame.id)), false);
 });
 
-test('AeorDBFrameStore window marks the oldest page as no more', async () => {
+test('FrameStore window marks the oldest page as no more', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   seedSessionWithFrames(aeordb, 'ses_big', 300);
 
   let result = await store.listFrameWindow('ses_big', { limit: 20, before: 41 });
@@ -1025,9 +1025,9 @@ test('AeorDBFrameStore window marks the oldest page as no more', async () => {
   assert.equal(finalPage.newestOrder, 20);
 });
 
-test('AeorDBFrameStore window returns a whole small session untruncated', async () => {
+test('FrameStore window returns a whole small session untruncated', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   seedSessionWithFrames(aeordb, 'ses_small', 3);
 
   let result = await store.listFrameWindow('ses_small', { limit: 20 });
@@ -1039,9 +1039,9 @@ test('AeorDBFrameStore window returns a whole small session untruncated', async 
   assert.equal(result.newestOrder, 3);
 });
 
-test('AeorDBFrameStore window returns empty metadata for a session with no frames', async () => {
+test('FrameStore window returns empty metadata for a session with no frames', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
 
   let result = await store.listFrameWindow('ses_empty', { limit: 20 });
 
@@ -1052,9 +1052,9 @@ test('AeorDBFrameStore window returns empty metadata for a session with no frame
   assert.equal(result.newestOrder, null);
 });
 
-test('AeorDBFrameStore window projects visible heads only', async () => {
+test('FrameStore window projects visible heads only', async () => {
   let aeordb = createClient();
-  let store = new AeorDBFrameStore({ aeordb, rootPath: '/kikx' });
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
   seedSessionWithFrames(aeordb, 'ses_mixed', 5);
   // Hide one middle frame and delete another; neither should surface.
   aeordb.files.set('/kikx/sessions/ses_mixed/interactions/int_1/frames/0000000000000002-UserMessage-ses_mixed_f2.json', {

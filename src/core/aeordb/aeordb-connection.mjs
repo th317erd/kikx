@@ -1,7 +1,7 @@
 'use strict';
 
 import { AeorDBClient } from './aeordb-client.mjs';
-import { DIRECTORY_PAGE_LIMIT } from './aeordb-frame-store-constants.mjs';
+import { DIRECTORY_PAGE_LIMIT } from './frame-store-constants.mjs';
 import { DatabaseConnectionBase } from '../database/database-connection-base.mjs';
 import { DatabaseError } from '../database/database-error.mjs';
 

@@ -1,15 +1,15 @@
 'use strict';
 
 import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
-import { AeorDBFrameStoreSessionBase } from './aeordb-frame-store-base.mjs';
-import { DEFAULT_FRAME_LIST_LIMIT, DIRECTORY_PAGE_LIMIT } from './aeordb-frame-store-constants.mjs';
-import { createFrameLoadError } from './aeordb-frame-store-errors.mjs';
-import { normalizeLargeLimit, normalizeOffset, uniqueStrings } from './aeordb-frame-store-normalizers.mjs';
-import { compareCommitOrder, compareFrameOrder, orderFramesByCommits } from './aeordb-frame-store-ordering.mjs';
-import { encodeSegment } from './aeordb-frame-store-paths.mjs';
-import { serializeCommit, serializeFrame } from './aeordb-frame-store-serialization.mjs';
+import { FrameStoreSessionBase } from './frame-store-base.mjs';
+import { DEFAULT_FRAME_LIST_LIMIT, DIRECTORY_PAGE_LIMIT } from './frame-store-constants.mjs';
+import { createFrameLoadError } from './frame-store-errors.mjs';
+import { normalizeLargeLimit, normalizeOffset, uniqueStrings } from './frame-store-normalizers.mjs';
+import { compareCommitOrder, compareFrameOrder, orderFramesByCommits } from './frame-store-ordering.mjs';
+import { encodeSegment } from './frame-store-paths.mjs';
+import { serializeCommit, serializeFrame } from './frame-store-serialization.mjs';
 
-export class AeorDBFrameStoreCommitBase extends AeorDBFrameStoreSessionBase {
+export class FrameStoreCommitBase extends FrameStoreSessionBase {
   async listFrames(sessionID, options = {}) {
     if (!sessionID)
       throw new TypeError('listFrames() requires sessionID');

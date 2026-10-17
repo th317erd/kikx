@@ -7,7 +7,7 @@ import { FrameRuntime } from '../../src/core/runtime/frame-runtime.mjs';
 
 // A minimal in-memory frame store that persists frames when the runtime's commit
 // handler fires, so an evicted session can be rehydrated from storage exactly as
-// AeorDBFrameStore rehydrates it. `connections` records every engine attachment
+// FrameStore rehydrates it. `connections` records every engine attachment
 // and whether eviction detached it.
 function createFrameStore() {
   let sessions = new Map();
