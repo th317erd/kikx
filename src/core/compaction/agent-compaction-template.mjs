@@ -20,6 +20,8 @@ export function buildDefaultCompactionInstructions() {
     'Within each section prefer compact structured bullets grouped by topic over prose.',
     'Do not invent facts. If something is uncertain, mark it as uncertain (and keep uncertainties at [medium] or higher).',
     'Do your best to minimize overall memory loss.',
+    'The material may include prior compaction frames (shown as "Compacted context memory"). Treat them as a SOURCE of retained information and fold their facts into THIS summary — do not quote, list, or reproduce them.',
+    'Produce ONE consolidated, stand-alone summary of everything that matters. Never emit more than one compaction, and never refer to prior compactions by id or title.',
     // P6 / R6 realign hook — placeholder. The mission/"vision" system does not
     // exist yet, so keep this blurb generic; wire it to the real source when it
     // lands. Do not invent a mission source here.
