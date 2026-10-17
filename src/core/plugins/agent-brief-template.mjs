@@ -9,6 +9,7 @@ import {
   AGIS_PRECEPTS_LINES,
   COORDINATOR_PREAMBLE_LINES,
   MULTIPARTY_CHARACTER_NOTE_LINES,
+  PRE_START_READ_LINES,
   STANDARD_BEHAVIOR_LINES,
   STANDARD_TOOL_NOTES_LINES,
   packageVersion,
@@ -108,6 +109,8 @@ export function buildStartBrief(context = {}) {
 
   let lines = [
     `Kikx Advanced Agent Harness - v${packageVersion()}`,
+    '',
+    ...PRE_START_READ_LINES,
     '',
     ...intro,
     '',

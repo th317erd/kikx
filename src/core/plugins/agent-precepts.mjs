@@ -42,6 +42,18 @@ export const AGIS_PRECEPTS_LINES = [
 
 export const AGIS_PRECEPTS = AGIS_PRECEPTS_LINES.join('\n');
 
+// Mandatory pre-start / post-compaction read. This lives in Brief A only, which
+// is rebuilt per (re)start and never persisted as a frame — so it fires once per
+// session start / new agent / compaction / coordinator change and does not linger
+// in memory to be re-run every turn.
+export const PRE_START_READ_LINES = [
+  'MANDATORY ACTION — do this now, before anything else:',
+  '- Read `./AGENTS.md` if one exists in the workspace; if it does not, read',
+  '  `~/.bot-common/rc.md` if one exists, and apply what you find there.',
+  '- This line is transient (it is not stored in your memory); do not re-read',
+  '  these files on later turns unless a task actually requires it.',
+];
+
 // Static tool guidance and behavior rules shared by Brief A. Kept here with the
 // other stored constants so the script template stays a thin composer.
 export const STANDARD_TOOL_NOTES_LINES = [
