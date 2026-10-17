@@ -28,6 +28,17 @@ const CREATE_DOCUMENTS_TABLE = [
   ')',
 ].join('\n');
 
+// PostgreSQL's jsonb rejects the \u0000 escape even though it is valid JSON text, so a
+// non-raw body containing it makes every `body::jsonb` query in the row's path range
+// throw — which is how the scheduled-frame queue load ends up failing. A NUL carries no
+// meaning in stored document text, so drop the escape from non-raw bodies.
+function jsonbSafeText(text, raw) {
+  if (raw || typeof text !== 'string' || !text.includes('\\u0000'))
+    return text;
+
+  return text.replaceAll('\\u0000', '');
+}
+
 // Range scan: `/` (0x2f) sorts before `0` (0x30), so every descendant of a
 // normalized prefix lives in `pathBounds(prefix)`. The explicit "C" collation
 // is required: the database default locale is not byte-ordered and would
@@ -297,7 +308,7 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
     await client.query(
       'INSERT INTO documents (path, body, raw, updated_at) VALUES ($1, $2, $3, $4) '
         + 'ON CONFLICT (path) DO UPDATE SET body = EXCLUDED.body, raw = EXCLUDED.raw, updated_at = EXCLUDED.updated_at',
-      [ key, text, raw, Date.now() ],
+      [ key, jsonbSafeText(text, raw), raw, Date.now() ],
     );
   }
 
@@ -309,7 +320,7 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
     let merged = applyMergePatch(JSON.parse(row.body), patch);
     await client.query(
       'UPDATE documents SET body = $1, raw = false, updated_at = $2 WHERE path = $3',
-      [ JSON.stringify(merged ?? null), Date.now(), key ],
+      [ jsonbSafeText(JSON.stringify(merged ?? null), false), Date.now(), key ],
     );
     return merged;
   }
