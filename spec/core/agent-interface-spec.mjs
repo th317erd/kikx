@@ -327,7 +327,7 @@ test('AgentInterface asks with the raw trigger message and builds two-tier brief
   // The provider receives the raw message text (Brief B wraps it), not a monolith.
   assert.equal(askCall.prompt, 'hello');
   assert.match(askCall.startBrief, /^Kikx Advanced Agent Harness - v/);
-  assert.match(askCall.startBrief, /Precepts — always on/);
+  assert.match(askCall.startBrief, /Precepts — MANDATORY/);
   assert.match(askCall.messageBrief, /^Message from /);
   assert.match(askCall.messageBrief, /hello/);
 });
@@ -348,12 +348,12 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.equal(agent.calls[1].prompt, 'hello');
   // Brief A: version banner, character, precepts, tools.
   assert.match(agent.calls[1].startBrief, /Kikx Advanced Agent Harness - v/);
-  assert.match(agent.calls[1].startBrief, /Precepts — always on/);
+  assert.match(agent.calls[1].startBrief, /Precepts — MANDATORY/);
   assert.match(agent.calls[1].startBrief, /Orient:/);
   assert.match(agent.calls[1].startBrief, /Proof: never claim done/i);
   assert.match(agent.calls[1].startBrief, /continue-turn/);
   assert.match(agent.calls[1].startBrief, /Character: You are a pragmatic engineer\./);
-  assert.match(agent.calls[1].startBrief, /Behavior:/);
+  assert.match(agent.calls[1].startBrief, /Behavior — MANDATORY:/);
   // Brief B: sender, message, compact state.
   assert.match(agent.calls[1].messageBrief, /^Message from /);
   assert.match(agent.calls[1].messageBrief, /hello/);

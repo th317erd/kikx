@@ -113,12 +113,12 @@ test('Brief A carries the version banner, precepts, tools, and behavior', () => 
 
   assert.ok(text.startsWith(`${START_BRIEF_BANNER_PREFIX}${packageVersion()}`));
   assert.match(text, /Character: You are terse\./);
-  assert.match(text, /Precepts — always on/);
+  assert.match(text, /Precepts — MANDATORY/);
   assert.match(text, /Orient:/);
   assert.match(text, /Proof: never claim done/i);
   assert.match(text, /continue-turn/);
   assert.match(text, /Delegation: agent-list/);
-  assert.match(text, /Behavior:/);
+  assert.match(text, /Behavior — MANDATORY:/);
   // 2-party session (1 agent + 1 user): no coordinator preamble.
   assert.doesNotMatch(text, /COORDINATOR PREAMBLE/);
 });
