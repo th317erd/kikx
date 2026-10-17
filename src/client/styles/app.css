@@ -1991,9 +1991,8 @@ button.kikx-window__title:focus-visible {
 }
 
 /* --- Pinned per-agent thinking rack (lower-left participant space) ---
-   Replaces the old inline thinking/streaming bubble: a fixed-size, never-
-   resizing panel per thinking agent, so the thread no longer grows/collapses as
-   the agent streams. Panels stack horizontally. */
+   Replaces the old inline thinking/streaming bubble: a 🧠 icon per thinking agent
+   that giggles while it thinks and reveals the live thinking text on hover. */
 kikx-thinking-rack {
   display: flex;
   flex-direction: row;
@@ -2010,17 +2009,64 @@ kikx-thinking-rack[hidden] {
 
 kikx-thinking-panel {
   flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* The 🧠 "thinking" icon: giggles and bounces subtly while the agent is thinking. */
+.kikx-thinking-brain {
+  appearance: none;
+  margin: 0;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+  transform-origin: 50% 80%;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+  animation: kikx-thinking-giggle 1.6s ease-in-out infinite;
+}
+
+.kikx-thinking-brain:focus-visible {
+  outline: 2px solid #5a7fa8;
+  outline-offset: 2px;
+}
+
+@keyframes kikx-thinking-giggle {
+  0% { transform: translateY(0) rotate(0deg) scale(1); }
+  15% { transform: translateY(-3px) rotate(-9deg) scale(1.06); }
+  30% { transform: translateY(0) rotate(7deg) scale(1); }
+  45% { transform: translateY(-2px) rotate(-5deg) scale(1.04); }
+  60% { transform: translateY(0) rotate(3deg) scale(1); }
+  75% { transform: translateY(-1px) rotate(-2deg) scale(1.02); }
+  100% { transform: translateY(0) rotate(0deg) scale(1); }
+}
+
+/* The hover tooltip: a cursor-following bubble with the live, scrolling thinking
+   text. Portaled to <body> so no ancestor's overflow/transform can clip it. */
+.kikx-thinking-tip {
+  position: fixed;
+  z-index: 60;
   display: grid;
   grid-template-rows: auto 1fr;
-  width: 18rem;
-  height: 5.5rem;
+  width: 22rem;
+  max-width: min(22rem, 60vw);
+  height: 6rem;
   border: 1px solid #2a3138;
   border-radius: 8px;
   background: #0f1317;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   overflow: hidden;
+  pointer-events: none;
 }
 
-.kikx-thinking-panel__head {
+.kikx-thinking-tip[hidden] {
+  display: none;
+}
+
+.kikx-thinking-tip__head {
   display: flex;
   align-items: baseline;
   gap: 1px;
@@ -2034,15 +2080,15 @@ kikx-thinking-panel {
   text-overflow: ellipsis;
 }
 
-.kikx-thinking-panel__dots span {
+.kikx-thinking-tip__dots span {
   animation: kikx-thinking-dot 1.4s infinite;
 }
 
-.kikx-thinking-panel__dots span:nth-child(2) {
+.kikx-thinking-tip__dots span:nth-child(2) {
   animation-delay: 0.2s;
 }
 
-.kikx-thinking-panel__dots span:nth-child(3) {
+.kikx-thinking-tip__dots span:nth-child(3) {
   animation-delay: 0.4s;
 }
 
@@ -2056,7 +2102,7 @@ kikx-thinking-panel {
 /* The fixed window: the flex column bottom-aligns its content, so the newest
    line is pinned to the bottom and older lines overflow out the TOP (clipped +
    faded by the mask). */
-.kikx-thinking-panel__window {
+.kikx-thinking-tip__window {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -2068,7 +2114,7 @@ kikx-thinking-panel {
   mask-image: linear-gradient(to bottom, transparent 0, #000 34%, #000 100%);
 }
 
-.kikx-thinking-panel__lines {
+.kikx-thinking-tip__lines {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
@@ -2081,12 +2127,13 @@ kikx-thinking-panel {
   overflow-wrap: anywhere;
 }
 
-.kikx-thinking-panel__line {
+.kikx-thinking-tip__line {
   flex: 0 0 auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kikx-thinking-panel__dots span {
+  .kikx-thinking-brain,
+  .kikx-thinking-tip__dots span {
     animation: none;
   }
 }

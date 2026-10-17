@@ -2,9 +2,9 @@
 
 import './kikx-thinking-panel.mjs';
 
-// Bottom-left rack of per-agent thinking panels, stacked horizontally. Pinned in
-// the "participant space" (lower left): the operator will live on the right, so
-// other participants' activity reads naturally from the left edge.
+// Bottom-left rack of per-agent thinking icons, laid out horizontally. Pinned in
+// the "participant space" (lower left): the operator lives on the right, so other
+// participants' activity reads naturally from the left edge.
 export class KikxThinkingRack extends HTMLElement {
   constructor() {
     super();

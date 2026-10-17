@@ -59,10 +59,10 @@ test('the thinking rack shows a fixed per-agent panel and never pollutes the thr
         panels: document.querySelectorAll('kikx-thinking-panel').length,
         rackHidden: document.querySelector('kikx-thinking-rack')?.hidden === true,
         panelBox: box ? { w: Math.round(box.width), h: Math.round(box.height) } : null,
-        name: panel?.querySelector('.kikx-thinking-panel__name')?.textContent || '',
-        lines: panel ? panel.querySelectorAll('.kikx-thinking-panel__line').length : 0,
+        name: document.querySelector('.kikx-thinking-tip__name')?.textContent || '',
+        lines: document.querySelectorAll('.kikx-thinking-tip__line').length,
         lastLine: (() => {
-          let lines = panel?.querySelectorAll('.kikx-thinking-panel__line');
+          let lines = document.querySelectorAll('.kikx-thinking-tip__line');
           return lines && lines.length ? lines[lines.length - 1].textContent : '';
         })(),
         thinkingInThread: !!document.querySelector('.kikx-frame__thinking, kikx-typing-indicator'),
