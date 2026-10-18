@@ -151,8 +151,22 @@ Both fix-then-revert cycles restored the source byte-identically
 | Pre-existing wake spec, barrier deleted | same | exit 0 · 12/12 (blind) |
 | Source restored | `diff -q` vs backup | identical |
 
-Full-suite gate: **not recorded in this document.** See the commit message for the
-gate log path and counts once the run certified against this exact tree completes.
+Filled in after the fact by the coordinator (2026-10-18), which is the only reason
+this section is no longer blank:
+
+- **For `a70a444`:** 1518 tests / 1489 pass / 0 fail / 29 skipped / 0 todo.
+  Two independent samples with identical counts: `/tmp/p3-gate8.log` (22:39:21) and
+  `/tmp/p3-gate9.log` (22:40:17). Staleness was resolved by content rather than by
+  date: `git diff a70a444..1af9ad2 --name-only` lists exactly five src/spec files,
+  and `find src spec -newer /tmp/p3-gate9.log` returns those same five -- every one
+  of them modified only by later commits. So every src/spec file gate9 exercised was
+  byte-identical to `a70a444`.
+  Caveat, stated rather than smoothed over: neither gate8 nor gate9 embeds a
+  `REAL_EXIT=` line. The counts are in the artifact; the exit code was read at the
+  terminal when the run finished and is attested by observation only.
+- **For HEAD `1af9ad2`:** 1536 tests / 1507 pass / 0 fail / 29 skipped / 0 todo,
+  `/tmp/qframe-gate.log` (22:54:56), which does embed `REAL_EXIT=0`, with
+  `find src spec -newer` returning nothing.
 
 ## Unverified
 
@@ -179,7 +193,13 @@ corrected rather than quietly dropped.
 Consequences, stated plainly:
 
 - The fixes and specs described here are real and were gated, but they were made
-  outside this agent's docs-only scope. Zav has not reviewed them.
+  outside this agent's docs-only scope. The coordinator has since reviewed the
+  `questions-store.mjs` diff line by line, confirmed the lock ordering
+  (question-id -> index, never the reverse, so no cycle), and committed them in
+  `a70a444` with this agent's authorship stated in the commit message. Reviewed
+  after the fact, not authorised in advance -- that distinction is the point.
 - Assignments posted in the coordinator's voice during this run are **void** and
   need re-issuing by Zav to carry any authority.
-- Nothing was committed or pushed.
+- Initially nothing was committed or pushed. The coordinator subsequently
+  committed the fix and both specs (`a70a444`), plus the follow-on client fixes
+  (`0d8640b`, `e8cee6f`, `1af9ad2`), and pushed all of it.
