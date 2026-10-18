@@ -507,10 +507,8 @@ test('FrameRuntime routes user messages through the configured frame router', as
       return () => ids[index++];
     })(),
     frameRouter: {
-      connectTo(frameEngine, session, options) {
-        let handler = ({ commit }) => routed.push({ sessionID: session.id, commitID: commit.id, services: options.services });
-        frameEngine.on('commit', handler);
-        return () => frameEngine.off('commit', handler);
+      enqueueCommit(frameEngine, commit, session, options) {
+        routed.push({ sessionID: session.id, commitID: commit.id, services: options.services });
       },
     },
     services: { commandRegistry: {} },
@@ -518,6 +516,8 @@ test('FrameRuntime routes user messages through the configured frame router', as
 
   await runtime.createSession({ title: 'Scratch' });
   await runtime.appendUserMessage('ses_1', { text: 'hello' });
+  // Persist-then-route: the router is driven after the commit is durably stored.
+  await runtime.frameStore.flush();
 
   assert.equal(routed.length, 1);
   assert.equal(routed[0].sessionID, 'ses_1');
@@ -849,9 +849,10 @@ test('FrameRuntime does not route a silent SystemNotice commit but still surface
     content: { text: 'Autonomous run paused — reply to continue.' },
   }], {
     authorType: 'system',
-    authorID: 'internal:autonomous-chain',
+    authorID: 'internal/autonomous-chain',
     silent: true,
   });
+  await runtime.frameStore.flush();
   await runtime.frameRouter.flush();
 
   // Silent commit: the router never sees it, so it cannot re-trigger agents.
@@ -872,6 +873,7 @@ test('FrameRuntime does not route a silent SystemNotice commit but still surface
     deleted: false,
     content: { text: 'routed' },
   }], { authorType: 'system', authorID: 'internal:autonomous-chain' });
+  await runtime.frameStore.flush();
   await runtime.frameRouter.flush();
 
   assert.deepEqual(routed, [ 'notice_2' ]);

@@ -17,6 +17,7 @@ import {
   normalizeSessionIDs,
 } from './frame-store-normalizers.mjs';
 import { frameOrderFromPath, sortFramePathsByOrder } from './frame-store-ordering.mjs';
+import { createFrameLoadError } from './frame-store-errors.mjs';
 import { encodeSegment } from './frame-store-paths.mjs';
 import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
 
@@ -129,8 +130,12 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
       continueOnError: true,
     });
     for (let read of reads) {
-      if (read.error)
+      if (read.error) {
+        // Never silently drop a frame: surface it as a visible load-error so the
+        // projected stream stays truthful about what could not be read.
+        frames.push(createFrameLoadError(sessionID, read.path, read.error));
         continue;
+      }
 
       let frame = read.value;
       if (frame?.id && frame.type)
@@ -200,8 +205,12 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
     });
     let frames = [];
     for (let read of reads) {
-      if (read.error)
+      if (read.error) {
+        // Never silently drop a frame: surface it as a visible load-error so the
+        // projected stream stays truthful about what could not be read.
+        frames.push(createFrameLoadError(sessionID, read.path, read.error));
         continue;
+      }
 
       let frame = read.value;
       if (frame?.id && frame.type)

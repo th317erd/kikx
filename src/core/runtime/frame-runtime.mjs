@@ -444,19 +444,21 @@ export class FrameRuntime extends EventEmitter {
     frameEngine.on('frame:phantom', phantomHandler);
     frameEngine.on('commit', commitHandler);
 
+    let routerOptions = { services: this.routerServices() };
     let disconnects = [
       () => {
         frameEngine.off('frame:phantom', phantomHandler);
         frameEngine.off('commit', commitHandler);
       },
-      this.frameStore.connect(frameEngine, { sessionID: session.id }),
+      this.frameStore.connect(frameEngine, {
+        sessionID: session.id,
+        // Persist-then-route: the router is driven only after the store confirms
+        // the committed frames are durable, so no turn acts on unpersisted state.
+        onCommitted: ({ commit }) => {
+          this.frameRouter?.enqueueCommit?.(frameEngine, commit, session, routerOptions);
+        },
+      }),
     ];
-
-    if (this.frameRouter) {
-      disconnects.push(this.frameRouter.connectTo(frameEngine, session, {
-        services: this.routerServices(),
-      }));
-    }
 
     return () => {
       for (let disconnect of disconnects)
