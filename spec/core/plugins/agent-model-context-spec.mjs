@@ -119,6 +119,7 @@ test('Brief A carries the version banner, precepts, tools, and behavior', () => 
   assert.match(text, /continue-turn/);
   assert.match(text, /Delegation: agent-list/);
   assert.match(text, /Behavior — MANDATORY:/);
+  assert.match(text, /When the user provides a new message, please immediately respond to acknowledge the user's message, and then continue with your work\./);
   // 2-party session (1 agent + 1 user): no coordinator preamble.
   assert.doesNotMatch(text, /COORDINATOR PREAMBLE/);
 });
@@ -488,6 +489,7 @@ test('Brief B carries the dual-verb turn-ending phrase', () => {
     agent: { id: 'agent_1' },
   }).text;
 
+  assert.match(brief, /When the user provides a new message, please immediately respond to acknowledge the user's message, and then continue with your work\./);
   assert.match(brief, /End every turn one of two ways:/);
   assert.match(brief, /end-turn — with a report for the user — when the request is satisfied, or when you are only waiting \(on a process, the user, or another agent\)\./);
   assert.match(brief, /continue-turn — with the next concrete step — only when you have actionable work you can do right now\./);

@@ -72,6 +72,7 @@ function buildBriefToolLines(_context = {}) {
 // another agent) is never a reason to keep turning — each will wake you. This is
 // the whole per-turn contract for ending a turn.
 export const TURN_ENDING_LINES = [
+  'When the user provides a new message, please immediately respond to acknowledge the user\'s message, and then continue with your work.',
   'End every turn one of two ways:',
   '- end-turn — with a report for the user — when the request is satisfied, or when you are only waiting (on a process, the user, or another agent).',
   '- continue-turn — with the next concrete step — only when you have actionable work you can do right now.',

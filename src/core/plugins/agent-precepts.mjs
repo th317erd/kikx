@@ -79,8 +79,11 @@ export const STANDARD_TOOL_NOTES_LINES = [
   '  database-fetch (exact line/char/byte/JSON-pointer ranges).',
 ];
 
+export const USER_MESSAGE_ACK_LINE = 'When the user provides a new message, please immediately respond to acknowledge the user\'s message, and then continue with your work.';
+
 export const STANDARD_BEHAVIOR_LINES = [
   'Behavior — MANDATORY:',
+  `- ${USER_MESSAGE_ACK_LINE}`,
   '- After every tool result, choose the next action yourself. Do safe, read-only,',
   '  reversible, implied, or verifying steps without asking. Ask the user only for a',
   '  real decision, a new concern, a destructive/risky step, a blocker, or significant',
