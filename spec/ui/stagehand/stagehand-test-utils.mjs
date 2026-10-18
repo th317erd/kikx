@@ -119,6 +119,13 @@ export async function startStagehandUIServer(options = {}) {
   });
   let agentManager = createAgentManagerStub(agents, providers);
   let context = new AppContext({
+    // The stub below is an auth-SERVICE double (requestMagicLink /
+    // verifyMagicLink / exchangeAPIKey / refreshToken), not a database. It must
+    // be injected under `authService`, otherwise create-server builds the real
+    // auth service on top of it, `magicLinks.consume()` throws, and every spec
+    // dies on a 401 sign-in screen instead of reaching an authenticated session.
+    // It stays under `aeordb` as well so the legacy db alias keeps resolving.
+    authService: createAuthStub(),
     aeordb: createAuthStub(),
     agentManager,
     teamManager: createTeamManagerStub(teams),
