@@ -2251,3 +2251,25 @@ kikx-thinking-panel {
 .kikx-frame--compact.kikx-frame--status-error > summary:hover {
   background: rgba(224, 108, 117, 0.16);
 }
+
+/* Bot communication frames: green on success, red on failure. Neutral keeps the
+   existing agent color; human (UserMessage) frames are never tinted. */
+.kikx-frame--AgentMessage.kikx-frame--status-success,
+.kikx-frame--AgentMessageDelta.kikx-frame--status-success {
+  border-color: #2f5f45;
+  background: #101c16;
+}
+
+.kikx-frame--AgentMessage.kikx-frame--status-error,
+.kikx-frame--AgentMessageDelta.kikx-frame--status-error {
+  border-color: #6b343a;
+  background: #1b1113;
+}
+
+.kikx-frame--AgentMessage.kikx-frame--status-success .kikx-frame__meta-main strong {
+  color: #9ce0b0;
+}
+
+.kikx-frame--AgentMessage.kikx-frame--status-error .kikx-frame__meta-main strong {
+  color: #f0a0a8;
+}

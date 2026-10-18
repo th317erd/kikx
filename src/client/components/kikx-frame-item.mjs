@@ -11,6 +11,7 @@ import {
 import { resolveFrameComponentDescriptor } from './frame-component-registry.mjs';
 import { sessionReferenceFromFrame } from './kikx-sub-session-frame.mjs';
 import { buildCompactFrameDisclosure, updateCompactSummary } from './compact-frame-view.mjs';
+import { isBotCommunicationFrame } from './tool-frame-summary.mjs';
 import { frameStatus, frameStatusClass, isCompactFrame } from './tool-frame-summary.mjs';
 import { countRebuild } from './render-stats.mjs';
 import './kikx-typing-indicator.mjs';
@@ -243,16 +244,19 @@ export class KikxFrameItem extends HTMLElement {
 
   _applyFrameState(frame, compact) {
     let status = frameStatus(frame);
+    let tinted = compact || isBotCommunicationFrame(frame);
     let className = `kikx-frame kikx-frame--${frame.type}`;
     if (compact)
-      className += ` kikx-frame--compact ${frameStatusClass(status)}`;
+      className += ' kikx-frame--compact';
+    if (tinted)
+      className += ` ${frameStatusClass(status)}`;
 
     this.className = className;
     this.setAttribute('role', 'listitem');
     this.dataset.frameId = frame.id || '';
     this.dataset.frameType = frame.type || '';
 
-    if (compact)
+    if (tinted)
       this.dataset.frameStatus = status;
     else
       this.removeAttribute('data-frame-status');

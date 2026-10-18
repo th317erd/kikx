@@ -5,6 +5,8 @@
 
 import { isToolFrame } from '../../shared/frame-manager/frame-manager.mjs';
 
+const BOT_COMMUNICATION_TYPES = new Set([ 'AgentMessage', 'AgentMessageDelta', 'AgentProgress' ]);
+
 const COMPACT_FRAME_TYPES = new Set([
   'CompactionFrame',
   'AgentError',
@@ -67,6 +69,10 @@ export function frameStatus(frame) {
 
 export function frameStatusClass(status) {
   return `kikx-frame--status-${normalizeFrameStatus(status)}`;
+}
+
+export function isBotCommunicationFrame(frame) {
+  return BOT_COMMUNICATION_TYPES.has(frame?.type);
 }
 
 export function isCompactFrame(frame) {
