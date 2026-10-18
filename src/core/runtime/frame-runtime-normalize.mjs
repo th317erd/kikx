@@ -199,3 +199,29 @@ export function latestFrameClock(frames) {
 
   return clock;
 }
+
+/**
+ * Build the content object for a UserMessage.
+ *
+ * Historically this was always `{ text }`. Wake payloads need to carry
+ * structured context (question + answer + group) so the model can re-orient
+ * without a tool call, so extra own-properties are merged in. When there is no
+ * extra content the result is exactly `{ text }`, keeping ordinary messages
+ * byte-identical to before.
+ */
+export function buildUserMessageContent(text, extra) {
+  let content = { text };
+
+  if (!extra || typeof extra !== 'object' || Array.isArray(extra))
+    return content;
+
+  for (let [ key, value ] of Object.entries(extra)) {
+    if (key === 'text')
+      continue;
+    if (value === undefined)
+      continue;
+    content[key] = value;
+  }
+
+  return content;
+}

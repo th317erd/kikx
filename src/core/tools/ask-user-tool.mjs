@@ -141,6 +141,25 @@ export class AskUserTool extends PluginInterface {
     });
 
     await this.emitQuestionFrames({ result, sessionID, agentID });
+    // Runtime event so clients can refresh an Inbox without polling. Emitted
+    // after persistence and frame emission: the event is a notification, never
+    // the source of truth, so a failure here must not fail the tool call.
+    this.emitQuestionEvent('question.asked', {
+      sessionID,
+      agentID,
+      groupID: result.groupID,
+      questionIDs: result.questionIDs,
+      questions: result.questions.map((question) => ({
+        id: question.id,
+        text: question.text,
+        priority: question.priority,
+        status: question.status,
+        mode: question.mode,
+        askedAt: question.askedAt,
+        sessionID: question.sessionID,
+        agentID: question.agentID,
+      })),
+    });
 
     return {
       groupID: result.groupID,
@@ -158,6 +177,21 @@ export class AskUserTool extends PluginInterface {
     };
   }
 
+  /**
+   * Fire a runtime event if the runtime exposes the channel. Best-effort: the
+   * store is the source of truth and events are only a UI refresh hint.
+   */
+  emitQuestionEvent(type, payload) {
+    let runtime = this.context?.services?.frameRuntime
+      || this.context?.frameRuntime
+      || null;
+
+    try {
+      runtime?.emitRuntimeEvent?.(type, payload);
+    } catch (error) {
+      this.context?.logger?.warn?.(`ask-user: failed to emit ${type}`, error?.message || error);
+    }
+  }
   /**
    * Emit one `Question` frame per question (D-3: one frame per question, tied by
    * groupID). Registration of the client renderer is P3; an unregistered frame

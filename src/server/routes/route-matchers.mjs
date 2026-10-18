@@ -131,3 +131,38 @@ export function matchToolOutputRoute(pathname) {
     outputID: decodeURIComponent(match[1]),
   };
 }
+
+// POST /api/v1/questions/:id/answer stores the answer and wakes the asking
+// agent. The question id is a UUID, but any opaque id is accepted here and
+// validated by the store.
+export function matchQuestionAnswerRoute(pathname) {
+  let match = /^\/api\/v1\/questions\/([^/]+)\/answer$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    questionID: decodeURIComponent(match[1]),
+  };
+}
+
+// POST /api/v1/questions/:id/read clears the unread badge for one question.
+export function matchQuestionReadRoute(pathname) {
+  let match = /^\/api\/v1\/questions\/([^/]+)\/read$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    questionID: decodeURIComponent(match[1]),
+  };
+}
+
+// POST /api/v1/questions/:id/dismiss lets the asker withdraw an open question.
+export function matchQuestionDismissRoute(pathname) {
+  let match = /^\/api\/v1\/questions\/([^/]+)\/dismiss$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    questionID: decodeURIComponent(match[1]),
+  };
+}

@@ -1,0 +1,369 @@
+'use strict';
+
+// Answer delivery: the "answer loop" half of the ask-user feature.
+//
+// The core requirement (plan §5): an answered question must WAKE the asking
+// agent in the origin session, carrying enough context that a stale
+// question/answer pair is still intelligible. Two modes, one mechanism:
+//
+//   mode:'wait'     - the asker already ended its turn; the answer starts a new one.
+//   mode:'continue' - the asker is mid-turn; the answer is a live STEER.
+//
+// In both cases we post one visible, targeted `UserMessage` per answered
+// question ([D-9]). `targetAgentID` is what makes it wake exactly one agent:
+// `resolveRouteTargets()` short-circuits to a single-target bypass when the
+// target is a participant.
+//
+// The continuation kind is `user-answer`, which is deliberately NOT in
+// `AUTONOMOUS_CONTINUATION_KINDS`. That matters: `cancelAutonomousWakes()` only
+// cancels autonomous continuations, so a human answer can never be retired as
+// chatter, and an answer is never chain-capped. A human outranks the bot's own
+// scheduling.
+
+const ANSWER_AUTHOR_FALLBACK = 'user';
+
+/**
+ * Raised when the answer was stored but could not be delivered to the asking
+ * agent (deleted, disabled, or no longer a participant). The answer is always
+ * kept — a user reply must never be silently dropped.
+ */
+export class QuestionUndeliverableError extends Error {
+  constructor(message, question = null) {
+    super(message);
+    this.name = 'QuestionUndeliverableError';
+    this.code = 'QUESTION_UNDELIVERABLE';
+    this.question = question;
+  }
+}
+
+export class QuestionAnswerService {
+  constructor(options = {}) {
+    let {
+      questionsStore,
+      frameRuntime,
+      agentManager = null,
+      logger = console,
+    } = options;
+
+    if (!questionsStore)
+      throw new TypeError('QuestionAnswerService requires questionsStore');
+    if (!frameRuntime)
+      throw new TypeError('QuestionAnswerService requires frameRuntime');
+
+    this.questionsStore = questionsStore;
+    this.frameRuntime = frameRuntime;
+    this.agentManager = agentManager;
+    this.logger = logger;
+  }
+
+  /**
+   * Store an answer and deliver it to the asking agent.
+   *
+   * Ordering is deliberate: the answer is persisted FIRST, then delivery is
+   * attempted. A crash between the two leaves an answered question with no
+   * wake (recoverable, visible) rather than a wake referring to an answer that
+   * was never stored.
+   */
+  async submitAnswer(questionID, input = {}) {
+    let question = await this.questionsStore.getQuestion(questionID);
+
+    // The store enforces terminal/409 itself, under a per-question mutex. It
+    // also returns the stored doc, which is what we want to deliver.
+    let answered = await this.questionsStore.answerQuestion(questionID, {
+      answer: input.answer,
+      userID: input.userID,
+      answerFrameID: input.answerFrameID,
+    });
+
+    let delivery = await this.deliverAnswer(answered, input);
+
+    if (!delivery.delivered) {
+      let undeliverable = await this.questionsStore.markUndeliverable(questionID, {
+        answer: answered.answer,
+        userID: input.userID,
+        reason: delivery.reason,
+      });
+
+      this.emit('question.updated', {
+        sessionID: question.sessionID,
+        question: undeliverable,
+        reason: delivery.reason,
+      });
+
+      return {
+        delivered: false,
+        reason: delivery.reason,
+        question: undeliverable,
+      };
+    }
+
+    this.emit('question.answered', {
+      sessionID: question.sessionID,
+      question: delivery.question || answered,
+      frameID: delivery.frameID,
+      wakeFrameID: delivery.frameID,
+    });
+
+    return {
+      delivered: true,
+      question: delivery.question || answered,
+      frameID: delivery.frameID,
+      sessionID: question.sessionID,
+      agentID: question.agentID,
+    };
+  }
+
+  /**
+   * Post the wake for an already-answered question. Never throws for an
+   * undeliverable target: returns `{ delivered:false, reason }` so the caller
+   * can record the state without losing the answer.
+   */
+  async deliverAnswer(question, input = {}) {
+    let sessionID = question.sessionID;
+    let agentID = question.agentID;
+
+    let entry = null;
+    try {
+      entry = await this.frameRuntime.ensureSessionEntry(sessionID);
+    } catch (error) {
+      if (error?.status === 404)
+        return { delivered: false, reason: 'origin-session-missing' };
+      throw error;
+    }
+
+    if (!entry?.session || entry.session.deletedAt)
+      return { delivered: false, reason: 'origin-session-deleted' };
+
+    let participants = Array.isArray(entry.session.participantAgentIDs)
+      ? entry.session.participantAgentIDs
+      : [];
+
+    if (!participants.includes(agentID))
+      return { delivered: false, reason: 'agent-not-participant' };
+
+    if (await this.isAgentUnavailable(agentID))
+      return { delivered: false, reason: 'agent-unavailable' };
+
+    let group = null;
+    try {
+      group = await this.questionsStore.getGroup(question.groupID);
+    } catch (error) {
+      // A missing group is not fatal: the wake still carries the question.
+      this.logger?.warn?.('ask-user: group context unavailable', error?.message || error);
+      group = null;
+    }
+
+    let now = this.clock();
+    let frameID = this.idGenerator();
+    let context = {
+      text: buildAnswerPromptText(question, group),
+      status: 'answered',
+      question: {
+        id: question.id,
+        text: question.text,
+        answer: question.answer,
+        askedAt: question.askedAt,
+        answeredAt: question.answeredAt,
+        mode: question.mode,
+        status: question.status,
+        contextRefs: Array.isArray(question.contextRefs) ? question.contextRefs : [],
+        group: group
+          ? {
+            id: group.id,
+            index: question.index,
+            total: group.total,
+            siblings: group.siblings,
+          }
+          : null,
+      },
+      references: buildReferences(question),
+    };
+
+    // `appendUserMessage` owns the live-steer behaviour (it cancels pending
+    // autonomous wakes so human authority supersedes the bot's own schedule),
+    // so both modes route through it rather than merging directly.
+    let result = await this.frameRuntime.appendUserMessage(sessionID, {
+      id: frameID,
+      userID: input.userID || question.answeredByUserID || null,
+      authorDisplayName: input.authorDisplayName || null,
+      targetAgentID: agentID,
+      parentID: question.frameID || null,
+      interactionID: `question:${question.id}`,
+      content: context,
+      continuation: {
+        kind: 'user-answer',
+        questionID: question.id,
+        groupID: question.groupID,
+        askedAt: question.askedAt,
+        answeredAt: question.answeredAt,
+        mode: question.mode || 'wait',
+        createdAt: now,
+      },
+      timestamp: now,
+    });
+
+    // Stored answer must be durable before we report success: otherwise a crash
+    // after the wake could surface an answer the store never recorded.
+    //
+    // Prefer the runtime's full barrier: FrameRuntime.flush() awaits the frame
+    // store write *and* settles the router queue, so 'answered' also implies
+    // 'dispatched'. The store-only fallback keeps older runtimes working; a
+    // store flush alone can leave the answer persisted but never routed, which
+    // is exactly the gap this service exists to close.
+    if (typeof this.frameRuntime.flush === 'function')
+      await this.frameRuntime.flush();
+    else
+      await this.frameRuntime.frameStore?.flush?.();
+
+    return {
+      delivered: true,
+      frameID: result?.frame?.id || frameID,
+      question,
+    };
+  }
+
+  /**
+   * A deleted or disabled agent cannot receive a wake. `agentManager` is
+   * optional so tests and embedders can run without one.
+   */
+  async isAgentUnavailable(agentID) {
+    if (!this.agentManager?.getAgent)
+      return false;
+
+    try {
+      let agent = await this.agentManager.getAgent(agentID);
+      if (!agent)
+        return true;
+      return agent.enabled === false || agent.deleted === true;
+    } catch (error) {
+      if (error?.status === 404)
+        return true;
+      throw error;
+    }
+  }
+
+  emit(type, payload) {
+    try {
+      this.frameRuntime?.emitRuntimeEvent?.(type, payload);
+    } catch (error) {
+      this.logger?.warn?.(`ask-user: failed to emit ${type}`, error?.message || error);
+    }
+  }
+
+  clock() {
+    return Number(this.frameRuntime?.clock?.() || Date.now());
+  }
+
+  idGenerator() {
+    return this.frameRuntime?.idGenerator?.() || `q-${Math.random().toString(16).slice(2)}`;
+  }
+}
+
+/**
+ * Human-readable wake text. It has to stand on its own: the answer may arrive
+ * long after the question, and the model sees this text before any tool call.
+ */
+export function buildAnswerPromptText(question, group = null) {
+  let lines = [];
+
+  let age = describeAge(question.askedAt, question.answeredAt);
+  let asked = age ? ` (you asked ${age})` : '';
+  lines.push(`The user answered your question${asked}:`);
+  lines.push('');
+  lines.push(`Q: ${question.text}`);
+  lines.push(`A: ${question.answer || '(no text)'}`);
+
+  if (group && group.total > 1) {
+    let answered = group.siblings.filter((sibling) => sibling.status !== 'open').length;
+    lines.push('');
+    lines.push(`Batch context: ${answered} of ${group.total} answered.`);
+
+    for (let sibling of group.siblings) {
+      if (sibling.id === question.id)
+        continue;
+
+      let state = sibling.status === 'open'
+        ? 'still waiting on you'
+        : sibling.status;
+      lines.push(`- ${sibling.text} — ${state}`);
+    }
+  }
+
+  if (Array.isArray(question.contextRefs) && question.contextRefs.length > 0) {
+    lines.push('');
+    lines.push('References from when you asked:');
+    for (let ref of question.contextRefs.slice(0, 10)) {
+      lines.push(`- ${describeReference(ref)}`);
+    }
+  }
+
+  if (question.mode === 'continue') {
+    lines.push('');
+    lines.push('This answer arrived while you were working and supersedes it — treat it as the current instruction.');
+  } else {
+    lines.push('');
+    lines.push('Continue from here.');
+  }
+
+  return lines.join('\n');
+}
+
+function describeReference(ref) {
+  if (!ref || typeof ref !== 'object')
+    return String(ref);
+
+  let type = ref.type || 'reference';
+  let id = ref.id || ref.frameID || ref.path || '';
+  let label = ref.label || ref.title || ref.text || '';
+
+  if (label)
+    return `${type} ${id}${id ? ': ' : ''}${truncate(label, 120)}`;
+
+  return `${type} ${id}`.trim();
+}
+
+function buildReferences(question) {
+  let refs = [];
+  refs.push({ type: 'question', id: question.id });
+
+  if (question.frameID)
+    refs.push({ type: 'frame', id: question.frameID });
+
+  for (let ref of Array.isArray(question.contextRefs) ? question.contextRefs : []) {
+    if (ref && typeof ref === 'object')
+      refs.push(ref);
+    else
+      refs.push({ type: 'reference', id: String(ref) });
+  }
+
+  for (let todoID of Array.isArray(question.todoIDs) ? question.todoIDs : [])
+    refs.push({ type: 'todo', id: todoID });
+
+  return refs;
+}
+
+function describeAge(askedAt, answeredAt) {
+  let start = Number(askedAt);
+  let end = Number(answeredAt);
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start)
+    return '';
+
+  let seconds = Math.round((end - start) / 1000);
+  if (seconds < 60)
+    return `${seconds}s ago`;
+  if (seconds < 3600)
+    return `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 86400)
+    return `${Math.round(seconds / 3600)}h ago`;
+  return `${Math.round(seconds / 86400)}d ago`;
+}
+
+function truncate(value, max) {
+  let text = String(value);
+  if (text.length <= max)
+    return text;
+  return `${text.slice(0, max - 1)}…`;
+}
+
+export { ANSWER_AUTHOR_FALLBACK };

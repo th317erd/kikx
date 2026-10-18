@@ -167,16 +167,21 @@ export class QuestionsStore {
 
     return await this.withLock(id, async () => {
       let question = await this.getQuestion(id);
-      assertOpen(question, 'delivered');
+      assertCanMarkUndeliverable(question);
 
       let now = this.clock();
+      let reason = normalizeOptionalString(input.reason) || 'undeliverable';
       let updated = {
         ...question,
         status: 'undeliverable',
         answer: answer ?? question.answer,
-        answeredAt: now,
-        answeredByUserID: normalizeOptionalString(input.userID || input.user_id) || null,
-        dismissalReason: normalizeOptionalString(input.reason) || 'undeliverable',
+        // The answer was recorded before delivery was attempted, so its stamps
+        // already exist; keep them rather than restating them as the failure time.
+        answeredAt: question.answeredAt ?? now,
+        answeredByUserID: normalizeOptionalString(input.userID || input.user_id) || question.answeredByUserID || null,
+        deliveryFailedAt: now,
+        deliveryFailureReason: reason,
+        dismissalReason: reason,
         updatedAt: now,
       };
 
@@ -615,6 +620,25 @@ function summarizeQuestion(question) {
     askedAt: question.askedAt,
     readAt: question.readAt,
   };
+}
+
+// `markUndeliverable` is the one recorded transition that legitimately lands
+// on a terminal status: delivery is attempted *after* the answer is persisted,
+// so by the time the wake is known to be unsendable the doc is already terminal
+// 'answered'. Rejecting that (as assertOpen does) would turn a stored answer
+// into a failed request — the exact loss this path exists to prevent.
+function assertCanMarkUndeliverable(question) {
+  if (question.deleted)
+    throw conflict(`Question ${question.id} was deleted; it cannot be marked undeliverable`);
+
+  if (question.status === 'undeliverable')
+    throw conflict(`Question ${question.id} is already undeliverable`);
+
+  if (question.status === 'dismissed')
+    throw conflict(`Question ${question.id} was dismissed; it cannot be marked undeliverable`);
+
+  if (question.status !== 'open' && question.status !== 'answered')
+    throw conflict(`Question ${question.id} is ${question.status}; it cannot be marked undeliverable`);
 }
 
 function assertOpen(question, action) {

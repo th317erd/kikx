@@ -24,6 +24,9 @@ export const RUNTIME_EVENT_TYPES = [
   'frame.phantom',
   'commit',
   'tokens.updated',
+  'question.asked',
+  'question.answered',
+  'question.updated',
 ];
 
 export const CONNECTED_STATUS = 'Connected';

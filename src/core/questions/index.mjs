@@ -6,3 +6,9 @@ export {
   QUESTION_TERMINAL_STATUSES,
   QuestionsStore,
 } from './questions-store.mjs';
+
+export {
+  QuestionAnswerService,
+  QuestionUndeliverableError,
+  buildAnswerPromptText,
+} from './question-wake.mjs';

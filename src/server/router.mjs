@@ -6,6 +6,7 @@ import { handlePluginAssetRoutes } from './routes/plugin-asset-routes.mjs';
 import { handleInfraRoutes } from './routes/infra-routes.mjs';
 import { handleAccountRoutes } from './routes/account-routes.mjs';
 import { handleSessionRoutes } from './routes/session-routes.mjs';
+import { handleQuestionRoutes } from './routes/question-routes.mjs';
 import { handleAgentRoutes } from './routes/agent-routes.mjs';
 import { handleDatabaseRoutes } from './routes/database-routes.mjs';
 import { handleTeamRoutes } from './routes/team-routes.mjs';
@@ -25,6 +26,7 @@ export async function routeRequest({ request, response, context, staticRoots }) 
     handleInfraRoutes,
     handleAccountRoutes,
     handleSessionRoutes,
+    handleQuestionRoutes,
     handleAgentRoutes,
     handleDatabaseRoutes,
     handleTeamRoutes,
