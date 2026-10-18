@@ -54,6 +54,7 @@ import {
 } from '../core/agents/index.mjs';
 import { CompactionService } from '../core/compaction/index.mjs';
 import { QuestionAnswerService, QuestionsStore } from '../core/questions/index.mjs';
+import { repairQuestionIndex } from '../core/questions/question-index-repair.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
@@ -480,17 +481,45 @@ export async function createServer(options = {}) {
     }));
   }
 
+  // The open index and per-agent mirrors are derived caches, and nothing else
+  // in production rebuilt them: a lost entry was invisible forever because
+  // `listOpen()` reads the index only. Repair at startup, before the readiness
+  // gate below is allowed to flip, so a probe never observes a half-repaired
+  // index. Best-effort: a repair failure must not stop the server booting.
+  if (!context.has('questionIndexRepairPromise')) {
+    let questionsStore = context.require('questionsStore');
+    let logger = options.logger || console;
+    context.set('questionIndexRepairPromise', Promise.resolve(
+      typeof questionsStore?.readOpenIndex === 'function' && typeof questionsStore?.writeIndexes === 'function'
+        ? repairQuestionIndex(questionsStore, { logger })
+        : { skipped: true },
+    ).then((result) => {
+      if (result?.skippedReason === 'scan-returned-nothing')
+        logger.warn?.('Kikx skipped ask-user index repair: the scan found no question docs', result);
+      else if (result?.repaired > 0)
+        logger.warn?.('Kikx repaired the ask-user question index', result);
+
+      return result;
+    }).catch((error) => {
+      logger.error?.('Kikx ask-user index repair failed', error);
+      return { repaired: 0, error };
+    }));
+  }
+
   // Readiness gate for probes and the deploy verifier: false until startup
   // recovery and the scheduled-frame worker have settled, so a probe never
   // observes the transient window before persisted scheduled frames are loaded.
   // Exposed verbatim as `ready` on GET /health.
   if (!context.has('startupReady')) {
     context.set('startupReady', false);
-    Promise.resolve(context.require('scheduledFrameWorkerPromise'))
-      .catch(() => {})
-      .then(() => {
-        context.set('startupReady', true);
-      });
+    // The index repair is part of readiness: a client that loads the Inbox on
+    // startup must not read an index that is still being rebuilt.
+    Promise.all([
+      Promise.resolve(context.require('scheduledFrameWorkerPromise')).catch(() => {}),
+      Promise.resolve(context.require('questionIndexRepairPromise')).catch(() => {}),
+    ]).then(() => {
+      context.set('startupReady', true);
+    });
   }
 
   if (!context.has('tokenUsageRuntimeBridge')) {

@@ -8,6 +8,11 @@ export {
 } from './questions-store.mjs';
 
 export {
+  listDocPaths,
+  repairQuestionIndex,
+} from './question-index-repair.mjs';
+
+export {
   QuestionAnswerService,
   QuestionUndeliverableError,
   buildAnswerPromptText,
