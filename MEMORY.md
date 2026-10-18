@@ -60,9 +60,9 @@ Prod is **behind HEAD** (see "Deploy state") — do not deploy unless the owner 
   `/tmp/opencode/*.log`, `/tmp/opencode/probe-stack.mjs` (Node inspector stack dump).
 
 ### Deploy state
-- `HEAD` = `3b1c300` (pushed). **Prod container is on `62644c9`** — it does NOT yet
+- `HEAD` = `5db560a` (pushed). **Prod container is on `62644c9`** — it does NOT yet
   include the compact-frame UI, the thinking-brain fix, or the latest polish. Owner
-  said to wait before deploying.
+  said to wait before deploying. `:3002` runs this checkout (reload to see client changes).
 
 ---
 
@@ -89,12 +89,23 @@ Prod is **behind HEAD** (see "Deploy state") — do not deploy unless the owner 
 - **Client thinking rack:** `thinking-state.mjs` (per-agent brain; one brain per agent),
   `kikx-thinking-panel.mjs` (🧠 button + cursor-following tooltip portaled to body),
   `kikx-thinking-rack.mjs`, CSS `.kikx-thinking-*`.
-- **Compact frames:** `isCompactFrame()` / `compactFrameSummary()` in
-  `tool-frame-summary.mjs`; `compact-frame-view.mjs` builds a native `<details>`; 
-  `kikx-frame-item.mjs` wraps tool/system frames, keeps the `{Name} {time}` meta header
-  visible, and applies `kikx-frame--compact` + `kikx-frame--status-{success,error,running}`.
-  Bash highlighting: `syntax-highlight.mjs` (dependency-free, DOM-built) used for the
-  exec compact line, card summary, and stdout/stderr.
+- **Compact frames:** `isCompactFrame()` / `compactFrameSummary()` /
+  `isBotCommunicationFrame()` in `tool-frame-summary.mjs`; `compact-frame-view.mjs`
+  builds a native `<details>`; `kikx-frame-item.mjs` wraps tool/system frames, keeps the
+  `{Name} {time}` meta header visible (padded), and applies `kikx-frame--compact` +
+  `kikx-frame--status-{success,error,running}` (also on bot communication frames;
+  `UserMessage` is never tinted). Icon sits LEFT at 19px; write-file uses `→`
+  (read-file `▤`); success/error tint the row background + left rule. Expanding
+  auto-opens nested Arguments/Output disclosures. Clicking anywhere toggles (selection
+  and controls excluded). Bash highlighting: `syntax-highlight.mjs` (dependency-free,
+  DOM-built) used for the exec compact line, card summary, command meta, and
+  stdout/stderr.
+- **Tool input truncation:** `sanitizeVisibleToolInput` → `truncateDeep` keeps small
+  top-level scalars (`path`, `query`, `url`, `command`, …) when a large payload (e.g.
+  write-file `content`) is cut; the client also recovers fields from `input.preview`
+  for frames stored before that fix.
+- **Markdown type scale:** 13px primary body, 15px headers only; inline/pre code
+  inherits primary; bold/italic/strikethrough preserved.
 
 ---
 
@@ -123,6 +134,12 @@ Prod is **behind HEAD** (see "Deploy state") — do not deploy unless the owner 
 - `547bdcf` Compact polish: meta padding, click-anywhere toggle, bash highlighting,
   markdown type scale flattened to 13px primary / 15px headers.
 - `3b1c300` Highlight the command in the exec card summary too.
+- `577a4ca` Compact frames: recover paths (truncation keeps scalars + client preview
+  fallback), write-file arrow icon, green/red row tint, auto-open nested
+  Arguments/Output on expand.
+- `5db560a` Tint bot communication frames (`AgentMessage`/`AgentMessageDelta`) by turn
+  status (green success / red failure / neutral = existing agent color); human
+  `UserMessage` never tinted. Adds `isBotCommunicationFrame()`.
 
 Also this session: committed `~/.bot-common/rc.md` (symlink → `startup.md`) + README note
 (bot-common `c090f24`); created DB `kikx-dev2` and the `:3002` dev server.
@@ -175,7 +192,7 @@ Client unit (`spec/client`) is reliable.
 
 ## 5. Open items / next steps
 
-1. **Deploy prod** to `3b1c300` when the owner says (prod is on `62644c9`).
+1. **Deploy prod** to `5db560a` when the owner says (prod is on `62644c9`).
 2. **Data repair migration** for sessions with frames persisted at order 2^53.
 3. **Turns-as-scheduled-items at turn start** — closes the narrow crash window between
    the user-message commit and the response placeholder creation (currently only
