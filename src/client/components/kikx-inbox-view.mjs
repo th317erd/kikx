@@ -84,9 +84,23 @@ export function buildInboxView(app, options = {}) {
     let questionsState = getQuestionsState(app._state);
     let questions = normalizeQuestionList(questionsState.questions || []);
 
+    // The list only wires its answer forms when it is handed handlers
+    // (`kikx-inbox-list.mjs` requires at least one of onSubmit/onDismiss/onRead
+    // before calling `bindAnswerForm`). The shell builds this view with no
+    // options at all (`kikx-shell-builders.mjs:236`), so without these defaults
+    // every card renders a textarea and a button that do nothing. Defaults live
+    // here rather than in the shell so the Inbox stays the single owner of its
+    // own wiring; callers may still override any handler via `options.handlers`.
+    let handlers = {
+      onSubmit: (questionID, answerText) => app._submitQuestionAnswer?.(questionID, answerText),
+      onDismiss: (questionID) => app._dismissQuestion?.(questionID),
+      onRead: (questionID) => app._markQuestionRead?.(questionID),
+      ...(options.handlers || {}),
+    };
+
     let body = options.renderList
       ? options.renderList(app)
-      : buildInboxList(app, options);
+      : buildInboxList(app, handlers);
 
     return section.class('kikx-inbox')(
       inboxHeader(app),

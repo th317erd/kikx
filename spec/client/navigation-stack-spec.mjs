@@ -127,3 +127,105 @@ test('stack URL round-trips', () => {
   let search = url.slice(url.indexOf('?'));
   assert.deepEqual(stackFromSearchParams(search).stack, stack);
 });
+
+// --- Non-session view entries (plan §6 inbox, §6.4 activities) ---------------
+// `navigation-stack-spec.mjs` predates the view entries, so the stack's view
+// behaviour was never covered. These tests pin the contract that made the
+// Activities view possible without disturbing the Inbox.
+
+test('VIEW_NAMES lists every addressable non-session view', async () => {
+  const { VIEW_NAMES } = await import('../../src/client/state/navigation-stack.mjs');
+  assert.deepEqual(VIEW_NAMES, [ 'inbox', 'activities' ]);
+});
+
+test('pushView is idempotent for the same view and refuses unknown names', async () => {
+  const { createNavigationStack, pushView, currentViewName } =
+    await import('../../src/client/state/navigation-stack.mjs');
+
+  let root = createNavigationStack();
+  let inbox = pushView(root, 'inbox');
+  assert.equal(currentViewName(inbox), 'inbox');
+
+  // Entering the same view twice must not stack two copies, or Back looks broken.
+  assert.deepEqual(pushView(inbox, 'inbox'), inbox);
+
+  // A typo'd view name is a programming error, not a silent no-op.
+  assert.throws(() => pushView(root, 'nonsense'), TypeError);
+});
+
+test('switching views replaces the view entry instead of burying the session', async () => {
+  const {
+    createNavigationStack,
+    pushInbox,
+    pushActivities,
+    pushThread,
+    currentViewName,
+    stackDepth,
+  } = await import('../../src/client/state/navigation-stack.mjs');
+
+  let stack = pushThread(createNavigationStack(), 'session-1');
+  let inbox = pushInbox(stack);
+  assert.equal(currentViewName(inbox), 'inbox');
+  let depthWithInbox = stackDepth(inbox);
+
+  // Inbox -> Activities must swap the top entry, not add a second one: otherwise
+  // Back from Activities lands on Inbox rather than the session underneath.
+  let activities = pushActivities(inbox);
+  assert.equal(currentViewName(activities), 'activities');
+  assert.equal(stackDepth(activities), depthWithInbox, 'no extra stack entry');
+
+  // The session entry survives underneath, so Back still reaches it.
+  assert.equal(activities.at(-2).sessionID, 'session-1');
+});
+
+test('a view entry reports no session for the grid and the deep link', async () => {
+  const {
+    createNavigationStack,
+    pushActivities,
+    gridParentSessionID,
+    stackToURL,
+  } = await import('../../src/client/state/navigation-stack.mjs');
+
+  let stack = pushActivities(createNavigationStack());
+  assert.equal(gridParentSessionID(stack), null, 'a view has no parent session');
+
+  // The view is encoded by name, never as a `session=` param.
+  let url = stackToURL(stack, { pathname: '/' });
+  assert.match(url, /view=activities/);
+  assert.doesNotMatch(url, /session=/);
+});
+
+test('stackFromSearchParams restores the activities view', async () => {
+  const { stackFromSearchParams } = await import('../../src/client/state/navigation-stack.mjs');
+
+  let parsed = stackFromSearchParams('?view=activities');
+  assert.equal(parsed.view, 'activities');
+  assert.equal(parsed.stack.at(-1).view, 'activities');
+  // `viewInbox` stays meaningful for existing §6.6 callers.
+  assert.equal(parsed.viewInbox, false);
+
+  let inbox = stackFromSearchParams('?view=inbox');
+  assert.equal(inbox.viewInbox, true);
+  assert.equal(inbox.view, 'inbox');
+});
+
+test('an unknown view param falls back to the session stack, not a broken entry', async () => {
+  const { stackFromSearchParams } = await import('../../src/client/state/navigation-stack.mjs');
+
+  let parsed = stackFromSearchParams('?view=bogus&session=a');
+  assert.equal(parsed.view, null);
+  assert.deepEqual(parsed.stack, [
+    { sessionID: null, collapsed: true },
+    { sessionID: 'a', collapsed: false },
+  ]);
+});
+
+test('normalizeNavigationStack preserves a known view and drops an unknown one', async () => {
+  const { normalizeNavigationStack } = await import('../../src/client/state/navigation-stack.mjs');
+
+  let kept = normalizeNavigationStack([ { view: 'activities' } ]);
+  assert.equal(kept.at(-1).view, 'activities');
+
+  let dropped = normalizeNavigationStack([ { sessionID: null }, { view: 'bogus' } ]);
+  assert.equal(dropped.at(-1).view, undefined);
+});
