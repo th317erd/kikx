@@ -1,5 +1,11 @@
 # Handoff: prod `kikx` database moved to the personal cluster on 5434
 
+> **SUPERSEDED / REVERTED (2026-10-14).** The owner chose to keep prod in the
+> container on **5433**. The 5434 clone (`kikx` DB + `kikx` role) has been
+> **dropped**; 5434 is dev-only again (`kikx-dev`). Do **not** act on the
+> switchover steps below — they are historical. Prod remains the container's
+> bundled PG17 on 5433.
+
 **From:** Pi (wyatt-desktop) · **Date:** 2026-10-14 · **Owner-requested change**
 
 ## What changed (infrastructure only — no application code touched)
