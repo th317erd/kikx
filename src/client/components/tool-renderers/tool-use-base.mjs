@@ -264,6 +264,23 @@ export class ShellToolUse extends ToolUse {
     return 'Shell';
   }
 
+  // Render the command inside the card summary as highlighted bash too.
+  renderSummaryText() {
+    let prefix = this.isResultFrame
+      ? `Command ${this.status === 'error' ? 'failed' : 'completed'}: `
+      : 'Running command: ';
+    let element = document.createElement('span');
+    element.textContent = prefix;
+
+    if (this.input.command) {
+      let codeNode = document.createElement('code');
+      highlightBashInto(codeNode, String(this.input.command));
+      element.appendChild(codeNode);
+    }
+
+    return element;
+  }
+
   callSummary() {
     return this.input.command ? `Running command: ${this.input.command}` : 'Running command...';
   }
