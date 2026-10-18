@@ -4,8 +4,13 @@
 // the root (top-level projects) or an entered session. `collapsed` shows only
 // sub-sessions (a grid); expanded shows the full chat.
 //
-// Entry: { sessionID: string | null, collapsed: boolean }
+// Entry: { sessionID: string | null, collapsed: boolean, view?: 'inbox' }
 // Root:  { sessionID: null, collapsed: true }
+//
+// `view` marks a non-session surface pushed on top of the stack. Today that is
+// 'inbox' (plan §6): the pinned Inbox is a place you enter from the sidebar and
+// leave with Back, so it has to be a stack entry rather than app-global state —
+// otherwise Back would skip over it and deep links could not address it.
 
 export function createNavigationStack() {
   return [ { sessionID: null, collapsed: true } ];
@@ -15,10 +20,17 @@ export function normalizeNavigationStack(stack) {
   if (!Array.isArray(stack) || stack.length === 0)
     return createNavigationStack();
 
-  let normalized = stack.map((entry) => ({
-    sessionID: typeof entry?.sessionID === 'string' && entry.sessionID.trim() !== '' ? entry.sessionID.trim() : null,
-    collapsed: entry?.collapsed === true,
-  }));
+  let normalized = stack.map((entry) => {
+    let normalizedEntry = {
+      sessionID: typeof entry?.sessionID === 'string' && entry.sessionID.trim() !== '' ? entry.sessionID.trim() : null,
+      collapsed: entry?.collapsed === true,
+    };
+
+    if (entry?.view === 'inbox')
+      normalizedEntry.view = 'inbox';
+
+    return normalizedEntry;
+  });
 
   // The root entry must always be the null-session root.
   if (normalized[0].sessionID !== null)
@@ -81,10 +93,34 @@ export function setCollapsed(stack, collapsed) {
   return next;
 }
 
+// --- Inbox view ---------------------------------------------------------
+// The Inbox is a surface, not a session. Pushing it puts a view entry on top of
+// whatever the user was looking at, so Back returns them there instead of to the
+// root. It is idempotent: entering the Inbox twice must not stack two copies
+// (that would make Back appear broken).
+export function isInboxEntry(entry) {
+  return entry?.view === 'inbox';
+}
+
+export function isInboxView(stack) {
+  return isInboxEntry(currentEntry(stack));
+}
+
+export function pushInbox(stack) {
+  let base = normalizeNavigationStack(stack);
+  if (isInboxView(base))
+    return base;
+
+  return [ ...base, { sessionID: null, collapsed: true, view: 'inbox' } ];
+}
+
 // The parent session ID for the current level's grid, i.e. the session whose
 // children the current entry lists. Root lists top-level (parentSessionID null).
 export function gridParentSessionID(stack) {
   let entry = currentEntry(stack);
+  if (isInboxEntry(entry))
+    return null;
+
   return entry.sessionID;
 }
 
@@ -101,8 +137,16 @@ export function stackToSearchParams(stack, existing = '') {
   params.delete('view');
   params.delete('collapsed');
 
-  for (let entry of base.slice(1))
+  for (let entry of base.slice(1)) {
+    // The inbox entry carries no session; it is encoded as `view=inbox` below.
+    if (isInboxEntry(entry))
+      continue;
+
     params.append('session', entry.sessionID);
+  }
+
+  if (isInboxView(base))
+    params.set('view', 'inbox');
 
   if (base.length > 1 && base.at(-1).collapsed)
     params.set('collapsed', '1');
@@ -135,8 +179,13 @@ export function stackFromSearchParams(search) {
   if (collapsed && stack.length > 1)
     stack[stack.length - 1] = { ...stack[stack.length - 1], collapsed: true };
 
+  let viewInbox = params.get('view') === 'inbox';
+  if (viewInbox)
+    stack = pushInbox(stack);
+
   return {
     stack,
     viewThread: sessionIDs.length === 0 && params.get('view') === 'thread',
+    viewInbox,
   };
 }

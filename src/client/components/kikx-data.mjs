@@ -119,6 +119,11 @@ export async function resyncAfterRuntimeEventsReconnect(app) {
     let sessionID = app._state.selectedSessionID;
     if (sessionID)
       await app._loadFrames(sessionID, { merge: true });
+
+    // Questions missed during the gap (plan §6.6). The event stream has no
+    // replay buffer, so without this fetch a question asked while the tab was
+    // disconnected would stay invisible until the next page load.
+    await app._loadQuestions?.({ complete: true });
   } catch (error) {
     app._state.status = error.message;
     app._state.statusKind = 'error';

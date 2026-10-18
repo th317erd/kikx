@@ -19,6 +19,7 @@ import { threadVisibleFrames } from '../state/thinking-state.mjs';
 import { childSessions } from './chat-view-model.mjs';
 import { formatTokenUsageTotal } from './kikx-app-helpers.mjs';
 import { countRebuild } from './render-stats.mjs';
+import { buildInboxSidebarEntry, buildInboxView } from './kikx-inbox-view.mjs';
 
 const { div, main, nav, section, header, h1, h2, p, span, button, form, input, label, textarea } = elements;
 const aeorInput = elements['aeor-input'];
@@ -208,6 +209,7 @@ export function buildEditableTitle(app, title, sessionID) {
 export function buildRunnerShell(app) {
   let entry = getCurrentEntry(app._state);
   let collapsed = entry.collapsed === true;
+  let inboxOpen = entry.view === 'inbox';
 
   return [
     main.class('kikx-main')(
@@ -215,8 +217,13 @@ export function buildRunnerShell(app) {
         div.class('kikx-sessions__header')(
           h2('Workspace'),
         ),
+        // Pinned at the top of the sidebar header (plan §6.1): the Inbox is the
+        // one thing that must be visible from anywhere, above the project tree.
+        buildInboxSidebarEntry(app),
       ),
-      buildWindow(app, entry, collapsed),
+      // The inbox replaces the work area while it is the top stack entry; Back
+      // pops to whatever window was underneath.
+      inboxOpen ? buildInboxView(app) : buildWindow(app, entry, collapsed),
     ),
   ];
 }

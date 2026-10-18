@@ -618,7 +618,12 @@ function summarizeQuestion(question) {
     text: question.text,
     priority: question.priority,
     askedAt: question.askedAt,
+    askedClock: question.askedClock,
     readAt: question.readAt,
+    // The Inbox shows frame-of-reference context per row (plan §6.2) straight
+    // from the open index, so the refs must ride along with the summary — the
+    // alternative is an N+1 fetch of every question doc on inbox load.
+    contextRefs: question.contextRefs,
   };
 }
 

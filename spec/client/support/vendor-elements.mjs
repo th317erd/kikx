@@ -20,7 +20,7 @@ function appendChildValue(element, value, ownerDocument) {
   element.appendChild(ownerDocument.createTextNode(String(value)));
 }
 
-function buildElement(tagName, attributes, children, ownerDocument) {
+function buildElement(tagName, attributes, children, ownerDocument, events = []) {
   let element = ownerDocument.createElement(tagName);
   for (let [ name, value ] of Object.entries(attributes)) {
     if (name === 'class')
@@ -32,12 +32,19 @@ function buildElement(tagName, attributes, children, ownerDocument) {
   for (let child of children)
     appendChildValue(element, child, ownerDocument);
 
+  for (let entry of events)
+    element.addEventListener(entry.eventName, (event) => entry.handler(event));
+
   return element;
 }
 
 function createBuilder(tagName) {
   let attributes = {};
   let children = [];
+  // `on*` chains are event handlers, not attributes. The real module attaches
+  // them with addEventListener (elements.js:189-194), so the stand-in must too
+  // or a click-based spec silently never fires its handler.
+  let events = [];
 
   function finalize(...values) {
     for (let value of values.flat(Infinity)) {
@@ -54,7 +61,18 @@ function createBuilder(tagName) {
         return undefined;
 
       if (property === 'build')
-        return (ownerDocument) => buildElement(tagName, attributes, children, ownerDocument);
+        return (ownerDocument) => buildElement(tagName, attributes, children, ownerDocument, events);
+
+      // Lowercase only the first letter after "on": .onClick -> 'click',
+      // .onKeydown -> 'keydown' (never 'keyDown').
+      if (typeof property === 'string' && /^on[A-Z]/.test(property)) {
+        let eventName = property.charAt(2).toLowerCase() + property.slice(3);
+        return (handler) => {
+          if (typeof handler === 'function')
+            events.push({ eventName, handler });
+          return proxy;
+        };
+      }
 
       return (value) => {
         if (value === true)
