@@ -10,6 +10,8 @@ import {
 } from './frame-labels.mjs';
 import { resolveFrameComponentDescriptor } from './frame-component-registry.mjs';
 import { sessionReferenceFromFrame } from './kikx-sub-session-frame.mjs';
+import { buildCompactFrameDisclosure, updateCompactSummary } from './compact-frame-view.mjs';
+import { frameStatus, frameStatusClass, isCompactFrame } from './tool-frame-summary.mjs';
 import { countRebuild } from './render-stats.mjs';
 import './kikx-typing-indicator.mjs';
 import './kikx-sub-session-frame.mjs';
@@ -101,6 +103,9 @@ export class KikxFrameItem extends HTMLElement {
     this._contentKind = null;
     this._contentTag = null;
     this._lastMarkdownText = null;
+    this._compact = false;
+    this._compactView = null;
+    this._contentParent = null;
   }
 
   updateFrame(frame, appState = {}, options = {}) {
@@ -155,6 +160,7 @@ export class KikxFrameItem extends HTMLElement {
     // Build the new subtree against a detached tree first, then swap it in. A
     // throwing renderer must leave the previous DOM (and its refs) untouched.
     let rendered = guardClientOperation('kikx-frame-item.render', () => {
+      let compact = this._shouldCompact(frame);
       let meta = null;
       let content = null;
       if (frame.type === 'BeginTyping') {
@@ -171,16 +177,26 @@ export class KikxFrameItem extends HTMLElement {
       $(this).empty();
       this._metaElement = meta;
       this._contentElement = content;
+      this._compact = compact;
+      this._compactView = null;
+      this._contentParent = this;
 
-      this.className = `kikx-frame kikx-frame--${frame.type}`;
-      this.setAttribute('role', 'listitem');
-      this.dataset.frameId = frame.id || '';
-      this.dataset.frameType = frame.type || '';
+      this._applyFrameState(frame, compact);
 
-      if (meta)
-        this.appendChild(meta);
-      if (content)
-        this.appendChild(content);
+      if (compact) {
+        this._compactView = buildCompactFrameDisclosure(
+          frame,
+          [ meta, content ].filter(Boolean),
+          document,
+        );
+        this._contentParent = this._compactView.body;
+        this.appendChild(this._compactView.element);
+      } else {
+        if (meta)
+          this.appendChild(meta);
+        if (content)
+          this.appendChild(content);
+      }
 
       return true;
     }, { frameID: frame.id, frameType: frame.type });
@@ -192,6 +208,27 @@ export class KikxFrameItem extends HTMLElement {
     }
   }
 
+  _applyFrameState(frame, compact) {
+    let status = frameStatus(frame);
+    let className = `kikx-frame kikx-frame--${frame.type}`;
+    if (compact)
+      className += ` kikx-frame--compact ${frameStatusClass(status)}`;
+
+    this.className = className;
+    this.setAttribute('role', 'listitem');
+    this.dataset.frameId = frame.id || '';
+    this.dataset.frameType = frame.type || '';
+
+    if (compact)
+      this.dataset.frameStatus = status;
+    else
+      this.removeAttribute('data-frame-status');
+  }
+
+  _shouldCompact(frame) {
+    return isCompactFrame(frame) && !sessionReferenceFromFrame(frame);
+  }
+
   _reconcile() {
     let frame = this._frame;
     if (!frame) {
@@ -199,10 +236,14 @@ export class KikxFrameItem extends HTMLElement {
       return;
     }
 
+    let compact = this._shouldCompact(frame);
+    if (compact !== this._compact || (compact && !this._compactView)) {
+      this._render();
+      return;
+    }
+
     guardClientOperation('kikx-frame-item.reconcile', () => {
-      this.className = `kikx-frame kikx-frame--${frame.type}`;
-      this.dataset.frameId = frame.id || '';
-      this.dataset.frameType = frame.type || '';
+      this._applyFrameState(frame, compact);
 
       if (frame.type === 'BeginTyping') {
         this._reconcileTypingIndicator(frame);
@@ -213,6 +254,9 @@ export class KikxFrameItem extends HTMLElement {
         this._render();
         return;
       }
+
+      if (compact)
+        updateCompactSummary(this._compactView, frame);
 
       this._reconcileFrameMeta(frame);
       this._reconcileFrameContent(frame);
@@ -339,7 +383,7 @@ export class KikxFrameItem extends HTMLElement {
   _replaceContentElement(frame) {
     this._discardContentElement();
     this._contentElement = this._buildFrameContent(frame);
-    this.appendChild(this._contentElement);
+    this._contentParent.appendChild(this._contentElement);
   }
 
   _discardContentElement() {

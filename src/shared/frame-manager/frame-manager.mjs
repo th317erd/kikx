@@ -229,7 +229,7 @@ function findToolResultFrameIndex(frames, callFrame) {
   });
 }
 
-function isToolFrame(frame) {
+export function isToolFrame(frame) {
   return Boolean(frame?.content?.toolName)
     && (
       frame.type === 'ToolCall'

@@ -11,7 +11,7 @@ import {
   startStagehandUIServer,
 } from './stagehand-test-utils.mjs';
 
-test('Stagehand aligns user messages left and other messages right with bounded width', async (t) => {
+test('Stagehand aligns user messages left and agent messages right, with compact status frames spanning the thread', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
     t.skip('Stagehand local mode requires Chrome');
@@ -144,12 +144,15 @@ test('Stagehand aligns user messages left and other messages right with bounded 
     assert.equal(layout.frames.user_msg_1.left <= layout.list.left + edgeTolerance, true);
     assert.equal(layout.frames.user_msg_1.right < layout.list.right - layout.list.width * 0.10, true);
     assert.equal(layout.frames.agent_msg_1.right >= layout.list.right - edgeTolerance, true);
-    assert.equal(layout.frames.command_result_1.right >= layout.list.right - edgeTolerance, true);
     assert.equal(layout.frames.agent_msg_1.left > layout.list.left + layout.list.width * 0.10, true);
-    assert.equal(layout.frames.command_result_1.left > layout.list.left + layout.list.width * 0.10, true);
 
-    for (let frame of Object.values(layout.frames))
-      assert.equal(frame.width <= maxMessageWidth, true);
+    // CommandResult is now a compact status line: it spans the thread instead
+    // of using the wide message bubble.
+    assert.equal(layout.frames.command_result_1.left <= layout.list.left + edgeTolerance, true);
+    assert.equal(layout.frames.command_result_1.right >= layout.list.right - edgeTolerance, true);
+
+    for (let id of [ 'user_msg_1', 'agent_msg_1' ])
+      assert.equal(layout.frames[id].width <= maxMessageWidth, true);
   } finally {
     await stagehand.close().catch(() => {});
     await fixture.close().catch(() => {});

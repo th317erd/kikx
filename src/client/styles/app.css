@@ -666,6 +666,100 @@ kikx-app {
   background: #14191d;
 }
 
+/* Compact status/tool frames: one line, icon pinned right, details on demand.
+   The native <details>/<summary> pair owns expansion and keyboard support. */
+.kikx-frame--compact {
+  width: 100%;
+  max-width: min(100%, 960px);
+  justify-self: stretch;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.kikx-frame__compact {
+  min-width: 0;
+}
+
+.kikx-frame__compact > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: #aeb8c2;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.4;
+  list-style: none;
+}
+
+.kikx-frame__compact > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kikx-frame__compact > summary:hover,
+.kikx-frame__compact > summary:focus-visible {
+  background: #1b2126;
+}
+
+.kikx-frame__compact > summary:focus-visible {
+  outline: 2px solid #3d6cff;
+  outline-offset: 1px;
+}
+
+.kikx-frame__compact-description {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-frame__compact-description code {
+  padding: 1px 4px;
+  border: 1px solid rgba(255, 183, 102, 0.24);
+  border-radius: 4px;
+  background: rgba(255, 159, 64, 0.12);
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.95em;
+}
+
+.kikx-frame__compact-icon {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #87929d;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.kikx-frame--status-success .kikx-frame__compact > summary,
+.kikx-frame--status-success .kikx-frame__compact-icon {
+  color: #7bd88f;
+}
+
+.kikx-frame--status-error .kikx-frame__compact > summary,
+.kikx-frame--status-error .kikx-frame__compact-icon {
+  color: #e06c75;
+}
+
+.kikx-frame--status-running .kikx-frame__compact > summary {
+  color: #aeb8c2;
+}
+
+.kikx-frame--status-running .kikx-frame__compact-icon {
+  color: #87929d;
+}
+
+.kikx-frame__compact-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px 10px;
+}
+
 .kikx-frame__content--custom {
   display: block;
 }
