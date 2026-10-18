@@ -75,15 +75,21 @@ export class KikxQuestionFrame extends HTMLElement {
 
     let age = questionAge(question.askedAt);
 
-    let answerBox = textarea
+    // Build the box eagerly. A DSL builder's `.value` resolves through the
+    // proxy chain and yields another builder, never the text a user typed, so
+    // reading it in `_submit` always saw "not a string" and silently dropped
+    // every answer. Only `.build(document)` produces the DOM node whose
+    // `.value` reflects real input.
+    let answerInput = textarea
       .class('kikx-question-frame__answer')
       .name('answer')
-      .placeholder('Your answer…')();
+      .placeholder('Your answer…')
+      .build(document);
 
     let submit = button
       .type('button')
       .class('kikx-question-frame__submit')
-      .onClick(() => this._submit(question.id, answerBox))('Answer');
+      .onClick(() => this._submit(question.id, answerInput))('Answer');
 
     // A terminal question is shown read-only: the answer already exists, and
     // offering a box that would 409 is worse than showing what was said.
@@ -92,7 +98,7 @@ export class KikxQuestionFrame extends HTMLElement {
     let node = form.class('kikx-question-frame__card')
       .onSubmit((event) => {
         event.preventDefault?.();
-        this._submit(question.id, answerBox);
+        this._submit(question.id, answerInput);
       })(
         div.class('kikx-question-frame__meta')(
           span.class('kikx-question-frame__agent')(question.agentID || 'agent'),
@@ -104,15 +110,15 @@ export class KikxQuestionFrame extends HTMLElement {
         p.class('kikx-question-frame__text')(question.text),
         answered
           ? p.class('kikx-question-frame__answered')(`Answered (${question.status}).`)
-          : answerBox,
+          : answerInput,
         answered ? null : submit,
       ).build(document);
 
     this.appendChild(node);
   }
 
-  _submit(questionID, answerBox) {
-    let text = normalizeAnswerText(answerBox?.value);
+  _submit(questionID, answerInput) {
+    let text = normalizeAnswerText(answerInput?.value);
     if (!canSubmitAnswer(text))
       return;
 
