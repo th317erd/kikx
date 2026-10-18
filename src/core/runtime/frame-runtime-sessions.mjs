@@ -7,6 +7,7 @@ import {
   maxFrameTimestamp,
   normalizeFrameLimit,
   normalizeCoordinatorAgentID,
+  normalizeOptionalString,
   normalizeRequiredString,
   normalizeStringArray,
   normalizeText,
@@ -118,12 +119,71 @@ const sessionMethods = {
       framesLoadedLimit: options.loadFrames === false ? 0 : normalizeFrameLimit(options.frameLimit),
       framesWindowComplete,
       activeRuns: 0,
+      activeAgentRuns: new Map(),
+      steeringAgents: new Set(),
     };
     this.sessions.set(sessionID, entry);
     this.evictOverflowSessionRuntimes();
     if (options.loadFrames !== false)
       this.syncSessionManifestFromEngine(entry, { persist: true });
     return entry;
+  },
+
+  // Active agent turns can be steered by a user message instead of waiting for
+  // the whole turn (and every tool round) to finish. The run records the order
+  // it started at; only messages committed after that point are steering.
+  markAgentRunStart(sessionID, agentID, startedOrder = null) {
+    let entry = this.sessions.get(sessionID);
+    if (!entry || !agentID)
+      return false;
+
+    startedOrder = startedOrder ?? entry.frameEngine.getLatestCommit?.()?.order;
+    entry.activeAgentRuns ||= new Map();
+    entry.steeringAgents ||= new Set();
+    entry.activeAgentRuns.set(agentID, {
+      startedOrder: Number.isFinite(Number(startedOrder)) ? Number(startedOrder) : null,
+    });
+    entry.steeringAgents.delete(agentID);
+    return true;
+  },
+
+  markAgentRunEnd(sessionID, agentID) {
+    let entry = this.sessions.get(sessionID);
+    if (!entry)
+      return false;
+
+    entry.activeAgentRuns?.delete(agentID);
+    entry.steeringAgents?.delete(agentID);
+    return true;
+  },
+
+  noteSteering(sessionID, frame) {
+    let entry = this.sessions.get(sessionID);
+    if (!entry?.activeAgentRuns || entry.activeAgentRuns.size === 0)
+      return false;
+
+    let targetAgentID = normalizeOptionalString(frame?.targetAgentID)
+      || normalizeOptionalString(entry.session?.coordinatorAgentID);
+    let order = Number(frame?.order);
+    let changed = false;
+
+    for (let [agentID, run] of entry.activeAgentRuns) {
+      if (targetAgentID && targetAgentID !== agentID)
+        continue;
+      if (Number.isFinite(order) && run.startedOrder != null && order <= run.startedOrder)
+        continue;
+
+      entry.steeringAgents ||= new Set();
+      entry.steeringAgents.add(agentID);
+      changed = true;
+    }
+
+    return changed;
+  },
+
+  hasAgentSteering(sessionID, agentID) {
+    let entry = this.sessions.get(sessionID);
+    return Boolean(entry?.steeringAgents?.has(agentID));
   },
 
   async inviteAgentToSession(sessionID, agent, input = {}) {

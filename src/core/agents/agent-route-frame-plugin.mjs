@@ -160,6 +160,8 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
     let responseFrameID = null;
     let doneStatus = '';
     let continuation = null;
+    let sessionID = this.context.session?.id || frame.sessionID || '';
+    let frameRuntime = resolveService(services, 'frameRuntime') || services?.frameRuntime;
     try {
       agent = await agentManager.getAgent(agentID, { includeSecrets: true });
       if (!agent?.id)
@@ -171,6 +173,8 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
       let ProviderClass = pluginRegistry.getAgentProvider(agent.pluginID);
       if (!ProviderClass)
         throw new Error(`Unknown agent provider: ${agent.pluginID}`);
+
+      frameRuntime?.markAgentRunStart?.(sessionID, agentID, frame.order);
 
       let participantAgents = await this.loadParticipantAgents({
         participantAgentIDs: this.context.session?.participantAgentIDs,
@@ -235,7 +239,19 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
         isCoordinator: agent.id === coordinatorAgentID,
       };
 
+      if (frameRuntime?.hasAgentSteering?.(sessionID, agentID)) {
+        this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status: 'steered' });
+        await services?.frameRuntime?.frameStore?.flush?.();
+        return { status: 'steered' };
+      }
+
       for await (let output of provider.run(runParams)) {
+        if (frameRuntime?.hasAgentSteering?.(sessionID, agentID)) {
+          this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status: 'steered' });
+          await services?.frameRuntime?.frameStore?.flush?.();
+          return { status: 'steered' };
+        }
+
         // The agent suppressed its own visible frame (avoidable-deferral guard):
         // finalize the placeholder invisible+complete so it neither renders nor
         // dangles, and let any scheduled continuation deliver the real answer.
@@ -295,6 +311,8 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
       await services?.frameRuntime?.frameStore?.flush?.();
 
       return { status: 'error' };
+    } finally {
+      frameRuntime?.markAgentRunEnd?.(sessionID, agentID);
     }
   }
 }

@@ -76,6 +76,35 @@ class StreamingAgentProvider extends AgentInterface {
   }
 }
 
+class SteeringAgentProvider extends AgentInterface {
+  static pluginID = 'steering-agent';
+
+  async *run(params = {}) {
+    params.services.calls.push({
+      method: 'steering-run',
+      agentID: params.agent.id,
+      text: params.frame.content.text,
+    });
+
+    yield {
+      type: 'AgentThinking',
+      phantom: true,
+      content: { text: 'thinking before steer' },
+    };
+
+    await params.services.steeringGate;
+
+    yield {
+      type: 'AgentMessage',
+      content: { text: `Echo: ${params.frame.content.text}` },
+    };
+    yield {
+      type: 'Done',
+      content: { status: 'finalized' },
+    };
+  }
+}
+
 class ForwardingAgentProvider extends AgentInterface {
   static pluginID = 'forwarding-agent';
 
@@ -1489,6 +1518,48 @@ test('AgentRouteFramePlugin treats Done as a hard provider stream boundary', asy
   assert.equal(frames[1].state.lifecycle.status, 'closed');
 });
 
+test('a user message steers an in-flight agent turn instead of waiting for the old plan', async () => {
+  let gate = deferred();
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Steerable',
+        pluginID: 'steering-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+    ]),
+    services: { steeringGate: gate.promise },
+  });
+
+  await runtime.createSession({
+    title: 'Steering',
+    participantAgentIDs: [ 'agent_1' ],
+    coordinatorAgentID: 'agent_1',
+  });
+
+  let first = runtime.appendUserMessage('ses_1', { text: 'start the old plan' });
+  await waitForCondition(() => runtime.services.calls.some((call) => call.method === 'steering-run'));
+
+  let second = runtime.appendUserMessage('ses_1', { text: 'change course' });
+  gate.resolve();
+  await Promise.all([ first, second ]);
+  await runtime.flush();
+  await runtime.frameStore.flush();
+
+  let frames = runtime.requireSessionEntry('ses_1').frameEngine.toArray();
+  let visibleMessages = frames
+    .filter((frame) => frame.type === 'AgentMessage' && frame.hidden !== true && frame.deleted !== true)
+    .map((frame) => frame.content?.text);
+
+  assert.deepEqual(visibleMessages, [ 'Echo: change course' ], 'the old response is superseded by the steering turn');
+  assert.deepEqual(runtime.services.calls
+    .filter((call) => call.method === 'steering-run')
+    .map((call) => call.text), [ 'start the old plan', 'change course' ]);
+});
+
 test('AgentRouteFramePlugin schedules respond-and-continue as a generic scheduled target frame', async () => {
   let runtime = createRuntime({
     agents: new Map([
@@ -2098,6 +2169,7 @@ test('AgentRouteFramePlugin never leaves a dangling streaming placeholder when a
 function createRuntime(options = {}) {
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
   pluginRegistry.registerAgentProvider('streaming-agent', StreamingAgentProvider);
+  pluginRegistry.registerAgentProvider('steering-agent', SteeringAgentProvider);
   pluginRegistry.registerAgentProvider('forwarding-agent', ForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('removing-forwarding-agent', RemovingForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('service-forwarding-agent', ServiceForwardingAgentProvider);
@@ -2218,6 +2290,12 @@ function createTokenUsageStub() {
       };
     },
   };
+}
+
+function deferred() {
+  let resolve;
+  let promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
 }
 
 async function promiseState(promise) {

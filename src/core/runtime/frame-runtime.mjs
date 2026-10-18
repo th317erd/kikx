@@ -117,6 +117,8 @@ export class FrameRuntime extends EventEmitter {
       framesLoaded: true,
       framesLoadedLimit: Number.POSITIVE_INFINITY,
       activeRuns: 0,
+      activeAgentRuns: new Map(),
+      steeringAgents: new Set(),
     });
     this.evictOverflowSessionRuntimes();
 
@@ -354,6 +356,11 @@ export class FrameRuntime extends EventEmitter {
       if (frames.length === 0)
         throw new Error('UserMessage commit produced no frames');
 
+      // If an agent turn is already running, this message is a steering input.
+      // The active route checks this flag between streamed outputs and yields to
+      // the new turn instead of finishing its old plan first.
+      let steering = this.noteSteering(sessionID, frames[0]);
+
       let manifestSave = this._sessionManifestSaves.get(sessionID);
       await this.frameStore.flush();
 
@@ -363,7 +370,10 @@ export class FrameRuntime extends EventEmitter {
       if (!manifestSave)
         manifestSave = this.queueSessionManifestSave(entry);
       await manifestSave;
-      await this.frameRouter?.flush?.();
+      // A steering message is already queued for the active run; waiting on
+      // background agent work here would block the HTTP response until that
+      // turn ends, which is exactly the latency steering is meant to avoid.
+      await this.frameRouter?.flush?.(steering ? { background: false } : undefined);
 
       return {
         session: entry.session,

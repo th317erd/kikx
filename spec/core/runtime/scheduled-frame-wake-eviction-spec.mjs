@@ -189,6 +189,52 @@ test('a due process wake cancels sibling process wakes for the same agent before
   assert.equal(entry.frameEngine.get('wake_2').scheduledCancelReason, 'coalesced-process-wake');
 });
 
+test('a due human message is routed before an older process wake and cancels it', async () => {
+  let store = createFrameStore();
+  let router = createGatedRouter();
+  let runtime = createRuntime(store, { frameRouter: router, sessionRuntimeLimit: 2 });
+  let session = await runtime.createSession({ title: 'Human priority' });
+  let entry = await runtime.ensureSessionEntry(session.id);
+  entry.frameEngine.merge([
+    {
+      id: 'wake_process',
+      type: 'UserMessage',
+      sessionID: session.id,
+      authorType: 'system',
+      authorID: 'internal:process-manager',
+      targetAgentID: 'agent_1',
+      scheduledAt: 1,
+      scheduledStatus: 'pending',
+      hidden: true,
+      continuation: { kind: 'exec-wake-on-completion', processID: 'PROC1' },
+      content: { text: 'process done' },
+    },
+    {
+      id: 'wake_human',
+      type: 'UserMessage',
+      sessionID: session.id,
+      authorType: 'user',
+      authorID: 'usr_1',
+      scheduledAt: 2,
+      scheduledStatus: 'pending',
+      hidden: false,
+      content: { text: 'change course' },
+    },
+  ], { authorType: 'system', authorID: 'test' });
+  await store.flush();
+
+  let processing = runtime.processScheduledFrames();
+  await router.reached;
+  router.release();
+  await processing;
+
+  assert.equal(router.enqueued.length, 1, 'only the human message is routed');
+  assert.equal(router.enqueued[0].commit.changes[0].frameID, 'wake_human');
+  assert.equal(entry.frameEngine.get('wake_human').scheduledStatus, 'fired');
+  assert.equal(entry.frameEngine.get('wake_process').scheduledStatus, 'cancelled');
+  assert.equal(entry.frameEngine.get('wake_process').scheduledCancelReason, 'coalesced-process-wake');
+});
+
 test('a failed scheduled route cancels the wake instead of leaving it firing for a retry loop', async () => {
   let store = createFrameStore();
   let router = {

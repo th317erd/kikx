@@ -124,8 +124,9 @@ export class ScheduledFrameQueue {
       return 0;
 
     let current = sessionEntry.frameEngine.get(entry.frameID) || entry.frame || {};
+    let isHumanMessage = current.type === 'UserMessage' && current.authorType === 'user';
     let targetAgentID = current.targetAgentID;
-    if (!targetAgentID)
+    if (!targetAgentID && !isHumanMessage)
       return 0;
 
     let cancelled = 0;
@@ -135,7 +136,7 @@ export class ScheduledFrameQueue {
         continue;
 
       let frame = sessionEntry.frameEngine.get(candidate.frameID) || candidate.frame;
-      if (frame?.targetAgentID !== targetAgentID)
+      if (!isHumanMessage && frame?.targetAgentID !== targetAgentID)
         continue;
       if (frame?.continuation?.kind !== 'exec-wake-on-completion')
         continue;
@@ -167,7 +168,7 @@ export class ScheduledFrameQueue {
       let now = this.now();
       let dueEntries = Array.from(this.entries.values())
         .filter((entry) => entry.scheduledAt <= now)
-        .sort(compareEntries);
+        .sort(compareScheduledEntries);
       let dispatched = [];
 
       for (let entry of dueEntries) {
@@ -378,6 +379,17 @@ function normalizeWorkerInterval(value) {
     return DEFAULT_WORKER_INTERVAL_MS;
 
   return Math.trunc(number);
+}
+
+function compareScheduledEntries(a, b) {
+  // Human messages outrank autonomous process completions. A steering prompt
+  // must not sit behind a wake for work the old turn already finished.
+  let priority = (entry) => (
+    entry.frame?.type === 'UserMessage' && entry.frame?.authorType === 'user' ? 0 : 1
+  );
+
+  return priority(a) - priority(b)
+    || compareEntries(a, b);
 }
 
 function compareEntries(a, b) {
