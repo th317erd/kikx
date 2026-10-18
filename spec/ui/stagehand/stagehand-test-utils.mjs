@@ -400,9 +400,38 @@ function normalizeSession(input = {}) {
 }
 
 function createAuthStub() {
+  let files = new Map();
+  let missing = (path) => {
+    let error = new Error(`Not found: ${path}`);
+    error.status = 404;
+    return error;
+  };
+  let clone = (value) => JSON.parse(JSON.stringify(value));
   return {
+    files,
     eventsURL() {
       return 'http://127.0.0.1/system/events';
+    },
+    async get(path) {
+      if (!files.has(path))
+        throw missing(path);
+      return clone(files.get(path));
+    },
+    async put(path, body) {
+      files.set(path, clone(body));
+      return { path };
+    },
+    async getFile(path) {
+      return await this.get(path);
+    },
+    async putFile(path, body) {
+      return await this.put(path, body);
+    },
+    async listDirectory() {
+      return { items: [] };
+    },
+    async searchFiles() {
+      return { results: [], total: 0 };
     },
     async requestMagicLink() {
       return { message: 'sent' };
@@ -411,6 +440,21 @@ function createAuthStub() {
       return {
         token: 'stagehand-test-token',
         refresh_token: 'stagehand-test-refresh',
+      };
+    },
+    async verifyAccessToken(token) {
+      return {
+        id: 'stagehand-test-user',
+        token: token || 'stagehand-test-token',
+        email: 'stagehand@test.invalid',
+        name: 'Stagehand Test User',
+      };
+    },
+    async getUser(userID) {
+      return {
+        id: userID || 'stagehand-test-user',
+        email: 'stagehand@test.invalid',
+        name: 'Stagehand Test User',
       };
     },
     async exchangeAPIKey() {
