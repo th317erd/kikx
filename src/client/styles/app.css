@@ -2,6 +2,15 @@
   color-scheme: dark;
 }
 
+/* Inline SVG icons inherit the surrounding text colour. Keep them square and
+   sized by the component's font-size unless a component overrides it. */
+.kikx-icon {
+  display: block;
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+}
+
 html,
 body {
   height: 100%;
@@ -337,8 +346,10 @@ kikx-app {
 }
 
 .kikx-icon-button {
+  display: grid;
   width: 34px;
   padding: 0;
+  place-items: center;
   font-size: 22px;
   line-height: 1;
 }
@@ -747,6 +758,7 @@ kikx-app {
 
 .kikx-frame__compact-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
   padding: 6px 8px 10px;
@@ -761,8 +773,12 @@ kikx-app {
   min-width: 0;
 }
 
+/* Auto grid tracks size to max-content, so a long command/stdout line would
+   widen the whole tool card. A zero-minimum track keeps output inside: the
+   exec meta line wraps and the `pre` blocks scroll horizontally. */
 .kikx-tool-card__inner {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
 }
@@ -951,14 +967,23 @@ kikx-app {
 
 .kikx-tool-output {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
   margin-top: 8px;
 }
 
 .kikx-tool-output__meta {
+  min-width: 0;
   color: #aeb8c2;
   font-size: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.kikx-tool-output__meta code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .kikx-tool-output__meta-block {
@@ -967,6 +992,7 @@ kikx-app {
 
 .kikx-tool-output__section {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   min-width: 0;
 }
@@ -1169,9 +1195,11 @@ kikx-typing-indicator {
 }
 
 .kikx-agent-list__edit {
+  display: grid;
   width: 30px;
   height: 30px;
   flex: 0 0 auto;
+  place-items: center;
   border: 1px solid #3c444d;
   border-radius: 6px;
   background: transparent;
@@ -1790,10 +1818,19 @@ button.kikx-window__title:focus-visible {
 
 /* Master-agent crown toggle. Rank 1 = gold, 2 = silver, 3 = copper, each a bit
    more transparent than the last. */
+.kikx-agent-list__crown .kikx-icon,
+.kikx-agent-list__compaction-bot .kikx-icon,
+.kikx-agent-list__edit .kikx-icon {
+  width: 18px;
+  height: 18px;
+}
+
 .kikx-agent-list__crown {
+  display: grid;
   width: 30px;
   height: 30px;
   flex: 0 0 auto;
+  place-items: center;
   border: 1px solid #3c444d;
   border-radius: 6px;
   background: transparent;
@@ -1879,9 +1916,11 @@ button.kikx-window__title:focus-visible {
    Rank 1-3 use a teal/blue palette so it reads as distinct from the crown's
    gold/silver/copper. */
 .kikx-agent-list__compaction-bot {
+  display: grid;
   width: 30px;
   height: 30px;
   flex: 0 0 auto;
+  place-items: center;
   border: 1px solid #3c444d;
   border-radius: 6px;
   background: transparent;
@@ -2077,8 +2116,8 @@ button.kikx-window__title:focus-visible {
 }
 
 /* --- Pinned per-agent thinking rack (lower-left participant space) ---
-   Replaces the old inline thinking/streaming bubble: a 🧠 icon per thinking agent
-   that giggles while it thinks and reveals the live thinking text on hover. */
+   Replaces the old inline thinking/streaming bubble: a brain icon per thinking
+   agent that giggles while it thinks and reveals the live thinking text on hover. */
 kikx-thinking-rack {
   display: flex;
   flex-direction: row;
@@ -2099,8 +2138,10 @@ kikx-thinking-panel {
   align-items: flex-end;
 }
 
-/* The 🧠 "thinking" icon: giggles and bounces subtly while the agent is thinking. */
+/* The brain "thinking" icon: giggles and bounces subtly while the agent is thinking. */
 .kikx-thinking-brain {
+  display: grid;
+  place-items: center;
   appearance: none;
   margin: 0;
   padding: 2px 4px;

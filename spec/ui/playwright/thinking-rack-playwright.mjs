@@ -38,7 +38,12 @@ test('the thinking rack shows a fixed per-agent panel and never pollutes the thr
 
   try {
     let page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-    await page.goto(`${fixture.baseURL}/?code=playwright-test`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    // This harness authenticates with a seeded session token, not a magic-link
+    // code: the fixture's auth stub deliberately accepts the former path.
+    await page.addInitScript(() => {
+      sessionStorage.setItem('kikx.auth.session', JSON.stringify({ token: 'playwright-test-token', refresh_token: 'playwright-test-refresh' }));
+    });
+    await page.goto(`${fixture.baseURL}/`, { waitUntil: 'domcontentloaded', timeout: 10000 });
     await page.waitForSelector('kikx-session-card', { timeout: 10000 });
     await page.locator('kikx-session-card').first().locator('article.kikx-session-card').click();
     await page.waitForTimeout(500);
@@ -49,7 +54,7 @@ test('the thinking rack shows a fixed per-agent panel and never pollutes the thr
     let inject = (frames) => page.evaluate(({ sessionID, frames }) => {
       let app = document.querySelector('kikx-app');
       for (let frame of frames)
-        app._onRuntimeEvent({ data: JSON.stringify({ type: 'frame.phantom', sessionID, frame }) });
+        app._onRuntimeEvent({ data: JSON.stringify({ type: 'frame.phantom', sessionID, frame: { sessionID, ...frame } }) });
     }, { sessionID, frames });
 
     let snapshot = () => page.evaluate(() => {
@@ -57,6 +62,7 @@ test('the thinking rack shows a fixed per-agent panel and never pollutes the thr
       let box = panel?.getBoundingClientRect();
       return {
         panels: document.querySelectorAll('kikx-thinking-panel').length,
+        brains: document.querySelectorAll('.kikx-thinking-brain').length,
         rackHidden: document.querySelector('kikx-thinking-rack')?.hidden === true,
         panelBox: box ? { w: Math.round(box.width), h: Math.round(box.height) } : null,
         name: document.querySelector('.kikx-thinking-tip__name')?.textContent || '',
@@ -96,7 +102,37 @@ test('the thinking rack shows a fixed per-agent panel and never pollutes the thr
     await page.waitForTimeout(300);
     let done = await snapshot();
     assert.equal(done.panels, 0, 'the panel is removed once the response completes');
+    assert.equal(done.brains, 0, 'no animation node remains after completion');
     assert.equal(done.rackHidden, true, 'the rack hides when no agent is thinking');
+
+    // An empty/silenced turn ends with EndTyping and may emit no final
+    // AgentMessage. The rack must still clear instead of spinning forever.
+    await inject([
+      { id: 'resp_2:typing', type: 'BeginTyping', phantom: true, responseFrameID: 'resp_2', content: { agentID: 'agent_1', agentName: 'Zav' } },
+      { id: 'resp_2:thinking', type: 'AgentThinking', phantom: true, responseFrameID: 'resp_2', content: { text: 'thinking before a silenced turn' } },
+      { id: 'resp_2:delta', type: 'AgentMessageDelta', phantom: true, responseFrameID: 'resp_2', content: { text: 'partial answer' } },
+      { id: 'resp_2:typing', type: 'EndTyping', phantom: true, responseFrameID: 'resp_2', content: { agentID: 'agent_1' } },
+    ]);
+    await page.waitForTimeout(300);
+    let silenced = await snapshot();
+    assert.equal(silenced.panels, 0, 'EndTyping clears a response with no final AgentMessage');
+    assert.equal(silenced.brains, 0, 'EndTyping leaves no spinning animation');
+
+    // Two overlapping responses from the same agent still render one brain.
+    await inject([
+      { id: 'resp_3:typing', type: 'BeginTyping', phantom: true, responseFrameID: 'resp_3', content: { agentID: 'agent_1', agentName: 'Zav' } },
+      { id: 'resp_3:thinking', type: 'AgentThinking', phantom: true, responseFrameID: 'resp_3', content: { text: 'first response' } },
+      { id: 'resp_4:typing', type: 'BeginTyping', phantom: true, responseFrameID: 'resp_4', content: { agentID: 'agent_1', agentName: 'Zav' } },
+      { id: 'resp_4:thinking', type: 'AgentThinking', phantom: true, responseFrameID: 'resp_4', content: { text: 'second response' } },
+    ]);
+    await page.waitForTimeout(300);
+    let overlapping = await snapshot();
+    assert.equal(overlapping.panels, 1, 'one brain per agent even with overlapping responses');
+    assert.equal(overlapping.brains, 1, 'only one brain animation node is rendered');
+
+    await inject([ { id: 'resp_4:typing', type: 'EndTyping', phantom: true, responseFrameID: 'resp_4', content: { agentID: 'agent_1' } } ]);
+    await page.waitForTimeout(300);
+    assert.equal((await snapshot()).panels, 0, 'the final EndTyping clears the overlapping brain');
   } finally {
     await browser.close().catch(() => {});
     await fixture.close();

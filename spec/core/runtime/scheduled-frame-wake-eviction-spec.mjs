@@ -156,6 +156,71 @@ test('a scheduled wake is persisted as fired even if LRU pressure evicts the ses
   assert.equal(stored?.scheduledFiredAt != null, true);
 });
 
+test('a due process wake cancels sibling process wakes for the same agent before routing', async () => {
+  let store = createFrameStore();
+  let router = createGatedRouter();
+  let runtime = createRuntime(store, { frameRouter: router, sessionRuntimeLimit: 2 });
+  let session = await runtime.createSession({ title: 'Wake loop' });
+  let entry = await runtime.ensureSessionEntry(session.id);
+  let wake = (id) => ({
+    id,
+    type: 'UserMessage',
+    sessionID: session.id,
+    authorType: 'system',
+    authorID: 'internal:process-manager',
+    targetAgentID: 'agent_1',
+    scheduledAt: 1,
+    scheduledStatus: 'pending',
+    hidden: true,
+    continuation: { kind: 'exec-wake-on-completion', processID: id },
+    content: { text: id },
+  });
+  entry.frameEngine.merge([ wake('wake_1'), wake('wake_2') ], { authorType: 'system', authorID: 'test' });
+  await store.flush();
+
+  let processing = runtime.processScheduledFrames();
+  await router.reached;
+  router.release();
+  await processing;
+
+  assert.equal(router.enqueued.length, 1, 'only one turn is routed');
+  assert.equal(entry.frameEngine.get('wake_1').scheduledStatus, 'fired');
+  assert.equal(entry.frameEngine.get('wake_2').scheduledStatus, 'cancelled');
+  assert.equal(entry.frameEngine.get('wake_2').scheduledCancelReason, 'coalesced-process-wake');
+});
+
+test('a failed scheduled route cancels the wake instead of leaving it firing for a retry loop', async () => {
+  let store = createFrameStore();
+  let router = {
+    enqueue() {},
+    async flush() { throw new Error('route unavailable'); },
+  };
+  let runtime = createRuntime(store, { frameRouter: router, sessionRuntimeLimit: 2 });
+  let session = await runtime.createSession({ title: 'Failed wake' });
+  let entry = await runtime.ensureSessionEntry(session.id);
+  entry.frameEngine.merge([{
+    id: 'wake_fail',
+    type: 'UserMessage',
+    sessionID: session.id,
+    authorType: 'system',
+    authorID: 'internal:process-manager',
+    targetAgentID: 'agent_1',
+    scheduledAt: 1,
+    scheduledStatus: 'pending',
+    hidden: true,
+    continuation: { kind: 'exec-wake-on-completion', processID: 'PROC1' },
+    content: { text: 'wake' },
+  }], { authorType: 'system', authorID: 'test' });
+  await store.flush();
+
+  await runtime.processScheduledFrames();
+
+  let frame = entry.frameEngine.get('wake_fail');
+  assert.equal(frame.scheduledStatus, 'cancelled');
+  assert.equal(frame.scheduledError, 'route unavailable');
+  assert.equal(runtime.scheduledFrames.entries.has('wake_fail'), false, 'the failed wake is not retried');
+});
+
 test('a user message append is persisted even if LRU pressure evicts the session during cancelAutonomousWakes', async () => {
   let store = createFrameStore();
   let runtime = createRuntime(store, { sessionRuntimeLimit: 1 });

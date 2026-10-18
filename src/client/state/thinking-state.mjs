@@ -28,13 +28,49 @@ export function isLiveThreadFrame(frame) {
 }
 
 // The frames the thread renders: visible, not deleted, and not live/streaming.
+// A completed tool call is represented by its result frame; rendering both
+// repeats the command (and its output) as two adjacent cards. Hide the call
+// only when its visible result is in the same window, so a running call remains
+// visible until the result arrives.
 export function threadVisibleFrames(frames = []) {
-  return frames.filter((frame) => (
-    frame
-    && frame.hidden !== true
-    && frame.deleted !== true
-    && !isLiveThreadFrame(frame)
-  ));
+  let completedCallIDs = new Set();
+  let completedCallFrameIDs = new Set();
+
+  for (let frame of frames) {
+    if (!frame || frame.hidden === true || frame.deleted === true || !isToolResultFrame(frame))
+      continue;
+
+    let callID = frame.content?.toolCallID;
+    let callFrameID = frame.content?.toolCallFrameID;
+    if (typeof callID === 'string' && callID)
+      completedCallIDs.add(callID);
+    if (typeof callFrameID === 'string' && callFrameID)
+      completedCallFrameIDs.add(callFrameID);
+  }
+
+  return frames.filter((frame) => {
+    if (!frame || frame.hidden === true || frame.deleted === true || isLiveThreadFrame(frame))
+      return false;
+
+    if (isToolCallFrame(frame)) {
+      if (completedCallFrameIDs.has(frame.id))
+        return false;
+
+      let callID = frame.content?.toolCallID;
+      if (typeof callID === 'string' && completedCallIDs.has(callID))
+        return false;
+    }
+
+    return true;
+  });
+}
+
+function isToolCallFrame(frame) {
+  return frame?.content?.phase === 'call' || frame?.type === 'ToolCall';
+}
+
+function isToolResultFrame(frame) {
+  return frame?.content?.phase === 'result' || frame?.type === 'ToolResult';
 }
 
 function liveText(frame) {
@@ -48,56 +84,106 @@ function liveText(frame) {
   return typeof content.delta === 'string' ? content.delta : '';
 }
 
+function normalizeID(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+// Buffer keys are internal and include the session, so the same agent thinking
+// in two sessions cannot share (or leak) one panel.
+function ownerKey(sessionID, kind, id) {
+  return `${sessionID}\u0000${kind}:${id}`;
+}
+
 export function createThinkingBuffer() {
   return { order: [], byResponse: new Map(), agentByResponse: new Map() };
 }
 
-// One brain per agent: resolve every live frame to a stable owner. BeginTyping
-// carries both the response frame and the agent id, so record that link and use
-// the agent id for that response's thinking/delta frames too. Different responses
-// from the same agent therefore collapse into a single brain.
-function resolveOwnerID(buffer, frame) {
-  let responseID = frame?.responseFrameID || null;
-  let agentID = frame?.content?.agentID || frame?.authorID || null;
+// Resolve every live frame to a stable owner. BeginTyping carries both the
+// response frame and the agent id, so record that link and use the agent id for
+// that response's thinking/delta frames too. Different responses from the same
+// agent therefore collapse into a single brain. The response id is also kept as
+// a fallback so terminal frames can clear an entry created before the link was
+// known (for example after a missed BeginTyping).
+function resolveOwner(buffer, frame, fallbackSessionID = '') {
+  let sessionID = typeof frame?.sessionID === 'string'
+    ? frame.sessionID
+    : (typeof fallbackSessionID === 'string' ? fallbackSessionID : '');
+  let responseID = normalizeID(frame?.responseFrameID);
+  let agentID = normalizeID(frame?.content?.agentID || frame?.authorID);
+  let responseKey = responseID ? ownerKey(sessionID, 'response', responseID) : '';
+  let agentKey = agentID ? ownerKey(sessionID, 'agent', agentID) : '';
+  let mappedKey = responseKey ? buffer.agentByResponse.get(responseKey) || '' : '';
 
-  if (responseID && agentID)
-    buffer.agentByResponse.set(responseID, agentID);
-  if (agentID)
-    return agentID;
-  if (responseID && buffer.agentByResponse.has(responseID))
-    return buffer.agentByResponse.get(responseID);
+  if (responseKey && agentKey)
+    buffer.agentByResponse.set(responseKey, agentKey);
 
-  return responseID || frame?.id;
+  let key = agentKey
+    || mappedKey
+    || responseKey
+    || ownerKey(sessionID, 'frame', normalizeID(frame?.id));
+  let previousKey = mappedKey && mappedKey !== key ? mappedKey : '';
+  if (agentKey && responseKey && buffer.byResponse.has(responseKey))
+    previousKey = responseKey;
+
+  return {
+    sessionID,
+    responseID,
+    agentID,
+    responseKey,
+    agentKey,
+    key,
+    previousKey,
+  };
 }
 
 // Apply one raw runtime frame to the buffer. Returns true when it changed.
-export function applyThinkingFrame(buffer, frame) {
+export function applyThinkingFrame(buffer, frame, fallbackSessionID = '') {
   if (!buffer || !frame?.id)
     return false;
 
   let type = frame.type;
-  let ownerID = resolveOwnerID(buffer, frame);
+  let owner = resolveOwner(buffer, frame, fallbackSessionID);
 
-  // The response's AgentMessage stopped streaming: the turn is settling, so the
-  // panel goes away (the completed message is a thread item).
+  // These frames are terminal for the response, even when the provider emits no
+  // visible final AgentMessage (an empty/silenced turn, an aborted request, ...).
+  // Without this, a brain could stay on screen until a reload.
   if (
-    type === 'AgentMessage'
-    && frame.content?.status !== 'streaming'
-    && frame.hidden !== true
-    && frame.deleted !== true
+    type === 'EndTyping'
+    || type === 'MessageDone'
+    || type === 'AgentError'
+    || (type === 'AgentMessage' && frame.content?.status !== 'streaming')
   )
-    return removeThinking(buffer, ownerID);
+    return removeThinking(buffer, owner);
 
   let isLive = LIVE_FRAME_TYPES.has(type)
     || (type === 'AgentMessage' && frame.content?.status === 'streaming');
   if (!isLive)
     return false;
 
-  let entry = buffer.byResponse.get(ownerID);
+  // A response that started before its BeginTyping link was known was keyed by
+  // its response id. Fold that entry into the stable agent entry now.
+  if (owner.previousKey)
+    mergeOwner(buffer, owner.previousKey, owner.key);
+
+  let entry = buffer.byResponse.get(owner.key);
   if (!entry) {
-    entry = { id: ownerID, agentID: '', name: '', thinking: '', answer: '' };
-    buffer.byResponse.set(ownerID, entry);
-    buffer.order.push(ownerID);
+    entry = {
+      id: owner.agentID || owner.responseID || frame.id,
+      sessionID: owner.sessionID,
+      agentID: owner.agentID,
+      name: '',
+      thinking: '',
+      answer: '',
+    };
+    buffer.byResponse.set(owner.key, entry);
+    buffer.order.push(owner.key);
+  }
+
+  // A new response for an agent starts a fresh panel; do not resurrect the
+  // previous turn's reasoning/answer text.
+  if (type === 'BeginTyping') {
+    entry.thinking = '';
+    entry.answer = '';
   }
 
   if (frame.content?.agentID)
@@ -120,44 +206,111 @@ export function applyThinkingFrame(buffer, frame) {
   return true;
 }
 
-function removeThinking(buffer, ownerID) {
-  let changed = false;
-  if (buffer.byResponse.delete(ownerID)) {
-    buffer.order = buffer.order.filter((id) => id !== ownerID);
-    changed = true;
+function mergeOwner(buffer, fromKey, toKey) {
+  let from = buffer.byResponse.get(fromKey);
+  if (!from)
+    return false;
+
+  let to = buffer.byResponse.get(toKey);
+  if (!to) {
+    buffer.byResponse.set(toKey, from);
+    buffer.byResponse.delete(fromKey);
+    buffer.order = buffer.order.map((id) => (id === fromKey ? toKey : id));
+    return true;
   }
 
-  // Drop the response->agent links that pointed at this owner so a later frame
+  if (!to.thinking && from.thinking)
+    to.thinking = from.thinking;
+  if (!to.answer && from.answer)
+    to.answer = from.answer;
+  if (!to.name && from.name)
+    to.name = from.name;
+  if (!to.agentID && from.agentID)
+    to.agentID = from.agentID;
+
+  buffer.byResponse.delete(fromKey);
+  buffer.order = buffer.order.filter((id) => id !== fromKey);
+  return true;
+}
+
+function removeThinking(buffer, owner) {
+  let keys = new Set();
+  if (owner.key)
+    keys.add(owner.key);
+  if (owner.agentID)
+    keys.add(ownerKey(owner.sessionID, 'agent', owner.agentID));
+  if (owner.responseID)
+    keys.add(ownerKey(owner.sessionID, 'response', owner.responseID));
+  if (owner.responseKey)
+    keys.add(owner.responseKey);
+
+  // Also catch an entry created before the response -> agent link existed, and
+  // any alias for the same agent in this session.
+  for (let [candidateKey, entry] of buffer.byResponse) {
+    if (entry.sessionID !== owner.sessionID)
+      continue;
+    if ((owner.agentID && entry.agentID === owner.agentID) || (owner.responseID && entry.id === owner.responseID))
+      keys.add(candidateKey);
+  }
+
+  let changed = false;
+  for (let key of keys) {
+    if (buffer.byResponse.delete(key))
+      changed = true;
+  }
+
+  buffer.order = buffer.order.filter((id) => buffer.byResponse.has(id));
+
+  // Drop response links that pointed at any removed owner so a later frame
   // cannot resurrect a stale brain.
-  for (let [responseID, agentID] of buffer.agentByResponse) {
-    if (agentID === ownerID)
-      buffer.agentByResponse.delete(responseID);
+  for (let [responseKey, mappedOwner] of buffer.agentByResponse) {
+    if (keys.has(mappedOwner) || keys.has(responseKey))
+      buffer.agentByResponse.delete(responseKey);
   }
 
   return changed;
 }
 
-// Ordered list for the rack: [{ id, agentID, name, text }].
-export function thinkingAgents(buffer) {
+// Ordered list for the rack: [{ id, agentID, sessionID, name, text }].
+// Pass a sessionID to show only that session's agents; entries for the same
+// agent are coalesced so a stale response alias cannot create a second brain.
+export function thinkingAgents(buffer, sessionID = '') {
   if (!buffer)
     return [];
 
   let out = [];
-  for (let id of buffer.order) {
-    let entry = buffer.byResponse.get(id);
+  let byOwner = new Map();
+
+  for (let key of buffer.order) {
+    let entry = buffer.byResponse.get(key);
     if (!entry)
+      continue;
+    if (sessionID && entry.sessionID !== sessionID)
       continue;
 
     let text = [ entry.thinking, entry.answer ]
       .filter((part) => typeof part === 'string' && part.trim() !== '')
       .join('\n');
+    let owner = `${entry.sessionID}\u0000${entry.agentID || entry.id}`;
+    let existing = byOwner.get(owner);
 
-    out.push({
-      id: entry.id,
-      agentID: entry.agentID || '',
-      name: entry.name || entry.agentID || 'Agent',
-      text,
-    });
+    if (!existing) {
+      existing = {
+        id: entry.agentID || entry.id,
+        agentID: entry.agentID || '',
+        sessionID: entry.sessionID || '',
+        name: entry.name || entry.agentID || 'Agent',
+        text,
+      };
+      byOwner.set(owner, existing);
+      out.push(existing);
+      continue;
+    }
+
+    if (entry.name)
+      existing.name = entry.name;
+    if (text)
+      existing.text = text;
   }
 
   return out;

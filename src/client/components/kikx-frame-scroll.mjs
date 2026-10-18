@@ -85,7 +85,7 @@ export function syncThinkingRack(app) {
     return;
 
   guardClientOperation('kikx-frame-scroll.syncThinkingRack', () => {
-    rack.update(thinkingAgents(app._thinking));
+    rack.update(thinkingAgents(app._thinking, app._state.selectedSessionID));
   });
 }
 

@@ -131,6 +131,14 @@ test('repeated updates for the same frame coalesce to the newest payload', () =>
   assert.equal(app._pendingFrameRuntimeEvents[0].frame.content.text, 'new');
 });
 
+test('BeginTyping and EndTyping with the same frame id keep their order', () => {
+  let app = createQueueApp();
+  queueFrameRuntimeEvent(app, frameEvent('s1', { id: 'resp_1:typing', type: 'BeginTyping', responseFrameID: 'resp_1', content: { agentID: 'a1' } }));
+  queueFrameRuntimeEvent(app, frameEvent('s1', { id: 'resp_1:typing', type: 'EndTyping', responseFrameID: 'resp_1', content: { agentID: 'a1' } }));
+
+  assert.deepEqual(app._pendingFrameRuntimeEvents.map((event) => event.frame.type), [ 'BeginTyping', 'EndTyping' ]);
+});
+
 test('the pending queue is hard-capped and dropped sessions are marked for refresh', () => {
   let app = createQueueApp();
   let total = MAX_PENDING_FRAME_RUNTIME_EVENTS + 25;

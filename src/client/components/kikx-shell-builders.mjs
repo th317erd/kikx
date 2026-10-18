@@ -1,6 +1,7 @@
 'use strict';
 
 import { elements, $ } from '../lib/aeor-ui.mjs';
+import { createIcon } from '../lib/icons.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { createErrorSurfaceElement } from './kikx-error-surface.mjs';
 import './kikx-thinking-rack.mjs';
@@ -250,7 +251,7 @@ export function buildWindowHeader(app, { title, sessionID = null, collapsed = fa
       .class('kikx-icon-button kikx-window__close')
       .title('Close session')
       .ariaLabel('Close session')
-      .onClick(app._minimizeCurrent)('‹')
+      .onClick(app._minimizeCurrent)(createIcon('chevron-left'))
     : null;
 
   return div.class('kikx-window__header')(

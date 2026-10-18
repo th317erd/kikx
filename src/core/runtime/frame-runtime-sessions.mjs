@@ -9,6 +9,7 @@ import {
   normalizeCoordinatorAgentID,
   normalizeRequiredString,
   normalizeStringArray,
+  normalizeText,
 } from './frame-runtime-normalize.mjs';
 import { countMessageFrames } from '../../shared/frame-manager/frame-manager.mjs';
 import {
@@ -148,6 +149,52 @@ const sessionMethods = {
       agentID,
       alreadyParticipant,
     };
+  },
+
+  // Wake one invited agent with a hidden, targeted, immediately-due UserMessage.
+  // The explicit targetAgentID bypasses the coordinator-targeting rule, so the
+  // invited agent runs without waiting for a separate @mention. This mirrors the
+  // durable process-wake frame shape: hidden, scheduled, and flushed before the
+  // queue can fire it.
+  async wakeAgentInSession(sessionID, input = {}) {
+    let agentID = normalizeRequiredString(input.agentID || input.agent?.id, 'agentID');
+    let entry = await this.ensureSessionEntry(sessionID);
+    let stamp = this.nextClockStamp();
+    let now = stamp.at;
+    let frame = {
+      id: input.id || this.idGenerator(),
+      type: 'UserMessage',
+      sessionID,
+      interactionID: input.interactionID || this.idGenerator(),
+      parentID: input.parentID || null,
+      authorType: 'system',
+      authorID: input.authorID || 'internal:session-invite',
+      authorDisplayName: input.authorDisplayName || 'Kikx session invite',
+      targetAgentID: agentID,
+      timestamp: now,
+      createdAt: now,
+      updatedAt: now,
+      createdClock: stamp.clock,
+      updatedClock: stamp.clock,
+      scheduledAt: now,
+      scheduledStatus: 'pending',
+      hidden: true,
+      deleted: false,
+      content: {
+        text: normalizeText(input.text) || `You have been invited to session ${entry.session.title || sessionID}. Review the session context and wait for the coordinator's assignment.`,
+        status: 'scheduled',
+        agentID,
+        agentName: input.agentName || '',
+        invite: true,
+      },
+    };
+
+    let frames = entry.frameEngine.merge([ frame ], {
+      authorType: 'system',
+      authorID: frame.authorID,
+    });
+    await this.frameStore?.flush?.();
+    return frames[0] || entry.frameEngine.get(frame.id) || frame;
   },
 
   async inviteUserToSession(sessionID, user, input = {}) {

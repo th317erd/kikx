@@ -1195,6 +1195,11 @@ test('Session tools list, create, inspect frames, and post messages through Fram
       session.coordinatorAgentID ||= session.participantAgentIDs[0] || null;
       return { session, agentID: agent.id, alreadyParticipant };
     },
+    wakeCalls: [],
+    async wakeAgentInSession(sessionID, input) {
+      this.wakeCalls.push({ sessionID, ...input });
+      return { id: 'wake_frame' };
+    },
     async ensureSessionEntry(sessionID) {
       let session = sessions.find((candidate) => candidate.id === sessionID);
       if (!session) {
@@ -1299,6 +1304,10 @@ test('Session tools list, create, inspect frames, and post messages through Fram
   assert.equal(invited.sessionID, created.session.id);
   assert.deepEqual(invited.invitedAgentIDs, [ 'agent_3', 'agent_2' ]);
   assert.deepEqual(invited.session.participantAgentIDs, [ 'agent_2', 'agent_1', 'agent_3' ]);
+  assert.deepEqual(invited.wokeAgentIDs, [ 'agent_3' ]);
+  assert.deepEqual(runtime.wakeCalls.map((call) => ({ sessionID: call.sessionID, agentID: call.agentID })), [
+    { sessionID: created.session.id, agentID: 'agent_3' },
+  ]);
 
   let got = await new SessionGetTool(context).execute({ session_id: 'ses_2' });
   assert.equal(got.session.title, 'Target');
@@ -1316,6 +1325,11 @@ test('Session tools list, create, inspect frames, and post messages through Fram
   assert.equal(targetEngine.frames[0].content.text, 'Cross-session hello.');
   assert.equal(targetEngine.frames[0].content.sourceSessionID, 'ses_1');
   assert.equal(runtime.frameStore.flushCount, 2);
+
+  let mentioned = await new SessionMessageTool(context).execute({ session_id: 'ses_2', text: 'Please review this, @"Agent Two".' });
+  assert.equal(mentioned.frame.coordinated, true, 'a mentioned session message is a coordinated dispatch');
+  assert.deepEqual(Object.keys(mentioned.frame.mentions), [ 'agent_2' ]);
+  assert.equal(targetEngine.frames[1].mentions.agent_2.name, 'Agent Two');
 });
 
 test('Team tools manage actor teams and invite all team members into a session', async () => {
@@ -1405,6 +1419,11 @@ test('Team tools manage actor teams and invite all team members into a session',
 
       return { session, agentID: agent.id, alreadyParticipant };
     },
+    wakeCalls: [],
+    async wakeAgentInSession(sessionID, input) {
+      this.wakeCalls.push({ sessionID, ...input });
+      return { id: 'wake_frame' };
+    },
     async inviteUserToSession(sessionID, user) {
       assert.equal(sessionID, 'ses_1');
       let userID = user.id || user.actorID;
@@ -1451,6 +1470,8 @@ test('Team tools manage actor teams and invite all team members into a session',
   assert.deepEqual(invited.invitedUsers.map((member) => member.actorID), [ 'usr_1' ]);
   assert.deepEqual(invited.session.participantAgentIDs, [ 'agent_1', 'agent_2' ]);
   assert.deepEqual(invited.session.participantUserIDs, [ 'usr_1' ]);
+  assert.deepEqual(invited.wokeAgentIDs, [ 'agent_2' ]);
+  assert.deepEqual(runtime.wakeCalls.map((call) => call.agentID), [ 'agent_2' ]);
 
   let updated = await new TeamUpdateTool(context).execute({
     team: 'Builders',

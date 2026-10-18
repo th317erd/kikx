@@ -31,6 +31,7 @@ import {
 import { loadClientComponentDescriptors } from './frame-component-registry.mjs';
 import { clampPreviewCount, chunkSessionIDs } from './chat-view-model.mjs';
 import { readResponse } from './kikx-app-helpers.mjs';
+import { createThinkingBuffer } from '../state/thinking-state.mjs';
 
 export async function getJSON(app, url) {
   let response = await fetch(url, {
@@ -114,6 +115,10 @@ export async function resyncAfterRuntimeEventsReconnect(app) {
     return;
 
   app._runtimeEventsResyncInFlight = true;
+  // The SSE stream has no replay buffer, so any terminal EndTyping/MessageDone
+  // frame sent during the drop is gone. Drop the old live-thinking projection;
+  // if an agent is still thinking, the next live delta repopulates it.
+  app._thinking = createThinkingBuffer();
   try {
     await app._loadSessions();
     let sessionID = app._state.selectedSessionID;

@@ -88,6 +88,23 @@ test('scheduleWake schedules at most one wake per completion output id', async (
   assert.equal(harness.scheduledFrames().length, 1);
 });
 
+test('scheduleWake coalesces into an existing process wake for the same agent and session', async () => {
+  let harness = createHarness();
+  harness.manager.frameRuntime.scheduledFrames = {
+    findPendingProcessWake() {
+      return { frameID: 'existing_wake' };
+    },
+  };
+  let record = createRecord();
+  setWake(harness.manager, record, {}, { frame: { id: 'frm_1' } }, 'continue');
+
+  let result = await scheduleWake(harness.manager, record);
+
+  assert.equal(result, 'existing_wake');
+  assert.equal(record.wakeFrameID, 'existing_wake');
+  assert.equal(harness.scheduledFrames().length, 0, 'no second wake frame is created');
+});
+
 test('scheduleWake stamps continuationDepth on the wake frame and continuation', async () => {
   let harness = createHarness();
   let record = createRecord();

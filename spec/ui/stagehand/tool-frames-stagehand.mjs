@@ -126,7 +126,7 @@ test('Stagehand collapses tool start and result frames into one plugin-rendered 
 
     let compactShell = page.locator('kikx-frame-item[data-frame-id="tool_call_1"]');
     assert.equal(await compactShell.locator('.kikx-frame__compact-description').textContent(), 'Running ls /tmp');
-    assert.equal((await compactShell.locator('.kikx-frame__compact-icon').textContent()).trim(), '\u2699');
+    assert.equal(await compactShell.locator('.kikx-frame__compact-icon svg').getAttribute('data-icon'), 'terminal');
     assert.equal(await compactShell.evaluate((node) => node.classList.contains('kikx-frame--status-success')), true);
 
     // The tool card's output <details> lives inside the frame's compact

@@ -1,8 +1,31 @@
 'use strict';
 
 import { PluginInterface } from '../plugins/index.mjs';
+import { parseMentionReferences, resolveMentionActors } from '../mentions/index.mjs';
 import { createLocatorSearchRequest, formatSearchResponse } from './database-tools.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
+import { wakeInvitedAgent } from './session-invite-wake.mjs';
+
+import {
+  clampInteger,
+  findReusableChildSession,
+  frameReferenceFromPath,
+  normalizeNonNegativeInteger,
+  normalizeOptionalString,
+  normalizeRequiredString,
+  normalizeStringArray,
+  postAgentSessionMessage,
+  requireTargetSessionID,
+  resolveAgents,
+  resolveContextService,
+  sanitizeAgent,
+  sanitizeFrame,
+  sanitizeSession,
+  sessionFrameSearchPath,
+  sessionGeneration,
+  summarizeFrameContent,
+  uniqueStrings,
+} from './session-tool-helpers.mjs';
 
 const DEFAULT_SESSION_LIST_LIMIT = 20;
 const MAX_SESSION_LIST_LIMIT = 100;
@@ -241,6 +264,7 @@ export class SessionCreateTool extends SessionTool {
       let posted = await postAgentSessionMessage({
         runtime: this.frameRuntime(),
         context: this.context,
+        agentManager: this.agentManager(),
         sessionID: session.id,
         text: initialMessage,
       });
@@ -289,11 +313,15 @@ export class SessionInviteAgentsTool extends SessionTool {
         type: 'boolean',
         description: 'When true, invite the calling agent as well.',
       },
+      wake: {
+        type: 'boolean',
+        description: 'Wake each newly invited agent with the session context. Defaults to true.',
+      },
     },
     required: [ 'agents' ],
     additionalProperties: false,
   };
-  static help = 'Use session-invite-agents with session_id to invite multiple existing agents into a target session. Values in agents may be agent IDs or exact agent names.';
+  static help = 'Use session-invite-agents with session_id to invite multiple existing agents into a target session. Values in agents may be agent IDs or exact agent names. Newly invited agents are woken with a hidden context-review turn by default; set wake:false to add them silently.';
 
   async _execute(params = {}) {
     this.assertFirstGenerationDelegation('session-invite-agents');
@@ -310,6 +338,7 @@ export class SessionInviteAgentsTool extends SessionTool {
     let runtime = this.frameRuntime();
     let agents = await resolveAgents(this.agentManager(), refs);
     let invited = [];
+    let wokeAgentIDs = [];
     let session = null;
 
     for (let agent of agents) {
@@ -321,6 +350,16 @@ export class SessionInviteAgentsTool extends SessionTool {
         agent: sanitizeAgent(agent),
         alreadyParticipant: result.alreadyParticipant === true,
       });
+
+      if (!result.alreadyParticipant && params.wake !== false && agent.id !== this.context.agent?.id) {
+        await wakeInvitedAgent(runtime, {
+          sessionID,
+          session,
+          agent,
+          inviter: this.context.agent,
+        });
+        wokeAgentIDs.push(agent.id);
+      }
     }
 
     return {
@@ -328,6 +367,7 @@ export class SessionInviteAgentsTool extends SessionTool {
       session: sanitizeSession(session || (await runtime.ensureSessionEntry(sessionID, { loadFrames: false })).session),
       invited,
       invitedAgentIDs: invited.map((entry) => entry.agent.id),
+      wokeAgentIDs,
     };
   }
 }
@@ -496,9 +536,14 @@ export class SessionMessageTool extends SessionTool {
     let text = normalizeRequiredString(params.text, 'text');
     let runtime = this.frameRuntime();
     let sessionID = requireTargetSessionID(this.targetSessionID(params));
+    // Only resolve the agent manager when the text contains a real mention;
+    // plain messages (and email addresses) must keep working in contexts that
+    // do not expose one.
+    let agentManager = parseMentionReferences(text).length > 0 ? this.agentManager() : null;
     return await postAgentSessionMessage({
       runtime,
       context: this.context,
+      agentManager,
       sessionID,
       text,
       interactionID: params.interactionID,
@@ -507,292 +552,4 @@ export class SessionMessageTool extends SessionTool {
       sourceFrameID: params._frameID,
     });
   }
-}
-
-async function postAgentSessionMessage({
-  runtime,
-  context = {},
-  sessionID,
-  text,
-  interactionID = null,
-  agentID = null,
-  sourceSessionID = null,
-  sourceFrameID = null,
-}) {
-  let entry = await runtime.ensureSessionEntry(sessionID);
-  let stamp = typeof runtime.nextClockStamp === 'function'
-    ? runtime.nextClockStamp()
-    : { at: runtime.clock?.() || Date.now(), clock: null };
-  let now = stamp.at;
-  let frame = {
-    id: runtime.idGenerator?.() || entry.frameEngine.idGenerator?.() || `session-message:${now}`,
-    type: 'AgentMessage',
-    sessionID,
-    interactionID: interactionID || context.frame?.interactionID || runtime.idGenerator?.() || `interaction:${now}`,
-    parentID: null,
-    authorType: 'agent',
-    authorID: context.agent?.id || agentID || null,
-    authorDisplayName: context.agent?.name || context.agent?.id || agentID || null,
-    timestamp: now,
-    createdAt: now,
-    updatedAt: now,
-    createdClock: stamp.clock,
-    updatedClock: stamp.clock,
-    hidden: false,
-    deleted: false,
-    content: {
-      text,
-      status: 'complete',
-      sourceSessionID: normalizeOptionalString(sourceSessionID || context.sourceSession?.id || context.frame?.sessionID),
-      sourceFrameID: normalizeOptionalString(sourceFrameID || context.frame?.id),
-    },
-  };
-
-  let merged = entry.frameEngine.merge([ frame ], {
-    authorType: 'agent',
-    authorID: frame.authorID,
-  });
-  await runtime.frameStore?.flush?.();
-
-  return {
-    sessionID,
-    frame: sanitizeFrame(merged[0] || entry.frameEngine.get?.(frame.id) || frame),
-    posted: true,
-  };
-}
-
-function sanitizeSession(session = {}) {
-  return {
-    id: session.id || null,
-    title: session.title || session.id || '',
-    organizationID: session.organizationID || null,
-    createdByUserID: session.createdByUserID || null,
-    createdByAgentID: session.createdByAgentID || null,
-    parentSessionID: session.parentSessionID || null,
-    generation: sessionGeneration(session),
-    messageCount: normalizeNonNegativeInteger(session.messageCount, 0),
-    participantAgentIDs: normalizeStringArray(session.participantAgentIDs),
-    participantUserIDs: normalizeStringArray(session.participantUserIDs),
-    coordinatorAgentID: session.coordinatorAgentID || null,
-    createdAt: session.createdAt || null,
-    updatedAt: session.updatedAt || null,
-    createdClock: session.createdClock || null,
-    updatedClock: session.updatedClock || null,
-  };
-}
-
-function sanitizeAgent(agent = {}) {
-  return {
-    id: agent.id || null,
-    name: agent.name || agent.id || '',
-    pluginID: agent.pluginID || null,
-    enabled: agent.enabled !== false,
-    character: typeof agent.character === 'string' ? agent.character : '',
-    createdAt: agent.createdAt || null,
-    updatedAt: agent.updatedAt || null,
-  };
-}
-
-function sanitizeFrame(frame = {}) {
-  return {
-    id: frame.id || null,
-    type: frame.type || null,
-    sessionID: frame.sessionID || null,
-    interactionID: frame.interactionID || null,
-    parentID: frame.parentID || null,
-    authorType: frame.authorType || null,
-    authorID: frame.authorID || null,
-    authorDisplayName: frame.authorDisplayName || null,
-    createdAt: frame.createdAt || null,
-    updatedAt: frame.updatedAt || null,
-    createdClock: frame.createdClock || null,
-    updatedClock: frame.updatedClock || null,
-    hidden: frame.hidden === true,
-    deleted: frame.deleted === true,
-    content: summarizeFrameContent(frame.content),
-  };
-}
-
-function sessionFrameSearchPath(frameStore, sessionID) {
-  let rootPath = String(frameStore?.rootPath || '/kikx').replace(/\/+$/g, '');
-  return `${rootPath}/sessions/${encodeURIComponent(sessionID)}/interactions`;
-}
-
-function frameReferenceFromPath(path) {
-  let fileName = String(path || '').split('/').pop() || '';
-  let match = fileName.match(/^\d+-([^-]+)-(.+)\.json$/);
-  if (!match)
-    return {};
-
-  return {
-    frameType: decodeURIComponent(match[1]),
-    frameID: decodeURIComponent(match[2]),
-  };
-}
-
-function summarizeFrameContent(content) {
-  if (!content || typeof content !== 'object' || Array.isArray(content))
-    return content ?? null;
-
-  let output = {};
-  for (let [key, value] of Object.entries(content)) {
-    if (typeof value === 'string')
-      output[key] = value.length > 2000 ? `${value.slice(0, 2000)}...` : value;
-    else if (key === 'thinking' && value && typeof value === 'object')
-      output[key] = { status: value.status || null, text: summarizeText(value.text) };
-    else
-      output[key] = value;
-  }
-
-  return output;
-}
-
-function summarizeText(value) {
-  if (typeof value !== 'string')
-    return '';
-
-  return value.length > 1000 ? `${value.slice(0, 1000)}...` : value;
-}
-
-function requireTargetSessionID(sessionID) {
-  let normalized = normalizeOptionalString(sessionID);
-  if (!normalized)
-    throw new TypeError('session_id is required when no current session is available');
-
-  return normalized;
-}
-
-function normalizeStringArray(values) {
-  if (!Array.isArray(values))
-    return [];
-
-  let output = [];
-  for (let value of values) {
-    let normalized = normalizeOptionalString(value);
-    if (normalized && !output.includes(normalized))
-      output.push(normalized);
-  }
-
-  return output;
-}
-
-async function resolveAgents(agentManager, refs) {
-  let agents = [];
-  for (let ref of refs) {
-    let agent;
-    if (typeof agentManager.resolveAgent === 'function') {
-      agent = await agentManager.resolveAgent(ref);
-    } else if (typeof agentManager.getAgent === 'function') {
-      agent = await agentManager.getAgent(ref);
-    } else {
-      throw new Error('Agent resolution requires agentManager.resolveAgent() or getAgent()');
-    }
-
-    if (!agent?.id)
-      throw new Error(`Agent not found: ${ref}`);
-
-    if (!agents.some((candidate) => candidate.id === agent.id))
-      agents.push(agent);
-  }
-
-  return agents;
-}
-
-function uniqueStrings(values) {
-  let output = [];
-  for (let value of values || []) {
-    let normalized = normalizeOptionalString(value);
-    if (normalized && !output.includes(normalized))
-      output.push(normalized);
-  }
-
-  return output;
-}
-
-async function findReusableChildSession(runtime, { title, parentSessionID, createdByAgentID }) {
-  let normalizedTitle = normalizeOptionalString(title).toLowerCase();
-  let normalizedParentID = normalizeOptionalString(parentSessionID);
-  let normalizedAgentID = normalizeOptionalString(createdByAgentID);
-  if (!normalizedTitle || !normalizedParentID || !normalizedAgentID || typeof runtime?.listSessions !== 'function')
-    return null;
-
-  let offset = 0;
-  let limit = 100;
-  while (offset < 1000) {
-    let sessions = await runtime.listSessions({ limit, offset });
-    for (let session of sessions || []) {
-      if (normalizeOptionalString(session.title).toLowerCase() !== normalizedTitle)
-        continue;
-
-      if (normalizeOptionalString(session.parentSessionID) !== normalizedParentID)
-        continue;
-
-      if (normalizeOptionalString(session.createdByAgentID) !== normalizedAgentID)
-        continue;
-
-      return session;
-    }
-
-    if (!Array.isArray(sessions) || sessions.length < limit)
-      break;
-
-    offset += limit;
-  }
-
-  return null;
-}
-
-function normalizeRequiredString(value, fieldName) {
-  if (typeof value !== 'string' || value.trim() === '')
-    throw new TypeError(`${fieldName} must be a non-empty string`);
-
-  return value.trim();
-}
-
-function normalizeOptionalString(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeNonNegativeInteger(value, fallback) {
-  let number = Number(value);
-  if (!Number.isFinite(number) || number < 0)
-    return fallback;
-
-  return Math.trunc(number);
-}
-
-function sessionGeneration(session) {
-  if (!session || typeof session !== 'object')
-    return 0;
-
-  let number = Number(session.generation);
-  if (Number.isFinite(number) && number >= 0)
-    return Math.trunc(number);
-
-  return session.parentSessionID ? 1 : 0;
-}
-
-function clampInteger(value, defaultValue, min, max) {
-  let number = Number(value);
-  if (!Number.isFinite(number))
-    number = defaultValue;
-
-  number = Math.trunc(number);
-  return Math.min(max, Math.max(min, number));
-}
-
-function resolveContextService(context, name) {
-  let appContext = context.services?.context || context.context;
-  if (appContext?.has?.(name) && typeof appContext.require === 'function')
-    return appContext.require(name);
-
-  if (typeof appContext?.require === 'function') {
-    try {
-      return appContext.require(name);
-    } catch (_error) {
-      return null;
-    }
-  }
-
-  return null;
 }

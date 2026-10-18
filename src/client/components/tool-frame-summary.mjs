@@ -20,24 +20,24 @@ const SUCCESS_STATUSES = new Set([ 'success', 'complete', 'completed', 'ok', 'sa
 const ERROR_STATUSES = new Set([ 'error', 'failed', 'failure', 'fail' ]);
 
 const TOOL_ICONS = new Map([
-  [ 'read-file', '\u25a4' ],
-  [ 'write-file', '\u2192' ],
-  [ 'exec', '\u2699' ],
-  [ 'web-search', '\u2315' ],
-  [ 'web-fetch', '\u21e3' ],
-  [ 'todo-add', '\u2611' ],
-  [ 'todo-clear', '\u2611' ],
-  [ 'todo-complete', '\u2611' ],
-  [ 'todo-delete', '\u2611' ],
-  [ 'todo-focus-clear', '\u2611' ],
-  [ 'todo-focus-set', '\u2611' ],
-  [ 'todo-get', '\u2611' ],
-  [ 'todo-update', '\u2611' ],
-  [ 'feedback-report', '\u2709' ],
-  [ 'database-search', '\u25a6' ],
-  [ 'database-fetch', '\u25a6' ],
-  [ 'output-read', '\u25a4' ],
-  [ 'output-grep', '\u2315' ],
+  [ 'read-file', 'file-read' ],
+  [ 'write-file', 'file-write' ],
+  [ 'exec', 'terminal' ],
+  [ 'web-search', 'search' ],
+  [ 'web-fetch', 'fetch' ],
+  [ 'todo-add', 'todo' ],
+  [ 'todo-clear', 'todo' ],
+  [ 'todo-complete', 'todo' ],
+  [ 'todo-delete', 'todo' ],
+  [ 'todo-focus-clear', 'todo' ],
+  [ 'todo-focus-set', 'todo' ],
+  [ 'todo-get', 'todo' ],
+  [ 'todo-update', 'todo' ],
+  [ 'feedback-report', 'mail' ],
+  [ 'database-search', 'database' ],
+  [ 'database-fetch', 'database' ],
+  [ 'output-read', 'output' ],
+  [ 'output-grep', 'search' ],
 ]);
 
 export function normalizeFrameStatus(status) {
@@ -87,7 +87,7 @@ export function isCompactFrame(frame) {
 
 export function compactFrameSummary(frame) {
   if (!frame)
-    return { description: 'Frame', icon: '\u25c6', status: 'running' };
+    return { description: 'Frame', icon: 'diamond', status: 'running' };
 
   let status = frameStatus(frame);
   if (isToolFrame(frame))
@@ -272,17 +272,17 @@ function toolIcon(toolName) {
     return icon;
 
   if (toolName.startsWith('todo-'))
-    return '\u2611';
+    return 'todo';
   if (toolName.startsWith('team-') || toolName.startsWith('session-') || toolName.startsWith('agent-'))
-    return '\u25c7';
+    return 'diamond';
   if (toolName.startsWith('exec-'))
-    return '\u2699';
+    return 'terminal';
   if (toolName.startsWith('output-'))
-    return '\u25a4';
+    return 'output';
   if (toolName.startsWith('database-'))
-    return '\u25a6';
+    return 'database';
 
-  return '\u2699';
+  return 'terminal';
 }
 
 function systemFrameSummary(frame, status) {
@@ -290,17 +290,17 @@ function systemFrameSummary(frame, status) {
     case 'CompactionFrame':
       return compactionFrameSummary(frame, status);
     case 'AgentError':
-      return { description: text(frame.content?.text) || 'Agent error', icon: '!', status: 'error' };
+      return { description: text(frame.content?.text) || 'Agent error', icon: 'warning', status: 'error' };
     case 'SystemNotice':
-      return { description: text(frame.content?.text) || 'System notice', icon: 'i', status };
+      return { description: text(frame.content?.text) || 'System notice', icon: 'info', status };
     case 'CommandResult':
-      return { description: commandResultDescription(frame), icon: '\u203a', status };
+      return { description: commandResultDescription(frame), icon: 'arrow-right', status };
     case 'FrameLoadError':
-      return { description: 'Frame failed to load', icon: '!', status: 'error' };
+      return { description: 'Frame failed to load', icon: 'warning', status: 'error' };
     case 'AgentProgress':
-      return { description: text(frame.content?.text) || 'Agent progress', icon: '\u2026', status };
+      return { description: text(frame.content?.text) || 'Agent progress', icon: 'dots', status };
     default:
-      return { description: String(frame.type || 'Frame'), icon: '\u25c6', status };
+      return { description: String(frame.type || 'Frame'), icon: 'diamond', status };
   }
 }
 
@@ -310,15 +310,15 @@ function compactionFrameSummary(frame, status) {
   let suffix = frameCount > 0 ? ` (${frameCount} frame${frameCount === 1 ? '' : 's'})` : '';
 
   if (status === 'success')
-    return { description: `Compaction complete${suffix}`, icon: '\u29c9', status };
+    return { description: `Compaction complete${suffix}`, icon: 'compaction', status };
 
   if (status === 'error')
-    return { description: 'Compaction failed', icon: '\u29c9', status };
+    return { description: 'Compaction failed', icon: 'compaction', status };
 
   if (String(content.status || frame.compaction?.status || '').toLowerCase() === 'trimmed')
-    return { description: 'Compaction trimmed context', icon: '\u29c9', status };
+    return { description: 'Compaction trimmed context', icon: 'compaction', status };
 
-  return { description: `Compacting context${suffix}`, icon: '\u29c9', status };
+  return { description: `Compacting context${suffix}`, icon: 'compaction', status };
 }
 
 function commandResultDescription(frame) {

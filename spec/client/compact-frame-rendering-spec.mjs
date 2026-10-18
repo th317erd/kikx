@@ -69,7 +69,8 @@ function summaryDescription(item) {
 }
 
 function summaryIcon(item) {
-  return item.querySelector('.kikx-frame__compact-icon').textContent;
+  let icon = item.querySelector('.kikx-frame__compact-icon');
+  return icon?.dataset.icon || icon?.textContent || '';
 }
 
 test('a successful read-file frame renders one compact line with the existing tool card in its body', () => {
@@ -95,7 +96,7 @@ test('a successful read-file frame renders one compact line with the existing to
   let details = compactDetails(item);
   assert.ok(details, 'the frame must use the native details disclosure');
   assert.equal(summaryDescription(item), 'Read file /tmp/notes.txt <-');
-  assert.equal(summaryIcon(item), '\u25a4');
+  assert.equal(summaryIcon(item), 'file-read');
 
   let summary = details.querySelector('summary');
   let summaryChildren = summary.children;
@@ -156,7 +157,7 @@ test('exec renders the command in inline code and switches from neutral to green
   assert.ok(item.classList.contains('kikx-frame--status-running'));
   assert.equal(summaryDescription(item), 'Running ls /tmp');
   assert.equal(item.querySelector('.kikx-frame__compact-description code').textContent, 'ls /tmp');
-  assert.equal(summaryIcon(item), '\u2699');
+  assert.equal(summaryIcon(item), 'terminal');
 
   item.updateFrame({
     ...running,

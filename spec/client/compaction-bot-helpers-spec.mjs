@@ -10,9 +10,9 @@ import {
   compactionBotRankByAgentID,
 } from '../../src/client/components/compaction-bot-helpers.mjs';
 
-test('COMPACTION_BOT_ICON is a compact glyph distinct from the crown', () => {
-  assert.equal(COMPACTION_BOT_ICON, '⊟');
-  assert.notEqual(COMPACTION_BOT_ICON, '♛');
+test('COMPACTION_BOT_ICON names the compaction icon, distinct from the crown', () => {
+  assert.equal(COMPACTION_BOT_ICON, 'compaction');
+  assert.notEqual(COMPACTION_BOT_ICON, 'crown');
 });
 
 test('compactionBotRankByAgentID ranks newest designation #1 and skips the rest', () => {

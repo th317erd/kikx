@@ -476,6 +476,25 @@ test('FrameRuntime assigns the first invited agent as coordinator and preserves 
   assert.deepEqual(second.session.participantAgentIDs, [ 'agent_1', 'agent_2' ]);
 });
 
+test('FrameRuntime wakes an invited agent with a hidden targeted scheduled frame', async () => {
+  let runtime = createRuntime({ ids: [ 'ses_1', 'wake_frame', 'wake_interaction' ], now: 1000 });
+  await runtime.createSession({ title: 'Scratch' });
+
+  let frame = await runtime.wakeAgentInSession('ses_1', {
+    agentID: 'agent_1',
+    agentName: 'Coder',
+    text: 'Review the context before starting.',
+  });
+
+  assert.equal(frame.type, 'UserMessage');
+  assert.equal(frame.hidden, true);
+  assert.equal(frame.targetAgentID, 'agent_1');
+  assert.equal(frame.scheduledStatus, 'pending');
+  assert.equal(frame.content.text, 'Review the context before starting.');
+  assert.equal(frame.content.agentID, 'agent_1');
+  assert.equal(runtime.sessions.get('ses_1').frameEngine.get?.(frame.id)?.targetAgentID, 'agent_1');
+});
+
 test('FrameRuntime normalizes coordinator manifests when participant input is provided', async () => {
   let runtime = createRuntime({ ids: [ 'ses_1', 'ses_2', 'ses_3' ] });
 

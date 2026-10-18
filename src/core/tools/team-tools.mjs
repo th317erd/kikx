@@ -2,6 +2,7 @@
 
 import { PluginInterface } from '../plugins/index.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
+import { wakeInvitedAgent } from './session-invite-wake.mjs';
 
 const DEFAULT_TEAM_LIST_LIMIT = 50;
 const MAX_TEAM_LIST_LIMIT = 200;
@@ -310,11 +311,15 @@ export class SessionInviteTeamTool extends TeamTool {
         type: 'string',
         description: 'Team ID or exact team name to invite.',
       },
+      wake: {
+        type: 'boolean',
+        description: 'Wake each newly invited agent with the session context. Defaults to true.',
+      },
     },
     required: [ 'team' ],
     additionalProperties: false,
   };
-  static help = 'Use session-invite-team with session_id to invite all team members into a target session. Agent members become participant agents; user members become participant users.';
+  static help = 'Use session-invite-team with session_id to invite all team members into a target session. Agent members become participant agents; user members become participant users. Newly invited agents are woken with a hidden context-review turn by default; set wake:false to add them silently.';
 
   async _execute(params = {}) {
     this.assertFirstGenerationDelegation('session-invite-team');
@@ -324,6 +329,7 @@ export class SessionInviteTeamTool extends TeamTool {
     let runtime = this.frameRuntime();
     let invitedAgents = [];
     let invitedUsers = [];
+    let wokeAgentIDs = [];
     let alreadyParticipants = [];
     let session = null;
 
@@ -335,10 +341,20 @@ export class SessionInviteTeamTool extends TeamTool {
         });
         session = result.session;
         let entry = { actorID: agent.id, type: 'agent', name: agent.name || member.name || agent.id };
-        if (result.alreadyParticipant)
+        if (result.alreadyParticipant) {
           alreadyParticipants.push(entry);
-        else
+        } else {
           invitedAgents.push(entry);
+          if (params.wake !== false && agent.id !== this.context.agent?.id) {
+            await wakeInvitedAgent(runtime, {
+              sessionID,
+              session,
+              agent,
+              inviter: this.context.agent,
+            });
+            wokeAgentIDs.push(agent.id);
+          }
+        }
         continue;
       }
 
@@ -369,6 +385,7 @@ export class SessionInviteTeamTool extends TeamTool {
       invitedAgents,
       invitedUsers,
       alreadyParticipants,
+      wokeAgentIDs,
       invitedCount: invitedAgents.length + invitedUsers.length,
     };
   }

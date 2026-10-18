@@ -5,6 +5,7 @@
 // DOM structure and in-place summary text updates.
 
 import { elements } from '../lib/aeor-ui.mjs';
+import { setIcon } from '../lib/icons.mjs';
 import { compactFrameSummary } from './tool-frame-summary.mjs';
 
 const { code, details, div, span, summary } = elements;
@@ -20,6 +21,7 @@ export function buildCompactFrameDisclosure(frame, bodyNodes, ownerDocument) {
     summary: view.element,
     description: view.description,
     icon: view.icon,
+    iconName: view.iconName,
     descriptionText: view.descriptionText,
     codeText: view.codeText,
   };
@@ -40,9 +42,11 @@ export function updateCompactSummary(view, frame) {
     view.codeText = codeText;
   }
 
-  let iconText = data.icon || '';
-  if (view.icon.textContent !== iconText)
-    view.icon.textContent = iconText;
+  let iconName = data.icon || 'diamond';
+  if (view.iconName !== iconName) {
+    setIcon(view.icon, iconName, { ownerDocument: view.element.ownerDocument || document });
+    view.iconName = iconName;
+  }
 }
 
 function buildCompactSummary(frame, ownerDocument) {
@@ -51,9 +55,10 @@ function buildCompactSummary(frame, ownerDocument) {
   let description = span.class('kikx-frame__compact-description').build(ownerDocument);
   let icon = span.class('kikx-frame__compact-icon').build(ownerDocument);
 
+  let iconName = data.icon || 'diamond';
   icon.setAttribute('aria-hidden', 'true');
   renderDescription(description, data.description || '', data.code || '', ownerDocument);
-  icon.textContent = data.icon || '';
+  setIcon(icon, iconName, { ownerDocument });
 
   element.appendChild(icon);
   element.appendChild(description);
@@ -62,6 +67,7 @@ function buildCompactSummary(frame, ownerDocument) {
     element,
     description,
     icon,
+    iconName,
     descriptionText: data.description || '',
     codeText: data.code || '',
   };

@@ -1,6 +1,7 @@
 'use strict';
 
 import { elements } from '../lib/aeor-ui.mjs';
+import { createIcon } from '../lib/icons.mjs';
 import {
   getAgents,
   getSelectedAgentProvider,
@@ -110,7 +111,7 @@ export function buildAgentManagerBody(app) {
                   .title(rank ? `Master agent #${rank} (click to uncrown)` : 'Crown as master agent')
                   .ariaLabel(rank ? `Master agent number ${rank}` : 'Crown as master agent')
                   .ariaPressed(rank ? 'true' : 'false')
-                  .onClick(() => app._toggleAgentCrown(agent))('♛'),
+                  .onClick(() => app._toggleAgentCrown(agent))(createIcon('crown')),
                 button
                   .type('button')
                   .class(`kikx-agent-list__compaction-bot${compactionRank ? ` is-compaction-bot kikx-agent-list__compaction-bot--rank-${compactionRank}` : ''}`)
@@ -118,14 +119,14 @@ export function buildAgentManagerBody(app) {
                   .title(compactionBotButtonTitle(compactionRank))
                   .ariaLabel(compactionBotButtonAriaLabel(compactionRank))
                   .ariaPressed(compactionRank ? 'true' : 'false')
-                  .onClick(() => app._toggleAgentCompactionBot(agent))(COMPACTION_BOT_ICON),
+                  .onClick(() => app._toggleAgentCompactionBot(agent))(createIcon(COMPACTION_BOT_ICON)),
                 button
                   .type('button')
                   .class('kikx-agent-list__edit')
                   .dataAgentId(agent.id)
                   .title('Edit agent')
                   .ariaLabel('Edit agent')
-                  .onClick(() => app._editAgent(agent))('⚙'),
+                  .onClick(() => app._editAgent(agent))(createIcon('gear')),
               ),
             );
         }),
@@ -205,7 +206,7 @@ export function buildTeamManager(app) {
               .class('kikx-agent-list__edit kikx-team-list__edit')
               .title('Edit team')
               .ariaLabel('Edit team')
-              .onClick(() => app._editTeam(team))('⚙'),
+              .onClick(() => app._editTeam(team))(createIcon('gear')),
           )),
         ),
       div.class('modal-footer-actions')(

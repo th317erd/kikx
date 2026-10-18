@@ -23,7 +23,7 @@ test('read-file renders the exact read wording and a document icon', () => {
   let summary = compactFrameSummary(toolFrame('read-file', { path: '/tmp/notes.txt' }, { status: 'success' }));
 
   assert.equal(summary.description, 'Read file /tmp/notes.txt <-');
-  assert.equal(summary.icon, '\u25a4');
+  assert.equal(summary.icon, 'file-read');
   assert.equal(summary.status, 'success');
 });
 
@@ -44,7 +44,7 @@ test('exec keeps the command for inline code and a gear icon', () => {
 
   assert.equal(summary.description, 'Running ls /tmp');
   assert.equal(summary.code, 'ls /tmp');
-  assert.equal(summary.icon, '\u2699');
+  assert.equal(summary.icon, 'terminal');
   assert.equal(summary.status, 'running');
 });
 
@@ -114,7 +114,7 @@ test('compaction statuses drive the compact wording and color', () => {
   });
   assert.equal(success.description, 'Compaction complete (3 frames)');
   assert.equal(success.status, 'success');
-  assert.equal(success.icon, '\u29c9');
+  assert.equal(success.icon, 'compaction');
 
   let error = compactFrameSummary({ type: 'CompactionFrame', content: { status: 'failed' } });
   assert.equal(error.description, 'Compaction failed');
@@ -190,5 +190,5 @@ test('recovers the file path from a truncated input preview', () => {
   });
 
   assert.equal(summary.description, 'Write file /tmp/a.txt ->');
-  assert.equal(summary.icon, '\u2192', 'write-file uses an arrow, not a pencil');
+  assert.equal(summary.icon, 'file-write');
 });

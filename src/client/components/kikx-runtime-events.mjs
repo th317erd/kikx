@@ -171,7 +171,12 @@ function frameRuntimeEventKey(data) {
     return '';
   }
 
-  return typeof frameID === 'string' && frameID ? `${sessionID}::${frameID}` : '';
+  // Include the type: BeginTyping and EndTyping intentionally share the same
+  // frame id (`<response>:typing`). Keying only by id would let a same-batch
+  // EndTyping overwrite BeginTyping and reverse their order, leaving a brain
+  // alive after the turn ends.
+  let frameType = typeof data?.frame?.type === 'string' ? data.frame.type : '';
+  return typeof frameID === 'string' && frameID ? `${sessionID}::${frameType}::${frameID}` : '';
 }
 
 function rebuildFrameRuntimeEventKeys(app, queue) {
@@ -347,7 +352,7 @@ function processFrameRuntimeEvents(app) {
     guardClientOperation('kikx-runtime-events.batchEntry', () => {
       addFrameToBatch(framesBySessionID, data.sessionID, data.frame);
       addTouchedFrameIDs(touchedFrameIDsBySessionID, data.sessionID, renderedFrameIDsFor(data.frame));
-      applyThinkingFrame(app._thinking, data.frame);
+      applyThinkingFrame(app._thinking, data.frame, data.sessionID);
     }, { sessionID: data.sessionID, frameID });
   }
 

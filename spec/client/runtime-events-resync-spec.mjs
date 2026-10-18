@@ -24,6 +24,7 @@ function createResyncApp(overrides = {}) {
     isConnected: true,
     calls,
     _state: { selectedSessionID: 's1', status: '', statusKind: 'pending' },
+    _thinking: { order: [ 'stale' ], byResponse: new Map([ [ 'stale', { id: 'stale' } ] ]), agentByResponse: new Map() },
     async _loadSessions() {
       calls.push([ 'sessions' ]);
     },
@@ -46,6 +47,15 @@ test('a reconnect resyncs the session list and merges the selected session frame
     [ 'sessions' ],
     [ 'frames', 's1', { merge: true } ],
   ]);
+});
+
+test('a reconnect drops the stale live-thinking projection', async () => {
+  let app = createResyncApp();
+  await resyncAfterRuntimeEventsReconnect(app);
+
+  assert.deepEqual(app._thinking.order, []);
+  assert.equal(app._thinking.byResponse.size, 0);
+  assert.equal(app._thinking.agentByResponse.size, 0);
 });
 
 test('a reconnect with no selected session reloads only the session list', async () => {

@@ -94,6 +94,70 @@ export class ScheduledFrameQueue {
     this._nudge();
   }
 
+  // A process completion may arrive while another process wake for the same
+  // agent is already queued or running. Coalesce them: one turn can inspect
+  // every completion with exec-list/exec-status, and a wake per completion is
+  // exactly how an agent can get stuck in a self-wake loop.
+  findPendingProcessWake({ sessionID, agentID } = {}) {
+    if (!sessionID || !agentID)
+      return null;
+
+    for (let entry of this.entries.values()) {
+      let frame = entry.frame;
+      if (entry.sessionID !== sessionID || frame?.targetAgentID !== agentID)
+        continue;
+      if (frame?.continuation?.kind !== 'exec-wake-on-completion')
+        continue;
+      if (frame?.scheduledStatus === 'fired' || frame?.scheduledStatus === 'cancelled')
+        continue;
+      return entry;
+    }
+
+    return null;
+  }
+
+  // Cancel sibling process wakes for the same agent/session. Run both before
+  // and after dispatch: completions that land while the current turn is running
+  // must not queue a second turn behind it.
+  async cancelSiblingProcessWakes(entry, sessionEntry) {
+    if (!entry?.frameID || !sessionEntry?.frameEngine)
+      return 0;
+
+    let current = sessionEntry.frameEngine.get(entry.frameID) || entry.frame || {};
+    let targetAgentID = current.targetAgentID;
+    if (!targetAgentID)
+      return 0;
+
+    let cancelled = 0;
+    let now = this.now();
+    for (let candidate of [ ...this.entries.values() ]) {
+      if (candidate.frameID === entry.frameID || candidate.sessionID !== entry.sessionID)
+        continue;
+
+      let frame = sessionEntry.frameEngine.get(candidate.frameID) || candidate.frame;
+      if (frame?.targetAgentID !== targetAgentID)
+        continue;
+      if (frame?.continuation?.kind !== 'exec-wake-on-completion')
+        continue;
+      if (frame?.scheduledStatus === 'firing' || frame?.scheduledStatus === 'cancelled' || frame?.scheduledStatus === 'fired')
+        continue;
+
+      await this.markFrameStatus({
+        sessionEntry,
+        frame,
+        status: 'cancelled',
+        extra: {
+          scheduledCancelledAt: now,
+          scheduledCancelReason: 'coalesced-process-wake',
+        },
+      });
+      this.entries.delete(candidate.frameID);
+      cancelled++;
+    }
+
+    return cancelled;
+  }
+
   async processDue() {
     if (this._processing)
       return [];
@@ -155,6 +219,10 @@ export class ScheduledFrameQueue {
         status: 'firing',
       });
 
+      // Completions that were already queued behind this wake can be handled
+      // by this same turn.
+      await this.cancelSiblingProcessWakes(entry, sessionEntry);
+
       let commit = {
         id: `scheduled:${firingFrame.id}:${firingFrame.scheduledFiringAt || this.now()}`,
         order: sessionEntry.frameEngine.getLatestCommit()?.order || firingFrame.commitOrder || firingFrame.order || 0,
@@ -168,10 +236,38 @@ export class ScheduledFrameQueue {
         }],
       };
 
-      this.runtime.frameRouter?.enqueue?.(sessionEntry.frameEngine, commit, sessionEntry.session, {
-        services: this.runtime.routerServices(),
-      });
-      await this.runtime.frameRouter?.flush?.();
+      try {
+        this.runtime.frameRouter?.enqueue?.(sessionEntry.frameEngine, commit, sessionEntry.session, {
+          services: this.runtime.routerServices(),
+        });
+        await this.runtime.frameRouter?.flush?.();
+      } catch (error) {
+        // A failed route must not leave a permanently `firing` frame that the
+        // worker retries every tick (and wakes the agent every time). Cancel
+        // it, preserve the error for diagnostics, and let the next real wake
+        // proceed.
+        await this.markFrameStatus({
+          sessionEntry,
+          frame: sessionEntry.frameEngine.get(firingFrame.id) || firingFrame,
+          status: 'cancelled',
+          extra: {
+            scheduledCancelledAt: this.now(),
+            scheduledError: error?.message || String(error),
+          },
+        });
+        this.entries.delete(entry.frameID);
+        this.runtime.emitRuntimeEvent?.('frame.scheduled.failed', {
+          sessionID: sessionEntry.session.id,
+          frame: firingFrame,
+          error: error?.message || String(error),
+        });
+        this.logger?.error?.('Scheduled frame dispatch failed', error);
+        return null;
+      }
+
+      // More completions may have arrived while the turn was running; fold them
+      // into this turn instead of queuing one turn per completion.
+      await this.cancelSiblingProcessWakes(entry, sessionEntry);
 
       let firedFrame = await this.markFrameStatus({
         sessionEntry,
@@ -191,10 +287,11 @@ export class ScheduledFrameQueue {
     }
   }
 
-  async markFrameStatus({ sessionEntry, frame, status }) {
+  async markFrameStatus({ sessionEntry, frame, status, extra = {} }) {
     let now = this.now();
     let updated = {
       ...frame,
+      ...extra,
       scheduledStatus: status,
       updatedAt: now,
     };

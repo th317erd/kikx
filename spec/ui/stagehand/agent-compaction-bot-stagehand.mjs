@@ -74,17 +74,17 @@ test('Stagehand designates compaction bots from the Agents modal with a distinct
     });
     await page.waitForSelector('.kikx-agent-list__compaction-bot', { timeout: 10000 });
 
-    // The second button exists next to the crown and carries the compact glyph,
-    // not a crown.
+    // The second button exists next to the crown and carries the compaction SVG
+    // icon, not a crown.
     let initial = await page.evaluate(() => ({
       crowns: document.querySelectorAll('.kikx-agent-list__crown').length,
       bots: document.querySelectorAll('.kikx-agent-list__compaction-bot').length,
-      glyphs: Array.from(document.querySelectorAll('.kikx-agent-list__compaction-bot')).map((button) => button.textContent),
+      glyphs: Array.from(document.querySelectorAll('.kikx-agent-list__compaction-bot')).map((button) => button.querySelector('svg')?.dataset.icon || ''),
       designated: document.querySelectorAll('.kikx-agent-list__compaction-bot.is-compaction-bot').length,
     }));
     assert.equal(initial.crowns, 3);
     assert.equal(initial.bots, 3);
-    assert.deepEqual(initial.glyphs, [ '⊟', '⊟', '⊟' ]);
+    assert.deepEqual(initial.glyphs, [ 'compaction', 'compaction', 'compaction' ]);
     assert.equal(initial.designated, 0);
 
     // Designate the first agent, then the second. Newest designation is #1.

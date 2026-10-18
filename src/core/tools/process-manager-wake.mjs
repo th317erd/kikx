@@ -68,6 +68,20 @@ async function scheduleWake(manager, record) {
 
   let depth = nextChainDepth({ continuationDepth: wake.triggerDepth });
 
+  // Coalesce process completions for one agent/session into the wake already
+  // pending or firing. A completion turn can inspect every completed process;
+  // one wake per completion is what turns a busy turn into a wake loop.
+  let pendingWake = frameRuntime.scheduledFrames?.findPendingProcessWake?.({
+    sessionID: wake.sessionID,
+    agentID: wake.agentID,
+  });
+  if (pendingWake) {
+    record.wakeFrameID = pendingWake.frameID;
+    record.wakeCompletionOutputID = record.completionToolOutputID || null;
+    await manager.persist?.(record);
+    return record.wakeFrameID;
+  }
+
   try {
     let entry = await frameRuntime.ensureSessionEntry(wake.sessionID);
     let now = Number(frameRuntime.clock?.() || Date.now());

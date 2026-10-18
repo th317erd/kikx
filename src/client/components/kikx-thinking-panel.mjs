@@ -1,17 +1,18 @@
 'use strict';
 
+import { createIcon } from '../lib/icons.mjs';
 import { thinkingLines } from '../state/thinking-state.mjs';
 
 const MAX_RENDERED_LINES = 200;
 const CURSOR_OFFSET = 16;
 
-// One agent's live "thinking" affordance: a 🧠 icon that giggles while the agent
-// thinks. Hovering it reveals the live thinking text in a cursor-following tooltip
+// One agent's live "thinking" affordance: a brain icon that giggles while the
+// agent thinks. Hovering it reveals the live thinking text in a cursor-following tooltip
 // (newest line pinned to the bottom; older lines fade out the top). The tooltip is
 // attached to document.body and positioned `fixed`, so no ancestor's overflow or
 // transform can clip it.
 const TEMPLATE_HTML = `
-  <button type="button" class="kikx-thinking-brain" aria-label="Agent is thinking">🧠</button>
+  <button type="button" class="kikx-thinking-brain" aria-label="Agent is thinking"></button>
 `;
 
 const TIP_HTML = `
@@ -38,6 +39,7 @@ export class KikxThinkingPanel extends HTMLElement {
       this._initialized = true;
       this.innerHTML = TEMPLATE_HTML;
       this._brainElement = this.querySelector('.kikx-thinking-brain');
+      this._brainElement.appendChild(createIcon('brain'));
       this._brainElement.addEventListener('mouseenter', this._onPointerMove);
       this._brainElement.addEventListener('mousemove', this._onPointerMove);
       this._brainElement.addEventListener('mouseleave', this._onPointerLeave);
