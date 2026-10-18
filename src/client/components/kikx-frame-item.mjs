@@ -137,8 +137,30 @@ export class KikxFrameItem extends HTMLElement {
   }
 
   connectedCallback() {
+    if (!this._compactClickBound) {
+      this._compactClickBound = true;
+      this.addEventListener('click', this._onCompactClick);
+    }
+
     if (this._frame && this.childNodes.length === 0)
       this._render();
+  }
+
+  // Compact frames toggle when clicked anywhere (not just the short summary
+  // line), except while selecting text or interacting with a control.
+  _onCompactClick(event) {
+    let details = this._compactView?.element;
+    if (!details)
+      return;
+
+    if (event.target?.closest?.('a, button, input, textarea, select, summary'))
+      return;
+
+    let selection = globalThis.getSelection?.();
+    if (selection && selection.isCollapsed === false)
+      return;
+
+    details.open = !details.open;
   }
 
   disconnectedCallback() {
