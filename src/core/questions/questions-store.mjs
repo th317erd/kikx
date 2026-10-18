@@ -430,6 +430,17 @@ export class QuestionsStore {
    * a store scan (reindex).
    */
   async writeIndexes(questionIDs, touchedAgentIDs = [], extraAgentIDs = []) {
+    return await this.withLock(
+      QUESTIONS_INDEX_LOCK_KEY,
+      () => this.writeIndexesUnlocked(questionIDs, touchedAgentIDs, extraAgentIDs),
+    );
+  }
+
+  /**
+   * Body of `writeIndexes`. Callers must NOT invoke this directly: it performs
+   * the read-modify-write on the shared index with no mutual exclusion.
+   */
+  async writeIndexesUnlocked(questionIDs, touchedAgentIDs = [], extraAgentIDs = []) {
     let touched = [];
     for (let questionID of questionIDs) {
       let doc = null;
@@ -521,6 +532,12 @@ export class QuestionsStore {
     return `${this.rootPath}/agents/${encodeURIComponent(normalizeRequiredString(agentID, 'agentID'))}/questions.json`;
   }
 }
+
+// AeorDB offers no conditional write, so the open index is a read-modify-write
+// document shared by every question in the store. Mutations therefore serialise
+// on the index itself; the per-question mutexes cannot do this job because two
+// answers to two *different* questions hold two *different* keys.
+export const QUESTIONS_INDEX_LOCK_KEY = 'questions:index:open';
 
 export const QUESTION_MAX_PER_CALL = MAX_QUESTIONS_PER_CALL;
 export const QUESTION_STATUSES = [ ...STATUSES ];
