@@ -288,7 +288,7 @@ export class ShellToolUse extends ToolUse {
     ].filter(Boolean).join(' | ');
 
     return div.class('kikx-tool-output kikx-tool-output--exec')(
-      meta ? p.class('kikx-tool-output__meta')(meta) : null,
+      meta ? p.class('kikx-tool-output__meta')(code(meta)) : null,
       this.renderOutputSection('stdout', stdout || '(stdout empty)'),
       stderr ? this.renderOutputSection('stderr', stderr) : null,
       this.renderTruncationNotice(output),

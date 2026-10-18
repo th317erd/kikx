@@ -186,10 +186,13 @@ export class KikxFrameItem extends HTMLElement {
       if (compact) {
         this._compactView = buildCompactFrameDisclosure(
           frame,
-          [ meta, content ].filter(Boolean),
+          [ content ].filter(Boolean),
           document,
         );
         this._contentParent = this._compactView.body;
+        // Keep the "{Name} {time}" header visible above the compact line.
+        if (meta)
+          this.appendChild(meta);
         this.appendChild(this._compactView.element);
       } else {
         if (meta)

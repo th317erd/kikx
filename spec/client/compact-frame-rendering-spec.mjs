@@ -99,12 +99,12 @@ test('a successful read-file frame renders one compact line with the existing to
 
   let summary = details.querySelector('summary');
   let summaryChildren = summary.children;
-  assert.equal(summaryChildren[summaryChildren.length - 1], summary.querySelector('.kikx-frame__compact-icon'), 'the icon must sit on the far right');
+  assert.equal(summaryChildren[0], summary.querySelector('.kikx-frame__compact-icon'), 'the icon must sit on the left');
 
   let body = details.querySelector('.kikx-frame__compact-body');
   assert.ok(body, 'the disclosure must have a body');
   assert.ok(body.querySelector('kikx-read-file-use'), 'the existing tool card must be preserved');
-  assert.ok(body.querySelector('.kikx-frame__meta'), 'the existing metadata must be preserved');
+  assert.ok(item.querySelector('.kikx-frame__meta'), 'the metadata header must stay visible on the frame');
 
   details.setAttribute('open', '');
   assert.equal(details.hasAttribute('open'), true, 'the native disclosure owns expansion');

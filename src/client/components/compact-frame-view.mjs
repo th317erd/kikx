@@ -55,8 +55,8 @@ function buildCompactSummary(frame, ownerDocument) {
   renderDescription(description, data.description || '', data.code || '', ownerDocument);
   icon.textContent = data.icon || '';
 
-  element.appendChild(description);
   element.appendChild(icon);
+  element.appendChild(description);
 
   return {
     element,
