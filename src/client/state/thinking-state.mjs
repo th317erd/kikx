@@ -49,11 +49,25 @@ function liveText(frame) {
 }
 
 export function createThinkingBuffer() {
-  return { order: [], byResponse: new Map() };
+  return { order: [], byResponse: new Map(), agentByResponse: new Map() };
 }
 
-function responseIDFor(frame) {
-  return frame.responseFrameID || frame.id;
+// One brain per agent: resolve every live frame to a stable owner. BeginTyping
+// carries both the response frame and the agent id, so record that link and use
+// the agent id for that response's thinking/delta frames too. Different responses
+// from the same agent therefore collapse into a single brain.
+function resolveOwnerID(buffer, frame) {
+  let responseID = frame?.responseFrameID || null;
+  let agentID = frame?.content?.agentID || frame?.authorID || null;
+
+  if (responseID && agentID)
+    buffer.agentByResponse.set(responseID, agentID);
+  if (agentID)
+    return agentID;
+  if (responseID && buffer.agentByResponse.has(responseID))
+    return buffer.agentByResponse.get(responseID);
+
+  return responseID || frame?.id;
 }
 
 // Apply one raw runtime frame to the buffer. Returns true when it changed.
@@ -62,7 +76,7 @@ export function applyThinkingFrame(buffer, frame) {
     return false;
 
   let type = frame.type;
-  let responseID = responseIDFor(frame);
+  let ownerID = resolveOwnerID(buffer, frame);
 
   // The response's AgentMessage stopped streaming: the turn is settling, so the
   // panel goes away (the completed message is a thread item).
@@ -72,22 +86,24 @@ export function applyThinkingFrame(buffer, frame) {
     && frame.hidden !== true
     && frame.deleted !== true
   )
-    return removeThinking(buffer, responseID);
+    return removeThinking(buffer, ownerID);
 
   let isLive = LIVE_FRAME_TYPES.has(type)
     || (type === 'AgentMessage' && frame.content?.status === 'streaming');
   if (!isLive)
     return false;
 
-  let entry = buffer.byResponse.get(responseID);
+  let entry = buffer.byResponse.get(ownerID);
   if (!entry) {
-    entry = { id: responseID, agentID: '', name: '', thinking: '', answer: '' };
-    buffer.byResponse.set(responseID, entry);
-    buffer.order.push(responseID);
+    entry = { id: ownerID, agentID: '', name: '', thinking: '', answer: '' };
+    buffer.byResponse.set(ownerID, entry);
+    buffer.order.push(ownerID);
   }
 
   if (frame.content?.agentID)
     entry.agentID = frame.content.agentID;
+  else if (frame.authorID)
+    entry.agentID = frame.authorID;
   if (frame.content?.agentName)
     entry.name = frame.content.agentName;
   if (!entry.name && frame.authorDisplayName)
@@ -104,13 +120,21 @@ export function applyThinkingFrame(buffer, frame) {
   return true;
 }
 
-function removeThinking(buffer, responseID) {
-  if (!buffer.byResponse.has(responseID))
-    return false;
+function removeThinking(buffer, ownerID) {
+  let changed = false;
+  if (buffer.byResponse.delete(ownerID)) {
+    buffer.order = buffer.order.filter((id) => id !== ownerID);
+    changed = true;
+  }
 
-  buffer.byResponse.delete(responseID);
-  buffer.order = buffer.order.filter((id) => id !== responseID);
-  return true;
+  // Drop the response->agent links that pointed at this owner so a later frame
+  // cannot resurrect a stale brain.
+  for (let [responseID, agentID] of buffer.agentByResponse) {
+    if (agentID === ownerID)
+      buffer.agentByResponse.delete(responseID);
+  }
+
+  return changed;
 }
 
 // Ordered list for the rack: [{ id, agentID, name, text }].

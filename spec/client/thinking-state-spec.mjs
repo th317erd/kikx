@@ -46,7 +46,7 @@ test('applyThinkingFrame buffers reasoning then streamed answer, per response', 
 
   let agents = thinkingAgents(buffer);
   assert.equal(agents.length, 1);
-  assert.equal(agents[0].id, 'r1');
+  assert.equal(agents[0].id, 'a1');
   assert.equal(agents[0].agentID, 'a1');
   assert.equal(agents[0].name, 'Zav');
   assert.equal(agents[0].text, 'reasoning…\npartial answer');
@@ -76,8 +76,21 @@ test('multiple agents are kept in first-seen order and named', () => {
   applyThinkingFrame(buffer, { id: 'r1:t', type: 'BeginTyping', responseFrameID: 'r1', content: { agentID: 'a1', agentName: 'One' } });
   applyThinkingFrame(buffer, { id: 'r2:t', type: 'BeginTyping', responseFrameID: 'r2', content: { agentID: 'a2', agentName: 'Two' } });
 
-  assert.deepEqual(thinkingAgents(buffer).map((agent) => agent.id), [ 'r1', 'r2' ]);
+  assert.deepEqual(thinkingAgents(buffer).map((agent) => agent.id), [ 'a1', 'a2' ]);
   assert.deepEqual(thinkingAgents(buffer).map((agent) => agent.name), [ 'One', 'Two' ]);
+});
+
+test('one brain per agent even across multiple responses', () => {
+  let buffer = createThinkingBuffer();
+  applyThinkingFrame(buffer, { id: 'r1:t', type: 'BeginTyping', responseFrameID: 'r1', content: { agentID: 'a1', agentName: 'Zav' } });
+  applyThinkingFrame(buffer, { id: 'r1:d', type: 'AgentMessageDelta', responseFrameID: 'r1', content: { text: 'first' } });
+  applyThinkingFrame(buffer, { id: 'r2:t', type: 'BeginTyping', responseFrameID: 'r2', content: { agentID: 'a1', agentName: 'Zav' } });
+  applyThinkingFrame(buffer, { id: 'r2:d', type: 'AgentMessageDelta', responseFrameID: 'r2', content: { text: 'second' } });
+
+  let agents = thinkingAgents(buffer);
+  assert.equal(agents.length, 1);
+  assert.equal(agents[0].agentID, 'a1');
+  assert.equal(agents[0].text, 'second');
 });
 
 test('applyThinkingFrame ignores non-live frames and requires an id', () => {
