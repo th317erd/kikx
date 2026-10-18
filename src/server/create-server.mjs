@@ -35,6 +35,7 @@ import {
   KIKX_DATABASE_PATH,
   KIKX_DATABASE_URL,
   KIKX_PLUGIN_PATHS_PATH,
+  KIKX_MONITORING_QUESTIONS_INTERVAL_SECONDS_PATH,
   KIKX_MONITORING_MEMORY_ENABLED_PATH,
   KIKX_MONITORING_MEMORY_GROWTH_THRESHOLD_MB_PATH,
   KIKX_MONITORING_MEMORY_GROWTH_WINDOW_SAMPLES_PATH,
@@ -54,6 +55,8 @@ import {
 } from '../core/agents/index.mjs';
 import { CompactionService } from '../core/compaction/index.mjs';
 import { QuestionAnswerService, QuestionsStore } from '../core/questions/index.mjs';
+import { repairQuestionIndex } from '../core/questions/question-index-repair.mjs';
+import { QuestionMaintenanceService } from '../core/questions/question-maintenance-service.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
@@ -130,6 +133,11 @@ export async function createServer(options = {}) {
   // seconds; the sampler works in milliseconds and clamps a too-small value.
   let memorySamplerEnabled = parseBoolean(await config.get(KIKX_MONITORING_MEMORY_ENABLED_PATH), false);
   let memorySamplerIntervalMS = parseEnvPositiveInteger(await config.get(KIKX_MONITORING_MEMORY_INTERVAL_SECONDS_PATH), 30) * 1000;
+  // Ask-user maintenance (delivery retry + default answers), off by default.
+  let questionMaintenanceIntervalMs = parseEnvNonNegativeInteger(
+    await config.get(KIKX_MONITORING_QUESTIONS_INTERVAL_SECONDS_PATH),
+    0,
+  ) * 1000;
   let memorySamplerLimit = parseEnvPositiveInteger(await config.get(KIKX_MONITORING_MEMORY_SAMPLES_PATH), DEFAULT_MEMORY_SAMPLE_LIMIT);
   let memorySamplerGrowthWindow = parseEnvPositiveInteger(await config.get(KIKX_MONITORING_MEMORY_GROWTH_WINDOW_SAMPLES_PATH), DEFAULT_MEMORY_GROWTH_WINDOW_SAMPLES);
   // 0 disables the growth warning entirely (e.g. sampling without alerting).
@@ -480,17 +488,57 @@ export async function createServer(options = {}) {
     }));
   }
 
+  // Delivery retry and agent-specified defaults. Started after the services it
+  // depends on exist, and stopped on close: a maintenance timer must never be
+  // the reason a process refuses to exit.
+  if (!context.has('questionMaintenanceService')) {
+    context.set('questionMaintenanceService', new QuestionMaintenanceService({
+      questionsStore: context.require('questionsStore'),
+      questionAnswerService: context.require('questionAnswerService'),
+      intervalMs: questionMaintenanceIntervalMs,
+      logger: options.logger || console,
+    }));
+  }
+
+  // The open index and per-agent mirrors are derived caches, and nothing else
+  // in production rebuilt them: a lost entry was invisible forever because
+  // `listOpen()` reads the index only. Repair at startup, before the readiness
+  // gate below is allowed to flip, so a probe never observes a half-repaired
+  // index. Best-effort: a repair failure must not stop the server booting.
+  if (!context.has('questionIndexRepairPromise')) {
+    let questionsStore = context.require('questionsStore');
+    let logger = options.logger || console;
+    context.set('questionIndexRepairPromise', Promise.resolve(
+      typeof questionsStore?.readOpenIndex === 'function' && typeof questionsStore?.writeIndexes === 'function'
+        ? repairQuestionIndex(questionsStore, { logger })
+        : { skipped: true },
+    ).then((result) => {
+      if (result?.skippedReason === 'scan-returned-nothing')
+        logger.warn?.('Kikx skipped ask-user index repair: the scan found no question docs', result);
+      else if (result?.repaired > 0)
+        logger.warn?.('Kikx repaired the ask-user question index', result);
+
+      return result;
+    }).catch((error) => {
+      logger.error?.('Kikx ask-user index repair failed', error);
+      return { repaired: 0, error };
+    }));
+  }
+
   // Readiness gate for probes and the deploy verifier: false until startup
   // recovery and the scheduled-frame worker have settled, so a probe never
   // observes the transient window before persisted scheduled frames are loaded.
   // Exposed verbatim as `ready` on GET /health.
   if (!context.has('startupReady')) {
     context.set('startupReady', false);
-    Promise.resolve(context.require('scheduledFrameWorkerPromise'))
-      .catch(() => {})
-      .then(() => {
-        context.set('startupReady', true);
-      });
+    // The index repair is part of readiness: a client that loads the Inbox on
+    // startup must not read an index that is still being rebuilt.
+    Promise.all([
+      Promise.resolve(context.require('scheduledFrameWorkerPromise')).catch(() => {}),
+      Promise.resolve(context.require('questionIndexRepairPromise')).catch(() => {}),
+    ]).then(() => {
+      context.set('startupReady', true);
+    });
   }
 
   if (!context.has('tokenUsageRuntimeBridge')) {
@@ -527,6 +575,12 @@ export async function createServer(options = {}) {
   let memorySampler = context.require('memorySampler');
   memorySampler.start();
   server.on('close', () => memorySampler.stop());
+
+  // Off by default (`questionMaintenanceIntervalMs <= 0`): a tick is a periodic
+  // full scan of the question docs, which tests and embedders should opt into.
+  let questionMaintenance = context.require('questionMaintenanceService');
+  questionMaintenance.start();
+  server.on('close', () => questionMaintenance.stop());
   return server;
 }
 

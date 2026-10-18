@@ -44,6 +44,14 @@ export class AskUserTool extends PluginInterface {
               enum: [ 'low', 'normal', 'high' ],
               description: 'How much the answer matters for unblocking your work. Defaults to normal.',
             },
+            defaultAnswer: {
+              type: 'string',
+              description: 'Optional acceptable fallback. If the user has not answered within timeoutSeconds, this is applied so you are not blocked forever. It is recorded as YOUR assumption, never as a user answer — say so if you act on it.',
+            },
+            timeoutSeconds: {
+              type: 'number',
+              description: 'Seconds after which defaultAnswer is applied. Only meaningful together with defaultAnswer. Leave unset to wait indefinitely.',
+            },
             contextRefs: {
               type: 'array',
               description: 'References that give the question its frame of reference, such as a session, frame, todo, or file.',
@@ -80,7 +88,7 @@ export class AskUserTool extends PluginInterface {
     required: [ 'questions' ],
     additionalProperties: false,
   };
-  static help = 'Use ask-user when only the user can decide something: naming, priorities, ambiguous requirements, or a judgment call with real trade-offs. Ask everything you need in one call rather than a series of turns. Do not ask a question you can answer yourself by reading the code or docs. Never block waiting for the answer: ask, then continue with other work or end your turn.';
+  static help = 'Use ask-user when only the user can decide something: naming, priorities, ambiguous requirements, or a judgment call with real trade-offs. Ask everything you need in one call rather than a series of turns. Do not ask a question you can answer yourself by reading the code or docs. Never block waiting for the answer: ask, then continue with other work or end your turn. If a sensible fallback exists and waiting forever would stall you, pass defaultAnswer with a timeoutSeconds: the fallback is applied when the deadline passes and arrives marked as your own assumption, not as a user decision.';
 
   questionsStore() {
     let store = this.context.questionsStore

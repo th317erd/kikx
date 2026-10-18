@@ -2,12 +2,23 @@
 
 import { randomUUID } from 'node:crypto';
 
+import {
+  normalizeTimeoutMs,
+  normalizeContextRefs,
+  normalizeQuestionText,
+  normalizeAnswerText,
+  normalizePriority,
+  normalizeMode,
+  normalizeOptionalString,
+  QUESTION_MODES,
+} from './question-fields.mjs';
+
 const DEFAULT_ROOT_PATH = '/kikx';
 const MAX_QUESTIONS_PER_CALL = 25;
 const STATUSES = [ 'open', 'answered', 'dismissed', 'undeliverable' ];
 const TERMINAL_STATUSES = [ 'answered', 'dismissed', 'undeliverable' ];
-const PRIORITIES = [ 'low', 'normal', 'high' ];
-const MODES = [ 'wait', 'continue' ];
+
+const MODES = QUESTION_MODES;
 
 /**
  * Persistence for ask-user questions.
@@ -58,6 +69,13 @@ export class QuestionsStore {
     let created = [];
 
     for (let [ offset, entry ] of questions.entries()) {
+      // An agent may name an acceptable default and a deadline. Persisting the
+      // absolute deadline (not just the duration) is what makes the default
+      // survive a restart: the scheduler compares it against the clock.
+      // `normalizeQuestionList` has already validated and coerced these.
+      let defaultAnswer = entry.defaultAnswer;
+      let timeoutMs = entry.timeoutMs;
+
       let question = {
         id: this.idGenerator(),
         groupID,
@@ -76,6 +94,12 @@ export class QuestionsStore {
         text: entry.text,
         priority: entry.priority,
         answer: null,
+        // Free-form by D-4; a default is the agent's own fallback, never a
+        // preset option presented to the user.
+        defaultAnswer: defaultAnswer || null,
+        defaultTimeoutMs: timeoutMs,
+        defaultDueAt: defaultAnswer && timeoutMs != null ? now + offset + timeoutMs : null,
+        answerSource: null,
         answeredAt: null,
         answeredClock: null,
         answeredByUserID: null,
@@ -571,9 +595,18 @@ function normalizeQuestionList(value) {
     if (Object.hasOwn(entry, 'options'))
       throw new TypeError(`questions[${index}] must not carry options; answers are free-form`);
 
+    // Field-by-field rather than spreading the entry: unknown input must not
+    // reach the stored doc. Any new per-question field has to be listed here
+    // or it is silently dropped — which is exactly how `defaultAnswer` failed
+    // to persist the first time.
     return {
       text: normalizeQuestionText(entry.text),
       priority: normalizePriority(entry.priority),
+      defaultAnswer: normalizeOptionalString(entry.defaultAnswer ?? entry.default_answer) || null,
+      timeoutMs: normalizeTimeoutMs(entry.timeoutMs ?? entry.timeout_ms
+        ?? (entry.timeoutSeconds != null || entry.timeout_seconds != null
+          ? Number(entry.timeoutSeconds ?? entry.timeout_seconds) * 1000
+          : null)),
     };
   });
 }
@@ -609,11 +642,18 @@ function normalizeQuestionDoc(value) {
     text: value.text.trim(),
     priority: normalizePriority(value.priority),
     answer: typeof value.answer === 'string' ? value.answer : null,
+    defaultAnswer: normalizeOptionalString(value.defaultAnswer) || null,
+    defaultTimeoutMs: normalizeTimeoutMs(value.defaultTimeoutMs),
+    defaultDueAt: value.defaultDueAt == null ? null : Number(value.defaultDueAt),
+    answerSource: normalizeOptionalString(value.answerSource) || null,
     answeredAt: value.answeredAt || null,
     answeredClock: value.answeredClock || null,
     answeredByUserID: normalizeOptionalString(value.answeredByUserID) || null,
     answerFrameID: normalizeOptionalString(value.answerFrameID) || null,
     dismissalReason: normalizeOptionalString(value.dismissalReason) || null,
+    deliveryAttempts: Number.isInteger(value.deliveryAttempts) ? value.deliveryAttempts : 0,
+    deliveryLastReason: normalizeOptionalString(value.deliveryLastReason) || null,
+    nextDeliveryAt: value.nextDeliveryAt == null ? null : Number(value.nextDeliveryAt),
     askedAt: value.askedAt || value.createdAt || 0,
     askedClock: value.askedClock || null,
     createdAt: value.createdAt || value.askedAt || 0,
@@ -671,81 +711,11 @@ function assertOpen(question, action) {
     throw conflict(`Question ${question.id} is already ${question.status}; it cannot be ${action}`);
 }
 
-function normalizeContextRefs(value) {
-  if (!Array.isArray(value))
-    return [];
-
-  let refs = [];
-  for (let ref of value) {
-    if (!ref || typeof ref !== 'object')
-      continue;
-
-    let type = normalizeOptionalString(ref.type);
-    let id = normalizeOptionalString(ref.id);
-    if (!type || !id)
-      continue;
-
-    refs.push({
-      type,
-      id,
-      label: normalizeOptionalString(ref.label) || null,
-      sessionID: normalizeOptionalString(ref.sessionID) || null,
-      frameID: normalizeOptionalString(ref.frameID) || null,
-      path: normalizeOptionalString(ref.path) || null,
-    });
-  }
-
-  return refs;
-}
-
-function normalizeQuestionText(value) {
-  if (typeof value !== 'string' || value.trim() === '')
-    throw new TypeError('question text must be a non-empty string');
-
-  return value.trim();
-}
-
-function normalizeAnswerText(value) {
-  if (typeof value !== 'string' || value.trim() === '')
-    throw new TypeError('answer must be a non-empty string');
-
-  return value.trim();
-}
-
-function normalizePriority(value) {
-  let priority = normalizeOptionalString(value).toLowerCase();
-  if (!priority)
-    return 'normal';
-
-  if (!PRIORITIES.includes(priority))
-    throw new TypeError(`priority must be one of ${PRIORITIES.join(', ')}`);
-
-  return priority;
-}
-
-function normalizeMode(value) {
-  let mode = normalizeOptionalString(value).toLowerCase();
-  if (!mode)
-    return 'wait';
-
-  if (!MODES.includes(mode))
-    throw new TypeError(`mode must be one of ${MODES.join(', ')}`);
-
-  return mode;
-}
-
 function normalizeRequiredString(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '')
     throw new TypeError(`${fieldName} must be a non-empty string`);
 
   return value.trim();
-}
-
-function normalizeOptionalString(value) {
-  if (value == null)
-    return '';
-
-  return String(value).trim();
 }
 
 function normalizeRoot(rootPath) {

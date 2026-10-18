@@ -268,7 +268,15 @@ export function buildAnswerPromptText(question, group = null) {
 
   let age = describeAge(question.askedAt, question.answeredAt);
   let asked = age ? ` (you asked ${age})` : '';
-  lines.push(`The user answered your question${asked}:`);
+
+  // A default is the agent's own fallback firing, not a human reply. Saying so
+  // plainly is the difference between "the user decided" and "nobody answered,
+  // so your own default took effect" — a model must not conflate those.
+  if (question.answerSource === 'default') {
+    lines.push(`No answer arrived in time, so the default you specified was applied${asked}:`);
+  } else {
+    lines.push(`The user answered your question${asked}:`);
+  }
   lines.push('');
   lines.push(`Q: ${question.text}`);
   lines.push(`A: ${question.answer || '(no text)'}`);
@@ -297,7 +305,10 @@ export function buildAnswerPromptText(question, group = null) {
     }
   }
 
-  if (question.mode === 'continue') {
+  if (question.answerSource === 'default') {
+    lines.push('');
+    lines.push('Nobody confirmed this. Treat it as your own assumption, and say so if you act on it.');
+  } else if (question.mode === 'continue') {
     lines.push('');
     lines.push('This answer arrived while you were working and supersedes it — treat it as the current instruction.');
   } else {

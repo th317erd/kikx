@@ -8,6 +8,27 @@ export {
 } from './questions-store.mjs';
 
 export {
+  listDocPaths,
+  repairQuestionIndex,
+} from './question-index-repair.mjs';
+
+export {
+  DEFAULT_ANSWER_SOURCE,
+  USER_ANSWER_SOURCE,
+} from './question-fields.mjs';
+
+export {
+  DELIVERY_RETRY_DELAYS_MS,
+  applyDefaultAnswer,
+  findDueDefaults,
+  findRetryableDeliveries,
+  markRedelivered,
+  recordDeliveryFailure,
+} from './question-maintenance.mjs';
+
+export { QuestionMaintenanceService } from './question-maintenance-service.mjs';
+
+export {
   QuestionAnswerService,
   QuestionUndeliverableError,
   buildAnswerPromptText,
