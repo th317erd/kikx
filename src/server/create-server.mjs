@@ -53,6 +53,7 @@ import {
   registerAgentRouting,
 } from '../core/agents/index.mjs';
 import { CompactionService } from '../core/compaction/index.mjs';
+import { QuestionsStore } from '../core/questions/index.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
@@ -344,6 +345,12 @@ export async function createServer(options = {}) {
 
   if (!context.has('agentTodoStore')) {
     context.set('agentTodoStore', new AgentTodoStore({
+      db: context.require('db'),
+    }));
+  }
+
+  if (!context.has('questionsStore')) {
+    context.set('questionsStore', new QuestionsStore({
       db: context.require('db'),
     }));
   }

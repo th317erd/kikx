@@ -142,6 +142,7 @@ export function buildMessageBrief(context = {}) {
   let stamp = resolveBriefTimestamp(context);
   let message = normalizeBriefString(context.messageText) || normalizeBriefString(context.frame?.content?.text);
   let todo = resolveBriefTodo(context);
+  let questions = resolveBriefQuestions(context);
   let cwd = normalizeBriefString(context.cwdState?.cwd || context.cwd) || 'none';
   let coordinator = context.isCoordinator === true;
   let parties = formatBriefPartyLines(context);
@@ -153,6 +154,7 @@ export function buildMessageBrief(context = {}) {
       message,
       '',
       `todo:    ${todo}`,
+      ...(questions ? [ `open:    ${questions}` ] : []),
       `cwd:     ${cwd}`,
       `coord:   ${coordinator}`,
       `parties: ${parties}`,
@@ -241,6 +243,24 @@ function resolveBriefTimestamp(context = {}) {
     return '';
 
   return date.toISOString();
+}
+
+// Open questions the agent is still waiting on, so it does not re-ask them.
+function resolveBriefQuestions(context = {}) {
+  let ids = context.questionsState?.ids;
+  if (!Array.isArray(ids) || ids.length === 0)
+    return '';
+
+  let summaries = Array.isArray(context.questionsState?.summaries) ? context.questionsState.summaries : [];
+  let first = summaries.find((entry) => typeof entry?.text === 'string' && entry.text.trim() !== '');
+  let label = first ? ` (oldest: ${truncateQuestionText(first.text)})` : '';
+
+  return `${ids.length} question(s) awaiting the user${label}`;
+}
+
+function truncateQuestionText(text) {
+  let normalized = String(text).trim().replace(/\s+/g, ' ');
+  return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
 }
 
 function resolveBriefTodo(context = {}) {

@@ -1,6 +1,7 @@
 'use strict';
 
 import { AgentCreateTool, AgentUpdateTool } from './agent-tools.mjs';
+import { AskUserTool } from './ask-user-tool.mjs';
 import { ExecTool } from './exec-tool.mjs';
 import { FeedbackReportTool } from './feedback-tool.mjs';
 import {
@@ -90,6 +91,7 @@ export const BUILT_IN_TOOLS = [
   [ 'team-delete', TeamDeleteTool ],
   [ 'team-add-member', TeamAddMemberTool ],
   [ 'team-remove-member', TeamRemoveMemberTool ],
+  [ 'ask-user', AskUserTool ],
   [ 'todo-get', TodoGetTool ],
   [ 'todo-add', TodoAddTool ],
   [ 'todo-update', TodoUpdateTool ],
