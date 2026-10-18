@@ -2232,3 +2232,22 @@ kikx-thinking-panel {
 .bash-number { color: #d19a66; }
 .bash-keyword { color: #c678dd; font-weight: 600; }
 .bash-command { color: #61afef; font-weight: 600; }
+
+/* Status tint on the compact message line, not just its text. */
+.kikx-frame--compact.kikx-frame--status-success > summary {
+  background: rgba(123, 216, 143, 0.08);
+  box-shadow: inset 3px 0 0 #7bd88f;
+}
+
+.kikx-frame--compact.kikx-frame--status-error > summary {
+  background: rgba(224, 108, 117, 0.1);
+  box-shadow: inset 3px 0 0 #e06c75;
+}
+
+.kikx-frame--compact.kikx-frame--status-success > summary:hover {
+  background: rgba(123, 216, 143, 0.14);
+}
+
+.kikx-frame--compact.kikx-frame--status-error > summary:hover {
+  background: rgba(224, 108, 117, 0.16);
+}

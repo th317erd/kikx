@@ -215,6 +215,14 @@ export class KikxFrameItem extends HTMLElement {
         // Keep the "{Name} {time}" header visible above the compact line.
         if (meta)
           this.appendChild(meta);
+        // Expanding the compact row should reveal the full details, not another
+        // collapsed disclosure (arguments + output).
+        this._compactView.element.addEventListener('toggle', () => {
+          if (!this._compactView.element.open)
+            return;
+          for (let inner of this._compactView.element.querySelectorAll('details'))
+            inner.open = true;
+        });
         this.appendChild(this._compactView.element);
       } else {
         if (meta)

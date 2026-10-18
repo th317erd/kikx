@@ -177,3 +177,18 @@ test('status normalization accepts the runtime spellings', () => {
   assert.equal(frameStatusClass('failed'), 'kikx-frame--status-error');
   assert.equal(frameStatusClass('running'), 'kikx-frame--status-running');
 });
+
+test('recovers the file path from a truncated input preview', () => {
+  let summary = compactFrameSummary({
+    type: 'WriteFileToolFrame',
+    content: {
+      toolName: 'write-file',
+      phase: 'result',
+      status: 'success',
+      input: { truncated: true, preview: '{"path":"/tmp/a.txt","content":"hello"}' },
+    },
+  });
+
+  assert.equal(summary.description, 'Write file /tmp/a.txt ->');
+  assert.equal(summary.icon, '\u2192', 'write-file uses an arrow, not a pencil');
+});

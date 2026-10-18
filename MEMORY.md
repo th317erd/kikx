@@ -1,205 +1,226 @@
-# Kikx Session Memory
+# Kikx Session Memory — handoff
 
-Last updated: 2026-09-30 (session approaching context limit; compaction failing)
+Last updated: **2026-10-17** (session handed off). Branch: `main`. Working tree clean.
+The previous contents of this file were replaced; the old version is in git history.
+Prod is **behind HEAD** (see "Deploy state") — do not deploy unless the owner asks.
 
-## How to resume
-0. **AEOR HTML framework**: before touching ANY client UI, load the skill at
-   `~/.claude/skills/aeor-web-components/SKILL.md` (canonical checkout
-   `/home/wyatt/Projects/aeor-web-components`; NOT `~/Projects/aeor-components`). Read
-   `IMPLEMENTATION-GUIDE.md`, then the companion
-   `bot-docs/docs/framework-skill-reference.md`. Key contracts: use the real shared
-   modules (elements.js/reactive-state.js/query.js); `ReactiveState` observes top-level
-   assignments only (replace objects/arrays, no nested mutation); builder children use
-   `cond ? x : null` (boolean false becomes text "false"); events are `.onChange/.onInput/
-   .onKeydown` (first letter after "on" lowercased); binding attribute names are NOT
-   kebab-normalized (`['aria-label'].bindState(...)`); modals lift `.modal-footer-actions`
-   out of their parent (submit buttons there need native `form="id"`); don't rebuild a
-   modal/control just to update text (calls `__bindings` cleanup / can replay animations).
-   Kikx uses this framework; the client is under `src/client/`.
-1. Read `~/.codex/startup.md` (already mandatory), then `.codex/DETAILS.md`, `.codex/quirks.md`,
-   `bot-docs/plans/session-work-area.md`, and this file.
-2. Repos: `kikx` (`main`, remote `th317erd/kikx`), `kikx-docker` (private,
-   `th317erd/kikx-docker` — the distribution container), `kikx-plugin-ollama` and
-   `kikx-plugin-codex` (private, `th317erd/*`). All were pushed clean at last check.
-3. Dev stack: AeorDB at `127.0.0.1:6830` (binary v0.9.5), Kikx at `127.0.0.1:3001`.
-   Restart Kikx after client changes: kill `start-kikx-dev`/`src/server/index.mjs`, then
-   `set -a; . ./.env.dev; set +a; nohup npm run start:kikx:dev > /tmp/codex/kikx/kikx.log 2>&1 &`.
-4. Login links: `npm run magic-link` (strip ANSI; verify via GET
-   `/api/v1/auth/magic-link/verify?code=`). UI tests: UI scripts run through
-   `scripts/with-aeordb-token.mjs` which exchanges the AeorDB root key ONCE and passes
-   `AEORDB_TOKEN` to all child processes (fixes 429 rate limiting).
-5. Browser verification: `~/Programs/bot-ocr <img...>` for OCR (global quirk, in
-   `~/.bot-common/quirks.md`). Brave DevTools on `http://127.0.0.1:9222` via puppeteer-core
-   (connect, `setCacheEnabled(false)`).
-6. Gates: `npm test`; `npm run test:ui:stagehand`; `npm run test:ui:puppeteer`;
-   `npm run test:ui:playwright`. Stagehand occasionally flakes with
-   `ConnectionTimeoutError` (Chrome launch contention, 21 parallel browsers / 16 CPUs) —
-   environmental, not a code failure.
-7. **Distribution container** (`kikx-docker`): a single self-contained Docker container
-   running Kikx + AeorDB + Chrome. Repo `th317erd/kikx-docker` (private), directory
-   `../kikx-docker`. Kikx at `http://127.0.0.1:3099`, AeorDB at `127.0.0.1:6833`
-   (inside the same container). Durability/state at `~/.local/share/kikx/`. See the
-   section below and `bot-docs/plans/kikx-docker-distribution.md`.
+---
 
-## What shipped this session (chronological, all pushed)
-1. **Ollama provider plugin** (`kikx-plugin-ollama`, private) + async provider descriptors
-   in kikx core (`AgentInterface.resolveConfigFields()` async; registry/manager/service
-   async; per-provider failure tolerance). Native Ollama `/api/chat`, dynamic model
-   discovery, tool loop, compaction-safe `ask()`.
-2. **Core bug fix**: shared `ask()` loop dropped provider `Done{usage}`; now sums usage
-   across draft + completion-review passes.
-3. **Codex plugin** (`kikx-plugin-codex`): completion-review handling + request timeout;
-   same compaction fix. Private repo.
-4. **Composer Up/Down history** (Task 1 from the old self-killed session).
-5. **Session work area (Task 2)**: workspace **grid of session cards** (HTML, NOT canvas —
-   owner ruling after measured 120Hz canvas failure), `kikx-chat-view` (full/mini modes),
-   `kikx-session-card`, `kikx-session-grid`, `chat-view-model.mjs`. Mini cards = real chat
-   scaled via CSS `transform`.
-6. **Recursive navigation stack**: `src/client/state/navigation-stack.mjs`
-   (`{sessionID, collapsed}` entries). Enter session = push; Close = pop; breadcrumb
-   navigates; sub-session frames (`content.references`) render as live mini cards that open
-   the session. Sidebar kept as empty "Workspace" shell.
-7. **Bulk preview endpoint**: `POST /api/v1/sessions/previews` (bounded tail per session,
-   no FrameEngine hydration) + `AeorDBFrameStore.listSessionPreviews`.
-8. **Server stamps `content.references`** on tool results (`ToolExecutionService`,
-   `PluginInterface.referencesFor()`, `SessionCreateTool`).
-9. **URL sync**: navigation stack serialized to `?session=…&collapsed=1`; reload restores;
-   back/forward via popstate. (Root cause of an earlier bug: `setNavigationStack` was
-   imported nowhere.)
-10. **Add-session**: server `POST /api/v1/sessions` now accepts `parentSessionID`; Add card
-    creates a child of the current grid's parent.
-11. **Editable window title** (rename): click the BIG window header title → input → Enter/blur
-    PATCH. Breadcrumb is navigation-only (owner clarified: breadcrumb is the feature).
-12. **Empty state**: "No messages yet." + hint `Type /invite 'name of party' to invite an
-    agent, or other party`.
-13. **Master (coordinator) agents / crown**: `crownedAt` (HLC micros) + `crownedClock`
-    (monotonic HLC string) on agents; `setAgentCrowned`, `listMasterAgents`,
-    `resolveDefaultAgent({excludeAgentIDs})` (backup chain #1→#2→#3). Routes
-    `POST /api/v1/agents/:id/crown|uncrown`, `GET /api/v1/agents/masters?resolve=1&exclude=`.
-    UI crown toggle per row, rank colors gold/silver/copper with decreasing opacity.
-    Master consumption (default agent for empty session etc.) is DEFERRED.
+## 0. Rules for the next bot
 
-## Recent task batch (4 screenshots) — ALL DONE (commit c63206d + next commit)
-From `Session-session-2026-09-30-03-17/03-19/03-21/03-27*.png`:
-1. **DONE** — Title input collapse on focus: removed `max-width: 420px` from
-   `.kikx-window__title-input`. Actions stay pinned.
-2. **DONE** — Edit Agent Delete → `aeor-confirm-button` (real component name; NOT
-   `aeor-progress-button`; hold-to-confirm, duration 1000ms, red `confirm-button-danger`).
-   Import in `src/client/lib/aeor-ui.mjs`, CSS link in `src/client/index.html`,
-   `_buildAgentDeleteButton()` in `kikx-app.mjs`.
-3. **DONE** — Agents modal filter pills: `src/client/components/agent-list-model.mjs`
-   (pure; `agentFilterPills`/`filterAgents`) + `.kikx-agent-filter` pills UI. Pills are
-   DERIVED from providers actually present (All, Masters, one per provider displayName,
-   Hidden). Spec `spec/client/agent-list-model-spec.mjs`.
-4. **DONE** — Crown icons right-aligned with gear via `.kikx-agent-list__row-actions`.
-5. **DONE** — Crown click no longer rebuilds the modal: `_repaintAgentCrowns()` updates
-   rank classes/pressed + `_syncAgentStatusText()` in place.
-   NOTE: this introduced a bug (stale agent refs on 2nd click) fixed by re-reading
-   `this._state.agentDetailsByID[agent.id]` in `_toggleAgentCrown`.
+- Follow `~/.codex/startup.md` / `~/.bot-common/startup.md` (mandatory), plus
+  `~/.bot-common/quirks.md` and `rules.md`.
+- **Images/screenshots/PDFs:** use `~/Programs/bot-ocr` (see quirks.md:14). Never
+  guess, never use native vision. Invoke with Node 24 (see below). Examples:
+  - `NODE=~/.config/nvm/versions/node/v24.21.0/bin/node; "$NODE" ~/Programs/bot-ocr shot.png`
+  - `"$NODE" ~/Programs/bot-ocr --json shot.png | jq -r .ocr_text`
+- **Deploys are owner-controlled.** Do NOT deploy unless explicitly asked. Commits
+  and pushes only when asked.
+- Ambient shell `node` is stale (**v21.7.3**). Use
+  `/home/wyatt/.config/nvm/versions/node/v24.21.0/bin/node` for scripts/tools
+  (v21 can't run the extensionless ESM `bot-ocr`).
 
-## Goal-post: filter-pill / crown / masters-cap fixes (DONE, this batch)
-1. **Pills no longer close/reopen the modal**: `_buildAgentManagerBody()` +
-   `_repaintAgentManagerBody()`; `_setAgentFilter` swaps only the body, not the modal.
-2. **Crown clicks reliable**: rapid clicks were racing concurrent requests (5 clicks -> 5
-   requests). Added `_pendingCrownAgentIDs` in-flight guard + `_setAgentCrownBusy()` (disables
-   the button while pending). 5 rapid clicks now -> 1 request.
-3. **Masters = rolling top-3**: `MAX_MASTER_AGENTS = 3` in BOTH
-   `src/core/aeordb/aeordb-agent-store.mjs` (crowning a 4th evicts the oldest; `readCrownedAgents()`
-   uncapped internal reader; `listMasterAgents()` capped) and
-   `src/client/components/agent-list-model.mjs` (`rankMasters()` caps at 3; `filterAgents`
-   'masters' uses it). Client `masterRankByAgentID` delegates to `rankMasters`.
-   NOTE: existing DBs may still hold >3 crowned rows; they no longer rank, and the next crown
-   evicts them. No backfill run.
+---
 
-## Goal-post: crown divergence root cause (DONE)
-The "glitchy crown clicks" root cause was **client/server state divergence**, not just
-click racing: crowning a 4th master makes the SERVER evict the oldest, but the old crown
-response returned only the toggled agent, so the client kept stale crowned entries. After
-several crowns the client sent the wrong toggle, producing "Crowned X" with no icon change.
-FIX: crown endpoint now returns `data.masters` (authoritative top-3); client
-`_reconcileMasters(masters)` marks exactly those and clears all others. Verified: 8
-sequential crowns -> client===server===3, icon always matches, 0 mismatches.
-Also: `~/Projects/aeor-components` does NOT exist; the real path is
-`~/Projects/aeor-web-components` (Kikx vendors it at `/vendor/aeor-web-components/`).
-Framework offers `ReactiveState` + element `.bindState()` + a `$` query engine; Kikx uses
-kikxState/bindState for simple fields but the Agents modal is imperative (nested
-agentDetailsByID map does not fit bindState's top-level keys cleanly).
+## 1. Environment / paths
 
-## Goal-post: source-file refactor wave (DONE, pushed a606fc4)
-Ran a 7-branch parallel refactor (one isolated git worktree per file, sub-agent each,
-disjoint file sets) to satisfy the new AGENTS.md line limits. All merged --no-ff.
-Target files after: kikx-app 2508->426; agent-interface 1518->369; create-server
-1216->264; agent-route-frame-plugin 1075->212; aeordb-frame-store 1064->7;
-process-manager 939->424; frame-runtime 802->315. 62 new modules, all <=426 lines.
-ZERO behavior changes: unit 424/424 on combined revision; Stagehand 22/22; live Brave
-smoke clean (app mounts, grid/agents/modals render, 0 console errors).
-**No hand-written src file now exceeds the 800 hard limit.** Still over the 500 soft
-limit (informational, future work): session-tools 798, markdown-renderer 677,
-tool-use-base 635, compaction-service 585, frame-engine 584, aeordb-agent-store 577,
-tool-execution-service 522, frame-manager 516.
-Notes: `src/server/node_modules/` was already gitignored (no action). kikx-app refactor
-used composition (builder fns take `app`); methods preserved as instance delegates.
-Flagged not fixed: `_deleteAgent` uses bare `fetch` without `_apiHeaders()`.
+- **My checkout (this repo):** `/home/wyatt/Projects/kikx-workspace/kikx` — owner
+  lane = stability/UI/architecture.
+- **Production bot's clone:** `/home/wyatt/Projects/kikx-workspace/kikx2` (shares
+  git origin). Old renamed app: `.../kikx2.oldapp` (not git).
+- **Distribution container repo:** `.../kikx-docker` (`compose.yml`, `deploy.sh`,
+  `.env`). Prod container name `kikx`, image tag from `KIKX_IMAGE_TAG`.
+- **Dev servers:**
+  - `:3001` — unit `kikx-dev-run.service`, `WorkingDirectory=.../kikx2` (prod bot's clone).
+  - `:3002` — unit `kikx-dev2-run.service`, `WorkingDirectory=.../kikx` (my checkout),
+    DB `kikx-dev2`. Both currently **active**.
+- **Databases:**
+  - Dev PG18 on `127.0.0.1:5434`; role `kikx-dev`; DBs `kikx-dev`, `kikx-dev2`.
+    Superuser: `sudo -n -u postgres psql -p 5434`.
+  - Prod PG17 inside the container on `127.0.0.1:5433`; role/DB `kikx`.
+    Password file: `/home/wyatt/.local/share/kikx/postgres/db-password`.
+  - **The app is PostgreSQL-primary** (`KIKX_DATABASE_DRIVER=postgresql`,
+    `ORG_AEOR_KIKX_DATABASE_DRIVER=postgresql`). Documents (frames, commits, sessions,
+    tool outputs, scheduled frames) live in the PG `documents` table
+    (`path text, body text, raw boolean`), via `PostgreSQLConnection`. AeorDB is only a
+    legacy companion service; **do not describe frames as files/AeorDB**.
+- **Prod:** `http://127.0.0.1:3099` (health `:3099/health`).
+- **Deploy command** (background + poll):
+  ```
+  sudo -n -u wyatt env HOME=/home/wyatt \
+    PATH=/home/wyatt/.config/nvm/versions/node/v24.21.0/bin:/usr/local/bin:/usr/bin:/bin \
+    bash -c 'cd /home/wyatt/Projects/kikx-workspace/kikx-docker && exec ./deploy.sh <sha>'
+  ```
+  Log goes to `/tmp/opencode/deploy-<sha>.log`. Success: `[deploy] Deployed <sha>`.
+- **Magic login link:** `npm run magic-link` (env overrides: `KIKX_URL`,
+  `KIKX_PUBLIC_URL`, `KIKX_AUTH_MAILER_LOG_PATH`). The browser URL is the **app** with
+  `?code=...` (e.g. `http://127.0.0.1:3002/?code=...`), NOT `/api/v1/auth/magic-link/verify`
+  (that API returns raw JSON by design). Codes are single-use, short-lived.
+- **Scratch probes:** `/tmp/opencode/kikx-ui/` (`prod.token`, node_modules symlink),
+  `/tmp/opencode/*.log`, `/tmp/opencode/probe-stack.mjs` (Node inspector stack dump).
 
-## Next up (not started)
-- Stagehand coverage for crown alignment/flicker/confirm-button + filter pills + top-3 cap.
-- Master-agent **consumption** (resolveDefaultAgent for empty-session default agents).
-- True lazy-loading of older frames on scroll-up.
+### Deploy state
+- `HEAD` = `3b1c300` (pushed). **Prod container is on `62644c9`** — it does NOT yet
+  include the compact-frame UI, the thinking-brain fix, or the latest polish. Owner
+  said to wait before deploying.
 
-## Distribution container (`kikx-docker`) — how to use it
-The single-container distribution is the intended way to run Kikx. It supersedes the
-old two-service `kikx-prod` stack (still archived in `bot-docs/plans/kikx-prod-deploy.md`).
+---
 
-- **Repo/dir**: `th317erd/kikx-docker` (private) at `/home/wyatt/Projects/kikx-workspace/kikx-docker`.
-  Compose project / container / image are all named `kikx` (`kikx/kikx:<sha>`).
-- **One image, whole app**: `node:24-trixie-slim` base (glibc 2.41 — aeordb needs
-  GLIBC_2.38; bookworm's 2.36 can't run it), with the aeordb binary baked into
-  `/usr/local/bin/aeordb`, Kikx frozen under `/app`, and Chrome baked in. `/app` is
-  read-only at runtime; edits to `kikx` go live only via `./deploy.sh <ref>`.
-- **Host network mode**: the container shares the host net namespace, so it reaches the
-  host Brave on `127.0.0.1:9222` (Puppeteer driving) and host services; processes bind
-  loopback directly (no `ports:` mappings). Kikx `web-search`/`web-fetch` use the
-  container's own internal Chrome on CDP `127.0.0.1:9224` (self-contained).
-- **Mounts**: the whole `${KIKX_HOME}` (= `/home/wyatt`) is mounted rw at the same path,
-  so bots edit ANY project in place. `.ssh` and `.gnupg` are read-only overlays.
-- **Data**: `${KIKX_HOME}/.local/share/kikx/` — `kikx.aeordb`, `root_key` (0600,
-  captured once from aeordb's first-start banner), `runtime/` (JWT+refresh),
-  `chrome-profile/`, `chrome-home/`. The old `kikx-docker/data/kikx.aeordb` is the
-  orphaned pre-move DB (dummy data), left in place.
-- **Entrypoint** (`docker/entrypoint.mjs` + `docker/lib/{aeordb-supervisor,token-manager,user-bootstrap}.mjs`)
-  is PID 1: starts Chrome, supervises AeorDB, captures the root key, creates the first
-  user on a fresh DB (`KIKX_ADMIN_EMAIL`, username = email), mints a JWT (root key is
-  never in the server env), starts Kikx, re-mints every 6 days.
-- **Login**: open `http://127.0.0.1:3099`; the code appears in `docker logs kikx`
-  (grep `magic_link_url`, needs `AEORDB_LOG_MAGIC_LINKS=1` + `AEORDB_LOG=aeordb=debug,...`).
-  The link is `http://127.0.0.1:3099/?code=<code>` — the client reads `?code=` from the
-  app root and auto-verifies. Codes are **single-use**; do not curl the verify endpoint
-  yourself. `KIKX_ADMIN_EMAIL=wegreenway@taraani.org`.
-- **Scripts**: `./bootstrap.sh` (build+start+capture key; `--reset-root-key`),
-  `./deploy.sh <ref>` (stage pinned refs, rebuild, restart), `./rollback.sh`.
-  `bootstrap.sh` lets a caller-provided `KIKX_HOME` override `.env` (portability).
-- **Kikx's own unit/spec tests stay on the HOST** (`npm test` at `kikx/`), using
-  throwaway AeorDB instances — NOT in the container.
+## 2. Architecture facts learned this session
 
-## Key design constraints / owner rulings
-- **No canvas/WebGL** for the work area (HTML chosen; measured canvas failed at 120Hz).
-- Sidebar is a wanted empty shell for later repurposing.
-- Breadcrumb = navigation feature (do NOT make it editable). Window title = rename target.
-- Sub-sessions are a normal message type with a "click to enter" action.
-- All chat messages should eventually be clickable with type-specific actions.
-- Master agents: #1 primary, #2 first backup, etc., ordered by `ORDER BY crowned_at DESC`.
-- Naming by scope: top = "Project", child = "Session", grandchild+ = "Sub-Session".
+- **The frame stream is canonical.** UI/router are projections of stored frames.
+- **Persist-then-route (implemented):** `FrameStore.connect({ onCommitted })` runs the
+  callback *inside the write chain* after the commit's frames + commit record are
+  durably stored. `FrameRuntime` wires `onCommitted → frameRouter.enqueueCommit(...)`.
+  A failed write is never routed. `FrameRuntime.flush()` = store flush then router flush
+  (a true "stored and dispatched" barrier).
+- **Ordering hygiene:** `FrameEngine.hydrate()` uses `sanitizeStoredOrder()` — stored
+  orders ≥ `MAX_SAFE_INTEGER` are ignored (prevents the 2^53 collapse below).
+- **Postgres JSONB safety:** `PostgreSQLConnection` has `toJsonbSafe()` — drops the
+  `\u0000` escape and stores non-JSON bodies as `raw=true`. Any non-raw body that isn't
+  valid JSON breaks **every** `body::jsonb` query in its path range.
+- **ScheduledFrameQueue** (`src/core/runtime/scheduled-frame-queue.mjs`) is durable
+  (loads `listScheduledFrames`, cross-session) and tick-driven (`setInterval`, 1s) with
+  `_nudge()` for immediate items; pending/firing entries reload on boot and re-dispatch.
+- **Boot recovery:** `FrameRuntime.recoverStaleRuntimeFrames()` finalizes stale
+  streaming responses/tool calls AND re-schedules their `parentID` trigger
+  (`scheduledAt=now`, `scheduledStatus=pending`, silent merge) so interrupted turns
+  resume. Returns `recoveredTurns` too.
+- **Client thinking rack:** `thinking-state.mjs` (per-agent brain; one brain per agent),
+  `kikx-thinking-panel.mjs` (🧠 button + cursor-following tooltip portaled to body),
+  `kikx-thinking-rack.mjs`, CSS `.kikx-thinking-*`.
+- **Compact frames:** `isCompactFrame()` / `compactFrameSummary()` in
+  `tool-frame-summary.mjs`; `compact-frame-view.mjs` builds a native `<details>`; 
+  `kikx-frame-item.mjs` wraps tool/system frames, keeps the `{Name} {time}` meta header
+  visible, and applies `kikx-frame--compact` + `kikx-frame--status-{success,error,running}`.
+  Bash highlighting: `syntax-highlight.mjs` (dependency-free, DOM-built) used for the
+  exec compact line, card summary, and stdout/stderr.
 
-## Open / owed work
-- Master-agent **consumption**: use `resolveDefaultAgent` when a user talks in an empty
-  session, and re-resolve excluding errored agents for the backup chain.
-- **Lazy-load older frames** on scroll-up (owner explicitly wants real lazy loading; not
-  done).
-- Agents modal filter pills; crown alignment; crown no-modal-flicker (current).
-- Optional: serialize the UI test suite to remove the Chrome-launch flake.
+---
 
-## Notes / process
-- `bot-ocr` works and is recorded as a global quirk; use it for every owner screenshot.
-- Avoid self-`ssh wyatt-desktop` when already on wyatt-desktop.
-- Don't over-invest in blind debugging; check the simple thing first (e.g. a missing import).
-- AeorDB auth: exchange once, reuse JWT until expiry, then refresh — never per test process.
+## 3. Work completed this session (chronological, all pushed)
+
+- `8af2382` Replace bouncing thinking bubble with pinned per-agent thinking rack.
+- `54a9e3b` Pin the thinking panel's newest line to the bottom.
+- `aab818c` Pull agent turns back to the user's assignment (prompt wording).
+- `e1c0dcb` Make the compactor fold prior compactions into one summary.
+- `92a5d2e` Start brief: transient MANDATORY `./AGENTS.md` else `~/.bot-common/rc.md` read.
+- `3f14b24` Tighten start brief from dispositions to MANDATORY requirements.
+- `7f52736` Fix frame-order corruption; rename `AeorDBFrameStore*` → `FrameStore*`,
+  `aeordb-frame-store-*.mjs` → `frame-store-*.mjs`.
+- `8bf11e1` Stop binary tool output breaking Postgres jsonb scans (`raw:true` for
+  tool-output content; `jsonbSafeText`).
+- `4f02690` Swap bubble sides: participants left, operator right.
+- `95ede29` Thinking panel → giggling 🧠 icon + hover tooltip.
+- `62644c9` Guarantee non-raw documents are jsonb-safe at the driver (`toJsonbSafe`).
+  **Currently deployed in prod.**
+- `8d0bacb` Persist commits before routing; never silently drop frames (window path now
+  emits `FrameLoadError` instead of skipping).
+- `93a7a95` Re-drive interrupted turns on boot through the scheduled-frame queue.
+- `894fbca` One thinking brain per agent (was per response → "five brains").
+- `b0bf51e` Compact non-communication frames into one-line summaries.
+- `e4691a5` Compact frames: left icon, 1.5× size, keep meta header, code-block exec meta.
+- `547bdcf` Compact polish: meta padding, click-anywhere toggle, bash highlighting,
+  markdown type scale flattened to 13px primary / 15px headers.
+- `3b1c300` Highlight the command in the exec card summary too.
+
+Also this session: committed `~/.bot-common/rc.md` (symlink → `startup.md`) + README note
+(bot-common `c090f24`); created DB `kikx-dev2` and the `:3002` dev server.
+
+---
+
+## 4. Key diagnostics / gotchas
+
+### A. The "hung/dead bot" / "Reconnecting…" class
+Symptom: UI stuck on "Reconnecting…", bot dead, server accepts TCP but never replies.
+Two distinct causes found:
+
+1. **Postgres jsonb breakage** (fixed): a non-raw document containing `\u0000` (or any
+   invalid JSON, e.g. binary tool output) makes `body::jsonb` scans throw. The
+   scheduled-frame queue's load is such a query → it failed → no wakes → agent stopped.
+   Note: `IS JSON` **accepts** `\u0000` while `::jsonb` rejects it, so there is no reliable
+   read-side guard. Fix at write time (`toJsonbSafe`) + data repair (strip `\u0000`,
+   mark non-JSON bodies `raw=true`).
+2. **Agent runaway microtask storm:** the agent loop spins in promise continuations
+   (`processTicksAndRejections → routeAgent → mergeProviderFrame → merge →
+   _normalizeFrame → cloneValue`), starving the event loop. `pid` state `R`, flat document
+   count. A container restart recovers; the durable-turn/scheduled-queue work is the
+   longer-term fix. Node inspector stack probe:
+   `kill -USR1 <pid>` then `/tmp/opencode/probe-stack.mjs` (needs the inspector WS).
+
+### B. Frame order collapse (2^53)
+`createCommittedFrameLoadError` used `order: MAX_SAFE_INTEGER`; hydrating it pinned
+`_frameOrder`, the next `++` became 2^53 and stuck, collapsing every later frame's order
+and making reload show only tool frames (window picked alphabetically-last paths).
+Fixed in the engine (`sanitizeStoredOrder`) and errors file. **Existing corrected data
+migration is still outstanding** for sessions already persisted at 2^53 (renumber by
+`createdClock`; safe because commits reference frame IDs, not orders).
+
+### C. Compact frame UI
+- Tool/system frames only: `isToolFrame()` plus `CompactionFrame`, `AgentError`,
+  `SystemNotice`, `CommandResult`, `FrameLoadError`, `AgentProgress`.
+- Descriptions: `Read file {path} <-`, `Write file {path} ->`, exec `Running {command}`
+  (inline `<code>`), plus per-tool verb+subject.
+- Icon LEFT, 19px; green success / red failure; `<details>` expansion.
+- Known gap: `kikx-team-tool-use` is referenced but never defined; database/output-search
+  labels are imperfect. `SessionCreateToolFrame` with `content.references` keeps its
+  sub-session card.
+
+### D. UI test harness
+Playwright/stagehand UI harness is broken in this environment (fixtures don't render;
+pre-existing team-manager spec fails too). Stagehand needs `OPENAI_API_KEY` + AeorDB.
+Client unit (`spec/client`) is reliable.
+
+---
+
+## 5. Open items / next steps
+
+1. **Deploy prod** to `3b1c300` when the owner says (prod is on `62644c9`).
+2. **Data repair migration** for sessions with frames persisted at order 2^53.
+3. **Turns-as-scheduled-items at turn start** — closes the narrow crash window between
+   the user-message commit and the response placeholder creation (currently only
+   interrupted turns re-drive).
+4. **Window path uses the directory tail, not the commit index.** It now surfaces
+   unreadable frames instead of dropping them, but full canonical fidelity would read
+   commits like `listFrames`.
+5. Verify the compact-frame UI + bash highlighting on `:3002` and iterate with the owner.
+6. Team tool renderer (`kikx-team-tool-use`) remains undefined.
+7. Optionally add a mid-run cancellation for agent turns (only wake cancellation exists).
+
+---
+
+## 6. Useful commands
+
+```bash
+# tests
+npm test                                   # full suite; ~31 pre-existing env failures
+node --test spec/client/*.mjs              # client unit suite (fast, reliable)
+node --test spec/core/frame-store-spec.mjs spec/core/frame-runtime-spec.mjs
+
+# dev servers
+systemctl --user status kikx-dev-run.service kikx-dev2-run.service
+systemctl --user restart kikx-dev2-run.service
+
+# magic link (Node 24)
+npm run magic-link
+KIKX_URL=http://127.0.0.1:3002 KIKX_PUBLIC_URL=http://127.0.0.1:3002 \
+  KIKX_AUTH_MAILER_LOG_PATH=/tmp/codex/kikx/kikx-auth-3002.log npm run magic-link
+
+# prod data (never print the password)
+export PGPASSWORD=$(cat /home/wyatt/.local/share/kikx/postgres/db-password)
+psql -h 127.0.0.1 -p 5433 -U kikx -d kikx
+# find non-raw invalid-JSON docs (jsonb breakers):
+#   pg_temp.valid_jsonb(text) helper; SELECT ... WHERE raw=false AND NOT pg_temp.valid_jsonb(body)
+# find \u0000 docs: WHERE position('\u0000' in body) > 0
+```
+
+---
+
+## 7. Repos / branches
+
+- `kikx` — `main`, remote `th317erd/kikx`; clean and pushed at handoff.
+- `kikx2` — prod bot's clone (same origin), dev server on `:3001`.
+- `kikx-docker` — private distribution container (`th317erd/kikx-docker`).
+- Plugins: `kikx-plugin-ollama`, `kikx-plugin-codex`, `kikx-plugin-claude` (private).
+- `~/.bot-common` — shared bot instructions; `rc.md` is now the harness-agnostic startup
+  entry point (symlink → `startup.md`).

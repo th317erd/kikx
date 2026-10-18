@@ -19,7 +19,7 @@ const ERROR_STATUSES = new Set([ 'error', 'failed', 'failure', 'fail' ]);
 
 const TOOL_ICONS = new Map([
   [ 'read-file', '\u25a4' ],
-  [ 'write-file', '\u270e' ],
+  [ 'write-file', '\u2192' ],
   [ 'exec', '\u2699' ],
   [ 'web-search', '\u2315' ],
   [ 'web-fetch', '\u21e3' ],
@@ -94,7 +94,7 @@ function toolFrameSummary(frame, status) {
   let content = frame.content || {};
   let toolName = String(content.toolName || 'tool');
   let input = isPlainObject(content.input) ? content.input : {};
-  let command = text(input.command);
+  let command = inputField(input, 'command');
 
   return {
     description: toolDescription(toolName, input),
@@ -104,16 +104,38 @@ function toolFrameSummary(frame, status) {
   };
 }
 
+// Read a small field from tool input. Large inputs are stored truncated as
+// {truncated:true, preview:"<json>"}; recover the field from the preview when the
+// top-level value is absent (the preview may be cut off, so this is best-effort).
+function inputField(input, field) {
+  let direct = text(input[field]);
+  if (direct)
+    return direct;
+
+  if (!input?.truncated || typeof input.preview !== 'string')
+    return '';
+
+  let match = new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`).exec(input.preview);
+  if (!match)
+    return '';
+
+  try {
+    return JSON.parse(`"${match[1]}"`);
+  } catch (_error) {
+    return match[1];
+  }
+}
+
 function toolDescription(toolName, input) {
-  let path = text(input.path);
-  let command = text(input.command);
-  let query = text(input.query);
-  let url = text(input.url);
+  let path = inputField(input, 'path');
+  let command = inputField(input, 'command');
+  let query = inputField(input, 'query');
+  let url = inputField(input, 'url');
   let sessionID = text(input.session_id);
-  let processID = text(input.processID);
-  let cwd = text(input.cwd);
-  let title = text(input.title);
-  let id = text(input.id);
+  let processID = inputField(input, 'processID');
+  let cwd = inputField(input, 'cwd');
+  let title = inputField(input, 'title');
+  let id = inputField(input, 'id');
 
   switch (toolName) {
     case 'read-file':
@@ -129,9 +151,9 @@ function toolDescription(toolName, input) {
     case 'agent-list':
       return 'List agents';
     case 'agent-create':
-      return text(input.name) ? `Create agent ${text(input.name)}` : 'Create agent';
+      return inputField(input, 'name') ? `Create agent ${inputField(input, 'name')}` : 'Create agent';
     case 'agent-update':
-      return text(input.agent) ? `Edit agent ${text(input.agent)}` : 'Edit agent';
+      return inputField(input, 'agent') ? `Edit agent ${inputField(input, 'agent')}` : 'Edit agent';
     case 'session-list':
       return 'List sessions';
     case 'session-create':
@@ -208,7 +230,7 @@ function toolDescription(toolName, input) {
 }
 
 function teamDescription(verb, input) {
-  let subject = text(input.name) || text(input.title) || text(input.id);
+  let subject = inputField(input, 'name') || text(input.title) || text(input.id);
   return subject ? `${verb} ${subject}` : verb;
 }
 
@@ -222,8 +244,8 @@ function genericToolDescription(toolName, input) {
     || text(input.processID)
     || text(input.cwd)
     || text(input.id)
-    || text(input.name)
-    || text(input.agent)
+    || inputField(input, 'name')
+    || inputField(input, 'agent')
     || text(input.command);
 
   return subject ? `${base} ${subject}` : base;
