@@ -179,8 +179,14 @@ export class FrameEngine extends EventEmitter {
       if (frame.parentID)
         this._addChild(frame.parentID, frame.id);
 
-      this._frameOrder = Math.max(this._frameOrder, frame.order || 0);
-      this._commitOrder = Math.max(this._commitOrder, frame.commitOrder || frame.order || 0);
+      // Order folding must ignore out-of-range stored orders. A frame hydrated with
+      // `order` at or above MAX_SAFE_INTEGER (a load-error placeholder, or data already
+      // collapsed to 2^53) would otherwise become the engine watermark, so the next
+      // `++` overflows to 2^53 and then sticks — collapsing every later frame's order.
+      let storedOrder = sanitizeStoredOrder(frame.order);
+      let storedCommitOrder = sanitizeStoredOrder(frame.commitOrder) || storedOrder;
+      this._frameOrder = Math.max(this._frameOrder, storedOrder);
+      this._commitOrder = Math.max(this._commitOrder, storedCommitOrder);
     }
 
     if (options.headOrder != null)
@@ -619,6 +625,15 @@ function compareNumber(a, b) {
 
 function numberOr(value, fallback) {
   return (typeof value === 'number' && Number.isFinite(value)) ? value : fallback;
+}
+
+// A stored frame order is only usable as an engine watermark when it is a finite
+// integer below MAX_SAFE_INTEGER. Anything at/above that is treated as absent (0) so
+// a single poisoned value can never pin the counter and collapse all later orders.
+function sanitizeStoredOrder(value) {
+  return (typeof value === 'number' && Number.isFinite(value) && value < Number.MAX_SAFE_INTEGER)
+    ? value
+    : 0;
 }
 
 function stringOr(value, fallback = null) {

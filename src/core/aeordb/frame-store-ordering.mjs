@@ -1,6 +1,6 @@
 'use strict';
 
-import { createCommittedFrameLoadError } from './aeordb-frame-store-errors.mjs';
+import { createCommittedFrameLoadError } from './frame-store-errors.mjs';
 
 export function sortFramePathsByOrder(paths) {
   return [ ...paths ].sort((left, right) => {

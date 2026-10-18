@@ -324,6 +324,10 @@ test('FrameRuntime recovers stale streaming agent responses and running tool cal
 
   assert.equal(result.recoveredAgentResponses, 1);
   assert.equal(result.recoveredToolCalls, 1);
+  assert.equal(result.recoveredTurns, 1);
+  let trigger = frames.find((frame) => frame.id === 'msg_1');
+  assert.equal(trigger.scheduledStatus, 'pending');
+  assert.ok(trigger.scheduledAt > 0);
   assert.equal(agentFrame.hidden, false);
   assert.equal(agentFrame.content.status, 'error');
   assert.equal(agentFrame.content.error.recovered, true);
@@ -335,7 +339,7 @@ test('FrameRuntime recovers stale streaming agent responses and running tool cal
   assert.ok(aeordb.calls.some((call) => call.method === 'putFile' && call.path.includes('tool_call.json')));
 });
 
-test('FrameRuntime appends user messages through FrameEngine and AeorDBFrameStore', async () => {
+test('FrameRuntime appends user messages through FrameEngine and FrameStore', async () => {
   let aeordb = createClient();
   let runtime = createRuntime({ aeordb, ids: [ 'ses_1', 'int_1', 'msg_1', 'commit_1' ] });
 
@@ -507,10 +511,8 @@ test('FrameRuntime routes user messages through the configured frame router', as
       return () => ids[index++];
     })(),
     frameRouter: {
-      connectTo(frameEngine, session, options) {
-        let handler = ({ commit }) => routed.push({ sessionID: session.id, commitID: commit.id, services: options.services });
-        frameEngine.on('commit', handler);
-        return () => frameEngine.off('commit', handler);
+      enqueueCommit(frameEngine, commit, session, options) {
+        routed.push({ sessionID: session.id, commitID: commit.id, services: options.services });
       },
     },
     services: { commandRegistry: {} },
@@ -518,6 +520,8 @@ test('FrameRuntime routes user messages through the configured frame router', as
 
   await runtime.createSession({ title: 'Scratch' });
   await runtime.appendUserMessage('ses_1', { text: 'hello' });
+  // Persist-then-route: the router is driven after the commit is durably stored.
+  await runtime.frameStore.flush();
 
   assert.equal(routed.length, 1);
   assert.equal(routed[0].sessionID, 'ses_1');
@@ -849,9 +853,10 @@ test('FrameRuntime does not route a silent SystemNotice commit but still surface
     content: { text: 'Autonomous run paused — reply to continue.' },
   }], {
     authorType: 'system',
-    authorID: 'internal:autonomous-chain',
+    authorID: 'internal/autonomous-chain',
     silent: true,
   });
+  await runtime.frameStore.flush();
   await runtime.frameRouter.flush();
 
   // Silent commit: the router never sees it, so it cannot re-trigger agents.
@@ -872,6 +877,7 @@ test('FrameRuntime does not route a silent SystemNotice commit but still surface
     deleted: false,
     content: { text: 'routed' },
   }], { authorType: 'system', authorID: 'internal:autonomous-chain' });
+  await runtime.frameStore.flush();
   await runtime.frameRouter.flush();
 
   assert.deepEqual(routed, [ 'notice_2' ]);

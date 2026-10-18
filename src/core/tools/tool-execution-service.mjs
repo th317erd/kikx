@@ -481,7 +481,21 @@ function truncateDeep(value, maxChars) {
   if (text.length <= maxChars)
     return value;
 
+  // Keep small top-level scalars (path, query, url, command, session_id, title,
+  // ...) so summaries and details still identify the target even when a large
+  // payload (e.g. write-file content) is truncated away.
+  let retained = {};
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    for (let [key, item] of Object.entries(value)) {
+      if (typeof item === 'string' && item.length <= 1000)
+        retained[key] = item;
+      else if (typeof item === 'number' || typeof item === 'boolean' || item === null)
+        retained[key] = item;
+    }
+  }
+
   return {
+    ...retained,
     truncated: true,
     preview: `${text.slice(0, maxChars)}...`,
   };

@@ -47,6 +47,7 @@ const frameMethods = {
     });
     let recoveredAgentResponses = 0;
     let recoveredToolCalls = 0;
+    let recoveredTurns = 0;
 
     for (let session of sessions) {
       if (!session?.id)
@@ -59,12 +60,15 @@ const frameMethods = {
       let toolResultIDs = collectToolResultIDs(frames);
       let updates = [];
 
+      let retryTriggerIDs = new Set();
       for (let frame of frames) {
         if (isStaleAgentResponseFrame(frame)) {
           updates.push(createRecoveredAgentResponseFrame(frame, {
             clock: this.clock,
             message: options.agentMessage,
           }));
+          if (frame.parentID)
+            retryTriggerIDs.add(frame.parentID);
           recoveredAgentResponses++;
           continue;
         }
@@ -78,21 +82,48 @@ const frameMethods = {
         }
       }
 
-      if (updates.length === 0)
-        continue;
+      if (updates.length > 0) {
+        entry.frameEngine.merge(updates, {
+          authorType: 'system',
+          authorID: 'runtime-recovery',
+          silent: true,
+        });
+        await this.frameStore.flush();
+      }
 
-      entry.frameEngine.merge(updates, {
-        authorType: 'system',
-        authorID: 'runtime-recovery',
-        silent: true,
-      });
-      await this.frameStore.flush();
+      // Re-drive interrupted turns. A stale streaming response's `parentID` is the
+      // frame that triggered the turn; mark that trigger as a durable scheduled
+      // item (scheduledAt = now) so the scheduled-frame queue reloads and dispatches
+      // it on boot — the turn resumes instead of dying. This merge is silent, so it
+      // does not route immediately; the queue owns the (re)dispatch.
+      for (let triggerID of retryTriggerIDs) {
+        let trigger = entry.frameEngine.get(triggerID);
+        if (!trigger || trigger.deleted === true || trigger.hidden === true)
+          continue;
+
+        let merged = entry.frameEngine.merge([ {
+          ...trigger,
+          scheduledAt: this.clock(),
+          scheduledStatus: 'pending',
+        } ], {
+          authorType: 'system',
+          authorID: 'runtime-recovery',
+          silent: true,
+        });
+
+        this.scheduledFrames?.trackFrame?.(merged?.[0] || entry.frameEngine.get(triggerID));
+        recoveredTurns++;
+      }
+
+      if (retryTriggerIDs.size > 0)
+        await this.frameStore.flush();
     }
 
     return {
       sessionsScanned: sessions.length,
       recoveredAgentResponses,
       recoveredToolCalls,
+      recoveredTurns,
       recovered: recoveredAgentResponses + recoveredToolCalls,
     };
   },

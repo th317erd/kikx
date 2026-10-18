@@ -1,6 +1,6 @@
 'use strict';
 
-import { encodeSegment } from './aeordb-frame-store-paths.mjs';
+import { encodeSegment } from './frame-store-paths.mjs';
 
 export function buildGlobalIndexConfigs(rootPath) {
   return [

@@ -5,6 +5,7 @@ import {
   kikxState,
 } from '../state/kikx-state.mjs';
 import { applyAgentConfigValues } from '../state/agent-state-utils.mjs';
+import { createThinkingBuffer } from '../state/thinking-state.mjs';
 import { createComposerHistoryState } from './composer-history.mjs';
 import './kikx-frame-item.mjs';
 import './kikx-chat-view.mjs';
@@ -206,6 +207,7 @@ export class KikxApp extends HTMLElement {
     this._frameRuntimeFlushScheduled = false;
     this._runtimeReconcileScheduled = false;
     this._composerHistory = createComposerHistoryState();
+    this._thinking = createThinkingBuffer();
     this._pendingPreviewSessionIDs = new Set();
     this._previewRefreshScheduled = false;
     this._deletingSessionIDs = new Set();

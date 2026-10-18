@@ -2,15 +2,15 @@
 
 import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
 import { writeIndexConfigs } from '../database/index-configs.mjs';
-import { buildGlobalIndexConfigs, buildSessionIndexConfigs } from './aeordb-frame-store-indexes.mjs';
+import { buildGlobalIndexConfigs, buildSessionIndexConfigs } from './frame-store-indexes.mjs';
 import {
   normalizeLimit,
   normalizeOffset,
   resolveSessionID,
   shouldFallbackToShallowSessionList,
   uniqueStrings,
-} from './aeordb-frame-store-normalizers.mjs';
-import { compareSessionOrder } from './aeordb-frame-store-ordering.mjs';
+} from './frame-store-normalizers.mjs';
+import { compareSessionOrder } from './frame-store-ordering.mjs';
 import {
   commitPath,
   framePath,
@@ -19,16 +19,16 @@ import {
   refPath,
   sessionPath,
   shouldIgnoreSessionDirectory,
-} from './aeordb-frame-store-paths.mjs';
-import { DEFAULT_ROOT_PATH } from './aeordb-frame-store-constants.mjs';
+} from './frame-store-paths.mjs';
+import { DEFAULT_ROOT_PATH } from './frame-store-constants.mjs';
 
-export class AeorDBFrameStoreSessionBase {
+export class FrameStoreSessionBase {
   constructor(options = {}) {
     let db = options.db || options.aeordb;
     let { rootPath = DEFAULT_ROOT_PATH } = options;
 
     if (!db)
-      throw new TypeError('AeorDBFrameStore requires db (or the aeordb alias)');
+      throw new TypeError('FrameStore requires db (or the aeordb alias)');
 
     this.aeordb = db;
     this.db = db;
@@ -42,17 +42,27 @@ export class AeorDBFrameStoreSessionBase {
 
     let handler = ({ commit, frames }) => {
       let sessionID = options.sessionID || resolveSessionID(frames);
-      this.enqueueSaveCommit(sessionID, commit, frames, frameEngine);
+      // Persist-then-route: downstream work (the router) only runs once the write
+      // chain has durably stored the commit, and flush() includes it.
+      let onCommitted = typeof options.onCommitted === 'function'
+        ? () => options.onCommitted({ commit, frames })
+        : null;
+      this.enqueueSaveCommit(sessionID, commit, frames, frameEngine, onCommitted);
     };
 
     frameEngine.on('commit', handler);
     return () => frameEngine.off('commit', handler);
   }
 
-  enqueueSaveCommit(sessionID, commit, frames, frameEngine) {
+  enqueueSaveCommit(sessionID, commit, frames, frameEngine, onCommitted = null) {
     let save = this._writeChain.then(() => this.saveCommit(sessionID, commit, frames, frameEngine));
-    this._writeChain = save.catch(() => {});
-    return save;
+    // Persist-then-route: post-persist work runs only after a successful save, and
+    // is part of the write chain so flush() is a true "stored and dispatched" barrier.
+    let settled = typeof onCommitted === 'function'
+      ? save.then(() => onCommitted())
+      : save;
+    this._writeChain = settled.catch(() => {});
+    return settled;
   }
 
   async flush() {

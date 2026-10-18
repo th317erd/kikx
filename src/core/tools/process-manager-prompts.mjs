@@ -31,8 +31,8 @@ function buildProcessWakePrompt(record, wake) {
 function buildDefaultWakePrompt(record) {
   return [
     `Async exec ID# ${record.processID} has completed.`,
-    'Review the result: if it satisfies the user\'s request, report the outcome and end the turn; if concrete, non-waiting work remains, take that next step.',
-    'Do not start unrelated work, and do not poll.',
+    'Review the result against the task the user gave you: if the task is done, report the outcome and end the turn; if concrete, non-waiting, user-assigned work remains, take that next step.',
+    'Stay aligned with the user\'s assignment — do not start unrelated work, and do not poll.',
   ].join(' ');
 }
 

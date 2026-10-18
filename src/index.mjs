@@ -1,7 +1,7 @@
 'use strict';
 
 export { AeorDBClient, AeorDBError } from './core/aeordb/aeordb-client.mjs';
-export { AeorDBFrameStore } from './core/aeordb/aeordb-frame-store.mjs';
+export { FrameStore } from './core/aeordb/frame-store.mjs';
 export { AeorDBTeamStore } from './core/aeordb/aeordb-team-store.mjs';
 export { AppContext } from './core/app/app-context.mjs';
 export { HybridLogicalClock, defaultUnixMicros, normalizeMicros, parseClock } from './core/clock/index.mjs';

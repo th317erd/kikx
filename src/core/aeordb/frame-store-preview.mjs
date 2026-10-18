@@ -1,13 +1,13 @@
 'use strict';
 
 import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
-import { AeorDBFrameStoreScheduledBase } from './aeordb-frame-store-scheduled.mjs';
+import { FrameStoreScheduledBase } from './frame-store-scheduled.mjs';
 import {
   DEFAULT_FRAME_LIST_LIMIT,
   MAX_FRAME_LIST_LIMIT,
   MAX_PREVIEW_RAW_FRAMES,
   PREVIEW_RAW_EXPANSION,
-} from './aeordb-frame-store-constants.mjs';
+} from './frame-store-constants.mjs';
 import {
   isPreviewVisibleFrame,
   normalizeLargeLimit,
@@ -15,12 +15,13 @@ import {
   normalizePreviewCount,
   normalizePreviewTotal,
   normalizeSessionIDs,
-} from './aeordb-frame-store-normalizers.mjs';
-import { frameOrderFromPath, sortFramePathsByOrder } from './aeordb-frame-store-ordering.mjs';
-import { encodeSegment } from './aeordb-frame-store-paths.mjs';
+} from './frame-store-normalizers.mjs';
+import { frameOrderFromPath, sortFramePathsByOrder } from './frame-store-ordering.mjs';
+import { createFrameLoadError } from './frame-store-errors.mjs';
+import { encodeSegment } from './frame-store-paths.mjs';
 import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
 
-export class AeorDBFrameStorePreviewBase extends AeorDBFrameStoreScheduledBase {
+export class FrameStorePreviewBase extends FrameStoreScheduledBase {
   async listSessionPreviews(sessionIDs, options = {}) {
     let ids = normalizeSessionIDs(sessionIDs, options.maxSessions);
     if (ids.length === 0)
@@ -129,8 +130,12 @@ export class AeorDBFrameStorePreviewBase extends AeorDBFrameStoreScheduledBase {
       continueOnError: true,
     });
     for (let read of reads) {
-      if (read.error)
+      if (read.error) {
+        // Never silently drop a frame: surface it as a visible load-error so the
+        // projected stream stays truthful about what could not be read.
+        frames.push(createFrameLoadError(sessionID, read.path, read.error));
         continue;
+      }
 
       let frame = read.value;
       if (frame?.id && frame.type)
@@ -200,8 +205,12 @@ export class AeorDBFrameStorePreviewBase extends AeorDBFrameStoreScheduledBase {
     });
     let frames = [];
     for (let read of reads) {
-      if (read.error)
+      if (read.error) {
+        // Never silently drop a frame: surface it as a visible load-error so the
+        // projected stream stays truthful about what could not be read.
+        frames.push(createFrameLoadError(sessionID, read.path, read.error));
         continue;
+      }
 
       let frame = read.value;
       if (frame?.id && frame.type)

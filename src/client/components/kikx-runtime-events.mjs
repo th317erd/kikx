@@ -1,6 +1,7 @@
 'use strict';
 
 import { forgetDeletedSession, isCollapsed, recordDeletedSession, setTokenUsage, upsertFrames, upsertSession } from '../state/kikx-state.mjs';
+import { applyThinkingFrame } from '../state/thinking-state.mjs';
 import { isDeletedSession } from '../state/session-state-utils.mjs';
 import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame, parseRuntimeEventResult } from './kikx-app-helpers.mjs';
@@ -346,6 +347,7 @@ function processFrameRuntimeEvents(app) {
     guardClientOperation('kikx-runtime-events.batchEntry', () => {
       addFrameToBatch(framesBySessionID, data.sessionID, data.frame);
       addTouchedFrameIDs(touchedFrameIDsBySessionID, data.sessionID, renderedFrameIDsFor(data.frame));
+      applyThinkingFrame(app._thinking, data.frame);
     }, { sessionID: data.sessionID, frameID });
   }
 

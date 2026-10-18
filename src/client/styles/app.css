@@ -398,7 +398,8 @@ kikx-app {
 .kikx-frame {
   display: grid;
   gap: 8px;
-  justify-self: end;
+  /* Participants (agents, tools, etc.) sit on the left; the operator sits on the right. */
+  justify-self: start;
   width: fit-content;
   max-width: min(78%, 960px);
   max-height: 20000px;
@@ -419,7 +420,7 @@ kikx-app {
 }
 
 .kikx-frame--UserMessage {
-  justify-self: start;
+  justify-self: end;
   border-color: #294c51;
   background: #101d20;
 }
@@ -532,6 +533,7 @@ kikx-app {
 
 .kikx-markdown {
   display: grid;
+  font-size: 13px;
   gap: 0.45rem;
 }
 
@@ -545,23 +547,10 @@ kikx-app {
 
 .kikx-markdown :is(h1, h2, h3, h4, h5, h6) {
   color: #f5f7fa;
+  /* Two sizes only: primary body text and a slightly larger header size. */
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.25;
-}
-
-.kikx-markdown h1 {
-  font-size: 1.25rem;
-}
-
-.kikx-markdown h2 {
-  font-size: 1.12rem;
-}
-
-.kikx-markdown h3,
-.kikx-markdown h4,
-.kikx-markdown h5,
-.kikx-markdown h6 {
-  font-size: 1rem;
 }
 
 .kikx-markdown ul,
@@ -595,7 +584,7 @@ kikx-app {
   background: rgba(255, 159, 64, 0.12);
   color: #ffb86b;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.95em;
+  font-size: inherit;
 }
 
 .kikx-markdown pre code {
@@ -603,7 +592,7 @@ kikx-app {
   border: 0;
   background: transparent;
   color: #ffd0a3;
-  font-size: 0.92rem;
+  font-size: inherit;
   white-space: pre;
 }
 
@@ -663,6 +652,104 @@ kikx-app {
 .kikx-frame[data-frame-type$="ToolFrame"] {
   border-color: #36434d;
   background: #14191d;
+}
+
+/* Compact status/tool frames: one line, icon pinned right, details on demand.
+   The native <details>/<summary> pair owns expansion and keyboard support. */
+.kikx-frame--compact {
+  width: 100%;
+  max-width: min(100%, 960px);
+  justify-self: stretch;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.kikx-frame--compact .kikx-frame__meta {
+  padding: 6px 8px 0;
+}
+
+.kikx-frame__compact {
+  min-width: 0;
+}
+
+.kikx-frame__compact > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: #aeb8c2;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.4;
+  list-style: none;
+}
+
+.kikx-frame__compact > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kikx-frame__compact > summary:hover,
+.kikx-frame__compact > summary:focus-visible {
+  background: #1b2126;
+}
+
+.kikx-frame__compact > summary:focus-visible {
+  outline: 2px solid #3d6cff;
+  outline-offset: 1px;
+}
+
+.kikx-frame__compact-description {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-frame__compact-description code {
+  padding: 1px 4px;
+  border: 1px solid rgba(255, 183, 102, 0.24);
+  border-radius: 4px;
+  background: rgba(255, 159, 64, 0.12);
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: inherit;
+}
+
+.kikx-frame__compact-icon {
+  flex: 0 0 auto;
+  margin-right: 2px;
+  color: #87929d;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.kikx-frame--status-success .kikx-frame__compact > summary,
+.kikx-frame--status-success .kikx-frame__compact-icon {
+  color: #7bd88f;
+}
+
+.kikx-frame--status-error .kikx-frame__compact > summary,
+.kikx-frame--status-error .kikx-frame__compact-icon {
+  color: #e06c75;
+}
+
+.kikx-frame--status-running .kikx-frame__compact > summary {
+  color: #aeb8c2;
+}
+
+.kikx-frame--status-running .kikx-frame__compact-icon {
+  color: #87929d;
+}
+
+.kikx-frame__compact-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px 10px;
 }
 
 .kikx-frame__content--custom {
@@ -1987,4 +2074,202 @@ button.kikx-window__title:focus-visible {
 
 .kikx-error-surface__item + .kikx-error-surface__item {
   border-top: 1px solid #3f2427;
+}
+
+/* --- Pinned per-agent thinking rack (lower-left participant space) ---
+   Replaces the old inline thinking/streaming bubble: a 🧠 icon per thinking agent
+   that giggles while it thinks and reveals the live thinking text on hover. */
+kikx-thinking-rack {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 0 18px 10px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+kikx-thinking-rack[hidden] {
+  display: none;
+}
+
+kikx-thinking-panel {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* The 🧠 "thinking" icon: giggles and bounces subtly while the agent is thinking. */
+.kikx-thinking-brain {
+  appearance: none;
+  margin: 0;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+  transform-origin: 50% 80%;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+  animation: kikx-thinking-giggle 1.6s ease-in-out infinite;
+}
+
+.kikx-thinking-brain:focus-visible {
+  outline: 2px solid #5a7fa8;
+  outline-offset: 2px;
+}
+
+@keyframes kikx-thinking-giggle {
+  0% { transform: translateY(0) rotate(0deg) scale(1); }
+  15% { transform: translateY(-3px) rotate(-9deg) scale(1.06); }
+  30% { transform: translateY(0) rotate(7deg) scale(1); }
+  45% { transform: translateY(-2px) rotate(-5deg) scale(1.04); }
+  60% { transform: translateY(0) rotate(3deg) scale(1); }
+  75% { transform: translateY(-1px) rotate(-2deg) scale(1.02); }
+  100% { transform: translateY(0) rotate(0deg) scale(1); }
+}
+
+/* The hover tooltip: a cursor-following bubble with the live, scrolling thinking
+   text. Portaled to <body> so no ancestor's overflow/transform can clip it. */
+.kikx-thinking-tip {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  width: 22rem;
+  max-width: min(22rem, 60vw);
+  height: 6rem;
+  border: 1px solid #2a3138;
+  border-radius: 8px;
+  background: #0f1317;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.kikx-thinking-tip[hidden] {
+  display: none;
+}
+
+.kikx-thinking-tip__head {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #1c2229;
+  color: #8b97a3;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kikx-thinking-tip__dots span {
+  animation: kikx-thinking-dot 1.4s infinite;
+}
+
+.kikx-thinking-tip__dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.kikx-thinking-tip__dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes kikx-thinking-dot {
+  0%, 60%, 100% { opacity: 0.25; }
+  30% { opacity: 1; }
+}
+
+/* The fixed window: newest line pinned to the bottom; older lines scroll up and
+   fade out via the top mask. */
+/* The fixed window: the flex column bottom-aligns its content, so the newest
+   line is pinned to the bottom and older lines overflow out the TOP (clipped +
+   faded by the mask). */
+.kikx-thinking-tip__window {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 0;
+  padding: 6px 10px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 34%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 34%, #000 100%);
+}
+
+.kikx-thinking-tip__lines {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #9fb0bf;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.kikx-thinking-tip__line {
+  flex: 0 0 auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kikx-thinking-brain,
+  .kikx-thinking-tip__dots span {
+    animation: none;
+  }
+}
+
+/* Minimal bash syntax coloring for tool details (see syntax-highlight.mjs). */
+.bash-comment { color: #6b7a86; font-style: italic; }
+.bash-string { color: #a6d189; }
+.bash-var { color: #e5c07b; }
+.bash-flag { color: #7ca7d9; }
+.bash-number { color: #d19a66; }
+.bash-keyword { color: #c678dd; font-weight: 600; }
+.bash-command { color: #61afef; font-weight: 600; }
+
+/* Status tint on the compact message line, not just its text. */
+.kikx-frame--compact.kikx-frame--status-success > summary {
+  background: rgba(123, 216, 143, 0.08);
+  box-shadow: inset 3px 0 0 #7bd88f;
+}
+
+.kikx-frame--compact.kikx-frame--status-error > summary {
+  background: rgba(224, 108, 117, 0.1);
+  box-shadow: inset 3px 0 0 #e06c75;
+}
+
+.kikx-frame--compact.kikx-frame--status-success > summary:hover {
+  background: rgba(123, 216, 143, 0.14);
+}
+
+.kikx-frame--compact.kikx-frame--status-error > summary:hover {
+  background: rgba(224, 108, 117, 0.16);
+}
+
+/* Bot communication frames: green on success, red on failure. Neutral keeps the
+   existing agent color; human (UserMessage) frames are never tinted. */
+.kikx-frame--AgentMessage.kikx-frame--status-success,
+.kikx-frame--AgentMessageDelta.kikx-frame--status-success {
+  border-color: #2f5f45;
+  background: #101c16;
+}
+
+.kikx-frame--AgentMessage.kikx-frame--status-error,
+.kikx-frame--AgentMessageDelta.kikx-frame--status-error {
+  border-color: #6b343a;
+  background: #1b1113;
+}
+
+.kikx-frame--AgentMessage.kikx-frame--status-success .kikx-frame__meta-main strong {
+  color: #9ce0b0;
+}
+
+.kikx-frame--AgentMessage.kikx-frame--status-error .kikx-frame__meta-main strong {
+  color: #f0a0a8;
 }

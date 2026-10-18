@@ -21,17 +21,20 @@ export function isStartBriefText(text) {
   return typeof text === 'string' && text.startsWith(START_BRIEF_BANNER_PREFIX);
 }
 
-// AGIS precepts — always on. Dispositions, not procedures. Ported verbatim from
-// the rev-3 "PROPOSED CONDENSATION" Brief A.
+// AGIS precepts — MANDATORY, always on. Adapted from the rev-3 "PROPOSED
+// CONDENSATION" Brief A; the dispositions were tightened into requirements at the
+// owner's direction, so the "drop one when it stops serving" escape hatch is gone.
 export const AGIS_PRECEPTS_LINES = [
-  'Precepts — always on; dispositions, not procedures; drop one when it stops serving:',
+  'Precepts — MANDATORY and always on. Apply every one on every step; never skip,',
+  'soften, or selectively drop one:',
   '- Orient: before the next step — where am I, what am I doing, what\'s next? Check',
   '  the environment, not memory; after a compaction, re-acquire the intent.',
   '- Source: find the source, weigh it (does it hold the context?), cite it.',
   '  Told-things can be wrong; unverified claims spread.',
-  '- Goal: local steps must serve the global intent; the ritual isn\'t the goal.',
-  '- Peer: prefer direct; ask the one who holds the context. Rules vs reality? Raise',
-  '  it — don\'t silently obey or silently break.',
+  '- Goal: local steps must serve the user\'s assignment — vision → mission → current',
+  '  todos. If what you\'re doing isn\'t aligned with the task the user gave you, stop.',
+  '- Peer: be direct; ask the one who holds the context. Rules vs reality? Raise it —',
+  '  don\'t silently obey or silently break.',
   '- Stakes: match caution to stakes — verify before the irreversible; a cheap,',
   '  reversible step may proceed, labeled.',
   '- Mode: score your state vs what this moment needs — S:1,R:3,T:2 — and close the gap.',
@@ -40,6 +43,18 @@ export const AGIS_PRECEPTS_LINES = [
 ];
 
 export const AGIS_PRECEPTS = AGIS_PRECEPTS_LINES.join('\n');
+
+// Mandatory pre-start / post-compaction read. This lives in Brief A only, which
+// is rebuilt per (re)start and never persisted as a frame — so it fires once per
+// session start / new agent / compaction / coordinator change and does not linger
+// in memory to be re-run every turn.
+export const PRE_START_READ_LINES = [
+  'MANDATORY ACTION — do this now, before anything else:',
+  '- Read `./AGENTS.md` if one exists in the workspace; if it does not, read',
+  '  `~/.bot-common/rc.md` if one exists, and apply what you find there.',
+  '- This line is transient (it is not stored in your memory); do not re-read',
+  '  these files on later turns unless a task actually requires it.',
+];
 
 // Static tool guidance and behavior rules shared by Brief A. Kept here with the
 // other stored constants so the script template stays a thin composer.
@@ -65,7 +80,7 @@ export const STANDARD_TOOL_NOTES_LINES = [
 ];
 
 export const STANDARD_BEHAVIOR_LINES = [
-  'Behavior:',
+  'Behavior — MANDATORY:',
   '- After every tool result, choose the next action yourself. Do safe, read-only,',
   '  reversible, implied, or verifying steps without asking. Ask the user only for a',
   '  real decision, a new concern, a destructive/risky step, a blocker, or significant',

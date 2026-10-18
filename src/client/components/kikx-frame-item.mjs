@@ -10,6 +10,9 @@ import {
 } from './frame-labels.mjs';
 import { resolveFrameComponentDescriptor } from './frame-component-registry.mjs';
 import { sessionReferenceFromFrame } from './kikx-sub-session-frame.mjs';
+import { buildCompactFrameDisclosure, updateCompactSummary } from './compact-frame-view.mjs';
+import { isBotCommunicationFrame } from './tool-frame-summary.mjs';
+import { frameStatus, frameStatusClass, isCompactFrame } from './tool-frame-summary.mjs';
 import { countRebuild } from './render-stats.mjs';
 import './kikx-typing-indicator.mjs';
 import './kikx-sub-session-frame.mjs';
@@ -101,6 +104,9 @@ export class KikxFrameItem extends HTMLElement {
     this._contentKind = null;
     this._contentTag = null;
     this._lastMarkdownText = null;
+    this._compact = false;
+    this._compactView = null;
+    this._contentParent = null;
   }
 
   updateFrame(frame, appState = {}, options = {}) {
@@ -132,8 +138,30 @@ export class KikxFrameItem extends HTMLElement {
   }
 
   connectedCallback() {
+    if (!this._compactClickBound) {
+      this._compactClickBound = true;
+      this.addEventListener('click', this._onCompactClick);
+    }
+
     if (this._frame && this.childNodes.length === 0)
       this._render();
+  }
+
+  // Compact frames toggle when clicked anywhere (not just the short summary
+  // line), except while selecting text or interacting with a control.
+  _onCompactClick(event) {
+    let details = this._compactView?.element;
+    if (!details)
+      return;
+
+    if (event.target?.closest?.('a, button, input, textarea, select, summary'))
+      return;
+
+    let selection = globalThis.getSelection?.();
+    if (selection && selection.isCollapsed === false)
+      return;
+
+    details.open = !details.open;
   }
 
   disconnectedCallback() {
@@ -155,6 +183,7 @@ export class KikxFrameItem extends HTMLElement {
     // Build the new subtree against a detached tree first, then swap it in. A
     // throwing renderer must leave the previous DOM (and its refs) untouched.
     let rendered = guardClientOperation('kikx-frame-item.render', () => {
+      let compact = this._shouldCompact(frame);
       let meta = null;
       let content = null;
       if (frame.type === 'BeginTyping') {
@@ -171,16 +200,37 @@ export class KikxFrameItem extends HTMLElement {
       $(this).empty();
       this._metaElement = meta;
       this._contentElement = content;
+      this._compact = compact;
+      this._compactView = null;
+      this._contentParent = this;
 
-      this.className = `kikx-frame kikx-frame--${frame.type}`;
-      this.setAttribute('role', 'listitem');
-      this.dataset.frameId = frame.id || '';
-      this.dataset.frameType = frame.type || '';
+      this._applyFrameState(frame, compact);
 
-      if (meta)
-        this.appendChild(meta);
-      if (content)
-        this.appendChild(content);
+      if (compact) {
+        this._compactView = buildCompactFrameDisclosure(
+          frame,
+          [ content ].filter(Boolean),
+          document,
+        );
+        this._contentParent = this._compactView.body;
+        // Keep the "{Name} {time}" header visible above the compact line.
+        if (meta)
+          this.appendChild(meta);
+        // Expanding the compact row should reveal the full details, not another
+        // collapsed disclosure (arguments + output).
+        this._compactView.element.addEventListener('toggle', () => {
+          if (!this._compactView.element.open)
+            return;
+          for (let inner of this._compactView.element.querySelectorAll('details'))
+            inner.open = true;
+        });
+        this.appendChild(this._compactView.element);
+      } else {
+        if (meta)
+          this.appendChild(meta);
+        if (content)
+          this.appendChild(content);
+      }
 
       return true;
     }, { frameID: frame.id, frameType: frame.type });
@@ -192,6 +242,30 @@ export class KikxFrameItem extends HTMLElement {
     }
   }
 
+  _applyFrameState(frame, compact) {
+    let status = frameStatus(frame);
+    let tinted = compact || isBotCommunicationFrame(frame);
+    let className = `kikx-frame kikx-frame--${frame.type}`;
+    if (compact)
+      className += ' kikx-frame--compact';
+    if (tinted)
+      className += ` ${frameStatusClass(status)}`;
+
+    this.className = className;
+    this.setAttribute('role', 'listitem');
+    this.dataset.frameId = frame.id || '';
+    this.dataset.frameType = frame.type || '';
+
+    if (tinted)
+      this.dataset.frameStatus = status;
+    else
+      this.removeAttribute('data-frame-status');
+  }
+
+  _shouldCompact(frame) {
+    return isCompactFrame(frame) && !sessionReferenceFromFrame(frame);
+  }
+
   _reconcile() {
     let frame = this._frame;
     if (!frame) {
@@ -199,10 +273,14 @@ export class KikxFrameItem extends HTMLElement {
       return;
     }
 
+    let compact = this._shouldCompact(frame);
+    if (compact !== this._compact || (compact && !this._compactView)) {
+      this._render();
+      return;
+    }
+
     guardClientOperation('kikx-frame-item.reconcile', () => {
-      this.className = `kikx-frame kikx-frame--${frame.type}`;
-      this.dataset.frameId = frame.id || '';
-      this.dataset.frameType = frame.type || '';
+      this._applyFrameState(frame, compact);
 
       if (frame.type === 'BeginTyping') {
         this._reconcileTypingIndicator(frame);
@@ -213,6 +291,9 @@ export class KikxFrameItem extends HTMLElement {
         this._render();
         return;
       }
+
+      if (compact)
+        updateCompactSummary(this._compactView, frame);
 
       this._reconcileFrameMeta(frame);
       this._reconcileFrameContent(frame);
@@ -339,7 +420,7 @@ export class KikxFrameItem extends HTMLElement {
   _replaceContentElement(frame) {
     this._discardContentElement();
     this._contentElement = this._buildFrameContent(frame);
-    this.appendChild(this._contentElement);
+    this._contentParent.appendChild(this._contentElement);
   }
 
   _discardContentElement() {

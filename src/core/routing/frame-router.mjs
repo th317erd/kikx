@@ -46,6 +46,17 @@ export class FrameRouter {
     return () => frameEngine.off('commit', handler);
   }
 
+  // Route a commit that has already been durably stored. This is the
+  // persist-then-route entry point: the frame store calls it after the commit's
+  // write resolves, so the router (and every agent turn it drives) only ever acts
+  // on state that a reboot could reconstruct.
+  enqueueCommit(frameEngine, commit, session = null, options = {}) {
+    if (!commit || commit.silent)
+      return;
+
+    this.enqueue(frameEngine, commit, session, options);
+  }
+
   enqueue(frameEngine, commit, session = null, options = {}) {
     this._queue.push({ frameEngine, commit, session, options });
 

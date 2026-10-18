@@ -19,8 +19,8 @@
 
 import { loadEnvFile } from '../src/core/config/env-loader.mjs';
 import { AeorDBClient } from '../src/core/aeordb/aeordb-client.mjs';
-import { AeorDBFrameStore } from '../src/core/aeordb/aeordb-frame-store.mjs';
-import { isPendingScheduledFrame } from '../src/core/aeordb/aeordb-frame-store-normalizers.mjs';
+import { FrameStore } from '../src/core/aeordb/frame-store.mjs';
+import { isPendingScheduledFrame } from '../src/core/aeordb/frame-store-normalizers.mjs';
 
 await loadEnvFile(process.env.KIKX_ENV_FILE || '.env.dev');
 
@@ -50,7 +50,7 @@ if (!token) {
 }
 
 let client = new AeorDBClient({ baseURL, token });
-let store = new AeorDBFrameStore({ aeordb: client });
+let store = new FrameStore({ aeordb: client });
 
 // 1. The store must answer without throwing, and every returned frame must carry
 //    a scheduledAt and a non-terminal status (the store re-verifies this).

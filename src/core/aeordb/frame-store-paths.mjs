@@ -1,6 +1,6 @@
 'use strict';
 
-import { ORDER_WIDTH } from './aeordb-frame-store-constants.mjs';
+import { ORDER_WIDTH } from './frame-store-constants.mjs';
 
 export function normalizeRoot(rootPath) {
   if (!rootPath || typeof rootPath !== 'string')

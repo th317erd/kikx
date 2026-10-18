@@ -5,7 +5,7 @@ import {
   DEFAULT_PREVIEW_COUNT,
   MAX_FRAME_LIST_LIMIT,
   MAX_PREVIEW_COUNT,
-} from './aeordb-frame-store-constants.mjs';
+} from './frame-store-constants.mjs';
 
 export function normalizeLimit(limit, fallback) {
   if (limit == null)

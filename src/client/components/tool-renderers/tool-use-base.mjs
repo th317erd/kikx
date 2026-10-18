@@ -4,6 +4,8 @@ import { elements, ReactiveState, $ } from '../../lib/aeor-ui.mjs';
 import { extractDeletedTodo, extractTodoItems, todoCallSummary, todoResultSummary } from './todo-summary.mjs';
 
 const { div, span, strong, p, pre, code, details, summary } = elements;
+
+import { highlightBashInto } from '../syntax-highlight.mjs';
 const DEFAULT_OUTPUT_READ_BYTES = 128 * 1024;
 
 export class ToolUse extends HTMLElement {
@@ -262,6 +264,23 @@ export class ShellToolUse extends ToolUse {
     return 'Shell';
   }
 
+  // Render the command inside the card summary as highlighted bash too.
+  renderSummaryText() {
+    let prefix = this.isResultFrame
+      ? `Command ${this.status === 'error' ? 'failed' : 'completed'}: `
+      : 'Running command: ';
+    let element = document.createElement('span');
+    element.textContent = prefix;
+
+    if (this.input.command) {
+      let codeNode = document.createElement('code');
+      highlightBashInto(codeNode, String(this.input.command));
+      element.appendChild(codeNode);
+    }
+
+    return element;
+  }
+
   callSummary() {
     return this.input.command ? `Running command: ${this.input.command}` : 'Running command...';
   }
@@ -279,19 +298,54 @@ export class ShellToolUse extends ToolUse {
 
     let stdout = typeof result.stdout === 'string' ? result.stdout : '';
     let stderr = typeof result.stderr === 'string' ? result.stderr : '';
-    let meta = [
-      result.command ? `Command: ${result.command}` : '',
-      result.cwd ? `cwd: ${result.cwd}` : '',
-      result.exitCode != null ? `exit: ${result.exitCode}` : '',
-      result.signal ? `signal: ${result.signal}` : '',
-      result.durationMs != null ? `${result.durationMs}ms` : '',
-    ].filter(Boolean).join(' | ');
 
     return div.class('kikx-tool-output kikx-tool-output--exec')(
-      meta ? p.class('kikx-tool-output__meta')(meta) : null,
-      this.renderOutputSection('stdout', stdout || '(stdout empty)'),
-      stderr ? this.renderOutputSection('stderr', stderr) : null,
+      this.renderExecMeta(result),
+      this.renderCodeSection('stdout', stdout || '(stdout empty)'),
+      stderr ? this.renderCodeSection('stderr', stderr) : null,
       this.renderTruncationNotice(output),
+    ).build(document);
+  }
+
+  renderExecMeta(result) {
+    let parts = [];
+    let push = (node, separator = ' | ') => {
+      if (parts.length)
+        parts.push(document.createTextNode(separator));
+      parts.push(node);
+    };
+
+    if (result.command) {
+      let commandNode = document.createElement('code');
+      highlightBashInto(commandNode, String(result.command));
+      push(commandNode);
+    }
+    if (result.cwd)
+      push(plainSpan(`cwd: ${result.cwd}`));
+    if (result.exitCode != null)
+      push(plainSpan(`exit: ${result.exitCode}`));
+    if (result.signal)
+      push(plainSpan(`signal: ${result.signal}`));
+    if (result.durationMs != null)
+      push(plainSpan(`${result.durationMs}ms`));
+
+    if (parts.length === 0)
+      return null;
+
+    let meta = p.class('kikx-tool-output__meta').build(document);
+    for (let part of parts)
+      meta.appendChild(part);
+    return meta;
+  }
+
+  renderCodeSection(label, text) {
+    let codeNode = document.createElement('code');
+    highlightBashInto(codeNode, String(text ?? ''));
+    let preNode = pre.class('kikx-tool-card__preview').build(document);
+    preNode.appendChild(codeNode);
+    return div.class('kikx-tool-output__section')(
+      div.class('kikx-tool-output__section-label')(label),
+      preNode,
     ).build(document);
   }
 }
@@ -659,4 +713,10 @@ function cleanupReactiveBindings(root) {
 
     node.__bindings = [];
   }
+}
+
+function plainSpan(text) {
+  let node = document.createElement('span');
+  node.textContent = text;
+  return node;
 }

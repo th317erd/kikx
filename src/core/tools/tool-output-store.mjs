@@ -64,6 +64,7 @@ export class ToolOutputStore {
     await this.ensureIndexConfig();
     await this.aeordb.putFile(paths.contentPath, formatted.content, {
       contentType: 'text/plain; charset=utf-8',
+      raw: true,
     });
     await this.aeordb.putFile(paths.metadataPath, metadata);
 

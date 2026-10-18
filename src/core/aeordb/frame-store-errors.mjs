@@ -11,7 +11,7 @@ export function createFrameLoadError(sessionID, path, error) {
     interactionID: parseInteractionIDFromPath(path),
     parentID: null,
     authorType: 'system',
-    authorID: 'internal:aeordb-frame-store',
+    authorID: 'internal:frame-store',
     order,
     timestamp: 0,
     createdAt: 0,
@@ -22,7 +22,7 @@ export function createFrameLoadError(sessionID, path, error) {
     deleted: false,
     phantom: false,
     content: {
-      text: 'Frame could not be loaded from AeorDB. Original database evidence was not modified.',
+      text: 'Frame could not be loaded from the document store. Original database evidence was not modified.',
       path,
       error: error?.message || 'Unknown frame load failure',
     },
@@ -39,7 +39,12 @@ export function createCommittedFrameLoadError(sessionID, commit, frameID) {
     interactionID: null,
     parentID: null,
     authorType: 'system',
-    authorID: 'internal:aeordb-frame-store',
+    authorID: 'internal:frame-store',
+    // The placeholder deliberately sorts last (MAX_SAFE_INTEGER) so a missing committed
+    // frame stays visible at the tail. Consumers MUST NOT fold this into an order
+    // counter: the frame engine's sanitizeStoredOrder() ignores values at or above
+    // MAX_SAFE_INTEGER, so it can never poison the counter (a poisoned counter
+    // overflows on the next `++` to 2^53 and then sticks, collapsing later ordering).
     order: Number.MAX_SAFE_INTEGER,
     commitOrder: order,
     timestamp: commit?.timestamp || 0,
@@ -51,7 +56,7 @@ export function createCommittedFrameLoadError(sessionID, commit, frameID) {
     deleted: false,
     phantom: false,
     content: {
-      text: 'Committed frame could not be loaded from AeorDB. Original database evidence was not modified.',
+      text: 'Committed frame could not be loaded from the document store. Original database evidence was not modified.',
       commitID: commit?.id || null,
       commitOrder: order,
       frameID,

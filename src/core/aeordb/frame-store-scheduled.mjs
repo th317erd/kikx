@@ -1,11 +1,11 @@
 'use strict';
 
 import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
-import { AeorDBFrameStoreCommitBase } from './aeordb-frame-store-commit.mjs';
-import { normalizeLimit, normalizeOffset, shouldFallbackToScheduledFrameScan, isPendingScheduledFrame, uniqueStrings } from './aeordb-frame-store-normalizers.mjs';
-import { compareScheduledFrameOrder } from './aeordb-frame-store-ordering.mjs';
+import { FrameStoreCommitBase } from './frame-store-commit.mjs';
+import { normalizeLimit, normalizeOffset, shouldFallbackToScheduledFrameScan, isPendingScheduledFrame, uniqueStrings } from './frame-store-normalizers.mjs';
+import { compareScheduledFrameOrder } from './frame-store-ordering.mjs';
 
-export class AeorDBFrameStoreScheduledBase extends AeorDBFrameStoreCommitBase {
+export class FrameStoreScheduledBase extends FrameStoreCommitBase {
   async listScheduledFrames(options = {}) {
     let limit = normalizeLimit(options.limit, 500);
     let offset = normalizeOffset(options.offset);

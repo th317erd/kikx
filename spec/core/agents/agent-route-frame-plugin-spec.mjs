@@ -619,7 +619,7 @@ test('AgentRouteFramePlugin routes visible agent messages back to the coordinato
       path: [ 'agent_2' ],
     },
   }]);
-  await runtime.frameRouter.flush();
+  await runtime.flush();
 
   let calls = runtime.services.calls
     .filter((call) => call.method === 'run' && call.frameType === 'AgentMessage');
@@ -696,7 +696,7 @@ test('AgentRouteFramePlugin ignores hidden and streaming agent message placehold
       path: [ 'agent_1' ],
     },
   }]);
-  await runtime.frameRouter.flush();
+  await runtime.flush();
 
   assert.deepEqual(runtime.services.calls.filter((call) => call.method === 'run'), []);
 });
@@ -757,7 +757,7 @@ test('AgentRouteFramePlugin routes second-hop agent responses to the coordinator
       path: [ 'agent_1', 'agent_2' ],
     },
   }]);
-  await runtime.frameRouter.flush();
+  await runtime.flush();
 
   let calls = runtime.services.calls
     .filter((call) => call.method === 'run' && call.frameType === 'AgentMessage');
@@ -861,7 +861,7 @@ test('AgentRouteFramePlugin does not rebroadcast agent messages to agents that a
       path: [ 'agent_2', 'agent_1' ],
     },
   }]);
-  await runtime.frameRouter.flush();
+  await runtime.flush();
 
   let calls = runtime.services.calls
     .filter((call) => call.method === 'run' && call.frameType === 'AgentMessage');
@@ -939,7 +939,7 @@ test('AgentRouteFramePlugin does not route coordinated replays to agents already
       path: [ 'agent_2' ],
     },
   }]);
-  await runtime.frameRouter.flush();
+  await runtime.flush();
 
   let calls = runtime.services.calls
     .filter((call) => call.method === 'run' && call.frameType === 'UserMessage');
@@ -1132,7 +1132,7 @@ test('AgentRouteFramePlugin forwards coordinated frames to all mentioned session
     coordinated: true,
     hidden: false,
   }]);
-  await runtime.frameRouter.flush();
+  await runtime.flush();
 
   let calls = runtime.services.calls
     .filter((call) => call.method === 'run' && call.frameType === 'UserMessage');
@@ -1301,7 +1301,7 @@ test('AgentRouteFramePlugin rejects forwarded-frame requeue from non-coordinator
     coordinated: true,
     hidden: false,
   }]);
-  await runtime.frameRouter.flush();
+  await runtime.flush();
 
   let calls = runtime.services.calls.filter((call) => call.method === 'service-forward');
   assert.deepEqual(calls, [{
@@ -1365,7 +1365,7 @@ test('AgentRouteFramePlugin cleans up silent response placeholders', async () =>
     coordinated: true,
     hidden: false,
   }]);
-  await runtime.frameRouter.flush();
+  await runtime.flush();
 
   let calls = runtime.services.calls.filter((call) => call.method === 'null-response');
   assert.deepEqual(calls, [{
@@ -1519,7 +1519,7 @@ test('AgentRouteFramePlugin schedules respond-and-continue as a generic schedule
   await runtime.appendUserMessage('ses_1', { text: 'start and keep working' });
 
   await runtime.processScheduledFrames();
-  await runtime.frameRouter.flush();
+  await runtime.flush();
   await runtime.frameStore.flush();
 
   let frames = await runtime.listFrames('ses_1');
@@ -1625,7 +1625,7 @@ test('AgentRouteFramePlugin pauses an over-limit continuation chain with one not
     authorID: 'usr_1',
     changes: [ { frameID: 'deep_user_msg', operation: 'create' } ],
   }, entry.session, { services: runtime.services });
-  await runtime.frameRouter.flush();
+  await runtime.flush();
   await runtime.frameStore.flush();
 
   let rawFrames = entry.frameEngine.toArray();
@@ -2020,7 +2020,7 @@ test('AgentRouteFramePlugin routes an explicit targetAgentID wake to that agent,
     silent: false,
     changes: [ { frameID: 'wake_1', operation: 'create' } ],
   }, entry.session, { services: runtime.services });
-  await runtime.frameRouter.flush();
+  await runtime.flush();
 
   let userCalls = runtime.services.calls
     .filter((call) => call.method === 'run' && call.frameType === 'UserMessage');

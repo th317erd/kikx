@@ -28,6 +28,27 @@ const CREATE_DOCUMENTS_TABLE = [
   ')',
 ].join('\n');
 
+// PostgreSQL's jsonb rejects the \u0000 escape, and any body that isn't valid JSON makes
+// every `body::jsonb` query in the row's path range throw — which is how the scheduled-
+// frame queue load ends up failing. Make every non-raw write jsonb-safe: drop the
+// unrepresentable NUL escape, and if the text still isn't valid JSON, keep it raw.
+function toJsonbSafe(text, raw) {
+  if (raw || typeof text !== 'string')
+    return { text, raw };
+
+  let safe = text.includes('\\u0000') ? text.replaceAll('\\u0000', '') : text;
+  return { text: safe, raw: !isParseableJson(safe) };
+}
+
+function isParseableJson(text) {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
 // Range scan: `/` (0x2f) sorts before `0` (0x30), so every descendant of a
 // normalized prefix lives in `pathBounds(prefix)`. The explicit "C" collation
 // is required: the database default locale is not byte-ordered and would
@@ -294,10 +315,11 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
   }
 
   async _put(client, key, text, raw) {
+    let safe = toJsonbSafe(text, raw);
     await client.query(
       'INSERT INTO documents (path, body, raw, updated_at) VALUES ($1, $2, $3, $4) '
         + 'ON CONFLICT (path) DO UPDATE SET body = EXCLUDED.body, raw = EXCLUDED.raw, updated_at = EXCLUDED.updated_at',
-      [ key, text, raw, Date.now() ],
+      [ key, safe.text, safe.raw, Date.now() ],
     );
   }
 
@@ -307,9 +329,10 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
       throw notFound(key);
 
     let merged = applyMergePatch(JSON.parse(row.body), patch);
+    let safe = toJsonbSafe(JSON.stringify(merged ?? null), false);
     await client.query(
-      'UPDATE documents SET body = $1, raw = false, updated_at = $2 WHERE path = $3',
-      [ JSON.stringify(merged ?? null), Date.now(), key ],
+      'UPDATE documents SET body = $1, raw = $2, updated_at = $3 WHERE path = $4',
+      [ safe.text, safe.raw, Date.now(), key ],
     );
     return merged;
   }
