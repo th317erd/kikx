@@ -308,7 +308,11 @@ explicitly welcome ([D-10]).
   Also registers the `Question` frame component in `BUILT_IN_FRAME_COMPONENTS` alongside
   `kikx-question-frame.mjs` (deferred out of P1 — see §17.3).
 - **P4 — Activities view.** Stats derivation, tree drill-down, navigation-stack integration.
-- **P5 — hardening.** Caps/rate limits, error containment (S1), growth bounds (S2), monitoring, docs.
+- **P5 — hardening.** Re-scoped against the code as it actually stands (owner decision, 2026-10-18):
+  S1–S5 and the caps/S2 growth bounds already landed, so P5 is the four residual items rather than a
+  re-do of them — (a) startup repair of the derived question indexes, (b) bounded delivery retry with
+  backoff, (c) agent-specified default answers with a deadline, (d) a multi-process-safe index. Items
+  (a)–(c) are delivered; (d) is deferred because production is single-process for now.
 
 ## 10. Rollout / dogfooding
 
@@ -320,12 +324,22 @@ regressions.
 
 - **S1 error containment** — the new sidebar/inbox render path must not wedge the shell; guard the
   render/flush entry points and surface errors in-app.
-- **S2 growth bounds** — the questions index and the runtime-event queue must be capped/pruned;
-  `queueFrameRuntimeEvent`'s unbounded fallback array is a known open item.
+- **S2 growth bounds — LANDED.** The runtime-event queue is bounded at
+  `MAX_PENDING_FRAME_RUNTIME_EVENTS = 500` (`kikx-runtime-events.mjs:44`, evicted `:226`/`:260`), and
+  the per-call question cap is 25 (`questions-store.mjs`). The "unbounded fallback array" this line
+  used to call a known open item no longer exists; the note was stale, not the code.
 - **Reconnect resync** — this campaign adds value to catch-up/resync on reconnect (§6.6).
-- **Status:** S1–S5 landed as commits `b54cd80`, `079cce4`, `ec3bd2f` per `HANDOFF.md`, but are
-  **not independently reviewed and not shipped to prod** (prod runs an older pre-S1 image); S3/S4/S5
-  review pass open; shipping stability to prod awaits owner go-ahead.
+- **Status (updated 2026-10-18):** S1–S5 landed as `b54cd80`, `079cce4`, `ec3bd2f` and remain
+  **not independently reviewed**; shipping stability to prod awaits owner go-ahead. The ask-user
+  phases P1–P4 plus the P5 hardening items are committed on `main` and each carries a
+  mutation-proven regression spec, with the full gate and the real-browser suite green on the
+  committed tree.
+
+- **Open, carried forward:** (1) the index mutex is per-process only — AeorDB has no conditional
+  write, so two Kikx servers sharing one database can still race; production is single-process by
+  owner decision, so this is documented rather than fixed. (2) A default answer arriving after a real
+  answer is rejected by the store's terminal 409 guard, so the user cannot revise an already-answered
+  question; that is existing terminal semantics, unchanged.
 
 ## 12. Open decisions
 
