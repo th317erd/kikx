@@ -368,6 +368,13 @@ export class FrameRuntime extends EventEmitter {
     this._indexesReady = true;
   }
 
+  // A true "stored and dispatched" barrier: every queued commit has been written
+  // and every post-persist routing pass has settled.
+  async flush() {
+    await this.frameStore.flush();
+    await this.frameRouter?.flush?.();
+  }
+
   disconnect() {
     this.scheduledFrames.stop();
 

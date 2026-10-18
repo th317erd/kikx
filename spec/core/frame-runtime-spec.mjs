@@ -324,6 +324,10 @@ test('FrameRuntime recovers stale streaming agent responses and running tool cal
 
   assert.equal(result.recoveredAgentResponses, 1);
   assert.equal(result.recoveredToolCalls, 1);
+  assert.equal(result.recoveredTurns, 1);
+  let trigger = frames.find((frame) => frame.id === 'msg_1');
+  assert.equal(trigger.scheduledStatus, 'pending');
+  assert.ok(trigger.scheduledAt > 0);
   assert.equal(agentFrame.hidden, false);
   assert.equal(agentFrame.content.status, 'error');
   assert.equal(agentFrame.content.error.recovered, true);
