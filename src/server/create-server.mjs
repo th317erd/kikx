@@ -53,6 +53,7 @@ import {
   registerAgentRouting,
 } from '../core/agents/index.mjs';
 import { CompactionService } from '../core/compaction/index.mjs';
+import { QuestionAnswerService, QuestionsStore } from '../core/questions/index.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
@@ -348,6 +349,12 @@ export async function createServer(options = {}) {
     }));
   }
 
+  if (!context.has('questionsStore')) {
+    context.set('questionsStore', new QuestionsStore({
+      db: context.require('db'),
+    }));
+  }
+
   if (!context.has('agentCwdStore')) {
     context.set('agentCwdStore', new AgentCwdStore({
       db: context.require('db'),
@@ -367,6 +374,15 @@ export async function createServer(options = {}) {
       db: context.require('db'),
       frameRouter: context.require('frameRouter'),
       services: { context },
+    }));
+  }
+
+  if (!context.has('questionAnswerService')) {
+    context.set('questionAnswerService', new QuestionAnswerService({
+      questionsStore: context.require('questionsStore'),
+      frameRuntime: context.require('frameRuntime'),
+      agentManager: context.require('agentManager'),
+      logger: options.logger || console,
     }));
   }
 

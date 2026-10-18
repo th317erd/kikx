@@ -9,6 +9,7 @@ import { FrameEngine } from '../frames/frame-engine.mjs';
 import { ScheduledFrameQueue } from './scheduled-frame-queue.mjs';
 import { countMessageFrames } from '../../shared/frame-manager/frame-manager.mjs';
 import {
+  buildUserMessageContent,
   normalizeCoordinatorAgentID,
   normalizeCount,
   normalizeDesignationAgentID,
@@ -307,7 +308,7 @@ export class FrameRuntime extends EventEmitter {
     this.pinSession(sessionID);
     try {
       await this.cancelAutonomousWakes(sessionID);
-      let text = normalizeText(input.text);
+      let text = normalizeText(input.text ?? input.content?.text);
       let stamp = this.nextClockStamp();
       let now = stamp.at;
       let interactionID = input.interactionID || input.interactionId || this.idGenerator();
@@ -328,8 +329,22 @@ export class FrameRuntime extends EventEmitter {
         hidden: false,
         deleted: false,
         recipients: normalizeStringArray(input.recipients),
-        content: { text },
+        content: buildUserMessageContent(text, input.content),
       };
+
+      // An explicit target is what turns a plain message into a single-agent
+      // wake: resolveRouteTargets() short-circuits to a single-target bypass
+      // when the target is a participant. Without this the message routes by
+      // the usual rules and the asker may never be the one that runs.
+      let targetAgentID = normalizeOptionalString(input.targetAgentID || input.target_agent_id);
+      if (targetAgentID)
+        frame.targetAgentID = targetAgentID;
+
+      // Continuation metadata (question answers, steer markers). Kept off the
+      // frame entirely when absent so ordinary user messages are byte-identical
+      // to before.
+      if (input.continuation && typeof input.continuation === 'object')
+        frame.continuation = input.continuation;
 
       let frames = entry.frameEngine.merge([ frame ], {
         authorType: 'user',

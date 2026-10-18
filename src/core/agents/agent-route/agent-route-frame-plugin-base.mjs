@@ -69,6 +69,16 @@ export class AgentRouteFramePluginBase extends BaseFramePlugin {
     return await store.getTodoState(agent.id);
   }
 
+  // Open questions this agent is still waiting on, rendered into the brief so
+  // it does not re-ask something already pending.
+  async loadAgentQuestionsState({ agent, services = {} }) {
+    let store = resolveService(services, 'questionsStore');
+    if (!agent?.id || typeof store?.listForAgent !== 'function')
+      return null;
+
+    return await store.listForAgent(agent.id);
+  }
+
   async loadAgentCwdState({ agent, services = {}, session = null }) {
     let store = resolveService(services, 'agentCwdStore');
     if (!agent?.id || !session?.id || typeof store?.getCWD !== 'function')

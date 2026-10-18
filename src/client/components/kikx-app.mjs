@@ -36,6 +36,12 @@ import {
   scopeNoun,
 } from './kikx-shell-builders.mjs';
 import {
+  dismissQuestion,
+  markQuestionRead,
+  submitQuestionAnswer,
+  syncQuestionShell,
+} from './kikx-inbox-view.mjs';
+import {
   buildAccountEditor,
   buildAgentDeleteButton,
   buildAgentEditor,
@@ -72,6 +78,7 @@ import {
   loadTokenUsage,
   schedulePreviewRefresh,
 } from './kikx-data.mjs';
+import { fetchQuestions } from './kikx-runtime-events.mjs';
 import {
   connectRuntimeEvents,
   disconnectRuntimeEvents,
@@ -280,6 +287,7 @@ export class KikxApp extends HTMLElement {
     this._loadOlderFrames = async (sessionID = this._state.selectedSessionID) => loadOlderFrames(this, sessionID);
     this._loadNewerFrames = async (sessionID = this._state.selectedSessionID) => loadNewerFrames(this, sessionID);
     this._loadTokenUsage = async () => loadTokenUsage(this);
+    this._loadQuestions = async (options = {}) => fetchQuestions(this, options);
     this._onMagicLinkSubmit = async (event) => onMagicLinkSubmit(this, event);
     this._verifyMagicLink = async (code) => verifyMagicLink(this, code);
     this._applyAuth = (auth) => applyAuth(this, auth);
@@ -360,6 +368,12 @@ export class KikxApp extends HTMLElement {
     this._clearComposerDraft = () => clearComposerDraft(this);
     this._restoreComposerDraftOnFailure = (submittedDraft) => restoreComposerDraftOnFailure(this, submittedDraft);
     this._syncSessionShell = () => syncSessionShell(this);
+    // Ask-user Inbox (plan §6). Delegates only — the behaviour lives in
+    // kikx-inbox-view.mjs so this (oversized) file does not grow further.
+    this._syncQuestionShell = () => syncQuestionShell(this);
+    this._submitQuestionAnswer = (questionID, answerText, options) => submitQuestionAnswer(this, questionID, answerText, options);
+    this._markQuestionRead = (questionID) => markQuestionRead(this, questionID);
+    this._dismissQuestion = (questionID, reason) => dismissQuestion(this, questionID, reason);
     this._syncFrameThread = (sessionID = this._state.selectedSessionID, options = {}) => syncFrameThread(this, sessionID, options);
     this._cleanupReactiveBindings = (root = this) => cleanupReactiveBindings(this, root);
     this._connectFrameListObserver = () => connectFrameListObserver(this);
@@ -457,6 +471,8 @@ export class KikxApp extends HTMLElement {
         this._loadAgents(),
         this._loadSessions(),
         this._loadTokenUsage(),
+        // Plan §6.6: the Inbox must fetch on load, not rely on the event stream.
+        this._loadQuestions(),
       ];
       Promise.allSettled(startupLoads).then(() => {
         this._startupSettled = true;

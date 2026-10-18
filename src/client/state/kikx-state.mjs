@@ -27,6 +27,10 @@ import {
 import { visibleSessions } from './session-visibility.mjs';
 import {
   createNavigationStack,
+  isInboxView,
+  isActivitiesView,
+  pushActivities,
+  pushInbox,
   currentEntry,
   currentSessionID,
   gridParentSessionID,
@@ -37,6 +41,7 @@ import {
   setCollapsed,
   stackDepth,
 } from './navigation-stack.mjs';
+import { createQuestionsState } from './questions-state.mjs';
 
 export const AUTH_STORAGE_KEY = 'kikx.auth.session';
 
@@ -110,6 +115,10 @@ export const kikxState = new ReactiveState({
   tokenUsage: {},
   totalTokensUsed: 0,
   navigationStack: createNavigationStack(),
+  // Ask-user Inbox state (plan §6). Kept as a nested slice so the inbox can be
+  // re-fetched wholesale without touching session/frame state; the model treats
+  // it as replace-only (see state/questions-state.mjs).
+  questionsState: createQuestionsState(),
   sessionPreviewsByID: {},
   previewsLoading: false,
   previewStatus: '',
@@ -246,6 +255,34 @@ export function navigateBack(state = kikxState) {
 
 export function setCollapsedView(collapsed, state = kikxState) {
   state.navigationStack = setCollapsed(getNavigationStack(state), collapsed === true);
+}
+
+// --- Inbox navigation (plan §6) -----------------------------------------
+export function navigateInbox(state = kikxState) {
+  state.navigationStack = pushInbox(getNavigationStack(state));
+}
+
+export function isInboxOpen(state = kikxState) {
+  return isInboxView(getNavigationStack(state));
+}
+
+export function navigateActivities(state = kikxState) {
+  state.navigationStack = pushActivities(getNavigationStack(state));
+}
+
+export function isActivitiesOpen(state = kikxState) {
+  return isActivitiesView(getNavigationStack(state));
+}
+
+export function getQuestionsState(state = kikxState) {
+  return state.questionsState || createQuestionsState();
+}
+
+export function setQuestions(questions, state = kikxState) {
+  state.questionsState = {
+    ...getQuestionsState(state),
+    questions: Array.isArray(questions) ? [ ...questions ] : [],
+  };
 }
 
 export function setPreviewsLoading(loading, state = kikxState) {

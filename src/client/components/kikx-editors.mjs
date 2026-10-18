@@ -330,4 +330,9 @@ export function applyAuth(app, auth) {
   app._loadAgents();
   app._loadSessions();
   app._loadTokenUsage();
+  // Plan §6.6: the Inbox must fetch on load. This is a SECOND, hand-maintained
+  // copy of the startup load list (see kikx-app.mjs startupLoads) and it had
+  // already drifted: a magic-link sign-in never fetched questions, so a fresh
+  // login showed a permanently empty Inbox. Keep the two lists in step.
+  app._loadQuestions?.();
 }

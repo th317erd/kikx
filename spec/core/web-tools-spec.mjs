@@ -773,10 +773,17 @@ test('ExecTool returns running process instructions and stores completion output
   assert.match(result.message, /woken with the result when it completes/);
   assert.equal(result.tools.status.tool, 'exec-status');
 
-  await waitFor(async () => processManager.status({
-    processID: result.processID,
-    _agentID: 'agent_1',
-  }).status === 'completed');
+  // The status flips to `completed` before the completion artefact (stored
+  // output + completionToolOutputID) is written, so waiting on the status alone
+  // races the store. Under full-suite load the gap widens and this asserts on
+  // null. Wait for the artefact this test actually reads.
+  await waitFor(async () => {
+    let current = processManager.status({
+      processID: result.processID,
+      _agentID: 'agent_1',
+    });
+    return current.status === 'completed' && Boolean(current.completionToolOutputID);
+  });
 
   let status = processManager.status({
     processID: result.processID,
@@ -824,10 +831,15 @@ test('ExecTool automatically schedules an agent wake when a long async process c
 
   assert.equal(started.status, 'running');
 
-  await waitFor(async () => processManager.status({
-    processID: started.processID,
-    _agentID: 'agent_1',
-  }).status === 'completed');
+  // The wake frame is scheduled during completion finalisation, after the status
+  // flip; asserting the count straight after the flip is a race under load.
+  await waitFor(async () => {
+    let current = processManager.status({
+      processID: started.processID,
+      _agentID: 'agent_1',
+    });
+    return current.status === 'completed' && scheduledFrames.length > 0;
+  });
 
   assert.equal(scheduledFrames.length, 1);
   assert.equal(scheduledFrames[0].hidden, true);
@@ -870,10 +882,16 @@ test('ExecTool wake prompt gives range and grep instructions for large completio
     _frameID: 'frm_1',
   });
 
-  await waitFor(async () => processManager.status({
-    processID: started.processID,
-    _agentID: 'agent_1',
-  }).status === 'completed');
+  // Same ordering hazard: the wake frame is scheduled as part of completion
+  // finalisation, after the status flip. Waiting on the status alone lets
+  // scheduledFrames still be empty when it is read below.
+  await waitFor(async () => {
+    let current = processManager.status({
+      processID: started.processID,
+      _agentID: 'agent_1',
+    });
+    return current.status === 'completed' && scheduledFrames.length > 0;
+  });
 
   assert.match(scheduledFrames[0].content.text, /finished, but the completion response is large/);
   assert.match(scheduledFrames[0].content.text, /output-read/);
@@ -952,10 +970,15 @@ test('OutputReadTool reads persisted exec completion output by tool output ID', 
     _agentID: 'agent_1',
   });
 
-  await waitFor(async () => processManager.status({
-    processID: started.processID,
-    _agentID: 'agent_1',
-  }).status === 'completed');
+  // Same ordering hazard as above: completionToolOutputID is written with the
+  // stored output, after the status flip. Wait for the id this test passes on.
+  await waitFor(async () => {
+    let current = processManager.status({
+      processID: started.processID,
+      _agentID: 'agent_1',
+    });
+    return current.status === 'completed' && Boolean(current.completionToolOutputID);
+  });
 
   let outputTool = new OutputReadTool({ services: { toolOutputStore: processManager.toolOutputStore } });
   let response = await outputTool.execute({

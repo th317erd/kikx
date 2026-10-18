@@ -202,6 +202,7 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
       let tokenUsage = resolveService(services, 'tokenUsage');
       let tokenUsageSnapshot = typeof tokenUsage?.snapshot === 'function' ? tokenUsage.snapshot() : {};
       let todoState = await this.loadAgentTodoState({ agent, services });
+      let questionsState = await this.loadAgentQuestionsState({ agent, services });
       let cwdState = await this.loadAgentCwdState({ agent, services, session: this.context.session });
       let providerServices = this.providerServices({ services, agent, frame });
       let provider = new ProviderClass({
@@ -222,6 +223,7 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
         contextMemory,
         tokenUsage: tokenUsageSnapshot,
         todoState,
+        questionsState,
         cwdState,
         totalTokensUsed: typeof tokenUsage?.totalTokensUsed === 'function'
           ? tokenUsage.totalTokensUsed()

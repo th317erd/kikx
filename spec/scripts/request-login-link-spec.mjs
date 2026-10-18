@@ -8,12 +8,34 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+// Live dev-log paths must never reach the script under test.
+// `scripts/request-login-link.mjs` reads `KIKX_AUTH_MAILER_LOG_PATH` first, and
+// both the ambient shell and this repo's `.env.dev` supply a path pointing at a
+// running dev server. An unpinned run therefore reads magic links that a real
+// server served during the test window, which made this spec intermittently
+// assert on live data. Pin it to a path that cannot exist: `fileSize` and
+// `readFileSlice` both treat ENOENT as empty, so the target is inert.
+// `AEORDB_LOG_PATH` stays caller-controlled because the env-file spec depends on
+// sourcing it from `.env` rather than from the process environment.
+let runCounter = 0;
+
+function isolatedMailerLogPath() {
+  runCounter += 1;
+  return path.join(
+    os.tmpdir(),
+    'kikx-login-link-absent',
+    `${process.pid}-${runCounter}`,
+    'kikx-auth.log',
+  );
+}
+
 function runScript(args = [], options = {}) {
   return new Promise((resolve) => {
     let child = spawn(process.execPath, [ 'scripts/request-login-link.mjs', ...args ], {
       cwd: process.cwd(),
       env: {
         ...process.env,
+        KIKX_AUTH_MAILER_LOG_PATH: isolatedMailerLogPath(),
         ...options.env,
       },
     });

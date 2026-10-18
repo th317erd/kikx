@@ -1,6 +1,7 @@
 'use strict';
 
 import { AgentCreateTool, AgentUpdateTool } from './agent-tools.mjs';
+import { AskUserTool } from './ask-user-tool.mjs';
 import { ExecTool } from './exec-tool.mjs';
 import { FeedbackReportTool } from './feedback-tool.mjs';
 import {
@@ -90,6 +91,7 @@ export const BUILT_IN_TOOLS = [
   [ 'team-delete', TeamDeleteTool ],
   [ 'team-add-member', TeamAddMemberTool ],
   [ 'team-remove-member', TeamRemoveMemberTool ],
+  [ 'ask-user', AskUserTool ],
   [ 'todo-get', TodoGetTool ],
   [ 'todo-add', TodoAddTool ],
   [ 'todo-update', TodoUpdateTool ],
@@ -115,6 +117,15 @@ const BUILT_IN_FRAME_COMPONENTS = [
     tagName: 'kikx-tool-result-frame',
     moduleURL: '/client/components/tool-renderers/kikx-tool-result-frame.mjs',
     displayName: 'Tool result',
+  } ],
+  // Ask-user questions render inline in the thread as well as in the Inbox
+  // (plan §6.5). Registered here in P3, together with the module itself —
+  // registering it in P1 would have pointed at a file that did not exist yet and
+  // broken the whole client load (plan §17.3).
+  [ 'Question', {
+    tagName: 'kikx-question-frame',
+    moduleURL: '/client/components/kikx-question-frame.mjs',
+    displayName: 'Question',
   } ],
 ];
 

@@ -2,6 +2,7 @@
 
 import { forgetDeletedSession, isCollapsed, recordDeletedSession, setTokenUsage, upsertFrames, upsertSession } from '../state/kikx-state.mjs';
 import { applyThinkingFrame } from '../state/thinking-state.mjs';
+import { applyQuestionEvent, applyQuestionsFetch } from '../state/questions-state.mjs';
 import { isDeletedSession } from '../state/session-state-utils.mjs';
 import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame, parseRuntimeEventResult } from './kikx-app-helpers.mjs';
@@ -107,6 +108,15 @@ function dispatchRuntimeEvent(app, event) {
 
   if ((data.type === 'frame.added' || data.type === 'frame.updated' || data.type === 'frame.phantom') && data.sessionID && data.frame?.id) {
     queueFrameRuntimeEvent(app, data);
+    return;
+  }
+
+  // Ask-user questions (plan §6.7). These arrive live when the event stream was
+  // already connected; the Inbox still fetches on connect because the server
+  // keeps no replay buffer (plan §6.6). Routing them through the questions model
+  // keeps the badge and the list consistent with one another.
+  if (data.type === 'question.asked' || data.type === 'question.answered' || data.type === 'question.updated') {
+    applyRuntimeQuestionEvent(app, data);
     return;
   }
 
@@ -376,4 +386,55 @@ function processFrameRuntimeEvents(app) {
       app._schedulePreviewRefresh(affectedSessionIDs);
     }, { sessionCount: affectedSessionIDs.length });
   }
+}
+
+// --- Ask-user questions ---------------------------------------------------
+
+// Applied to the client model, then rendered. `question.answered`/`updated` for
+// a question this tab never fetched are harmless: the model upserts by id.
+function applyRuntimeQuestionEvent(app, data) {
+  let state = app._state;
+  if (!state?.questionsState)
+    return;
+
+  applyQuestionEvent(state.questionsState, { type: data.type, payload: data });
+
+  if (!app._syncQuestionShell())
+    app._requestRender();
+}
+
+/**
+ * Fetch the open set and reconcile (plan §6.6).
+ *
+ * Required on load/connect: `RUNTIME_EVENT_TYPES` has no replay buffer, so any
+ * question asked while the tab was disconnected would otherwise be invisible
+ * until the next page load. The default page is authoritative only when the
+ * response is not truncated; otherwise a paginated fetch must not drop rows it
+ * did not see, or questions would vanish once more than one page is open.
+ */
+export async function fetchQuestions(app, options = {}) {
+  let state = app._state;
+  if (!state?.questionsState)
+    return;
+
+  if (state.questionsState.loading)
+    return;
+
+  state.questionsState.loading = true;
+
+  try {
+    let limit = options.limit || 50;
+    let result = await app._getJSON(`/api/v1/questions?limit=${encodeURIComponent(limit)}`);
+    let payload = result?.data || result || {};
+    let questions = Array.isArray(payload.questions) ? payload.questions : [];
+    let complete = questions.length < limit;
+
+    applyQuestionsFetch(state.questionsState, payload, { complete });
+  } catch (error) {
+    state.questionsState.loading = false;
+    state.questionsState.error = error?.message || String(error);
+  }
+
+  if (!app._syncQuestionShell())
+    app._requestRender();
 }
