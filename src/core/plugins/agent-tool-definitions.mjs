@@ -2,12 +2,16 @@
 
 import { MAX_CHARACTER_COMPRESSED_LENGTH } from '../agents/character-limits.mjs';
 
+// Providers build model-facing tool schemas from `description || help`; when a
+// description exists, `help` is NOT sent. Keep mandatory communication rules in
+// the description (and still mirror them in help for the `help` tool).
 export const AGENT_TOOL_DEFINITIONS = [
   {
     name: 'end-turn',
-    description: 'End this turn — with a report, or silently. Use it when the request is satisfied or when you are only waiting.',
+    description: 'End this turn. After doing work, include a substantive report of what you did, what changed, the evidence/proof, and what remains. Omit text only when ending silently with no new work to report.',
     help: [
-      'Use end-turn when the request is satisfied — include text for a visible report — or when you are only waiting on a process, the user, or another agent (omit text to end silently; the completion or reply will wake you).',
+      'Use end-turn with a substantive report when the request is satisfied, or when you are pausing/waiting after work: outcome, what changed, evidence/proof, failures/risks, and remaining/next. Report what you did and what you are waiting on; a one-line status is not a report.',
+      'Omit text only when you did no visible work and have nothing new to report; the completion or reply will wake you.',
       'If you have actionable work you can do right now, use continue-turn instead and name the next step.',
     ].join(' '),
     parameters: {
@@ -15,7 +19,7 @@ export const AGENT_TOOL_DEFINITIONS = [
       properties: {
         text: {
           type: 'string',
-          description: 'Optional visible report for the user. Omit to end the turn silently.',
+          description: 'Substantive visible report: outcome, changes, evidence/proof, failures/risks, remaining/next. Required after doing work; omit only to end silently with no new work to report.',
         },
         reason: {
           type: 'string',
@@ -27,10 +31,10 @@ export const AGENT_TOOL_DEFINITIONS = [
   },
   {
     name: 'continue-turn',
-    description: 'End this turn and schedule a continuation when you have concrete work to do next.',
+    description: 'End this turn with a visible progress report and schedule a continuation when you have concrete work to do next.',
     help: [
       'Use continue-turn only when you have actionable work you can do right now — not to wait or poll (a process completion or a new user message will wake you).',
-      'Include an optional visible text update, then Kikx schedules a hidden continuation back to you after delayMs.',
+      'Include a visible progress report, then Kikx schedules a hidden continuation back to you after delayMs.',
       'Name the next concrete step in nextAction; it becomes your continuation prompt.',
     ].join(' '),
     parameters: {
@@ -38,7 +42,7 @@ export const AGENT_TOOL_DEFINITIONS = [
       properties: {
         text: {
           type: 'string',
-          description: 'Optional visible progress text for this turn.',
+          description: 'Visible progress report for this turn.',
         },
         nextAction: {
           type: 'string',
@@ -54,19 +58,18 @@ export const AGENT_TOOL_DEFINITIONS = [
   },
   {
     name: 'progress',
-    description: 'Write a visible, non-final progress note before using another tool.',
+    description: 'REQUIRED at a balanced cadence: write a visible progress note before a new phase or related batch of task tool calls, before a long-running/destructive action, or after a meaningful result.',
     help: [
-      'Use progress before every individual read, write, fetch, search, exec, or other task tool call.',
-      'Keep the note short: one paragraph at most, describing the single next tool action you are about to take.',
-      'Do not group several future tool calls under one progress note.',
-      'This does not end your turn; continue with the tool call after the progress note succeeds.',
+      'Use progress at a balanced cadence: before a new phase or related batch of read, write, fetch, search, exec, or other task tool calls; before a long-running, destructive, or externally visible action; and after a meaningful result such as a test, failure, completed phase, or changed plan.',
+      'Keep it to one short paragraph: what you are about to do and why, or what happened and what changes next. Do not group unrelated future actions.',
+      'This does not end your turn; continue with the next tool call after the progress note succeeds.',
     ].join(' '),
     parameters: {
       type: 'object',
       properties: {
         text: {
           type: 'string',
-          description: 'Visible one-paragraph progress note for the single next tool action.',
+          description: 'Visible one-paragraph progress note: what you are about to do and why, or what happened and what changes next.',
         },
       },
       required: [ 'text' ],

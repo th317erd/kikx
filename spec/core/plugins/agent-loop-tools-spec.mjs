@@ -23,6 +23,16 @@ test('every built-in agent tool definition carries its own help text', () => {
   assert.ok(helpDefinition, 'help tool is defined');
 });
 
+test('model-facing tool descriptions carry the communication contract', () => {
+  let descriptions = new Map(AGENT_TOOL_DEFINITIONS.map((definition) => [ definition.name, definition.description ]));
+
+  assert.match(descriptions.get('progress'), /before a new phase or related batch/);
+  assert.match(descriptions.get('progress'), /after a meaningful result/);
+  assert.match(descriptions.get('end-turn'), /substantive report/);
+  assert.match(descriptions.get('end-turn'), /what you did, what changed, the evidence\/proof/);
+  assert.match(descriptions.get('continue-turn'), /visible progress report/);
+});
+
 test('the help tool lists all exposed tools with their help', () => {
   let definitions = createLoopToolDefinitions({ isCoordinator: true });
   let names = definitions.map((definition) => definition.name);

@@ -65,8 +65,10 @@ export const STANDARD_TOOL_NOTES_LINES = [
   '- continue-turn reports progress now and wakes you later for the next concrete',
   '  step. Use it only when you have actionable work to do right now — never to wait',
   '  or poll; a process completion or a new user message will wake you.',
-  '- progress is a short visible pre-tool note (≤1 paragraph) for the single next',
-  '  tool action; it does not end the turn.',
+  '- progress is a visible note: before a new phase or related batch of task tool',
+  '  calls, say what you are about to do and why; before long-running/destructive',
+  '  actions, explain them first; after a meaningful result, say what happened and',
+  '  what changes next. It does not end the turn.',
   '- All tools accept `session_id` to target a session; intersession messaging is',
   '  possible — see tool `help`.',
   '- Delegation: agent-list, session-create(includeSelf), session-invite-agents,',
@@ -79,11 +81,34 @@ export const STANDARD_TOOL_NOTES_LINES = [
   '  database-fetch (exact line/char/byte/JSON-pointer ranges).',
 ];
 
+// The communication contract is repeated in Brief B (every turn) and in the
+// system prompt, because the detailed tool `help` strings are not sent to model
+// providers: providers build tool schemas from `description || help`. The owner
+// wants a balanced cadence — phase/batch progress, not a note per shell command.
+export const COMMUNICATION_CONTRACT_LINES = [
+  'Communication — MANDATORY when you are actively working a turn:',
+  '- Progress cadence: before a new phase or a related batch of task tool calls, send',
+  '  a short progress note saying what you are about to do, why, and what you expect',
+  '  to learn. Do not group unrelated future actions under one note.',
+  '- Before a long-running, destructive, or externally visible action, explain it first.',
+  '- After a meaningful result — a test, failure, completed phase, or changed plan —',
+  '  send a progress note saying what happened, what it means, and what changes next.',
+  '- After doing work, end the turn with a substantive report: outcome, what changed,',
+  '  evidence/proof (commands, tests, files, outputs), failures/risks, and remaining',
+  '  work or next step. A one-line "still running" or "will report later" is not a report.',
+  '- If you pause while waiting after work, report what you completed and exactly what',
+  '  you are waiting on. Ground every claim in tool frames; never claim work you did not do.',
+  '- If you are not the active responder in a multi-party session, stay silent; this',
+  '  contract does not override that silence.',
+];
+
 export const USER_MESSAGE_ACK_LINE = 'When the user provides a new message, please immediately respond to acknowledge the user\'s message, and then continue with your work.';
 
 export const STANDARD_BEHAVIOR_LINES = [
   'Behavior — MANDATORY:',
   `- ${USER_MESSAGE_ACK_LINE}`,
+  '- When you have done work, end-turn text is a report, not a status stub: outcome,',
+  '  changes, proof, failures/risks, and remaining/next.',
   '- After every tool result, choose the next action yourself. Do safe, read-only,',
   '  reversible, implied, or verifying steps without asking. Ask the user only for a',
   '  real decision, a new concern, a destructive/risky step, a blocker, or significant',

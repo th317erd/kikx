@@ -20,10 +20,15 @@ import {
   buildMessageBrief,
   buildStartBrief,
 } from './agent-script-template.mjs';
+import { COMMUNICATION_CONTRACT_LINES } from './agent-precepts.mjs';
 
 export { isCompactionFrame } from '../frames/frame-types/frame-type-helpers.mjs';
 
-const DEFAULT_SESSION_SYSTEM_PROMPT = 'You are an agent participating in a Kikx session. Use the cached session history as conversational memory. Respond only to the newest user message unless the user asks about prior context.';
+const DEFAULT_SESSION_SYSTEM_PROMPT = [
+  'You are an agent participating in a Kikx session. Use the cached session history as conversational memory. Respond only to the newest user message unless the user asks about prior context.',
+  '',
+  ...COMMUNICATION_CONTRACT_LINES,
+].join('\n');
 
 export const SESSION_SYSTEM_PROMPT = DEFAULT_SESSION_SYSTEM_PROMPT;
 

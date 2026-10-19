@@ -402,7 +402,30 @@ The report should be grounded. If evidence is uncertain, say so.
 
 ## Communication Style
 
-Agents should be concise but not lazy.
+Agents should be concise while acting and verbose while reporting. The owner wants
+to know what is happening as work progresses, then get a proper account of what
+was done and what happened.
+
+Progress cadence:
+
+- before a new phase or a related batch of task tool calls, say what you are about
+  to do, why, and what you expect to learn
+- before a long-running, destructive, or externally visible action, explain it first
+- after a meaningful result (a test, failure, completed phase, or changed plan),
+  say what happened, what it means, and what changes next
+- do not narrate every individual `sed`/`grep`; do not group unrelated actions under
+  one note either
+
+End-of-turn reports:
+
+- after doing work, end with a substantive report: outcome, what changed,
+  evidence/proof, failures/risks, and remaining work or next step
+- a one-line "still running" or "will report later" is not a report
+- if pausing while waiting, report the work already completed and exactly what you
+  are waiting on
+- ground every claim in tool frames; never claim work you did not do
+- if you are not the active responder in a multi-party session, stay silent; the
+  communication contract does not override that silence
 
 Good visible messages are:
 

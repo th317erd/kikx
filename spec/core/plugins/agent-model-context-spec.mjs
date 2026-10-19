@@ -119,6 +119,8 @@ test('Brief A carries the version banner, precepts, tools, and behavior', () => 
   assert.match(text, /continue-turn/);
   assert.match(text, /Delegation: agent-list/);
   assert.match(text, /Behavior — MANDATORY:/);
+  assert.match(text, /Communication — MANDATORY when you are actively working a turn:/);
+  assert.match(text, /end the turn with a substantive report: outcome, what changed/);
   assert.match(text, /When the user provides a new message, please immediately respond to acknowledge the user's message, and then continue with your work\./);
   // 2-party session (1 agent + 1 user): no coordinator preamble.
   assert.doesNotMatch(text, /COORDINATOR PREAMBLE/);
@@ -240,8 +242,16 @@ test('Brief B carries sender, message, and compact dynamic state', () => {
   assert.match(text, /parties: .*agent_1.* - Coordinator/);
   assert.match(text, /usr_1/);
   assert.match(text, /End every turn one of two ways:/);
-  assert.match(text, /- end-turn — with a report for the user — when the request is satisfied, or when you are only waiting \(on a process, the user, or another agent\)\./);
-  assert.match(text, /- continue-turn — with the next concrete step — only when you have actionable work you can do right now\./);
+  assert.match(text, /- end-turn — with a substantive report — when the request is satisfied, or when you are pausing\/waiting after work\./);
+  assert.match(text, /- continue-turn — with a visible progress update and the next concrete step — only when you have actionable work you can do right now\./);
+});
+
+test('the system prompt carries the communication contract', () => {
+  assert.match(SESSION_SYSTEM_PROMPT, /Communication — MANDATORY when you are actively working a turn:/);
+  assert.match(SESSION_SYSTEM_PROMPT, /Progress cadence:/);
+  assert.match(SESSION_SYSTEM_PROMPT, /substantive report/);
+  assert.match(SESSION_SYSTEM_PROMPT, /A one-line "still running" or "will report later" is not a report\./);
+  assert.match(SESSION_SYSTEM_PROMPT, /If you are not the active responder in a multi-party session, stay silent/);
 });
 
 test('buildModelMessages assembles system, Brief A (once), history (sans trigger), then Brief B', () => {
@@ -491,9 +501,12 @@ test('Brief B carries the dual-verb turn-ending phrase', () => {
 
   assert.match(brief, /When the user provides a new message, please immediately respond to acknowledge the user's message, and then continue with your work\./);
   assert.match(brief, /End every turn one of two ways:/);
-  assert.match(brief, /end-turn — with a report for the user — when the request is satisfied, or when you are only waiting \(on a process, the user, or another agent\)\./);
-  assert.match(brief, /continue-turn — with the next concrete step — only when you have actionable work you can do right now\./);
+  assert.match(brief, /end-turn — with a substantive report — when the request is satisfied, or when you are pausing\/waiting after work\./);
+  assert.match(brief, /continue-turn — with a visible progress update and the next concrete step — only when you have actionable work you can do right now\./);
   assert.match(brief, /Waiting is not working: never poll or loop to await a process, the user, or another agent — a completion or a reply will wake you\./);
+  assert.match(brief, /Communication — MANDATORY when you are actively working a turn:/);
+  assert.match(brief, /Before a long-running, destructive, or externally visible action, explain it first\./);
+  assert.match(brief, /A one-line "still running" or "will report later" is not a report\./);
 });
 
 test('Brief B shows an autonomous-run clue only on self-triggered turns', () => {

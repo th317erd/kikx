@@ -15,8 +15,10 @@ Do not maintain a separate hand-copied prompt as the authoritative version. The 
 
 The monolith per-turn prompt is gone. Agents now receive two tiers:
 
-- **Brief A — once per (re)start** (session start, new agent, after compaction, coordinator change): version banner, compressed character, AGIS precepts, the tool map, tool notes, behavior rules, and (coordinator-only, with 3+ parties) the coordinator preamble.
-- **Brief B — every turn and every tool round**: `Message from {sender} {timestamp}:`, the message, compact dynamic state (todo, cwd, coordinator flag, participants), an optional autonomous-run clue, and the turn-ending phrase.
+- **Brief A — once per (re)start** (session start, new agent, after compaction, coordinator change): version banner, compressed character, AGIS precepts, the communication contract, the tool map, tool notes, behavior rules, and (coordinator-only, with 3+ parties) the coordinator preamble.
+- **Brief B — every turn**: `Message from {sender} {timestamp}:`, the message, compact dynamic state (todo, cwd, coordinator flag, participants), an optional autonomous-run clue, the communication contract, and the turn-ending phrase.
+
+The same communication contract is also part of the stable system prompt so it survives long provider tool loops.
 
 `buildModelMessages` emits `[system] + [Brief A user turn when required] + [history…] + [Brief B user turn]`. The trigger message appears exactly once, inside Brief B. Brief A is protected from budget trimming.
 
@@ -30,12 +32,12 @@ The built briefs must never carry stop-inducing or FOMO language; the explicit d
 
 Every turn ends one of two ways, and the agent is always asked to pick. This is the whole per-turn contract (the queue-as-definition-of-done rule):
 
-- **`end-turn`** — end the turn. Pass `text` for a visible report to the user, or omit it to end silently. Use when the queue is empty.
-- **`continue-turn`** — end this turn and schedule your next step back to you. Optional `text` (visible progress), `nextAction` (the continuation prompt), and `delayMs`. Use when the queue is not empty.
+- **`end-turn`** — end the turn. After doing work, pass a substantive `text` report: outcome, changes, evidence/proof, failures/risks, remaining/next. Omit text only when ending silently with no new work to report.
+- **`continue-turn`** — end this turn with a visible progress report and schedule your next step back to you. Pass `text`, `nextAction` (the continuation prompt), and optional `delayMs`. Use when the queue is not empty.
 
 "Queue" means: open todos (with focus) + still-running async processes + the next action named on a `continue-turn`. The brief biases toward continuing: if the agent does not know the next step, it keeps working to plan it out rather than stopping. `continue-turn` is never refused.
 
-The other control tools are `progress` (a visible non-final pre-tool note), `stop` (stop the loop immediately, no visible output), `set-character` (persist persona), `route` (coordinator hand-off, no visible output), and `help`.
+The other control tools are `progress` (a visible non-final note before a new phase/related batch, before a long-running/destructive action, or after a meaningful result), `stop` (stop the loop immediately, no visible output), `set-character` (persist persona), `route` (coordinator hand-off, no visible output), and `help`.
 
 ## No completion review
 
