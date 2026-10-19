@@ -103,7 +103,7 @@ function toolFrameSummary(frame, status) {
   let command = inputField(input, 'command');
 
   return {
-    description: toolDescription(toolName, input),
+    description: toolDescription(toolName, input, status),
     icon: toolIcon(toolName),
     status,
     code: toolName === 'exec' ? command : '',
@@ -132,7 +132,7 @@ function inputField(input, field) {
   }
 }
 
-function toolDescription(toolName, input) {
+function toolDescription(toolName, input, status = 'running') {
   let path = inputField(input, 'path');
   let command = inputField(input, 'command');
   let query = inputField(input, 'query');
@@ -148,8 +148,15 @@ function toolDescription(toolName, input) {
       return path ? `Read file ${path} <-` : 'Read file <-';
     case 'write-file':
       return path ? `Write file ${path} ->` : 'Write file ->';
-    case 'exec':
-      return command ? `Running ${command}` : 'Running command';
+    case 'exec': {
+      if (!command)
+        return status === 'success' ? 'Command completed' : status === 'error' ? 'Command failed' : 'Running command';
+      if (status === 'success')
+        return `Command completed: ${command}`;
+      if (status === 'error')
+        return `Command failed: ${command}`;
+      return `Running ${command}`;
+    }
     case 'web-search':
       return query ? `Search for ${query}` : 'Search the web';
     case 'web-fetch':

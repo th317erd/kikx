@@ -48,6 +48,17 @@ test('exec keeps the command for inline code and a gear icon', () => {
   assert.equal(summary.status, 'running');
 });
 
+test('a completed exec result says completed instead of Running', () => {
+  let summary = compactFrameSummary({
+    id: 'exec-result',
+    type: 'ShellToolFrame',
+    content: { toolName: 'exec', phase: 'result', status: 'success', input: { command: 'ls /tmp' } },
+  });
+
+  assert.equal(summary.description, 'Command completed: ls /tmp');
+  assert.equal(summary.code, 'ls /tmp');
+});
+
 test('a result frame without an explicit status is green', () => {
   let frame = {
     id: 'tool-2',
