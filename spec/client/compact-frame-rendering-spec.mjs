@@ -138,7 +138,7 @@ test('a re-rendered tool frame keeps its disclosure and recolors red on failure'
   assert.equal(item.dataset.frameStatus, 'error');
 });
 
-test('exec renders the command in inline code and switches from neutral to green', () => {
+test('exec uses a neutral compact line and switches from neutral to green', () => {
   let item = frameItem();
   let state = toolState('exec', 'kikx-shell-tool-use');
   let running = {
@@ -155,8 +155,9 @@ test('exec renders the command in inline code and switches from neutral to green
   item.updateFrame(running, state);
 
   assert.ok(item.classList.contains('kikx-frame--status-running'));
-  assert.equal(summaryDescription(item), 'Running ls /tmp');
-  assert.equal(item.querySelector('.kikx-frame__compact-description code').textContent, 'ls /tmp');
+  assert.equal(summaryDescription(item), 'Running command');
+  assert.equal(item.querySelector('.kikx-frame__compact-description code'), null);
+  assert.equal(item.querySelector('.kikx-frame__compact-command-code').textContent, 'ls /tmp');
   assert.equal(summaryIcon(item), 'terminal');
 
   item.updateFrame({
@@ -167,7 +168,23 @@ test('exec renders the command in inline code and switches from neutral to green
 
   assert.ok(item.classList.contains('kikx-frame--status-success'));
   assert.equal(item.dataset.frameStatus, 'success');
-  assert.equal(item.querySelector('.kikx-frame__compact-description code').textContent, 'ls /tmp');
+  assert.equal(summaryDescription(item), 'Command completed');
+  assert.equal(item.querySelector('.kikx-frame__compact-command-code').textContent, 'ls /tmp');
+});
+
+test('the frame metadata never renders the frame type in the upper-right', () => {
+  let item = frameItem();
+  item.updateFrame({
+    id: 'exec-meta',
+    type: 'ShellToolFrame',
+    authorType: 'tool',
+    authorID: 'exec',
+    authorDisplayName: 'exec',
+    content: { toolName: 'exec', phase: 'result', status: 'success', input: { command: 'ls /tmp' } },
+  }, toolState('exec', 'kikx-shell-tool-use'));
+
+  assert.equal(item.querySelector('.kikx-frame__secondary'), null);
+  assert.doesNotMatch(item.querySelector('.kikx-frame__meta').textContent, /ShellToolFrame/);
 });
 
 test('communication frames keep the normal meta and content layout', () => {

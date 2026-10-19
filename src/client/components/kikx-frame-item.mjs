@@ -5,7 +5,6 @@ import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
 import {
   frameDisplayLabel,
-  frameSecondaryLabel,
   frameTimestamp,
 } from './frame-labels.mjs';
 import { resolveFrameComponentDescriptor } from './frame-component-registry.mjs';
@@ -17,7 +16,7 @@ import { countRebuild } from './render-stats.mjs';
 import './kikx-typing-indicator.mjs';
 import './kikx-sub-session-frame.mjs';
 
-const { div, p, span, strong, time } = elements;
+const { div, p, strong, time } = elements;
 
 // Browsers expose element.tagName in UPPERCASE and element.localName in
 // lowercase, while descriptors/specs use lowercase names. Normalize once so
@@ -337,10 +336,6 @@ export class KikxFrameItem extends HTMLElement {
     } else if (timeElement) {
       timeElement.remove();
     }
-
-    let secondary = this._metaElement.querySelector('.kikx-frame__secondary');
-    if (secondary)
-      setTextIfChanged(secondary, frameSecondaryLabel(frame));
   }
 
   _reconcileFrameContent(frame) {
@@ -455,7 +450,6 @@ export class KikxFrameItem extends HTMLElement {
             .title(timestamp.title)(timestamp.label)
           : null,
       ),
-      span.class('kikx-frame__secondary')(frameSecondaryLabel(frame)),
     ).build(document);
   }
 

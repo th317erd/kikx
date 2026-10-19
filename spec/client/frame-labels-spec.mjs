@@ -5,7 +5,6 @@ import test from 'node:test';
 
 import {
   frameDisplayLabel,
-  frameSecondaryLabel,
   frameTimestamp,
 } from '../../src/client/components/frame-labels.mjs';
 
@@ -24,7 +23,6 @@ test('frameDisplayLabel prefers embedded agent author display names', () => {
   };
 
   assert.equal(frameDisplayLabel(frame, state), 'Mr. Bennett');
-  assert.equal(frameSecondaryLabel(frame), 'AgentMessage');
 });
 
 test('frameDisplayLabel resolves agent names from global state when old frames lack display names', () => {
@@ -50,7 +48,6 @@ test('frameDisplayLabel falls back cleanly for agent phantoms and non-agent fram
   }), 'Codex');
   assert.equal(frameDisplayLabel({ type: 'AgentMessage', authorID: 'agent_1' }), 'agent_1');
   assert.equal(frameDisplayLabel({ type: 'CommandResult', authorID: 'internal:slash-command-router' }), 'CommandResult');
-  assert.equal(frameSecondaryLabel({ type: 'CommandResult', authorID: 'internal:slash-command-router' }), 'internal:slash-command-router');
 });
 
 test('frameTimestamp prefers createdAt and preserves microsecond precision in metadata', () => {

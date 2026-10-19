@@ -113,21 +113,33 @@ test('Stagehand collapses tool start and result frames into one plugin-rendered 
     assert.ok(sessionToolTexts.some((text) => /Listing sessions\.\.\./.test(text)));
     assert.ok(sessionToolTexts.some((text) => /Inviting agents to session: session_child/.test(text)));
     assert.match(todoText, /Todo/);
-    assert.match(todoText, /todo-add completed\./);
+    assert.match(todoText, /Added todo: Write Stagehand coverage/);
     assert.match(cwdText, /Shell cwd/);
     assert.match(cwdText, /cwd-set completed\./);
     assert.match(feedbackText, /Feedback/);
     assert.match(feedbackText, /Feedback saved: Tool loop error/);
     assert.match(resultText, /Result/);
     assert.match(resultText, /Output OUT1/);
-    assert.match(resultText, /Command completed: ls \/tmp/);
+    assert.match(resultText, /Command completed\./);
+    assert.equal(await page.locator('kikx-frame-item[data-frame-id="tool_call_1"] .kikx-frame__compact-command-code').first().textContent(), 'ls /tmp');
     assert.doesNotMatch(resultText, /alpha\.txt/);
     assert.equal(outputCalls.length, 0);
 
-    let compactShell = page.locator('kikx-frame-item[data-frame-id="tool_call_1"]');
-    assert.equal(await compactShell.locator('.kikx-frame__compact-description').textContent(), 'Command completed: ls /tmp');
-    assert.equal(await compactShell.locator('.kikx-frame__compact-icon svg').getAttribute('data-icon'), 'terminal');
-    assert.equal(await compactShell.evaluate((node) => node.classList.contains('kikx-frame--status-success')), true);
+    let compactShell = await page.evaluate(() => {
+      let item = document.querySelector('kikx-frame-item[data-frame-id="tool_call_1"]');
+      return {
+        description: item?.querySelector('.kikx-frame__compact-description')?.textContent || '',
+        command: item?.querySelector('.kikx-frame__compact-command-code')?.textContent || '',
+        secondaryCount: item?.querySelectorAll('.kikx-frame__secondary').length || 0,
+        icon: item?.querySelector('.kikx-frame__compact-icon svg')?.getAttribute('data-icon') || '',
+        success: item?.classList.contains('kikx-frame--status-success') === true,
+      };
+    });
+    assert.equal(compactShell.description, 'Command completed');
+    assert.equal(compactShell.command, 'ls /tmp');
+    assert.equal(compactShell.secondaryCount, 0);
+    assert.equal(compactShell.icon, 'terminal');
+    assert.equal(compactShell.success, true);
 
     // The tool card's output <details> lives inside the frame's compact
     // disclosure; open the outer line first so the inner control is visible.

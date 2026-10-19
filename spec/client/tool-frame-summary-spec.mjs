@@ -39,11 +39,12 @@ test('read-file failures are red and write-file uses the write arrow', () => {
   );
 });
 
-test('exec keeps the command for inline code and a gear icon', () => {
+test('exec uses the terminal icon without repeating the command inline', () => {
   let summary = compactFrameSummary(toolFrame('exec', { command: 'ls /tmp' }, { status: 'running' }));
 
-  assert.equal(summary.description, 'Running ls /tmp');
-  assert.equal(summary.code, 'ls /tmp');
+  assert.equal(summary.description, 'Running command');
+  assert.equal(summary.code, undefined);
+  assert.equal(summary.command, 'ls /tmp');
   assert.equal(summary.icon, 'terminal');
   assert.equal(summary.status, 'running');
 });
@@ -55,8 +56,9 @@ test('a completed exec result says completed instead of Running', () => {
     content: { toolName: 'exec', phase: 'result', status: 'success', input: { command: 'ls /tmp' } },
   });
 
-  assert.equal(summary.description, 'Command completed: ls /tmp');
-  assert.equal(summary.code, 'ls /tmp');
+  assert.equal(summary.description, 'Command completed');
+  assert.equal(summary.code, undefined);
+  assert.equal(summary.command, 'ls /tmp');
 });
 
 test('a result frame without an explicit status is green', () => {

@@ -203,3 +203,39 @@ test('the flush-scheduled flag is reset even when processing throws', () => {
 
   assert.equal(app._frameRuntimeFlushScheduled, false);
 });
+
+test('a tool result flush touches the call frame that the client projection merged into', () => {
+  let touches = [];
+  let app = createQueueApp({
+    _syncFrameThread: (_sessionID, options) => { touches.push(options.touchedFrameIDs); },
+    _flushFrameRuntimeEvents: () => {},
+  });
+  app._state.selectedSessionID = 's1';
+  let call = {
+    id: 'call-1',
+    type: 'ShellToolFrame',
+    sessionID: 's1',
+    order: 1,
+    content: { toolName: 'exec', phase: 'call', status: 'running', toolCallID: 'tool-1', input: { command: 'ls /tmp' } },
+  };
+  let result = {
+    id: 'result-1',
+    type: 'ShellToolFrame',
+    sessionID: 's1',
+    parentID: 'call-1',
+    order: 2,
+    content: { toolName: 'exec', phase: 'result', status: 'success', toolCallID: 'tool-1', toolCallFrameID: 'call-1', input: { command: 'ls /tmp' } },
+  };
+
+  queueFrameRuntimeEvent(app, frameEvent('s1', call));
+  flushFrameRuntimeEvents(app);
+  queueFrameRuntimeEvent(app, frameEvent('s1', result));
+  flushFrameRuntimeEvents(app);
+
+  assert.equal(touches.at(-1).has('call-1'), true, 'the merged call frame must be touched');
+  let frames = app._state.framesBySessionID.s1;
+  assert.equal(frames.length, 1);
+  assert.equal(frames[0].id, 'call-1');
+  assert.equal(frames[0].content.phase, 'result');
+  assert.equal(frames[0].content.status, 'success');
+});

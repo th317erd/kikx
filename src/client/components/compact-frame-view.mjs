@@ -8,7 +8,7 @@ import { elements } from '../lib/aeor-ui.mjs';
 import { setIcon } from '../lib/icons.mjs';
 import { compactFrameSummary } from './tool-frame-summary.mjs';
 
-const { code, details, div, span, summary } = elements;
+const { code, details, div, pre, span, summary } = elements;
 
 export function buildCompactFrameDisclosure(frame, bodyNodes, ownerDocument) {
   let view = buildCompactSummary(frame, ownerDocument);
@@ -24,6 +24,9 @@ export function buildCompactFrameDisclosure(frame, bodyNodes, ownerDocument) {
     iconName: view.iconName,
     descriptionText: view.descriptionText,
     codeText: view.codeText,
+    command: view.command,
+    commandCode: view.commandCode,
+    commandText: view.commandText,
   };
 }
 
@@ -40,6 +43,20 @@ export function updateCompactSummary(view, frame) {
     renderDescription(view.description, descriptionText, codeText, ownerDocument);
     view.descriptionText = descriptionText;
     view.codeText = codeText;
+  }
+
+  let commandText = typeof data.command === 'string' ? data.command : '';
+  if (view.commandText !== commandText) {
+    if (!view.commandCode && commandText) {
+      let ownerDocument = view.element.ownerDocument || document;
+      let command = buildCommandBlock(commandText, ownerDocument);
+      view.element.appendChild(command.pre);
+      view.command = command.pre;
+      view.commandCode = command.code;
+    } else if (view.commandCode) {
+      view.commandCode.textContent = commandText;
+    }
+    view.commandText = commandText;
   }
 
   let iconName = data.icon || 'diamond';
@@ -63,6 +80,16 @@ function buildCompactSummary(frame, ownerDocument) {
   element.appendChild(icon);
   element.appendChild(description);
 
+  let command = null;
+  let commandCode = null;
+  let commandText = typeof data.command === 'string' ? data.command : '';
+  if (commandText) {
+    let block = buildCommandBlock(commandText, ownerDocument);
+    element.appendChild(block.pre);
+    command = block.pre;
+    commandCode = block.code;
+  }
+
   return {
     element,
     description,
@@ -70,7 +97,18 @@ function buildCompactSummary(frame, ownerDocument) {
     iconName,
     descriptionText: data.description || '',
     codeText: data.code || '',
+    command,
+    commandCode,
+    commandText,
   };
+}
+
+function buildCommandBlock(commandText, ownerDocument) {
+  let codeNode = code.class('kikx-frame__compact-command-code language-bash').build(ownerDocument);
+  codeNode.textContent = commandText;
+  let preNode = pre.class('kikx-frame__compact-command').build(ownerDocument);
+  preNode.appendChild(codeNode);
+  return { pre: preNode, code: codeNode };
 }
 
 function renderDescription(element, description, codeText, ownerDocument) {

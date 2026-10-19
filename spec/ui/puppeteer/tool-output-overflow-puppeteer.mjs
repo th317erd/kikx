@@ -3,7 +3,7 @@
 // Regression guard for "stuff is escaping the message container": an expanded
 // shell result must stay inside its frame. The tool-output grid used to size its
 // implicit column from the longest `pre`/command line, so the output (and the
-// highlighted command in the exec meta line) painted far to the right of the
+// command block in the compact summary) painted far to the right of the
 // card. Long stdout still scrolls inside the `pre`; it must not widen the card.
 
 import assert from 'node:assert/strict';
@@ -57,12 +57,12 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
     let metrics = await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');
       let frame = item.getBoundingClientRect();
-      let meta = item.querySelector('.kikx-tool-output__meta');
-      let metaCode = meta?.querySelector('code');
+      let commandPre = item.querySelector('.kikx-frame__compact-command');
+      let commandCode = item.querySelector('.kikx-frame__compact-command-code');
       let preview = item.querySelector('.kikx-tool-card__preview');
-      let metaRange = document.createRange();
-      if (metaCode)
-        metaRange.selectNodeContents(metaCode);
+      let commandRange = document.createRange();
+      if (commandCode)
+        commandRange.selectNodeContents(commandCode);
 
       return {
         frame: {
@@ -70,9 +70,14 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
           clientWidth: item.clientWidth,
           scrollWidth: item.scrollWidth,
         },
-        meta: meta ? box(meta.getBoundingClientRect()) : null,
-        metaCode: metaCode ? box(metaCode.getBoundingClientRect()) : null,
-        metaText: metaCode ? box(metaRange.getBoundingClientRect()) : null,
+        commandPre: commandPre ? {
+          ...box(commandPre.getBoundingClientRect()),
+          clientWidth: commandPre.clientWidth,
+          scrollWidth: commandPre.scrollWidth,
+        } : null,
+        commandCode: commandCode ? box(commandCode.getBoundingClientRect()) : null,
+        commandText: commandCode ? box(commandRange.getBoundingClientRect()) : null,
+        commandTextContent: commandCode?.textContent || '',
         preview: preview ? {
           ...box(preview.getBoundingClientRect()),
           clientWidth: preview.clientWidth,
@@ -87,15 +92,17 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
       }
     });
 
-    assert.ok(metrics.meta, 'the exec meta line is rendered');
-    assert.ok(metrics.metaCode, 'the highlighted command is rendered');
+    assert.ok(metrics.commandPre, 'the full command block is rendered');
+    assert.equal(metrics.commandTextContent, COMMAND, 'the entire command is inside the code block');
     assert.ok(metrics.preview, 'the stdout block is rendered');
 
     let frameRight = metrics.frame.right;
-    assert.ok(metrics.meta.right <= frameRight + 1, `exec meta escapes the frame by ${Math.round(metrics.meta.right - frameRight)}px`);
-    assert.ok(metrics.metaCode.right <= frameRight + 1, `exec command box escapes the frame by ${Math.round(metrics.metaCode.right - frameRight)}px`);
-    assert.ok(metrics.metaText.right <= frameRight + 1, `exec command text escapes the frame by ${Math.round(metrics.metaText.right - frameRight)}px`);
+    assert.ok(metrics.commandPre.right <= frameRight + 1, `command block escapes the frame by ${Math.round(metrics.commandPre.right - frameRight)}px`);
+    assert.ok(metrics.commandCode.right <= frameRight + 1, `command code escapes the frame by ${Math.round(metrics.commandCode.right - frameRight)}px`);
+    assert.ok(metrics.commandText.right <= frameRight + 1, `command text escapes the frame by ${Math.round(metrics.commandText.right - frameRight)}px`);
     assert.ok(metrics.preview.right <= frameRight + 1, `stdout block escapes the frame by ${Math.round(metrics.preview.right - frameRight)}px`);
+    assert.ok(metrics.commandPre.clientWidth <= metrics.frame.clientWidth, 'command block is narrower than the frame');
+    assert.ok(metrics.commandPre.scrollWidth <= metrics.commandPre.clientWidth + 1, 'the wrapped command does not need horizontal scrolling');
     assert.ok(metrics.frame.scrollWidth <= metrics.frame.clientWidth + 1, 'the frame itself must not gain horizontal overflow');
     assert.ok(metrics.documentScrollWidth <= metrics.viewportWidth + 1, 'the page must not gain horizontal overflow');
 

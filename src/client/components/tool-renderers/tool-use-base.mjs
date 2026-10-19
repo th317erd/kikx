@@ -264,30 +264,24 @@ export class ShellToolUse extends ToolUse {
     return 'Shell';
   }
 
-  // Render the command inside the card summary as highlighted bash too.
   renderSummaryText() {
-    let prefix = this.isResultFrame
-      ? `Command ${this.status === 'error' ? 'failed' : 'completed'}: `
-      : 'Running command: ';
-    let element = document.createElement('span');
-    element.textContent = prefix;
-
-    if (this.input.command) {
-      let codeNode = document.createElement('code');
-      highlightBashInto(codeNode, String(this.input.command));
-      element.appendChild(codeNode);
-    }
-
-    return element;
+    return this.isResultFrame
+      ? (this.status === 'error' ? 'Command failed.' : 'Command completed.')
+      : 'Running command...';
   }
 
   callSummary() {
-    return this.input.command ? `Running command: ${this.input.command}` : 'Running command...';
+    return 'Running command...';
   }
 
   resultSummary() {
-    let outcome = this.status === 'error' ? 'failed' : 'completed';
-    return this.input.command ? `Command ${outcome}: ${this.input.command}` : `Command ${outcome}.`;
+    return this.status === 'error' ? 'Command failed.' : 'Command completed.';
+  }
+
+  renderArgumentsDetails() {
+    // The full command is already in the compact summary's bash block; the
+    // generic JSON arguments disclosure would repeat the same command.
+    return null;
   }
 
   renderOutput(output) {
@@ -315,11 +309,6 @@ export class ShellToolUse extends ToolUse {
       parts.push(node);
     };
 
-    if (result.command) {
-      let commandNode = document.createElement('code');
-      highlightBashInto(commandNode, String(result.command));
-      push(commandNode);
-    }
     if (result.cwd)
       push(plainSpan(`cwd: ${result.cwd}`));
     if (result.exitCode != null)

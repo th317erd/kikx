@@ -49,5 +49,16 @@ export function renderedFrameIDsFor(frame) {
     ids.add(`typing:${agentID}`);
   }
 
+  // The client projection merges a tool result into its call frame and keeps
+  // the call's id. Touch that id too, or the merged result stays out of the DOM
+  // until some later event happens to resync the whole thread (the visible
+  // symptom is a burst of stale command completions).
+  if (frame.content?.phase === 'result' || frame.type === 'ToolResult') {
+    for (let linkedID of [ frame.content?.toolCallFrameID, frame.parentID ]) {
+      if (typeof linkedID === 'string' && linkedID)
+        ids.add(linkedID);
+    }
+  }
+
   return ids;
 }

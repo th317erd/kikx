@@ -17,16 +17,6 @@ export function frameDisplayLabel(frame, state = {}) {
   return firstNonEmpty(frame.authorDisplayName, frame.type, 'Frame');
 }
 
-export function frameSecondaryLabel(frame) {
-  if (!frame)
-    return 'system';
-
-  if (isAgentAuthoredFrame(frame))
-    return firstNonEmpty(frame.type, frame.authorID, 'agent');
-
-  return firstNonEmpty(frame.authorID, frame.authorType, 'system');
-}
-
 export function frameTimestamp(frame, options = {}) {
   let source = normalizeTimestamp(firstTimestampValue(
     frame?.createdAt,

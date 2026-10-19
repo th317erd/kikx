@@ -106,7 +106,7 @@ function toolFrameSummary(frame, status) {
     description: toolDescription(toolName, input, status),
     icon: toolIcon(toolName),
     status,
-    code: toolName === 'exec' ? command : '',
+    ...(toolName === 'exec' && command ? { command } : {}),
   };
 }
 
@@ -148,15 +148,8 @@ function toolDescription(toolName, input, status = 'running') {
       return path ? `Read file ${path} <-` : 'Read file <-';
     case 'write-file':
       return path ? `Write file ${path} ->` : 'Write file ->';
-    case 'exec': {
-      if (!command)
-        return status === 'success' ? 'Command completed' : status === 'error' ? 'Command failed' : 'Running command';
-      if (status === 'success')
-        return `Command completed: ${command}`;
-      if (status === 'error')
-        return `Command failed: ${command}`;
-      return `Running ${command}`;
-    }
+    case 'exec':
+      return status === 'success' ? 'Command completed' : status === 'error' ? 'Command failed' : 'Running command';
     case 'web-search':
       return query ? `Search for ${query}` : 'Search the web';
     case 'web-fetch':
