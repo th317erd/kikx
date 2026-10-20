@@ -37,7 +37,7 @@
   background: #171c21;
   color: #dce3ea;
   font: inherit;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   font-weight: 600;
   text-align: left;
   cursor: pointer;
@@ -76,7 +76,7 @@
   border-radius: 999px;
   background: #3d6cff;
   color: #ffffff;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   font-weight: 700;
   line-height: 18px;
   text-align: center;
@@ -115,7 +115,7 @@
 .kikx-activities__header h2 {
   margin: 0;
   color: #dce3ea;
-  font-size: 14px;
+  font-size: calc(14px * 1.25);
   font-weight: 600;
 }
 
@@ -125,14 +125,14 @@
   border-radius: 999px;
   background: #22272d;
   color: #aeb8c2;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   font-weight: 700;
 }
 
 .kikx-inbox-header__error {
   margin-left: auto;
   color: #fca5a5;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 /* --- Inbox list --------------------------------------------------------- */
@@ -160,7 +160,7 @@
 .kikx-inbox__group-heading {
   margin: 0;
   color: #97a3ae;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -187,7 +187,7 @@
   flex-wrap: wrap;
   gap: 10px;
   color: #8b97a3;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-question-card__agent {
@@ -208,7 +208,7 @@
 .kikx-question-card__text {
   margin: 0;
   color: #f5f7fa;
-  font-size: 14px;
+  font-size: calc(14px * 1.25);
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -228,7 +228,7 @@
   border-radius: 999px;
   background: #14181d;
   color: #97a3ae;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
 }
 
 .kikx-question-card__answer {
@@ -238,7 +238,7 @@
 
 .kikx-question-card__answer-label {
   color: #aeb8c2;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   font-weight: 600;
 }
 
@@ -252,13 +252,13 @@
    warning rather than inheriting body text. */
 .kikx-question-card__hint {
   color: #d29922;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-question-card__closed {
   margin: 0;
   color: #6b7684;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   font-style: italic;
 }
 
@@ -279,7 +279,7 @@
   background: #10141a;
   color: #f5f7fa;
   font: inherit;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   line-height: 1.5;
 }
 
@@ -307,7 +307,7 @@
   background: #3d6cff;
   color: #ffffff;
   font: inherit;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   font-weight: 600;
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease;
@@ -386,7 +386,7 @@
    `.kikx-question-card__hint` warning colour. */
 .kikx-question-frame__hint {
   color: #d29922;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-question-frame__actions {
@@ -411,7 +411,7 @@
 
 .kikx-question-frame__answer-label {
   color: #7ea888;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -419,7 +419,7 @@
 
 .kikx-question-frame__answer-text {
   color: #e7f0e9;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -446,7 +446,7 @@
   border-radius: 9px;
   background: #171c21;
   color: #f5f7fa;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   line-height: 1.45;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
 
@@ -493,7 +493,7 @@
 .kikx-inbox-empty__title {
   margin: 0;
   color: #aeb8c2;
-  font-size: 14px;
+  font-size: calc(14px * 1.25);
   font-weight: 600;
 }
 
@@ -502,7 +502,7 @@
 .kikx-activities__empty-hint {
   margin: 0;
   color: #6b7684;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
 }
 
 /* --- Fallback Inbox card (kikx-inbox__*) -------------------------------- */
@@ -521,7 +521,7 @@
   align-items: center;
   gap: 10px;
   color: #8b97a3;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-inbox__card-agent {
@@ -541,7 +541,7 @@
 .kikx-inbox__card-text {
   margin: 0;
   color: #f5f7fa;
-  font-size: 14px;
+  font-size: calc(14px * 1.25);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -554,7 +554,7 @@
 
 .kikx-activities__scope {
   color: #6b7684;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-activities__summary,
@@ -590,13 +590,13 @@
 
 .kikx-activities__stat-value {
   color: #f5f7fa;
-  font-size: 15px;
+  font-size: calc(15px * 1.25);
   font-weight: 700;
 }
 
 .kikx-activities__stat-label {
   color: #6b7684;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -620,7 +620,7 @@
   margin: 0;
   overflow: hidden;
   color: #dce3ea;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -629,7 +629,7 @@
 .kikx-activities__card-age {
   flex: 0 0 auto;
   color: #6b7684;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
 }
 
 .kikx-activities__enterable {
@@ -651,7 +651,7 @@
 .kikx-activities__section-title {
   margin: 0;
   color: #97a3ae;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -671,14 +671,14 @@
   border-radius: 8px;
   background: #14181d;
   color: #dce3ea;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
 }
 
 .kikx-activities__hint {
   margin: 0;
   padding: 4px 18px 18px;
   color: #6b7684;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
 }
 
 /* --- Inline Question frame --------------------------------------------- */
@@ -702,7 +702,7 @@
   align-items: center;
   gap: 10px;
   color: #8b97a3;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-question-frame__agent {
@@ -724,7 +724,7 @@
   border: 1px solid #d29922;
   border-radius: 999px;
   color: #d29922;
-  font-size: 10px;
+  font-size: calc(10px * 1.25);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -733,7 +733,7 @@
 .kikx-question-frame__text {
   margin: 0;
   color: #f5f7fa;
-  font-size: 14px;
+  font-size: calc(14px * 1.25);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -742,7 +742,7 @@
 .kikx-question-frame__missing {
   margin: 0;
   color: #6b7684;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   font-style: italic;
 }
 

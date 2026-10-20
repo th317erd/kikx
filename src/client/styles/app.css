@@ -11,6 +11,12 @@
   flex: 0 0 auto;
 }
 
+html {
+  /* Global text scale: explicit px font sizes below are also wrapped in
+     calc(... * 1.25) so the whole UI grows together. */
+  font-size: 125%;
+}
+
 html,
 body {
   height: 100%;
@@ -71,13 +77,13 @@ kikx-app {
 }
 
 .kikx-brand__copy h1 {
-  font-size: 18px;
+  font-size: calc(18px * 1.25);
   line-height: 1.2;
 }
 
 .kikx-brand__copy p {
   color: #aab4bf;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
 }
 
 .kikx-topbar__spacer {
@@ -95,7 +101,7 @@ kikx-app {
   max-width: 220px;
   overflow: hidden;
   color: #cdd6df;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -110,7 +116,7 @@ kikx-app {
   border-top: 1px solid #2f3439;
   background: #15181b;
   color: #c4ccd4;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
 }
 
 .kikx-statusbar__dot {
@@ -169,13 +175,13 @@ kikx-app {
 }
 
 .kikx-auth-panel h2 {
-  font-size: 22px;
+  font-size: calc(22px * 1.25);
 }
 
 .kikx-auth-panel p,
 .kikx-auth-status {
   color: #aab4bf;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
 }
 
 .kikx-auth-status {
@@ -197,7 +203,7 @@ kikx-app {
 
 .kikx-auth-form label {
   color: #aeb8c2;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   font-weight: 600;
 }
 
@@ -225,7 +231,7 @@ kikx-app {
 }
 
 .kikx-main h2 {
-  font-size: 14px;
+  font-size: calc(14px * 1.25);
   line-height: 1.3;
   color: #dce3ea;
 }
@@ -297,7 +303,7 @@ kikx-app {
 
 .kikx-session-list span {
   color: #97a3ae;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 /* Thread and workspace are the same window frame so the header never shifts
@@ -350,7 +356,7 @@ kikx-app {
   width: 34px;
   padding: 0;
   place-items: center;
-  font-size: 22px;
+  font-size: calc(22px * 1.25);
   line-height: 1;
 }
 
@@ -477,7 +483,7 @@ kikx-app {
   justify-content: space-between;
   gap: 12px;
   color: #aeb8c2;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-frame__meta-main {
@@ -537,7 +543,7 @@ kikx-app {
 
 .kikx-markdown {
   display: grid;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   gap: 0.45rem;
 }
 
@@ -552,7 +558,7 @@ kikx-app {
 .kikx-markdown :is(h1, h2, h3, h4, h5, h6) {
   color: #f5f7fa;
   /* Two sizes only: primary body text and a slightly larger header size. */
-  font-size: 15px;
+  font-size: calc(15px * 1.25);
   font-weight: 700;
   line-height: 1.25;
 }
@@ -690,7 +696,7 @@ kikx-app {
   border-radius: 4px;
   color: #aeb8c2;
   cursor: pointer;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   line-height: 1.4;
   list-style: none;
 }
@@ -740,7 +746,7 @@ kikx-app {
   grid-area: icon;
   margin-right: 2px;
   color: #87929d;
-  font-size: 19px;
+  font-size: calc(19px * 1.25);
   line-height: 1;
 }
 
@@ -763,7 +769,7 @@ kikx-app {
   overflow: hidden;
   color: #ffd8a8;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -857,7 +863,7 @@ kikx-app {
   border-radius: 999px;
   background: #1f252b;
   color: #b9c4ce;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   line-height: 1;
   white-space: nowrap;
 }
@@ -919,7 +925,7 @@ kikx-app {
   gap: 3px;
   margin: 0;
   padding-left: 20px;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   line-height: 1.4;
 }
 
@@ -941,7 +947,7 @@ kikx-app {
 .kikx-compaction-card__retry-error {
   min-width: 0;
   color: #fca5a5;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   overflow-wrap: anywhere;
 }
 
@@ -961,7 +967,7 @@ kikx-app {
   width: fit-content;
   cursor: pointer;
   color: #aeb8c2;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-tool-card__details summary::marker {
@@ -971,7 +977,7 @@ kikx-app {
 .kikx-tool-card__summary {
   min-width: 0;
   color: #dce3ea;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -999,7 +1005,7 @@ kikx-app {
   border-radius: 6px;
   background: #171d23;
   color: #dce3ea;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -1088,7 +1094,7 @@ kikx-app {
   border: 1px solid #596570;
   border-radius: 3px;
   color: #dce3ea;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   line-height: 1;
 }
 
@@ -1128,7 +1134,7 @@ kikx-app {
 .kikx-todo-item__title {
   min-width: 0;
   color: #dce3ea;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -1142,7 +1148,7 @@ kikx-app {
 .kikx-todo-item__notes {
   margin: 0;
   color: #9caab6;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   line-height: 1.4;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1153,7 +1159,7 @@ kikx-app {
   border: 1px solid #8a6d1f;
   border-radius: 999px;
   color: #f2d488;
-  font-size: 10px;
+  font-size: calc(10px * 1.25);
   line-height: 1.4;
   text-transform: uppercase;
 }
@@ -1161,13 +1167,13 @@ kikx-app {
 .kikx-todo-empty {
   margin: 0;
   color: #9caab6;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-tool-card__message,
 .kikx-tool-card__retrieval {
   color: #c6d0da;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
 }
 
 .kikx-tool-card__message--error {
@@ -1190,7 +1196,7 @@ kikx-app {
 .kikx-tool-card__details code {
   color: #dce3ea;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   white-space: pre;
 }
 
@@ -1205,7 +1211,7 @@ kikx-app {
 .kikx-tool-output__meta {
   min-width: 0;
   color: #aeb8c2;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -1228,7 +1234,7 @@ kikx-app {
 
 .kikx-tool-output__section-label {
   color: #8c98a4;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -1266,7 +1272,7 @@ kikx-app {
   display: block;
   margin-top: 3px;
   color: #8c98a4;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   overflow-wrap: anywhere;
 }
 
@@ -1277,7 +1283,7 @@ kikx-typing-indicator {
   min-width: 0;
   max-width: 72em;
   color: #aab4bf;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
 }
 
 .kikx-typing-indicator__name {
@@ -1290,7 +1296,7 @@ kikx-typing-indicator {
   display: inline-flex;
   gap: 2px;
   flex: 0 0 auto;
-  font-size: 16px;
+  font-size: calc(16px * 1.25);
   font-weight: 700;
 }
 
@@ -1374,7 +1380,7 @@ kikx-typing-indicator {
 
 .kikx-agent-manager h3 {
   color: #dce3ea;
-  font-size: 14px;
+  font-size: calc(14px * 1.25);
 }
 
 .kikx-agent-form,
@@ -1420,7 +1426,7 @@ kikx-typing-indicator {
 .kikx-agent-list span,
 .kikx-muted {
   color: #97a3ae;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-agent-list__edit {
@@ -1445,7 +1451,7 @@ kikx-typing-indicator {
 .kikx-account-form label,
 .kikx-team-form label {
   color: #aeb8c2;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   font-weight: 600;
 }
 
@@ -1496,7 +1502,7 @@ kikx-typing-indicator {
 
 .kikx-team-member-option__type {
   color: #97a3ae;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   text-transform: uppercase;
 }
 
@@ -1508,7 +1514,7 @@ kikx-typing-indicator {
 
 .kikx-composer__label {
   color: #aeb8c2;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   font-weight: 600;
 }
 
@@ -1602,7 +1608,7 @@ kikx-typing-indicator {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: 15px;
+  font-size: calc(15px * 1.25);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1617,7 +1623,7 @@ kikx-typing-indicator {
 
 .kikx-workspace__status {
   color: #8b97a3;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-workspace__grid {
@@ -1635,7 +1641,7 @@ kikx-typing-indicator {
 .kikx-session-grid__empty,
 .kikx-session-grid__status {
   color: #8b97a3;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
 }
 
 .kikx-session-card {
@@ -1681,7 +1687,7 @@ kikx-typing-indicator {
   grid-row: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1690,7 +1696,7 @@ kikx-typing-indicator {
   grid-column: 2;
   grid-row: 1;
   color: #8b97a3;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   white-space: nowrap;
 }
 
@@ -1700,7 +1706,7 @@ kikx-typing-indicator {
   min-width: 0;
   overflow: hidden;
   color: #8b97a3;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1716,7 +1722,7 @@ kikx-typing-indicator {
 .kikx-session-card__status {
   margin: 0;
   color: #e07979;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
 }
 
 /* Bottom action toolbar: a distinct row of radial progress buttons separated
@@ -1816,7 +1822,7 @@ kikx-typing-indicator {
   background: #12161a;
   color: #e8edf2;
   font: inherit;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
 }
 
 .kikx-session-search__input::placeholder {
@@ -1842,7 +1848,7 @@ kikx-typing-indicator {
   border-radius: 999px;
   background: transparent;
   cursor: pointer;
-  font-size: 14px;
+  font-size: calc(14px * 1.25);
   line-height: 1;
   filter: grayscale(1);
   opacity: 0.7;
@@ -1872,7 +1878,7 @@ kikx-typing-indicator {
   background: transparent;
   color: #f5f7fa;
   font: inherit;
-  font-size: 14px;
+  font-size: calc(14px * 1.25);
   font-weight: 600;
   text-align: left;
   text-overflow: ellipsis;
@@ -1896,7 +1902,7 @@ kikx-typing-indicator {
   background: #12161a;
   color: #f5f7fa;
   font: inherit;
-  font-size: 14px;
+  font-size: calc(14px * 1.25);
 }
 
 /* A soft-deleted session card: reddish tint to signal it is recoverable. */
@@ -1922,7 +1928,7 @@ kikx-typing-indicator {
   gap: 6px;
   min-width: 0;
   overflow: hidden;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
 }
 
 .kikx-breadcrumb__crumb {
@@ -1957,7 +1963,7 @@ kikx-typing-indicator {
 
 .kikx-window__close {
   flex: 0 0 auto;
-  font-size: 20px;
+  font-size: calc(20px * 1.25);
   line-height: 1;
 }
 
@@ -1972,7 +1978,7 @@ kikx-typing-indicator {
 .kikx-sub-session-frame__missing {
   margin: 0;
   color: #8b97a3;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-window__view-toggle {
@@ -1998,7 +2004,7 @@ kikx-typing-indicator {
   background: transparent;
   color: #8b97a3;
   font: inherit;
-  font-size: 14px;
+  font-size: calc(14px * 1.25);
 }
 
 .kikx-session-card--add:hover,
@@ -2018,7 +2024,7 @@ kikx-typing-indicator {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: 15px;
+  font-size: calc(15px * 1.25);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2031,7 +2037,7 @@ button.kikx-window__title {
   background: transparent;
   color: #f5f7fa;
   font: inherit;
-  font-size: 15px;
+  font-size: calc(15px * 1.25);
   cursor: text;
 }
 
@@ -2050,13 +2056,13 @@ button.kikx-window__title:focus-visible {
   background: #12161a;
   color: #f5f7fa;
   font: inherit;
-  font-size: 15px;
+  font-size: calc(15px * 1.25);
 }
 
 .kikx-thread__empty-hint {
   margin: 0;
   color: #7f8a95;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   text-align: center;
 }
 
@@ -2079,7 +2085,7 @@ button.kikx-window__title:focus-visible {
   border-radius: 6px;
   background: transparent;
   color: #5c6672;
-  font-size: 15px;
+  font-size: calc(15px * 1.25);
   line-height: 1;
   cursor: pointer;
 }
@@ -2134,7 +2140,7 @@ button.kikx-window__title:focus-visible {
   background: transparent;
   color: #b9c2cc;
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   cursor: pointer;
 }
 
@@ -2169,7 +2175,7 @@ button.kikx-window__title:focus-visible {
   border-radius: 6px;
   background: transparent;
   color: #5c6672;
-  font-size: 15px;
+  font-size: calc(15px * 1.25);
   line-height: 1;
   cursor: pointer;
 }
@@ -2216,7 +2222,7 @@ button.kikx-window__title:focus-visible {
 .kikx-agent-form__error {
   margin: 0;
   color: #fca5a5;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kikx-default-config {
@@ -2226,7 +2232,7 @@ button.kikx-window__title:focus-visible {
 
 .kikx-default-config__label {
   color: #aeb8c2;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   font-weight: 600;
 }
 
@@ -2238,7 +2244,7 @@ button.kikx-window__title:focus-visible {
 .kikx-default-config__empty {
   margin: 0;
   color: #97a3ae;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kog-config {
@@ -2253,7 +2259,7 @@ button.kikx-window__title:focus-visible {
 
 .kog-config__label {
   color: #aeb8c2;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   font-weight: 600;
 }
 
@@ -2270,7 +2276,7 @@ button.kikx-window__title:focus-visible {
 .kog-config__status {
   min-height: 16px;
   color: #97a3ae;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
 }
 
 .kog-config__status--error {
@@ -2293,7 +2299,7 @@ button.kikx-window__title:focus-visible {
   border-radius: 8px;
   background: #1d1416;
   color: #fca5a5;
-  font-size: 13px;
+  font-size: calc(13px * 1.25);
   box-shadow: 0 10px 24px rgb(0 0 0 / 45%);
 }
 
@@ -2351,7 +2357,7 @@ button.kikx-window__title:focus-visible {
 .kikx-error-surface__item {
   padding: 3px 0;
   color: #fecaca;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   overflow-wrap: anywhere;
 }
 
@@ -2451,7 +2457,7 @@ kikx-thinking-panel {
   padding: 6px 10px;
   border-bottom: 1px solid #1c2229;
   color: #8b97a3;
-  font-size: 12px;
+  font-size: calc(12px * 1.25);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -2497,7 +2503,7 @@ kikx-thinking-panel {
   display: flex;
   flex-direction: column;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
+  font-size: calc(11px * 1.25);
   line-height: 1.35;
   color: #9fb0bf;
   white-space: pre-wrap;
