@@ -129,3 +129,43 @@ export function sessionCardMeta(session, heads = [], truncated = false) {
 
   return label;
 }
+
+// Session manifests use the runtime clock, which may be milliseconds or
+// microseconds depending on the writer. Normalize both so the card header never
+// shows a date thousands of years in the future.
+export function sessionCardLastActivity(session, options = {}) {
+  let source = firstSessionTimestamp(session?.updatedAt, session?.createdAt);
+  if (source == null)
+    return { label: 'Last Activity At: unknown', dateTime: null, title: '' };
+
+  let date = new Date(source);
+  if (Number.isNaN(date.getTime()))
+    return { label: 'Last Activity At: unknown', dateTime: null, title: '' };
+
+  let formatter = new Intl.DateTimeFormat(options.locale || undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    ...(options.timeZone ? { timeZone: options.timeZone } : {}),
+  });
+
+  return {
+    label: `Last Activity At: ${formatter.format(date)}`,
+    dateTime: date.toISOString(),
+    title: date.toISOString(),
+  };
+}
+
+function firstSessionTimestamp(...values) {
+  for (let value of values) {
+    let number = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(number) || number <= 0)
+      continue;
+
+    return number >= 100_000_000_000_000 ? Math.floor(number / 1000) : number;
+  }
+
+  return null;
+}

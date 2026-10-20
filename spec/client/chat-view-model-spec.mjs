@@ -16,6 +16,7 @@ import {
   miniScale,
   previewsBySessionID,
   sessionCardLabel,
+  sessionCardLastActivity,
   sessionCardMeta,
 } from '../../src/client/components/chat-view-model.mjs';
 
@@ -115,6 +116,28 @@ test('sessionCardLabel and meta describe the card chrome', () => {
   assert.equal(sessionCardMeta({ messageCount: 1 }, [], false), '1 message');
   assert.equal(sessionCardMeta({ messageCount: 34 }, [], true), '34 messages · preview');
   assert.equal(sessionCardMeta({}, [ { id: 'x' }, { id: 'y' } ], false), '2 messages');
+});
+
+test('sessionCardLastActivity formats a manifest timestamp for the card header', () => {
+  let activity = sessionCardLastActivity(
+    { updatedAt: Date.UTC(2026, 9, 19, 20, 55, 6) },
+    { locale: 'en-US', timeZone: 'UTC' },
+  );
+
+  assert.match(activity.label, /^Last Activity At: Oct 19, 2026/);
+  assert.equal(activity.dateTime, '2026-10-19T20:55:06.000Z');
+  assert.equal(activity.title, activity.dateTime);
+});
+
+test('sessionCardLastActivity normalizes microsecond stamps and falls back safely', () => {
+  let micros = sessionCardLastActivity(
+    { updatedAt: Date.UTC(2026, 9, 19, 20, 55, 6) * 1000 },
+    { locale: 'en-US', timeZone: 'UTC' },
+  );
+  assert.equal(micros.dateTime, '2026-10-19T20:55:06.000Z');
+
+  assert.equal(sessionCardLastActivity({}).label, 'Last Activity At: unknown');
+  assert.equal(sessionCardLastActivity({ updatedAt: 0 }).label, 'Last Activity At: unknown');
 });
 
 test('miniScale fits a design-size chat inside the card without distortion', () => {

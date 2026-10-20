@@ -80,6 +80,7 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
       cards: Array.from(document.querySelectorAll('kikx-session-grid > kikx-session-card')).map((card) => ({
         title: card.querySelector('.kikx-session-card__title')?.textContent || '',
         meta: card.querySelector('.kikx-session-card__meta')?.textContent || '',
+        activity: card.querySelector('.kikx-session-card__activity')?.textContent || '',
         mode: card.querySelector('kikx-chat-view')?.mode || '',
         frames: card.querySelectorAll('kikx-frame-item[data-frame-id]').length,
       })),
@@ -92,6 +93,8 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
     assert.equal(gridState.cards[0].frames, 3);
     assert.equal(gridState.cards[1].frames, 2);
     assert.match(gridState.cards[0].meta, /3 messages/);
+    assert.match(gridState.cards[0].activity, /^Last Activity At: /);
+    assert.match(gridState.cards[1].activity, /^Last Activity At: /);
 
     // The root grid begins with an "Add Project" card, and the window header has
     // no "+" add button (Add lives in the grid).
@@ -140,7 +143,7 @@ test('Stagehand renders session cards in the workspace grid and expands a card i
     await waitForThreadFrames(page, [ 's1_user', 's1_agent', 's1_tool' ]);
     let threadState = await page.evaluate(() => ({
       stack: document.querySelector('kikx-app')?._state?.navigationStack,
-      title: document.querySelector('.kikx-window__header h2, .kikx-window__header .kikx-window__title')?.textContent || '',
+      title: document.querySelector('.kikx-window__header h2, .kikx-window__header .kikx-window__title, .kikx-window__header .kikx-breadcrumb__title')?.textContent || '',
       frameIDs: Array.from(document.querySelectorAll('.kikx-thread__body kikx-frame-item[data-frame-id]')).map((node) => node.dataset.frameId),
       composer: Boolean(document.querySelector('.kikx-composer textarea')),
     }));
@@ -221,7 +224,7 @@ async function waitForThreadFrames(page, expectedIDs, timeoutMS = 10000) {
 async function waitForThreadTitle(page, expectedTitle, timeoutMS = 10000) {
   let startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMS) {
-    let title = await page.evaluate(() => document.querySelector('.kikx-window__header h2, .kikx-window__header .kikx-window__title')?.textContent || '');
+    let title = await page.evaluate(() => document.querySelector('.kikx-window__header h2, .kikx-window__header .kikx-window__title, .kikx-window__header .kikx-breadcrumb__title')?.textContent || '');
     if (title === expectedTitle)
       return;
 

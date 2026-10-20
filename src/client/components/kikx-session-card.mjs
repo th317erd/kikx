@@ -1,7 +1,7 @@
 'use strict';
 
 import './kikx-chat-view.mjs';
-import { sessionCardLabel, sessionCardMeta } from './chat-view-model.mjs';
+import { sessionCardLabel, sessionCardLastActivity, sessionCardMeta } from './chat-view-model.mjs';
 
 const PROGRESS_BUTTON_TAG = 'aeor-progress-button';
 
@@ -122,7 +122,9 @@ function createCardShell(owner) {
   title.className = 'kikx-session-card__title';
   let meta = document.createElement('span');
   meta.className = 'kikx-session-card__meta';
-  header.append(title, meta);
+  let activity = document.createElement('span');
+  activity.className = 'kikx-session-card__activity';
+  header.append(title, meta, activity);
 
   let body = document.createElement('div');
   body.className = 'kikx-session-card__body';
@@ -140,7 +142,7 @@ function createCardShell(owner) {
   let { toolbar, openButton, deleteButton } = createToolbar(owner);
   root.append(header, body, status, toolbar);
 
-  return { root, title, meta, view, status, body, toolbar, openButton, deleteButton };
+  return { root, title, meta, activity, view, status, body, toolbar, openButton, deleteButton };
 }
 
 export class KikxSessionCard extends HTMLElement {
@@ -252,6 +254,13 @@ export class KikxSessionCard extends HTMLElement {
     let label = sessionCardLabel(session);
     shell.title.textContent = label;
     shell.meta.textContent = sessionCardMeta(session, this._heads, this._truncated);
+    let lastActivity = sessionCardLastActivity(session);
+    shell.activity.textContent = lastActivity.label;
+    shell.activity.title = lastActivity.title;
+    if (lastActivity.dateTime)
+      shell.activity.setAttribute('datetime', lastActivity.dateTime);
+    else
+      shell.activity.removeAttribute('datetime');
     // Stable accessible name: the session title only, not the preview text.
     shell.root.setAttribute('aria-label', label);
 
