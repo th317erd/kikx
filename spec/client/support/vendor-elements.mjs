@@ -20,13 +20,25 @@ function appendChildValue(element, value, ownerDocument) {
   element.appendChild(ownerDocument.createTextNode(String(value)));
 }
 
+// The real builder kebab-cases camelCase attribute names before setting them
+// (elements.js:160: `name.replace(/([A-Z])/g, '-$1').toLowerCase()`), so
+// `.ariaLabel('x')` lands as `aria-label`, which is what assistive tech reads.
+// This stub used to set the raw name, so `ariaLabel` became an attribute no
+// browser would interpret -- specs asserting on accessibility silently passed
+// against markup that did not have the label at all.
+function domAttributeName(name) {
+  if (name === 'class')
+    return 'class';
+  return name.replace(/([A-Z])/g, '-$1').toLowerCase();
+}
+
 function buildElement(tagName, attributes, children, ownerDocument, events = []) {
   let element = ownerDocument.createElement(tagName);
   for (let [ name, value ] of Object.entries(attributes)) {
     if (name === 'class')
       element.className = value;
     else
-      element.setAttribute(name, '' + value);
+      element.setAttribute(domAttributeName(name), '' + value);
   }
 
   for (let child of children)

@@ -588,3 +588,45 @@
   font-size: 12px;
   font-style: italic;
 }
+
+/* --- Stack-view chrome (Back out of Inbox / Activities) ------------------ */
+/* A view entry replaces the work area (`kikx-shell-builders.mjs:236-238`), so
+   the window header -- and with it the only Back control -- is not rendered
+   while a view is on top of the stack. The replacement control is injected into
+   the view's own header, so only the button needs rules here. */
+
+.kikx-view__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #2b333c;
+  border-radius: 7px;
+  background: #171c21;
+  color: #aeb8c2;
+  cursor: pointer;
+  /* The Inbox and Activities headers are `display: flex; align-items:
+     baseline`, which would hang a 26px box off the text baseline; the button
+     centres itself in the row instead, and the margin separates it from the
+     title now that it no longer relies on a wrapper's gap. */
+  align-self: center;
+  margin-right: 2px;
+}
+
+.kikx-view__back:hover {
+  border-color: #3d6cff;
+  color: #dce3ea;
+  background: #1d242b;
+}
+
+.kikx-view__back:focus-visible {
+  outline: 2px solid #3d6cff;
+  outline-offset: 2px;
+}
+
+.kikx-view__back svg {
+  width: 14px;
+  height: 14px;
+}
