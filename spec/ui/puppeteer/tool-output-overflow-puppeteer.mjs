@@ -111,6 +111,12 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
     await page.waitForSelector('.kikx-tool-output--exec', { timeout: 5000 });
     await delay(200);
 
+    let headerOrder = await page.evaluate(() => {
+      let header = document.querySelector('kikx-frame-item[data-frame-id="frame_result"] kikx-shell-tool-use .kikx-tool-card__header');
+      return header ? [ ...header.children ].map((node) => node.textContent) : [];
+    });
+    assert.deepEqual(headerOrder, [ 'Shell', 'Result:', 'success' ], 'tool name precedes the result/status badges');
+
     let tint = await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');
       let style = getComputedStyle(item);

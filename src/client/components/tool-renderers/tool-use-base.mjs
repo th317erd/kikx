@@ -113,8 +113,8 @@ export class ToolUse extends HTMLElement {
 
   renderHeader() {
     return div.class('kikx-tool-card__header')(
-      span.class('kikx-tool-card__badge')(this.isResultFrame ? 'Result' : 'Tool'),
       strong(this.displayName()),
+      span.class('kikx-tool-card__badge')(this.isResultFrame ? 'Result:' : 'Tool:'),
       span.class(`kikx-tool-card__status kikx-tool-card__status--${this.status}`)(this.status),
     ).build(document);
   }
