@@ -727,6 +727,15 @@ kikx-app {
   font-size: inherit;
 }
 
+/* Progress notes are prose, not a one-line status. Wrapping keeps the whole
+   update visible instead of reducing it to an unreadable ellipsis. */
+.kikx-frame--AgentProgress .kikx-frame__compact-description {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .kikx-frame__compact-icon {
   grid-area: icon;
   margin-right: 2px;
