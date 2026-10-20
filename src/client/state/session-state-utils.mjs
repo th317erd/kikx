@@ -15,7 +15,7 @@ import {
 // Older pages are trimmed as the user scrolls up; the newest end is trimmed
 // only when prepending, and the client refetches the newest window when the
 // user scrolls back down.
-export const MAX_STORED_FRAMES = 200;
+export const MAX_STORED_FRAMES = 10_000;
 
 // Backwards-compatible name used by older callers/tests. New code should use
 // MAX_STORED_FRAMES.

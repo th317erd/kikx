@@ -1060,20 +1060,20 @@ test('prependSessionFramesState records that newer frames were trimmed so the cl
 });
 
 test('mergeSessionFrameWindowState clears hasMoreNewer and keeps the newest when the tail is refetched', () => {
-  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', messageSequence(MAX_STORED_FRAMES, 141));
-  state = setSessionPagingState(state, 'ses_1', { hasMoreNewer: true, newestOrder: MAX_STORED_FRAMES + 140, oldestOrder: 141, hasMoreOlder: true });
+  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', messageSequence(MAX_STORED_FRAMES, 1));
+  state = setSessionPagingState(state, 'ses_1', { hasMoreNewer: true, newestOrder: MAX_STORED_FRAMES, oldestOrder: 1, hasMoreOlder: true });
 
-  let next = mergeSessionFrameWindowState(state, 'ses_1', messageSequence(100, 260), {
+  let next = mergeSessionFrameWindowState(state, 'ses_1', messageSequence(100, MAX_STORED_FRAMES + 1), {
     total: 400,
     hasMore: true,
-    oldestOrder: 260,
-    newestOrder: 359,
+    oldestOrder: MAX_STORED_FRAMES + 1,
+    newestOrder: MAX_STORED_FRAMES + 100,
   });
 
   assert.equal(next.framesBySessionID.ses_1.length, MAX_STORED_FRAMES);
-  assert.equal(next.framesBySessionID.ses_1.at(-1).id, 'msg_359');
+  assert.equal(next.framesBySessionID.ses_1.at(-1).id, `msg_${MAX_STORED_FRAMES + 100}`);
   assert.equal(next.sessionPagingByID.ses_1.hasMoreNewer, false);
-  assert.equal(next.sessionPagingByID.ses_1.newestOrder, 359);
+  assert.equal(next.sessionPagingByID.ses_1.newestOrder, MAX_STORED_FRAMES + 100);
 });
 
 test('a live append while scrolled up does not evict the region being read', () => {
