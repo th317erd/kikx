@@ -87,6 +87,7 @@ test('Stagehand collapses tool start and result frames into one plugin-rendered 
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });
+    await expandCompactFrames(page);
     await page.waitForSelector('kikx-web-search-use', { timeout: 10000 });
     await page.waitForSelector('kikx-fetch-use', { timeout: 10000 });
     await page.waitForSelector('kikx-session-tool-use', { timeout: 10000 });
@@ -219,6 +220,7 @@ test('Stagehand places a completed tool-using agent summary after its tool frame
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });
+    await expandCompactFrames(page);
     await page.waitForSelector('kikx-frame-item[data-frame-id="agent_response_1"]', { timeout: 10000 });
     await page.waitForSelector('kikx-frame-item[data-frame-id="tool_call_1"]', { timeout: 10000 });
     await page.waitForSelector('kikx-shell-tool-use.kikx-tool-card--result', { timeout: 10000 });
@@ -638,4 +640,22 @@ function createUpdatedResponseToolFrames() {
       },
     },
   ];
+}
+
+
+async function expandCompactFrames(page) {
+  await page.evaluate(async () => {
+    let deadline = Date.now() + 10000;
+    while (!document.querySelector('kikx-app')?._state?.clientToolComponentsByName?.exec) {
+      if (Date.now() > deadline)
+        throw new Error('client tool components did not load');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    for (let details of document.querySelectorAll('details.kikx-frame__compact')) {
+      details.setAttribute('open', '');
+      details.open = true;
+      details.dispatchEvent(new Event('toggle'));
+    }
+  });
 }

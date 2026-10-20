@@ -143,24 +143,66 @@ export class ToolUse extends HTMLElement {
   }
 
   renderArgumentsDetails() {
-    return details.class('kikx-tool-card__details')(
+    let detailsNode = details.class('kikx-tool-card__details')(
       summary('Arguments'),
-      pre(code(formatJSON(this.input))),
     ).build(document);
+    let bodyNode = null;
+
+    let ensureBody = () => {
+      if (bodyNode)
+        return;
+      bodyNode = pre(code(formatJSON(this.input))).build(document);
+      detailsNode.appendChild(bodyNode);
+    };
+    let clearBody = () => {
+      if (!bodyNode)
+        return;
+      bodyNode.remove();
+      bodyNode = null;
+    };
+
+    detailsNode.addEventListener('toggle', () => {
+      if (detailsNode.open)
+        ensureBody();
+      else
+        clearBody();
+    });
+
+    return detailsNode;
   }
 
   renderResultDetails() {
     let detailsNode = details.class('kikx-tool-card__details kikx-tool-card__output-details')(
       summary('Output'),
-      this.renderResultBody(),
     ).build(document);
+    let bodyNode = null;
+
+    let ensureBody = () => {
+      if (bodyNode)
+        return;
+      bodyNode = this.renderResultBody();
+      detailsNode.appendChild(bodyNode);
+    };
+    let clearBody = () => {
+      if (!bodyNode)
+        return;
+      bodyNode.remove();
+      bodyNode = null;
+    };
 
     detailsNode.open = this.state.expanded === true;
     detailsNode.addEventListener('toggle', () => {
       this.state.expanded = detailsNode.open;
-      if (detailsNode.open)
+      if (detailsNode.open) {
+        ensureBody();
         this.loadOutput();
+      } else {
+        clearBody();
+      }
     });
+
+    if (detailsNode.open)
+      ensureBody();
 
     return detailsNode;
   }

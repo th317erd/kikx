@@ -45,6 +45,7 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
     });
     await page.goto(`${fixture.baseURL}/?view=thread`, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('kikx-frame-item[data-frame-id="frame_result"]', { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('kikx-app')?._state?.clientToolComponentsByName?.exec);
 
     let collapsedCommand = await page.evaluate(() => {
       let pre = document.querySelector('kikx-frame-item[data-frame-id="frame_result"] .kikx-frame__compact-command');
@@ -58,10 +59,42 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
     assert.ok(collapsedCommand, 'the collapsed command block is rendered');
     assert.equal(collapsedCommand.overflowY, 'hidden', 'a collapsed command must not capture the session scroll');
 
+    let collapsedDom = await page.evaluate(() => {
+      let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');
+      return {
+        toolCard: Boolean(item.querySelector('kikx-shell-tool-use')),
+        output: Boolean(item.querySelector('.kikx-tool-output--exec')),
+      };
+    });
+    assert.equal(collapsedDom.toolCard, false, 'a collapsed frame must not build the tool card');
+    assert.equal(collapsedDom.output, false, 'a collapsed frame must not build the output');
+
+    await page.evaluate(() => {
+      let outer = document.querySelector('kikx-frame-item[data-frame-id="frame_result"] details.kikx-frame__compact');
+      outer.setAttribute('open', '');
+      outer.open = true;
+      outer.dispatchEvent(new Event('toggle'));
+    });
+    await page.waitForSelector('kikx-shell-tool-use', { timeout: 5000 });
+
+    let outerExpandedDom = await page.evaluate(() => {
+      let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');
+      return {
+        toolCard: Boolean(item.querySelector('kikx-shell-tool-use')),
+        output: Boolean(item.querySelector('.kikx-tool-output--exec')),
+      };
+    });
+    assert.equal(outerExpandedDom.toolCard, true, 'expanding the frame builds the tool card');
+    assert.equal(outerExpandedDom.output, false, 'nested output stays lazy until its own disclosure opens');
+
     await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');
-      for (let details of item.querySelectorAll('details'))
+      let outer = item.querySelector('details.kikx-frame__compact');
+      for (let details of outer.querySelectorAll('details')) {
+        details.setAttribute('open', '');
         details.open = true;
+        details.dispatchEvent(new Event('toggle'));
+      }
     });
     await page.waitForSelector('.kikx-tool-output--exec', { timeout: 5000 });
     await delay(200);

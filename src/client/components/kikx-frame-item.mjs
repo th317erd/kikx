@@ -192,7 +192,10 @@ export class KikxFrameItem extends HTMLElement {
         this._lastMarkdownText = null;
       } else {
         meta = this._buildFrameMeta(frame);
-        content = this._buildFrameContent(frame);
+        // Compact frames keep only their summary and command preview in the DOM.
+        // The tool card/output subtree is built on first expansion, not eagerly.
+        if (!compact)
+          content = this._buildFrameContent(frame);
       }
 
       this._cleanupReactiveBindings();
@@ -206,24 +209,18 @@ export class KikxFrameItem extends HTMLElement {
       this._applyFrameState(frame, compact);
 
       if (compact) {
-        this._compactView = buildCompactFrameDisclosure(
-          frame,
-          [ content ].filter(Boolean),
-          document,
-        );
+        this._compactView = buildCompactFrameDisclosure(frame, [], document);
         this._contentParent = this._compactView.body;
         // Keep the "{Name} {time}" header visible above the compact line.
         if (meta)
           this.appendChild(meta);
-        // Expanding the compact row should reveal the full details, not another
-        // collapsed disclosure (arguments + output).
-        this._compactView.element.addEventListener('toggle', () => {
-          if (!this._compactView.element.open)
-            return;
-          for (let inner of this._compactView.element.querySelectorAll('details'))
-            inner.open = true;
-        });
+        // Expanding the compact row builds the details; nested output/arguments
+        // disclosures stay lazy until the user opens them too. Collapsing removes
+        // the whole details subtree again.
+        this._compactView.element.addEventListener('toggle', () => this._onCompactToggle());
         this.appendChild(this._compactView.element);
+        if (this._compactView.element.open)
+          this._ensureCompactContent();
       } else {
         if (meta)
           this.appendChild(meta);
@@ -291,12 +288,48 @@ export class KikxFrameItem extends HTMLElement {
         return;
       }
 
-      if (compact)
+      if (compact) {
         updateCompactSummary(this._compactView, frame);
+        this._reconcileFrameMeta(frame);
+        if (this._compactView.element.open) {
+          this._ensureCompactContent();
+          if (this._contentElement)
+            this._reconcileFrameContent(frame);
+        } else {
+          this._discardContentElement();
+        }
+        return;
+      }
 
       this._reconcileFrameMeta(frame);
       this._reconcileFrameContent(frame);
     }, { frameID: frame.id, frameType: frame.type });
+  }
+
+  _onCompactToggle() {
+    let details = this._compactView?.element;
+    if (!details)
+      return;
+
+    if (!details.open) {
+      this._discardContentElement();
+      return;
+    }
+
+    this._ensureCompactContent();
+  }
+
+  _ensureCompactContent() {
+    if (this._contentElement || !this._compactView)
+      return;
+
+    let content = this._buildFrameContent(this._frame);
+    if (!content)
+      return;
+
+    this._contentElement = content;
+    this._contentParent = this._compactView.body;
+    this._contentParent.appendChild(content);
   }
 
   _reconcileTypingIndicator(frame) {

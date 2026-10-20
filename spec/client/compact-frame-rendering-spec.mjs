@@ -73,6 +73,22 @@ function summaryIcon(item) {
   return icon?.dataset.icon || icon?.textContent || '';
 }
 
+function expandCompact(item) {
+  let details = compactDetails(item);
+  details.setAttribute('open', '');
+  details.open = true;
+  details.dispatchEvent(new Event('toggle'));
+  return details;
+}
+
+function collapseCompact(item) {
+  let details = compactDetails(item);
+  details.removeAttribute('open');
+  details.open = false;
+  details.dispatchEvent(new Event('toggle'));
+  return details;
+}
+
 test('a successful read-file frame renders one compact line with the existing tool card in its body', () => {
   let item = frameItem();
   let state = toolState('read-file', 'kikx-read-file-use');
@@ -104,11 +120,15 @@ test('a successful read-file frame renders one compact line with the existing to
 
   let body = details.querySelector('.kikx-frame__compact-body');
   assert.ok(body, 'the disclosure must have a body');
-  assert.ok(body.querySelector('kikx-read-file-use'), 'the existing tool card must be preserved');
+  assert.equal(body.querySelector('kikx-read-file-use'), null, 'closed frames must not build the details DOM');
   assert.ok(item.querySelector('.kikx-frame__meta'), 'the metadata header must stay visible on the frame');
 
-  details.setAttribute('open', '');
-  assert.equal(details.hasAttribute('open'), true, 'the native disclosure owns expansion');
+  expandCompact(item);
+  assert.equal(details.open, true, 'the native disclosure owns expansion');
+  assert.ok(body.querySelector('kikx-read-file-use'), 'expanding builds the tool card');
+
+  collapseCompact(item);
+  assert.equal(body.querySelector('kikx-read-file-use'), null, 'collapsing removes the details DOM again');
 });
 
 test('a re-rendered tool frame keeps its disclosure and recolors red on failure', () => {
@@ -121,7 +141,7 @@ test('a re-rendered tool frame keeps its disclosure and recolors red on failure'
   };
 
   item.updateFrame(success, state);
-  let details = compactDetails(item);
+  let details = expandCompact(item);
   let tool = item.querySelector('kikx-read-file-use');
 
   let failed = {
@@ -236,6 +256,7 @@ test('compaction wraps its existing component instead of reimplementing it', () 
   assert.ok(item.classList.contains('kikx-frame--status-success'));
   assert.equal(summaryDescription(item), 'Compaction complete (2 frames)');
 
+  expandCompact(item);
   let compaction = item.querySelector('kikx-compaction-frame');
   assert.ok(compaction, 'the dedicated compaction component must still render');
   assert.equal(compaction.frames.length, 1);

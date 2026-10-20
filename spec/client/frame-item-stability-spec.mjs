@@ -47,6 +47,13 @@ function frameItem() {
   return document.createElement('kikx-frame-item');
 }
 
+function expandCompact(item) {
+  let details = item.querySelector('details.kikx-frame__compact');
+  details.setAttribute('open', '');
+  details.open = true;
+  details.dispatchEvent(new Event('toggle'));
+}
+
 function typingFrame(overrides = {}) {
   return {
     id: 'frame-typing',
@@ -258,14 +265,17 @@ test('a ToolCall to ToolResult type change rebuilds without stale content', () =
     { id: 'frame-tool', type: 'ToolCall', content: { toolName: 'Bash', text: 'ran the old call' } },
     state,
   );
+  assert.equal(item.querySelector('p'), null, 'a collapsed compact frame must not build its details');
+  expandCompact(item);
   let first = item.querySelector('p');
-  assert.ok(first, 'the tool call must render a content element');
+  assert.ok(first, 'the tool call must render a content element after expansion');
   assert.match(first.textContent, /ran the old call/);
 
   item.updateFrame(
     { id: 'frame-tool', type: 'ToolResult', content: { toolName: 'Bash', text: 'showed the new result' } },
     state,
   );
+  expandCompact(item);
   let second = item.querySelector('p');
 
   assert.notEqual(second, first, 'a frame type change is a new logical frame and must rebuild');
