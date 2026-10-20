@@ -2483,19 +2483,25 @@ kikx-thinking-panel {
 
 /* The fixed window: newest line pinned to the bottom; older lines scroll up and
    fade out via the top mask. */
-/* The fixed window: the flex column bottom-aligns its content, so the newest
-   line is pinned to the bottom and older lines overflow out the TOP (clipped +
-   faded by the mask). */
+/* The fixed window is a real scroll region. The panel keeps it pinned to the
+   newest line after each update; older lines scroll up through the mask. */
 .kikx-thinking-tip__window {
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: flex-start;
   min-height: 0;
   padding: 6px 10px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 34%, #000 100%);
   mask-image: linear-gradient(to bottom, transparent 0, #000 34%, #000 100%);
+}
+
+.kikx-thinking-tip__window::-webkit-scrollbar {
+  display: none;
 }
 
 .kikx-thinking-tip__lines {

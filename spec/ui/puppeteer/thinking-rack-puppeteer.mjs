@@ -95,6 +95,30 @@ test('Puppeteer clears the thinking rack on EndTyping and keeps one brain per ag
     assert.equal(beforeAnimation.transformBox, 'fill-box', 'the brain animates in its own icon box');
     assert.ok(originX === originY, `animation origin is centered (${beforeAnimation.origin})`);
 
+    // The tooltip is a real scroll window. Hover it, then add enough lines to
+    // overflow the fixed 6rem window and verify it stays pinned to the newest
+    // line instead of leaving a frozen lower block.
+    await inject('session_1', [
+      { id: 'resp_1:thinking', type: 'AgentThinking', phantom: true, responseFrameID: 'resp_1', content: { text: Array.from({ length: 40 }, (_, index) => `reason line ${index + 1}`).join('\n') } },
+    ]);
+    await delay(150);
+    await page.hover('.kikx-thinking-brain');
+    await delay(100);
+
+    let tipWindow = await page.evaluate(() => {
+      let windowElement = document.querySelector('.kikx-thinking-tip__window');
+      return windowElement ? {
+        scrollTop: windowElement.scrollTop,
+        scrollHeight: windowElement.scrollHeight,
+        clientHeight: windowElement.clientHeight,
+        lines: document.querySelectorAll('.kikx-thinking-tip__line').length,
+      } : null;
+    });
+    assert.ok(tipWindow, 'the thinking tooltip is visible on hover');
+    assert.ok(tipWindow.lines >= 40, 'the tooltip has the full thinking window');
+    assert.ok(tipWindow.scrollHeight > tipWindow.clientHeight, 'the tooltip content overflows its fixed window');
+    assert.ok(tipWindow.scrollTop + tipWindow.clientHeight >= tipWindow.scrollHeight - 2, 'the tooltip is pinned to its newest line');
+
     // Another thinking packet must update the panel without resetting the
     // running CSS animation.
     await inject('session_1', [
