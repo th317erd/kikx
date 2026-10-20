@@ -402,7 +402,10 @@ kikx-app {
   gap: 10px;
   min-height: 100%;
   margin: 0;
-  padding: 0;
+  /* One pixel of breathing room below the last card. ScrollTop is clamped to an
+     integer while layout can end on a fractional pixel; without this the last
+     card's bottom border can be shaved by the scroll container. */
+  padding: 0 0 1px;
   list-style: none;
 }
 
