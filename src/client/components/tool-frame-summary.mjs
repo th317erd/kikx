@@ -102,7 +102,7 @@ function toolFrameSummary(frame, status) {
   let command = stripInjectedCwdPrefix(inputField(input, 'command'));
 
   return {
-    description: toolDescription(toolName, input, status),
+    description: toolDescription(toolName, input, status, frame),
     icon: toolIcon(toolName),
     status,
     ...(toolName === 'exec' && command ? { command } : {}),
@@ -145,7 +145,9 @@ function inputField(input, field) {
   }
 }
 
-function toolDescription(toolName, input, status = 'running') {
+function toolDescription(toolName, input, status = 'running', frame = null) {
+  if (toolName.startsWith('todo-'))
+    return todoDescription(toolName, input, frame);
   let path = inputField(input, 'path');
   let command = inputField(input, 'command');
   let query = inputField(input, 'query');
@@ -198,17 +200,17 @@ function toolDescription(toolName, input, status = 'running') {
     case 'todo-get':
       return 'Read todo list';
     case 'todo-add':
-      return title ? `Add todo ${title}` : 'Add todo';
+      return title ? `Add todo: ${title}` : 'Add todo';
     case 'todo-update':
-      return title ? `Update todo ${title}` : 'Update todo';
+      return title ? `Update todo: ${title}` : 'Update todo';
     case 'todo-complete':
-      return 'Complete todo';
+      return title ? `Complete todo: ${title}` : 'Complete todo';
     case 'todo-delete':
-      return 'Delete todo';
+      return title ? `Delete todo: ${title}` : 'Delete todo';
     case 'todo-clear':
       return 'Clear todo list';
     case 'todo-focus-set':
-      return 'Set todo focus';
+      return title ? `Focus todo: ${title}` : 'Set todo focus';
     case 'todo-focus-clear':
       return 'Clear todo focus';
     case 'feedback-report':
@@ -246,6 +248,95 @@ function toolDescription(toolName, input, status = 'running') {
     default:
       return genericToolDescription(toolName, input);
   }
+}
+
+function todoDescription(toolName, input, frame = null) {
+  let title = inputField(input, 'title') || todoTitleFromPreview(inputField(input, 'id'), inputField(input, 'parentID'), frame?.content?.preview);
+  switch (toolName) {
+    case 'todo-get':
+      return 'Read todo list';
+    case 'todo-clear':
+      return 'Clear todo list';
+    case 'todo-focus-clear':
+      return 'Clear todo focus';
+    case 'todo-add':
+      return title ? `Add todo: ${title}` : 'Add todo';
+    case 'todo-update':
+      return title ? `Update todo: ${title}` : 'Update todo';
+    case 'todo-complete':
+      return title ? `Complete todo: ${title}` : 'Complete todo';
+    case 'todo-delete':
+      return title ? `Delete todo: ${title}` : 'Delete todo';
+    case 'todo-focus-set':
+      return title ? `Focus todo: ${title}` : 'Set todo focus';
+    default:
+      return 'Update todo list';
+  }
+}
+
+function todoTitleFromPreview(id, parentID, preview) {
+  if (typeof preview !== 'string' || preview === '')
+    return '';
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(preview);
+  } catch (_error) {
+    parsed = null;
+  }
+
+  if (parsed) {
+    let title = findTodoTitleInState(parsed, id, parentID);
+    if (title)
+      return title;
+  }
+
+  // The preview is capped at 8 KiB and may be cut off mid-JSON. Prefer the
+  // title adjacent to the target id; if the target is beyond the cap, fall back
+  // to the first title (still far more useful than a generic "Update todo").
+  let source = String(preview);
+  if (id) {
+    let idIndex = source.indexOf(`\"id\": \"${id}\"`);
+    if (idIndex === -1)
+      idIndex = source.indexOf(`\"id\":\"${id}\"`);
+    if (idIndex !== -1)
+      source = source.slice(idIndex, idIndex + 4096);
+  }
+
+  let match = /\"title\"\s*:\s*\"((?:[^\"\\]|\\.)*)\"/.exec(source);
+  if (!match)
+    return '';
+
+  try {
+    return JSON.parse(`\"${match[1]}\"`);
+  } catch (_error) {
+    return match[1];
+  }
+}
+
+function findTodoTitleInState(state, id, parentID) {
+  let items = Array.isArray(state?.items) ? state.items : [];
+  for (let item of items) {
+    if (!item)
+      continue;
+    if (!id || item.id === id)
+      return typeof item.title === 'string' ? item.title.trim() : '';
+    let children = Array.isArray(item.children) ? item.children : [];
+    for (let child of children) {
+      if (child?.id === id)
+        return typeof child.title === 'string' ? child.title.trim() : '';
+    }
+  }
+
+  if (state?.deleted?.title && (!id || state.deleted.id === id))
+    return String(state.deleted.title).trim();
+  if (parentID) {
+    for (let item of items) {
+      if (item?.id === parentID)
+        return typeof item.title === 'string' ? item.title.trim() : '';
+    }
+  }
+  return '';
 }
 
 function teamDescription(verb, input) {

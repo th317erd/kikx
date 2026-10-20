@@ -21,6 +21,16 @@ export class TodoToolUse extends ToolUse {
     return 'Todo list';
   }
 
+  updateFrame(frame, appState = {}) {
+    super.updateFrame(frame, appState);
+
+    // Todo results are stored as a full JSON state; the inline preview is
+    // intentionally bounded and can be truncated mid-JSON. Load the stored
+    // output so the count chips and titles are real, even before expansion.
+    if (this.isResultFrame && this.outputID && !this.state.loaded && !this.state.loading)
+      this.loadOutput();
+  }
+
   todoResult() {
     let output = this.state.output || this.previewOutput();
     if (!output)

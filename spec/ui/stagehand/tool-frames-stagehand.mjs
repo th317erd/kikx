@@ -115,6 +115,11 @@ test('Stagehand collapses tool start and result frames into one plugin-rendered 
     assert.ok(sessionToolTexts.some((text) => /Inviting agents to session: session_child/.test(text)));
     assert.match(todoText, /Todo/);
     assert.match(todoText, /Added todo: Write Stagehand coverage/);
+    assert.equal(
+      await page.evaluate(() => document.querySelector('kikx-frame-item[data-frame-id="tool_call_7"] .kikx-frame__compact-description')?.textContent || ''),
+      'Add todo: Write Stagehand coverage',
+      'the minimized todo row names the todo item',
+    );
     assert.match(todoText, /Added: Write Stagehand coverage/);
     let todoView = await page.evaluate(() => {
       let card = document.querySelector('kikx-todo-tool-use.kikx-tool-card--result');

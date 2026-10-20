@@ -97,7 +97,7 @@ test('other tool frames derive a short verb and subject', () => {
   );
   assert.equal(
     compactFrameSummary(toolFrame('todo-add', { title: 'Write tests' })).description,
-    'Add todo Write tests',
+    'Add todo: Write tests',
   );
   assert.equal(
     compactFrameSummary(toolFrame('session-invite-agents', { session_id: 'session_2' })).description,
@@ -115,6 +115,34 @@ test('other tool frames derive a short verb and subject', () => {
     compactFrameSummary(toolFrame('mystery-tool', { query: 'find me' })).description,
     'Mystery Tool find me',
   );
+});
+
+test('todo result summaries name the target from the preview without IDs', () => {
+  let preview = JSON.stringify({
+    items: [
+      { id: 'first', title: 'Unrelated todo' },
+      { id: 'target', title: 'Fix the todo card' },
+    ],
+  });
+  let summary = compactFrameSummary({
+    id: 'todo-update-result',
+    type: 'TodoUpdateToolFrame',
+    content: { toolName: 'todo-update', phase: 'result', status: 'success', input: { id: 'target' }, preview },
+  });
+
+  assert.equal(summary.description, 'Update todo: Fix the todo card');
+  assert.equal(summary.description.includes('target'), false);
+});
+
+test('todo result summaries recover a title from a truncated preview', () => {
+  let preview = '{"items":[{"id":"first","title":"Unrelated todo"},{"id":"target","title":"Recovered title"}],"truncated":';
+  let summary = compactFrameSummary({
+    id: 'todo-update-result',
+    type: 'TodoUpdateToolFrame',
+    content: { toolName: 'todo-update', phase: 'result', status: 'success', input: { id: 'target' }, preview },
+  });
+
+  assert.equal(summary.description, 'Update todo: Recovered title');
 });
 
 test('communication frames are never compact', () => {
