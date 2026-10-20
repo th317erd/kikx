@@ -507,14 +507,31 @@ test('canSubmitAnswer rejects blank input and accepts real text', () => {
 });
 
 test('createQuestionsState starts empty and unloaded', () => {
-  assert.deepEqual(createQuestionsState(), {
-    questions: [],
-    counts: { open: 0 },
-    loaded: false,
-    loading: false,
-    error: null,
-    lastFetchedAt: null,
-  });
+  let state = createQuestionsState();
+
+  // `closedQuestionIDs` is asserted separately because it is a Set: deepEqual
+  // compares Sets by content, so folding it into the literal below would still
+  // pin the exact shape while hiding that the field must be live and mutable.
+  assert.deepEqual(
+    { ...state, closedQuestionIDs: undefined },
+    {
+      questions: [],
+      counts: { open: 0 },
+      loaded: false,
+      loading: false,
+      error: null,
+      lastFetchedAt: null,
+      closedQuestionIDs: undefined,
+    },
+  );
+
+  assert.ok(state.closedQuestionIDs instanceof Set, 'the closed-id guard must exist on a fresh slice');
+  assert.equal(state.closedQuestionIDs.size, 0, 'a fresh slice knows of no closed questions');
+  assert.notEqual(
+    createQuestionsState().closedQuestionIDs,
+    createQuestionsState().closedQuestionIDs,
+    'each slice owns its own set — a shared one would leak closures across tabs',
+  );
 });
 
 test('applyQuestionsFetch sets loaded, clears the error, and recounts', () => {

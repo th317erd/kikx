@@ -268,6 +268,13 @@ export class QuestionsStore {
       let now = this.clock();
       let updated = { ...question, readAt: now, updatedAt: now };
       await this.aeordb.putFile(this.questionPath(id), updated);
+
+      // The open index carries `readAt` in every summary and is the ONLY source
+      // the Inbox reads (`listOpen`). Without this rewrite the doc said "read"
+      // while the index still said "unread", so the badge counted the question
+      // again on the next fetch and never cleared.
+      await this.writeIndexes([ id ], [ question.agentID ]);
+
       return cloneJSON(updated);
     });
   }

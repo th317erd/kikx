@@ -137,8 +137,14 @@ export function sortQuestions(questions) {
  * complete fetch is authoritative: unseen rows are gone (answered elsewhere).
  */
 export function reconcileQuestions(existing = [], incoming = [], options = {}) {
-  let { complete = true } = options;
+  let { complete = true, exclude = null } = options;
   let fetched = normalizeQuestionList(incoming);
+
+  // A fetch issued before a local answer can land after it and re-list the row
+  // as open. `exclude` carries the ids this tab knows are closed, so existence
+  // stays authoritative without resurrecting a question the user just answered.
+  if (exclude && typeof exclude.has === 'function')
+    fetched = fetched.filter((question) => !exclude.has(question.id));
 
   if (!complete) {
     let byID = new Map();
@@ -148,7 +154,8 @@ export function reconcileQuestions(existing = [], incoming = [], options = {}) {
     for (let question of fetched)
       byID.set(question.id, question);
 
-    return sortQuestions([ ...byID.values() ]);
+    return sortQuestions([ ...byID.values() ]
+      .filter((question) => !(exclude && typeof exclude.has === 'function' && exclude.has(question.id))));
   }
 
   return sortQuestions(fetched);
@@ -318,6 +325,12 @@ export function canSubmitAnswer(value) {
  * replaced on every change (ReactiveState observes top-level assignment only,
  * never nested mutation), which is why every helper above returns a new array.
  */
+// A question is terminal once answered or dismissed, so an id in this set can
+// never legitimately become open again. The set is bounded only to stop a
+// long-lived tab from growing without limit; eviction is oldest-first and a
+// dropped id can at worst re-list a row that a later fetch will remove again.
+export const MAX_CLOSED_QUESTION_IDS = 500;
+
 export function createQuestionsState() {
   return {
     questions: [],
@@ -326,7 +339,40 @@ export function createQuestionsState() {
     loading: false,
     error: null,
     lastFetchedAt: null,
+    // Ids this tab has seen reach a terminal status. Consulted by every merge
+    // path so a stale fetch cannot resurrect a question the user just answered.
+    closedQuestionIDs: new Set(),
   };
+}
+
+function closedIDSet(state) {
+  if (!(state.closedQuestionIDs instanceof Set))
+    state.closedQuestionIDs = new Set();
+
+  return state.closedQuestionIDs;
+}
+
+export function rememberClosedQuestionID(state, questionID) {
+  let id = stringOrNull(questionID);
+  if (!id)
+    return;
+
+  let closed = closedIDSet(state);
+  if (!closed.has(id))
+    closed.add(id);
+
+  while (closed.size > MAX_CLOSED_QUESTION_IDS) {
+    let oldest = closed.values().next();
+    if (oldest.done)
+      break;
+
+    closed.delete(oldest.value);
+  }
+}
+
+export function isQuestionClosedLocally(state, questionID) {
+  let id = stringOrNull(questionID);
+  return id ? closedIDSet(state).has(id) : false;
 }
 
 export function applyQuestionsFetch(state, payload, options = {}) {
@@ -336,7 +382,10 @@ export function applyQuestionsFetch(state, payload, options = {}) {
   let questions = payload?.questions;
   let complete = options.complete !== false;
 
-  state.questions = reconcileQuestions(state.questions || [], questions, { complete });
+  state.questions = reconcileQuestions(state.questions || [], questions, {
+    complete,
+    exclude: closedIDSet(state),
+  });
   state.counts = {
     ...(payload?.counts && typeof payload.counts === 'object' ? payload.counts : {}),
     open: openQuestionCount(state.questions),
@@ -374,9 +423,19 @@ export function applyQuestionEvent(state, event) {
   if (incoming.length === 0)
     return state;
 
+  let closed = closedIDSet(state);
   let questions = state.questions || [];
-  for (let update of incoming)
+  for (let update of incoming) {
+    // A terminal event for a row we already dropped is a no-op; an open event
+    // for a row this tab saw close is ignored, because terminal is permanent.
+    if (update && typeof update === 'object') {
+      let id = stringOrNull(update.id);
+      if (id && closed.has(id))
+        continue;
+    }
+
     questions = upsertQuestion(questions, update);
+  }
 
   state.questions = questions;
   state.counts = { ...(state.counts || {}), open: openQuestionCount(state.questions) };

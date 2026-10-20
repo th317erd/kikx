@@ -17,6 +17,11 @@ import {
   normalizeQuestionSummary,
   questionAge,
 } from '../state/questions-state.mjs';
+import {
+  clearAnswerDraft,
+  getAnswerDraft,
+  setAnswerDraft,
+} from '../state/question-drafts.mjs';
 
 const { article, button, div, form, label, li, p, span, textarea, ul } = elements;
 
@@ -212,10 +217,27 @@ export function bindAnswerForm(node, handlers = {}) {
   if (!formNode || !inputNode || !submitNode)
     return;
 
-  let { onSubmit, onDismiss, onRead } = handlers || {};
+  let { onSubmit, onDismiss, onRead, drafts } = handlers || {};
   let questionID = node.getAttribute('data-question-id') || '';
   let inFlight = false;
   let readSent = false;
+
+  // Restore text this box held before the card was re-created. This is what
+  // makes a full shell rebuild (session switch, unrelated runtime event, the
+  // empty <-> non-empty fallback) non-destructive: the node is new, the text is
+  // not. `getAnswerDraft` returns '' for any question without a draft, so a
+  // freshly asked question is untouched.
+  let restored = getAnswerDraft(drafts, questionID);
+  if (restored !== '')
+    inputNode.value = restored;
+
+  // Saved on every keystroke rather than on submit: the whole failure being
+  // fixed is text that was typed but never submitted.
+  if (drafts && typeof inputNode.addEventListener === 'function') {
+    inputNode.addEventListener('input', () => {
+      setAnswerDraft(drafts, questionID, inputNode.value);
+    });
+  }
 
   function setHint(message) {
     setHidden(hintNode, message === '');
@@ -277,6 +299,9 @@ export function bindAnswerForm(node, handlers = {}) {
       pending.then(
         () => {
           setInFlight(false);
+          // Only this row's draft is dropped. Every other card keeps its text,
+          // including a sibling question from the same batch.
+          clearAnswerDraft(drafts, questionID);
           inputNode.value = '';
         },
         () => {
@@ -288,6 +313,7 @@ export function bindAnswerForm(node, handlers = {}) {
     }
 
     // A synchronous handler has no in-flight window to guard.
+    clearAnswerDraft(drafts, questionID);
     inputNode.value = '';
   }
 
