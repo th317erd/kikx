@@ -6,12 +6,20 @@ import {
   upsertFrameMessages,
 } from '../../shared/frame-manager/frame-manager.mjs';
 
-// Hard cap on the number of projected ("visual") messages held per session.
-// Phantoms are already folded away by projection, so this bounds the live DOM:
-// each retained message owns at most one UI element. Older pages are trimmed as
-// the user scrolls up; the newest end is trimmed only when prepending, and the
-// client refetches the newest window when the user scrolls back down.
-export const MAX_SESSION_MESSAGES = 200;
+// Hard cap on the number of projected frames ("stored frames") retained per
+// session in client state. Phantoms are already folded away by projection;
+// tool call/result pairs collapse into one display frame. This bounds client
+// memory independently of the DOM render window (MAX_RENDERED_FRAMES), while
+// the full transcript remains durable on the server.
+//
+// Older pages are trimmed as the user scrolls up; the newest end is trimmed
+// only when prepending, and the client refetches the newest window when the
+// user scrolls back down.
+export const MAX_STORED_FRAMES = 200;
+
+// Backwards-compatible name used by older callers/tests. New code should use
+// MAX_STORED_FRAMES.
+export const MAX_SESSION_MESSAGES = MAX_STORED_FRAMES;
 
 // Add-only per-session caches (loaded frame windows, paging, previews) are
 // bounded so a long-lived tab cannot grow without limit. These are caches, not
@@ -241,12 +249,12 @@ export function setSessionFramesState(state, sessionID, frames, paging = null) {
   let trimmedNewest = false;
   let trimmedOldest = false;
 
-  if (messages.length > MAX_SESSION_MESSAGES) {
+  if (messages.length > MAX_STORED_FRAMES) {
     if (detached) {
-      messages = messages.slice(0, MAX_SESSION_MESSAGES);
+      messages = messages.slice(0, MAX_STORED_FRAMES);
       trimmedNewest = true;
     } else {
-      messages = messages.slice(-MAX_SESSION_MESSAGES);
+      messages = messages.slice(-MAX_STORED_FRAMES);
       trimmedOldest = true;
     }
   }
@@ -322,8 +330,8 @@ export function prependSessionFramesState(state, sessionID, olderFrames) {
   let combined = [ ...prepended, ...existing ];
   let hasMoreNewer = snapshot.sessionPagingByID[sessionID]?.hasMoreNewer === true;
 
-  if (combined.length > MAX_SESSION_MESSAGES) {
-    combined = combined.slice(0, MAX_SESSION_MESSAGES);
+  if (combined.length > MAX_STORED_FRAMES) {
+    combined = combined.slice(0, MAX_STORED_FRAMES);
     hasMoreNewer = true;
   }
 

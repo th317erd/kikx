@@ -7,6 +7,7 @@ import { register } from 'node:module';
 import { installDom } from './support/mini-dom.mjs';
 import {
   MAX_SESSION_MESSAGES,
+  MAX_STORED_FRAMES,
   countMessageFrames,
   createSessionStateSnapshot,
   isDeletedSession,
@@ -1019,44 +1020,48 @@ function messageSequence(count, startOrder = 1, type = 'UserMessage') {
   return messages;
 }
 
+test('the durable client frame cap is exposed as MAX_STORED_FRAMES', () => {
+  assert.equal(MAX_SESSION_MESSAGES, MAX_STORED_FRAMES);
+});
+
 test('setSessionFramesState caps a loaded window to the visual-message limit, keeping the newest', () => {
   let state = createSessionStateSnapshot();
-  let next = setSessionFramesState(state, 'ses_1', messageSequence(MAX_SESSION_MESSAGES + 120));
+  let next = setSessionFramesState(state, 'ses_1', messageSequence(MAX_STORED_FRAMES + 120));
 
-  assert.equal(next.framesBySessionID.ses_1.length, MAX_SESSION_MESSAGES);
+  assert.equal(next.framesBySessionID.ses_1.length, MAX_STORED_FRAMES);
   assert.equal(next.framesBySessionID.ses_1[0].id, `msg_${121}`);
-  assert.equal(next.framesBySessionID.ses_1.at(-1).id, `msg_${MAX_SESSION_MESSAGES + 120}`);
+  assert.equal(next.framesBySessionID.ses_1.at(-1).id, `msg_${MAX_STORED_FRAMES + 120}`);
 });
 
 test('prependSessionFramesState trims the newest end when the window overflows', () => {
-  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', messageSequence(MAX_SESSION_MESSAGES, 141));
+  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', messageSequence(MAX_STORED_FRAMES, 141));
 
   // Prepending a full page of older heads overflows the cap; the oldest are kept
   // (the region the user scrolled to) and the newest are trimmed.
   let next = prependSessionFramesState(state, 'ses_1', messageSequence(120, 21));
 
-  assert.equal(next.framesBySessionID.ses_1.length, MAX_SESSION_MESSAGES);
+  assert.equal(next.framesBySessionID.ses_1.length, MAX_STORED_FRAMES);
   assert.equal(next.framesBySessionID.ses_1[0].id, 'msg_21');
-  assert.equal(next.framesBySessionID.ses_1.at(-1).id, `msg_${MAX_SESSION_MESSAGES + 140 - 120}`);
+  assert.equal(next.framesBySessionID.ses_1.at(-1).id, `msg_${MAX_STORED_FRAMES + 140 - 120}`);
 });
 
 test('prependSessionFramesState records that newer frames were trimmed so the client can refetch', () => {
   let state = {
     ...createSessionStateSnapshot(),
-    sessionPagingByID: { ses_1: { newestOrder: MAX_SESSION_MESSAGES + 140, oldestOrder: 141, hasMoreOlder: true } },
+    sessionPagingByID: { ses_1: { newestOrder: MAX_STORED_FRAMES + 140, oldestOrder: 141, hasMoreOlder: true } },
   };
-  state = setSessionFramesState(state, 'ses_1', messageSequence(MAX_SESSION_MESSAGES, 141));
-  state = setSessionPagingState(state, 'ses_1', { newestOrder: MAX_SESSION_MESSAGES + 140, oldestOrder: 141, hasMoreOlder: true });
+  state = setSessionFramesState(state, 'ses_1', messageSequence(MAX_STORED_FRAMES, 141));
+  state = setSessionPagingState(state, 'ses_1', { newestOrder: MAX_STORED_FRAMES + 140, oldestOrder: 141, hasMoreOlder: true });
 
   let next = prependSessionFramesState(state, 'ses_1', messageSequence(120, 21));
 
   assert.equal(next.sessionPagingByID.ses_1.hasMoreNewer, true);
-  assert.equal(next.sessionPagingByID.ses_1.newestOrder, MAX_SESSION_MESSAGES + 140);
+  assert.equal(next.sessionPagingByID.ses_1.newestOrder, MAX_STORED_FRAMES + 140);
 });
 
 test('mergeSessionFrameWindowState clears hasMoreNewer and keeps the newest when the tail is refetched', () => {
-  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', messageSequence(MAX_SESSION_MESSAGES, 141));
-  state = setSessionPagingState(state, 'ses_1', { hasMoreNewer: true, newestOrder: MAX_SESSION_MESSAGES + 140, oldestOrder: 141, hasMoreOlder: true });
+  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', messageSequence(MAX_STORED_FRAMES, 141));
+  state = setSessionPagingState(state, 'ses_1', { hasMoreNewer: true, newestOrder: MAX_STORED_FRAMES + 140, oldestOrder: 141, hasMoreOlder: true });
 
   let next = mergeSessionFrameWindowState(state, 'ses_1', messageSequence(100, 260), {
     total: 400,
@@ -1065,7 +1070,7 @@ test('mergeSessionFrameWindowState clears hasMoreNewer and keeps the newest when
     newestOrder: 359,
   });
 
-  assert.equal(next.framesBySessionID.ses_1.length, MAX_SESSION_MESSAGES);
+  assert.equal(next.framesBySessionID.ses_1.length, MAX_STORED_FRAMES);
   assert.equal(next.framesBySessionID.ses_1.at(-1).id, 'msg_359');
   assert.equal(next.sessionPagingByID.ses_1.hasMoreNewer, false);
   assert.equal(next.sessionPagingByID.ses_1.newestOrder, 359);
@@ -1074,15 +1079,15 @@ test('mergeSessionFrameWindowState clears hasMoreNewer and keeps the newest when
 test('a live append while scrolled up does not evict the region being read', () => {
   // Simulate the user having scrolled up until older pages filled the window and
   // trimmed the newest end (hasMoreNewer true).
-  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', messageSequence(MAX_SESSION_MESSAGES, 1));
-  state = setSessionPagingState(state, 'ses_1', { hasMoreNewer: true, oldestOrder: 1, newestOrder: MAX_SESSION_MESSAGES });
+  let state = setSessionFramesState(createSessionStateSnapshot(), 'ses_1', messageSequence(MAX_STORED_FRAMES, 1));
+  state = setSessionPagingState(state, 'ses_1', { hasMoreNewer: true, oldestOrder: 1, newestOrder: MAX_STORED_FRAMES });
 
   // A live SSE frame appends at the tail and overflows the cap.
-  let live = { id: 'live_1', type: 'UserMessage', order: MAX_SESSION_MESSAGES + 5, createdAt: MAX_SESSION_MESSAGES + 5, content: { text: 'live' } };
+  let live = { id: 'live_1', type: 'UserMessage', order: MAX_STORED_FRAMES + 5, createdAt: MAX_STORED_FRAMES + 5, content: { text: 'live' } };
   let next = setSessionFramesState(state, 'ses_1', [ ...state.framesBySessionID.ses_1, live ]);
 
   // The oldest end (what the user is reading) is preserved; the newest is trimmed.
-  assert.equal(next.framesBySessionID.ses_1.length, MAX_SESSION_MESSAGES);
+  assert.equal(next.framesBySessionID.ses_1.length, MAX_STORED_FRAMES);
   assert.equal(next.framesBySessionID.ses_1[0].id, 'msg_1');
   assert.equal(next.sessionPagingByID.ses_1.hasMoreNewer, true);
 });
