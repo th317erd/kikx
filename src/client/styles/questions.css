@@ -1,0 +1,632 @@
+/*
+ * Question surfaces: sidebar entries, the Inbox view, the Activities view, and
+ * the inline `Question` frame.
+ *
+ * These shipped in P3/P4 with NO styling at all — `app.css` contained zero
+ * rules for any `kikx-inbox*`, `kikx-inbox-list*`, `kikx-question-card*`,
+ * `kikx-activities*`, `kikx-question-frame*` or `kikx-sidebar__*` class, so
+ * every one of them rendered as raw unstyled block flow. A separate file
+ * rather than an append to `app.css` (~2300 lines, already the largest client
+ * asset) so the debt file does not grow.
+ *
+ * Colours are taken from the shell's own palette (#101214 / #12161a / #171c21 /
+ * #2a3138 / #dce3ea / #6b7684) rather than the vendor tokens: the shell does
+ * not use `--bg-secondary` (#161b22), and mixing the two reads as a seam.
+ *
+ * Class inventory is derived from the components, not guesswork. Note the
+ * question surfaces use TWO naming families, both real and both styled here:
+ *   - `kikx-inbox-list` / `kikx-question-card` — the rich renderer
+ *     (`kikx-inbox-list.mjs`, `kikx-question-card.mjs`), built from
+ *     `const X_CLASS` templates, which is why a naive `class('kikx-...')` grep
+ *     misses every one of them.
+ *   - `kikx-inbox__*` — the fallback card/list in `kikx-inbox-view.mjs`.
+ */
+
+/* --- Sidebar entries ---------------------------------------------------- */
+
+.kikx-sidebar__inbox,
+.kikx-sidebar__activities {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 9px 11px;
+  border: 1px solid #2a3138;
+  border-radius: 8px;
+  background: #171c21;
+  color: #dce3ea;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.kikx-sidebar__inbox:hover,
+.kikx-sidebar__activities:hover {
+  border-color: #3c444d;
+  background: #1c222a;
+  color: #f5f7fa;
+}
+
+.kikx-sidebar__inbox--active,
+.kikx-sidebar__activities--active {
+  border-color: #3d6cff;
+  background: #17203a;
+  color: #f5f7fa;
+}
+
+.kikx-sidebar__inbox-label,
+.kikx-sidebar__activities-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The unread count is a notification, so it takes the accent — not the muted
+   grey the rest of the sidebar uses for tallies. */
+.kikx-sidebar__inbox-badge {
+  flex: 0 0 auto;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #3d6cff;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* --- Inbox and Activities shells ---------------------------------------- */
+
+.kikx-inbox,
+.kikx-activities {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: #12161a;
+}
+
+/* Activities scrolls as a whole (it has several stacked sections); the Inbox
+   scrolls only its list so the header stays pinned. */
+.kikx-activities {
+  overflow: auto;
+}
+
+.kikx-inbox-header,
+.kikx-activities__header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  padding: 14px 18px;
+  border-bottom: 1px solid #232a31;
+}
+
+.kikx-inbox-header__title,
+.kikx-inbox > h2,
+.kikx-activities__header h2 {
+  margin: 0;
+  color: #dce3ea;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* A quiet tally, not a badge — the attention-drawing badge is on the sidebar. */
+.kikx-inbox-header__count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #22272d;
+  color: #aeb8c2;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.kikx-inbox-header__error {
+  margin-left: auto;
+  color: #fca5a5;
+  font-size: 12px;
+}
+
+/* --- Inbox list --------------------------------------------------------- */
+
+.kikx-inbox-list,
+.kikx-inbox__list {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 18px 28px;
+}
+
+.kikx-inbox-list__group,
+.kikx-inbox__group {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kikx-inbox-list__heading,
+.kikx-inbox__group-heading {
+  margin: 0;
+  color: #97a3ae;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kikx-inbox-list__row {
+  list-style: none;
+}
+
+/* --- Question card (the real Inbox row) --------------------------------- */
+
+.kikx-question-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #2a3138;
+  border-radius: 10px;
+  background: #171c21;
+}
+
+.kikx-question-card__header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: #8b97a3;
+  font-size: 12px;
+}
+
+.kikx-question-card__agent {
+  overflow: hidden;
+  max-width: 60%;
+  color: #aeb8c2;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-question-card__position,
+.kikx-question-card__age {
+  flex: 0 0 auto;
+  color: #6b7684;
+}
+
+.kikx-question-card__text {
+  margin: 0;
+  color: #f5f7fa;
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.kikx-question-card__refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kikx-question-card__ref {
+  padding: 2px 8px;
+  border: 1px solid #2f3439;
+  border-radius: 999px;
+  background: #14181d;
+  color: #97a3ae;
+  font-size: 11px;
+}
+
+.kikx-question-card__answer {
+  display: grid;
+  gap: 7px;
+}
+
+.kikx-question-card__answer-label {
+  color: #aeb8c2;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kikx-question-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The hint is the only feedback for a blank submission, so it reads as a
+   warning rather than inheriting body text. */
+.kikx-question-card__hint {
+  color: #d29922;
+  font-size: 12px;
+}
+
+.kikx-question-card__closed {
+  margin: 0;
+  color: #6b7684;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* --- Answer controls ---------------------------------------------------- */
+
+/* The three answer surfaces — the real Inbox card, the fallback Inbox card and
+   the inline frame — are the same control under different class names, so they
+   share one rule instead of drifting apart. */
+.kikx-question-card__input,
+.kikx-inbox__answer,
+.kikx-question-frame__answer {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  padding: 9px 11px;
+  border: 1px solid #2f3439;
+  border-radius: 8px;
+  background: #10141a;
+  color: #f5f7fa;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.kikx-question-card__input::placeholder,
+.kikx-inbox__answer::placeholder,
+.kikx-question-frame__answer::placeholder {
+  color: #6b7684;
+}
+
+.kikx-question-card__input:focus,
+.kikx-inbox__answer:focus,
+.kikx-question-frame__answer:focus {
+  border-color: #3d6cff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(61, 108, 255, 0.25);
+}
+
+.kikx-question-card__submit,
+.kikx-inbox__submit,
+.kikx-question-frame__submit {
+  justify-self: start;
+  padding: 7px 16px;
+  border: 1px solid #3d6cff;
+  border-radius: 7px;
+  background: #3d6cff;
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.kikx-question-card__submit:hover,
+.kikx-inbox__submit:hover,
+.kikx-question-frame__submit:hover {
+  border-color: #5b84ff;
+  background: #5b84ff;
+}
+
+/* --- Empty states ------------------------------------------------------- */
+
+.kikx-inbox-empty,
+.kikx-inbox__empty,
+.kikx-activities__empty {
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  min-height: 0;
+  padding: 40px 18px;
+  text-align: center;
+}
+
+.kikx-inbox-empty__title {
+  margin: 0;
+  color: #aeb8c2;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.kikx-inbox-empty__detail,
+.kikx-inbox__empty-hint,
+.kikx-activities__empty-hint {
+  margin: 0;
+  color: #6b7684;
+  font-size: 13px;
+}
+
+/* --- Fallback Inbox card (kikx-inbox__*) -------------------------------- */
+
+.kikx-inbox__card {
+  display: grid;
+  gap: 9px;
+  padding: 13px 14px;
+  border: 1px solid #2a3138;
+  border-radius: 10px;
+  background: #171c21;
+}
+
+.kikx-inbox__card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #8b97a3;
+  font-size: 12px;
+}
+
+.kikx-inbox__card-agent {
+  overflow: hidden;
+  max-width: 45%;
+  color: #aeb8c2;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-inbox__card-age {
+  flex: 0 0 auto;
+  color: #6b7684;
+}
+
+.kikx-inbox__card-text {
+  margin: 0;
+  color: #f5f7fa;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* --- Activities --------------------------------------------------------- */
+
+.kikx-activities__header {
+  flex-wrap: wrap;
+}
+
+.kikx-activities__scope {
+  color: #6b7684;
+  font-size: 12px;
+}
+
+.kikx-activities__summary,
+.kikx-activities__grid {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px 24px;
+}
+
+.kikx-activities__grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  align-content: start;
+}
+
+.kikx-activities__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.kikx-activities__card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kikx-activities__stat {
+  display: grid;
+  gap: 1px;
+  min-width: 62px;
+}
+
+.kikx-activities__stat-value {
+  color: #f5f7fa;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.kikx-activities__stat-label {
+  color: #6b7684;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kikx-activities__card {
+  display: grid;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid #2a3138;
+  border-radius: 10px;
+  background: #171c21;
+}
+
+/* A card with open questions needs a human. Amber, not the blue used for
+   "selected", so the two states can never be confused. */
+.kikx-activities__card--attention {
+  border-color: #d29922;
+}
+
+.kikx-activities__card-title {
+  margin: 0;
+  overflow: hidden;
+  color: #dce3ea;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-activities__card-age {
+  flex: 0 0 auto;
+  color: #6b7684;
+  font-size: 11px;
+}
+
+.kikx-activities__enterable {
+  display: block;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.kikx-activities__enterable:hover .kikx-activities__card {
+  border-color: #3c444d;
+}
+
+.kikx-activities__children {
+  display: grid;
+  gap: 8px;
+  padding: 12px 18px 24px;
+}
+
+.kikx-activities__section-title {
+  margin: 0;
+  color: #97a3ae;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kikx-activities__child-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kikx-activities__child {
+  padding: 10px 12px;
+  border: 1px solid #232a31;
+  border-radius: 8px;
+  background: #14181d;
+  color: #dce3ea;
+  font-size: 13px;
+}
+
+.kikx-activities__hint {
+  margin: 0;
+  padding: 4px 18px 18px;
+  color: #6b7684;
+  font-size: 13px;
+}
+
+/* --- Inline Question frame --------------------------------------------- */
+
+.kikx-question-frame {
+  display: block;
+}
+
+.kikx-question-frame__card {
+  display: grid;
+  gap: 9px;
+  padding: 13px 14px;
+  border: 1px solid #3c444d;
+  border-left: 3px solid #3d6cff;
+  border-radius: 10px;
+  background: #171c21;
+}
+
+.kikx-question-frame__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #8b97a3;
+  font-size: 12px;
+}
+
+.kikx-question-frame__agent {
+  overflow: hidden;
+  color: #aeb8c2;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-question-frame__age {
+  flex: 0 0 auto;
+  color: #6b7684;
+}
+
+.kikx-question-frame__priority {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border: 1px solid #d29922;
+  border-radius: 999px;
+  color: #d29922;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kikx-question-frame__text {
+  margin: 0;
+  color: #f5f7fa;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.kikx-question-frame__answered,
+.kikx-question-frame__missing {
+  margin: 0;
+  color: #6b7684;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* --- Stack-view chrome (Back out of Inbox / Activities) ------------------ */
+/* A view entry replaces the work area (`kikx-shell-builders.mjs:236-238`), so
+   the window header -- and with it the only Back control -- is not rendered
+   while a view is on top of the stack. The replacement control is injected into
+   the view's own header, so only the button needs rules here. */
+
+.kikx-view__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #2b333c;
+  border-radius: 7px;
+  background: #171c21;
+  color: #aeb8c2;
+  cursor: pointer;
+  /* The Inbox and Activities headers are `display: flex; align-items:
+     baseline`, which would hang a 26px box off the text baseline; the button
+     centres itself in the row instead, and the margin separates it from the
+     title now that it no longer relies on a wrapper's gap. */
+  align-self: center;
+  margin-right: 2px;
+}
+
+.kikx-view__back:hover {
+  border-color: #3d6cff;
+  color: #dce3ea;
+  background: #1d242b;
+}
+
+.kikx-view__back:focus-visible {
+  outline: 2px solid #3d6cff;
+  outline-offset: 2px;
+}
+
+.kikx-view__back svg {
+  width: 14px;
+  height: 14px;
+}

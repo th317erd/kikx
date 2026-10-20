@@ -3,6 +3,7 @@
 import { forgetDeletedSession, isCollapsed, recordDeletedSession, setTokenUsage, upsertFrames, upsertSession } from '../state/kikx-state.mjs';
 import { applyThinkingFrame } from '../state/thinking-state.mjs';
 import { applyQuestionEvent, applyQuestionsFetch } from '../state/questions-state.mjs';
+import { pruneAnswerDrafts } from '../state/question-drafts.mjs';
 import { isDeletedSession } from '../state/session-state-utils.mjs';
 import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame, parseRuntimeEventResult } from './kikx-app-helpers.mjs';
@@ -430,6 +431,14 @@ export async function fetchQuestions(app, options = {}) {
     let complete = questions.length < limit;
 
     applyQuestionsFetch(state.questionsState, payload, { complete });
+
+    // A question answered in another tab leaves this tab's typed draft with
+    // nothing to attach to. Prune after the model settles so a still-open
+    // question's draft — including one the user is typing into right now — is
+    // never touched.
+    pruneAnswerDrafts(app._answerDrafts, new Set(
+      state.questionsState.questions.map((question) => question.id),
+    ));
   } catch (error) {
     state.questionsState.loading = false;
     state.questionsState.error = error?.message || String(error);

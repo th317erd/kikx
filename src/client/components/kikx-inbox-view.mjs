@@ -23,7 +23,13 @@ import {
   isInboxOpen,
   navigateInbox,
 } from '../state/kikx-state.mjs';
-import { buildInboxList, inboxHeader } from './kikx-inbox-list.mjs';
+import { buildInboxList, inboxHeader, syncInboxList } from './kikx-inbox-list.mjs';
+import {
+  applyLocalAnswer,
+  applyLocalDismiss,
+  applyLocalRead,
+} from '../state/questions-local-state.mjs';
+import { createDraftStore } from '../state/question-drafts.mjs';
 import {
   canSubmitAnswer,
   groupHeading,
@@ -79,6 +85,45 @@ export function buildInboxSidebarEntry(app) {
  * provides the list + cards; this wrapper owns the heading and the empty state
  * so the sidebar's badge and the list can never disagree about what counts.
  */
+/**
+ * The handlers every Inbox card needs, in one place.
+ *
+ * `buildInboxView` and `syncQuestionShell` must bind identical behaviour: the
+ * in-place repaint creates cards for questions that arrived after the original
+ * render, and those cards need the same wiring or they render a dead box.
+ */
+export function questionAnswerHandlers(app, overrides = {}) {
+  return {
+    onSubmit: (questionID, answerText) => app._submitQuestionAnswer?.(questionID, answerText),
+    onDismiss: (questionID) => app._dismissQuestion?.(questionID),
+    onRead: (questionID) => app._markQuestionRead?.(questionID),
+    // Typed-but-unsent answers, restored whenever a card is re-created. Held on
+    // the app so every route that rebuilds the Inbox (shell render, view sync,
+    // fallback full render) reads and writes the same store — a module-level Map
+    // would leak drafts between apps, and a per-render Map would be empty
+    // exactly when it is needed.
+    drafts: answerDraftStore(app),
+    ...overrides,
+  };
+}
+
+/**
+ * The app's draft store, created on first use.
+ *
+ * Lazy rather than constructed in the app class so the store exists for any
+ * `app`-shaped object the tests pass in, without those tests having to know the
+ * field name.
+ */
+export function answerDraftStore(app) {
+  if (!app || typeof app !== 'object')
+    return createDraftStore();
+
+  if (!(app._answerDrafts instanceof Map))
+    app._answerDrafts = createDraftStore();
+
+  return app._answerDrafts;
+}
+
 export function buildInboxView(app, options = {}) {
   return guardClientOperation('kikx-inbox.view', () => {
     let questionsState = getQuestionsState(app._state);
@@ -91,12 +136,7 @@ export function buildInboxView(app, options = {}) {
     // every card renders a textarea and a button that do nothing. Defaults live
     // here rather than in the shell so the Inbox stays the single owner of its
     // own wiring; callers may still override any handler via `options.handlers`.
-    let handlers = {
-      onSubmit: (questionID, answerText) => app._submitQuestionAnswer?.(questionID, answerText),
-      onDismiss: (questionID) => app._dismissQuestion?.(questionID),
-      onRead: (questionID) => app._markQuestionRead?.(questionID),
-      ...(options.handlers || {}),
-    };
+    let handlers = questionAnswerHandlers(app, options.handlers || {});
 
     let body = options.renderList
       ? options.renderList(app)
@@ -165,6 +205,15 @@ function buildFallbackCard(app, question) {
     );
 }
 
+
+// The builder needs an owner document; tests may pass a bare owner object.
+function resolveDocument(app) {
+  if (app && app.ownerDocument)
+    return app.ownerDocument;
+
+  return typeof document === 'undefined' ? null : document;
+}
+
 // --- Controller ------------------------------------------------------------
 
 /**
@@ -175,28 +224,58 @@ function buildFallbackCard(app, question) {
  */
 export function syncQuestionShell(app) {
   let badge = app.querySelector?.('.kikx-sidebar__inbox');
-  if (!badge)
+  let inbox = app.querySelector?.('.kikx-inbox');
+
+  // Neither surface rendered means this tab is not showing questions at all;
+  // report that honestly so the caller does whatever it would do anyway.
+  if (!badge && !inbox)
     return false;
 
   let questionsState = getQuestionsState(app._state);
   let unread = unreadQuestionCount(questionsState.questions || []);
 
-  let badgeNode = badge.querySelector?.('.kikx-sidebar__inbox-badge');
-  if (unread > 0) {
-    if (badgeNode)
-      badgeNode.textContent = String(unread);
-    else
-      return false; // Shape changed (0 -> N); needs a rebuild to add the node.
-  } else if (badgeNode) {
-    return false; // Shape changed (N -> 0); needs a rebuild to drop the node.
+  // A missing badge is not a shape change to report — the badge is simply not
+  // on screen. Returning `false` here used to force a full rebuild, which is
+  // what destroyed typed-but-unsent answers.
+  let badgeNode = badge?.querySelector?.('.kikx-sidebar__inbox-badge') || null;
+
+  // Add or drop the badge node in place rather than reporting a shape change.
+  // The worst case this caused: answering the last unread question took the
+  // count to zero, which read as a shape change and triggered a rebuild.
+  if (badge) {
+    if (unread > 0) {
+      if (!badgeNode) {
+        let ownerDocument = resolveDocument(app);
+        if (ownerDocument) {
+          badgeNode = ownerDocument.createElement('span');
+          badgeNode.className = 'kikx-sidebar__inbox-badge';
+          badge.appendChild(badgeNode);
+        }
+      }
+
+      if (badgeNode)
+        badgeNode.textContent = String(unread);
+    } else if (badgeNode) {
+      badge.removeChild(badgeNode);
+      badgeNode = null;
+    }
+
+    if (badge.setAttribute)
+      badge.setAttribute('aria-label', unread > 0 ? `Inbox, ${unread} unread questions` : 'Inbox');
   }
 
   // The inbox list is only on screen when the inbox entry is selected; a badge
   // update elsewhere must not force the list to re-render.
-  if (!app.querySelector?.('.kikx-inbox'))
+  if (!inbox)
     return true;
 
-  return false;
+  // The list is on screen, so reconcile it in place. A full `_requestRender()`
+  // here rebuilds the whole shell and destroys every typed-but-unsent answer in
+  // the other cards — the reason this function used to return `false` and the
+  // caller used to rebuild. `syncInboxList` preserves those drafts and reports
+  // `false` when the shape changed in a way that genuinely needs a rebuild
+  // (empty <-> non-empty).
+  return syncInboxList(app, questionAnswerHandlers(app));
 }
 
 // Answer submission lives here, not on the app class, so the app keeps only a
@@ -216,15 +295,20 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
     let payload = result?.data || result || {};
     // The server answers 200 even when delivery failed: the answer is durable
     // and `delivered` distinguishes the two cases (see question-routes.mjs).
+    //
+    // Closed locally, immediately: the row must leave the Inbox when the POST
+    // resolves, not when the server's `question.answered` event eventually
+    // arrives. The closed id is also recorded so a `fetchQuestions` that was
+    // already in flight cannot re-list the question as open.
     let questionsState = getQuestionsState(app._state);
-    questionsState.questions = (questionsState.questions || [])
-      .filter((question) => question.id !== questionID);
-    questionsState.counts = {
-      ...(questionsState.counts || {}),
-      open: questionsState.questions.length,
-    };
+    applyLocalAnswer(questionsState, questionID, { answeredAt: payload?.answeredAt });
 
-    app._requestRender?.();
+    // Repaint in place when possible; only fall back to a full render when the
+    // list shape changed (a rebuild there is unavoidable, and by then this row
+    // is the only one whose draft was consumed).
+    if (!app._syncQuestionShell?.())
+      app._requestRender?.();
+
     return { ok: true, delivered: payload.delivered !== false, payload };
   } catch (error) {
     return { ok: false, reason: 'error', error };
@@ -232,13 +316,26 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
 }
 
 export async function markQuestionRead(app, questionID) {
+  let result;
   try {
-    await app._postJSON(`/api/v1/questions/${encodeURIComponent(questionID)}/read`, {});
+    result = await app._postJSON(`/api/v1/questions/${encodeURIComponent(questionID)}/read`, {});
   } catch (_ignored) {
     // Clearing the unread badge is cosmetic; a failure must not surface as an
     // error dialog or block answering.
     return false;
   }
+
+  // Mirror the server's `readAt` into the local model. Without this the badge
+  // kept its old count until the next fetch, because the badge derives from
+  // local state and nothing else updated it.
+  let payload = result?.data || result || {};
+  let questionsState = getQuestionsState(app._state);
+  applyLocalRead(questionsState, questionID, { readAt: payload?.question?.readAt });
+
+  // A read is badge-only: repaint through the shell sync so the Inbox list is
+  // left entirely alone (its cards, and any drafts in them, stay put).
+  if (!app._syncQuestionShell?.())
+    app._requestRender?.();
 
   return true;
 }
@@ -253,8 +350,10 @@ export async function dismissQuestion(app, questionID, reason = '') {
   }
 
   let questionsState = getQuestionsState(app._state);
-  questionsState.questions = (questionsState.questions || [])
-    .filter((question) => question.id !== questionID);
-  app._requestRender?.();
+  applyLocalDismiss(questionsState, questionID);
+
+  if (!app._syncQuestionShell?.())
+    app._requestRender?.();
+
   return true;
 }

@@ -30,6 +30,7 @@ import {
   buildSessionStats,
   sortStatsByActivity,
 } from '../state/activities-stats.mjs';
+import { buildViewBackButton } from './kikx-view-chrome.mjs';
 
 const { div, section, header, h2, h3, p, span, button, ul, li } = elements;
 
@@ -165,7 +166,10 @@ export function buildActivitiesView(app, options = {}) {
 
     if (derived.scope === 'workspace') {
       return section.class('kikx-activities')(
-        header.class('kikx-activities__header')(h2('Activities')),
+        header.class('kikx-activities__header')(
+          buildViewBackButton(app),
+          h2('Activities'),
+        ),
         derived.projects.length === 0
           ? buildActivitiesEmptyState()
           : div.class('kikx-activities__grid')(
@@ -180,7 +184,11 @@ export function buildActivitiesView(app, options = {}) {
     let current = derived.current || {};
 
     return section.class('kikx-activities')(
+      // Same reasoning as the Inbox header (`kikx-inbox-list.mjs`): a view on
+      // top of the stack replaces `buildWindow`, so this header is the only
+      // place the Back affordance can exist.
       header.class('kikx-activities__header')(
+        buildViewBackButton(app),
         h2(current.title || 'Activities'),
         span.class('kikx-activities__scope')('project rollup'),
       ),

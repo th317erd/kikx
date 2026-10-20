@@ -12,8 +12,15 @@
 // the shell's render pass and an exception would blank the whole app.
 
 import { elements } from '../lib/aeor-ui.mjs';
-import { groupHeading, groupQuestions, openQuestionCount } from '../state/questions-state.mjs';
+import {
+  groupHeading,
+  groupQuestions,
+  isQuestionClosedLocally,
+  normalizeQuestionList,
+  openQuestionCount,
+} from '../state/questions-state.mjs';
 import { bindAnswerForm, renderQuestionCard } from './kikx-question-card.mjs';
+import { buildViewBackButton } from './kikx-view-chrome.mjs';
 
 const { div, h3, header, h2, li, p, span, ul } = elements;
 
@@ -74,7 +81,11 @@ export function inboxHeader(app) {
   let count = openQuestionCount(readQuestions(app));
   let error = questionsState?.error;
 
+  // Back lives in the view's own header: when a view is on top of the stack
+  // the shell renders it instead of `buildWindow`, so this is the only header
+  // on screen and therefore the only place the affordance can live.
   return header.class(HEADER_CLASS)(
+    buildViewBackButton(app),
     h2.class(HEADER_TITLE_CLASS)('Inbox'),
     span.class(HEADER_COUNT_CLASS)(String(count)),
     error ? span.class(HEADER_ERROR_CLASS)(String(error)) : null,
@@ -180,4 +191,84 @@ export function buildInboxList(app, handlers = {}) {
   }
 
   return list;
+}
+
+// --- In-place reconciliation ------------------------------------------------
+
+const INPUT_CLASS = `${CARD_CLASS}__input`;
+
+function setHeaderCount(app, count) {
+  let headerCount = app.querySelector?.(`.${HEADER_COUNT_CLASS}`);
+  if (headerCount)
+    headerCount.textContent = String(count);
+}
+
+/**
+ * Reconcile the rendered list against the model without touching the DOM of
+ * questions that are still open.
+ *
+ * Returns `false` when the shape changed in a way this function will not
+ * handle (no list on screen, empty <-> non-empty), so the caller falls back to
+ * a full `_requestRender()`. When it returns `true` the user's drafts are
+ * intact, because untouched cards were never re-created.
+ */
+export function syncInboxList(app, handlers = {}) {
+  let list = app.querySelector?.(`.${LIST_CLASS}`);
+  let inbox = app.querySelector?.('.kikx-inbox');
+  if (!list || !inbox)
+    return false;
+
+  let questionsState = readQuestionsState(app);
+  let questions = normalizeQuestionList(readQuestions(app)).filter((question) => (
+    !questionsState || !isQuestionClosedLocally(questionsState, question.id)
+  ));
+
+  // Empty <-> non-empty changes the top-level node, which this function
+  // deliberately does not attempt: the caller rebuilds so the empty state and
+  // the list cannot both be present.
+  let rendered = [ ...list.querySelectorAll(`.${CARD_CLASS}`) ];
+  if (questions.length === 0 || rendered.length === 0)
+    return false;
+
+  let wanted = new Set(questions.map((question) => question.id));
+
+  // Drop rows the model no longer lists. Their drafts go with them, which is
+  // correct: an answered question is closed, so there is nothing left to send.
+  for (let card of rendered) {
+    let questionID = card.getAttribute('data-question-id');
+    if (questionID && wanted.has(questionID))
+      continue;
+
+    let row = card;
+    while (row && row.parentNode && !row.classList?.contains(ROW_CLASS))
+      row = row.parentNode;
+
+    (row?.parentNode || list).removeChild(row || card);
+  }
+
+  let present = new Set(
+    [ ...list.querySelectorAll(`.${CARD_CLASS}`) ]
+      .map((card) => card.getAttribute('data-question-id'))
+      .filter(Boolean),
+  );
+
+  // Append rows that appeared after this list was rendered. Ordering is not
+  // repaired here: new questions carry the newest `askedAt`, so appending is
+  // already oldest-first.
+  let now = Date.now();
+  let groupCount = questions.length;
+  for (let question of questions) {
+    if (present.has(question.id))
+      continue;
+
+    let card = renderQuestionCard(app, question, { now, groupCount });
+    if (!card)
+      continue;
+
+    bindAnswerForm(card, handlers);
+    list.appendChild(li.class(ROW_CLASS)(card).build(resolveDocument(app)));
+  }
+
+  setHeaderCount(app, openQuestionCount(questions));
+  return true;
 }
