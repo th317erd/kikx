@@ -69,6 +69,7 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
     assert.equal(collapsedCommand.whiteSpace, 'nowrap', 'a collapsed command is one line');
     assert.equal(collapsedCommand.textOverflow, 'ellipsis', 'a collapsed command overflows into an ellipsis');
     assert.ok(collapsedCommand.codeScrollWidth > collapsedCommand.codeClientWidth, 'the collapsed command is clipped horizontally');
+    assert.ok(collapsedCommand.scrollHeight <= collapsedCommand.clientHeight + 1, 'the collapsed command row is not vertically clipped');
 
     let collapsedDom = await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');

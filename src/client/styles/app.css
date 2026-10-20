@@ -749,7 +749,6 @@ kikx-app {
 .kikx-frame__compact-command {
   grid-area: command;
   max-width: 100%;
-  max-height: 1.5em;
   margin: 2px 0 0;
   padding: 8px 10px;
   overflow: hidden;
