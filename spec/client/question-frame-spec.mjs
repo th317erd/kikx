@@ -172,7 +172,10 @@ for (let status of ['answered', 'dismissed', 'undeliverable']) {
 
     let answered = byClass(el, 'kikx-question-frame__answered');
     assert.equal(answered.length, 1);
-    assert.equal(textOf(answered[0]), `Answered (${status}).`);
+    // The old copy interpolated the status into its own name
+    // ("Answered (answered)."), which said nothing about the answer.
+    let expected = status === 'answered' ? 'Answered.' : `Closed: ${status}.`;
+    assert.equal(textOf(answered[0]), expected);
 
     // The question itself still reads in the thread.
     assert.equal(textOf(byClass(el, 'kikx-question-frame__text')[0]), 'Which database should we use?');
@@ -301,5 +304,118 @@ test('updateFrame swaps an open question for its answered state without stacking
 
   assert.equal(byClass(el, 'kikx-question-frame__card').length, 1, 'exactly one card after update');
   assert.equal(byTag(el, 'textarea').length, 0);
-  assert.equal(textOf(byClass(el, 'kikx-question-frame__answered')[0]), 'Answered (answered).');
+  assert.equal(textOf(byClass(el, 'kikx-question-frame__answered')[0]), 'Answered.');
+});
+
+// --- submission feedback ---------------------------------------------------
+//
+// The frame used to discard the promise returned by `_submitQuestionAnswer`, so
+// a send produced no busy state, no confirmation, and no way to tell a failure
+// from a success. These pin the three phases it now reports.
+
+function clickSubmit(el) {
+  let submit = byClass(el, 'kikx-question-frame__submit')[0];
+  assert.ok(submit, 'the frame has a submit control');
+  submit.dispatchEvent({ type: 'click', preventDefault() {} });
+  return submit;
+}
+
+function typeInto(el, text) {
+  let box = byTag(el, 'textarea')[0];
+  assert.ok(box, 'the frame has an answer box');
+  box.value = text;
+  return box;
+}
+
+test('a frame send reports busy, then replaces the form with the answer', async () => {
+  let release;
+  let el = mount(frameWith(), {
+    app: { _submitQuestionAnswer() { return new Promise((resolve) => { release = resolve; }); } },
+  });
+
+  let box = typeInto(el, 'Use PostgreSQL');
+  let submit = clickSubmit(el);
+
+  assert.equal(el.getAttribute('data-answer-state'), 'busy');
+  assert.equal(textOf(submit), 'Sending\u2026', 'the label changes while in flight');
+  assert.notEqual(submit.getAttribute('disabled'), null, 'the control is disabled while in flight');
+
+  // One status, not two. The busy phase used to ALSO write "Sending…" into the
+  // hint next to a button that already said it.
+  let hint = byClass(el, 'kikx-question-frame__hint')[0];
+  assert.equal(textOf(hint), '', 'the busy label is not duplicated in the hint');
+
+  release({ ok: true, delivered: false, pending: true, message: 'Answer saved. The agent has not started on it yet.' });
+  for (let i = 0; i < 8; i += 1)
+    await Promise.resolve();
+
+  assert.equal(el.getAttribute('data-answer-state'), 'sent');
+
+  // The complaint this fixes: an enabled "Answer sent" button next to a live
+  // box invited a second answer to a question that was already answered.
+  assert.equal(byClass(el, 'kikx-question-frame__submit').length, 0, 'the submit control is gone once sent');
+  assert.equal(byTag(el, 'textarea').length, 0, 'the answer box is gone once sent');
+
+  // ...and the answer itself is on screen, in its own read-only block.
+  let given = byClass(el, 'kikx-question-frame__answer-text');
+  assert.equal(given.length, 1, 'the answer is displayed');
+  assert.equal(textOf(given[0]), 'Use PostgreSQL');
+
+  let label = byClass(el, 'kikx-question-frame__answer-label')[0];
+  assert.equal(textOf(label), 'Your answer');
+});
+
+test('an already-answered question shows the answer it holds', () => {
+  let el = mount(frameWith({ status: 'answered', answer: 'Postgres, port 5434.' }));
+
+  assert.equal(byTag(el, 'textarea').length, 0, 'no box for an answered question');
+  assert.equal(byClass(el, 'kikx-question-frame__submit').length, 0, 'no submit either');
+
+  let given = byClass(el, 'kikx-question-frame__answer-text');
+  assert.equal(given.length, 1);
+  assert.equal(textOf(given[0]), 'Postgres, port 5434.', 'the answer is shown, not the status word');
+});
+
+test('a failed frame send reports the reason and keeps the typed text', async () => {
+  let el = mount(frameWith(), {
+    app: {
+      _submitQuestionAnswer() {
+        return Promise.resolve({ ok: false, message: 'Could not send the answer: HTTP 409' });
+      },
+    },
+  });
+
+  let box = typeInto(el, 'Use PostgreSQL');
+  clickSubmit(el);
+
+  for (let i = 0; i < 8; i += 1)
+    await Promise.resolve();
+
+  assert.equal(el.getAttribute('data-answer-state'), 'error');
+  assert.equal(box.value, 'Use PostgreSQL', 'a failed send must not discard what was typed');
+
+  let hint = byClass(el, 'kikx-question-frame__hint')[0];
+  assert.match(textOf(hint), /HTTP 409/, 'the reason is shown');
+});
+
+test('a frame send that throws is reported rather than swallowed', async () => {
+  let el = mount(frameWith(), {
+    app: {
+      _submitQuestionAnswer() {
+        return Promise.reject(new Error('network down'));
+      },
+    },
+  });
+
+  let box = typeInto(el, 'Use PostgreSQL');
+  clickSubmit(el);
+
+  for (let i = 0; i < 8; i += 1)
+    await Promise.resolve();
+
+  assert.equal(el.getAttribute('data-answer-state'), 'error');
+  assert.equal(box.value, 'Use PostgreSQL');
+
+  let hint = byClass(el, 'kikx-question-frame__hint')[0];
+  assert.match(textOf(hint), /network down/);
 });

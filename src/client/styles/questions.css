@@ -320,6 +320,163 @@
   background: #5b84ff;
 }
 
+/* --- Submission feedback ------------------------------------------------ */
+
+/* The submit control used to look identical while a request was in flight: the
+   code set `disabled` and `aria-busy`, but nothing in the stylesheet reacted to
+   either, so a working send and a dead button were pixel-identical. These rules
+   are what make the round trip visible. */
+
+.kikx-question-card__submit[disabled],
+.kikx-inbox__submit[disabled],
+.kikx-question-frame__submit[disabled] {
+  cursor: progress;
+  border-color: #3d6cff;
+  background: #2b4aad;
+  color: #c9d4ff;
+}
+
+/* The row itself cools down while busy, so the change is visible even when the
+   button is scrolled past. */
+.kikx-question-card[data-answer-state='busy'],
+.kikx-question-frame[data-answer-state='busy'] {
+  border-color: #3d6cff;
+}
+
+.kikx-question-card[data-answer-state='error'],
+.kikx-question-frame[data-answer-state='error'] {
+  border-color: #d29922;
+}
+
+.kikx-question-card[data-answer-state='sent'],
+.kikx-question-frame[data-answer-state='sent'] {
+  border-color: #2ea043;
+}
+
+/* A spinner inside the busy button. Purely decorative: the label already says
+   "Sending…", so hiding it for reduced-motion loses no information. */
+.kikx-question-card__submit[disabled]::before,
+.kikx-inbox__submit[disabled]::before,
+.kikx-question-frame__submit[disabled]::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 7px;
+  vertical-align: -1px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: kikx-answer-spin 700ms linear infinite;
+}
+
+@keyframes kikx-answer-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kikx-question-card__submit[disabled]::before,
+  .kikx-inbox__submit[disabled]::before,
+  .kikx-question-frame__submit[disabled]::before {
+    animation: none;
+  }
+}
+
+/* The failure hint under the box. Amber, matching the existing
+   `.kikx-question-card__hint` warning colour. */
+.kikx-question-frame__hint {
+  color: #d29922;
+  font-size: 12px;
+}
+
+.kikx-question-frame__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* A sent (or previously answered) question shows the answer where the form was.
+   Deliberately not button-shaped: it must not read as something to press. The
+   row is a record now, not a control. */
+.kikx-question-frame__answer-given {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  border: 1px solid #2c3b2f;
+  border-left: 3px solid #2ea043;
+  border-radius: 8px;
+  background: #101a13;
+}
+
+.kikx-question-frame__answer-label {
+  color: #7ea888;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kikx-question-frame__answer-text {
+  color: #e7f0e9;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The answered row keeps a green edge so the thread shows, at a glance, which
+   questions have been dealt with. */
+.kikx-question-frame[data-answer-state='sent'] .kikx-question-frame__card {
+  border-color: #2ea043;
+}
+
+/* --- Answer notice ------------------------------------------------------ */
+
+/* Confirmation outlives the row: the card is removed from the Inbox the moment
+   the server accepts the answer, so this floats over the app instead. */
+.kikx-answer-notice {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 60;
+  max-width: min(420px, calc(100vw - 40px));
+  padding: 10px 14px;
+  border: 1px solid #2f3439;
+  border-radius: 9px;
+  background: #171c21;
+  color: #f5f7fa;
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+
+  /* Hidden by default, and inert when hidden so it cannot swallow a click. */
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.kikx-answer-notice--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.kikx-answer-notice--success {
+  border-color: #2ea043;
+}
+
+.kikx-answer-notice--error {
+  border-color: #d29922;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kikx-answer-notice {
+    transition: none;
+    transform: none;
+  }
+}
+
 /* --- Empty states ------------------------------------------------------- */
 
 .kikx-inbox-empty,

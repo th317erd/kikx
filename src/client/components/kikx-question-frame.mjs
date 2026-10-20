@@ -58,6 +58,26 @@ export class KikxQuestionFrame extends HTMLElement {
     return normalizeQuestionSummary(content.question || content);
   }
 
+  // A question that already has an answer shows it. The row used to read
+  // "Answered (answered)." — the status, never the answer itself — so the
+  // thread could not tell you what you had replied.
+  _answeredBlock(question) {
+    let answer = typeof question.answer === 'string' ? question.answer.trim() : '';
+    if (answer === '') {
+      // "Answered (answered)." said the same word twice and never said what was
+      // said. A closed row now names its state plainly.
+      let note = question.status === 'answered'
+        ? 'Answered.'
+        : `Closed: ${question.status}.`;
+      return p.class('kikx-question-frame__answered')(note);
+    }
+
+    return div.class('kikx-question-frame__answer-given')(
+      span.class('kikx-question-frame__answer-label')('Your answer'),
+      div.class('kikx-question-frame__answer-text')(answer),
+    );
+  }
+
   _render() {
     this.textContent = '';
 
@@ -91,6 +111,11 @@ export class KikxQuestionFrame extends HTMLElement {
       .class('kikx-question-frame__submit')
       .onClick(() => this._submit(question.id, answerInput))('Answer');
 
+    // Feedback lives in the frame as well as the Inbox card. `_submit` is what
+    // wires these; they are built here because the DSL cannot reach a node it
+    // has already returned.
+    let hint = span.class('kikx-question-frame__hint');
+
     // A terminal question is shown read-only: the answer already exists, and
     // offering a box that would 409 is worse than showing what was said.
     let answered = question.status !== 'open';
@@ -109,11 +134,13 @@ export class KikxQuestionFrame extends HTMLElement {
         ),
         p.class('kikx-question-frame__text')(question.text),
         answered
-          ? p.class('kikx-question-frame__answered')(`Answered (${question.status}).`)
+          ? this._answeredBlock(question)
           : answerInput,
-        answered ? null : submit,
+        answered ? null : div.class('kikx-question-frame__actions')(hint.hidden(true).ariaLive('polite')(), submit),
       ).build(document);
 
+    this._submitNode = node.querySelector('.kikx-question-frame__submit');
+    this._inputNode = answerInput;
     this.appendChild(node);
   }
 
@@ -126,7 +153,96 @@ export class KikxQuestionFrame extends HTMLElement {
     // no app (a frame rendered standalone in a spec), do nothing rather than
     // throwing inside an event handler.
     let app = this._appState?.app || this.closest?.('kikx-app');
-    app?._submitQuestionAnswer?.(questionID, text);
+    let pending = app?._submitQuestionAnswer?.(questionID, text);
+
+    // The frame used to drop this promise on the floor: no busy state, no
+    // confirmation, and a failure looked exactly like a send. It now owns the
+    // same phase change the Inbox card does, because the answer row stays on
+    // screen here and would otherwise reset with no explanation.
+    if (!pending || typeof pending.then !== 'function')
+      return;
+
+    // Busy carries no message: the button already says "Sending…", and setting
+    // the hint to the same words printed the status twice, side by side.
+    this._setPhase('busy');
+    pending.then(
+      (result) => {
+        if (result && result.ok === false) {
+          this._setPhase('error', result.message || 'Could not send the answer.');
+          return;
+        }
+
+        this._setPhase('sent', result?.message || '', text);
+      },
+      (error) => {
+        let message = typeof error?.message === 'string' && error.message !== ''
+          ? `Could not send the answer: ${error.message}`
+          : 'Could not send the answer.';
+        this._setPhase('error', message);
+      },
+    );
+  }
+
+  // What a sent answer looks like: the question stays in the thread, the box and
+  // its control are gone, and the text the user wrote is shown in its place.
+  // Leaving an enabled "Answer sent" button next to a live textarea invited the
+  // user to answer a question twice.
+  _showSent(answerText) {
+    let card = this.querySelector?.('.kikx-question-frame__card');
+    if (!card)
+      return;
+
+    for (let selector of [ '.kikx-question-frame__answer', '.kikx-question-frame__actions' ]) {
+      let stale = card.querySelector?.(`.${selector.replace('.', '')}`)
+        || this.querySelector?.(selector);
+      if (stale?.parentNode)
+        stale.parentNode.removeChild(stale);
+    }
+
+    let block = div.class('kikx-question-frame__answer-given')(
+      span.class('kikx-question-frame__answer-label')('Your answer'),
+      div.class('kikx-question-frame__answer-text')(answerText),
+    ).build(document);
+
+    card.appendChild(block);
+  }
+
+  // One phase setter for three states: idle, busy, error/sent. The attribute is
+  // what the stylesheet and the specs hook into; the label is the part a user
+  // reads.
+  _setPhase(phase, message = '', answerText = '') {
+    let submitNode = this._submitNode;
+    let inputNode = this._inputNode;
+
+    // A sent row has no control left to describe: the form is replaced by the
+    // answer. Only the busy and error phases still have a button to relabel.
+    if (submitNode && phase !== 'sent') {
+      submitNode.textContent = phase === 'busy' ? 'Sending\u2026' : 'Answer';
+      if (phase === 'busy')
+        submitNode.setAttribute?.('disabled', '');
+      else
+        submitNode.removeAttribute?.('disabled');
+    }
+
+    if (inputNode && phase === 'busy' && inputNode.setAttribute)
+      inputNode.setAttribute('readonly', '');
+
+    if (phase === 'sent')
+      this._showSent(answerText);
+
+    this.setAttribute('data-answer-state', phase);
+    this.setAttribute('aria-busy', phase === 'busy' ? 'true' : 'false');
+
+    let hint = this.querySelector?.('.kikx-question-frame__hint');
+    if (hint) {
+      if (message) {
+        hint.textContent = message;
+        hint.removeAttribute('hidden');
+      } else {
+        hint.textContent = '';
+        hint.setAttribute('hidden', '');
+      }
+    }
   }
 }
 
