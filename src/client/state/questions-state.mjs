@@ -43,7 +43,12 @@ export function normalizeQuestionSummary(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return null;
 
-  let id = stringOrNull(value.id);
+  // Two shapes reach this function. The open index and the list route carry
+  // `id`; the `Question` frames written by ask-user-tool carry `questionID`.
+  // Accepting only `id` made every inline frame resolve to null, so a question
+  // that existed and was answerable rendered the "Question unavailable."
+  // fallback — no text, no box, no Submit — inside the session that asked it.
+  let id = stringOrNull(value.id) || stringOrNull(value.questionID);
   if (!id)
     return null;
 
@@ -62,6 +67,9 @@ export function normalizeQuestionSummary(value) {
     sessionID: stringOrNull(value.sessionID),
     agentID: stringOrNull(value.agentID),
     text: text.trim(),
+    // The answer was dropped entirely, so an answered row could not show what
+    // was said and the inline frame fell back to the status word.
+    answer: stringOrNull(value.answer),
     priority: value.priority === 'low' || value.priority === 'high' ? value.priority : 'normal',
     askedAt: numberOr(value.askedAt, 0),
     askedClock: stringOrNull(value.askedClock),

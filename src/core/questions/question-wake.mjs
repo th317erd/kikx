@@ -20,6 +20,8 @@
 // chatter, and an answer is never chain-capped. A human outranks the bot's own
 // scheduling.
 
+import { patchQuestionFrameContent } from './question-frame-patch.mjs';
+
 const ANSWER_AUTHOR_FALLBACK = 'user';
 
 /**
@@ -75,6 +77,14 @@ export class QuestionAnswerService {
       answerFrameID: input.answerFrameID,
     });
 
+    // Make the answered state visible where the question was asked. Without
+    // this the stored `Question` frame stays frozen at `status:'open'` with no
+    // answer, so every re-render of the thread put the empty form and its
+    // Submit button back on a question that was already answered.
+    await patchQuestionFrameContent({ frameRuntime: this.frameRuntime }, answered, {
+      frameRuntime: this.frameRuntime,
+    });
+
     let delivery = await this.deliverAnswer(answered, input);
 
     if (!delivery.delivered) {
@@ -82,6 +92,10 @@ export class QuestionAnswerService {
         answer: answered.answer,
         userID: input.userID,
         reason: delivery.reason,
+      });
+
+      await patchQuestionFrameContent({ frameRuntime: this.frameRuntime }, undeliverable, {
+        frameRuntime: this.frameRuntime,
       });
 
       this.emit('question.updated', {
@@ -94,6 +108,27 @@ export class QuestionAnswerService {
         delivered: false,
         reason: delivery.reason,
         question: undeliverable,
+      };
+    }
+
+    // Routed but not yet picked up is not a failure. The answer is stored and
+    // the wake is queued; saying "sent" would overclaim, and treating it as
+    // undeliverable would schedule a retry for a message that is about to run.
+    if (delivery.wakePending) {
+      this.emit('question.updated', {
+        sessionID: question.sessionID,
+        question: delivery.question || answered,
+        reason: 'delivery-pending',
+      });
+
+      return {
+        delivered: false,
+        pending: true,
+        reason: 'delivery-pending',
+        question: delivery.question || answered,
+        frameID: delivery.frameID,
+        sessionID: question.sessionID,
+        agentID: question.agentID,
       };
     }
 
@@ -205,18 +240,25 @@ export class QuestionAnswerService {
     // Stored answer must be durable before we report success: otherwise a crash
     // after the wake could surface an answer the store never recorded.
     //
-    // Prefer the runtime's full barrier: FrameRuntime.flush() awaits the frame
-    // store write *and* settles the router queue, so 'answered' also implies
-    // 'dispatched'. The store-only fallback keeps older runtimes working; a
-    // store flush alone can leave the answer persisted but never routed, which
-    // is exactly the gap this service exists to close.
+    // The runtime barrier settles the frame store *and* the router queue, so
+    // 'answered' also implies 'routed'. It is deliberately asked NOT to wait for
+    // background agent work: the wake starts a turn, and awaiting that turned a
+    // POST that stores a short string into a request that hung for the whole of
+    // the agent's reply (the user watched "Sending…" for minutes). Whether the
+    // agent has actually picked the message up is reported separately, below.
+    //
+    // The store-only fallback keeps older runtimes working; a store flush alone
+    // can leave the answer persisted but never routed, which is the gap this
+    // service exists to close.
     if (typeof this.frameRuntime.flush === 'function')
-      await this.frameRuntime.flush();
+      await this.frameRuntime.flush({ background: false });
     else
       await this.frameRuntime.frameStore?.flush?.();
 
     return {
       delivered: true,
+      // Durable and routed, but the agent's turn has not started yet.
+      wakePending: result?.wakePending === true,
       frameID: result?.frame?.id || frameID,
       question,
     };

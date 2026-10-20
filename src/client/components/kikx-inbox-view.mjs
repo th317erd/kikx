@@ -23,6 +23,7 @@ import {
   isInboxOpen,
   navigateInbox,
 } from '../state/kikx-state.mjs';
+import { announceAnswerStatus } from './answer-notice.mjs';
 import { buildInboxList, inboxHeader, syncInboxList } from './kikx-inbox-list.mjs';
 import {
   applyLocalAnswer,
@@ -283,9 +284,14 @@ export function syncQuestionShell(app) {
 export async function submitQuestionAnswer(app, questionID, answerText, options = {}) {
   let text = normalizeAnswerText(answerText);
   if (!canSubmitAnswer(text))
-    return { ok: false, reason: 'empty' };
+    return { ok: false, reason: 'empty', message: '' };
 
+  // Injectable so a failing POST is testable without a network, and so a caller
+  // can substitute the transport.
   let postJSON = options.postJSON || ((url, body) => app._postJSON(url, body));
+  let announce = options.announce || ((message, noticeOptions) => (
+    announceAnswerStatus(app, message, noticeOptions)
+  ));
 
   try {
     let result = await postJSON(`/api/v1/questions/${encodeURIComponent(questionID)}/answer`, {
@@ -309,9 +315,37 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
     if (!app._syncQuestionShell?.())
       app._requestRender?.();
 
-    return { ok: true, delivered: payload.delivered !== false, payload };
+    // The row is already gone from the list by the time this runs, so the
+    // notice is the only thing that can confirm the send. `delivered: false` is
+    // not a failure — the server stored the answer and will retry the wake-up —
+    // but it is worth saying, because the asking agent has not seen it yet.
+    // Three outcomes, not two. `pending` is the common one: the wake is queued
+    // and the agent will pick it up as its turn starts. It used to be reported
+    // as `delivered: false`, which read as "the agent did not get it".
+    let pending = payload.pending === true;
+    let delivered = !pending && payload.delivered !== false;
+    announce(
+      pending
+        ? 'Answer saved. The agent has not started on it yet.'
+        : (delivered
+          ? 'Answer sent.'
+          : 'Answer saved. The agent has not picked it up yet.'),
+      { tone: 'success' },
+    );
+
+    return { ok: true, delivered, pending, payload };
   } catch (error) {
-    return { ok: false, reason: 'error', error };
+    // `message` is what the card shows under the box. It must be a plain
+    // string: the card falls back to its own text when this is missing, and the
+    // previous behaviour (resolve with `{ ok: false }` and no message, which the
+    // caller read as success) is the defect being fixed.
+    let message = typeof error?.message === 'string' && error.message !== ''
+      ? `Could not send the answer: ${error.message}`
+      : 'Could not send the answer.';
+
+    announce(message, { tone: 'error' });
+
+    return { ok: false, reason: 'error', error, message };
   }
 }
 

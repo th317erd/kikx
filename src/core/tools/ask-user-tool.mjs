@@ -249,6 +249,10 @@ export class AskUserTool extends PluginInterface {
         hidden: false,
         deleted: false,
         content: {
+          // `id` is the canonical row key the client normalizer reads.
+          // `questionID` is kept beside it because stored frames and the
+          // attachQuestionFrame stamps already use that name.
+          id: question.id,
           questionID: question.id,
           groupID: question.groupID,
           index: question.index,

@@ -45,6 +45,13 @@ const ANSWER_LABEL = 'Your answer';
 const ANSWER_PLACEHOLDER = 'Type your answer';
 const EMPTY_ANSWER_HINT = 'Type an answer before sending.';
 const SUBMIT_FAILED_HINT = 'Could not send the answer.';
+const SUBMIT_LABEL = 'Answer';
+const SUBMIT_BUSY_LABEL = 'Sending\u2026';
+
+// The card publishes what its last submission did through this attribute, so
+// the stylesheet can colour the row and a spec can assert the phase without
+// matching on human-readable label text.
+const STATE_ATTRIBUTE = 'data-answer-state';
 
 // A closed row states what happened instead of offering a box that would 409.
 // The status is interpolated verbatim rather than prettified, so the row says
@@ -162,6 +169,7 @@ export function renderQuestionCard(app, question, options = {}) {
   // list re-render that replaces the node.
   node.setAttribute('data-question-id', model.id);
   node.setAttribute('data-question-status', model.status);
+  node.setAttribute(STATE_ATTRIBUTE, closed ? 'closed' : 'idle');
   if (model.groupID)
     node.setAttribute('data-group-id', model.groupID);
 
@@ -245,6 +253,11 @@ export function bindAnswerForm(node, handlers = {}) {
       hintNode.textContent = message;
   }
 
+  function setState(name) {
+    if (node.setAttribute)
+      node.setAttribute(STATE_ATTRIBUTE, name);
+  }
+
   function setInFlight(next) {
     inFlight = next;
     // `disabled` and `readonly` are presence-based; the DSL and the DOM both
@@ -258,6 +271,13 @@ export function bindAnswerForm(node, handlers = {}) {
       inputNode.setAttribute('readonly', '');
     else
       inputNode.removeAttribute('readonly');
+
+    // A disabled button with an unchanged label is not feedback: it looks
+    // identical to an enabled one until you try it. The label and the row
+    // state are what make the round-trip visible.
+    submitNode.textContent = next ? SUBMIT_BUSY_LABEL : SUBMIT_LABEL;
+    if (next)
+      setState('busy');
 
     if (node.setAttribute)
       node.setAttribute('aria-busy', next ? 'true' : 'false');
@@ -297,8 +317,21 @@ export function bindAnswerForm(node, handlers = {}) {
     if (pending && typeof pending.then === 'function') {
       setInFlight(true);
       pending.then(
-        () => {
+        (result) => {
+          // A resolved-but-unsuccessful result is a failure. `submitQuestionAnswer`
+          // reports a dropped POST or a 409 as `{ ok: false }` rather than by
+          // rejecting, and treating every resolution as success is what used to
+          // empty the box and discard the draft for an answer the server never
+          // stored.
+          if (result && result.ok === false) {
+            setInFlight(false);
+            setState('error');
+            setHint(result.message || SUBMIT_FAILED_HINT);
+            return;
+          }
+
           setInFlight(false);
+          setState('sent');
           // Only this row's draft is dropped. Every other card keeps its text,
           // including a sibling question from the same batch.
           clearAnswerDraft(drafts, questionID);
@@ -306,6 +339,7 @@ export function bindAnswerForm(node, handlers = {}) {
         },
         () => {
           setInFlight(false);
+          setState('error');
           setHint(SUBMIT_FAILED_HINT);
         },
       );
