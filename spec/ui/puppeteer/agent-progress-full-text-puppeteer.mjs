@@ -1,7 +1,7 @@
 'use strict';
 
-// AgentProgress is a bot update, not a one-line status. It must wrap in the
-// compact summary instead of being clipped to a single ellipsized line.
+// AgentProgress is a normal message card, not a compact status row. It must
+// show the complete update and use the lilac progress treatment.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -21,7 +21,7 @@ const PROGRESS_TEXT = [
   'losing the typed draft or the card the user is working on.',
 ].join(' ');
 
-test('Puppeteer shows the complete AgentProgress update instead of an ellipsis', async (t) => {
+test('Puppeteer shows a complete lilac AgentProgress message card', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
     t.skip('Puppeteer local smoke requires Chrome');
@@ -64,22 +64,22 @@ test('Puppeteer shows the complete AgentProgress update instead of an ellipsis',
 
     let result = await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="progress_1"]');
-      let description = item.querySelector('.kikx-frame__compact-description');
-      let style = getComputedStyle(description);
-      let lineHeight = Number.parseFloat(style.lineHeight);
+      let content = item.querySelector('.kikx-frame__content');
+      let style = getComputedStyle(item);
       return {
-        text: description.textContent,
-        whiteSpace: style.whiteSpace,
-        textOverflow: style.textOverflow,
-        height: description.getBoundingClientRect().height,
-        lineHeight,
+        text: content?.textContent || '',
+        compact: item.classList.contains('kikx-frame--compact'),
+        background: style.backgroundColor,
+        border: style.borderColor,
+        height: content?.getBoundingClientRect().height || 0,
       };
     });
 
     assert.equal(result.text, PROGRESS_TEXT, 'the complete update text is present');
-    assert.equal(result.whiteSpace, 'normal', 'progress prose wraps');
-    assert.notEqual(result.textOverflow, 'ellipsis', 'progress prose is not ellipsized');
-    assert.ok(result.height > result.lineHeight * 1.5, 'the update occupies multiple lines');
+    assert.equal(result.compact, false, 'progress is a normal message card');
+    assert.equal(result.background, 'rgb(27, 22, 38)', 'progress uses the lilac background');
+    assert.equal(result.border, 'rgb(95, 75, 134)', 'progress uses the lilac border');
+    assert.ok(result.height > 24, 'the update occupies multiple lines');
   } finally {
     await browser.close().catch(() => {});
     await fixture.close().catch(() => {});

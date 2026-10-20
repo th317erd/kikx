@@ -108,15 +108,15 @@ test('other tool frames derive a short verb and subject', () => {
 });
 
 test('communication frames are never compact', () => {
-  for (let type of [ 'UserMessage', 'AgentMessage', 'AgentMessageDelta', 'AgentThinking', 'BeginTyping', 'EndTyping' ])
+  for (let type of [ 'UserMessage', 'AgentMessage', 'AgentMessageDelta', 'AgentProgress', 'AgentThinking', 'BeginTyping', 'EndTyping' ])
     assert.equal(isCompactFrame({ id: type, type }), false, `${type} must stay a normal frame`);
 });
 
-test('tool, control and progress frames are compact', () => {
+test('tool and control frames are compact', () => {
   assert.equal(isCompactFrame(toolFrame('exec')), true);
   assert.equal(isCompactFrame({ type: 'ToolResult', content: { toolName: 'exec' } }), true);
 
-  for (let type of [ 'CompactionFrame', 'AgentError', 'SystemNotice', 'CommandResult', 'FrameLoadError', 'AgentProgress' ])
+  for (let type of [ 'CompactionFrame', 'AgentError', 'SystemNotice', 'CommandResult', 'FrameLoadError' ])
     assert.equal(isCompactFrame({ type }), true, `${type} should use the compact line`);
 });
 

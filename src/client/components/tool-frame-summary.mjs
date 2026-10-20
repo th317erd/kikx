@@ -13,7 +13,6 @@ const COMPACT_FRAME_TYPES = new Set([
   'SystemNotice',
   'CommandResult',
   'FrameLoadError',
-  'AgentProgress',
 ]);
 
 const SUCCESS_STATUSES = new Set([ 'success', 'complete', 'completed', 'ok', 'saved', 'done' ]);

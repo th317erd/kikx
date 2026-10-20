@@ -2372,6 +2372,22 @@ kikx-thinking-panel {
   color: #f0a0a8;
 }
 
+/* AgentProgress is a normal message card, not a compact status row. Lilac
+   distinguishes it from final agent messages while keeping the same card
+   border, background, and prose layout. */
+.kikx-frame--AgentProgress {
+  border-color: #5f4b86;
+  background: #1b1626;
+}
+
+.kikx-frame--AgentProgress .kikx-frame__meta-main strong {
+  color: #c7b7ff;
+}
+
+.kikx-frame--AgentProgress .kikx-frame__content {
+  color: #e8ddff;
+}
+
 /* Status tint applies to the whole frame, not just its internal status text.
    Compact tool/status frames get the same success/error treatment as an agent
    message; running stays neutral. */

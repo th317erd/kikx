@@ -80,7 +80,7 @@ function frameContentDescriptor(frame, appState) {
   if (frame.type === 'AgentThinking')
     return { kind: 'thinking', tagName: null };
 
-  if (frame.type === 'AgentMessage')
+  if (frame.type === 'AgentMessage' || frame.type === 'AgentProgress')
     return { kind: frame.content?.status === 'streaming' ? 'stream' : 'markdown', tagName: null };
 
   return { kind: 'text', tagName: null };
