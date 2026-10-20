@@ -284,12 +284,27 @@ export function onFrameListScroll(app, event) {
   app._frameListAnchoredToBottom = isFrameListNearBottom(app, event.currentTarget);
   maybeLoadOlderFrames(app, event.currentTarget);
 
-  if (app._frameListAnchoredToBottom)
+  if (app._frameListAnchoredToBottom) {
+    // If the user has been reading an older render window, reaching the bottom
+    // switches back to the newest frames already held in state.
+    let view = app.querySelector('.kikx-thread__body kikx-chat-view');
+    if (view?.showLatestFrames?.()) {
+      scrollFramesToBottomImmediate(app, event.currentTarget);
+      return;
+    }
+
     maybeLoadNewerFrames(app, event.currentTarget);
+  }
 }
 
 export function maybeLoadOlderFrames(app, frameList = app.querySelector('.kikx-frame-list')) {
   if (!frameList || frameList.scrollTop > LOAD_OLDER_THRESHOLD)
+    return;
+
+  // Reveal frames already in state first; only fetch an older page once the
+  // render window has reached the oldest loaded frame.
+  let view = app.querySelector('.kikx-thread__body kikx-chat-view');
+  if (view?.expandOlderFrames?.())
     return;
 
   let sessionID = app._state.selectedSessionID;

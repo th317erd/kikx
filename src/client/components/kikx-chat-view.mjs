@@ -7,6 +7,13 @@ import { countRebuild } from './render-stats.mjs';
 
 const FRAME_ENTER_ANIMATION_MS = 220;
 
+// Keep the live thread bounded. The full frame list remains in state (so older
+// pages can be revealed without a refetch), but only a recent window is kept in
+// the DOM. Scrolling to the top reveals older state frames in chunks; scrolling
+// back to the bottom switches back to the newest window.
+export const MAX_RENDERED_FRAMES = 80;
+export const RENDER_WINDOW_REVEAL = 40;
+
 export class KikxChatView extends HTMLElement {
   constructor() {
     super();
@@ -17,6 +24,8 @@ export class KikxChatView extends HTMLElement {
     this._frameStream = null;
     this._miniScaler = null;
     this._resizeObserver = null;
+    this._windowStart = 0;
+    this._windowStartFrameID = null;
   }
 
   get mode() {
@@ -89,10 +98,16 @@ export class KikxChatView extends HTMLElement {
     this._render();
   }
 
+  get windowStart() {
+    return this._windowStart;
+  }
+
   // Incremental update used by the app's frame-runtime flush path. Preserves
   // existing items and only updates touched/new frames, keeping the same DOM
-  // contract the UI tests assert.
+  // contract the UI tests assert. Only the active render window is materialized;
+  // frames outside it stay in `_frames` and can be revealed by scrolling up.
   syncFrames(frames, appState, options = {}) {
+    let previousFrames = this._frames;
     this._frames = Array.isArray(frames) ? frames : [];
     if (appState)
       this._appState = appState;
@@ -108,6 +123,17 @@ export class KikxChatView extends HTMLElement {
       return { insertedNew: false };
     }
 
+    let wasAtBottom = this._isAtBottom();
+    let prependedCount = Math.max(0, this._frames.length - previousFrames.length);
+    let windowOptions = options;
+    if (options.prepend === true && prependedCount > 0) {
+      windowOptions = {
+        ...options,
+        windowStart: Math.max(0, this._windowStart - prependedCount),
+      };
+    }
+
+    let window = this._resolveWindow(windowOptions);
     let touchedFrameIDs = options.touchedFrameIDs instanceof Set ? options.touchedFrameIDs : null;
     let animate = options.animate !== false;
     let existingByID = new Map();
@@ -117,7 +143,7 @@ export class KikxChatView extends HTMLElement {
     let cursor = stream.firstElementChild;
     let insertedNew = false;
 
-    for (let frame of this._frames) {
+    for (let frame of this._frames.slice(window.start, window.end)) {
       let item = existingByID.get(frame.id);
       let isNewItem = false;
       if (!item) {
@@ -156,7 +182,85 @@ export class KikxChatView extends HTMLElement {
     for (let stale of existingByID.values())
       stale.remove();
 
+    this._windowStart = window.start;
+    this._windowStartFrameID = this._frames[window.start]?.id || null;
+
+    // If the user was pinned to the bottom, dropping the oldest items must not
+    // leave the viewport short of the new bottom.
+    if (wasAtBottom)
+      this._scrollToBottom();
+
     return { insertedNew };
+  }
+
+  // Reveal older frames already held in state. Returns true when the window
+  // actually moved; the caller can then avoid an unnecessary server fetch.
+  expandOlderFrames(count = RENDER_WINDOW_REVEAL) {
+    let amount = Math.max(1, Number.isFinite(count) ? Math.trunc(count) : RENDER_WINDOW_REVEAL);
+    let nextStart = Math.max(0, this._windowStart - amount);
+    if (nextStart === this._windowStart)
+      return false;
+
+    let list = this.frameList;
+    let beforeHeight = list?.scrollHeight ?? 0;
+    let beforeTop = list?.scrollTop ?? 0;
+    this.syncFrames(this._frames, this._appState, { windowStart: nextStart, animate: false });
+    if (list) {
+      // Keep the content under the user's eyes stationary when older frames are
+      // inserted above it.
+      list.scrollTop = beforeTop + Math.max(0, list.scrollHeight - beforeHeight);
+    }
+    return true;
+  }
+
+  // Return to the newest window after the user has finished reading older
+  // frames. Returns true when the window changed.
+  showLatestFrames() {
+    let latestStart = Math.max(0, this._frames.length - MAX_RENDERED_FRAMES);
+    if (latestStart === this._windowStart)
+      return false;
+
+    this.syncFrames(this._frames, this._appState, { windowStart: latestStart, animate: false });
+    return true;
+  }
+
+  _resolveWindow(options = {}) {
+    let frames = this._frames;
+    let max = Number.isInteger(options.maxRendered) && options.maxRendered > 0
+      ? options.maxRendered
+      : MAX_RENDERED_FRAMES;
+
+    let start;
+    if (Number.isInteger(options.windowStart)) {
+      start = Math.min(Math.max(0, options.windowStart), Math.max(0, frames.length - 1));
+    } else if (this._windowStartFrameID) {
+      let index = frames.findIndex((frame) => frame?.id === this._windowStartFrameID);
+      start = index >= 0 ? index : Math.max(0, frames.length - max);
+    } else {
+      start = Math.max(0, frames.length - max);
+    }
+
+    // While pinned to the bottom, always follow the newest window. This is the
+    // normal live-feed case; older DOM is discarded as new frames arrive.
+    if (!Number.isInteger(options.windowStart) && this._isAtBottom())
+      start = Math.max(0, frames.length - max);
+
+    let end = Math.min(frames.length, start + max);
+    return { start, end };
+  }
+
+  _isAtBottom() {
+    let list = this.frameList;
+    if (!list)
+      return true;
+
+    return list.scrollHeight - list.scrollTop - list.clientHeight <= 50;
+  }
+
+  _scrollToBottom() {
+    let list = this.frameList;
+    if (list)
+      list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
   }
 
   _render() {
@@ -192,7 +296,10 @@ export class KikxChatView extends HTMLElement {
     list.setAttribute('role', 'list');
     let stream = document.createElement('div');
     stream.className = 'kikx-frame-stream';
-    for (let frame of this._frames)
+    let window = this._resolveWindow();
+    this._windowStart = window.start;
+    this._windowStartFrameID = this._frames[window.start]?.id || null;
+    for (let frame of this._frames.slice(window.start, window.end))
       stream.appendChild(this._createFrameItem(frame));
 
     list.appendChild(stream);
