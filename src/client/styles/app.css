@@ -744,13 +744,12 @@ kikx-app {
   line-height: 1;
 }
 
-/* The exec command is one full-width bash block in the compact summary, so it
-   is visible at a glance whether or not the frame is expanded. It wraps and
-   scrolls vertically rather than widening the thread. */
+/* A collapsed shell command is deliberately one line. It is common, noisy
+   execution detail; the full command is available only after expanding. */
 .kikx-frame__compact-command {
   grid-area: command;
   max-width: 100%;
-  max-height: 72px;
+  max-height: 1.5em;
   margin: 2px 0 0;
   padding: 8px 10px;
   overflow: hidden;
@@ -759,22 +758,30 @@ kikx-app {
   background: #16120d;
 }
 
-/* Keep the start of the command pinned in the collapsed row. The block only
-   becomes internally scrollable after the user opens the frame; otherwise it
-   steals the wheel/touch gesture from the session thread. */
+.kikx-frame__compact-command-code {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: #ffd8a8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Expanded frames reveal the full command and may scroll it internally; the
+   collapsed state must never steal the session scroll. */
 .kikx-frame__compact[open] .kikx-frame__compact-command {
   max-height: 320px;
   overflow: auto;
 }
 
-.kikx-frame__compact-command-code {
-  display: block;
-  color: #ffd8a8;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: pre-wrap;
+.kikx-frame__compact[open] .kikx-frame__compact-command-code {
+  overflow: visible;
   overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: pre-wrap;
 }
 
 .kikx-frame--status-success .kikx-frame__compact > summary,
@@ -975,6 +982,187 @@ kikx-app {
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
+}
+
+/* Todo cards: the actionable list, not the raw JSON state. Checkboxes are
+   visual state (role=checkbox) so a completed item is understandable without
+   opening a disclosure or decoding a tool output. */
+.kikx-todo-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kikx-todo-action {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #3b4650;
+  border-radius: 6px;
+  background: #171d23;
+  color: #dce3ea;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.kikx-todo-action--added {
+  border-color: #2f6847;
+  background: #101c16;
+  color: #9ce0b0;
+}
+
+.kikx-todo-action--completed {
+  border-color: #2f6847;
+  background: #101c16;
+  color: #9ce0b0;
+}
+
+.kikx-todo-action--updated {
+  border-color: #5b4a80;
+  background: #1b1626;
+  color: #c7b7ff;
+}
+
+.kikx-todo-action--focused {
+  border-color: #8a6d1f;
+  background: #211b0e;
+  color: #f2d488;
+}
+
+.kikx-todo-action--deleted,
+.kikx-todo-action--cleared {
+  border-color: #6b343a;
+  background: #1b1113;
+  color: #f0a0a8;
+}
+
+.kikx-todo-action--error {
+  border-color: #6b343a;
+  background: #1b1113;
+  color: #fca5a5;
+}
+
+.kikx-todo-list {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kikx-todo-list--children {
+  gap: 5px;
+  margin-top: 5px;
+  padding-left: 16px;
+}
+
+.kikx-todo-list--deleted {
+  opacity: 0.8;
+}
+
+.kikx-todo-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  min-width: 0;
+  padding: 5px 6px;
+  border-radius: 5px;
+}
+
+.kikx-todo-item.is-focused {
+  background: rgba(242, 212, 136, 0.08);
+  box-shadow: inset 2px 0 0 #f2d488;
+}
+
+.kikx-todo-item--deleted .kikx-todo-item__title {
+  color: #d49a9a;
+  text-decoration: line-through;
+}
+
+.kikx-todo-checkbox {
+  display: grid;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  place-items: center;
+  border: 1px solid #596570;
+  border-radius: 3px;
+  color: #dce3ea;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.kikx-todo-checkbox.is-complete {
+  border-color: #4b9b6a;
+  background: #2f6847;
+  color: #e3ffeb;
+}
+
+.kikx-todo-checkbox.is-complete::after {
+  content: '✓';
+}
+
+.kikx-todo-checkbox.is-deleted {
+  border-color: #7a3d3d;
+  color: #f0a0a8;
+}
+
+.kikx-todo-checkbox.is-deleted::after {
+  content: '−';
+}
+
+.kikx-todo-item__body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.kikx-todo-item__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kikx-todo-item__title {
+  min-width: 0;
+  color: #dce3ea;
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.kikx-todo-item.is-complete .kikx-todo-item__title {
+  color: #8da197;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.kikx-todo-item__notes {
+  margin: 0;
+  color: #9caab6;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.kikx-todo-focus {
+  padding: 1px 5px;
+  border: 1px solid #8a6d1f;
+  border-radius: 999px;
+  color: #f2d488;
+  font-size: 10px;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.kikx-todo-empty {
+  margin: 0;
+  color: #9caab6;
+  font-size: 12px;
 }
 
 .kikx-tool-card__message,
@@ -2208,8 +2396,15 @@ kikx-thinking-panel {
   font-size: 1.7rem;
   line-height: 1;
   cursor: pointer;
-  transform-origin: 50% 80%;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+}
+
+/* Animate the SVG itself so the transform origin is the icon's center, not a
+   content-box corner of the padded button. */
+.kikx-thinking-brain svg {
+  display: block;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
   animation: kikx-thinking-giggle 1.6s ease-in-out infinite;
 }
 
@@ -2316,7 +2511,7 @@ kikx-thinking-panel {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kikx-thinking-brain,
+  .kikx-thinking-brain svg,
   .kikx-thinking-tip__dots span {
     animation: none;
   }

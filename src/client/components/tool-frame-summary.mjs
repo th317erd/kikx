@@ -99,7 +99,7 @@ function toolFrameSummary(frame, status) {
   let content = frame.content || {};
   let toolName = String(content.toolName || 'tool');
   let input = isPlainObject(content.input) ? content.input : {};
-  let command = inputField(input, 'command');
+  let command = stripInjectedCwdPrefix(inputField(input, 'command'));
 
   return {
     description: toolDescription(toolName, input, status),
@@ -112,6 +112,20 @@ function toolFrameSummary(frame, status) {
 // Read a small field from tool input. Large inputs are stored truncated as
 // {truncated:true, preview:"<json>"}; recover the field from the preview when the
 // top-level value is absent (the preview may be cut off, so this is best-effort).
+// Exec calls are commonly wrapped as `cd <workspace> && <actual command>` so
+// the shell starts in the session cwd. That wrapper is execution plumbing, not
+// part of what the user needs to read; strip only a single leading `cd … &&`
+// wrapper and leave every other command untouched.
+export function stripInjectedCwdPrefix(command) {
+  let text = String(command ?? '');
+  let match = /^\s*cd\s+(?:"[^"]+"|'[^']+'|[^\s&;]+)\s*&&\s*/.exec(text);
+  if (!match)
+    return text;
+
+  let remainder = text.slice(match[0].length);
+  return remainder.trim() !== '' ? remainder : text;
+}
+
 function inputField(input, field) {
   let direct = text(input[field]);
   if (direct)

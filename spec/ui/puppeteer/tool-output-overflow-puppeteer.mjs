@@ -11,6 +11,8 @@ import test from 'node:test';
 
 import puppeteer from 'puppeteer-core';
 
+import { stripInjectedCwdPrefix } from '../../../src/client/components/tool-frame-summary.mjs';
+
 import {
   findChromeExecutable,
   startStagehandUIServer,
@@ -49,15 +51,24 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
 
     let collapsedCommand = await page.evaluate(() => {
       let pre = document.querySelector('kikx-frame-item[data-frame-id="frame_result"] .kikx-frame__compact-command');
+      let code = pre?.querySelector('code');
       let style = pre ? getComputedStyle(pre) : null;
-      return pre && style ? {
+      let codeStyle = code ? getComputedStyle(code) : null;
+      return pre && style && codeStyle ? {
         overflowY: style.overflowY,
         clientHeight: pre.clientHeight,
         scrollHeight: pre.scrollHeight,
+        whiteSpace: codeStyle.whiteSpace,
+        textOverflow: codeStyle.textOverflow,
+        codeClientWidth: code.clientWidth,
+        codeScrollWidth: code.scrollWidth,
       } : null;
     });
     assert.ok(collapsedCommand, 'the collapsed command block is rendered');
     assert.equal(collapsedCommand.overflowY, 'hidden', 'a collapsed command must not capture the session scroll');
+    assert.equal(collapsedCommand.whiteSpace, 'nowrap', 'a collapsed command is one line');
+    assert.equal(collapsedCommand.textOverflow, 'ellipsis', 'a collapsed command overflows into an ellipsis');
+    assert.ok(collapsedCommand.codeScrollWidth > collapsedCommand.codeClientWidth, 'the collapsed command is clipped horizontally');
 
     let collapsedDom = await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');
@@ -112,9 +123,16 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
       let outer = item.querySelector('details.kikx-frame__compact');
       outer.open = true;
       let pre = outer.querySelector('.kikx-frame__compact-command');
-      return pre ? getComputedStyle(pre).overflowY : null;
+      let code = pre?.querySelector('code');
+      return pre && code ? {
+        overflowY: getComputedStyle(pre).overflowY,
+        whiteSpace: getComputedStyle(code).whiteSpace,
+        textOverflow: getComputedStyle(code).textOverflow,
+      } : null;
     });
-    assert.equal(expandedCommand, 'auto', 'an expanded command may scroll internally');
+    assert.equal(expandedCommand?.overflowY, 'auto', 'an expanded command may scroll internally');
+    assert.equal(expandedCommand?.whiteSpace, 'pre-wrap', 'an expanded command is multiline');
+    assert.equal(expandedCommand?.textOverflow, 'clip', 'an expanded command is not ellipsized');
 
     let metrics = await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');
@@ -155,7 +173,7 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
     });
 
     assert.ok(metrics.commandPre, 'the full command block is rendered');
-    assert.equal(metrics.commandTextContent, COMMAND, 'the entire command is inside the code block');
+    assert.equal(metrics.commandTextContent, stripInjectedCwdPrefix(COMMAND), 'the command is inside the code block without the injected cwd wrapper');
     assert.ok(metrics.preview, 'the stdout block is rendered');
 
     let frameRight = metrics.frame.right;

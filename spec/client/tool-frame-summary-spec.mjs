@@ -9,6 +9,7 @@ import {
   frameStatusClass,
   isCompactFrame,
   normalizeFrameStatus,
+  stripInjectedCwdPrefix,
 } from '../../src/client/components/tool-frame-summary.mjs';
 
 function toolFrame(toolName, input = {}, content = {}) {
@@ -70,6 +71,15 @@ test('a result frame without an explicit status is green', () => {
 
   assert.equal(frameStatus(frame), 'success');
   assert.equal(compactFrameSummary(frame).status, 'success');
+});
+
+test('stripInjectedCwdPrefix removes only the leading shell cwd wrapper', () => {
+  assert.equal(stripInjectedCwdPrefix('cd /home/wyatt/project && ls -la'), 'ls -la');
+  assert.equal(stripInjectedCwdPrefix('cd "/home/wyatt/project with space" && npm test'), 'npm test');
+  assert.equal(stripInjectedCwdPrefix("cd '/tmp/project' && echo ok"), 'echo ok');
+  assert.equal(stripInjectedCwdPrefix('ls -la'), 'ls -la');
+  assert.equal(stripInjectedCwdPrefix('cd /tmp && cd /other && ls'), 'cd /other && ls');
+  assert.equal(stripInjectedCwdPrefix('cd /tmp &&'), 'cd /tmp &&', 'never reduce a command to empty');
 });
 
 test('other tool frames derive a short verb and subject', () => {

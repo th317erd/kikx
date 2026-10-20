@@ -15,10 +15,10 @@ import {
   ReadFileUse,
   SessionToolUse,
   ShellToolUse,
-  TodoToolUse,
   WebSearchUse,
   WriteFileUse,
 } from './tool-use-base.mjs';
+import { TodoToolUse } from './todo-tool-use.mjs';
 
 defineToolElement('kikx-cwd-tool-use', CwdToolUse);
 defineToolElement('kikx-feedback-tool-use', FeedbackToolUse);
