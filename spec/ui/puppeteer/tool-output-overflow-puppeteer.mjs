@@ -46,6 +46,18 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
     await page.goto(`${fixture.baseURL}/?view=thread`, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('kikx-frame-item[data-frame-id="frame_result"]', { timeout: 15000 });
 
+    let collapsedCommand = await page.evaluate(() => {
+      let pre = document.querySelector('kikx-frame-item[data-frame-id="frame_result"] .kikx-frame__compact-command');
+      let style = pre ? getComputedStyle(pre) : null;
+      return pre && style ? {
+        overflowY: style.overflowY,
+        clientHeight: pre.clientHeight,
+        scrollHeight: pre.scrollHeight,
+      } : null;
+    });
+    assert.ok(collapsedCommand, 'the collapsed command block is rendered');
+    assert.equal(collapsedCommand.overflowY, 'hidden', 'a collapsed command must not capture the session scroll');
+
     await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');
       for (let details of item.querySelectorAll('details'))
@@ -53,6 +65,23 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
     });
     await page.waitForSelector('.kikx-tool-output--exec', { timeout: 5000 });
     await delay(200);
+
+    let tint = await page.evaluate(() => {
+      let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');
+      let style = getComputedStyle(item);
+      return { background: style.backgroundColor, border: style.borderColor };
+    });
+    assert.equal(tint.background, 'rgb(16, 28, 22)', 'the whole successful frame is tinted green');
+    assert.equal(tint.border, 'rgb(47, 95, 69)', 'the successful frame border is green');
+
+    let expandedCommand = await page.evaluate(() => {
+      let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');
+      let outer = item.querySelector('details.kikx-frame__compact');
+      outer.open = true;
+      let pre = outer.querySelector('.kikx-frame__compact-command');
+      return pre ? getComputedStyle(pre).overflowY : null;
+    });
+    assert.equal(expandedCommand, 'auto', 'an expanded command may scroll internally');
 
     let metrics = await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');

@@ -738,13 +738,21 @@ kikx-app {
 .kikx-frame__compact-command {
   grid-area: command;
   max-width: 100%;
-  max-height: 180px;
+  max-height: 72px;
   margin: 2px 0 0;
   padding: 8px 10px;
-  overflow: auto;
+  overflow: hidden;
   border: 1px solid rgba(255, 183, 102, 0.28);
   border-radius: 6px;
   background: #16120d;
+}
+
+/* Keep the start of the command pinned in the collapsed row. The block only
+   becomes internally scrollable after the user opens the frame; otherwise it
+   steals the wheel/touch gesture from the session thread. */
+.kikx-frame__compact[open] .kikx-frame__compact-command {
+  max-height: 320px;
+  overflow: auto;
 }
 
 .kikx-frame__compact-command-code {
@@ -2335,4 +2343,17 @@ kikx-thinking-panel {
 
 .kikx-frame--AgentMessage.kikx-frame--status-error .kikx-frame__meta-main strong {
   color: #f0a0a8;
+}
+
+/* Status tint applies to the whole frame, not just its internal status text.
+   Compact tool/status frames get the same success/error treatment as an agent
+   message; running stays neutral. */
+.kikx-frame.kikx-frame--status-success {
+  border-color: #2f5f45;
+  background: #101c16;
+}
+
+.kikx-frame.kikx-frame--status-error {
+  border-color: #6b343a;
+  background: #1b1113;
 }
