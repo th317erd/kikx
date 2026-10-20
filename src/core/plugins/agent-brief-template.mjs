@@ -58,6 +58,8 @@ const BRIEF_TOOL_LINES_COMMON = [
   '  control:   stop, set-character',
   '  help:      help (lists all tools; each tool has its own help)',
   '  work:      read-file, write-file, exec, fetch, search, feedback-report',
+  '  ask:       ask-user (question the human; mode wait = end your turn,',
+  '             mode continue = keep working and the answer steers you)',
   '  session:   session-create, session-invite-agents, session-message,',
   '             session-frames, session-search, agent-list',
   '  state:     todo-*, cwd-*',

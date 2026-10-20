@@ -20,7 +20,7 @@ export class AskUserTool extends PluginInterface {
   static pluginID = 'internal:questions';
   static featureName = 'ask-user';
   static displayName = 'Ask user';
-  static description = 'Ask the user one or more questions and continue without waiting for the answer. Answers are free-form and arrive later as a wake.';
+  static description = 'Ask the user one or more free-form questions. Answers arrive later as a wake. mode \'wait\' ends your turn and the answer starts your next one; mode \'continue\' keeps you working and the answer steers you mid-task.';
   static frameType = 'AskUserToolFrame';
   // Like the todo tools: asking a question needs no permission prompt.
   static riskLevel = 'none';
@@ -74,7 +74,7 @@ export class AskUserTool extends PluginInterface {
       mode: {
         type: 'string',
         enum: [ 'wait', 'continue' ],
-        description: 'wait: you are ending your turn and the answer starts your next one. continue: you keep working and the answer steers you mid-turn. Defaults to wait.',
+        description: "wait (default): you cannot continue without the answer, so you end your turn and the answer starts your next one. continue: you have independent work, so you keep working and the answer steers you mid-flight. Pick by what you can do next, and match it to how you end the turn.",
       },
       note: {
         type: 'string',
@@ -88,7 +88,28 @@ export class AskUserTool extends PluginInterface {
     required: [ 'questions' ],
     additionalProperties: false,
   };
-  static help = 'Use ask-user when only the user can decide something: naming, priorities, ambiguous requirements, or a judgment call with real trade-offs. Ask everything you need in one call rather than a series of turns. Do not ask a question you can answer yourself by reading the code or docs. Never block waiting for the answer: ask, then continue with other work or end your turn. If a sensible fallback exists and waiting forever would stall you, pass defaultAnswer with a timeoutSeconds: the fallback is applied when the deadline passes and arrives marked as your own assumption, not as a user decision.';
+  static help = [
+    'Use ask-user only when the user must decide: naming, priorities, scope,',
+    'ambiguous requirements, or a judgment call with real trade-offs. Do not ask',
+    'what you can settle yourself by reading the code or docs. Ask everything you',
+    'need in ONE call rather than a series of turns.',
+    '',
+    'Choosing mode is the part agents get wrong. Decide by what you can do next:',
+    "  mode 'wait' (default) — you cannot proceed without the answer. Call",
+    '    ask-user, then END YOUR TURN with end-turn. The answer starts your next',
+    '    turn as a steering prompt. This is the right choice when everything',
+    '    remaining depends on the reply.',
+    "  mode 'continue' — you have independent work to do meanwhile. Call ask-user,",
+    '    then KEEP WORKING (continue-turn). The answer arrives mid-flight as a',
+    '    steering prompt and you adjust. Use this when the answer is not urgent.',
+    'Do not ask in wait mode and then keep working: that leaves the user waiting on',
+    'a turn that already ended, or the answer steering nothing.',
+    '',
+    'If a sensible fallback exists and waiting forever would stall you, pass',
+    'defaultAnswer together with timeoutSeconds. When the deadline passes the',
+    'fallback is applied and arrives marked as YOUR OWN ASSUMPTION, never as a user',
+    'decision — so state that assumption if you act on it.',
+  ].join('\n');
 
   questionsStore() {
     let store = this.context.questionsStore
