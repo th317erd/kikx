@@ -84,10 +84,15 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
       throw error;
     }
 
+    // `pending` means the answer is stored and the wake is queued, but the
+    // agent's turn has not started yet. It is a third state, not a failure:
+    // without it the client had to call an unrouted answer "saved" and a routable
+    // one "sent", and could not tell the user which of the two it was.
     writeJSON(response, 200, {
       data: {
         question: result.question,
         delivered: result.delivered === true,
+        pending: result.pending === true,
         frameID: result.frameID ?? null,
       },
     });

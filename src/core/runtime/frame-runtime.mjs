@@ -379,6 +379,12 @@ export class FrameRuntime extends EventEmitter {
         session: entry.session,
         frame: frames[0],
         commit: entry.frameEngine.getLatestCommit(),
+        // Whether the caller still has to wait for agent work before this
+        // message is picked up. A steering message goes to a turn that is
+        // already running (so it has been picked up); anything else queues an
+        // agent run in the background. Callers report this instead of guessing
+        // that "the router flushed" means "the agent has it".
+        wakePending: steering !== true,
       };
     } finally {
       this.unpinSession(sessionID);
@@ -393,11 +399,16 @@ export class FrameRuntime extends EventEmitter {
     this._indexesReady = true;
   }
 
-  // A true "stored and dispatched" barrier: every queued commit has been written
-  // and every post-persist routing pass has settled.
-  async flush() {
+  // A "stored and dispatched" barrier: every queued commit has been written and
+  // every post-persist routing pass has settled.
+  //
+  // `options.background: false` settles the routing queue WITHOUT waiting for
+  // the agent (LLM) work that routing started. Callers that must not hold an
+  // HTTP response open for a whole agent turn pass it: an answer POST that waits
+  // on the receiving agent's reply leaves the user's "Sending…" up for minutes.
+  async flush(options = {}) {
     await this.frameStore.flush();
-    await this.frameRouter?.flush?.();
+    await this.frameRouter?.flush?.(options);
   }
 
   disconnect() {
