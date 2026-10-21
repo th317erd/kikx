@@ -8,7 +8,7 @@ between them. It is the operator-facing companion to the design plan at
 
 ## Purpose
 
-The driver layer lets Kikx run on AeorDB (the default), PostgreSQL, or SQLite
+The driver layer lets Kikx run on AeorDB, PostgreSQL (the default), or SQLite
 without touching store code. It exists because AeorDB latched a read-only
 durability-failure state in production; the layer allows running on PostgreSQL
 now and returning to AeorDB later with a config change rather than a rewrite.
@@ -36,7 +36,7 @@ boot always has a driver available. Selection reads, in order:
 
 1. `/org/aeor/kikx/database/driver` → `ORG_AEOR_KIKX_DATABASE_DRIVER` (canonical).
 2. `/kikx/database/driver` → `KIKX_DATABASE_DRIVER` (transition alias).
-3. Default: `aeordb`.
+3. Default: `postgresql`.
 
 The value may be a bare driver ID (`aeordb`, `sqlite`, `postgresql`) or a plugin
 property-path value such as `/org/aeor/kikx/plugins/database/postgresql@0.4.5`;
@@ -79,7 +79,7 @@ The property-path → environment-variable rule is: strip the leading/trailing
 
 ## Per-driver configuration
 
-### AeorDB (default)
+### AeorDB (legacy fallback)
 
 Wraps the existing `AeorDBClient` verbatim; no behavior change from the
 pre-driver Kikx. Keys are the historical ones, unchanged:
@@ -202,7 +202,8 @@ path changes are involved:
 
 ```sh
 ORG_AEOR_KIKX_DATABASE_DRIVER=aeordb
-# ...or simply unset it; aeordb is the default.
+# ...or simply unset it; the built-in fallback is aeordb. The dev `.env.dev` sets
+# ORG_AEOR_KIKX_DATABASE_DRIVER=postgresql explicitly, so this fallback does not apply there.
 ```
 
 The `aeordb` driver keeps its own `AEORDB_URL`/`AEORDB_TOKEN` keys, so removing

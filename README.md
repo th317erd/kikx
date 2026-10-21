@@ -2,11 +2,11 @@
 
 Kikx is AEOR Development's modular agent runner: a server-first chat harness where humans, agents, tools, and internal commands communicate through persisted frames. The database remains a searchable collection of raw frames, while the shared `FrameManager` stitches those frames into the coherent message view consumed by the server, browser client, and agent context builders.
 
-The old Mythix/Mythix ORM/Solr application is archived in `old-app/` for reference only. The active implementation is plain Node.js, native browser modules, AeorDB over HTTP, explicit service boundaries, and plugin-defined agent/tool behavior.
+The old Mythix/Mythix ORM/Solr application is archived in `old-app/` for reference only. The active implementation is plain Node.js, native browser modules, a pluggable database driver layer (PostgreSQL in dev), explicit service boundaries, and plugin-defined agent/tool behavior.
 
 ## Current Capabilities
 
-- AeorDB-backed sessions, frame history, agents, teams, token usage, tool outputs, user profiles, feedback reports, and context compaction frames.
+- Durable sessions, frame history, agents, teams, token usage, tool outputs, user profiles, feedback reports, and context compaction frames, stored through a pluggable driver (PostgreSQL by default).
 - Git-like frame flow with `FrameEngine`, `FrameRouter`, and shared `FrameManager` projection.
 - Agent plugins for provider-specific configuration and execution, with OpenAI/Codex-style development support.
 - Internal slash commands such as `/invite` and `/compact`, routed before agent providers.
@@ -19,16 +19,21 @@ The old Mythix/Mythix ORM/Solr application is archived in `old-app/` for referen
 ## Requirements
 
 - Node.js 22 or newer.
-- AeorDB binary at `/home/wyatt/.local/bin/aeordb`, or set `AEORDB_BIN`.
+- PostgreSQL 16 or newer. This is the primary document store.
 - AEOR shared browser components at `~/Projects/aeor-web-components`.
 - A local `.env.dev` for development defaults when needed.
 
 Kikx defaults to:
 
 - Kikx server: `http://127.0.0.1:3000`
-- AeorDB HTTP: `http://127.0.0.1:6830`
-- AeorDB database: `.aeordb/kikx.aeordb`
-- AeorDB log: `/tmp/codex/kikx/aeordb.log`
+- PostgreSQL (dev cluster): `postgres://127.0.0.1:5434/kikx-dev`
+- Database driver: `postgresql`
+
+> **AeorDB is legacy.** PostgreSQL is the primary driver; AeorDB's data is
+> preserved as a read-only fallback. The `aeordb` driver still exists so a
+> switch back is a config change, but a new deployment does not need the AeorDB
+> binary. See `bot-docs/database-drivers.md` for the driver layer, capabilities,
+> and per-driver configuration keys.
 
 ## Development
 
@@ -44,9 +49,9 @@ Start the full local dev stack:
 npm run dev
 ```
 
-This starts AeorDB if needed, waits for `/system/health`, starts Kikx if needed, and prints the local URL.
+This starts the backing store if needed, waits for `/system/health`, starts Kikx if needed, and prints the local URL. With `ORG_AEOR_KIKX_DATABASE_DRIVER=postgresql` (the default in `.env.dev`) it does not start or wait for AeorDB at all.
 
-Start only AeorDB:
+Start only the legacy AeorDB daemon (not needed for PostgreSQL):
 
 ```bash
 npm run start:aeordb
@@ -64,7 +69,7 @@ Restart Kikx automatically when source files change:
 npm run dev:watch
 ```
 
-`dev:watch` expects AeorDB to already be running. It watches `src`, `scripts`, `package.json`, and `.env.dev`, and intentionally ignores runtime/generated directories such as `.aeordb`, `.git`, `node_modules`, `old-app`, and `.stagehand`.
+`dev:watch` expects the configured backing store to already be running (PostgreSQL in the dev `.env.dev`; AeorDB only when the driver is `aeordb`). It watches `src`, `scripts`, `package.json`, and `.env.dev`, and intentionally ignores runtime/generated directories such as `.aeordb`, `.git`, `node_modules`, `old-app`, and `.stagehand`.
 
 Generate a development magic login link:
 
@@ -92,6 +97,10 @@ The script talks to the running Kikx server. Override with `KIKX_URL` when neede
 - `KIKX_CWD`: absolute working directory for agents, the shell tool and the
   file tools. Defaults to the HOME directory of the user running the
   service, never the directory Kikx was launched from.
+- `ORG_AEOR_KIKX_DATABASE_DRIVER`: active driver (`postgresql`, `sqlite`, `aeordb`).
+- `ORG_AEOR_KIKX_DATABASE_URL`: PostgreSQL connection URL for the store.
+- `KIKX_DATABASE_URL`: alias for the above.
+- **Legacy, only read when the driver is `aeordb`:** the `AEORDB_*` keys below.
 - `AEORDB_URL`: AeorDB base URL used by Kikx.
 - `AEORDB_BIN`: AeorDB executable path.
 - `AEORDB_DATABASE`: local `.aeordb` database path.
@@ -106,7 +115,9 @@ Do not commit local secrets or root keys.
 
 The active runtime boundaries are:
 
-- `src/core/aeordb/`: HTTP client and AeorDB-backed stores.
+- `src/core/database/`: driver layer selecting PostgreSQL (primary), SQLite, or
+  the legacy `aeordb` driver. Store code is driver-agnostic.
+- `src/core/aeordb/`: legacy HTTP client and AeorDB-backed stores.
 - `src/core/frames/`: `FrameEngine`, merge behavior, clocks, and shared frame exports.
 - `src/shared/frame-manager/`: browser-safe `FrameManager` that projects raw frames into coherent messages.
 - `src/core/routing/`: frame router and selector compiler.
@@ -127,16 +138,16 @@ The server exposes browser modules from:
 
 ## Frames And Storage
 
-AeorDB is intentionally treated as durable frame storage, not as the message renderer. Session load is:
+The database is intentionally treated as durable frame storage, not as the message renderer. Session load is driver-agnostic:
 
-1. Load raw frame JSON records from AeorDB.
+1. Load raw frame JSON records from the configured driver (PostgreSQL by default).
 2. Hydrate the process-local `FrameEngine`.
 3. Feed raw frames through `FrameManager`.
 4. Use the projected message list for UI, agent context, counts, and API views.
 
 Raw frames remain valuable for history, debugging, indexing, and search. Phantom frames are transitory SSE data and are not persisted. Durable lifecycle frames, tool call/result frames, compaction frames, and message frames are persisted.
 
-The default AeorDB root path is `/kikx`.
+The default document root path is `/kikx`, and is the same under both drivers.
 
 ## Plugins And Tools
 
@@ -147,7 +158,7 @@ Agent-specific behavior belongs in plugins. Plugins can define:
 - Slash commands.
 - Client frame/tool components for custom rendering.
 
-The built-in tool execution service stores every tool result in AeorDB. Small outputs are returned inline to the agent; large outputs return a pointer with instructions for `output-read`, `output-grep`, `output-search`, `database-fetch`, or range reads.
+The built-in tool execution service stores every tool result in the configured database. Small outputs are returned inline to the agent; large outputs return a pointer with instructions for `output-read`, `output-grep`, `output-search`, `database-fetch`, or range reads.
 
 Long-running shell work is managed by the async process system. `exec` starts managed processes, waits briefly for very short commands, stores output, exposes process inspection/kill/read/grep tools, and wakes the agent when long work completes.
 
