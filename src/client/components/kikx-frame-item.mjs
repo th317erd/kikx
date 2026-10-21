@@ -13,6 +13,7 @@ import { buildCompactFrameDisclosure, updateCompactSummary } from './compact-fra
 import { isBotCommunicationFrame } from './tool-frame-summary.mjs';
 import { frameStatus, frameStatusClass, isCompactFrame } from './tool-frame-summary.mjs';
 import { countRebuild } from './render-stats.mjs';
+import { isFrameExpanded, setFrameExpanded } from '../state/frame-expansion.mjs';
 import './kikx-typing-indicator.mjs';
 import './kikx-sub-session-frame.mjs';
 
@@ -211,6 +212,12 @@ export class KikxFrameItem extends HTMLElement {
       if (compact) {
         this._compactView = buildCompactFrameDisclosure(frame, [], document);
         this._contentParent = this._compactView.body;
+        // Rebuilding this item must not collapse a frame the user opened.
+        // Expansion lives in a module-level store keyed by frame id, not in
+        // the DOM, because `_render()` throws the whole subtree away. The
+        // store never opens anything on its own: an id the user never
+        // expanded reports false, so the default stays collapsed.
+        this._compactView.element.open = isFrameExpanded(frame.id);
         // Keep the "{Name} {time}" header visible above the compact line.
         if (meta)
           this.appendChild(meta);
@@ -310,6 +317,9 @@ export class KikxFrameItem extends HTMLElement {
     let details = this._compactView?.element;
     if (!details)
       return;
+
+    // Record what the user just did so a later rebuild can restore it.
+    setFrameExpanded(this._frame?.id, details.open);
 
     if (!details.open) {
       this._discardContentElement();
