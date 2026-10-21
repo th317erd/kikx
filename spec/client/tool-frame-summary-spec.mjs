@@ -75,6 +75,8 @@ test('a result frame without an explicit status is green', () => {
 
 test('stripInjectedCwdPrefix removes only the leading shell cwd wrapper', () => {
   assert.equal(stripInjectedCwdPrefix('cd /home/wyatt/project && ls -la'), 'ls -la');
+  assert.equal(stripInjectedCwdPrefix('cd /home/wyatt/project\nPW=secret\necho ok'), 'PW=secret\necho ok');
+  assert.equal(stripInjectedCwdPrefix('cd /home/wyatt/project\r\n  echo ok'), 'echo ok');
   assert.equal(stripInjectedCwdPrefix('cd "/home/wyatt/project with space" && npm test'), 'npm test');
   assert.equal(stripInjectedCwdPrefix("cd '/tmp/project' && echo ok"), 'echo ok');
   assert.equal(stripInjectedCwdPrefix('ls -la'), 'ls -la');

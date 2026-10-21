@@ -118,7 +118,7 @@ function toolFrameSummary(frame, status) {
 // wrapper and leave every other command untouched.
 export function stripInjectedCwdPrefix(command) {
   let text = String(command ?? '');
-  let match = /^\s*cd\s+(?:"[^"]+"|'[^']+'|[^\s&;]+)\s*&&\s*/.exec(text);
+  let match = /^\s*cd\s+(?:"[^"]+"|'[^']+'|[^\s&;]+)\s*(?:&&\s*|\r?\n\s*)/.exec(text);
   if (!match)
     return text;
 
