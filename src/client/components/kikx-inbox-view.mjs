@@ -30,7 +30,7 @@ import {
   applyLocalDismiss,
   applyLocalRead,
 } from '../state/questions-local-state.mjs';
-import { createDraftStore } from '../state/question-drafts.mjs';
+import { answerDraftStore } from '../state/question-drafts.mjs';
 import {
   canSubmitAnswer,
   groupHeading,
@@ -106,23 +106,6 @@ export function questionAnswerHandlers(app, overrides = {}) {
     drafts: answerDraftStore(app),
     ...overrides,
   };
-}
-
-/**
- * The app's draft store, created on first use.
- *
- * Lazy rather than constructed in the app class so the store exists for any
- * `app`-shaped object the tests pass in, without those tests having to know the
- * field name.
- */
-export function answerDraftStore(app) {
-  if (!app || typeof app !== 'object')
-    return createDraftStore();
-
-  if (!(app._answerDrafts instanceof Map))
-    app._answerDrafts = createDraftStore();
-
-  return app._answerDrafts;
 }
 
 export function buildInboxView(app, options = {}) {
