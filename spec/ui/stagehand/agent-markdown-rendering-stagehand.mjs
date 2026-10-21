@@ -69,6 +69,21 @@ test('Stagehand renders agent markdown without paragraph-heavy markup', async (t
         ].join('\n'),
       },
     },
+    {
+      id: 'user_msg_markdown',
+      type: 'UserMessage',
+      sessionID: 'session_1',
+      interactionID: 'interaction_1',
+      authorType: 'user',
+      authorID: 'user_1',
+      authorDisplayName: 'Wyatt',
+      hidden: false,
+      deleted: false,
+      order: 2,
+      createdAt: 2000,
+      updatedAt: 2000,
+      content: { text: '*testing* formatting for _user_messages... don\'t ~~sweat~~ it **too** much, okay? __italic__?' },
+    },
   ]);
 
   let stagehand = new Stagehand({
@@ -97,6 +112,22 @@ test('Stagehand renders agent markdown without paragraph-heavy markup', async (t
       timeout: 10000,
     });
     await page.waitForSelector('.kikx-frame--AgentMessage .kikx-markdown', { timeout: 10000 });
+    await page.waitForSelector('.kikx-frame--UserMessage .kikx-markdown', { timeout: 10000 });
+
+    let userMarkdown = await page.evaluate(() => {
+      let body = document.querySelector('.kikx-frame--UserMessage .kikx-markdown');
+      return {
+        text: body?.textContent || '',
+        em: body?.querySelector('em')?.textContent || '',
+        del: body?.querySelector('del')?.textContent || '',
+        strong: body?.querySelector('strong')?.textContent || '',
+        rawMarkers: /\*\*|~~|__/.test(body?.textContent || ''),
+      };
+    });
+    assert.equal(userMarkdown.em, 'testing');
+    assert.equal(userMarkdown.del, 'sweat');
+    assert.equal(userMarkdown.strong, 'too');
+    assert.equal(userMarkdown.rawMarkers, false);
 
     let rendered = await page.evaluate(() => {
       let body = document.querySelector('.kikx-frame--AgentMessage .kikx-markdown');

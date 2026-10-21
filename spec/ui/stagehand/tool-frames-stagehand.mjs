@@ -115,6 +115,25 @@ test('Stagehand collapses tool start and result frames into one plugin-rendered 
     assert.ok(sessionToolTexts.some((text) => /Inviting agents to session: session_child/.test(text)));
     assert.match(todoText, /Todo/);
     assert.match(todoText, /Added todo: Write Stagehand coverage/);
+    assert.equal(
+      await page.evaluate(() => document.querySelector('kikx-frame-item[data-frame-id="tool_call_7"] .kikx-frame__compact-description')?.textContent || ''),
+      'Add todo: Write Stagehand coverage',
+      'the minimized todo row names the todo item',
+    );
+    assert.match(todoText, /Added: Write Stagehand coverage/);
+    let todoView = await page.evaluate(() => {
+      let card = document.querySelector('kikx-todo-tool-use.kikx-tool-card--result');
+      return {
+        panel: Boolean(card?.querySelector('.kikx-todo-panel')),
+        checkboxes: card?.querySelectorAll('.kikx-todo-checkbox[role="checkbox"]').length || 0,
+        titles: [ ...(card?.querySelectorAll('.kikx-todo-item__title') || []) ].map((node) => node.textContent),
+        hasRawJSON: Boolean(card?.querySelector('pre')),
+      };
+    });
+    assert.equal(todoView.panel, true, 'the todo card renders its list panel');
+    assert.equal(todoView.checkboxes, 1, 'the todo card renders a checkbox');
+    assert.deepEqual(todoView.titles, [ 'Write Stagehand coverage' ]);
+    assert.equal(todoView.hasRawJSON, false, 'the todo card does not dump raw JSON');
     assert.match(cwdText, /Shell cwd/);
     assert.match(cwdText, /cwd-set completed\./);
     assert.match(feedbackText, /Feedback/);

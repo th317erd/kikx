@@ -283,6 +283,23 @@ test('a ToolCall to ToolResult type change rebuilds without stale content', () =
   assert.doesNotMatch(item.textContent, /ran the old call/, 'stale tool-call content must not survive');
 });
 
+test('a UserMessage renders markdown emphasis, strikethrough and code', () => {
+  let item = frameItem();
+  item.updateFrame({
+    id: 'user-markdown',
+    type: 'UserMessage',
+    content: { text: '*testing* _user_ ~~sweat~~ **too** much, __italic__ and `code`' },
+  }, {});
+
+  let content = item.querySelector('.kikx-frame__content.kikx-markdown');
+  assert.ok(content, 'user messages use the markdown renderer');
+  assert.equal(content.querySelector('em')?.textContent, 'testing');
+  assert.equal(content.querySelector('del')?.textContent, 'sweat');
+  assert.equal(content.querySelector('strong')?.textContent, 'too');
+  assert.equal(content.querySelector('code')?.textContent, 'code');
+  assert.doesNotMatch(content.textContent, /\*\*|~~|__/);
+});
+
 test('identical markdown keeps its rendered children while changed text rebuilds them', () => {
   let item = frameItem();
   let state = {};

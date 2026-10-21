@@ -75,6 +75,7 @@ export class KikxThinkingPanel extends HTMLElement {
     this._tip = tip;
     this._tipName = tip.querySelector('.kikx-thinking-tip__name');
     this._tipLines = tip.querySelector('.kikx-thinking-tip__lines');
+    this._tipWindow = tip.querySelector('.kikx-thinking-tip__window');
     return tip;
   }
 
@@ -115,12 +116,17 @@ export class KikxThinkingPanel extends HTMLElement {
     while (container.children.length > MAX_RENDERED_LINES)
       container.removeChild(container.firstElementChild);
 
+    // The tooltip is a real scroll window now: keep the newest line visible at
+    // the bottom instead of bottom-aligning a static block whose lower rows
+    // appear frozen while wrapped text above reflows.
+    this._scrollTipToBottom();
     this._lines = next;
   }
 
   _positionTip(x, y) {
     let tip = this._ensureTip();
     tip.hidden = false;
+    this._scrollTipToBottom();
     let rect = tip.getBoundingClientRect();
     let left = x + CURSOR_OFFSET;
     let top = y + CURSOR_OFFSET;
@@ -137,6 +143,14 @@ export class KikxThinkingPanel extends HTMLElement {
   _hideTip() {
     if (this._tip)
       this._tip.hidden = true;
+  }
+
+  _scrollTipToBottom() {
+    let windowElement = this._tipWindow;
+    if (!windowElement)
+      return;
+
+    windowElement.scrollTop = windowElement.scrollHeight;
   }
 }
 

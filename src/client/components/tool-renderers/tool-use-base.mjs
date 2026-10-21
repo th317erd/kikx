@@ -1,7 +1,6 @@
 'use strict';
 
 import { elements, ReactiveState, $ } from '../../lib/aeor-ui.mjs';
-import { extractDeletedTodo, extractTodoItems, todoCallSummary, todoResultSummary } from './todo-summary.mjs';
 
 const { div, span, strong, p, pre, code, details, summary } = elements;
 
@@ -102,6 +101,7 @@ export class ToolUse extends HTMLElement {
         this.renderHeader(),
         div.class('kikx-tool-card__summary')(this.renderSummaryText()),
         this.renderFacts(),
+        this.renderToolSpecificSections?.(),
         this.isResultFrame ? this.renderResultDetails() : this.renderArgumentsDetails(),
       ).build(document),
     );
@@ -113,8 +113,8 @@ export class ToolUse extends HTMLElement {
 
   renderHeader() {
     return div.class('kikx-tool-card__header')(
-      span.class('kikx-tool-card__badge')(this.isResultFrame ? 'Result' : 'Tool'),
       strong(this.displayName()),
+      span.class('kikx-tool-card__badge')(this.isResultFrame ? 'Result:' : 'Tool:'),
       span.class(`kikx-tool-card__status kikx-tool-card__status--${this.status}`)(this.status),
     ).build(document);
   }
@@ -644,42 +644,6 @@ export class FeedbackToolUse extends ToolUse {
   resultSummary() {
     let outcome = this.status === 'error' ? 'failed' : 'saved';
     return this.input.title ? `Feedback ${outcome}: ${this.input.title}` : `Feedback ${outcome}.`;
-  }
-}
-
-export class TodoToolUse extends ToolUse {
-  displayName() {
-    return 'Todo';
-  }
-
-  // The parsed todo state/result the summary helpers read. The result preview
-  // (or a loaded output) is the whole todo state as JSON; read it without
-  // forcing the card to expand.
-  todoResult() {
-    let output = this.state.output || this.previewOutput();
-    if (!output)
-      return null;
-
-    return parseToolOutput(output);
-  }
-
-  todoItems() {
-    return extractTodoItems(this.todoResult());
-  }
-
-  callSummary() {
-    return todoCallSummary({ toolName: this.toolName, input: this.input, items: this.todoItems() });
-  }
-
-  resultSummary() {
-    let result = this.todoResult();
-    return todoResultSummary({
-      toolName: this.toolName,
-      status: this.status,
-      input: this.input,
-      items: extractTodoItems(result),
-      deleted: extractDeletedTodo(result),
-    });
   }
 }
 

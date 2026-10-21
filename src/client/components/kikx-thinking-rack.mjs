@@ -32,9 +32,11 @@ export class KikxThinkingRack extends HTMLElement {
         this._panels.set(agent.id, panel);
       }
 
-      // appendChild both connects a new panel (so setEntry can paint) and
-      // re-inserts existing ones in the current order.
-      this.appendChild(panel);
+      // Only insert a new/disconnected panel. Re-appending an existing panel on
+      // every thinking packet moves the node and restarts its CSS animation in
+      // Firefox, which makes the brain twitch instead of animate.
+      if (panel.parentNode !== this)
+        this.appendChild(panel);
       panel.setEntry({ name: agent.name, text: agent.text });
     }
 

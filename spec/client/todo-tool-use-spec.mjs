@@ -19,7 +19,7 @@ register(new URL('./support/frame-item-loader.mjs', import.meta.url).href, impor
 const { document } = installDom();
 globalThis.document = document;
 
-const { TodoToolUse } = await import('../../src/client/components/tool-renderers/tool-use-base.mjs');
+const { TodoToolUse } = await import('../../src/client/components/tool-renderers/todo-tool-use.mjs');
 
 const UUID = '3f2a9c11-8a4e-4b7c-9d2e-5b1f0c6a7d8e';
 const TODO_STATE = {
@@ -94,6 +94,48 @@ test('TodoToolUse reads a non-json preview without crashing', () => {
   }));
 
   assert.equal(element.resultSummary(), 'Todo list completed.');
+});
+
+test('TodoToolUse renders checkbox state, titles, notes, focus and a list diff without ids', () => {
+  let state = {
+    items: [
+      { id: 'top-a', title: 'Ship the thing', notes: 'Include the proof artifact', status: 'complete', children: [] },
+      {
+        id: 'top-b',
+        title: 'Verify the thing',
+        notes: 'Run the focused suite',
+        status: 'pending',
+        children: [ { id: 'child-b', title: 'Check the browser path', status: 'pending', children: [] } ],
+      },
+    ],
+    focus: { itemID: 'top-b', childID: 'child-b', name: 'Check the browser path' },
+  };
+  let element = elementFor(resultFrame('todo-update', state, { id: 'top-b', status: 'complete' }));
+  let text = element.textContent;
+
+  assert.match(text, /Completed: Verify the thing/);
+  assert.match(text, /Ship the thing/);
+  assert.match(text, /Include the proof artifact/);
+  assert.match(text, /Check the browser path/);
+  assert.match(text, /Focus/);
+  assert.equal(text.includes('top-a'), false, 'raw todo ids are never visible');
+  assert.equal(text.includes('child-b'), false, 'child ids are never visible');
+  assert.equal(element.querySelector('pre'), null, 'raw tool JSON is not rendered');
+
+  let checkboxes = [ ...element.querySelectorAll('.kikx-todo-checkbox[role="checkbox"]') ];
+  assert.equal(checkboxes.length, 3);
+  assert.equal(checkboxes[0].getAttribute('aria-checked'), 'true');
+  assert.equal(checkboxes[1].getAttribute('aria-checked'), 'false');
+  assert.equal(element.querySelectorAll('.kikx-todo-item.is-focused').length, 1);
+});
+
+test('TodoToolUse shows an added item and a pending checkbox after add', () => {
+  let state = { items: [ { id: 'new', title: 'Write the report', notes: 'Cover proof and risk', status: 'pending', children: [] } ], focus: null };
+  let element = elementFor(resultFrame('todo-add', state, { title: 'Write the report' }));
+
+  assert.match(element.textContent, /Added: Write the report/);
+  assert.match(element.querySelector('.kikx-todo-action')?.className || '', /kikx-todo-action--added/);
+  assert.equal(element.querySelector('.kikx-todo-checkbox[aria-checked="false"]')?.getAttribute('aria-label'), 'Pending');
 });
 
 test('TodoToolUse result summary reports a failure', () => {
