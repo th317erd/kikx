@@ -9,7 +9,7 @@ Baseline inspected this revision (2026-10-17):
   `bot-docs/plans/kikx-ask-user-and-activities.md` (this plan) and an owner-owned report
   `bot-docs/reports/db-port-5434-migration-2026-10-14.md`.
 - Dev server: `curl http://127.0.0.1:3001/health` ->
-  `{"ok":true,"ready":true,"services":{"aeordb":true},"memory":{"enabled":false,...}}`.
+  `{"ok":true,"ready":true,"services":{"database":true},"memory":{"enabled":false,...}}`.
 
 ## 1. No existing implementation (claim: this is a greenfield feature)
 
