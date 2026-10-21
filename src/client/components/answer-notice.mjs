@@ -27,15 +27,25 @@ function resolveDocument(app) {
   return typeof document === 'undefined' ? null : document;
 }
 
-// The notice is appended to the app element and floats, so it is visible no
-// matter which view is on screen or how far the list has been scrolled.
+// The notice floats above the app so it stays visible whichever view is on
+// screen and however far the list has been scrolled.
+//
+// It is deliberately NOT a child of the app element. Every rebuild runs
+// `$(app).empty()` before appending the fresh tree (`kikx-shell-builders.mjs`),
+// which destroys any notice parented there — the confirmation was removed by
+// the very render it was meant to survive, so a successful send showed nothing.
+// The notice is mounted next to the app instead, and looked up through the
+// document so that a rebuild cannot orphan it.
 function noticeFor(app, ownerDocument) {
-  let existing = app.querySelector?.(`.${NOTICE_CLASS}`);
+  // Search the document first (where the notice lives in a real app, out of the
+  // rebuild's reach) and fall back to the app itself. A bare app double with no
+  // parent still mounts its notice in-app, and without this fallback each call
+  // would fail to find the previous one and mount a second notice — two
+  // confirmations stacked on top of each other.
+  let existing = ownerDocument.querySelector?.(`.${NOTICE_CLASS}`)
+    || app.querySelector?.(`.${NOTICE_CLASS}`);
   if (existing)
     return existing;
-
-  if (typeof app.appendChild !== 'function')
-    return null;
 
   let node = ownerDocument.createElement('div');
   node.className = NOTICE_CLASS;
@@ -44,7 +54,15 @@ function noticeFor(app, ownerDocument) {
   node.setAttribute('role', 'status');
   node.setAttribute('aria-live', 'polite');
   node.setAttribute('aria-atomic', 'true');
-  app.appendChild(node);
+
+  let parent = (app.parentNode && typeof app.parentNode.appendChild === 'function')
+    ? app.parentNode
+    : (typeof app.appendChild === 'function' ? app : null);
+
+  if (!parent)
+    return null;
+
+  parent.appendChild(node);
 
   return node;
 }
@@ -97,12 +115,35 @@ export function dismissAnswerStatus(app) {
   if (app)
     app._answerNoticeTimer = null;
 
-  let node = app?.querySelector?.(`.${NOTICE_CLASS}`);
+  let node = app?.ownerDocument?.querySelector?.(`.${NOTICE_CLASS}`)
+    || app?.querySelector?.(`.${NOTICE_CLASS}`);
   if (!node)
     return;
 
   node.classList.remove(VISIBLE_CLASS);
   node.textContent = '';
+}
+
+/**
+ * Put a visible notice back after the app shell was rebuilt.
+ *
+ * `renderAppShell` empties the app element on every rebuild. The notice is
+ * mounted beside the app rather than inside it, so a normal rebuild leaves it
+ * alone — but a rebuild that also replaces the app's parent (a view swap) would
+ * drop it. Re-attaching from the live node keeps the confirmation on screen for
+ * the remainder of its auto-hide window instead of blinking out.
+ */
+export function reattachAnswerNotice(app) {
+  let ownerDocument = resolveDocument(app);
+  let node = ownerDocument?.querySelector?.(`.${NOTICE_CLASS}`);
+  if (!node || !app?.parentNode)
+    return null;
+
+  if (node.parentNode === app.parentNode)
+    return node;
+
+  app.parentNode.appendChild(node);
+  return node;
 }
 
 export const ANSWER_NOTICE_CLASS = NOTICE_CLASS;

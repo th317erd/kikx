@@ -793,9 +793,25 @@ async function listen(server) {
   return `http://127.0.0.1:${address.port}`;
 }
 
+// `server.close()` stops accepting new connections but waits for existing ones
+// to end. A browser holds keep-alive sockets open, so the callback never fired
+// and every spec's `finally { await fixture.close() }` blocked forever: the test
+// body finished, the teardown hung, and node:test reported the opaque
+// 'Promise resolution is still pending' / '(45005ms)' instead of the assertion
+// that actually failed. Dropping idle sockets first makes close() settle.
 async function closeServer(server) {
   await new Promise((resolve, reject) => {
+    if (typeof server.closeAllConnections === 'function')
+      server.closeAllConnections();
+    else if (typeof server.closeIdleConnections === 'function')
+      server.closeIdleConnections();
+
     server.close((error) => error ? reject(error) : resolve());
+
+    // Belt and braces: if a socket is still mid-request, close() stays pending.
+    // A test fixture must never outlive its test, so settle anyway and let a
+    // leaked handle surface as node:test's own diagnosis rather than a hang.
+    setTimeout(() => resolve(), 5000).unref?.();
   });
 }
 
