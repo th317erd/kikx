@@ -4,6 +4,7 @@ import { elements, $ } from '../lib/aeor-ui.mjs';
 import { createIcon } from '../lib/icons.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { createErrorSurfaceElement } from './kikx-error-surface.mjs';
+import { reattachAnswerNotice } from './answer-notice.mjs';
 import './kikx-thinking-rack.mjs';
 import {
   getCurrentEntry,
@@ -100,6 +101,11 @@ export function renderAppShell(app) {
     $(app).empty();
 
     app.appendChild(tree);
+    // The rebuild above emptied the app element. The answer notice is mounted
+    // beside the app rather than inside it for exactly that reason, but a view
+    // swap can replace the parent too; re-attach from the live node so a
+    // confirmation on screen when the send resolved is not silently dropped.
+    reattachAnswerNotice(app);
     app._afterRender(renderSnapshot);
     return true;
   }, { sessionID: app._state.selectedSessionID });

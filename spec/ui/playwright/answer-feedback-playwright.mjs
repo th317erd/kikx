@@ -135,6 +135,11 @@ test('the Answer control visibly changes while a send is in flight', async (t) =
     let submit = card.locator('.kikx-question-card__submit');
     let input = card.locator('.kikx-question-card__input');
 
+    // Release the held POST even if an assertion throws. Without this, a failed
+    // assertion leaves the intercepted route pending forever and the test dies
+    // as an opaque 90s timeout instead of naming the assertion that failed.
+    t.after(() => { try { release?.(); } catch {} });
+
     // The idle baseline, so the assertion below is a real comparison rather
     // than a hard-coded colour.
     let idleBackground = await submit.evaluate((node) => getComputedStyle(node).backgroundColor);
@@ -158,12 +163,27 @@ test('the Answer control visibly changes while a send is in flight', async (t) =
 
     assert.equal(await submit.isDisabled(), true, 'the control cannot be double-submitted');
 
+    // `cursor` is not transitioned, but the background is
+    // (`transition: background 160ms ease` on the base rule), so a computed
+    // style read the instant `busy` lands returns the START of the
+    // interpolation — byte-identical to idle. Wait for it to settle, which
+    // also proves the difference is reached rather than merely scheduled.
+    await page.waitForFunction(
+      ([ selector, idle ]) => {
+        let node = document.querySelector(selector);
+        return node && getComputedStyle(node).backgroundColor !== idle;
+      },
+      [ 'article.kikx-question-card[data-question-id="q-feedback"] .kikx-question-card__submit', idleBackground ],
+      { timeout: 3000 },
+    );
+
     let busyStyles = await submit.evaluate((node) => {
       let style = getComputedStyle(node);
       let spinner = getComputedStyle(node, '::before');
       return {
         background: style.backgroundColor,
         cursor: style.cursor,
+        spinnerContent: spinner.content,
         spinnerWidth: spinner.width,
         spinnerAnimation: spinner.animationName,
       };
@@ -173,7 +193,11 @@ test('the Answer control visibly changes while a send is in flight', async (t) =
     // looked like a dead button.
     assert.notEqual(busyStyles.background, idleBackground, 'the button is visibly different while busy');
     assert.equal(busyStyles.cursor, 'progress', 'the cursor signals work in progress');
-    assert.notEqual(busyStyles.spinnerWidth, 'auto', 'a spinner is rendered inside the busy button');
+    // `content` is the real signal: without it there is no pseudo-element at
+    // all, and `width` merely echoes the button's own, so asserting on width
+    // alone passes vacuously on an idle control.
+    assert.ok(busyStyles.spinnerContent && busyStyles.spinnerContent !== 'none',
+      `a spinner pseudo-element exists (content = ${busyStyles.spinnerContent})`);
     assert.equal(busyStyles.spinnerAnimation, 'kikx-answer-spin', 'the spinner is animated');
 
     release();
@@ -202,8 +226,11 @@ test('the Answer control visibly changes while a send is in flight', async (t) =
     assert.equal(noticeStyle.opacity, '1', 'the notice is actually visible, not merely present');
   } finally {
     release?.();
+    // Browser first: the page's keep-alive sockets would otherwise keep
+    // `server.close()` pending, and a hung teardown turns any real assertion
+    // failure into an opaque 'test timed out after 45000ms'.
+    await browser.close().catch(() => {});
     await fixture?.close?.();
-    await browser.close();
   }
 });
 
@@ -250,7 +277,7 @@ test('a failed answer reports the error and keeps the typed text', async (t) => 
     // And the control is usable again, so the send can be retried.
     assert.equal(await card.locator('.kikx-question-card__submit').isDisabled(), false);
   } finally {
+    await browser.close().catch(() => {});
     await fixture?.close?.();
-    await browser.close();
   }
 });
