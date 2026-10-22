@@ -597,14 +597,39 @@ Two mutants were applied to the stub and then restored.
 This is the load-bearing one: it proves the teardown path is genuinely
 exercised, and that a refactor which stopped cleaning up could not pass.
 
-**M2 — shadow-root descent removed: SURVIVED (575/575 pass).**
+**M2 — shadow-root descent removed: KILLED in the framework suite; correctly
+SURVIVED in the client suite (575/575 pass).**
 
-No client spec builds a binding inside a shadow root, so the improvement the
-consolidation actually buys (shadow traversal) is currently **unobserved by the
-suite**. The stub still carries the correct behaviour, and the framework has its
-own browser-harness coverage for this path, so this is a coverage gap in kikx2,
-not a correctness bug. Filed as follow-on work: a spec that attaches a binding
-inside `attachShadow()` and asserts teardown would close it.
+Both results are right, and the earlier reading of the survivor as a kikx2
+coverage gap was mis-scoped. The client suite cannot kill this mutant because
+**kikx2 has no shadow DOM at all**: `grep -rn attachShadow src/` returns zero
+hits, and `grep -rn shadowRoot src/` returns nothing outside
+`spec/client/support/vendor-elements.mjs` itself. There is no shadow root in
+kikx2 into which anyone could bind, so a client spec that attached one would be
+testing a synthetic construct the application never produces. Writing it would
+have manufactured coverage of a code path kikx2 does not exercise.
+
+The mutant is killed where shadow DOM genuinely exists. The framework's own
+browser suite has an explicit case for it (`test/component-regressions.mjs:163`
+"Shadow roots are descended into"), and with `MUTANT M2` applied to
+`aeor-web-components/elements.js` that suite fails:
+
+    RESULT { "ok": false,
+      "error": "Error: teardown: shadow-root binding not reached by the walk
+                (removed 0)
+                at checkBindingTeardown (test/component-regressions.mjs:181:5)" }
+    MUTANT_EXIT=1
+
+That run was a temporary edit to the framework checkout, not to kikx2, and was
+reverted: `elements.js` restored to
+`sha256 fce43ebcd2...8eff279`, `grep -c MUTANT -> 0`, `node --check` clean,
+`git status --short` empty, and the suite re-run green with
+`POSTRESTORE_EXIT=0`.
+
+Net: shadow-root teardown is covered, by the suite that owns that behaviour.
+kikx2's job is only to *call* `cleanupBindings` with the right roots, which M1
+already pins. No follow-on spec is needed here, and the earlier "Filed as
+follow-on work" item is withdrawn.
 
 Restoration was verified by content, not by trust:
 
