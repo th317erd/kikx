@@ -59,7 +59,8 @@
 }
 
 .kikx-frame--status-error {
-  --kikx-frame-status-color: oklch(from #ff5d73 calc(l - 0.06) c h);
+  --kikx-frame-status-color: oklch(from #ff1744 calc(l - 0.06) c h);
+  --kikx-frame-status-foreground-color: #ff8585;
 }
 
 .kikx-frame--status-running,
@@ -79,7 +80,7 @@
 
 .kikx-frame[data-tool-name^="exec-"],
 .kikx-frame[data-tool-name="exec"] {
-  --kikx-frame-type-color: oklch(from #f5b32f calc(l * 0.672) calc(c * 0.4928) h);
+  --kikx-frame-type-color: oklch(from #f7c62a calc(l * 0.672) calc(c * 0.4928) h);
 }
 
 .kikx-frame[data-tool-name="read-file"],
