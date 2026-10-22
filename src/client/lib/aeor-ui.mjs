@@ -4,7 +4,7 @@ import { loadOptionalModules } from './optional-import.mjs';
 
 // The element helpers and query bridge are essential; a failure here is a real
 // boot failure. Keep them as hard re-exports.
-export { elements } from '/vendor/aeor-web-components/elements.js';
+export { elements, cleanupBindings } from '/vendor/aeor-web-components/elements.js';
 export { ReactiveState } from '/vendor/aeor-web-components/reactive-state.js';
 export { $ } from '/vendor/aeor-web-components/query.js';
 

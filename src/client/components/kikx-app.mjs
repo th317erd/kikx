@@ -11,6 +11,7 @@ import './kikx-frame-item.mjs';
 import './kikx-chat-view.mjs';
 import './kikx-session-grid.mjs';
 import { installGlobalErrorCapture, uninstallGlobalErrorCapture } from '../lib/error-boundary.mjs';
+import { cleanupBindings } from '../lib/aeor-ui.mjs';
 import {
   buildAuthShell,
   buildBreadcrumb,
@@ -94,7 +95,6 @@ import {
 import {
   afterRender,
   captureRenderSnapshot,
-  cleanupReactiveBindings,
   connectFrameListObserver,
   disconnectFrameListObserver,
   isFrameListNearBottom,
@@ -375,7 +375,7 @@ export class KikxApp extends HTMLElement {
     this._markQuestionRead = (questionID) => markQuestionRead(this, questionID);
     this._dismissQuestion = (questionID, reason) => dismissQuestion(this, questionID, reason);
     this._syncFrameThread = (sessionID = this._state.selectedSessionID, options = {}) => syncFrameThread(this, sessionID, options);
-    this._cleanupReactiveBindings = (root = this) => cleanupReactiveBindings(this, root);
+    this._cleanupReactiveBindings = (root = this) => cleanupBindings(root);
     this._connectFrameListObserver = () => connectFrameListObserver(this);
     this._disconnectFrameListObserver = () => disconnectFrameListObserver(this);
     this._isFrameListNearBottom = (frameList = this.querySelector('.kikx-frame-list')) => isFrameListNearBottom(this, frameList);

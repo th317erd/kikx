@@ -1,6 +1,6 @@
 'use strict';
 
-import { elements, ReactiveState, $ } from '../../lib/aeor-ui.mjs';
+import { elements, ReactiveState, $, cleanupBindings } from '../../lib/aeor-ui.mjs';
 
 const { div, span, strong, p, pre, code, details, summary } = elements;
 
@@ -60,7 +60,7 @@ export class ToolUse extends HTMLElement {
   }
 
   disconnectedCallback() {
-    cleanupReactiveBindings(this);
+    cleanupBindings(this);
   }
 
   get content() {
@@ -92,7 +92,7 @@ export class ToolUse extends HTMLElement {
   }
 
   render() {
-    cleanupReactiveBindings(this);
+    cleanupBindings(this);
     $(this).empty();
     this.className = `kikx-tool-card ${this.cardClassName}`;
 
@@ -695,19 +695,6 @@ function formatBytes(value) {
   }
 
   return `${current.toFixed(current < 10 ? 1 : 0)} ${unit}`;
-}
-
-function cleanupReactiveBindings(root) {
-  let nodes = [ root, ...root.querySelectorAll('*') ];
-  for (let node of nodes) {
-    if (!Array.isArray(node.__bindings))
-      continue;
-
-    for (let cleanup of node.__bindings)
-      cleanup?.();
-
-    node.__bindings = [];
-  }
 }
 
 function plainSpan(text) {

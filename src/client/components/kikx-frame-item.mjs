@@ -1,6 +1,6 @@
 'use strict';
 
-import { elements, $ } from '../lib/aeor-ui.mjs';
+import { elements, $, cleanupBindings } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
 import {
@@ -165,7 +165,7 @@ export class KikxFrameItem extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this._cleanupReactiveBindings();
+    cleanupBindings(this);
   }
 
   _render() {
@@ -199,7 +199,7 @@ export class KikxFrameItem extends HTMLElement {
           content = this._buildFrameContent(frame);
       }
 
-      this._cleanupReactiveBindings();
+      cleanupBindings(this);
       $(this).empty();
       this._metaElement = meta;
       this._contentElement = content;
@@ -445,7 +445,7 @@ export class KikxFrameItem extends HTMLElement {
       className: this._contentElement.className,
     });
 
-    this._cleanupReactiveBindings(this._contentElement);
+    cleanupBindings(this._contentElement);
     while (this._contentElement.firstChild)
       this._contentElement.removeChild(this._contentElement.firstChild);
 
@@ -465,7 +465,7 @@ export class KikxFrameItem extends HTMLElement {
     if (!this._contentElement)
       return;
 
-    this._cleanupReactiveBindings(this._contentElement);
+    cleanupBindings(this._contentElement);
     this._contentElement.remove();
     this._contentElement = null;
     this._contentKind = null;
@@ -545,18 +545,6 @@ export class KikxFrameItem extends HTMLElement {
     return div.class('kikx-frame__content kikx-frame__content--custom')(element).build(document);
   }
 
-  _cleanupReactiveBindings(root = this) {
-    let nodes = [ root, ...root.querySelectorAll('*') ];
-    for (let node of nodes) {
-      if (!Array.isArray(node.__bindings))
-        continue;
-
-      for (let cleanup of node.__bindings)
-        cleanup?.();
-
-      node.__bindings = [];
-    }
-  }
 }
 
 if (typeof customElements !== 'undefined' && !customElements.get('kikx-frame-item'))
