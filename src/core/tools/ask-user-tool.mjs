@@ -164,7 +164,10 @@ export class AskUserTool extends PluginInterface {
       // `frameID` is reserved for the emitted Question frame (set below);
       // the frame the tool was called from is the tool-call frame.
       toolCallFrameID: params._frameID || this.context.frame?.id || null,
-      contextRefs: collectQuestionContextRefs(params.questions),
+      // Deliberately NOT setting a batch-level `contextRefs`: the schema puts
+      // this field inside each question, and the store reads it from there.
+      // Passing a union here is what silently copied one question's references
+      // onto every sibling in the batch.
       focusAtAsk: this.context.todoState?.focus?.name || null,
       todoIDs: collectFocusTodoIDs(this.context.todoState),
     });
@@ -281,37 +284,6 @@ export class AskUserTool extends PluginInterface {
 }
 
 export const ASK_USER_MAX_QUESTIONS = DEFAULT_MAX_QUESTIONS;
-
-function collectQuestionContextRefs(questions) {
-  if (!Array.isArray(questions))
-    return [];
-
-  let refs = [];
-  let seen = new Set();
-  for (let question of questions) {
-    if (!Array.isArray(question?.contextRefs))
-      continue;
-
-    for (let ref of question.contextRefs) {
-      if (!ref || typeof ref !== 'object')
-        continue;
-
-      let type = normalizeOptionalString(ref.type);
-      let id = normalizeOptionalString(ref.id);
-      if (!type || !id)
-        continue;
-
-      let key = `${type}:${id}`;
-      if (seen.has(key))
-        continue;
-
-      seen.add(key);
-      refs.push(ref);
-    }
-  }
-
-  return refs;
-}
 
 function collectFocusTodoIDs(todoState) {
   let focus = todoState?.focus;

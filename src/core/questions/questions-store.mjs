@@ -63,7 +63,11 @@ export class QuestionsStore {
     let mode = normalizeMode(input.mode);
     let sessionID = normalizeRequiredString(input.sessionID || input.session_id, 'sessionID');
     let agentID = normalizeRequiredString(input.agentID || input.agent_id, 'agentID');
-    let contextRefs = normalizeContextRefs(input.contextRefs || input.context_refs);
+    // Batch-level refs are a FALLBACK for questions that carry none of their
+    // own. The schema declares `contextRefs` per question, so a per-question
+    // value always wins; this stays for callers (and older stored docs) that
+    // framed the whole group at once.
+    let batchContextRefs = normalizeContextRefs(input.contextRefs || input.context_refs);
     let note = normalizeOptionalString(input.note);
     let groupID = this.idGenerator();
     let now = this.clock();
@@ -91,7 +95,7 @@ export class QuestionsStore {
         toolOutputID: normalizeOptionalString(input.toolOutputID || input.tool_output_id) || null,
         todoIDs: Array.isArray(input.todoIDs) ? input.todoIDs.map((id) => String(id)) : [],
         focusAtAsk: normalizeOptionalString(input.focusAtAsk || input.focus_at_ask) || null,
-        contextRefs,
+        contextRefs: entry.contextRefs.length > 0 ? entry.contextRefs : batchContextRefs,
         text: entry.text,
         priority: entry.priority,
         answer: null,
@@ -622,6 +626,12 @@ function normalizeQuestionList(value) {
         ?? (entry.timeoutSeconds != null || entry.timeout_seconds != null
           ? Number(entry.timeoutSeconds ?? entry.timeout_seconds) * 1000
           : null)),
+      // The schema declares `contextRefs` INSIDE each question, so it is a
+      // per-question field and must be normalised through this allow-list.
+      // Dropping it here is what made the tool union every question's refs into
+      // one batch-wide array: the store had no per-question channel to receive
+      // them, so `createQuestions` wrote the same set onto every row.
+      contextRefs: normalizeContextRefs(entry.contextRefs ?? entry.context_refs),
     };
   });
 }
