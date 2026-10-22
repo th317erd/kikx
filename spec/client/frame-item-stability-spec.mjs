@@ -258,6 +258,16 @@ test('AgentMessage headers carry the Message title and chat icon', () => {
 
   assert.equal(item.querySelector('.kikx-frame__meta-status-label')?.textContent, 'Message');
   assert.equal(item.querySelector('.kikx-frame__meta-status .kikx-frame__compact-icon svg')?.getAttribute('data-icon'), 'chat');
+
+  item.updateFrame({ id: 'user-message', type: 'UserMessage', content: { text: 'hello' } }, {});
+  assert.equal(item.querySelector('.kikx-frame__meta-status-label')?.textContent, 'Message');
+  assert.equal(item.querySelector('.kikx-frame__meta-status .kikx-frame__compact-icon svg')?.getAttribute('data-icon'), 'chat');
+
+  item.updateFrame({ id: 'progress-elated', type: 'AgentProgress', content: { text: 'Working', mood: 2.2, moodWord: 'Elated' } }, {});
+  assert.equal(item.querySelector('.kikx-frame__meta-status-label')?.textContent, 'Elated');
+
+  item.updateFrame({ id: 'progress-legacy', type: 'AgentProgress', content: { text: 'Working' } }, {});
+  assert.equal(item.querySelector('.kikx-frame__meta-status-label')?.textContent, 'Message');
 });
 
 test('a sub-session card is reused and receives subsequent frames', () => {

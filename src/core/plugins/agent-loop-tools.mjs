@@ -8,7 +8,7 @@ import {
   REVIEW_ONLY_AGENT_PATTERN,
   REVIEW_ONLY_TOOL_DENYLIST,
 } from './agent-tool-definitions.mjs';
-import { normalizeMood } from '../../shared/mood.mjs';
+import { normalizeMood, normalizeMoodWord } from '../../shared/mood.mjs';
 import {
   cloneJSON,
   normalizeContinuationRequest,
@@ -55,13 +55,14 @@ export function createLoopTools(state, context) {
   let continueTurn = (content) => {
     let payload = (content && typeof content === 'object' && !Array.isArray(content)) ? content : {};
     let mood = normalizeMood(payload.mood);
+    let moodWord = normalizeMoodWord(payload.moodWord);
     let continuation = normalizeContinuationRequest({
       ...payload,
       prompt: payload.nextAction || payload.continuationPrompt || payload.text,
     });
     state.finalized = true;
     state.continuation = continuation;
-    let normalized = { ...normalizeToolResponseContent(content), mood };
+    let normalized = { ...normalizeToolResponseContent(content), mood, moodWord };
     let hasText = typeof normalized.text === 'string' && normalized.text.trim() !== '';
     state.finalFrame = hasText
       ? { type: 'AgentMessage', content: normalized }
@@ -381,6 +382,7 @@ export async function setAgentCharacter(input, context = {}) {
 export async function recordAgentProgress(input, context = {}) {
   let text = normalizeRequiredToolString(readToolString(input, [ 'text', 'message', 'progress' ]), 'text');
   let mood = normalizeMood(input?.mood);
+  let moodWord = normalizeMoodWord(input?.moodWord);
   let frameEngine = resolveFrameEngine(context);
   let sessionID = normalizeOptionalPromptString(context.session?.id || context.frame?.sessionID);
   let agentID = normalizeOptionalPromptString(context.agent?.id);
@@ -391,6 +393,7 @@ export async function recordAgentProgress(input, context = {}) {
       content: {
         text,
         mood,
+        moodWord,
         visible: false,
       },
     };
@@ -415,6 +418,7 @@ export async function recordAgentProgress(input, context = {}) {
     content: {
       text,
       mood,
+      moodWord,
       status: 'progress',
       responseFrameID: context.responseFrameID || null,
     },
@@ -432,6 +436,7 @@ export async function recordAgentProgress(input, context = {}) {
     content: {
       text,
       mood,
+      moodWord,
       visible: true,
       frameID: progressFrame.id,
     },

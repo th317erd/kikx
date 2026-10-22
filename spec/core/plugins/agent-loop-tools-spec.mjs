@@ -38,6 +38,8 @@ test('progress and continue-turn require a mood score', () => {
   for (let name of [ 'progress', 'continue-turn' ]) {
     let definition = defs.get(name);
     assert.ok(definition.parameters.required.includes('mood'), `${name} requires mood`);
+    assert.ok(definition.parameters.required.includes('moodWord'), `${name} requires moodWord`);
+    assert.equal(definition.parameters.properties.moodWord.type, 'string');
     assert.equal(definition.parameters.properties.mood.minimum, -3);
     assert.equal(definition.parameters.properties.mood.maximum, 3);
   }

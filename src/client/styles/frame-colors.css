@@ -11,7 +11,7 @@
  * the lower-right. A second copy of that gradient is shifted −5% lightness in the
  * type corner and +5% in the status corner, then masked into 50/50 diagonal
  * stripes so the base gradient shows through the transparent halves.
- * UserMessage is deliberately excluded.
+ * UserMessage uses the same shell in deep ocean blue.
  */
 
 .kikx-frame {
@@ -115,11 +115,18 @@
   --kikx-frame-type-color: oklch(from #b794f6 calc(l * 0.672) calc(c * 0.4928) h);
 }
 
+.kikx-frame--UserMessage {
+  --kikx-frame-type-color: #4d8fb5;
+  --kikx-frame-status-color: oklch(from #8b949e calc(l - 0.06) c h);
+  --kikx-frame-status-foreground-color: #ffffff;
+}
+
 /* Full message cards ----------------------------------------------------- */
 
 .kikx-frame--AgentMessage,
 .kikx-frame--AgentMessageDelta,
-.kikx-frame--AgentProgress {
+.kikx-frame--AgentProgress,
+.kikx-frame--UserMessage {
   position: relative;
   isolation: isolate;
   border-width: var(--kikx-frame-border-width);
@@ -132,6 +139,7 @@
 .kikx-frame--AgentMessage,
 .kikx-frame--AgentMessageDelta,
 .kikx-frame--AgentProgress,
+.kikx-frame--UserMessage,
 .kikx-frame--compact {
   text-shadow:
     0 1px 3px rgba(0, 0, 0, 1),
@@ -143,6 +151,7 @@
 .kikx-frame--AgentMessage .kikx-frame__meta,
 .kikx-frame--AgentMessageDelta .kikx-frame__meta,
 .kikx-frame--AgentProgress .kikx-frame__meta,
+.kikx-frame--UserMessage .kikx-frame__meta,
 .kikx-frame--compact .kikx-frame__meta {
   position: relative;
   isolation: isolate;
@@ -154,7 +163,8 @@
 
 .kikx-frame--AgentMessage .kikx-frame__meta,
 .kikx-frame--AgentMessageDelta .kikx-frame__meta,
-.kikx-frame--AgentProgress .kikx-frame__meta {
+.kikx-frame--AgentProgress .kikx-frame__meta,
+.kikx-frame--UserMessage .kikx-frame__meta {
   margin: -12px -12px 0;
   padding: 12px 12px 8px;
 }
@@ -166,6 +176,7 @@
 .kikx-frame--AgentMessage .kikx-frame__meta::before,
 .kikx-frame--AgentMessageDelta .kikx-frame__meta::before,
 .kikx-frame--AgentProgress .kikx-frame__meta::before,
+.kikx-frame--UserMessage .kikx-frame__meta::before,
 .kikx-frame--compact .kikx-frame__meta::before {
   position: absolute;
   inset: 0;
@@ -189,6 +200,7 @@
 .kikx-frame--AgentMessage .kikx-frame__meta > *,
 .kikx-frame--AgentMessageDelta .kikx-frame__meta > *,
 .kikx-frame--AgentProgress .kikx-frame__meta > *,
+.kikx-frame--UserMessage .kikx-frame__meta > *,
 .kikx-frame--compact .kikx-frame__meta > * {
   position: relative;
   z-index: 1;
@@ -209,14 +221,17 @@
 .kikx-frame--AgentMessage .kikx-frame__meta,
 .kikx-frame--AgentMessageDelta .kikx-frame__meta,
 .kikx-frame--AgentProgress .kikx-frame__meta,
+.kikx-frame--UserMessage .kikx-frame__meta,
 .kikx-frame--compact .kikx-frame__meta,
 .kikx-frame--AgentMessage .kikx-frame__meta-main strong,
 .kikx-frame--AgentMessageDelta .kikx-frame__meta-main strong,
 .kikx-frame--AgentProgress .kikx-frame__meta-main strong,
+.kikx-frame--UserMessage .kikx-frame__meta-main strong,
 .kikx-frame--compact .kikx-frame__meta-main strong,
 .kikx-frame--AgentMessage .kikx-frame__timestamp,
 .kikx-frame--AgentMessageDelta .kikx-frame__timestamp,
 .kikx-frame--AgentProgress .kikx-frame__timestamp,
+.kikx-frame--UserMessage .kikx-frame__timestamp,
 .kikx-frame--compact .kikx-frame__timestamp {
   color: #f5f7fa;
 }

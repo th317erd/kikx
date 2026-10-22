@@ -104,10 +104,15 @@ function frameHeaderStatus(frame, compact) {
   if (compact)
     return compactFrameHeader(frame);
 
-  if (frame?.type === 'AgentMessage' || frame?.type === 'AgentMessageDelta' || frame?.type === 'AgentProgress')
-    return { label: 'Message', icon: 'chat' };
+  let isMessage = frame?.type === 'AgentMessage'
+    || frame?.type === 'AgentMessageDelta'
+    || frame?.type === 'AgentProgress'
+    || frame?.type === 'UserMessage';
+  if (!isMessage)
+    return null;
 
-  return null;
+  let moodWord = typeof frame?.content?.moodWord === 'string' ? frame.content.moodWord.trim() : '';
+  return { label: moodWord || 'Message', icon: 'chat' };
 }
 
 function buildHeaderStatus(frame, compact) {

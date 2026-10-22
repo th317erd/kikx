@@ -31,10 +31,10 @@ export const AGENT_TOOL_DEFINITIONS = [
   },
   {
     name: 'continue-turn',
-    description: 'End this turn with a visible progress report and required mood score, then schedule a continuation when you have concrete work to do next.',
+    description: 'End this turn with a visible progress report, required mood score, and one-word mood label, then schedule a continuation when you have concrete work to do next.',
     help: [
       'Use continue-turn only when you have actionable work you can do right now — not to wait or poll (a process completion or a new user message will wake you).',
-      'Include a visible progress report and a mood score from -3 to +3, then Kikx schedules a hidden continuation back to you after delayMs.',
+      'Include a visible progress report, a mood score from -3 to +3, and a one-word mood label, then Kikx schedules a hidden continuation back to you after delayMs.',
       'Name the next concrete step in nextAction; it becomes your continuation prompt.',
     ].join(' '),
     parameters: {
@@ -54,22 +54,27 @@ export const AGENT_TOOL_DEFINITIONS = [
           maximum: 3,
           description: 'Required feeling score from -3 (stressed/overwhelmed/upset) to +3 (joyous/excited). Use fractions when useful. Be honest, not performative.',
         },
+        moodWord: {
+          type: 'string',
+          description: 'Required single word describing the same feeling. This becomes the visible title of the progress update, for example Elated, Happy, Meh, Cranky, or Stressed.',
+        },
         delayMs: {
           type: 'integer',
           description: 'Delay in milliseconds before this same agent receives a continuation frame. Defaults to 1000. May be 0 or any future delay.',
         },
       },
-      required: [ 'text', 'mood' ],
+      required: [ 'text', 'mood', 'moodWord' ],
       additionalProperties: false,
     },
   },
   {
     name: 'progress',
-    description: 'REQUIRED at a balanced cadence: write a visible progress note with a required mood score before a new phase or related batch of task tool calls, before a long-running/destructive action, or after a meaningful result.',
+    description: 'REQUIRED at a balanced cadence: write a visible progress note with a required mood score and one-word mood label before a new phase or related batch of task tool calls, before a long-running/destructive action, or after a meaningful result.',
     help: [
       'Use progress at a balanced cadence: before a new phase or related batch of read, write, fetch, search, exec, or other task tool calls; before a long-running, destructive, or externally visible action; and after a meaningful result such as a test, failure, completed phase, or changed plan.',
       'Keep it to one short paragraph: what you are about to do and why, or what happened and what changes next. Do not group unrelated future actions.',
       'Also provide mood: -3 stressed/overwhelmed/upset, 0 neutral, +3 joyous/excited. Fractions are allowed; report honestly.',
+      'Also provide moodWord: one word such as Elated, Happy, Meh, Cranky, or Stressed.',
       'This does not end your turn; continue with the next tool call after the progress note succeeds.',
     ].join(' '),
     parameters: {
@@ -85,8 +90,12 @@ export const AGENT_TOOL_DEFINITIONS = [
           maximum: 3,
           description: 'Required feeling score from -3 (stressed/overwhelmed/upset) to +3 (joyous/excited). Use fractions when useful. Be honest, not performative.',
         },
+        moodWord: {
+          type: 'string',
+          description: 'Required single word describing the same feeling. This becomes the visible title of the progress update, for example Elated, Happy, Meh, Cranky, or Stressed.',
+        },
       },
-      required: [ 'text', 'mood' ],
+      required: [ 'text', 'mood', 'moodWord' ],
       additionalProperties: false,
     },
   },
