@@ -119,3 +119,38 @@ const MODES = [ 'wait', 'continue' ];
 
 export const QUESTION_PRIORITIES = [ ...PRIORITIES ];
 export const QUESTION_MODES = [ ...MODES ];
+
+// --- Wake suppression ------------------------------------------------------
+
+/**
+ * Marker recorded in place of a real answer when the user dismisses a question
+ * instead of answering it.
+ *
+ * A dismissal is deliberately NOT a `dismissed` status. `dismissed` means the
+ * ASKING agent withdrew its own question (`questionsStore.dismissQuestion`);
+ * this is the opposite direction: the user declined to answer. Recording it as
+ * a normal answered question keeps the whole existing pipeline — history, the
+ * answered-question frame, the activity counts — working unchanged, and lets the
+ * asking agent look the outcome up later with `ask_user`/the questions API.
+ *
+ * The literal is served from here rather than written by the client so the
+ * stored text can never drift from what the wake-suppression logic expects.
+ */
+export const NO_RESPONSE_ANSWER_TEXT = '<User chose not to respond>';
+
+/**
+ * True when an answer was recorded with wake suppression — stored, but never
+ * allowed to start a turn for the asking agent.
+ */
+export function isWakeSuppressed(question) {
+  return question?.wakeSuppressed === true;
+}
+
+/**
+ * Coerce the `silent` request flag. Only a literal `true` suppresses the wake:
+ * a stray string from a hand-written request must not be able to make an answer
+ * silently invisible to the agent that is waiting for it.
+ */
+export function normalizeWakeSuppressed(value) {
+  return value === true;
+}

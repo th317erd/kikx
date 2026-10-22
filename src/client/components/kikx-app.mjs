@@ -38,6 +38,7 @@ import {
 } from './kikx-shell-builders.mjs';
 import {
   dismissQuestion,
+  dismissQuestionAnswer,
   markQuestionRead,
   submitQuestionAnswer,
   syncQuestionShell,
@@ -374,6 +375,7 @@ export class KikxApp extends HTMLElement {
     this._submitQuestionAnswer = (questionID, answerText, options) => submitQuestionAnswer(this, questionID, answerText, options);
     this._markQuestionRead = (questionID) => markQuestionRead(this, questionID);
     this._dismissQuestion = (questionID, reason) => dismissQuestion(this, questionID, reason);
+    this._dismissQuestionAnswer = (questionID) => dismissQuestionAnswer(this, questionID);
     this._syncFrameThread = (sessionID = this._state.selectedSessionID, options = {}) => syncFrameThread(this, sessionID, options);
     this._cleanupReactiveBindings = (root = this) => cleanupBindings(root);
     this._connectFrameListObserver = () => connectFrameListObserver(this);

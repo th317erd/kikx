@@ -787,3 +787,83 @@
   width: 14px;
   height: 14px;
 }
+
+/* --- Dismiss affordances -------------------------------------------------- */
+
+/* Two ways out of a question, both hold-to-activate (500ms) so a stray click
+   cannot discard a question the user was about to answer.
+
+   The text Dismiss is a linear aeor-confirm-button sitting beside Answer; the
+   round close is a radial aeor-progress-button pinned to the end of the header
+   row, so a question can be dismissed without scrolling to the answer box. The
+   --fallback variants are plain <button>s drawn to match, for the case where the
+   vendored custom elements are unavailable.
+
+   The header is a wrapping flex row, so the close is pushed to the far end
+   without affecting the agent/age labels when the row is too narrow. */
+.kikx-question-card__header .kikx-question-card__dismiss-close {
+  margin-left: auto;
+}
+
+.kikx-question-card__dismiss,
+.kikx-question-card__dismiss-close {
+  --apb-size: 1.75rem;
+  flex: none;
+}
+
+/* Muted, not destructive-red: dismissing is a normal answer, and colouring it
+   like a delete would misrepresent what the button does. */
+.kikx-question-card__dismiss {
+  --lpb-fill: #5a6672;
+}
+
+.kikx-question-card__dismiss-close {
+  --apb-fill: #5a6672;
+}
+
+/* Plain fallbacks carry text instead of a ring/bar, so they need the look of the
+   control they stand in for. */
+.kikx-question-card__dismiss--fallback {
+  padding: 7px 14px;
+  border: 1px solid #39424c;
+  border-radius: 7px;
+  background: transparent;
+  color: #aeb8c2;
+  font: inherit;
+  font-size: calc(13px * 1.25);
+  cursor: pointer;
+}
+
+.kikx-question-card__dismiss--fallback:hover {
+  border-color: #4d5967;
+  color: #d7dde3;
+}
+
+.kikx-question-card__dismiss-close--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--apb-size);
+  height: var(--apb-size);
+  padding: 0;
+  border: 1px solid #39424c;
+  border-radius: 50%;
+  background: transparent;
+  color: #8b97a3;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kikx-question-card__dismiss-close--fallback:hover {
+  border-color: #4d5967;
+  color: #d7dde3;
+}
+
+/* A dismissed/sent row is terminal; the controls are gone, but keep the rule
+   honest if a future state re-renders them disabled. */
+.kikx-question-card__dismiss[disabled],
+.kikx-question-card__dismiss-close[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}

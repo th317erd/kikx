@@ -97,6 +97,9 @@ export function questionAnswerHandlers(app, overrides = {}) {
   return {
     onSubmit: (questionID, answerText) => app._submitQuestionAnswer?.(questionID, answerText),
     onDismiss: (questionID) => app._dismissQuestion?.(questionID),
+    // The user declining to answer. Distinct from `onDismiss` above, which is the
+    // asker withdrawing its own question.
+    onDismissAnswer: (questionID) => app._dismissQuestionAnswer?.(questionID),
     onRead: (questionID) => app._markQuestionRead?.(questionID),
     // Typed-but-unsent answers, restored whenever a card is re-created. Held on
     // the app so every route that rebuilds the Inbox (shell render, view sync,
@@ -325,6 +328,54 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
     let message = typeof error?.message === 'string' && error.message !== ''
       ? `Could not send the answer: ${error.message}`
       : 'Could not send the answer.';
+
+    announce(message, { tone: 'error' });
+
+    return { ok: false, reason: 'error', error, message };
+  }
+}
+
+/**
+ * Dismiss a question: record the user's non-response as the answer, without
+ * waking the asking agent.
+ *
+ * Deliberately NOT `dismissQuestion`. That endpoint is the ASKING agent
+ * withdrawing its own question (`status:'dismissed'`); here the USER declines to
+ * answer, which must still be readable by the agent — so it goes through the
+ * answer path with `silent: true`, and the server substitutes its own
+ * `<User chose not to respond>` literal.
+ *
+ * Locally this closes the row exactly like a real answer: the same
+ * `applyLocalAnswer` and the same in-place shell sync, so the badge, the count
+ * and the "already in flight" race all behave identically.
+ */
+export async function dismissQuestionAnswer(app, questionID, options = {}) {
+  let postJSON = options.postJSON || ((url, body) => app._postJSON(url, body));
+  let announce = options.announce || ((message, noticeOptions) => (
+    announceAnswerStatus(app, message, noticeOptions)
+  ));
+
+  try {
+    let result = await postJSON(`/api/v1/questions/${encodeURIComponent(questionID)}/answer`, {
+      silent: true,
+    });
+
+    let payload = result?.data || result || {};
+    let questionsState = getQuestionsState(app._state);
+    applyLocalAnswer(questionsState, questionID, { answeredAt: payload?.answeredAt });
+
+    if (!app._syncQuestionShell?.())
+      app._requestRender?.();
+
+    // Said plainly, because a dismissal is silent BY DESIGN and the absence of
+    // any feedback would otherwise be indistinguishable from a failed click.
+    announce('Dismissed. The agent was not woken.', { tone: 'success' });
+
+    return { ok: true, suppressed: payload.suppressed !== false, payload };
+  } catch (error) {
+    let message = typeof error?.message === 'string' && error.message !== ''
+      ? `Could not dismiss the question: ${error.message}`
+      : 'Could not dismiss the question.';
 
     announce(message, { tone: 'error' });
 

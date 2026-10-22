@@ -40,6 +40,8 @@ const INPUT_CLASS = `${CARD_CLASS}__input`;
 const ACTIONS_CLASS = `${CARD_CLASS}__actions`;
 const HINT_CLASS = `${CARD_CLASS}__hint`;
 const SUBMIT_CLASS = `${CARD_CLASS}__submit`;
+const DISMISS_CLASS = `${CARD_CLASS}__dismiss`;
+const DISMISS_CLOSE_CLASS = `${CARD_CLASS}__dismiss-close`;
 
 const ANSWER_LABEL = 'Your answer';
 const ANSWER_PLACEHOLDER = 'Type your answer';
@@ -47,6 +49,25 @@ const EMPTY_ANSWER_HINT = 'Type an answer before sending.';
 const SUBMIT_FAILED_HINT = 'Could not send the answer.';
 const SUBMIT_LABEL = 'Answer';
 const SUBMIT_BUSY_LABEL = 'Sending\u2026';
+const DISMISS_LABEL = 'Dismiss';
+const DISMISS_CLOSE_LABEL = 'Dismiss question';
+
+// Both dismiss affordances are hold-to-activate: a stray click next to the
+// answer box must not silently close a question the user was about to answer.
+// 500ms is the agreed hold — long enough to be deliberate, short enough that it
+// does not feel like the control is broken.
+const DISMISS_HOLD_MS = 500;
+
+// The vendored hold-to-confirm controls. Both are already loaded by aeor-ui.mjs;
+// they are looked up at build time and degrade to plain buttons when absent (a
+// spec DOM, or a vendor tree that failed to load) so the Inbox never renders a
+// card whose dismiss controls do nothing.
+const CONFIRM_BUTTON_TAG = 'aeor-confirm-button';
+const PROGRESS_BUTTON_TAG = 'aeor-progress-button';
+
+function customElementDefined(tagName) {
+  return typeof customElements !== 'undefined' && Boolean(customElements.get(tagName));
+}
 
 // The card publishes what its last submission did through this attribute, so
 // the stylesheet can colour the row and a spec can assert the phase without
@@ -81,7 +102,7 @@ function questionMetaText(question) {
   return question.agentID || question.sessionID || 'Unattributed question';
 }
 
-function buildHeader(question, age, groupCount) {
+function buildHeader(question, age, groupCount, closeControl = null) {
   let isoAskedAt = question.askedAt > 0 ? new Date(question.askedAt).toISOString() : '';
   let children = [ span.class(AGENT_CLASS)(questionMetaText(question)) ];
 
@@ -92,6 +113,12 @@ function buildHeader(question, age, groupCount) {
 
   if (age)
     children.push(span.class(AGE_CLASS).title(isoAskedAt)(age));
+
+  // The round close sits at the far end of the header row. It is in the header
+  // rather than the actions row so the question can be dismissed without first
+  // scrolling to the answer box.
+  if (closeControl)
+    children.push(closeControl);
 
   return div.class(HEADER_CLASS)(children);
 }
@@ -107,9 +134,55 @@ function buildRefList(refs) {
   );
 }
 
+/**
+ * Build one dismiss control.
+ *
+ * `kind` is 'text' for the labelled Dismiss button (the linear
+ * aeor-confirm-button, which fills left-to-right) or 'close' for the round
+ * aeor-progress-button (a radial ring around a close glyph). Both fire `confirm`
+ * once their hold completes; the fallbacks are plain buttons whose click is
+ * wired by `bindAnswerForm`, so the same behaviour survives a missing vendor.
+ *
+ * Returns `{ node, holdToConfirm }` — the bind step needs to know which event to
+ * listen for, and a plain fallback button never emits `confirm`.
+ */
+function buildDismissControl(ownerDocument, kind) {
+  let isClose = kind === 'close';
+  let tagName = isClose ? PROGRESS_BUTTON_TAG : CONFIRM_BUTTON_TAG;
+
+  if (customElementDefined(tagName)) {
+    let node = ownerDocument.createElement(tagName);
+    node.className = isClose ? DISMISS_CLOSE_CLASS : DISMISS_CLASS;
+    node.setAttribute('duration', String(DISMISS_HOLD_MS));
+    if (isClose) {
+      node.setAttribute('icon', 'close');
+      node.setAttribute('label', DISMISS_CLOSE_LABEL);
+      node.setAttribute('title', `${DISMISS_CLOSE_LABEL} (hold)`);
+      node.setAttribute('size', '1.75rem');
+    } else {
+      node.setAttribute('label', DISMISS_LABEL);
+      node.setAttribute('title', 'Hold to dismiss this question');
+    }
+
+    return { node, holdToConfirm: true };
+  }
+
+  // Fallback: same classes and accessible name so layout and a11y are unchanged.
+  let node = ownerDocument.createElement('button');
+  node.type = 'button';
+  node.className = isClose
+    ? `${DISMISS_CLOSE_CLASS} ${DISMISS_CLOSE_CLASS}--fallback`
+    : `${DISMISS_CLASS} ${DISMISS_CLASS}--fallback`;
+  node.setAttribute('aria-label', isClose ? DISMISS_CLOSE_LABEL : DISMISS_LABEL);
+  node.setAttribute('title', isClose ? DISMISS_CLOSE_LABEL : DISMISS_LABEL);
+  node.textContent = isClose ? '\u00d7' : DISMISS_LABEL;
+
+  return { node, holdToConfirm: false };
+}
+
 // One interaction: a text box and its submit control. The hint element is the
 // only other thing rendered, and it stays hidden until validation fails.
-function buildAnswerForm(inputID) {
+function buildAnswerForm(inputID, ownerDocument) {
   return form.class(FORM_CLASS)(
     label.class(LABEL_CLASS).for(inputID)(ANSWER_LABEL),
     textarea
@@ -120,6 +193,8 @@ function buildAnswerForm(inputID) {
     div.class(ACTIONS_CLASS)(
       span.class(HINT_CLASS).hidden(true).ariaLive('polite')(),
       button.type('submit').class(SUBMIT_CLASS)('Answer'),
+      // Text Dismiss sits next to Answer: the explicit "I am not answering".
+      ownerDocument ? buildDismissControl(ownerDocument, 'text').node : null,
     ),
   );
 }
@@ -155,13 +230,16 @@ export function renderQuestionCard(app, question, options = {}) {
   let inputID = `${CARD_CLASS}-answer-${model.id}`;
   let closed = isTerminalQuestion(model);
 
+  // A terminal row is read-only: nothing to dismiss, and no box to decline.
+  let closeControl = closed ? null : buildDismissControl(ownerDocument, 'close');
+
   let node = article.class(CARD_CLASS)(
-    buildHeader(model, age, groupCount),
+    buildHeader(model, age, groupCount, closeControl ? closeControl.node : null),
     p.class(TEXT_CLASS)(model.text),
     buildRefList(refs),
     closed
       ? p.class(CLOSED_CLASS)(closedNote(model.status))
-      : buildAnswerForm(inputID),
+      : buildAnswerForm(inputID, ownerDocument),
   ).build(ownerDocument);
 
   // `data-question-id` is how `bindAnswerForm` addresses the row it was given:
@@ -225,7 +303,7 @@ export function bindAnswerForm(node, handlers = {}) {
   if (!formNode || !inputNode || !submitNode)
     return;
 
-  let { onSubmit, onDismiss, onRead, drafts } = handlers || {};
+  let { onSubmit, onRead, onDismiss, onDismissAnswer, drafts } = handlers || {};
   let questionID = node.getAttribute('data-question-id') || '';
   let inFlight = false;
   let readSent = false;
@@ -359,15 +437,98 @@ export function bindAnswerForm(node, handlers = {}) {
     onRead(questionID);
   }
 
+  // Dismiss the question: record "<User chose not to respond>" as the answer and
+  // close the row locally. This is NOT the `/dismiss` endpoint — that one is the
+  // asking agent withdrawing its own question, the opposite direction and a
+  // different terminal status. Going through the answer path means the asking
+  // agent can read the outcome, while `silent` keeps it from being woken.
+  function requestDismiss() {
+    if (inFlight)
+      return;
+
+    if (typeof onDismissAnswer !== 'function') {
+      // Nothing owns the dismissal (an inline frame rendered without handlers):
+      // fall back to the older local-only behaviour rather than a dead button.
+      if (typeof onDismiss === 'function')
+        onDismiss(questionID);
+
+      return;
+    }
+
+    let pending;
+    try {
+      pending = onDismissAnswer(questionID);
+    } catch (error) {
+      setHint(SUBMIT_FAILED_HINT);
+      throw error;
+    }
+
+    if (!pending || typeof pending.then !== 'function')
+      return;
+
+    setInFlight(true);
+    pending.then(
+      (result) => {
+        if (result && result.ok === false) {
+          setInFlight(false);
+          setState('error');
+          setHint(result.message || SUBMIT_FAILED_HINT);
+          return;
+        }
+
+        // Same bookkeeping a real answer does, so the dismissed row leaves and
+        // its draft is not left behind for a question that is now terminal.
+        setInFlight(false);
+        setState('sent');
+        clearAnswerDraft(drafts, questionID);
+        inputNode.value = '';
+      },
+      () => {
+        setInFlight(false);
+        setState('error');
+        setHint(SUBMIT_FAILED_HINT);
+      },
+    );
+  }
+
+  function wireDismissControl(control) {
+    if (!control)
+      return;
+
+    // Hold-to-confirm controls (aeor-confirm-button / aeor-progress-button) emit
+    // `confirm`; the plain fallbacks only emit `click`.
+    let eventName = control.localName === 'aeor-confirm-button'
+      || control.localName === 'aeor-progress-button'
+      ? 'confirm'
+      : 'click';
+
+    control.addEventListener(eventName, (event) => {
+      if (event && typeof event.preventDefault === 'function' && eventName === 'click')
+        event.preventDefault();
+      if (event && typeof event.stopPropagation === 'function')
+        event.stopPropagation();
+
+      requestDismiss();
+    });
+  }
+
+  // Both affordances live outside the <form>, so their activation can never be
+  // mistaken for a submit.
+  wireDismissControl(node.querySelector(`.${DISMISS_CLASS}`));
+  wireDismissControl(node.querySelector(`.${DISMISS_CLOSE_CLASS}`));
+
   function handleKeydown(event) {
-    if (!event || event.key !== 'Escape' || typeof onDismiss !== 'function')
+    if (!event || event.key !== 'Escape')
+      return;
+
+    if (typeof onDismissAnswer !== 'function' && typeof onDismiss !== 'function')
       return;
 
     // Only abort an untouched box: Escape over typed text would discard work.
     if (normalizeAnswerText(inputNode.value) !== '')
       return;
 
-    onDismiss(questionID);
+    requestDismiss();
   }
 
   formNode.addEventListener('submit', handleSubmit);
