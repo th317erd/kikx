@@ -811,14 +811,48 @@
   flex: none;
 }
 
-/* Muted, not destructive-red: dismissing is a normal answer, and colouring it
-   like a delete would misrepresent what the button does. */
+/* Orange, not destructive-red: dismissing is a normal answer, so it must not
+   read as a delete. The orange says "declining" without saying "danger", and
+   it separates the two dismiss affordances from the blue Answer control at a
+   glance.
+
+   Both controls are tinted from the same token, used three ways: as the hold
+   fill (--lpb-fill / --apb-fill), as the hover tint, and as the border accent.
+   #d29922 is deliberately NOT reused here even though it is the app's other
+   amber: it already means "needs attention" (validation hints, error borders,
+   priority pills), and a dismiss control painted that colour would read as a
+   warning state rather than an action. */
+.kikx-question-card__dismiss,
+.kikx-question-card__dismiss-close {
+  --kikx-dismiss-accent: #f97316;
+  --kikx-dismiss-tint: color-mix(in srgb, #f97316 16%, transparent);
+}
+
 .kikx-question-card__dismiss {
-  --lpb-fill: #5a6672;
+  --lpb-fill: var(--kikx-dismiss-accent);
+  --lpb-text: var(--kikx-dismiss-accent);
 }
 
 .kikx-question-card__dismiss-close {
-  --apb-fill: #5a6672;
+  --apb-fill: var(--kikx-dismiss-accent);
+  --apb-icon: var(--kikx-dismiss-accent);
+}
+
+/* Hover / hold tint for the custom elements.
+
+   The framework's own hover rules mix toward white (linear) or toward
+   --apb-fill (radial). The linear one is overridden to an explicit orange wash
+   so the colour does not drift toward grey on hover; the radial one is left to
+   the framework, which already derives its tint from --apb-fill and therefore
+   follows the orange on its own. The border matches so the affordance reads as
+   orange before the user commits to the hold. */
+.kikx-question-card__dismiss .aeor-confirm-btn:hover {
+  background: var(--kikx-dismiss-tint) !important;
+  border-color: var(--kikx-dismiss-accent) !important;
+}
+
+.kikx-question-card__dismiss .aeor-confirm-btn.pressing {
+  border-color: var(--kikx-dismiss-accent);
 }
 
 /* Plain fallbacks carry text instead of a ring/bar, so they need the look of the
@@ -828,15 +862,18 @@
   border: 1px solid #39424c;
   border-radius: 7px;
   background: transparent;
-  color: #aeb8c2;
+  color: var(--kikx-dismiss-accent);
   font: inherit;
   font-size: calc(13px * 1.25);
   cursor: pointer;
 }
 
+/* The fallbacks get the same orange tint the custom elements do, so a missing
+   vendor changes the control's rendering but not its colour language. */
 .kikx-question-card__dismiss--fallback:hover {
-  border-color: #4d5967;
-  color: #d7dde3;
+  border-color: var(--kikx-dismiss-accent);
+  background: var(--kikx-dismiss-tint);
+  color: var(--kikx-dismiss-accent);
 }
 
 .kikx-question-card__dismiss-close--fallback {
@@ -849,15 +886,16 @@
   border: 1px solid #39424c;
   border-radius: 50%;
   background: transparent;
-  color: #8b97a3;
+  color: var(--kikx-dismiss-accent);
   font-size: 1rem;
   line-height: 1;
   cursor: pointer;
 }
 
 .kikx-question-card__dismiss-close--fallback:hover {
-  border-color: #4d5967;
-  color: #d7dde3;
+  border-color: var(--kikx-dismiss-accent);
+  background: var(--kikx-dismiss-tint);
+  color: var(--kikx-dismiss-accent);
 }
 
 /* A dismissed/sent row is terminal; the controls are gone, but keep the rule
