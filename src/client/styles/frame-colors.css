@@ -66,6 +66,7 @@
 .kikx-frame--status-pending,
 .kikx-frame--status-paused {
   --kikx-frame-status-color: oklch(from #8b949e calc(l - 0.06) c h);
+  --kikx-frame-status-foreground-color: #ffffff;
 }
 
 .kikx-frame--status-warning,
@@ -340,4 +341,24 @@
 
 .kikx-todo-item.is-complete .kikx-todo-item__title {
   color: #9ce0b0;
+}
+
+/* Mood drives the visible colour of in-progress updates. The raw score stays
+   continuous in frame content; these are the only three displayed bands. */
+.kikx-frame[data-mood-band="bad"] {
+  --kikx-frame-type-color: oklch(from #ff5d73 calc(l - 0.06) c h);
+  --kikx-frame-status-color: oklch(from #ff5d73 calc(l - 0.06) c h);
+  --kikx-frame-status-foreground-color: oklch(from #ff5d73 calc(l - 0.06) c h);
+}
+
+.kikx-frame[data-mood-band="meh"] {
+  --kikx-frame-type-color: oklch(from #8b949e calc(l - 0.06) c h);
+  --kikx-frame-status-color: oklch(from #8b949e calc(l - 0.06) c h);
+  --kikx-frame-status-foreground-color: #ffffff;
+}
+
+.kikx-frame[data-mood-band="good"] {
+  --kikx-frame-type-color: oklch(from #3ddc84 calc(l - 0.06) c h);
+  --kikx-frame-status-color: oklch(from #3ddc84 calc(l - 0.06) c h);
+  --kikx-frame-status-foreground-color: oklch(from #2ff58a calc(l - 0.06) c h);
 }

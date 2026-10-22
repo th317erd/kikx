@@ -31,10 +31,10 @@ export const AGENT_TOOL_DEFINITIONS = [
   },
   {
     name: 'continue-turn',
-    description: 'End this turn with a visible progress report and schedule a continuation when you have concrete work to do next.',
+    description: 'End this turn with a visible progress report and required mood score, then schedule a continuation when you have concrete work to do next.',
     help: [
       'Use continue-turn only when you have actionable work you can do right now — not to wait or poll (a process completion or a new user message will wake you).',
-      'Include a visible progress report, then Kikx schedules a hidden continuation back to you after delayMs.',
+      'Include a visible progress report and a mood score from -3 to +3, then Kikx schedules a hidden continuation back to you after delayMs.',
       'Name the next concrete step in nextAction; it becomes your continuation prompt.',
     ].join(' '),
     parameters: {
@@ -48,20 +48,28 @@ export const AGENT_TOOL_DEFINITIONS = [
           type: 'string',
           description: 'The next thing you will work on. Sent back to you when the continuation fires; defaults to your text.',
         },
+        mood: {
+          type: 'number',
+          minimum: -3,
+          maximum: 3,
+          description: 'Required feeling score from -3 (stressed/overwhelmed/upset) to +3 (joyous/excited). Use fractions when useful. Be honest, not performative.',
+        },
         delayMs: {
           type: 'integer',
           description: 'Delay in milliseconds before this same agent receives a continuation frame. Defaults to 1000. May be 0 or any future delay.',
         },
       },
+      required: [ 'text', 'mood' ],
       additionalProperties: false,
     },
   },
   {
     name: 'progress',
-    description: 'REQUIRED at a balanced cadence: write a visible progress note before a new phase or related batch of task tool calls, before a long-running/destructive action, or after a meaningful result.',
+    description: 'REQUIRED at a balanced cadence: write a visible progress note with a required mood score before a new phase or related batch of task tool calls, before a long-running/destructive action, or after a meaningful result.',
     help: [
       'Use progress at a balanced cadence: before a new phase or related batch of read, write, fetch, search, exec, or other task tool calls; before a long-running, destructive, or externally visible action; and after a meaningful result such as a test, failure, completed phase, or changed plan.',
       'Keep it to one short paragraph: what you are about to do and why, or what happened and what changes next. Do not group unrelated future actions.',
+      'Also provide mood: -3 stressed/overwhelmed/upset, 0 neutral, +3 joyous/excited. Fractions are allowed; report honestly.',
       'This does not end your turn; continue with the next tool call after the progress note succeeds.',
     ].join(' '),
     parameters: {
@@ -71,8 +79,14 @@ export const AGENT_TOOL_DEFINITIONS = [
           type: 'string',
           description: 'Visible one-paragraph progress note: what you are about to do and why, or what happened and what changes next.',
         },
+        mood: {
+          type: 'number',
+          minimum: -3,
+          maximum: 3,
+          description: 'Required feeling score from -3 (stressed/overwhelmed/upset) to +3 (joyous/excited). Use fractions when useful. Be honest, not performative.',
+        },
       },
-      required: [ 'text' ],
+      required: [ 'text', 'mood' ],
       additionalProperties: false,
     },
   },

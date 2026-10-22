@@ -236,6 +236,18 @@ test('a custom frame component is reused and receives subsequent frames', () => 
   assert.equal(first.frames[1], next, 'the reused component must receive the newest frame');
 });
 
+test('mood-bearing progress and continuation frames expose their mood band', () => {
+  let item = frameItem();
+  item.updateFrame({ id: 'progress-mood', type: 'AgentProgress', content: { text: 'Working', mood: -2.25 } }, {});
+  assert.equal(item.dataset.moodBand, 'bad');
+
+  item.updateFrame({ id: 'agent-mood', type: 'AgentMessage', content: { text: 'Continuing', mood: 2.25 } }, {});
+  assert.equal(item.dataset.moodBand, 'good');
+
+  item.updateFrame({ id: 'agent-final', type: 'AgentMessage', content: { text: 'Done' } }, {});
+  assert.equal(item.hasAttribute('data-mood-band'), false);
+});
+
 test('AgentMessage headers carry the Message title and chat icon', () => {
   let item = frameItem();
   item.updateFrame({

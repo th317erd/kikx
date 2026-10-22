@@ -7,6 +7,7 @@ import {
   compactFrameBodyDescription,
   compactFrameHeader,
   compactFrameSummary,
+  frameMoodBand,
   frameStatus,
   frameStatusClass,
   isCompactFrame,
@@ -27,6 +28,17 @@ test('every read tool uses the eyeball icon', () => {
     let input = toolName === 'read-file' ? { path: '/tmp/notes.txt' } : { id: 'OUT1', processID: 'proc_1' };
     assert.equal(compactFrameSummary(toolFrame(toolName, input, { status: 'success' })).icon, 'eyeball', toolName);
   }
+});
+
+test('frameMoodBand exposes only bad, meh, and good bands', () => {
+  assert.equal(frameMoodBand({ type: 'AgentProgress', content: { mood: -2.4 } }), 'bad');
+  assert.equal(frameMoodBand({ type: 'AgentProgress', content: { mood: -1 } }), 'meh');
+  assert.equal(frameMoodBand({ type: 'AgentProgress', content: { mood: 0.4 } }), 'meh');
+  assert.equal(frameMoodBand({ type: 'AgentProgress', content: { mood: 1 } }), 'meh');
+  assert.equal(frameMoodBand({ type: 'AgentProgress', content: { mood: 2.4 } }), 'good');
+  assert.equal(frameMoodBand({ type: 'AgentProgress', content: {} }), 'meh', 'legacy progress frames default to meh');
+  assert.equal(frameMoodBand({ type: 'AgentMessage', content: { mood: 2 } }), 'good');
+  assert.equal(frameMoodBand({ type: 'AgentMessage', content: {} }), '', 'ordinary final messages stay unbanded');
 });
 
 test('compact headers use short action labels while bodies keep the full detail', () => {

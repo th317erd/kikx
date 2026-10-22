@@ -78,7 +78,7 @@ export const TURN_ENDING_LINES = [
   'When the user provides a new message, please immediately respond to acknowledge the user\'s message, and then continue with your work.',
   'End every turn one of two ways:',
   '- end-turn — with a substantive report — when the request is satisfied, or when you are pausing/waiting after work. Report what you did and what you are waiting on; omit text only when you did no visible work and have nothing new to report.',
-  '- continue-turn — with a visible progress update and the next concrete step — only when you have actionable work you can do right now.',
+  '- continue-turn — with a visible progress update, a mood score from -3 to +3, and the next concrete step — only when you have actionable work you can do right now.',
   'Waiting is not working: never poll or loop to await a process, the user, or another agent — a completion or a reply will wake you. If clearly-required work remains but you do not yet know the step, keep planning.',
   'Stay aligned with the task the user gave you — vision → mission → current todos. If what you\'re doing isn\'t the user-assigned work, stop.',
 ];

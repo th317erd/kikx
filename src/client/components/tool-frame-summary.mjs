@@ -4,6 +4,7 @@
 // wording, icon and status rules can be unit-tested without a browser.
 
 import { isToolFrame } from '../../shared/frame-manager/frame-manager.mjs';
+import { moodBand } from '../../shared/mood.mjs';
 
 const BOT_COMMUNICATION_TYPES = new Set([ 'AgentMessage', 'AgentMessageDelta', 'AgentProgress' ]);
 
@@ -85,6 +86,23 @@ export function isCompactFrame(frame) {
     return true;
 
   return COMPACT_FRAME_TYPES.has(frame.type);
+}
+
+// Mood is recorded continuously. Only three display bands are exposed.
+// AgentProgress frames default to meh for legacy data; AgentMessage frames only
+// get a band when a continue-turn update actually carried a mood score.
+export function frameMoodBand(frame) {
+  if (frame?.type === 'AgentProgress') {
+    let mood = Number(frame?.content?.mood);
+    return Number.isFinite(mood) ? moodBand(mood) || 'meh' : 'meh';
+  }
+
+  if (frame?.type === 'AgentMessage' && frame?.content?.mood != null) {
+    let mood = Number(frame.content.mood);
+    return Number.isFinite(mood) ? moodBand(mood) : '';
+  }
+
+  return '';
 }
 
 export function compactFrameSummary(frame) {

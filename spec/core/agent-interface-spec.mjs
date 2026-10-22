@@ -99,6 +99,7 @@ class ContinueTurnAgent extends AgentInterface {
       text: 'I started the work and will continue shortly.',
       delayMs: 0,
       nextAction: 'Run the next smoke check.',
+      mood: 0.5,
     });
   }
 }
@@ -309,7 +310,7 @@ class ProgressThenToolAgent extends AgentInterface {
   }
 
   async ask(_prompt, options = {}) {
-    await options.tools['progress']({ text: 'I will echo the requested value now.' });
+    await options.tools['progress']({ text: 'I will echo the requested value now.', mood: 1.5 });
     this.toolResult = await options.tools['global-echo']({ text: 'hello' });
     return options.tools['end-turn']({ text: this.toolResult.text });
   }
@@ -552,6 +553,7 @@ test('AgentInterface persists progress frames before registered tool calls', asy
         .map((frame) => ({
           type: frame.type,
           text: frame.content?.text,
+          mood: frame.content?.mood,
         }));
       return {
         text: call.input.text,
@@ -576,6 +578,7 @@ test('AgentInterface persists progress frames before registered tool calls', asy
   assert.deepEqual(visibleBeforeTool, [{
     type: 'AgentProgress',
     text: 'I will echo the requested value now.',
+    mood: 1.5,
   }]);
   assert.equal(agent.toolResult.text, 'hello');
   assert.equal(outputs.some((output) => output.type === 'AgentMessage' && output.content.text === 'hello'), true);
@@ -801,6 +804,7 @@ test('AgentInterface base loop supports continue-turn control', async () => {
       content: {
         text: 'I started the work and will continue shortly.',
         nextAction: 'Run the next smoke check.',
+      mood: 0.5,
       },
     },
     {

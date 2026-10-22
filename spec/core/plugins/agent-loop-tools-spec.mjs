@@ -33,6 +33,16 @@ test('model-facing tool descriptions carry the communication contract', () => {
   assert.match(descriptions.get('continue-turn'), /visible progress report/);
 });
 
+test('progress and continue-turn require a mood score', () => {
+  let defs = new Map(AGENT_TOOL_DEFINITIONS.map((definition) => [ definition.name, definition ]));
+  for (let name of [ 'progress', 'continue-turn' ]) {
+    let definition = defs.get(name);
+    assert.ok(definition.parameters.required.includes('mood'), `${name} requires mood`);
+    assert.equal(definition.parameters.properties.mood.minimum, -3);
+    assert.equal(definition.parameters.properties.mood.maximum, 3);
+  }
+});
+
 test('the help tool lists all exposed tools with their help', () => {
   let definitions = createLoopToolDefinitions({ isCoordinator: true });
   let names = definitions.map((definition) => definition.name);

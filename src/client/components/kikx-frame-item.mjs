@@ -12,6 +12,7 @@ import { sessionReferenceFromFrame } from './kikx-sub-session-frame.mjs';
 import { buildCompactFrameDisclosure, updateCompactSummary } from './compact-frame-view.mjs';
 import {
   compactFrameHeader,
+  frameMoodBand,
   frameStatus,
   frameStatusClass,
   isBotCommunicationFrame,
@@ -288,6 +289,11 @@ export class KikxFrameItem extends HTMLElement {
     this.dataset.frameId = frame.id || '';
     this.dataset.frameType = frame.type || '';
     this.dataset.toolName = frame.content?.toolName || '';
+    let moodBand = frameMoodBand(frame);
+    if (moodBand)
+      this.dataset.moodBand = moodBand;
+    else
+      this.removeAttribute('data-mood-band');
 
     if (tinted)
       this.dataset.frameStatus = status;
