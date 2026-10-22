@@ -191,10 +191,14 @@ function buildAnswerForm(inputID, ownerDocument) {
       .placeholder(ANSWER_PLACEHOLDER)
       .ariaLabel(ANSWER_LABEL)(),
     div.class(ACTIONS_CLASS)(
-      span.class(HINT_CLASS).hidden(true).ariaLive('polite')(),
       button.type('submit').class(SUBMIT_CLASS)('Answer'),
       // Text Dismiss sits next to Answer: the explicit "I am not answering".
       ownerDocument ? buildDismissControl(ownerDocument, 'text').node : null,
+      // The hint is LAST so revealing it grows into the free space to the right
+      // of the controls. It used to sit first, which meant unhiding it inserted
+      // its width ahead of the buttons and shoved them sideways exactly when the
+      // user was aiming at one.
+      span.class(HINT_CLASS).hidden(true).ariaLive('polite')(),
     ),
   );
 }
@@ -368,6 +372,16 @@ export function bindAnswerForm(node, handlers = {}) {
     if (inFlight)
       return;
 
+    // Only the Answer button may submit this form. A hold-to-confirm control
+    // renders a nested <button>, and an untyped nested button is a submit
+    // button by default — so a Dismiss press used to submit the form, fail the
+    // empty-answer check, and push the hint (and the buttons) sideways under the
+    // user's cursor. The framework now sets type="button" on it; this check also
+    // guards any vendored copy older than that fix, where the submit still
+    // happens.
+    if (event && event.submitter && event.submitter !== submitNode)
+      return;
+
     let answer = normalizeAnswerText(inputNode.value);
     if (!canSubmitAnswer(answer)) {
       setHint(EMPTY_ANSWER_HINT);
@@ -512,10 +526,21 @@ export function bindAnswerForm(node, handlers = {}) {
     });
   }
 
-  // Both affordances live outside the <form>, so their activation can never be
-  // mistaken for a submit.
   wireDismissControl(node.querySelector(`.${DISMISS_CLASS}`));
   wireDismissControl(node.querySelector(`.${DISMISS_CLOSE_CLASS}`));
+
+  // Defence in depth: any <button> a vendored hold-to-confirm control renders
+  // into the light DOM inherits the surrounding form's submit behaviour unless
+  // it names a type. Neutralise it here too, so the card stays correct against
+  // a vendor build that predates the framework fix. The `submitter` check above
+  // is what holds regardless, because these children may not exist yet at bind
+  // time — the custom element builds them in its own connectedCallback.
+  for (let control of node.querySelectorAll(`.${DISMISS_CLASS}, .${DISMISS_CLOSE_CLASS}`)) {
+    for (let nested of control.querySelectorAll('button')) {
+      if (nested !== submitNode && !nested.hasAttribute('type'))
+        nested.setAttribute('type', 'button');
+    }
+  }
 
   function handleKeydown(event) {
     if (!event || event.key !== 'Escape')
