@@ -76,7 +76,14 @@ export async function handleInfraRoutes({ request, response, url, context }) {
 
   if (request.method === 'GET' && url.pathname === '/api/v1/events') {
     let frameRuntime = context.require('frameRuntime');
-    streamRuntimeEvents({ request, response, frameRuntime, sessionID: url.searchParams.get('sessionID') || '' });
+    streamRuntimeEvents({
+      request,
+      response,
+      frameRuntime,
+      eventGateway: context.has('runtimeEventGateway') ? context.require('runtimeEventGateway') : null,
+      sessionID: url.searchParams.get('sessionID') || '',
+      coalesce: true,
+    });
     return true;
   }
 

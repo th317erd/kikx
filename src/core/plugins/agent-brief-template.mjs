@@ -146,6 +146,24 @@ export function buildStartBrief(context = {}) {
   return { text: lines.join('\n') };
 }
 
+function buildCompactionWarningLines(context = {}) {
+  let memory = context.contextMemory || {};
+  let pending = memory.compactionPending === true || context.compactionPending === true;
+  let trimmed = memory.contextTrimmed === true || context.contextTrimmed === true;
+  if (!pending && !trimmed)
+    return [];
+
+  let headline = pending
+    ? 'Context compaction is underway and older memories are temporarily suspended.'
+    : 'Context was trimmed to fit the model window and older memories are temporarily suspended.';
+
+  return [
+    '',
+    `!!!WARNING!!! ${headline} Data is KNOWN TO BE MISSING FROM YOUR MEMORY.`,
+    'This is usually not critical. If you need the missing context, you may schedule a short timer to await compaction before proceeding.',
+  ];
+}
+
 // Brief B ("message brief") — sent EVERY turn and every tool round.
 export function buildMessageBrief(context = {}) {
   let sender = resolveBriefSender(context);
@@ -169,6 +187,7 @@ export function buildMessageBrief(context = {}) {
       `coord:   ${coordinator}`,
       `parties: ${parties}`,
       ...(autonomous ? [ '', autonomous ] : []),
+      ...buildCompactionWarningLines(context),
       '',
       ...COMMUNICATION_CONTRACT_LINES,
       '',
@@ -280,7 +299,18 @@ function resolveBriefTodo(context = {}) {
   if (!Array.isArray(items) || items.length === 0)
     return 'none';
 
-  return `${items.length} item(s); review with todo.list`;
+  let focus = normalizeBriefString(context.todoState?.focus?.name);
+  let names = items
+    .filter((item) => normalizeBriefString(item?.title) !== '')
+    .slice(0, 6)
+    .map((item) => `${item.status === 'complete' ? '[done] ' : ''}${normalizeBriefString(item.title)}`);
+  let parts = [ `${items.length} item(s)` ];
+  if (focus)
+    parts.push(`focus: ${focus}`);
+  if (names.length > 0)
+    parts.push(`items: ${names.join(' | ')}`);
+
+  return parts.join('; ');
 }
 
 function formatBriefPartyLines(context = {}) {

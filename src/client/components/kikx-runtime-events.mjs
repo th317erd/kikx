@@ -8,6 +8,7 @@ import { isDeletedSession } from '../state/session-state-utils.mjs';
 import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame, parseRuntimeEventResult } from './kikx-app-helpers.mjs';
 import { addFrameToBatch, addTouchedFrameIDs, renderedFrameIDsFor } from './frame-runtime-batch.mjs';
+import { refreshSubSessionCards } from './kikx-sub-session-frame.mjs';
 import { pruneMissingSessionsFromStack } from './kikx-navigation.mjs';
 import { CONNECTED_STATUS, setConnectionStatus } from './runtime-events-connection.mjs';
 
@@ -101,6 +102,10 @@ function dispatchRuntimeEvent(app, event) {
       // tab); drop any stale deleted-bucket entry.
       forgetDeletedSession(data.session.id, app._state);
     }
+
+    guardClientOperation('kikx-runtime-events.subSessionSession', () => {
+      refreshSubSessionCards(app, app._state, data.session.id);
+    }, { sessionID: data.session.id });
 
     if (!app._syncSessionShell())
       app._requestRender();
@@ -372,6 +377,15 @@ function processFrameRuntimeEvents(app) {
   guardClientOperation('kikx-runtime-events.upsertFrames', () => {
     upsertFrames(framesBySessionID, app._state);
   }, { sessionCount: framesBySessionID.size });
+
+  // Embedded child-session cards in the parent transcript are not part of the
+  // session grid. Feed them the same live child frames so their count, activity
+  // time, and mini preview update while the child session is running.
+  for (let sessionID of framesBySessionID.keys()) {
+    guardClientOperation('kikx-runtime-events.subSessionCards', () => {
+      refreshSubSessionCards(app, app._state, sessionID);
+    }, { sessionID });
+  }
 
   let selectedSessionID = app._state.selectedSessionID;
   let touchedFrameIDs = touchedFrameIDsBySessionID.get(selectedSessionID);

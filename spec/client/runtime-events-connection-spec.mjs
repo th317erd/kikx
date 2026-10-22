@@ -189,19 +189,25 @@ test('the first open stays quiet, a re-open resyncs missed state', async () => {
   });
 });
 
-test('a transient drop while still CONNECTING shows Reconnecting, not Disconnected', async () => {
-  await withFakeEventSource(async () => {
-    let app = createApp();
-    connectRuntimeEvents(app);
-    onRuntimeEventsOpen(app);
+test('a transient drop while still CONNECTING waits before showing Reconnecting', async () => {
+  await withFakeTimers(async (scheduled) => {
+    await withFakeEventSource(async () => {
+      let app = createApp();
+      connectRuntimeEvents(app);
+      onRuntimeEventsOpen(app);
 
-    app._eventSource.readyState = FakeEventSource.CONNECTING;
-    onRuntimeEventsError(app, { target: app._eventSource });
+      app._eventSource.readyState = FakeEventSource.CONNECTING;
+      onRuntimeEventsError(app, { target: app._eventSource });
 
-    assert.equal(app._state.connectionStatus, RECONNECTING_STATUS);
-    assert.equal(app._state.connectionStatusKind, 'pending');
-    assert.equal(app._runtimeEventsReconnectTimer, undefined);
-    disconnectRuntimeEvents(app);
+      assert.equal(app._state.connectionStatus, CONNECTED_STATUS, 'a short browser retry must not flash Reconnecting');
+      let statusTimer = pendingTimers(scheduled).find((timer) => timer.delay === 1000);
+      assert.ok(statusTimer, 'expected the delayed Reconnecting status timer');
+
+      statusTimer.fn();
+      assert.equal(app._state.connectionStatus, RECONNECTING_STATUS);
+      assert.equal(app._state.connectionStatusKind, 'pending');
+      disconnectRuntimeEvents(app);
+    });
   });
 });
 
@@ -383,19 +389,73 @@ test('every stream event reaches the app handler after refreshing liveness', asy
 });
 
 test('a drop after the first open re-arms the stale-handshake watchdog', async () => {
+  await withFakeTimers(async (scheduled) => {
+    await withFakeEventSource(async () => {
+      let app = createApp();
+      connectRuntimeEvents(app);
+      app._eventSource.emit('open');
+      assert.equal(app._runtimeEventsConnectingSince, 0);
+
+      app._eventSource.readyState = FakeEventSource.CONNECTING;
+      onRuntimeEventsError(app, { target: app._eventSource });
+
+      assert.equal(app._state.connectionStatus, CONNECTED_STATUS);
+      assert.ok(app._runtimeEventsConnectingSince > 0, 'expected the handshake clock to be re-armed');
+      let statusTimer = pendingTimers(scheduled).find((timer) => timer.delay === 1000);
+      assert.ok(statusTimer, 'expected the delayed Reconnecting status timer');
+      statusTimer.fn();
+      assert.equal(app._state.connectionStatus, RECONNECTING_STATUS);
+      assert.equal(checkRuntimeEventsConnection(app, app._runtimeEventsConnectingSince + 60000), true);
+      assert.equal(FakeEventSource.instances.length, 2);
+      disconnectRuntimeEvents(app);
+    });
+  });
+});
+
+test('a short reconnect clears the pending Reconnecting status', async () => {
+  await withFakeTimers(async (scheduled) => {
+    await withFakeEventSource(async () => {
+      let app = createApp();
+      connectRuntimeEvents(app);
+      app._eventSource.emit('open');
+
+      app._eventSource.readyState = FakeEventSource.CONNECTING;
+      onRuntimeEventsError(app, { target: app._eventSource });
+      assert.ok(pendingTimers(scheduled).some((timer) => timer.delay === 1000));
+
+      app._eventSource.emit('open');
+      assert.equal(app._state.connectionStatus, CONNECTED_STATUS);
+      assert.equal(pendingTimers(scheduled).length, 0, 'the delayed status update must be canceled');
+      disconnectRuntimeEvents(app);
+    });
+  });
+});
+
+test('an error on an OPEN stream stays Connected', async () => {
   await withFakeEventSource(async () => {
     let app = createApp();
     connectRuntimeEvents(app);
     app._eventSource.emit('open');
-    assert.equal(app._runtimeEventsConnectingSince, 0);
 
+    app._eventSource.readyState = FakeEventSource.OPEN;
+    onRuntimeEventsError(app, { target: app._eventSource });
+
+    assert.equal(app._state.connectionStatus, CONNECTED_STATUS);
+    assert.equal(app._state.connectionStatusKind, 'ready');
+    disconnectRuntimeEvents(app);
+  });
+});
+
+test('a live event restores Connected after a transient error', async () => {
+  await withFakeEventSource(async () => {
+    let app = createApp();
+    connectRuntimeEvents(app);
+    app._eventSource.emit('open');
     app._eventSource.readyState = FakeEventSource.CONNECTING;
     onRuntimeEventsError(app, { target: app._eventSource });
 
-    assert.equal(app._state.connectionStatus, RECONNECTING_STATUS);
-    assert.ok(app._runtimeEventsConnectingSince > 0, 'expected the handshake clock to be re-armed');
-    assert.equal(checkRuntimeEventsConnection(app, app._runtimeEventsConnectingSince + 60000), true);
-    assert.equal(FakeEventSource.instances.length, 2);
+    app._eventSource.emit('heartbeat', { data: '{"ok":true}' });
+    assert.equal(app._state.connectionStatus, CONNECTED_STATUS);
     disconnectRuntimeEvents(app);
   });
 });

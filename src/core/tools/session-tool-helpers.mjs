@@ -63,9 +63,15 @@ export async function postAgentSessionMessage({
     authorID: frame.authorID,
   });
   await runtime.frameStore?.flush?.();
+  // merge() alone does not maintain the manifest counter. Without this the
+  // returned session (and the session reference stamped onto the tool result)
+  // still reports the pre-message count, so a freshly created child card says
+  // "0 messages" even though its first message is already durable.
+  runtime.syncSessionManifestFromEngine?.(entry, { frames: merged, persist: true });
 
   return {
     sessionID,
+    session: sanitizeSession(entry.session),
     frame: sanitizeFrame(merged[0] || entry.frameEngine.get?.(frame.id) || frame),
     posted: true,
   };

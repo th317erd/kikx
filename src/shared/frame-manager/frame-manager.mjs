@@ -52,7 +52,133 @@ export function upsertFrameMessages(messages = [], frames = []) {
 }
 
 export function countMessageFrames(frames = []) {
-  return projectFrameMessages(frames).filter(isVisibleThreadFrame).length;
+  // This is used on every frame commit to maintain session.messageCount. The
+  // full projection above is O(n^2) once tool frames are present (each tool
+  // frame scans and copies the growing output), which made a 5k-frame session
+  // spend ~600ms per commit. Count the same collapsed tool display entries with
+  // indexed call/result lookup instead; visible non-tool frames are unchanged.
+  let sorted = sortFrames(Array.isArray(frames) ? [ ...frames ] : []);
+  let entries = new Map();
+  let callsByID = new Map();
+  let callsByToolCallID = new Map();
+  let resultsByID = new Map();
+  let resultsByToolCallID = new Map();
+  let count = 0;
+
+  let addEntry = (entry) => {
+    entries.set(entry.id, entry);
+    if (entry.kind === 'call') {
+      callsByID.set(entry.id, entry);
+      if (entry.toolCallID)
+        callsByToolCallID.set(entry.toolCallID, entry);
+      return;
+    }
+
+    resultsByID.set(entry.id, entry);
+    if (entry.toolCallID)
+      resultsByToolCallID.set(entry.toolCallID, entry);
+  };
+
+  let removeEntry = (entry) => {
+    if (entries.get(entry.id) === entry)
+      entries.delete(entry.id);
+
+    if (entry.kind === 'call') {
+      if (callsByID.get(entry.id) === entry)
+        callsByID.delete(entry.id);
+      if (entry.toolCallID && callsByToolCallID.get(entry.toolCallID) === entry)
+        callsByToolCallID.delete(entry.toolCallID);
+      return;
+    }
+
+    if (resultsByID.get(entry.id) === entry)
+      resultsByID.delete(entry.id);
+    if (entry.toolCallID && resultsByToolCallID.get(entry.toolCallID) === entry)
+      resultsByToolCallID.delete(entry.toolCallID);
+  };
+
+  let createEntry = (frame, kind) => ({
+    id: frame.id,
+    kind,
+    toolCallID: stringOr(frame.content?.toolCallID),
+    hidden: frame.hidden ?? false,
+    deleted: frame.deleted,
+    phantom: frame.phantom,
+  });
+
+  let mergeResultVisibility = (target, frame) => {
+    target.hidden = frame.hidden ?? false;
+    target.deleted = frame.deleted ?? target.deleted;
+  };
+
+  let mergeCallVisibility = (target, frame) => {
+    target.hidden = frame.hidden ?? false;
+    target.deleted = frame.deleted ?? target.deleted;
+    if (frame.phantom !== undefined)
+      target.phantom = frame.phantom;
+  };
+
+  for (let frame of sorted) {
+    if (!isToolFrame(frame)) {
+      if (isVisibleThreadFrame(frame))
+        count++;
+      continue;
+    }
+
+    let content = frame.content || {};
+    let toolCallID = stringOr(content.toolCallID);
+
+    if (isToolResultFrame(frame)) {
+      let callFrameID = stringOr(content.toolCallFrameID) || stringOr(frame.parentID);
+      let target = callFrameID ? callsByID.get(callFrameID) || entries.get(callFrameID) : null;
+      if (!target && toolCallID)
+        target = callsByToolCallID.get(toolCallID) || resultsByToolCallID.get(toolCallID) || null;
+
+      if (target && target.id !== frame.id) {
+        mergeResultVisibility(target, frame);
+        continue;
+      }
+
+      let existing = resultsByID.get(frame.id);
+      if (existing)
+        mergeResultVisibility(existing, frame);
+      else
+        addEntry(createEntry(frame, 'result'));
+      continue;
+    }
+
+    let result = resultsByID.get(frame.id)
+      || (toolCallID ? resultsByToolCallID.get(toolCallID) : null);
+    let existing = callsByID.get(frame.id);
+
+    if (result && result.id !== frame.id) {
+      removeEntry(result);
+      if (!existing) {
+        existing = createEntry(frame, 'call');
+        addEntry(existing);
+      }
+
+      // A merged call/result frame takes the call frame's phantom flag but the
+      // result frame's newer hidden/deleted state.
+      existing.hidden = result.hidden ?? existing.hidden ?? false;
+      existing.deleted = result.deleted ?? existing.deleted;
+      continue;
+    }
+
+    if (existing) {
+      mergeCallVisibility(existing, frame);
+      continue;
+    }
+
+    addEntry(createEntry(frame, 'call'));
+  }
+
+  for (let entry of entries.values()) {
+    if (isVisibleThreadFrame(entry))
+      count++;
+  }
+
+  return count;
 }
 
 function upsertFrameArray(frames, frame) {

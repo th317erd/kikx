@@ -34,6 +34,66 @@ export function isStaleToolCallFrame(frame, toolResultIDs) {
     && (!toolCallID || !toolResultIDs.has(toolCallID));
 }
 
+export function createRecoveredToolCallWakeFrame({ id, frame, frames = [], clock, message } = {}) {
+  let now = clock?.() || Date.now();
+  let toolFrames = Array.isArray(frames) && frames.length > 0 ? frames : [ frame ];
+  let commands = [];
+  let seen = new Set();
+  for (let toolFrame of toolFrames) {
+    let command = normalizeOptionalString(toolFrame?.content?.input?.command);
+    if (!command || seen.has(command))
+      continue;
+
+    seen.add(command);
+    commands.push(command);
+  }
+
+  let text = message || [
+    'Kikx restarted while a command was still running. The managed process and its result were lost, so treat the command as failed; do not assume it succeeded.',
+    ...(commands.length > 0
+      ? [ `Command${commands.length === 1 ? '' : 's'}:\n${commands.slice(0, 5).map((command) => `- ${truncateCommand(command, 1200)}`).join('\n')}` ]
+      : []),
+    'Inspect the current state and continue the task.',
+  ].join('\n\n');
+  let agentID = normalizeOptionalString(toolFrames[0]?.authorID);
+  let source = toolFrames[0] || frame || {};
+
+  return {
+    id,
+    type: 'UserMessage',
+    sessionID: source.sessionID || frame?.sessionID || '',
+    interactionID: source.interactionID || frame?.interactionID || `recovery:${now}`,
+    parentID: source.id || frame?.id || null,
+    authorType: 'system',
+    authorID: 'internal:runtime-recovery',
+    authorDisplayName: 'Kikx recovery',
+    targetAgentID: agentID || null,
+    timestamp: now,
+    createdAt: now,
+    updatedAt: now,
+    scheduledAt: now,
+    scheduledStatus: 'pending',
+    hidden: true,
+    deleted: false,
+    continuation: {
+      kind: 'server-restart-recovery',
+      toolCallIDs: toolFrames.map((toolFrame) => toolFrame?.content?.toolCallID).filter(Boolean),
+      createdAt: now,
+    },
+    content: {
+      text,
+      status: 'scheduled',
+      reason: 'server-restart',
+      toolCallIDs: toolFrames.map((toolFrame) => toolFrame?.content?.toolCallID).filter(Boolean),
+    },
+  };
+}
+
+function truncateCommand(command, limit) {
+  let text = String(command || '');
+  return text.length <= limit ? text : `${text.slice(0, limit)}\n…`;
+}
+
 export function createRecoveredAgentResponseFrame(frame, options = {}) {
   let now = options.clock?.() || Date.now();
   let text = options.message
@@ -67,8 +127,12 @@ export function createRecoveredAgentResponseFrame(frame, options = {}) {
 
 export function createRecoveredToolCallFrame(frame, options = {}) {
   let now = options.clock?.() || Date.now();
+  let command = normalizeOptionalString(frame?.content?.input?.command);
   let text = options.message
-    || 'Kikx recovered this tool call after a server restart. The managed process/result state was no longer available.';
+    || [
+      'Kikx recovered this tool call after a server restart. The managed process/result state was no longer available; treat the command as failed and continue.',
+      ...(command ? [ `Command:\n${truncateCommand(command, 2000)}` ] : []),
+    ].join('\n\n');
   return {
     ...frame,
     hidden: frame.hidden ?? false,

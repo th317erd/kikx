@@ -28,10 +28,23 @@ function shouldRouteUserMessage(context, frame) {
     return false;
 
   let text = frame.content?.text;
-  if (typeof text === 'string' && text.trim().startsWith('/'))
+  // Only an actual slash-command token suppresses agent routing. A bare leading
+  // slash is not enough: pasted absolute paths (for example
+  // /Users/wyatt/Pictures/screenshot.png) used to be mistaken for commands and
+  // silently never reached the agent.
+  if (isSlashCommandText(text))
     return false;
 
   return true;
+}
+
+function isSlashCommandText(text) {
+  if (typeof text !== 'string')
+    return false;
+
+  let trimmed = text.trim();
+  return /^\/[A-Za-z][A-Za-z0-9:_-]*(?:\s|$)/.test(trimmed)
+    && !trimmed.startsWith('//');
 }
 
 function shouldRouteAgentMessage(context, frame) {
@@ -134,6 +147,12 @@ function hasAgentRouteForSourceFrame({ frameEngine, sourceFrameID, agentID }) {
     if (candidate.deleted === true)
       continue;
 
+    // A recovered error is evidence the previous turn was interrupted, not a
+    // completed response. It must not suppress the recovery retry, or a server
+    // restart leaves the agent permanently unable to respond to its trigger.
+    if (isRecoveredErrorResponse(candidate))
+      continue;
+
     if (candidate.parentID === sourceFrameID)
       return true;
 
@@ -160,6 +179,9 @@ function hasVisibleAgentResponseForRoot({ frameEngine, frame, agentID }) {
     if (candidate.hidden === true || candidate.deleted === true)
       continue;
 
+    if (isRecoveredErrorResponse(candidate))
+      continue;
+
     let route = normalizeAgentRoute(candidate.agentRoute);
     if (route.rootFrameID === rootFrameID || candidate.parentID === rootFrameID)
       return true;
@@ -180,6 +202,11 @@ function isExplicitAgentTarget(frame, agentID) {
 
   let mention = frame.mentions?.[agentID];
   return mention?.type === 'agent' || mention != null;
+}
+
+function isRecoveredErrorResponse(frame) {
+  return frame?.content?.status === 'error'
+    && frame?.content?.error?.recovered === true;
 }
 
 export function createResponseAgentRoute({ sourceFrame, agentID }) {

@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  compactFrameBodyDescription,
+  compactFrameHeader,
   compactFrameSummary,
   frameStatus,
   frameStatusClass,
@@ -20,15 +22,38 @@ function toolFrame(toolName, input = {}, content = {}) {
   };
 }
 
-test('read-file renders the exact read wording and a document icon', () => {
+test('every read tool uses the eyeball icon', () => {
+  for (let toolName of [ 'read-file', 'read', 'exec-read', 'output-read' ]) {
+    let input = toolName === 'read-file' ? { path: '/tmp/notes.txt' } : { id: 'OUT1', processID: 'proc_1' };
+    assert.equal(compactFrameSummary(toolFrame(toolName, input, { status: 'success' })).icon, 'eyeball', toolName);
+  }
+});
+
+test('compact headers use short action labels while bodies keep the full detail', () => {
+  let read = toolFrame('read-file', { path: '/tmp/notes.txt' }, { status: 'success' });
+  assert.deepEqual(compactFrameHeader(read), { label: 'Read File', icon: 'eyeball' });
+  assert.equal(compactFrameBodyDescription(read), 'Read file /tmp/notes.txt <-');
+
+  let shell = toolFrame('exec', { command: 'ls /tmp' }, { status: 'success' });
+  assert.deepEqual(compactFrameHeader(shell), { label: 'Command completed', icon: 'gear' });
+  assert.equal(compactFrameBodyDescription(shell), '', 'shell status lives only in the header');
+});
+
+test('exec management tools use short header titles', () => {
+  assert.equal(compactFrameHeader(toolFrame('exec-status', { processID: 'proc_1' })).label, 'Exec Status');
+  assert.equal(compactFrameHeader(toolFrame('exec-list')).label, 'Exec List');
+  assert.equal(compactFrameHeader(toolFrame('exec-grep', { processID: 'proc_1' })).label, 'Exec Search');
+});
+
+test('read-file renders the exact read wording and an eyeball icon', () => {
   let summary = compactFrameSummary(toolFrame('read-file', { path: '/tmp/notes.txt' }, { status: 'success' }));
 
   assert.equal(summary.description, 'Read file /tmp/notes.txt <-');
-  assert.equal(summary.icon, 'file-read');
+  assert.equal(summary.icon, 'eyeball');
   assert.equal(summary.status, 'success');
 });
 
-test('read-file failures are red and write-file uses the write arrow', () => {
+test('read-file failures are red and write-file uses the quill icon', () => {
   assert.equal(frameStatus(toolFrame('read-file', { path: '/tmp/x' }, { status: 'error' })), 'error');
   assert.equal(
     compactFrameSummary(toolFrame('write-file', { path: '/tmp/out.txt' }, { status: 'success' })).description,
@@ -40,13 +65,13 @@ test('read-file failures are red and write-file uses the write arrow', () => {
   );
 });
 
-test('exec uses the terminal icon without repeating the command inline', () => {
+test('exec uses the gear icon without repeating the command inline', () => {
   let summary = compactFrameSummary(toolFrame('exec', { command: 'ls /tmp' }, { status: 'running' }));
 
   assert.equal(summary.description, 'Running command');
   assert.equal(summary.code, undefined);
   assert.equal(summary.command, 'ls /tmp');
-  assert.equal(summary.icon, 'terminal');
+  assert.equal(summary.icon, 'gear');
   assert.equal(summary.status, 'running');
 });
 
@@ -60,6 +85,11 @@ test('a completed exec result says completed instead of Running', () => {
   assert.equal(summary.description, 'Command completed');
   assert.equal(summary.code, undefined);
   assert.equal(summary.command, 'ls /tmp');
+});
+
+test('todo tools use the check icon', () => {
+  for (let toolName of [ 'todo-add', 'todo-get', 'todo-update', 'todo-complete' ])
+    assert.equal(compactFrameSummary(toolFrame(toolName, { title: 'Ship it' }, { status: 'success' })).icon, 'check');
 });
 
 test('a result frame without an explicit status is green', () => {
@@ -243,5 +273,5 @@ test('recovers the file path from a truncated input preview', () => {
   });
 
   assert.equal(summary.description, 'Write file /tmp/a.txt ->');
-  assert.equal(summary.icon, 'file-write');
+  assert.equal(summary.icon, 'quill');
 });

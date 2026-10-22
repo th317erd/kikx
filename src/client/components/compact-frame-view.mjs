@@ -5,8 +5,7 @@
 // DOM structure and in-place summary text updates.
 
 import { elements } from '../lib/aeor-ui.mjs';
-import { setIcon } from '../lib/icons.mjs';
-import { compactFrameSummary } from './tool-frame-summary.mjs';
+import { compactFrameBodyDescription, compactFrameSummary } from './tool-frame-summary.mjs';
 
 const { code, details, div, pre, span, summary } = elements;
 
@@ -20,8 +19,6 @@ export function buildCompactFrameDisclosure(frame, bodyNodes, ownerDocument) {
     body,
     summary: view.element,
     description: view.description,
-    icon: view.icon,
-    iconName: view.iconName,
     descriptionText: view.descriptionText,
     codeText: view.codeText,
     command: view.command,
@@ -35,7 +32,7 @@ export function updateCompactSummary(view, frame) {
     return;
 
   let data = compactFrameSummary(frame);
-  let descriptionText = data.description || '';
+  let descriptionText = compactFrameBodyDescription(frame);
   let codeText = data.code || '';
 
   if (view.descriptionText !== descriptionText || view.codeText !== codeText) {
@@ -59,25 +56,15 @@ export function updateCompactSummary(view, frame) {
     view.commandText = commandText;
   }
 
-  let iconName = data.icon || 'diamond';
-  if (view.iconName !== iconName) {
-    setIcon(view.icon, iconName, { ownerDocument: view.element.ownerDocument || document });
-    view.iconName = iconName;
-  }
 }
 
 function buildCompactSummary(frame, ownerDocument) {
   let data = compactFrameSummary(frame);
   let element = summary.class('kikx-frame__compact-summary').build(ownerDocument);
   let description = span.class('kikx-frame__compact-description').build(ownerDocument);
-  let icon = span.class('kikx-frame__compact-icon').build(ownerDocument);
+  let descriptionText = compactFrameBodyDescription(frame);
 
-  let iconName = data.icon || 'diamond';
-  icon.setAttribute('aria-hidden', 'true');
-  renderDescription(description, data.description || '', data.code || '', ownerDocument);
-  setIcon(icon, iconName, { ownerDocument });
-
-  element.appendChild(icon);
+  renderDescription(description, descriptionText, data.code || '', ownerDocument);
   element.appendChild(description);
 
   let command = null;
@@ -93,9 +80,7 @@ function buildCompactSummary(frame, ownerDocument) {
   return {
     element,
     description,
-    icon,
-    iconName,
-    descriptionText: data.description || '',
+    descriptionText,
     codeText: data.code || '',
     command,
     commandCode,

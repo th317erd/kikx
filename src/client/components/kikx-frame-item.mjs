@@ -10,13 +10,19 @@ import {
 import { resolveFrameComponentDescriptor } from './frame-component-registry.mjs';
 import { sessionReferenceFromFrame } from './kikx-sub-session-frame.mjs';
 import { buildCompactFrameDisclosure, updateCompactSummary } from './compact-frame-view.mjs';
-import { isBotCommunicationFrame } from './tool-frame-summary.mjs';
-import { frameStatus, frameStatusClass, isCompactFrame } from './tool-frame-summary.mjs';
+import {
+  compactFrameHeader,
+  frameStatus,
+  frameStatusClass,
+  isBotCommunicationFrame,
+  isCompactFrame,
+} from './tool-frame-summary.mjs';
+import { setIcon } from '../lib/icons.mjs';
 import { countRebuild } from './render-stats.mjs';
 import './kikx-typing-indicator.mjs';
 import './kikx-sub-session-frame.mjs';
 
-const { div, p, strong, time } = elements;
+const { div, p, span, strong, time } = elements;
 
 // Browsers expose element.tagName in UPPERCASE and element.localName in
 // lowercase, while descriptors/specs use lowercase names. Normalize once so
@@ -90,6 +96,29 @@ function setTextIfChanged(node, next) {
   let value = next ?? '';
   if (node.textContent !== value)
     node.textContent = value;
+}
+
+function frameHeaderStatus(frame, compact) {
+  if (compact)
+    return compactFrameHeader(frame);
+
+  if (frame?.type === 'AgentMessage' || frame?.type === 'AgentMessageDelta' || frame?.type === 'AgentProgress')
+    return { label: 'Message', icon: 'chat' };
+
+  return null;
+}
+
+function buildHeaderStatus(frame, compact) {
+  let data = frameHeaderStatus(frame, compact);
+  if (!data)
+    return null;
+
+  let label = span.class('kikx-frame__meta-status-label')(data.label).build(document);
+  let icon = span.class('kikx-frame__compact-icon').build(document);
+  icon.setAttribute('aria-hidden', 'true');
+  setIcon(icon, data.icon, { ownerDocument: document });
+
+  return div.class('kikx-frame__meta-status')(label, icon).build(document);
 }
 
 export class KikxFrameItem extends HTMLElement {
@@ -191,7 +220,7 @@ export class KikxFrameItem extends HTMLElement {
         this._contentTag = null;
         this._lastMarkdownText = null;
       } else {
-        meta = this._buildFrameMeta(frame);
+        meta = this._buildFrameMeta(frame, compact);
         // Compact frames keep only their summary and command preview in the DOM.
         // The tool card/output subtree is built on first expansion, not eagerly.
         if (!compact)
@@ -251,6 +280,7 @@ export class KikxFrameItem extends HTMLElement {
     this.setAttribute('role', 'listitem');
     this.dataset.frameId = frame.id || '';
     this.dataset.frameType = frame.type || '';
+    this.dataset.toolName = frame.content?.toolName || '';
 
     if (tinted)
       this.dataset.frameStatus = status;
@@ -350,6 +380,18 @@ export class KikxFrameItem extends HTMLElement {
     let label = main?.querySelector('strong');
     if (label)
       setTextIfChanged(label, frameDisplayLabel(frame, this._appState));
+
+    let status = this._metaElement.querySelector('.kikx-frame__meta-status');
+    let statusData = frameHeaderStatus(frame, this._compact);
+    if (status && statusData) {
+      let statusLabel = status.querySelector('.kikx-frame__meta-status-label');
+      if (statusLabel)
+        setTextIfChanged(statusLabel, statusData.label);
+
+      let icon = status.querySelector('.kikx-frame__compact-icon');
+      if (icon && icon.dataset.icon !== statusData.icon)
+        setIcon(icon, statusData.icon, { ownerDocument: icon.ownerDocument || document });
+    }
 
     let timestamp = frameTimestamp(frame);
     let timeElement = main?.querySelector('.kikx-frame__timestamp');
@@ -470,19 +512,21 @@ export class KikxFrameItem extends HTMLElement {
     return indicator;
   }
 
-  _buildFrameMeta(frame) {
+  _buildFrameMeta(frame, compact = false) {
     let timestamp = frameTimestamp(frame);
+    let main = div.class('kikx-frame__meta-main')(
+      strong(frameDisplayLabel(frame, this._appState)),
+      timestamp
+        ? time
+          .class('kikx-frame__timestamp')
+          .datetime(timestamp.dateTime)
+          .title(timestamp.title)(timestamp.label)
+        : null,
+    ).build(document);
 
     return div.class('kikx-frame__meta')(
-      div.class('kikx-frame__meta-main')(
-        strong(frameDisplayLabel(frame, this._appState)),
-        timestamp
-          ? time
-            .class('kikx-frame__timestamp')
-            .datetime(timestamp.dateTime)
-            .title(timestamp.title)(timestamp.label)
-          : null,
-      ),
+      main,
+      buildHeaderStatus(frame, compact),
     ).build(document);
   }
 

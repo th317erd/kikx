@@ -148,7 +148,7 @@ test('Stagehand collapses tool start and result frames into one plugin-rendered 
     let compactShell = await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="tool_call_1"]');
       return {
-        description: item?.querySelector('.kikx-frame__compact-description')?.textContent || '',
+        description: item?.querySelector('.kikx-frame__meta-status-label')?.textContent || '',
         command: item?.querySelector('.kikx-frame__compact-command-code')?.textContent || '',
         secondaryCount: item?.querySelectorAll('.kikx-frame__secondary').length || 0,
         icon: item?.querySelector('.kikx-frame__compact-icon svg')?.getAttribute('data-icon') || '',
@@ -158,7 +158,7 @@ test('Stagehand collapses tool start and result frames into one plugin-rendered 
     assert.equal(compactShell.description, 'Command completed');
     assert.equal(compactShell.command, 'ls /tmp');
     assert.equal(compactShell.secondaryCount, 0);
-    assert.equal(compactShell.icon, 'terminal');
+    assert.equal(compactShell.icon, 'gear');
     assert.equal(compactShell.success, true);
 
     // The tool card's output <details> lives inside the frame's compact

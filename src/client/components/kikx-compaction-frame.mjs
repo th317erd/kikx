@@ -78,6 +78,13 @@ export class KikxCompactionFrame extends HTMLElement {
           span.class('kikx-tool-card__badge')('Compaction'),
           strong('Context compaction'),
           span.class(`kikx-tool-card__status ${compactionStatusClass(rawStatus)}`)(status),
+          status === 'running'
+            ? span.class('kikx-compaction-card__waiting').ariaLabel('Compaction in progress')(
+              span.class('kikx-compaction-card__waiting-dot')(),
+              span.class('kikx-compaction-card__waiting-dot')(),
+              span.class('kikx-compaction-card__waiting-dot')(),
+            )
+            : null,
         ),
         div.class('kikx-tool-card__summary')(compactionSummaryLine({ status: rawStatus, frameCount, content })),
         div.class('kikx-tool-card__facts')(

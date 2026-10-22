@@ -4,8 +4,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  filterRedundantRouteTargets,
   resolveFrameRecipients,
   resolveRouteTargets,
+  shouldRouteToAgents,
 } from '../../../src/core/agents/agent-route/targeting.mjs';
 
 const PARTICIPANTS = [ 'agent_1', 'agent_2', 'agent_3' ];
@@ -149,6 +151,50 @@ test('resolveRouteTargets returns no targets when there are no participants', ()
   });
 
   assert.deepEqual(result, []);
+});
+
+test('a pasted absolute path still routes to the agent, but a slash command does not', () => {
+  let context = { change: { operation: 'create' } };
+  let userFrame = (text) => ({ id: 'msg_1', type: 'UserMessage', authorType: 'user', hidden: false, content: { text } });
+
+  assert.equal(shouldRouteToAgents(context, userFrame('/Users/wyatt/Pictures/Screenshots/session-1.png\n\nLook at this.')), true);
+  assert.equal(shouldRouteToAgents(context, userFrame('/home/wyatt/screenshot.png')), true);
+  assert.equal(shouldRouteToAgents(context, userFrame('/compact')), false);
+  assert.equal(shouldRouteToAgents(context, userFrame('/invite Zav')), false);
+});
+
+test('a recovered error response does not suppress the recovery retry', () => {
+  let frame = {
+    id: 'msg_trigger',
+    type: 'UserMessage',
+    content: { text: 'continue' },
+  };
+  let recovered = {
+    id: 'agent_recovered',
+    type: 'AgentMessage',
+    parentID: 'msg_trigger',
+    authorType: 'agent',
+    authorID: 'agent_1',
+    hidden: false,
+    content: { status: 'error', error: { recovered: true } },
+  };
+  let completed = {
+    ...recovered,
+    id: 'agent_done',
+    content: { status: 'complete', text: 'done' },
+  };
+
+  assert.deepEqual(filterRedundantRouteTargets({
+    frame,
+    routeTargets: [ 'agent_1' ],
+    frameEngine: { toArray: () => [ frame, recovered ] },
+  }), [ 'agent_1' ]);
+
+  assert.deepEqual(filterRedundantRouteTargets({
+    frame,
+    routeTargets: [ 'agent_1' ],
+    frameEngine: { toArray: () => [ frame, completed ] },
+  }), []);
 });
 
 test('resolveFrameRecipients prefers explicit recipients over mentions', () => {

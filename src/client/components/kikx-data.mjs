@@ -30,6 +30,7 @@ import {
 } from '../state/kikx-state.mjs';
 import { loadClientComponentDescriptors } from './frame-component-registry.mjs';
 import { clampPreviewCount, chunkSessionIDs } from './chat-view-model.mjs';
+import { refreshSubSessionCards } from './kikx-sub-session-frame.mjs';
 import { readResponse } from './kikx-app-helpers.mjs';
 import { createThinkingBuffer } from '../state/thinking-state.mjs';
 
@@ -399,6 +400,7 @@ export async function loadSessionPreviews(app) {
 
     setSessionPreviews(previews, app._state);
     setPreviewStatus('', app._state);
+    refreshSubSessionCards(app, app._state);
   } catch (error) {
     setPreviewStatus(error.message, app._state);
   } finally {

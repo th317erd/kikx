@@ -19,23 +19,26 @@ const SUCCESS_STATUSES = new Set([ 'success', 'complete', 'completed', 'ok', 'sa
 const ERROR_STATUSES = new Set([ 'error', 'failed', 'failure', 'fail' ]);
 
 const TOOL_ICONS = new Map([
-  [ 'read-file', 'file-read' ],
-  [ 'write-file', 'file-write' ],
-  [ 'exec', 'terminal' ],
+  [ 'read-file', 'eyeball' ],
+  [ 'read', 'eyeball' ],
+  [ 'exec-read', 'eyeball' ],
+  [ 'output-read', 'eyeball' ],
+  [ 'write-file', 'quill' ],
+  [ 'exec', 'gear' ],
+  [ 'exec-grep', 'search' ],
   [ 'web-search', 'search' ],
   [ 'web-fetch', 'fetch' ],
-  [ 'todo-add', 'todo' ],
-  [ 'todo-clear', 'todo' ],
-  [ 'todo-complete', 'todo' ],
-  [ 'todo-delete', 'todo' ],
-  [ 'todo-focus-clear', 'todo' ],
-  [ 'todo-focus-set', 'todo' ],
-  [ 'todo-get', 'todo' ],
-  [ 'todo-update', 'todo' ],
+  [ 'todo-add', 'check' ],
+  [ 'todo-clear', 'check' ],
+  [ 'todo-complete', 'check' ],
+  [ 'todo-delete', 'check' ],
+  [ 'todo-focus-clear', 'check' ],
+  [ 'todo-focus-set', 'check' ],
+  [ 'todo-get', 'check' ],
+  [ 'todo-update', 'check' ],
   [ 'feedback-report', 'mail' ],
   [ 'database-search', 'database' ],
   [ 'database-fetch', 'database' ],
-  [ 'output-read', 'output' ],
   [ 'output-grep', 'search' ],
 ]);
 
@@ -93,6 +96,47 @@ export function compactFrameSummary(frame) {
     return toolFrameSummary(frame, status);
 
   return systemFrameSummary(frame, status);
+}
+
+const COMPACT_HEADER_LABELS = new Map([
+  [ 'read-file', 'Read File' ],
+  [ 'read', 'Read Output' ],
+  [ 'exec-read', 'Read Output' ],
+  [ 'output-read', 'Read Output' ],
+  [ 'write-file', 'Write File' ],
+  [ 'exec-status', 'Exec Status' ],
+  [ 'exec-list', 'Exec List' ],
+  [ 'exec-grep', 'Exec Search' ],
+  [ 'web-search', 'Search' ],
+  [ 'web-fetch', 'Fetch' ],
+]);
+
+// Compact frames put a short status/action label and the icon in the header.
+// Long descriptions (usually file paths) stay in the body instead.
+export function compactFrameHeader(frame) {
+  let summary = compactFrameSummary(frame);
+  let toolName = String(frame?.content?.toolName || '');
+  let label = COMPACT_HEADER_LABELS.get(toolName);
+
+  if (!label && toolName.startsWith('todo-'))
+    label = 'Todo List';
+  else if (!label && (toolName === 'exec' || (toolName.startsWith('exec-') && toolName !== 'exec-read')))
+    label = summary.description;
+  else if (!label)
+    label = summary.description.length <= 32 ? summary.description : humanizeToolName(toolName || frame?.type);
+
+  return {
+    label: label || summary.description || 'Tool',
+    icon: summary.icon || 'diamond',
+  };
+}
+
+export function compactFrameBodyDescription(frame) {
+  let toolName = String(frame?.content?.toolName || '');
+  if (toolName === 'exec')
+    return '';
+
+  return compactFrameSummary(frame).description || '';
 }
 
 function toolFrameSummary(frame, status) {
@@ -376,11 +420,11 @@ function toolIcon(toolName) {
     return icon;
 
   if (toolName.startsWith('todo-'))
-    return 'todo';
+    return 'check';
   if (toolName.startsWith('team-') || toolName.startsWith('session-') || toolName.startsWith('agent-'))
     return 'diamond';
   if (toolName.startsWith('exec-'))
-    return 'terminal';
+    return 'gear';
   if (toolName.startsWith('output-'))
     return 'output';
   if (toolName.startsWith('database-'))

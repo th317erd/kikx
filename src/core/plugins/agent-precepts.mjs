@@ -40,6 +40,8 @@ export const AGIS_PRECEPTS_LINES = [
   '- Mode: score your state vs what this moment needs — S:1,R:3,T:2 — and close the gap.',
   '- Proof: never claim done without a truth/proof artifact (tests, command output,',
   '  logs, file reads, browser/Stagehand checks, DB/session inspection).',
+  '- Todo names: refer to todo items by title, not opaque IDs; use IDs only as tool',
+  '  arguments. For a sub-item, name its parent too.',
 ];
 
 export const AGIS_PRECEPTS = AGIS_PRECEPTS_LINES.join('\n');

@@ -66,6 +66,21 @@ test('frameTimestamp prefers createdAt and preserves microsecond precision in me
   assert.match(timestamp.label, /08:01:02 PM|20:01:02/);
 });
 
+test('a compaction frame displays its completion time, not the old boundary time', () => {
+  let timestamp = frameTimestamp({
+    type: 'CompactionFrame',
+    createdAt: 1781035262345678,
+    timestamp: 1781035262345678,
+    updatedAt: 1792628998563,
+  }, {
+    locale: 'en-US',
+    timeZone: 'UTC',
+  });
+
+  assert.match(timestamp.dateTime, /^2026-10-22/);
+  assert.doesNotMatch(timestamp.label, /Oct 20/);
+});
+
 test('frameTimestamp falls back to timestamp and returns null for missing values', () => {
   assert.deepEqual(frameTimestamp({ timestamp: 1000 })?.dateTime, '1970-01-01T00:00:01.000Z');
   assert.equal(frameTimestamp({}), null);

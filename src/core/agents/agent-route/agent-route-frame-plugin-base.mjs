@@ -417,7 +417,11 @@ export class AgentRouteFramePluginBase extends BaseFramePlugin {
 
   async createScheduledAgentContinuationFrame({ agent, frame, responseFrameID, continuation, services = {} }) {
     let responseFrame = this.context.engine.get(responseFrameID);
-    if (!responseFrame || responseFrame.deleted === true)
+    // The avoidable-deferral guard suppresses and cleans up the response
+    // placeholder before the provider's Done event is processed. A deleted
+    // placeholder is therefore expected here; the explicit continuation is
+    // what keeps the turn alive. Only a frame that is truly gone is fatal.
+    if (!responseFrame)
       return null;
 
     let now = this.clock();

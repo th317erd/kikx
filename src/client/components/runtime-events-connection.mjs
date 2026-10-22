@@ -38,6 +38,10 @@ export const DISCONNECTED_STATUS = 'Disconnected';
 // behind the browser's per-origin connection limit, frozen tab, ...).
 const WATCHDOG_INTERVAL_MS = 15000;
 const STALE_CONNECTING_MS = 45000;
+// EventSource emits `error` while it is already rebuilding a dropped connection.
+// Do not turn that into a visible Reconnecting flash for a normal short retry;
+// only report it if the stream has still not opened after this delay.
+const RECONNECTING_DISPLAY_DELAY_MS = 1000;
 // A half-open socket (laptop suspended, NAT rebind, VPN drop) stays `OPEN`
 // forever from the browser's point of view: without a liveness check the status
 // would keep reading Connected while nothing is arriving at all.
@@ -103,11 +107,34 @@ export function connectRuntimeEvents(app) {
 
 export function disconnectRuntimeEvents(app) {
   stopWatchdog(app);
+  clearReconnectingStatusTimer(app);
 
   let source = app._eventSource;
   app._eventSource = null;
   if (source && typeof source.close === 'function')
     source.close();
+}
+
+function clearReconnectingStatusTimer(app) {
+  if (app._runtimeEventsReconnectingTimer) {
+    clearTimeout(app._runtimeEventsReconnectingTimer);
+    app._runtimeEventsReconnectingTimer = null;
+  }
+}
+
+function scheduleReconnectingStatus(app) {
+  if (app._runtimeEventsReconnectingTimer)
+    return;
+
+  app._runtimeEventsReconnectingTimer = setTimeout(() => {
+    app._runtimeEventsReconnectingTimer = null;
+    let source = app._eventSource;
+    if (!source || !app.isConnected || source.readyState === OPEN)
+      return;
+
+    setConnectionStatus(app, RECONNECTING_STATUS, 'pending');
+  }, RECONNECTING_DISPLAY_DELAY_MS);
+  app._runtimeEventsReconnectingTimer.unref?.();
 }
 
 export function onRuntimeEventsOpen(app) {
@@ -117,6 +144,7 @@ export function onRuntimeEventsOpen(app) {
   // the initial loadSessions()/loadFrames() in connectedCallback, so resyncing
   // here would double-fetch on every page load.
   let reopened = app._runtimeEventsOpenedOnce === true;
+  clearReconnectingStatusTimer(app);
   app._runtimeEventsConnectingSince = 0;
   app._runtimeEventsLastEventAt = Date.now();
   app._runtimeEventsRetryCount = 0;
@@ -131,6 +159,12 @@ export function onRuntimeEventsOpen(app) {
 // liveness signal the client has.
 export function noteRuntimeEvent(app) {
   app._runtimeEventsLastEventAt = Date.now();
+  clearReconnectingStatusTimer(app);
+  // Receiving anything at all proves this stream is live. In particular, an
+  // EventSource `error` can fire while its readyState is still OPEN; once that
+  // happens, waiting for another `open` event leaves the label stuck on
+  // Reconnecting even though frames are arriving. Liveness is authoritative.
+  setConnectionStatus(app, CONNECTED_STATUS, 'ready');
 }
 
 export function onRuntimeEventsError(app, event = null) {
@@ -146,17 +180,27 @@ export function onRuntimeEventsError(app, event = null) {
 
   if (source.readyState === CLOSED) {
     // The browser never retries a closed stream, so we have to.
+    clearReconnectingStatusTimer(app);
     setConnectionStatus(app, DISCONNECTED_STATUS, 'error');
     scheduleManualReconnect(app);
     return;
   }
+
+  // An `error` while the stream is still OPEN is not a disconnect: EventSource
+  // can report a transport hiccup without leaving the OPEN state. Keep showing
+  // Connected; a genuinely dead stream is caught by the stale-stream watchdog,
+  // and any later event will confirm liveness.
+  if (source.readyState === OPEN)
+    return;
 
   // A drop *after* the first open must re-arm the stale-handshake clock, or the
   // watchdog's CONNECTING branch could never fire again.
   if (source.readyState === CONNECTING)
     app._runtimeEventsConnectingSince = Date.now();
 
-  setConnectionStatus(app, RECONNECTING_STATUS, 'pending');
+  // The browser normally reopens on its own. Wait through the short retry before
+  // showing Reconnecting so a normal reconnect does not strobe the status bar.
+  scheduleReconnectingStatus(app);
 }
 
 // Exported for its own tests: the interval below is the only production caller.

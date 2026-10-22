@@ -74,6 +74,7 @@ const sessionMethods = {
       if (options.loadFrames !== false && (!entry.framesLoaded || entry.framesLoadedLimit < frameLimit)) {
         let frames = await this.frameStore.listFrames(sessionID, {
           limit: frameLimit,
+          latest: true,
         });
         entry.frameEngine.hydrate(frames);
         // A window of exactly `frameLimit` frames may be truncated; remember
@@ -105,6 +106,7 @@ const sessionMethods = {
       let frameLimit = normalizeFrameLimit(options.frameLimit);
       let frames = await this.frameStore.listFrames(sessionID, {
         limit: frameLimit,
+        latest: true,
       });
       frameEngine.hydrate(frames);
       framesWindowComplete = frames.length < frameLimit;

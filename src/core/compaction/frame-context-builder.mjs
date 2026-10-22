@@ -89,6 +89,40 @@ export class FrameContextBuilder {
 
     return total;
   }
+
+  // Trim the oldest context entries until the request fits. This is the
+  // hard-limit escape hatch: never wait for compaction to finish. Preserve the
+  // current trigger and the latest compaction summary when possible so the
+  // active turn still has its instruction and whatever memory already exists.
+  trimToFit(frames, tokenBudget, options = {}) {
+    let list = normalizeFrameArray(frames);
+    let budget = normalizePositiveInteger(tokenBudget, 1);
+    let preserve = new Set(Array.isArray(options.preserveFrameIDs)
+      ? options.preserveFrameIDs.filter((id) => typeof id === 'string' && id)
+      : []);
+    let estimate = typeof options.estimateTokens === 'function' ? options.estimateTokens : this.estimateTokens;
+    let overheadTokens = normalizeNonNegativeInteger(options.usageOverheadTokens, 0);
+    let tokens = overheadTokens;
+    for (let frame of list)
+      tokens += estimate(serializeFrameForContext(frame));
+
+    let trimmed = 0;
+    while (tokens > budget) {
+      let index = list.findIndex((frame) => !preserve.has(frame.id));
+      if (index < 0)
+        break;
+
+      let [ removed ] = list.splice(index, 1);
+      tokens -= estimate(serializeFrameForContext(removed));
+      trimmed++;
+    }
+
+    return {
+      frames: list,
+      contextTokens: tokens,
+      trimmedFrames: trimmed,
+    };
+  }
 }
 
 export function estimateTokens(value) {

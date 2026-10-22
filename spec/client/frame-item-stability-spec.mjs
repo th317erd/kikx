@@ -236,6 +236,18 @@ test('a custom frame component is reused and receives subsequent frames', () => 
   assert.equal(first.frames[1], next, 'the reused component must receive the newest frame');
 });
 
+test('AgentMessage headers carry the Message title and chat icon', () => {
+  let item = frameItem();
+  item.updateFrame({
+    id: 'agent-message',
+    type: 'AgentMessage',
+    content: { text: 'hello', status: 'complete' },
+  }, {});
+
+  assert.equal(item.querySelector('.kikx-frame__meta-status-label')?.textContent, 'Message');
+  assert.equal(item.querySelector('.kikx-frame__meta-status .kikx-frame__compact-icon svg')?.getAttribute('data-icon'), 'chat');
+});
+
 test('a sub-session card is reused and receives subsequent frames', () => {
   let item = frameItem();
   let state = {};
@@ -255,6 +267,59 @@ test('a sub-session card is reused and receives subsequent frames', () => {
   let second = item.querySelector('kikx-sub-session-frame');
 
   assert.equal(second, first, 'the sub-session frame element must be reused');
+});
+
+test('an embedded child-session card uses preview data and refreshes from live frames', () => {
+  let item = frameItem();
+  let frame = {
+    id: 'frame-sub-refresh',
+    type: 'ToolResult',
+    content: {
+      references: [ {
+        type: 'session',
+        id: 'session-child',
+        title: 'Child',
+        messageCount: 0,
+        updatedAt: null,
+        heads: [],
+      } ],
+    },
+  };
+  let previewSession = {
+    id: 'session-child',
+    title: 'Child',
+    messageCount: 3,
+    updatedAt: 1781035260000000,
+  };
+  let state = {
+    sessionPreviewsByID: {
+      'session-child': {
+        sessionID: 'session-child',
+        session: previewSession,
+        heads: [ { id: 'preview-head' } ],
+      },
+    },
+  };
+
+  item.updateFrame(frame, state);
+  let subSession = item.querySelector('kikx-sub-session-frame');
+  let card = subSession.querySelector('kikx-session-card');
+  let initial = card.updates.at(-1);
+  assert.equal(initial.session.messageCount, 3, 'the preview repairs the stale zero in the reference');
+  assert.deepEqual(initial.heads.map((head) => head.id), [ 'preview-head' ]);
+
+  let liveFrames = [ 1, 2, 3, 4, 5, 6, 7 ].map((index) => ({ id: `live-${index}` }));
+  subSession.refreshFromState({ ...state, framesBySessionID: { 'session-child': liveFrames } }, 'session-child');
+  let refreshed = card.updates.at(-1);
+  assert.deepEqual(
+    refreshed.heads.map((head) => head.id),
+    [ 'live-2', 'live-3', 'live-4', 'live-5', 'live-6', 'live-7' ],
+    'live child frames replace the stale preview heads',
+  );
+
+  let before = card.updates.length;
+  subSession.refreshFromState({ ...state, framesBySessionID: { other: liveFrames } }, 'other-session');
+  assert.equal(card.updates.length, before, 'unrelated child events do not repaint the card');
 });
 
 test('a ToolCall to ToolResult type change rebuilds without stale content', () => {

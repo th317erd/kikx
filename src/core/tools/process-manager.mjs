@@ -254,8 +254,11 @@ export class ProcessManager {
   async shutdown(options = {}) {
     let signal = normalizeSignal(options.signal || 'SIGTERM');
     let forceSignal = normalizeSignal(options.forceSignal || 'SIGKILL');
-    let forceAfterMS = normalizeNonNegativeInteger(options.forceAfterMS, 1000);
-    let timeoutMS = normalizeNonNegativeInteger(options.timeoutMS, 3000);
+    // Shutdown is a request, not an instant kill. Give commands the same
+    // 30-second grace the server uses before escalating to SIGKILL; callers can
+    // still shorten it explicitly in tests or specialized environments.
+    let forceAfterMS = normalizeNonNegativeInteger(options.forceAfterMS, 30_000);
+    let timeoutMS = normalizeNonNegativeInteger(options.timeoutMS, 35_000);
     let running = Array.from(this.processes.values()).filter((record) => record.status === 'running');
     let shutdownAt = this.clock();
 

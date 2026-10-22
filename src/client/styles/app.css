@@ -615,9 +615,16 @@ kikx-app {
   text-decoration: underline;
 }
 
+.kikx-markdown__table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .kikx-markdown table {
   width: 100%;
+  min-width: 34rem;
   border-collapse: collapse;
+  table-layout: auto;
 }
 
 .kikx-markdown th,
@@ -625,6 +632,19 @@ kikx-app {
   padding: 6px 8px;
   border: 1px solid #303941;
   text-align: left;
+  vertical-align: top;
+  overflow-wrap: break-word;
+}
+
+/* IDs, statuses, and short labels should not be split mid-token. */
+.kikx-markdown th:first-child,
+.kikx-markdown td:first-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.kikx-markdown table code {
+  white-space: nowrap;
 }
 
 .kikx-markdown th {
@@ -889,9 +909,9 @@ kikx-app {
 }
 
 /* Compaction bubble status coloring. The accent border and faint tint make the
-   compaction boundary visually distinct from an ordinary tool card: neutral for
-   an in-flight compaction, green on success, red on failure, amber when the
-   context had to be trimmed to proceed. */
+   compaction boundary visually distinct from an ordinary tool card: construction
+   yellow while it is actively working, green on success, red on failure, amber
+   when the context had to be trimmed to proceed. */
 .kikx-compaction-card {
   padding: 10px 12px;
   border: 1px solid #36434d;
@@ -901,8 +921,97 @@ kikx-app {
 }
 
 .kikx-compaction-card--running {
-  border-left-color: #57636f;
-  background: #151b21;
+  border: 2px solid #f2bf2f;
+  border-left-width: 4px;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(242, 191, 47, 0.11) 0,
+      rgba(242, 191, 47, 0.11) 10px,
+      transparent 10px,
+      transparent 20px
+    ),
+    #211b08;
+  box-shadow:
+    0 0 0 1px rgba(242, 191, 47, 0.16),
+    0 0 18px rgba(242, 191, 47, 0.08);
+}
+
+.kikx-compaction-card--running .kikx-tool-card__header strong {
+  color: #ffe39a;
+}
+
+.kikx-compaction-card--running .kikx-tool-card__status--running {
+  border-color: #a98220;
+  background: #3a2e08;
+  color: #ffe39a;
+}
+
+/* Three small construction lights; disabled for reduced-motion users. */
+.kikx-compaction-card__waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 2px;
+}
+
+.kikx-compaction-card__waiting-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f2bf2f;
+  animation: kikx-compaction-waiting 1.05s infinite ease-in-out;
+}
+
+.kikx-compaction-card__waiting-dot:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.kikx-compaction-card__waiting-dot:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+@keyframes kikx-compaction-waiting {
+  0%, 70%, 100% { opacity: 0.35; transform: translateY(0) scale(0.9); }
+  35% { opacity: 1; transform: translateY(-2px) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kikx-compaction-card__waiting-dot {
+    animation: none;
+    opacity: 0.8;
+  }
+}
+
+.kikx-frame--compact.kikx-frame--CompactionFrame.kikx-frame--status-running .kikx-frame__compact > summary {
+  border: 2px solid #f2bf2f;
+  color: #ffe39a;
+  box-shadow:
+    0 0 0 1px rgba(242, 191, 47, 0.16),
+    0 0 18px rgba(242, 191, 47, 0.08);
+}
+
+.kikx-frame--compact.kikx-frame--CompactionFrame.kikx-frame--status-running .kikx-frame__compact-icon {
+  color: #f2bf2f;
+}
+
+.kikx-frame--compact.kikx-frame--CompactionFrame.kikx-frame--status-running .kikx-frame__compact-description::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: #f2bf2f;
+  vertical-align: middle;
+  animation: kikx-compaction-waiting 1.05s infinite ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kikx-frame--compact.kikx-frame--CompactionFrame.kikx-frame--status-running .kikx-frame__compact-description::after {
+    animation: none;
+    opacity: 0.8;
+  }
 }
 
 .kikx-compaction-card--success {
@@ -2537,39 +2646,6 @@ kikx-thinking-panel {
 .bash-keyword { color: #c678dd; font-weight: 600; }
 .bash-command { color: #61afef; font-weight: 600; }
 
-/* Status tint on the compact message line, not just its text. */
-.kikx-frame--compact.kikx-frame--status-success > summary {
-  background: rgba(123, 216, 143, 0.08);
-  box-shadow: inset 3px 0 0 #7bd88f;
-}
-
-.kikx-frame--compact.kikx-frame--status-error > summary {
-  background: rgba(224, 108, 117, 0.1);
-  box-shadow: inset 3px 0 0 #e06c75;
-}
-
-.kikx-frame--compact.kikx-frame--status-success > summary:hover {
-  background: rgba(123, 216, 143, 0.14);
-}
-
-.kikx-frame--compact.kikx-frame--status-error > summary:hover {
-  background: rgba(224, 108, 117, 0.16);
-}
-
-/* Bot communication frames: green on success, red on failure. Neutral keeps the
-   existing agent color; human (UserMessage) frames are never tinted. */
-.kikx-frame--AgentMessage.kikx-frame--status-success,
-.kikx-frame--AgentMessageDelta.kikx-frame--status-success {
-  border-color: #2f5f45;
-  background: #101c16;
-}
-
-.kikx-frame--AgentMessage.kikx-frame--status-error,
-.kikx-frame--AgentMessageDelta.kikx-frame--status-error {
-  border-color: #6b343a;
-  background: #1b1113;
-}
-
 .kikx-frame--AgentMessage.kikx-frame--status-success .kikx-frame__meta-main strong {
   color: #9ce0b0;
 }
@@ -2578,31 +2654,10 @@ kikx-thinking-panel {
   color: #f0a0a8;
 }
 
-/* AgentProgress is a normal message card, not a compact status row. Lilac
-   distinguishes it from final agent messages while keeping the same card
-   border, background, and prose layout. */
-.kikx-frame--AgentProgress {
-  border-color: #5f4b86;
-  background: #1b1626;
-}
-
 .kikx-frame--AgentProgress .kikx-frame__meta-main strong {
   color: #c7b7ff;
 }
 
 .kikx-frame--AgentProgress .kikx-frame__content {
   color: #e8ddff;
-}
-
-/* Status tint applies to the whole frame, not just its internal status text.
-   Compact tool/status frames get the same success/error treatment as an agent
-   message; running stays neutral. */
-.kikx-frame.kikx-frame--status-success {
-  border-color: #2f5f45;
-  background: #101c16;
-}
-
-.kikx-frame.kikx-frame--status-error {
-  border-color: #6b343a;
-  background: #1b1113;
 }

@@ -111,7 +111,7 @@ test('mixed fleet: an explicit small coordinator wins rung 3 over the bigger bot
   assert.equal(services.calls[0].agentID, 'small');
 });
 
-test('per-bot hold: a resolved small window waits only when its OWN window is exceeded', async () => {
+test('no bot waits for compaction; a hard-limit turn trims the oldest frames instead', async () => {
   let frameEngine = new FrameEngine({
     clock: createClock(),
     idGenerator: createIDs([ 'msg_1', 'msg_2', 'msg_3' ]),
@@ -132,10 +132,15 @@ test('per-bot hold: a resolved small window waits only when its OWN window is ex
     usageOverheadTokens: 30000,
     services: small.services,
   });
-  // Context exceeds the bot's own hard limit -> it waits for the in-flight
-  // compaction and gets a rebuilt context.
-  assert.equal(smallResult.heldForCompaction, true);
-  assert.equal(smallResult.compactionPending, false);
+  // The old behavior held this turn until compaction finished. The new contract
+  // returns immediately, marks compaction as pending, and trims for this turn.
+  assert.equal(smallResult.compactionPending, true);
+  assert.equal(smallResult.heldForCompaction, undefined);
+  assert.equal(smallResult.contextTrimmed, true);
+  assert.ok(smallResult.trimmedFrames > 0);
+  assert.equal(smallResult.frames.some((frame) => frame.id === 'msg_3'), true);
+  assert.equal(smallResult.frames.some((frame) => frame.id === 'msg_1'), false);
+  await small.service.pendingCompactions.get('ses_small:msg_2').promise;
 
   let frameEngine2 = new FrameEngine({
     clock: createClock(),
@@ -156,30 +161,12 @@ test('per-bot hold: a resolved small window waits only when its OWN window is ex
     usageOverheadTokens: 30000,
     services: large.services,
   });
-  // Same projected context, larger own window -> no hold, compaction proceeds
-  // in the background.
   assert.equal(largeResult.compactionPending, true);
   assert.equal(largeResult.heldForCompaction, undefined);
+  assert.equal(largeResult.contextTrimmed, true);
   await large.service.pendingCompactions.get('ses_large:msg_2').promise;
 });
 
-test('per-bot hold: an unidentified bot falls back to the legacy hard-limit wait', async () => {
-  let service = new CompactionService({
-    pluginRegistry: new PluginRegistry(),
-    agentManager: { async getAgent() { return null; }, listModels() { return []; } },
-    clock: createClock(),
-    idGenerator: () => 'cmp_1',
-    contextWindowTokens: 32768,
-    baseReserveTokens: 8000,
-    compactionAgentContextTokens: 1000,
-    estimateTokens: () => 5,
-    logger: { error() {}, warn() {} },
-    frameRuntime: { emitRuntimeEvent() {} },
-  });
-
-  assert.equal(await service.shouldHoldAgentForCompaction({ agent: {} }, { shouldWaitForCompaction: true }), true);
-  assert.equal(await service.shouldHoldAgentForCompaction({ agent: {} }, { shouldWaitForCompaction: false }), false);
-});
 
 test('format invariant: untagged summary stores everything under high (nothing lost)', async () => {
   let { frame } = await runWithProvider(UntaggedProvider, 'untagged');

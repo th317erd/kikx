@@ -225,7 +225,7 @@ test('raw throw paths: runCompaction rejects with the exact failure messages', a
   );
 });
 
-test('fail-safe: hold-check throws (manager getAgent/listModels fail) -> prepareAgentContext does NOT throw', async () => {
+test('fail-safe: a manager failure cannot make prepareAgentContext throw or wait', async () => {
   let pluginRegistry = new PluginRegistry();
   pluginRegistry.registerAgentProvider('mixed', MixedProvider);
   let frameEngine = new FrameEngine({
@@ -253,11 +253,6 @@ test('fail-safe: hold-check throws (manager getAgent/listModels fail) -> prepare
     frameRuntime: { emitRuntimeEvent() {} },
   });
 
-  // Explicit window skips resolveSessionWindows, so the throw comes from the
-  // hold-check path (the manager's listModels) inside shouldHoldAgentForCompaction.
-  // The projected context exceeds the hard limit, so the legacy fallback is to
-  // hold and wait; the point is that prepareAgentContext resolves rather than
-  // rejecting when the hold decision blows up.
   let result = await service.prepareAgentContext({
     session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ] },
     frameEngine,
@@ -268,8 +263,11 @@ test('fail-safe: hold-check throws (manager getAgent/listModels fail) -> prepare
     services: {},
   });
 
-  assert.equal(result.heldForCompaction, true);
-  assert.equal(result.compactionPending, false);
+  assert.equal(result.heldForCompaction, undefined);
+  assert.equal(result.compactionPending, true);
+  assert.equal(result.contextTrimmed, true);
+  let pendingKey = [ ...service.pendingCompactions.keys() ].find((key) => key.startsWith('ses_1:'));
+  await service.pendingCompactions.get(pendingKey).promise;
   assert.equal(errors.length >= 1, true);
 });
 
@@ -304,7 +302,7 @@ test('fail-safe: window resolution throws -> legacy global window and prepareAge
   assert.equal(result.shouldCompact, false);
 });
 
-test('failure: compaction fails while a bot waits at the hard limit -> resolves with rebuilt context', async () => {
+test('failure: compaction failure cannot hold the bot; the turn proceeds with a trim', async () => {
   let pluginRegistry = new PluginRegistry();
   pluginRegistry.registerAgentProvider('throwing', ThrowingProvider);
   let frameEngine = new FrameEngine({
@@ -345,11 +343,14 @@ test('failure: compaction fails while a bot waits at the hard limit -> resolves 
     });
   });
 
-  // The bot waited, compaction failed, and it now proceeds with the REBUILT
-  // trimmed context: the old boundary frame (msg_1) is skipped, the trimmed
-  // boundary and the frames after it remain. Nothing was deleted.
-  assert.equal(result.heldForCompaction, true);
-  assert.deepEqual(result.frames.map((frame) => frame.id), [ 'cmp_1', 'msg_2' ]);
+  assert.equal(result.heldForCompaction, undefined);
+  assert.equal(result.compactionPending, true);
+  assert.equal(result.contextTrimmed, true);
+  assert.deepEqual(result.frames.map((frame) => frame.id), [ 'msg_2' ]);
+
+  // The failure may settle before the test can read pendingCompactions; wait one
+  // turn and inspect the durable frame instead.
+  await new Promise((resolve) => setTimeout(resolve, 0));
   let trimmed = frameEngine.get('cmp_1');
   assert.equal(trimmed.content.status, 'trimmed');
   assert.equal(trimmed.hidden, false);

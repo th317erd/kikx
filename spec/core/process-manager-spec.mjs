@@ -73,6 +73,123 @@ test('ProcessManager shutdown kills running exec tasks and stores completion out
   assert.equal(storedOutputs[0].result.signal, 'SIGTERM');
 });
 
+test('ProcessManager shutdown waits for a child to exit after SIGTERM before forcing', async () => {
+  let child = createSlowExitingChild(60);
+  let manager = createShutdownManager(child);
+
+  let started = await manager.start({ command: 'sleep 60' }, {
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_1' },
+    frame: { id: 'frame_1' },
+  }, {
+    graceMs: 0,
+    autoWake: false,
+    returnCompletionIfReady: false,
+  });
+
+  let startedAt = Date.now();
+  let result = await manager.shutdown({
+    forceAfterMS: 250,
+    timeoutMS: 500,
+  });
+  let elapsed = Date.now() - startedAt;
+
+  assert.equal(started.status, 'running');
+  assert.deepEqual(child.killSignals, [ 'SIGTERM' ], 'a well-behaved child is only asked to terminate');
+  assert.ok(elapsed >= 45, `shutdown must wait for the child, not force it immediately (waited ${elapsed}ms)`);
+  assert.equal(result.forced, 0);
+  assert.equal(result.remaining, 0);
+});
+
+test('ProcessManager shutdown force-kills only after the grace deadline', async () => {
+  let child = createIgnoringChild();
+  let manager = createShutdownManager(child);
+
+  await manager.start({ command: 'sleep 60' }, {
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_1' },
+    frame: { id: 'frame_1' },
+  }, {
+    graceMs: 0,
+    autoWake: false,
+    returnCompletionIfReady: false,
+  });
+
+  let result = await manager.shutdown({
+    forceAfterMS: 30,
+    timeoutMS: 150,
+  });
+
+  assert.deepEqual(child.killSignals, [ 'SIGTERM', 'SIGKILL' ]);
+  assert.equal(result.forced, 1);
+  assert.equal(result.remaining, 0);
+});
+
+function createShutdownManager(child) {
+  return new ProcessManager({
+    commandExecutor: {
+      startProcess() {
+        return {
+          command: 'sleep 60',
+          shell: '/bin/bash',
+          cwd: '/tmp',
+          child,
+          timeoutMs: null,
+          startedAt: Date.now(),
+          get timedOut() {
+            return false;
+          },
+          clearTimeout() {},
+          kill(signal) {
+            child.kill(signal);
+          },
+        };
+      },
+    },
+    toolOutputStore: {
+      inlineLimitBytes: 196608,
+      async storeToolOutput() {
+        return { id: 'out_1', sizeBytes: 1 };
+      },
+      createRetrievalInstructions(id, sizeBytes) {
+        return { id, sizeBytes };
+      },
+    },
+    tempRoot: '/tmp/kikx-process-manager-spec',
+    idGenerator: () => 'proc_spec',
+    clock: () => '2026-06-21T00:00:00.000Z',
+  });
+}
+
+function createSlowExitingChild(delayMs) {
+  let child = createFakeChild();
+  child.kill = (signal) => {
+    child.killSignals.push(signal);
+    setTimeout(() => {
+      child.stdout.end();
+      child.stderr.end();
+      child.emit('exit', null, signal);
+      child.emit('close', null, signal);
+    }, delayMs);
+  };
+  return child;
+}
+
+function createIgnoringChild() {
+  let child = createFakeChild();
+  child.kill = (signal) => {
+    child.killSignals.push(signal);
+    if (signal !== 'SIGKILL')
+      return;
+
+    child.stdout.end();
+    child.stderr.end();
+    child.emit('exit', null, signal);
+    child.emit('close', null, signal);
+  };
+  return child;
+}
+
 function createFakeChild() {
   let child = new EventEmitter();
   child.pid = 12345;

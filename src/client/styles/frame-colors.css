@@ -1,0 +1,343 @@
+/*
+ * Frame colour language.
+ *
+ * Every frame has two independent colours:
+ *   - status: green / red / grey (yellow reserved for warnings)
+ *   - type:   defined per frame; retained in the header gradient only
+ *   - frame:  frame colour darkened by 70% in the body
+ *   - surface: frame colour upper-left → status lower-right
+ *
+ * The type colour is strongest in the upper-left corner; the status colour owns
+ * the lower-right. A second copy of that gradient is shifted −5% lightness in the
+ * type corner and +5% in the status corner, then masked into 50/50 diagonal
+ * stripes so the base gradient shows through the transparent halves.
+ * UserMessage is deliberately excluded.
+ */
+
+.kikx-frame {
+  --kikx-frame-status-color: oklch(from #8b949e calc(l - 0.06) c h);
+  --kikx-frame-type-color: oklch(from #8b949e calc(l * 0.672) calc(c * 0.4928) h);
+  --kikx-frame-neutral-color: oklch(from #8b949e calc(l - 0.06) c h);
+  --kikx-frame-solid-color: color-mix(in srgb, var(--kikx-frame-type-color) 30%, #070a0d);
+  --kikx-frame-author-color: #f5f7fa;
+  --kikx-frame-status-foreground-color: var(--kikx-frame-status-color);
+  --kikx-frame-header-start-color: color-mix(in srgb, var(--kikx-frame-type-color) 52%, #0f1317);
+  --kikx-frame-stripe-start-color: oklch(from var(--kikx-frame-type-color) calc(l - 0.14) c h);
+  --kikx-frame-stripe-end-color: oklch(from var(--kikx-frame-status-color) calc(l + 0.14) c h);
+  --kikx-frame-mid-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--kikx-frame-type-color) 55%, var(--kikx-frame-status-color)) 45%,
+    #10151a
+  );
+  --kikx-frame-striped-mid-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--kikx-frame-stripe-start-color) 55%, var(--kikx-frame-stripe-end-color)) 45%,
+    #10151a
+  );
+  --kikx-frame-surface:
+    linear-gradient(
+      135deg,
+      var(--kikx-frame-header-start-color) 0%,
+      var(--kikx-frame-mid-color) 55%,
+      color-mix(in srgb, var(--kikx-frame-status-color) 48%, #0f1317) 100%
+    );
+  --kikx-frame-striped-surface:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--kikx-frame-stripe-start-color) 52%, #0f1317) 0%,
+      var(--kikx-frame-striped-mid-color) 55%,
+      color-mix(in srgb, var(--kikx-frame-stripe-end-color) 48%, #0f1317) 100%
+    );
+  --kikx-frame-border-color: oklch(from var(--kikx-frame-type-color) calc(l - 0.12) c h);
+  --kikx-frame-border-width: 2px;
+  --kikx-frame-radius: 12px;
+}
+
+.kikx-frame--status-success {
+  --kikx-frame-status-color: oklch(from #3ddc84 calc(l - 0.06) c h);
+  --kikx-frame-status-foreground-color: oklch(from #2ff58a calc(l - 0.06) c h);
+}
+
+.kikx-frame--status-error {
+  --kikx-frame-status-color: oklch(from #ff5d73 calc(l - 0.06) c h);
+}
+
+.kikx-frame--status-running,
+.kikx-frame--status-pending,
+.kikx-frame--status-paused {
+  --kikx-frame-status-color: oklch(from #8b949e calc(l - 0.06) c h);
+}
+
+.kikx-frame--status-warning,
+.kikx-frame--status-trimmed,
+.kikx-frame--status-interrupted {
+  --kikx-frame-status-color: oklch(from #f5c542 calc(l - 0.06) c h);
+}
+
+/* Type colours ----------------------------------------------------------- */
+
+.kikx-frame[data-tool-name^="exec-"],
+.kikx-frame[data-tool-name="exec"] {
+  --kikx-frame-type-color: oklch(from #f5b32f calc(l * 0.672) calc(c * 0.4928) h);
+}
+
+.kikx-frame[data-tool-name="read-file"],
+.kikx-frame[data-tool-name="read"],
+.kikx-frame[data-tool-name="exec-read"],
+.kikx-frame[data-tool-name="output-read"],
+.kikx-frame[data-tool-name="todo-get"] {
+  --kikx-frame-type-color: #a3a3a3;
+}
+
+.kikx-frame[data-tool-name="write-file"],
+.kikx-frame[data-tool-name="todo-add"],
+.kikx-frame[data-tool-name="todo-update"],
+.kikx-frame[data-tool-name="todo-delete"],
+.kikx-frame[data-tool-name="todo-clear"],
+.kikx-frame[data-tool-name="todo-focus-set"],
+.kikx-frame[data-tool-name="todo-focus-clear"] {
+  --kikx-frame-type-color: oklch(from #22d3ee calc(l * 0.672) calc(c * 0.4928) h);
+}
+
+.kikx-frame[data-tool-name="todo-complete"] {
+  --kikx-frame-type-color: oklch(from #2ff58a calc(l * 0.672) calc(c * 0.4928) h);
+}
+
+.kikx-frame--CompactionFrame {
+  --kikx-frame-type-color: oklch(from #facc15 calc(l * 0.672) calc(c * 0.4928) h);
+}
+
+.kikx-frame--AgentMessage,
+.kikx-frame--AgentMessageDelta,
+.kikx-frame--AgentProgress {
+  --kikx-frame-type-color: oklch(from #b794f6 calc(l * 0.672) calc(c * 0.4928) h);
+}
+
+/* Full message cards ----------------------------------------------------- */
+
+.kikx-frame--AgentMessage,
+.kikx-frame--AgentMessageDelta,
+.kikx-frame--AgentProgress {
+  position: relative;
+  isolation: isolate;
+  border-width: var(--kikx-frame-border-width);
+  border-color: var(--kikx-frame-border-color);
+  border-radius: var(--kikx-frame-radius);
+  background: var(--kikx-frame-solid-color);
+}
+
+/* Lift text off the coloured surface without changing the palette. */
+.kikx-frame--AgentMessage,
+.kikx-frame--AgentMessageDelta,
+.kikx-frame--AgentProgress,
+.kikx-frame--compact {
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 1),
+    0 0 4px rgba(0, 0, 0, 0.95),
+    0 0 16px rgba(0, 0, 0, 0.8);
+}
+
+/* Only the message header carries the gradient and hatch. */
+.kikx-frame--AgentMessage .kikx-frame__meta,
+.kikx-frame--AgentMessageDelta .kikx-frame__meta,
+.kikx-frame--AgentProgress .kikx-frame__meta,
+.kikx-frame--compact .kikx-frame__meta {
+  position: relative;
+  isolation: isolate;
+  border-radius:
+    calc(var(--kikx-frame-radius) - var(--kikx-frame-border-width))
+    calc(var(--kikx-frame-radius) - var(--kikx-frame-border-width)) 0 0;
+  background: var(--kikx-frame-surface);
+}
+
+.kikx-frame--AgentMessage .kikx-frame__meta,
+.kikx-frame--AgentMessageDelta .kikx-frame__meta,
+.kikx-frame--AgentProgress .kikx-frame__meta {
+  margin: -12px -12px 0;
+  padding: 12px 12px 8px;
+}
+
+.kikx-frame--compact .kikx-frame__meta {
+  padding: 8px 10px;
+}
+
+.kikx-frame--AgentMessage .kikx-frame__meta::before,
+.kikx-frame--AgentMessageDelta .kikx-frame__meta::before,
+.kikx-frame--AgentProgress .kikx-frame__meta::before,
+.kikx-frame--compact .kikx-frame__meta::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: var(--kikx-frame-striped-surface);
+  -webkit-mask-image: repeating-linear-gradient(
+    45deg,
+    #000 0 8px,
+    transparent 8px 16px
+  );
+  mask-image: repeating-linear-gradient(
+    45deg,
+    #000 0 8px,
+    transparent 8px 16px
+  );
+  pointer-events: none;
+  content: '';
+}
+
+.kikx-frame--AgentMessage .kikx-frame__meta > *,
+.kikx-frame--AgentMessageDelta .kikx-frame__meta > *,
+.kikx-frame--AgentProgress .kikx-frame__meta > *,
+.kikx-frame--compact .kikx-frame__meta > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Compact frames put the status and its icon at the far right of the header. */
+.kikx-frame__meta-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
+  max-width: 60%;
+  min-width: 0;
+  margin-left: 12px;
+}
+
+.kikx-frame--AgentMessage .kikx-frame__meta,
+.kikx-frame--AgentMessageDelta .kikx-frame__meta,
+.kikx-frame--AgentProgress .kikx-frame__meta,
+.kikx-frame--compact .kikx-frame__meta,
+.kikx-frame--AgentMessage .kikx-frame__meta-main strong,
+.kikx-frame--AgentMessageDelta .kikx-frame__meta-main strong,
+.kikx-frame--AgentProgress .kikx-frame__meta-main strong,
+.kikx-frame--compact .kikx-frame__meta-main strong,
+.kikx-frame--AgentMessage .kikx-frame__timestamp,
+.kikx-frame--AgentMessageDelta .kikx-frame__timestamp,
+.kikx-frame--AgentProgress .kikx-frame__timestamp,
+.kikx-frame--compact .kikx-frame__timestamp {
+  color: #f5f7fa;
+}
+
+.kikx-frame--compact .kikx-frame__meta {
+  padding-bottom: 6px;
+}
+
+.kikx-frame__meta-status-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--kikx-frame-status-foreground-color);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-frame__meta-status .kikx-frame__compact-icon {
+  margin-right: 0;
+  color: var(--kikx-frame-status-foreground-color);
+  font-size: 1.1em;
+}
+
+.kikx-frame:is(
+  .kikx-frame--AgentMessage,
+  .kikx-frame--AgentMessageDelta,
+  .kikx-frame--AgentProgress,
+  .kikx-frame--ToolCall,
+  .kikx-frame--ToolResult
+) .kikx-frame__meta-main strong,
+.kikx-frame[data-frame-type$="ToolFrame"] .kikx-frame__meta-main strong,
+.kikx-frame[data-tool-name] .kikx-frame__meta-main strong {
+  color: var(--kikx-frame-author-color);
+}
+
+.kikx-frame--AgentProgress .kikx-frame__content {
+  color: #ffe4cb;
+}
+
+/* Compact rows ----------------------------------------------------------- */
+
+/* The whole compact frame, including its message header, owns the surface. */
+.kikx-frame.kikx-frame--compact {
+  position: relative;
+  isolation: isolate;
+  border-width: var(--kikx-frame-border-width);
+  border-color: var(--kikx-frame-border-color);
+  border-radius: var(--kikx-frame-radius);
+  background: var(--kikx-frame-solid-color);
+}
+
+/* The summary is now just content on top of the frame surface. */
+.kikx-frame--compact .kikx-frame__compact > summary {
+  grid-template-areas:
+    "description"
+    "command";
+  grid-template-columns: minmax(0, 1fr);
+  padding-top: 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.kikx-frame--compact .kikx-frame__compact > summary:hover,
+.kikx-frame--compact .kikx-frame__compact > summary:focus-visible {
+  background: transparent;
+  filter: brightness(1.12);
+}
+
+.kikx-frame--compact .kikx-frame__compact > summary > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Contents get a fatter frame-coloured border and softer corners. */
+.kikx-frame__compact-body {
+  margin: 0 8px 10px;
+  padding: 6px 8px 8px;
+  border: var(--kikx-frame-border-width) solid var(--kikx-frame-border-color);
+  border-radius: calc(var(--kikx-frame-radius) - 3px);
+  background: transparent;
+}
+
+.kikx-frame__compact-command,
+.kikx-frame--compact .kikx-tool-card__preview,
+.kikx-frame--compact .kikx-tool-card__details pre {
+  border-width: var(--kikx-frame-border-width);
+  border-color: var(--kikx-frame-border-color);
+  border-radius: calc(var(--kikx-frame-radius) - 3px);
+}
+
+/* The compaction running glow belongs to the frame, not a nested summary. */
+.kikx-frame--compact.kikx-frame--CompactionFrame.kikx-frame--status-running {
+  box-shadow:
+    0 0 0 1px rgba(242, 191, 47, 0.16),
+    0 0 18px rgba(242, 191, 47, 0.08);
+}
+
+.kikx-frame--compact.kikx-frame--CompactionFrame.kikx-frame--status-running .kikx-frame__compact > summary {
+  border: 0;
+  box-shadow: none;
+}
+
+/* Todo action rows follow the same read/write/complete language. */
+.kikx-todo-action--listed {
+  border-color: color-mix(in srgb, #22d3ee 42%, #3b4650);
+  background: #102027;
+  color: #a5f3fc;
+}
+
+.kikx-todo-action--added,
+.kikx-todo-action--updated {
+  border-color: color-mix(in srgb, #e879f9 42%, #3b4650);
+  background: #261327;
+  color: #f0abfc;
+}
+
+.kikx-todo-action--completed {
+  border-color: color-mix(in srgb, #3ddc84 42%, #3b4650);
+  background: #102018;
+  color: #9ce0b0;
+}
+
+.kikx-todo-item.is-complete .kikx-todo-item__title {
+  color: #9ce0b0;
+}

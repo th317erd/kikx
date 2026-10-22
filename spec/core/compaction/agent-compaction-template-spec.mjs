@@ -42,6 +42,21 @@ test('default compaction instructions request priority-tagged sections', () => {
   assert.match(instructions, /minimize overall memory loss/);
 });
 
+test('default compaction instructions produce an actionable, non-stale handoff', () => {
+  let instructions = buildDefaultCompactionInstructions();
+  assert.match(instructions, /handoff for the next agent/);
+  assert.match(instructions, /CURRENT objective or newest user request/);
+  assert.match(instructions, /Do not lead with repository, git, gate, todo, or process history/);
+  assert.match(instructions, /newest request wins/);
+  assert.match(instructions, /Do not restate standard prompts/);
+  assert.match(instructions, /Current objective: one or two sentences/);
+  assert.match(instructions, /Governing user requests/);
+  assert.match(instructions, /newest first/);
+  assert.match(instructions, /newer conversation wins conflicts/);
+  assert.match(instructions, /resume the current work naturally/);
+  assert.match(instructions, /never mention the summary or compaction process/);
+});
+
 test('default compaction instructions prune dynamically injected fields from the retain list', () => {
   let instructions = buildDefaultCompactionInstructions();
   let retainLine = instructions.split('\n').find((line) => /^Retain important details/.test(line));

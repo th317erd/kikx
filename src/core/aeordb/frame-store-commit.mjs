@@ -5,7 +5,7 @@ import { FrameStoreSessionBase } from './frame-store-base.mjs';
 import { DEFAULT_FRAME_LIST_LIMIT, DIRECTORY_PAGE_LIMIT } from './frame-store-constants.mjs';
 import { createFrameLoadError } from './frame-store-errors.mjs';
 import { normalizeLargeLimit, normalizeOffset, uniqueStrings } from './frame-store-normalizers.mjs';
-import { compareCommitOrder, compareFrameOrder, orderFramesByCommits } from './frame-store-ordering.mjs';
+import { compareCommitOrder, compareFrameOrder, orderFramesByCommits, sortFramePathsByOrder } from './frame-store-ordering.mjs';
 import { encodeSegment } from './frame-store-paths.mjs';
 import { serializeCommit, serializeFrame } from './frame-store-serialization.mjs';
 
@@ -16,6 +16,9 @@ export class FrameStoreCommitBase extends FrameStoreSessionBase {
 
     let limit = normalizeLargeLimit(options.limit, DEFAULT_FRAME_LIST_LIMIT);
     let offset = normalizeOffset(options.offset);
+    if (options.latest === true)
+      return await this.listLatestFrames(sessionID, { limit });
+
     let paths = await this.listDirectoryPaths(`${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`, {
       depth: -1,
       glob: '**/*.json',
@@ -45,6 +48,68 @@ export class FrameStoreCommitBase extends FrameStoreSessionBase {
       return frames.sort(compareFrameOrder);
 
     return orderFramesByCommits(sessionID, frames, commits);
+  }
+
+  // Hydrate a live runtime from the newest frame window, not the oldest. The
+  // default directory order is ascending; using it for `ensureSessionEntry()`
+  // leaves the runtime's frame-order watermark below the durable tail, so new
+  // frames and compaction boundaries receive stale orders and disappear from
+  // the newest client window after a reload. Paging APIs keep the legacy
+  // offset semantics and use the normal listFrames() path above.
+  async listLatestFrames(sessionID, options = {}) {
+    let limit = normalizeLargeLimit(options.limit, DEFAULT_FRAME_LIST_LIMIT);
+    let interactionsPath = `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`;
+    let listOptions = { depth: -1, glob: '**/frames/*.json' };
+    let paths;
+
+    try {
+      let probe = await this.aeordb.listDirectory(interactionsPath, {
+        ...listOptions,
+        limit: 1,
+        offset: 0,
+      });
+      let total = Number(probe?.total);
+      if (Number.isFinite(total) && total > 0) {
+        let offset = Math.max(0, Math.trunc(total) - limit);
+        paths = await this.listDirectoryPaths(interactionsPath, {
+          ...listOptions,
+          limit,
+          offset,
+        });
+      }
+    } catch (error) {
+      if (error?.status !== 404)
+        throw error;
+      return [];
+    }
+
+    if (!paths) {
+      paths = await this.listDirectoryPaths(interactionsPath, {
+        ...listOptions,
+        limit: 5000,
+      });
+      paths = sortFramePathsByOrder(paths).slice(-limit);
+    }
+
+    paths = sortFramePathsByOrder(paths.filter((path) => path.includes('/frames/')));
+    let frames = [];
+    let reads = await readJSONFiles(this.aeordb, paths, {
+      fallbackOnBatchError: true,
+      continueOnError: true,
+    });
+
+    for (let read of reads) {
+      if (read.error) {
+        frames.push(createFrameLoadError(sessionID, read.path, read.error));
+        continue;
+      }
+
+      let frame = read.value;
+      if (frame?.id && frame.type)
+        frames.push(frame);
+    }
+
+    return frames.sort(compareFrameOrder);
   }
 
   async listCommits(sessionID, options = {}) {

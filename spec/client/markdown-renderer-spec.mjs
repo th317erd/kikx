@@ -44,7 +44,7 @@ test('markdownToHTML renders links, inline code, tables, and safe inline html', 
 
   assert.match(html, /<code>code<\/code>/);
   assert.match(html, /<a href="https:\/\/example.test\/docs" target="_blank" rel="noopener noreferrer">docs<\/a>/);
-  assert.match(html, /<table><thead><tr><th>A<\/th><th>B<\/th><\/tr><\/thead><tbody><tr><td><strong>1<\/strong><\/td><td>2<\/td><\/tr><\/tbody><\/table>/);
+  assert.match(html, /<div class="kikx-markdown__table-scroll"><table><thead><tr><th>A<\/th><th>B<\/th><\/tr><\/thead><tbody><tr><td><strong>1<\/strong><\/td><td>2<\/td><\/tr><\/tbody><\/table><\/div>/);
   assert.equal(html.includes('javascript:'), false);
 });
 

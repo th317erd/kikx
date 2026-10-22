@@ -266,6 +266,34 @@ test('FrameRuntime hydrates persisted sessions beyond the old 250-frame window',
   ]);
 });
 
+test('FrameRuntime hydrates the newest frame window, not the oldest', async () => {
+  let aeordb = createClient();
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'Persisted', updatedAt: 1000 });
+
+  for (let index = 1; index <= 1205; index++) {
+    let padded = String(index).padStart(16, '0');
+    aeordb.files.set(`/kikx/sessions/ses_1/interactions/int_${index}/frames/${padded}-UserMessage-msg_${index}.json`, {
+      id: `msg_${index}`,
+      type: 'UserMessage',
+      sessionID: 'ses_1',
+      interactionID: `int_${index}`,
+      order: index,
+      hidden: false,
+      content: { text: `message ${index}` },
+    });
+  }
+
+  let runtime = createRuntime({ aeordb });
+  let frames = await runtime.listFrames('ses_1');
+
+  assert.equal(frames.length, 1000);
+  assert.equal(frames[0].id, 'msg_206');
+  assert.equal(frames.at(-1).id, 'msg_1205');
+
+  let appended = await runtime.appendUserMessage('ses_1', { text: 'after tail' });
+  assert.equal(appended.frame.order, 1206, 'new frames must follow the durable tail order');
+});
+
 test('FrameRuntime recovers stale streaming agent responses and running tool calls', async () => {
   let aeordb = createClient();
   aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'Kikx', updatedAt: 1000 });
@@ -312,10 +340,11 @@ test('FrameRuntime recovers stale streaming agent responses and running tool cal
       phase: 'call',
       toolCallID: 'call_1',
       status: 'running',
+      input: { command: 'read docs' },
     },
     state: { status: 'running' },
   });
-  let runtime = createRuntime({ aeordb, ids: [ 'commit_recovery' ], now: 2000 });
+  let runtime = createRuntime({ aeordb, ids: [ 'hydrate_commit', 'recovery_wake' ], now: 2000 });
 
   let result = await runtime.recoverStaleRuntimeFrames({ sessionLimit: 10 });
   let frames = await runtime.listFrames('ses_1');
@@ -326,8 +355,11 @@ test('FrameRuntime recovers stale streaming agent responses and running tool cal
   assert.equal(result.recoveredToolCalls, 1);
   assert.equal(result.recoveredTurns, 1);
   let trigger = frames.find((frame) => frame.id === 'msg_1');
-  assert.equal(trigger.scheduledStatus, 'pending');
-  assert.ok(trigger.scheduledAt > 0);
+  assert.equal(trigger.scheduledStatus, undefined, 'a dedicated command-recovery wake replaces trigger replay');
+  let wakeEntry = runtime.scheduledFrames.entries.get('recovery_wake');
+  assert.ok(wakeEntry, 'the interrupted command gets a targeted recovery wake');
+  assert.equal(wakeEntry.frame.targetAgentID, 'agent_1');
+  assert.match(wakeEntry.frame.content.text, /read docs/);
   assert.equal(agentFrame.hidden, false);
   assert.equal(agentFrame.content.status, 'error');
   assert.equal(agentFrame.content.error.recovered, true);
@@ -337,6 +369,94 @@ test('FrameRuntime recovers stale streaming agent responses and running tool cal
   assert.equal(toolFrame.content.error.recovered, true);
   assert.ok(aeordb.calls.some((call) => call.method === 'putFile' && call.path.includes('agent_pending.json')));
   assert.ok(aeordb.calls.some((call) => call.method === 'putFile' && call.path.includes('tool_call.json')));
+});
+
+test('FrameRuntime re-drives the trigger when only the agent stream was interrupted', async () => {
+  let aeordb = createClient();
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'Kikx', updatedAt: 1000 });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-UserMessage-msg_1.json', {
+    id: 'msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    order: 1,
+    hidden: false,
+    content: { text: 'continue' },
+  });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000002-AgentMessage-agent_pending.json', {
+    id: 'agent_pending',
+    type: 'AgentMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    parentID: 'msg_1',
+    authorType: 'agent',
+    authorID: 'agent_1',
+    order: 2,
+    hidden: true,
+    content: { text: '', status: 'streaming' },
+  });
+  let runtime = createRuntime({ aeordb, ids: [ 'hydrate_commit' ], now: 2000 });
+
+  let result = await runtime.recoverStaleRuntimeFrames({ sessionLimit: 10 });
+  let frames = await runtime.listFrames('ses_1');
+  let trigger = frames.find((frame) => frame.id === 'msg_1');
+
+  assert.equal(result.recoveredAgentResponses, 1);
+  assert.equal(result.recoveredToolCalls, 0);
+  assert.equal(result.recoveredTurns, 1);
+  assert.equal(trigger.scheduledStatus, 'pending');
+  assert.ok(runtime.scheduledFrames.entries.has('msg_1'), 'the original trigger is re-driven');
+  assert.equal([ ...runtime.scheduledFrames.entries.values() ].some((entry) => entry.frame?.continuation?.kind === 'server-restart-recovery'), false);
+});
+
+test('FrameRuntime wakes the agent that owned an interrupted tool call', async () => {
+  let aeordb = createClient();
+  aeordb.files.set('/kikx/sessions/ses_1/session.json', { id: 'ses_1', title: 'Kikx', updatedAt: 1000 });
+  aeordb.files.set('/kikx/sessions/ses_1/interactions/int_1/frames/0000000000000001-ShellToolFrame-tool_call.json', {
+    id: 'tool_call',
+    type: 'ShellToolFrame',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'agent',
+    authorID: 'agent_1',
+    order: 1,
+    hidden: false,
+    deleted: false,
+    content: {
+      toolName: 'exec',
+      phase: 'call',
+      toolCallID: 'call_1',
+      status: 'running',
+      input: { command: 'sleep 60' },
+    },
+    state: { status: 'running' },
+  });
+  let runtime = createRuntime({ aeordb, ids: [ 'hydrate_commit', 'recovery_wake' ], now: 2000 });
+
+  let result = await runtime.recoverStaleRuntimeFrames({ sessionLimit: 10 });
+  let wakeEntry = runtime.scheduledFrames.entries.get('recovery_wake');
+
+  assert.equal(result.recoveredToolCalls, 1);
+  assert.equal(result.recoveredTurns, 1);
+  assert.ok(wakeEntry, 'the interrupted command schedules a durable wake');
+  assert.equal(wakeEntry.frame.targetAgentID, 'agent_1');
+  assert.equal(wakeEntry.frame.hidden, true);
+  assert.equal(wakeEntry.frame.scheduledStatus, 'pending');
+  assert.equal(wakeEntry.frame.continuation.kind, 'server-restart-recovery');
+  assert.match(wakeEntry.frame.content.text, /treat the command as failed/);
+  assert.match(wakeEntry.frame.content.text, /sleep 60/);
+
+  let routed = [];
+  runtime.frameRouter = {
+    enqueue(_engine, commit) {
+      routed.push(commit);
+    },
+    async flush() {},
+  };
+  await runtime.processScheduledFrames();
+  assert.equal(routed.length, 1);
+  assert.equal(routed[0].changes[0].frameID, 'recovery_wake');
+  assert.equal(routed[0].scheduledDispatch, true);
 });
 
 test('FrameRuntime appends user messages through FrameEngine and FrameStore', async () => {

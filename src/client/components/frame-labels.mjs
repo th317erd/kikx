@@ -18,11 +18,14 @@ export function frameDisplayLabel(frame, state = {}) {
 }
 
 export function frameTimestamp(frame, options = {}) {
-  let source = normalizeTimestamp(firstTimestampValue(
-    frame?.createdAt,
-    frame?.timestamp,
-    frame?.updatedAt,
-  ));
+  // Compaction frames are anchored to the boundary for ordering, but the
+  // user-facing event time is when compaction actually finished (or its latest
+  // status update). Showing createdAt would label a fresh compaction with the
+  // old boundary date — e.g. "from yesterday".
+  let values = frame?.type === 'CompactionFrame'
+    ? [ frame?.updatedAt, frame?.timestamp, frame?.createdAt ]
+    : [ frame?.createdAt, frame?.timestamp, frame?.updatedAt ];
+  let source = normalizeTimestamp(firstTimestampValue(...values));
   if (!source)
     return null;
 

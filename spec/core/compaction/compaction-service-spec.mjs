@@ -142,7 +142,7 @@ test('CompactionService runs one-shot compaction and stores a visible Compaction
   });
 
   assert.equal(result.compactionPending, true);
-  await service.pendingCompactions.get('ses_1:msg_2').promise;
+  await settleCompactions(service);
 
   let compactionFrame = frameEngine.get('compaction_frame_1');
   assert.equal(compactionFrame.type, COMPACTION_FRAME_TYPE);
@@ -218,7 +218,7 @@ test('CompactionService builds compaction windows from stitched FrameManager mes
     agentContextWindowTokens: 20,
     services,
   });
-  await service.pendingCompactions.get('ses_1:agent_1').promise;
+  await settleCompactions(service);
 
   assert.deepEqual(frameEngine.toArray().map((frame) => frame.id), [
     'msg_1',
@@ -348,7 +348,7 @@ test('CompactionService stores tagged output as structured summaryJSON', async (
   assert.deepEqual(frame.content.summaryJSON.low, [ 'chatter' ]);
 });
 
-test('CompactionService waits at hard context limit and returns rebuilt compacted memory', async () => {
+test('CompactionService never waits at the hard limit; it starts a visible compaction frame and trims the turn', async () => {
   let pluginRegistry = new PluginRegistry();
   pluginRegistry.registerAgentProvider('deferred-compactor', DeferredCompactorProvider);
   let gate = createDeferred();
@@ -386,7 +386,8 @@ test('CompactionService waits at hard context limit and returns rebuilt compacte
   });
   let services = { calls: [], gate };
 
-  let pending = service.prepareAgentContext({
+  // No await: compaction is background work, even at the hard limit.
+  let result = await service.prepareAgentContext({
     session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ] },
     frameEngine,
     triggerFrame: frameEngine.get('msg_3'),
@@ -394,11 +395,16 @@ test('CompactionService waits at hard context limit and returns rebuilt compacte
     services,
   });
 
-  assert.equal(await promiseState(pending), 'pending');
-  gate.resolve();
+  assert.equal(result.compactionPending, true);
+  assert.equal(result.contextTrimmed, true);
+  assert.deepEqual(result.frames.map((frame) => frame.id), [ 'msg_2', 'msg_3' ]);
+  let started = frameEngine.get('compaction_frame_1');
+  assert.equal(started.content.status, 'running');
+  assert.equal(started.hidden, false);
 
-  let result = await pending;
-  assert.deepEqual(result.frames.map((frame) => frame.id), [ 'compaction_frame_1', 'msg_3' ]);
+  gate.resolve();
+  await service.pendingCompactions.get([ ...service.pendingCompactions.keys() ][0]).promise;
+  assert.equal(frameEngine.get('compaction_frame_1').content.status, 'complete');
 });
 
 test('CompactionService manual compaction creates a visible running frame and updates it on completion', async () => {
@@ -734,7 +740,7 @@ function agentFrame(id, text, order) {
   };
 }
 
-test('per-bot hold: a bot whose own window is exceeded waits; one that fits does not (R5)', async () => {
+test('no bot waits for compaction, regardless of its own window', async () => {
   let frameEngine = new FrameEngine({ clock: createClock(), idGenerator: createIDs([ 'msg_1', 'msg_2', 'msg_3' ]) });
   frameEngine.merge([
     userFrame('msg_1', 'older request about /tmp/project', 1),
@@ -742,8 +748,6 @@ test('per-bot hold: a bot whose own window is exceeded waits; one that fits does
     userFrame('msg_3', 'current request', 3),
   ], { silent: true });
 
-  // Small-window bot: its OWN window is tiny, so its projected context exceeds it
-  // and it must wait for the in-flight compaction.
   let small = createHoldService({ ownWindowTokens: 3 });
   let smallResult = await small.service.prepareAgentContext({
     session: { id: 'ses_small', participantAgentIDs: [ 'agent_1' ] },
@@ -753,10 +757,10 @@ test('per-bot hold: a bot whose own window is exceeded waits; one that fits does
     agentContextWindowTokens: 20,
     services: small.services,
   });
-  assert.equal(smallResult.heldForCompaction, true, 'the small-window bot must be held for compaction');
+  assert.equal(smallResult.compactionPending, true);
+  assert.equal(smallResult.heldForCompaction, undefined);
+  await small.service.pendingCompactions.get([ ...small.service.pendingCompactions.keys() ][0]).promise;
 
-  // Large-window bot: same session, but its own window easily fits the context,
-  // so it is NOT held (compaction may still start in the background).
   let frameEngine2 = new FrameEngine({ clock: createClock(), idGenerator: createIDs([ 'msg_1', 'msg_2', 'msg_3' ]) });
   frameEngine2.merge([
     userFrame('msg_1', 'older request', 1),
@@ -772,8 +776,9 @@ test('per-bot hold: a bot whose own window is exceeded waits; one that fits does
     agentContextWindowTokens: 20,
     services: large.services,
   });
-  // Not held: returns immediately with compactionPending, without awaiting.
   assert.equal(largeResult.compactionPending, true);
+  assert.equal(largeResult.heldForCompaction, undefined);
+  await large.service.pendingCompactions.get([ ...large.service.pendingCompactions.keys() ][0]).promise;
 });
 
 test('P7: a failed auto-compaction writes a visible trimmed boundary, then re-compaction restores memory', async () => {
@@ -919,6 +924,14 @@ class HoldProvider extends AgentInterface {
   async ask() {
     return 'hold compacted summary';
   }
+}
+
+async function settleCompactions(service) {
+  let pending = [ ...service.pendingCompactions.values() ].map((entry) => entry.promise);
+  if (pending.length > 0)
+    await Promise.allSettled(pending);
+  else
+    await new Promise((resolve) => setImmediate(resolve));
 }
 
 function createClock() {

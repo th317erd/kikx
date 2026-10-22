@@ -38,6 +38,7 @@ export class KikxSubSessionFrame extends HTMLElement {
     this.textContent = '';
     let reference = sessionReferenceFromFrame(this._frame);
     if (!reference) {
+      this._card = null;
       let fallback = document.createElement('p');
       fallback.className = 'kikx-sub-session-frame__missing';
       fallback.textContent = this._frame?.content?.preview || 'No session reference.';
@@ -52,12 +53,51 @@ export class KikxSubSessionFrame extends HTMLElement {
       event.stopPropagation();
       this._emitEnter(reference.id);
     });
-    this._card.update({
-      session: { id: reference.id, title: reference.title, parentSessionID: reference.parentSessionID, messageCount: reference.messageCount },
-      heads: reference.heads || [],
-      appState: this._appState,
-    });
     this.appendChild(this._card);
+    this._paintFromState(this._appState);
+  }
+
+  get sessionID() {
+    return sessionReferenceFromFrame(this._frame)?.id || '';
+  }
+
+  // Refresh an embedded child card in place from the parent app state. Live
+  // child-session frame events update appState.framesBySessionID, and preview
+  // fetches update sessionPreviewsByID; this card owns neither source.
+  refreshFromState(appState = this._appState, onlySessionID = '') {
+    if (!this._card)
+      return;
+
+    let reference = sessionReferenceFromFrame(this._frame);
+    if (!reference || (onlySessionID && onlySessionID !== reference.id))
+      return;
+
+    this._appState = appState || {};
+    this._paintFromState(this._appState);
+  }
+
+  _paintFromState(appState = {}) {
+    let reference = sessionReferenceFromFrame(this._frame);
+    if (!reference || !this._card)
+      return;
+
+    let preview = appState.sessionPreviewsByID?.[reference.id] || null;
+    let session = appState.sessionDetailsByID?.[reference.id] || preview?.session || {
+      id: reference.id,
+      title: reference.title,
+      parentSessionID: reference.parentSessionID,
+      messageCount: reference.messageCount,
+      createdAt: reference.createdAt,
+      updatedAt: reference.updatedAt,
+    };
+    let liveFrames = appState.framesBySessionID?.[reference.id];
+    let heads = Array.isArray(liveFrames) && liveFrames.length > 0
+      ? liveFrames.slice(-6)
+      : (Array.isArray(preview?.heads) && preview.heads.length > 0
+        ? preview.heads
+        : (reference.heads || []));
+
+    this._card.update({ session, heads, appState });
   }
 
   _emitEnter(sessionID) {
@@ -80,6 +120,14 @@ export function sessionReferenceFromFrame(frame) {
   }
 
   return null;
+}
+
+export function refreshSubSessionCards(root, appState, sessionID = '') {
+  if (!root || typeof root.querySelectorAll !== 'function')
+    return;
+
+  for (let card of root.querySelectorAll('kikx-sub-session-frame'))
+    card.refreshFromState?.(appState, sessionID);
 }
 
 if (typeof customElements !== 'undefined' && !customElements.get('kikx-sub-session-frame'))

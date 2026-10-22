@@ -52,7 +52,8 @@ function extractStylesheetHrefs(html) {
 // '/client/styles/app.css' -> src/client/styles/app.css
 function resolveClientHref(href) {
   assert.ok(href.startsWith('/client/'), `stylesheet "${href}" is not under /client/`);
-  return path.join(CLIENT_ROOT, href.slice('/client/'.length));
+  let pathname = href.split(/[?#]/, 1)[0];
+  return path.join(CLIENT_ROOT, pathname.slice('/client/'.length));
 }
 
 function linkedClientStylesheets(html) {
@@ -140,7 +141,7 @@ test('the stylesheet carrying the Inbox/Activities/question CSS is linked', asyn
 
 test('every stylesheet in src/client/styles is linked from index.html', async () => {
   let html = await readFile(INDEX_HTML, 'utf8');
-  let linked = new Set(linkedClientStylesheets(html).map((href) => path.basename(href)));
+  let linked = new Set(linkedClientStylesheets(html).map((href) => path.basename(href.split(/[?#]/, 1)[0])));
   let onDisk = (await readdir(STYLES_DIR)).filter((name) => name.endsWith('.css')).sort();
 
   let orphaned = onDisk.filter((name) => !linked.has(name));

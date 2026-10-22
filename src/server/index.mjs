@@ -5,6 +5,9 @@ import { createServer } from './create-server.mjs';
 import { installProcessErrorPolicy } from './process-error-policy.mjs';
 import { shutdownHTTPServer } from './shutdown.mjs';
 
+const CHILD_PROCESS_SHUTDOWN_GRACE_MS = 30_000;
+const CHILD_PROCESS_SHUTDOWN_TIMEOUT_MS = 35_000;
+
 let shuttingDown = false;
 let server;
 
@@ -82,12 +85,18 @@ async function shutdownRuntimeServices(server) {
     return;
 
   try {
-    await context.require?.('processManager')?.shutdown?.({
+    // Ask managed commands to stop, but give them a real grace window to
+    // unwind and persist their final state. SIGKILL is only a last resort after
+    // the deadline; a 1s force window is what killed an in-flight command during
+    // a routine dev restart and left its agent with an unrecoverable tool call.
+    let result = await context.require?.('processManager')?.shutdown?.({
       signal: 'SIGTERM',
       forceSignal: 'SIGKILL',
-      forceAfterMS: 1000,
-      timeoutMS: 3000,
+      forceAfterMS: CHILD_PROCESS_SHUTDOWN_GRACE_MS,
+      timeoutMS: CHILD_PROCESS_SHUTDOWN_TIMEOUT_MS,
     });
+    if (result?.remaining > 0)
+      console.error(`Kikx shutdown left ${result.remaining} child process(es) running after ${CHILD_PROCESS_SHUTDOWN_TIMEOUT_MS}ms`);
   } catch (error) {
     console.error('Kikx process manager shutdown failed:', error);
   }

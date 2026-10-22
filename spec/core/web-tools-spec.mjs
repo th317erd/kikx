@@ -1236,6 +1236,12 @@ test('Session tools list, create, inspect frames, and post messages through Fram
         frameEngine: sessionEngines.get(sessionID) || createRecordingFrameEngine(),
       };
     },
+    syncSessionManifestFromEngine(entry, { frames = [] } = {}) {
+      entry.session.messageCount = (entry.session.messageCount || 0)
+        + frames.filter((frame) => frame.type === 'AgentMessage' || frame.type === 'UserMessage').length;
+      entry.session.updatedAt = (frames.at(-1) || {}).createdAt || entry.session.updatedAt;
+      return entry.session;
+    },
     async listFrames(sessionID, options = {}) {
       assert.equal(sessionID, 'ses_2');
       assert.deepEqual(options, { limit: 2, offset: 0 });
@@ -1307,6 +1313,11 @@ test('Session tools list, create, inspect frames, and post messages through Fram
   assert.match(created.initialFrame.content.text, /First assignment:/);
   assert.equal(sessionEngines.get(created.session.id).frames.length, 1);
   assert.equal(sessionEngines.get(created.session.id).frames[0].content.sourceSessionID, 'ses_1');
+  assert.equal(created.session.messageCount, 1);
+  let createdReference = SessionCreateTool.referencesFor(created)[0];
+  assert.equal(createdReference.messageCount, 1);
+  assert.ok(createdReference.updatedAt, 'the child-session reference carries an activity timestamp');
+  assert.deepEqual(createdReference.heads.map((frame) => frame.id), [ created.initialFrame.id ], 'the reference seeds the card with the handoff message');
 
   let reused = await new SessionCreateTool(context).execute({
     title: 'Branch',

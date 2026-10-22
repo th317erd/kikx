@@ -323,6 +323,26 @@ class SlowAgentProvider extends AgentInterface {
   }
 }
 
+class DeferringAgentProvider extends AgentInterface {
+  static pluginID = 'deferring-agent';
+
+  async ask(_prompt, options = {}) {
+    options.services.calls.push({
+      method: 'deferring-run',
+      agentID: options.agent.id,
+      frameAuthorID: options.frame.authorID || null,
+    });
+
+    if (options.frame.authorID === 'internal:agent-continuation')
+      return { type: 'AgentMessage', content: { text: 'Real answer after continuation.' } };
+
+    return {
+      type: 'AgentMessage',
+      content: { text: 'Should I continue with the next step, or would you like to choose?' },
+    };
+  }
+}
+
 class ContinuingAgentProvider extends AgentInterface {
   static pluginID = 'continuing-agent';
 
@@ -1560,6 +1580,49 @@ test('a user message steers an in-flight agent turn instead of waiting for the o
     .map((call) => call.text), [ 'start the old plan', 'change course' ]);
 });
 
+test('AgentRouteFramePlugin schedules the continuation after an avoidable-deferral placeholder is suppressed', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Worker',
+        pluginID: 'deferring-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+      } ],
+    ]),
+  });
+
+  await runtime.createSession({
+    title: 'Scratch',
+    participantAgentIDs: [ 'agent_1' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  await runtime.appendUserMessage('ses_1', { text: 'do the work' });
+  await runtime.processScheduledFrames();
+  await runtime.flush();
+  await runtime.frameStore.flush();
+
+  let frames = await runtime.listFrames('ses_1');
+  let continuationFrame = frames.find((frame) => frame.authorID === 'internal:agent-continuation');
+  assert.ok(continuationFrame, 'a suppressed deferral must still leave a durable continuation');
+  assert.equal(continuationFrame.scheduledStatus, 'fired');
+  assert.equal(continuationFrame.deleted, false);
+
+  let calls = runtime.services.calls.filter((call) => call.method === 'deferring-run');
+  assert.deepEqual(calls.map((call) => call.frameAuthorID), [ null, 'internal:agent-continuation' ]);
+
+  let visible = frames.filter((frame) => frame.type === 'AgentMessage'
+    && frame.hidden !== true
+    && frame.deleted !== true
+    && frame.content?.text);
+  assert.deepEqual(visible.map((frame) => frame.content.text), [ 'Real answer after continuation.' ]);
+  let suppressed = frames.find((frame) => frame.id === continuationFrame.parentID);
+  assert.equal(suppressed.hidden, true);
+  assert.equal(suppressed.deleted, true);
+});
+
 test('AgentRouteFramePlugin schedules respond-and-continue as a generic scheduled target frame', async () => {
   let runtime = createRuntime({
     agents: new Map([
@@ -2182,6 +2245,7 @@ function createRuntime(options = {}) {
   pluginRegistry.registerAgentProvider('silent-terminal-agent', SilentTerminalAgentProvider);
   pluginRegistry.registerAgentProvider('slow-agent', SlowAgentProvider);
   pluginRegistry.registerAgentProvider('continuing-agent', ContinuingAgentProvider);
+  pluginRegistry.registerAgentProvider('deferring-agent', DeferringAgentProvider);
 
   let agents = options.agents || new Map();
   let agentManager = options.agentManager || {

@@ -4,7 +4,11 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 
-import { streamRuntimeEvents } from '../../src/server/events.mjs';
+import {
+  DEFAULT_SSE_COALESCE_DELAY_MS,
+  DEFAULT_SSE_COALESCE_LIMIT,
+  streamRuntimeEvents,
+} from '../../src/server/events.mjs';
 
 function createResponse() {
   return {
@@ -200,6 +204,108 @@ test('a destroyed response is not written to', () => {
   let length = response.body.length;
   assert.doesNotThrow(() => frameRuntime.emit('event', { type: 'frame.added', sessionID: 's1' }));
   assert.equal(response.body.length, length);
+});
+
+function waitForSseFlush(delayMs = 5) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+test('coalesces repeated updates to the same streaming frame', async () => {
+  let request = createRequest();
+  let response = createResponse();
+  let frameRuntime = createFrameRuntime();
+  streamRuntimeEvents({ request, response, frameRuntime, coalesce: true, coalesceDelayMs: 0 });
+
+  frameRuntime.emit('event', { type: 'frame.added', sessionID: 's1', frame: { id: 'f1', type: 'AgentMessage', content: { text: 'a' } } });
+  frameRuntime.emit('event', { type: 'frame.updated', sessionID: 's1', frame: { id: 'f1', type: 'AgentMessage', content: { text: 'ab' } } });
+  frameRuntime.emit('event', { type: 'frame.updated', sessionID: 's1', frame: { id: 'f1', type: 'AgentMessage', content: { text: 'abc' } } });
+  frameRuntime.emit('event', { type: 'frame.updated', sessionID: 's1', frame: { id: 'f2', type: 'AgentMessage', content: { text: 'other' } } });
+
+  await waitForSseFlush();
+  assert.equal((response.body.match(/"id":"f1"/g) || []).length, 1);
+  assert.equal((response.body.match(/"id":"f2"/g) || []).length, 1);
+  assert.match(response.body, /"text":"abc"/);
+  assert.equal(response.body.includes('"text":"ab"'), false);
+  request.close();
+});
+
+test('coalescing does not merge distinct frame event types', async () => {
+  let request = createRequest();
+  let response = createResponse();
+  let frameRuntime = createFrameRuntime();
+  streamRuntimeEvents({ request, response, frameRuntime, coalesce: true, coalesceDelayMs: 0 });
+
+  frameRuntime.emit('event', { type: 'frame.phantom', sessionID: 's1', frame: { id: 'f1', type: 'BeginTyping', content: {} } });
+  frameRuntime.emit('event', { type: 'frame.phantom', sessionID: 's1', frame: { id: 'f1', type: 'EndTyping', content: {} } });
+
+  await waitForSseFlush();
+  assert.equal(response.body.includes('"type":"BeginTyping"'), true);
+  assert.equal(response.body.includes('"type":"EndTyping"'), true);
+  request.close();
+});
+
+test('the server buffers frame updates for the interval before flushing', async () => {
+  let request = createRequest();
+  let response = createResponse();
+  let frameRuntime = createFrameRuntime();
+  streamRuntimeEvents({ request, response, frameRuntime, coalesce: true, coalesceDelayMs: 20 });
+
+  frameRuntime.emit('event', { type: 'frame.updated', sessionID: 's1', frame: { id: 'f1', type: 'AgentMessage', content: { text: 'old' } } });
+  frameRuntime.emit('event', { type: 'frame.updated', sessionID: 's1', frame: { id: 'f1', type: 'AgentMessage', content: { text: 'new' } } });
+  assert.equal(response.body.includes('"text":"new"'), false, 'frame updates must wait for the batch interval');
+
+  await waitForSseFlush(30);
+  assert.equal(response.body.includes('"text":"new"'), true);
+  assert.equal(response.body.includes('"text":"old"'), false);
+  request.close();
+});
+
+test('a full batch flushes immediately at the capacity limit', () => {
+  let request = createRequest();
+  let response = createResponse();
+  let frameRuntime = createFrameRuntime();
+  streamRuntimeEvents({ request, response, frameRuntime, coalesce: true, coalesceDelayMs: 60000, coalesceLimit: 200 });
+
+  for (let index = 0; index < 199; index++) {
+    frameRuntime.emit('event', {
+      type: 'frame.added',
+      sessionID: 's1',
+      frame: { id: `f${index}`, type: 'AgentMessage', content: { index } },
+    });
+  }
+  assert.equal(response.body.includes('"index":198'), false, 'the batch must remain buffered below the capacity');
+
+  frameRuntime.emit('event', {
+    type: 'frame.added',
+    sessionID: 's1',
+    frame: { id: 'f199', type: 'AgentMessage', content: { index: 199 } },
+  });
+  assert.equal(response.body.includes('"index":198'), true, 'reaching capacity must flush the whole batch');
+  assert.equal(response.body.includes('"index":199'), true);
+  request.close();
+});
+
+test('a capacity flush leaves the next batch on its own interval', async () => {
+  let request = createRequest();
+  let response = createResponse();
+  let frameRuntime = createFrameRuntime();
+  streamRuntimeEvents({ request, response, frameRuntime, coalesce: true, coalesceDelayMs: 40, coalesceLimit: 2 });
+
+  frameRuntime.emit('event', { type: 'frame.added', sessionID: 's1', frame: { id: 'a', type: 'AgentMessage', content: { index: 1 } } });
+  frameRuntime.emit('event', { type: 'frame.added', sessionID: 's1', frame: { id: 'b', type: 'AgentMessage', content: { index: 2 } } });
+  assert.equal(response.body.includes('"index":2'), true, 'capacity must flush immediately');
+
+  frameRuntime.emit('event', { type: 'frame.added', sessionID: 's1', frame: { id: 'c', type: 'AgentMessage', content: { index: 3 } } });
+  await waitForSseFlush(10);
+  assert.equal(response.body.includes('"index":3'), false, 'the previous batch timer must not flush the next batch early');
+  await waitForSseFlush(45);
+  assert.equal(response.body.includes('"index":3'), true);
+  request.close();
+});
+
+test('the production SSE batching defaults are one second and 200 merged entries', () => {
+  assert.equal(DEFAULT_SSE_COALESCE_DELAY_MS, 1000);
+  assert.equal(DEFAULT_SSE_COALESCE_LIMIT, 200);
 });
 
 test('streamRuntimeEvents rejects a frame runtime without event support', () => {

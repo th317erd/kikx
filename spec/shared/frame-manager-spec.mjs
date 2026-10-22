@@ -10,6 +10,74 @@ import {
   upsertFrameMessages,
 } from '../../src/shared/frame-manager/frame-manager.mjs';
 
+
+function projectedVisibleCount(frames) {
+  return projectFrameMessages(frames).filter((frame) => Boolean(frame?.id)
+    && frame.hidden !== true
+    && frame.deleted !== true
+    && frame.phantom !== true
+    && frame.type !== 'MessageDone').length;
+}
+
+function toolCall(id, toolCallID, overrides = {}) {
+  return {
+    id,
+    type: 'ShellToolFrame',
+    hidden: false,
+    content: { toolName: 'exec', phase: 'call', toolCallID },
+    ...overrides,
+  };
+}
+
+function toolResult(id, toolCallID, callID, overrides = {}) {
+  return {
+    id,
+    type: 'ShellToolFrame',
+    parentID: callID,
+    hidden: false,
+    content: { toolName: 'exec', phase: 'result', toolCallID, toolCallFrameID: callID },
+    ...overrides,
+  };
+}
+
+test('countMessageFrames matches the collapsed projection for tool visibility edge cases', () => {
+  let fixtures = [
+    [ toolCall('call', 'tc'), toolResult('result', 'tc', 'call') ],
+    [ toolResult('result', 'tc', 'call'), toolCall('call', 'tc') ],
+    [ toolCall('call', 'tc', { hidden: true }), toolResult('result', 'tc', 'call') ],
+    [ toolCall('call', 'tc'), toolResult('result', 'tc', 'call', { hidden: true }) ],
+    [ toolCall('call', 'tc', { hidden: true }), toolResult('result', 'tc', 'call', { hidden: undefined }) ],
+    [ toolCall('call', 'tc'), toolResult('orphan', 'tc', 'missing') ],
+    [ toolCall('orphan', 'tc') ],
+    [ { id: 'done', type: 'MessageDone', hidden: true }, { id: 'visible', type: 'UserMessage', hidden: false } ],
+    [ { id: 'phantom', type: 'UserMessage', hidden: false, phantom: true }, { id: 'visible', type: 'UserMessage', hidden: false } ],
+    [ toolCall('call1', 'tc1'), toolCall('call2', 'tc2') ],
+  ];
+
+  for (let frames of fixtures) {
+    assert.equal(
+      countMessageFrames(frames),
+      projectedVisibleCount(frames),
+      `count mismatch for ${frames.map((frame) => frame.id).join(', ')}`,
+    );
+  }
+});
+
+test('countMessageFrames scales linearly with tool-heavy frame history', () => {
+  let frames = [];
+  for (let index = 0; index < 4000; index++) {
+    frames.push(toolCall(`call_${index}`, `tc_${index}`));
+    frames.push(toolResult(`result_${index}`, `tc_${index}`, `call_${index}`));
+  }
+
+  let startedAt = performance.now();
+  let count = countMessageFrames(frames);
+  let elapsedMs = performance.now() - startedAt;
+
+  assert.equal(count, 4000);
+  assert.ok(elapsedMs < 750, `counting 8000 frames took ${elapsedMs.toFixed(1)}ms`);
+});
+
 test('FrameManager stitches raw frames into visible message heads', () => {
   let messages = projectFrameMessages([
     {

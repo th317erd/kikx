@@ -269,6 +269,7 @@ export class SessionCreateTool extends SessionTool {
         text: initialMessage,
       });
       initialFrame = posted.frame;
+      session = posted.session || session;
     }
 
     return {
@@ -292,6 +293,12 @@ export class SessionCreateTool extends SessionTool {
       parentSessionID: session.parentSessionID || null,
       title: session.title || null,
       generation: session.generation ?? null,
+      messageCount: session.messageCount ?? 0,
+      createdAt: session.createdAt ?? null,
+      updatedAt: session.updatedAt ?? null,
+      // Seed the embedded card with the handoff message so it renders even
+      // before the first preview fetch (or if that fetch fails).
+      heads: result?.initialFrame ? [ result.initialFrame ] : [],
     } ];
   }
 }

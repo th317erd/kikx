@@ -85,6 +85,7 @@ import {
 } from './http-helpers.mjs';
 import { createMemorySampler, DEFAULT_MEMORY_GROWTH_WINDOW_SAMPLES, DEFAULT_MEMORY_SAMPLE_LIMIT } from './memory-sampler.mjs';
 import { connectTokenUsageToRuntime } from './events.mjs';
+import { RuntimeEventGateway } from './runtime-event-gateway.mjs';
 import { routeRequest } from './router.mjs';
 
 const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
@@ -385,6 +386,26 @@ export async function createServer(options = {}) {
     }));
   }
 
+  if (!context.has('runtimeEventGateway')) {
+    // One gateway per server process: all SSE clients share the same coalescing
+    // buffer and flush cadence. A test double without an event emitter (or one
+    // whose emitter throws) stays on the per-connection fallback so the route
+    // still surfaces its own error.
+    let frameRuntime = context.require('frameRuntime');
+    if (typeof frameRuntime?.on === 'function' && typeof frameRuntime?.off === 'function') {
+      try {
+        context.set('runtimeEventGateway', new RuntimeEventGateway({
+          frameRuntime,
+          logger: options.logger || console,
+        }));
+      } catch (_error) {
+        context.set('runtimeEventGateway', null);
+      }
+    } else {
+      context.set('runtimeEventGateway', null);
+    }
+  }
+
   if (!context.has('questionAnswerService')) {
     context.set('questionAnswerService', new QuestionAnswerService({
       questionsStore: context.require('questionsStore'),
@@ -581,6 +602,8 @@ export async function createServer(options = {}) {
   let questionMaintenance = context.require('questionMaintenanceService');
   questionMaintenance.start();
   server.on('close', () => questionMaintenance.stop());
+  let runtimeEventGateway = context.has('runtimeEventGateway') ? context.require('runtimeEventGateway') : null;
+  server.on('close', () => runtimeEventGateway?.close?.());
   return server;
 }
 

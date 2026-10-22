@@ -225,7 +225,7 @@ test('Brief B carries sender, message, and compact dynamic state', () => {
     agent: { id: 'agent_1', name: 'Gemma' },
     isCoordinator: true,
     cwdState: { cwd: '/tmp/kikx-work' },
-    todoState: { items: [ { id: 't1' }, { id: 't2' } ] },
+    todoState: { focus: { name: 'Review parser' }, items: [ { id: 't1', title: 'Review parser', status: 'pending' }, { id: 't2', title: 'Ship notes', status: 'complete' } ] },
     session: {
       id: 'ses_1',
       participantAgentIDs: [ 'agent_1' ],
@@ -236,7 +236,7 @@ test('Brief B carries sender, message, and compact dynamic state', () => {
 
   assert.ok(text.startsWith('Message from Wyatt Greenway '));
   assert.match(text, /How are you Gemma\?/);
-  assert.match(text, /todo:    2 item\(s\); review with todo\.list/);
+  assert.match(text, /todo:    2 item\(s\); focus: Review parser; items: Review parser \| \[done\] Ship notes/);
   assert.match(text, /cwd:     \/tmp\/kikx-work/);
   assert.match(text, /coord:   true/);
   assert.match(text, /parties: .*agent_1.* - Coordinator/);
@@ -252,6 +252,9 @@ test('the system prompt carries the communication contract', () => {
   assert.match(SESSION_SYSTEM_PROMPT, /substantive report/);
   assert.match(SESSION_SYSTEM_PROMPT, /A one-line "still running" or "will report later" is not a report\./);
   assert.match(SESSION_SYSTEM_PROMPT, /If you are not the active responder in a multi-party session, stay silent/);
+  assert.match(SESSION_SYSTEM_PROMPT, /When history has been compacted/);
+  assert.match(SESSION_SYSTEM_PROMPT, /do not restart from scratch/);
+  assert.match(SESSION_SYSTEM_PROMPT, /newest request wins/);
 });
 
 test('buildModelMessages assembles system, Brief A (once), history (sans trigger), then Brief B', () => {
@@ -543,4 +546,29 @@ test('Brief B shows an autonomous-run clue only on self-triggered turns', () => 
     agent: { id: 'agent_1' },
   }).text;
   assert.match(wakeTurn, /\(Autonomous run — step 5\. A process you started has completed\.\)/);
+});
+
+test('Brief B warns when context is compacting or was trimmed', () => {
+  let base = {
+    frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'go' } },
+    agent: { id: 'agent_1' },
+  };
+
+  let normal = buildMessageBrief(base).text;
+  assert.doesNotMatch(normal, /KNOWN TO BE MISSING/);
+
+  let compacting = buildMessageBrief({
+    ...base,
+    contextMemory: { compactionPending: true },
+  }).text;
+  assert.match(compacting, /!!!WARNING!!! Context compaction is underway/);
+  assert.match(compacting, /KNOWN TO BE MISSING FROM YOUR MEMORY/);
+  assert.match(compacting, /schedule a short timer to await compaction/);
+
+  let trimmed = buildMessageBrief({
+    ...base,
+    contextMemory: { contextTrimmed: true },
+  }).text;
+  assert.match(trimmed, /!!!WARNING!!! Context was trimmed to fit the model window/);
+  assert.match(trimmed, /KNOWN TO BE MISSING FROM YOUR MEMORY/);
 });

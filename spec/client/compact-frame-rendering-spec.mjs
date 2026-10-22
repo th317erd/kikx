@@ -73,6 +73,10 @@ function summaryIcon(item) {
   return icon?.dataset.icon || icon?.textContent || '';
 }
 
+function headerStatus(item) {
+  return item.querySelector('.kikx-frame__meta-status-label')?.textContent || '';
+}
+
 function expandCompact(item) {
   let details = compactDetails(item);
   details.setAttribute('open', '');
@@ -108,15 +112,17 @@ test('a successful read-file frame renders one compact line with the existing to
   assert.ok(item.classList.contains('kikx-frame--compact'));
   assert.ok(item.classList.contains('kikx-frame--status-success'));
   assert.equal(item.dataset.frameStatus, 'success');
+  assert.equal(item.dataset.toolName, 'read-file', 'the frame exposes its tool type for colour mapping');
 
   let details = compactDetails(item);
   assert.ok(details, 'the frame must use the native details disclosure');
   assert.equal(summaryDescription(item), 'Read file /tmp/notes.txt <-');
-  assert.equal(summaryIcon(item), 'file-read');
+  assert.equal(headerStatus(item), 'Read File');
+  assert.equal(summaryIcon(item), 'eyeball');
 
   let summary = details.querySelector('summary');
-  let summaryChildren = summary.children;
-  assert.equal(summaryChildren[0], summary.querySelector('.kikx-frame__compact-icon'), 'the icon must sit on the left');
+  assert.equal(summary.querySelector('.kikx-frame__compact-icon'), null, 'the icon now lives in the header');
+  assert.ok(item.querySelector('.kikx-frame__meta-status .kikx-frame__compact-icon'), 'the header carries the status icon');
 
   let body = details.querySelector('.kikx-frame__compact-body');
   assert.ok(body, 'the disclosure must have a body');
@@ -175,10 +181,11 @@ test('exec uses a neutral compact line and switches from neutral to green', () =
   item.updateFrame(running, state);
 
   assert.ok(item.classList.contains('kikx-frame--status-running'));
-  assert.equal(summaryDescription(item), 'Running command');
+  assert.equal(summaryDescription(item), '');
+  assert.equal(headerStatus(item), 'Running command');
   assert.equal(item.querySelector('.kikx-frame__compact-description code'), null);
   assert.equal(item.querySelector('.kikx-frame__compact-command-code').textContent, 'ls /tmp');
-  assert.equal(summaryIcon(item), 'terminal');
+  assert.equal(summaryIcon(item), 'gear');
 
   item.updateFrame({
     ...running,
@@ -188,7 +195,8 @@ test('exec uses a neutral compact line and switches from neutral to green', () =
 
   assert.ok(item.classList.contains('kikx-frame--status-success'));
   assert.equal(item.dataset.frameStatus, 'success');
-  assert.equal(summaryDescription(item), 'Command completed');
+  assert.equal(summaryDescription(item), '');
+  assert.equal(headerStatus(item), 'Command completed');
   assert.equal(item.querySelector('.kikx-frame__compact-command-code').textContent, 'ls /tmp');
 });
 

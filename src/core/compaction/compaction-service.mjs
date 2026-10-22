@@ -18,7 +18,7 @@ import {
 } from './compaction-budget.mjs';
 import { runChunkedCompaction } from './chunked-compaction.mjs';
 import { resolveCompactionAgent as resolveCompactionAgentForSession } from './compactor-resolver.mjs';
-import { resolveEffectiveContextWindow, resolveSessionWindows } from './effective-windows.mjs';
+import { resolveSessionWindows } from './effective-windows.mjs';
 import {
   FrameContextBuilder,
   serializeFramesForCompaction,
@@ -31,6 +31,10 @@ const DEFAULT_COMPACTION_AGENT_CONTEXT_TOKENS = 128000;
 const DEFAULT_PROMPT_RESERVE_TOKENS = 8000;
 const DEFAULT_COMPACTION_TRIGGER_RATIO = 0.7;
 const DEFAULT_HARD_LIMIT_RATIO = 1;
+// Compaction input is estimated with chars/4; real tokenizers can be materially
+// denser (code/JSON). Leave enough headroom that a 1M model never receives a
+// 1.25M-token compaction prompt and falls back to trimming.
+const DEFAULT_COMPACTION_WINDOW_SAFETY_RATIO = 0.6;
 
 export class CompactionService {
   constructor(options = {}) {
@@ -75,97 +79,64 @@ export class CompactionService {
     let result = this.contextBuilder.build(frames, {
       activeFrameID: input.triggerFrame?.id || input.activeFrameID,
       ...triggerOptions,
-      compactionContextBudgetTokens: Math.max(1, this.compactionAgentContextTokens - this.countInstructionTokens()),
+      // The window being compacted must be sized from the effective context
+      // window, not the legacy 128k compactor fallback. Otherwise a 1M session
+      // only sheds ~126k per pass and re-triggers almost immediately. Keep a
+      // safety margin below the provider limit because chars/4 underestimates
+      // dense code/JSON prompts.
+      compactionContextBudgetTokens: Math.max(
+        1,
+        (() => {
+          let effectiveWindow = normalizePositiveInteger(
+            triggerOptions.agentContextWindowTokens,
+            this.compactionAgentContextTokens,
+          );
+          let compactionWindow = effectiveWindow >= 65536
+            ? Math.floor(effectiveWindow * DEFAULT_COMPACTION_WINDOW_SAFETY_RATIO)
+            : Math.max(effectiveWindow, this.compactionAgentContextTokens);
+          return compactionWindow - this.countInstructionTokens();
+        })(),
+      ),
       compactionTriggerRatio: input.compactionTriggerRatio || this.compactionTriggerRatio,
       hardLimitRatio: input.hardLimitRatio || this.hardLimitRatio,
     });
 
-    if (!result.shouldCompact)
-      return result;
-
-    let pending = this.startCompaction({
-      ...input,
-      frameEngine,
-      compactionWindow: result.compactionWindow,
-    });
-
-    // R5: hold a bot awaiting an in-flight compaction only when the context it
-    // would actually send exceeds ITS OWN window. Bots that still fit proceed.
-    // The trigger uses the session's smallest window, so this bot's own window
-    // must be resolved separately.
-    //
-    // Fail-safe: resolving the per-bot hold decision touches the agent manager,
-    // constructs the agent's provider and reads its context window, any of which
-    // can throw (missing agent, throwing provider constructor, throwing catalog).
-    // A failure here must NEVER propagate out of `prepareAgentContext` and break
-    // the agent's turn. Log it and fall back to the legacy hard-limit wait.
-    let holdForCompaction = result.shouldWaitForCompaction === true;
-    try {
-      holdForCompaction = await this.shouldHoldAgentForCompaction(input, result);
-    } catch (error) {
-      this.logger.error?.('Kikx compaction hold decision failed; falling back to legacy wait', error);
+    // Compaction is always background work. A bot never waits for it: at the hard
+    // limit we trim the oldest projected frames for THIS turn and proceed. The
+    // pre-turn brief warns the model that memory is temporarily incomplete and
+    // that it may schedule a timer if it needs the missing material.
+    let pending = null;
+    if (result.shouldCompact && result.compactionWindow?.frames?.length > 0) {
+      pending = this.startCompaction({
+        ...input,
+        frameEngine,
+        compactionWindow: result.compactionWindow,
+      });
     }
 
-    if (pending && holdForCompaction) {
-      await pending.catch((error) => {
-        this.logger.error?.('Kikx compaction failed while waiting at hard context limit', error);
+    let trim = { frames: result.frames, contextTokens: result.contextTokens, trimmedFrames: 0 };
+    if (result.contextTokens >= result.hardLimit) {
+      let preserveFrameIDs = [
+        input.triggerFrame?.id,
+        result.latestCompaction?.id,
+      ].filter((id) => typeof id === 'string' && id !== '');
+      trim = this.contextBuilder.trimToFit(result.frames, result.hardLimit, {
+        preserveFrameIDs,
+        usageOverheadTokens: result.usageOverheadTokens,
       });
-
-      let nextFrames = projectFrameMessages(typeof frameEngine?.toArray === 'function' ? frameEngine.toArray() : frames);
-      let rebuilt = this.contextBuilder.build(nextFrames, {
-        activeFrameID: input.triggerFrame?.id || input.activeFrameID,
-        ...triggerOptions,
-        compactionContextBudgetTokens: Math.max(1, this.compactionAgentContextTokens - this.countInstructionTokens()),
-        compactionTriggerRatio: input.compactionTriggerRatio || this.compactionTriggerRatio,
-        hardLimitRatio: input.hardLimitRatio || this.hardLimitRatio,
-      });
-      // This bot waited for the in-flight compaction because its own window was
-      // exceeded (R5); the rebuilt context reflects the new compaction frame.
-      return { ...rebuilt, compactionPending: false, heldForCompaction: true };
     }
 
     return {
       ...result,
-      compactionPending: true,
+      frames: trim.frames,
+      contextTokens: trim.contextTokens,
+      originalContextTokens: result.contextTokens,
+      compactionPending: pending != null || result.compactionPending === true,
+      contextTrimmed: trim.trimmedFrames > 0,
+      trimmedFrames: trim.trimmedFrames,
     };
   }
 
-  // Whether the current agent must wait for the in-flight compaction because its
-  // own projected context exceeds its own window (R5). Unknown windows keep the
-  // legacy behavior: wait only at the hard limit.
-  async shouldHoldAgentForCompaction(input = {}, result = {}) {
-    let agentID = input.agent?.id || null;
-    if (!agentID)
-      return result.shouldWaitForCompaction === true;
-
-    let agentManager = this.agentManager || resolveService(input.services, 'agentManager');
-    let pluginRegistry = this.pluginRegistry || resolveService(input.services, 'pluginRegistry');
-    let catalog = input.catalog || this.catalog || agentManager?.listModels?.() || [];
-    let agent = input.agent;
-    try {
-      if (agentManager?.getAgent && (!agent || agent.config == null))
-        agent = await agentManager.getAgent(agentID, { includeSecrets: false });
-    } catch (_error) {
-      agent = input.agent;
-    }
-
-    let providerClass = pluginRegistry?.getAgentProvider?.(agent?.pluginID) || null;
-    let ownWindow;
-    try {
-      let provider = providerClass
-        ? new providerClass({ ...(input.routerContext || {}), agent, services: input.services || {} })
-        : null;
-      ownWindow = provider?.resolveContextWindow?.({ config: agent?.config || {} });
-    } catch (_error) {
-      ownWindow = null;
-    }
-    if (!Number.isFinite(ownWindow) || ownWindow <= 0)
-      ownWindow = resolveEffectiveContextWindow({ agent, providerClass, catalog });
-
-    let baseReserveTokens = normalizeNonNegativeInteger(input.baseReserveTokens, this.baseReserveTokens);
-    let ownHardLimit = Math.max(1, ownWindow - baseReserveTokens);
-    return (result.contextTokens || 0) >= ownHardLimit;
-  }
 
   // P0: the trigger follows the SMALLEST participant window (R1) and counts the
   // full projected request (R2). An explicit `input.agentContextWindowTokens`
@@ -225,7 +196,29 @@ export class CompactionService {
     if (existing)
       return existing.promise;
 
-    let promise = this.runCompaction(input)
+    let compactionFrameID = normalizeOptionalString(input.compactionFrameID);
+    if (!compactionFrameID) {
+      let runningFrame = this.createCompactionFrame({
+        session: input.session?.id ? input.session : { id: sessionID },
+        compactorAgent: input.agent || null,
+        compactionWindow: input.compactionWindow,
+        summary: '',
+        status: 'running',
+        hidden: false,
+        message: 'Context compaction is underway; older memories are being summarized.',
+      });
+      let merged = input.frameEngine.merge([ runningFrame ], {
+        authorType: 'system',
+        authorID: 'internal:compaction',
+      });
+      compactionFrameID = merged[0]?.id || input.frameEngine.get(runningFrame.id)?.id || runningFrame.id;
+      void this.flushFrameStores(input.services).catch((error) => {
+        this.logger.error?.('Kikx compaction failed to flush its running frame', error);
+      });
+    }
+
+    let runInput = { ...input, compactionFrameID };
+    let promise = this.runCompaction(runInput)
       .then((frame) => {
         this.emitCompactionEvent('compaction.completed', {
           sessionID,
@@ -241,7 +234,7 @@ export class CompactionService {
         // `trimmed`, no summary, and the failure recorded as warnings/errors, so
         // the requesting bot's projection starts after it and it has room.
         this.logger.error?.('Kikx async compaction failed; trimming context to proceed', error);
-        let trimmedFrame = this.writeTrimmedBoundary(input, error);
+        let trimmedFrame = this.writeTrimmedBoundary(runInput, error);
         await this.flushFrameStores(input.services);
         this.emitCompactionEvent('compaction.failed', {
           sessionID,
@@ -264,11 +257,13 @@ export class CompactionService {
         this.pendingCompactions.delete(key);
       });
 
-    this.pendingCompactions.set(key, { promise, sessionID, boundaryFrameID });
+    this.pendingCompactions.set(key, { promise, sessionID, boundaryFrameID, compactionFrameID });
     this.emitCompactionEvent('compaction.started', {
       sessionID,
       boundaryFrameID,
       frameCount: input.compactionWindow.frames.length,
+      compactionFrameID,
+      frame: input.frameEngine.get(compactionFrameID) || null,
     });
     return promise;
   }

@@ -192,7 +192,7 @@ function renderTable(table) {
     .map((row) => `<tr>${row.map((cell) => `<td>${renderInline(cell)}</td>`).join('')}</tr>`)
     .join('');
 
-  return `<table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`;
+  return `<div class="kikx-markdown__table-scroll"><table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function splitTableRow(line) {
@@ -652,7 +652,7 @@ function isAllowedAttribute(tagName, name, value) {
     return /^language-[A-Za-z0-9_-]+$/.test(String(value || ''));
 
   if (tagName === 'div' && normalizedName === 'class')
-    return value === 'kikx-markdown__text';
+    return value === 'kikx-markdown__text' || value === 'kikx-markdown__table-scroll';
 
   return false;
 }
