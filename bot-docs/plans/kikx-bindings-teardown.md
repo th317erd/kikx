@@ -645,3 +645,82 @@ Per C6 they are already swept on every rebuild while the modals stay inside
 (`aeor-modal.js:82`, which currently only removes its keydown listener) to tear
 down its own subtree — a framework change, requiring the same deploy-first
 ordering. That is follow-on work, not silently skipped.
+
+---
+
+## Addendum C — the aeor-modal teardown, and a correction to my own diagnosis
+
+Framework commit `b5deb6d` (pushed). Closes the last item on the bindings work.
+
+### The claim I had to withdraw
+
+Earlier I described kikx-modals.mjs as "the only place in kikx2 with an actual
+live leak" and then, more carefully, downgraded it to latent because modals sit
+inside the `<kikx-app>` subtree and the per-rebuild sweep reaches them. Both
+framings were pointing at the wrong file. The 13 `bindState` calls there bind to
+`app._state`, which app owns, and they sit in a subtree that IS swept. Nothing
+in kikx2 leaks today.
+
+The real defect was one layer down, in the framework component itself.
+
+### The bug
+
+`AeorModal._buildDOM()` runs on *every* `connectedCallback`. It did two things
+that nothing ever undid:
+
+1. subscribed two `bindState` bindings (dialog `aria-label`, title text);
+2. appended a generated overlay, keeping the previous one.
+
+`disconnectedCallback()` only removed a keydown listener. So any modal connected
+more than once — moved in the DOM, re-appended, or reopened after a close handler
+called `.remove()` — accumulated dialogs and subscriptions. Measured in real
+Chromium, three reconnects on the unfixed component:
+
+| reconnect | `[role="dialog"]` nodes | live bindings |
+| --- | --- | --- |
+| 0 | 1 | 2 |
+| 1 | 2 | 4 |
+| 2 | 3 | 6 |
+| 3 | 4 | 8 |
+
+Linear growth in both. The stale listeners hold a `WeakRef` to a detached node, so
+they never fire usefully but stay registered, and a later title write walks all of
+them.
+
+### The fix
+
+`disconnectedCallback()` now calls `disposeBindings(this)` and drops the generated
+overlay. Same measurement after: **1 dialog / 2 bindings at every pass.**
+
+### What the new test caught in my first attempt
+
+My initial fix removed the overlay outright. That deleted the caller's form and
+footer buttons, because `_buildDOM` moves caller children *into* the overlay's
+body/footer slots — so tearing down the overlay took them with it. The new
+`checkModalReconnect` case failed on the first run with
+`caller footer node lost across reconnect`.
+
+The fix now hands caller content back to the host (footers re-marked with
+`slot="footer"` so the next `_buildDOM` finds them) before removing the overlay.
+Reconnect is lossless: content, listeners, and references all survive.
+
+### Evidence
+
+- Framework suite green in real Chromium (`RUNNER_EXIT=0`), summary includes
+  `modal reconnect (no dialog/binding accumulation, caller children preserved,
+  reopen after detach) passed`.
+- Control run: reverting only `components/aeor-modal.js` to the previous version
+  makes the suite fail with `reconnect stacked 4 dialogs (expected 1)`. The test
+  kills the old implementation; it is not vacuous.
+- kikx2 client suite unchanged: 575/575 pass, 0 fail.
+- kikx2 depends on `aeor-modal` only through `elements['aeor-modal']` and the
+  vendored path; `grep` finds no use of `_overlay` or any other internal, so the
+  added private field is not a coupling risk.
+
+### Caveats
+
+- The runner that drives the harness lives in `/tmp/fw-runner/` and is not
+  committed. The framework repo still has no `package.json` or `PlaywrightRunner`
+  of its own; making the suite runnable from a clean checkout remains open work.
+- Reused the cached `chromium-1223` binary rather than downloading a matching
+  build, so the lane currently needs `CHROME_BIN` pointed at it.
