@@ -328,6 +328,18 @@ export function canSubmitAnswer(value) {
   return normalizeAnswerText(value) !== '';
 }
 
+// The dismissal marker, mirrored from the server's `NO_RESPONSE_ANSWER_TEXT`
+// (src/core/questions/question-fields.mjs). The server composes this text
+// itself and ignores whatever the client sends when `silent` is set, so this
+// copy is never what gets stored on a current server — it exists so a dismiss
+// request still carries a VALID answer for a server whose route predates the
+// `silent` flag. See `dismissQuestionAnswer` for why that matters.
+//
+// Kept as an identical literal on purpose, with a spec that imports both and
+// asserts they match: if the server's wording ever changes, the drift fails a
+// test instead of silently producing a stale request body.
+export const NO_RESPONSE_ANSWER_TEXT = '<User chose not to respond>';
+
 /**
  * Create the mutable slice the app keeps in its ReactiveState. Arrays are
  * replaced on every change (ReactiveState observes top-level assignment only,

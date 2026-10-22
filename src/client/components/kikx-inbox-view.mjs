@@ -35,6 +35,7 @@ import {
   canSubmitAnswer,
   groupHeading,
   groupQuestions,
+  NO_RESPONSE_ANSWER_TEXT,
   normalizeAnswerText,
   normalizeQuestionList,
   questionAge,
@@ -345,6 +346,14 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
  * answer path with `silent: true`, and the server substitutes its own
  * `<User chose not to respond>` literal.
  *
+ * The request ALSO carries a valid `answer`. A route that has the `silent` flag
+ * ignores it, so the current server still composes its own literal and the
+ * client cannot smuggle agent-visible text. A route that predates `silent`
+ * rejects the request with "answer must be a non-empty string", which is
+ * exactly the failure this second field prevents: the two server versions are
+ * a pure boolean apart, so sending both satisfies either without sniffing an
+ * error string or retrying a mutation.
+ *
  * Locally this closes the row exactly like a real answer: the same
  * `applyLocalAnswer` and the same in-place shell sync, so the badge, the count
  * and the "already in flight" race all behave identically.
@@ -357,6 +366,9 @@ export async function dismissQuestionAnswer(app, questionID, options = {}) {
 
   try {
     let result = await postJSON(`/api/v1/questions/${encodeURIComponent(questionID)}/answer`, {
+      // Ignored by a server that understands `silent`; satisfies the answer
+      // validation on one that does not. See the docstring above.
+      answer: NO_RESPONSE_ANSWER_TEXT,
       silent: true,
     });
 
