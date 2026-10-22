@@ -420,7 +420,7 @@ prod bot (§10); the maintainer writes docs/plans and holds git discipline.
 ## 16. Execute P1 from this file alone
 
 Baseline: kikx2 @ `d685ebd`, dev 3001 healthy
-(`{"ok":true,"ready":true,"services":{"aeordb":true}}`).
+(`{"ok":true,"ready":true,"services":{"database":true}}`).
 
 P1 (store + tool, no UI — and no client component registration, see step 4):
 1. Create `src/core/questions/questions-store.mjs` mirroring `src/core/agents/agent-todo-store.mjs` (constructor

@@ -1,6 +1,6 @@
 'use strict';
 
-import { elements, $ } from '../lib/aeor-ui.mjs';
+import { elements, $, cleanupBindings } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
 import {
@@ -19,6 +19,7 @@ import {
 } from './tool-frame-summary.mjs';
 import { setIcon } from '../lib/icons.mjs';
 import { countRebuild } from './render-stats.mjs';
+import { isFrameExpanded, setFrameExpanded } from '../state/frame-expansion.mjs';
 import './kikx-typing-indicator.mjs';
 import './kikx-sub-session-frame.mjs';
 
@@ -193,7 +194,7 @@ export class KikxFrameItem extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this._cleanupReactiveBindings();
+    cleanupBindings(this);
   }
 
   _render() {
@@ -227,7 +228,7 @@ export class KikxFrameItem extends HTMLElement {
           content = this._buildFrameContent(frame);
       }
 
-      this._cleanupReactiveBindings();
+      cleanupBindings(this);
       $(this).empty();
       this._metaElement = meta;
       this._contentElement = content;
@@ -240,6 +241,12 @@ export class KikxFrameItem extends HTMLElement {
       if (compact) {
         this._compactView = buildCompactFrameDisclosure(frame, [], document);
         this._contentParent = this._compactView.body;
+        // Rebuilding this item must not collapse a frame the user opened.
+        // Expansion lives in a module-level store keyed by frame id, not in
+        // the DOM, because `_render()` throws the whole subtree away. The
+        // store never opens anything on its own: an id the user never
+        // expanded reports false, so the default stays collapsed.
+        this._compactView.element.open = isFrameExpanded(frame.id);
         // Keep the "{Name} {time}" header visible above the compact line.
         if (meta)
           this.appendChild(meta);
@@ -340,6 +347,9 @@ export class KikxFrameItem extends HTMLElement {
     let details = this._compactView?.element;
     if (!details)
       return;
+
+    // Record what the user just did so a later rebuild can restore it.
+    setFrameExpanded(this._frame?.id, details.open);
 
     if (!details.open) {
       this._discardContentElement();
@@ -477,7 +487,7 @@ export class KikxFrameItem extends HTMLElement {
       className: this._contentElement.className,
     });
 
-    this._cleanupReactiveBindings(this._contentElement);
+    cleanupBindings(this._contentElement);
     while (this._contentElement.firstChild)
       this._contentElement.removeChild(this._contentElement.firstChild);
 
@@ -497,7 +507,7 @@ export class KikxFrameItem extends HTMLElement {
     if (!this._contentElement)
       return;
 
-    this._cleanupReactiveBindings(this._contentElement);
+    cleanupBindings(this._contentElement);
     this._contentElement.remove();
     this._contentElement = null;
     this._contentKind = null;
@@ -579,18 +589,6 @@ export class KikxFrameItem extends HTMLElement {
     return div.class('kikx-frame__content kikx-frame__content--custom')(element).build(document);
   }
 
-  _cleanupReactiveBindings(root = this) {
-    let nodes = [ root, ...root.querySelectorAll('*') ];
-    for (let node of nodes) {
-      if (!Array.isArray(node.__bindings))
-        continue;
-
-      for (let cleanup of node.__bindings)
-        cleanup?.();
-
-      node.__bindings = [];
-    }
-  }
 }
 
 if (typeof customElements !== 'undefined' && !customElements.get('kikx-frame-item'))

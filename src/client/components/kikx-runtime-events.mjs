@@ -450,9 +450,15 @@ export async function fetchQuestions(app, options = {}) {
     // nothing to attach to. Prune after the model settles so a still-open
     // question's draft — including one the user is typing into right now — is
     // never touched.
+    //
+    // `complete` must be forwarded: a truncated page is a partial view of the
+    // open set, and pruning against it deletes drafts for questions that exist
+    // and are still open but simply were not on this page. That happened on
+    // reconnect — the connection resyncs by calling this — so reconnecting
+    // could wipe an answer being typed for a question past the page limit.
     pruneAnswerDrafts(app._answerDrafts, new Set(
       state.questionsState.questions.map((question) => question.id),
-    ));
+    ), { complete });
   } catch (error) {
     state.questionsState.loading = false;
     state.questionsState.error = error?.message || String(error);

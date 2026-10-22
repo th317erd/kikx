@@ -21,7 +21,11 @@ export async function handleInfraRoutes({ request, response, url, context }) {
       ok: true,
       ready: context.get?.('startupReady') === true,
       services: {
-        aeordb: context.has('aeordb'),
+        // Driver-neutral: PostgreSQL in the default deployment, AeorDB only as
+        // a legacy driver. Reads the canonical `db` slot; `aeordb` is a mirror of
+        // it (create-server.mjs) and naming it here made the payload read as if
+        // AeorDB were the live service.
+        database: context.has('db'),
       },
       // Compact summary only (no sample ring) so the probe stays cheap. Absent
       // when the server was composed without the sampler.

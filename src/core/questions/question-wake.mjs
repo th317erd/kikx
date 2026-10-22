@@ -21,6 +21,7 @@
 // scheduling.
 
 import { patchQuestionFrameContent } from './question-frame-patch.mjs';
+import { isWakeSuppressed } from './question-fields.mjs';
 
 const ANSWER_AUTHOR_FALLBACK = 'user';
 
@@ -75,6 +76,7 @@ export class QuestionAnswerService {
       answer: input.answer,
       userID: input.userID,
       answerFrameID: input.answerFrameID,
+      wakeSuppressed: input.wakeSuppressed,
     });
 
     // Make the answered state visible where the question was asked. Without
@@ -84,6 +86,36 @@ export class QuestionAnswerService {
     await patchQuestionFrameContent({ frameRuntime: this.frameRuntime }, answered, {
       frameRuntime: this.frameRuntime,
     });
+
+    // Wake suppression: the answer is stored and visible, but NO turn is started
+    // for the asking agent. This is the "Dismiss" affordance in the Inbox — the
+    // user declines to answer, and the agent is told so in writing wherever it
+    // looks the question up, without being woken for the privilege.
+    //
+    // The return sits BEFORE `deliverAnswer` on purpose: the wake lives in that
+    // one call, so skipping it makes "will not wake" structural instead of a
+    // promise. Nothing downstream can re-deliver either — `findRetryableDeliveries`
+    // only scans `status:'undeliverable'`, and this question stays `answered`.
+    //
+    // `question.answered` is still emitted: it carries no wake, only the runtime
+    // event the client model listens to, so another tab's Inbox drops the row too.
+    if (isWakeSuppressed(answered)) {
+      this.emit('question.answered', {
+        sessionID: question.sessionID,
+        question: answered,
+        frameID: null,
+        wakeFrameID: null,
+      });
+
+      return {
+        delivered: false,
+        suppressed: true,
+        question: answered,
+        frameID: null,
+        sessionID: question.sessionID,
+        agentID: question.agentID,
+      };
+    }
 
     let delivery = await this.deliverAnswer(answered, input);
 

@@ -18,6 +18,12 @@ import {
   normalizeQuestionSummary,
   questionAge,
 } from '../state/questions-state.mjs';
+import {
+  answerDraftStore,
+  clearAnswerDraft,
+  getAnswerDraft,
+  setAnswerDraft,
+} from '../state/question-drafts.mjs';
 
 const { div, span, p, form, textarea, button } = elements;
 
@@ -106,6 +112,28 @@ export class KikxQuestionFrame extends HTMLElement {
       .placeholder('Your answer…')
       .build(document);
 
+    // Restore text this box held before the frame was re-rendered, and keep
+    // recording it on every keystroke.
+    //
+    // This node is destroyed and rebuilt by `updateFrame()` — which the chat
+    // view calls on every refresh, including the resync after a dropped
+    // runtime-events socket reopens. The DOM value dies with the node, so
+    // without a store outside the DOM, connecting / reconnecting / switching
+    // sessions silently threw away whatever the user had typed. The Inbox card
+    // has had exactly this protection (`kikx-question-card.mjs`); the inline
+    // frame — the surface the user actually answers in, in the transcript — was
+    // never wired to the store, so it was the one place text vanished.
+    let drafts = this._drafts();
+    let drafted = getAnswerDraft(drafts, question.id);
+    if (drafted !== '')
+      answerInput.value = drafted;
+
+    if (typeof answerInput.addEventListener === 'function') {
+      answerInput.addEventListener('input', () => {
+        setAnswerDraft(drafts, question.id, answerInput.value);
+      });
+    }
+
     let submit = button
       .type('button')
       .class('kikx-question-frame__submit')
@@ -144,6 +172,14 @@ export class KikxQuestionFrame extends HTMLElement {
     this.appendChild(node);
   }
 
+  // The app owns the store so the Inbox card and this frame share one draft per
+  // question id: a half-typed answer must be the same text whichever surface
+  // you come back to it through.
+  _drafts() {
+    let app = this._appState?.app || this.closest?.('kikx-app');
+    return answerDraftStore(app || this);
+  }
+
   _submit(questionID, answerInput) {
     let text = normalizeAnswerText(answerInput?.value);
     if (!canSubmitAnswer(text))
@@ -172,6 +208,7 @@ export class KikxQuestionFrame extends HTMLElement {
           return;
         }
 
+        clearAnswerDraft(this._drafts(), questionID);
         this._setPhase('sent', result?.message || '', text);
       },
       (error) => {
@@ -224,8 +261,12 @@ export class KikxQuestionFrame extends HTMLElement {
         submitNode.removeAttribute?.('disabled');
     }
 
-    if (inputNode && phase === 'busy' && inputNode.setAttribute)
-      inputNode.setAttribute('readonly', '');
+    if (inputNode && inputNode.setAttribute) {
+      if (phase === 'busy')
+        inputNode.setAttribute('readonly', '');
+      else
+        inputNode.removeAttribute?.('readonly');
+    }
 
     if (phase === 'sent')
       this._showSent(answerText);

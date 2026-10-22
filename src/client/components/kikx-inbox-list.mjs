@@ -184,6 +184,7 @@ export function buildInboxList(app, handlers = {}) {
 
   let hasHandlers = handlers && (typeof handlers.onSubmit === 'function'
     || typeof handlers.onDismiss === 'function'
+    || typeof handlers.onDismissAnswer === 'function'
     || typeof handlers.onRead === 'function');
   if (hasHandlers) {
     for (let card of list.querySelectorAll(`.${CARD_CLASS}`))

@@ -135,3 +135,92 @@ export function isVoidTag(tagName) {
 export function isSVGElement() {
   return false;
 }
+
+// Stand-in for the framework's own teardown walk (elements.js cleanupBindings).
+// Ported from the real implementation rather than simplified, so a component
+// spec exercises the same contract the browser will: descend into descendants
+// AND shadow roots, guard against cycles, and clear each node's slot *before*
+// running its callbacks so a throw cannot leave a half-torn-down subtree
+// subscribed. A simplified stub here would let a broken walk pass the suite.
+function walkBindableNodes(root, visit, seen = new Set()) {
+  if (!root || typeof root !== 'object' || seen.has(root))
+    return;
+
+  seen.add(root);
+  visit(root);
+
+  if (typeof root.querySelectorAll === 'function') {
+    for (let node of root.querySelectorAll('*'))
+      walkBindableNodes(node, visit, seen);
+  }
+
+  if (root.shadowRoot)
+    walkBindableNodes(root.shadowRoot, visit, seen);
+}
+
+function runNodeCleanups(node, slot) {
+  let callbacks = node[slot];
+  if (!Array.isArray(callbacks) || callbacks.length === 0)
+    return 0;
+
+  node[slot] = [];
+
+  let count = 0;
+  let failure = null;
+
+  for (let callback of callbacks) {
+    if (typeof callback !== 'function')
+      continue;
+
+    count++;
+
+    try {
+      callback();
+    } catch (error) {
+      if (!failure) failure = error;
+    }
+  }
+
+  if (failure) throw failure;
+  return count;
+}
+
+export function cleanupBindings(root) {
+  if (!root || typeof root !== 'object')
+    return 0;
+
+  let count = 0;
+  let failure = null;
+
+  walkBindableNodes(root, (node) => {
+    try {
+      count += runNodeCleanups(node, '__bindings');
+    } catch (error) {
+      if (!failure) failure = error;
+    }
+  });
+
+  if (failure) throw failure;
+  return count;
+}
+
+export function disposeBindings(root) {
+  if (!root || typeof root !== 'object')
+    return 0;
+
+  let count = 0;
+  let failure = null;
+
+  walkBindableNodes(root, (node) => {
+    for (let slot of [ '__bindings', '__disposers' ]) {
+      try {
+        count += runNodeCleanups(node, slot);
+      } catch (error) {
+        if (!failure) failure = error;
+      }
+    }
+  });
+
+  if (failure) throw failure;
+  return count;
+}

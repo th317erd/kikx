@@ -14,7 +14,7 @@
 // status or arrives back from the server as no longer open. Answering question
 // A must never touch question B's draft.
 //
-// The store is deliberately per-app (created lazily by the view wiring) rather
+// The store is deliberately per-app (created lazily by whoever needs it) rather
 // than module-global: two apps in one page, or two tests in one process, must
 // not share drafts.
 
@@ -25,6 +25,29 @@ export const MAX_ANSWER_DRAFTS = 50;
 
 export function createDraftStore() {
   return new Map();
+}
+
+/**
+ * The app's draft store, created on first use.
+ *
+ * Lives here rather than in a component because *two* answer surfaces now read
+ * it: the Inbox card and the inline `Question` frame. It was previously buried
+ * in `kikx-inbox-view.mjs`, so the frame — the surface a user actually answers
+ * in, in the transcript — could not reach it and silently lost every keystroke
+ * on any re-render, which is what a socket reconnect triggers.
+ *
+ * Lazy rather than constructed in the app class so the store exists for any
+ * `app`-shaped object the tests pass in, without those tests having to know the
+ * field name.
+ */
+export function answerDraftStore(app) {
+  if (!app || typeof app !== 'object')
+    return createDraftStore();
+
+  if (!(app._answerDrafts instanceof Map))
+    app._answerDrafts = createDraftStore();
+
+  return app._answerDrafts;
 }
 
 /**
@@ -88,9 +111,19 @@ export function clearAnswerDraft(store, questionID) {
  * Called after a fetch reconciles the open set, so a question answered in
  * another tab does not leave dead text behind. Drafts for still-open questions
  * are untouched — that is the whole point of the store.
+ *
+ * `complete` is load-bearing and not a hint. When the response is truncated by
+ * the page limit, the ids the client did not receive are not "gone" — they are
+ * unobserved, and an open question page 2 would list one of them. Pruning on a
+ * truncated page deleted the text a user was in the middle of typing, on a
+ * reconnect, for a question that had simply fallen off the page. Only prune
+ * against a set the server has actually enumerated in full.
  */
-export function pruneAnswerDrafts(store, openQuestionIDs) {
+export function pruneAnswerDrafts(store, openQuestionIDs, options = {}) {
   if (!(store instanceof Map) || !openQuestionIDs)
+    return;
+
+  if (options.complete === false)
     return;
 
   let open = openQuestionIDs instanceof Set ? openQuestionIDs : new Set(openQuestionIDs);

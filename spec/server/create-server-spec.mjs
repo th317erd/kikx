@@ -9,6 +9,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { createServer } from '../../src/server/create-server.mjs';
+import { handleInfraRoutes } from '../../src/server/routes/infra-routes.mjs';
 import { AppContext } from '../../src/core/app/app-context.mjs';
 import { PluginRegistry } from '../../src/core/plugins/index.mjs';
 // Isolate from ambient plugin discovery (e.g. KIKX_PLUGIN_PATHS injected by a
@@ -346,7 +347,10 @@ test('GET /health reports service state and readiness', async () => {
 
     assert.equal(response.status, 200);
     assert.equal(body.ok, true);
-    assert.equal(body.services.aeordb, true);
+    assert.equal(body.services.database, true);
+    // The legacy `aeordb` key must be gone, not merely supplemented: a reader of
+    // the payload should not see the retired driver's name as a live service.
+    assert.equal('aeordb' in body.services, false);
     assert.equal(typeof body.ready, 'boolean');
 
     // Once startup settles, `ready` becomes true and stays true.
@@ -359,6 +363,31 @@ test('GET /health reports service state and readiness', async () => {
   } finally {
     await close(server);
   }
+});
+
+// The test above can only ever observe a context that HAS a database, so on its
+// own it cannot tell a derived boolean from a hard-coded `true`. This asserts the
+// absent case directly against the handler, with a response double.
+test('GET /health reports services.database false when no database slot is set', async () => {
+  let captured = null;
+  let response = {
+    writeHead(statusCode, headers) { captured = { statusCode, headers, body: null }; },
+    end(payload) { captured.body = JSON.parse(payload); },
+  };
+
+  let handled = await handleInfraRoutes({
+    request: { method: 'GET' },
+    response,
+    url: new URL('http://127.0.0.1/health'),
+    context: new AppContext({}),
+  });
+
+  assert.equal(handled, true);
+  assert.equal(captured.statusCode, 200);
+  assert.equal(captured.body.services.database, false,
+    'the flag must be derived from the context, not hard-coded');
+  assert.equal('aeordb' in captured.body.services, false,
+    'the retired driver name must not appear in the payload');
 });
 
 test('GET /api/v1/client-components returns plugin renderer descriptors', async () => {

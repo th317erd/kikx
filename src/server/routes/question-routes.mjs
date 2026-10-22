@@ -13,6 +13,10 @@ import {
   matchQuestionDismissRoute,
   matchQuestionReadRoute,
 } from './route-matchers.mjs';
+import {
+  NO_RESPONSE_ANSWER_TEXT,
+  normalizeWakeSuppressed,
+} from '../../core/questions/question-fields.mjs';
 
 // Ask-user questions: the read side the Inbox renders, plus the answer loop's
 // write side. The list route reads the store's open index (`listOpen`) and never
@@ -59,7 +63,19 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
   let answerRoute = matchQuestionAnswerRoute(url.pathname);
   if (request.method === 'POST' && answerRoute) {
     let body = await readJSON(request);
-    if (typeof body.answer !== 'string' || body.answer.trim() === '')
+
+    // `silent: true` is the Inbox "Dismiss" affordance: record the user's
+    // non-response as an answer and suppress the wake. The ANSWER TEXT IS NOT
+    // TAKEN FROM THE CLIENT in that case — the server writes its own literal, so
+    // a stored dismissal can never be forged into arbitrary agent-visible text
+    // and can never drift from the value the suppression logic is documented
+    // against. A non-boolean `silent` is a client bug, not something to coerce.
+    if (body.silent != null && typeof body.silent !== 'boolean')
+      throw httpError(400, 'silent must be a boolean');
+
+    let silent = normalizeWakeSuppressed(body.silent);
+
+    if (!silent && (typeof body.answer !== 'string' || body.answer.trim() === ''))
       throw httpError(400, 'answer must be a non-empty string');
 
     // Identity is optional, matching POST /api/v1/sessions/:id/messages: the
@@ -71,8 +87,9 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
     let result;
     try {
       result = await answerService.submitAnswer(answerRoute.questionID, {
-        answer: body.answer,
+        answer: silent ? NO_RESPONSE_ANSWER_TEXT : body.answer,
         userID: account?.id || body.userID || null,
+        wakeSuppressed: silent,
       });
     } catch (error) {
       if (error?.status === 409)
@@ -93,6 +110,10 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
         question: result.question,
         delivered: result.delivered === true,
         pending: result.pending === true,
+        // Stored, but deliberately not delivered: the user dismissed the
+        // question. Distinct from `delivered: false`, which means "we tried and
+        // the agent could not be reached".
+        suppressed: result.suppressed === true,
         frameID: result.frameID ?? null,
       },
     });

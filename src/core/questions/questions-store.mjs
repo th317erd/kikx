@@ -10,6 +10,7 @@ import {
   normalizePriority,
   normalizeMode,
   normalizeOptionalString,
+  normalizeWakeSuppressed,
   QUESTION_MODES,
 } from './question-fields.mjs';
 
@@ -94,6 +95,8 @@ export class QuestionsStore {
         text: entry.text,
         priority: entry.priority,
         answer: null,
+        // A question starts un-suppressed; only a user dismissal sets this.
+        wakeSuppressed: false,
         // Free-form by D-4; a default is the agent's own fallback, never a
         // preset option presented to the user.
         defaultAnswer: defaultAnswer || null,
@@ -171,6 +174,11 @@ export class QuestionsStore {
         answeredAt: now,
         answeredByUserID: normalizeOptionalString(input.userID || input.user_id) || null,
         answerFrameID: normalizeOptionalString(input.answerFrameID || input.answer_frame_id) || null,
+        // Sticky once set: an answer is recorded exactly once (the write is under
+        // `assertOpen`), so there is no later write that could legitimately clear
+        // a suppression. Keeping it means a re-read of the doc always agrees with
+        // the fact that no wake was ever sent for it.
+        wakeSuppressed: normalizeWakeSuppressed(input.wakeSuppressed) || question.wakeSuppressed === true,
         updatedAt: now,
       };
 
@@ -653,6 +661,7 @@ function normalizeQuestionDoc(value) {
     defaultTimeoutMs: normalizeTimeoutMs(value.defaultTimeoutMs),
     defaultDueAt: value.defaultDueAt == null ? null : Number(value.defaultDueAt),
     answerSource: normalizeOptionalString(value.answerSource) || null,
+    wakeSuppressed: normalizeWakeSuppressed(value.wakeSuppressed),
     answeredAt: value.answeredAt || null,
     answeredClock: value.answeredClock || null,
     answeredByUserID: normalizeOptionalString(value.answeredByUserID) || null,

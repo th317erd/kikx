@@ -155,6 +155,47 @@ test('the Inbox lists open questions in the browser and posts a free-form answer
     assert.equal(await page.locator('.kikx-question-card input[type="radio"], .kikx-question-card input[type="checkbox"], .kikx-question-card select').count(), 0,
       'no toggle or quick-pick control: answers are free-form text (D-4)');
 
+    // (3b) Dismiss and Answer are the same size.
+    //
+    // Regression: the text Dismiss is an aeor-confirm-button, whose inner
+    // .aeor-confirm-btn is a deliberately compact control (font-size 0.75rem,
+    // line-height normal, padding 0.125rem 0.625rem, min-height 1.75rem).
+    // Dropped in beside Answer — a plain <button> at font-size 13px * 1.25,
+    // line-height 1.5, padding 7px 16px — it measured 35px tall against 40.38px
+    // and rendered as an undersized pill floating in the row. questions.css now
+    // gives the dismiss control the same box, so the heights must agree.
+    //
+    // Measured, not inferred: this reads real layout boxes in real Chrome with
+    // the real stylesheets, which is the only thing that catches a cascade
+    // regression here. Sub-pixel tolerance because Chrome rounds border-box
+    // heights to 1/64px.
+    let sizing = await page.evaluate(() => {
+      // The custom element wraps its button; the fallback <button> is the box.
+      let visible = (host) => (host && host.querySelector('.aeor-confirm-btn')) || host;
+      let box = (node) => (node ? node.getBoundingClientRect() : null);
+      let submit = box(document.querySelector('.kikx-question-card__submit'));
+      let dismiss = box(visible(document.querySelector('.kikx-question-card__dismiss')));
+      if (!submit || !dismiss) return null;
+      return {
+        submitHeight: submit.height,
+        dismissHeight: dismiss.height,
+        heightDelta: Math.abs(submit.height - dismiss.height),
+        topDelta: Math.abs(submit.top - dismiss.top),
+        bottomDelta: Math.abs(submit.bottom - dismiss.bottom),
+      };
+    });
+
+    assert.ok(sizing, 'both Answer and Dismiss render a box to measure');
+    // Chrome lays out in 1/64px: 40.375 -> 40.38, so allow a quarter pixel.
+    let TOLERANCE = 0.5;
+    assert.ok(sizing.heightDelta <= TOLERANCE,
+      `Dismiss should be the same height as Answer (Answer ${sizing.submitHeight}px, ` +
+      `Dismiss ${sizing.dismissHeight}px, delta ${sizing.heightDelta}px)`);
+    assert.ok(sizing.topDelta <= TOLERANCE,
+      `Dismiss should be level with Answer at the top edge (delta ${sizing.topDelta}px)`);
+    assert.ok(sizing.bottomDelta <= TOLERANCE,
+      `Dismiss should be level with Answer at the bottom edge (delta ${sizing.bottomDelta}px)`);
+
     // (4) Submitting posts the typed text to the answer endpoint. This is the
     // assertion that fails when the shell never wires `bindAnswerForm`.
     let answerText = 'Split the renderer first, then ship.';

@@ -194,19 +194,6 @@ function syncFrameThreadBody(app, sessionID, options) {
   }
 }
 
-export function cleanupReactiveBindings(app, root = app) {
-  let nodes = [ root, ...root.querySelectorAll('*') ];
-  for (let node of nodes) {
-    if (!Array.isArray(node.__bindings))
-      continue;
-
-    for (let cleanup of node.__bindings)
-      cleanup?.();
-
-    node.__bindings = [];
-  }
-}
-
 export function connectFrameListObserver(app) {
   // W8 lifecycle: renderers call this after every thread rebuild. Tear down the
   // previous listener + observer first so a re-render/re-connect can never stack
