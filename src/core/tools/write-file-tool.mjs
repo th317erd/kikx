@@ -37,11 +37,29 @@ export class WriteFileTool extends PluginInterface {
         type: 'boolean',
         description: 'Create missing parent directories before writing. Defaults to true.',
       },
+      expectedContentHash: {
+        type: 'string',
+        description: 'Required when the file already exists: the contentHash returned by read-file for the current contents. The write is refused if it does not match, which proves you read the file before overwriting it.',
+      },
     },
     required: [ 'path', 'content' ],
     additionalProperties: false,
   };
-  static help = 'Use write-file to write content to a local file. Relative paths resolve from your session cwd when one is set with cwd-set; otherwise they resolve from the Kikx server base cwd. mode defaults to overwrite; use append to add to an existing file, or create to fail if the file already exists. The tool returns write metadata only, while the full tool result is still stored in AeorDB.';
+  static help = [
+    'Use write-file to write content to a local file. Relative paths resolve from',
+    'your session cwd when one is set with cwd-set; otherwise they resolve from the',
+    'Kikx server base cwd. mode defaults to overwrite; use append to add to an',
+    'existing file, or create to fail if the file already exists. The tool returns',
+    'write metadata only, while the full tool result is stored in AeorDB.',
+    '',
+    'You must LOOK before you write. read-file returns contentHash for the file it',
+    'read; pass that value as expectedContentHash whenever the file may already',
+    'exist. The write is refused, with the file untouched, if the contents changed',
+    'since that read, or if the file exists and you supplied no hash at all. This',
+    'is deliberate: it is what prevents you from silently overwriting a file you',
+    'only assumed was empty. Omitting the hash is correct only when the file does',
+    'not exist yet.',
+  ].join('\n');
 
   async _execute(params = {}) {
     return await resolveFileAccess(this.context).writeFile(await resolveFileToolParams(params, this.context));

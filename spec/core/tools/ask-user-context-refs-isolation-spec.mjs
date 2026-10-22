@@ -18,7 +18,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { AskUserTool } from '../../../src/core/tools/index.mjs';
+import { AskUserTool, QuestionListTool } from '../../../src/core/tools/index.mjs';
 import { QuestionsStore } from '../../../src/core/questions/index.mjs';
 
 const ref = (type, id, label) => (label ? { type, id, label } : { type, id });
@@ -152,7 +152,7 @@ function createTool({ aeordb, questionsStore, frameEngine = null }) {
     todoState: null,
     // `flushFrameStore` is a no-op without a frame runtime.
   };
-  return tool;
+  return withDigest(tool, tool.context);
 }
 
 function createClient() {
@@ -198,4 +198,25 @@ function createClient() {
       return { items, total: items.length, hasMore: false };
     },
   };
+}
+
+// ask-user now demands proof that the agent looked first (see
+// question-dedupe.mjs). These specs predate that gate and are about the ask
+// itself, so they inject the current digest. The gate's own behaviour — absent,
+// stale, and duplicate digests — is covered by question-dedupe-spec.mjs with a
+// raw tool.
+async function currentQuestionDigest(context) {
+  let lister = new QuestionListTool(context);
+  let listed = await lister.execute({});
+  return listed.openDigest;
+}
+
+function withDigest(tool, context) {
+  let execute = tool.execute.bind(tool);
+  tool.execute = async (params = {}) => {
+    let observedQuestionDigest = params.observedQuestionDigest
+      || await currentQuestionDigest(context);
+    return execute({ ...params, observedQuestionDigest });
+  };
+  return tool;
 }

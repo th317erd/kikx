@@ -26,6 +26,7 @@ defineToolElement('kikx-shell-tool-use', ShellToolUse);
 defineToolElement('kikx-web-search-use', WebSearchUse);
 defineToolElement('kikx-fetch-use', FetchUse);
 defineToolElement('kikx-read-file-use', ReadFileUse);
+defineToolElement('kikx-question-list-use', ReadFileUse);
 defineToolElement('kikx-write-file-use', WriteFileUse);
 defineToolElement('kikx-output-read-use', OutputReadUse);
 defineToolElement('kikx-output-grep-use', OutputGrepUse);

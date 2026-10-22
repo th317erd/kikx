@@ -13,6 +13,11 @@ import {
   normalizeWakeSuppressed,
   QUESTION_MODES,
 } from './question-fields.mjs';
+import {
+  resolveVisibleSessionIDs,
+  selectVisiblePendingQuestions,
+  visibleQuestionDigest,
+} from './question-dedupe.mjs';
 
 const DEFAULT_ROOT_PATH = '/kikx';
 const MAX_QUESTIONS_PER_CALL = 25;
@@ -319,6 +324,125 @@ export class QuestionsStore {
     };
   }
 
+  /**
+   * Visible pending questions for a session tree: the root session plus every
+   * descendant, never siblings or unrelated sessions.
+   *
+   * Reads the open index only (no per-question scans), then fetches the
+   * matching question docs so the caller gets `answer`, `answerSource`, and
+   * `dismissalReason` too. Those fields are what let an agent tell a real user
+   * decision from its own `defaultAnswer` assumption — without them a bot
+   * cannot know whether a "answered" question was actually decided.
+   *
+   * `openDigest` is a pure sha256 of the pending set, which is what `ask-user`
+   * demands before it will write.
+   */
+  async listVisibleQuestions({ sessionID, rootSessionID, status = 'open' } = {}) {
+    let root = normalizeOptionalString(rootSessionID) || normalizeOptionalString(sessionID);
+    if (!root)
+      throw new TypeError('listVisibleQuestions requires sessionID');
+
+    let visibleSessionIDs = resolveVisibleSessionIDs(root, await this.listSessionTree());
+    let index = await this.readOpenIndex();
+    let pending = selectVisiblePendingQuestions(index.summaries, visibleSessionIDs);
+    let normalizedStatus = normalizeOptionalString(status) || 'open';
+
+    // The open index carries open questions only — that is what keeps the Inbox
+    // fast. So the pending set always comes from it, which is also why the
+    // digest can only ever describe the pending set. Anything broader has to
+    // read the per-question docs, and only when the caller explicitly asks:
+    // answering "did the user already handle the rest of my batch?" requires
+    // seeing terminal questions too.
+    let questions = normalizedStatus === 'open'
+      ? await this.readQuestionsByID(pending.map((summary) => summary.id))
+      : await this.listQuestionsInSessions(visibleSessionIDs);
+
+    if (normalizedStatus !== 'all')
+      questions = questions.filter((question) => question.status === normalizedStatus);
+
+    questions.sort(compareSummaries);
+
+    return {
+      rootSessionID: root,
+      sessionIDs: visibleSessionIDs,
+      openDigest: visibleQuestionDigest(pending),
+      questions,
+      total: questions.length,
+    };
+  }
+
+  async readQuestionsByID(questionIDs = []) {
+    let questions = [];
+
+    for (let questionID of questionIDs) {
+      let doc = null;
+      try {
+        doc = await this.aeordb.getFile(this.questionPath(questionID));
+      } catch (error) {
+        if (error.status !== 404)
+          throw error;
+
+        continue;
+      }
+
+      let question = normalizeQuestionDoc(doc);
+      if (question)
+        questions.push(question);
+    }
+
+    return questions;
+  }
+
+  /**
+   * Every question in the given sessions, whatever its status. Opt-in only —
+   * this reads the per-question docs, which is exactly the scan the open index
+   * exists to avoid on the Inbox path.
+   */
+  async listQuestionsInSessions(sessionIDs = []) {
+    let allowed = new Set(Array.isArray(sessionIDs) ? sessionIDs : []);
+    let { items } = await this.aeordb.list(`${this.rootPath}/questions`, { glob: '*.json' });
+    let questions = [];
+
+    for (let item of items) {
+      let doc = null;
+      try {
+        doc = await this.aeordb.getFile(item.path);
+      } catch (error) {
+        if (error.status !== 404)
+          throw error;
+
+        continue;
+      }
+
+      let question = normalizeQuestionDoc(doc);
+      if (!question)
+        continue;
+
+      if (!allowed.has(question.sessionID))
+        continue;
+
+      questions.push(question);
+    }
+
+    return questions;
+  }
+
+  /**
+   * Sessions, for the parent/child walk. Best-effort: a store without a session
+   * tree degrades to "just this session", which is strictly narrower, never wider.
+   */
+  async listSessionTree() {
+    let lister = this.frameStore || this.aeordb?.frameStore || null;
+    if (typeof lister?.listSessions !== 'function')
+      return [];
+
+    try {
+      return await lister.listSessions({ limit: 5000 });
+    } catch (_error) {
+      return [];
+    }
+  }
+
   async listForAgent(agentID) {
     let id = normalizeRequiredString(agentID, 'agentID');
     let index = null;
@@ -600,7 +724,7 @@ function compareSummaries(left, right) {
   return left.id.localeCompare(right.id);
 }
 
-function normalizeQuestionList(value) {
+export function normalizeQuestionList(value) {
   if (!Array.isArray(value) || value.length === 0)
     throw new TypeError('ask-user requires at least one question');
 

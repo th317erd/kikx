@@ -48,7 +48,20 @@ export class ReadFileTool extends PluginInterface {
     required: [ 'path' ],
     additionalProperties: false,
   };
-  static help = 'Use read-file to inspect a local file by path. Relative paths resolve from your session cwd when one is set with cwd-set; otherwise they resolve from the Kikx server base cwd. Use startLine/endLine for 1-based inclusive line ranges, or startCharacter/endCharacter for 0-based character ranges with an exclusive end. Do not mix line and character ranges. The full tool output is stored in AeorDB; very large results will be returned as a tool output pointer that you can read with output-read.';
+  static help = [
+    'Use read-file to inspect a local file by path. Relative paths resolve from your',
+    'session cwd when one is set with cwd-set; otherwise they resolve from the Kikx',
+    'server base cwd. Use startLine/endLine for 1-based inclusive line ranges, or',
+    'startCharacter/endCharacter for 0-based character ranges with an exclusive end.',
+    'Do not mix line and character ranges. The full tool output is stored in AeorDB;',
+    'very large results will be returned as a tool output pointer that you can read',
+    'with output-read.',
+    '',
+    'The result includes contentHash: a sha256 of the WHOLE file, even when you',
+    'requested only a range. Pass it as expectedContentHash to write-file to prove',
+    'you read the file before overwriting it; if the file changes in between, the',
+    'write is refused and you must read again.',
+  ].join('\n');
 
   async _execute(params = {}) {
     return await resolveFileAccess(this.context).readFile(await resolveFileToolParams(params, this.context));
