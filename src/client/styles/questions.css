@@ -833,6 +833,33 @@
   --lpb-text: var(--kikx-dismiss-accent);
 }
 
+/* Match Answer's box exactly.
+
+   The framework's .aeor-confirm-btn is a deliberately compact control:
+   font-size 0.75rem, line-height normal, padding 0.125rem 0.625rem, and
+   min-height 1.75rem. Beside the Answer button (font-size 13px * 1.25,
+   line-height 1.5, padding 7px 16px) it measured 81.98x35 against
+   95.25x40.38 — a 5.38px height difference split evenly above and below,
+   so Dismiss rendered as a visibly undersized pill floating in the row.
+
+   There is no aeor-button component to reuse (the framework has no generic
+   button primitive), so the shared box is expressed here instead: the same
+   font-size, line-height, padding and radius as __submit, in the same
+   border-box, which makes the heights compute alike from content rather than
+   from a hardcoded pixel. min-height is zeroed because the framework's
+   1.75rem floor is shorter than the box those values produce and would
+   otherwise be the only remaining difference.
+
+   The radius differs by half a pixel (0.375rem vs 7px); aligning it keeps the
+   two pills the same shape at the same size. */
+.kikx-question-card__dismiss .aeor-confirm-btn {
+  padding: 7px 16px;
+  border-radius: 7px;
+  font-size: calc(13px * 1.25);
+  line-height: 1.5;
+  min-height: 0;
+}
+
 .kikx-question-card__dismiss-close {
   --apb-fill: var(--kikx-dismiss-accent);
   --apb-icon: var(--kikx-dismiss-accent);
@@ -858,13 +885,14 @@
 /* Plain fallbacks carry text instead of a ring/bar, so they need the look of the
    control they stand in for. */
 .kikx-question-card__dismiss--fallback {
-  padding: 7px 14px;
+  padding: 7px 16px;
   border: 1px solid #39424c;
   border-radius: 7px;
   background: transparent;
   color: var(--kikx-dismiss-accent);
   font: inherit;
   font-size: calc(13px * 1.25);
+  line-height: 1.5;
   cursor: pointer;
 }
 
