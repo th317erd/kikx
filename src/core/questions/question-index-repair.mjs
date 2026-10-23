@@ -1,5 +1,10 @@
 'use strict';
 
+import {
+  normalizeQuestionDoc,
+  summarizeQuestion,
+} from './questions-store.mjs';
+
 /**
  * Repair for the derived ask-user indexes.
  *
@@ -107,6 +112,20 @@ export async function repairQuestionIndex(store, options = {}) {
     .map((doc) => doc.id)
     .sort();
 
+  // A summary is a *projection*, so it can go stale without any id changing:
+  // when `summarizeQuestion` gains a field, every index entry written by the
+  // older code keeps the old shape forever, because an id-only comparison sees
+  // nothing wrong. That is exactly how a newly exposed field would land for new
+  // questions while every existing row stayed silently incomplete — so the
+  // rebuild decision compares projections, not just ids.
+  // `normalizeQuestionDoc` rejects a doc whose shape it cannot trust, so a
+  // screened-but-unusable doc drops out here rather than reaching the projection.
+  let expectedSummaries = scanned
+    .filter((doc) => doc.status === 'open')
+    .map((doc) => normalizeQuestionDoc(doc))
+    .filter(Boolean)
+    .map((doc) => summarizeQuestion(doc));
+
   let expectedByAgent = new Map();
   for (let doc of scanned) {
     if (doc.status !== 'open' || !doc.agentID)
@@ -127,6 +146,8 @@ export async function repairQuestionIndex(store, options = {}) {
   if (await indexesAlreadyCorrect(store, {
     existingIDs,
     expectedOpenIDs,
+    existingSummaries: Array.isArray(existing?.summaries) ? existing.summaries : [],
+    expectedSummaries,
     expectedByAgent,
     existingMirrorAgentIDs,
   })) {
@@ -167,10 +188,15 @@ export async function repairQuestionIndex(store, options = {}) {
 async function indexesAlreadyCorrect(store, {
   existingIDs,
   expectedOpenIDs,
+  existingSummaries,
+  expectedSummaries,
   expectedByAgent,
   existingMirrorAgentIDs,
 }) {
   if (!sameIDs(existingIDs, expectedOpenIDs))
+    return false;
+
+  if (!sameSummaries(existingSummaries, expectedSummaries))
     return false;
 
   let agentIDs = new Set([
@@ -185,6 +211,73 @@ async function indexesAlreadyCorrect(store, {
   }
 
   return true;
+}
+
+/**
+ * Compare index summaries against freshly projected ones.
+ *
+ * Subset comparison, keyed by summary id: every field the current projection
+ * produces must already be present with that exact value. Extra keys already in
+ * the index are ignored on purpose — they only mean the row was written by a
+ * different build, and treating them as wrong would make the repair rewrite the
+ * index on every single boot. Missing or differing values are what must rebuild.
+ */
+function sameSummaries(existing, expected) {
+  let byID = new Map();
+  for (let summary of existing) {
+    if (summary?.id)
+      byID.set(summary.id, summary);
+  }
+
+  for (let wanted of expected) {
+    let have = byID.get(wanted.id);
+    if (!have)
+      return false;
+
+    for (let [ key, value ] of Object.entries(wanted)) {
+      if (!sameValue(have[key], value))
+        return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Structural equality for JSON values, insensitive to object key order.
+ *
+ * Comparing serialized forms would be cheaper, but key order is not part of a
+ * JSON object's identity: a storage layer is free to normalize it on write
+ * (Postgres jsonb sorts keys recursively) and the same value would then compare
+ * unequal, making the repair rewrite the index on every boot. Today the
+ * documents table is `body text`, so order survives the round trip — this keeps
+ * the comparison correct if that ever becomes jsonb, which the codebase already
+ * casts elsewhere.
+ */
+function sameValue(left, right) {
+  if (left === right)
+    return true;
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right))
+      return false;
+    if (left.length !== right.length)
+      return false;
+    return left.every((item, index) => sameValue(item, right[index]));
+  }
+
+  if (left && right && typeof left === 'object' && typeof right === 'object') {
+    let leftKeys = Object.keys(left);
+    let rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length)
+      return false;
+    return leftKeys.every((key) => (
+      Object.hasOwn(right, key) && sameValue(left[key], right[key])
+    ));
+  }
+
+  // NaN and ±0 do not occur in question docs, but keep the fallback honest.
+  return Number.isNaN(left) && Number.isNaN(right);
 }
 
 function sameIDs(left, right) {
