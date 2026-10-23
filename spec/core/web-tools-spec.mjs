@@ -451,10 +451,19 @@ test('WriteFileTool appends and create mode refuses existing files', async () =>
       fileAccess: new LocalFileAccessService({ cwd: dir }),
     },
   });
+  // Appending overwrites bytes too, so it demands the same If-Match proof as an
+  // overwrite: read first, then present the hash.
+  let read = new ReadFileTool({
+    services: {
+      fileAccess: new LocalFileAccessService({ cwd: dir }),
+    },
+  });
+  let observed = await read.execute({ path: 'sample.txt' });
   let appendResult = await tool.execute({
     path: 'sample.txt',
     content: 'two\n',
     mode: 'append',
+    expectedContentHash: observed.contentHash,
   });
 
   assert.equal(appendResult.created, false);

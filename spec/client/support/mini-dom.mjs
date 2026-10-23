@@ -357,6 +357,30 @@ export class MiniElement extends MiniNode {
     return node;
   }
 
+  // Swap one child for another, keeping position. The client uses this to move
+  // the Inbox between its empty state and its list without rebuilding the shell,
+  // and a shim that omits a standard API turns a legitimate in-place swap into a
+  // TypeError that reads like a product bug.
+  replaceChild(next, previous) {
+    let index = this.childNodes.indexOf(previous);
+    if (index < 0)
+      throw new Error('replaceChild: the node to replace is not a child of this node');
+
+    this.childNodes.splice(index, 1);
+    previous.parentNode = null;
+    disconnectSubtree(previous);
+
+    let node = typeof next === 'string' ? new MiniText(next) : next;
+    if (node.parentNode)
+      node.parentNode.removeChild(node);
+
+    this.childNodes.splice(index, 0, node);
+    node.parentNode = this;
+    connectSubtree(node);
+
+    return previous;
+  }
+
   // Replaces every child with the given nodes (strings become text nodes, like
   // the real DOM). The client uses this to swap a rebuilt thread body in place.
   replaceChildren(...nodes) {
@@ -605,17 +629,41 @@ export class MiniWindow {
   }
 }
 
-class CustomElementRegistry {
+export class CustomElementRegistry {
   constructor() {
     this._byName = new Map();
   }
 
   define(name, constructor) {
     let key = String(name).toLowerCase();
+
+    // Mirror the real registry closely enough that a spec can catch the two
+    // errors it raises, because silently tolerating them hid a real outage:
+    // `customElements.define()` THROWS when a name is taken, and it THROWS when
+    // the same constructor is bound to a second name. A shim that quietly
+    // ignored both made `built-in-tool-uses.mjs` look healthy in every spec
+    // while the browser refused the whole module.
     if (this._byName.has(key))
-      return;
+      throw new Error(`Failed to execute 'define' on 'CustomElementRegistry': the name "${key}" has already been used with this registry`);
+
+    for (let [ existingKey, existingCtor ] of this._byName) {
+      if (existingCtor === constructor) {
+        throw new Error(`Failed to execute 'define' on 'CustomElementRegistry': this constructor has already been used with this registry (already bound to "${existingKey}")`);
+      }
+    }
+
     constructor.__tagName = key;
     this._byName.set(key, constructor);
+  }
+
+  // Read-only snapshot so a spec can assert tag uniqueness without poking at
+  // the private map.
+  definedTagNames() {
+    return [ ...this._byName.keys() ];
+  }
+
+  definedConstructorFor(name) {
+    return this._byName.get(String(name).toLowerCase()) || undefined;
   }
 
   get(name) {

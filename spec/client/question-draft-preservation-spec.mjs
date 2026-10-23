@@ -317,11 +317,18 @@ test('answering through the view repaints in place instead of rebuilding the she
   assert.deepEqual(posted, [ '/api/v1/questions/q_1/answer' ]);
 
   assert.equal(renders, 0, 'no full shell rebuild — that is what used to wipe the drafts');
-  assert.equal(questionsState.questions.length, 1, 'the answered question left the model immediately');
+
+  // The answered row is KEPT, not deleted: it stays on screen with a receipt for
+  // the settle window so the user sees that their answer landed. What must not
+  // happen is that it is still open, or that the sibling card is disturbed.
+  let answered = questionsState.questions.find((entry) => entry.id === 'q_1');
+  assert.ok(answered, 'the answered question is retained as a receipt, not deleted');
+  assert.equal(answered.status, 'answered', 'the retained row is terminal, so it counts as closed');
+  assert.ok(answered.settleAfter > 0, 'the retained row carries its receipt window');
 
   let remaining = cardsOf(screen);
-  assert.equal(remaining.length, 1);
-  assert.equal(inputOf(remaining[0]).value, 'this must survive', 'the other draft is untouched');
+  assert.equal(remaining.length, 2, 'both rows are still on screen while the receipt runs');
+  assert.equal(inputOf(remaining[1]).value, 'this must survive', 'the other draft is untouched');
 });
 
 test('a read repaints only the badge, never the list', async () => {

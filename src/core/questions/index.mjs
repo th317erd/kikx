@@ -18,6 +18,17 @@ export {
 } from './question-fields.mjs';
 
 export {
+  VISIBLE_QUESTION_STATUSES,
+  assertAskPrecondition,
+  canonicalVisibleQuestions,
+  findDuplicateQuestions,
+  questionTextKey,
+  resolveVisibleSessionIDs,
+  selectVisiblePendingQuestions,
+  visibleQuestionDigest,
+} from './question-dedupe.mjs';
+
+export {
   DELIVERY_RETRY_DELAYS_MS,
   applyDefaultAnswer,
   findDueDefaults,

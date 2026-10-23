@@ -24,21 +24,25 @@ import {
   navigateInbox,
 } from '../state/kikx-state.mjs';
 import { announceAnswerStatus } from './answer-notice.mjs';
-import { buildInboxList, inboxHeader, syncInboxList } from './kikx-inbox-list.mjs';
+import { buildInboxList, inboxEmptyState, inboxHeader, syncInboxList } from './kikx-inbox-list.mjs';
 import {
   applyLocalAnswer,
   applyLocalDismiss,
   applyLocalRead,
+  captureSettlementTarget,
+  revertLocalSettlement,
 } from '../state/questions-local-state.mjs';
 import { answerDraftStore } from '../state/question-drafts.mjs';
 import {
   canSubmitAnswer,
+  expiredSettledQuestions,
   groupHeading,
   groupQuestions,
   NO_RESPONSE_ANSWER_TEXT,
   normalizeAnswerText,
   normalizeQuestionList,
   questionAge,
+  retireQuestion,
   unreadQuestionCount,
 } from '../state/questions-state.mjs';
 
@@ -94,6 +98,45 @@ export function buildInboxSidebarEntry(app) {
  * in-place repaint creates cards for questions that arrived after the original
  * render, and those cards need the same wiring or they render a dead box.
  */
+// How long a settled row stays on screen, counting down, before it leaves.
+// One constant, used both to drive the fuse and to decide expiry, so the two can
+// never disagree about when the receipt ends.
+export const SETTLE_WINDOW_MS = 60000;
+
+/**
+ * Drop every settled row whose receipt window has elapsed.
+ *
+ * Idempotent and cheap: it reads deadlines out of the data rather than relying
+ * on one timer per row, so it is safe to call from a repaint, an event or a
+ * tick. Expiry is therefore decided by the deadline, never by whether a timer
+ * happened to survive a rebuild.
+ */
+export function retireExpiredQuestionRows(app) {
+  let questionsState = getQuestionsState(app._state);
+  let expired = expiredSettledQuestions(questionsState.questions || []);
+  if (expired.length === 0)
+    return [];
+
+  let remaining = questionsState.questions || [];
+  for (let questionID of expired)
+    remaining = retireQuestion(remaining, questionID);
+
+  questionsState.questions = remaining;
+  return expired;
+}
+
+/**
+ * Repaint after a local settlement change: in place when possible, and only
+ * falling back to a full render when the list shape genuinely changed.
+ *
+ * Used on BOTH edges of an optimistic close — the settle and the rollback — so
+ * the two can never disagree about how the change is shown.
+ */
+function repaintQuestionShell(app) {
+  if (!app._syncQuestionShell?.())
+    app._requestRender?.();
+}
+
 export function questionAnswerHandlers(app, overrides = {}) {
   return {
     onSubmit: (questionID, answerText) => app._submitQuestionAnswer?.(questionID, answerText),
@@ -101,6 +144,14 @@ export function questionAnswerHandlers(app, overrides = {}) {
     // The user declining to answer. Distinct from `onDismiss` above, which is the
     // asker withdrawing its own question.
     onDismissAnswer: (questionID) => app._dismissQuestionAnswer?.(questionID),
+    // The receipt's fuse ran out, or the user pressed it to close now. Either
+    // way the row has had its full window and leaves.
+    onSettleExpired: (questionID) => {
+      let questionsState = getQuestionsState(app._state);
+      questionsState.questions = retireQuestion(questionsState.questions || [], questionID);
+      if (!app._syncQuestionShell?.())
+        app._requestRender?.();
+    },
     onRead: (questionID) => app._markQuestionRead?.(questionID),
     // Typed-but-unsent answers, restored whenever a card is re-created. Held on
     // the app so every route that rebuilds the Inbox (shell render, view sync,
@@ -132,7 +183,7 @@ export function buildInboxView(app, options = {}) {
 
     return section.class('kikx-inbox')(
       inboxHeader(app),
-      questions.length === 0 ? buildInboxEmptyState() : body,
+      questions.length === 0 ? inboxEmptyState(app) : body,
     ).build(document);
   }, { surface: 'inbox' }) || section.class('kikx-inbox')(h2('Inbox')).build(document);
 }
@@ -263,6 +314,8 @@ export function syncQuestionShell(app) {
   // caller used to rebuild. `syncInboxList` preserves those drafts and reports
   // `false` when the shape changed in a way that genuinely needs a rebuild
   // (empty <-> non-empty).
+  retireExpiredQuestionRows(app);
+
   return syncInboxList(app, questionAnswerHandlers(app));
 }
 
@@ -280,6 +333,33 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
     announceAnswerStatus(app, message, noticeOptions)
   ));
 
+  let questionsState = getQuestionsState(app._state);
+
+  // Captured while the row is still open, so a failed write knows what it is
+  // allowed to put back — and whether anything of ours is there at all.
+  let target = captureSettlementTarget(questionsState, questionID, { status: 'answered' });
+
+  // Closed BEFORE the POST, not after it.
+  //
+  // This used to `await` first, which meant the row sat there looking unanswered
+  // for the whole round trip and only reacted once the server replied. The wait
+  // is invisible on localhost and unmissable on a slow link, and it made a
+  // dropped connection look like a dead button. The receipt now appears on the
+  // click.
+  //
+  // Safe only because it is reversible: `revertLocalSettlement` below puts the
+  // row back if the write is rejected, and `closedAt` is held as the token that
+  // proves the rollback is undoing THIS settlement.
+  let closedAt = Date.now();
+  applyLocalAnswer(questionsState, questionID, {
+    answer: text,
+    closedAt,
+    // Kept on screen, counting down, instead of vanishing: an answer that
+    // simply disappears gives the user no confirmation their click landed.
+    settleAfter: SETTLE_WINDOW_MS,
+  });
+  repaintQuestionShell(app);
+
   try {
     let result = await postJSON(`/api/v1/questions/${encodeURIComponent(questionID)}/answer`, {
       answer: text,
@@ -289,19 +369,9 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
     // The server answers 200 even when delivery failed: the answer is durable
     // and `delivered` distinguishes the two cases (see question-routes.mjs).
     //
-    // Closed locally, immediately: the row must leave the Inbox when the POST
-    // resolves, not when the server's `question.answered` event eventually
-    // arrives. The closed id is also recorded so a `fetchQuestions` that was
-    // already in flight cannot re-list the question as open.
-    let questionsState = getQuestionsState(app._state);
-    applyLocalAnswer(questionsState, questionID, { answeredAt: payload?.answeredAt });
-
-    // Repaint in place when possible; only fall back to a full render when the
-    // list shape changed (a rebuild there is unavoidable, and by then this row
-    // is the only one whose draft was consumed).
-    if (!app._syncQuestionShell?.())
-      app._requestRender?.();
-
+    // Nothing more to do to the row: it was closed optimistically and the server
+    // has now accepted the write. The closed id was already recorded, so a
+    // `fetchQuestions` that was in flight cannot re-list it as open.
     // The row is already gone from the list by the time this runs, so the
     // notice is the only thing that can confirm the send. `delivered: false` is
     // not a failure — the server stored the answer and will retry the wake-up —
@@ -329,6 +399,22 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
     let message = typeof error?.message === 'string' && error.message !== ''
       ? `Could not send the answer: ${error.message}`
       : 'Could not send the answer.';
+
+    // Reopen the row: the receipt was a promise the server has now broken, and
+    // leaving "You replied." on screen for an answer that was never stored is
+    // worse than the delay this optimistic close removed. The draft was never
+    // cleared, so the text the user typed comes back with the form.
+    //
+    // Only a row this close actually changed is reopened: if the question was
+    // already terminal when the user acted, the failure of our redundant write
+    // says nothing about that row's real state.
+    if (target?.wasOpen) {
+      revertLocalSettlement(questionsState, questionID, {
+        expectedClosedAt: closedAt,
+        expectedStatus: 'answered',
+      });
+      repaintQuestionShell(app);
+    }
 
     announce(message, { tone: 'error' });
 
@@ -364,6 +450,20 @@ export async function dismissQuestionAnswer(app, questionID, options = {}) {
     announceAnswerStatus(app, message, noticeOptions)
   ));
 
+  let questionsState = getQuestionsState(app._state);
+  // A row that was already terminal before the user acted is not ours to reopen
+  // merely because our own write failed.
+  let target = captureSettlementTarget(questionsState, questionID, { status: 'dismissed' });
+
+  // Same optimistic close as a real answer, and for the same reason: a dismissal
+  // that takes a round trip to acknowledge reads as a click that did nothing.
+  let closedAt = Date.now();
+  applyLocalDismiss(questionsState, questionID, {
+    closedAt,
+    settleAfter: SETTLE_WINDOW_MS,
+  });
+  repaintQuestionShell(app);
+
   try {
     let result = await postJSON(`/api/v1/questions/${encodeURIComponent(questionID)}/answer`, {
       // Ignored by a server that understands `silent`; satisfies the answer
@@ -373,12 +473,6 @@ export async function dismissQuestionAnswer(app, questionID, options = {}) {
     });
 
     let payload = result?.data || result || {};
-    let questionsState = getQuestionsState(app._state);
-    applyLocalAnswer(questionsState, questionID, { answeredAt: payload?.answeredAt });
-
-    if (!app._syncQuestionShell?.())
-      app._requestRender?.();
-
     // Said plainly, because a dismissal is silent BY DESIGN and the absence of
     // any feedback would otherwise be indistinguishable from a failed click.
     announce('Dismissed. The agent was not woken.', { tone: 'success' });
@@ -388,6 +482,15 @@ export async function dismissQuestionAnswer(app, questionID, options = {}) {
     let message = typeof error?.message === 'string' && error.message !== ''
       ? `Could not dismiss the question: ${error.message}`
       : 'Could not dismiss the question.';
+
+    // The question was never actually dismissed, so it must reappear as open.
+    if (target?.wasOpen) {
+      revertLocalSettlement(questionsState, questionID, {
+        expectedClosedAt: closedAt,
+        expectedStatus: 'dismissed',
+      });
+      repaintQuestionShell(app);
+    }
 
     announce(message, { tone: 'error' });
 
@@ -430,7 +533,7 @@ export async function dismissQuestion(app, questionID, reason = '') {
   }
 
   let questionsState = getQuestionsState(app._state);
-  applyLocalDismiss(questionsState, questionID);
+  applyLocalDismiss(questionsState, questionID, { settleAfter: SETTLE_WINDOW_MS });
 
   if (!app._syncQuestionShell?.())
     app._requestRender?.();

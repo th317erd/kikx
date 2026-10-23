@@ -1,6 +1,11 @@
 'use strict';
 
 import { PluginInterface } from '../plugins/index.mjs';
+import {
+  assertAskPrecondition,
+  findDuplicateQuestions,
+} from '../questions/question-dedupe.mjs';
+import { normalizeQuestionList } from '../questions/questions-store.mjs';
 
 const DEFAULT_MAX_QUESTIONS = 25;
 
@@ -84,11 +89,25 @@ export class AskUserTool extends PluginInterface {
         type: 'string',
         description: 'Optional session to address the question to. Defaults to the current session.',
       },
+      observedQuestionDigest: {
+        type: 'string',
+        description: 'The openDigest returned by question-list. Required: it proves you checked what is already pending before asking, so you do not duplicate a question. The call is refused if the pending set changed since you looked.',
+      },
     },
-    required: [ 'questions' ],
+    required: [ 'questions', 'observedQuestionDigest' ],
     additionalProperties: false,
   };
   static help = [
+    'LOOK FIRST. Before asking, call question-list. It returns the questions',
+    'already pending in this session and its child sessions, plus an openDigest.',
+    'Pass that openDigest as observedQuestionDigest. ask-user refuses to run',
+    'without it, refuses if the pending set changed since you looked, and refuses',
+    'to ask anything that duplicates a question already pending. This exists',
+    'because re-asking something the user has already been asked is a real and',
+    'repeated failure, especially after a compaction or restart. If a batch was',
+    'only partially answered, question-list shows which ones are still open — ask',
+    'about those, not the whole set again.',
+    '',
     'Use ask-user only when the user must decide: naming, priorities, scope,',
     'ambiguous requirements, or a judgment call with real trade-offs. Do not ask',
     'what you can settle yourself by reading the code or docs. Ask everything you',
@@ -154,6 +173,27 @@ export class AskUserTool extends PluginInterface {
     if (!sessionID)
       throw new Error(`${this.constructor.featureName} requires a session context`);
 
+    // Validate the payload BEFORE the precondition. A malformed call should be
+    // told what is malformed, not told to go read question-list first; the
+    // store validates again on write, which is cheap and keeps one authority.
+    normalizeQuestionList(params.questions);
+
+    // Look-before-you-write. Recomputed here from the same source question-list
+    // reads, so a digest copied without reading (or replayed after the set
+    // moved) cannot satisfy it.
+    let visible = await this.questionsStore().listVisibleQuestions({ sessionID, status: 'open' });
+    let duplicates = findDuplicateQuestions({
+      summaries: visible.questions,
+      questions: params.questions,
+    });
+
+    assertAskPrecondition({
+      sessionID,
+      expectedDigest: params.observedQuestionDigest,
+      actualDigest: visible.openDigest,
+      duplicates,
+    });
+
     let result = await this.questionsStore().createQuestions({
       questions: params.questions,
       mode: params.mode,
@@ -164,7 +204,10 @@ export class AskUserTool extends PluginInterface {
       // `frameID` is reserved for the emitted Question frame (set below);
       // the frame the tool was called from is the tool-call frame.
       toolCallFrameID: params._frameID || this.context.frame?.id || null,
-      contextRefs: collectQuestionContextRefs(params.questions),
+      // Deliberately NOT setting a batch-level `contextRefs`: the schema puts
+      // this field inside each question, and the store reads it from there.
+      // Passing a union here is what silently copied one question's references
+      // onto every sibling in the batch.
       focusAtAsk: this.context.todoState?.focus?.name || null,
       todoIDs: collectFocusTodoIDs(this.context.todoState),
     });
@@ -281,37 +324,6 @@ export class AskUserTool extends PluginInterface {
 }
 
 export const ASK_USER_MAX_QUESTIONS = DEFAULT_MAX_QUESTIONS;
-
-function collectQuestionContextRefs(questions) {
-  if (!Array.isArray(questions))
-    return [];
-
-  let refs = [];
-  let seen = new Set();
-  for (let question of questions) {
-    if (!Array.isArray(question?.contextRefs))
-      continue;
-
-    for (let ref of question.contextRefs) {
-      if (!ref || typeof ref !== 'object')
-        continue;
-
-      let type = normalizeOptionalString(ref.type);
-      let id = normalizeOptionalString(ref.id);
-      if (!type || !id)
-        continue;
-
-      let key = `${type}:${id}`;
-      if (seen.has(key))
-        continue;
-
-      seen.add(key);
-      refs.push(ref);
-    }
-  }
-
-  return refs;
-}
 
 function collectFocusTodoIDs(todoState) {
   let focus = todoState?.focus;

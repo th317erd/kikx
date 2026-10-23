@@ -3,6 +3,7 @@
 import { getDeletedSessions, getGridParentSessionID, getSelectedFrames, getSessionPaging, getSessionPreviews, getVisibleSessions } from '../state/kikx-state.mjs';
 import { thinkingAgents, threadVisibleFrames } from '../state/thinking-state.mjs';
 import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
+import { currentViewName } from '../state/navigation-stack.mjs';
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import { buildFrameThread } from './kikx-shell-builders.mjs';
 import { countRebuild } from './render-stats.mjs';
@@ -196,6 +197,26 @@ export function syncSessionShell(app) {
     });
     return true;
   }
+
+  // A view (Inbox, Activities) displaces `buildWindow` entirely -- see
+  // `buildRunnerShell` -- so while one is on top there is deliberately no thread
+  // title, no session grid and no frame list to repaint.
+  //
+  // That is not "I could not handle it". The only surface an event could still
+  // affect here is the sidebar Inbox badge, and that is owned by
+  // `syncQuestionShell` -- called by the `question.*` branch of the event
+  // dispatcher, and again by `fetchQuestions`. It deliberately does NOT run
+  // here: a badge repaint on every `session.saved` would be work with nothing to
+  // do, and this function is on the hot path for every frame event.
+  //
+  // Reporting `false` here made every `session.saved` -- a title edit, a new
+  // session, a soft delete in another tab -- trigger a full shell rebuild, which
+  // tore down and re-created the Inbox underneath the user. That is why an
+  // entirely unrelated page jumped on any runtime event, and why typing in an
+  // answer box lost its caret: the textarea was replaced by a new node, not
+  // edited in place.
+  if (currentViewName(app._state.navigationStack) !== null)
+    return true;
 
   // While the inline title editor is open there is no title button/h2, but the
   // window shell is still present. Returning false here would force a full app

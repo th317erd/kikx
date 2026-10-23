@@ -1,5 +1,6 @@
 'use strict';
 
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -34,6 +35,10 @@ export class LocalFileAccessService {
       path: absolutePath,
       encoding,
       sizeBytes: stat.size,
+      // Hash of the WHOLE file, never of the returned range: a write precondition
+      // must be satisfiable by a partial read too, or a bot that read lines 1-50
+      // would hold a hash nothing else could ever match.
+      contentHash: contentHashOf(buffer),
       bytesRead: Buffer.byteLength(content, encoding),
       truncated: Boolean(ranged?.truncated),
       ranged: Boolean(ranged),
@@ -51,10 +56,23 @@ export class LocalFileAccessService {
     let createDirectories = params.createDirectories !== false;
     let content = normalizeContentString(params.content);
     let buffer = encodeWriteContent(content, encoding);
-    let existedBefore = await pathExists(absolutePath);
+    let current = await readFileBytesOrNull(absolutePath);
+    let existedBefore = current !== null;
 
     if (mode === 'create' && existedBefore)
       throw new Error(`write-file refusing to overwrite existing file: ${absolutePath}`);
+
+    // Optimistic concurrency (If-Match semantics). A write is only allowed once
+    // the caller has proven it knows what is currently on disk: it must present
+    // the hash that read-file handed it. This is what stops a bot from
+    // clobbering a file it merely assumed was empty, and it also covers the
+    // "I thought this file did not exist, but now it does" race, because a file
+    // that exists at write time always demands a hash.
+    assertWritePrecondition({
+      absolutePath,
+      expectedContentHash: params.expectedContentHash,
+      currentHash: existedBefore ? contentHashOf(current) : null,
+    });
 
     if (createDirectories)
       await fs.mkdir(path.dirname(absolutePath), { recursive: true });
@@ -139,16 +157,74 @@ function writeFlagForMode(mode) {
   return 'w';
 }
 
-async function pathExists(filePath) {
+async function readFileBytesOrNull(filePath) {
   try {
-    await fs.stat(filePath);
-    return true;
+    return await fs.readFile(filePath);
   } catch (error) {
     if (error?.code === 'ENOENT')
-      return false;
+      return null;
 
     throw error;
   }
+}
+
+/**
+ * sha256 over raw file bytes. The digest covers the whole file so that it is a
+ * property of the file, not of the range the caller happened to read.
+ */
+export function contentHashOf(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+const CONTENT_HASH_PATTERN = /^[0-9a-f]{64}$/;
+
+/**
+ * Refuse the write unless the caller proved it read the current contents.
+ *
+ * Three distinct failures, each with its own message because the remedy
+ * differs: read first, re-read because it moved, or supply the hash you were
+ * already given.
+ */
+export function assertWritePrecondition({ absolutePath, expectedContentHash, currentHash }) {
+  let provided = normalizeOptionalContentHash(expectedContentHash);
+
+  if (currentHash === null) {
+    // Creating a file. Nothing is being overwritten, so there is nothing to
+    // prove; a hash here means the caller expected a file that is now gone.
+    if (provided)
+      throw new Error(
+        `write-file expected an existing file to overwrite, but it no longer exists: ${absolutePath}`,
+      );
+
+    return;
+  }
+
+  if (!provided) {
+    throw new Error(
+      `write-file requires expectedContentHash because the file already exists: ${absolutePath}. `
+      + 'Call read-file first and pass the contentHash it returns.',
+    );
+  }
+
+  if (provided !== currentHash) {
+    throw new Error(
+      `File has changed since last read. Please read it again, and provide the correct write content hash: ${absolutePath}`,
+    );
+  }
+}
+
+function normalizeOptionalContentHash(value) {
+  if (value == null || value === '')
+    return null;
+
+  if (typeof value !== 'string')
+    throw new TypeError('expectedContentHash must be a string');
+
+  let normalized = value.trim().toLowerCase();
+  if (!CONTENT_HASH_PATTERN.test(normalized))
+    throw new TypeError('expectedContentHash must be a 64-character sha256 hex digest, as returned by read-file');
+
+  return normalized;
 }
 
 function normalizeRangeRequest(params = {}) {

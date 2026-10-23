@@ -204,7 +204,7 @@ test('the Inbox lists open questions in the browser and posts a free-form answer
     await firstCard.locator('.kikx-question-card__submit').click();
 
     await page.waitForFunction(
-      () => document.querySelectorAll('article.kikx-question-card').length === 1,
+      () => document.querySelectorAll('article.kikx-question-card').length === 2,
       null,
       { timeout: 10000 },
     );
@@ -213,12 +213,126 @@ test('the Inbox lists open questions in the browser and posts a free-form answer
     assert.equal(answerPosts[0].questionID, OPEN_QUESTIONS[0].id, 'the answered question id is in the URL');
     assert.equal(answerPosts[0].body?.answer, answerText, 'the typed text is what gets POSTed');
 
-    // The answered row leaves the open list, and the badge follows it down.
-    assert.equal(await page.locator('article.kikx-question-card').count(), 1,
-      'the answered question is removed from the open list');
+    // (5) The settle window: an answered row is NOT removed on the click.
+    //
+    // This block replaces an assertion that the row count drops to 1. That
+    // expectation predates the 60s settle window and went red the moment the
+    // receipt shipped (535d2d0) -- invisibly, because this lane is not part of
+    // `npm test`. The row stays, with a receipt; only the open list and the
+    // badge shrink.
+    let answeredCard = page.locator('article.kikx-question-card[data-question-id="q-1"]');
+    await answeredCard.waitFor({ state: 'visible', timeout: 10000 });
+
+    assert.equal(await page.locator('article.kikx-question-card').count(), OPEN_QUESTIONS.length,
+      'the answered row is retained for its receipt window, not deleted on the click');
+
+    assert.equal(await answeredCard.getAttribute('data-question-status'), 'answered',
+      'the retained row is marked with the status the user chose');
+    assert.equal(await answeredCard.getAttribute('data-question-settled'), 'true',
+      'the retained row carries the settled flag that swaps the form for a receipt');
+
+    // The receipt itself. This is the complaint -- "there is no green 'You
+    // replied!' status, nothing. Just WHAM! Gone." -- asserted in a real browser.
+    let receipt = ((await answeredCard.locator('.kikx-question-card__closed').textContent()) || '').trim();
+    assert.equal(receipt, 'You replied.', 'the answered row shows a receipt instead of silently vanishing');
+
+    // The form is gone from the settled row: nothing left to submit.
+    assert.equal(await answeredCard.locator('.kikx-question-card__input').count(), 0,
+      'a settled row offers no answer box');
+
+    // The close control is the auto-complete fuse: a 60s window, and duration="0"
+    // so the NEXT press closes at once after the first press cancels the fuse.
+    let fuse = await answeredCard.evaluate((card) => {
+      let node = card.querySelector('.kikx-question-card__dismiss-close--settle');
+      if (!node)
+        return null;
+
+      // The drained ring is painted on the SVG circle, not on the `progress`
+      // attribute -- that attribute exists for an external caller to drive the
+      // ring, and the internal countdown never writes it. A full ring has
+      // strokeDashoffset 0; draining pushes the offset toward RING_LENGTH, so
+      // "time remaining" shrinking means the offset GROWING.
+      let ring = node.querySelector('.aeor-progress-btn__progress');
+      let raw = ring ? ring.style.strokeDashoffset : '';
+      let offset = raw === '' ? 0 : parseFloat(raw);
+
+      return {
+        autoCompleteAfter: node.getAttribute('auto-complete-after'),
+        duration: node.getAttribute('duration'),
+        countingDown: node.countingDown === true,
+        offset: Number.isFinite(offset) ? offset : null,
+      };
+    });
+
+    assert.ok(fuse, 'a settled row keeps a close control to end the receipt window');
+    assert.equal(fuse.autoCompleteAfter, '60000', 'the receipt window is 60s');
+    assert.equal(fuse.duration, '0', 'a press during the countdown closes immediately');
+    assert.equal(fuse.countingDown, true, 'the fuse counts down by itself, with no interaction');
+
+    // The ring reads as time REMAINING, so it drains toward zero. Sampled twice:
+    // the direction of travel is the assertion, not one absolute value.
+    await page.waitForTimeout(400);
+    let drained = await answeredCard.evaluate((card) => {
+      let node = card.querySelector('.kikx-question-card__dismiss-close--settle');
+      let ring = node ? node.querySelector('.aeor-progress-btn__progress') : null;
+      if (!ring)
+        return null;
+
+      let raw = ring.style.strokeDashoffset;
+      let offset = raw === '' ? 0 : parseFloat(raw);
+      return Number.isFinite(offset) ? offset : null;
+    });
+
+    assert.ok(typeof drained === 'number' && drained > fuse.offset,
+      `the countdown must visibly drain (ring offset started ${fuse.offset}, then ${drained})`);
+
+    // (6) The caret survives a runtime event while the Inbox is open.
+    //
+    // mini-DOM has no focus emulation, so "the node was not replaced" was only
+    // ever a proxy for "the caret was not stolen". This is the thing itself:
+    // type into the still-open card, push a `session.saved` through the SAME
+    // dispatcher the SSE stream uses, and require the same element to still hold
+    // focus at the same offset. If `syncSessionShell` ever regresses to returning
+    // false for an active view, the shell rebuilds and this fails.
+    let secondCard = page.locator('article.kikx-question-card[data-question-id="q-2"]');
+    let typed = 'Badge should count unread only.';
+    await secondCard.locator('.kikx-question-card__input').fill(typed);
+    await secondCard.locator('.kikx-question-card__input').evaluate((node) => {
+      node.focus();
+      node.setSelectionRange(4, 4);
+    });
+
+    await page.evaluate(() => {
+      document.querySelector('kikx-app')._onRuntimeEvent({
+        data: JSON.stringify({
+          type: 'session.saved',
+          session: { id: 'session_1', title: 'Rack Session', messageCount: 0 },
+        }),
+      });
+    });
+    await page.waitForTimeout(150);
+
+    let caret = await page.evaluate(() => {
+      let node = document.querySelector(
+        'article.kikx-question-card[data-question-id="q-2"] .kikx-question-card__input',
+      );
+
+      return {
+        focused: document.activeElement === node,
+        value: node ? node.value : null,
+        selectionStart: node ? node.selectionStart : null,
+      };
+    });
+
+    assert.equal(caret.focused, true,
+      'a session.saved repaint must not steal focus from the answer box');
+    assert.equal(caret.value, typed, 'the draft survives the repaint');
+    assert.equal(caret.selectionStart, 4, 'the caret keeps its position inside the draft');
+
+    // The open list really did shrink, even though the answered row stayed.
     let badgeAfter = page.locator('.kikx-sidebar__inbox-badge');
     if (await badgeAfter.count() > 0)
-      assert.equal((await badgeAfter.textContent()).trim(), '1', 'the badge drops with the open count');
+      assert.equal((await badgeAfter.textContent()).trim(), '1', 'the badge counts open questions only');
   } finally {
     await browser.close().catch(() => {});
     await fixture.close();

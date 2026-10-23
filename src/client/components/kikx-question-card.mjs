@@ -81,6 +81,34 @@ function closedNote(status) {
   return `Closed: ${status}.`;
 }
 
+// The receipt shown for a row this tab just settled. Deliberately not
+// `closedNote`: that one reports a status the SERVER recorded, and this is the
+// user's own action being acknowledged. A dismissal also has to say plainly
+// that nobody was woken, or "I dismissed it" is indistinguishable from "my
+// click did nothing".
+function settledNote(question) {
+  if (question.status === 'dismissed')
+    return 'Dismissed \u2014 you chose not to respond. The agent was not woken.';
+
+  return 'You replied.';
+}
+
+// The close control on a settled row: a fuse that retires the row once its
+// receipt window runs out. A press cancels the fuse (the component's own rule);
+// the NEXT press fires it immediately, which is `duration="0"`.
+function buildSettleControl(ownerDocument, settleAfter) {
+  let node = ownerDocument.createElement(PROGRESS_BUTTON_TAG);
+  node.className = `${DISMISS_CLOSE_CLASS} ${DISMISS_CLOSE_CLASS}--settle`;
+  node.setAttribute('icon', 'close');
+  node.setAttribute('label', 'Close now');
+  node.setAttribute('title', 'Close now');
+  node.setAttribute('size', '1.75rem');
+  node.setAttribute('duration', '0');
+  node.setAttribute('auto-complete-after', String(settleAfter));
+
+  return node;
+}
+
 // The builder needs an owner document. `app` is a custom element in the running
 // app, but tests and the inline frame may pass a bare owner object, so fall back
 // to the ambient document and finally to null (callers skip a null render
@@ -234,15 +262,21 @@ export function renderQuestionCard(app, question, options = {}) {
   let inputID = `${CARD_CLASS}-answer-${model.id}`;
   let closed = isTerminalQuestion(model);
 
-  // A terminal row is read-only: nothing to dismiss, and no box to decline.
-  let closeControl = closed ? null : buildDismissControl(ownerDocument, 'close');
+
+  // A settled row keeps its controls: the close button becomes the fuse that
+  // ends the receipt window, and a press on it closes the row straight away.
+  // Only a row with no receipt window is bare.
+  let settledFor = closed && model.closedAt > 0 && model.settleAfter > 0;
+  let closeControl = settledFor
+    ? { node: buildSettleControl(ownerDocument, model.settleAfter), holdToConfirm: false }
+    : (closed ? null : buildDismissControl(ownerDocument, 'close'));
 
   let node = article.class(CARD_CLASS)(
     buildHeader(model, age, groupCount, closeControl ? closeControl.node : null),
     p.class(TEXT_CLASS)(model.text),
     buildRefList(refs),
     closed
-      ? p.class(CLOSED_CLASS)(closedNote(model.status))
+      ? p.class(CLOSED_CLASS)(settledFor ? settledNote(model) : closedNote(model.status))
       : buildAnswerForm(inputID, ownerDocument),
   ).build(ownerDocument);
 
@@ -252,6 +286,11 @@ export function renderQuestionCard(app, question, options = {}) {
   node.setAttribute('data-question-id', model.id);
   node.setAttribute('data-question-status', model.status);
   node.setAttribute(STATE_ATTRIBUTE, closed ? 'closed' : 'idle');
+  if (settledFor) {
+    node.setAttribute('data-question-settled', 'true');
+    node.setAttribute('data-settled-until',
+      String(model.closedAt + model.settleAfter));
+  }
   if (model.groupID)
     node.setAttribute('data-group-id', model.groupID);
 
@@ -299,6 +338,14 @@ function setHidden(element, hidden) {
 export function bindAnswerForm(node, handlers = {}) {
   if (!node || typeof node.querySelector !== 'function')
     return;
+
+  // A settled row has no form to bind, but its close control is live: it ends
+  // the receipt window now instead of waiting for the fuse. Handled before the
+  // form lookup, which returns early for every settled row.
+  if (node.getAttribute && node.getAttribute('data-question-settled') === 'true') {
+    bindSettleControl(node, handlers);
+    return;
+  }
 
   let formNode = node.querySelector(`.${FORM_CLASS}`);
   let inputNode = node.querySelector(`.${INPUT_CLASS}`);
@@ -528,6 +575,31 @@ export function bindAnswerForm(node, handlers = {}) {
 
   wireDismissControl(node.querySelector(`.${DISMISS_CLASS}`));
   wireDismissControl(node.querySelector(`.${DISMISS_CLOSE_CLASS}`));
+
+  function bindSettleControl(target, settleHandlers) {
+    let control = target.querySelector(`.${DISMISS_CLOSE_CLASS}`);
+    if (!control)
+      return;
+
+    let questionID = target.getAttribute('data-question-id') || '';
+    let retired = false;
+
+    // Retire the row: tell the list to drop it now. The fuse event and a press
+    // both land here, so the row leaves exactly once whichever came first.
+    function retire() {
+      if (retired)
+        return;
+
+      retired = true;
+      if (typeof settleHandlers.onSettleExpired === 'function')
+        settleHandlers.onSettleExpired(questionID);
+    }
+
+    // The component fires this when an untouched fuse runs out, and again as
+    // `confirm` when the user presses a still-armed control (duration="0").
+    control.addEventListener('auto-complete', retire);
+    control.addEventListener('confirm', retire);
+  }
 
   // Defence in depth: any <button> a vendored hold-to-confirm control renders
   // into the light DOM inherits the surrounding form's submit behaviour unless
