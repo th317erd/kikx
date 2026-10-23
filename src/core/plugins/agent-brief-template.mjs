@@ -8,6 +8,7 @@
 import {
   AGIS_PRECEPTS_LINES,
   COMMUNICATION_CONTRACT_LINES,
+  COORDINATOR_DELEGATION_NUDGE_LINES,
   COORDINATOR_PREAMBLE_LINES,
   MULTIPARTY_CHARACTER_NOTE_LINES,
   PRE_START_READ_LINES,
@@ -192,6 +193,7 @@ export function buildMessageBrief(context = {}) {
       `coord:   ${coordinator}`,
       `parties: ${parties}`,
       ...(autonomous ? [ '', autonomous ] : []),
+      ...(context.isCoordinator === true ? [ '', ...COORDINATOR_DELEGATION_NUDGE_LINES ] : []),
       ...(context.suspensionWarning ? [ '', context.suspensionWarning ] : []),
       ...buildCompactionWarningLines(context),
       '',

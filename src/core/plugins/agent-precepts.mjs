@@ -141,6 +141,16 @@ export const COORDINATOR_PREAMBLE_LINES = [
   'is the safe default.',
 ];
 
+// Coordinator-only decision nudge, injected into Brief B every turn. It is
+// deliberately advisory: child sessions isolate broad work; invitations keep
+// collaborators side-by-side in the current session.
+export const COORDINATOR_DELEGATION_NUDGE_LINES = [
+  'Coordinator check: Is this a big new ask from the user? If so, consider starting',
+  'a new child session and building a team with the proper character profiles to',
+  'tackle the problem. Or, if side-by-side work fits better, invite the right bots',
+  'into this session.',
+];
+
 export const MULTIPARTY_CHARACTER_NOTE_LINES = [
   'With 2+ parties present, lean on your character and speak only when your',
   'expertise adds value, or when a documented project rule is violated; otherwise',

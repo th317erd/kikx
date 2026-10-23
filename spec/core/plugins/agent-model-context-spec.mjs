@@ -193,6 +193,37 @@ test('Brief A includes the coordinator preamble only for the coordinator with 3+
   }).text, /COORDINATOR PREAMBLE/);
 });
 
+test('Brief B carries the coordinator delegation nudge only for coordinators', () => {
+  let base = {
+    frame: {
+      id: 'msg_1',
+      type: 'UserMessage',
+      authorType: 'user',
+      authorDisplayName: 'Wyatt',
+      authorID: 'usr_1',
+      timestamp: Date.UTC(2026, 9, 1),
+      content: { text: 'A big new project' },
+    },
+    agent: { id: 'agent_1', name: 'Gemma' },
+    session: {
+      id: 'ses_1',
+      participantAgentIDs: [ 'agent_1', 'agent_2' ],
+      participantUserIDs: [ 'usr_1' ],
+      coordinatorAgentID: 'agent_1',
+    },
+  };
+
+  let coordinator = buildMessageBrief({ ...base, isCoordinator: true }).text;
+  assert.match(coordinator, /Is this a big new ask from the user\?/);
+  assert.match(coordinator, /new child session/);
+  assert.match(coordinator, /proper character profiles/);
+  assert.match(coordinator, /invite the right bots/);
+
+  let worker = buildMessageBrief({ ...base, isCoordinator: false }).text;
+  assert.doesNotMatch(worker, /Is this a big new ask from the user\?/);
+  assert.doesNotMatch(worker, /new child session/);
+});
+
 test('Brief B renders microsecond frame timestamps as a sane ISO date', () => {
   // Frame timestamps are Unix microseconds; a bug treated them as milliseconds
   // and produced a year ~58600. The header must show the real 2026 date.
