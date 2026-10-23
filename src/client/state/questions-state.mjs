@@ -227,6 +227,56 @@ export function settleQuestion(questions = [], questionID, options = {}) {
   )));
 }
 
+/**
+ * Put a question back the way it was before this tab closed it.
+ *
+ * The reverse of `settleQuestion`, for a close that was shown to the user before
+ * the server confirmed it and then rejected it. The row keeps its identity and
+ * returns to `open` with no deadline, so the Inbox renders the answer form again
+ * and the user can retry — the draft was never cleared, so the text they wrote is
+ * still there.
+ *
+ * `expectedStatus` and `expectedClosedAt` guard against reverting a settlement
+ * that is no longer the one being rolled back. If the row has been re-settled
+ * since (a `question.answered` event arrived for it while the POST was in
+ * flight), one or both will not match and this is a no-op. Two asynchronous
+ * paths touching one row is precisely the situation, and the newer fact has to
+ * win.
+ */
+export function restoreQuestion(questions = [], questionID, options = {}) {
+  let id = stringOrNull(questionID);
+  let rows = normalizeQuestionList(questions);
+  if (!id)
+    return sortQuestions(rows);
+
+  let expectedClosedAt = numberOr(options.expectedClosedAt, 0);
+  let expectedStatus = QUESTION_TERMINAL_STATUSES.includes(options.expectedStatus)
+    ? options.expectedStatus
+    : null;
+  let restored = false;
+
+  let next = rows.map((question) => {
+    if (question.id !== id)
+      return question;
+    if (!isTerminalQuestion(question))
+      return question;
+    // Only undo the settlement we wrote: if the status has since become
+    // something else, a newer authoritative fact (a server event) has arrived
+    // and must win.
+    if (expectedStatus && question.status !== expectedStatus)
+      return question;
+    if (expectedClosedAt > 0 && question.closedAt !== expectedClosedAt)
+      return question;
+
+    restored = true;
+    // `answer`, `readAt` and everything else survive: only the settlement is
+    // undone, so nothing the user can still see is lost.
+    return { ...question, status: 'open', closedAt: 0, settleAfter: 0 };
+  });
+
+  return sortQuestions(restored ? next : rows);
+}
+
 /** Remove a settled row outright, once its receipt has run out. */
 export function retireQuestion(questions = [], questionID) {
   return removeQuestion(questions, questionID);
@@ -476,6 +526,27 @@ export function rememberClosedQuestionID(state, questionID) {
 
     closed.delete(oldest.value);
   }
+}
+
+/**
+ * Stop treating a question id as closed.
+ *
+ * The inverse of `rememberClosedQuestionID`, and it exists for exactly one
+ * reason: a close that was applied optimistically, before the server had
+ * accepted it, must be undoable. Without this the rollback would be invisible —
+ * `reconcileQuestions` filters on the closed-id set, so a row restored into
+ * `state.questions` would still be dropped by the next fetch.
+ *
+ * Only call this when the close did NOT happen. Forgetting an id the server has
+ * genuinely closed would let a later fetch resurrect the row as open.
+ */
+export function forgetClosedQuestionID(state, questionID) {
+  let id = stringOrNull(questionID);
+  if (!id)
+    return;
+
+  let closed = closedIDSet(state);
+  closed.delete(id);
 }
 
 export function isQuestionClosedLocally(state, questionID) {
