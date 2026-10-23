@@ -31,7 +31,7 @@ const {
   setScrollLockModeForSession,
 } = await import('../../src/client/components/kikx-scroll-lock.mjs');
 const { armScrollLockRearm, ensureAutoScrollAfterSend, scrollToLatestMessageTop } = await import('../../src/client/components/kikx-frame-scroll-lock.mjs');
-const { maybeLoadOlderFrames } = await import('../../src/client/components/kikx-frame-scroll.mjs');
+const { afterRender, maybeLoadOlderFrames } = await import('../../src/client/components/kikx-frame-scroll.mjs');
 const { setAnimationFrameScheduler } = await import('../../src/client/components/kikx-app-helpers.mjs');
 
 function resetStorage() {
@@ -135,6 +135,52 @@ test('animated latest-message scrolling passes through intermediate positions', 
     queue.shift()(400);
     assert.equal(list.scrollTop, 600);
     assert.equal(list.scrollTop, item.offsetTop);
+  } finally {
+    setAnimationFrameScheduler(null);
+  }
+});
+
+test('a locked bottom render is not canceled by reconnecting the scroll observer', () => {
+  resetStorage();
+  let queue = [];
+  setAnimationFrameScheduler((callback) => queue.push(callback));
+  try {
+    let app = document.createElement('div');
+    app._state = { selectedSessionID: 's1' };
+    app._lockedPlacementSessionID = 's1';
+    app._onFrameListScroll = () => {};
+    let frameList = document.createElement('div');
+    frameList.className = 'kikx-frame-list';
+    let stream = document.createElement('div');
+    stream.className = 'kikx-frame-stream';
+    Object.defineProperty(frameList, 'scrollHeight', { configurable: true, value: 1000 });
+    Object.defineProperty(frameList, 'clientHeight', { configurable: true, value: 400 });
+    frameList.scrollTop = 0;
+    frameList.getBoundingClientRect = () => ({ top: 0 });
+    frameList.appendChild(stream);
+    app.appendChild(frameList);
+    setScrollLockedForSession(app, true, 's1');
+    setScrollLockModeForSession(app, 'bottom', 's1');
+
+    afterRender(app, {
+      selectedSessionID: 's1',
+      frameListPresent: true,
+      frameListNearBottom: true,
+      frameListScrollTop: 0,
+      frameListAnchor: null,
+    });
+
+    // Reproduces the full-render path: start a bottom follow, then reconnect the
+    // observer. Reconnecting must tear down the old observer before the follow
+    // animation starts, not cancel the animation that was just scheduled.
+    assert.ok(queue.length > 0, 'bottom follow should schedule an animation frame');
+    let timestamp = 0;
+    while (queue.length > 0) {
+      let callback = queue.shift();
+      callback(timestamp);
+      timestamp += 400;
+    }
+    assert.equal(frameList.scrollTop, 600);
   } finally {
     setAnimationFrameScheduler(null);
   }

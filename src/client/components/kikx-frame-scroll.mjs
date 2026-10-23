@@ -85,6 +85,12 @@ export function afterRender(app, snapshot = {}) {
   if (composer && composer.value !== (app._state.draft || ''))
     composer.value = app._state.draft || '';
 
+  // Reconnect before scheduling any placement. connectFrameListObserver tears
+  // down the previous observer, and that teardown cancels the active scroll
+  // animation. Doing it afterwards canceled the bottom-follow animation that
+  // this function had just started, leaving a full render pinned at scrollTop 0.
+  connectFrameListObserver(app);
+
   app._forceScrollToBottomAfterRender = false;
   app._focusComposerAfterRender = false;
 
@@ -138,7 +144,6 @@ export function afterRender(app, snapshot = {}) {
   }
 
   syncThinkingRack(app);
-  connectFrameListObserver(app);
 }
 
 // Repaint the pinned thinking rack from the session's live frames. Cheap: it
