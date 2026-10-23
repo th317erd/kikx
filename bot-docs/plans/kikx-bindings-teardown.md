@@ -724,3 +724,54 @@ Reconnect is lossless: content, listeners, and references all survive.
   of its own; making the suite runnable from a clean checkout remains open work.
 - Reused the cached `chromium-1223` binary rather than downloading a matching
   build, so the lane currently needs `CHROME_BIN` pointed at it.
+
+## Appendix C — Shadow DOM direction (settled 2026-10-23)
+
+### Decision
+
+Shadow DOM is **retired as a default** in this stack. We started heavy on it
+because it is the canonical WebComponent recommendation, and moved away as its
+costs showed up: styles must be threaded through custom properties, a shadow
+boundary silently breaks `document.querySelector` traversal (including the
+test doubles and any teardown walk), and focus/selection behaviour across the
+boundary is subtle enough that it hides bugs rather than preventing them.
+
+Going forward: **light DOM by default. Shadow DOM only where it genuinely earns
+its cost** — a real encapsulation requirement that cannot be met another way.
+That is "near zero", not "zero by dogma": a component that has a defensible
+reason may still use it.
+
+### Measured state at the time of this decision
+
+| Location | `attachShadow` | `shadowRoot` |
+|---|---|---|
+| `kikx2/src` (all `.mjs`) | 0 | 0 |
+| `aeor-web-components` (all tracked files) | 1 (test only) | 2 (test only) |
+
+The single framework occurrence is `test/component-regressions.mjs:293`, which
+attaches a root *in order to test it* — not product code. So the direction is
+already the state of the code; nothing needs ripping out.
+
+### Consequence for the `cleanupBindings` shadow descent
+
+`walkBindableNodes` in `elements.js` descends into `root.shadowRoot`. Under this
+direction that is **defensive code, not a feature to advertise**, and it stays:
+it costs one branch and it keeps the walk correct for consumers who have a
+legitimate root.
+
+Its coverage lives where it belongs — `test/component-regressions.mjs:293-307`
+binds inside an `attachShadow()` root, asserts `cleanupBindings(wrapper)`
+returns 1, then flips state and asserts the span is no longer reacting.
+
+**Deliberately not doing:** writing a second spec for this traversal inside
+`kikx2`. `kikx2` has no shadow roots to exercise it against, so such a spec
+would construct a synthetic root purely to pin a pattern being retired. That
+would spend maintenance on the thing we are moving away from.
+
+### Note on the earlier "575 specs never exercised this" finding
+
+That measurement was correct but its conclusion was misdirected. The traversal
+is exercised, once, at the framework level — the right altitude for it. The
+real lesson from that pass was not "write a shadow spec" but "a stubbed
+`cleanupBindings` cannot prove the call sites are wired", which the
+consolidation's own mutation proof (`8307720`) already covers.
