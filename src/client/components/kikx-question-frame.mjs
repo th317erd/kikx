@@ -24,6 +24,8 @@ import {
   getAnswerDraft,
   setAnswerDraft,
 } from '../state/question-drafts.mjs';
+import { bindDismissControl, buildDismissControl } from './kikx-question-card.mjs';
+import { describeQuestionOrigin } from '../state/question-attribution.mjs';
 
 const { div, span, p, form, textarea, button } = elements;
 
@@ -136,6 +138,20 @@ export class KikxQuestionFrame extends HTMLElement {
       .class('kikx-question-frame__submit')
       .onClick(() => this._submit(question.id, answerInput))('Answer');
 
+    // The frame used to offer only Answer, which meant a question asked inline
+    // in a session could not be dismissed without opening the Inbox. The owner's
+    // screenshot made the inconsistency plain: "there is no reason a question
+    // frame shouldn't have a Dismiss and X close button." Both are the same
+    // hold-to-confirm controls the Inbox card renders, built by the same code.
+    let answered = question.status !== 'open';
+    let ownerDocument = this.ownerDocument || (typeof document === 'undefined' ? null : document);
+    let closeControl = answered || !ownerDocument ? null : buildDismissControl(ownerDocument, 'close').node;
+    let dismissControl = answered || !ownerDocument ? null : buildDismissControl(ownerDocument, 'text').node;
+
+    // Whoever asked is named, not numbered: the same attribution the Inbox card
+    // uses, so the two surfaces cannot disagree about who is waiting on you.
+    let origin = describeQuestionOrigin(this._appState?.app?._state, question);
+
     // Feedback lives in the frame as well as the Inbox card. `_submit` is what
     // wires these; they are built here because the DSL cannot reach a node it
     // has already returned.
@@ -143,30 +159,41 @@ export class KikxQuestionFrame extends HTMLElement {
 
     // A terminal question is shown read-only: the answer already exists, and
     // offering a box that would 409 is worse than showing what was said.
-    let answered = question.status !== 'open';
-
     let node = form.class('kikx-question-frame__card')
       .onSubmit((event) => {
         event.preventDefault?.();
         this._submit(question.id, answerInput);
       })(
         div.class('kikx-question-frame__meta')(
-          span.class('kikx-question-frame__agent')(question.agentID || 'agent'),
+          span.class('kikx-question-frame__agent')(origin.text),
           age ? span.class('kikx-question-frame__age')(age) : null,
           question.priority === 'high'
             ? span.class('kikx-question-frame__priority')('high')
             : null,
+          // The round close sits at the end of the meta row, exactly as it does
+          // on the Inbox card: the question can be dismissed without scrolling
+          // down to the answer box. Only an open question offers it — a terminal
+          // one has nothing left to dismiss.
+          closeControl,
         ),
         p.class('kikx-question-frame__text')(question.text),
         answered
           ? this._answeredBlock(question)
           : answerInput,
-        answered ? null : div.class('kikx-question-frame__actions')(hint.hidden(true).ariaLive('polite')(), submit),
+        answered ? null : div.class('kikx-question-frame__actions')(submit, dismissControl, hint.hidden(true).ariaLive('polite')()),
       ).build(document);
 
     this._submitNode = node.querySelector('.kikx-question-frame__submit');
     this._inputNode = answerInput;
     this.appendChild(node);
+
+    // A dismissal is an answer with `silent: true`, never the `/dismiss` route
+    // (that one is the asking agent withdrawing). The app owns the call; the
+    // frame only reports intent, and reports a failure instead of pretending.
+    let requestDismiss = () => this._dismiss(question.id);
+
+    bindDismissControl(closeControl, requestDismiss);
+    bindDismissControl(dismissControl, requestDismiss);
   }
 
   // The app owns the store so the Inbox card and this frame share one draft per
@@ -213,6 +240,46 @@ export class KikxQuestionFrame extends HTMLElement {
           ? `Could not send the answer: ${error.message}`
           : 'Could not send the answer.';
         this._setPhase('error', message);
+      },
+    );
+  }
+
+  // Dismiss a question from the inline frame.
+  //
+  // A dismissal is NOT the `/dismiss` route — that one is the asking agent
+  // withdrawing its own question, the opposite direction. It is an answer
+  // carrying the no-response marker with `silent: true`, which is what keeps the
+  // agent from being woken. The app owns that call; this method only reports
+  // intent and then reports the outcome honestly, because a dismissal the server
+  // rejected must not look like one it accepted.
+  _dismiss(questionID) {
+    if (!questionID)
+      return;
+
+    let app = this._appState?.app || this.closest?.('kikx-app');
+    let pending = app?._dismissQuestionAnswer?.(questionID);
+
+    // No app, or a call that already answered synchronously: nothing left to
+    // report. A frame rendered standalone in a spec must not throw here.
+    if (!pending || typeof pending.then !== 'function')
+      return;
+
+    this._setPhase('busy');
+    pending.then(
+      (result) => {
+        if (result && result.ok === false) {
+          this._setPhase('dismiss-error', result.message || 'Could not dismiss the question.');
+          return;
+        }
+
+        clearAnswerDraft(this._drafts(), questionID);
+        this._setPhase('dismissed');
+      },
+      (error) => {
+        let message = typeof error?.message === 'string' && error.message !== ''
+          ? `Could not dismiss the question: ${error.message}`
+          : 'Could not dismiss the question.';
+        this._setPhase('dismiss-error', message);
       },
     );
   }

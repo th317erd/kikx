@@ -829,6 +829,19 @@
 
 /* --- Dismiss affordances -------------------------------------------------- */
 
+/* The inline `Question` frame renders the same two controls as the Inbox card,
+   so every rule below applies to it unchanged — `buildDismissControl` emits the
+   same `kikx-question-card__dismiss*` classes on purpose, so the two surfaces
+   cannot drift apart in size, colour or hold behaviour.
+
+   The one thing that does NOT carry over is placement. The round close is pinned
+   to the far end of the card's `__header` row; in the frame it sits in
+   `__meta`, which is a different flex row. Without this rule the X renders
+   jammed against the age label instead of at the end of the row. */
+.kikx-question-frame__meta .kikx-question-card__dismiss-close {
+  margin-left: auto;
+}
+
 /* Two ways out of a question, both hold-to-activate (500ms) so a stray click
    cannot discard a question the user was about to answer.
 

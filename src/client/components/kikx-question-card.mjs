@@ -22,6 +22,7 @@ import {
   getAnswerDraft,
   setAnswerDraft,
 } from '../state/question-drafts.mjs';
+import { describeQuestionOrigin } from '../state/question-attribution.mjs';
 
 const { article, button, div, form, label, li, p, span, textarea, ul } = elements;
 
@@ -120,19 +121,23 @@ function resolveDocument(app) {
   return typeof document === 'undefined' ? null : document;
 }
 
-// "asking agent + session" (plan §6.2) in one meta node, with both ids verbatim:
-// the card has no session/agent lookup of its own and must never invent a
-// prettified label.
-function questionMetaText(question) {
-  if (question.agentID && question.sessionID)
-    return `${question.agentID} · ${question.sessionID}`;
-
-  return question.agentID || question.sessionID || 'Unattributed question';
+// "asking agent + session" (plan §6.2) in one meta node.
+//
+// This used to print both ids verbatim, on the principle that a card with no
+// lookup must never invent a prettified label. The principle was right and the
+// conclusion was wrong: the lookup exists in the app state, the renderer was
+// simply never given it, so the row was headed by two UUIDs that told the owner
+// nothing. `describeQuestionOrigin` resolves the real agent name and session
+// title, and degrades to a short id — never a fabricated name — when either is
+// unknown.
+function questionMetaText(app, question) {
+  return describeQuestionOrigin(app?._state, question).text;
 }
 
-function buildHeader(question, age, groupCount, closeControl = null) {
+function buildHeader(app, question, age, groupCount, closeControl = null) {
   let isoAskedAt = question.askedAt > 0 ? new Date(question.askedAt).toISOString() : '';
-  let children = [ span.class(AGENT_CLASS)(questionMetaText(question)) ];
+  let origin = describeQuestionOrigin(app?._state, question);
+  let children = [ span.class(AGENT_CLASS).title(origin.text)(origin.text) ];
 
   // A batch shares one group heading; the position keeps a single row orientated
   // when several questions arrive together (plan §6.3).
@@ -174,7 +179,7 @@ function buildRefList(refs) {
  * Returns `{ node, holdToConfirm }` — the bind step needs to know which event to
  * listen for, and a plain fallback button never emits `confirm`.
  */
-function buildDismissControl(ownerDocument, kind) {
+export function buildDismissControl(ownerDocument, kind) {
   let isClose = kind === 'close';
   let tagName = isClose ? PROGRESS_BUTTON_TAG : CONFIRM_BUTTON_TAG;
 
@@ -206,6 +211,33 @@ function buildDismissControl(ownerDocument, kind) {
   node.textContent = isClose ? '\u00d7' : DISMISS_LABEL;
 
   return { node, holdToConfirm: false };
+}
+
+/**
+ * Attach a handler to one dismiss control.
+ *
+ * Both dismiss affordances are hold-to-activate, so which event to listen for
+ * depends on what the vendored control actually is: `aeor-confirm-button` and
+ * `aeor-progress-button` emit `confirm` once the hold completes, while the plain
+ * fallback buttons only emit `click`. Exported because the inline `Question`
+ * frame renders the same two controls and must not grow a second, subtly
+ * different copy of this logic.
+ */
+export function bindDismissControl(control, handler) {
+  if (!control || typeof handler !== 'function')
+    return;
+
+  let isHold = control.localName === CONFIRM_BUTTON_TAG
+    || control.localName === PROGRESS_BUTTON_TAG;
+
+  control.addEventListener(isHold ? 'confirm' : 'click', (event) => {
+    if (event && typeof event.preventDefault === 'function' && !isHold)
+      event.preventDefault();
+    if (event && typeof event.stopPropagation === 'function')
+      event.stopPropagation();
+
+    handler();
+  });
 }
 
 // One interaction: a text box and its submit control. The hint element is the
@@ -272,7 +304,7 @@ export function renderQuestionCard(app, question, options = {}) {
     : (closed ? null : buildDismissControl(ownerDocument, 'close'));
 
   let node = article.class(CARD_CLASS)(
-    buildHeader(model, age, groupCount, closeControl ? closeControl.node : null),
+    buildHeader(app, model, age, groupCount, closeControl ? closeControl.node : null),
     p.class(TEXT_CLASS)(model.text),
     buildRefList(refs),
     closed
