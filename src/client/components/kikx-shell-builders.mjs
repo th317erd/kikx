@@ -495,7 +495,6 @@ export function buildThreadSection(app, sessionID) {
       thinkingRack,
     ),
     form.class('kikx-composer').onSubmit(app._onSubmit)(
-      label.class('kikx-composer__label')('Message'),
       div.class('kikx-composer__input-row')(
         textarea
           .name('message')
@@ -505,17 +504,17 @@ export function buildThreadSection(app, sessionID) {
           .onInput(app._syncDraft)(app._state.draft),
         div.class('kikx-composer__actions')(
           button
-            .type('submit')
-            .class('kikx-send-button')
-            .title('Send message (Enter). Shift+Enter inserts a new line.')
-            .ariaLabel('Send message')
-            .disabled(!hasSelectedSession)('Send (Enter)'),
-          button
             .type('button')
             .class('kikx-stop-button')
             .title('Cancel all active agents in this session')
             .ariaLabel('Stop all active agents')
             .onClick(() => app._cancelAgents?.())( 'STOP'),
+          button
+            .type('submit')
+            .class('kikx-send-button')
+            .title('Send message (Enter). Shift+Enter inserts a new line.')
+            .ariaLabel('Send message')
+            .disabled(!hasSelectedSession)('Send (Enter)'),
         ),
       ),
     ),

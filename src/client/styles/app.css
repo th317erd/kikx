@@ -398,6 +398,37 @@ kikx-app {
   min-width: 88px;
 }
 
+.kikx-composer__actions .kikx-send-button {
+  border-color: #3d6cff;
+  background: #3d6cff;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kikx-composer__actions .kikx-send-button {
+    transition: background 160ms ease, border-color 160ms ease;
+  }
+}
+
+.kikx-composer__actions .kikx-send-button:hover,
+.kikx-composer__actions .kikx-send-button:focus-visible {
+  border-color: #5b84ff;
+  background: #5b84ff;
+  outline: none;
+}
+
+.kikx-composer__actions .kikx-send-button:active {
+  border-color: #2b4aad;
+  background: #2b4aad;
+}
+
+.kikx-composer__actions .kikx-send-button:disabled {
+  border-color: #2b4aad;
+  background: #2b4aad;
+  color: #c9d4ff;
+}
+
 .kikx-stop-button {
   min-height: 44px;
   border: 2px solid #7f1d1d;
@@ -405,6 +436,7 @@ kikx-app {
   background: #b91c1c;
   color: #fff;
   font: inherit;
+  font-size: calc(14px * 1.25);
   font-weight: 800;
   letter-spacing: 0.08em;
   cursor: pointer;
@@ -1679,12 +1711,6 @@ kikx-typing-indicator {
   display: grid;
   gap: 12px;
   min-width: min(460px, calc(100vw - 48px));
-}
-
-.kikx-composer__label {
-  color: #aeb8c2;
-  font-size: calc(12px * 1.25);
-  font-weight: 600;
 }
 
 .kikx-composer textarea {
