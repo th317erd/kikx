@@ -80,6 +80,18 @@ export class AgentInterface extends PluginInterface {
     return resolvePromptContent(params);
   }
 
+  // Provider retry contract: once a provider has performed a side effect that
+  // must not be repeated (usually executing model-requested tools), it marks
+  // the instance retry-unsafe. Core may replay an empty failed request, but
+  // never a turn that has crossed this marker.
+  get providerRetryUnsafe() {
+    return this._providerRetryUnsafe === true;
+  }
+
+  markProviderRetryUnsafe() {
+    this._providerRetryUnsafe = true;
+  }
+
   async *run(params = {}) {
     yield* this.runAgentLoop(params);
   }

@@ -17,6 +17,7 @@ import {
 import { totalTokensUsed } from './agent-route/usage.mjs';
 import { normalizeContinuation } from './agent-route/continuation.mjs';
 import { AgentRouteFramePluginBase } from './agent-route/agent-route-frame-plugin-base.mjs';
+import { runProviderWithRetry } from './provider-retry.mjs';
 
 export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
   static pluginID = 'internal:agent-router';
@@ -286,7 +287,7 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
       let questionsState = await this.loadAgentQuestionsState({ agent, services });
       let cwdState = await this.loadAgentCwdState({ agent, services, session: this.context.session });
       let providerServices = this.providerServices({ services, agent, frame });
-      let provider = new ProviderClass({
+      let createProvider = () => new ProviderClass({
         ...this.context,
         agent,
         services: providerServices,
@@ -329,7 +330,14 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
         return { status: 'steered' };
       }
 
-      for await (let output of provider.run(runParams)) {
+      for await (let output of runProviderWithRetry({
+        createProvider,
+        runParams,
+        retryDelaysMs: providerServices?.providerRetryDelaysMs,
+        onRetry({ attempt, maxAttempts, delayMs, error }) {
+          console.warn(`[kikx] provider ${agent.pluginID} retry ${attempt}/${maxAttempts} in ${delayMs}ms: ${error.message}`);
+        },
+      })) {
         if (frameRuntime?.hasAgentCancellation?.(sessionID, agentID)) {
           this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status: 'cancelled' });
           await services?.frameRuntime?.frameStore?.flush?.();

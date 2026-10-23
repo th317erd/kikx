@@ -92,6 +92,27 @@ class SuspensionProbeAgentProvider extends AgentInterface {
   }
 }
 
+class RetryingAgentProvider extends AgentInterface {
+  static pluginID = 'retrying-agent';
+  static attempts = 0;
+
+  async *run(params = {}) {
+    RetryingAgentProvider.attempts += 1;
+    params.services.calls.push({ method: 'retrying-run', attempt: RetryingAgentProvider.attempts });
+    if (RetryingAgentProvider.attempts === 1)
+      throw new Error('Ollama stream error: Internal Server Error (ref: test-ref)');
+
+    yield {
+      type: 'AgentMessage',
+      content: { text: 'Recovered after provider retry' },
+    };
+    yield {
+      type: 'Done',
+      content: { status: 'finalized' },
+    };
+  }
+}
+
 class SteeringAgentProvider extends AgentInterface {
   static pluginID = 'steering-agent';
 
@@ -2245,6 +2266,42 @@ test('AgentRouteFramePlugin never leaves a dangling streaming placeholder when a
   assert.match(agentFrames[0].content.text, /without producing a response/);
 });
 
+test('AgentRoute retries an empty provider 500 and completes the turn', async () => {
+  RetryingAgentProvider.attempts = 0;
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Retrying',
+        pluginID: 'retrying-agent',
+        config: {},
+        secrets: { apiKey: 'sk-test' },
+        enabled: true,
+      } ],
+    ]),
+    services: { providerRetryDelaysMs: [ 0 ] },
+  });
+
+  await runtime.createSession({
+    title: 'Retry',
+    participantAgentIDs: [ 'agent_1' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  await runtime.appendUserMessage('ses_1', { text: 'retry this turn', userID: 'usr_1' });
+
+  assert.equal(RetryingAgentProvider.attempts, 2);
+  assert.deepEqual(runtime.services.calls.filter((call) => call.method === 'retrying-run'), [
+    { method: 'retrying-run', attempt: 1 },
+    { method: 'retrying-run', attempt: 2 },
+  ]);
+
+  let frames = await runtime.listFrames('ses_1');
+  let agentFrames = frames.filter((frame) => frame.type === 'AgentMessage' && frame.authorID === 'agent_1');
+  assert.equal(agentFrames.length, 1);
+  assert.equal(agentFrames[0].content.text, 'Recovered after provider retry');
+  assert.notEqual(agentFrames[0].content.status, 'error');
+});
+
 test('a human message auto-resumes only the coordinator and carries the suspension warning', async () => {
   let runtime = createRuntime({
     agents: new Map([
@@ -2343,6 +2400,7 @@ function createRuntime(options = {}) {
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
   pluginRegistry.registerAgentProvider('streaming-agent', StreamingAgentProvider);
   pluginRegistry.registerAgentProvider('suspension-probe-agent', SuspensionProbeAgentProvider);
+  pluginRegistry.registerAgentProvider('retrying-agent', RetryingAgentProvider);
   pluginRegistry.registerAgentProvider('steering-agent', SteeringAgentProvider);
   pluginRegistry.registerAgentProvider('forwarding-agent', ForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('removing-forwarding-agent', RemovingForwardingAgentProvider);
