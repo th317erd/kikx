@@ -429,5 +429,8 @@
   background: #16120d;
   color: #ffd8a8;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: inherit;
+  /* Measured in Chromium: 0.85em renders a 21px pill inside the label's
+     22.5px line box, so the single-line header keeps its 23.13px height.
+     At `inherit` the pill is 24px and grows the header to 24.5px. */
+  font-size: 0.85em;
 }
