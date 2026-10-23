@@ -129,7 +129,9 @@ test('an open question renders the asker, the text, a free-form box and a submit
   assert.equal(el.dataset.questionID, 'q_1', 'the frame must be addressable by question id');
 
   assert.equal(byClass(el, 'kikx-question-frame__agent').length, 1);
-  assert.equal(textOf(byClass(el, 'kikx-question-frame__agent')[0]), 'agent-1');
+  // The frame names the asker the same way the Inbox card does. No lookup is
+  // available in this fixture, so it degrades to the id rather than a fake name.
+  assert.match(textOf(byClass(el, 'kikx-question-frame__agent')[0]), /agent-1/);
 
   assert.equal(byClass(el, 'kikx-question-frame__text').length, 1);
   assert.equal(textOf(byClass(el, 'kikx-question-frame__text')[0]), 'Which database should we use?');
@@ -510,4 +512,114 @@ test('a send that resolves before the re-render is not duplicated by that re-ren
     'one answer block whichever clock lands first',
   );
   assert.equal(textOf(byClass(el, 'kikx-question-frame__answer-text')[0]), 'Use PostgreSQL');
+});
+
+// --- dismiss affordances ---------------------------------------------------
+//
+// The owner's screenshot: "Honestly, this should look like a Question frame in
+// a session... and there is no reason a question frame shouldn't have a
+// 'Dismiss' and 'X' close button." The inline frame previously offered only
+// Answer, so a question asked in a session could not be dismissed without
+// opening the Inbox. These tests pin the two controls and, more importantly,
+// that they route a DISMISSAL to the app rather than submitting an answer.
+
+function appDismissSpy(result = { ok: true }) {
+  let answered = [];
+  let dismissed = [];
+
+  return {
+    answered,
+    dismissed,
+    app: {
+      _submitQuestionAnswer(questionID, text) {
+        answered.push({ questionID, text });
+        return Promise.resolve({ delivered: true });
+      },
+      _dismissQuestionAnswer(questionID) {
+        dismissed.push(questionID);
+        return Promise.resolve(result);
+      },
+    },
+  };
+}
+
+function clickControl(node) {
+  assert.ok(node, 'the control must exist before it can be clicked');
+  node.dispatchEvent({ type: 'click', preventDefault() {}, stopPropagation() {} });
+}
+
+test('an open frame renders both dismiss affordances the Inbox card has', () => {
+  let el = mount(frameWith());
+  let spy = appDismissSpy();
+  el.appState = { app: spy.app };
+
+  let text = byClass(el, 'kikx-question-card__dismiss');
+  let close = byClass(el, 'kikx-question-card__dismiss-close');
+
+  assert.equal(text.length, 1, 'the labelled Dismiss button');
+  assert.equal(close.length, 1, 'the round close button');
+});
+
+test('a terminal question in a frame offers no dismiss controls', () => {
+  for (let status of [ 'answered', 'dismissed', 'undeliverable' ]) {
+    let el = mount(frameWith({ status, answer: 'done' }));
+
+    assert.equal(byClass(el, 'kikx-question-card__dismiss').length, 0,
+      `a ${status} question has nothing left to dismiss`);
+    assert.equal(byClass(el, 'kikx-question-card__dismiss-close').length, 0,
+      `a ${status} question must not offer the round close either`);
+  }
+});
+
+test('dismissing from the frame routes to the app and does not submit an answer', () => {
+  let el = mount(frameWith());
+  let spy = appDismissSpy();
+  el.appState = { app: spy.app };
+
+  clickControl(byClass(el, 'kikx-question-card__dismiss')[0]);
+
+  assert.deepEqual(spy.dismissed, [ 'q_1' ],
+    'the frame must ask the app to dismiss this question');
+  assert.equal(spy.answered.length, 0,
+    'a dismissal is not an answer — submitting one would be a different request');
+});
+
+test('the round close dismisses the same way as the text button', () => {
+  let el = mount(frameWith());
+  let spy = appDismissSpy();
+  el.appState = { app: spy.app };
+
+  clickControl(byClass(el, 'kikx-question-card__dismiss-close')[0]);
+
+  assert.deepEqual(spy.dismissed, [ 'q_1' ]);
+  assert.equal(spy.answered.length, 0);
+});
+
+test('a rejected dismissal is reported, not shown as success', () => {
+  let el = mount(frameWith());
+  let spy = appDismissSpy({ ok: false, message: 'Question not found' });
+  el.appState = { app: spy.app };
+
+  clickControl(byClass(el, 'kikx-question-card__dismiss')[0]);
+
+  // `dismissQuestionAnswer` reports a dropped POST or a 409 as `{ ok: false }`
+  // rather than rejecting, so treating every resolution as success would tell
+  // the user a question was dismissed when the server still has it open.
+  return Promise.resolve().then(() => Promise.resolve()).then(() => {
+    assert.equal(el.getAttribute('data-answer-state'), 'dismiss-error',
+      'a failed dismissal must not read as a completed one');
+
+    let hint = byClass(el, 'kikx-question-frame__hint')[0];
+    assert.ok(hint, 'the frame must have a hint node to report into');
+    assert.match(String(hint.textContent || ''), /Question not found/,
+      'the reason the server gave must reach the user');
+  });
+});
+
+test('a frame with no reachable app does not throw when dismissed', () => {
+  let el = mount(frameWith());
+
+  assert.doesNotThrow(() => {
+    clickControl(byClass(el, 'kikx-question-card__dismiss')[0]);
+  });
 });

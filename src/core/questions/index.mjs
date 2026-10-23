@@ -5,6 +5,8 @@ export {
   QUESTION_STATUSES,
   QUESTION_TERMINAL_STATUSES,
   QuestionsStore,
+  normalizeQuestionDoc,
+  summarizeQuestion,
 } from './questions-store.mjs';
 
 export {

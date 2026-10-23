@@ -124,13 +124,72 @@ test('a card shows the question text, asking agent and an inline answer input', 
   assert.ok(node, 'a card node is returned');
 
   assert.equal(textOf(node, 'kikx-question-card__text'), 'Ship it?');
-  // The card shows "asking agent · session" verbatim (plan §6.2): it has no
-  // session/agent lookup and must not invent a prettified label.
+  // The card names the asker and the session it was asked in. With no lookup
+  // available it falls back to an id, never to a made-up name.
   let meta = textOf(node, 'kikx-question-card__agent');
-  assert.match(meta, /^zav/, `agent label should name the asker, got ${JSON.stringify(meta)}`);
+  assert.match(meta, /zav/, `agent label should name the asker, got ${JSON.stringify(meta)}`);
   assert.match(meta, /ses_1/, 'and the session it was asked in');
   assert.equal(byClass(node, 'kikx-question-card__input').length, 1, 'a free-form input');
   assert.equal(byClass(node, 'kikx-question-card__submit').length, 1);
+});
+
+test('a card resolves the agent name and session title instead of showing raw ids', () => {
+  // The owner's screenshot: every row was headed by
+  // `99129d53-e678-4b3c-9b27-… · cb551b14-5d2e-405d-99eb-…`. The card had no
+  // lookup and rendered the ids verbatim. Both maps are populated by the same
+  // bootstrap responses that fill the rest of the shell, so the label can use
+  // what the app already knows.
+  let app = appWith([]);
+  app._state.agentDetailsByID = {
+    '99129d53-e678-4b3c-9b27-25e6936cb4f5': { id: '99129d53-e678-4b3c-9b27-25e6936cb4f5', name: 'Zav' },
+  };
+  app._state.sessionDetailsByID = {
+    'cb551b14-5d2e-405d-99eb-14e8e0c2cd01': { id: 'cb551b14-5d2e-405d-99eb-14e8e0c2cd01', title: 'Toolbar Shot' },
+  };
+
+  let node = renderQuestionCard(app, question({
+    agentID: '99129d53-e678-4b3c-9b27-25e6936cb4f5',
+    sessionID: 'cb551b14-5d2e-405d-99eb-14e8e0c2cd01',
+  }));
+
+  let meta = textOf(node, 'kikx-question-card__agent');
+  assert.equal(meta, 'Zav \u00b7 Toolbar Shot',
+    `the row must name the asker and session, got ${JSON.stringify(meta)}`);
+  assert.ok(!meta.includes('99129d53-e678'),
+    'the full agent UUID must not appear in the label');
+  assert.ok(!meta.includes('cb551b14-5d2e'),
+    'the full session UUID must not appear in the label');
+});
+
+test('an unknown agent falls back to a short id and never to a fabricated name', () => {
+  // A question outlives the session that asked it, and an agent can be disabled
+  // or deleted. Neither is an error, and neither justifies inventing a name.
+  let node = renderQuestionCard(appWith([]), question({
+    agentID: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    sessionID: 'ffffffff-1111-2222-3333-444444444444',
+  }));
+
+  let meta = textOf(node, 'kikx-question-card__agent');
+  assert.match(meta, /aaaaaaaa/, 'the agent is still identifiable by a short id');
+  assert.match(meta, /ffffffff/, 'and so is the session');
+  assert.ok(meta.length < 40, `the label must stay short, got ${JSON.stringify(meta)}`);
+});
+
+test('two different unknown agents never collapse onto the same label', () => {
+  // The fallback shortens an id. An earlier version cut at the first hyphen,
+  // which is harmless for a UUID but collapses every id that shares a prefix:
+  // `agent-1` and `agent-2` both became `agent`, so two different askers
+  // rendered an identical label and the row stopped identifying anyone. This
+  // pins distinctness rather than the exact format, so it survives a change of
+  // shortening strategy but not a return to prefix-collapsing.
+  let labels = [ 'agent-1', 'agent-2', 'aaaaaaaa-0000-1111-2222-333333333333', 'aaaaaaab-0000-1111-2222-333333333333' ]
+    .map((agentID) => textOf(
+      renderQuestionCard(appWith([]), question({ agentID, sessionID: null })),
+      'kikx-question-card__agent',
+    ));
+
+  assert.equal(new Set(labels).size, labels.length,
+    `distinct agents must get distinct labels, got ${JSON.stringify(labels)}`);
 });
 
 test('the card offers no options, toggles or quick-picks ([D-4])', () => {

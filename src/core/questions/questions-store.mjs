@@ -760,7 +760,7 @@ export function normalizeQuestionList(value) {
   });
 }
 
-function normalizeQuestionDoc(value) {
+export function normalizeQuestionDoc(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return null;
 
@@ -813,7 +813,7 @@ function normalizeQuestionDoc(value) {
   };
 }
 
-function summarizeQuestion(question) {
+export function summarizeQuestion(question) {
   return {
     id: question.id,
     groupID: question.groupID,
@@ -831,6 +831,12 @@ function summarizeQuestion(question) {
     // from the open index, so the refs must ride along with the summary — the
     // alternative is an N+1 fetch of every question doc on inbox load.
     contextRefs: question.contextRefs,
+    // The agent's own fallback and its deadline ride too: a reader that cannot
+    // see `defaultDueAt` cannot tell the user their question will self-answer,
+    // and the client has no other way to learn it (the inbox never fetches docs).
+    defaultAnswer: question.defaultAnswer ?? null,
+    defaultTimeoutMs: question.defaultTimeoutMs ?? null,
+    defaultDueAt: question.defaultDueAt ?? null,
   };
 }
 
