@@ -20,6 +20,8 @@ import {
   runViewTransition,
   setViewTransitionName,
 } from './view-transition.mjs';
+import { messageHashAtBottom, messageHashID } from './kikx-frame-scroll-lock.mjs';
+import { isScrollLockedForSession } from './kikx-scroll-lock.mjs';
 
 export function beginSessionNameEdit(app, sessionID, currentTitle) {
   app._state.editingSessionNameID = sessionID;
@@ -262,6 +264,23 @@ export function stackFromCurrentURL(app) {
 
 // Optional deep link on first load: ?session=<id> (or ?view=thread) opens a
 // session thread directly, seeding the navigation stack.
+async function loadSessionFramesForURL(app, sessionID) {
+  let anchorID = messageHashID();
+  let anchorBottom = messageHashAtBottom();
+  let pinned = isScrollLockedForSession(app, sessionID);
+
+  if (anchorID && !pinned && anchorBottom !== true) {
+    try {
+      // The caller owns the render; keep the anchor window flag alive until it runs.
+      let anchored = await app._loadFramesAtMessage?.(sessionID, anchorID, { render: false });
+      if (anchored?.frames?.length > 0 && anchored.hasMoreNewer !== false)
+        return anchored;
+    } catch (_error) {}
+  }
+
+  return await app._loadFrames(sessionID);
+}
+
 export async function applySessionDeepLink(app) {
   if (app._deepLinkApplied)
     return;
@@ -278,7 +297,7 @@ export async function applySessionDeepLink(app) {
 
   try {
     if (top)
-      await app._loadFrames(top);
+      await loadSessionFramesForURL(app, top);
   } catch (_error) {}
 }
 
@@ -315,7 +334,7 @@ export async function syncFromURL(app) {
 
   try {
     if (top && !isCollapsed(app._state))
-      await app._loadFrames(top);
+      await loadSessionFramesForURL(app, top);
   } catch (_error) {}
 
   app._render();

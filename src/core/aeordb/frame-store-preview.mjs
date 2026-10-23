@@ -4,6 +4,7 @@ import { pathsFromItems, readJSONFiles } from './aeordb-file-utils.mjs';
 import { FrameStoreScheduledBase } from './frame-store-scheduled.mjs';
 import {
   DEFAULT_FRAME_LIST_LIMIT,
+  DIRECTORY_PAGE_LIMIT,
   MAX_FRAME_LIST_LIMIT,
   MAX_PREVIEW_RAW_FRAMES,
   PREVIEW_RAW_EXPANSION,
@@ -74,6 +75,8 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
 
     let limit = normalizeLargeLimit(options.limit, DEFAULT_FRAME_LIST_LIMIT);
     let before = normalizeOptionalOrder(options.before);
+    let after = normalizeOptionalOrder(options.after);
+    let startID = typeof options.start === 'string' ? options.start.trim() : '';
     let interactionsPath = `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`;
     let listOptions = { depth: -1, glob: '**/frames/*.json' };
     let probe;
@@ -100,10 +103,27 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
     let startOffset;
 
     if (total > 0) {
-      let endOffset = before == null
-        ? total
-        : await this.findFrameOffsetAtOrAfter(interactionsPath, before, total);
-      startOffset = Math.max(0, endOffset - limit);
+      let startByID = startID
+        ? await this.findFrameOffsetByID(interactionsPath, startID, total)
+        : null;
+
+      if (startByID != null && startByID < 0)
+        return { ...emptyFrameWindow(), total, startFound: false };
+
+      let endOffset;
+      if (startByID != null) {
+        startOffset = startByID;
+        endOffset = Math.min(total, startOffset + limit);
+      } else if (after != null) {
+        startOffset = await this.findFrameOffsetAtOrAfter(interactionsPath, after + 1, total);
+        endOffset = Math.min(total, startOffset + limit);
+      } else {
+        endOffset = before == null
+          ? total
+          : await this.findFrameOffsetAtOrAfter(interactionsPath, before, total);
+        startOffset = Math.max(0, endOffset - limit);
+      }
+
       windowPaths = await this.listDirectoryPaths(interactionsPath, {
         ...listOptions,
         limit: endOffset - startOffset,
@@ -144,13 +164,45 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
 
     let heads = projectFrameMessages(frames).filter(isPreviewVisibleFrame);
 
+    let pagedFromCursor = Boolean(startID) || after != null;
     return {
       frames: heads,
       total,
       hasMore: startOffset > 0,
+      ...(pagedFromCursor ? { hasMoreNewer: startOffset + (windowPaths.length || 0) < total } : {}),
+      ...(startID ? { startFound: true } : {}),
       oldestOrder: frameOrderFromPath(windowPaths[0]),
       newestOrder: frameOrderFromPath(windowPaths[windowPaths.length - 1]),
     };
+  }
+
+  // Find a frame by its stable id in the raw directory. Frame paths end with
+  // `-<encoded id>.json`; scan names only (never frame bodies) in bounded pages.
+  async findFrameOffsetByID(interactionsPath, frameID, total) {
+    let suffix = `-${encodeSegment(frameID)}.json`;
+    let cursor = 0;
+
+    while (cursor < total) {
+      let paths = await this.listDirectoryPaths(interactionsPath, {
+        depth: -1,
+        glob: '**/frames/*.json',
+        limit: DIRECTORY_PAGE_LIMIT,
+        offset: cursor,
+      });
+      if (paths.length === 0)
+        return -1;
+
+      for (let index = 0; index < paths.length; index++) {
+        if (String(paths[index]).endsWith(suffix))
+          return cursor + index;
+      }
+
+      if (paths.length < DIRECTORY_PAGE_LIMIT)
+        return -1;
+      cursor += paths.length;
+    }
+
+    return -1;
   }
 
   // First directory offset whose frame order is >= `before`. The directory lists

@@ -400,12 +400,15 @@ kikx-app {
   padding: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* The client owns scroll placement (anchor/pin). Browser scroll anchoring
+     reacting to frame reconciliation is the source of the random jumps. */
+  overflow-anchor: none;
 }
 
 .kikx-frame-stream {
-  display: grid;
-  align-content: start;
-  gap: 10px;
+  /* Normal block flow lets minimized headers participate inline and wrap. */
+  position: relative;
+  display: block;
   min-height: 100%;
   margin: 0;
   /* One pixel of breathing room below the last card. ScrollTop is clamped to an
@@ -413,6 +416,19 @@ kikx-app {
      card's bottom border can be shaved by the scroll container. */
   padding: 0 0 1px;
   list-style: none;
+}
+
+.kikx-frame {
+  margin: 0 auto 10px 0;
+}
+
+.kikx-frame--UserMessage {
+  margin: 0 0 10px auto;
+}
+
+/* Keep full messages visually separated from surrounding minimized headers. */
+.kikx-frame:not(.kikx-frame--minimized) {
+  margin-block: 1em;
 }
 
 .kikx-frame {
@@ -1910,6 +1926,46 @@ kikx-typing-indicator {
 }
 
 
+/* Session toolbar: currently the scroll-lock toggle. */
+.kikx-session-toolbar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.kikx-session-toolbar__button {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #2f373f;
+  border-radius: 7px;
+  background: #151a1f;
+  color: #9aa6b2;
+  cursor: pointer;
+}
+
+.kikx-session-toolbar__button:hover,
+.kikx-session-toolbar__button:focus-visible {
+  border-color: #4b5864;
+  color: #e8edf2;
+  outline: none;
+}
+
+.kikx-session-toolbar__button[aria-pressed="true"] {
+  border-color: #3c6b8f;
+  background: #122431;
+  color: #9ed8ff;
+}
+
+.kikx-session-toolbar__button svg {
+  width: 1.05em;
+  height: 1.05em;
+}
+
 /* --- Session workspace: centered search + eye, relocated name --- */
 
 /* The header is a 3-slot row: name/close on the left, the centered search in
@@ -2507,19 +2563,29 @@ kikx-thinking-panel {
   border: 0;
   border-radius: 8px;
   background: transparent;
+  color: #f48fb1;
   font-size: 1.7rem;
   line-height: 1;
   cursor: pointer;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
 }
 
-/* Animate the SVG itself so the transform origin is the icon's center, not a
-   content-box corner of the padded button. */
+/* A tight wrapper owns the breathing scale; the SVG owns the rapid shiver.
+   This keeps the two transforms independent and centred on the icon itself. */
+.kikx-thinking-brain__art {
+  display: inline-grid;
+  place-items: center;
+  transform-origin: 50% 50%;
+  animation: kikx-thinking-breathe 3.6s ease-in-out infinite;
+  will-change: transform;
+}
+
 .kikx-thinking-brain svg {
   display: block;
-  transform-box: fill-box;
+  transform-box: view-box;
   transform-origin: 50% 50%;
-  animation: kikx-thinking-giggle 1.6s ease-in-out infinite;
+  animation: kikx-thinking-shiver 0.6s linear infinite;
+  will-change: transform;
 }
 
 .kikx-thinking-brain:focus-visible {
@@ -2527,14 +2593,23 @@ kikx-thinking-panel {
   outline-offset: 2px;
 }
 
-@keyframes kikx-thinking-giggle {
-  0% { transform: translateY(0) rotate(0deg) scale(1); }
-  15% { transform: translateY(-3px) rotate(-9deg) scale(1.06); }
-  30% { transform: translateY(0) rotate(7deg) scale(1); }
-  45% { transform: translateY(-2px) rotate(-5deg) scale(1.04); }
-  60% { transform: translateY(0) rotate(3deg) scale(1); }
-  75% { transform: translateY(-1px) rotate(-2deg) scale(1.02); }
-  100% { transform: translateY(0) rotate(0deg) scale(1); }
+@keyframes kikx-thinking-breathe {
+  0%, 100% { transform: scale(0.92); }
+  45% { transform: scale(1.16); }
+  62% { transform: scale(1.1); }
+}
+
+@keyframes kikx-thinking-shiver {
+  0%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(3.5deg); }
+  20% { transform: rotate(-4.2deg); }
+  30% { transform: rotate(2.8deg); }
+  40% { transform: rotate(-3.6deg); }
+  50% { transform: rotate(4.5deg); }
+  60% { transform: rotate(-4.2deg); }
+  70% { transform: rotate(3.1deg); }
+  80% { transform: rotate(-2.8deg); }
+  90% { transform: rotate(1.8deg); }
 }
 
 /* The hover tooltip: a cursor-following bubble with the live, scrolling thinking
@@ -2631,6 +2706,7 @@ kikx-thinking-panel {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .kikx-thinking-brain__art,
   .kikx-thinking-brain svg,
   .kikx-thinking-tip__dots span {
     animation: none;
@@ -2660,4 +2736,14 @@ kikx-thinking-panel {
 
 .kikx-frame--AgentProgress .kikx-frame__content {
   color: #e8ddff;
+}
+
+/* Zero-layout viewport sentinel for lazy older-frame loading. */
+.kikx-frame-load-sentinel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
 }

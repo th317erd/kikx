@@ -14,7 +14,7 @@ export const DEFAULT_MAX_SSE_BUFFERED_BYTES = 1024 * 1024;
 // parse and render the same frame repeatedly. The latest update per
 // session/frame/type is retained, then flushed on a bounded cadence or when the
 // queue reaches its capacity, whichever happens first.
-export const DEFAULT_SSE_COALESCE_DELAY_MS = 1000;
+export const DEFAULT_SSE_COALESCE_DELAY_MS = 500;
 export const DEFAULT_SSE_COALESCE_LIMIT = 200;
 
 export function streamRuntimeEvents({

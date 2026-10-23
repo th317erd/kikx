@@ -159,6 +159,40 @@ const sessionMethods = {
     return true;
   },
 
+  countActiveAgentRuns() {
+    let count = 0;
+    for (let entry of this.sessions.values())
+      count += entry.activeAgentRuns?.size || 0;
+    return count;
+  },
+
+  // Shutdown must not cut through an in-process tool call (read-file, write-file,
+  // etc.) just because no managed child process exists. Wait for active agent
+  // turns to drain, with a bounded deadline for genuinely stuck providers.
+  async waitForAgentRuns(options = {}) {
+    let timeoutMS = Number.isFinite(Number(options.timeoutMS)) ? Math.max(0, Number(options.timeoutMS)) : 30000;
+    let intervalMS = Number.isFinite(Number(options.intervalMS)) ? Math.max(1, Number(options.intervalMS)) : 50;
+    let startedAt = Date.now();
+    let deadline = startedAt + timeoutMS;
+
+    while (this.countActiveAgentRuns() > 0) {
+      let remainingMS = deadline - Date.now();
+      if (remainingMS <= 0)
+        break;
+      await new Promise((resolve) => {
+        let timer = setTimeout(resolve, Math.min(intervalMS, remainingMS));
+        timer.unref?.();
+      });
+    }
+
+    let remaining = this.countActiveAgentRuns();
+    return {
+      timedOut: remaining > 0,
+      remaining,
+      waitedMS: Date.now() - startedAt,
+    };
+  },
+
   noteSteering(sessionID, frame) {
     let entry = this.sessions.get(sessionID);
     if (!entry?.activeAgentRuns || entry.activeAgentRuns.size === 0)

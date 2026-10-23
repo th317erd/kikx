@@ -2,17 +2,40 @@
 
 import { getDeletedSessions, getGridParentSessionID, getSelectedFrames, getSessionPaging, getSessionPreviews, getVisibleSessions } from '../state/kikx-state.mjs';
 import { thinkingAgents, threadVisibleFrames } from '../state/thinking-state.mjs';
-import { guardClientOperation } from '../lib/error-boundary.mjs';
+import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import { buildFrameThread } from './kikx-shell-builders.mjs';
 import { countRebuild } from './render-stats.mjs';
+import { getScrollLockModeForSession, isScrollLockedForSession } from './kikx-scroll-lock.mjs';
+import { ANCHOR_THRESHOLD } from './frame-scroll-constants.mjs';
+import { captureFrameListAnchor, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
+import {
+  animateFrameListScroll,
+  armScrollLockRearm,
+  breakScrollLockFromUser,
+  cancelFrameListScrollAnimation,
+  cancelScrollLockRearm,
+  lastFrameItemID,
+  maybeRestoreMessageHash,
+  messageHashID,
+  scheduleLatestMessageTop,
+  updateMessageHashFromScroll,
+} from './kikx-frame-scroll-lock.mjs';
 
-export const ANCHOR_THRESHOLD = 50;
-export const FRAME_ENTER_ANIMATION_MS = 260;
+export { ANCHOR_THRESHOLD };
+export { lockScrollToLatest, scrollToLatestMessageTop, toggleScrollLock } from './kikx-frame-scroll-lock.mjs';
+
 export const LOAD_OLDER_THRESHOLD = 150;
 
 export function captureRenderSnapshot(app) {
   let frameList = app.querySelector('.kikx-frame-list');
+  let view = app.querySelector('.kikx-thread__body kikx-chat-view');
+  let sessionID = app._state.selectedSessionID;
+  let preserveWindowStartFrameID = null;
+  if (view?.windowStartFrameID
+    && !isScrollLockedForSession(app, sessionID)
+    && !isFrameListNearBottom(app, frameList))
+    preserveWindowStartFrameID = view.windowStartFrameID;
 
   let composer = app.querySelector('textarea[name="message"]');
   let composerFocused = app.contains(document.activeElement) && document.activeElement === composer;
@@ -20,8 +43,10 @@ export function captureRenderSnapshot(app) {
   return {
     composerFocused,
     composerPresent: Boolean(composer),
-    selectedSessionID: app._state.selectedSessionID,
+    selectedSessionID: sessionID,
     frameListPresent: Boolean(frameList),
+    frameListAnchor: captureFrameListAnchor(frameList),
+    preserveWindowStartFrameID,
     frameListScrollTop: frameList?.scrollTop ?? 0,
     frameListScrollHeight: frameList?.scrollHeight ?? 0,
     composerSelectionStart: composerFocused ? composer.selectionStart : null,
@@ -34,12 +59,26 @@ export function captureRenderSnapshot(app) {
 }
 
 export function afterRender(app, snapshot = {}) {
-  let shouldScrollToBottom = snapshot.forceScrollToBottom || snapshot.frameListNearBottom;
+  let sessionID = app._state.selectedSessionID;
+  let locked = isScrollLockedForSession(app, sessionID);
+  let sessionChanged = Boolean(sessionID && snapshot.selectedSessionID !== sessionID);
+  let hashID = messageHashID();
+  let hashRestored = Boolean(hashID && String(app._hashRestoredSessionID || '').startsWith(`${sessionID}:${hashID}:`));
+  if (sessionChanged)
+    app._sentinelSuppressed = false;
+  app._hashAnchorPending = !locked && Boolean(hashID) && !hashRestored;
+  // An explicit #message= anchor wins over the old bottom-follow default. On a
+  // reload after the user broke the lock, restoring the top of that message is
+  // the whole point; snapping to the bottom first would rewrite the hash.
+  let shouldScrollToBottom = !locked
+    && !hashID
+    && (snapshot.forceScrollToBottom || snapshot.frameListNearBottom);
   let shouldFocusComposer = snapshot.focusComposer || snapshot.composerFocused;
   let shouldRestoreFrameScroll = (
-    !shouldScrollToBottom
+    !locked
+    && !shouldScrollToBottom
     && snapshot.frameListPresent
-    && snapshot.selectedSessionID === app._state.selectedSessionID
+    && !sessionChanged
   );
   let composer = app.querySelector('textarea[name="message"]');
   if (composer && composer.value !== (app._state.draft || ''))
@@ -48,11 +87,35 @@ export function afterRender(app, snapshot = {}) {
   app._forceScrollToBottomAfterRender = false;
   app._focusComposerAfterRender = false;
 
-  if (shouldScrollToBottom) {
+  if (locked) {
+    let initialPlacement = app._lockedPlacementSessionID !== sessionID;
+    if (initialPlacement) {
+      // The browser may restore its previous scroll position after a reload and
+      // emit a scroll event before the first render has settled. Treat that as
+      // part of the initial placement, not as the user breaking the pin.
+      app._ignoreFrameScrollUntil = Math.max(app._ignoreFrameScrollUntil || 0, Date.now() + 1000);
+      // First placement lands directly on the anchor. Animating in from the top
+      // of a reloaded list looks like a long, pointless scroll.
+      if (lastFrameItemID(app))
+        app._lockedPlacementSessionID = sessionID;
+    }
+    if (getScrollLockModeForSession(app, sessionID) === 'bottom') {
+      app._frameListAnchoredToBottom = true;
+      if (initialPlacement)
+        scrollFramesToBottomImmediate(app);
+      else
+        scrollFramesToBottom(app);
+    } else {
+      app._frameListAnchoredToBottom = false;
+      scheduleLatestMessageTop(app, { animate: !initialPlacement });
+    }
+  } else if (shouldScrollToBottom) {
     app._frameListAnchoredToBottom = true;
     scrollFramesToBottom(app);
   } else if (shouldRestoreFrameScroll) {
     restoreFrameListScroll(app, snapshot);
+  } else if (sessionChanged || !snapshot.frameListPresent) {
+    maybeRestoreMessageHash(app);
   }
 
   if (shouldFocusComposer) {
@@ -168,30 +231,76 @@ function syncFrameThreadBody(app, sessionID, options) {
     body.replaceChildren(buildFrameThread(app));
     countRebuild('thread');
     connectFrameListObserver(app);
-    if (app._frameListAnchoredToBottom)
+    if (isScrollLockedForSession(app, sessionID)) {
+      let initialPlacement = app._lockedPlacementSessionID !== sessionID;
+      if (initialPlacement)
+        app._lockedPlacementSessionID = sessionID;
+      if (getScrollLockModeForSession(app, sessionID) === 'bottom') {
+        app._frameListAnchoredToBottom = true;
+        if (initialPlacement)
+          scrollFramesToBottomImmediate(app);
+        else
+          scheduleAnimationFrame(() => scrollFramesToBottom(app));
+      } else {
+        app._frameListAnchoredToBottom = false;
+        scheduleLatestMessageTop(app, { animate: !initialPlacement });
+      }
+    } else if (app._frameListAnchoredToBottom) {
       scrollFramesToBottomImmediate(app);
+    }
     return;
   }
 
   if (options.prepend === true) {
     let frameList = view.frameList;
+    let anchor = captureFrameListAnchor(frameList);
     let beforeScrollTop = frameList?.scrollTop ?? 0;
     let beforeScrollHeight = frameList?.scrollHeight ?? 0;
     view.syncFrames(frames, app._state, { ...options, animate: false });
     if (frameList) {
-      let growth = frameList.scrollHeight - beforeScrollHeight;
-      frameList.scrollTop = Math.max(0, beforeScrollTop + growth);
+      app._ignoreFrameScrollUntil = Date.now() + 200;
+      if (!restoreFrameListAnchor(frameList, anchor)) {
+        let growth = frameList.scrollHeight - beforeScrollHeight;
+        frameList.scrollTop = Math.max(0, beforeScrollTop + growth);
+      }
     }
+    if (isScrollLockedForSession(app, sessionID))
+      scheduleLatestMessageTop(app, { animate: true });
     return;
   }
 
-  let wasAnchoredToBottom = app._frameListAnchoredToBottom || isFrameListNearBottom(app, view.frameList);
-  let result = view.syncFrames(frames, app._state, options);
+  let locked = isScrollLockedForSession(app, sessionID);
+  let lockMode = getScrollLockModeForSession(app, sessionID);
+  let result = view.syncFrames(frames, app._state, locked ? { ...options, followLatest: true } : options);
 
-  if (result.insertedNew && wasAnchoredToBottom) {
+  if (locked && lockMode === 'bottom') {
+    let initialPlacement = app._lockedPlacementSessionID !== sessionID;
+    if (initialPlacement)
+      app._lockedPlacementSessionID = sessionID;
     app._frameListAnchoredToBottom = true;
-    scheduleAnchoredFrameScroll(app);
+    if (initialPlacement) {
+      scrollFramesToBottomImmediate(app);
+    } else {
+      scheduleAnimationFrame(() => scrollFramesToBottom(app));
+      // Frame enter animation and markdown layout can grow the last item after
+      // the first animation frame. Re-target once it has settled; this is a
+      // bottom follow, never a jump to the top.
+      setTimeout(() => {
+        if (isScrollLockedForSession(app, sessionID)
+          && getScrollLockModeForSession(app, sessionID) === 'bottom')
+          scrollFramesToBottom(app);
+      }, 320);
+    }
+  } else if (result.insertedNew && locked) {
+    let initialPlacement = app._lockedPlacementSessionID !== sessionID;
+    if (initialPlacement)
+      app._lockedPlacementSessionID = sessionID;
+    app._frameListAnchoredToBottom = false;
+    scheduleLatestMessageTop(app, { animate: !initialPlacement });
   }
+
+  if (!locked)
+    maybeRestoreMessageHash(app);
 }
 
 export function connectFrameListObserver(app) {
@@ -202,11 +311,96 @@ export function connectFrameListObserver(app) {
 
   let frameList = app.querySelector('.kikx-frame-list');
   let frameStream = frameList?.querySelector('.kikx-frame-stream');
-  if (!frameList || !frameStream || typeof ResizeObserver !== 'function')
+  if (!frameList || !frameStream)
     return;
 
   app._observedFrameList = frameList;
   frameList.addEventListener('scroll', app._onFrameListScroll);
+  app._onFrameListUserInterrupt = () => {
+    app._frameListUserGestureUntil = Date.now() + 2000;
+    app._sentinelSuppressed = false;
+    // A real wheel/touch gesture must beat a smooth programmatic scroll that is
+    // still inside its grace window; otherwise the user's gesture looks like
+    // our own animation and no longer breaks the pin.
+    app._ignoreFrameScrollUntil = 0;
+    cancelFrameListScrollAnimation(app);
+    if (!isScrollLockedForSession(app, app._state.selectedSessionID))
+      return;
+    breakScrollLockFromUser(app);
+    cancelScrollLockRearm(app);
+  };
+  app._onFrameListPointerDown = (event) => {
+    // Only a pointer in the scrollbar gutter is an unambiguous scroll intent.
+    // Clicking message text must not make a later layout scroll look user-made.
+    let rect = frameList.getBoundingClientRect();
+    if (event.clientX < rect.left + frameList.clientWidth - 1)
+      return;
+    app._frameListUserGestureUntil = Date.now() + 5000;
+    app._sentinelSuppressed = false;
+    app._ignoreFrameScrollUntil = 0;
+    cancelFrameListScrollAnimation(app);
+  };
+  app._onFrameListKeydown = (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey)
+      return;
+    if (![ 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ' ].includes(event.key))
+      return;
+
+    app._frameListUserGestureUntil = Date.now() + 2000;
+    app._sentinelSuppressed = false;
+    app._ignoreFrameScrollUntil = 0;
+    cancelFrameListScrollAnimation(app);
+    breakScrollLockFromUser(app);
+  };
+  frameList.addEventListener('wheel', app._onFrameListUserInterrupt, { passive: true });
+  frameList.addEventListener('touchmove', app._onFrameListUserInterrupt, { passive: true });
+  frameList.addEventListener('pointerdown', app._onFrameListPointerDown, { passive: true });
+  frameList.addEventListener('keydown', app._onFrameListKeydown);
+
+  // Do not rely on a scroll event to discover older frames. Minimized messages
+  // can make the first page shorter than the viewport, so there is no scrollbar
+  // and no scroll event to trigger pagination. A viewport sentinel loads the
+  // older page (or expands the in-memory window) even in that case.
+  let sentinel = document.createElement('div');
+  sentinel.className = 'kikx-frame-load-sentinel';
+  sentinel.setAttribute('aria-hidden', 'true');
+  frameStream.insertBefore(sentinel, frameStream.firstChild);
+  app._frameLoadSentinel = sentinel;
+
+  if (typeof IntersectionObserver === 'function') {
+    app._frameLoadIntersectionObserver = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting))
+        return;
+
+      if (isScrollLockedForSession(app, app._state.selectedSessionID)
+        || app._hashAnchorPending === true
+        || (app._sentinelSuppressed === true && isFrameListScrollable(frameList)))
+        return;
+
+      guardClientOperation('kikx-frame-scroll.loadOlderSentinel', () => {
+        fillOlderFramesFromSentinel(app, frameList).catch((error) => {
+          reportClientError('kikx-frame-scroll.loadOlderSentinel', error);
+        });
+      });
+    }, {
+      root: frameList,
+      rootMargin: '0px 0px 200px 0px',
+    });
+    app._frameLoadIntersectionObserver.observe(sentinel);
+  } else {
+    // Older browsers: fill the viewport eagerly when there is no scrollbar.
+    if (frameList.scrollHeight <= frameList.clientHeight
+      && !isScrollLockedForSession(app, app._state.selectedSessionID)
+      && app._hashAnchorPending !== true
+      && !(app._sentinelSuppressed === true && isFrameListScrollable(frameList)))
+      fillOlderFramesFromSentinel(app, frameList).catch((error) => {
+        reportClientError('kikx-frame-scroll.loadOlderFallback', error);
+      });
+  }
+
+  if (typeof ResizeObserver !== 'function')
+    return;
+
   app._frameListResizeObserver = new ResizeObserver(app._onFrameContentResize);
   app._frameListResizeObserver.observe(frameStream);
 }
@@ -214,14 +408,34 @@ export function connectFrameListObserver(app) {
 export function disconnectFrameListObserver(app) {
   if (app._observedFrameList) {
     app._observedFrameList.removeEventListener('scroll', app._onFrameListScroll);
+    if (app._onFrameListUserInterrupt) {
+      app._observedFrameList.removeEventListener('wheel', app._onFrameListUserInterrupt);
+      app._observedFrameList.removeEventListener('touchmove', app._onFrameListUserInterrupt);
+    }
+    if (app._onFrameListPointerDown)
+      app._observedFrameList.removeEventListener('pointerdown', app._onFrameListPointerDown);
+    if (app._onFrameListKeydown)
+      app._observedFrameList.removeEventListener('keydown', app._onFrameListKeydown);
     app._observedFrameList = null;
   }
+  app._onFrameListUserInterrupt = null;
+  app._onFrameListPointerDown = null;
+  app._onFrameListKeydown = null;
+  cancelFrameListScrollAnimation(app);
+  cancelScrollLockRearm(app);
 
-  if (!app._frameListResizeObserver)
-    return;
+  app._frameLoadIntersectionObserver?.disconnect?.();
+  app._frameLoadIntersectionObserver = null;
+  app._frameLoadSentinel = null;
 
-  app._frameListResizeObserver.disconnect();
-  app._frameListResizeObserver = null;
+  if (app._frameListResizeObserver) {
+    app._frameListResizeObserver.disconnect();
+    app._frameListResizeObserver = null;
+  }
+}
+
+function isFrameListScrollable(frameList) {
+  return Boolean(frameList && frameList.scrollHeight > frameList.clientHeight + 1);
 }
 
 export function isFrameListNearBottom(app, frameList = app.querySelector('.kikx-frame-list')) {
@@ -233,24 +447,23 @@ export function isFrameListNearBottom(app, frameList = app.querySelector('.kikx-
 
 export function scrollFramesToBottom(app) {
   app._frameListAnchoredToBottom = true;
-  scrollFramesToBottomImmediate(app);
-}
+  let frameList = app.querySelector('.kikx-frame-list');
+  if (!frameList)
+    return;
 
-export function scheduleAnchoredFrameScroll(app) {
-  scheduleAnimationFrame(() => {
-    scrollFramesToBottomImmediate(app);
+  animateFrameListScroll(app, frameList, () => frameList.scrollHeight - frameList.clientHeight, {
+    onComplete: () => updateMessageHashFromScroll(app, frameList),
   });
-
-  setTimeout(() => {
-    scrollFramesToBottomImmediate(app);
-  }, FRAME_ENTER_ANIMATION_MS + 40);
 }
 
 export function scrollFramesToBottomImmediate(app, frameList = app.querySelector('.kikx-frame-list')) {
   if (!frameList)
     return;
 
+  cancelFrameListScrollAnimation(app);
+  app._ignoreFrameScrollUntil = Date.now() + 200;
   frameList.scrollTop = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+  updateMessageHashFromScroll(app, frameList);
 }
 
 export function restoreFrameListScroll(app, snapshot = {}) {
@@ -258,49 +471,111 @@ export function restoreFrameListScroll(app, snapshot = {}) {
   if (!frameList)
     return;
 
+  app._ignoreFrameScrollUntil = Date.now() + 200;
+  if (restoreFrameListAnchor(frameList, snapshot.frameListAnchor))
+    return;
+
   let maxScrollTop = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
   frameList.scrollTop = Math.min(Math.max(0, snapshot.frameListScrollTop || 0), maxScrollTop);
 }
 
 export function onFrameContentResize(app) {
-  if (app._frameListAnchoredToBottom)
-    scrollFramesToBottomImmediate(app);
+  // Pinned mode follows by aligning the newest message's top, not by chasing
+  // the scrollHeight. Unlocked mode must never be moved by content changes:
+  // that is exactly the takeover the lock toggle exists to suspend.
 }
 
 export function onFrameListScroll(app, event) {
-  app._frameListAnchoredToBottom = isFrameListNearBottom(app, event.currentTarget);
-  maybeLoadOlderFrames(app, event.currentTarget);
+  let frameList = event.currentTarget;
+  let programmatic = Date.now() < (app._ignoreFrameScrollUntil || 0);
+  let sessionID = app._state.selectedSessionID;
+  let nearBottom = isFrameListNearBottom(app, frameList);
 
-  if (app._frameListAnchoredToBottom) {
-    // If the user has been reading an older render window, reaching the bottom
-    // switches back to the newest frames already held in state.
-    let view = app.querySelector('.kikx-thread__body kikx-chat-view');
-    if (view?.showLatestFrames?.()) {
-      scrollFramesToBottomImmediate(app, event.currentTarget);
-      return;
+  let userGesture = Date.now() < (app._frameListUserGestureUntil || 0);
+  if (!programmatic) {
+    // Layout changes can move scrollTop without any user action. Break the pin
+    // only when there was a real input gesture (wheel, touch, scrollbar
+    // pointer, or a scroll key), otherwise a frame resizing under the viewport
+    // would silently switch pinning off.
+    if (userGesture) {
+      app._sentinelSuppressed = false;
+      cancelFrameListScrollAnimation(app);
+      breakScrollLockFromUser(app);
     }
+    updateMessageHashFromScroll(app, frameList);
+    if (!isScrollLockedForSession(app, sessionID) && nearBottom && userGesture)
+      armScrollLockRearm(app);
+    else if (!nearBottom)
+      cancelScrollLockRearm(app);
+  }
 
-    maybeLoadNewerFrames(app, event.currentTarget);
+  app._frameListAnchoredToBottom = !isScrollLockedForSession(app, sessionID) && nearBottom;
+  maybeLoadOlderFrames(app, frameList);
+
+  if (!isScrollLockedForSession(app, sessionID) && nearBottom) {
+    // If the user has been reading an older render window, extend it forward
+    // in small chunks while keeping the current frame under the viewport. The
+    // old showLatestFrames() swap replaced the whole window and jumped several
+    // pages at once.
+    let view = app.querySelector('.kikx-thread__body kikx-chat-view');
+    if (view?.expandNewerFrames?.())
+      return;
+
+    maybeLoadNewerFrames(app, frameList);
+  }
+}
+
+export async function fillOlderFramesFromSentinel(app, frameList) {
+  if (app._frameLoadFillInFlight)
+    return;
+
+  app._frameLoadFillInFlight = true;
+  try {
+    // A single expansion can still leave a short page below the viewport. Keep
+    // expanding/fetching until the first page fills the viewport or the source
+    // is exhausted. The cap prevents a pathological tiny-window loop.
+    for (let step = 0; step < 12; step++) {
+      let result = maybeLoadOlderFrames(app, frameList);
+      if (!result)
+        break;
+      if (typeof result.then === 'function')
+        await result;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (frameList.scrollHeight > frameList.clientHeight + 1)
+        break;
+    }
+  } finally {
+    app._frameLoadFillInFlight = false;
   }
 }
 
 export function maybeLoadOlderFrames(app, frameList = app.querySelector('.kikx-frame-list')) {
   if (!frameList || frameList.scrollTop > LOAD_OLDER_THRESHOLD)
-    return;
+    return false;
+  // Pinned mode is at the newest message. Pulling older pages there causes a
+  // multi-page prepend shift (and is not what the user asked for). The same
+  // applies while the reload anchor is being placed: the list is at scrollTop 0
+  // for a moment and the sentinel would otherwise fetch pages the user will
+  // never see.
+  if (isScrollLockedForSession(app, app._state.selectedSessionID)
+    || app._hashAnchorPending === true
+    || (app._sentinelSuppressed === true && isFrameListScrollable(frameList)))
+    return false;
 
   // Reveal frames already in state first; only fetch an older page once the
   // render window has reached the oldest loaded frame.
   let view = app.querySelector('.kikx-thread__body kikx-chat-view');
   if (view?.expandOlderFrames?.())
-    return;
+    return true;
 
   let sessionID = app._state.selectedSessionID;
   let paging = getSessionPaging(app._state, sessionID);
 
   if (paging.loading === true || paging.hasMoreOlder !== true)
-    return;
+    return false;
 
-  app._loadOlderFrames?.(sessionID);
+  let load = app._loadOlderFrames?.(sessionID);
+  return load || true;
 }
 
 // When the user returns to the bottom after trimming, refetch the newest page.

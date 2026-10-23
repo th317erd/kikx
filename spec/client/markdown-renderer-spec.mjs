@@ -33,6 +33,13 @@ test('markdownToHTML renders structural markdown blocks', () => {
   assert.equal(html.includes('<p>'), false);
 });
 
+test('markdownToHTML renders bold containing inline code and italics', () => {
+  let html = markdownToHTML("**The `if_content_hash` you're thinking of already exists — but on the *read* side.** `database-tools.mjs:131`");
+
+  assert.match(html, /<strong>The <code>if_content_hash<\/code> you're thinking of already exists — but on the <em>read<\/em> side\.<\/strong> <code>database-tools\.mjs:131<\/code>/);
+  assert.equal(html.includes('**'), false);
+});
+
 test('markdownToHTML renders links, inline code, tables, and safe inline html', () => {
   let html = markdownToHTML([
     'Use `code` and [docs](https://example.test/docs).',

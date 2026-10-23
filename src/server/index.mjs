@@ -5,6 +5,7 @@ import { createServer } from './create-server.mjs';
 import { installProcessErrorPolicy } from './process-error-policy.mjs';
 import { shutdownHTTPServer } from './shutdown.mjs';
 
+const TOOL_INFLIGHT_SHUTDOWN_GRACE_MS = 30_000;
 const CHILD_PROCESS_SHUTDOWN_GRACE_MS = 30_000;
 const CHILD_PROCESS_SHUTDOWN_TIMEOUT_MS = 35_000;
 
@@ -84,21 +85,53 @@ async function shutdownRuntimeServices(server) {
   if (!context)
     return;
 
+  // Set the global signal first. Any tool request that has not durably marked
+  // itself as started will stay pending for boot recovery instead of starting
+  // during shutdown.
+  let shutdownState = context.require?.('toolShutdownState') || null;
   try {
-    // Ask managed commands to stop, but give them a real grace window to
-    // unwind and persist their final state. SIGKILL is only a last resort after
-    // the deadline; a 1s force window is what killed an in-flight command during
-    // a routine dev restart and left its agent with an unrecoverable tool call.
-    let result = await context.require?.('processManager')?.shutdown?.({
+    shutdownState?.begin?.();
+  } catch (error) {
+    console.error('Kikx tool shutdown signal failed:', error);
+  }
+
+  // Start asking managed command children to terminate while we await the
+  // in-process tool executions. Both drains share the same wall-clock window.
+  let processShutdown = Promise.resolve().then(async () => {
+    if (typeof context.require?.('processManager')?.shutdown !== 'function')
+      return null;
+    return await context.require('processManager').shutdown({
       signal: 'SIGTERM',
       forceSignal: 'SIGKILL',
       forceAfterMS: CHILD_PROCESS_SHUTDOWN_GRACE_MS,
       timeoutMS: CHILD_PROCESS_SHUTDOWN_TIMEOUT_MS,
     });
+  }).catch((error) => {
+    console.error('Kikx process manager shutdown failed:', error);
+    return null;
+  });
+
+  try {
+    let result = shutdownState
+      ? await shutdownState.waitForInflight({ timeoutMS: TOOL_INFLIGHT_SHUTDOWN_GRACE_MS })
+      : { timedOut: false, remaining: [], waitedMS: 0 };
+    if (result.timedOut || result.remaining.length > 0) {
+      console.error(`Kikx shutdown left ${result.remaining.length} tool call(s) in flight after ${TOOL_INFLIGHT_SHUTDOWN_GRACE_MS}ms`);
+      let remaining = shutdownState.abandonRemaining?.() || result.remaining;
+      await context.require?.('toolExecutor')?.failInterruptedToolCalls?.(remaining, {
+        message: 'Execution interrupted. Command was NOT completed successfully.',
+      });
+    }
+  } catch (error) {
+    console.error('Kikx tool-call drain failed:', error);
+  }
+
+  try {
+    let result = await processShutdown;
     if (result?.remaining > 0)
       console.error(`Kikx shutdown left ${result.remaining} child process(es) running after ${CHILD_PROCESS_SHUTDOWN_TIMEOUT_MS}ms`);
   } catch (error) {
-    console.error('Kikx process manager shutdown failed:', error);
+    console.error('Kikx child-process drain failed:', error);
   }
 
   try {

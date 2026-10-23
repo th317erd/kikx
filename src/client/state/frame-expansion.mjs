@@ -118,3 +118,20 @@ export function setFrameExpanded(frameID, expanded, store = frameExpansionStore)
 export function toggleFrameExpanded(frameID, store = frameExpansionStore) {
   return store.toggle(frameID);
 }
+
+// Minimized is the default for noisy tool frames. Once the user clicks the
+// header, the frame is "revealed" and should stay in the normal collapsed
+// state across render-window rebuilds even before it is expanded.
+export const frameRevealStore = createFrameExpansionStore();
+
+export function isFrameRevealed(frameID, store = frameRevealStore) {
+  return store.has(frameID);
+}
+
+export function revealFrame(frameID, store = frameRevealStore) {
+  return store.set(frameID, true);
+}
+
+export function setFrameRevealed(frameID, revealed, store = frameRevealStore) {
+  return store.set(frameID, revealed === true);
+}

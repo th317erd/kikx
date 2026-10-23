@@ -37,51 +37,54 @@ function ids(view) {
 
 test('the full thread renders only the newest window and drops older DOM', () => {
   let view = document.createElement('kikx-chat-view');
-  view.setFrames(frames(200), {});
+  let count = MAX_RENDERED_FRAMES + 50;
+  view.setFrames(frames(count), {});
 
   let rendered = ids(view);
   assert.equal(rendered.length, MAX_RENDERED_FRAMES);
-  assert.equal(rendered[0], `frame_${200 - MAX_RENDERED_FRAMES}`);
-  assert.equal(rendered.at(-1), 'frame_199');
-  assert.equal(view.windowStart, 200 - MAX_RENDERED_FRAMES);
+  assert.equal(rendered[0], `frame_${count - MAX_RENDERED_FRAMES}`);
+  assert.equal(rendered.at(-1), `frame_${count - 1}`);
+  assert.equal(view.windowStart, count - MAX_RENDERED_FRAMES);
 });
 
 test('scrolling up reveals older state frames, then the bottom restores the newest window', () => {
   let view = document.createElement('kikx-chat-view');
-  view.setFrames(frames(200), {});
+  let count = MAX_RENDERED_FRAMES + 50;
+  view.setFrames(frames(count), {});
   let latestStart = view.windowStart;
 
   assert.equal(view.expandOlderFrames(), true);
   let older = ids(view);
-  assert.equal(older.length, MAX_RENDERED_FRAMES);
+  assert.equal(older.length, MAX_RENDERED_FRAMES + 40);
   assert.equal(older[0], `frame_${latestStart - 40}`);
-  assert.equal(older.includes('frame_199'), false, 'the oldest rendered window no longer holds the newest tail');
+  assert.equal(older.includes(`frame_${count - 1}`), true, 'growing older must not drop the newest tail');
 
   assert.equal(view.expandOlderFrames(10_000), true);
   assert.equal(view.windowStart, 0);
   assert.equal(ids(view)[0], 'frame_0');
+  assert.equal(ids(view).length, count);
 
   assert.equal(view.showLatestFrames(), true);
   let latest = ids(view);
-  assert.equal(latest.at(-1), 'frame_199');
-  assert.equal(latest[0], `frame_${200 - MAX_RENDERED_FRAMES}`);
-  assert.equal(view.windowStart, 200 - MAX_RENDERED_FRAMES);
+  assert.equal(latest.at(-1), `frame_${count - 1}`);
+  assert.equal(latest[0], `frame_${count - MAX_RENDERED_FRAMES}`);
+  assert.equal(view.windowStart, count - MAX_RENDERED_FRAMES);
 });
 
 test('a prepended older page expands the window instead of leaving the new frames hidden', () => {
   let view = document.createElement('kikx-chat-view');
-  view.setFrames(frames(80), {});
+  view.setFrames(frames(MAX_RENDERED_FRAMES), {});
   let beforeStart = view.windowStart;
   let beforeFirst = ids(view)[0];
 
   let older = [
     ...frames(20).map((frame) => ({ ...frame, id: `older_${frame.id}` })),
-    ...frames(80),
+    ...frames(MAX_RENDERED_FRAMES),
   ];
   view.syncFrames(older, {}, { prepend: true, animate: false });
 
   let rendered = ids(view);
-  assert.equal(rendered.length, MAX_RENDERED_FRAMES);
+  assert.equal(rendered.length, MAX_RENDERED_FRAMES + 20);
   assert.equal(rendered[0], 'older_frame_0');
   assert.notEqual(rendered[0], beforeFirst);
   assert.equal(view.windowStart, Math.max(0, beforeStart - 20));
@@ -94,4 +97,32 @@ test('the view exposes a bounded latest window even when state is small', () => 
   assert.equal(view.windowStart, 0);
   assert.equal(view.expandOlderFrames(), false);
   assert.equal(view.showLatestFrames(), false);
+});
+
+test('update can anchor the initial DOM window at a frame id', () => {
+  let view = document.createElement('kikx-chat-view');
+  let count = MAX_RENDERED_FRAMES + 50;
+  view.update({ frames: frames(count), appState: {}, windowStart: 25 });
+
+  assert.equal(ids(view)[0], 'frame_25');
+  assert.equal(view.windowStart, 25);
+  assert.equal(view.windowStartFrameID, 'frame_25');
+  assert.equal(ids(view).length, MAX_RENDERED_FRAMES);
+});
+
+test('expanding newer frames moves the window forward without replacing it', () => {
+  let view = document.createElement('kikx-chat-view');
+  let count = MAX_RENDERED_FRAMES + 80;
+  view.update({ frames: frames(count), appState: {}, windowStart: 0 });
+  assert.equal(view.windowStart, 0);
+
+  assert.equal(view.expandNewerFrames(40), true);
+  assert.equal(view.windowStart, 0, 'growing newer keeps the start fixed');
+  assert.equal(ids(view)[0], 'frame_0');
+  assert.equal(ids(view).length, MAX_RENDERED_FRAMES + 40);
+
+  assert.equal(view.expandNewerFrames(10_000), true);
+  assert.equal(view.windowStart, 0);
+  assert.equal(ids(view).at(-1), `frame_${count - 1}`);
+  assert.equal(view.expandNewerFrames(40), false);
 });

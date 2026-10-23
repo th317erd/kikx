@@ -254,6 +254,12 @@
   font-size: 1.1em;
 }
 
+.kikx-frame__meta-status .kikx-frame__compact-icon svg {
+  filter:
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7))
+    drop-shadow(0 0 3px rgba(0, 0, 0, 0.5));
+}
+
 .kikx-frame:is(
   .kikx-frame--AgentMessage,
   .kikx-frame--AgentMessageDelta,
@@ -377,4 +383,37 @@
   --kikx-frame-type-color: oklch(from #3ddc84 calc(l - 0.06) c h);
   --kikx-frame-status-color: oklch(from #3ddc84 calc(l - 0.06) c h);
   --kikx-frame-status-foreground-color: oklch(from #2ff58a calc(l - 0.06) c h);
+}
+
+/* Minimized tool messages: only the header remains. Clicking it reveals the
+   normal collapsed summary; the summary then expands as before. */
+.kikx-frame--minimized {
+  display: inline-block;
+  width: auto;
+  max-width: min(78%, 960px);
+  margin: 0 8px 8px 0;
+  vertical-align: top;
+}
+
+.kikx-frame--minimized .kikx-frame__compact {
+  display: none;
+}
+
+.kikx-frame--minimized .kikx-frame__meta {
+  border-radius: calc(var(--kikx-frame-radius) - var(--kikx-frame-border-width));
+  cursor: pointer;
+}
+
+.kikx-frame--minimized .kikx-frame__meta:hover {
+  filter: brightness(1.08);
+}
+
+.kikx-frame__meta-status-label code {
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 183, 102, 0.28);
+  border-radius: 4px;
+  background: #16120d;
+  color: #ffd8a8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: inherit;
 }

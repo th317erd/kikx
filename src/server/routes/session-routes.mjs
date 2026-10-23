@@ -192,11 +192,17 @@ export async function handleSessionRoutes({ request, response, url, context }) {
       }
 
       let before = parseOptionalNonNegativeInteger(url.searchParams.get('before'));
+      let options = {
+        limit: parsePositiveInteger(url.searchParams.get('limit'), 100),
+        before,
+      };
+      if (url.searchParams.has('start'))
+        options.start = url.searchParams.get('start');
+      if (url.searchParams.has('after'))
+        options.after = parseOptionalNonNegativeInteger(url.searchParams.get('after'));
+
       writeJSON(response, 200, {
-        data: await frameRuntime.listFrameWindow(sessionRoute.sessionID, {
-          limit: parsePositiveInteger(url.searchParams.get('limit'), 100),
-          before,
-        }),
+        data: await frameRuntime.listFrameWindow(sessionRoute.sessionID, options),
       });
       return true;
     }

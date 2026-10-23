@@ -134,19 +134,214 @@ const COMPACT_HEADER_LABELS = new Map([
 export function compactFrameHeader(frame) {
   let summary = compactFrameSummary(frame);
   let toolName = String(frame?.content?.toolName || '');
+  let input = isPlainObject(frame?.content?.input) ? frame.content.input : {};
   let label = COMPACT_HEADER_LABELS.get(toolName);
 
-  if (!label && toolName.startsWith('todo-'))
-    label = 'Todo List';
-  else if (!label && (toolName === 'exec' || (toolName.startsWith('exec-') && toolName !== 'exec-read')))
+  if (!label && toolName.startsWith('todo-')) {
+    label = todoHeaderLabel(toolName, summary, input);
+  } else if (!label && toolName === 'exec') {
+    let word = shellCommandFocusWord(summary.command || inputField(input, 'command'));
+    if (word)
+      return { label: word, icon: summary.icon || 'gear', code: true };
     label = summary.description;
-  else if (!label)
+  } else if (!label && toolName.startsWith('exec-') && toolName !== 'exec-read') {
+    label = summary.description;
+  } else if (!label) {
     label = summary.description.length <= 32 ? summary.description : humanizeToolName(toolName || frame?.type);
+  }
 
   return {
     label: label || summary.description || 'Tool',
     icon: summary.icon || 'diamond',
   };
+}
+
+function todoHeaderLabel(toolName, summary, input) {
+  let title = text(input.title);
+  if (!title) {
+    let match = /^[^:]+:\s*(.+)$/.exec(summary.description || '');
+    title = match?.[1] || '';
+  }
+
+  switch (toolName) {
+    case 'todo-get':
+      return 'Read Todo List';
+    case 'todo-add':
+      return title ? `${title} Todo List Add` : 'Todo List Add';
+    case 'todo-update':
+      return title ? `${title} Todo List Update` : 'Todo List Update';
+    case 'todo-complete':
+      return title ? `${title} Todo List Complete` : 'Todo List Complete';
+    case 'todo-delete':
+      return title ? `${title} Todo List Delete` : 'Todo List Delete';
+    case 'todo-clear':
+      return 'Clear Todo List';
+    case 'todo-focus-set':
+      return title ? `${title} Todo List Focus` : 'Focus Todo List';
+    case 'todo-focus-clear':
+      return 'Clear Todo Focus';
+    default:
+      return 'Todo List';
+  }
+}
+
+// Deliberately shallow shell prefix sanitising. This is not a shell parser; it
+// just finds the first useful command token after common setup/echo/cd prefixes.
+const SHELL_SEGMENT_SEPARATOR = /\s*(?:&&|\|\||[;|]|>>?|<<?)\s*/;
+const SHELL_SUBCOMMAND_COMMANDS = new Set([
+  'cargo',
+  'docker',
+  'gh',
+  'git',
+  'go',
+  'kubectl',
+  'npm',
+  'pnpm',
+  'systemctl',
+  'tmux',
+  'yarn',
+]);
+const SHELL_RUN_COMMANDS = new Set([ 'npm', 'pnpm', 'yarn' ]);
+const TIMEOUT_DURATION = /^\d+(?:\.\d+)?[smhd]?$/;
+const MUNDANE_SHELL_COMMANDS = new Set([
+  'echo',
+  'printf',
+  'cd',
+  'pushd',
+  'popd',
+  'set',
+  'unset',
+  'export',
+  'source',
+  '.',
+  'true',
+  'false',
+  ':',
+  'test',
+  '[',
+  'exit',
+  'sleep',
+  'wait',
+]);
+
+export function shellCommandFocusWord(command) {
+  let text = String(command || '').trim();
+  if (!text)
+    return '';
+
+  // Remove simple redirection clauses before splitting: `> file`, `2>&1`,
+  // `<<EOF`. We deliberately do not read heredoc bodies.
+  text = text.replace(/\d*(?:>>?|<<?)[-]?\s*(?:&\d+|'[^']*'|"[^"]*"|[^\s;|&]+)?/g, ' ').trim();
+  let segments = text.split(SHELL_SEGMENT_SEPARATOR).filter((segment) => segment.trim() !== '');
+  for (let segment of segments) {
+    let word = firstCommandWord(segment);
+    if (word && !MUNDANE_SHELL_COMMANDS.has(word))
+      return commandFocusLabel(segment, word);
+  }
+
+  let word = firstCommandWord(text);
+  return word ? commandFocusLabel(text, word) : '';
+}
+
+function commandFocusLabel(segment, command) {
+  if (!SHELL_SUBCOMMAND_COMMANDS.has(command))
+    return command;
+
+  let parts = shellWords(segment);
+  let commandIndex = parts.findIndex((part) => (
+    !/^[A-Za-z_][A-Za-z0-9_]*=/.test(part)
+    && cleanShellWord(part) === command
+  ));
+  if (commandIndex < 0)
+    return command;
+
+  let subIndex = commandIndex + 1;
+  let subcommand = parts[subIndex];
+  if (!subcommand || subcommand.startsWith('-'))
+    return command;
+
+  let label = `${command} ${subcommand}`;
+  if (SHELL_RUN_COMMANDS.has(command) && subcommand === 'run') {
+    let script = parts[subIndex + 1];
+    if (script && !script.startsWith('-'))
+      label += ` ${script}`;
+  }
+
+  return label;
+}
+
+function shellWords(command) {
+  return String(command || '').trim().split(/\s+/).filter(Boolean);
+}
+
+function firstCommandWord(command) {
+  return firstCommandWordFromParts(shellWords(command));
+}
+
+function firstCommandWordFromParts(parts, start = 0) {
+  for (let index = start; index < parts.length; index++) {
+    let part = parts[index];
+    let assignment = /^[A-Za-z_][A-Za-z0-9_]*=(.*)$/.exec(part);
+    if (assignment) {
+      let inner = commandSubstitutionValue(assignment[1]);
+      if (inner === '') {
+        // `NAME=$( <command> ... )` leaves the command in the next word.
+        let next = firstCommandWordFromParts(parts, index + 1);
+        if (next)
+          return next;
+      } else {
+        let innerParts = shellWords(inner);
+        if (innerParts.length > 0) {
+          let word = firstCommandWordFromParts([ ...innerParts, ...parts.slice(index + 1) ]);
+          if (word)
+            return word;
+        }
+      }
+      continue;
+    }
+
+    let word = cleanShellWord(part);
+    if (word === 'timeout') {
+      let next = skipTimeoutPrefix(parts, index + 1);
+      if (next >= parts.length)
+        return 'timeout';
+      index = next - 1;
+      continue;
+    }
+
+    return word;
+  }
+  return '';
+}
+
+function skipTimeoutPrefix(parts, start) {
+  let index = start;
+  while (index < parts.length) {
+    let word = cleanShellWord(parts[index]);
+    if (word.startsWith('-')) {
+      index += 1;
+      continue;
+    }
+    if (TIMEOUT_DURATION.test(word)) {
+      index += 1;
+      break;
+    }
+    break;
+  }
+  return index;
+}
+
+function commandSubstitutionValue(value) {
+  let text = String(value || '');
+  if (text.startsWith('$('))
+    return text.slice(2);
+  if (text.startsWith('`'))
+    return text.slice(1);
+  return '';
+}
+
+function cleanShellWord(value) {
+  return String(value || '').replace(/^['"]|['"]$/g, '');
 }
 
 export function compactFrameBodyDescription(frame) {

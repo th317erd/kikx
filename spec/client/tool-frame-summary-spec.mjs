@@ -7,6 +7,7 @@ import {
   compactFrameBodyDescription,
   compactFrameHeader,
   compactFrameSummary,
+  shellCommandFocusWord,
   frameMoodBand,
   frameStatus,
   frameStatusClass,
@@ -47,8 +48,39 @@ test('compact headers use short action labels while bodies keep the full detail'
   assert.equal(compactFrameBodyDescription(read), 'Read file /tmp/notes.txt <-');
 
   let shell = toolFrame('exec', { command: 'ls /tmp' }, { status: 'success' });
-  assert.deepEqual(compactFrameHeader(shell), { label: 'Command completed', icon: 'gear' });
+  assert.deepEqual(compactFrameHeader(shell), { label: 'ls', icon: 'gear', code: true });
   assert.equal(compactFrameBodyDescription(shell), '', 'shell status lives only in the header');
+});
+
+test('todo headers are complete read/write phrases with useful titles', () => {
+  let read = compactFrameSummary(toolFrame('todo-get')).icon;
+  assert.equal(compactFrameHeader(toolFrame('todo-get')).label, 'Read Todo List');
+  assert.equal(read, 'check');
+  assert.equal(compactFrameHeader(toolFrame('todo-add', { title: 'Ship it' })).label, 'Ship it Todo List Add');
+  assert.equal(compactFrameHeader(toolFrame('todo-complete', { id: 'x' }, { preview: '{"items":[{"id":"x","title":"Ship it"}]}' })).label, 'Ship it Todo List Complete');
+});
+
+test('shell header focus skips mundane echo/cd/setup prefixes', () => {
+  assert.equal(shellCommandFocusWord('echo "=== remote + upstream ===" && git remote -v && git status'), 'git remote');
+  assert.equal(shellCommandFocusWord('cd ~/Projects/foo || exit 1; npm test'), 'npm test');
+  assert.equal(shellCommandFocusWord('set -e; printf hi > /tmp/x; grep needle file'), 'grep');
+  assert.equal(shellCommandFocusWord('FOO=bar git status'), 'git status');
+  assert.equal(shellCommandFocusWord('timeout 60 git status'), 'git status');
+  assert.equal(shellCommandFocusWord('TOKEN=$(timeout 60 node scripts/tool.mjs)'), 'node');
+  assert.equal(shellCommandFocusWord('echo only'), 'echo');
+  assert.deepEqual(compactFrameHeader(toolFrame('exec', { command: 'echo heading && git status' })), {
+    label: 'git status',
+    icon: 'gear',
+    code: true,
+  });
+});
+
+test('shell focus keeps a useful subcommand for known commands', () => {
+  assert.equal(shellCommandFocusWord('git diff --stat'), 'git diff');
+  assert.equal(shellCommandFocusWord('git status --short'), 'git status');
+  assert.equal(shellCommandFocusWord('git -C repo status'), 'git');
+  assert.equal(shellCommandFocusWord('npm run build'), 'npm run build');
+  assert.equal(shellCommandFocusWord('docker compose up -d'), 'docker compose');
 });
 
 test('exec management tools use short header titles', () => {

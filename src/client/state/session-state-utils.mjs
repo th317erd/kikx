@@ -271,9 +271,14 @@ export function setSessionFramesState(state, sessionID, frames, paging = null) {
     return next;
 
   if (paging) {
-    // A fresh window is anchored to the newest page, so any prior "newer frames
-    // were trimmed" flag is stale.
-    next = setSessionPagingState(next, sessionID, { ...normalizeSessionPaging(paging), hasMoreNewer: false });
+    // A fresh tail window clears any prior trimmed-newest flag. A cursor window
+    // (started from a frame id) carries its own hasMoreNewer so paging forward
+    // remains possible.
+    let normalized = normalizeSessionPaging(paging);
+    next = setSessionPagingState(next, sessionID, {
+      ...normalized,
+      hasMoreNewer: normalized.hasMoreNewer === true,
+    });
   } else if (trimmedOldest) {
     // A legacy/whole-session load that overflowed dropped the oldest end, so the
     // window is no longer anchored to the session start.

@@ -164,6 +164,37 @@ test('a re-rendered tool frame keeps its disclosure and recolors red on failure'
   assert.equal(item.dataset.frameStatus, 'error');
 });
 
+test('noisy tool frames default to minimized, while read/write frames stay revealed', () => {
+  let item = frameItem();
+  item.updateFrame({
+    id: 'read-revealed',
+    type: 'ReadFileToolFrame',
+    content: { toolName: 'read-file', phase: 'result', status: 'success', input: { path: '/tmp/notes.txt' } },
+  }, toolState('read-file', 'kikx-read-file-use'));
+  assert.equal(item.classList.contains('kikx-frame--minimized'), false);
+
+  item.updateFrame({
+    id: 'shell-minimized',
+    type: 'ShellToolFrame',
+    content: { toolName: 'exec', phase: 'result', status: 'success', input: { command: 'ls /tmp' } },
+  }, toolState('exec', 'kikx-shell-tool-use'));
+  assert.ok(item.classList.contains('kikx-frame--minimized'));
+  assert.equal(item.querySelector('.kikx-frame__meta')?.getAttribute('role'), 'button');
+
+  item.connectedCallback();
+  item.querySelector('.kikx-frame__meta').dispatchEvent(new Event('click', { bubbles: true }));
+  assert.equal(item.classList.contains('kikx-frame--minimized'), false);
+  assert.equal(item.querySelector('.kikx-frame__meta')?.getAttribute('role'), null);
+
+  let details = item.querySelector('details.kikx-frame__compact');
+  details.open = true;
+  details.dispatchEvent(new Event('toggle'));
+  details.open = false;
+  details.dispatchEvent(new Event('toggle'));
+  assert.ok(item.classList.contains('kikx-frame--minimized'), 'collapsing an expanded noisy tool returns to header-only');
+  assert.equal(item.querySelector('.kikx-frame__meta')?.getAttribute('role'), 'button');
+});
+
 test('exec uses a neutral compact line and switches from neutral to green', () => {
   let item = frameItem();
   let state = toolState('exec', 'kikx-shell-tool-use');
@@ -182,7 +213,7 @@ test('exec uses a neutral compact line and switches from neutral to green', () =
 
   assert.ok(item.classList.contains('kikx-frame--status-running'));
   assert.equal(summaryDescription(item), '');
-  assert.equal(headerStatus(item), 'Running command');
+  assert.equal(headerStatus(item), 'ls');
   assert.equal(item.querySelector('.kikx-frame__compact-description code'), null);
   assert.equal(item.querySelector('.kikx-frame__compact-command-code').textContent, 'ls /tmp');
   assert.equal(summaryIcon(item), 'gear');
@@ -196,7 +227,7 @@ test('exec uses a neutral compact line and switches from neutral to green', () =
   assert.ok(item.classList.contains('kikx-frame--status-success'));
   assert.equal(item.dataset.frameStatus, 'success');
   assert.equal(summaryDescription(item), '');
-  assert.equal(headerStatus(item), 'Command completed');
+  assert.equal(headerStatus(item), 'ls');
   assert.equal(item.querySelector('.kikx-frame__compact-command-code').textContent, 'ls /tmp');
 });
 

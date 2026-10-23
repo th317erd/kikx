@@ -2,6 +2,7 @@
 
 import { elements, $ } from '../lib/aeor-ui.mjs';
 import { createIcon } from '../lib/icons.mjs';
+import { buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { createErrorSurfaceElement } from './kikx-error-surface.mjs';
 import { reattachAnswerNotice } from './answer-notice.mjs';
@@ -36,6 +37,8 @@ const aeorInput = elements['aeor-input'];
 export function renderAppShell(app) {
   countRebuild('shell');
   let renderSnapshot = app._captureRenderSnapshot();
+  if (!app._frameWindowStartFrameID && renderSnapshot.preserveWindowStartFrameID)
+    app._frameWindowStartFrameID = renderSnapshot.preserveWindowStartFrameID;
   let previousChildren = Array.from(app.childNodes);
 
   // If the app currently has no error surface (the very first render, or a
@@ -282,6 +285,7 @@ export function buildWindowHeader(app, { title, sessionID = null, collapsed = fa
     div.class('kikx-window__lead')(
       backButton,
       buildBreadcrumbTitle(app, title, sessionID),
+      sessionID && !collapsed ? buildScrollLockToolbar(app, sessionID) : null,
     ),
     buildSessionSearch(app),
     div.class('kikx-window__actions')(
@@ -541,7 +545,14 @@ export function buildFrameThread(app) {
 export function createChatViewElement(app, frames, mode = 'full') {
   let view = document.createElement('kikx-chat-view');
   view.mode = mode;
-  view.update({ frames, appState: app._state });
+  let startFrameID = app._frameWindowStartFrameID;
+  let startIndex = startFrameID ? frames.findIndex((frame) => frame?.id === startFrameID) : -1;
+  app._frameWindowStartFrameID = null;
+  view.update({
+    frames,
+    appState: app._state,
+    windowStart: startIndex >= 0 ? startIndex : undefined,
+  });
   return view;
 }
 

@@ -1,0 +1,115 @@
+'use strict';
+
+import { setIcon } from '../lib/icons.mjs';
+
+const STORAGE_PREFIX = 'kikx.scrollLock.';
+const MODE_PREFIX = 'kikx.scrollLockMode.';
+const DEFAULT_LOCKED = true;
+
+function storage() {
+  try {
+    return globalThis.localStorage || null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function key(sessionID) {
+  return `${STORAGE_PREFIX}${sessionID}`;
+}
+
+function modeKey(sessionID) {
+  return `${MODE_PREFIX}${sessionID}`;
+}
+
+export function isScrollLockedForSession(app, sessionID = app?._state?.selectedSessionID) {
+  if (!sessionID)
+    return false;
+
+  let value;
+  try {
+    value = storage()?.getItem?.(key(sessionID));
+  } catch (_error) {
+    value = null;
+  }
+  return value == null ? DEFAULT_LOCKED : value !== '0';
+}
+
+export function getScrollLockModeForSession(app, sessionID = app?._state?.selectedSessionID) {
+  if (!sessionID)
+    return 'top';
+  let value;
+  try {
+    value = storage()?.getItem?.(modeKey(sessionID));
+  } catch (_error) {
+    value = null;
+  }
+  return value === 'bottom' ? 'bottom' : 'top';
+}
+
+export function setScrollLockModeForSession(app, mode, sessionID = app?._state?.selectedSessionID) {
+  if (!sessionID)
+    return 'top';
+  let next = mode === 'bottom' ? 'bottom' : 'top';
+  try {
+    storage()?.setItem?.(modeKey(sessionID), next);
+  } catch (_error) {}
+  paintScrollLockButton(app, sessionID, isScrollLockedForSession(app, sessionID));
+  return next;
+}
+
+export function setScrollLockedForSession(app, locked, sessionID = app?._state?.selectedSessionID) {
+  if (!sessionID)
+    return false;
+
+  let next = locked === true;
+  try {
+    storage()?.setItem?.(key(sessionID), next ? '1' : '0');
+  } catch (_error) {}
+  paintScrollLockButton(app, sessionID, next);
+  return next;
+}
+
+export function toggleScrollLockForSession(app, sessionID = app?._state?.selectedSessionID) {
+  return setScrollLockedForSession(app, !isScrollLockedForSession(app, sessionID), sessionID);
+}
+
+export function buildScrollLockToolbar(app, sessionID) {
+  let toolbar = document.createElement('div');
+  toolbar.className = 'kikx-session-toolbar';
+
+  let locked = isScrollLockedForSession(app, sessionID);
+  let mode = getScrollLockModeForSession(app, sessionID);
+  let button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'kikx-session-toolbar__button kikx-session-toolbar__button--lock';
+  button.setAttribute('aria-pressed', locked ? 'true' : 'false');
+  button.title = scrollLockTitle(locked, mode);
+  button.setAttribute('aria-label', button.title);
+  setIcon(button, locked ? 'lock-locked' : 'lock-unlocked');
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    app._toggleScrollLock?.();
+  });
+  toolbar.appendChild(button);
+  return toolbar;
+}
+
+export function paintScrollLockButton(app, sessionID = app?._state?.selectedSessionID, locked = null) {
+  let button = app?.querySelector?.('.kikx-session-toolbar__button--lock');
+  if (!button)
+    return;
+
+  let next = locked == null ? isScrollLockedForSession(app, sessionID) : locked === true;
+  let mode = getScrollLockModeForSession(app, sessionID);
+  button.setAttribute('aria-pressed', next ? 'true' : 'false');
+  button.title = scrollLockTitle(next, mode);
+  button.setAttribute('aria-label', button.title);
+  setIcon(button, next ? 'lock-locked' : 'lock-unlocked');
+}
+
+function scrollLockTitle(locked, mode) {
+  if (!locked)
+    return 'Scroll unlocked';
+  return mode === 'bottom' ? 'Scroll locked to the bottom' : 'Scroll locked to the latest message';
+}

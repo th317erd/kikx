@@ -4,6 +4,7 @@ import './kikx-frame-item.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { miniPreviewFrames, miniScale, MINI_DESIGN_WIDTH, MINI_DESIGN_HEIGHT } from './chat-view-model.mjs';
 import { countRebuild } from './render-stats.mjs';
+import { captureFrameListAnchor, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
 
 const FRAME_ENTER_ANIMATION_MS = 220;
 
@@ -11,7 +12,8 @@ const FRAME_ENTER_ANIMATION_MS = 220;
 // pages can be revealed without a refetch), but only a recent window is kept in
 // the DOM. Scrolling to the top reveals older state frames in chunks; scrolling
 // back to the bottom switches back to the newest window.
-export const MAX_RENDERED_FRAMES = 80;
+export const MAX_RENDERED_FRAMES = 200;
+export const MAX_TOTAL_RENDERED_FRAMES = 800;
 export const RENDER_WINDOW_REVEAL = 40;
 
 export class KikxChatView extends HTMLElement {
@@ -25,6 +27,7 @@ export class KikxChatView extends HTMLElement {
     this._miniScaler = null;
     this._resizeObserver = null;
     this._windowStart = 0;
+    this._windowEnd = 0;
     this._windowStartFrameID = null;
   }
 
@@ -87,6 +90,7 @@ export class KikxChatView extends HTMLElement {
     if (input.appState)
       this._appState = input.appState;
 
+    this._pendingWindowStart = Number.isInteger(input.windowStart) ? input.windowStart : null;
     this._render();
   }
 
@@ -100,6 +104,10 @@ export class KikxChatView extends HTMLElement {
 
   get windowStart() {
     return this._windowStart;
+  }
+
+  get windowStartFrameID() {
+    return this._windowStartFrameID;
   }
 
   // Incremental update used by the app's frame-runtime flush path. Preserves
@@ -125,11 +133,18 @@ export class KikxChatView extends HTMLElement {
 
     let wasAtBottom = this._isAtBottom();
     let prependedCount = Math.max(0, this._frames.length - previousFrames.length);
+    let currentLength = Math.max(0, this._windowEnd - this._windowStart);
     let windowOptions = options;
+    if (!Number.isInteger(options.maxRendered) && currentLength > 0)
+      windowOptions = { ...windowOptions, maxRendered: Math.min(MAX_TOTAL_RENDERED_FRAMES, currentLength) };
     if (options.prepend === true && prependedCount > 0) {
       windowOptions = {
-        ...options,
+        ...windowOptions,
         windowStart: Math.max(0, this._windowStart - prependedCount),
+        maxRendered: Math.min(
+          MAX_TOTAL_RENDERED_FRAMES,
+          Math.max(windowOptions.maxRendered || currentLength, currentLength + prependedCount),
+        ),
       };
     }
 
@@ -183,6 +198,7 @@ export class KikxChatView extends HTMLElement {
       stale.remove();
 
     this._windowStart = window.start;
+    this._windowEnd = window.end;
     this._windowStartFrameID = this._frames[window.start]?.id || null;
 
     // If the user was pinned to the bottom, dropping the oldest items must not
@@ -202,13 +218,55 @@ export class KikxChatView extends HTMLElement {
       return false;
 
     let list = this.frameList;
+    let anchor = captureFrameListAnchor(list);
     let beforeHeight = list?.scrollHeight ?? 0;
     let beforeTop = list?.scrollTop ?? 0;
-    this.syncFrames(this._frames, this._appState, { windowStart: nextStart, animate: false });
+    let added = this._windowStart - nextStart;
+    let currentLength = Math.max(0, this._windowEnd - this._windowStart);
+    // Grow the rendered window instead of dropping the newest end. Dropping the
+    // opposite end forced a large scrollTop correction and looked like a jump.
+    let maxRendered = Math.min(MAX_TOTAL_RENDERED_FRAMES, currentLength + added);
+    this.syncFrames(this._frames, this._appState, {
+      windowStart: nextStart,
+      maxRendered: Math.max(MAX_RENDERED_FRAMES, maxRendered),
+      animate: false,
+    });
     if (list) {
-      // Keep the content under the user's eyes stationary when older frames are
-      // inserted above it.
-      list.scrollTop = beforeTop + Math.max(0, list.scrollHeight - beforeHeight);
+      this._markProgrammaticScroll();
+      if (!restoreFrameListAnchor(list, anchor)) {
+        // Keep the content under the user's eyes stationary when older frames are
+        // inserted above it.
+        list.scrollTop = beforeTop + Math.max(0, list.scrollHeight - beforeHeight);
+      }
+    }
+    return true;
+  }
+
+  // Reveal newer state frames without replacing the whole rendered window.
+  // The previous top-visible frame stays fixed, so reaching the bottom extends
+  // the list downward instead of jumping thousands of pixels to a new window.
+  expandNewerFrames(count = RENDER_WINDOW_REVEAL) {
+    let amount = Math.max(1, Number.isFinite(count) ? Math.trunc(count) : RENDER_WINDOW_REVEAL);
+    if (this._windowEnd >= this._frames.length)
+      return false;
+
+    let currentLength = Math.max(0, this._windowEnd - this._windowStart);
+    let maxRendered = Math.min(MAX_TOTAL_RENDERED_FRAMES, currentLength + amount);
+    if (maxRendered <= currentLength)
+      return false;
+
+    let list = this.frameList;
+    let anchor = captureFrameListAnchor(list);
+    // Keep the start fixed: append newer frames below the current viewport. No
+    // scrollTop correction and no visual shift are needed.
+    this.syncFrames(this._frames, this._appState, {
+      windowStart: this._windowStart,
+      maxRendered,
+      animate: false,
+    });
+    if (list) {
+      this._markProgrammaticScroll();
+      restoreFrameListAnchor(list, anchor);
     }
     return true;
   }
@@ -227,11 +285,13 @@ export class KikxChatView extends HTMLElement {
   _resolveWindow(options = {}) {
     let frames = this._frames;
     let max = Number.isInteger(options.maxRendered) && options.maxRendered > 0
-      ? options.maxRendered
+      ? Math.min(options.maxRendered, MAX_TOTAL_RENDERED_FRAMES)
       : MAX_RENDERED_FRAMES;
 
     let start;
-    if (Number.isInteger(options.windowStart)) {
+    if (options.followLatest === true) {
+      start = Math.max(0, frames.length - max);
+    } else if (Number.isInteger(options.windowStart)) {
       start = Math.min(Math.max(0, options.windowStart), Math.max(0, frames.length - 1));
     } else if (this._windowStartFrameID) {
       let index = frames.findIndex((frame) => frame?.id === this._windowStartFrameID);
@@ -257,10 +317,18 @@ export class KikxChatView extends HTMLElement {
     return list.scrollHeight - list.scrollTop - list.clientHeight <= 50;
   }
 
+  _markProgrammaticScroll() {
+    let app = this.closest?.('kikx-app');
+    if (app)
+      app._ignoreFrameScrollUntil = Date.now() + 200;
+  }
+
   _scrollToBottom() {
     let list = this.frameList;
-    if (list)
-      list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+    if (!list)
+      return;
+    this._markProgrammaticScroll();
+    list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
   }
 
   _render() {
@@ -296,8 +364,10 @@ export class KikxChatView extends HTMLElement {
     list.setAttribute('role', 'list');
     let stream = document.createElement('div');
     stream.className = 'kikx-frame-stream';
-    let window = this._resolveWindow();
+    let window = this._resolveWindow(Number.isInteger(this._pendingWindowStart) ? { windowStart: this._pendingWindowStart } : {});
+    this._pendingWindowStart = null;
     this._windowStart = window.start;
+    this._windowEnd = window.end;
     this._windowStartFrameID = this._frames[window.start]?.id || null;
     for (let frame of this._frames.slice(window.start, window.end))
       stream.appendChild(this._createFrameItem(frame));

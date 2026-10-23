@@ -5,9 +5,36 @@ import { randomUUID } from 'node:crypto';
 export class ToolExecutionService {
   constructor(options = {}) {
     this.toolOutputStore = options.toolOutputStore || null;
+    this.shutdownState = options.shutdownState || null;
+    this.context = options.context || null;
+    this.logger = options.logger || console;
   }
 
-  async executeTool({ toolName, ToolClass, input = {}, context = {} } = {}) {
+  async failInterruptedToolCalls(records = [], options = {}) {
+    let message = options.message || 'Execution interrupted. Command was NOT completed successfully.';
+    let failed = [];
+    for (let record of Array.isArray(records) ? records : []) {
+      if (!record?.frame || !record?.toolName)
+        continue;
+      try {
+        await recordToolResultFrame({
+          toolName: record.toolName,
+          ToolClass: record.ToolClass || null,
+          input: record.input || record.frame.content?.input || {},
+          context: record.context || {},
+          toolCallFrame: record.frame,
+          status: 'error',
+          error: new Error(message),
+        });
+        failed.push(record.frame.id);
+      } catch (error) {
+        this.logger?.error?.('Failed to finalize interrupted tool call', error);
+      }
+    }
+    return failed;
+  }
+
+  async executeTool({ toolName, ToolClass, input = {}, context = {}, existingToolCallFrame = null } = {}) {
     if (typeof toolName !== 'string' || toolName.trim() === '')
       throw new TypeError('toolName must be a non-empty string');
 
@@ -17,7 +44,7 @@ export class ToolExecutionService {
     let normalizedInput = normalizeToolInput(input);
     let executionContext = await createToolExecutionContext(context, normalizedInput);
     try {
-      return await runTool({ executor: this, toolName, ToolClass, input: normalizedInput, executionContext });
+      return await runTool({ executor: this, toolName, ToolClass, input: normalizedInput, executionContext, existingToolCallFrame });
     } finally {
       // A cross-session call pins the target runtime for the whole call (see
       // createToolExecutionContext); release it on success and on failure so an
@@ -27,68 +54,100 @@ export class ToolExecutionService {
   }
 }
 
-async function runTool({ executor, toolName, ToolClass, input, executionContext }) {
+async function runTool({ executor, toolName, ToolClass, input, executionContext, existingToolCallFrame = null }) {
   let enrichedInput = enrichToolInput(input, executionContext);
   let tool = new ToolClass(executionContext);
   if (typeof tool.execute !== 'function')
     throw new TypeError(`${toolName} does not provide execute()`);
 
-  let toolCallFrame = await recordToolCallFrame({ toolName, ToolClass, input: enrichedInput, context: executionContext });
-  let toolOutputStore = resolveToolOutputStore(executor, executionContext);
+  let toolCallFrame = existingToolCallFrame
+    || await recordToolCallFrame({ toolName, ToolClass, input: enrichedInput, context: executionContext });
+  let shutdownState = resolveShutdownState(executor, executionContext);
+  if (shutdownState?.isShuttingDown?.())
+    throw new ToolExecutionDeferredError(toolName);
 
-  let result;
+  toolCallFrame = await markToolCallStarted({ toolCallFrame, context: executionContext });
+  let toolOutputStore = resolveToolOutputStore(executor, executionContext);
+  let record = {
+    frame: toolCallFrame,
+    toolName,
+    ToolClass,
+    input: enrichedInput,
+    context: executionContext,
+  };
+  let trackingToken = shutdownState?.track?.(record);
+
   try {
-    result = await tool.execute(enrichedInput);
-  } catch (error) {
-    await recordToolErrorFrame({
+    let result;
+    try {
+      result = await tool.execute(enrichedInput);
+    } catch (error) {
+      if (record.abandoned === true)
+        throw error;
+      await recordToolErrorFrame({
+        toolName,
+        ToolClass,
+        input: enrichedInput,
+        context: executionContext,
+        toolCallFrame,
+        toolOutputStore,
+        error,
+      });
+      throw error;
+    }
+
+    if (record.abandoned === true)
+      return result;
+
+    if (!toolOutputStore?.storeToolOutput) {
+      await recordToolResultFrame({
+        toolName,
+        ToolClass,
+        input: enrichedInput,
+        context: executionContext,
+        toolCallFrame,
+        agentResult: result,
+        status: 'success',
+      });
+      return result;
+    }
+
+    let storedOutput = await toolOutputStore.storeToolOutput({
       toolName,
       ToolClass,
       input: enrichedInput,
+      result,
       context: executionContext,
-      toolCallFrame,
-      toolOutputStore,
-      error,
     });
-    throw error;
-  }
 
-  if (!toolOutputStore?.storeToolOutput) {
+    let agentResult = typeof toolOutputStore.createAgentResult === 'function'
+      ? toolOutputStore.createAgentResult(storedOutput)
+      : result;
+
     await recordToolResultFrame({
       toolName,
       ToolClass,
       input: enrichedInput,
       context: executionContext,
       toolCallFrame,
-      agentResult: result,
+      storedOutput,
+      agentResult,
       status: 'success',
     });
-    return result;
+
+    return agentResult;
+  } finally {
+    if (trackingToken != null)
+      shutdownState?.untrack?.(trackingToken);
   }
+}
 
-  let storedOutput = await toolOutputStore.storeToolOutput({
-    toolName,
-    ToolClass,
-    input: enrichedInput,
-    result,
-    context: executionContext,
-  });
-
-  let agentResult = typeof toolOutputStore.createAgentResult === 'function'
-    ? toolOutputStore.createAgentResult(storedOutput)
-    : result;
-
-  await recordToolResultFrame({
-    toolName,
-    ToolClass,
-    input: enrichedInput,
-    context: executionContext,
-    toolCallFrame,
-    storedOutput,
-    agentResult,
-    status: 'success',
-  });
-
-  return agentResult;
+class ToolExecutionDeferredError extends Error {
+  constructor(toolName) {
+    super(`Server is shutting down; deferred ${toolName} until restart.`);
+    this.name = 'ToolExecutionDeferredError';
+    this.code = 'TOOL_DEFERRED_FOR_SHUTDOWN';
+  }
 }
 
 async function createToolExecutionContext(context = {}, input = {}) {
@@ -189,6 +248,58 @@ function resolveFrameRuntime(context = {}) {
   return context.services?.frameRuntime || resolveContextService(context, 'frameRuntime');
 }
 
+function resolveShutdownState(executor, context = {}) {
+  return executor?.shutdownState
+    || context.shutdownState
+    || context.services?.shutdownState
+    || resolveContextService(context, 'shutdownState');
+}
+
+async function markToolCallStarted({ toolCallFrame, context = {} } = {}) {
+  if (!toolCallFrame?.id || toolCallFrame.startedProcessingAt != null)
+    return toolCallFrame;
+
+  let frameEngine = await resolveFrameEngine(context);
+  if (!frameEngine)
+    return toolCallFrame;
+
+  let existing = frameEngine.get?.(toolCallFrame.id) || toolCallFrame;
+  let now = resolveClock(context)();
+  let merged = frameEngine.merge([ {
+    ...existing,
+    startedProcessingAt: now,
+  } ], {
+    authorType: 'tool',
+    authorID: toolCallFrame.authorID || 'tool',
+    silent: true,
+  });
+  await flushFrameStore(context);
+  return merged[0] || frameEngine.get?.(toolCallFrame.id) || { ...toolCallFrame, startedProcessingAt: now };
+}
+
+async function markToolCallFinished({ toolCallFrame, context = {}, finishedAt = null } = {}) {
+  if (!toolCallFrame?.id || toolCallFrame.finishedProcessingAt != null)
+    return toolCallFrame;
+
+  let frameEngine = await resolveFrameEngine(context);
+  if (!frameEngine)
+    return toolCallFrame;
+
+  let existing = frameEngine.get?.(toolCallFrame.id) || toolCallFrame;
+  let now = finishedAt ?? resolveClock(context)();
+  let merged = frameEngine.merge([ {
+    ...existing,
+    startedProcessingAt: existing.startedProcessingAt ?? now,
+    finishedProcessingAt: now,
+  } ], {
+    authorType: 'tool',
+    authorID: existing.authorID || 'tool',
+    silent: true,
+  });
+  await flushFrameStore(context);
+  return merged[0] || frameEngine.get?.(toolCallFrame.id) || { ...toolCallFrame, finishedProcessingAt: now };
+}
+
 async function recordToolCallFrame({ toolName, ToolClass = null, input, context = {} } = {}) {
   let frameEngine = await resolveFrameEngine(context);
   let sessionID = context.session?.id || input?._sessionID;
@@ -209,6 +320,8 @@ async function recordToolCallFrame({ toolName, ToolClass = null, input, context 
     timestamp: now,
     createdAt: now,
     updatedAt: now,
+    startedProcessingAt: null,
+    finishedProcessingAt: null,
     hidden: false,
     deleted: false,
     content: {
@@ -274,6 +387,8 @@ async function recordToolResultFrame({
     timestamp: now,
     createdAt: now,
     updatedAt: now,
+    startedProcessingAt: now,
+    finishedProcessingAt: now,
     hidden: false,
     deleted: false,
     content,
@@ -287,7 +402,10 @@ async function recordToolResultFrame({
     authorID: toolName,
   });
   await flushFrameStore(context);
-  return merged[0] || frameEngine.get?.(frame.id) || frame;
+  let resultFrame = merged[0] || frameEngine.get?.(frame.id) || frame;
+  if (toolCallFrame)
+    await markToolCallFinished({ toolCallFrame, context, finishedAt: now });
+  return resultFrame;
 }
 
 async function recordToolErrorFrame({ toolName, ToolClass = null, input, context, toolCallFrame, toolOutputStore, error }) {

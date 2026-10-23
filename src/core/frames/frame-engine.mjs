@@ -255,6 +255,12 @@ export class FrameEngine extends EventEmitter {
     let order = numberOr(input.order, existing?.order || ++this._frameOrder);
 
     let content = cloneValue(input.content || {});
+    let processing = normalizeProcessingTimes(input, existing, {
+      type: input.type,
+      content,
+      createdAt,
+      updatedAt,
+    });
     let state = normalizeLifecycleState({
       inputState: input.state,
       existingState: existing?.state,
@@ -273,6 +279,8 @@ export class FrameEngine extends EventEmitter {
       updatedAt,
       createdClock,
       updatedClock,
+      startedProcessingAt: processing.startedProcessingAt,
+      finishedProcessingAt: processing.finishedProcessingAt,
       hidden: input.hidden ?? existing?.hidden ?? true,
       deleted: input.deleted ?? existing?.deleted ?? false,
       targets: Array.isArray(input.targets) ? input.targets.slice() : [],
@@ -574,6 +582,46 @@ function sortCommitOrder(frame) {
     return frame.commitOrder;
 
   return frame?.order || 0;
+}
+
+function normalizeProcessingTimes(input, existing, { type, content, createdAt, updatedAt }) {
+  let hasStarted = Object.hasOwn(input, 'startedProcessingAt');
+  let hasFinished = Object.hasOwn(input, 'finishedProcessingAt');
+  if (hasStarted || hasFinished) {
+    return {
+      startedProcessingAt: hasStarted
+        ? (input.startedProcessingAt ?? null)
+        : (existing?.startedProcessingAt ?? null),
+      finishedProcessingAt: hasFinished
+        ? (input.finishedProcessingAt ?? null)
+        : (existing?.finishedProcessingAt ?? null),
+    };
+  }
+
+  if (existing && (Object.hasOwn(existing, 'startedProcessingAt') || Object.hasOwn(existing, 'finishedProcessingAt'))) {
+    return {
+      startedProcessingAt: existing.startedProcessingAt ?? null,
+      finishedProcessingAt: existing.finishedProcessingAt ?? null,
+    };
+  }
+
+  if (isToolCallFrameType(type, content)) {
+    return {
+      startedProcessingAt: createdAt ?? updatedAt ?? null,
+      finishedProcessingAt: null,
+    };
+  }
+
+  return {
+    startedProcessingAt: createdAt ?? updatedAt ?? null,
+    finishedProcessingAt: createdAt ?? updatedAt ?? null,
+  };
+}
+
+function isToolCallFrameType(type, content = {}) {
+  if (type === 'ToolCall')
+    return true;
+  return /ToolFrame$/.test(String(type || '')) && content?.phase === 'call';
 }
 
 function normalizeLifecycleState({ inputState, existingState, content, updatedAt, updatedClock }) {

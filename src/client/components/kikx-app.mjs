@@ -12,6 +12,7 @@ import './kikx-chat-view.mjs';
 import './kikx-session-grid.mjs';
 import { installGlobalErrorCapture, uninstallGlobalErrorCapture } from '../lib/error-boundary.mjs';
 import { cleanupBindings } from '../lib/aeor-ui.mjs';
+import { installScrollDebugLogger } from '../lib/scroll-debug-logger.mjs';
 import {
   buildAuthShell,
   buildBreadcrumb,
@@ -71,6 +72,7 @@ import {
   loadAgents,
   loadClientComponents,
   loadFrames,
+  loadFramesAtMessage,
   loadNewerFrames,
   loadOlderFrames,
   loadSessions,
@@ -98,17 +100,20 @@ import {
   captureRenderSnapshot,
   connectFrameListObserver,
   disconnectFrameListObserver,
+  fillOlderFramesFromSentinel,
   isFrameListNearBottom,
+  lockScrollToLatest,
   onFrameContentResize,
   onFrameListScroll,
   requestRender,
   restoreFrameListScroll,
-  scheduleAnchoredFrameScroll,
   scrollFramesToBottom,
   scrollFramesToBottomImmediate,
   syncFrameThread,
   syncSessionShell,
+  toggleScrollLock,
 } from './kikx-frame-scroll.mjs';
+import { cancelFrameListScrollAnimation } from './kikx-frame-scroll-lock.mjs';
 import {
   applySessionDeepLink,
   beginSessionNameEdit,
@@ -285,6 +290,7 @@ export class KikxApp extends HTMLElement {
     this._loadTeams = async () => loadTeams(this);
     this._loadClientComponents = async () => loadClientComponents(this);
     this._loadFrames = async (sessionID, options = {}) => loadFrames(this, sessionID, options);
+    this._loadFramesAtMessage = async (sessionID, frameID, options = {}) => loadFramesAtMessage(this, sessionID, frameID, options);
     this._loadOlderFrames = async (sessionID = this._state.selectedSessionID) => loadOlderFrames(this, sessionID);
     this._loadNewerFrames = async (sessionID = this._state.selectedSessionID) => loadNewerFrames(this, sessionID);
     this._loadTokenUsage = async () => loadTokenUsage(this);
@@ -382,8 +388,10 @@ export class KikxApp extends HTMLElement {
     this._disconnectFrameListObserver = () => disconnectFrameListObserver(this);
     this._isFrameListNearBottom = (frameList = this.querySelector('.kikx-frame-list')) => isFrameListNearBottom(this, frameList);
     this._scrollFramesToBottom = () => scrollFramesToBottom(this);
-    this._scheduleAnchoredFrameScroll = () => scheduleAnchoredFrameScroll(this);
     this._scrollFramesToBottomImmediate = (frameList = this.querySelector('.kikx-frame-list')) => scrollFramesToBottomImmediate(this, frameList);
+    this._fillOlderFrames = (frameList = this.querySelector('.kikx-frame-list')) => fillOlderFramesFromSentinel(this, frameList);
+    this._toggleScrollLock = () => toggleScrollLock(this);
+    this._lockScrollToLatest = () => lockScrollToLatest(this);
     this._restoreFrameListScroll = (snapshot = {}) => restoreFrameListScroll(this, snapshot);
     this._onFrameContentResize = () => onFrameContentResize(this);
     this._onFrameListScroll = (event) => onFrameListScroll(this, event);
@@ -491,6 +499,15 @@ export class KikxApp extends HTMLElement {
       return;
 
     this._appListenersInstalled = true;
+    installScrollDebugLogger();
+    // Reload scroll is restored by the frame anchor/pin logic below. Letting the
+    // browser restore it too makes the list open at the old bottom and then
+    // animate away from it.
+    this._previousScrollRestoration = null;
+    if (globalThis.history && 'scrollRestoration' in globalThis.history) {
+      this._previousScrollRestoration = globalThis.history.scrollRestoration;
+      globalThis.history.scrollRestoration = 'manual';
+    }
     // Sub-session cards bubble "enter" events; handle them once at the root.
     this._onSessionEnter = (event) => {
       if (event.detail?.sessionID)
@@ -500,6 +517,36 @@ export class KikxApp extends HTMLElement {
     // Browser back/forward navigates the window stack.
     this._onPopState = () => this._syncFromURL();
     (globalThis.window || globalThis).addEventListener?.('popstate', this._onPopState);
+    this._onAppKeydown = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'l') {
+        event.preventDefault();
+        globalThis.kikxScrollLog?.enable?.();
+        let copied = globalThis.kikxScrollLog?.copyToClipboard?.();
+        this._state.status = 'Copying scroll log...';
+        this._state.statusKind = 'pending';
+        Promise.resolve(copied).then((length) => {
+          announceStatus(`Scroll log copied, ${length || 0} characters`);
+        }).catch(() => {
+          announceStatus('Could not copy scroll log');
+        });
+        return;
+      }
+
+      if (!(event.ctrlKey || event.metaKey) && [ 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ' ].includes(event.key)) {
+        this._frameListUserGestureUntil = Date.now() + 2000;
+        this._ignoreFrameScrollUntil = 0;
+        cancelFrameListScrollAnimation(this);
+      }
+
+      if (!(event.ctrlKey || event.metaKey) || event.key !== 'End')
+        return;
+      if (!this._state.selectedSessionID)
+        return;
+
+      event.preventDefault();
+      this._lockScrollToLatest();
+    };
+    (globalThis.window || globalThis).addEventListener?.('keydown', this._onAppKeydown, true);
     installFrameRuntimeVisibilityDrain(this);
   }
 
@@ -512,8 +559,14 @@ export class KikxApp extends HTMLElement {
       this.removeEventListener('kikx-session-enter', this._onSessionEnter);
     if (this._onPopState)
       (globalThis.window || globalThis).removeEventListener?.('popstate', this._onPopState);
+    if (this._onAppKeydown)
+      (globalThis.window || globalThis).removeEventListener?.('keydown', this._onAppKeydown, true);
     this._onSessionEnter = null;
     this._onPopState = null;
+    this._onAppKeydown = null;
+    if (this._previousScrollRestoration && globalThis.history && 'scrollRestoration' in globalThis.history)
+      globalThis.history.scrollRestoration = this._previousScrollRestoration;
+    this._previousScrollRestoration = null;
     uninstallFrameRuntimeVisibilityDrain(this);
   }
 
@@ -532,3 +585,13 @@ export class KikxApp extends HTMLElement {
 
 if (!customElements.get('kikx-app'))
   customElements.define('kikx-app', KikxApp);
+
+function announceStatus(message) {
+  let node = document.createElement('div');
+  node.setAttribute('role', 'status');
+  node.setAttribute('aria-live', 'assertive');
+  node.style.cssText = 'position:fixed;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
+  node.textContent = message;
+  document.body.appendChild(node);
+  setTimeout(() => node.remove(), 2000);
+}

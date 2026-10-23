@@ -20,11 +20,26 @@ import {
 } from './tool-frame-summary.mjs';
 import { setIcon } from '../lib/icons.mjs';
 import { countRebuild } from './render-stats.mjs';
-import { isFrameExpanded, setFrameExpanded } from '../state/frame-expansion.mjs';
+import { isFrameExpanded, isFrameRevealed, revealFrame, setFrameExpanded, setFrameRevealed } from '../state/frame-expansion.mjs';
 import './kikx-typing-indicator.mjs';
 import './kikx-sub-session-frame.mjs';
 
 const { div, p, span, strong, time } = elements;
+
+const MINIMIZED_EXCEPTIONS = new Set([
+  'read-file',
+  'write-file',
+  'web-search',
+  'web-fetch',
+]);
+
+function isToolFrame(frame) {
+  if (!frame?.type)
+    return false;
+  return frame.type === 'ToolCall'
+    || frame.type === 'ToolResult'
+    || /ToolFrame$/.test(frame.type);
+}
 
 // Browsers expose element.tagName in UPPERCASE and element.localName in
 // lowercase, while descriptors/specs use lowercase names. Normalize once so
@@ -115,12 +130,25 @@ function frameHeaderStatus(frame, compact) {
   return { label: moodWord || 'Message', icon: 'chat' };
 }
 
+function renderHeaderStatusLabel(label, data = {}) {
+  label.textContent = '';
+  if (data.code === true) {
+    let code = document.createElement('code');
+    code.textContent = data.label || '';
+    label.appendChild(code);
+    return;
+  }
+
+  label.textContent = data.label || '';
+}
+
 function buildHeaderStatus(frame, compact) {
   let data = frameHeaderStatus(frame, compact);
   if (!data)
     return null;
 
-  let label = span.class('kikx-frame__meta-status-label')(data.label).build(document);
+  let label = span.class('kikx-frame__meta-status-label').build(document);
+  renderHeaderStatusLabel(label, data);
   let icon = span.class('kikx-frame__compact-icon').build(document);
   icon.setAttribute('aria-hidden', 'true');
   setIcon(icon, data.icon, { ownerDocument: document });
@@ -140,6 +168,7 @@ export class KikxFrameItem extends HTMLElement {
     this._contentTag = null;
     this._lastMarkdownText = null;
     this._compact = false;
+    this._minimized = false;
     this._compactView = null;
     this._contentParent = null;
   }
@@ -176,6 +205,7 @@ export class KikxFrameItem extends HTMLElement {
     if (!this._compactClickBound) {
       this._compactClickBound = true;
       this.addEventListener('click', this._onCompactClick);
+      this.addEventListener('keydown', this._onCompactKeydown);
     }
 
     if (this._frame && this.childNodes.length === 0)
@@ -196,7 +226,52 @@ export class KikxFrameItem extends HTMLElement {
     if (selection && selection.isCollapsed === false)
       return;
 
+    if (this._minimized) {
+      this._revealMinimized();
+      return;
+    }
+
     details.open = !details.open;
+  }
+
+  _onCompactKeydown(event) {
+    if (!this._minimized || (event.key !== 'Enter' && event.key !== ' '))
+      return;
+    if (event.target?.closest?.('a, button, input, textarea, select, summary'))
+      return;
+
+    event.preventDefault();
+    this._revealMinimized();
+  }
+
+  _revealMinimized() {
+    let frameID = this._frame?.id;
+    if (frameID)
+      revealFrame(frameID);
+    this._minimized = false;
+    this.classList.remove('kikx-frame--minimized');
+    if (this._compactView) {
+      this._compactView.element.hidden = false;
+      this._compactView.element.open = false;
+    }
+    this._syncMinimizedAccessibility();
+  }
+
+  _syncMinimizedAccessibility() {
+    if (!this._metaElement)
+      return;
+
+    if (this._minimized) {
+      this._metaElement.setAttribute('role', 'button');
+      this._metaElement.setAttribute('tabindex', '0');
+      this._metaElement.setAttribute('aria-expanded', 'false');
+      this._metaElement.setAttribute('aria-label', 'Expand message');
+    } else {
+      this._metaElement.removeAttribute('role');
+      this._metaElement.removeAttribute('tabindex');
+      this._metaElement.removeAttribute('aria-expanded');
+      this._metaElement.removeAttribute('aria-label');
+    }
   }
 
   disconnectedCallback() {
@@ -241,6 +316,10 @@ export class KikxFrameItem extends HTMLElement {
       this._compact = compact;
       this._compactView = null;
       this._contentParent = this;
+      this._minimized = compact
+        && this._shouldMinimize(frame)
+        && !isFrameRevealed(frame.id)
+        && !isFrameExpanded(frame.id);
 
       this._applyFrameState(frame, compact);
 
@@ -252,10 +331,11 @@ export class KikxFrameItem extends HTMLElement {
         // the DOM, because `_render()` throws the whole subtree away. The
         // store never opens anything on its own: an id the user never
         // expanded reports false, so the default stays collapsed.
-        this._compactView.element.open = isFrameExpanded(frame.id);
+        this._compactView.element.open = !this._minimized && isFrameExpanded(frame.id);
         // Keep the "{Name} {time}" header visible above the compact line.
         if (meta)
           this.appendChild(meta);
+        this._syncMinimizedAccessibility();
         // Expanding the compact row builds the details; nested output/arguments
         // disclosures stay lazy until the user opens them too. Collapsing removes
         // the whole details subtree again.
@@ -286,6 +366,8 @@ export class KikxFrameItem extends HTMLElement {
     let className = `kikx-frame kikx-frame--${frame.type}`;
     if (compact)
       className += ' kikx-frame--compact';
+    if (this._minimized)
+      className += ' kikx-frame--minimized';
     if (tinted)
       className += ` ${frameStatusClass(status)}`;
 
@@ -308,6 +390,14 @@ export class KikxFrameItem extends HTMLElement {
 
   _shouldCompact(frame) {
     return isCompactFrame(frame) && !sessionReferenceFromFrame(frame);
+  }
+
+  _shouldMinimize(frame) {
+    if (!isToolFrame(frame) || sessionReferenceFromFrame(frame))
+      return false;
+
+    let toolName = String(frame?.content?.toolName || '');
+    return !MINIMIZED_EXCEPTIONS.has(toolName);
   }
 
   _reconcile() {
@@ -364,10 +454,28 @@ export class KikxFrameItem extends HTMLElement {
 
     if (!details.open) {
       this._discardContentElement();
+      if (this._shouldMinimize(this._frame)) {
+        this._minimizeFrame();
+        return;
+      }
       return;
     }
 
     this._ensureCompactContent();
+  }
+
+  _minimizeFrame() {
+    let frameID = this._frame?.id;
+    if (frameID)
+      setFrameRevealed(frameID, false);
+    this._minimized = true;
+    this.classList.add('kikx-frame--minimized');
+    this._discardContentElement();
+    if (this._compactView) {
+      this._compactView.element.open = false;
+      this._compactView.body.replaceChildren();
+    }
+    this._syncMinimizedAccessibility();
   }
 
   _ensureCompactContent() {
@@ -407,7 +515,7 @@ export class KikxFrameItem extends HTMLElement {
     if (status && statusData) {
       let statusLabel = status.querySelector('.kikx-frame__meta-status-label');
       if (statusLabel)
-        setTextIfChanged(statusLabel, statusData.label);
+        renderHeaderStatusLabel(statusLabel, statusData);
 
       let icon = status.querySelector('.kikx-frame__compact-icon');
       if (icon && icon.dataset.icon !== statusData.icon)

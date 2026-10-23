@@ -165,12 +165,8 @@ export function scheduleRuntimeReconcile(app, sessionID = '') {
       if (!app.isConnected)
         return;
 
-      // Stay pinned to the bottom only when the user has not scrolled away. This is
-      // O(1) and never rebuilds the app; the heavy per-frame work is already handled
-      // by the coalesced frame.added / frame.updated batch.
-      let frameList = app._frameListAnchoredToBottom ? app.querySelector('.kikx-frame-list') : null;
-      if (frameList)
-        app._scrollFramesToBottomImmediate?.(frameList);
+      // No scroll takeover here. Pinned mode owns the latest-message anchor;
+      // unlocked mode belongs to the user until the 3s bottom-rest re-pin.
     });
   });
 }

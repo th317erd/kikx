@@ -1030,6 +1030,38 @@ test('GET /api/v1/sessions/:sessionID/frames passes the before cursor and limit'
   }
 });
 
+test('GET /api/v1/sessions/:sessionID/frames passes start and after cursors', async () => {
+  let runtime = createRuntime();
+  let server = await createServer({
+    context: new AppContext({
+      aeordb: {},
+      frameRuntime: runtime,
+    }),
+  });
+
+  let baseURL = await listen(server);
+
+  try {
+    let startResponse = await fetch(`${baseURL}/api/v1/sessions/ses_1/frames?limit=30&start=msg_150`);
+    assert.equal(startResponse.status, 200);
+    assert.deepEqual(runtime.calls.at(-1), {
+      method: 'listFrameWindow',
+      sessionID: 'ses_1',
+      options: { limit: 30, before: null, start: 'msg_150' },
+    });
+
+    let afterResponse = await fetch(`${baseURL}/api/v1/sessions/ses_1/frames?limit=30&after=169`);
+    assert.equal(afterResponse.status, 200);
+    assert.deepEqual(runtime.calls.at(-1), {
+      method: 'listFrameWindow',
+      sessionID: 'ses_1',
+      options: { limit: 30, before: null, after: 169 },
+    });
+  } finally {
+    await close(server);
+  }
+});
+
 test('GET /api/v1/sessions/:sessionID/frames keeps the legacy offset path', async () => {
   let runtime = createRuntime();
   let server = await createServer({

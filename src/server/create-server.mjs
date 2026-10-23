@@ -75,6 +75,8 @@ import {
   ToolExecutionService,
   ToolOutputStore,
 } from '../core/tools/index.mjs';
+import { ToolShutdownState } from '../core/tools/tool-shutdown-state.mjs';
+import { processPendingToolCalls } from '../core/tools/pending-tool-recovery.mjs';
 
 import {
   parseBoolean,
@@ -280,9 +282,15 @@ export async function createServer(options = {}) {
     }));
   }
 
+  if (!context.has('toolShutdownState'))
+    context.set('toolShutdownState', new ToolShutdownState({ logger: options.logger || console }));
+
   if (!context.has('toolExecutor'))
     context.set('toolExecutor', new ToolExecutionService({
       toolOutputStore: context.require('toolOutputStore'),
+      shutdownState: context.require('toolShutdownState'),
+      context,
+      logger: options.logger || console,
     }));
 
   if (!context.has('tokenUsage')) {
@@ -482,6 +490,32 @@ export async function createServer(options = {}) {
       logger.error?.('Kikx process rehydration failed', error);
       return { rehydrated: 0, interrupted: 0, error };
     }));
+  }
+
+  if (!context.has('pendingToolRecoveryPromise')) {
+    let frameRuntime = context.require('frameRuntime');
+    let toolExecutor = context.require('toolExecutor');
+    let pluginRegistry = context.require('pluginRegistry');
+    let agentManager = context.require('agentManager');
+    let logger = options.logger || console;
+    context.set('pendingToolRecoveryPromise', Promise.resolve(context.require('processRecoveryPromise'))
+      .then(async () => await processPendingToolCalls({
+        frameRuntime,
+        toolExecutor,
+        pluginRegistry,
+        agentManager,
+        services: { context },
+        logger,
+      }))
+      .then((result) => {
+        if (result?.processed > 0 || result?.failed > 0 || result?.reconciled > 0)
+          logger.warn?.('Kikx resumed pending tool calls', result);
+        return result;
+      })
+      .catch((error) => {
+        logger.error?.('Kikx pending tool recovery failed', error);
+        return { processed: 0, failed: 0, skipped: true, error };
+      }));
   }
 
   if (!context.has('scheduledFrameWorkerPromise')) {

@@ -924,6 +924,30 @@ test('setSessionFramesState with paging keeps raw total out of messageCount', ()
   });
 });
 
+test('setSessionFramesState keeps hasMoreNewer for a cursor-anchored window', () => {
+  let state = {
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: { ses_1: { id: 'ses_1', title: 'Cursor', messageCount: 0 } },
+    framesBySessionID: {},
+  };
+
+  let next = setSessionFramesState(state, 'ses_1', [
+    { id: 'msg_150', type: 'UserMessage' },
+    { id: 'msg_151', type: 'UserMessage' },
+  ], {
+    total: 300,
+    hasMoreOlder: true,
+    hasMoreNewer: true,
+    oldestOrder: 150,
+    newestOrder: 151,
+  });
+
+  assert.equal(next.sessionPagingByID.ses_1.hasMoreOlder, true);
+  assert.equal(next.sessionPagingByID.ses_1.hasMoreNewer, true);
+  assert.equal(next.sessionPagingByID.ses_1.oldestOrder, 150);
+  assert.equal(next.sessionPagingByID.ses_1.newestOrder, 151);
+});
+
 test('prependSessionFramesState does not lower the authoritative messageCount', () => {
   let state = {
     sessionIDs: [ 'ses_1' ],

@@ -1065,8 +1065,8 @@ test('ToolExecutionService emits visible typed tool frames', async () => {
     },
   });
 
-  assert.equal(frameEngine.frames.length, 2);
-  assert.equal(flushCount, 2);
+  assert.equal(frameEngine.frames.length, 4);
+  assert.equal(flushCount, 4);
   assert.equal(frameEngine.frames[0].type, 'GlobalEchoToolFrame');
   assert.equal(frameEngine.frames[0].hidden, false);
   assert.equal(frameEngine.frames[0].parentID, 'agent_response_1');
@@ -1078,19 +1078,19 @@ test('ToolExecutionService emits visible typed tool frames', async () => {
     apiKey: '[redacted]',
   });
 
-  assert.equal(frameEngine.frames[1].type, 'GlobalEchoToolFrame');
-  assert.equal(frameEngine.frames[1].hidden, false);
-  assert.equal(frameEngine.frames[1].parentID, frameEngine.frames[0].id);
-  assert.equal(frameEngine.frames[1].content.phase, 'result');
-  assert.equal(frameEngine.frames[1].content.toolName, 'global-echo');
-  assert.equal(frameEngine.frames[1].content.toolOutputID, 'OUT1');
-  assert.equal(frameEngine.frames[1].content.status, 'success');
-  assert.deepEqual(frameEngine.frames[1].content.input, {
+  let resultFrame = frameEngine.frames.find((frame) => frame.content?.phase === 'result');
+  assert.equal(resultFrame.type, 'GlobalEchoToolFrame');
+  assert.equal(resultFrame.hidden, false);
+  assert.equal(resultFrame.parentID, frameEngine.frames[0].id);
+  assert.equal(resultFrame.content.toolName, 'global-echo');
+  assert.equal(resultFrame.content.toolOutputID, 'OUT1');
+  assert.equal(resultFrame.content.status, 'success');
+  assert.deepEqual(resultFrame.content.input, {
     text: 'hello',
     apiKey: '[redacted]',
   });
-  assert.match(frameEngine.frames[1].content.preview, /"text": "hello"/);
-  assert.equal('result' in frameEngine.frames[1].content, false);
+  assert.match(resultFrame.content.preview, /"text": "hello"/);
+  assert.equal('result' in resultFrame.content, false);
 });
 
 test('ToolExecutionService records tool frames and output metadata in session_id target sessions', async () => {
@@ -1137,18 +1137,20 @@ test('ToolExecutionService records tool frames and output metadata in session_id
 
   assert.equal(result.result.sessionID, 'ses_target');
   assert.equal(sourceEngine.frames.length, 0);
-  assert.equal(targetEngine.frames.length, 2);
-  assert.equal(flushCount, 2);
-  assert.equal(targetEngine.frames[0].sessionID, 'ses_target');
-  assert.equal(targetEngine.frames[0].parentID, null);
-  assert.equal(targetEngine.frames[0].content.input.session_id, 'ses_target');
-  assert.equal(targetEngine.frames[0].content.targetSessionID, 'ses_target');
-  assert.equal(targetEngine.frames[0].content.sourceSessionID, 'ses_source');
-  assert.equal(targetEngine.frames[0].content.sourceFrameID, 'frm_source');
-  assert.equal(targetEngine.frames[0].content.sourceResponseFrameID, 'agent_response_source');
-  assert.equal(targetEngine.frames[1].sessionID, 'ses_target');
-  assert.equal(targetEngine.frames[1].parentID, targetEngine.frames[0].id);
-  assert.equal(targetEngine.frames[1].content.targetSessionID, 'ses_target');
+  assert.equal(targetEngine.frames.length, 4);
+  assert.equal(flushCount, 4);
+  let targetCall = targetEngine.frames[0];
+  assert.equal(targetCall.sessionID, 'ses_target');
+  assert.equal(targetCall.parentID, null);
+  assert.equal(targetCall.content.input.session_id, 'ses_target');
+  assert.equal(targetCall.content.targetSessionID, 'ses_target');
+  assert.equal(targetCall.content.sourceSessionID, 'ses_source');
+  assert.equal(targetCall.content.sourceFrameID, 'frm_source');
+  assert.equal(targetCall.content.sourceResponseFrameID, 'agent_response_source');
+  let targetResult = targetEngine.frames.find((frame) => frame.content?.phase === 'result');
+  assert.equal(targetResult.sessionID, 'ses_target');
+  assert.equal(targetResult.parentID, targetEngine.frames[0].id);
+  assert.equal(targetResult.content.targetSessionID, 'ses_target');
   assert.equal(aeordb.files.get('/kikx/tool-outputs/OUT_TARGET/metadata.json').sessionID, 'ses_target');
 });
 

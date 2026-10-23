@@ -31,6 +31,8 @@ export function isStaleToolCallFrame(frame, toolResultIDs) {
   let toolCallID = normalizeOptionalString(content.toolCallID);
   return content.phase === 'call'
     && (content.status === 'running' || frame.state?.status === 'running')
+    && frame.startedProcessingAt != null
+    && frame.finishedProcessingAt == null
     && (!toolCallID || !toolResultIDs.has(toolCallID));
 }
 
@@ -97,7 +99,7 @@ function truncateCommand(command, limit) {
 export function createRecoveredAgentResponseFrame(frame, options = {}) {
   let now = options.clock?.() || Date.now();
   let text = options.message
-    || 'Kikx recovered this agent response after a server restart or interrupted provider stream. The original response did not complete.';
+    || 'Kikx recovered this agent response after a server restart or interrupted provider stream. The original response did not complete. The working tree may contain uncommitted changes from your interrupted turn; inspect the current state before repeating work.';
   return {
     ...frame,
     hidden: false,
@@ -138,6 +140,8 @@ export function createRecoveredToolCallFrame(frame, options = {}) {
     hidden: frame.hidden ?? false,
     deleted: false,
     updatedAt: now,
+    startedProcessingAt: frame.startedProcessingAt ?? now,
+    finishedProcessingAt: now,
     content: {
       ...(frame.content || {}),
       status: 'failed',

@@ -1025,6 +1025,40 @@ test('FrameStore window marks the oldest page as no more', async () => {
   assert.equal(finalPage.newestOrder, 20);
 });
 
+test('FrameStore window starts at a frame id and pages both directions', async () => {
+  let aeordb = createClient();
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_big', 300);
+
+  let anchored = await store.listFrameWindow('ses_big', { limit: 20, start: 'ses_big_f150' });
+
+  assert.equal(anchored.startFound, true);
+  assert.deepEqual(anchored.frames.map((frame) => frame.order), Array.from({ length: 20 }, (_value, index) => 150 + index));
+  assert.equal(anchored.oldestOrder, 150);
+  assert.equal(anchored.newestOrder, 169);
+  assert.equal(anchored.hasMore, true);
+  assert.equal(anchored.hasMoreNewer, true);
+
+  let older = await store.listFrameWindow('ses_big', { limit: 20, before: anchored.oldestOrder });
+  assert.deepEqual(older.frames.map((frame) => frame.order), Array.from({ length: 20 }, (_value, index) => 130 + index));
+
+  let newer = await store.listFrameWindow('ses_big', { limit: 20, after: anchored.newestOrder });
+  assert.deepEqual(newer.frames.map((frame) => frame.order), Array.from({ length: 20 }, (_value, index) => 170 + index));
+  assert.equal(newer.hasMoreNewer, true);
+});
+
+test('FrameStore window reports a missing start id instead of guessing', async () => {
+  let aeordb = createClient();
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_big', 30);
+
+  let result = await store.listFrameWindow('ses_big', { limit: 10, start: 'missing_frame' });
+
+  assert.equal(result.startFound, false);
+  assert.equal(result.total, 30);
+  assert.deepEqual(result.frames, []);
+});
+
 test('FrameStore window returns a whole small session untruncated', async () => {
   let aeordb = createClient();
   let store = new FrameStore({ aeordb, rootPath: '/kikx' });

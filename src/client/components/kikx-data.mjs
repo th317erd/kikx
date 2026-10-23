@@ -234,14 +234,23 @@ export async function loadClientComponents(app) {
   }
 }
 
-export const DEFAULT_FRAME_WINDOW_LIMIT = 100;
+export const DEFAULT_FRAME_WINDOW_LIMIT = 600;
+// Once the initial window is on screen, paging in 600 raw frames at a time
+// prepends hundreds of rendered heads and forces a multi-thousand-pixel
+// scrollTop correction. Keep incremental pages small; the initial/reload
+// window remains large.
+export const FRAME_PAGE_LIMIT = 100;
 
-function frameWindowURL(sessionID, { limit, before } = {}) {
+function frameWindowURL(sessionID, { limit, before, after, start } = {}) {
   let params = new URLSearchParams();
   if (Number.isInteger(limit) && limit > 0)
     params.set('limit', String(limit));
   if (before != null)
     params.set('before', String(before));
+  if (after != null)
+    params.set('after', String(after));
+  if (start != null)
+    params.set('start', String(start));
 
   let query = params.toString();
   let base = `/api/v1/sessions/${encodeURIComponent(sessionID)}/frames`;
@@ -250,7 +259,8 @@ function frameWindowURL(sessionID, { limit, before } = {}) {
 
 function frameWindowPaging(data = {}, limit = DEFAULT_FRAME_WINDOW_LIMIT) {
   return {
-    hasMoreOlder: data.hasMore === true,
+    hasMoreOlder: data.hasMoreOlder === true || data.hasMore === true,
+    hasMoreNewer: data.hasMoreNewer === true,
     oldestOrder: data.oldestOrder ?? null,
     newestOrder: data.newestOrder ?? null,
     total: data.total ?? null,
@@ -267,9 +277,31 @@ export async function loadFrames(app, sessionID, options = {}) {
   let result = await getJSON(app, frameWindowURL(sessionID, {
     limit,
     before: options.before,
+    after: options.after,
+    start: options.start,
   }));
   let frames = result.data?.frames || [];
   let paging = frameWindowPaging(result.data, limit);
+
+  if (options.start != null) {
+    if (frames.length > 0) {
+      setSessionFrames(sessionID, frames, app._state, paging);
+      // The DOM window normally follows the newest end. A reload anchor must
+      // start at the anchor instead, or a large loaded window can render newer
+      // frames and skip the very message we are restoring.
+      app._frameWindowStartFrameID = options.start;
+    }
+    if (options.render !== false)
+      app._render();
+    return result.data;
+  }
+
+  if (options.after != null) {
+    mergeSessionFrameWindow(sessionID, frames, app._state, paging);
+    if (options.render !== false)
+      app._syncFrameThread(sessionID, { force: true });
+    return result.data;
+  }
 
   if (options.before != null) {
     prependSessionFrames(sessionID, frames, app._state);
@@ -295,6 +327,22 @@ export async function loadFrames(app, sessionID, options = {}) {
   return result.data;
 }
 
+// Load a single window beginning at a stable frame id. This is the reload
+// anchor path: one request lands on the message the user was reading instead
+// of walking backward through every newer page.
+export async function loadFramesAtMessage(app, sessionID, frameID, options = {}) {
+  if (!sessionID || !frameID)
+    return null;
+
+  let limit = Number.isInteger(options.limit) ? options.limit : DEFAULT_FRAME_WINDOW_LIMIT;
+
+  return await loadFrames(app, sessionID, {
+    start: frameID,
+    limit,
+    render: options.render,
+  });
+}
+
 // Load the previous (older) page for the selected session when the list nears
 // the top. Guards against concurrent loads and stops once `hasMoreOlder` false.
 export async function loadOlderFrames(app, sessionID = app._state.selectedSessionID) {
@@ -310,7 +358,7 @@ export async function loadOlderFrames(app, sessionID = app._state.selectedSessio
   try {
     return await loadFrames(app, sessionID, {
       before: paging.oldestOrder,
-      limit: Number.isInteger(paging.limit) ? paging.limit : DEFAULT_FRAME_WINDOW_LIMIT,
+      limit: FRAME_PAGE_LIMIT,
     });
   } catch (error) {
     app._state.status = error.message;
@@ -338,10 +386,11 @@ export async function loadNewerFrames(app, sessionID = app._state.selectedSessio
     let wasAnchored = app._frameListAnchoredToBottom;
     let result = await loadFrames(app, sessionID, {
       merge: true,
-      limit: Number.isInteger(paging.limit) ? paging.limit : DEFAULT_FRAME_WINDOW_LIMIT,
+      after: paging.newestOrder,
+      limit: FRAME_PAGE_LIMIT,
       render: false,
     });
-    setSessionPaging(sessionID, { hasMoreNewer: false }, app._state);
+    setSessionPaging(sessionID, { hasMoreNewer: result?.hasMoreNewer === true }, app._state);
     if (wasAnchored)
       app._forceScrollToBottomAfterRender = true;
     app._render();

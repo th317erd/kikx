@@ -303,8 +303,8 @@ test('a capacity flush leaves the next batch on its own interval', async () => {
   request.close();
 });
 
-test('the production SSE batching defaults are one second and 200 merged entries', () => {
-  assert.equal(DEFAULT_SSE_COALESCE_DELAY_MS, 1000);
+test('the production SSE batching defaults are half a second and 200 merged entries', () => {
+  assert.equal(DEFAULT_SSE_COALESCE_DELAY_MS, 500);
   assert.equal(DEFAULT_SSE_COALESCE_LIMIT, 200);
 });
 

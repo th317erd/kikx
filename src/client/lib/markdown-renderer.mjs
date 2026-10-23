@@ -395,8 +395,9 @@ function countCharacter(value, character) {
 
 function applyInlineEmphasis(text) {
   return text
-    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
+    // Bold may contain single-asterisk italics and inline-code tokens.
+    .replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^\n]+?)__/g, '<strong>$1</strong>')
     .replace(/~~([^~\n]+)~~/g, '<del>$1</del>')
     .replace(/(^|[^\*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
 }

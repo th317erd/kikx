@@ -57,20 +57,26 @@ test('Puppeteer clears the thinking rack on EndTyping and keeps one brain per ag
       brains: document.querySelectorAll('.kikx-thinking-brain').length,
       ids: [ ...document.querySelectorAll('kikx-thinking-panel') ].map((panel) => panel.dataset.thinkingId),
       rackHidden: document.querySelector('kikx-thinking-rack')?.hidden === true,
-      animations: [ ...document.querySelectorAll('.kikx-thinking-brain svg') ].map((brain) => getComputedStyle(brain).animationName),
+      breatheAnimations: [ ...document.querySelectorAll('.kikx-thinking-brain__art') ].map((art) => getComputedStyle(art).animationName),
+      shiverAnimations: [ ...document.querySelectorAll('.kikx-thinking-brain svg') ].map((brain) => getComputedStyle(brain).animationName),
     }));
 
     let animationProbe = () => page.evaluate(() => {
+      let art = document.querySelector('.kikx-thinking-brain__art');
       let brain = document.querySelector('.kikx-thinking-brain svg');
-      let animation = brain?.getAnimations?.()[0] || null;
+      let breathe = art?.getAnimations?.()[0] || null;
+      let shiver = brain?.getAnimations?.()[0] || null;
       let rect = brain?.getBoundingClientRect();
       let style = brain ? getComputedStyle(brain) : null;
-      let origin = style?.transformOrigin || '';
+      let artStyle = art ? getComputedStyle(art) : null;
       return {
         transformBox: style?.transformBox || '',
-        startTime: animation?.startTime ?? null,
-        currentTime: animation?.currentTime ?? null,
-        origin,
+        origin: style?.transformOrigin || '',
+        artOrigin: artStyle?.transformOrigin || '',
+        breatheStartTime: breathe?.startTime ?? null,
+        breatheCurrentTime: breathe?.currentTime ?? null,
+        shiverStartTime: shiver?.startTime ?? null,
+        shiverCurrentTime: shiver?.currentTime ?? null,
         width: rect?.width ?? 0,
         height: rect?.height ?? 0,
       };
@@ -86,13 +92,15 @@ test('Puppeteer clears the thinking rack on EndTyping and keeps one brain per ag
     let active = await snapshot();
     assert.equal(active.panels, 1, 'one panel for the active agent');
     assert.equal(active.brains, 1, 'one brain animation node');
-    assert.deepEqual(active.animations, [ 'kikx-thinking-giggle' ]);
+    assert.deepEqual(active.breatheAnimations, [ 'kikx-thinking-breathe' ]);
+    assert.deepEqual(active.shiverAnimations, [ 'kikx-thinking-shiver' ]);
     assert.equal(active.rackHidden, false);
 
     let beforeAnimation = await animationProbe();
-    assert.ok(beforeAnimation.startTime != null, 'the brain animation is running');
+    assert.ok(beforeAnimation.breatheStartTime != null, 'the breathing animation is running');
+    assert.ok(beforeAnimation.shiverStartTime != null, 'the shiver animation is running');
     let [ originX, originY ] = beforeAnimation.origin.split(/\s+/).map((value) => Number.parseFloat(value));
-    assert.equal(beforeAnimation.transformBox, 'fill-box', 'the brain animates in its own icon box');
+    assert.equal(beforeAnimation.transformBox, 'view-box', 'the shiver animates in the icon viewBox');
     assert.ok(originX === originY, `animation origin is centered (${beforeAnimation.origin})`);
 
     // The tooltip is a real scroll window. Hover it, then add enough lines to
@@ -126,8 +134,10 @@ test('Puppeteer clears the thinking rack on EndTyping and keeps one brain per ag
     ]);
     await delay(250);
     let afterAnimation = await animationProbe();
-    assert.equal(afterAnimation.startTime, beforeAnimation.startTime, 'the brain animation start time is preserved');
-    assert.ok(afterAnimation.currentTime >= beforeAnimation.currentTime, 'the brain animation keeps progressing');
+    assert.equal(afterAnimation.breatheStartTime, beforeAnimation.breatheStartTime, 'the breathing animation start time is preserved');
+    assert.equal(afterAnimation.shiverStartTime, beforeAnimation.shiverStartTime, 'the shiver animation start time is preserved');
+    assert.ok(afterAnimation.breatheCurrentTime >= beforeAnimation.breatheCurrentTime, 'the breathing animation keeps progressing');
+    assert.ok(afterAnimation.shiverCurrentTime >= beforeAnimation.shiverCurrentTime, 'the shiver animation keeps progressing');
 
     // A frame from another session must not appear in the selected rack.
     await inject('session_2', [

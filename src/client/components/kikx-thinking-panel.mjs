@@ -39,7 +39,10 @@ export class KikxThinkingPanel extends HTMLElement {
       this._initialized = true;
       this.innerHTML = TEMPLATE_HTML;
       this._brainElement = this.querySelector('.kikx-thinking-brain');
-      this._brainElement.appendChild(createIcon('brain'));
+      this._brainArt = document.createElement('span');
+      this._brainArt.className = 'kikx-thinking-brain__art';
+      this._brainArt.appendChild(createIcon('brain'));
+      this._brainElement.appendChild(this._brainArt);
       this._brainElement.addEventListener('mouseenter', this._onPointerMove);
       this._brainElement.addEventListener('mousemove', this._onPointerMove);
       this._brainElement.addEventListener('mouseleave', this._onPointerLeave);

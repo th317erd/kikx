@@ -364,6 +364,7 @@ test('FrameRuntime recovers stale streaming agent responses and running tool cal
   assert.equal(agentFrame.content.status, 'error');
   assert.equal(agentFrame.content.error.recovered, true);
   assert.match(agentFrame.content.text, /recovered this agent response/);
+  assert.match(agentFrame.content.text, /uncommitted changes from your interrupted turn/);
   assert.equal(toolFrame.content.status, 'failed');
   assert.equal(toolFrame.state.status, 'failed');
   assert.equal(toolFrame.content.error.recovered, true);
@@ -457,6 +458,26 @@ test('FrameRuntime wakes the agent that owned an interrupted tool call', async (
   assert.equal(routed.length, 1);
   assert.equal(routed[0].changes[0].frameID, 'recovery_wake');
   assert.equal(routed[0].scheduledDispatch, true);
+});
+
+test('FrameRuntime waits for active agent runs during shutdown drain', async () => {
+  let runtime = createRuntime({ ids: [ 'ses_1' ] });
+  await runtime.createSession({ title: 'Drain' });
+  runtime.markAgentRunStart('ses_1', 'agent_1');
+
+  let drain = runtime.waitForAgentRuns({ timeoutMS: 500, intervalMS: 5 });
+  setTimeout(() => runtime.markAgentRunEnd('ses_1', 'agent_1'), 20);
+  let result = await drain;
+
+  assert.equal(result.timedOut, false);
+  assert.equal(result.remaining, 0);
+  assert.equal(runtime.countActiveAgentRuns(), 0);
+
+  runtime.markAgentRunStart('ses_1', 'agent_1');
+  let timed = await runtime.waitForAgentRuns({ timeoutMS: 20, intervalMS: 5 });
+  assert.equal(timed.timedOut, true);
+  assert.equal(timed.remaining, 1);
+  runtime.markAgentRunEnd('ses_1', 'agent_1');
 });
 
 test('FrameRuntime appends user messages through FrameEngine and FrameStore', async () => {
