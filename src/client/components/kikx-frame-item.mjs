@@ -362,7 +362,7 @@ export class KikxFrameItem extends HTMLElement {
 
   _applyFrameState(frame, compact) {
     let status = frameStatus(frame);
-    let tinted = compact || isBotCommunicationFrame(frame);
+    let tinted = compact || isBotCommunicationFrame(frame) || frame.type === 'Question';
     let className = `kikx-frame kikx-frame--${frame.type}`;
     if (compact)
       className += ' kikx-frame--compact';

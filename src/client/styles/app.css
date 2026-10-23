@@ -524,6 +524,10 @@ kikx-app {
   color: #c7b7ff;
 }
 
+.kikx-frame--Question .kikx-frame__meta-main strong {
+  color: #ffd1e8;
+}
+
 .kikx-frame--AgentThinking .kikx-frame__meta-main strong,
 .kikx-frame--BeginTyping .kikx-frame__meta-main strong {
   color: #a8c7ff;

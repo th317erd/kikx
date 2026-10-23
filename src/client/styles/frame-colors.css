@@ -121,12 +121,18 @@
   --kikx-frame-status-foreground-color: #ffffff;
 }
 
+/* Questions are a first-class frame type, not a detached embedded card. */
+.kikx-frame--Question {
+  --kikx-frame-type-color: #ff4fa3;
+}
+
 /* Full message cards ----------------------------------------------------- */
 
 .kikx-frame--AgentMessage,
 .kikx-frame--AgentMessageDelta,
 .kikx-frame--AgentProgress,
-.kikx-frame--UserMessage {
+.kikx-frame--UserMessage,
+.kikx-frame--Question {
   position: relative;
   isolation: isolate;
   border-width: var(--kikx-frame-border-width);
@@ -140,6 +146,7 @@
 .kikx-frame--AgentMessageDelta,
 .kikx-frame--AgentProgress,
 .kikx-frame--UserMessage,
+.kikx-frame--Question,
 .kikx-frame--compact {
   text-shadow:
     0 1px 3px rgba(0, 0, 0, 1),
@@ -152,6 +159,7 @@
 .kikx-frame--AgentMessageDelta .kikx-frame__meta,
 .kikx-frame--AgentProgress .kikx-frame__meta,
 .kikx-frame--UserMessage .kikx-frame__meta,
+.kikx-frame--Question .kikx-frame__meta,
 .kikx-frame--compact .kikx-frame__meta {
   position: relative;
   isolation: isolate;
@@ -164,7 +172,8 @@
 .kikx-frame--AgentMessage .kikx-frame__meta,
 .kikx-frame--AgentMessageDelta .kikx-frame__meta,
 .kikx-frame--AgentProgress .kikx-frame__meta,
-.kikx-frame--UserMessage .kikx-frame__meta {
+.kikx-frame--UserMessage .kikx-frame__meta,
+.kikx-frame--Question .kikx-frame__meta {
   margin: -12px -12px 0;
   padding: 12px 12px 8px;
 }
@@ -177,6 +186,7 @@
 .kikx-frame--AgentMessageDelta .kikx-frame__meta::before,
 .kikx-frame--AgentProgress .kikx-frame__meta::before,
 .kikx-frame--UserMessage .kikx-frame__meta::before,
+.kikx-frame--Question .kikx-frame__meta::before,
 .kikx-frame--compact .kikx-frame__meta::before {
   position: absolute;
   inset: 0;
@@ -201,6 +211,7 @@
 .kikx-frame--AgentMessageDelta .kikx-frame__meta > *,
 .kikx-frame--AgentProgress .kikx-frame__meta > *,
 .kikx-frame--UserMessage .kikx-frame__meta > *,
+.kikx-frame--Question .kikx-frame__meta > *,
 .kikx-frame--compact .kikx-frame__meta > * {
   position: relative;
   z-index: 1;
@@ -222,16 +233,19 @@
 .kikx-frame--AgentMessageDelta .kikx-frame__meta,
 .kikx-frame--AgentProgress .kikx-frame__meta,
 .kikx-frame--UserMessage .kikx-frame__meta,
+.kikx-frame--Question .kikx-frame__meta,
 .kikx-frame--compact .kikx-frame__meta,
 .kikx-frame--AgentMessage .kikx-frame__meta-main strong,
 .kikx-frame--AgentMessageDelta .kikx-frame__meta-main strong,
 .kikx-frame--AgentProgress .kikx-frame__meta-main strong,
 .kikx-frame--UserMessage .kikx-frame__meta-main strong,
+.kikx-frame--Question .kikx-frame__meta-main strong,
 .kikx-frame--compact .kikx-frame__meta-main strong,
 .kikx-frame--AgentMessage .kikx-frame__timestamp,
 .kikx-frame--AgentMessageDelta .kikx-frame__timestamp,
 .kikx-frame--AgentProgress .kikx-frame__timestamp,
 .kikx-frame--UserMessage .kikx-frame__timestamp,
+.kikx-frame--Question .kikx-frame__timestamp,
 .kikx-frame--compact .kikx-frame__timestamp {
   color: #f5f7fa;
 }

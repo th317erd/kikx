@@ -730,10 +730,10 @@
   display: grid;
   gap: 9px;
   padding: 13px 14px;
-  border: 1px solid #3c444d;
-  border-left: 3px solid #3d6cff;
+  border: 1px solid color-mix(in srgb, #ff4fa3 32%, #2b1a23);
+  border-left: 3px solid #ff4fa3;
   border-radius: 10px;
-  background: #171c21;
+  background: color-mix(in srgb, #ff4fa3 7%, #171217);
 }
 
 .kikx-question-frame__meta {
@@ -746,7 +746,7 @@
 
 .kikx-question-frame__agent {
   overflow: hidden;
-  color: #aeb8c2;
+  color: #ffb7d8;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -760,9 +760,9 @@
 .kikx-question-frame__priority {
   flex: 0 0 auto;
   padding: 1px 7px;
-  border: 1px solid #d29922;
+  border: 1px solid #ff4fa3;
   border-radius: 999px;
-  color: #d29922;
+  color: #ff9ac8;
   font-size: calc(10px * 1.25);
   font-weight: 700;
   letter-spacing: 0.04em;
